@@ -318,10 +318,41 @@ describe('Verifier integration', () => {
 })
 
 describe('Verifier L2 subagent nudge', () => {
+  test('does NOT nudge by default — deep verification is opt-in / manual via /verify', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
+    const prev = process.env.UR_VERIFIER_AUTO_SUBAGENT
+    delete process.env.UR_VERIFIER_AUTO_SUBAGENT
+    try {
+      const v = new Verifier({ cwd })
+      v.beginTurn(TURN, 'please fix bug X')
+      v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a.ts' }), true)
+      expect(v.shouldNudgeSubagent(TURN, false)).toBeNull()
+    } finally {
+      if (prev !== undefined) process.env.UR_VERIFIER_AUTO_SUBAGENT = prev
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('nudges when UR_VERIFIER_AUTO_SUBAGENT opts in', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
+    const prev = process.env.UR_VERIFIER_AUTO_SUBAGENT
+    process.env.UR_VERIFIER_AUTO_SUBAGENT = '1'
+    try {
+      const v = new Verifier({ cwd })
+      v.beginTurn(TURN, 'please fix bug X')
+      v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a.ts' }), true)
+      expect(v.shouldNudgeSubagent(TURN, false)).not.toBeNull()
+    } finally {
+      if (prev === undefined) delete process.env.UR_VERIFIER_AUTO_SUBAGENT
+      else process.env.UR_VERIFIER_AUTO_SUBAGENT = prev
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
   test('nudges once when the turn modified files and no tool call is queued', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd })
+      const v = new Verifier({ cwd, enableSubagentNudge: true })
       v.beginTurn(TURN, 'please fix bug X')
       v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a.ts' }), true)
       const nudge = v.shouldNudgeSubagent(TURN, false)
@@ -340,7 +371,7 @@ describe('Verifier L2 subagent nudge', () => {
   test('does not nudge when the turn still has tool calls queued', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd })
+      const v = new Verifier({ cwd, enableSubagentNudge: true })
       v.beginTurn(TURN)
       v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a' }), true)
       expect(v.shouldNudgeSubagent(TURN, true)).toBeNull()
@@ -352,7 +383,7 @@ describe('Verifier L2 subagent nudge', () => {
   test('does not nudge for read-only turns', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd })
+      const v = new Verifier({ cwd, enableSubagentNudge: true })
       v.beginTurn(TURN)
       v.recordToolCall(TURN, fakeToolUse('Read', { file_path: '/a' }), true)
       v.recordToolCall(TURN, fakeToolUse('Grep', { pattern: 'x' }, 'tu_2'), true)
@@ -377,7 +408,7 @@ describe('Verifier L2 subagent nudge', () => {
   test('nudge resets after endTurn so the next turn can nudge again', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd })
+      const v = new Verifier({ cwd, enableSubagentNudge: true })
       v.beginTurn(TURN)
       v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a' }), true)
       v.markSubagentNudged(TURN)
@@ -440,14 +471,24 @@ describe('Verifier mode', () => {
     }
   })
 
-  test('mode=loose still nudges the subagent on mutating turns', async () => {
+  test('mode=loose does not auto-nudge by default but allows the nudge when enabled', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
+    const prev = process.env.UR_VERIFIER_AUTO_SUBAGENT
+    delete process.env.UR_VERIFIER_AUTO_SUBAGENT
     try {
-      const v = new Verifier({ cwd, mode: 'loose' })
-      v.beginTurn(TURN, 'fix bug X')
-      v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a' }), true)
-      expect(v.shouldNudgeSubagent(TURN, false)).not.toBeNull()
+      // Default (opt-in off): loose does not auto-spawn the subagent.
+      const off = new Verifier({ cwd, mode: 'loose' })
+      off.beginTurn(TURN, 'fix bug X')
+      off.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a' }), true)
+      expect(off.shouldNudgeSubagent(TURN, false)).toBeNull()
+
+      // Unlike mode=off, loose still permits L2 when explicitly enabled.
+      const on = new Verifier({ cwd, mode: 'loose', enableSubagentNudge: true })
+      on.beginTurn(TURN, 'fix bug X')
+      on.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a' }), true)
+      expect(on.shouldNudgeSubagent(TURN, false)).not.toBeNull()
     } finally {
+      if (prev !== undefined) process.env.UR_VERIFIER_AUTO_SUBAGENT = prev
       await rm(cwd, { recursive: true, force: true })
     }
   })

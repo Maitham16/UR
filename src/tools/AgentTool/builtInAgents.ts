@@ -61,9 +61,12 @@ export function getBuiltInAgents(): AgentDefinition[] {
     agents.push(UR_CODE_GUIDE_AGENT)
   }
 
-  // Verification agent: always available on the main thread. The verifier
-  // subsystem (src/services/verifier) nudges the model to spawn it after a
-  // mutating turn. Opt-out via UR_VERIFIER_DISABLE_SUBAGENT.
+  // Verification agent: registered so the user can run deep verification on
+  // demand via the /verify command. It does NOT auto-spawn after each turn by
+  // default — the verifier subsystem (src/services/verifier) only nudges the
+  // model to spawn it when UR_VERIFIER_AUTO_SUBAGENT is set. Opt out of
+  // registering it at all (disabling manual /verify too) via
+  // UR_VERIFIER_DISABLE_SUBAGENT.
   if (!isEnvTruthy(process.env.UR_VERIFIER_DISABLE_SUBAGENT)) {
     agents.push(VERIFICATION_AGENT)
   }

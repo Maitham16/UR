@@ -50,23 +50,31 @@ Recommended Git behavior:
 
 ## Verifier
 
-UR runs a lightweight verifier in the agent loop to catch false "task done"
-claims, infinite tool-call loops, empty assistant turns, and project gate
-failures. After the deterministic checks pass on a mutating turn, the verifier
-also nudges the model to spawn the independent `verification` subagent for a
-second opinion.
+UR runs a lightweight verifier in the agent loop (L1) to catch false "task
+done" claims, infinite tool-call loops, empty assistant turns, and project
+gate failures. This is the cheap "try the implementation" pass and always
+runs (outside `mode=off`).
 
-Behaviour is controlled by two environment variables:
+The heavy independent `verification` subagent (L2) is **opt-in**: by default
+UR never auto-spawns it after a turn. Trigger that deep second opinion
+yourself with the `/verify` command when you want it. Set
+`UR_VERIFIER_AUTO_SUBAGENT=1` to restore the old behaviour where the verifier
+nudges the model to spawn the subagent after every mutating turn.
+
+Behaviour is controlled by environment variables:
 
 ```sh
-# Overall mode (default: strict)
-UR_VERIFIER_MODE=strict   # all gates on: done-claim, loops, empty turn,
-                          # project gates, L2 nudge
-UR_VERIFIER_MODE=loose    # only empty-turn check + loop detector + L2 nudge
+# Overall mode (default: strict) — controls the L1 gates
+UR_VERIFIER_MODE=strict   # all L1 gates on: done-claim, loops, empty turn,
+                          # project gates
+UR_VERIFIER_MODE=loose    # only empty-turn check + loop detector
 UR_VERIFIER_MODE=off      # disable verifier entirely
 
-# Independent L2 toggle (default: on unless mode=off)
-UR_VERIFIER_DISABLE_SUBAGENT=1   # keep L1 deterministic gates, skip L2 nudge
+# L2 deep-verification subagent (default: off — run it manually via /verify)
+UR_VERIFIER_AUTO_SUBAGENT=1      # auto-nudge the subagent after every
+                                 # mutating turn (the old default)
+UR_VERIFIER_DISABLE_SUBAGENT=1   # hard-off: also unregister the verification
+                                 # agent so /verify can't spawn it either
 ```
 
 Project-specific gates live in `.ur/verify.json`:
@@ -87,8 +95,9 @@ stdout/stderr.
 
 Two related slash commands:
 
-- `/verify [focus]` — manually ask the agent to spawn the verification
-  subagent (e.g. `/verify the auth flow`). Useful before a commit.
+- `/verify [focus]` — manually run the deep verification subagent (e.g.
+  `/verify the auth flow`). This is the primary way to trigger L2; useful
+  before a commit.
 - `/trace [n]` — print a structured view of the last `n` messages (default 8,
   max 50): roles, tool calls, tool results, verifier verdicts. Useful for
   debugging what the agent did during a turn.

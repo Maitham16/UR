@@ -24,7 +24,7 @@ describe('integration: queryLoop replay', () => {
   test('false done-claim turn → reject → retry with effect → pass → L2 nudge', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-int-'))
     try {
-      const v = new Verifier({ cwd })
+      const v = new Verifier({ cwd, enableSubagentNudge: true })
       v.beginTurn(TURN, 'add a hello function to README.md')
 
       // Iteration 1: model says "I added it" without writing anything
@@ -57,7 +57,7 @@ describe('integration: queryLoop replay', () => {
   test('read-only research turn produces no nudge', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-int-'))
     try {
-      const v = new Verifier({ cwd })
+      const v = new Verifier({ cwd, enableSubagentNudge: true })
       v.beginTurn(TURN, 'where is the auth code')
       v.recordToolCall(TURN, toolUse('Read', { file_path: '/auth.ts' }, 'tu_1'), true)
       v.recordToolCall(TURN, toolUse('Grep', { pattern: 'login' }, 'tu_2'), true)
@@ -74,7 +74,7 @@ describe('integration: queryLoop replay', () => {
     const prev = process.env.UR_VERIFIER_MODE
     process.env.UR_VERIFIER_MODE = 'off'
     try {
-      const v = new Verifier({ cwd })
+      const v = new Verifier({ cwd, enableSubagentNudge: true })
       v.beginTurn(TURN)
       const r = await v.checkTurn(TURN, 'I did it.', false)
       expect(r.ok).toBe(true)

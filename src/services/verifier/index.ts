@@ -2,9 +2,12 @@
 //
 // Layer 1: cheap deterministic gates that run inside the agent loop
 // with no extra Ollama round-trip (done-claim, loop detector, project
-// gates from .ur/verify.json).
-// Layer 2: nudges the model to spawn the verification subagent after
-// L1 passes on a mutating turn.
+// gates from .ur/verify.json). This is the lightweight "try the
+// implementation" pass and is always on (outside mode=off).
+// Layer 2: the heavy verification subagent. OPT-IN — by default the
+// verifier never auto-spawns it after a turn. Trigger the deep pass
+// yourself with the /verify command; set UR_VERIFIER_AUTO_SUBAGENT=1 to
+// restore the old automatic nudge after every mutating turn.
 //
 // Wiring: a single `Verifier` instance per QueryEngine. The loop calls
 // `recordToolCall` after every tool result, and `checkTurn` once the
@@ -16,11 +19,16 @@
 // Mode env vars (read at construction time, override constructor opts):
 //   UR_VERIFIER_MODE=off      disable both layers entirely
 //   UR_VERIFIER_MODE=loose    L1 done-claim + project gates off; loop
-//                             detector + empty-turn check + L2 nudge stay
-//   UR_VERIFIER_MODE=strict   default (everything on)
-//   UR_VERIFIER_DISABLE_SUBAGENT=1   independently disable just L2
+//                             detector + empty-turn check stay
+//   UR_VERIFIER_MODE=strict   default (all L1 gates on)
+//   UR_VERIFIER_AUTO_SUBAGENT=1      opt in to the automatic L2 nudge
+//                                    after every mutating turn
+//   UR_VERIFIER_DISABLE_SUBAGENT=1   hard-off for L2; also unregisters the
+//                                    verification agent so /verify can't
+//                                    spawn it either
 
 import type { ToolUseBlock } from '@urhq-ai/sdk/resources/index.mjs'
+import { isEnvTruthy } from '../../utils/envUtils.js'
 import { detectDoneClaim, evaluateDoneGate } from './doneDetector.js'
 import { ToolEffectLedger } from './ledger.js'
 import { LoopDetector, type LoopHit } from './loopDetector.js'
@@ -41,10 +49,12 @@ export type VerifierOptions = {
   /** Override the loop detector's repeat threshold. */
   repeatThreshold?: number
   /**
-   * When true (default), after L1 passes on a mutating turn the verifier
-   * asks the loop to nudge the model to spawn the verification subagent.
-   * Set false to disable L2 entirely. Honors UR_VERIFIER_DISABLE_SUBAGENT
-   * env var when not explicitly passed.
+   * After L1 passes on a mutating turn, ask the loop to nudge the model to
+   * spawn the verification subagent. OPT-IN: when not explicitly passed it
+   * defaults to false, so the deep verification only runs when the user
+   * triggers it on demand (the /verify command). It defaults to true only
+   * if UR_VERIFIER_AUTO_SUBAGENT is set (and mode!='off' and
+   * UR_VERIFIER_DISABLE_SUBAGENT!='1').
    */
   enableSubagentNudge?: boolean
   /**
@@ -82,8 +92,14 @@ export class Verifier {
     this.loops = new LoopDetector(options.repeatThreshold)
     this.configPromise = loadVerifyConfig(options.cwd)
     this.mode = resolveMode(options.mode)
+    // L2 is opt-in: the deep verification subagent only auto-spawns when the
+    // user explicitly enables it via UR_VERIFIER_AUTO_SUBAGENT. By default the
+    // verifier runs L1 gates only ("try the implementation") and the user
+    // triggers deep verification on demand with the /verify command.
     const subagentEnabledByDefault =
-      this.mode !== 'off' && process.env.UR_VERIFIER_DISABLE_SUBAGENT !== '1'
+      this.mode !== 'off' &&
+      process.env.UR_VERIFIER_DISABLE_SUBAGENT !== '1' &&
+      isEnvTruthy(process.env.UR_VERIFIER_AUTO_SUBAGENT)
     this.enableSubagentNudge =
       options.enableSubagentNudge ?? subagentEnabledByDefault
   }

@@ -118,7 +118,17 @@ Clean up:
 rm .ur/verify.json
 ```
 
-## 5. L2 subagent nudge
+## 5. L2 subagent nudge (opt-in)
+
+The deep verification subagent does NOT fire automatically by default — deep
+verification is manual (step 6). To exercise the auto-nudge, start UR with it
+enabled:
+
+```sh
+UR_VERIFIER_AUTO_SUBAGENT=1 ur
+```
+
+Then:
 
 ```text
 Add a short docstring to the top of any one file in src/. After that,
@@ -135,7 +145,9 @@ Expected after the model "finishes":
 If the model ignores the nudge twice in a row, the loop falls through to
 `completed` so you don't hang — that's intentional safety, not a bug.
 
-To skip L2 only:
+Without `UR_VERIFIER_AUTO_SUBAGENT`, the same prompt finishes with no nudge —
+that's the default. To also unregister the subagent entirely (so `/verify`
+can't spawn it either):
 
 ```sh
 UR_VERIFIER_DISABLE_SUBAGENT=1 ur

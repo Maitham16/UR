@@ -1445,9 +1445,11 @@ async function* queryLoop(
         }
         // L2: L1 gates passed. If this turn modified files and no tool
         // call is queued, nudge the model to spawn the verification
-        // subagent before yielding the final response. Fires at most
-        // once per request — if the model ignores it, the next loop
-        // pass falls through to `completed`.
+        // subagent before yielding the final response. Opt-in: off by
+        // default (gated inside shouldNudgeSubagent via
+        // UR_VERIFIER_AUTO_SUBAGENT) so deep verification stays manual via
+        // /verify. When enabled it fires at most once per request — if the
+        // model ignores it, the next loop pass falls through to `completed`.
         if (verifierInjections < VERIFIER_MAX_INJECTIONS) {
           const nudge = verifier.shouldNudgeSubagent(
             verifierTurnId,
