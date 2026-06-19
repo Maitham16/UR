@@ -1,0 +1,55 @@
+{
+  "name": "ur-plugins-official",
+  "owner": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/ur-agent"
+  },
+  "metadata": {
+    "version": "0.2.0",
+    "description": "First-party plugins for UR Agent. This marketplace is hosted in the same repository as the agent itself."
+  },
+  "plugins": [
+    {
+      "name": "hello",
+      "source": "./marketplace-plugins/hello",
+      "description": "Example plugin that adds a `/hello` command. Useful as a template for new plugins.",
+      "category": "examples",
+      "tags": ["example", "template", "starter"]
+    },
+    {
+      "name": "git-summary",
+      "source": "./marketplace-plugins/git-summary",
+      "description": "/git-summary — one-paragraph factual summary of the working tree and recent commits. Useful before standup, before a PR, or before clocking out.",
+      "category": "workflow",
+      "tags": ["git", "summary", "standup"]
+    },
+    {
+      "name": "code-review",
+      "source": "./marketplace-plugins/code-review",
+      "description": "/code-review — structured review of the working diff against a base ref. Covers correctness, style, test coverage, and security with a mandatory TL;DR verdict.",
+      "category": "quality",
+      "tags": ["code-review", "git", "diff", "quality"]
+    },
+    {
+      "name": "explain-error",
+      "source": "./marketplace-plugins/explain-error",
+      "description": "/explain-error — re-runs a failing command, decodes the error in plain English, and proposes two concrete next steps ordered by likelihood.",
+      "category": "debugging",
+      "tags": ["debug", "error", "troubleshooting"]
+    },
+    {
+      "name": "release-notes",
+      "source": "./marketplace-plugins/release-notes",
+      "description": "/release-notes — drafts release notes from git log since the last tag, grouped by Features / Fixes / Documentation / Other.",
+      "category": "workflow",
+      "tags": ["release", "notes", "changelog", "git"]
+    },
+    {
+      "name": "evaluate-response",
+      "source": "./marketplace-plugins/evaluate-response",
+      "description": "/evaluate-response — adversarial self-evaluation of the most recent assistant turn. Catches hallucinated completions, missed sub-questions, and narrated-but-not-done work.",
+      "category": "quality",
+      "tags": ["quality", "self-evaluation", "verifier"]
+    }
+  ]
+}
