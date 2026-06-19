@@ -796,12 +796,11 @@ export function initialPermissionModeFromCLI({
     break
   }
 
+  // Balanced default when the user picked no mode: acceptEdits auto-approves
+  // in-project edits + safe filesystem/read-only commands, still prompting for
+  // risky or out-of-project actions. Override via permissions.defaultMode.
   if (!result) {
-    result = { mode: 'default', notification }
-  }
-
-  if (!result) {
-    result = { mode: 'default', notification }
+    result = { mode: 'acceptEdits', notification }
   }
 
   if (feature('TRANSCRIPT_CLASSIFIER') && result.mode === 'auto') {
