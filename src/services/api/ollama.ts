@@ -61,6 +61,12 @@ type OllamaChatChunk = {
   error?: string
 }
 
+type OllamaModelCapabilities = Set<string>
+
+type OllamaStreamReadResult = Awaited<
+  ReturnType<ReadableStreamDefaultReader<Uint8Array>['read']>
+>
+
 type RequestOptions = {
   signal?: AbortSignal
   timeout?: number
@@ -72,6 +78,7 @@ type OllamaChatRequest = {
   model: string
   messages: OllamaMessage[]
   stream: boolean
+  think?: boolean | 'high' | 'medium' | 'low'
   tools?: OllamaTool[]
   options?: {
     temperature?: number
@@ -83,6 +90,10 @@ type OllamaChatRequest = {
 const OLLAMA_BASE_URL = 'http://localhost:11434'
 const DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS = 300_000
 const REMOTE_OLLAMA_REQUEST_TIMEOUT_MS = 120_000
+const ollamaModelCapabilitiesCache = new Map<
+  string,
+  OllamaModelCapabilities | null
+>()
 
 export function createOllamaURHQClient(): unknown {
   return {
@@ -120,7 +131,7 @@ function createStreamingRequest(
       const response = await responsePromise
       const requestId = `ollama-${randomUUID()}`
       return {
-        data: createURHQStream(response, params, controller, requestId),
+        data: createURHQStream(response, params, controller, requestId, options),
         request_id: requestId,
         response,
       }
@@ -157,12 +168,16 @@ async function fetchOllamaChat(
       : undefined
 
   try {
+    const capabilities = await getOllamaModelCapabilities(
+      params.model,
+      controller.signal,
+    )
     const response = await fetch(`${getOllamaBaseUrl()}/api/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(toOllamaChatRequest(params, stream)),
+      body: JSON.stringify(toOllamaChatRequest(params, stream, capabilities)),
       signal: controller.signal,
     })
 
@@ -238,15 +253,24 @@ function isTruthyEnv(value: string | undefined): boolean {
 function toOllamaChatRequest(
   params: BetaMessageStreamParams,
   stream: boolean,
+  capabilities: OllamaModelCapabilities | null,
 ): OllamaChatRequest {
-  const tools = toOllamaTools(params.tools)
+  const supportsTools = modelCapabilityEnabled(capabilities, 'tools')
+  const tools = supportsTools ? toOllamaTools(params.tools) : []
   const systemMessage: OllamaMessage = {
     role: 'system',
     content: systemToText(params.system),
   }
+  const think = getOllamaThink(params, capabilities)
   const request: OllamaChatRequest = {
     model: params.model,
-    messages: [systemMessage, ...messagesToOllama(params.messages)].filter(
+    messages: [
+      systemMessage,
+      ...messagesToOllama(
+        params.messages,
+        modelCapabilityEnabled(capabilities, 'vision'),
+      ),
+    ].filter(
       message =>
         message.role === 'tool' ||
         message.content.trim() !== '' ||
@@ -255,6 +279,7 @@ function toOllamaChatRequest(
     ),
     stream,
     ...(tools.length > 0 ? { tools } : {}),
+    ...(think !== undefined ? { think } : {}),
   }
 
   const options: OllamaChatRequest['options'] = {}
@@ -286,7 +311,10 @@ function systemToText(system: BetaMessageStreamParams['system']): string {
   return system.map(block => block.text).join('\n\n')
 }
 
-function messagesToOllama(messages: MessageParam[]): OllamaMessage[] {
+function messagesToOllama(
+  messages: MessageParam[],
+  supportsVision: boolean,
+): OllamaMessage[] {
   const result: OllamaMessage[] = []
   const toolNamesById = new Map<string, string>()
 
@@ -346,8 +374,10 @@ function messagesToOllama(messages: MessageParam[]): OllamaMessage[] {
           break
         }
         case 'image':
-          if (block.source.type === 'base64') {
+          if (supportsVision && block.source.type === 'base64') {
             images.push(block.source.data)
+          } else if (!supportsVision) {
+            textParts.push('[Image input omitted: selected Ollama model does not advertise vision support]')
           } else {
             textParts.push('[Image input omitted: unsupported image source]')
           }
@@ -437,16 +467,96 @@ function getOllamaFormat(params: BetaMessageStreamParams): unknown {
   return undefined
 }
 
+function getOllamaThink(
+  params: BetaMessageStreamParams,
+  capabilities: OllamaModelCapabilities | null,
+): OllamaChatRequest['think'] {
+  const thinking = (params as { thinking?: { type?: string } }).thinking
+  const supportsThinking = modelCapabilityEnabled(capabilities, 'thinking')
+  if (capabilities && !supportsThinking) {
+    return undefined
+  }
+  if (thinking && thinking.type !== 'disabled') {
+    return true
+  }
+  if (supportsThinking) {
+    return false
+  }
+  return undefined
+}
+
+function modelCapabilityEnabled(
+  capabilities: OllamaModelCapabilities | null,
+  capability: string,
+): boolean {
+  return capabilities?.has(capability) ?? true
+}
+
+async function getOllamaModelCapabilities(
+  model: string,
+  signal?: AbortSignal,
+): Promise<OllamaModelCapabilities | null> {
+  const normalizedModel = model.trim()
+  if (!normalizedModel) {
+    return null
+  }
+  if (ollamaModelCapabilitiesCache.has(normalizedModel)) {
+    return ollamaModelCapabilitiesCache.get(normalizedModel) ?? null
+  }
+
+  try {
+    const response = await fetch(`${getOllamaBaseUrl()}/api/show`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model: normalizedModel }),
+      signal,
+    })
+    if (!response.ok) {
+      ollamaModelCapabilitiesCache.set(normalizedModel, null)
+      return null
+    }
+    const capabilities = parseOllamaModelCapabilities(await response.json())
+    ollamaModelCapabilitiesCache.set(normalizedModel, capabilities)
+    return capabilities
+  } catch (error) {
+    if (signal?.aborted) {
+      throw error
+    }
+    ollamaModelCapabilitiesCache.set(normalizedModel, null)
+    return null
+  }
+}
+
+function parseOllamaModelCapabilities(value: unknown): OllamaModelCapabilities | null {
+  if (!value || typeof value !== 'object' || !('capabilities' in value)) {
+    return null
+  }
+  const capabilities = (value as { capabilities?: unknown }).capabilities
+  if (!Array.isArray(capabilities)) {
+    return null
+  }
+  return new Set(
+    capabilities.flatMap(capability =>
+      typeof capability === 'string' && capability.trim()
+        ? [capability.trim()]
+        : [],
+    ),
+  )
+}
+
 function createURHQStream(
   response: Response,
   params: BetaMessageStreamParams,
   controller: AbortController,
   requestId: string,
+  options?: RequestOptions,
 ): Stream<BetaRawMessageStreamEvent> {
   const stream = {
     controller,
     async *[Symbol.asyncIterator](): AsyncGenerator<BetaRawMessageStreamEvent> {
-      yield* streamURHQEvents(response, params, requestId)
+      yield* streamURHQEvents(response, params, controller, requestId, options)
     },
   }
   return stream as unknown as Stream<BetaRawMessageStreamEvent>
@@ -455,7 +565,9 @@ function createURHQStream(
 async function* streamURHQEvents(
   response: Response,
   params: BetaMessageStreamParams,
+  controller: AbortController,
   requestId: string,
+  options?: RequestOptions,
 ): AsyncGenerator<BetaRawMessageStreamEvent> {
   const usage = emptyUsage()
   yield {
@@ -473,9 +585,12 @@ async function* streamURHQEvents(
   } as BetaRawMessageStreamEvent
 
   let textStarted = false
+  let thinkingStarted = false
   let text = '' // raw accumulated content (used to parse text-form tool calls)
+  let thinking = ''
   let emittedLen = 0 // chars of visible prose already streamed
   let inToolSection = false // once Kimi/ChatML tool markup starts, stop streaming text
+  let activeBlock: 'text' | 'thinking' | null = null
   let blockIndex = 0
   let finalChunk: OllamaChatChunk | undefined
   const toolCalls: OllamaToolCall[] = []
@@ -486,8 +601,10 @@ async function* streamURHQEvents(
   const textEvents = (value: string): BetaRawMessageStreamEvent[] => {
     if (!value) return []
     const events: BetaRawMessageStreamEvent[] = []
-    if (!textStarted) {
+    stopActiveBlock(events, 'thinking')
+    if (activeBlock !== 'text') {
       textStarted = true
+      activeBlock = 'text'
       events.push({
         type: 'content_block_start',
         index: blockIndex,
@@ -500,6 +617,42 @@ async function* streamURHQEvents(
       delta: { type: 'text_delta', text: value },
     } as BetaRawMessageStreamEvent)
     return events
+  }
+
+  const thinkingEvents = (value: string): BetaRawMessageStreamEvent[] => {
+    if (!value) return []
+    const events: BetaRawMessageStreamEvent[] = []
+    stopActiveBlock(events, 'text')
+    if (activeBlock !== 'thinking') {
+      thinkingStarted = true
+      activeBlock = 'thinking'
+      events.push({
+        type: 'content_block_start',
+        index: blockIndex,
+        content_block: { type: 'thinking', thinking: '', signature: '' },
+      } as BetaRawMessageStreamEvent)
+    }
+    events.push({
+      type: 'content_block_delta',
+      index: blockIndex,
+      delta: { type: 'thinking_delta', thinking: value },
+    } as BetaRawMessageStreamEvent)
+    return events
+  }
+
+  const stopActiveBlock = (
+    events: BetaRawMessageStreamEvent[],
+    expected?: 'text' | 'thinking',
+  ): void => {
+    if (!activeBlock || (expected && activeBlock !== expected)) {
+      return
+    }
+    events.push({
+      type: 'content_block_stop',
+      index: blockIndex,
+    } as BetaRawMessageStreamEvent)
+    blockIndex++
+    activeBlock = null
   }
 
   const drainPendingVisibleText = (
@@ -547,9 +700,21 @@ async function* streamURHQEvents(
     return events
   }
 
-  for await (const chunk of readOllamaChunks(response)) {
+  for await (const chunk of readOllamaChunks(
+    response,
+    controller,
+    getOllamaRequestTimeoutMs(options),
+    options,
+  )) {
     if (chunk.error) {
       throw new Error(chunk.error)
+    }
+    const thinkingDelta = chunk.message?.thinking ?? ''
+    if (thinkingDelta) {
+      thinking += thinkingDelta
+      for (const event of thinkingEvents(thinkingDelta)) {
+        yield event
+      }
     }
     if (chunk.message?.tool_calls) {
       mergeToolCalls(toolCalls, chunk.message.tool_calls)
@@ -580,12 +745,12 @@ async function* streamURHQEvents(
     yield event
   }
 
-  if (textStarted) {
-    yield {
-      type: 'content_block_stop',
-      index: blockIndex,
-    } as BetaRawMessageStreamEvent
-    blockIndex++
+  if (activeBlock) {
+    const events: BetaRawMessageStreamEvent[] = []
+    stopActiveBlock(events)
+    for (const event of events) {
+      yield event
+    }
   }
 
   // Convert any Kimi/ChatML text-form tool calls into real tool_use blocks so
@@ -645,7 +810,12 @@ async function* streamURHQEvents(
     blockIndex++
   }
 
-  if (!textStarted && toolCalls.length === 0 && textToolCalls.length === 0) {
+  if (
+    !textStarted &&
+    !thinkingStarted &&
+    toolCalls.length === 0 &&
+    textToolCalls.length === 0
+  ) {
     yield {
       type: 'content_block_start',
       index: blockIndex,
@@ -663,7 +833,7 @@ async function* streamURHQEvents(
       stop_reason: textToolCalls.length > 0 ? 'tool_use' : getStopReason(finalChunk, toolCalls),
       stop_sequence: null,
     },
-    usage: usageFromOllama(finalChunk, text),
+    usage: usageFromOllama(finalChunk, text + thinking),
   } as BetaRawMessageStreamEvent
 
   yield {
@@ -673,6 +843,9 @@ async function* streamURHQEvents(
 
 async function* readOllamaChunks(
   response: Response,
+  controller: AbortController,
+  timeoutMs: number,
+  options?: RequestOptions,
 ): AsyncGenerator<OllamaChatChunk> {
   if (!response.body) {
     return
@@ -680,9 +853,15 @@ async function* readOllamaChunks(
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  const deadline = timeoutMs > 0 ? Date.now() + timeoutMs : Infinity
   try {
     while (true) {
-      const { done, value } = await reader.read()
+      const { done, value } = await readWithDeadline(
+        reader,
+        deadline,
+        controller,
+        options,
+      )
       if (done) {
         break
       }
@@ -703,7 +882,58 @@ async function* readOllamaChunks(
       yield JSON.parse(finalLine) as OllamaChatChunk
     }
   } finally {
-    reader.releaseLock()
+    try {
+      reader.releaseLock()
+    } catch {
+      // A timed-out read may still be settling after the stream is aborted.
+    }
+  }
+}
+
+async function readWithDeadline(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  deadline: number,
+  controller: AbortController,
+  options?: RequestOptions,
+): Promise<OllamaStreamReadResult> {
+  if (!Number.isFinite(deadline)) {
+    return reader.read()
+  }
+  if (controller.signal.aborted) {
+    throw options?.signal?.aborted
+      ? new APIUserAbortError()
+      : new APIConnectionTimeoutError({ message: 'Ollama stream timed out' })
+  }
+  const remaining = deadline - Date.now()
+  if (remaining <= 0) {
+    controller.abort()
+    throw new APIConnectionTimeoutError({ message: 'Ollama stream timed out' })
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise<OllamaStreamReadResult>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          const error = new APIConnectionTimeoutError({
+            message: 'Ollama stream timed out',
+          })
+          reject(error)
+          controller.abort()
+          void reader.cancel(error).catch(() => undefined)
+        }, remaining)
+      }),
+    ])
+  } catch (error) {
+    if (controller.signal.aborted && options?.signal?.aborted) {
+      throw new APIUserAbortError()
+    }
+    throw error
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
   }
 }
 
@@ -713,11 +943,19 @@ function ollamaResponseToURHQMessage(
 ): BetaMessage {
   const content: BetaContentBlock[] = []
   const structured = response.message?.tool_calls ?? []
+  const thinking = response.message?.thinking ?? ''
   const kimi = parseTextToolCalls(response.message?.content ?? '', {
     availableToolNames: getAvailableToolNames(params.tools),
     parseBareJsonToolCalls: true,
   })
   const text = kimi.text
+  if (thinking) {
+    content.push({
+      type: 'thinking',
+      thinking,
+      signature: '',
+    } as BetaContentBlock)
+  }
   if (text || (!structured.length && !kimi.toolCalls.length)) {
     content.push({ type: 'text', text } as BetaContentBlock)
   }
@@ -750,7 +988,7 @@ function ollamaResponseToURHQMessage(
     content,
     stop_reason: kimi.toolCalls.length > 0 ? 'tool_use' : getStopReason(response, structured),
     stop_sequence: null,
-    usage: usageFromOllama(response, text),
+    usage: usageFromOllama(response, text + thinking),
   } as BetaMessage
 }
 

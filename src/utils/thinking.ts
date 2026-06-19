@@ -91,7 +91,9 @@ export function getRainbowColor(
 export function modelSupportsThinking(model: string): boolean {
   const provider = getAPIProvider()
   if (provider === 'ollama') {
-    return false
+    // The Ollama adapter probes the selected model's advertised capabilities
+    // and only sends `think` to models that support it.
+    return true
   }
 
   const supported3P = get3PModelCapabilityOverride(model, 'thinking')
