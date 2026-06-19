@@ -188,14 +188,14 @@ export function filterPermissionRelayClients<
     (c): c is T & { type: 'connected' } =>
       c.type === 'connected' &&
       isInAllowlist(c.name) &&
-      c.capabilities?.experimental?.['claude/channel'] !== undefined &&
-      c.capabilities?.experimental?.['claude/channel/permission'] !== undefined,
+      c.capabilities?.experimental?.['ur/channel'] !== undefined &&
+      c.capabilities?.experimental?.['ur/channel/permission'] !== undefined,
   )
 }
 
 /**
  * Factory for the callbacks object. The pending Map is closed over — NOT
- * module-level (per src/CLAUDE.md), NOT in AppState (functions-in-state
+ * module-level (per src/UR.md), NOT in AppState (functions-in-state
  * causes issues with equality/serialization). Same lifetime pattern as
  * `replBridgePermissionCallbacks`: constructed once per session inside
  * a React hook, stable reference stored in AppState.

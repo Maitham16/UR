@@ -61,7 +61,7 @@ type OauthConfig = {
   API_KEY_URL: string
   ROLES_URL: string
   CONSOLE_SUCCESS_URL: string
-  CLAUDEAI_SUCCESS_URL: string
+  URAI_SUCCESS_URL: string
   MANUAL_REDIRECT_URL: string
   CLIENT_ID: string
   OAUTH_FILE_SUFFIX: string
@@ -78,7 +78,7 @@ const PROD_OAUTH_CONFIG = {
   API_KEY_URL: '',
   ROLES_URL: '',
   CONSOLE_SUCCESS_URL: '',
-  CLAUDEAI_SUCCESS_URL: '',
+  URAI_SUCCESS_URL: '',
   MANUAL_REDIRECT_URL: '',
   CLIENT_ID: '',
   OAUTH_FILE_SUFFIX: '',
@@ -112,7 +112,7 @@ function getLocalOauthConfig(): OauthConfig {
     API_KEY_URL: `${api}/api/oauth/ur_cli/create_api_key`,
     ROLES_URL: `${api}/api/oauth/ur_cli/roles`,
     CONSOLE_SUCCESS_URL: `${consoleBase}/buy_credits?returnUrl=/oauth/code/success%3Fapp%3Dur`,
-    CLAUDEAI_SUCCESS_URL: `${consoleBase}/oauth/code/success?app=ur`,
+    URAI_SUCCESS_URL: `${consoleBase}/oauth/code/success?app=ur`,
     MANUAL_REDIRECT_URL: `${consoleBase}/oauth/code/callback`,
     CLIENT_ID: '22422756-60c9-4084-8eb7-27705fd5cf9a',
     OAUTH_FILE_SUFFIX: '-local-oauth',
@@ -131,7 +131,7 @@ export function getOauthConfig(): {
   CLIENT_ID: string
   MANUAL_REDIRECT_URL: string
   TOKEN_URL: string
-  CLAUDEAI_SUCCESS_URL: string
+  URAI_SUCCESS_URL: string
   CONSOLE_SUCCESS_URL: string
   ROLES_URL: string
   API_KEY_URL: string
@@ -147,7 +147,7 @@ export function getOauthConfig(): {
     CLIENT_ID: '',
     MANUAL_REDIRECT_URL: '',
     TOKEN_URL: '',
-    CLAUDEAI_SUCCESS_URL: '',
+    URAI_SUCCESS_URL: '',
     CONSOLE_SUCCESS_URL: '',
     ROLES_URL: '',
     API_KEY_URL: '',

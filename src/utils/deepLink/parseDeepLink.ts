@@ -20,7 +20,7 @@
 
 import { partiallySanitizeUnicode } from '../sanitization.js'
 
-export const DEEP_LINK_PROTOCOL = 'claude-cli'
+export const DEEP_LINK_PROTOCOL = 'ur-cli'
 
 export type DeepLinkAction = {
   query?: string

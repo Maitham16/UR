@@ -71,7 +71,7 @@ function getConnectedURAIConnectors(
     if (client.type !== 'connected') {
       continue
     }
-    if (client.config.type !== 'claudeai-proxy') {
+    if (client.config.type !== 'urai-proxy') {
       continue
     }
     const uuid = taggedIdToUUID(client.config.id)
@@ -89,7 +89,7 @@ function getConnectedURAIConnectors(
 
 function sanitizeConnectorName(name: string): string {
   return name
-    .replace(/^claude[.\s-]ai[.\s-]/i, '')
+    .replace(/^ur[.\s-]ai[.\s-]/i, '')
     .replace(/[^a-zA-Z0-9_-]/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
@@ -97,7 +97,7 @@ function sanitizeConnectorName(name: string): string {
 
 function formatConnectorsInfo(connectors: ConnectorInfo[]): string {
   if (connectors.length === 0) {
-    return 'No connected MCP connectors found. The user may need to connect servers at https://claude.ai/settings/connectors'
+    return 'No connected MCP connectors found. The user may need to connect servers at https://ur.ai/settings/connectors'
   }
   const lines = ['Connected connectors (available for triggers):']
   for (const c of connectors) {
@@ -174,7 +174,7 @@ Set \`header: "Action"\` and offer the four actions (create/list/update/run) as 
 
   return `# Schedule Remote Agents
 
-You are helping the user schedule, update, list, or run **remote** UR agents. These are NOT local cron jobs — each trigger spawns a fully isolated remote session (CCR) in Anthropic's cloud infrastructure on a cron schedule. The agent runs in a sandboxed environment with its own git checkout, tools, and optional MCP connections.
+You are helping the user schedule, update, list, or run **remote** UR agents. These are NOT local cron jobs — each trigger spawns a fully isolated remote session (CCR) in URHQ's cloud infrastructure on a cron schedule. The agent runs in a sandboxed environment with its own git checkout, tools, and optional MCP connections.
 
 ## First Step
 
@@ -191,7 +191,7 @@ Use the \`${REMOTE_TRIGGER_TOOL_NAME}\` tool (load it first with \`ToolSearch se
 - \`{action: "update", trigger_id: "...", body: {...}}\` — partial update
 - \`{action: "run", trigger_id: "..."}\` — run a trigger now
 
-You CANNOT delete triggers. If the user asks to delete, direct them to: https://claude.ai/code/scheduled
+You CANNOT delete triggers. If the user asks to delete, direct them to: https://ur.ai/code/scheduled
 
 ## Create body shape
 
@@ -204,7 +204,7 @@ You CANNOT delete triggers. If the user asks to delete, direct them to: https://
     "ccr": {
       "environment_id": "ENVIRONMENT_ID",
       "session_context": {
-        "model": "claude-sonnet-4-6",
+        "model": "ur-modelS-4-6",
         "sources": [
           {"git_repository": {"url": "${gitRepoUrl || 'https://github.com/Maitham16/ur-agent'}"}}
         ],
@@ -228,7 +228,7 @@ Generate a fresh lowercase UUID for \`events[].data.uuid\` yourself.
 
 ## Available MCP Connectors
 
-These are the user's currently connected claude.ai MCP connectors:
+These are the user's currently connected ur.ai MCP connectors:
 
 ${connectorsInfo}
 
@@ -287,10 +287,10 @@ Minimum interval is 1 hour. \`*/30 * * * *\` will be rejected.
    - Clear about which files/areas to focus on
    - Explicit about what actions to take (open PRs, commit, just analyze, etc.)
 3. **Set the schedule** — Ask when and how often. The user's timezone is ${userTimezone}. When they say a time (e.g., "every morning at 9am"), assume they mean their local time and convert to UTC for the cron expression. Always confirm the conversion: "9am ${userTimezone} = Xam UTC."
-4. **Choose the model** — Default to \`claude-sonnet-4-6\`. Tell the user which model you're defaulting to and ask if they want a different one.
-5. **Validate connections** — Infer what services the agent will need from the user's description. For example, if they say "check Datadog and Slack me errors," the agent needs both Datadog and Slack MCP connectors. Cross-reference with the connectors list above. If any are missing, warn the user and link them to https://claude.ai/settings/connectors to connect first.${gitRepoUrl ? ` The default git repo is already set to \`${gitRepoUrl}\`. Ask the user if this is the right repo or if they need a different one.` : ' Ask which git repos the remote agent needs cloned into its environment.'}
+4. **Choose the model** — Default to \`ur-modelS-4-6\`. Tell the user which model you're defaulting to and ask if they want a different one.
+5. **Validate connections** — Infer what services the agent will need from the user's description. For example, if they say "check Datadog and Slack me errors," the agent needs both Datadog and Slack MCP connectors. Cross-reference with the connectors list above. If any are missing, warn the user and link them to https://ur.ai/settings/connectors to connect first.${gitRepoUrl ? ` The default git repo is already set to \`${gitRepoUrl}\`. Ask the user if this is the right repo or if they need a different one.` : ' Ask which git repos the remote agent needs cloned into its environment.'}
 6. **Review and confirm** — Show the full configuration before creating. Let them adjust.
-7. **Create it** \u2014 Call \`${REMOTE_TRIGGER_TOOL_NAME}\` with \`action: "create"\` and show the result. The response includes the trigger ID. Always output a link at the end: \`https://claude.ai/code/scheduled/{TRIGGER_ID}\`
+7. **Create it** \u2014 Call \`${REMOTE_TRIGGER_TOOL_NAME}\` with \`action: "create"\` and show the result. The response includes the trigger ID. Always output a link at the end: \`https://ur.ai/code/scheduled/{TRIGGER_ID}\`
 
 ### UPDATE a trigger:
 
@@ -312,12 +312,12 @@ Minimum interval is 1 hour. \`*/30 * * * *\` will be rejected.
 
 ## Important Notes
 
-- These are REMOTE agents — they run in Anthropic's cloud, not on the user's machine. They cannot access local files, local services, or local environment variables.
+- These are REMOTE agents — they run in URHQ's cloud, not on the user's machine. They cannot access local files, local services, or local environment variables.
 - Always convert cron to human-readable when displaying
 - Default to \`enabled: true\` unless user says otherwise
 - Accept repository references in owner/repo format and normalize them for GitHub access
 - The prompt is the most important part — spend time getting it right. The remote agent starts with zero context, so the prompt must be self-contained.
-- To delete a trigger, direct users to https://claude.ai/code/scheduled
+- To delete a trigger, direct users to https://ur.ai/code/scheduled
 ${needsGitHubAccessReminder ? `- If the user's request seems to require GitHub repo access (e.g. cloning a repo, opening PRs, reading code), remind them that ${getFeatureValue_CACHED_MAY_BE_STALE('tengu_cobalt_lantern', false) ? "they should run /web-setup to connect their GitHub account (or install the UR GitHub App on the repo as an alternative) — otherwise the remote agent won't be able to access it" : "they need the UR GitHub App installed on the repo — otherwise the remote agent won't be able to access it"}.` : ''}
 ${userArgs ? `\n## User Request\n\nThe user said: "${userArgs}"\n\nStart by understanding their intent and working through the appropriate workflow above.` : ''}`
 }
@@ -339,7 +339,7 @@ export function registerScheduleRemoteAgentsSkill(): void {
         return [
           {
             type: 'text',
-            text: 'You need to authenticate with a claude.ai account first. API accounts are not supported. Run /login, then try /schedule again.',
+            text: 'You need to authenticate with a ur.ai account first. API accounts are not supported. Run /login, then try /schedule again.',
           },
         ]
       }
@@ -354,7 +354,7 @@ export function registerScheduleRemoteAgentsSkill(): void {
         return [
           {
             type: 'text',
-            text: "We're having trouble connecting with your remote claude.ai account to set up a scheduled task. Please try /schedule again in a few minutes.",
+            text: "We're having trouble connecting with your remote ur.ai account to set up a scheduled task. Please try /schedule again in a few minutes.",
           },
         ]
       }
@@ -373,7 +373,7 @@ export function registerScheduleRemoteAgentsSkill(): void {
           return [
             {
               type: 'text',
-              text: 'No remote environments found, and we could not create one automatically. Visit https://claude.ai/code to set one up, then run /schedule again.',
+              text: 'No remote environments found, and we could not create one automatically. Visit https://ur.ai/code to set one up, then run /schedule again.',
             },
           ]
         }
@@ -403,8 +403,8 @@ export function registerScheduleRemoteAgentsSkill(): void {
             false,
           )
           const msg = webSetupEnabled
-            ? `GitHub not connected for ${repo.owner}/${repo.name} \u2014 run /web-setup to sync your GitHub credentials, or install the UR GitHub App at https://claude.ai/code/onboarding?magic=github-app-setup.`
-            : `UR GitHub App not installed on ${repo.owner}/${repo.name} \u2014 install at https://claude.ai/code/onboarding?magic=github-app-setup if your trigger needs this repo.`
+            ? `GitHub not connected for ${repo.owner}/${repo.name} \u2014 run /web-setup to sync your GitHub credentials, or install the UR GitHub App at https://ur.ai/code/onboarding?magic=github-app-setup.`
+            : `UR GitHub App not installed on ${repo.owner}/${repo.name} \u2014 install at https://ur.ai/code/onboarding?magic=github-app-setup if your trigger needs this repo.`
           setupNotes.push(msg)
         }
       }
@@ -418,7 +418,7 @@ export function registerScheduleRemoteAgentsSkill(): void {
       )
       if (connectors.length === 0) {
         setupNotes.push(
-          `No MCP connectors — connect at https://claude.ai/settings/connectors if needed.`,
+          `No MCP connectors — connect at https://ur.ai/settings/connectors if needed.`,
         )
       }
 

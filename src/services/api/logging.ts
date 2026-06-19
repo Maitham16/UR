@@ -1,10 +1,10 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle'
-import { APIError } from '@anthropic-ai/sdk'
+import { APIError } from '@urhq-ai/sdk'
 import type {
   BetaStopReason,
   BetaUsage as Usage,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+} from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import {
   addToTotalDurationState,
   consumePostCompaction,
@@ -94,7 +94,7 @@ const GATEWAY_FINGERPRINTS: Partial<
 }
 
 // Gateways that use provider-owned domains (not self-hosted), so the
-// ANTHROPIC_BASE_URL hostname is a reliable signal even without a
+// URHQ_BASE_URL hostname is a reliable signal even without a
 // distinctive response header.
 const GATEWAY_HOST_SUFFIXES: Partial<Record<KnownGateway, string[]>> = {
   // https://docs.databricks.com/aws/en/ai-gateway/
@@ -139,24 +139,24 @@ function detectGateway({
   return undefined
 }
 
-function getAnthropicEnvMetadata() {
+function getURHQEnvMetadata() {
   return {
-    ...(process.env.ANTHROPIC_BASE_URL
+    ...(process.env.URHQ_BASE_URL
       ? {
           baseUrl: process.env
-            .ANTHROPIC_BASE_URL as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            .URHQ_BASE_URL as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
       : {}),
-    ...(process.env.ANTHROPIC_MODEL
+    ...(process.env.URHQ_MODEL
       ? {
           envModel: process.env
-            .ANTHROPIC_MODEL as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            .URHQ_MODEL as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
       : {}),
-    ...(process.env.ANTHROPIC_SMALL_FAST_MODEL
+    ...(process.env.URHQ_SMALL_FAST_MODEL
       ? {
           envSmallFastModel: process.env
-            .ANTHROPIC_SMALL_FAST_MODEL as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            .URHQ_SMALL_FAST_MODEL as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
       : {}),
   }
@@ -229,7 +229,7 @@ export function logAPIQuery({
             previousRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
       : {}),
-    ...getAnthropicEnvMetadata(),
+    ...getURHQEnvMetadata(),
   })
 }
 
@@ -275,7 +275,7 @@ export function logAPIError({
   const gateway = detectGateway({
     headers:
       error instanceof APIError && error.headers ? error.headers : headers,
-    baseUrl: process.env.ANTHROPIC_BASE_URL,
+    baseUrl: process.env.URHQ_BASE_URL,
   })
 
   const errStr = getErrorMessage(error)
@@ -362,7 +362,7 @@ export function logAPIError({
             previousRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
       : {}),
-    ...getAnthropicEnvMetadata(),
+    ...getURHQEnvMetadata(),
   })
 
   // Log API error event for OTLP
@@ -572,7 +572,7 @@ function logAPISuccess({
         }
       : {}),
     ...(isPostCompaction ? { isPostCompaction } : {}),
-    ...getAnthropicEnvMetadata(),
+    ...getURHQEnvMetadata(),
     timeSinceLastApiCallMs,
   })
 
@@ -641,7 +641,7 @@ export function logAPISuccessAndDuration({
 }): void {
   const gateway = detectGateway({
     headers,
-    baseUrl: process.env.ANTHROPIC_BASE_URL,
+    baseUrl: process.env.URHQ_BASE_URL,
   })
 
   let textContentLength: number | undefined

@@ -1,12 +1,12 @@
 // @ts-nocheck
-import type { BetaUsage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { BetaUsage } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { shouldIncludeFirstPartyOnlyBetas } from './betas.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getInitialSettings } from './settings/settings.js'
 
 // The SDK does not yet have types for advisor blocks.
-// TODO(hackyon): Migrate to the real anthropic SDK types when this feature ships publicly
+// TODO(hackyon): Migrate to the real urhq SDK types when this feature ships publicly
 export type AdvisorServerToolUseBlock = {
   type: 'server_tool_use'
   id: string
@@ -90,8 +90,8 @@ export function getExperimentAdvisorModels():
 export function modelSupportsAdvisor(model: string): boolean {
   const m = model.toLowerCase()
   return (
-    m.includes('opus-4-6') ||
-    m.includes('sonnet-4-6') ||
+    m.includes('modelO-4-6') ||
+    m.includes('modelS-4-6') ||
     process.env.USER_TYPE === 'ant'
   )
 }
@@ -100,8 +100,8 @@ export function modelSupportsAdvisor(model: string): boolean {
 export function isValidAdvisorModel(model: string): boolean {
   const m = model.toLowerCase()
   return (
-    m.includes('opus-4-6') ||
-    m.includes('sonnet-4-6') ||
+    m.includes('modelO-4-6') ||
+    m.includes('modelS-4-6') ||
     process.env.USER_TYPE === 'ant'
   )
 }

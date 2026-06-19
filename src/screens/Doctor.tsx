@@ -152,7 +152,7 @@ export function Doctor(t0) {
       upperLimit: TASK_MAX_OUTPUT_UPPER_LIMIT
     }, {
       name: "UR_CODE_MAX_OUTPUT_TOKENS",
-      ...getModelMaxOutputTokens("claude-opus-4-6")
+      ...getModelMaxOutputTokens("ur-modelO-4-6")
     }];
     t4 = envVars.map(_temp8).filter(_temp9);
     $[5] = t4;
@@ -190,7 +190,7 @@ export function Doctor(t0) {
         }, async () => toolPermissionContext);
         setContextWarnings(warnings);
         if (isPidBasedLockingEnabled()) {
-          const locksDir = join(getXDGStateHome(), "claude", "locks");
+          const locksDir = join(getXDGStateHome(), "ur", "locks");
           const staleLocksCleaned = cleanupStaleLocks(locksDir);
           const locks = getAllLockInfo(locksDir);
           setVersionLockInfo({

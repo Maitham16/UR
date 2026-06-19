@@ -4,22 +4,22 @@ import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
 import { getAPIProvider } from '../utils/model/providers.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
 
-export function resetProToOpusDefault(): void {
+export function resetProTomodelODefault(): void {
   const config = getGlobalConfig()
 
-  if (config.opusProMigrationComplete) {
+  if (config.modelOProMigrationComplete) {
     return
   }
 
   const apiProvider = getAPIProvider()
 
-  // Pro users on firstParty get auto-migrated to Opus 4.5 default
+  // Pro users on firstParty get auto-migrated to modelO 4.5 default
   if (apiProvider !== 'firstParty' || !isProSubscriber()) {
     saveGlobalConfig(current => ({
       ...current,
-      opusProMigrationComplete: true,
+      modelOProMigrationComplete: true,
     }))
-    logEvent('tengu_reset_pro_to_opus_default', { skipped: true })
+    logEvent('tengu_reset_pro_to_modelO_default', { skipped: true })
     return
   }
 
@@ -27,13 +27,13 @@ export function resetProToOpusDefault(): void {
 
   // Only show notification if user was on default (no custom model setting)
   if (settings?.model === undefined) {
-    const opusProMigrationTimestamp = Date.now()
+    const modelOProMigrationTimestamp = Date.now()
     saveGlobalConfig(current => ({
       ...current,
-      opusProMigrationComplete: true,
-      opusProMigrationTimestamp,
+      modelOProMigrationComplete: true,
+      modelOProMigrationTimestamp,
     }))
-    logEvent('tengu_reset_pro_to_opus_default', {
+    logEvent('tengu_reset_pro_to_modelO_default', {
       skipped: false,
       had_custom_model: false,
     })
@@ -41,9 +41,9 @@ export function resetProToOpusDefault(): void {
     // User has a custom model setting, just mark migration complete
     saveGlobalConfig(current => ({
       ...current,
-      opusProMigrationComplete: true,
+      modelOProMigrationComplete: true,
     }))
-    logEvent('tengu_reset_pro_to_opus_default', {
+    logEvent('tengu_reset_pro_to_modelO_default', {
       skipped: false,
       had_custom_model: true,
     })

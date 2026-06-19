@@ -279,7 +279,7 @@ const lightAnsiTheme: Theme = {
 const darkAnsiTheme: Theme = {
   autoAccept: 'ansi:magentaBright',
   bashBorder: 'ansi:magentaBright',
-  claude: 'ansi:redBright',
+  ur: 'ansi:redBright',
   urShimmer: 'ansi:yellowBright',
   urBlue_FOR_SYSTEM_SPINNER: 'ansi:blueBright',
   urBlueShimmer_FOR_SYSTEM_SPINNER: 'ansi:blueBright',
@@ -441,8 +441,8 @@ const lightDaltonizedTheme: Theme = {
 const darkTheme: Theme = {
   autoAccept: 'rgb(175,135,255)', // Electric violet
   bashBorder: 'rgb(253,93,177)', // Bright pink
-  claude: 'rgb(215,119,87)', // UR orange
-  urShimmer: 'rgb(235,159,127)', // Lighter claude orange for shimmer effect
+  ur: 'rgb(215,119,87)', // UR orange
+  urShimmer: 'rgb(235,159,127)', // Lighter ur orange for shimmer effect
   urBlue_FOR_SYSTEM_SPINNER: 'rgb(147,165,255)', // Blue for system spinner
   urBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(177,195,255)', // Lighter blue for system spinner shimmer
   permission: 'rgb(177,185,249)', // Light blue-purple
@@ -522,7 +522,7 @@ const darkTheme: Theme = {
 const darkDaltonizedTheme: Theme = {
   autoAccept: 'rgb(175,135,255)', // Electric violet
   bashBorder: 'rgb(51,153,255)', // Bright blue
-  claude: 'rgb(255,153,51)', // Orange adjusted for deuteranopia
+  ur: 'rgb(255,153,51)', // Orange adjusted for deuteranopia
   urShimmer: 'rgb(255,183,101)', // Lighter orange for shimmer effect
   urBlue_FOR_SYSTEM_SPINNER: 'rgb(153,204,255)', // Light blue for system spinner
   urBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(183,224,255)', // Lighter blue for system spinner shimmer

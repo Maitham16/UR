@@ -1,8 +1,8 @@
-export const PRODUCT_URL = 'https://claude.com/ur'
+export const PRODUCT_URL = 'https://ur.com/ur'
 
 // UR Remote session URLs
-export const UR_AI_BASE_URL = 'https://claude.ai'
-export const UR_AI_STAGING_BASE_URL = 'https://claude-ai.staging.ant.dev'
+export const UR_AI_BASE_URL = 'https://ur.ai'
+export const UR_AI_STAGING_BASE_URL = 'https://ur-ai.staging.ant.dev'
 export const UR_AI_LOCAL_BASE_URL = 'http://localhost:4000'
 
 /**

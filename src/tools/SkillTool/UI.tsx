@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultBlockParam } from '@urhq-ai/sdk/resources/index.mjs';
 import * as React from 'react';
 import { SubAgentProvider } from 'src/components/CtrlOToExpand.js';
 import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseErrorMessage.js';

@@ -1254,7 +1254,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
 
   // Mirror createWorktreeForSession(): hook takes precedence over git so the
   // WorktreeCreate hook substitutes the VCS backend for this fast-path too
-  // (anthropics/ur#39281). Git path below runs only when no hook.
+  // (urhqs/ur#39281). Git path below runs only when no hook.
   let worktreeDir: string
   let repoName: string
   if (hasWorktreeCreateHook()) {
@@ -1394,7 +1394,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
 
   // For ants in ur-cli-internal, set up dev panes (watch + start)
   const isAnt = process.env.USER_TYPE === 'ant'
-  const isURCliInternal = repoName === 'claude-cli-internal'
+  const isURCliInternal = repoName === 'ur-cli-internal'
   const shouldSetupDevPanes = isAnt && isURCliInternal && !sessionExists
 
   if (shouldSetupDevPanes) {

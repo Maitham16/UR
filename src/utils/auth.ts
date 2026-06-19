@@ -83,7 +83,7 @@ const DEFAULT_API_KEY_HELPER_TTL = 5 * 60 * 1000
 /**
  * CCR and UR Desktop spawn the CLI with OAuth and should never fall back
  * to the user's ~/.ur/settings.json API-key config (apiKeyHelper,
- * env.ANTHROPIC_API_KEY, env.ANTHROPIC_AUTH_TOKEN). Those settings exist for
+ * env.URHQ_API_KEY, env.URHQ_AUTH_TOKEN). Those settings exist for
  * the user's terminal CLI, not managed sessions. Without this guard, a user
  * who runs `ur` in their terminal with an API key sees every CCD session
  * also use that key — and fail if it's stale/wrong-org.
@@ -91,24 +91,24 @@ const DEFAULT_API_KEY_HELPER_TTL = 5 * 60 * 1000
 function isManagedOAuthContext(): boolean {
   return (
     isEnvTruthy(process.env.UR_CODE_REMOTE) ||
-    process.env.UR_CODE_ENTRYPOINT === 'claude-desktop'
+    process.env.UR_CODE_ENTRYPOINT === 'ur-desktop'
   )
 }
 
 /** Whether we are supporting direct 1P auth. */
 // this code is closely related to getAuthTokenSource
-export function isAnthropicAuthEnabled(): boolean {
+export function isURHQAuthEnabled(): boolean {
   // --bare: API-key-only, never OAuth.
   if (isBareMode()) return false
 
-  // `ur ssh` remote: ANTHROPIC_UNIX_SOCKET tunnels API calls through a
+  // `ur ssh` remote: URHQ_UNIX_SOCKET tunnels API calls through a
   // local auth-injecting proxy. The launcher sets UR_CODE_OAUTH_TOKEN as a
   // placeholder iff the local side is a subscriber (so the remote includes the
   // oauth-2025 beta header to match what the proxy will inject). The remote's
-  // ~/.ur settings (apiKeyHelper, settings.env.ANTHROPIC_API_KEY) MUST NOT
+  // ~/.ur settings (apiKeyHelper, settings.env.URHQ_API_KEY) MUST NOT
   // flip this — they'd cause a header mismatch with the proxy and a bogus
   // "invalid x-api-key" from the API. See src/ssh/sshAuthProxy.ts.
-  if (process.env.ANTHROPIC_UNIX_SOCKET) {
+  if (process.env.URHQ_UNIX_SOCKET) {
     return !!process.env.UR_CODE_OAUTH_TOKEN
   }
 
@@ -119,16 +119,16 @@ export function isAnthropicAuthEnabled(): boolean {
   const settings = getSettings_DEPRECATED() || {}
   const apiKeyHelper = settings.apiKeyHelper
   const hasExternalAuthToken =
-    process.env.ANTHROPIC_AUTH_TOKEN ||
+    process.env.URHQ_AUTH_TOKEN ||
     apiKeyHelper ||
     process.env.UR_CODE_API_KEY_FILE_DESCRIPTOR
 
   // Check if API key is from an external source (not managed by /login)
-  const { source: apiKeySource } = getAnthropicApiKeyWithSource({
+  const { source: apiKeySource } = getURHQApiKeyWithSource({
     skipRetrievingKeyFromApiKeyHelper: true,
   })
   const hasExternalApiKey =
-    apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper'
+    apiKeySource === 'URHQ_API_KEY' || apiKeySource === 'apiKeyHelper'
 
   // Disable UR auth if:
   // 1. Using 3rd party services (Bedrock/Vertex/Foundry)
@@ -146,7 +146,7 @@ export function isAnthropicAuthEnabled(): boolean {
 }
 
 /** Where the auth token is being sourced from, if any. */
-// this code is closely related to isAnthropicAuthEnabled
+// this code is closely related to isURHQAuthEnabled
 export function getAuthTokenSource() {
   // --bare: API-key-only. apiKeyHelper (from --settings) is the only
   // bearer-token-shaped source allowed. OAuth env vars, FD tokens, and
@@ -158,8 +158,8 @@ export function getAuthTokenSource() {
     return { source: 'none' as const, hasToken: false }
   }
 
-  if (process.env.ANTHROPIC_AUTH_TOKEN && !isManagedOAuthContext()) {
-    return { source: 'ANTHROPIC_AUTH_TOKEN' as const, hasToken: true }
+  if (process.env.URHQ_AUTH_TOKEN && !isManagedOAuthContext()) {
+    return { source: 'URHQ_AUTH_TOKEN' as const, hasToken: true }
   }
 
   if (process.env.UR_CODE_OAUTH_TOKEN) {
@@ -196,37 +196,37 @@ export function getAuthTokenSource() {
 
   const oauthTokens = getURAIOAuthTokens()
   if (shouldUseURAIAuth(oauthTokens?.scopes) && oauthTokens?.accessToken) {
-    return { source: 'claude.ai' as const, hasToken: true }
+    return { source: 'ur.ai' as const, hasToken: true }
   }
 
   return { source: 'none' as const, hasToken: false }
 }
 
 export type ApiKeySource =
-  | 'ANTHROPIC_API_KEY'
+  | 'URHQ_API_KEY'
   | 'apiKeyHelper'
   | '/login managed key'
   | 'none'
 
-export function getAnthropicApiKey(): null | string {
-  const { key } = getAnthropicApiKeyWithSource()
+export function getURHQApiKey(): null | string {
+  const { key } = getURHQApiKeyWithSource()
   return key
 }
 
-export function hasAnthropicApiKeyAuth(): boolean {
-  const { key, source } = getAnthropicApiKeyWithSource({
+export function hasURHQApiKeyAuth(): boolean {
+  const { key, source } = getURHQApiKeyWithSource({
     skipRetrievingKeyFromApiKeyHelper: true,
   })
   return key !== null && source !== 'none'
 }
 
-export function getAnthropicApiKeyWithSource(
+export function getURHQApiKeyWithSource(
   opts: { skipRetrievingKeyFromApiKeyHelper?: boolean } = {},
 ): {
   key: null | string
   source: ApiKeySource
 } {
-  // --bare: hermetic auth. Only ANTHROPIC_API_KEY env or apiKeyHelper from
+  // --bare: hermetic auth. Only URHQ_API_KEY env or apiKeyHelper from
   // the --settings flag. Never touches keychain, config file, or approval
   // lists. 3P (Bedrock/Vertex/Foundry) uses provider creds, not this path.
   if (isBareMode()) {
@@ -248,7 +248,7 @@ export function getAnthropicApiKeyWithSource(
   if (preferThirdPartyAuthentication() && apiKeyEnv) {
     return {
       key: apiKeyEnv,
-      source: 'ANTHROPIC_API_KEY',
+      source: 'URHQ_API_KEY',
     }
   }
 
@@ -258,7 +258,7 @@ export function getAnthropicApiKeyWithSource(
     if (apiKeyFromFd) {
       return {
         key: apiKeyFromFd,
-        source: 'ANTHROPIC_API_KEY',
+        source: 'URHQ_API_KEY',
       }
     }
 
@@ -275,7 +275,7 @@ export function getAnthropicApiKeyWithSource(
     if (apiKeyEnv) {
       return {
         key: apiKeyEnv,
-        source: 'ANTHROPIC_API_KEY',
+        source: 'URHQ_API_KEY',
       }
     }
 
@@ -285,7 +285,7 @@ export function getAnthropicApiKeyWithSource(
       source: 'none',
     }
   }
-  // Check for ANTHROPIC_API_KEY before checking the apiKeyHelper or /login-managed key
+  // Check for URHQ_API_KEY before checking the apiKeyHelper or /login-managed key
   if (
     apiKeyEnv &&
     getGlobalConfig().customApiKeyResponses?.approved?.includes(
@@ -294,7 +294,7 @@ export function getAnthropicApiKeyWithSource(
   ) {
     return {
       key: apiKeyEnv,
-      source: 'ANTHROPIC_API_KEY',
+      source: 'URHQ_API_KEY',
     }
   }
 
@@ -303,7 +303,7 @@ export function getAnthropicApiKeyWithSource(
   if (apiKeyFromFd) {
     return {
       key: apiKeyFromFd,
-      source: 'ANTHROPIC_API_KEY',
+      source: 'URHQ_API_KEY',
     }
   }
 
@@ -1037,7 +1037,7 @@ export function prefetchAwsCredentialsAndBedRockInfoIfSafe(): void {
   getModelStrings()
 }
 
-/** @private Use {@link getAnthropicApiKey} or {@link getAnthropicApiKeyWithSource} */
+/** @private Use {@link getURHQApiKey} or {@link getURHQApiKeyWithSource} */
 export const getApiKeyFromConfigOrMacOSKeychain = memoize(
   (): { key: string; source: ApiKeySource } | null => {
     if (isBareMode()) return null
@@ -1186,7 +1186,7 @@ export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
   warning?: string
 } {
   if (!shouldUseURAIAuth(tokens.scopes)) {
-    logEvent('tengu_oauth_tokens_not_claude_ai', {})
+    logEvent('tengu_oauth_tokens_not_ur_ai', {})
     return { success: true }
   }
 
@@ -1552,7 +1552,7 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
 }
 
 export function isURAISubscriber(): boolean {
-  if (!isAnthropicAuthEnabled()) {
+  if (!isURHQAuthEnabled()) {
     return false
   }
 
@@ -1599,7 +1599,7 @@ export function is1PApiCustomer(): boolean {
  * Returns undefined when using external API keys or third-party services.
  */
 export function getOauthAccountInfo(): AccountInfo | undefined {
-  return isAnthropicAuthEnabled() ? getGlobalConfig().oauthAccount : undefined
+  return isURHQAuthEnabled() ? getGlobalConfig().oauthAccount : undefined
 }
 
 /**
@@ -1628,9 +1628,9 @@ export function isOverageProvisioningAllowed(): boolean {
   return true
 }
 
-// Returns whether the user has Opus access at all, regardless of whether they
+// Returns whether the user has modelO access at all, regardless of whether they
 // are a subscriber or PayG.
-export function hasOpusAccess(): boolean {
+export function hasmodelOAccess(): boolean {
   const subscriptionType = getSubscriptionType()
 
   return (
@@ -1640,7 +1640,7 @@ export function hasOpusAccess(): boolean {
     subscriptionType === 'pro' ||
     // subscriptionType === null covers both API users and the case where
     // subscribers do not have subscription type populated. For those
-    // subscribers, when in doubt, we should not limit their access to Opus.
+    // subscribers, when in doubt, we should not limit their access to modelO.
     subscriptionType === null
   )
 }
@@ -1651,7 +1651,7 @@ export function getSubscriptionType(): SubscriptionType | null {
     return getMockSubscriptionType()
   }
 
-  if (!isAnthropicAuthEnabled()) {
+  if (!isURHQAuthEnabled()) {
     return null
   }
   const oauthTokens = getURAIOAuthTokens()
@@ -1673,7 +1673,7 @@ export function isTeamSubscriber(): boolean {
 export function isTeamPremiumSubscriber(): boolean {
   return (
     getSubscriptionType() === 'team' &&
-    getRateLimitTier() === 'default_claude_max_5x'
+    getRateLimitTier() === 'default_ur_max_5x'
   )
 }
 
@@ -1686,7 +1686,7 @@ export function isProSubscriber(): boolean {
 }
 
 export function getRateLimitTier(): string | null {
-  if (!isAnthropicAuthEnabled()) {
+  if (!isURHQAuthEnabled()) {
     return null
   }
   const oauthTokens = getURAIOAuthTokens()
@@ -1860,14 +1860,14 @@ export function getAccountInformation() {
   } else {
     accountInfo.tokenSource = authTokenSource
   }
-  const { key: apiKey, source: apiKeySource } = getAnthropicApiKeyWithSource()
+  const { key: apiKey, source: apiKeySource } = getURHQApiKeyWithSource()
   if (apiKey) {
     accountInfo.apiKeySource = apiKeySource
   }
 
   // We don't know the organization if we're relying on an external API key or auth token
   if (
-    authTokenSource === 'claude.ai' ||
+    authTokenSource === 'ur.ai' ||
     apiKeySource === '/login managed key'
   ) {
     // Get organization name from OAuth account info
@@ -1878,7 +1878,7 @@ export function getAccountInformation() {
   }
   const email = getOauthAccountInfo()?.emailAddress
   if (
-    (authTokenSource === 'claude.ai' ||
+    (authTokenSource === 'ur.ai' ||
       apiKeySource === '/login managed key') &&
     email
   ) {
@@ -1906,11 +1906,11 @@ export async function validateForceLoginOrg(): Promise<OrgValidationResult> {
   // `ur ssh` remote: real auth lives on the local machine and is injected
   // by the proxy. The placeholder token can't be validated against the profile
   // endpoint. The local side already ran this check before establishing the session.
-  if (process.env.ANTHROPIC_UNIX_SOCKET) {
+  if (process.env.URHQ_UNIX_SOCKET) {
     return { valid: true }
   }
 
-  if (!isAnthropicAuthEnabled()) {
+  if (!isURHQAuthEnabled()) {
     return { valid: true }
   }
 

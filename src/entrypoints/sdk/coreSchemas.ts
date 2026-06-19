@@ -71,7 +71,7 @@ export const ThinkingAdaptiveSchema = lazySchema(() =>
     .object({
       type: z.literal('adaptive'),
     })
-    .describe('UR decides when and how much to think (Opus 4.6+).'),
+    .describe('UR decides when and how much to think (modelO 4.6+).'),
 )
 
 export const ThinkingEnabledSchema = lazySchema(() =>
@@ -150,13 +150,13 @@ export const McpServerConfigForProcessTransportSchema = lazySchema(() =>
 
 export const McpURAIProxyServerConfigSchema = lazySchema(() =>
   z.object({
-    type: z.literal('claudeai-proxy'),
+    type: z.literal('urai-proxy'),
     url: z.string(),
     id: z.string(),
   }),
 )
 
-// Broader config type for status responses (includes claudeai-proxy which is output-only)
+// Broader config type for status responses (includes urai-proxy which is output-only)
 export const McpServerStatusConfigSchema = lazySchema(() =>
   z.union([
     McpServerConfigForProcessTransportSchema(),
@@ -189,7 +189,7 @@ export const McpServerStatusSchema = lazySchema(() =>
         .string()
         .optional()
         .describe(
-          'Configuration scope (e.g., project, user, local, claudeai, managed)',
+          'Configuration scope (e.g., project, user, local, urai, managed)',
         ),
       tools: z
         .array(
@@ -213,7 +213,7 @@ export const McpServerStatusSchema = lazySchema(() =>
         })
         .optional()
         .describe(
-          "@internal Server capabilities (available when connected). experimental['claude/channel'] is only present if the server's plugin is on the approved channels allowlist — use its presence to decide whether to show an Enable-channel prompt.",
+          "@internal Server capabilities (available when connected). experimental['ur/channel'] is only present if the server's plugin is on the approved channels allowlist — use its presence to decide whether to show an Enable-channel prompt.",
         ),
     })
     .describe('Status information for an MCP server connection.'),
@@ -1090,7 +1090,7 @@ export const AccountInfoSchema = lazySchema(() =>
         .enum(['firstParty', 'bedrock', 'vertex', 'foundry'])
         .optional()
         .describe(
-          'Active API backend. Anthropic OAuth login only applies when "firstParty"; for 3P providers the other fields are absent and auth is external (AWS creds, gcloud ADC, etc.).',
+          'Active API backend. URHQ OAuth login only applies when "firstParty"; for 3P providers the other fields are absent and auth is external (AWS creds, gcloud ADC, etc.).',
         ),
     })
     .describe("Information about the logged in user's account."),
@@ -1128,7 +1128,7 @@ export const AgentDefinitionSchema = lazySchema(() =>
         .string()
         .optional()
         .describe(
-          "Model alias (e.g. 'sonnet', 'opus', 'haiku') or full model ID (e.g. 'claude-opus-4-5'). If omitted or 'inherit', uses the main model",
+          "Model alias (e.g. 'modelS', 'modelO', 'modelH') or full model ID (e.g. 'ur-modelO-4-5'). If omitted or 'inherit', uses the main model",
         ),
       mcpServers: z.array(AgentMcpServerSpecSchema()).optional(),
       criticalSystemReminder_EXPERIMENTAL: z
@@ -1234,13 +1234,13 @@ export const RewindFilesResultSchema = lazySchema(() =>
 // The generation script uses TypeOverrideMap to output the correct TS type references.
 // This allows us to define SDK message types in Zod while maintaining proper typing.
 
-/** Placeholder for APIUserMessage from @anthropic-ai/sdk */
+/** Placeholder for APIUserMessage from @urhq-ai/sdk */
 export const APIUserMessagePlaceholder = lazySchema(() => z.unknown())
 
-/** Placeholder for APIAssistantMessage from @anthropic-ai/sdk */
+/** Placeholder for APIAssistantMessage from @urhq-ai/sdk */
 export const APIAssistantMessagePlaceholder = lazySchema(() => z.unknown())
 
-/** Placeholder for RawMessageStreamEvent from @anthropic-ai/sdk */
+/** Placeholder for RawMessageStreamEvent from @urhq-ai/sdk */
 export const RawMessageStreamEventPlaceholder = lazySchema(() => z.unknown())
 
 /** Placeholder for UUID from crypto */
@@ -1311,8 +1311,8 @@ export const SDKRateLimitInfoSchema = lazySchema(() =>
         .enum([
           'five_hour',
           'seven_day',
-          'seven_day_opus',
-          'seven_day_sonnet',
+          'seven_day_modelO',
+          'seven_day_modelS',
           'overage',
         ])
         .optional(),
@@ -1341,7 +1341,7 @@ export const SDKRateLimitInfoSchema = lazySchema(() =>
       isUsingOverage: z.boolean().optional(),
       surpassedThreshold: z.number().optional(),
     })
-    .describe('Rate limit information for claude.ai subscription users.'),
+    .describe('Rate limit information for ur.ai subscription users.'),
 )
 
 export const SDKAssistantMessageSchema = lazySchema(() =>

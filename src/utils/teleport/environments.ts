@@ -7,7 +7,7 @@ import { toError } from '../errors.js'
 import { logError } from '../log.js'
 import { getOAuthHeaders } from './api.js'
 
-export type EnvironmentKind = 'anthropic_cloud' | 'byoc' | 'bridge'
+export type EnvironmentKind = 'urhq_cloud' | 'byoc' | 'bridge'
 export type EnvironmentState = 'active'
 
 export type EnvironmentResource = {
@@ -71,7 +71,7 @@ export async function fetchEnvironments(): Promise<EnvironmentResource[]> {
 }
 
 /**
- * Creates a default anthropic_cloud environment for users who have none.
+ * Creates a default urhq_cloud environment for users who have none.
  * Uses the public environment_providers route (same auth as fetchEnvironments).
  */
 export async function createDefaultCloudEnvironment(
@@ -91,10 +91,10 @@ export async function createDefaultCloudEnvironment(
     url,
     {
       name,
-      kind: 'anthropic_cloud',
+      kind: 'urhq_cloud',
       description: '',
       config: {
-        environment_type: 'anthropic',
+        environment_type: 'urhq',
         cwd: '/home/user',
         init_script: null,
         environment: {},
@@ -111,7 +111,7 @@ export async function createDefaultCloudEnvironment(
     {
       headers: {
         ...getOAuthHeaders(accessToken),
-        'anthropic-beta': 'ccr-byoc-2025-07-29',
+        'urhq-beta': 'ccr-byoc-2025-07-29',
         'x-organization-uuid': orgUUID,
       },
       timeout: 15000,

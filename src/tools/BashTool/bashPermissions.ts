@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle'
-import { APIUserAbortError } from '@anthropic-ai/sdk'
+import { APIUserAbortError } from '@urhq-ai/sdk'
 import type { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import {
@@ -193,7 +193,7 @@ export function getSimpleCommandPrefix(command: string): string | null {
 // `env` is NOT in SAFE_WRAPPER_PATTERNS, so `env bash -c "evil"` survives
 // stripSafeWrappers unchanged and hits the startsWith("env ") check at
 // the prefix-rule matcher. Shell list mirrors DANGEROUS_SHELL_PREFIXES in
-// src/utils/shell/prefix.ts which guarded the old Haiku extractor.
+// src/utils/shell/prefix.ts which guarded the old modelH extractor.
 const BARE_SHELL_PREFIXES = new Set([
   'sh',
   'bash',
@@ -400,7 +400,7 @@ const SAFE_ENV_VARS = new Set([
   'PYTEST_DEBUG', // debug output
 
   // API keys and authentication
-  'ANTHROPIC_API_KEY', // API authentication
+  'URHQ_API_KEY', // API authentication
 
   // Locale and character encoding
   'LANG', // default locale
@@ -484,8 +484,8 @@ const ANT_ONLY_SAFE_ENV_VARS = new Set([
   'STATSIG_FORD_DB_CHECKS', // statsig DB check flag
 
   // Build configuration
-  'ANT_ENVIRONMENT', // Anthropic environment name
-  'ANT_SERVICE', // Anthropic service name
+  'ANT_ENVIRONMENT', // URHQ environment name
+  'ANT_SERVICE', // URHQ service name
   'MONOREPO_ROOT_DIR', // monorepo root path
 
   // Version selectors
@@ -1854,7 +1854,7 @@ export async function bashToolHasPermission(
     return exactMatchResult
   }
 
-  // Check Bash prompt deny and ask rules in parallel (both use Haiku).
+  // Check Bash prompt deny and ask rules in parallel (both use modelH).
   // Deny takes precedence over ask, and both take precedence over allow rules.
   // Skip when in auto mode - auto mode classifier handles all permission decisions
   if (
@@ -1931,7 +1931,7 @@ export async function bashToolHasPermission(
       }
 
       if (askResult?.matches && askResult.confidence === 'high') {
-        // Skip the Haiku call — the UI computes the prefix locally
+        // Skip the modelH call — the UI computes the prefix locally
         // and lets the user edit it. Still call the injected function
         // when tests override it.
         let suggestions: PermissionUpdate[]
@@ -2385,8 +2385,8 @@ export async function bashToolHasPermission(
     }
   }
 
-  // Query Haiku for command prefixes
-  // Skip the Haiku call — the UI computes the prefix locally and
+  // Query modelH for command prefixes
+  // Skip the modelH call — the UI computes the prefix locally and
   // lets the user edit it. Still call when a custom fn is injected (tests).
   let commandSubcommandPrefix: Awaited<
     ReturnType<typeof getCommandSubcommandPrefixFn>

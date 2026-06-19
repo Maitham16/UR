@@ -1,10 +1,10 @@
 /**
  * Files are loaded in the following order:
  *
- * 1. Managed memory (eg. /etc/ur/CLAUDE.md) - Global instructions for all users
- * 2. User memory (~/.ur/CLAUDE.md) - Private global instructions for all projects
- * 3. Project memory (CLAUDE.md, .ur/CLAUDE.md, and .ur/rules/*.md in project roots) - Instructions checked into the codebase
- * 4. Local memory (CLAUDE.local.md in project roots) - Private project-specific instructions
+ * 1. Managed memory (eg. /etc/ur/UR.md) - Global instructions for all users
+ * 2. User memory (~/.ur/UR.md) - Private global instructions for all projects
+ * 3. Project memory (UR.md, .ur/UR.md, and .ur/rules/*.md in project roots) - Instructions checked into the codebase
+ * 4. Local memory (UR.local.md in project roots) - Private project-specific instructions
  *
  * Files are loaded in reverse order of priority, i.e. the latest files are highest priority
  * with the model paying more attention to them.
@@ -13,7 +13,7 @@
  * - User memory is loaded from the user's home directory
  * - Project and Local files are discovered by traversing from the current directory up to root
  * - Files closer to the current directory have higher priority (loaded later)
- * - CLAUDE.md, .ur/CLAUDE.md, and all .md files in .ur/rules/ are checked in each directory for Project memory
+ * - UR.md, .ur/UR.md, and all .md files in .ur/rules/ are checked in each directory for Project memory
  *
  * Memory @include directive:
  * - Memory files can include other files using @ notation
@@ -408,7 +408,7 @@ function handleMemoryFileReadError(error: unknown, filePath: string): void {
   // Log permission errors (EACCES) as they're actionable
   if (code === 'EACCES') {
     // Don't log the full file path to avoid PII/security issues
-    logEvent('tengu_claude_md_permission_error', {
+    logEvent('tengu_ur_md_permission_error', {
       is_access_error: 1,
       has_home_dir: filePath.includes(getURConfigHomeDir()) ? 1 : 0,
     })
@@ -537,7 +537,7 @@ function extractIncludePathsFromTokens(
 const MAX_INCLUDE_DEPTH = 5
 
 /**
- * Checks whether a CLAUDE.md file path is excluded by the urMdExcludes setting.
+ * Checks whether a UR.md file path is excluded by the urMdExcludes setting.
  * Only applies to User, Project, and Local memory types.
  * Managed, AutoMem, and TeamMem types are never excluded.
  *
@@ -559,7 +559,7 @@ function isAgentMdExcluded(filePath: string, type: MemoryType): boolean {
 
   // Build an expanded pattern list that includes realpath-resolved versions of
   // absolute patterns. This handles symlinks like /tmp -> /private/tmp on macOS:
-  // the user writes "/tmp/project/CLAUDE.md" in their exclude, but the system
+  // the user writes "/tmp/project/UR.md" in their exclude, but the system
   // resolves the CWD to "/private/tmp/project/...", so the file path uses the
   // real path. By resolving the patterns too, both sides match.
   const expandedPatterns = resolveExcludePatterns(patterns).filter(
@@ -778,7 +778,7 @@ export async function processMdRules({
     return result
   } catch (error) {
     if (error instanceof Error && error.message.includes('EACCES')) {
-      logEvent('tengu_claude_rules_md_permission_error', {
+      logEvent('tengu_ur_rules_md_permission_error', {
         is_access_error: 1,
         has_home_dir: rulesDir.includes(getURConfigHomeDir()) ? 1 : 0,
       })
@@ -859,10 +859,10 @@ export const getMemoryFiles = memoize(
     // When running from a git worktree nested inside its main repo (e.g.,
     // .ur/worktrees/<name>/ from `ur -w`), the upward walk passes
     // through both the worktree root and the main repo root. Both contain
-    // checked-in files like CLAUDE.md and .ur/rules/*.md, so the same
+    // checked-in files like UR.md and .ur/rules/*.md, so the same
     // content gets loaded twice. Skip Project-type (checked-in) files from
     // directories above the worktree but within the main repo — the worktree
-    // already has its own checkout. CLAUDE.local.md is gitignored so it only
+    // already has its own checkout. UR.local.md is gitignored so it only
     // exists in the main repo and is still loaded.
     const gitRoot = findGitRoot(originalCwd)
     const canonicalRoot = findCanonicalGitRoot(originalCwd)
@@ -882,9 +882,9 @@ export const getMemoryFiles = memoize(
         pathInWorkingPath(dir, canonicalRoot) &&
         !pathInWorkingPath(dir, gitRoot)
 
-      // Try reading CLAUDE.md (Project) - only if projectSettings is enabled
+      // Try reading UR.md (Project) - only if projectSettings is enabled
       if (isSettingSourceEnabled('projectSettings') && !skipProject) {
-        const projectPath = join(dir, 'CLAUDE.md')
+        const projectPath = join(dir, 'UR.md')
         result.push(
           ...(await processMemoryFile(
             projectPath,
@@ -894,8 +894,8 @@ export const getMemoryFiles = memoize(
           )),
         )
 
-        // Try reading .ur/CLAUDE.md (Project)
-        const dotURPath = join(dir, '.ur', 'CLAUDE.md')
+        // Try reading .ur/UR.md (Project)
+        const dotURPath = join(dir, '.ur', 'UR.md')
         result.push(
           ...(await processMemoryFile(
             dotURPath,
@@ -918,9 +918,9 @@ export const getMemoryFiles = memoize(
         )
       }
 
-      // Try reading CLAUDE.local.md (Local) - only if localSettings is enabled
+      // Try reading UR.local.md (Local) - only if localSettings is enabled
       if (isSettingSourceEnabled('localSettings')) {
-        const localPath = join(dir, 'CLAUDE.local.md')
+        const localPath = join(dir, 'UR.local.md')
         result.push(
           ...(await processMemoryFile(
             localPath,
@@ -932,15 +932,15 @@ export const getMemoryFiles = memoize(
       }
     }
 
-    // Process CLAUDE.md from additional directories (--add-dir) if env var is enabled
-    // This is controlled by UR_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD and defaults to off
+    // Process UR.md from additional directories (--add-dir) if env var is enabled
+    // This is controlled by UR_CODE_ADDITIONAL_DIRECTORIES_UR_MD and defaults to off
     // Note: we don't check isSettingSourceEnabled('projectSettings') here because --add-dir
     // is an explicit user action and the SDK defaults settingSources to [] when not specified
-    if (isEnvTruthy(process.env.UR_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD)) {
+    if (isEnvTruthy(process.env.UR_CODE_ADDITIONAL_DIRECTORIES_UR_MD)) {
       const additionalDirs = getAdditionalDirectoriesForAgentMd()
       for (const dir of additionalDirs) {
-        // Try reading CLAUDE.md from the additional directory
-        const projectPath = join(dir, 'CLAUDE.md')
+        // Try reading UR.md from the additional directory
+        const projectPath = join(dir, 'UR.md')
         result.push(
           ...(await processMemoryFile(
             projectPath,
@@ -950,8 +950,8 @@ export const getMemoryFiles = memoize(
           )),
         )
 
-        // Try reading .ur/CLAUDE.md from the additional directory
-        const dotURPath = join(dir, '.ur', 'CLAUDE.md')
+        // Try reading .ur/UR.md from the additional directory
+        const dotURPath = join(dir, '.ur', 'UR.md')
         result.push(
           ...(await processMemoryFile(
             dotURPath,
@@ -1041,7 +1041,7 @@ export const getMemoryFiles = memoize(
     // Fire InstructionsLoaded hook for each instruction file loaded
     // (fire-and-forget, audit/observability only).
     // AutoMem/TeamMem are intentionally excluded — they're a separate
-    // memory system, not "instructions" in the CLAUDE.md/rules sense.
+    // memory system, not "instructions" in the UR.md/rules sense.
     // Gated on !forceIncludeExternal: the forceIncludeExternal=true variant
     // is only used by getExternalAgentMdIncludes() for approval checks, not
     // for building context — firing the hook there would double-fire on startup.
@@ -1238,7 +1238,7 @@ export async function getManagedAndUserConditionalRules(
 
 /**
  * Gets memory files for a single nested directory (between CWD and target).
- * Loads CLAUDE.md, unconditional rules, and conditional rules for that directory.
+ * Loads UR.md, unconditional rules, and conditional rules for that directory.
  *
  * @param dir The directory to process
  * @param targetPath The target file path (for conditional rule matching)
@@ -1252,9 +1252,9 @@ export async function getMemoryFilesForNestedDirectory(
 ): Promise<MemoryFileInfo[]> {
   const result: MemoryFileInfo[] = []
 
-  // Process project memory files (CLAUDE.md and .ur/CLAUDE.md)
+  // Process project memory files (UR.md and .ur/UR.md)
   if (isSettingSourceEnabled('projectSettings')) {
-    const projectPath = join(dir, 'CLAUDE.md')
+    const projectPath = join(dir, 'UR.md')
     result.push(
       ...(await processMemoryFile(
         projectPath,
@@ -1263,7 +1263,7 @@ export async function getMemoryFilesForNestedDirectory(
         false,
       )),
     )
-    const dotURPath = join(dir, '.ur', 'CLAUDE.md')
+    const dotURPath = join(dir, '.ur', 'UR.md')
     result.push(
       ...(await processMemoryFile(
         dotURPath,
@@ -1274,9 +1274,9 @@ export async function getMemoryFilesForNestedDirectory(
     )
   }
 
-  // Process local memory file (CLAUDE.local.md)
+  // Process local memory file (UR.local.md)
   if (isSettingSourceEnabled('localSettings')) {
-    const localPath = join(dir, 'CLAUDE.local.md')
+    const localPath = join(dir, 'UR.local.md')
     result.push(
       ...(await processMemoryFile(localPath, 'Local', processedPaths, false)),
     )
@@ -1429,13 +1429,13 @@ export async function shouldShowAgentMdExternalIncludesWarning(): Promise<boolea
 }
 
 /**
- * Check if a file path is a memory file (CLAUDE.md, CLAUDE.local.md, or .ur/rules/*.md)
+ * Check if a file path is a memory file (UR.md, UR.local.md, or .ur/rules/*.md)
  */
 export function isMemoryFilePath(filePath: string): boolean {
   const name = basename(filePath)
 
-  // CLAUDE.md or CLAUDE.local.md anywhere
-  if (name === 'CLAUDE.md' || name === 'CLAUDE.local.md') {
+  // UR.md or UR.local.md anywhere
+  if (name === 'UR.md' || name === 'UR.local.md') {
     return true
   }
 

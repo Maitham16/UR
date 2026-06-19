@@ -10,7 +10,7 @@
 // One ledger instance per QueryEngine / session. Keyed by the originating
 // user-request UUID so multiple background tasks can share one ledger.
 
-import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolUseBlock } from '@urhq-ai/sdk/resources/index.mjs'
 
 export type ToolEffect = {
   toolName: string

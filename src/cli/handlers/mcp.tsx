@@ -175,7 +175,7 @@ export async function mcpListHandler(): Promise<void> {
       } else if (server.type === 'http') {
         // biome-ignore lint/suspicious/noConsole:: intentional console output
         console.log(`${name}: ${server.url} (HTTP) - ${status}`);
-      } else if (server.type === 'claudeai-proxy') {
+      } else if (server.type === 'urai-proxy') {
         // biome-ignore lint/suspicious/noConsole:: intentional console output
         console.log(`${name}: ${server.url} - ${status}`);
       } else if (!server.type || server.type === 'stdio') {

@@ -129,7 +129,7 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
 
   // Always show the trust dialog in interactive sessions, regardless of permission mode.
   // The trust dialog is the workspace trust boundary — it warns about untrusted repos
-  // and checks CLAUDE.md external includes. bypassPermissions mode
+  // and checks UR.md external includes. bypassPermissions mode
   // only affects tool execution permissions, not workspace trust.
   // Note: non-interactive sessions (CI/CD with -p) never reach showSetupScreens at all.
   // Skip permission checks in claubbit
@@ -200,7 +200,7 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
   }
 
   // Check for custom API key
-  // On homespace, ANTHROPIC_API_KEY is preserved in process.env for child
+  // On homespace, URHQ_API_KEY is preserved in process.env for child
   // processes but ignored by UR itself (see auth.ts).
   if (undefined && !isRunningOnHomespace()) {
     const customApiKeyTruncated = normalizeApiKeyForConfig(undefined);

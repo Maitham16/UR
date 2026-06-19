@@ -248,11 +248,11 @@ export function buildAPIProviderProperties(): Property[] {
     });
   }
   if (apiProvider === 'firstParty') {
-    const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
-    if (anthropicBaseUrl) {
+    const urhqBaseUrl = process.env.URHQ_BASE_URL;
+    if (urhqBaseUrl) {
       properties.push({
         label: 'API base URL',
-        value: anthropicBaseUrl
+        value: urhqBaseUrl
       });
     }
   } else if (apiProvider === 'bedrock') {
@@ -280,7 +280,7 @@ export function buildAPIProviderProperties(): Property[] {
         value: vertexBaseUrl
       });
     }
-    const gcpProject = process.env.ANTHROPIC_VERTEX_PROJECT_ID;
+    const gcpProject = process.env.URHQ_VERTEX_PROJECT_ID;
     if (gcpProject) {
       properties.push({
         label: 'GCP project',
@@ -297,14 +297,14 @@ export function buildAPIProviderProperties(): Property[] {
       });
     }
   } else if (apiProvider === 'foundry') {
-    const foundryBaseUrl = process.env.ANTHROPIC_FOUNDRY_BASE_URL;
+    const foundryBaseUrl = process.env.URHQ_FOUNDRY_BASE_URL;
     if (foundryBaseUrl) {
       properties.push({
         label: 'Microsoft Foundry base URL',
         value: foundryBaseUrl
       });
     }
-    const foundryResource = process.env.ANTHROPIC_FOUNDRY_RESOURCE;
+    const foundryResource = process.env.URHQ_FOUNDRY_RESOURCE;
     if (foundryResource) {
       properties.push({
         label: 'Microsoft Foundry resource',

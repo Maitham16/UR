@@ -392,13 +392,13 @@ let settingsSubscriptionCleanup: (() => void) | undefined
 let worktreeMainRepoPath: string | null | undefined
 
 // Bare-repo files at cwd that didn't exist at config time and should be
-// scrubbed if they appear after a sandboxed command. See anthropics/ur#29316.
+// scrubbed if they appear after a sandboxed command. See urhqs/ur#29316.
 const bareGitRepoScrubPaths: string[] = []
 
 /**
  * Delete bare-repo files planted at cwd during a sandboxed command, before
  * UR's unsandboxed git calls can see them. See the SECURITY block above
- * bareGitRepoFiles. anthropics/ur#29316.
+ * bareGitRepoFiles. urhqs/ur#29316.
  */
 function scrubBareGitRepoFiles(): void {
   for (const p of bareGitRepoScrubPaths) {

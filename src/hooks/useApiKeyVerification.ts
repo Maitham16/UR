@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
-import { verifyApiKey } from '../services/api/claude.js'
+import { verifyApiKey } from '../services/api/ur.js'
 import {
-  getAnthropicApiKeyWithSource,
+  getURHQApiKeyWithSource,
   getApiKeyFromApiKeyHelper,
-  isAnthropicAuthEnabled,
+  isURHQAuthEnabled,
   isURAISubscriber,
 } from '../utils/auth.js'
 
@@ -23,12 +23,12 @@ export type ApiKeyVerificationResult = {
 
 export function useApiKeyVerification(): ApiKeyVerificationResult {
   const [status, setStatus] = useState<VerificationStatus>(() => {
-    if (!isAnthropicAuthEnabled() || isURAISubscriber()) {
+    if (!isURHQAuthEnabled() || isURAISubscriber()) {
       return 'valid'
     }
     // Use skipRetrievingKeyFromApiKeyHelper to avoid executing apiKeyHelper
     // before trust dialog is shown (security: prevents RCE via settings.json)
-    const { key, source } = getAnthropicApiKeyWithSource({
+    const { key, source } = getURHQApiKeyWithSource({
       skipRetrievingKeyFromApiKeyHelper: true,
     })
     // If apiKeyHelper is configured, we have a key source even though we
@@ -41,14 +41,14 @@ export function useApiKeyVerification(): ApiKeyVerificationResult {
   const [error, setError] = useState<Error | null>(null)
 
   const verify = useCallback(async (): Promise<void> => {
-    if (!isAnthropicAuthEnabled() || isURAISubscriber()) {
+    if (!isURHQAuthEnabled() || isURAISubscriber()) {
       setStatus('valid')
       return
     }
     // Warm the apiKeyHelper cache (no-op if not configured), then read from
-    // all sources. getAnthropicApiKeyWithSource() reads the now-warm cache.
+    // all sources. getURHQApiKeyWithSource() reads the now-warm cache.
     await getApiKeyFromApiKeyHelper(getIsNonInteractiveSession())
-    const { key: apiKey, source } = getAnthropicApiKeyWithSource()
+    const { key: apiKey, source } = getURHQApiKeyWithSource()
     if (!apiKey) {
       if (source === 'apiKeyHelper') {
         setStatus('error')

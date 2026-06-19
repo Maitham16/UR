@@ -106,8 +106,8 @@ export function ManageMarketplaces({
 
         // Sort: ur-plugin-directory first, then alphabetically
         states.sort((a, b) => {
-          if (a.name === 'claude-plugin-directory') return -1;
-          if (b.name === 'claude-plugin-directory') return 1;
+          if (a.name === 'ur-plugin-directory') return -1;
+          if (b.name === 'ur-plugin-directory') return 1;
           return a.name.localeCompare(b.name);
         });
         setMarketplaceStates(states);
@@ -288,8 +288,8 @@ export function ManageMarketplaces({
 
       // Sort: ur-plugin-directory first, then alphabetically
       newStates.sort((a, b) => {
-        if (a.name === 'claude-plugin-directory') return -1;
-        if (b.name === 'claude-plugin-directory') return 1;
+        if (a.name === 'ur-plugin-directory') return -1;
+        if (b.name === 'ur-plugin-directory') return 1;
         return a.name.localeCompare(b.name);
       });
       setMarketplaceStates(newStates);
@@ -711,9 +711,9 @@ export function ManageMarketplaces({
               <Box flexDirection="column" flexGrow={1}>
                 <Box flexDirection="row" gap={1}>
                   <Text bold strikethrough={state.pendingRemove} dimColor={state.pendingRemove}>
-                    {state.name === 'claude-plugins-official' && <Text color="ur">✻ </Text>}
+                    {state.name === 'ur-plugins-official' && <Text color="ur">✻ </Text>}
                     {state.name}
-                    {state.name === 'claude-plugins-official' && <Text color="ur"> ✻</Text>}
+                    {state.name === 'ur-plugins-official' && <Text color="ur"> ✻</Text>}
                   </Text>
                   {indicators.length > 0 && <Text color="warning">[{indicators.join(', ')}]</Text>}
                 </Box>

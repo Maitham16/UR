@@ -16,7 +16,7 @@ export function getPlanModeV2AgentCount(): number {
 
   if (
     subscriptionType === 'max' &&
-    rateLimitTier === 'default_claude_max_20x'
+    rateLimitTier === 'default_ur_max_20x'
   ) {
     return 3
   }
@@ -74,10 +74,10 @@ export type PewterLedgerVariant = 'trim' | 'cut' | 'cap' | null
  * guidance on plan file size.
  *
  * Baseline (control, 14d ending 2026-03-02, N=26.3M):
- *   p50 4,906 chars | p90 11,617 | mean 6,207 | 82% Opus 4.6
+ *   p50 4,906 chars | p90 11,617 | mean 6,207 | 82% modelO 4.6
  *   Reject rate monotonic with size: 20% at <2K → 50% at 20K+
  *
- * Primary: session-level Avg Cost (fact__201omjcij85f) — Opus output is
+ * Primary: session-level Avg Cost (fact__201omjcij85f) — modelO output is
  *   5× input price so cost is an output-weighted proxy. planLengthChars
  *   on tengu_plan_exit is the mechanism but NOT the goal — the cap arm
  *   could shrink the plan file while increasing total output via

@@ -5,8 +5,8 @@ import { isEnvTruthy } from '../../utils/envUtils.js'
 const upgrade = {
   type: 'local-jsx',
   name: 'upgrade',
-  description: 'Upgrade to Max for higher rate limits and more Opus',
-  availability: ['claude-ai'],
+  description: 'Upgrade to Max for higher rate limits and more modelO',
+  availability: ['ur-ai'],
   isEnabled: () =>
     !isEnvTruthy(process.env.DISABLE_UPGRADE_COMMAND) &&
     getSubscriptionType() !== 'enterprise',

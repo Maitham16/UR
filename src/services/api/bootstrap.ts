@@ -2,7 +2,7 @@
 import axios from 'axios'
 import isEqual from 'lodash-es/isEqual.js'
 import {
-  getAnthropicApiKey,
+  getURHQApiKey,
   getURAIOAuthTokens,
   hasProfileScope,
 } from 'src/utils/auth.js'
@@ -53,7 +53,7 @@ async function fetchBootstrapAPI(): Promise<BootstrapResponse | null> {
 
   // OAuth preferred (requires user:profile scope — service-key OAuth tokens
   // lack it and would 403). Fall back to API key auth for console users.
-  const apiKey = getAnthropicApiKey()
+  const apiKey = getURHQApiKey()
   const hasUsableOAuth =
     getURAIOAuthTokens()?.accessToken && hasProfileScope()
   if (!hasUsableOAuth && !apiKey) {
@@ -61,7 +61,7 @@ async function fetchBootstrapAPI(): Promise<BootstrapResponse | null> {
     return null
   }
 
-  const endpoint = `${getOauthConfig().BASE_API_URL}/api/claude_cli/bootstrap`
+  const endpoint = `${getOauthConfig().BASE_API_URL}/api/ur_cli/bootstrap`
 
   // withOAuth401Retry handles the refresh-and-retry. API key users fail
   // through on 401 (no refresh mechanism — no OAuth token to pass).
@@ -73,7 +73,7 @@ async function fetchBootstrapAPI(): Promise<BootstrapResponse | null> {
       if (token && hasProfileScope()) {
         authHeaders = {
           Authorization: `Bearer ${token}`,
-          'anthropic-beta': OAUTH_BETA_HEADER,
+          'urhq-beta': OAUTH_BETA_HEADER,
         }
       } else if (apiKey) {
         authHeaders = { 'x-api-key': apiKey }

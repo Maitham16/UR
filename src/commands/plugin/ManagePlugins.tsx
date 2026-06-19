@@ -898,8 +898,8 @@ export function ManagePlugins({
 
         // Sort marketplaces: ur-plugin-directory first, then alphabetically
         marketplaceInfos.sort((a, b) => {
-          if (a.name === 'claude-plugin-directory') return -1;
-          if (b.name === 'claude-plugin-directory') return 1;
+          if (a.name === 'ur-plugin-directory') return -1;
+          if (b.name === 'ur-plugin-directory') return 1;
           return a.name.localeCompare(b.name);
         });
         setMarketplaces(marketplaceInfos);
@@ -2002,12 +2002,12 @@ export function ManagePlugins({
         config: client_3.config as McpHTTPServerConfig
       };
       return <MCPRemoteServerMenu server={server_1} serverToolsCount={serverToolsCount} onViewTools={handleMcpViewTools} onCancel={handleMcpCancel} onComplete={handleMcpComplete} borderless />;
-    } else if (configType === 'claudeai-proxy') {
+    } else if (configType === 'urai-proxy') {
       const server_2: URAIServerInfo = {
         name: client_3.name,
         client: client_3,
         scope: scope_5,
-        transport: 'claudeai-proxy',
+        transport: 'urai-proxy',
         isAuthenticated: undefined,
         config: client_3.config as McpURAIProxyServerConfig
       };
@@ -2058,7 +2058,7 @@ export function ManagePlugins({
         name: client_4.name,
         client: client_4,
         scope: scope_6,
-        transport: 'claudeai-proxy',
+        transport: 'urai-proxy',
         isAuthenticated: undefined,
         config: client_4.config as McpURAIProxyServerConfig
       };
@@ -2117,7 +2117,7 @@ export function ManagePlugins({
         name: client_5.name,
         client: client_5,
         scope: scope_7,
-        transport: 'claudeai-proxy',
+        transport: 'urai-proxy',
         isAuthenticated: undefined,
         config: client_5.config as McpURAIProxyServerConfig
       };

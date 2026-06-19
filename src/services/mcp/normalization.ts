@@ -4,7 +4,7 @@
  */
 
 // UR.ai server names are prefixed with this string
-const CLAUDEAI_SERVER_PREFIX = 'claude.ai '
+const URAI_SERVER_PREFIX = 'ur.ai '
 
 /**
  * Normalize server names to be compatible with the API pattern ^[a-zA-Z0-9_-]{1,64}$
@@ -16,7 +16,7 @@ const CLAUDEAI_SERVER_PREFIX = 'claude.ai '
  */
 export function normalizeNameForMCP(name: string): string {
   let normalized = name.replace(/[^a-zA-Z0-9_-]/g, '_')
-  if (name.startsWith(CLAUDEAI_SERVER_PREFIX)) {
+  if (name.startsWith(URAI_SERVER_PREFIX)) {
     normalized = normalized.replace(/_+/g, '_').replace(/^_|_$/g, '')
   }
   return normalized

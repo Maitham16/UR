@@ -14,7 +14,7 @@ export const ConfigScopeSchema = lazySchema(() =>
     'project',
     'dynamic',
     'enterprise',
-    'claudeai',
+    'urai',
     'managed',
   ]),
 )
@@ -115,7 +115,7 @@ export const McpSdkServerConfigSchema = lazySchema(() =>
 // Config type for UR.ai proxy servers
 export const McpURAIProxyServerConfigSchema = lazySchema(() =>
   z.object({
-    type: z.literal('claudeai-proxy'),
+    type: z.literal('urai-proxy'),
     url: z.string(),
     id: z.string(),
   }),
@@ -163,7 +163,7 @@ export type McpServerConfig = z.infer<ReturnType<typeof McpServerConfigSchema>>
 export type ScopedMcpServerConfig = McpServerConfig & {
   scope: ConfigScope
   // For plugin-provided servers: the providing plugin's LoadedPlugin.source
-  // (e.g. 'slack@anthropic'). Stashed at config-build time so the channel
+  // (e.g. 'slack@urhq'). Stashed at config-build time so the channel
   // gate doesn't have to race AppState.plugins.enabled hydration.
   pluginSource?: string
 }

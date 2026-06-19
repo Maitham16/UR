@@ -50,10 +50,10 @@ async function getExistingURSubscription(): Promise<'Max' | 'Pro' | null> {
   if (!profile) {
     return null;
   }
-  if (profile.account.has_claude_max) {
+  if (profile.account.has_ur_max) {
     return 'Max';
   }
-  if (profile.account.has_claude_pro) {
+  if (profile.account.has_ur_pro) {
     return 'Pro';
   }
   return null;

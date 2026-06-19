@@ -97,7 +97,7 @@ export function MCPRemoteServerMenu({
     try {
       const result = await reconnectMcpServer(server.name);
       const success = result.client.type === 'connected';
-      logEvent('tengu_claudeai_mcp_auth_completed', {
+      logEvent('tengu_urai_mcp_auth_completed', {
         success
       });
       if (success) {
@@ -108,7 +108,7 @@ export function MCPRemoteServerMenu({
         onComplete?.('Authentication successful, but server reconnection failed. You may need to manually restart UR for the changes to take effect.');
       }
     } catch (err) {
-      logEvent('tengu_claudeai_mcp_auth_completed', {
+      logEvent('tengu_urai_mcp_auth_completed', {
         success: false
       });
       onComplete?.(handleReconnectError(err, server.name));
@@ -140,7 +140,7 @@ export function MCPRemoteServerMenu({
         }
       };
     });
-    logEvent('tengu_claudeai_mcp_clear_auth_completed', {});
+    logEvent('tengu_urai_mcp_clear_auth_completed', {});
     onComplete?.(`Disconnected from ${server.name}.`);
     setIsURAIClearingAuth(false);
     setURAIClearAuthUrl(null);
@@ -218,7 +218,7 @@ export function MCPRemoteServerMenu({
     const accountInfo = getOauthAccountInfo();
     const orgUuid = accountInfo?.organizationUuid;
     let authUrl: string;
-    if (orgUuid && server.config.type === 'claudeai-proxy' && server.config.id) {
+    if (orgUuid && server.config.type === 'urai-proxy' && server.config.id) {
       // Use the direct auth URL with org and server IDs
       // Replace 'mcprs' prefix with 'mcpsrv' if present
       const serverId = server.config.id.startsWith('mcprs') ? 'mcpsrv' + server.config.id.slice(5) : server.config.id;
@@ -230,19 +230,19 @@ export function MCPRemoteServerMenu({
     }
     setURAIAuthUrl(authUrl);
     setIsURAIAuthenticating(true);
-    logEvent('tengu_claudeai_mcp_auth_started', {});
+    logEvent('tengu_urai_mcp_auth_started', {});
     await openBrowser(authUrl);
   }, [server.config]);
   const handleURAIClearAuth = React.useCallback(() => {
     setIsURAIClearingAuth(true);
-    logEvent('tengu_claudeai_mcp_clear_auth_started', {});
+    logEvent('tengu_urai_mcp_clear_auth_started', {});
   }, []);
   const handleToggleEnabled = React.useCallback(async () => {
     const wasEnabled = server.client.type !== 'disabled';
     try {
       await toggleMcpServer(server.name);
-      if (server.config.type === 'claudeai-proxy') {
-        logEvent('tengu_claudeai_mcp_toggle', {
+      if (server.config.type === 'urai-proxy') {
+        logEvent('tengu_urai_mcp_toggle', {
           new_state: (wasEnabled ? 'disabled' : 'enabled') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
         });
       }
@@ -255,7 +255,7 @@ export function MCPRemoteServerMenu({
     }
   }, [server.client.type, server.config.type, server.name, toggleMcpServer, onCancel, onComplete]);
   const handleAuthenticate = React.useCallback(async () => {
-    if (server.config.type === 'claudeai-proxy') return;
+    if (server.config.type === 'urai-proxy') return;
     setIsAuthenticating(true);
     setError(null);
     const controller = new AbortController();
@@ -302,7 +302,7 @@ export function MCPRemoteServerMenu({
     }
   }, [server.isAuthenticated, server.config, server.name, onComplete, reconnectMcpServer, isEffectivelyAuthenticated]);
   const handleClearAuth = async () => {
-    if (server.config.type === 'claudeai-proxy') return;
+    if (server.config.type === 'urai-proxy') return;
     if (server.config) {
       // First revoke the authentication tokens and clear all auth state
       await revokeServerTokens(server.name, server.config);
@@ -343,7 +343,7 @@ export function MCPRemoteServerMenu({
     // XAA: silent exchange (cached id_token → no browser), so don't claim
     // one will open. If IdP login IS needed, authorizationUrl populates and
     // the URL fallback block below still renders.
-    const authCopy = server.config.type !== 'claudeai-proxy' && server.config.oauth?.xaa ? ' Authenticating via your identity provider' : ' A browser window will open for authentication';
+    const authCopy = server.config.type !== 'urai-proxy' && server.config.oauth?.xaa ? ' Authenticating via your identity provider' : ' A browser window will open for authentication';
     return <Box flexDirection="column" gap={1} padding={1}>
         <Text color="ur">Authenticating with {server.name}…</Text>
         <Box>
@@ -442,7 +442,7 @@ export function MCPRemoteServerMenu({
             </Box>
           </> : <>
             <Text>
-              This will open claude.ai in the browser. Find the MCP server in
+              This will open ur.ai in the browser. Find the MCP server in
               the list and click &quot;Disconnect&quot;.
             </Text>
             <Box marginLeft={3} flexDirection="column">
@@ -483,16 +483,16 @@ export function MCPRemoteServerMenu({
       value: 'tools'
     });
   }
-  if (server.config.type === 'claudeai-proxy') {
+  if (server.config.type === 'urai-proxy') {
     if (server.client.type === 'connected') {
       menuOptions.push({
         label: 'Clear authentication',
-        value: 'claudeai-clear-auth'
+        value: 'urai-clear-auth'
       });
     } else if (server.client.type !== 'disabled') {
       menuOptions.push({
         label: 'Authenticate',
-        value: 'claudeai-auth'
+        value: 'urai-auth'
       });
     }
   } else {
@@ -551,7 +551,7 @@ export function MCPRemoteServerMenu({
               </Text> : <Text>{color('error', theme)(figures.cross)} failed</Text>}
           </Box>
 
-          {server.transport !== 'claudeai-proxy' && <Box>
+          {server.transport !== 'urai-proxy' && <Box>
               <Text bold>Auth: </Text>
               {isEffectivelyAuthenticated ? <Text>
                   {color('success', theme)(figures.tick)} authenticated
@@ -595,18 +595,18 @@ export function MCPRemoteServerMenu({
             case 'clear-auth':
               await handleClearAuth();
               break;
-            case 'claudeai-auth':
+            case 'urai-auth':
               await handleURAIAuth();
               break;
-            case 'claudeai-clear-auth':
+            case 'urai-clear-auth':
               handleURAIClearAuth();
               break;
             case 'reconnectMcpServer':
               setIsReconnecting(true);
               try {
                 const result_1 = await reconnectMcpServer(server.name);
-                if (server.config.type === 'claudeai-proxy') {
-                  logEvent('tengu_claudeai_mcp_reconnect', {
+                if (server.config.type === 'urai-proxy') {
+                  logEvent('tengu_urai_mcp_reconnect', {
                     success: result_1.client.type === 'connected'
                   });
                 }
@@ -615,8 +615,8 @@ export function MCPRemoteServerMenu({
                 } = handleReconnectResult(result_1, server.name);
                 onComplete?.(message_0);
               } catch (err_2) {
-                if (server.config.type === 'claudeai-proxy') {
-                  logEvent('tengu_claudeai_mcp_reconnect', {
+                if (server.config.type === 'urai-proxy') {
+                  logEvent('tengu_urai_mcp_reconnect', {
                     success: false
                   });
                 }

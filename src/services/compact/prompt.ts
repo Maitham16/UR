@@ -11,7 +11,7 @@ const proactiveModule =
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 // Aggressive no-tools preamble. The cache-sharing fork path inherits the
-// parent's full tool set (required for cache-key match), and on Sonnet 4.6+
+// parent's full tool set (required for cache-key match), and on modelS 4.6+
 // adaptive-thinking models the model sometimes attempts a tool call despite
 // the weaker trailer instruction. With maxTurns: 1, a denied tool call means
 // no text output → falls through to the streaming fallback (2.79% on 4.6 vs

@@ -5,7 +5,7 @@ export const FILE_EDIT_TOOL_NAME = 'Edit'
 export const UR_FOLDER_PERMISSION_PATTERN = '/.ur/**'
 
 // Permission pattern for granting session-level access to the global ~/.ur/ folder
-export const GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN = '~/.ur/**'
+export const GLOBAL_UR_FOLDER_PERMISSION_PATTERN = '~/.ur/**'
 
 export const FILE_UNEXPECTEDLY_MODIFIED_ERROR =
   'File has been unexpectedly modified. Read it again before attempting to write it.'

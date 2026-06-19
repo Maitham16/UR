@@ -6,7 +6,7 @@ import { lazySchema } from '../lazySchema.js'
 /**
  * First-layer defense against official marketplace impersonation.
  *
- * This validation blocks direct impersonation attempts like "anthropic-official",
+ * This validation blocks direct impersonation attempts like "urhq-official",
  * "ur-marketplace", etc. Indirect variations (e.g., "my-ur-marketplace")
  * are not blocked intentionally to avoid false positives on legitimate names.
  * Source org verification provides additional protection at registration/install time.
@@ -59,10 +59,10 @@ export function isMarketplaceAutoUpdate(
  * Pattern to detect names that impersonate official UR/UR marketplaces.
  *
  * Matches names containing variations like:
- * - "official" combined with "anthropic" or "ur" (e.g., "official-ur-plugins")
- * - "anthropic" or "ur" combined with "official" (e.g., "ur-official")
- * - Names starting with "anthropic" or "ur" followed by official-sounding terms
- *   like "marketplace", "plugins" (e.g., "anthropic-marketplace-new", "ur-plugins-v2")
+ * - "official" combined with "urhq" or "ur" (e.g., "official-ur-plugins")
+ * - "urhq" or "ur" combined with "official" (e.g., "ur-official")
+ * - Names starting with "urhq" or "ur" followed by official-sounding terms
+ *   like "marketplace", "plugins" (e.g., "urhq-marketplace-new", "ur-plugins-v2")
  *
  * The pattern is case-insensitive.
  */
@@ -89,7 +89,7 @@ export function isBlockedOfficialName(name: string): boolean {
   }
 
   // Block names with non-ASCII characters to prevent homograph attacks
-  // (e.g., using Cyrillic 'а' to impersonate 'anthropic')
+  // (e.g., using Cyrillic 'а' to impersonate 'urhq')
   if (NON_ASCII_PATTERN.test(name)) {
     return true
   }
@@ -1329,7 +1329,7 @@ export const PluginMarketplaceSchema = lazySchema(() =>
  * Both parts allow alphanumeric characters, hyphens, dots, and underscores.
  *
  * Examples:
- * - "code-formatter@anthropic-tools"
+ * - "code-formatter@urhq-tools"
  * - "db_assistant@company-internal"
  * - "my.plugin@personal-marketplace"
  */
@@ -1398,7 +1398,7 @@ export const DependencyRefSchema = lazySchema(() =>
  * not in the plugin reference.
  *
  * Examples:
- * - "code-formatter@anthropic-tools"
+ * - "code-formatter@urhq-tools"
  * - "db-assistant@company-internal"
  * - { id: "formatter@tools", version: "^2.0.0", required: true }
  */
@@ -1432,12 +1432,12 @@ export const SettingsPluginEntrySchema = lazySchema(() =>
  * (npm, git, local, etc.). The plugin ID is the key in the plugins record,
  * so it's not duplicated here.
  *
- * Example entry for key "code-formatter@anthropic-tools":
+ * Example entry for key "code-formatter@urhq-tools":
  * {
  *   "version": "1.2.0",
  *   "installedAt": "2024-01-15T10:30:00Z",
- *   "marketplace": "anthropic-tools",
- *   "installPath": "/home/user/.ur/plugins/installed/anthropic-tools/code-formatter"
+ *   "marketplace": "urhq-tools",
+ *   "installPath": "/home/user/.ur/plugins/installed/urhq-tools/code-formatter"
  * }
  */
 export const InstalledPluginSchema = lazySchema(() =>
@@ -1471,7 +1471,7 @@ export const InstalledPluginSchema = lazySchema(() =>
  * {
  *   "version": 1,
  *   "plugins": {
- *     "code-formatter@anthropic-tools": { ... },
+ *     "code-formatter@urhq-tools": { ... },
  *     "db-assistant@company-internal": { ... }
  *   }
  * }
@@ -1549,7 +1549,7 @@ export const PluginInstallationEntrySchema = lazySchema(() =>
  * {
  *   "version": 2,
  *   "plugins": {
- *     "code-formatter@anthropic-tools": [
+ *     "code-formatter@urhq-tools": [
  *       { "scope": "user", "installPath": "...", "version": "1.0.0" },
  *       { "scope": "project", "projectPath": "/path/to/project", "installPath": "...", "version": "1.1.0" }
  *     ]
@@ -1581,8 +1581,8 @@ export const InstalledPluginsFileSchema = lazySchema(() =>
  *
  * Example entry:
  * {
- *   "source": { "source": "github", "repo": "anthropic/ur-plugins" },
- *   "installLocation": "/home/user/.ur/plugins/cached/marketplaces/anthropic-tools",
+ *   "source": { "source": "github", "repo": "urhq/ur-plugins" },
+ *   "installLocation": "/home/user/.ur/plugins/cached/marketplaces/urhq-tools",
  *   "lastUpdated": "2024-01-15T10:30:00Z"
  * }
  */
@@ -1614,7 +1614,7 @@ export const KnownMarketplaceSchema = lazySchema(() =>
  *
  * Example file:
  * {
- *   "anthropic-tools": { "source": { ... }, "installLocation": "...", "lastUpdated": "..." },
+ *   "urhq-tools": { "source": { ... }, "installLocation": "...", "lastUpdated": "..." },
  *   "company-internal": { "source": { ... }, "installLocation": "...", "lastUpdated": "..." }
  * }
  */

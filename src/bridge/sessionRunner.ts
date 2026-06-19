@@ -49,7 +49,7 @@ type SessionSpawnerDeps = {
    * compiled binaries (where execPath is the ur binary itself); contains
    * the script path (process.argv[1]) for npm installs where execPath is the
    * node runtime. Without this, node sees --sdk-url as a node option and
-   * exits with "bad option: --sdk-url" (see anthropics/ur#28334).
+   * exits with "bad option: --sdk-url" (see urhqs/ur#28334).
    */
   scriptArgs: string[]
   env: NodeJS.ProcessEnv
@@ -262,7 +262,7 @@ export function createSessionSpawner(deps: SessionSpawnerDeps): SessionSpawner {
           debugFile = `${deps.debugFile}-${safeId}`
         }
       } else if (deps.verbose || process.env.USER_TYPE === 'ant') {
-        debugFile = join(tmpdir(), 'claude', `bridge-session-${safeId}.log`)
+        debugFile = join(tmpdir(), 'ur', `bridge-session-${safeId}.log`)
       }
 
       // Transcript file: write raw NDJSON lines for post-hoc analysis.

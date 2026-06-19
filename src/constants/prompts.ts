@@ -116,13 +116,13 @@ export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY =
   '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
 
 // @[MODEL LAUNCH]: Update the latest frontier model.
-const FRONTIER_MODEL_NAME = 'UR Opus 4.6'
+const FRONTIER_MODEL_NAME = 'UR modelO 4.6'
 
 // @[MODEL LAUNCH]: Update the model family IDs below to the latest in each tier.
 const UR_4_5_OR_4_6_MODEL_IDS = {
-  opus: 'claude-opus-4-6',
-  sonnet: 'claude-sonnet-4-6',
-  haiku: 'claude-haiku-4-5-20251001',
+  modelO: 'ur-modelO-4-6',
+  modelS: 'ur-modelS-4-6',
+  modelH: 'ur-modelH-4-5-20251001',
 }
 
 function getHooksSection(): string {
@@ -257,7 +257,7 @@ function getSimpleDoingTasksSection(): string {
 function getActionsSection(): string {
   return `# Executing actions with care
 
-Carefully consider the reversibility and blast radius of actions. Generally you can freely take local, reversible actions like editing files or running tests. But for actions that are hard to reverse, affect shared systems beyond your local environment, or could otherwise be risky or destructive, check with the user before proceeding. The cost of pausing to confirm is low, while the cost of an unwanted action (lost work, unintended messages sent, deleted branches) can be very high. For actions like these, consider the context, the action, and user instructions, and by default transparently communicate the action and ask for confirmation before proceeding. This default can be changed by user instructions - if explicitly asked to operate more autonomously, then you may proceed without confirmation, but still attend to the risks and consequences when taking actions. A user approving an action (like a git push) once does NOT mean that they approve it in all contexts, so unless actions are authorized in advance in durable instructions like CLAUDE.md files, always confirm first. Authorization stands for the scope specified, not beyond. Match the scope of your actions to what was actually requested.
+Carefully consider the reversibility and blast radius of actions. Generally you can freely take local, reversible actions like editing files or running tests. But for actions that are hard to reverse, affect shared systems beyond your local environment, or could otherwise be risky or destructive, check with the user before proceeding. The cost of pausing to confirm is low, while the cost of an unwanted action (lost work, unintended messages sent, deleted branches) can be very high. For actions like these, consider the context, the action, and user instructions, and by default transparently communicate the action and ask for confirmation before proceeding. This default can be changed by user instructions - if explicitly asked to operate more autonomously, then you may proceed without confirmation, but still attend to the risks and consequences when taking actions. A user approving an action (like a git push) once does NOT mean that they approve it in all contexts, so unless actions are authorized in advance in durable instructions like UR.md files, always confirm first. Authorization stands for the scope specified, not beyond. Match the scope of your actions to what was actually requested.
 
 Examples of the kind of risky actions that warrant user confirmation:
 - Destructive operations: deleting files/branches, dropping database tables, killing processes, rm -rf, overwriting uncommitted changes
@@ -463,7 +463,7 @@ function getSimpleToneAndStyleSection(): string {
       ? null
       : `Your responses should be short and concise.`,
     `When referencing specific functions or pieces of code include the pattern file_path:line_number to allow the user to easily navigate to the source code location.`,
-    `When referencing GitHub issues or pull requests, use the owner/repo#123 format (e.g. anthropics/ur#100) so they render as clickable links.`,
+    `When referencing GitHub issues or pull requests, use the owner/repo#123 format (e.g. urhqs/ur#100) so they render as clickable links.`,
     `Do not use a colon before tool calls. Your tool calls may not be shown directly in the output, so text like "Let me read the file:" followed by a read tool call should just be "Let me read the file." with a period.`,
   ].filter(item => item !== null)
 
@@ -725,10 +725,10 @@ export async function computeSimpleEnvInfo(
     modelDescription,
     knowledgeCutoffMessage,
     includeURProductInfo
-      ? `The most recent UR model family is UR 4.5/4.6. Model IDs — Opus 4.6: '${UR_4_5_OR_4_6_MODEL_IDS.opus}', Sonnet 4.6: '${UR_4_5_OR_4_6_MODEL_IDS.sonnet}', Haiku 4.5: '${UR_4_5_OR_4_6_MODEL_IDS.haiku}'. When building AI applications, default to the latest and most capable UR models.`
+      ? `The most recent UR model family is UR 4.5/4.6. Model IDs — modelO 4.6: '${UR_4_5_OR_4_6_MODEL_IDS.modelO}', modelS 4.6: '${UR_4_5_OR_4_6_MODEL_IDS.modelS}', modelH 4.5: '${UR_4_5_OR_4_6_MODEL_IDS.modelH}'. When building AI applications, default to the latest and most capable UR models.`
       : null,
     includeURProductInfo
-      ? `UR is available as a CLI in the terminal, desktop app (Mac/Windows), web app (claude.ai/code), and IDE extensions (VS Code, JetBrains).`
+      ? `UR is available as a CLI in the terminal, desktop app (Mac/Windows), web app (ur.ai/code), and IDE extensions (VS Code, JetBrains).`
       : null,
     includeURProductInfo
       ? `Fast mode for UR uses the same ${FRONTIER_MODEL_NAME} model with faster output. It does NOT switch to a different model. It can be toggled with /fast.`
@@ -745,17 +745,17 @@ export async function computeSimpleEnvInfo(
 // @[MODEL LAUNCH]: Add a knowledge cutoff date for the new model.
 function getKnowledgeCutoff(modelId: string): string | null {
   const canonical = getCanonicalName(modelId)
-  if (canonical.includes('claude-sonnet-4-6')) {
+  if (canonical.includes('ur-modelS-4-6')) {
     return 'August 2025'
-  } else if (canonical.includes('claude-opus-4-6')) {
+  } else if (canonical.includes('ur-modelO-4-6')) {
     return 'May 2025'
-  } else if (canonical.includes('claude-opus-4-5')) {
+  } else if (canonical.includes('ur-modelO-4-5')) {
     return 'May 2025'
-  } else if (canonical.includes('claude-haiku-4')) {
+  } else if (canonical.includes('ur-modelH-4')) {
     return 'February 2025'
   } else if (
-    canonical.includes('claude-opus-4') ||
-    canonical.includes('claude-sonnet-4')
+    canonical.includes('ur-modelO-4') ||
+    canonical.includes('ur-modelS-4')
   ) {
     return 'January 2025'
   }

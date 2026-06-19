@@ -172,17 +172,17 @@ function getLimitReachedText(limits: URAILimits, model: string): string {
     return formatLimitReachedText('limit', overageResetMessage, model)
   }
 
-  if (limits.rateLimitType === 'seven_day_sonnet') {
+  if (limits.rateLimitType === 'seven_day_modelS') {
     const subscriptionType = getSubscriptionType()
     const isProOrEnterprise =
       subscriptionType === 'pro' || subscriptionType === 'enterprise'
-    // For pro and enterprise, Sonnet limit is the same as weekly
-    const limit = isProOrEnterprise ? 'weekly limit' : 'Sonnet limit'
+    // For pro and enterprise, modelS limit is the same as weekly
+    const limit = isProOrEnterprise ? 'weekly limit' : 'modelS limit'
     return formatLimitReachedText(limit, resetMessage, model)
   }
 
-  if (limits.rateLimitType === 'seven_day_opus') {
-    return formatLimitReachedText('Opus limit', resetMessage, model)
+  if (limits.rateLimitType === 'seven_day_modelO') {
+    return formatLimitReachedText('modelO limit', resetMessage, model)
   }
 
   if (limits.rateLimitType === 'seven_day') {
@@ -205,11 +205,11 @@ function getEarlyWarningText(limits: URAILimits): string | null {
     case 'five_hour':
       limitName = 'session limit'
       break
-    case 'seven_day_opus':
-      limitName = 'Opus limit'
+    case 'seven_day_modelO':
+      limitName = 'modelO limit'
       break
-    case 'seven_day_sonnet':
-      limitName = 'Sonnet limit'
+    case 'seven_day_modelS':
+      limitName = 'modelS limit'
       break
     case 'overage':
       limitName = 'extra usage'
@@ -310,14 +310,14 @@ export function getUsingOverageText(limits: URAILimits): string {
     limitName = 'session limit'
   } else if (limits.rateLimitType === 'seven_day') {
     limitName = 'weekly limit'
-  } else if (limits.rateLimitType === 'seven_day_opus') {
-    limitName = 'Opus limit'
-  } else if (limits.rateLimitType === 'seven_day_sonnet') {
+  } else if (limits.rateLimitType === 'seven_day_modelO') {
+    limitName = 'modelO limit'
+  } else if (limits.rateLimitType === 'seven_day_modelS') {
     const subscriptionType = getSubscriptionType()
     const isProOrEnterprise =
       subscriptionType === 'pro' || subscriptionType === 'enterprise'
-    // For pro and enterprise, Sonnet limit is the same as weekly
-    limitName = isProOrEnterprise ? 'weekly limit' : 'Sonnet limit'
+    // For pro and enterprise, modelS limit is the same as weekly
+    limitName = isProOrEnterprise ? 'weekly limit' : 'modelS limit'
   }
 
   if (!limitName) {

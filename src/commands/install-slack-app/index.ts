@@ -4,7 +4,7 @@ const installSlackApp = {
   type: 'local',
   name: 'install-slack-app',
   description: 'Install the UR Slack app',
-  availability: ['claude-ai'],
+  availability: ['ur-ai'],
   supportsNonInteractive: false,
   load: () => import('./install-slack-app.js'),
 } satisfies Command

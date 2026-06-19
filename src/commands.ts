@@ -4,7 +4,7 @@ import addDir from './commands/add-dir/index.js'
 import autofixPr from './commands/autofix-pr/index.js'
 import backfillSessions from './commands/backfill-sessions/index.js'
 import btw from './commands/btw/index.js'
-import goodClaude from './commands/good-claude/index.js'
+import goodUR from './commands/good-ur/index.js'
 import issue from './commands/issue/index.js'
 import feedback from './commands/feedback/index.js'
 import clear from './commands/clear/index.js'
@@ -200,7 +200,7 @@ import {
 } from './utils/plugins/loadPluginCommands.js'
 import memoize from 'lodash-es/memoize.js'
 import { isUsing3PServices, isURAISubscriber } from './utils/auth.js'
-import { isFirstPartyAnthropicBaseUrl } from './utils/model/providers.js'
+import { isFirstPartyURHQBaseUrl } from './utils/model/providers.js'
 import env from './commands/env/index.js'
 import exit from './commands/exit/index.js'
 import exportCommand from './commands/export/index.js'
@@ -263,7 +263,7 @@ export const INTERNAL_ONLY_COMMANDS = [
   commit,
   commitPushPr,
   ctx_viz,
-  goodClaude,
+  goodUR,
   issue,
   initVerifiers,
   ...(forceSnip ? [forceSnip] : []),
@@ -489,17 +489,17 @@ export function meetsAvailabilityRequirement(cmd: Command): boolean {
   if (!cmd.availability) return true
   for (const a of cmd.availability) {
     switch (a) {
-      case 'claude-ai':
+      case 'ur-ai':
         if (isURAISubscriber()) return true
         break
       case 'console':
         // Console API key user = direct 1P API customer (not 3P, not ur.ai).
-        // Excludes 3P (Bedrock/Vertex/Foundry) who don't set ANTHROPIC_BASE_URL
+        // Excludes 3P (Bedrock/Vertex/Foundry) who don't set URHQ_BASE_URL
         // and gateway users who proxy through a custom base URL.
         if (
           !isURAISubscriber() &&
           !isUsing3PServices() &&
-          isFirstPartyAnthropicBaseUrl()
+          isFirstPartyURHQBaseUrl()
         )
           return true
         break

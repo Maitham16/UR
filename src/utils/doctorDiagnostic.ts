@@ -162,7 +162,7 @@ async function getInstallationPath(): Promise<string> {
     }
 
     try {
-      const path = await which('claude')
+      const path = await which('ur')
       if (path) {
         return path
       }
@@ -172,8 +172,8 @@ async function getInstallationPath(): Promise<string> {
 
     // If we can't find it, check common locations
     try {
-      await getFsImplementation().stat(join(homedir(), '.local/bin/claude'))
-      return join(homedir(), '.local/bin/claude')
+      await getFsImplementation().stat(join(homedir(), '.local/bin/ur'))
+      return join(homedir(), '.local/bin/ur')
     } catch {
       // Not found
     }
@@ -215,8 +215,8 @@ async function detectMultipleInstallations(): Promise<
   }
 
   // Check for global npm installation
-  const packagesToCheck = ['@anthropic-ai/ur']
-  if (MACRO.PACKAGE_URL && MACRO.PACKAGE_URL !== '@anthropic-ai/ur') {
+  const packagesToCheck = ['@urhq-ai/ur']
+  if (MACRO.PACKAGE_URL && MACRO.PACKAGE_URL !== '@urhq-ai/ur') {
     packagesToCheck.push(MACRO.PACKAGE_URL)
   }
   const npmResult = await execFileNoThrow('npm', [
@@ -233,8 +233,8 @@ async function detectMultipleInstallations(): Promise<
     // Linux / macOS have prefix/bin/ur and prefix/lib/node_modules
     // Windows has prefix/ur and prefix/node_modules
     const globalBinPath = isWindows
-      ? join(npmPrefix, 'claude')
-      : join(npmPrefix, 'bin', 'claude')
+      ? join(npmPrefix, 'ur')
+      : join(npmPrefix, 'bin', 'ur')
 
     let globalBinExists = false
     try {
@@ -289,7 +289,7 @@ async function detectMultipleInstallations(): Promise<
   // Check for native installation
 
   // Check common native installation paths
-  const nativeBinPath = join(homedir(), '.local', 'bin', 'claude')
+  const nativeBinPath = join(homedir(), '.local', 'bin', 'ur')
   try {
     await fs.stat(nativeBinPath)
     installations.push({ type: 'native', path: nativeBinPath })
@@ -300,7 +300,7 @@ async function detectMultipleInstallations(): Promise<
   // Also check if config indicates native installation
   const config = getGlobalConfig()
   if (config.installMethod === 'native') {
-    const nativeDataPath = join(homedir(), '.local', 'share', 'claude')
+    const nativeDataPath = join(homedir(), '.local', 'share', 'ur')
     try {
       await fs.stat(nativeDataPath)
       if (!installations.some(i => i.type === 'native')) {
@@ -435,14 +435,14 @@ async function detectConfigurationIssues(
     if (type === 'npm-local' && config.installMethod !== 'local') {
       warnings.push({
         issue: `Running from local installation but config install method is '${config.installMethod}'`,
-        fix: 'Consider using native installation: claude install',
+        fix: 'Consider using native installation: ur install',
       })
     }
 
     if (type === 'native' && config.installMethod !== 'native') {
       warnings.push({
         issue: `Running native installation but config install method is '${config.installMethod}'`,
-        fix: 'Run claude install to update configuration',
+        fix: 'Run ur install to update configuration',
       })
     }
   }
@@ -450,7 +450,7 @@ async function detectConfigurationIssues(
   if (type === 'npm-global' && (await localInstallationExists())) {
     warnings.push({
       issue: 'Local installation exists but not being used',
-      fix: 'Consider using native installation: claude install',
+      fix: 'Consider using native installation: ur install',
     })
   }
 
@@ -460,7 +460,7 @@ async function detectConfigurationIssues(
   // Check if running local installation but it's not in PATH
   if (type === 'npm-local') {
     // Check if ur is already accessible via PATH
-    const whichResult = await which('claude')
+    const whichResult = await which('ur')
     const urInPath = !!whichResult
 
     // Only show warning if ur is NOT in PATH AND no valid alias exists
@@ -469,13 +469,13 @@ async function detectConfigurationIssues(
         // Alias exists but points to invalid target
         warnings.push({
           issue: 'Local installation not accessible',
-          fix: `Alias exists but points to invalid target: ${existingAlias}. Update alias: alias claude="~/.ur/local/claude"`,
+          fix: `Alias exists but points to invalid target: ${existingAlias}. Update alias: alias ur="~/.ur/local/ur"`,
         })
       } else {
         // No alias exists and not in PATH
         warnings.push({
           issue: 'Local installation not accessible',
-          fix: 'Create alias: alias claude="~/.ur/local/claude"',
+          fix: 'Create alias: alias ur="~/.ur/local/ur"',
         })
       }
     }
@@ -536,10 +536,10 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
 
     for (const install of npmInstalls) {
       if (install.type === 'npm-global') {
-        let uninstallCmd = 'npm -g uninstall @anthropic-ai/ur'
+        let uninstallCmd = 'npm -g uninstall @urhq-ai/ur'
         if (
           MACRO.PACKAGE_URL &&
-          MACRO.PACKAGE_URL !== '@anthropic-ai/ur'
+          MACRO.PACKAGE_URL !== '@urhq-ai/ur'
         ) {
           uninstallCmd += ` && npm -g uninstall ${MACRO.PACKAGE_URL}`
         }
@@ -580,7 +580,7 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
     if (!hasUpdatePermissions && !getAutoUpdaterDisabledReason()) {
       warnings.push({
         issue: 'Insufficient permissions for auto-updates',
-        fix: 'Do one of: (1) Re-install node without sudo, or (2) Use `claude install` for native installation',
+        fix: 'Do one of: (1) Re-install node without sudo, or (2) Use `ur install` for native installation',
       })
     }
   }

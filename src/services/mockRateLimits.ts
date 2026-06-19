@@ -10,34 +10,34 @@ import { setMockBillingAccessOverride } from '../utils/billing.js'
 import type { OverageDisabledReason } from './urAiLimits.js'
 
 type MockHeaders = {
-  'anthropic-ratelimit-unified-status'?:
+  'urhq-ratelimit-unified-status'?:
     | 'allowed'
     | 'allowed_warning'
     | 'rejected'
-  'anthropic-ratelimit-unified-reset'?: string
-  'anthropic-ratelimit-unified-representative-claim'?:
+  'urhq-ratelimit-unified-reset'?: string
+  'urhq-ratelimit-unified-representative-claim'?:
     | 'five_hour'
     | 'seven_day'
-    | 'seven_day_opus'
-    | 'seven_day_sonnet'
-  'anthropic-ratelimit-unified-overage-status'?:
+    | 'seven_day_modelO'
+    | 'seven_day_modelS'
+  'urhq-ratelimit-unified-overage-status'?:
     | 'allowed'
     | 'allowed_warning'
     | 'rejected'
-  'anthropic-ratelimit-unified-overage-reset'?: string
-  'anthropic-ratelimit-unified-overage-disabled-reason'?: OverageDisabledReason
-  'anthropic-ratelimit-unified-fallback'?: 'available'
-  'anthropic-ratelimit-unified-fallback-percentage'?: string
+  'urhq-ratelimit-unified-overage-reset'?: string
+  'urhq-ratelimit-unified-overage-disabled-reason'?: OverageDisabledReason
+  'urhq-ratelimit-unified-fallback'?: 'available'
+  'urhq-ratelimit-unified-fallback-percentage'?: string
   'retry-after'?: string
   // Early warning utilization headers
-  'anthropic-ratelimit-unified-5h-utilization'?: string
-  'anthropic-ratelimit-unified-5h-reset'?: string
-  'anthropic-ratelimit-unified-5h-surpassed-threshold'?: string
-  'anthropic-ratelimit-unified-7d-utilization'?: string
-  'anthropic-ratelimit-unified-7d-reset'?: string
-  'anthropic-ratelimit-unified-7d-surpassed-threshold'?: string
-  'anthropic-ratelimit-unified-overage-utilization'?: string
-  'anthropic-ratelimit-unified-overage-surpassed-threshold'?: string
+  'urhq-ratelimit-unified-5h-utilization'?: string
+  'urhq-ratelimit-unified-5h-reset'?: string
+  'urhq-ratelimit-unified-5h-surpassed-threshold'?: string
+  'urhq-ratelimit-unified-7d-utilization'?: string
+  'urhq-ratelimit-unified-7d-reset'?: string
+  'urhq-ratelimit-unified-7d-surpassed-threshold'?: string
+  'urhq-ratelimit-unified-overage-utilization'?: string
+  'urhq-ratelimit-unified-overage-surpassed-threshold'?: string
 }
 
 export type MockHeaderKey =
@@ -70,10 +70,10 @@ export type MockScenario =
   | 'org-spend-cap-hit'
   | 'member-zero-credit-limit'
   | 'seat-tier-zero-credit-limit'
-  | 'opus-limit'
-  | 'opus-warning'
-  | 'sonnet-limit'
-  | 'sonnet-warning'
+  | 'modelO-limit'
+  | 'modelO-warning'
+  | 'modelS-limit'
+  | 'modelS-warning'
   | 'fast-mode-limit'
   | 'fast-mode-short-limit'
   | 'extra-usage-required'
@@ -90,7 +90,7 @@ const DEFAULT_MOCK_SUBSCRIPTION: SubscriptionType = 'max'
 
 // Track individual exceeded limits with their reset times
 type ExceededLimit = {
-  type: 'five_hour' | 'seven_day' | 'seven_day_opus' | 'seven_day_sonnet'
+  type: 'five_hour' | 'seven_day' | 'seven_day_modelO' | 'seven_day_modelS'
   resetsAt: number // Unix timestamp
 }
 
@@ -109,7 +109,7 @@ export function setMockHeader(
 
   // Special case for retry-after which doesn't have the prefix
   const fullKey = (
-    key === 'retry-after' ? 'retry-after' : `anthropic-ratelimit-unified-${key}`
+    key === 'retry-after' ? 'retry-after' : `urhq-ratelimit-unified-${key}`
   ) as keyof MockHeaders
 
   if (value === undefined || value === 'clear') {
@@ -137,8 +137,8 @@ export function setMockHeader(
       const validClaims = [
         'five_hour',
         'seven_day',
-        'seven_day_opus',
-        'seven_day_sonnet',
+        'seven_day_modelO',
+        'seven_day_modelS',
       ]
       if (validClaims.includes(value)) {
         // Determine reset time based on claim type
@@ -147,8 +147,8 @@ export function setMockHeader(
           resetsAt = Math.floor(Date.now() / 1000) + 5 * 3600
         } else if (
           value === 'seven_day' ||
-          value === 'seven_day_opus' ||
-          value === 'seven_day_sonnet'
+          value === 'seven_day_modelO' ||
+          value === 'seven_day_modelS'
         ) {
           resetsAt = Math.floor(Date.now() / 1000) + 7 * 24 * 3600
         } else {
@@ -184,10 +184,10 @@ export function setMockHeader(
 
 // Helper to update retry-after based on current state
 function updateRetryAfter(): void {
-  const status = mockHeaders['anthropic-ratelimit-unified-status']
+  const status = mockHeaders['urhq-ratelimit-unified-status']
   const overageStatus =
-    mockHeaders['anthropic-ratelimit-unified-overage-status']
-  const reset = mockHeaders['anthropic-ratelimit-unified-reset']
+    mockHeaders['urhq-ratelimit-unified-overage-status']
+  const reset = mockHeaders['urhq-ratelimit-unified-reset']
 
   if (
     status === 'rejected' &&
@@ -209,8 +209,8 @@ function updateRetryAfter(): void {
 // Update the representative claim based on exceeded limits
 function updateRepresentativeClaim(): void {
   if (exceededLimits.length === 0) {
-    delete mockHeaders['anthropic-ratelimit-unified-representative-claim']
-    delete mockHeaders['anthropic-ratelimit-unified-reset']
+    delete mockHeaders['urhq-ratelimit-unified-representative-claim']
+    delete mockHeaders['urhq-ratelimit-unified-reset']
     delete mockHeaders['retry-after']
     return
   }
@@ -221,14 +221,14 @@ function updateRepresentativeClaim(): void {
   )
 
   // Set the representative claim (appears for both warning and rejected)
-  mockHeaders['anthropic-ratelimit-unified-representative-claim'] =
+  mockHeaders['urhq-ratelimit-unified-representative-claim'] =
     furthest.type
-  mockHeaders['anthropic-ratelimit-unified-reset'] = String(furthest.resetsAt)
+  mockHeaders['urhq-ratelimit-unified-reset'] = String(furthest.resetsAt)
 
   // Add retry-after if rejected and no overage available
-  if (mockHeaders['anthropic-ratelimit-unified-status'] === 'rejected') {
+  if (mockHeaders['urhq-ratelimit-unified-status'] === 'rejected') {
     const overageStatus =
-      mockHeaders['anthropic-ratelimit-unified-overage-status']
+      mockHeaders['urhq-ratelimit-unified-overage-status']
     if (!overageStatus || overageStatus === 'rejected') {
       // Calculate seconds until reset
       const secondsUntilReset = Math.max(
@@ -247,7 +247,7 @@ function updateRepresentativeClaim(): void {
 
 // Add function to add exceeded limit with custom reset time
 export function addExceededLimit(
-  type: 'five_hour' | 'seven_day' | 'seven_day_opus' | 'seven_day_sonnet',
+  type: 'five_hour' | 'seven_day' | 'seven_day_modelO' | 'seven_day_modelS',
   hoursFromNow: number,
 ): void {
   if (process.env.USER_TYPE !== 'ant') {
@@ -263,7 +263,7 @@ export function addExceededLimit(
 
   // Update status to rejected if we have exceeded limits
   if (exceededLimits.length > 0) {
-    mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
+    mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
   }
 
   updateRepresentativeClaim()
@@ -293,29 +293,29 @@ export function setMockEarlyWarning(
   const hours = hoursFromNow ?? defaultHours
   const resetsAt = Math.floor(Date.now() / 1000) + hours * 3600
 
-  mockHeaders[`anthropic-ratelimit-unified-${claimAbbrev}-utilization`] =
+  mockHeaders[`urhq-ratelimit-unified-${claimAbbrev}-utilization`] =
     String(utilization)
-  mockHeaders[`anthropic-ratelimit-unified-${claimAbbrev}-reset`] =
+  mockHeaders[`urhq-ratelimit-unified-${claimAbbrev}-reset`] =
     String(resetsAt)
   // Set the surpassed-threshold header to trigger early warning
   mockHeaders[
-    `anthropic-ratelimit-unified-${claimAbbrev}-surpassed-threshold`
+    `urhq-ratelimit-unified-${claimAbbrev}-surpassed-threshold`
   ] = String(utilization)
 
   // Set status to allowed so early warning logic can upgrade it
-  if (!mockHeaders['anthropic-ratelimit-unified-status']) {
-    mockHeaders['anthropic-ratelimit-unified-status'] = 'allowed'
+  if (!mockHeaders['urhq-ratelimit-unified-status']) {
+    mockHeaders['urhq-ratelimit-unified-status'] = 'allowed'
   }
 }
 
 // Clear mock early warning headers
 export function clearMockEarlyWarning(): void {
-  delete mockHeaders['anthropic-ratelimit-unified-5h-utilization']
-  delete mockHeaders['anthropic-ratelimit-unified-5h-reset']
-  delete mockHeaders['anthropic-ratelimit-unified-5h-surpassed-threshold']
-  delete mockHeaders['anthropic-ratelimit-unified-7d-utilization']
-  delete mockHeaders['anthropic-ratelimit-unified-7d-reset']
-  delete mockHeaders['anthropic-ratelimit-unified-7d-surpassed-threshold']
+  delete mockHeaders['urhq-ratelimit-unified-5h-utilization']
+  delete mockHeaders['urhq-ratelimit-unified-5h-reset']
+  delete mockHeaders['urhq-ratelimit-unified-5h-surpassed-threshold']
+  delete mockHeaders['urhq-ratelimit-unified-7d-utilization']
+  delete mockHeaders['urhq-ratelimit-unified-7d-reset']
+  delete mockHeaders['urhq-ratelimit-unified-7d-surpassed-threshold']
 }
 
 export function setMockRateLimitScenario(scenario: MockScenario): void {
@@ -354,29 +354,29 @@ export function setMockRateLimitScenario(scenario: MockScenario): void {
   switch (scenario) {
     case 'normal':
       mockHeaders = {
-        'anthropic-ratelimit-unified-status': 'allowed',
-        'anthropic-ratelimit-unified-reset': String(fiveHoursFromNow),
+        'urhq-ratelimit-unified-status': 'allowed',
+        'urhq-ratelimit-unified-reset': String(fiveHoursFromNow),
       }
       break
 
     case 'session-limit-reached':
       exceededLimits = [{ type: 'five_hour', resetsAt: fiveHoursFromNow }]
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
       break
 
     case 'approaching-weekly-limit':
       mockHeaders = {
-        'anthropic-ratelimit-unified-status': 'allowed_warning',
-        'anthropic-ratelimit-unified-reset': String(sevenDaysFromNow),
-        'anthropic-ratelimit-unified-representative-claim': 'seven_day',
+        'urhq-ratelimit-unified-status': 'allowed_warning',
+        'urhq-ratelimit-unified-reset': String(sevenDaysFromNow),
+        'urhq-ratelimit-unified-representative-claim': 'seven_day',
       }
       break
 
     case 'weekly-limit-reached':
       exceededLimits = [{ type: 'seven_day', resetsAt: sevenDaysFromNow }]
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
       break
 
     case 'overage-active': {
@@ -385,13 +385,13 @@ export function setMockRateLimitScenario(scenario: MockScenario): void {
         exceededLimits = [{ type: 'five_hour', resetsAt: fiveHoursFromNow }]
       }
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-status'] = 'allowed'
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-status'] = 'allowed'
       // Set overage reset time (monthly)
       const endOfMonthActive = new Date()
       endOfMonthActive.setMonth(endOfMonthActive.getMonth() + 1, 1)
       endOfMonthActive.setHours(0, 0, 0, 0)
-      mockHeaders['anthropic-ratelimit-unified-overage-reset'] = String(
+      mockHeaders['urhq-ratelimit-unified-overage-reset'] = String(
         Math.floor(endOfMonthActive.getTime() / 1000),
       )
       break
@@ -403,14 +403,14 @@ export function setMockRateLimitScenario(scenario: MockScenario): void {
         exceededLimits = [{ type: 'five_hour', resetsAt: fiveHoursFromNow }]
       }
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-status'] =
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-status'] =
         'allowed_warning'
       // Overage typically resets monthly, but for demo let's say end of month
       const endOfMonth = new Date()
       endOfMonth.setMonth(endOfMonth.getMonth() + 1, 1)
       endOfMonth.setHours(0, 0, 0, 0)
-      mockHeaders['anthropic-ratelimit-unified-overage-reset'] = String(
+      mockHeaders['urhq-ratelimit-unified-overage-reset'] = String(
         Math.floor(endOfMonth.getTime() / 1000),
       )
       break
@@ -422,14 +422,14 @@ export function setMockRateLimitScenario(scenario: MockScenario): void {
         exceededLimits = [{ type: 'five_hour', resetsAt: fiveHoursFromNow }]
       }
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-status'] = 'rejected'
       // Both subscription and overage are exhausted
       // Subscription resets based on the exceeded limit, overage resets monthly
       const endOfMonthExhausted = new Date()
       endOfMonthExhausted.setMonth(endOfMonthExhausted.getMonth() + 1, 1)
       endOfMonthExhausted.setHours(0, 0, 0, 0)
-      mockHeaders['anthropic-ratelimit-unified-overage-reset'] = String(
+      mockHeaders['urhq-ratelimit-unified-overage-reset'] = String(
         Math.floor(endOfMonthExhausted.getTime() / 1000),
       )
       break
@@ -442,14 +442,14 @@ export function setMockRateLimitScenario(scenario: MockScenario): void {
         exceededLimits = [{ type: 'five_hour', resetsAt: fiveHoursFromNow }]
       }
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-disabled-reason'] =
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-disabled-reason'] =
         'out_of_credits'
       const endOfMonth = new Date()
       endOfMonth.setMonth(endOfMonth.getMonth() + 1, 1)
       endOfMonth.setHours(0, 0, 0, 0)
-      mockHeaders['anthropic-ratelimit-unified-overage-reset'] = String(
+      mockHeaders['urhq-ratelimit-unified-overage-reset'] = String(
         Math.floor(endOfMonth.getTime() / 1000),
       )
       break
@@ -462,14 +462,14 @@ export function setMockRateLimitScenario(scenario: MockScenario): void {
         exceededLimits = [{ type: 'five_hour', resetsAt: fiveHoursFromNow }]
       }
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-disabled-reason'] =
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-disabled-reason'] =
         'org_service_zero_credit_limit'
       const endOfMonthZero = new Date()
       endOfMonthZero.setMonth(endOfMonthZero.getMonth() + 1, 1)
       endOfMonthZero.setHours(0, 0, 0, 0)
-      mockHeaders['anthropic-ratelimit-unified-overage-reset'] = String(
+      mockHeaders['urhq-ratelimit-unified-overage-reset'] = String(
         Math.floor(endOfMonthZero.getTime() / 1000),
       )
       break
@@ -482,14 +482,14 @@ export function setMockRateLimitScenario(scenario: MockScenario): void {
         exceededLimits = [{ type: 'five_hour', resetsAt: fiveHoursFromNow }]
       }
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-disabled-reason'] =
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-disabled-reason'] =
         'org_level_disabled_until'
       const endOfMonthHit = new Date()
       endOfMonthHit.setMonth(endOfMonthHit.getMonth() + 1, 1)
       endOfMonthHit.setHours(0, 0, 0, 0)
-      mockHeaders['anthropic-ratelimit-unified-overage-reset'] = String(
+      mockHeaders['urhq-ratelimit-unified-overage-reset'] = String(
         Math.floor(endOfMonthHit.getTime() / 1000),
       )
       break
@@ -502,14 +502,14 @@ export function setMockRateLimitScenario(scenario: MockScenario): void {
         exceededLimits = [{ type: 'five_hour', resetsAt: fiveHoursFromNow }]
       }
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-disabled-reason'] =
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-disabled-reason'] =
         'member_zero_credit_limit'
       const endOfMonthMember = new Date()
       endOfMonthMember.setMonth(endOfMonthMember.getMonth() + 1, 1)
       endOfMonthMember.setHours(0, 0, 0, 0)
-      mockHeaders['anthropic-ratelimit-unified-overage-reset'] = String(
+      mockHeaders['urhq-ratelimit-unified-overage-reset'] = String(
         Math.floor(endOfMonthMember.getTime() / 1000),
       )
       break
@@ -522,58 +522,58 @@ export function setMockRateLimitScenario(scenario: MockScenario): void {
         exceededLimits = [{ type: 'five_hour', resetsAt: fiveHoursFromNow }]
       }
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-status'] = 'rejected'
-      mockHeaders['anthropic-ratelimit-unified-overage-disabled-reason'] =
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-overage-disabled-reason'] =
         'seat_tier_zero_credit_limit'
       const endOfMonthSeatTier = new Date()
       endOfMonthSeatTier.setMonth(endOfMonthSeatTier.getMonth() + 1, 1)
       endOfMonthSeatTier.setHours(0, 0, 0, 0)
-      mockHeaders['anthropic-ratelimit-unified-overage-reset'] = String(
+      mockHeaders['urhq-ratelimit-unified-overage-reset'] = String(
         Math.floor(endOfMonthSeatTier.getTime() / 1000),
       )
       break
     }
 
-    case 'opus-limit': {
-      exceededLimits = [{ type: 'seven_day_opus', resetsAt: sevenDaysFromNow }]
+    case 'modelO-limit': {
+      exceededLimits = [{ type: 'seven_day_modelO', resetsAt: sevenDaysFromNow }]
       updateRepresentativeClaim()
       // Always send 429 rejected status - the error handler will decide whether
       // to show an error or return NO_RESPONSE_REQUESTED based on fallback eligibility
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
       break
     }
 
-    case 'opus-warning': {
+    case 'modelO-warning': {
       mockHeaders = {
-        'anthropic-ratelimit-unified-status': 'allowed_warning',
-        'anthropic-ratelimit-unified-reset': String(sevenDaysFromNow),
-        'anthropic-ratelimit-unified-representative-claim': 'seven_day_opus',
+        'urhq-ratelimit-unified-status': 'allowed_warning',
+        'urhq-ratelimit-unified-reset': String(sevenDaysFromNow),
+        'urhq-ratelimit-unified-representative-claim': 'seven_day_modelO',
       }
       break
     }
 
-    case 'sonnet-limit': {
+    case 'modelS-limit': {
       exceededLimits = [
-        { type: 'seven_day_sonnet', resetsAt: sevenDaysFromNow },
+        { type: 'seven_day_modelS', resetsAt: sevenDaysFromNow },
       ]
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
       break
     }
 
-    case 'sonnet-warning': {
+    case 'modelS-warning': {
       mockHeaders = {
-        'anthropic-ratelimit-unified-status': 'allowed_warning',
-        'anthropic-ratelimit-unified-reset': String(sevenDaysFromNow),
-        'anthropic-ratelimit-unified-representative-claim': 'seven_day_sonnet',
+        'urhq-ratelimit-unified-status': 'allowed_warning',
+        'urhq-ratelimit-unified-reset': String(sevenDaysFromNow),
+        'urhq-ratelimit-unified-representative-claim': 'seven_day_modelS',
       }
       break
     }
 
     case 'fast-mode-limit': {
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
       // Duration in ms (> 20s threshold to trigger cooldown)
       mockFastModeRateLimitDurationMs = 10 * 60 * 1000
       break
@@ -581,7 +581,7 @@ export function setMockRateLimitScenario(scenario: MockScenario): void {
 
     case 'fast-mode-short-limit': {
       updateRepresentativeClaim()
-      mockHeaders['anthropic-ratelimit-unified-status'] = 'rejected'
+      mockHeaders['urhq-ratelimit-unified-status'] = 'rejected'
       // Duration in ms (< 20s threshold, won't trigger cooldown)
       mockFastModeRateLimitDurationMs = 10 * 1000
       break
@@ -648,7 +648,7 @@ export function getMockStatus(): string {
     if (value !== undefined) {
       // Format the header name nicely
       const formattedKey = key
-        .replace('anthropic-ratelimit-unified-', '')
+        .replace('urhq-ratelimit-unified-', '')
         .replace(/-/g, ' ')
         .replace(/\b\w/g, c => c.toUpperCase())
 
@@ -725,16 +725,16 @@ export function getCurrentMockScenario(): MockScenario | null {
   // Reverse lookup the scenario from current headers
   if (!mockHeaders) return null
 
-  const status = mockHeaders['anthropic-ratelimit-unified-status']
-  const overage = mockHeaders['anthropic-ratelimit-unified-overage-status']
-  const claim = mockHeaders['anthropic-ratelimit-unified-representative-claim']
+  const status = mockHeaders['urhq-ratelimit-unified-status']
+  const overage = mockHeaders['urhq-ratelimit-unified-overage-status']
+  const claim = mockHeaders['urhq-ratelimit-unified-representative-claim']
 
-  if (claim === 'seven_day_opus') {
-    return status === 'rejected' ? 'opus-limit' : 'opus-warning'
+  if (claim === 'seven_day_modelO') {
+    return status === 'rejected' ? 'modelO-limit' : 'modelO-warning'
   }
 
-  if (claim === 'seven_day_sonnet') {
-    return status === 'rejected' ? 'sonnet-limit' : 'sonnet-warning'
+  if (claim === 'seven_day_modelS') {
+    return status === 'rejected' ? 'modelS-limit' : 'modelS-warning'
   }
 
   if (overage === 'rejected') return 'overage-exhausted'
@@ -781,14 +781,14 @@ export function getScenarioDescription(scenario: MockScenario): string {
       return 'Member limit is zero (admin can allocate more)'
     case 'seat-tier-zero-credit-limit':
       return 'Seat tier limit is zero (admin can allocate more)'
-    case 'opus-limit':
-      return 'Opus limit reached'
-    case 'opus-warning':
-      return 'Approaching Opus limit'
-    case 'sonnet-limit':
-      return 'Sonnet limit reached'
-    case 'sonnet-warning':
-      return 'Approaching Sonnet limit'
+    case 'modelO-limit':
+      return 'modelO limit reached'
+    case 'modelO-warning':
+      return 'Approaching modelO limit'
+    case 'modelS-limit':
+      return 'modelS limit reached'
+    case 'modelS-warning':
+      return 'Approaching modelS limit'
     case 'fast-mode-limit':
       return 'Fast mode rate limit'
     case 'fast-mode-short-limit':

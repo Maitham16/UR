@@ -1,9 +1,9 @@
 /**
- * Shared command prefix extraction using Haiku LLM
+ * Shared command prefix extraction using modelH LLM
  *
  * This module provides a factory for creating command prefix extractors
  * that can be used by different shell tools. The core logic
- * (Haiku query, response validation) is shared, while tool-specific
+ * (modelH query, response validation) is shared, while tool-specific
  * aspects (examples, pre-checks) are configurable.
  */
 
@@ -14,7 +14,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
-import { queryHaiku } from '../../services/api/claude.js'
+import { querymodelH } from '../../services/api/ur.js'
 import { startsWithApiErrorPrefix } from '../../services/api/errors.js'
 import { memoizeWithLRU } from '../memoize.js'
 import { jsonStringify } from '../slowOperations.js'
@@ -65,7 +65,7 @@ export type PrefixExtractorConfig = {
   /** Tool name for logging and warning messages */
   toolName: string
 
-  /** The policy spec containing examples for Haiku */
+  /** The policy spec containing examples for modelH */
   policySpec: string
   /** Analytics event name for logging */
   eventName: string
@@ -73,7 +73,7 @@ export type PrefixExtractorConfig = {
   /** Query source identifier for the API call */
   querySource: QuerySource
 
-  /** Optional pre-check function that can short-circuit the Haiku call */
+  /** Optional pre-check function that can short-circuit the modelH call */
   preCheck?: (command: string) => CommandPrefixResult | null
 }
 
@@ -82,7 +82,7 @@ export type PrefixExtractorConfig = {
  *
  * Uses two-layer memoization: the outer memoized function creates the promise
  * and attaches a .catch handler that evicts the cache entry on rejection.
- * This prevents aborted or failed Haiku calls from poisoning future lookups.
+ * This prevents aborted or failed modelH calls from poisoning future lookups.
  *
  * Bounded to 200 entries via LRU to prevent unbounded growth in heavy sessions.
  *
@@ -199,7 +199,7 @@ async function getCommandPrefixImpl(
     // Log a warning if the pre-flight check takes too long
     preflightCheckTimeoutId = setTimeout(
       (tn, nonInteractive) => {
-        const message = `[${tn}Tool] Pre-flight check is taking longer than expected. Run with ANTHROPIC_LOG=debug to check for failed or slow API requests.`
+        const message = `[${tn}Tool] Pre-flight check is taking longer than expected. Run with URHQ_LOG=debug to check for failed or slow API requests.`
         if (nonInteractive) {
           process.stderr.write(jsonStringify({ level: 'warn', message }) + '\n')
         } else {
@@ -217,7 +217,7 @@ async function getCommandPrefixImpl(
       false,
     )
 
-    const response = await queryHaiku({
+    const response = await querymodelH({
       systemPrompt: asSystemPrompt(
         useSystemPromptPolicySpec
           ? [
@@ -262,7 +262,7 @@ async function getCommandPrefixImpl(
       })
       result = null
     } else if (prefix === 'command_injection_detected') {
-      // Haiku detected something suspicious - treat as no prefix available
+      // modelH detected something suspicious - treat as no prefix available
       logEvent(eventName, {
         success: false,
         error:

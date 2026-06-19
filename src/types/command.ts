@@ -1,4 +1,4 @@
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ContentBlockParam } from '@urhq-ai/sdk/resources/index.mjs'
 import type { UUID } from 'crypto'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import type { CompactionResult } from '../services/compact/compact.js'
@@ -167,7 +167,7 @@ type LocalJSXCommand = {
  * but hides it from custom base URL users.
  */
 export type CommandAvailability =
-  | 'claude-ai'
+  | 'ur-ai'
   | 'console'
 
 export type CommandBase = {

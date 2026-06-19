@@ -57,7 +57,7 @@ Settings load in order: user → project → local (later overrides earlier).
 ### Model & Agent
 \`\`\`json
 {
-  "model": "sonnet",  // or "opus", "haiku", full model ID
+  "model": "modelS",  // or "modelO", "modelH", full model ID
   "agent": "agent-name",
   "alwaysThinkingEnabled": true
 }
@@ -87,11 +87,11 @@ Set \`commit\` or \`pr\` to empty string \`""\` to hide that attribution.
 \`\`\`json
 {
   "enabledPlugins": {
-    "formatter@anthropic-tools": true
+    "formatter@urhq-tools": true
   }
 }
 \`\`\`
-Plugin syntax: \`plugin-name@source\` where source is \`ur-marketplace\`, \`claude-plugins-official\`, or \`builtin\`.
+Plugin syntax: \`plugin-name@source\` where source is \`ur-marketplace\`, \`ur-plugins-official\`, or \`builtin\`.
 
 ### Other Settings
 - \`language\`: Preferred response language (e.g., "japanese")
@@ -446,7 +446,7 @@ export function registerUpdateConfigSkill(): void {
   registerBundledSkill({
     name: 'update-config',
     description:
-      'Use this skill to configure the UR harness via settings.json. Automated behaviors ("from now on when X", "each time X", "whenever X", "before/after X") require hooks configured in settings.json - the harness executes these, not UR, so memory/preferences cannot fulfill them. Also use for: permissions ("allow X", "add permission", "move permission to"), env vars ("set X=Y"), hook troubleshooting, or any changes to settings.json/settings.local.json files. Examples: "allow npm commands", "add bq permission to global settings", "move permission to user settings", "set DEBUG=true", "when claude stops show X". For simple settings like theme/model, use Config tool.',
+      'Use this skill to configure the UR harness via settings.json. Automated behaviors ("from now on when X", "each time X", "whenever X", "before/after X") require hooks configured in settings.json - the harness executes these, not UR, so memory/preferences cannot fulfill them. Also use for: permissions ("allow X", "add permission", "move permission to"), env vars ("set X=Y"), hook troubleshooting, or any changes to settings.json/settings.local.json files. Examples: "allow npm commands", "add bq permission to global settings", "move permission to user settings", "set DEBUG=true", "when ur stops show X". For simple settings like theme/model, use Config tool.',
     allowedTools: ['Read'],
     userInvocable: true,
     async getPromptForCommand(args) {

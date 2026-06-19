@@ -129,7 +129,7 @@ export async function getSessionPluginCachePath(): Promise<string> {
   if (!sessionPluginCachePromise) {
     sessionPluginCachePromise = (async () => {
       const suffix = randomBytes(8).toString('hex')
-      const dir = join(tmpdir(), `claude-plugin-session-${suffix}`)
+      const dir = join(tmpdir(), `ur-plugin-session-${suffix}`)
       await getFsImplementation().mkdir(dir)
       sessionPluginCachePath = dir
       logForDebugging(`Created session plugin cache at ${dir}`)
@@ -254,7 +254,7 @@ async function collectFilesForZip(
   // same JS number, causing subdirs to be silently skipped as "cycles". This
   // broke the round-trip test on Windows CI when sharding shuffled which tests
   // ran first and pushed MFT sequence numbers over the precision cliff.
-  // See also: markdownConfigLoader.ts getFileIdentity, anthropics/ur#13893
+  // See also: markdownConfigLoader.ts getFileIdentity, urhqs/ur#13893
   try {
     const dirStat = await stat(currentDir, { bigint: true })
     // ReFS (Dev Drive), NFS, some FUSE mounts report dev=0 and ino=0 for

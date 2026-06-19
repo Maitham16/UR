@@ -23,7 +23,7 @@ import { OAuthService } from '../../services/oauth/index.js'
 import type { OAuthTokens } from '../../services/oauth/types.js'
 import {
   clearOAuthTokenCache,
-  getAnthropicApiKeyWithSource,
+  getURHQApiKeyWithSource,
   getAuthTokenSource,
   getOauthAccountInfo,
   getSubscriptionType,
@@ -114,25 +114,25 @@ export async function authLogin({
   email,
   sso,
   console: useConsole,
-  claudeai,
+  urai,
 }: {
   email?: string
   sso?: boolean
   console?: boolean
-  claudeai?: boolean
+  urai?: boolean
 }): Promise<void> {
-  if (useConsole && claudeai) {
+  if (useConsole && urai) {
     process.stderr.write(
-      'Error: --console and --claudeai cannot be used together.\n',
+      'Error: --console and --urai cannot be used together.\n',
     )
     process.exit(1)
   }
 
   const settings = getInitialSettings()
   // forceLoginMethod is a hard constraint (enterprise setting) — matches ConsoleOAuthFlow behavior.
-  // Without it, --console selects Console; --claudeai (or no flag) selects ur.ai.
+  // Without it, --console selects Console; --urai (or no flag) selects ur.ai.
   const loginWithURAi = settings.forceLoginMethod
-    ? settings.forceLoginMethod === 'claudeai'
+    ? settings.forceLoginMethod === 'urai'
     : !useConsole
   const orgUUID = settings.forceLoginOrgUUID
 
@@ -235,7 +235,7 @@ export async function authStatus(opts: {
   text?: boolean
 }): Promise<void> {
   const { source: authTokenSource, hasToken } = getAuthTokenSource()
-  const { source: apiKeySource } = getAnthropicApiKeyWithSource()
+  const { source: apiKeySource } = getURHQApiKeyWithSource()
   const hasApiKeyEnvVar =
     !!undefined && !isRunningOnHomespace()
   const oauthAccount = getOauthAccountInfo()
@@ -248,16 +248,16 @@ export async function authStatus(opts: {
   let authMethod: string = 'none'
   if (using3P) {
     authMethod = 'third_party'
-  } else if (authTokenSource === 'claude.ai') {
-    authMethod = 'claude.ai'
+  } else if (authTokenSource === 'ur.ai') {
+    authMethod = 'ur.ai'
   } else if (authTokenSource === 'apiKeyHelper') {
     authMethod = 'api_key_helper'
   } else if (authTokenSource !== 'none') {
     authMethod = 'oauth_token'
-  } else if (apiKeySource === 'ANTHROPIC_API_KEY' || hasApiKeyEnvVar) {
+  } else if (apiKeySource === 'URHQ_API_KEY' || hasApiKeyEnvVar) {
     authMethod = 'api_key'
   } else if (apiKeySource === '/login managed key') {
-    authMethod = 'claude.ai'
+    authMethod = 'ur.ai'
   }
 
   if (opts.text) {
@@ -284,7 +284,7 @@ export async function authStatus(opts: {
       }
     }
     if (!hasAuthProperty && hasApiKeyEnvVar) {
-      process.stdout.write('API key: ANTHROPIC_API_KEY\n')
+      process.stdout.write('API key: URHQ_API_KEY\n')
     }
     if (!loggedIn) {
       process.stdout.write(
@@ -297,7 +297,7 @@ export async function authStatus(opts: {
       apiKeySource !== 'none'
         ? apiKeySource
         : hasApiKeyEnvVar
-          ? 'ANTHROPIC_API_KEY'
+          ? 'URHQ_API_KEY'
           : null
     const output: Record<string, string | boolean | null> = {
       loggedIn,
@@ -307,7 +307,7 @@ export async function authStatus(opts: {
     if (resolvedApiKeySource) {
       output.apiKeySource = resolvedApiKeySource
     }
-    if (authMethod === 'claude.ai') {
+    if (authMethod === 'ur.ai') {
       output.email = oauthAccount?.emailAddress ?? null
       output.orgId = oauthAccount?.organizationUuid ?? null
       output.orgName = oauthAccount?.organizationName ?? null
@@ -326,6 +326,6 @@ export async function authLogout(): Promise<void> {
     process.stderr.write('Failed to log out.\n')
     process.exit(1)
   }
-  process.stdout.write('Successfully logged out from your Anthropic account.\n')
+  process.stdout.write('Successfully logged out from your URHQ account.\n')
   process.exit(0)
 }

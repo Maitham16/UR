@@ -70,14 +70,14 @@ import type {
   ContentBlockParam,
   ImageBlockParam,
   Base64ImageSource,
-} from '@anthropic-ai/sdk/resources/messages.mjs'
+} from '@urhq-ai/sdk/resources/messages.mjs'
 import { maybeResizeAndDownsampleImageBlock } from './imageResizer.js'
 import type { PastedContent } from './config.js'
 import { getGlobalConfig } from './config.js'
 import {
-  getDefaultSonnetModel,
-  getDefaultHaikuModel,
-  getDefaultOpusModel,
+  getDefaultmodelSModel,
+  getDefaultmodelHModel,
+  getDefaultmodelOModel,
 } from './model/model.js'
 import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js'
 import { getSkillToolCommands, getMcpSkillCommands } from '../commands.js'
@@ -877,7 +877,7 @@ export async function getAttachments(
     // Inter-turn skill discovery now runs via startSkillDiscoveryPrefetch
     // (query.ts, concurrent with the main turn). The blocking call that
     // previously lived here was the assistant_turn signal — 97% of those
-    // Haiku calls found nothing in prod. Prefetch + await-at-collection
+    // modelH calls found nothing in prod. Prefetch + await-at-collection
     // replaces it; see src/services/skillSearch/prefetch.ts.
     maybe('plan_mode', () => getPlanModeAttachments(messages, toolUseContext)),
     maybe('plan_mode_exit', () => getPlanModeExitAttachment(toolUseContext)),
@@ -1647,7 +1647,7 @@ async function getSelectedLinesFromIDE(
 /**
  * Computes the directories to process for nested memory file loading.
  * Returns two lists:
- * - nestedDirs: Directories between CWD and targetPath (processed for CLAUDE.md + all rules)
+ * - nestedDirs: Directories between CWD and targetPath (processed for UR.md + all rules)
  * - cwdLevelDirs: Directories from root to CWD (processed for conditional rules only)
  *
  * @param targetPath The target file path
@@ -1719,7 +1719,7 @@ export function memoryFilesToAttachments(
   for (const memoryFile of memoryFiles) {
     // Dedup: loadedNestedMemoryPaths is a non-evicting Set; readFileState
     // is a 100-entry LRU that drops entries in busy sessions, so relying
-    // on it alone re-injects the same CLAUDE.md on every eviction cycle.
+    // on it alone re-injects the same UR.md on every eviction cycle.
     if (toolUseContext.loadedNestedMemoryPaths?.has(memoryFile.path)) {
       continue
     }
@@ -1777,12 +1777,12 @@ export function memoryFilesToAttachments(
 
 /**
  * Loads nested memory files for a given file path and returns them as attachments.
- * This function performs directory traversal to find CLAUDE.md files and conditional rules
+ * This function performs directory traversal to find UR.md files and conditional rules
  * that apply to the target file path.
  *
  * Processing order (must be preserved):
  * 1. Managed/User conditional rules matching targetPath
- * 2. Nested directories (CWD → target): CLAUDE.md + unconditional + conditional rules
+ * 2. Nested directories (CWD → target): UR.md + unconditional + conditional rules
  * 3. CWD-level directories (root → CWD): conditional rules only
  *
  * @param filePath The file path to get nested memory files for
@@ -1827,7 +1827,7 @@ async function getNestedMemoryAttachmentsForFile(
     )
 
     // Phase 3: Process nested directories (CWD → target)
-    // Each directory gets: CLAUDE.md + unconditional rules + conditional rules
+    // Each directory gets: UR.md + unconditional rules + conditional rules
     for (const dir of nestedDirs) {
       const memoryFiles = (
         await getMemoryFilesForNestedDirectory(dir, filePath, processedPaths)
@@ -2162,7 +2162,7 @@ export async function getChangedFiles(
 }
 
 /**
- * Processes paths that need nested memory attachments and checks for nested CLAUDE.md files
+ * Processes paths that need nested memory attachments and checks for nested UR.md files
  * Uses nestedMemoryAttachmentTriggers field from ToolUseContext
  */
 async function getNestedMemoryAttachments(
@@ -2224,7 +2224,7 @@ async function getRelevantMemoryAttachments(
       ).catch(() => []),
     ),
   )
-  // alreadySurfaced is filtered inside the selector so Sonnet spends its
+  // alreadySurfaced is filtered inside the selector so modelS spends its
   // 5-slot budget on fresh candidates; readFileState catches files the
   // model read via FileReadTool. The redundant alreadySurfaced check here
   // is a belt-and-suspenders guard (multi-dir results may re-introduce a

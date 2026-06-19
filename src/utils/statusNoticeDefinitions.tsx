@@ -7,7 +7,7 @@ import { getCwd } from './cwd.js';
 import { relative } from 'path';
 import { formatNumber } from './format.js';
 import type { getGlobalConfig } from './config.js';
-import { getAnthropicApiKeyWithSource, getApiKeyFromConfigOrMacOSKeychain, getAuthTokenSource, isURAISubscriber } from './auth.js';
+import { getURHQApiKeyWithSource, getApiKeyFromConfigOrMacOSKeychain, getAuthTokenSource, isURAISubscriber } from './auth.js';
 import type { AgentDefinitionsResult } from '../tools/AgentTool/loadAgentsDir.js';
 import { getAgentDescriptionsTotalTokens, AGENT_DESCRIPTIONS_THRESHOLD } from './statusNoticeHelpers.js';
 import { isSupportedJetBrainsTerminal, toIDEDisplayName, getTerminalIdeType } from './ide.js';
@@ -51,11 +51,11 @@ const largeMemoryFilesNotice: StatusNoticeDefinition = {
   }
 };
 const urAiSubscriberExternalTokenNotice: StatusNoticeDefinition = {
-  id: 'claude-ai-external-token',
+  id: 'ur-ai-external-token',
   type: 'warning',
   isActive: () => {
     const authTokenInfo = getAuthTokenSource();
-    return isURAISubscriber() && (authTokenInfo.source === 'ANTHROPIC_AUTH_TOKEN' || authTokenInfo.source === 'apiKeyHelper');
+    return isURAISubscriber() && (authTokenInfo.source === 'URHQ_AUTH_TOKEN' || authTokenInfo.source === 'apiKeyHelper');
   },
   render: () => {
     const authTokenInfo = getAuthTokenSource();
@@ -75,21 +75,21 @@ const apiKeyConflictNotice: StatusNoticeDefinition = {
   isActive: () => {
     const {
       source: apiKeySource
-    } = getAnthropicApiKeyWithSource({
+    } = getURHQApiKeyWithSource({
       skipRetrievingKeyFromApiKeyHelper: true
     });
-    return !!getApiKeyFromConfigOrMacOSKeychain() && (apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper');
+    return !!getApiKeyFromConfigOrMacOSKeychain() && (apiKeySource === 'URHQ_API_KEY' || apiKeySource === 'apiKeyHelper');
   },
   render: () => {
     const {
       source: apiKeySource
-    } = getAnthropicApiKeyWithSource({
+    } = getURHQApiKeyWithSource({
       skipRetrievingKeyFromApiKeyHelper: true
     });
     return <Box flexDirection="row" marginTop={1}>
         <Text color="warning">{figures.warning}</Text>
         <Text color="warning">
-          Auth conflict: Using {apiKeySource} instead of Anthropic Console key.
+          Auth conflict: Using {apiKeySource} instead of URHQ Console key.
           Either unset {apiKeySource}, or run `ur /logout`.
         </Text>
       </Box>;
@@ -101,7 +101,7 @@ const bothAuthMethodsNotice: StatusNoticeDefinition = {
   isActive: () => {
     const {
       source: apiKeySource
-    } = getAnthropicApiKeyWithSource({
+    } = getURHQApiKeyWithSource({
       skipRetrievingKeyFromApiKeyHelper: true
     });
     const authTokenInfo = getAuthTokenSource();
@@ -110,7 +110,7 @@ const bothAuthMethodsNotice: StatusNoticeDefinition = {
   render: () => {
     const {
       source: apiKeySource
-    } = getAnthropicApiKeyWithSource({
+    } = getURHQApiKeyWithSource({
       skipRetrievingKeyFromApiKeyHelper: true
     });
     const authTokenInfo = getAuthTokenSource();
@@ -125,13 +125,13 @@ const bothAuthMethodsNotice: StatusNoticeDefinition = {
         <Box flexDirection="column" marginLeft={3}>
           <Text color="warning">
             · Trying to use{' '}
-            {authTokenInfo.source === 'claude.ai' ? 'claude.ai' : authTokenInfo.source}
+            {authTokenInfo.source === 'ur.ai' ? 'ur.ai' : authTokenInfo.source}
             ?{' '}
-            {apiKeySource === 'ANTHROPIC_API_KEY' ? 'Unset the ANTHROPIC_API_KEY environment variable, or ur /logout then say "No" to the API key approval before login.' : apiKeySource === 'apiKeyHelper' ? 'Unset the apiKeyHelper setting.' : 'ur /logout'}
+            {apiKeySource === 'URHQ_API_KEY' ? 'Unset the URHQ_API_KEY environment variable, or ur /logout then say "No" to the API key approval before login.' : apiKeySource === 'apiKeyHelper' ? 'Unset the apiKeyHelper setting.' : 'ur /logout'}
           </Text>
           <Text color="warning">
             · Trying to use {apiKeySource}?{' '}
-            {authTokenInfo.source === 'claude.ai' ? 'ur /logout to sign out.' : `Unset the ${authTokenInfo.source} environment variable.`}
+            {authTokenInfo.source === 'ur.ai' ? 'ur /logout to sign out.' : `Unset the ${authTokenInfo.source} environment variable.`}
           </Text>
         </Box>
       </Box>;
@@ -182,7 +182,7 @@ const jetbrainsPluginNotice: StatusNoticeDefinition = {
         <Text>
           Install the <Text color="ide">{ideName}</Text> plugin from the
           JetBrains Marketplace:{' '}
-          <Text bold>https://docs.claude.com/s/ur-jetbrains</Text>
+          <Text bold>https://docs.ur.com/s/ur-jetbrains</Text>
         </Text>
       </Box>;
   }

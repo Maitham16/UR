@@ -278,14 +278,14 @@ export function getWebSocketProxyUrl(url: string): string | undefined {
  * Get fetch options for the UR SDK with proxy and mTLS configuration
  * Returns fetch options with appropriate dispatcher for proxy and/or mTLS
  *
- * @param opts.forAnthropicAPI - Enables ANTHROPIC_UNIX_SOCKET tunneling. This
+ * @param opts.forURHQAPI - Enables URHQ_UNIX_SOCKET tunneling. This
  *   env var is set by `ur ssh` on the remote CLI to route API calls through
  *   an ssh -R forwarded unix socket to a local auth proxy. It MUST NOT leak
  *   into non-UR-API fetch paths (MCP HTTP/SSE transports, etc.) or those
  *   requests get misrouted. Only the UR SDK client
  *   should pass `true` here.
  */
-export function getProxyFetchOptions(opts?: { forAnthropicAPI?: boolean }): {
+export function getProxyFetchOptions(opts?: { forURHQAPI?: boolean }): {
   tls?: TLSConfig
   dispatcher?: undici.Dispatcher
   proxy?: string
@@ -294,11 +294,11 @@ export function getProxyFetchOptions(opts?: { forAnthropicAPI?: boolean }): {
 } {
   const base = keepAliveDisabled ? ({ keepalive: false } as const) : {}
 
-  // ANTHROPIC_UNIX_SOCKET tunnels through the `ur ssh` auth proxy, which
+  // URHQ_UNIX_SOCKET tunnels through the `ur ssh` auth proxy, which
   // hardcodes the upstream to the UR API. Scope to the UR API
   // client so MCP/SSE/other callers don't get their requests misrouted.
-  if (opts?.forAnthropicAPI) {
-    const unixSocket = process.env.ANTHROPIC_UNIX_SOCKET
+  if (opts?.forURHQAPI) {
+    const unixSocket = process.env.URHQ_UNIX_SOCKET
     if (unixSocket && typeof Bun !== 'undefined') {
       return { ...base, unix: unixSocket }
     }

@@ -30,7 +30,7 @@ export function getDefaultSubagentModel(): string {
  * Get the effective model string for an agent.
  *
  * For Bedrock, if the parent model uses a cross-region inference prefix (e.g., "eu.", "us."),
- * that prefix is inherited by subagents using alias models (e.g., "sonnet", "haiku", "opus").
+ * that prefix is inherited by subagents using alias models (e.g., "modelS", "modelH", "modelO").
  * This ensures subagents use the same region as the parent, which is necessary when
  * IAM permissions are scoped to specific cross-region inference profiles.
  */
@@ -52,7 +52,7 @@ export function getAgentModel(
   // Helper to apply parent region prefix for Bedrock models.
   // `originalSpec` is the raw model string before resolution (alias or full ID).
   // If the user explicitly specified a full model ID that already carries its own
-  // region prefix (e.g., "eu.anthropic.…"), we preserve it instead of overwriting
+  // region prefix (e.g., "eu.urhq.…"), we preserve it instead of overwriting
   // with the parent's prefix. This prevents silent data-residency violations when
   // an agent config intentionally pins to a different region than the parent.
   const applyParentRegionPrefix = (
@@ -79,7 +79,7 @@ export function getAgentModel(
 
   if (agentModelWithExp === 'inherit') {
     // Apply runtime model resolution for inherit to get the effective model
-    // This ensures agents using 'inherit' get opusplan→Opus resolution in plan mode
+    // This ensures agents using 'inherit' get modelOplan→modelO resolution in plan mode
     return getRuntimeMainLoopModel({
       permissionMode: permissionMode ?? 'default',
       mainLoopModel: parentModel,
@@ -95,26 +95,26 @@ export function getAgentModel(
 }
 
 /**
- * Check if a bare family alias (opus/sonnet/haiku) matches the parent model's
+ * Check if a bare family alias (modelO/modelS/modelH) matches the parent model's
  * tier. When it does, the subagent inherits the parent's exact model string
  * instead of resolving the alias to a provider default.
  *
- * Prevents surprising downgrades: a Vertex user on Opus 4.6 (via /model) who
- * spawns a subagent with `model: opus` should get Opus 4.6, not whatever
- * getDefaultOpusModel() returns for 3P.
+ * Prevents surprising downgrades: a Vertex user on modelO 4.6 (via /model) who
+ * spawns a subagent with `model: modelO` should get modelO 4.6, not whatever
+ * getDefaultmodelOModel() returns for 3P.
  *
- * Only bare family aliases match. `opus[1m]`, `best`, `opusplan` fall through
+ * Only bare family aliases match. `modelO[1m]`, `best`, `modelOplan` fall through
  * since they carry semantics beyond "same tier as parent".
  */
 function aliasMatchesParentTier(alias: string, parentModel: string): boolean {
   const canonical = getCanonicalName(parentModel)
   switch (alias.toLowerCase()) {
-    case 'opus':
-      return canonical.includes('opus')
-    case 'sonnet':
-      return canonical.includes('sonnet')
-    case 'haiku':
-      return canonical.includes('haiku')
+    case 'modelO':
+      return canonical.includes('modelO')
+    case 'modelS':
+      return canonical.includes('modelS')
+    case 'modelH':
+      return canonical.includes('modelH')
     default:
       return false
   }
@@ -133,18 +133,18 @@ export function getAgentModelDisplay(model: string | undefined): string {
 export function getAgentModelOptions(): AgentModelOption[] {
   return [
     {
-      value: 'sonnet',
-      label: 'Sonnet',
+      value: 'modelS',
+      label: 'modelS',
       description: 'Balanced performance - best for most agents',
     },
     {
-      value: 'opus',
-      label: 'Opus',
+      value: 'modelO',
+      label: 'modelO',
       description: 'Most capable for complex reasoning tasks',
     },
     {
-      value: 'haiku',
-      label: 'Haiku',
+      value: 'modelH',
+      label: 'modelH',
       description: 'Fast and efficient for simple tasks',
     },
     {

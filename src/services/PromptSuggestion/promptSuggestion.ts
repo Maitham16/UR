@@ -438,7 +438,7 @@ export function shouldFilterSuggestion(
         ),
     ],
     [
-      'claude_voice',
+      'ur_voice',
       () =>
         /^(let me|i'll|i've|i'm|i can|i would|i think|i notice|here's|here is|here are|that's|this is|this will|you can|you should|you could|sure,|of course|certainly)/i.test(
           suggestion,

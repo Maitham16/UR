@@ -33,7 +33,7 @@ import { isChromeExtensionInstalledPortable } from './setupPortable.js'
 
 const CHROME_EXTENSION_RECONNECT_URL = 'https://clau.de/chrome/reconnect'
 
-const NATIVE_HOST_IDENTIFIER = 'com.anthropic.ur_browser_extension'
+const NATIVE_HOST_IDENTIFIER = 'com.urhq.ur_browser_extension'
 const NATIVE_HOST_MANIFEST_NAME = `${NATIVE_HOST_IDENTIFIER}.json`
 
 export function shouldEnableURInChrome(chromeFlag?: boolean): boolean {
@@ -95,7 +95,7 @@ export function setupURInChrome(): {
 } {
   const isNativeBuild = isInBundledMode()
   const allowedTools = BROWSER_TOOLS.map(
-    tool => `mcp__claude-in-chrome__${tool.name}`,
+    tool => `mcp__ur-in-chrome__${tool.name}`,
   )
 
   const env: Record<string, string> = {}
@@ -126,7 +126,7 @@ export function setupURInChrome(): {
         [UR_IN_CHROME_MCP_SERVER_NAME]: {
           type: 'stdio' as const,
           command: process.execPath,
-          args: ['--claude-in-chrome-mcp'],
+          args: ['--ur-in-chrome-mcp'],
           scope: 'dynamic' as const,
           ...(hasEnv && { env }),
         },
@@ -156,7 +156,7 @@ export function setupURInChrome(): {
       [UR_IN_CHROME_MCP_SERVER_NAME]: {
         type: 'stdio' as const,
         command: process.execPath,
-        args: [`${cliPath}`, '--claude-in-chrome-mcp'],
+        args: [`${cliPath}`, '--ur-in-chrome-mcp'],
         scope: 'dynamic' as const,
         ...(hasEnv && { env }),
       },

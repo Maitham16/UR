@@ -2137,7 +2137,7 @@ export const getMarketplace = memoize(
       throw new Error(
         `Marketplace "${name}" has a relative source path (${entry.source.path}) ` +
           `in known_marketplaces.json — this is stale state from an older ` +
-          `UR version. Run 'claude marketplace remove ${name}' and ` +
+          `UR version. Run 'ur marketplace remove ${name}' and ` +
           `re-add it from the original project directory.`,
       )
     }
@@ -2530,7 +2530,7 @@ export async function refreshMarketplace(
             : redactUrlCredentials(source.url)
         const reason =
           name === 'ur-plugins'
-            ? `We've deprecated "ur-plugins" in favor of "claude-plugins-official".`
+            ? `We've deprecated "ur-plugins" in favor of "ur-plugins-official".`
             : `This marketplace may have been deprecated or moved to a new location.`
         throw new Error(
           `The marketplace.json file is no longer present in this repository.\n\n` +

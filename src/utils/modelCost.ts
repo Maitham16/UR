@@ -1,21 +1,21 @@
 // @ts-nocheck
-import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { BetaUsage as Usage } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 'src/services/analytics/index.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { setHasUnknownModelCost } from '../bootstrap/state.js'
 import { isFastModeEnabled } from './fastMode.js'
 import {
-  UR_3_5_HAIKU_CONFIG,
-  UR_3_5_V2_SONNET_CONFIG,
-  UR_3_7_SONNET_CONFIG,
-  UR_HAIKU_4_5_CONFIG,
-  UR_OPUS_4_1_CONFIG,
-  UR_OPUS_4_5_CONFIG,
-  UR_OPUS_4_6_CONFIG,
-  UR_OPUS_4_CONFIG,
-  UR_SONNET_4_5_CONFIG,
-  UR_SONNET_4_6_CONFIG,
-  UR_SONNET_4_CONFIG,
+  UR_3_5_MODELH_CONFIG,
+  UR_3_5_V2_MODELS_CONFIG,
+  UR_3_7_MODELS_CONFIG,
+  UR_MODELH_4_5_CONFIG,
+  UR_MODELO_4_1_CONFIG,
+  UR_MODELO_4_5_CONFIG,
+  UR_MODELO_4_6_CONFIG,
+  UR_MODELO_4_CONFIG,
+  UR_MODELS_4_5_CONFIG,
+  UR_MODELS_4_6_CONFIG,
+  UR_MODELS_4_CONFIG,
 } from './model/configs.js'
 import {
   firstPartyNameToCanonical,
@@ -34,7 +34,7 @@ export type ModelCosts = {
   webSearchRequests: number
 }
 
-// Standard pricing tier for Sonnet models: $3 input / $15 output per Mtok
+// Standard pricing tier for modelS models: $3 input / $15 output per Mtok
 export const COST_TIER_3_15 = {
   inputTokens: 3,
   outputTokens: 15,
@@ -43,7 +43,7 @@ export const COST_TIER_3_15 = {
   webSearchRequests: 0.01,
 } as const satisfies ModelCosts
 
-// Pricing tier for Opus 4/4.1: $15 input / $75 output per Mtok
+// Pricing tier for modelO 4/4.1: $15 input / $75 output per Mtok
 export const COST_TIER_15_75 = {
   inputTokens: 15,
   outputTokens: 75,
@@ -52,7 +52,7 @@ export const COST_TIER_15_75 = {
   webSearchRequests: 0.01,
 } as const satisfies ModelCosts
 
-// Pricing tier for Opus 4.5: $5 input / $25 output per Mtok
+// Pricing tier for modelO 4.5: $5 input / $25 output per Mtok
 export const COST_TIER_5_25 = {
   inputTokens: 5,
   outputTokens: 25,
@@ -61,7 +61,7 @@ export const COST_TIER_5_25 = {
   webSearchRequests: 0.01,
 } as const satisfies ModelCosts
 
-// Fast mode pricing for Opus 4.6: $30 input / $150 output per Mtok
+// Fast mode pricing for modelO 4.6: $30 input / $150 output per Mtok
 export const COST_TIER_30_150 = {
   inputTokens: 30,
   outputTokens: 150,
@@ -70,8 +70,8 @@ export const COST_TIER_30_150 = {
   webSearchRequests: 0.01,
 } as const satisfies ModelCosts
 
-// Pricing for Haiku 3.5: $0.80 input / $4 output per Mtok
-export const COST_HAIKU_35 = {
+// Pricing for modelH 3.5: $0.80 input / $4 output per Mtok
+export const COST_MODELH_35 = {
   inputTokens: 0.8,
   outputTokens: 4,
   promptCacheWriteTokens: 1,
@@ -79,8 +79,8 @@ export const COST_HAIKU_35 = {
   webSearchRequests: 0.01,
 } as const satisfies ModelCosts
 
-// Pricing for Haiku 4.5: $1 input / $5 output per Mtok
-export const COST_HAIKU_45 = {
+// Pricing for modelH 4.5: $1 input / $5 output per Mtok
+export const COST_MODELH_45 = {
   inputTokens: 1,
   outputTokens: 5,
   promptCacheWriteTokens: 1.25,
@@ -91,9 +91,9 @@ export const COST_HAIKU_45 = {
 const DEFAULT_UNKNOWN_MODEL_COST = COST_TIER_5_25
 
 /**
- * Get the cost tier for Opus 4.6 based on fast mode.
+ * Get the cost tier for modelO 4.6 based on fast mode.
  */
-export function getOpus46CostTier(fastMode: boolean): ModelCosts {
+export function getmodelO46CostTier(fastMode: boolean): ModelCosts {
   if (isFastModeEnabled() && fastMode) {
     return COST_TIER_30_150
   }
@@ -104,26 +104,26 @@ export function getOpus46CostTier(fastMode: boolean): ModelCosts {
 // Costs from https://platform.ur.com/docs/en/about-ur/pricing
 // Web search cost: $10 per 1000 requests = $0.01 per request
 export const MODEL_COSTS: Record<ModelShortName, ModelCosts> = {
-  [firstPartyNameToCanonical(UR_3_5_HAIKU_CONFIG.firstParty)]:
-    COST_HAIKU_35,
-  [firstPartyNameToCanonical(UR_HAIKU_4_5_CONFIG.firstParty)]:
-    COST_HAIKU_45,
-  [firstPartyNameToCanonical(UR_3_5_V2_SONNET_CONFIG.firstParty)]:
+  [firstPartyNameToCanonical(UR_3_5_MODELH_CONFIG.firstParty)]:
+    COST_MODELH_35,
+  [firstPartyNameToCanonical(UR_MODELH_4_5_CONFIG.firstParty)]:
+    COST_MODELH_45,
+  [firstPartyNameToCanonical(UR_3_5_V2_MODELS_CONFIG.firstParty)]:
     COST_TIER_3_15,
-  [firstPartyNameToCanonical(UR_3_7_SONNET_CONFIG.firstParty)]:
+  [firstPartyNameToCanonical(UR_3_7_MODELS_CONFIG.firstParty)]:
     COST_TIER_3_15,
-  [firstPartyNameToCanonical(UR_SONNET_4_CONFIG.firstParty)]:
+  [firstPartyNameToCanonical(UR_MODELS_4_CONFIG.firstParty)]:
     COST_TIER_3_15,
-  [firstPartyNameToCanonical(UR_SONNET_4_5_CONFIG.firstParty)]:
+  [firstPartyNameToCanonical(UR_MODELS_4_5_CONFIG.firstParty)]:
     COST_TIER_3_15,
-  [firstPartyNameToCanonical(UR_SONNET_4_6_CONFIG.firstParty)]:
+  [firstPartyNameToCanonical(UR_MODELS_4_6_CONFIG.firstParty)]:
     COST_TIER_3_15,
-  [firstPartyNameToCanonical(UR_OPUS_4_CONFIG.firstParty)]: COST_TIER_15_75,
-  [firstPartyNameToCanonical(UR_OPUS_4_1_CONFIG.firstParty)]:
+  [firstPartyNameToCanonical(UR_MODELO_4_CONFIG.firstParty)]: COST_TIER_15_75,
+  [firstPartyNameToCanonical(UR_MODELO_4_1_CONFIG.firstParty)]:
     COST_TIER_15_75,
-  [firstPartyNameToCanonical(UR_OPUS_4_5_CONFIG.firstParty)]:
+  [firstPartyNameToCanonical(UR_MODELO_4_5_CONFIG.firstParty)]:
     COST_TIER_5_25,
-  [firstPartyNameToCanonical(UR_OPUS_4_6_CONFIG.firstParty)]:
+  [firstPartyNameToCanonical(UR_MODELO_4_6_CONFIG.firstParty)]:
     COST_TIER_5_25,
 }
 
@@ -146,12 +146,12 @@ function tokensToUSDCost(modelCosts: ModelCosts, usage: Usage): number {
 export function getModelCosts(model: string, usage: Usage): ModelCosts {
   const shortName = getCanonicalName(model)
 
-  // Check if this is an Opus 4.6 model with fast mode active.
+  // Check if this is an modelO 4.6 model with fast mode active.
   if (
-    shortName === firstPartyNameToCanonical(UR_OPUS_4_6_CONFIG.firstParty)
+    shortName === firstPartyNameToCanonical(UR_MODELO_4_6_CONFIG.firstParty)
   ) {
     const isFastMode = usage.speed === 'fast'
-    return getOpus46CostTier(isFastMode)
+    return getmodelO46CostTier(isFastMode)
   }
 
   const costs = MODEL_COSTS[shortName]

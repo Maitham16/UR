@@ -5,7 +5,7 @@
  *
  * Uses explicit per-tool allowlists for the most common MCP servers.
  * Tool names are stable across installs (even when the server name varies,
- * e.g., "slack" vs "claude_ai_Slack"), so matching is keyed on the tool
+ * e.g., "slack" vs "ur_ai_Slack"), so matching is keyed on the tool
  * name alone after normalizing camelCase/kebab-case to snake_case.
  * Unknown tool names don't collapse (conservative).
  */

@@ -9,7 +9,7 @@ The user thinks another UR session on this machine is frozen, stuck, or very slo
 
 ## What to look for
 
-Scan for other UR processes (excluding the current one — PID is in \`process.pid\` but for shell commands just exclude the PID you see running this prompt). Process names are typically \`claude\` (installed) or \`cli\` (native dev build).
+Scan for other UR processes (excluding the current one — PID is in \`process.pid\` but for shell commands just exclude the PID you see running this prompt). Process names are typically \`ur\` (installed) or \`cli\` (native dev build).
 
 Signs of a stuck session:
 - **High CPU (≥90%) sustained** — likely an infinite loop. Sample twice, 1-2s apart, to confirm it's not a transient spike.
@@ -23,9 +23,9 @@ Signs of a stuck session:
 
 1. **List all UR processes** (macOS/Linux):
    \`\`\`
-   ps -axo pid=,pcpu=,rss=,etime=,state=,comm=,command= | grep -E '(claude|cli)' | grep -v grep
+   ps -axo pid=,pcpu=,rss=,etime=,state=,comm=,command= | grep -E '(ur|cli)' | grep -v grep
    \`\`\`
-   Filter to rows where \`comm\` is \`claude\` or (\`cli\` AND the command path contains "claude").
+   Filter to rows where \`comm\` is \`ur\` or (\`cli\` AND the command path contains "ur").
 
 2. **For anything suspicious**, gather more context:
    - Child processes: \`pgrep -lP <pid>\`

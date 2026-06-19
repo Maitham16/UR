@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { APIUserAbortError } from '@anthropic-ai/sdk';
+import { APIUserAbortError } from '@urhq-ai/sdk';
 import React, { type ReactNode, useCallback, useRef, useState } from 'react';
 import { useMainLoopModel } from '../../../../hooks/useMainLoopModel.js';
 import { Box, Text } from '../../../../ink.js';

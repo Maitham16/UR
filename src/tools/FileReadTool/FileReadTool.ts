@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { Base64ImageSource } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { Base64ImageSource } from '@urhq-ai/sdk/resources/index.mjs'
 import { readdir, readFile as readFileAsync } from 'fs/promises'
 import * as path from 'path'
 import { posix, win32 } from 'path'
@@ -731,7 +731,7 @@ export const CYBER_RISK_MITIGATION_REMINDER =
   '\n\n<system-reminder>\nWhenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.\n</system-reminder>\n'
 
 // Models where cyber risk mitigation should be skipped
-const MITIGATION_EXEMPT_MODELS = new Set(['claude-opus-4-6'])
+const MITIGATION_EXEMPT_MODELS = new Set(['ur-modelO-4-6'])
 
 function shouldIncludeFileReadMitigation(): boolean {
   const shortName = getCanonicalName(getMainLoopModel())
@@ -979,7 +979,7 @@ async function callInner(
 
     if (!isPDFSupported()) {
       throw new Error(
-        'Reading full PDFs is not supported with this model. Use a newer model (Sonnet 3.5 v2 or later), ' +
+        'Reading full PDFs is not supported with this model. Use a newer model (modelS 3.5 v2 or later), ' +
           `or use the pages parameter to read specific page ranges (e.g., pages: "1-5", maximum ${PDF_MAX_PAGES_PER_READ} pages per request). ` +
           'Page extraction requires poppler-utils: install with `brew install poppler` on macOS or `apt-get install poppler-utils` on Debian/Ubuntu.',
       )

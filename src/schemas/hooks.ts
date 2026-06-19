@@ -83,7 +83,7 @@ function buildHookSchemas() {
       .string()
       .optional()
       .describe(
-        'Model to use for this prompt hook (e.g., "claude-sonnet-4-6"). If not specified, uses the default small fast model.',
+        'Model to use for this prompt hook (e.g., "ur-modelS-4-6"). If not specified, uses the default small fast model.',
       ),
     statusMessage: z
       .string()
@@ -151,7 +151,7 @@ function buildHookSchemas() {
       .string()
       .optional()
       .describe(
-        'Model to use for this agent hook (e.g., "claude-sonnet-4-6"). If not specified, uses Haiku.',
+        'Model to use for this agent hook (e.g., "ur-modelS-4-6"). If not specified, uses modelH.',
       ),
     statusMessage: z
       .string()

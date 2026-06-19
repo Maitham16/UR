@@ -40,9 +40,9 @@ const MCP_SERVERS_BETA_HEADER = 'mcp-servers-2025-12-04'
 export const fetchURAIMcpConfigsIfEligible = memoize(
   async (): Promise<Record<string, ScopedMcpServerConfig>> => {
     try {
-      if (isEnvDefinedFalsy(process.env.ENABLE_CLAUDEAI_MCP_SERVERS)) {
-        logForDebugging('[claudeai-mcp] Disabled via env var')
-        logEvent('tengu_claudeai_mcp_eligibility', {
+      if (isEnvDefinedFalsy(process.env.ENABLE_URAI_MCP_SERVERS)) {
+        logForDebugging('[urai-mcp] Disabled via env var')
+        logEvent('tengu_urai_mcp_eligibility', {
           state:
             'disabled_env_var' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         })
@@ -51,8 +51,8 @@ export const fetchURAIMcpConfigsIfEligible = memoize(
 
       const tokens = getURAIOAuthTokens()
       if (!tokens?.accessToken) {
-        logForDebugging('[claudeai-mcp] No access token')
-        logEvent('tengu_claudeai_mcp_eligibility', {
+        logForDebugging('[urai-mcp] No access token')
+        logEvent('tengu_urai_mcp_eligibility', {
           state:
             'no_oauth_token' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         })
@@ -60,15 +60,15 @@ export const fetchURAIMcpConfigsIfEligible = memoize(
       }
 
       // Check for user:mcp_servers scope directly instead of isURAISubscriber().
-      // In non-interactive mode, isURAISubscriber() returns false when ANTHROPIC_API_KEY
+      // In non-interactive mode, isURAISubscriber() returns false when URHQ_API_KEY
       // is set (even with valid OAuth tokens) because preferThirdPartyAuthentication() causes
-      // isAnthropicAuthEnabled() to return false. Checking the scope directly allows users
+      // isURHQAuthEnabled() to return false. Checking the scope directly allows users
       // with both API keys and OAuth tokens to access ur.ai MCPs in print mode.
       if (!tokens.scopes?.includes('user:mcp_servers')) {
         logForDebugging(
-          `[claudeai-mcp] Missing user:mcp_servers scope (scopes=${tokens.scopes?.join(',') || 'none'})`,
+          `[urai-mcp] Missing user:mcp_servers scope (scopes=${tokens.scopes?.join(',') || 'none'})`,
         )
-        logEvent('tengu_claudeai_mcp_eligibility', {
+        logEvent('tengu_urai_mcp_eligibility', {
           state:
             'missing_scope' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         })
@@ -78,14 +78,14 @@ export const fetchURAIMcpConfigsIfEligible = memoize(
       const baseUrl = getOauthConfig().BASE_API_URL
       const url = `${baseUrl}/v1/mcp_servers?limit=1000`
 
-      logForDebugging(`[claudeai-mcp] Fetching from ${url}`)
+      logForDebugging(`[urai-mcp] Fetching from ${url}`)
 
       const response = await axios.get<URAIMcpServersResponse>(url, {
         headers: {
           Authorization: `Bearer ${tokens.accessToken}`,
           'Content-Type': 'application/json',
-          'anthropic-beta': MCP_SERVERS_BETA_HEADER,
-          'anthropic-version': '2023-06-01',
+          'urhq-beta': MCP_SERVERS_BETA_HEADER,
+          'urhq-version': '2023-06-01',
         },
         timeout: FETCH_TIMEOUT_MS,
       })
@@ -94,11 +94,11 @@ export const fetchURAIMcpConfigsIfEligible = memoize(
       // Track used normalized names to detect collisions and assign (2), (3), etc. suffixes.
       // We check the final normalized name (including suffix) to handle edge cases where
       // a suffixed name collides with another server's base name (e.g., "Example Server 2"
-      // colliding with "Example Server! (2)" which both normalize to claude_ai_Example_Server_2).
+      // colliding with "Example Server! (2)" which both normalize to ur_ai_Example_Server_2).
       const usedNormalizedNames = new Set<string>()
 
       for (const server of response.data.data) {
-        const baseName = `claude.ai ${server.display_name}`
+        const baseName = `ur.ai ${server.display_name}`
 
         // Try without suffix first, then increment until we find an unused normalized name
         let finalName = baseName
@@ -112,23 +112,23 @@ export const fetchURAIMcpConfigsIfEligible = memoize(
         usedNormalizedNames.add(finalNormalized)
 
         configs[finalName] = {
-          type: 'claudeai-proxy',
+          type: 'urai-proxy',
           url: server.url,
           id: server.id,
-          scope: 'claudeai',
+          scope: 'urai',
         }
       }
 
       logForDebugging(
-        `[claudeai-mcp] Fetched ${Object.keys(configs).length} servers`,
+        `[urai-mcp] Fetched ${Object.keys(configs).length} servers`,
       )
-      logEvent('tengu_claudeai_mcp_eligibility', {
+      logEvent('tengu_urai_mcp_eligibility', {
         state:
           'eligible' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
       return configs
     } catch {
-      logForDebugging(`[claudeai-mcp] Fetch failed`)
+      logForDebugging(`[urai-mcp] Fetch failed`)
       return {}
     }
   },

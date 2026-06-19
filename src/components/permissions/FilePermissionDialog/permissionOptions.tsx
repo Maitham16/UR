@@ -42,7 +42,7 @@ export type PermissionOption = {
   type: 'accept-once';
 } | {
   type: 'accept-session';
-  scope?: 'claude-folder' | 'global-claude-folder';
+  scope?: 'ur-folder' | 'global-ur-folder';
 } | {
   type: 'reject';
 };
@@ -105,10 +105,10 @@ export function getFilePermissionOptions({
   if ((inURFolder || inGlobalURFolder) && operationType !== 'read') {
     options.push({
       label: 'Yes, and allow UR to edit its own settings for this session',
-      value: 'yes-claude-folder',
+      value: 'yes-ur-folder',
       option: {
         type: 'accept-session',
-        scope: inGlobalURFolder ? 'global-claude-folder' : 'claude-folder'
+        scope: inGlobalURFolder ? 'global-ur-folder' : 'ur-folder'
       }
     });
   } else {

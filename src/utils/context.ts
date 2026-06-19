@@ -50,7 +50,7 @@ export function modelSupports1M(model: string): boolean {
     return false
   }
   const canonical = getCanonicalName(model)
-  return canonical.includes('claude-sonnet-4') || canonical.includes('opus-4-6')
+  return canonical.includes('ur-modelS-4') || canonical.includes('modelO-4-6')
 }
 
 export function getContextWindowForModel(
@@ -97,7 +97,7 @@ export function getContextWindowForModel(
   if (betas?.includes(CONTEXT_1M_BETA_HEADER) && modelSupports1M(model)) {
     return 1_000_000
   }
-  if (getSonnet1mExpTreatmentEnabled(model)) {
+  if (getmodelS1mExpTreatmentEnabled(model)) {
     return 1_000_000
   }
   if (process.env.USER_TYPE === 'ant') {
@@ -109,18 +109,18 @@ export function getContextWindowForModel(
   return MODEL_CONTEXT_WINDOW_DEFAULT
 }
 
-export function getSonnet1mExpTreatmentEnabled(model: string): boolean {
+export function getmodelS1mExpTreatmentEnabled(model: string): boolean {
   if (is1mContextDisabled()) {
     return false
   }
-  // Only applies to sonnet 4.6 without an explicit [1m] suffix
+  // Only applies to modelS 4.6 without an explicit [1m] suffix
   if (has1mContext(model)) {
     return false
   }
-  if (!getCanonicalName(model).includes('sonnet-4-6')) {
+  if (!getCanonicalName(model).includes('modelS-4-6')) {
     return false
   }
-  return getGlobalConfig().clientDataCache?.['coral_reef_sonnet'] === 'true'
+  return getGlobalConfig().clientDataCache?.['coral_reef_modelS'] === 'true'
 }
 
 /**
@@ -176,35 +176,35 @@ export function getModelMaxOutputTokens(model: string): {
 
   const m = getCanonicalName(model)
 
-  if (m.includes('opus-4-6')) {
+  if (m.includes('modelO-4-6')) {
     defaultTokens = 64_000
     upperLimit = 128_000
-  } else if (m.includes('sonnet-4-6')) {
+  } else if (m.includes('modelS-4-6')) {
     defaultTokens = 32_000
     upperLimit = 128_000
   } else if (
-    m.includes('opus-4-5') ||
-    m.includes('sonnet-4') ||
-    m.includes('haiku-4')
+    m.includes('modelO-4-5') ||
+    m.includes('modelS-4') ||
+    m.includes('modelH-4')
   ) {
     defaultTokens = 32_000
     upperLimit = 64_000
-  } else if (m.includes('opus-4-1') || m.includes('opus-4')) {
+  } else if (m.includes('modelO-4-1') || m.includes('modelO-4')) {
     defaultTokens = 32_000
     upperLimit = 32_000
-  } else if (m.includes('claude-3-opus')) {
+  } else if (m.includes('ur-3-modelO')) {
     defaultTokens = 4_096
     upperLimit = 4_096
-  } else if (m.includes('claude-3-sonnet')) {
+  } else if (m.includes('ur-3-modelS')) {
     defaultTokens = 8_192
     upperLimit = 8_192
-  } else if (m.includes('claude-3-haiku')) {
+  } else if (m.includes('ur-3-modelH')) {
     defaultTokens = 4_096
     upperLimit = 4_096
-  } else if (m.includes('3-5-sonnet') || m.includes('3-5-haiku')) {
+  } else if (m.includes('3-5-modelS') || m.includes('3-5-modelH')) {
     defaultTokens = 8_192
     upperLimit = 8_192
-  } else if (m.includes('3-7-sonnet')) {
+  } else if (m.includes('3-7-modelS')) {
     defaultTokens = 32_000
     upperLimit = 64_000
   } else {

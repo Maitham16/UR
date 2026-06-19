@@ -47,7 +47,7 @@ function RateLimitOptionsMenu(t0) {
   const rateLimitTier = t2;
   const hasExtraUsageEnabled = getOauthAccountInfo()?.hasExtraUsageEnabled === true;
   const isMax = subscriptionType === "max";
-  const isMax20x = isMax && rateLimitTier === "default_claude_max_20x";
+  const isMax20x = isMax && rateLimitTier === "default_ur_max_20x";
   const isTeamOrEnterprise = subscriptionType === "team" || subscriptionType === "enterprise";
   const buyFirst = getFeatureValue_CACHED_MAY_BE_STALE("tengu_jade_anvil_4", false);
   let t3;

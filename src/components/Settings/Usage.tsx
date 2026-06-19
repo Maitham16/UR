@@ -228,21 +228,21 @@ export function Usage(): React.ReactNode {
       </Box>;
   }
 
-  // Only Max and Team plans have a Sonnet limit that differs from the weekly
+  // Only Max and Team plans have a modelS limit that differs from the weekly
   // limit (see rateLimitMessages.ts). For other plans the bar is redundant.
   // Show for null (unknown plan) to stay consistent with rateLimitMessages.ts,
-  // which labels it "Sonnet limit" in that case.
+  // which labels it "modelS limit" in that case.
   const subscriptionType = getSubscriptionType();
-  const showSonnetBar = subscriptionType === 'max' || subscriptionType === 'team' || subscriptionType === null;
+  const showmodelSBar = subscriptionType === 'max' || subscriptionType === 'team' || subscriptionType === null;
   const limits = [{
     title: 'Current session',
     limit: utilization.five_hour
   }, {
     title: 'Current week (all models)',
     limit: utilization.seven_day
-  }, ...(showSonnetBar ? [{
-    title: 'Current week (Sonnet only)',
-    limit: utilization.seven_day_sonnet
+  }, ...(showmodelSBar ? [{
+    title: 'Current week (modelS only)',
+    limit: utilization.seven_day_modelS
   }] : [])];
   return <Box flexDirection="column" gap={1} width="100%">
       {limits.some(({

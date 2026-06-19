@@ -405,7 +405,7 @@ export function createCronScheduler(
 
     // Acquire the per-project scheduler lock. Only the owning session runs
     // check(). Other sessions probe periodically to take over if the owner
-    // dies. Prevents double-firing when multiple Claudes share a cwd.
+    // dies. Prevents double-firing when multiple URs share a cwd.
     isOwner = await tryAcquireSchedulerLock(lockOpts).catch(() => false)
     if (stopped) {
       if (isOwner) {

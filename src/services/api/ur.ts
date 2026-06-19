@@ -12,19 +12,19 @@ import type {
   BetaToolUnion,
   BetaUsage,
   BetaMessageParam as MessageParam,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+} from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 
 // Types missing from the installed SDK version — permissive aliases.
 type BetaJSONOutputFormat = any
 type BetaOutputConfig = any
 type BetaRequestDocumentBlock = any
 type BetaStopReason = string
-import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
-import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
+import type { TextBlockParam } from '@urhq-ai/sdk/resources/index.mjs'
+import type { Stream } from '@urhq-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
 import {
   getAPIProvider,
-  isFirstPartyAnthropicBaseUrl,
+  isFirstPartyURHQBaseUrl,
 } from 'src/utils/model/providers.js'
 import {
   getAttributionHeader,
@@ -67,7 +67,7 @@ import { getOrCreateUserID } from '../../utils/config.js'
 import {
   CAPPED_DEFAULT_MAX_TOKENS,
   getModelMaxOutputTokens,
-  getSonnet1mExpTreatmentEnabled,
+  getmodelS1mExpTreatmentEnabled,
 } from '../../utils/context.js'
 import { resolveAppliedEffort } from '../../utils/effort.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
@@ -85,10 +85,10 @@ import {
   stripToolReferenceBlocksFromUserMessage,
 } from '../../utils/messages.js'
 import {
-  getDefaultOpusModel,
-  getDefaultSonnetModel,
+  getDefaultmodelOModel,
+  getDefaultmodelSModel,
   getSmallFastModel,
-  isNonCustomOpusModel,
+  isNonCustommodelOModel,
 } from '../../utils/model/model.js'
 import {
   asSystemPrompt,
@@ -109,12 +109,12 @@ const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
   : null
 
 import { feature } from 'bun:bundle'
-import type { ClientOptions } from '@anthropic-ai/sdk'
+import type { ClientOptions } from '@urhq-ai/sdk'
 import {
   APIConnectionTimeoutError,
   APIError,
   APIUserAbortError,
-} from '@anthropic-ai/sdk/error'
+} from '@urhq-ai/sdk/error'
 import {
   getAfkModeHeaderLatched,
   getCacheEditingHeaderLatched,
@@ -230,7 +230,7 @@ import {
 import { getInitializationStatus } from '../lsp/manager.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
-import { CLIENT_REQUEST_ID_HEADER, getAnthropicClient } from './client.js'
+import { CLIENT_REQUEST_ID_HEADER, getURHQClient } from './client.js'
 import {
   API_ERROR_MESSAGE_PREFIX,
   CUSTOM_OFF_SWITCH_MESSAGE,
@@ -316,16 +316,16 @@ export function getExtraBodyParams(betaHeaders?: string[]): JsonObject {
 
   // Handle beta headers if provided
   if (betaHeaders && betaHeaders.length > 0) {
-    if (result.anthropic_beta && Array.isArray(result.anthropic_beta)) {
+    if (result.urhq_beta && Array.isArray(result.urhq_beta)) {
       // Add to existing array, avoiding duplicates
-      const existingHeaders = result.anthropic_beta as string[]
+      const existingHeaders = result.urhq_beta as string[]
       const newHeaders = betaHeaders.filter(
         header => !existingHeaders.includes(header),
       )
-      result.anthropic_beta = [...existingHeaders, ...newHeaders]
+      result.urhq_beta = [...existingHeaders, ...newHeaders]
     } else {
       // Create new array with the beta headers
-      result.anthropic_beta = betaHeaders
+      result.urhq_beta = betaHeaders
     }
   }
 
@@ -337,21 +337,21 @@ export function getPromptCachingEnabled(model: string): boolean {
   if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING)) return false
 
   // Check if we should disable for small/fast model
-  if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_HAIKU)) {
+  if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_MODELH)) {
     const smallFastModel = getSmallFastModel()
     if (model === smallFastModel) return false
   }
 
-  // Check if we should disable for default Sonnet
-  if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_SONNET)) {
-    const defaultSonnet = getDefaultSonnetModel()
-    if (model === defaultSonnet) return false
+  // Check if we should disable for default modelS
+  if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_MODELS)) {
+    const defaultmodelS = getDefaultmodelSModel()
+    if (model === defaultmodelS) return false
   }
 
-  // Check if we should disable for default Opus
-  if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_OPUS)) {
-    const defaultOpus = getDefaultOpusModel()
-    if (model === defaultOpus) return false
+  // Check if we should disable for default modelO
+  if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_MODELO)) {
+    const defaultmodelO = getDefaultmodelOModel()
+    if (model === defaultmodelO) return false
   }
 
   return true
@@ -457,10 +457,10 @@ function configureEffortParams(
     outputConfig.effort = effortValue
     betas.push(EFFORT_BETA_HEADER)
   } else if (process.env.USER_TYPE === 'ant') {
-    // Numeric effort override - ant-only (uses anthropic_internal)
+    // Numeric effort override - ant-only (uses urhq_internal)
     const existingInternal =
-      (extraBodyParams.anthropic_internal as Record<string, unknown>) || {}
-    extraBodyParams.anthropic_internal = {
+      (extraBodyParams.urhq_internal as Record<string, unknown>) || {}
+    extraBodyParams.urhq_internal = {
       ...existingInternal,
       effort_override: effortValue,
     }
@@ -543,22 +543,22 @@ export async function verifyApiKey(
   }
 
   try {
-    // WARNING: if you change this to use a non-Haiku model, this request will fail in 1P unless it uses getCLISyspromptPrefix.
+    // WARNING: if you change this to use a non-modelH model, this request will fail in 1P unless it uses getCLISyspromptPrefix.
     const model = getSmallFastModel()
     const betas = getModelBetas(model)
     return await returnValue(
       withRetry(
         () =>
-          getAnthropicClient({
+          getURHQClient({
             apiKey,
             maxRetries: 3,
             model,
             source: 'verify_api_key',
           }),
-        async anthropic => {
+        async urhq => {
           const messages: MessageParam[] = [{ role: 'user', content: 'test' }]
           // biome-ignore lint/plugin: API key verification is intentionally a minimal direct call
-          await anthropic.beta.messages.create({
+          await urhq.beta.messages.create({
             model,
             max_tokens: 1,
             messages,
@@ -848,13 +848,13 @@ export async function* executeNonStreamingRequest(
   const fallbackTimeoutMs = getNonstreamingFallbackTimeoutMs()
   const generator = withRetry(
     () =>
-      getAnthropicClient({
+      getURHQClient({
         maxRetries: 0,
         model: clientOptions.model,
         fetchOverride: clientOptions.fetchOverride,
         source: clientOptions.source,
       }),
-    async (anthropic, attempt, context) => {
+    async (urhq, attempt, context) => {
       const start = Date.now()
       const retryParams = paramsFromContext(context)
       captureRequest(retryParams)
@@ -867,7 +867,7 @@ export async function* executeNonStreamingRequest(
 
       try {
         // biome-ignore lint/plugin: non-streaming API call
-        return await anthropic.beta.messages.create(
+        return await urhq.beta.messages.create(
           {
             ...adjustedParams,
             model: normalizeModelStringForAPI(adjustedParams.model),
@@ -1032,11 +1032,11 @@ async function* queryModel(
   void
 > {
   // Check cheap conditions first — the off-switch await blocks on GrowthBook
-  // init (~10ms). For non-Opus models (haiku, sonnet) this skips the await
+  // init (~10ms). For non-modelO models (modelH, modelS) this skips the await
   // entirely. Subscribers don't hit this path at all.
   if (
     !isURAISubscriber() &&
-    isNonCustomOpusModel(options.model) &&
+    isNonCustommodelOModel(options.model) &&
     (
       await getDynamicConfig_BLOCKS_ON_INIT<{ activated: boolean }>(
         'tengu-off-switch',
@@ -1261,7 +1261,7 @@ async function* queryModel(
   //   called from ~20 places (analytics, feedback, sharing, etc.), many of which
   //   don't have model context. Adding model to its signature would be a large refactor.
   // - This post-processing uses the model-aware isToolSearchEnabled() check
-  // - This handles mid-conversation model switching (e.g., Sonnet → Haiku) where
+  // - This handles mid-conversation model switching (e.g., modelS → modelH) where
   //   stale tool-search fields from the previous model would cause 400 errors
   //
   // Note: For assistant messages, normalizeMessagesForAPI already normalized the
@@ -1525,10 +1525,10 @@ async function* queryModel(
   const paramsFromContext = (retryContext: RetryContext) => {
     const betasParams = [...betas]
 
-    // Append 1M beta dynamically for the Sonnet 1M experiment.
+    // Append 1M beta dynamically for the modelS 1M experiment.
     if (
       !betasParams.includes(CONTEXT_1M_BETA_HEADER) &&
-      getSonnet1mExpTreatmentEnabled(retryContext.model)
+      getmodelS1mExpTreatmentEnabled(retryContext.model)
     ) {
       betasParams.push(CONTEXT_1M_BETA_HEADER)
     }
@@ -1764,13 +1764,13 @@ async function* queryModel(
     queryCheckpoint('query_client_creation_start')
     const generator = withRetry(
       () =>
-        getAnthropicClient({
+        getURHQClient({
           maxRetries: 0, // Disabled auto-retry in favor of manual implementation
           model: options.model,
           fetchOverride: options.fetchOverride,
           source: options.querySource,
         }),
-      async (anthropic, attempt, context) => {
+      async (urhq, attempt, context) => {
         attemptNumber = attempt
         isFastModeRequest = context.fastMode ?? false
         start = Date.now()
@@ -1798,7 +1798,7 @@ async function* queryModel(
         // server request ID) can still be correlated with server logs.
         // First-party only — 3P providers don't log it (inc-4029 class).
         clientRequestId =
-          getAPIProvider() === 'firstParty' && isFirstPartyAnthropicBaseUrl()
+          getAPIProvider() === 'firstParty' && isFirstPartyURHQBaseUrl()
             ? randomUUID()
             : undefined
 
@@ -1806,7 +1806,7 @@ async function* queryModel(
         // BetaMessageStream calls partialParse() on every input_json_delta, which we don't need
         // since we handle tool input accumulation ourselves
         // biome-ignore lint/plugin: main conversation loop handles attribution separately
-        const result = await anthropic.beta.messages
+        const result = await urhq.beta.messages
           .create(
             { ...params, stream: true },
             {
@@ -3224,9 +3224,9 @@ export function buildSystemPromptBlocks(
   })
 }
 
-type HaikuOptions = Omit<Options, 'model' | 'getToolPermissionContext'>
+type modelHOptions = Omit<Options, 'model' | 'getToolPermissionContext'>
 
-export async function queryHaiku({
+export async function querymodelH({
   systemPrompt = asSystemPrompt([]),
   userPrompt,
   outputFormat,
@@ -3237,7 +3237,7 @@ export async function queryHaiku({
   userPrompt: string
   outputFormat?: BetaJSONOutputFormat
   signal: AbortSignal
-  options: HaikuOptions
+  options: modelHOptions
 }): Promise<AssistantMessage> {
   const result = await withVCR(
     [
@@ -3274,7 +3274,7 @@ export async function queryHaiku({
       return [result]
     },
   )
-  // We don't use streaming for Haiku so this is safe
+  // We don't use streaming for modelH so this is safe
   return result[0]! as AssistantMessage
 }
 
@@ -3391,7 +3391,7 @@ export function getMaxOutputTokensForModel(model: string): number {
   // = 4,911 tokens; 32k/64k defaults over-reserve 8-16× slot capacity.
   // Requests hitting the cap get one clean retry at 64k (query.ts
   // max_output_tokens_escalate). Math.min keeps models with lower native
-  // defaults (e.g. ur-3-opus at 4k) at their native value. Applied
+  // defaults (e.g. ur-3-modelO at 4k) at their native value. Applied
   // before the env-var override so UR_CODE_MAX_OUTPUT_TOKENS still wins.
   const defaultTokens = isMaxTokensCapEnabled()
     ? Math.min(maxOutputTokens.default, CAPPED_DEFAULT_MAX_TOKENS)

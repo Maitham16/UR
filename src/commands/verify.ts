@@ -1,4 +1,4 @@
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
+import type { ContentBlockParam } from '@urhq-ai/sdk/resources/messages.mjs'
 import type { Command } from '../commands.js'
 
 const VERIFY_PROMPT = (focus: string) => {

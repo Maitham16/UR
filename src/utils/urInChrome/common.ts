@@ -9,7 +9,7 @@ import { execFileNoThrow } from '../execFileNoThrow.js'
 import { getPlatform } from '../platform.js'
 import { which } from '../which.js'
 
-export const UR_IN_CHROME_MCP_SERVER_NAME = 'claude-in-chrome'
+export const UR_IN_CHROME_MCP_SERVER_NAME = 'ur-in-chrome'
 
 // Re-export ChromiumBrowser type for setup.ts
 export type { ChromiumBrowser } from './setupPortable.js'
@@ -471,7 +471,7 @@ export async function openInChrome(url: string): Promise<boolean> {
 /**
  * Get the socket directory path (Unix only).
  *
- * NOTE: the `claude-mcp-browser-bridge-` prefix is a wire-protocol identifier
+ * NOTE: the `ur-mcp-browser-bridge-` prefix is a wire-protocol identifier
  * that has to match the external Chrome-side MCP server (published separately
  * from this CLI). Renaming this string would break the IPC channel even
  * though the rest of the codebase has rebranded to UR — the external
@@ -479,7 +479,7 @@ export async function openInChrome(url: string): Promise<boolean> {
  * forked.
  */
 export function getSocketDir(): string {
-  return `/tmp/claude-mcp-browser-bridge-${getUsername()}`
+  return `/tmp/ur-mcp-browser-bridge-${getUsername()}`
 }
 
 /**
@@ -519,7 +519,7 @@ export function getAllSocketPaths(): string[] {
   }
 
   // Legacy fallback paths
-  const legacyName = `claude-mcp-browser-bridge-${getUsername()}`
+  const legacyName = `ur-mcp-browser-bridge-${getUsername()}`
   const legacyTmpdir = join(tmpdir(), legacyName)
   const legacyTmp = `/tmp/${legacyName}`
 
@@ -535,7 +535,7 @@ export function getAllSocketPaths(): string[] {
 
 function getSocketName(): string {
   // NOTE: This must match the one used in the UR in Chrome MCP
-  return `claude-mcp-browser-bridge-${getUsername()}`
+  return `ur-mcp-browser-bridge-${getUsername()}`
 }
 
 function getUsername(): string {

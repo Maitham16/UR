@@ -30,7 +30,7 @@ import { which } from '../which.js'
 import { getUserBinDir, getXDGDataHome } from '../xdg.js'
 import { DEEP_LINK_PROTOCOL } from './parseDeepLink.js'
 
-export const MACOS_BUNDLE_ID = 'com.anthropic.ur-url-handler'
+export const MACOS_BUNDLE_ID = 'com.urhq.ur-url-handler'
 const APP_NAME = 'UR URL Handler'
 const DESKTOP_FILE_NAME = 'ur-url-handler.desktop'
 const MACOS_APP_NAME = 'UR URL Handler.app'
@@ -43,7 +43,7 @@ const MACOS_SYMLINK_PATH = path.join(
   MACOS_APP_DIR,
   'Contents',
   'MacOS',
-  'claude',
+  'ur',
 )
 function linuxDesktopPath(): string {
   return path.join(getXDGDataHome(), 'applications', DESKTOP_FILE_NAME)
@@ -97,7 +97,7 @@ async function registerMacos(urPath: string): Promise<void> {
   <key>CFBundleName</key>
   <string>${APP_NAME}</string>
   <key>CFBundleExecutable</key>
-  <string>claude</string>
+  <string>ur</string>
   <key>CFBundleVersion</key>
   <string>1.0</string>
   <key>CFBundlePackageType</key>
@@ -239,7 +239,7 @@ export async function registerProtocolHandler(
  * (dev builds, non-native installs).
  */
 async function resolveURPath(): Promise<string> {
-  const binaryName = process.platform === 'win32' ? 'claude.exe' : 'claude'
+  const binaryName = process.platform === 'win32' ? 'ur.exe' : 'ur'
   const stablePath = path.join(getUserBinDir(), binaryName)
   try {
     await fs.realpath(stablePath)
@@ -328,7 +328,7 @@ export async function ensureDeepLinkProtocolRegistered(): Promise<void> {
   try {
     await registerProtocolHandler(urPath)
     logEvent('tengu_deep_link_registered', { success: true })
-    logForDebugging('Auto-registered claude-cli:// deep link protocol handler')
+    logForDebugging('Auto-registered ur-cli:// deep link protocol handler')
     await fs.rm(failureMarkerPath, { force: true }).catch(() => {})
   } catch (error) {
     const code = getErrnoCode(error)

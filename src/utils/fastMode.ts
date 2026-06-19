@@ -12,7 +12,7 @@ import {
   logEvent,
 } from '../services/analytics/index.js'
 import {
-  getAnthropicApiKey,
+  getURHQApiKey,
   getURAIOAuthTokens,
   handleOAuth401Error,
   hasProfileScope,
@@ -23,7 +23,7 @@ import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
 import {
   getDefaultMainLoopModelSetting,
-  isOpus1mMergeEnabled,
+  ismodelO1mMergeEnabled,
   type ModelSetting,
   parseUserSpecifiedModel,
 } from './model/model.js'
@@ -91,7 +91,7 @@ export function getFastModeUnavailableReason(): string | null {
     !isInBundledMode() &&
     getFeatureValue_CACHED_MAY_BE_STALE('tengu_marble_sandcastle', false)
   ) {
-    return 'Fast mode requires the native binary · Install from: https://claude.com/product/ur'
+    return 'Fast mode requires the native binary · Install from: https://ur.com/product/ur'
   }
 
   // Not available in the SDK unless explicitly opted in via --settings.
@@ -141,10 +141,10 @@ export function getFastModeUnavailableReason(): string | null {
 }
 
 // @[MODEL LAUNCH]: Update supported Fast Mode models.
-export const FAST_MODE_MODEL_DISPLAY = 'Opus 4.6'
+export const FAST_MODE_MODEL_DISPLAY = 'modelO 4.6'
 
 export function getFastModeModel(): string {
-  return 'opus' + (isOpus1mMergeEnabled() ? '[1m]' : '')
+  return 'modelO' + (ismodelO1mMergeEnabled() ? '[1m]' : '')
 }
 
 export function getInitialFastModeSetting(model: ModelSetting): boolean {
@@ -173,7 +173,7 @@ export function isFastModeSupportedByModel(
   }
   const model = modelSetting ?? getDefaultMainLoopModelSetting()
   const parsedModel = parseUserSpecifiedModel(model)
-  return parsedModel.toLowerCase().includes('opus-4-6')
+  return parsedModel.toLowerCase().includes('modelO-4-6')
 }
 
 // --- Fast mode runtime state ---
@@ -373,7 +373,7 @@ async function fetchFastModeStatus(
     'accessToken' in auth
       ? {
           Authorization: `Bearer ${auth.accessToken}`,
-          'anthropic-beta': OAUTH_BETA_HEADER,
+          'urhq-beta': OAUTH_BETA_HEADER,
         }
       : { 'x-api-key': auth.apiKey }
 
@@ -425,7 +425,7 @@ export async function prefetchFastModeStatus(): Promise<void> {
   // Service key OAuth sessions lack user:profile scope → endpoint 403s.
   // Resolve orgStatus from cache and bail before burning the throttle window.
   // API key auth is unaffected.
-  const apiKey = getAnthropicApiKey()
+  const apiKey = getURHQApiKey()
   const hasUsableOAuth =
     getURAIOAuthTokens()?.accessToken && hasProfileScope()
   if (!hasUsableOAuth && !apiKey) {

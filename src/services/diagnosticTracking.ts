@@ -79,8 +79,8 @@ export class DiagnosticTrackingService {
     // Remove our protocol prefixes
     const protocolPrefixes = [
       'file://',
-      '_claude_fs_right:',
-      '_claude_fs_left:',
+      '_ur_fs_right:',
+      '_ur_fs_left:',
     ]
 
     let normalized = fileUri
@@ -182,7 +182,7 @@ export class DiagnosticTrackingService {
   }
 
   /**
-   * Get new diagnostics from file://, _claude_fs_right, and _claude_fs_ URIs that aren't in the baseline.
+   * Get new diagnostics from file://, _ur_fs_right, and _ur_fs_ URIs that aren't in the baseline.
    * Only processes diagnostics for files that have been edited.
    */
   async getNewDiagnostics(): Promise<DiagnosticFile[]> {
@@ -217,7 +217,7 @@ export class DiagnosticTrackingService {
     >()
     allDiagnosticFiles
       .filter(file => this.baseline.has(this.normalizeFileUri(file.uri)))
-      .filter(file => file.uri.startsWith('_claude_fs_right:'))
+      .filter(file => file.uri.startsWith('_ur_fs_right:'))
       .forEach(file => {
         diagnosticsForURFsRightUrisWithBaselinesMap.set(
           this.normalizeFileUri(file.uri),
@@ -232,7 +232,7 @@ export class DiagnosticTrackingService {
       const normalizedPath = this.normalizeFileUri(file.uri)
       const baselineDiagnostics = this.baseline.get(normalizedPath) || []
 
-      // Get the _claude_fs_right file if it exists
+      // Get the _ur_fs_right file if it exists
       const urFsRightFile =
         diagnosticsForURFsRightUrisWithBaselinesMap.get(normalizedPath)
 
@@ -243,7 +243,7 @@ export class DiagnosticTrackingService {
         const previousRightDiagnostics =
           this.rightFileDiagnosticsState.get(normalizedPath)
 
-        // Use _claude_fs_right if:
+        // Use _ur_fs_right if:
         // 1. We've never gotten right file diagnostics for this file (previousRightDiagnostics === undefined)
         // 2. OR the right file diagnostics have just changed
         if (

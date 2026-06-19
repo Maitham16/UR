@@ -19,7 +19,7 @@ import { open, unlink } from 'fs/promises'
 import { getOauthConfig, OAUTH_BETA_HEADER } from '../../constants/oauth.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
-  getAnthropicApiKeyWithSource,
+  getURHQApiKeyWithSource,
   getURAIOAuthTokens,
 } from '../../utils/auth.js'
 import { registerCleanup } from '../../utils/cleanupRegistry.js'
@@ -170,9 +170,9 @@ function getRemoteSettingsAuthHeaders(): {
 } {
   // Try API key first (for Console users)
   // Skip apiKeyHelper to avoid circular dependency with getSettings()
-  // Wrap in try-catch because getAnthropicApiKeyWithSource throws in CI/test environments
+  // Wrap in try-catch because getURHQApiKeyWithSource throws in CI/test environments
   try {
-    const { key: apiKey } = getAnthropicApiKeyWithSource({
+    const { key: apiKey } = getURHQApiKeyWithSource({
       skipRetrievingKeyFromApiKeyHelper: true,
     })
     if (apiKey) {
@@ -192,7 +192,7 @@ function getRemoteSettingsAuthHeaders(): {
     return {
       headers: {
         Authorization: `Bearer ${oauthTokens.accessToken}`,
-        'anthropic-beta': OAUTH_BETA_HEADER,
+        'urhq-beta': OAUTH_BETA_HEADER,
       },
     }
   }

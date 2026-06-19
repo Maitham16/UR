@@ -11,9 +11,9 @@ import {
 } from '../utils/settings/settings.js'
 
 /**
- * Migrate first-party users off explicit Opus 4.0/4.1 model strings.
+ * Migrate first-party users off explicit modelO 4.0/4.1 model strings.
  *
- * The 'opus' alias already resolves to Opus 4.6 for 1P, so anyone still
+ * The 'modelO' alias already resolves to modelO 4.6 for 1P, so anyone still
  * on an explicit 4.0/4.1 string pinned it in settings before 4.5 launched.
  * parseUserSpecifiedModel now silently remaps these at runtime anyway —
  * this migration cleans up the settings file so /model shows the right
@@ -23,10 +23,10 @@ import {
  * are left alone (we can't/shouldn't rewrite those) and are still remapped at
  * runtime by parseUserSpecifiedModel. Reading and writing the same source
  * keeps this idempotent without a completion flag, and avoids silently
- * promoting 'opus' to the global default for users who only pinned it in one
+ * promoting 'modelO' to the global default for users who only pinned it in one
  * project.
  */
-export function migrateLegacyOpusToCurrent(): void {
+export function migrateLegacymodelOToCurrent(): void {
   if (getAPIProvider() !== 'firstParty') {
     return
   }
@@ -37,20 +37,20 @@ export function migrateLegacyOpusToCurrent(): void {
 
   const model = getSettingsForSource('userSettings')?.model
   if (
-    model !== 'claude-opus-4-20250514' &&
-    model !== 'claude-opus-4-1-20250805' &&
-    model !== 'claude-opus-4-0' &&
-    model !== 'claude-opus-4-1'
+    model !== 'ur-modelO-4-20250514' &&
+    model !== 'ur-modelO-4-1-20250805' &&
+    model !== 'ur-modelO-4-0' &&
+    model !== 'ur-modelO-4-1'
   ) {
     return
   }
 
-  updateSettingsForSource('userSettings', { model: 'opus' })
+  updateSettingsForSource('userSettings', { model: 'modelO' })
   saveGlobalConfig(current => ({
     ...current,
-    legacyOpusMigrationTimestamp: Date.now(),
+    legacymodelOMigrationTimestamp: Date.now(),
   }))
-  logEvent('tengu_legacy_opus_migration', {
+  logEvent('tengu_legacy_modelO_migration', {
     from_model:
       model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   })

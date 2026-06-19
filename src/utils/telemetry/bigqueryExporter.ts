@@ -162,7 +162,7 @@ export class BigQueryMetricsExporter implements PushMetricExporter {
 
     // Add customer type and subscription type
     if (isURAISubscriber()) {
-      resourceAttributes['user.customer_type'] = 'claude_ai'
+      resourceAttributes['user.customer_type'] = 'ur_ai'
       const subscriptionType = getSubscriptionType()
       if (subscriptionType) {
         resourceAttributes['user.subscription_type'] = subscriptionType

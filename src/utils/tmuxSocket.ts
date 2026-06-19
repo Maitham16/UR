@@ -33,7 +33,7 @@ import { getPlatform } from './platform.js'
 
 // Constants for tmux socket management
 const TMUX_COMMAND = 'tmux'
-const UR_SOCKET_PREFIX = 'claude'
+const UR_SOCKET_PREFIX = 'ur'
 
 /**
  * Executes a tmux command, routing through WSL on Windows.

@@ -59,10 +59,10 @@ function getChromeBridgeUrl(): string | undefined {
   }
 
   if (isEnvTruthy(process.env.USE_STAGING_OAUTH)) {
-    return 'wss://bridge-staging.claudeusercontent.com'
+    return 'wss://bridge-staging.urusercontent.com'
   }
 
-  return 'wss://bridge.claudeusercontent.com'
+  return 'wss://bridge.urusercontent.com'
 }
 
 function isLocalBridge(): boolean {
@@ -140,7 +140,7 @@ export function createChromeContext(
     }),
     ...(initialPermissionMode && { initialPermissionMode }),
     ...(process.env.USER_TYPE === 'ant' && {
-      callAnthropicMessages: async (req: {
+      callURHQMessages: async (req: {
         model: string
         max_tokens: number
         system: string
@@ -155,7 +155,7 @@ export function createChromeContext(
         // sideQuery handles OAuth attribution fingerprint, proxy, model betas.
         // skipSystemPromptPrefix: the lightning prompt is complete on its own;
         // the CLI prefix would dilute the batching instructions.
-        // tools: [] is load-bearing — without it Sonnet emits
+        // tools: [] is load-bearing — without it modelS emits
         // <function_calls> XML before the text commands. Original
         // lightning-harness.js (apps repo) does the same.
         const response = await sideQuery({

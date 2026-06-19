@@ -100,25 +100,25 @@ The relevant documentation for your detected language is included below in \`<do
 ### Quick Task Reference
 
 **Single text classification/summarization/extraction/Q&A:**
-→ Refer to \`{lang}/claude-api/README.md\`
+→ Refer to \`{lang}/ur-api/README.md\`
 
 **Chat UI or real-time response display:**
-→ Refer to \`{lang}/claude-api/README.md\` + \`{lang}/claude-api/streaming.md\`
+→ Refer to \`{lang}/ur-api/README.md\` + \`{lang}/ur-api/streaming.md\`
 
 **Long-running conversations (may exceed context window):**
-→ Refer to \`{lang}/claude-api/README.md\` — see Compaction section
+→ Refer to \`{lang}/ur-api/README.md\` — see Compaction section
 
 **Prompt caching / optimize caching / "why is my cache hit rate low":**
-→ Refer to \`shared/prompt-caching.md\` + \`{lang}/claude-api/README.md\` (Prompt Caching section)
+→ Refer to \`shared/prompt-caching.md\` + \`{lang}/ur-api/README.md\` (Prompt Caching section)
 
 **Function calling / tool use / agents:**
-→ Refer to \`{lang}/claude-api/README.md\` + \`shared/tool-use-concepts.md\` + \`{lang}/claude-api/tool-use.md\`
+→ Refer to \`{lang}/ur-api/README.md\` + \`shared/tool-use-concepts.md\` + \`{lang}/ur-api/tool-use.md\`
 
 **Batch processing (non-latency-sensitive):**
-→ Refer to \`{lang}/claude-api/README.md\` + \`{lang}/claude-api/batches.md\`
+→ Refer to \`{lang}/ur-api/README.md\` + \`{lang}/ur-api/batches.md\`
 
 **File uploads across multiple requests:**
-→ Refer to \`{lang}/claude-api/README.md\` + \`{lang}/claude-api/files-api.md\`
+→ Refer to \`{lang}/ur-api/README.md\` + \`{lang}/ur-api/files-api.md\`
 
 **Agent with built-in tools (file/web/terminal) (Python & TypeScript only):**
 → Refer to \`{lang}/agent-sdk/README.md\` + \`{lang}/agent-sdk/patterns.md\`
@@ -179,10 +179,10 @@ function buildPrompt(
 
 export function registerURApiSkill(): void {
   registerBundledSkill({
-    name: 'claude-api',
+    name: 'ur-api',
     description:
-      'Build apps with the UR API or Anthropic SDK.\n' +
-      'TRIGGER when: code imports `anthropic`/`@anthropic-ai/sdk`/`claude_agent_sdk`, or user asks to use UR API, Anthropic SDKs, or Agent SDK.\n' +
+      'Build apps with the UR API or URHQ SDK.\n' +
+      'TRIGGER when: code imports `urhq`/`@urhq-ai/sdk`/`ur_agent_sdk`, or user asks to use UR API, URHQ SDKs, or Agent SDK.\n' +
       'DO NOT TRIGGER when: code imports `openai`/other AI SDK, general programming, or ML/data-science tasks.',
     allowedTools: ['Read', 'Grep', 'Glob', 'WebFetch'],
     userInvocable: true,

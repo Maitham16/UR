@@ -2,7 +2,7 @@
  * Settings Sync Types
  *
  * Zod schemas and types for the user settings sync API.
- * Based on the backend API contract from anthropic/anthropic#218817.
+ * Based on the backend API contract from urhq/urhq#218817.
  */
 
 import { z } from 'zod/v4'
@@ -60,8 +60,8 @@ export type SettingsSyncUploadResult = {
  */
 export const SYNC_KEYS = {
   USER_SETTINGS: '~/.ur/settings.json',
-  USER_MEMORY: '~/.ur/CLAUDE.md',
+  USER_MEMORY: '~/.ur/UR.md',
   projectSettings: (projectId: string) =>
     `projects/${projectId}/.ur/settings.local.json`,
-  projectMemory: (projectId: string) => `projects/${projectId}/CLAUDE.local.md`,
+  projectMemory: (projectId: string) => `projects/${projectId}/UR.local.md`,
 } as const

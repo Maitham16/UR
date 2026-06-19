@@ -4,7 +4,7 @@ import type {
   Base64ImageSource,
   ContentBlockParam,
   MessageParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+} from '@urhq-ai/sdk/resources/index.mjs'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import {
   SSEClientTransport,
@@ -132,7 +132,7 @@ import {
   hasMcpDiscoveryButNoToken,
   wrapFetchWithStepUpDetection,
 } from './auth.js'
-import { markURAiMcpConnected } from './claudeai.js'
+import { markURAiMcpConnected } from './urai.js'
 import { getAllMcpConfigs, isMcpServerDisabled } from './config.js'
 import { getMcpServerHeaders } from './headersHelper.js'
 import { SdkControlClientTransport } from './SdkControlTransport.js'
@@ -333,14 +333,14 @@ function mcpBaseUrlAnalytics(serverRef: ScopedMcpServerConfig): {
 }
 
 /**
- * Shared handler for sse/http/claudeai-proxy auth failures during connect:
+ * Shared handler for sse/http/urai-proxy auth failures during connect:
  * emits tengu_mcp_server_needs_auth, caches the needs-auth entry, and returns
  * the needs-auth connection result.
  */
 function handleRemoteAuthFailure(
   name: string,
   serverRef: ScopedMcpServerConfig,
-  transportType: 'sse' | 'http' | 'claudeai-proxy',
+  transportType: 'sse' | 'http' | 'urai-proxy',
 ): MCPServerConnection {
   logEvent('tengu_mcp_server_needs_auth', {
     transportType:
@@ -350,7 +350,7 @@ function handleRemoteAuthFailure(
   const label: Record<typeof transportType, string> = {
     sse: 'SSE',
     http: 'HTTP',
-    'claudeai-proxy': 'claude.ai proxy',
+    'urai-proxy': 'ur.ai proxy',
   }
   logMCPDebug(
     name,
@@ -375,7 +375,7 @@ export function createURAiProxyFetch(innerFetch: FetchLike): FetchLike {
       await checkAndRefreshOAuthTokenIfNeeded()
       const currentTokens = getURAIOAuthTokens()
       if (!currentTokens) {
-        throw new Error('No claude.ai OAuth token available')
+        throw new Error('No ur.ai OAuth token available')
       }
       // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
       const headers = new Headers(init?.headers)
@@ -400,7 +400,7 @@ export function createURAiProxyFetch(innerFetch: FetchLike): FetchLike {
     // downstream service genuinely needs auth (the common case: 30+ servers
     // with "MCP server requires authentication but no OAuth token configured").
     const tokenChanged = await handleOAuth401Error(sentToken).catch(() => false)
-    logEvent('tengu_mcp_claudeai_proxy_401', {
+    logEvent('tengu_mcp_urai_proxy_401', {
       tokenChanged:
         tokenChanged as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
@@ -864,21 +864,21 @@ export const connectToServer = memoize(
         logMCPDebug(name, `HTTP transport created successfully`)
       } else if (serverRef.type === 'sdk') {
         throw new Error('SDK servers should be handled in print.ts')
-      } else if (serverRef.type === 'claudeai-proxy') {
+      } else if (serverRef.type === 'urai-proxy') {
         logMCPDebug(
           name,
-          `Initializing claude.ai proxy transport for server ${serverRef.id}`,
+          `Initializing ur.ai proxy transport for server ${serverRef.id}`,
         )
 
         const tokens = getURAIOAuthTokens()
         if (!tokens) {
-          throw new Error('No claude.ai OAuth token found')
+          throw new Error('No ur.ai OAuth token found')
         }
 
         const oauthConfig = getOauthConfig()
         const proxyUrl = `${oauthConfig.MCP_PROXY_URL}${oauthConfig.MCP_PROXY_PATH.replace('{server_id}', serverRef.id)}`
 
-        logMCPDebug(name, `Using claude.ai proxy at ${proxyUrl}`)
+        logMCPDebug(name, `Using ur.ai proxy at ${proxyUrl}`)
 
         // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
         const fetchWithAuth = createURAiProxyFetch(globalThis.fetch)
@@ -900,7 +900,7 @@ export const connectToServer = memoize(
           new URL(proxyUrl),
           transportOptions,
         )
-        logMCPDebug(name, `claude.ai proxy transport created successfully`)
+        logMCPDebug(name, `ur.ai proxy transport created successfully`)
       } else if (
         (serverRef.type === 'stdio' || !serverRef.type) &&
         isURInChromeMCPServer(name)
@@ -986,7 +986,7 @@ export const connectToServer = memoize(
           name: 'ur',
           title: 'UR',
           version: MACRO.VERSION ?? 'unknown',
-          description: "Anthropic's agentic coding tool",
+          description: "URHQ's agentic coding tool",
           websiteUrl: PRODUCT_URL,
         },
         {
@@ -1121,19 +1121,19 @@ export const connectToServer = memoize(
             return handleRemoteAuthFailure(name, serverRef, 'http')
           }
         } else if (
-          serverRef.type === 'claudeai-proxy' &&
+          serverRef.type === 'urai-proxy' &&
           error instanceof Error
         ) {
           logMCPDebug(
             name,
-            `claude.ai proxy connection failed after ${elapsed}ms: ${error.message}`,
+            `ur.ai proxy connection failed after ${elapsed}ms: ${error.message}`,
           )
           logMCPError(name, error)
 
           // StreamableHTTPError has a `code` property with the HTTP status
           const errorCode = (error as Error & { code?: number }).code
           if (errorCode === 401) {
-            return handleRemoteAuthFailure(name, serverRef, 'claudeai-proxy')
+            return handleRemoteAuthFailure(name, serverRef, 'urai-proxy')
           }
         } else if (
           serverRef.type === 'sse-ide' ||
@@ -1313,7 +1313,7 @@ export const connectToServer = memoize(
         // and close the transport so pending tool calls reject and the next
         // call reconnects with a fresh session ID.
         if (
-          (transportType === 'http' || transportType === 'claudeai-proxy') &&
+          (transportType === 'http' || transportType === 'urai-proxy') &&
           isMcpSessionExpiredError(error)
         ) {
           logMCPDebug(
@@ -1332,7 +1332,7 @@ export const connectToServer = memoize(
         if (
           transportType === 'sse' ||
           transportType === 'http' ||
-          transportType === 'claudeai-proxy'
+          transportType === 'urai-proxy'
         ) {
           // The SDK's StreamableHTTP transport fires this after exhausting its
           // own SSE reconnect attempts (default maxRetries: 2) — but it never
@@ -1776,12 +1776,12 @@ export const fetchToolsForClient = memoizeWithLRU(
             // a newline here would inject orphan lines into the deferred-tool
             // list (formatDeferredToolLine joins on '\n').
             searchHint:
-              typeof tool._meta?.['anthropic/searchHint'] === 'string'
-                ? tool._meta['anthropic/searchHint']
+              typeof tool._meta?.['urhq/searchHint'] === 'string'
+                ? tool._meta['urhq/searchHint']
                     .replace(/\s+/g, ' ')
                     .trim() || undefined
                 : undefined,
-            alwaysLoad: tool._meta?.['anthropic/alwaysLoad'] === true,
+            alwaysLoad: tool._meta?.['urhq/alwaysLoad'] === true,
             async description() {
               return tool.description ?? ''
             },
@@ -1838,7 +1838,7 @@ export const fetchToolsForClient = memoizeWithLRU(
             ) {
               const toolUseId = extractToolUseId(parentMessage)
               const meta = toolUseId
-                ? { 'claudecode/toolUseId': toolUseId }
+                ? { 'urcode/toolUseId': toolUseId }
                 : {}
 
               // Emit progress when tool starts
@@ -2161,7 +2161,7 @@ export async function reconnectMcpServerImpl(
       }
     }
 
-    if (config.type === 'claudeai-proxy') {
+    if (config.type === 'urai-proxy') {
       markURAiMcpConnected(name)
     }
 
@@ -2304,7 +2304,7 @@ export async function getMcpToolsCommandsAndResources(
       // Each probe is a network round-trip for connect-401 plus OAuth
       // discovery, and print mode awaits the whole batch (main.tsx:3503).
       if (
-        (config.type === 'claudeai-proxy' ||
+        (config.type === 'urai-proxy' ||
           config.type === 'http' ||
           config.type === 'sse') &&
         ((await isMcpAuthCached(name)) ||
@@ -2334,7 +2334,7 @@ export async function getMcpToolsCommandsAndResources(
         return
       }
 
-      if (config.type === 'claudeai-proxy') {
+      if (config.type === 'urai-proxy') {
         markURAiMcpConnected(name)
       }
 
@@ -3218,7 +3218,7 @@ async function callMCPTool({
         'code' in e &&
         (e as Error & { code?: number }).code === -32000 &&
         e.message.includes('Connection closed') &&
-        (config.type === 'http' || config.type === 'claudeai-proxy')
+        (config.type === 'http' || config.type === 'urai-proxy')
       if (isSessionExpired || isConnectionClosedOnHttp) {
         logMCPDebug(
           name,
@@ -3281,7 +3281,7 @@ export async function setupSdkMcpClients(
           name: 'ur',
           title: 'UR',
           version: MACRO.VERSION ?? 'unknown',
-          description: "Anthropic's agentic coding tool",
+          description: "URHQ's agentic coding tool",
           websiteUrl: PRODUCT_URL,
         },
         {

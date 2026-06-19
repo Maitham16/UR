@@ -2,7 +2,7 @@ import {
   APIConnectionError,
   APIConnectionTimeoutError,
   APIUserAbortError,
-} from '@anthropic-ai/sdk'
+} from '@urhq-ai/sdk'
 import type {
   BetaContentBlock,
   BetaMessage,
@@ -10,9 +10,9 @@ import type {
   BetaRawMessageStreamEvent,
   BetaToolUnion,
   BetaUsage,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { MessageParam } from '@anthropic-ai/sdk/resources/index.mjs'
-import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
+} from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
+import type { MessageParam } from '@urhq-ai/sdk/resources/index.mjs'
+import type { Stream } from '@urhq-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
 import {
   looksLikeBareJsonToolCallPrefix,
@@ -82,7 +82,7 @@ type OllamaChatRequest = {
 
 const OLLAMA_BASE_URL = 'http://localhost:11434'
 
-export function createOllamaAnthropicClient(): unknown {
+export function createOllamaURHQClient(): unknown {
   return {
     beta: {
       messages: {
@@ -118,7 +118,7 @@ function createStreamingRequest(
       const response = await responsePromise
       const requestId = `ollama-${randomUUID()}`
       return {
-        data: createAnthropicStream(response, params, controller, requestId),
+        data: createURHQStream(response, params, controller, requestId),
         request_id: requestId,
         response,
       }
@@ -136,7 +136,7 @@ async function createNonStreamingRequest(
   if (json.error) {
     throw new Error(json.error)
   }
-  return ollamaResponseToAnthropicMessage(json, params)
+  return ollamaResponseToURHQMessage(json, params)
 }
 
 async function fetchOllamaChat(
@@ -409,7 +409,7 @@ function getOllamaFormat(params: BetaMessageStreamParams): unknown {
   return undefined
 }
 
-function createAnthropicStream(
+function createURHQStream(
   response: Response,
   params: BetaMessageStreamParams,
   controller: AbortController,
@@ -418,13 +418,13 @@ function createAnthropicStream(
   const stream = {
     controller,
     async *[Symbol.asyncIterator](): AsyncGenerator<BetaRawMessageStreamEvent> {
-      yield* streamAnthropicEvents(response, params, requestId)
+      yield* streamURHQEvents(response, params, requestId)
     },
   }
   return stream as unknown as Stream<BetaRawMessageStreamEvent>
 }
 
-async function* streamAnthropicEvents(
+async function* streamURHQEvents(
   response: Response,
   params: BetaMessageStreamParams,
   requestId: string,
@@ -679,7 +679,7 @@ async function* readOllamaChunks(
   }
 }
 
-function ollamaResponseToAnthropicMessage(
+function ollamaResponseToURHQMessage(
   response: OllamaChatChunk,
   params: BetaMessageStreamParams,
 ): BetaMessage {

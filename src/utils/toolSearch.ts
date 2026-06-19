@@ -37,7 +37,7 @@ import { logForDebugging } from './debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 import {
   getAPIProvider,
-  isFirstPartyAnthropicBaseUrl,
+  isFirstPartyURHQBaseUrl,
 } from './model/providers.js'
 import { jsonStringify } from './slowOperations.js'
 import { zodToJsonSchema } from './zodToJsonSchema.js'
@@ -201,7 +201,7 @@ export function getToolSearchMode(): ToolSearchMode {
  * Default patterns for models that do NOT support tool_reference.
  * New models are assumed to support tool_reference unless explicitly listed here.
  */
-const DEFAULT_UNSUPPORTED_MODEL_PATTERNS = ['haiku']
+const DEFAULT_UNSUPPORTED_MODEL_PATTERNS = ['modelH']
 
 /**
  * Get the list of model patterns that do NOT support tool_reference.
@@ -230,7 +230,7 @@ function getUnsupportedToolReferencePatterns(): string[] {
  * UNLESS they match a pattern in the unsupported list. This ensures new
  * models work by default without code changes.
  *
- * Currently, Haiku models do NOT support tool_reference. This can be
+ * Currently, modelH models do NOT support tool_reference. This can be
  * updated via GrowthBook feature 'tengu_tool_search_unsupported_models'.
  *
  * @param model The model name to check
@@ -284,7 +284,7 @@ export function isToolSearchEnabledOptimistic(): boolean {
   }
 
   // tool_reference is a beta content type that third-party API gateways
-  // (ANTHROPIC_BASE_URL proxies) typically don't support. When the provider
+  // (URHQ_BASE_URL proxies) typically don't support. When the provider
   // is 'firstParty' but the base URL points elsewhere, the proxy will reject
   // tool_reference blocks with a 400. Vertex/Bedrock/Foundry are unaffected —
   // they have their own endpoints and beta headers.
@@ -302,12 +302,12 @@ export function isToolSearchEnabledOptimistic(): boolean {
   if (
     !process.env.ENABLE_TOOL_SEARCH &&
     getAPIProvider() === 'firstParty' &&
-    !isFirstPartyAnthropicBaseUrl()
+    !isFirstPartyURHQBaseUrl()
   ) {
     if (!loggedOptimistic) {
       loggedOptimistic = true
       logForDebugging(
-        `[ToolSearch:optimistic] disabled: ANTHROPIC_BASE_URL=${process.env.ANTHROPIC_BASE_URL} is not a first-party Anthropic host. Set ENABLE_TOOL_SEARCH=true (or auto / auto:N) if your proxy forwards tool_reference blocks.`,
+        `[ToolSearch:optimistic] disabled: URHQ_BASE_URL=${process.env.URHQ_BASE_URL} is not a first-party URHQ host. Set ENABLE_TOOL_SEARCH=true (or auto / auto:N) if your proxy forwards tool_reference blocks.`,
       )
     }
     return false
@@ -372,7 +372,7 @@ async function calculateDeferredToolDescriptionChars(
  *
  * This is the definitive check that includes:
  * - MCP mode (Tst, TstAuto, McpCli, Standard)
- * - Model compatibility (haiku doesn't support tool_reference)
+ * - Model compatibility (modelH doesn't support tool_reference)
  * - ToolSearchTool availability (must be in tools list)
  * - Threshold check for TstAuto mode
  *
@@ -408,7 +408,7 @@ export async function isToolSearchEnabled(
         reason as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       // Log the actual model being checked, not the session's main model.
       // This is important for debugging subagent tool search decisions where
-      // the subagent model (e.g., haiku) differs from the session model (e.g., opus).
+      // the subagent model (e.g., modelH) differs from the session model (e.g., modelO).
       checkedModel:
         model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       mcpToolCount,
@@ -422,7 +422,7 @@ export async function isToolSearchEnabled(
   if (!modelSupportsToolReference(model)) {
     logForDebugging(
       `Tool search disabled for model '${model}': model does not support tool_reference blocks. ` +
-        `This feature is only available on UR Sonnet 4+, Opus 4+, and newer models.`,
+        `This feature is only available on UR modelS 4+, modelO 4+, and newer models.`,
     )
     logModeDecision(false, 'standard', 'model_unsupported')
     return false

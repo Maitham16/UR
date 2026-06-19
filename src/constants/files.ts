@@ -33,7 +33,7 @@ export const BINARY_EXTENSIONS = new Set([
   '.m4a',
   '.wma',
   '.aiff',
-  '.opus',
+  '.modelO',
   // Archives
   '.zip',
   '.tar',

@@ -3,11 +3,11 @@ import {
   APIConnectionError,
   APIConnectionTimeoutError,
   APIError,
-} from '@anthropic-ai/sdk'
+} from '@urhq-ai/sdk'
 import type {
   BetaMessage,
   BetaStopReason,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+} from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import { AFK_MODE_BETA_HEADER } from 'src/constants/betas.js'
 import type { SDKAssistantMessageError } from 'src/entrypoints/agentSdkTypes.js'
 import type {
@@ -16,7 +16,7 @@ import type {
   UserMessage,
 } from 'src/types/message.js'
 import {
-  getAnthropicApiKeyWithSource,
+  getURHQApiKeyWithSource,
   getURAIOAuthTokens,
   getOauthAccountInfo,
   isURAISubscriber,
@@ -27,7 +27,7 @@ import {
 } from 'src/utils/messages.js'
 import {
   getDefaultMainLoopModelSetting,
-  isNonCustomOpusModel,
+  isNonCustommodelOModel,
 } from 'src/utils/model/model.js'
 import { getModelStrings } from 'src/utils/model/modelStrings.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
@@ -157,9 +157,9 @@ export const INVALID_API_KEY_ERROR_MESSAGE = 'Not logged in · Please run /login
 export const INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL =
   'Invalid API key · Fix external API key'
 export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH =
-  'Your ANTHROPIC_API_KEY belongs to a disabled organization · Unset the environment variable to use your subscription instead'
+  'Your URHQ_API_KEY belongs to a disabled organization · Unset the environment variable to use your subscription instead'
 export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY =
-  'Your ANTHROPIC_API_KEY belongs to a disabled organization · Update or unset the environment variable'
+  'Your URHQ_API_KEY belongs to a disabled organization · Update or unset the environment variable'
 export const TOKEN_REVOKED_ERROR_MESSAGE =
   'OAuth token revoked · Please run /login'
 export const CCR_AUTH_ERROR_MESSAGE =
@@ -452,7 +452,7 @@ export function getAssistantMessageFromError(
     })
   }
 
-  // Check for emergency capacity off switch for Opus PAYG users
+  // Check for emergency capacity off switch for modelO PAYG users
   if (
     error instanceof Error &&
     error.message.includes(CUSTOM_OFF_SWITCH_MESSAGE)
@@ -470,11 +470,11 @@ export function getAssistantMessageFromError(
   ) {
     // Check if this is the new API with multiple rate limit headers
     const rateLimitType = error.headers?.get?.(
-      'anthropic-ratelimit-unified-representative-claim',
-    ) as 'five_hour' | 'seven_day' | 'seven_day_opus' | null
+      'urhq-ratelimit-unified-representative-claim',
+    ) as 'five_hour' | 'seven_day' | 'seven_day_modelO' | null
 
     const overageStatus = error.headers?.get?.(
-      'anthropic-ratelimit-unified-overage-status',
+      'urhq-ratelimit-unified-overage-status',
     ) as 'allowed' | 'allowed_warning' | 'rejected' | null
 
     // If we have the new headers, use the new message generation
@@ -488,7 +488,7 @@ export function getAssistantMessageFromError(
 
       // Extract rate limit information from headers
       const resetHeader = error.headers?.get?.(
-        'anthropic-ratelimit-unified-reset',
+        'urhq-ratelimit-unified-reset',
       )
       if (resetHeader) {
         limits.resetsAt = Number(resetHeader)
@@ -503,14 +503,14 @@ export function getAssistantMessageFromError(
       }
 
       const overageResetHeader = error.headers?.get?.(
-        'anthropic-ratelimit-unified-overage-reset',
+        'urhq-ratelimit-unified-overage-reset',
       )
       if (overageResetHeader) {
         limits.overageResetsAt = Number(overageResetHeader)
       }
 
       const overageDisabledReason = error.headers?.get?.(
-        'anthropic-ratelimit-unified-overage-disabled-reason',
+        'urhq-ratelimit-unified-overage-disabled-reason',
       ) as OverageDisabledReason | null
       if (overageDisabledReason) {
         limits.overageDisabledReason = overageDisabledReason
@@ -526,7 +526,7 @@ export function getAssistantMessageFromError(
       }
 
       // If getRateLimitErrorMessage returned null, it means the fallback mechanism
-      // will handle this silently (e.g., Opus -> Sonnet fallback for eligible users).
+      // will handle this silently (e.g., modelO -> modelS fallback for eligible users).
       // Return NO_RESPONSE_REQUESTED so no error is shown to the user, but the
       // message is still recorded in conversation history for UR to see.
       return createAssistantAPIErrorMessage({
@@ -540,7 +540,7 @@ export function getAssistantMessageFromError(
     // (e.g. 1M context without Extra Usage) and infra capacity 429s land here.
     if (error.message.includes('Extra usage is required for long context')) {
       const hint = getIsNonInteractiveSession()
-        ? 'enable extra usage at claude.ai/settings/usage, or use --model to switch to standard context'
+        ? 'enable extra usage at ur.ai/settings/usage, or use --model to switch to standard context'
         : 'run /extra-usage to enable, or /model to switch to standard context'
       return createAssistantAPIErrorMessage({
         content: `${API_ERROR_MESSAGE_PREFIX}: Extra usage is required for 1M context · ${hint}`,
@@ -647,7 +647,7 @@ export function getAssistantMessageFromError(
     error instanceof APIError &&
     error.status === 400 &&
     error.message.includes(AFK_MODE_BETA_HEADER) &&
-    error.message.includes('anthropic-beta')
+    error.message.includes('urhq-beta')
   ) {
     return createAssistantAPIErrorMessage({
       content: 'Auto mode is unavailable for your plan',
@@ -733,17 +733,17 @@ export function getAssistantMessageFromError(
     })
   }
 
-  // Check for invalid model name error for subscription users trying to use Opus
+  // Check for invalid model name error for subscription users trying to use modelO
   if (
     isURAISubscriber() &&
     error instanceof APIError &&
     error.status === 400 &&
     error.message.toLowerCase().includes('invalid model name') &&
-    (isNonCustomOpusModel(model) || model === 'opus')
+    (isNonCustommodelOModel(model) || model === 'modelO')
   ) {
     return createAssistantAPIErrorMessage({
       content:
-        'UR Opus is not available with the UR Pro plan. If you have updated your subscription plan recently, run /logout and /login for the plan to take effect.',
+        'UR modelO is not available with the UR Pro plan. If you have updated your subscription plan recently, run /logout and /login for the plan to take effect.',
       error: 'invalid_request',
     })
   }
@@ -753,13 +753,13 @@ export function getAssistantMessageFromError(
   // Ants using new or unknown org IDs that haven't been gated in.
   if (
     process.env.USER_TYPE === 'ant' &&
-    !process.env.ANTHROPIC_MODEL &&
+    !process.env.URHQ_MODEL &&
     error instanceof Error &&
     error.message.toLowerCase().includes('invalid model name')
   ) {
     // Get organization ID from config - only use OAuth account data when actively using OAuth
     const orgId = getOauthAccountInfo()?.organizationUuid
-    const baseMsg = `[ANT-ONLY] Your org isn't gated into the \`${model}\` model. Either run \`claude\` with \`ANTHROPIC_MODEL=${getDefaultMainLoopModelSetting()}\``
+    const baseMsg = `[ANT-ONLY] Your org isn't gated into the \`${model}\` model. Either run \`ur\` with \`URHQ_MODEL=${getDefaultMainLoopModelSetting()}\``
     const msg = orgId
       ? `${baseMsg} or share your orgId (${orgId}) in ${MACRO.FEEDBACK_CHANNEL} for help getting access.`
       : `${baseMsg} or reach out in ${MACRO.FEEDBACK_CHANNEL} for help getting access.`
@@ -779,7 +779,7 @@ export function getAssistantMessageFromError(
       error: 'billing_error',
     })
   }
-  // "Organization has been disabled" — commonly a stale ANTHROPIC_API_KEY
+  // "Organization has been disabled" — commonly a stale URHQ_API_KEY
   // from a previous employer/project overriding subscription auth. Only handle
   // the env-var case; apiKeyHelper and /login-managed keys mean the active
   // auth's org is genuinely disabled with no dormant fallback to point at.
@@ -788,13 +788,13 @@ export function getAssistantMessageFromError(
     error.status === 400 &&
     error.message.toLowerCase().includes('organization has been disabled')
   ) {
-    const { source } = getAnthropicApiKeyWithSource()
-    // getAnthropicApiKeyWithSource conflates the env var with FD-passed keys
+    const { source } = getURHQApiKeyWithSource()
+    // getURHQApiKeyWithSource conflates the env var with FD-passed keys
     // under the same source value, and in CCR mode OAuth stays active despite
     // the env var. The three guards ensure we only blame the env var when it's
     // actually set and actually on the wire.
     if (
-      source === 'ANTHROPIC_API_KEY' &&
+      source === 'URHQ_API_KEY' &&
       undefined &&
       !isURAISubscriber()
     ) {
@@ -824,9 +824,9 @@ export function getAssistantMessageFromError(
     }
 
     // Check if the API key is from an external source
-    const { source } = getAnthropicApiKeyWithSource()
+    const { source } = getURHQApiKeyWithSource()
     const isExternalSource =
-      source === 'ANTHROPIC_API_KEY' || source === 'apiKeyHelper'
+      source === 'URHQ_API_KEY' || source === 'apiKeyHelper'
 
     return createAssistantAPIErrorMessage({
       error: 'authentication_failed',
@@ -944,17 +944,17 @@ function get3PModelFallbackSuggestion(model: string): string | undefined {
   }
   // @[MODEL LAUNCH]: Add a fallback suggestion chain for the new model → previous version for 3P
   const m = model.toLowerCase()
-  // If the failing model looks like an Opus 4.6 variant, suggest the default Opus (4.1 for 3P)
-  if (m.includes('opus-4-6') || m.includes('opus_4_6')) {
-    return getModelStrings().opus41
+  // If the failing model looks like an modelO 4.6 variant, suggest the default modelO (4.1 for 3P)
+  if (m.includes('modelO-4-6') || m.includes('modelO_4_6')) {
+    return getModelStrings().modelO41
   }
-  // If the failing model looks like a Sonnet 4.6 variant, suggest Sonnet 4.5
-  if (m.includes('sonnet-4-6') || m.includes('sonnet_4_6')) {
-    return getModelStrings().sonnet45
+  // If the failing model looks like a modelS 4.6 variant, suggest modelS 4.5
+  if (m.includes('modelS-4-6') || m.includes('modelS_4_6')) {
+    return getModelStrings().modelS45
   }
-  // If the failing model looks like a Sonnet 4.5 variant, suggest Sonnet 4
-  if (m.includes('sonnet-4-5') || m.includes('sonnet_4_5')) {
-    return getModelStrings().sonnet40
+  // If the failing model looks like a modelS 4.5 variant, suggest modelS 4
+  if (m.includes('modelS-4-5') || m.includes('modelS_4_5')) {
+    return getModelStrings().modelS40
   }
   return undefined
 }
@@ -1197,8 +1197,8 @@ export function getErrorMessageIfRefusal(
     : `${API_ERROR_MESSAGE_PREFIX}: UR is unable to respond to this request. Please double press esc to edit your last message or start a new session for UR to assist with a different task.`
 
   const modelSuggestion =
-    model !== 'claude-sonnet-4-20250514'
-      ? ' If you are seeing this refusal repeatedly, try running /model claude-sonnet-4-20250514 to switch models.'
+    model !== 'ur-modelS-4-20250514'
+      ? ' If you are seeing this refusal repeatedly, try running /model ur-modelS-4-20250514 to switch models.'
       : ''
 
   return createAssistantAPIErrorMessage({

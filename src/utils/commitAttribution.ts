@@ -81,7 +81,7 @@ export const isInternalModelRepo = sequential(async (): Promise<boolean> => {
  * Converts internal model variants to their public equivalents.
  */
 export function sanitizeSurfaceKey(surfaceKey: string): string {
-  // Split surface key into surface and model parts (e.g., "cli/opus-4-5-fast" -> ["cli", "opus-4-5-fast"])
+  // Split surface key into surface and model parts (e.g., "cli/modelO-4-5-fast" -> ["cli", "modelO-4-5-fast"])
   const slashIndex = surfaceKey.lastIndexOf('/')
   if (slashIndex === -1) {
     return surfaceKey
@@ -101,18 +101,18 @@ export function sanitizeSurfaceKey(surfaceKey: string): string {
  */
 export function sanitizeModelName(shortName: string): string {
   // Map internal variants to public equivalents based on model family
-  if (shortName.includes('opus-4-6')) return 'claude-opus-4-6'
-  if (shortName.includes('opus-4-5')) return 'claude-opus-4-5'
-  if (shortName.includes('opus-4-1')) return 'claude-opus-4-1'
-  if (shortName.includes('opus-4')) return 'claude-opus-4'
-  if (shortName.includes('sonnet-4-6')) return 'claude-sonnet-4-6'
-  if (shortName.includes('sonnet-4-5')) return 'claude-sonnet-4-5'
-  if (shortName.includes('sonnet-4')) return 'claude-sonnet-4'
-  if (shortName.includes('sonnet-3-7')) return 'claude-sonnet-3-7'
-  if (shortName.includes('haiku-4-5')) return 'claude-haiku-4-5'
-  if (shortName.includes('haiku-3-5')) return 'claude-haiku-3-5'
+  if (shortName.includes('modelO-4-6')) return 'ur-modelO-4-6'
+  if (shortName.includes('modelO-4-5')) return 'ur-modelO-4-5'
+  if (shortName.includes('modelO-4-1')) return 'ur-modelO-4-1'
+  if (shortName.includes('modelO-4')) return 'ur-modelO-4'
+  if (shortName.includes('modelS-4-6')) return 'ur-modelS-4-6'
+  if (shortName.includes('modelS-4-5')) return 'ur-modelS-4-5'
+  if (shortName.includes('modelS-4')) return 'ur-modelS-4'
+  if (shortName.includes('modelS-3-7')) return 'ur-modelS-3-7'
+  if (shortName.includes('modelH-4-5')) return 'ur-modelH-4-5'
+  if (shortName.includes('modelH-3-5')) return 'ur-modelH-3-5'
   // Unknown models get a generic name
-  return 'claude'
+  return 'ur'
 }
 
 /**
@@ -180,7 +180,7 @@ export function getClientSurface(): string {
 
 /**
  * Build a surface key that includes the model name.
- * Format: "surface/model" (e.g., "cli/ur-sonnet")
+ * Format: "surface/model" (e.g., "cli/ur-modelS")
  */
 export function buildSurfaceKey(surface: string, model: ModelName): string {
   return `${surface}/${getCanonicalName(model)}`

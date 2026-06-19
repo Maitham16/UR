@@ -114,7 +114,7 @@ function pollSleepDetectionThresholdMs(backoff: BackoffConfig): number {
  * and args go directly to it. In npm installs (node running cli.js),
  * process.execPath is the node runtime — the child spawn must pass the script
  * path as the first arg, otherwise node interprets --sdk-url as a node option
- * and exits with "bad option: --sdk-url". See anthropics/ur#28334.
+ * and exits with "bad option: --sdk-url". See urhqs/ur#28334.
  */
 function spawnScriptArgs(): string[] {
   if (isInBundledMode() || !process.argv[1]) {
@@ -349,7 +349,7 @@ export async function runBridgeLoop(
           ? `${config.debugFile.slice(0, ext)}-*${config.debugFile.slice(ext)}`
           : `${config.debugFile}-*`
     } else {
-      debugGlob = join(tmpdir(), 'claude', 'bridge-session-*.log')
+      debugGlob = join(tmpdir(), 'ur', 'bridge-session-*.log')
     }
     logger.setDebugLogPath(debugGlob)
   }
@@ -1135,7 +1135,7 @@ export async function runBridgeLoop(
           } else if (config.verbose || process.env.USER_TYPE === 'ant') {
             sessionDebugFile = join(
               tmpdir(),
-              'claude',
+              'ur',
               `bridge-session-${safeId}.log`,
             )
           }
@@ -1918,12 +1918,12 @@ async function printHelp(): Promise<void> {
 `
     : ''
   const help = `
-Remote Control - Connect your local environment to claude.ai/code
+Remote Control - Connect your local environment to ur.ai/code
 
 USAGE
   ur remote-control [options]
 OPTIONS
-  --name <name>                    Name for the session (shown in claude.ai/code)
+  --name <name>                    Name for the session (shown in ur.ai/code)
 ${
   feature('KAIROS')
     ? `  -c, --continue                   Resume the last session in this directory
@@ -1939,12 +1939,12 @@ ${
 ${serverOptions}
 DESCRIPTION
   Remote Control allows you to control sessions on your local device from
-  claude.ai/code (https://claude.ai/code). Run this command in the
+  ur.ai/code (https://ur.ai/code). Run this command in the
   directory you want to work in, then connect from the UR app or web.
 ${serverDescription}
 NOTES
   - You must be logged in with a UR account that has a subscription
-  - Run \`claude\` first in the directory to accept the workspace trust dialog
+  - Run \`ur\` first in the directory to accept the workspace trust dialog
 ${serverNote}`
   // biome-ignore lint/suspicious/noConsole: intentional help output
   console.log(help)
@@ -2086,7 +2086,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
   if (!checkHasTrustDialogAccepted()) {
     // biome-ignore lint/suspicious/noConsole:: intentional console output
     console.error(
-      `Error: Workspace not trusted. Please run \`claude\` in ${dir} first to review and accept the workspace trust dialog.`,
+      `Error: Workspace not trusted. Please run \`ur\` in ${dir} first to review and accept the workspace trust dialog.`,
     )
     // eslint-disable-next-line custom-rules/no-process-exit
     process.exit(1)
@@ -2122,7 +2122,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
     })
     // biome-ignore lint/suspicious/noConsole:: intentional console output
     console.log(
-      '\nRemote Control lets you access this CLI session from the web (claude.ai/code)\nor the UR app, so you can pick up where you left off on any device.\n\nYou can disconnect remote access anytime by running /remote-control again.\n',
+      '\nRemote Control lets you access this CLI session from the web (ur.ai/code)\nor the UR app, so you can pick up where you left off on any device.\n\nYou can disconnect remote access anytime by running /remote-control again.\n',
     )
     const answer = await new Promise<string>(resolve => {
       rl.question('Enable Remote Control? (y/n) ', resolve)
@@ -2252,7 +2252,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
     })
     // biome-ignore lint/suspicious/noConsole: intentional dialog output
     console.log(
-      `\nClaude Remote Control is launching in spawn mode which lets you create new sessions in this project from UR on Web or your Mobile app. Learn more here: https://docs.ur.dev/docs/en/remote-control\n\n` +
+      `\nUR Remote Control is launching in spawn mode which lets you create new sessions in this project from UR on Web or your Mobile app. Learn more here: https://docs.ur.dev/docs/en/remote-control\n\n` +
         `Spawn mode for this project:\n` +
         `  [1] same-dir \u2014 sessions share the current directory (default)\n` +
         `  [2] worktree \u2014 each session gets an isolated git worktree\n\n` +
@@ -2830,7 +2830,7 @@ export async function runBridgeHeadless(
 
   if (!checkHasTrustDialogAccepted()) {
     throw new BridgeHeadlessPermanentError(
-      `Workspace not trusted: ${dir}. Run \`claude\` in that directory first to accept the trust dialog.`,
+      `Workspace not trusted: ${dir}. Run \`ur\` in that directory first to accept the trust dialog.`,
     )
   }
 

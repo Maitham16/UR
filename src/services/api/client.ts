@@ -1,8 +1,8 @@
 // @ts-nocheck
-import type Anthropic from '@anthropic-ai/sdk'
+import type URHQ from '@urhq-ai/sdk'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 
-export async function getAnthropicClient({
+export async function getURHQClient({
   apiKey,
   maxRetries,
   model,
@@ -12,21 +12,21 @@ export async function getAnthropicClient({
   apiKey?: string
   maxRetries: number
   model?: string
-  fetchOverride?: ConstructorParameters<typeof Anthropic>[0]['fetch']
+  fetchOverride?: ConstructorParameters<typeof URHQ>[0]['fetch']
   source?: string
-}): Promise<Anthropic> {
+}): Promise<URHQ> {
   // UR only supports local Ollama execution. All first-party and cloud
-  // provider branches (Anthropic direct, Bedrock, Vertex, Foundry/Azure) have
+  // provider branches (URHQ direct, Bedrock, Vertex, Foundry/Azure) have
   // been removed from the external build.
   if (getAPIProvider() === 'ollama') {
-    const { createOllamaAnthropicClient } = await import('./ollama.js')
-    return createOllamaAnthropicClient() as Anthropic
+    const { createOllamaURHQClient } = await import('./ollama.js')
+    return createOllamaURHQClient() as URHQ
   }
 
   // Defensive fallback: build a minimal local-Ollama client. This path is
   // unreachable while the provider is hardcoded to 'ollama'.
-  const { createOllamaAnthropicClient } = await import('./ollama.js')
-  return createOllamaAnthropicClient() as Anthropic
+  const { createOllamaURHQClient } = await import('./ollama.js')
+  return createOllamaURHQClient() as URHQ
 }
 
 export const CLIENT_REQUEST_ID_HEADER = 'x-client-request-id'

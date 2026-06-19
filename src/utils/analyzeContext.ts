@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle'
-import type { Anthropic } from '@anthropic-ai/sdk'
+import type { URHQ } from '@urhq-ai/sdk'
 import {
   getSystemPrompt,
   SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
@@ -18,7 +18,7 @@ import {
 } from '../services/compact/autoCompact.js'
 import {
   countMessagesTokensWithAPI,
-  countTokensViaHaikuFallback,
+  countTokensViamodelHFallback,
   roughTokenCountEstimation,
 } from '../services/tokenEstimation.js'
 import { estimateSkillFrontmatterTokens } from '../skills/loadSkillsDir.js'
@@ -76,8 +76,8 @@ const MANUAL_COMPACT_BUFFER_NAME = 'Compact buffer'
 export const TOOL_TOKEN_COUNT_OVERHEAD = 500
 
 async function countTokensWithFallback(
-  messages: Anthropic.Beta.Messages.BetaMessageParam[],
-  tools: Anthropic.Beta.Messages.BetaToolUnion[],
+  messages: URHQ.Beta.Messages.BetaMessageParam[],
+  tools: URHQ.Beta.Messages.BetaToolUnion[],
 ): Promise<number | null> {
   try {
     const result = await countMessagesTokensWithAPI(messages, tools)
@@ -85,7 +85,7 @@ async function countTokensWithFallback(
       return result
     }
     logForDebugging(
-      `countTokensWithFallback: API returned null, trying haiku fallback (${tools.length} tools)`,
+      `countTokensWithFallback: API returned null, trying modelH fallback (${tools.length} tools)`,
     )
   } catch (err) {
     logForDebugging(`countTokensWithFallback: API failed: ${errorMessage(err)}`)
@@ -93,16 +93,16 @@ async function countTokensWithFallback(
   }
 
   try {
-    const fallbackResult = await countTokensViaHaikuFallback(messages, tools)
+    const fallbackResult = await countTokensViamodelHFallback(messages, tools)
     if (fallbackResult === null) {
       logForDebugging(
-        `countTokensWithFallback: haiku fallback also returned null (${tools.length} tools)`,
+        `countTokensWithFallback: modelH fallback also returned null (${tools.length} tools)`,
       )
     }
     return fallbackResult
   } catch (err) {
     logForDebugging(
-      `countTokensWithFallback: haiku fallback failed: ${errorMessage(err)}`,
+      `countTokensWithFallback: modelH fallback failed: ${errorMessage(err)}`,
     )
     logError(err)
     return null
@@ -322,7 +322,7 @@ async function countMemoryFileTokens(): Promise<{
   memoryFileDetails: MemoryFile[]
   urMdTokens: number
 }> {
-  // Simple mode disables CLAUDE.md loading, so don't report tokens for them
+  // Simple mode disables UR.md loading, so don't report tokens for them
   if (isEnvTruthy(process.env.UR_CODE_SIMPLE)) {
     return { memoryFileDetails: [], urMdTokens: 0 }
   }
@@ -1075,7 +1075,7 @@ export async function analyzeContextUsage(
     cats.push({
       name: 'Memory files',
       tokens: urMdTokens,
-      color: 'claude',
+      color: 'ur',
     })
   }
 

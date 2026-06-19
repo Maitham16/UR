@@ -5,11 +5,11 @@
 import type {
   BetaMessage,
   BetaUsage,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+} from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import type {
   ContentBlockParam,
   MessageParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+} from '@urhq-ai/sdk/resources/index.mjs'
 
 type AnyObject = Record<string, any>
 

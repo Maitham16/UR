@@ -32,10 +32,10 @@ export const getInferenceProfileBackingModel = memoize(async function (
 })
 
 /**
- * Check if a model ID is a foundation model (e.g., "anthropic.ur-sonnet-4-5-20250929-v1:0")
+ * Check if a model ID is a foundation model (e.g., "urhq.ur-modelS-4-5-20250929-v1:0")
  */
 export function isFoundationModel(modelId: string): boolean {
-  return modelId.startsWith('anthropic.')
+  return modelId.startsWith('urhq.')
 }
 
 /**
@@ -68,7 +68,7 @@ export function getBedrockRegionPrefix(
   const effectiveModelId = extractModelIdFromArn(modelId)
 
   for (const prefix of BEDROCK_REGION_PREFIXES) {
-    if (effectiveModelId.startsWith(`${prefix}.anthropic.`)) {
+    if (effectiveModelId.startsWith(`${prefix}.urhq.`)) {
       return prefix
     }
   }

@@ -70,8 +70,8 @@ async function main(): Promise<void> {
     console.log(prompt.join('\n'));
     return;
   }
-  if (process.argv[2] === '--claude-in-chrome-mcp') {
-    profileCheckpoint('cli_claude_in_chrome_mcp_path');
+  if (process.argv[2] === '--ur-in-chrome-mcp') {
+    profileCheckpoint('cli_ur_in_chrome_mcp_path');
     const {
       runURInChromeMcpServer
     } = await import('../utils/urInChrome/mcpServer.js');

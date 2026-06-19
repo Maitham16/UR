@@ -7,7 +7,7 @@ import type { ToolPermissionContext } from '../../../Tool.js'
 import {
   UR_FOLDER_PERMISSION_PATTERN,
   FILE_EDIT_TOOL_NAME,
-  GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN,
+  GLOBAL_UR_FOLDER_PERMISSION_PATTERN,
 } from '../../../tools/FileEditTool/constants.js'
 import { env } from '../../../utils/env.js'
 import { generateSuggestions } from '../../../utils/permissions/filesystem.js'
@@ -57,7 +57,7 @@ export type PermissionHandlerOptions = {
   hasFeedback?: boolean
   feedback?: string
   enteredFeedbackMode?: boolean
-  scope?: 'claude-folder' | 'global-claude-folder'
+  scope?: 'ur-folder' | 'global-ur-folder'
 }
 
 function handleAcceptOnce(
@@ -103,12 +103,12 @@ function handleAcceptSession(
 
   // For ur-folder scope, grant session-level access to all .ur/ files
   if (
-    options?.scope === 'claude-folder' ||
-    options?.scope === 'global-claude-folder'
+    options?.scope === 'ur-folder' ||
+    options?.scope === 'global-ur-folder'
   ) {
     const pattern =
-      options.scope === 'global-claude-folder'
-        ? GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN
+      options.scope === 'global-ur-folder'
+        ? GLOBAL_UR_FOLDER_PERMISSION_PATTERN
         : UR_FOLDER_PERMISSION_PATTERN
     const suggestions: PermissionUpdate[] = [
       {

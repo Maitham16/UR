@@ -44,11 +44,11 @@ function getInstallationPath(): string {
   const homeDir = homedir();
   if (isWindows) {
     // Convert to Windows-style path
-    const windowsPath = join(homeDir, '.local', 'bin', 'claude.exe');
+    const windowsPath = join(homeDir, '.local', 'bin', 'ur.exe');
     // Replace forward slashes with backslashes for Windows display
     return windowsPath.replace(/\//g, '\\');
   }
-  return '~/.local/bin/claude';
+  return '~/.local/bin/ur';
 }
 function SetupNotes(t0) {
   const $ = _c(5);
@@ -158,7 +158,7 @@ function Install({
         }
 
         // Log success event
-        logEvent('tengu_claude_install_command', {
+        logEvent('tengu_ur_install_command', {
           has_version: result.latestVersion ? 1 : 0,
           forced: force ? 1 : 0
         });

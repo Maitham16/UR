@@ -8,25 +8,25 @@ import {
 import { getModelStrings } from './modelStrings.js'
 import {
   COST_TIER_3_15,
-  COST_HAIKU_35,
-  COST_HAIKU_45,
+  COST_MODELH_35,
+  COST_MODELH_45,
   formatModelPricing,
 } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
-import { checkOpus1mAccess, checkSonnet1mAccess } from './check1mAccess.js'
+import { checkmodelO1mAccess, checkmodelS1mAccess } from './check1mAccess.js'
 import { getAPIProvider } from './providers.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import {
   getCanonicalName,
   getURAiUserDefaultModelDescription,
-  getDefaultSonnetModel,
-  getDefaultOpusModel,
-  getDefaultHaikuModel,
+  getDefaultmodelSModel,
+  getDefaultmodelOModel,
+  getDefaultmodelHModel,
   getDefaultMainLoopModelSetting,
   getMarketingNameForModel,
   getUserSpecifiedModelSetting,
-  isOpus1mMergeEnabled,
-  getOpus46PricingSuffix,
+  ismodelO1mMergeEnabled,
+  getmodelO46PricingSuffix,
   renderDefaultModelSetting,
   type ModelSetting,
 } from './model.js'
@@ -74,196 +74,196 @@ export function getDefaultOptionForUser(fastMode = false): ModelOption {
   }
 }
 
-function getCustomSonnetOption(): ModelOption | undefined {
+function getCustommodelSOption(): ModelOption | undefined {
   const is3P = getAPIProvider() !== 'firstParty'
-  const customSonnetModel = process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
-  // When a 3P user has a custom sonnet model string, show it directly
-  if (is3P && customSonnetModel) {
-    const is1m = has1mContext(customSonnetModel)
+  const custommodelSModel = process.env.URHQ_DEFAULT_MODELS_MODEL
+  // When a 3P user has a custom modelS model string, show it directly
+  if (is3P && custommodelSModel) {
+    const is1m = has1mContext(custommodelSModel)
     return {
-      value: 'sonnet',
+      value: 'modelS',
       label:
-        process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME ?? customSonnetModel,
+        process.env.URHQ_DEFAULT_MODELS_MODEL_NAME ?? custommodelSModel,
       description:
-        process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION ??
-        `Custom Sonnet model${is1m ? ' (1M context)' : ''}`,
-      descriptionForModel: `${process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION ?? `Custom Sonnet model${is1m ? ' with 1M context' : ''}`} (${customSonnetModel})`,
+        process.env.URHQ_DEFAULT_MODELS_MODEL_DESCRIPTION ??
+        `Custom modelS model${is1m ? ' (1M context)' : ''}`,
+      descriptionForModel: `${process.env.URHQ_DEFAULT_MODELS_MODEL_DESCRIPTION ?? `Custom modelS model${is1m ? ' with 1M context' : ''}`} (${custommodelSModel})`,
     }
   }
 }
 
-// @[MODEL LAUNCH]: Update or add model option functions (getSonnetXXOption, getOpusXXOption, etc.)
+// @[MODEL LAUNCH]: Update or add model option functions (getmodelSXXOption, getmodelOXXOption, etc.)
 // with the new model's label and description. These appear in the /model picker.
-function getSonnet46Option(): ModelOption {
+function getmodelS46Option(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: is3P ? getModelStrings().sonnet46 : 'sonnet',
-    label: 'Sonnet',
-    description: `Sonnet 4.6 · Best for everyday tasks${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
+    value: is3P ? getModelStrings().modelS46 : 'modelS',
+    label: 'modelS',
+    description: `modelS 4.6 · Best for everyday tasks${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
     descriptionForModel:
-      'Sonnet 4.6 - best for everyday tasks. Generally recommended for most coding tasks',
+      'modelS 4.6 - best for everyday tasks. Generally recommended for most coding tasks',
   }
 }
 
-function getCustomOpusOption(): ModelOption | undefined {
+function getCustommodelOOption(): ModelOption | undefined {
   const is3P = getAPIProvider() !== 'firstParty'
-  const customOpusModel = process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
-  // When a 3P user has a custom opus model string, show it directly
-  if (is3P && customOpusModel) {
-    const is1m = has1mContext(customOpusModel)
+  const custommodelOModel = process.env.URHQ_DEFAULT_MODELO_MODEL
+  // When a 3P user has a custom modelO model string, show it directly
+  if (is3P && custommodelOModel) {
+    const is1m = has1mContext(custommodelOModel)
     return {
-      value: 'opus',
-      label: process.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME ?? customOpusModel,
+      value: 'modelO',
+      label: process.env.URHQ_DEFAULT_MODELO_MODEL_NAME ?? custommodelOModel,
       description:
-        process.env.ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION ??
-        `Custom Opus model${is1m ? ' (1M context)' : ''}`,
-      descriptionForModel: `${process.env.ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION ?? `Custom Opus model${is1m ? ' with 1M context' : ''}`} (${customOpusModel})`,
+        process.env.URHQ_DEFAULT_MODELO_MODEL_DESCRIPTION ??
+        `Custom modelO model${is1m ? ' (1M context)' : ''}`,
+      descriptionForModel: `${process.env.URHQ_DEFAULT_MODELO_MODEL_DESCRIPTION ?? `Custom modelO model${is1m ? ' with 1M context' : ''}`} (${custommodelOModel})`,
     }
   }
 }
 
-function getOpus41Option(): ModelOption {
+function getmodelO41Option(): ModelOption {
   return {
-    value: 'opus',
-    label: 'Opus 4.1',
-    description: `Opus 4.1 · Legacy`,
-    descriptionForModel: 'Opus 4.1 - legacy version',
+    value: 'modelO',
+    label: 'modelO 4.1',
+    description: `modelO 4.1 · Legacy`,
+    descriptionForModel: 'modelO 4.1 - legacy version',
   }
 }
 
-function getOpus46Option(fastMode = false): ModelOption {
+function getmodelO46Option(fastMode = false): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: is3P ? getModelStrings().opus46 : 'opus',
-    label: 'Opus',
-    description: `Opus 4.6 · Most capable for complex work${getOpus46PricingSuffix(fastMode)}`,
-    descriptionForModel: 'Opus 4.6 - most capable for complex work',
+    value: is3P ? getModelStrings().modelO46 : 'modelO',
+    label: 'modelO',
+    description: `modelO 4.6 · Most capable for complex work${getmodelO46PricingSuffix(fastMode)}`,
+    descriptionForModel: 'modelO 4.6 - most capable for complex work',
   }
 }
 
-export function getSonnet46_1MOption(): ModelOption {
+export function getmodelS46_1MOption(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: is3P ? getModelStrings().sonnet46 + '[1m]' : 'sonnet[1m]',
-    label: 'Sonnet (1M context)',
-    description: `Sonnet 4.6 for long sessions${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
+    value: is3P ? getModelStrings().modelS46 + '[1m]' : 'modelS[1m]',
+    label: 'modelS (1M context)',
+    description: `modelS 4.6 for long sessions${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
     descriptionForModel:
-      'Sonnet 4.6 with 1M context window - for long sessions with large codebases',
+      'modelS 4.6 with 1M context window - for long sessions with large codebases',
   }
 }
 
-export function getOpus46_1MOption(fastMode = false): ModelOption {
+export function getmodelO46_1MOption(fastMode = false): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: is3P ? getModelStrings().opus46 + '[1m]' : 'opus[1m]',
-    label: 'Opus (1M context)',
-    description: `Opus 4.6 for long sessions${getOpus46PricingSuffix(fastMode)}`,
+    value: is3P ? getModelStrings().modelO46 + '[1m]' : 'modelO[1m]',
+    label: 'modelO (1M context)',
+    description: `modelO 4.6 for long sessions${getmodelO46PricingSuffix(fastMode)}`,
     descriptionForModel:
-      'Opus 4.6 with 1M context window - for long sessions with large codebases',
+      'modelO 4.6 with 1M context window - for long sessions with large codebases',
   }
 }
 
-function getCustomHaikuOption(): ModelOption | undefined {
+function getCustommodelHOption(): ModelOption | undefined {
   const is3P = getAPIProvider() !== 'firstParty'
-  const customHaikuModel = process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
-  // When a 3P user has a custom haiku model string, show it directly
-  if (is3P && customHaikuModel) {
+  const custommodelHModel = process.env.URHQ_DEFAULT_MODELH_MODEL
+  // When a 3P user has a custom modelH model string, show it directly
+  if (is3P && custommodelHModel) {
     return {
-      value: 'haiku',
-      label: process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME ?? customHaikuModel,
+      value: 'modelH',
+      label: process.env.URHQ_DEFAULT_MODELH_MODEL_NAME ?? custommodelHModel,
       description:
-        process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION ??
-        'Custom Haiku model',
-      descriptionForModel: `${process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION ?? 'Custom Haiku model'} (${customHaikuModel})`,
+        process.env.URHQ_DEFAULT_MODELH_MODEL_DESCRIPTION ??
+        'Custom modelH model',
+      descriptionForModel: `${process.env.URHQ_DEFAULT_MODELH_MODEL_DESCRIPTION ?? 'Custom modelH model'} (${custommodelHModel})`,
     }
   }
 }
 
-function getHaiku45Option(): ModelOption {
+function getmodelH45Option(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: 'haiku',
-    label: 'Haiku',
-    description: `Haiku 4.5 · Fastest for quick answers${is3P ? '' : ` · ${formatModelPricing(COST_HAIKU_45)}`}`,
+    value: 'modelH',
+    label: 'modelH',
+    description: `modelH 4.5 · Fastest for quick answers${is3P ? '' : ` · ${formatModelPricing(COST_MODELH_45)}`}`,
     descriptionForModel:
-      'Haiku 4.5 - fastest for quick answers. Lower cost but less capable than Sonnet 4.6.',
+      'modelH 4.5 - fastest for quick answers. Lower cost but less capable than modelS 4.6.',
   }
 }
 
-function getHaiku35Option(): ModelOption {
+function getmodelH35Option(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: 'haiku',
-    label: 'Haiku',
-    description: `Haiku 3.5 for simple tasks${is3P ? '' : ` · ${formatModelPricing(COST_HAIKU_35)}`}`,
+    value: 'modelH',
+    label: 'modelH',
+    description: `modelH 3.5 for simple tasks${is3P ? '' : ` · ${formatModelPricing(COST_MODELH_35)}`}`,
     descriptionForModel:
-      'Haiku 3.5 - faster and lower cost, but less capable than Sonnet. Use for simple tasks.',
+      'modelH 3.5 - faster and lower cost, but less capable than modelS. Use for simple tasks.',
   }
 }
 
-function getHaikuOption(): ModelOption {
-  // Return correct Haiku option based on provider
-  const haikuModel = getDefaultHaikuModel()
-  return haikuModel === getModelStrings().haiku45
-    ? getHaiku45Option()
-    : getHaiku35Option()
+function getmodelHOption(): ModelOption {
+  // Return correct modelH option based on provider
+  const modelHModel = getDefaultmodelHModel()
+  return modelHModel === getModelStrings().modelH45
+    ? getmodelH45Option()
+    : getmodelH35Option()
 }
 
-function getMaxOpusOption(fastMode = false): ModelOption {
+function getMaxmodelOOption(fastMode = false): ModelOption {
   return {
-    value: 'opus',
-    label: 'Opus',
-    description: `Opus 4.6 · Most capable for complex work${fastMode ? getOpus46PricingSuffix(true) : ''}`,
+    value: 'modelO',
+    label: 'modelO',
+    description: `modelO 4.6 · Most capable for complex work${fastMode ? getmodelO46PricingSuffix(true) : ''}`,
   }
 }
 
-export function getMaxSonnet46_1MOption(): ModelOption {
+export function getMaxmodelS46_1MOption(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   const billingInfo = isURAISubscriber() ? ' · Billed as extra usage' : ''
   return {
-    value: 'sonnet[1m]',
-    label: 'Sonnet (1M context)',
-    description: `Sonnet 4.6 with 1M context${billingInfo}${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
+    value: 'modelS[1m]',
+    label: 'modelS (1M context)',
+    description: `modelS 4.6 with 1M context${billingInfo}${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
   }
 }
 
-export function getMaxOpus46_1MOption(fastMode = false): ModelOption {
+export function getMaxmodelO46_1MOption(fastMode = false): ModelOption {
   const billingInfo = isURAISubscriber() ? ' · Billed as extra usage' : ''
   return {
-    value: 'opus[1m]',
-    label: 'Opus (1M context)',
-    description: `Opus 4.6 with 1M context${billingInfo}${getOpus46PricingSuffix(fastMode)}`,
+    value: 'modelO[1m]',
+    label: 'modelO (1M context)',
+    description: `modelO 4.6 with 1M context${billingInfo}${getmodelO46PricingSuffix(fastMode)}`,
   }
 }
 
-function getMergedOpus1MOption(fastMode = false): ModelOption {
+function getMergedmodelO1MOption(fastMode = false): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: is3P ? getModelStrings().opus46 + '[1m]' : 'opus[1m]',
-    label: 'Opus (1M context)',
-    description: `Opus 4.6 with 1M context · Most capable for complex work${!is3P && fastMode ? getOpus46PricingSuffix(fastMode) : ''}`,
+    value: is3P ? getModelStrings().modelO46 + '[1m]' : 'modelO[1m]',
+    label: 'modelO (1M context)',
+    description: `modelO 4.6 with 1M context · Most capable for complex work${!is3P && fastMode ? getmodelO46PricingSuffix(fastMode) : ''}`,
     descriptionForModel:
-      'Opus 4.6 with 1M context - most capable for complex work',
+      'modelO 4.6 with 1M context - most capable for complex work',
   }
 }
 
-const MaxSonnet46Option: ModelOption = {
-  value: 'sonnet',
-  label: 'Sonnet',
-  description: 'Sonnet 4.6 · Best for everyday tasks',
+const MaxmodelS46Option: ModelOption = {
+  value: 'modelS',
+  label: 'modelS',
+  description: 'modelS 4.6 · Best for everyday tasks',
 }
 
-const MaxHaiku45Option: ModelOption = {
-  value: 'haiku',
-  label: 'Haiku',
-  description: 'Haiku 4.5 · Fastest for quick answers',
+const MaxmodelH45Option: ModelOption = {
+  value: 'modelH',
+  label: 'modelH',
+  description: 'modelH 4.5 · Fastest for quick answers',
 }
 
-function getOpusPlanOption(): ModelOption {
+function getmodelOPlanOption(): ModelOption {
   return {
-    value: 'opusplan',
-    label: 'Opus Plan Mode',
-    description: 'Use Opus 4.6 in plan mode, Sonnet 4.6 otherwise',
+    value: 'modelOplan',
+    label: 'modelO Plan Mode',
+    description: 'Use modelO 4.6 in plan mode, modelS 4.6 otherwise',
   }
 }
 
@@ -285,97 +285,97 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
     return [
       getDefaultOptionForUser(),
       ...antModelOptions,
-      getMergedOpus1MOption(fastMode),
-      getSonnet46Option(),
-      getSonnet46_1MOption(),
-      getHaiku45Option(),
+      getMergedmodelO1MOption(fastMode),
+      getmodelS46Option(),
+      getmodelS46_1MOption(),
+      getmodelH45Option(),
     ]
   }
 
   if (isURAISubscriber()) {
     if (isMaxSubscriber() || isTeamPremiumSubscriber()) {
-      // Max and Team Premium users: Opus is default, show Sonnet as alternative
+      // Max and Team Premium users: modelO is default, show modelS as alternative
       const premiumOptions = [getDefaultOptionForUser(fastMode)]
-      if (!isOpus1mMergeEnabled() && checkOpus1mAccess()) {
-        premiumOptions.push(getMaxOpus46_1MOption(fastMode))
+      if (!ismodelO1mMergeEnabled() && checkmodelO1mAccess()) {
+        premiumOptions.push(getMaxmodelO46_1MOption(fastMode))
       }
 
-      premiumOptions.push(MaxSonnet46Option)
-      if (checkSonnet1mAccess()) {
-        premiumOptions.push(getMaxSonnet46_1MOption())
+      premiumOptions.push(MaxmodelS46Option)
+      if (checkmodelS1mAccess()) {
+        premiumOptions.push(getMaxmodelS46_1MOption())
       }
 
-      premiumOptions.push(MaxHaiku45Option)
+      premiumOptions.push(MaxmodelH45Option)
       return premiumOptions
     }
 
-    // Pro/Team Standard/Enterprise users: Sonnet is default, show Opus as alternative
+    // Pro/Team Standard/Enterprise users: modelS is default, show modelO as alternative
     const standardOptions = [getDefaultOptionForUser(fastMode)]
-    if (checkSonnet1mAccess()) {
-      standardOptions.push(getMaxSonnet46_1MOption())
+    if (checkmodelS1mAccess()) {
+      standardOptions.push(getMaxmodelS46_1MOption())
     }
 
-    if (isOpus1mMergeEnabled()) {
-      standardOptions.push(getMergedOpus1MOption(fastMode))
+    if (ismodelO1mMergeEnabled()) {
+      standardOptions.push(getMergedmodelO1MOption(fastMode))
     } else {
-      standardOptions.push(getMaxOpusOption(fastMode))
-      if (checkOpus1mAccess()) {
-        standardOptions.push(getMaxOpus46_1MOption(fastMode))
+      standardOptions.push(getMaxmodelOOption(fastMode))
+      if (checkmodelO1mAccess()) {
+        standardOptions.push(getMaxmodelO46_1MOption(fastMode))
       }
     }
 
-    standardOptions.push(MaxHaiku45Option)
+    standardOptions.push(MaxmodelH45Option)
     return standardOptions
   }
 
-  // PAYG 1P API: Default (Sonnet) + Sonnet 1M + Opus 4.6 + Opus 1M + Haiku
+  // PAYG 1P API: Default (modelS) + modelS 1M + modelO 4.6 + modelO 1M + modelH
   if (getAPIProvider() === 'firstParty') {
     const payg1POptions = [getDefaultOptionForUser(fastMode)]
-    if (checkSonnet1mAccess()) {
-      payg1POptions.push(getSonnet46_1MOption())
+    if (checkmodelS1mAccess()) {
+      payg1POptions.push(getmodelS46_1MOption())
     }
-    if (isOpus1mMergeEnabled()) {
-      payg1POptions.push(getMergedOpus1MOption(fastMode))
+    if (ismodelO1mMergeEnabled()) {
+      payg1POptions.push(getMergedmodelO1MOption(fastMode))
     } else {
-      payg1POptions.push(getOpus46Option(fastMode))
-      if (checkOpus1mAccess()) {
-        payg1POptions.push(getOpus46_1MOption(fastMode))
+      payg1POptions.push(getmodelO46Option(fastMode))
+      if (checkmodelO1mAccess()) {
+        payg1POptions.push(getmodelO46_1MOption(fastMode))
       }
     }
-    payg1POptions.push(getHaiku45Option())
+    payg1POptions.push(getmodelH45Option())
     return payg1POptions
   }
 
-  // PAYG 3P: Default (Sonnet 4.5) + Sonnet (3P custom) or Sonnet 4.6/1M + Opus (3P custom) or Opus 4.1/Opus 4.6/Opus1M + Haiku + Opus 4.1
+  // PAYG 3P: Default (modelS 4.5) + modelS (3P custom) or modelS 4.6/1M + modelO (3P custom) or modelO 4.1/modelO 4.6/modelO1M + modelH + modelO 4.1
   const payg3pOptions = [getDefaultOptionForUser(fastMode)]
 
-  const customSonnet = getCustomSonnetOption()
-  if (customSonnet !== undefined) {
-    payg3pOptions.push(customSonnet)
+  const custommodelS = getCustommodelSOption()
+  if (custommodelS !== undefined) {
+    payg3pOptions.push(custommodelS)
   } else {
-    // Add Sonnet 4.6 since Sonnet 4.5 is the default
-    payg3pOptions.push(getSonnet46Option())
-    if (checkSonnet1mAccess()) {
-      payg3pOptions.push(getSonnet46_1MOption())
+    // Add modelS 4.6 since modelS 4.5 is the default
+    payg3pOptions.push(getmodelS46Option())
+    if (checkmodelS1mAccess()) {
+      payg3pOptions.push(getmodelS46_1MOption())
     }
   }
 
-  const customOpus = getCustomOpusOption()
-  if (customOpus !== undefined) {
-    payg3pOptions.push(customOpus)
+  const custommodelO = getCustommodelOOption()
+  if (custommodelO !== undefined) {
+    payg3pOptions.push(custommodelO)
   } else {
-    // Add Opus 4.1, Opus 4.6 and Opus 4.6 1M
-    payg3pOptions.push(getOpus41Option()) // This is the default opus
-    payg3pOptions.push(getOpus46Option(fastMode))
-    if (checkOpus1mAccess()) {
-      payg3pOptions.push(getOpus46_1MOption(fastMode))
+    // Add modelO 4.1, modelO 4.6 and modelO 4.6 1M
+    payg3pOptions.push(getmodelO41Option()) // This is the default modelO
+    payg3pOptions.push(getmodelO46Option(fastMode))
+    if (checkmodelO1mAccess()) {
+      payg3pOptions.push(getmodelO46_1MOption(fastMode))
     }
   }
-  const customHaiku = getCustomHaikuOption()
-  if (customHaiku !== undefined) {
-    payg3pOptions.push(customHaiku)
+  const custommodelH = getCustommodelHOption()
+  if (custommodelH !== undefined) {
+    payg3pOptions.push(custommodelH)
   } else {
-    payg3pOptions.push(getHaikuOption())
+    payg3pOptions.push(getmodelHOption())
   }
   return payg3pOptions
 }
@@ -392,36 +392,36 @@ function getModelFamilyInfo(
 ): { alias: string; currentVersionName: string } | null {
   const canonical = getCanonicalName(model)
 
-  // Sonnet family
+  // modelS family
   if (
-    canonical.includes('claude-sonnet-4-6') ||
-    canonical.includes('claude-sonnet-4-5') ||
-    canonical.includes('claude-sonnet-4-') ||
-    canonical.includes('claude-3-7-sonnet') ||
-    canonical.includes('claude-3-5-sonnet')
+    canonical.includes('ur-modelS-4-6') ||
+    canonical.includes('ur-modelS-4-5') ||
+    canonical.includes('ur-modelS-4-') ||
+    canonical.includes('ur-3-7-modelS') ||
+    canonical.includes('ur-3-5-modelS')
   ) {
-    const currentName = getMarketingNameForModel(getDefaultSonnetModel())
+    const currentName = getMarketingNameForModel(getDefaultmodelSModel())
     if (currentName) {
-      return { alias: 'Sonnet', currentVersionName: currentName }
+      return { alias: 'modelS', currentVersionName: currentName }
     }
   }
 
-  // Opus family
-  if (canonical.includes('claude-opus-4')) {
-    const currentName = getMarketingNameForModel(getDefaultOpusModel())
+  // modelO family
+  if (canonical.includes('ur-modelO-4')) {
+    const currentName = getMarketingNameForModel(getDefaultmodelOModel())
     if (currentName) {
-      return { alias: 'Opus', currentVersionName: currentName }
+      return { alias: 'modelO', currentVersionName: currentName }
     }
   }
 
-  // Haiku family
+  // modelH family
   if (
-    canonical.includes('claude-haiku') ||
-    canonical.includes('claude-3-5-haiku')
+    canonical.includes('ur-modelH') ||
+    canonical.includes('ur-3-5-modelH')
   ) {
-    const currentName = getMarketingNameForModel(getDefaultHaikuModel())
+    const currentName = getMarketingNameForModel(getDefaultmodelHModel())
     if (currentName) {
-      return { alias: 'Haiku', currentVersionName: currentName }
+      return { alias: 'modelH', currentVersionName: currentName }
     }
   }
 
@@ -466,17 +466,17 @@ function getKnownModelOption(model: string): ModelOption | null {
 export function getModelOptions(fastMode = false): ModelOption[] {
   const options = getModelOptionsBase(fastMode)
 
-  // Add the custom model from the ANTHROPIC_CUSTOM_MODEL_OPTION env var
-  const envCustomModel = process.env.ANTHROPIC_CUSTOM_MODEL_OPTION
+  // Add the custom model from the URHQ_CUSTOM_MODEL_OPTION env var
+  const envCustomModel = process.env.URHQ_CUSTOM_MODEL_OPTION
   if (
     envCustomModel &&
     !options.some(existing => existing.value === envCustomModel)
   ) {
     options.push({
       value: envCustomModel,
-      label: process.env.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME ?? envCustomModel,
+      label: process.env.URHQ_CUSTOM_MODEL_OPTION_NAME ?? envCustomModel,
       description:
-        process.env.ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION ??
+        process.env.URHQ_CUSTOM_MODEL_OPTION_DESCRIPTION ??
         `Custom model (${envCustomModel})`,
     })
   }
@@ -500,17 +500,17 @@ export function getModelOptions(fastMode = false): ModelOption[] {
   }
   if (customModel === null || options.some(opt => opt.value === customModel)) {
     return filterModelOptionsByAllowlist(options)
-  } else if (customModel === 'opusplan') {
-    return filterModelOptionsByAllowlist([...options, getOpusPlanOption()])
-  } else if (customModel === 'opus' && getAPIProvider() === 'firstParty') {
+  } else if (customModel === 'modelOplan') {
+    return filterModelOptionsByAllowlist([...options, getmodelOPlanOption()])
+  } else if (customModel === 'modelO' && getAPIProvider() === 'firstParty') {
     return filterModelOptionsByAllowlist([
       ...options,
-      getMaxOpusOption(fastMode),
+      getMaxmodelOOption(fastMode),
     ])
-  } else if (customModel === 'opus[1m]' && getAPIProvider() === 'firstParty') {
+  } else if (customModel === 'modelO[1m]' && getAPIProvider() === 'firstParty') {
     return filterModelOptionsByAllowlist([
       ...options,
-      getMergedOpus1MOption(fastMode),
+      getMergedmodelO1MOption(fastMode),
     ])
   } else {
     // Try to show a human-readable label for known UR models, with an

@@ -25,7 +25,7 @@ const call: LocalCommandCall = async (args, context) => {
       return {
         type: 'text',
         value:
-          'Advisor: not set\nUse "/advisor <model>" to enable (e.g. "/advisor opus").',
+          'Advisor: not set\nUse "/advisor <model>" to enable (e.g. "/advisor modelO").',
       }
     }
     if (!modelSupportsAdvisor(baseModel)) {

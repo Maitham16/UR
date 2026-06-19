@@ -154,7 +154,7 @@ export function unstable_v2_resumeSession(
  * @example
  * ```typescript
  * const result = await unstable_v2_prompt("What files are here?", {
- *   model: 'ur-sonnet-4-6'
+ *   model: 'ur-modelS-4-6'
  * })
  * ```
  */

@@ -2,7 +2,7 @@
 import type {
   ToolResultBlockParam,
   ToolUseBlockParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+} from '@urhq-ai/sdk/resources/index.mjs'
 import type {
   ElicitRequestURLParams,
   ElicitResult,
@@ -215,10 +215,10 @@ export type ToolUseContext = {
   }) => void
   nestedMemoryAttachmentTriggers?: Set<string>
   /**
-   * CLAUDE.md paths already injected as nested_memory attachments this
+   * UR.md paths already injected as nested_memory attachments this
    * session. Dedup for memoryFilesToAttachments — readFileState is an LRU
    * that evicts entries in busy sessions, so its .has() check alone can
-   * re-inject the same CLAUDE.md dozens of times.
+   * re-inject the same UR.md dozens of times.
    */
   loadedNestedMemoryPaths?: Set<string>
   dynamicSkillDirTriggers?: Set<string>
@@ -444,7 +444,7 @@ export type Tool<
   /**
    * When true, this tool is never deferred — its full schema appears in the
    * initial prompt even when ToolSearch is enabled. For MCP tools, set via
-   * `_meta['anthropic/alwaysLoad']`. Use for tools the model must see on
+   * `_meta['urhq/alwaysLoad']`. Use for tools the model must see on
    * turn 1 without a ToolSearch round-trip.
    */
   readonly alwaysLoad?: boolean

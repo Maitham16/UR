@@ -95,7 +95,7 @@ export async function createBridgeSession({
         git_info: {
           type: 'github',
           repo: `${owner}/${name}`,
-          branches: [`claude/${branch || 'task'}`],
+          branches: [`ur/${branch || 'task'}`],
         },
       }
     } else {
@@ -115,7 +115,7 @@ export async function createBridgeSession({
             git_info: {
               type: 'github',
               repo: `${owner}/${name}`,
-              branches: [`claude/${branch || 'task'}`],
+              branches: [`ur/${branch || 'task'}`],
             },
           }
         }
@@ -138,7 +138,7 @@ export async function createBridgeSession({
 
   const headers = {
     ...getOAuthHeaders(accessToken),
-    'anthropic-beta': 'ccr-byoc-2025-07-29',
+    'urhq-beta': 'ccr-byoc-2025-07-29',
     'x-organization-uuid': orgUUID,
   }
 
@@ -213,7 +213,7 @@ export async function getBridgeSession(
 
   const headers = {
     ...getOAuthHeaders(accessToken),
-    'anthropic-beta': 'ccr-byoc-2025-07-29',
+    'urhq-beta': 'ccr-byoc-2025-07-29',
     'x-organization-uuid': orgUUID,
   }
 
@@ -290,7 +290,7 @@ export async function archiveBridgeSession(
 
   const headers = {
     ...getOAuthHeaders(accessToken),
-    'anthropic-beta': 'ccr-byoc-2025-07-29',
+    'urhq-beta': 'ccr-byoc-2025-07-29',
     'x-organization-uuid': orgUUID,
   }
 
@@ -351,7 +351,7 @@ export async function updateBridgeSessionTitle(
 
   const headers = {
     ...getOAuthHeaders(accessToken),
-    'anthropic-beta': 'ccr-byoc-2025-07-29',
+    'urhq-beta': 'ccr-byoc-2025-07-29',
     'x-organization-uuid': orgUUID,
   }
 

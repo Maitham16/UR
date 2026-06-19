@@ -6,7 +6,7 @@
 import axios from 'axios'
 import { OAUTH_BETA_HEADER } from '../constants/oauth.js'
 import {
-  getAnthropicApiKey,
+  getURHQApiKey,
   getURAIOAuthTokens,
   handleOAuth401Error,
   isURAISubscriber,
@@ -28,11 +28,11 @@ export function getUserAgent(): string {
   // Turn-/process-scoped workload tag for cron-initiated requests. 1P-only
   // observability — proxies strip HTTP headers; QoS routing uses cc_workload
   // in the billing-header attribution block instead (see constants/system.ts).
-  // getAnthropicClient (client.ts:98) calls this per-request inside withRetry,
+  // getURHQClient (client.ts:98) calls this per-request inside withRetry,
   // so the read picks up the same setWorkload() value as getAttributionHeader.
   const workload = getWorkload()
   const workloadSuffix = workload ? `, workload/${workload}` : ''
-  return `claude-cli/${MACRO.VERSION} (${process.env.USER_TYPE}, ${process.env.UR_CODE_ENTRYPOINT ?? 'cli'}${agentSdkVersion}${clientApp}${workloadSuffix})`
+  return `ur-cli/${MACRO.VERSION} (${process.env.USER_TYPE}, ${process.env.UR_CODE_ENTRYPOINT ?? 'cli'}${agentSdkVersion}${clientApp}${workloadSuffix})`
 }
 
 export function getMCPUserAgent(): string {
@@ -79,13 +79,13 @@ export function getAuthHeaders(): AuthHeaders {
     return {
       headers: {
         Authorization: `Bearer ${oauthTokens.accessToken}`,
-        'anthropic-beta': OAUTH_BETA_HEADER,
+        'urhq-beta': OAUTH_BETA_HEADER,
       },
     }
   }
   // TODO: this will fail if the API key is being set to an LLM Gateway key
   // should we try to query keychain / credentials for a valid UR key?
-  const apiKey = getAnthropicApiKey()
+  const apiKey = getURHQApiKey()
   if (!apiKey) {
     return {
       headers: {},

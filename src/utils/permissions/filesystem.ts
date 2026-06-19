@@ -10,7 +10,7 @@ import { isAgentMemoryPath } from 'src/tools/AgentTool/agentMemory.js'
 import {
   UR_FOLDER_PERMISSION_PATTERN,
   FILE_EDIT_TOOL_NAME,
-  GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN,
+  GLOBAL_UR_FOLDER_PERMISSION_PATTERN,
 } from 'src/tools/FileEditTool/constants.js'
 import type { z } from 'zod/v4'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
@@ -82,7 +82,7 @@ export const DANGEROUS_DIRECTORIES = [
 /**
  * Normalizes a path for case-insensitive comparison.
  * This prevents bypassing security checks using mixed-case paths on case-insensitive
- * filesystems (macOS/Windows) like `.cLauDe/Settings.locaL.json`.
+ * filesystems (macOS/Windows) like `.ur/Settings.locaL.json`.
  *
  * We always normalize to lowercase regardless of platform for consistent security.
  * @param path The path to normalize
@@ -204,7 +204,7 @@ export function isURSettingsPath(filePath: string): boolean {
   const expandedPath = expandPath(filePath)
 
   // Normalize for case-insensitive comparison to prevent bypassing security
-  // with paths like .cLauDe/Settings.locaL.json
+  // with paths like .ur/Settings.locaL.json
   const normalizedPath = normalizeCaseForComparison(expandedPath)
 
   // Use platform separator so endsWith checks work on both Unix (/) and Windows (\)
@@ -492,7 +492,7 @@ function isDangerousFilePathToAutoEdit(path: string): boolean {
  * Detects suspicious Windows path patterns that could bypass security checks.
  * These patterns include:
  * - NTFS Alternate Data Streams (e.g., file.txt::$DATA or file.txt:stream)
- * - 8.3 short names (e.g., GIT~1, CLAUDE~1, SETTIN~1.JSON)
+ * - 8.3 short names (e.g., GIT~1, UR~1, SETTIN~1.JSON)
  * - Long path prefixes (e.g., \\?\C:\..., \\.\C:\..., //?/C:/..., //./C:/...)
  * - Trailing dots and spaces (e.g., .git., .ur , .bashrc...)
  * - DOS device names (e.g., .git.CON, settings.json.PRN, .bashrc.AUX)
@@ -553,7 +553,7 @@ function hasSuspiciousWindowsPathPattern(path: string): boolean {
 
   // Check for 8.3 short names
   // Look for '~' followed by a digit
-  // Examples: GIT~1, CLAUDE~1, SETTIN~1.JSON, BASHRC~1
+  // Examples: GIT~1, UR~1, SETTIN~1.JSON, BASHRC~1
   if (/~\d/.test(path)) {
     return true
   }
@@ -722,7 +722,7 @@ export function pathInWorkingPath(path: string, workingPath: string): boolean {
     .replace(/^\/private\/tmp(\/|$)/, '/tmp$1')
 
   // Normalize case for case-insensitive comparison to prevent bypassing security
-  // checks on case-insensitive filesystems (macOS/Windows) like .cLauDe/CoMmAnDs
+  // checks on case-insensitive filesystems (macOS/Windows) like .ur/CoMmAnDs
   const caseNormalizedPath = normalizeCaseForComparison(normalizedPath)
   const caseNormalizedWorkingPath = normalizeCaseForComparison(
     normalizedWorkingPath,
@@ -1284,7 +1284,7 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
       ruleContent &&
       (ruleContent.startsWith(UR_FOLDER_PERMISSION_PATTERN.slice(0, -2)) ||
         ruleContent.startsWith(
-          GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN.slice(0, -2),
+          GLOBAL_UR_FOLDER_PERMISSION_PATTERN.slice(0, -2),
         )) &&
       !ruleContent.includes('..') &&
       ruleContent.endsWith('/**')

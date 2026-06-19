@@ -20,7 +20,7 @@
 //   UR_VERIFIER_MODE=strict   default (everything on)
 //   UR_VERIFIER_DISABLE_SUBAGENT=1   independently disable just L2
 
-import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolUseBlock } from '@urhq-ai/sdk/resources/index.mjs'
 import { detectDoneClaim, evaluateDoneGate } from './doneDetector.js'
 import { ToolEffectLedger } from './ledger.js'
 import { LoopDetector, type LoopHit } from './loopDetector.js'

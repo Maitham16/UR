@@ -20,7 +20,7 @@ function getLocalInstallDir(): string {
   return join(getURConfigHomeDir(), 'local')
 }
 export function getLocalURPath(): string {
-  return join(getLocalInstallDir(), 'claude')
+  return join(getLocalInstallDir(), 'ur')
 }
 
 /**
@@ -64,17 +64,17 @@ export async function ensureLocalPackageEnvironment(): Promise<boolean> {
     await writeIfMissing(
       join(localInstallDir, 'package.json'),
       jsonStringify(
-        { name: 'claude-local', version: '0.0.1', private: true },
+        { name: 'ur-local', version: '0.0.1', private: true },
         null,
         2,
       ),
     )
 
     // Create the wrapper script if it doesn't exist
-    const wrapperPath = join(localInstallDir, 'claude')
+    const wrapperPath = join(localInstallDir, 'ur')
     const created = await writeIfMissing(
       wrapperPath,
-      `#!/bin/sh\nexec "${localInstallDir}/node_modules/.bin/claude" "$@"`,
+      `#!/bin/sh\nexec "${localInstallDir}/node_modules/.bin/ur" "$@"`,
       0o755,
     )
     if (created) {
@@ -143,7 +143,7 @@ export async function installOrUpdateURPackage(
  */
 export async function localInstallationExists(): Promise<boolean> {
   try {
-    await access(join(getLocalInstallDir(), 'node_modules', '.bin', 'claude'))
+    await access(join(getLocalInstallDir(), 'node_modules', '.bin', 'ur'))
     return true
   } catch {
     return false

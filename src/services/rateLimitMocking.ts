@@ -4,7 +4,7 @@
  * This isolates mock logic from production code
  */
 
-import { APIError } from '@anthropic-ai/sdk'
+import { APIError } from '@urhq-ai/sdk'
 import {
   applyMockHeaders,
   checkMockFastModeRateLimit,
@@ -68,22 +68,22 @@ export function checkMockRateLimitError(
   // Only throw if:
   // 1. Status is rejected AND
   // 2. Either no overage headers OR overage is also rejected
-  // 3. For Opus-specific limits, only throw if actually using an Opus model
-  const status = mockHeaders['anthropic-ratelimit-unified-status']
+  // 3. For modelO-specific limits, only throw if actually using an modelO model
+  const status = mockHeaders['urhq-ratelimit-unified-status']
   const overageStatus =
-    mockHeaders['anthropic-ratelimit-unified-overage-status']
+    mockHeaders['urhq-ratelimit-unified-overage-status']
   const rateLimitType =
-    mockHeaders['anthropic-ratelimit-unified-representative-claim']
+    mockHeaders['urhq-ratelimit-unified-representative-claim']
 
-  // Check if this is an Opus-specific rate limit
-  const isOpusLimit = rateLimitType === 'seven_day_opus'
+  // Check if this is an modelO-specific rate limit
+  const ismodelOLimit = rateLimitType === 'seven_day_modelO'
 
-  // Check if current model is an Opus model (handles all variants including aliases)
-  const isUsingOpus = currentModel.includes('opus')
+  // Check if current model is an modelO model (handles all variants including aliases)
+  const isUsingmodelO = currentModel.includes('modelO')
 
-  // For Opus limits, only throw 429 if actually using Opus
-  // This simulates the real API behavior where fallback to Sonnet succeeds
-  if (isOpusLimit && !isUsingOpus) {
+  // For modelO limits, only throw 429 if actually using modelO
+  // This simulates the real API behavior where fallback to modelS succeeds
+  if (ismodelOLimit && !isUsingmodelO) {
     return null
   }
 

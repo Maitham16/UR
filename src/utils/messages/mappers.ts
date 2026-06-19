@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { BetaContentBlock } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import { randomUUID, type UUID } from 'crypto'
 import { getSessionId } from 'src/bootstrap/state.js'
 import {
@@ -190,7 +190,7 @@ export function toSDKMessages(messages: Message[]): SDKMessage[] {
  * because the system/local_command_output subtype is unknown to:
  *   - mobile-apps Android SdkMessageTypes.kt (no local_command_output handler)
  *   - api-go session-ingress convertSystemEvent (only init/compact_boundary)
- * See: https://anthropic.sentry.io/issues/7266299248/ (Android)
+ * See: https://urhq.sentry.io/issues/7266299248/ (Android)
  *
  * Strips ANSI (e.g. chalk.dim() in /cost) then unwraps the XML wrapper tags.
  */

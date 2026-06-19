@@ -21,7 +21,7 @@ is generic ("Error: 1"), say so and rely on the stderr context.
 ### Most likely cause
 
 The single most likely root cause, given the project context (read
-`package.json`, `CLAUDE.md`, or relevant config files only if it sharpens
+`package.json`, `UR.md`, or relevant config files only if it sharpens
 the diagnosis — do not spelunk for the sake of it).
 
 ### Next steps

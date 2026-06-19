@@ -46,7 +46,7 @@ Recommended Git behavior:
 - Commit shared docs, skills, agents, and project settings that are safe for teammates.
 - Do not commit `.ur/settings.local.json`.
 - Do not commit generated `.ur/index/`, `.ur/memory/`, `.ur/cache/`, `.ur/tmp/`, or `.ur/logs/`.
-- Do not commit `CLAUDE.local.md`.
+- Do not commit `UR.local.md`.
 
 ## Verifier
 

@@ -100,7 +100,7 @@ const TEAMMATE_ENV_VARS = [
   'UR_CODE_USE_VERTEX',
   'UR_CODE_USE_FOUNDRY',
   // Custom API endpoint
-  'ANTHROPIC_BASE_URL',
+  'URHQ_BASE_URL',
   // Config directory override
   'UR_CONFIG_DIR',
   // CCR marker — teammates need this for CCR-aware code paths. Auth finds
@@ -129,11 +129,11 @@ const TEAMMATE_ENV_VARS = [
 
 /**
  * Builds the `env KEY=VALUE ...` string for teammate spawn commands.
- * Always includes CLAUDECODE=1 and UR_CODE_EXPERIMENTAL_AGENT_TEAMS=1,
+ * Always includes URCODE=1 and UR_CODE_EXPERIMENTAL_AGENT_TEAMS=1,
  * plus any provider/config env vars that are set in the current process.
  */
 export function buildInheritedEnvVars(): string {
-  const envVars = ['CLAUDECODE=1', 'UR_CODE_EXPERIMENTAL_AGENT_TEAMS=1']
+  const envVars = ['URCODE=1', 'UR_CODE_EXPERIMENTAL_AGENT_TEAMS=1']
 
   for (const key of TEAMMATE_ENV_VARS) {
     const value = process.env[key]

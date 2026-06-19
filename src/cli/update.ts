@@ -138,7 +138,7 @@ export async function update() {
         writeToStdout('\n')
         writeToStdout('To update, run:\n')
         writeToStdout(
-          chalk.bold('  winget upgrade Anthropic.URCode') + '\n',
+          chalk.bold('  winget upgrade URHQ.URCode') + '\n',
         )
       } else {
         writeToStdout('UR is up to date!\n')
@@ -283,7 +283,7 @@ export async function update() {
     process.stderr.write('  • Network connectivity issues\n')
     process.stderr.write('  • npm registry is unreachable\n')
     process.stderr.write('  • Corporate proxy/firewall blocking npm\n')
-    if (MACRO.PACKAGE_URL && !MACRO.PACKAGE_URL.startsWith('@anthropic')) {
+    if (MACRO.PACKAGE_URL && !MACRO.PACKAGE_URL.startsWith('@urhq')) {
       process.stderr.write(
         '  • Internal/development build not published to npm\n',
       )
@@ -295,8 +295,8 @@ export async function update() {
     const packageName =
       MACRO.PACKAGE_URL ||
       (process.env.USER_TYPE === 'ant'
-        ? '@anthropic-ai/claude-cli'
-        : '@anthropic-ai/ur')
+        ? '@urhq-ai/ur-cli'
+        : '@urhq-ai/ur')
     process.stderr.write(
       `  • Manually check: npm view ${packageName} version\n`,
     )
@@ -391,7 +391,7 @@ export async function update() {
       } else {
         process.stderr.write('Try running with sudo or fix npm permissions\n')
         process.stderr.write(
-          'Or consider using native installation with: claude install\n',
+          'Or consider using native installation with: ur install\n',
         )
       }
       await gracefulShutdown(1)
@@ -405,7 +405,7 @@ export async function update() {
         )
       } else {
         process.stderr.write(
-          'Or consider using native installation with: claude install\n',
+          'Or consider using native installation with: ur install\n',
         )
       }
       await gracefulShutdown(1)

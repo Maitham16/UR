@@ -8,7 +8,7 @@ import {
   APIError,
   APIConnectionError,
   AuthenticationError,
-} from '@anthropic-ai/sdk'
+} from '@urhq-ai/sdk'
 import { getModelStrings } from './modelStrings.js'
 
 // Cache valid models to avoid repeated API calls
@@ -45,8 +45,8 @@ export async function validateModel(
     return { valid: true }
   }
 
-  // Check if it matches ANTHROPIC_CUSTOM_MODEL_OPTION (pre-validated by the user)
-  if (normalizedModel === process.env.ANTHROPIC_CUSTOM_MODEL_OPTION) {
+  // Check if it matches URHQ_CUSTOM_MODEL_OPTION (pre-validated by the user)
+  if (normalizedModel === process.env.URHQ_CUSTOM_MODEL_OPTION) {
     return { valid: true }
   }
 
@@ -150,14 +150,14 @@ function get3PFallbackSuggestion(model: string): string | undefined {
     return undefined
   }
   const lowerModel = model.toLowerCase()
-  if (lowerModel.includes('opus-4-6') || lowerModel.includes('opus_4_6')) {
-    return getModelStrings().opus41
+  if (lowerModel.includes('modelO-4-6') || lowerModel.includes('modelO_4_6')) {
+    return getModelStrings().modelO41
   }
-  if (lowerModel.includes('sonnet-4-6') || lowerModel.includes('sonnet_4_6')) {
-    return getModelStrings().sonnet45
+  if (lowerModel.includes('modelS-4-6') || lowerModel.includes('modelS_4_6')) {
+    return getModelStrings().modelS45
   }
-  if (lowerModel.includes('sonnet-4-5') || lowerModel.includes('sonnet_4_5')) {
-    return getModelStrings().sonnet40
+  if (lowerModel.includes('modelS-4-5') || lowerModel.includes('modelS_4_5')) {
+    return getModelStrings().modelS40
   }
   return undefined
 }

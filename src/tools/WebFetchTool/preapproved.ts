@@ -13,7 +13,7 @@
 
 export const PREAPPROVED_HOSTS = new Set([
   // UR
-  'platform.claude.com',
+  'platform.ur.com',
   'docs.ur.dev',
   'modelcontextprotocol.io',
   'github.com/Maitham16',
@@ -155,8 +155,8 @@ export function isPreapprovedHost(hostname: string, pathname: string): boolean {
   const prefixes = PATH_PREFIXES.get(hostname)
   if (prefixes) {
     for (const p of prefixes) {
-      // Enforce path segment boundaries: "/anthropics" must not match
-      // "/anthropics-evil/malware". Only exact match or a "/" after the
+      // Enforce path segment boundaries: "/urhqs" must not match
+      // "/urhqs-evil/malware". Only exact match or a "/" after the
       // prefix is allowed.
       if (pathname === p || pathname.startsWith(p + '/')) return true
     }

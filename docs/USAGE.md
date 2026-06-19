@@ -64,9 +64,9 @@ UR talks to a local Ollama instance at the fixed endpoint `http://localhost:1143
 
 ## Project Instructions
 
-Add a `CLAUDE.md` file to the repository root for team-shared instructions. UR loads it as project context.
+Add a `UR.md` file to the repository root for team-shared instructions. UR loads it as project context.
 
-Use `CLAUDE.local.md` for private local instructions. It is ignored by `.gitignore`.
+Use `UR.local.md` for private local instructions. It is ignored by `.gitignore`.
 
 Project `.ur/` assets can hold settings, skills, agents, MCP config, and local runtime state. Commit only shared files. Keep local memory, generated indexes, logs, and local settings untracked.
 

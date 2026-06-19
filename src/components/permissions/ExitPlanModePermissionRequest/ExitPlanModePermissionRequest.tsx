@@ -42,7 +42,7 @@ import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER') ? require('../../../utils/permissions/autoModeState.js') as typeof import('../../../utils/permissions/autoModeState.js') : null;
-import type { Base64ImageSource, ImageBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
+import type { Base64ImageSource, ImageBlockParam } from '@urhq-ai/sdk/resources/messages.mjs';
 /* eslint-enable @typescript-eslint/no-require-imports */
 import type { PastedContent } from '../../../utils/config.js';
 import type { ImageDimensions } from '../../../utils/imageResizer.js';
@@ -92,7 +92,7 @@ export function autoNameSessionFromPlan(plan: string, setAppState: (updater: (pr
   void generateSessionName(
   // generateSessionName tail-slices to the last 1000 chars (correct for
   // conversations, where recency matters). Plans front-load the goal and
-  // end with testing steps — head-slice so Haiku sees the summary.
+  // end with testing steps — head-slice so modelH sees the summary.
   [createUserMessage({
     content: plan.slice(0, 1000)
   })], new AbortController().signal).then(async name => {

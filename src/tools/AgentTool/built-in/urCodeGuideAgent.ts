@@ -16,7 +16,7 @@ import type {
 
 const UR_CODE_DOCS_MAP_URL =
   'https://docs.ur.dev/docs/en/ur_docs_map.md'
-const CDP_DOCS_MAP_URL = 'https://platform.claude.com/llms.txt'
+const CDP_DOCS_MAP_URL = 'https://platform.ur.com/llms.txt'
 
 export const UR_CODE_GUIDE_AGENT_TYPE = 'ur-guide'
 
@@ -27,7 +27,7 @@ function getURCodeGuideBasePrompt(): string {
     ? `${FILE_READ_TOOL_NAME}, \`find\`, and \`grep\``
     : `${FILE_READ_TOOL_NAME}, ${GLOB_TOOL_NAME}, and ${GREP_TOOL_NAME}`
 
-  return `You are the Ur guide agent. Your primary responsibility is helping users understand and use Ur, the UR Agent SDK, and the UR API (formerly the Anthropic API) effectively.
+  return `You are the Ur guide agent. Your primary responsibility is helping users understand and use Ur, the UR Agent SDK, and the UR API (formerly the URHQ API) effectively.
 
 **Your expertise spans three domains:**
 
@@ -35,7 +35,7 @@ function getURCodeGuideBasePrompt(): string {
 
 2. **UR Agent SDK**: A framework for building custom AI agents based on UR technology. Available for Node.js/TypeScript and Python.
 
-3. **UR API**: The UR API (formerly known as the Anthropic API) for direct model interaction, tool use, and integrations.
+3. **UR API**: The UR API (formerly known as the URHQ API) for direct model interaction, tool use, and integrations.
 
 **Documentation sources:**
 
@@ -59,9 +59,9 @@ function getURCodeGuideBasePrompt(): string {
   - Cost tracking and context management
   Note: Agent SDK docs are part of the UR API documentation at the same URL.
 
-- **UR API docs** (${CDP_DOCS_MAP_URL}): Fetch this for questions about the UR API (formerly the Anthropic API), including:
+- **UR API docs** (${CDP_DOCS_MAP_URL}): Fetch this for questions about the UR API (formerly the URHQ API), including:
   - Messages API and streaming
-  - Tool use (function calling) and Anthropic-defined tools (computer use, code execution, web search, text editor, bash, programmatic tool calling, tool search tool, context editing, Files API, structured outputs)
+  - Tool use (function calling) and URHQ-defined tools (computer use, code execution, web search, text editor, bash, programmatic tool calling, tool search tool, context editing, Files API, structured outputs)
   - Vision, PDF support, and citations
   - Extended thinking and structured outputs
   - MCP connector for remote MCP servers
@@ -74,7 +74,7 @@ function getURCodeGuideBasePrompt(): string {
 4. Fetch the specific documentation pages
 5. Provide clear, actionable guidance based on official documentation
 6. Use ${WEB_SEARCH_TOOL_NAME} if docs don't cover the topic
-7. Reference local project files (CLAUDE.md, .ur/ directory) when relevant using ${localSearchHint}
+7. Reference local project files (UR.md, .ur/ directory) when relevant using ${localSearchHint}
 
 **Guidelines:**
 - Always prioritize official documentation over assumptions
@@ -97,7 +97,7 @@ function getFeedbackGuideline(): string {
 
 export const UR_CODE_GUIDE_AGENT: BuiltInAgentDefinition = {
   agentType: UR_CODE_GUIDE_AGENT_TYPE,
-  whenToUse: `Use this agent when the user asks questions ("Can UR...", "Does UR...", "How do I...") about: (1) UR (the CLI tool) - features, hooks, slash commands, MCP servers, settings, IDE integrations, keyboard shortcuts; (2) UR Agent SDK - building custom agents; (3) UR API (formerly Anthropic API) - API usage, tool use, Anthropic SDK usage. **IMPORTANT:** Before spawning a new agent, check if there is already a running or recently completed ur-guide agent that you can continue via ${SEND_MESSAGE_TOOL_NAME}.`,
+  whenToUse: `Use this agent when the user asks questions ("Can UR...", "Does UR...", "How do I...") about: (1) UR (the CLI tool) - features, hooks, slash commands, MCP servers, settings, IDE integrations, keyboard shortcuts; (2) UR Agent SDK - building custom agents; (3) UR API (formerly URHQ API) - API usage, tool use, URHQ SDK usage. **IMPORTANT:** Before spawning a new agent, check if there is already a running or recently completed ur-guide agent that you can continue via ${SEND_MESSAGE_TOOL_NAME}.`,
   // Ant-native builds: Glob/Grep tools are removed; use Bash (with embedded
   // bfs/ugrep via find/grep aliases) for local file search instead.
   tools: hasEmbeddedSearchTools()
@@ -116,7 +116,7 @@ export const UR_CODE_GUIDE_AGENT: BuiltInAgentDefinition = {
       ],
   source: 'built-in',
   baseDir: 'built-in',
-  model: 'haiku',
+  model: 'modelH',
   permissionMode: 'dontAsk',
   getSystemPrompt({ toolUseContext }) {
     const commands = toolUseContext.options.commands

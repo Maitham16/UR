@@ -4,15 +4,15 @@ import { useEffect, useState } from 'react';
 import { UP_ARROW } from '../../constants/figures.js';
 import { Box, Text } from '../../ink.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
-import { isOpus1mMergeEnabled } from '../../utils/model/model.js';
+import { ismodelO1mMergeEnabled } from '../../utils/model/model.js';
 import { AnimatedUrHouse } from './AnimatedUrHouse.js';
 const MAX_SHOW_COUNT = 6;
-export function shouldShowOpus1mMergeNotice(): boolean {
-  return isOpus1mMergeEnabled() && (getGlobalConfig().opus1mMergeNoticeSeenCount ?? 0) < MAX_SHOW_COUNT;
+export function shouldShowmodelO1mMergeNotice(): boolean {
+  return ismodelO1mMergeEnabled() && (getGlobalConfig().modelO1mMergeNoticeSeenCount ?? 0) < MAX_SHOW_COUNT;
 }
-export function Opus1mMergeNotice() {
+export function modelO1mMergeNotice() {
   const $ = _c(4);
-  const [show] = useState(shouldShowOpus1mMergeNotice);
+  const [show] = useState(shouldShowmodelO1mMergeNotice);
   let t0;
   let t1;
   if ($[0] !== show) {
@@ -20,14 +20,14 @@ export function Opus1mMergeNotice() {
       if (!show) {
         return;
       }
-      const newCount = (getGlobalConfig().opus1mMergeNoticeSeenCount ?? 0) + 1;
+      const newCount = (getGlobalConfig().modelO1mMergeNoticeSeenCount ?? 0) + 1;
       saveGlobalConfig(prev => {
-        if ((prev.opus1mMergeNoticeSeenCount ?? 0) >= newCount) {
+        if ((prev.modelO1mMergeNoticeSeenCount ?? 0) >= newCount) {
           return prev;
         }
         return {
           ...prev,
-          opus1mMergeNoticeSeenCount: newCount
+          modelO1mMergeNoticeSeenCount: newCount
         };
       });
     };
@@ -45,7 +45,7 @@ export function Opus1mMergeNotice() {
   }
   let t2;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = <Box paddingLeft={2}><AnimatedUrHouse char={UP_ARROW} /><Text dimColor={true}>{" "}Opus now defaults to 1M context · 5x more room, same pricing</Text></Box>;
+    t2 = <Box paddingLeft={2}><AnimatedUrHouse char={UP_ARROW} /><Text dimColor={true}>{" "}modelO now defaults to 1M context · 5x more room, same pricing</Text></Box>;
     $[3] = t2;
   } else {
     t2 = $[3];

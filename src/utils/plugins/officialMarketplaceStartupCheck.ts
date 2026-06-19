@@ -147,7 +147,7 @@ export type OfficialMarketplaceCheckResult = {
  */
 export async function checkAndInstallOfficialMarketplace(): Promise<OfficialMarketplaceCheckResult> {
   // UR is Ollama-only and self-contained: never auto-install the external
-  // (Anthropic) plugin marketplace. Return a silent skip so no install is
+  // (URHQ) plugin marketplace. Return a silent skip so no install is
   // attempted and no failure/retry notification is shown.
   return { installed: false, skipped: true, reason: 'already_attempted' }
   // eslint-disable-next-line no-unreachable
@@ -220,7 +220,7 @@ export async function checkAndInstallOfficialMarketplace(): Promise<OfficialMark
     }
 
     // inc-5046: try GCS mirror first — doesn't need git, doesn't hit GitHub.
-    // Backend (anthropic#317037) publishes a marketplace zip to the same
+    // Backend (urhq#317037) publishes a marketplace zip to the same
     // bucket as the native binary. If GCS succeeds, register the marketplace
     // with source:'github' (still true — GCS is a mirror) and skip git
     // entirely.

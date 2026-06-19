@@ -15,7 +15,7 @@ const desktop = {
   name: 'desktop',
   aliases: ['app'],
   description: 'Continue the current session in UR Desktop',
-  availability: ['claude-ai'],
+  availability: ['ur-ai'],
   isEnabled: isSupportedPlatform,
   get isHidden() {
     return !isSupportedPlatform()

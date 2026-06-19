@@ -73,7 +73,7 @@ export function MCPSettings(t0) {
           const scope = client_0.config.scope;
           const isSSE = client_0.config.type === "sse";
           const isHTTP = client_0.config.type === "http";
-          const isURAIProxy = client_0.config.type === "claudeai-proxy";
+          const isURAIProxy = client_0.config.type === "urai-proxy";
           let isAuthenticated = undefined;
           if (isSSE || isHTTP) {
             const authProvider = new URAuthProvider(client_0.name, client_0.config as McpSSEServerConfig | McpHTTPServerConfig);
@@ -90,7 +90,7 @@ export function MCPSettings(t0) {
           if (isURAIProxy) {
             return {
               ...baseInfo,
-              transport: "claudeai-proxy" as const,
+              transport: "urai-proxy" as const,
               isAuthenticated: false,
               config: client_0.config as McpURAIProxyServerConfig
             };
@@ -208,7 +208,7 @@ export function MCPSettings(t0) {
           t9 = $[25];
         }
         const serverTools_0 = t9;
-        const defaultTab = viewState.server.transport === "claudeai-proxy" ? "claude.ai" : "UR";
+        const defaultTab = viewState.server.transport === "urai-proxy" ? "ur.ai" : "UR";
         if (viewState.server.transport === "stdio") {
           let t10;
           if ($[26] !== viewState.server) {

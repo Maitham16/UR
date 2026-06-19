@@ -846,8 +846,8 @@ export function hasAccessToIDEExtensionDiffFeature(
 
 const EXTENSION_ID =
   process.env.USER_TYPE === 'ant'
-    ? 'anthropic.ur-internal'
-    : 'anthropic.ur'
+    ? 'urhq.ur-internal'
+    : 'urhq.ur'
 
 export async function isIDEExtensionInstalled(
   ideType: IdeType,
@@ -891,7 +891,7 @@ async function installIDEExtension(ideType: IdeType): Promise<string | null> {
         await sleep(500)
         const result = await execFileNoThrowWithCwd(
           command,
-          ['--force', '--install-extension', 'anthropic.ur'],
+          ['--force', '--install-extension', 'urhq.ur'],
           {
             env: getInstallationEnv(),
           },
@@ -941,7 +941,7 @@ async function getInstalledVSCodeExtensionVersion(
   const lines = stdout?.split('\n') || []
   for (const line of lines) {
     const [extensionId, version] = line.split('@')
-    if (extensionId === 'anthropic.ur' && version) {
+    if (extensionId === 'urhq.ur' && version) {
       return version
     }
   }
@@ -1033,7 +1033,7 @@ async function getVSCodeIDECommand(ideType: IdeType): Promise<string | null> {
   // then resolves to Code.exe via PATHEXT which opens a new editor window
   // instead of running the CLI. Asking for 'code.cmd' forces cross-spawn/which
   // to skip Code.exe. See microsoft/vscode#299416 (fixed in Insiders) and
-  // anthropics/ur#30975.
+  // urhqs/ur#30975.
   const ext = getPlatform() === 'windows' ? '.cmd' : ''
   switch (ideType) {
     case 'vscode':
@@ -1421,7 +1421,7 @@ async function installFromArtifactory(command: string): Promise<string> {
 
   // Fetch the version from artifactory
   const versionUrl =
-    'https://artifactory.infra.ant.dev/artifactory/armorcode-ur-internal/claude-vscode-releases/stable'
+    'https://artifactory.infra.ant.dev/artifactory/armorcode-ur-internal/ur-vscode-releases/stable'
 
   try {
     const versionResponse = await axios.get(versionUrl, {
@@ -1436,7 +1436,7 @@ async function installFromArtifactory(command: string): Promise<string> {
     }
 
     // Download the .vsix file from artifactory
-    const vsixUrl = `https://artifactory.infra.ant.dev/artifactory/armorcode-ur-internal/claude-vscode-releases/${version}/ur.vsix`
+    const vsixUrl = `https://artifactory.infra.ant.dev/artifactory/armorcode-ur-internal/ur-vscode-releases/${version}/ur.vsix`
     const tempVsixPath = join(
       os.tmpdir(),
       `ur-${version}-${Date.now()}.vsix`,

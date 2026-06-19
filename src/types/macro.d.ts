@@ -11,7 +11,7 @@ declare const MACRO: {
   readonly VERSION: string
   /** ISO 8601 build timestamp, e.g. "2026-03-31T00:00:00Z" */
   readonly BUILD_TIME: string
-  /** npm package URL, e.g. "@anthropic-ai/ur" */
+  /** npm package URL, e.g. "@urhq-ai/ur" */
   readonly PACKAGE_URL: string
   /** Native package URL for platform-specific builds */
   readonly NATIVE_PACKAGE_URL: string | undefined

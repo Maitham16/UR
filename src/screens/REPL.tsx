@@ -168,7 +168,7 @@ import { resolveAgentTools } from '../tools/AgentTool/agentToolUtils.js';
 import { resumeAgentBackground } from '../tools/AgentTool/resumeAgent.js';
 import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../state/AppState.js';
-import type { ContentBlockParam, ImageBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
+import type { ContentBlockParam, ImageBlockParam } from '@urhq-ai/sdk/resources/messages.mjs';
 import type { ProcessUserInputContext } from '../utils/processUserInput/processUserInput.js';
 import type { PastedContent } from '../utils/config.js';
 import { copyPlanForFork, copyPlanForResume, getPlanSlug, setPlanSlug } from '../utils/plans.js';
@@ -309,7 +309,7 @@ const HISTORY_STUB = {
 // Window after a user-initiated scroll during which type-into-empty does NOT
 // repin to bottom. Josh Rosen's workflow: UR emits long output → scroll
 // up to read the start → start typing → before this fix, snapped to bottom.
-// https://anthropic.slack.com/archives/C07VBSHV7EV/p1773545449871739
+// https://urhq.slack.com/archives/C07VBSHV7EV/p1773545449871739
 const RECENT_SCROLL_REPIN_WINDOW_MS = 3000;
 
 // Use LRU cache to prevent unbounded memory growth
@@ -683,7 +683,7 @@ export function REPL({
 
   // Note: standaloneAgentContext is initialized in main.tsx (via initialState) or
   // ResumeConversation.tsx (via setAppState before rendering REPL) to avoid
-  // useEffect-based state initialization on mount (per CLAUDE.md guidelines)
+  // useEffect-based state initialization on mount (per UR.md guidelines)
 
   // Local state for commands (hot-reloadable when skill files change)
   const [localCommands, setLocalCommands] = useState(initialCommands);
@@ -1130,17 +1130,17 @@ export function REPL({
 
   // -- Terminal title management
   // Session title (set via /rename or restored on resume) wins over
-  // the agent name, which wins over the Haiku-extracted topic;
+  // the agent name, which wins over the modelH-extracted topic;
   // all fall back to the product name.
   const terminalTitleFromRename = useAppState(s => s.settings.terminalTitleFromRename) !== false;
   const sessionTitle = terminalTitleFromRename ? getCurrentSessionTitle(getSessionId()) : undefined;
-  const [haikuTitle, setHaikuTitle] = useState<string>();
-  // Gates the one-shot Haiku call that generates the tab title. Seeded true
+  const [modelHTitle, setmodelHTitle] = useState<string>();
+  // Gates the one-shot modelH call that generates the tab title. Seeded true
   // on resume (initialMessages present) so we don't re-title a resumed
   // session from mid-conversation context.
-  const haikuTitleAttemptedRef = useRef((initialMessages?.length ?? 0) > 0);
+  const modelHTitleAttemptedRef = useRef((initialMessages?.length ?? 0) > 0);
   const agentTitle = mainThreadAgentDefinition?.agentType;
-  const terminalTitle = sessionTitle ?? agentTitle ?? haikuTitle ?? 'UR';
+  const terminalTitle = sessionTitle ?? agentTitle ?? modelHTitle ?? 'UR';
   const isWaitingForApproval = toolUseConfirmQueue.length > 0 || promptQueue.length > 0 || pendingWorkerRequest || pendingSandboxRequest;
   // Local-jsx commands (like /plugin, /config) show user-facing dialogs that
   // wait for input. Require jsx != null — if the flag is stuck true but jsx
@@ -1151,7 +1151,7 @@ export function REPL({
   // Title animation state lives in <AnimatedTerminalTitle> so the 960ms tick
   // doesn't re-render REPL. titleDisabled/terminalTitle are still computed
   // here because onQueryImpl reads them (background session description,
-  // haiku title extraction gate).
+  // modelH title extraction gate).
 
   // Prevent macOS from sleeping while UR is working
   useEffect(() => {
@@ -1868,9 +1868,9 @@ export function REPL({
       restoreSessionMetadata(log);
       // Resumed sessions shouldn't re-title from mid-conversation context
       // (same reasoning as the useRef seed), and the previous session's
-      // Haiku title shouldn't carry over.
-      haikuTitleAttemptedRef.current = true;
-      setHaikuTitle(undefined);
+      // modelH title shouldn't carry over.
+      modelHTitleAttemptedRef.current = true;
+      setmodelHTitle(undefined);
 
       // Exit any worktree a prior /resume entered, then cd into the one
       // this session was in. Without the exit, resuming from worktree B
@@ -1969,8 +1969,8 @@ export function REPL({
   // before onQuery builds its own context, and discovery on turn N must
   // still attribute a SkillTool call on turn N+k. Cleared in clearConversation.
   const discoveredSkillNamesRef = useRef(new Set<string>());
-  // Session-level dedup for nested_memory CLAUDE.md attachments.
-  // readFileState is a 100-entry LRU; once it evicts a CLAUDE.md path,
+  // Session-level dedup for nested_memory UR.md attachments.
+  // readFileState is a 100-entry LRU; once it evicts a UR.md path,
   // the next discovery cycle re-injects it. Cleared in clearConversation.
   const loadedNestedMemoryPathsRef = useRef(new Set<string>());
 
@@ -2054,7 +2054,7 @@ export function REPL({
     // Undercover auto-enable explainer (ant-only, eliminated from external builds)
     if (("external" as string) === 'ant' && allowDialogsWithAnimation && showUndercoverCallout) return 'undercover-callout';
 
-    // Effort callout (shown once for Opus 4.6 users when effort is enabled)
+    // Effort callout (shown once for modelO 4.6 users when effort is enabled)
     if (allowDialogsWithAnimation && showEffortCallout) return 'effort-callout';
 
     // Remote callout (shown once before first bridge enable)
@@ -2684,12 +2684,12 @@ export function REPL({
 
     // Extract a session title from the first real user message. One-shot
     // via ref (was tengu_birch_mist experiment: first-message-only to save
-    // Haiku calls). The ref replaces the old `messages.length <= 1` check,
+    // modelH calls). The ref replaces the old `messages.length <= 1` check,
     // which was broken by SessionStart hook messages (prepended via
     // useDeferredHookMessages) and attachment messages (appended by
     // processTextPrompt) — both pushed length past 1 on turn one, so the
     // title silently fell through to the "UR" default.
-    if (!titleDisabled && !sessionTitle && !agentTitle && !haikuTitleAttemptedRef.current) {
+    if (!titleDisabled && !sessionTitle && !agentTitle && !modelHTitleAttemptedRef.current) {
       const firstUserMessage = newMessages.find(m => m.type === 'user' && !m.isMeta);
       const text = firstUserMessage?.type === 'user' ? getContentText(firstUserMessage.message.content) : null;
       // Skip synthetic breadcrumbs — slash-command output, prompt-skill
@@ -2697,11 +2697,11 @@ export function REPL({
       // (/help → <command-name>), and bash-mode (!cmd → <bash-input>).
       // None of these are the user's topic; wait for real prose.
       if (text && !text.startsWith(`<${LOCAL_COMMAND_STDOUT_TAG}>`) && !text.startsWith(`<${COMMAND_MESSAGE_TAG}>`) && !text.startsWith(`<${COMMAND_NAME_TAG}>`) && !text.startsWith(`<${BASH_INPUT_TAG}>`)) {
-        haikuTitleAttemptedRef.current = true;
+        modelHTitleAttemptedRef.current = true;
         void generateSessionTitle(text, new AbortController().signal).then(title => {
-          if (title) setHaikuTitle(title);else haikuTitleAttemptedRef.current = false;
+          if (title) setmodelHTitle(title);else modelHTitleAttemptedRef.current = false;
         }, () => {
-          haikuTitleAttemptedRef.current = false;
+          modelHTitleAttemptedRef.current = false;
         });
       }
     }
@@ -3061,8 +3061,8 @@ export function REPL({
           setAppState,
           setConversationId
         });
-        haikuTitleAttemptedRef.current = false;
-        setHaikuTitle(undefined);
+        modelHTitleAttemptedRef.current = false;
+        setmodelHTitle(undefined);
         bashTools.current.clear();
         bashToolsProcessedIdx.current = 0;
 
@@ -3805,13 +3805,13 @@ export function REPL({
     // bottom right corner of the screen if the API key is invalid.
     void reverify();
 
-    // Populate readFileState with CLAUDE.md files at startup
+    // Populate readFileState with UR.md files at startup
     const memoryFiles = await getMemoryFiles();
     if (memoryFiles.length > 0) {
       const fileList = memoryFiles.map(f => `  [${f.type}] ${f.path} (${f.content.length} chars)${f.parent ? ` (included by ${f.parent})` : ''}`).join('\n');
-      logForDebugging(`Loaded ${memoryFiles.length} CLAUDE.md/rules files:\n${fileList}`);
+      logForDebugging(`Loaded ${memoryFiles.length} UR.md/rules files:\n${fileList}`);
     } else {
-      logForDebugging('No CLAUDE.md/rules files found');
+      logForDebugging('No UR.md/rules files found');
     }
     for (const file of memoryFiles) {
       // When the injected content doesn't match disk (stripped HTML comments,
@@ -4802,8 +4802,8 @@ export function REPL({
                 setAppState,
                 setConversationId
               });
-              haikuTitleAttemptedRef.current = false;
-              setHaikuTitle(undefined);
+              modelHTitleAttemptedRef.current = false;
+              setmodelHTitle(undefined);
               bashTools.current.clear();
               bashToolsProcessedIdx.current = 0;
             }

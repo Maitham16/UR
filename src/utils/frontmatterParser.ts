@@ -20,7 +20,7 @@ export type FrontmatterData = {
   // Only applicable to slash commands -- a string similar to a boolean env var
   // to determine whether to make them visible to the SlashCommand tool.
   'hide-from-slash-command-tool'?: string | null
-  // Model alias or name (e.g., 'haiku', 'sonnet', 'opus', or specific model names)
+  // Model alias or name (e.g., 'modelH', 'modelS', 'modelO', or specific model names)
   // Use 'inherit' for commands to use the parent model
   model?: string | null
   // Comma-separated list of skill names to preload (only applicable to agents)
@@ -48,7 +48,7 @@ export type FrontmatterData = {
   // Glob patterns for file paths this skill applies to. Accepts either a
   // comma-separated string or a YAML list of strings.
   // When set, the skill is only activated when the model touches matching files
-  // Uses the same format as CLAUDE.md paths frontmatter
+  // Uses the same format as UR.md paths frontmatter
   paths?: string | string[] | null
   // Shell to use for !`cmd` and ```! blocks in skill/command .md content.
   // 'bash' (default) or 'powershell'. File-scoped — applies to all !-blocks.

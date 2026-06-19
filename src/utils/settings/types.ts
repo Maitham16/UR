@@ -382,8 +382,8 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Allowlist of models that users can select. ' +
-            'Accepts family aliases ("opus" allows any opus version), ' +
-            'version prefixes ("opus-4-5" allows only that version), ' +
+            'Accepts family aliases ("modelO" allows any modelO version), ' +
+            'version prefixes ("modelO-4-5" allows only that version), ' +
             'and full model IDs. ' +
             'If undefined, all models are available. If empty array, only the default model is available. ' +
             'Typically set in managed settings by enterprise administrators.',
@@ -392,7 +392,7 @@ export const SettingsSchema = lazySchema(() =>
         .record(z.string(), z.string())
         .optional()
         .describe(
-          'Override mapping from Anthropic model ID (e.g. "claude-opus-4-6") to provider-specific ' +
+          'Override mapping from URHQ model ID (e.g. "ur-modelO-4-6") to provider-specific ' +
             'model ID (e.g. a Bedrock inference profile ARN). Typically set in managed settings by ' +
             'enterprise administrators.',
         ),
@@ -563,7 +563,7 @@ export const SettingsSchema = lazySchema(() =>
         )
         .optional()
         .describe(
-          'Enabled plugins using plugin-id@marketplace-id format. Example: { "formatter@anthropic-tools": true }. Also supports extended format with version constraints.',
+          'Enabled plugins using plugin-id@marketplace-id format. Example: { "formatter@urhq-tools": true }. Also supports extended format with version constraints.',
         ),
       // Extra marketplaces for this repository (usually for project settings)
       extraKnownMarketplaces: z
@@ -620,12 +620,12 @@ export const SettingsSchema = lazySchema(() =>
             'these exact sources are blocked from being added as marketplaces. The check happens BEFORE ' +
             'downloading, so blocked sources never touch the filesystem.',
         ),
-      // Force a specific login method: 'claudeai' for UR Pro/Max, 'console' for Console billing
+      // Force a specific login method: 'urai' for UR Pro/Max, 'console' for Console billing
       forceLoginMethod: z
-        .enum(['claudeai', 'console'])
+        .enum(['urai', 'console'])
         .optional()
         .describe(
-          'Force a specific login method: "claudeai" for UR Pro/Max, "console" for Console billing',
+          'Force a specific login method: "urai" for UR Pro/Max, "console" for Console billing',
         ),
       // Organization UUID to use for OAuth login (will be added as URL param to authorization URL)
       forceLoginOrgUUID: z
@@ -811,7 +811,7 @@ export const SettingsSchema = lazySchema(() =>
               .enum(['disable'])
               .optional()
               .describe(
-                'Prevent claude-cli:// protocol handler registration with the OS',
+                'Prevent ur-cli:// protocol handler registration with the OS',
               ),
           }
         : {}),
@@ -881,7 +881,7 @@ export const SettingsSchema = lazySchema(() =>
               .string()
               .optional()
               .describe(
-                'Display name for the assistant, shown in the claude.ai session list',
+                'Display name for the assistant, shown in the ur.ai session list',
               ),
           }
         : {}),
@@ -898,7 +898,7 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Teams/Enterprise opt-in for channel notifications (MCP servers with the ' +
-            'claude/channel capability pushing inbound messages). Default off. ' +
+            'ur/channel capability pushing inbound messages). Default off. ' +
             'Set true to allow; users then select servers via --channels.',
         ),
       // Org-level channel plugin allowlist. When set, REPLACES the
@@ -915,7 +915,7 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Teams/Enterprise allowlist of channel plugins. When set, ' +
-            'replaces the default Anthropic allowlist — admins decide which ' +
+            'replaces the default URHQ allowlist — admins decide which ' +
             'plugins may push inbound messages. Undefined falls back to the default. ' +
             'Requires channelsEnabled: true.',
         ),
@@ -1054,10 +1054,10 @@ export const SettingsSchema = lazySchema(() =>
         .array(z.string())
         .optional()
         .describe(
-          'Glob patterns or absolute paths of CLAUDE.md files to exclude from loading. ' +
+          'Glob patterns or absolute paths of UR.md files to exclude from loading. ' +
             'Patterns are matched against absolute file paths using picomatch. ' +
             'Only applies to User, Project, and Local memory types (Managed/policy files cannot be excluded). ' +
-            'Examples: "/home/user/monorepo/CLAUDE.md", "**/code/CLAUDE.md", "**/some-dir/.ur/rules/**"',
+            'Examples: "/home/user/monorepo/UR.md", "**/code/UR.md", "**/some-dir/.ur/rules/**"',
         ),
       pluginTrustMessage: z
         .string()

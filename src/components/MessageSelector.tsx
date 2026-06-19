@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { c as _c } from "react/compiler-runtime";
-import type { ContentBlockParam, TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ContentBlockParam, TextBlockParam } from '@urhq-ai/sdk/resources/index.mjs';
 import { randomUUID, type UUID } from 'crypto';
 import figures from 'figures';
 import * as React from 'react';

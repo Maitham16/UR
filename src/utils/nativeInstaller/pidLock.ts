@@ -122,7 +122,7 @@ function isURProcess(pid: number, expectedExecPath: string): boolean {
     const normalizedExecPath = expectedExecPath.toLowerCase()
 
     return (
-      normalizedCommand.includes('claude') ||
+      normalizedCommand.includes('ur') ||
       normalizedCommand.includes(normalizedExecPath)
     )
   } catch {

@@ -61,7 +61,7 @@ export function initBundledSkills(): void {
     /* eslint-enable @typescript-eslint/no-require-imports */
     registerScheduleRemoteAgentsSkill()
   }
-  if (feature('BUILDING_CLAUDE_APPS')) {
+  if (feature('BUILDING_UR_APPS')) {
     /* eslint-disable @typescript-eslint/no-require-imports */
     const { registerURApiSkill } = require('./urApi.js')
     /* eslint-enable @typescript-eslint/no-require-imports */

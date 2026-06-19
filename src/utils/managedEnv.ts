@@ -15,20 +15,20 @@ import {
 } from './settings/settings.js'
 
 /**
- * `ur ssh` remote: ANTHROPIC_UNIX_SOCKET routes auth through a -R forwarded
+ * `ur ssh` remote: URHQ_UNIX_SOCKET routes auth through a -R forwarded
  * socket to a local proxy, and the launcher sets a handful of placeholder auth
  * env vars that the remote's ~/.ur settings.env MUST NOT clobber (see
- * isAnthropicAuthEnabled). Strip them from any settings-sourced env object.
+ * isURHQAuthEnabled). Strip them from any settings-sourced env object.
  */
 function withoutSSHTunnelVars(
   env: Record<string, string> | undefined,
 ): Record<string, string> {
-  if (!env || !process.env.ANTHROPIC_UNIX_SOCKET) return env || {}
+  if (!env || !process.env.URHQ_UNIX_SOCKET) return env || {}
   const {
-    ANTHROPIC_UNIX_SOCKET: _1,
-    ANTHROPIC_BASE_URL: _2,
-    ANTHROPIC_API_KEY: _3,
-    ANTHROPIC_AUTH_TOKEN: _4,
+    URHQ_UNIX_SOCKET: _1,
+    URHQ_BASE_URL: _2,
+    URHQ_API_KEY: _3,
+    URHQ_AUTH_TOKEN: _4,
     UR_CODE_OAUTH_TOKEN: _5,
     ...rest
   } = env
@@ -100,7 +100,7 @@ function filterSettingsEnv(
  *
  * Project-scoped sources (projectSettings, localSettings) are excluded because they live
  * inside the project directory and could be committed by a malicious actor to redirect
- * traffic (e.g., ANTHROPIC_BASE_URL) to an attacker-controlled server.
+ * traffic (e.g., URHQ_BASE_URL) to an attacker-controlled server.
  */
 const TRUSTED_SETTING_SOURCES = [
   'userSettings',
@@ -111,10 +111,10 @@ const TRUSTED_SETTING_SOURCES = [
 /**
  * Apply environment variables from trusted sources to process.env.
  * Called before the trust dialog so that user/enterprise env vars like
- * ANTHROPIC_BASE_URL take effect during first-run/onboarding.
+ * URHQ_BASE_URL take effect during first-run/onboarding.
  *
  * For trusted sources (user settings, managed settings, CLI flags), ALL env vars
- * are applied — including ones like ANTHROPIC_BASE_URL that would be dangerous
+ * are applied — including ones like URHQ_BASE_URL that would be dangerous
  * from project-scoped settings.
  *
  * For project-scoped sources (projectSettings, localSettings), only safe env vars
@@ -125,7 +125,7 @@ export function applySafeConfigEnvironmentVariables(): void {
   // Capture CCD spawn-env keys before any settings.env is applied (once).
   if (ccdSpawnEnvKeys === undefined) {
     ccdSpawnEnvKeys =
-      process.env.UR_CODE_ENTRYPOINT === 'claude-desktop'
+      process.env.UR_CODE_ENTRYPOINT === 'ur-desktop'
         ? new Set(Object.keys(process.env))
         : null
   }
@@ -150,7 +150,7 @@ export function applySafeConfigEnvironmentVariables(): void {
 
   // Compute remote-managed-settings eligibility now, with userSettings and
   // flagSettings env applied. Eligibility reads UR_CODE_USE_BEDROCK,
-  // ANTHROPIC_BASE_URL — both settable via settings.env.
+  // URHQ_BASE_URL — both settable via settings.env.
   // getSettingsForSource('policySettings') below consults the remote cache,
   // which guards on this. The two-phase structure makes the ordering
   // dependency visible: non-policy env → eligibility → policy env.

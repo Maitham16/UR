@@ -17,7 +17,7 @@ import { getFsImplementation } from './fsOperations.js'
  * spawned inside the CCR container can find the token without inheriting
  * the FD — which they can't: pipe FDs don't cross tmux/shell boundaries.
  */
-const CCR_TOKEN_DIR = '/home/claude/.ur/remote'
+const CCR_TOKEN_DIR = '/home/ur/.ur/remote'
 export const CCR_OAUTH_TOKEN_PATH = `${CCR_TOKEN_DIR}/.oauth_token`
 export const CCR_API_KEY_PATH = `${CCR_TOKEN_DIR}/.api_key`
 export const CCR_SESSION_INGRESS_TOKEN_PATH = `${CCR_TOKEN_DIR}/.session_ingress_token`

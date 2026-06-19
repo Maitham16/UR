@@ -72,7 +72,7 @@ export function RateLimitMessage(t0) {
   }
   const rateLimitTier = t2;
   const isTeamOrEnterprise = subscriptionType === "team" || subscriptionType === "enterprise";
-  const isMax20x = rateLimitTier === "default_claude_max_20x";
+  const isMax20x = rateLimitTier === "default_ur_max_20x";
   let t3;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
     t3 = shouldProcessMockLimits() || isURAISubscriber();

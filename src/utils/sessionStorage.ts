@@ -2,7 +2,7 @@ import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import type { Dirent } from 'fs'
 // Sync fs primitives for readFileTailSync — separate from fs/promises
-// imports above. Named (not wildcard) per CLAUDE.md style; no collisions
+// imports above. Named (not wildcard) per UR.md style; no collisions
 // with the async-suffixed names.
 import { closeSync, fstatSync, openSync, readSync } from 'fs'
 import {
@@ -1778,7 +1778,7 @@ export function getFirstMeaningfulUserMessageTextContent<T extends Message>(
         const commandName = commandNameTag.replace(/^\//, '')
 
         // If it's a built-in command, then it's unlikely to provide
-        // meaningful context (e.g. `/model sonnet`)
+        // meaningful context (e.g. `/model modelS`)
         if (builtInCommandNames().has(commandName)) {
           continue
         } else {

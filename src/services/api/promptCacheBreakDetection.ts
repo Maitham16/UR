@@ -1,6 +1,6 @@
 // @ts-nocheck
-import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { BetaToolUnion } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
+import type { TextBlockParam } from '@urhq-ai/sdk/resources/index.mjs'
 import { createPatch } from 'diff'
 import { mkdir, writeFile } from 'fs/promises'
 import { join } from 'path'
@@ -55,10 +55,10 @@ type PreviousState = {
    *  (sticky-on latched in ur.ts). Tracked to verify the fix. */
   cachedMCEnabled: boolean
   /** Resolved effort (env → options → model default). Goes into output_config
-   *  or anthropic_internal.effort_override. */
+   *  or urhq_internal.effort_override. */
   effortValue: string
   /** Hash of getExtraBodyParams() — catches UR_CODE_EXTRA_BODY and
-   *  anthropic_internal changes. */
+   *  urhq_internal changes. */
   extraBodyHash: number
   callCount: number
   pendingChanges: PendingChanges | null
@@ -126,9 +126,9 @@ const MIN_CACHE_MISS_TOKENS = 2_000
 const CACHE_TTL_5MIN_MS = 5 * 60 * 1000
 export const CACHE_TTL_1HOUR_MS = 60 * 60 * 1000
 
-// Models to exclude from cache break detection (e.g., haiku has different caching behavior)
+// Models to exclude from cache break detection (e.g., modelH has different caching behavior)
 function isExcludedModel(model: string): boolean {
-  return model.includes('haiku')
+  return model.includes('modelH')
 }
 
 /**
@@ -450,7 +450,7 @@ export async function checkResponseForCacheBreak(
     const state = previousStateBySource.get(key)
     if (!state) return
 
-    // Skip excluded models (e.g., haiku has different caching behavior)
+    // Skip excluded models (e.g., modelH has different caching behavior)
     if (isExcludedModel(state.model)) return
 
     const prevCacheRead = state.prevCacheReadTokens

@@ -505,7 +505,7 @@ export const GIT_READ_ONLY_COMMANDS: Record<string, ExternalCommandConfig> = {
     safeFlags: {
       '--is-ancestor': 'none', // Check if first commit is ancestor of second
       '--fork-point': 'none', // Find fork point
-      '--octopus': 'none', // Find best common ancestors for multiple refs
+      '--octmodelO': 'none', // Find best common ancestors for multiple refs
       '--independent': 'none', // Filter independent refs
       '--all': 'none', // Output all merge bases
     },

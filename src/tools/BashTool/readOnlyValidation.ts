@@ -1515,7 +1515,7 @@ const READONLY_COMMAND_REGEXES = new Set([
   /^echo(?:\s+(?:'[^']*'|"[^"$<>\n\r]*"|[^|;&`$(){}><#\\!"'\s]+))*(?:\s+2>&1)?\s*$/,
 
   // UR CLI help
-  /^claude -h$/,
+  /^ur -h$/,
   /^ur --help$/,
 
   // Git readonly commands are now handled via COMMAND_ALLOWLIST with explicit flag validation

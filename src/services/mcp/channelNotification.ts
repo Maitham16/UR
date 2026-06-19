@@ -37,7 +37,7 @@ import {
 
 export const ChannelMessageNotificationSchema = lazySchema(() =>
   z.object({
-    method: z.literal('notifications/claude/channel'),
+    method: z.literal('notifications/ur/channel'),
     params: z.object({
       content: z.string(),
       // Opaque passthrough — thread_id, user, whatever the channel wants the
@@ -61,7 +61,7 @@ export const ChannelMessageNotificationSchema = lazySchema(() =>
  * to deliberately emit this specific event.
  */
 export const CHANNEL_PERMISSION_METHOD =
-  'notifications/claude/channel/permission'
+  'notifications/ur/channel/permission'
 export const ChannelPermissionNotificationSchema = lazySchema(() =>
   z.object({
     method: z.literal(CHANNEL_PERMISSION_METHOD),
@@ -84,7 +84,7 @@ export const ChannelPermissionNotificationSchema = lazySchema(() =>
  * keeps both halves of the protocol documented side by side.
  */
 export const CHANNEL_PERMISSION_REQUEST_METHOD =
-  'notifications/claude/channel/permission_request'
+  'notifications/ur/channel/permission_request'
 export type ChannelPermissionRequestParams = {
   request_id: string
   tool_name: string
@@ -198,11 +198,11 @@ export function gateChannelServer(
   // presence-signal idiom — same as `tools: {}`). Truthy covers `{}` and
   // `true`; absent/undefined/explicit-`false` all fail. Key matches the
   // notification method namespace (notifications/ur/channel).
-  if (!capabilities?.experimental?.['claude/channel']) {
+  if (!capabilities?.experimental?.['ur/channel']) {
     return {
       action: 'skip',
       kind: 'capability',
-      reason: 'server did not declare claude/channel capability',
+      reason: 'server did not declare ur/channel capability',
     }
   }
 
@@ -224,7 +224,7 @@ export function gateChannelServer(
     return {
       action: 'skip',
       kind: 'auth',
-      reason: 'channels requires claude.ai authentication (run /login)',
+      reason: 'channels requires ur.ai authentication (run /login)',
     }
   }
 
@@ -258,8 +258,8 @@ export function gateChannelServer(
   }
 
   if (entry.kind === 'plugin') {
-    // Marketplace verification: the tag is intent (plugin:slack@anthropic),
-    // the runtime name is just plugin:slack:X — could be slack@anthropic or
+    // Marketplace verification: the tag is intent (plugin:slack@urhq),
+    // the runtime name is just plugin:slack:X — could be slack@urhq or
     // slack@evil depending on what's installed. Verify they match before
     // trusting the tag for the allowlist check below. Source is stashed on
     // the config at addPluginScopeToServers — undefined (non-plugin server,

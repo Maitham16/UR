@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle'
-import type Anthropic from '@anthropic-ai/sdk'
-import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages.js'
+import type URHQ from '@urhq-ai/sdk'
+import type { BetaToolUnion } from '@urhq-ai/sdk/resources/beta/messages.js'
 import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { z } from 'zod/v4'
@@ -14,7 +14,7 @@ import {
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { logEvent } from '../../services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/metadata.js'
-import { getCacheControl } from '../../services/api/claude.js'
+import { getCacheControl } from '../../services/api/ur.js'
 import { parsePromptTooLongTokenCounts } from '../../services/api/errors.js'
 import { getDefaultMaxRetries } from '../../services/api/withRetry.js'
 import type { Tool, ToolPermissionContext, Tools } from '../../Tool.js'
@@ -58,14 +58,14 @@ const BASE_PROMPT: string = feature('TRANSCRIPT_CLASSIFIER')
 
 // External template is loaded separately so it's available for
 // `ur auto-mode defaults` even in ant builds. Ant builds use
-// permissions_anthropic.txt at runtime but should dump external defaults.
+// permissions_urhq.txt at runtime but should dump external defaults.
 const EXTERNAL_PERMISSIONS_TEMPLATE: string = feature('TRANSCRIPT_CLASSIFIER')
   ? txtRequire(require('./yolo-classifier-prompts/permissions_external.txt'))
   : ''
 
-const ANTHROPIC_PERMISSIONS_TEMPLATE: string =
+const URHQ_PERMISSIONS_TEMPLATE: string =
   feature('TRANSCRIPT_CLASSIFIER') && process.env.USER_TYPE === 'ant'
-    ? txtRequire(require('./yolo-classifier-prompts/permissions_anthropic.txt'))
+    ? txtRequire(require('./yolo-classifier-prompts/permissions_urhq.txt'))
     : ''
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 
@@ -443,22 +443,22 @@ export function buildTranscriptForClassifier(
 }
 
 /**
- * Build the CLAUDE.md prefix message for the classifier. Returns null when
- * CLAUDE.md is disabled or empty. The content is wrapped in a delimiter that
+ * Build the UR.md prefix message for the classifier. Returns null when
+ * UR.md is disabled or empty. The content is wrapped in a delimiter that
  * tells the classifier this is user-provided configuration — actions
  * described here reflect user intent. cache_control is set because the
- * content is static per-session, making the system + CLAUDE.md prefix a
+ * content is static per-session, making the system + UR.md prefix a
  * stable cache prefix across classifier calls.
  *
  * Reads from bootstrap/state.ts cache (populated by context.ts) instead of
  * importing agentmd.ts directly — agentmd → permissions/filesystem →
  * permissions → yoloClassifier is a cycle. context.ts already gates on
- * UR_CODE_DISABLE_CLAUDE_MDS and normalizes '' to null before caching.
+ * UR_CODE_DISABLE_UR_MDS and normalizes '' to null before caching.
  * If the cache is unpopulated (tests, or an entrypoint that never calls
- * getUserContext), the classifier proceeds without CLAUDE.md — same as
+ * getUserContext), the classifier proceeds without UR.md — same as
  * pre-PR behavior.
  */
-function buildAgentMdMessage(): Anthropic.MessageParam | null {
+function buildAgentMdMessage(): URHQ.MessageParam | null {
   const urMd = getCachedAgentMdContent()
   if (urMd === null) return null
   return {
@@ -467,10 +467,10 @@ function buildAgentMdMessage(): Anthropic.MessageParam | null {
       {
         type: 'text',
         text:
-          `The following is the user's CLAUDE.md configuration. These are ` +
+          `The following is the user's UR.md configuration. These are ` +
           `instructions the user provided to the agent and should be treated ` +
           `as part of the user's intent when evaluating actions.\n\n` +
-          `<user_claude_md>\n${urMd}\n</user_claude_md>`,
+          `<user_ur_md>\n${urMd}\n</user_ur_md>`,
         cache_control: getCacheControl({ querySource: 'auto_mode' }),
       },
     ],
@@ -489,7 +489,7 @@ export async function buildYoloSystemPrompt(
   const systemPrompt = BASE_PROMPT.replace('<permissions_template>', () =>
     usingExternal
       ? EXTERNAL_PERMISSIONS_TEMPLATE
-      : ANTHROPIC_PERMISSIONS_TEMPLATE,
+      : URHQ_PERMISSIONS_TEMPLATE,
   )
 
   const autoMode = getAutoModeConfig()
@@ -512,7 +512,7 @@ export async function buildYoloSystemPrompt(
   // All three sections use the same <foo_to_replace>...</foo_to_replace>
   // delimiter pattern. The external template wraps its defaults inside the
   // tags, so user-provided values REPLACE the defaults entirely. The
-  // anthropic template keeps its defaults outside the tags and uses an empty
+  // urhq template keeps its defaults outside the tags and uses an empty
   // tag pair at the end of each section, so user-provided values are
   // strictly ADDITIVE.
   const userAllow = allowDescriptions.length
@@ -608,7 +608,7 @@ function parseXmlThinking(text: string): string | null {
  * Extract usage stats from an API response.
  */
 function extractUsage(
-  result: Anthropic.Beta.Messages.BetaMessage,
+  result: URHQ.Beta.Messages.BetaMessage,
 ): ClassifierUsage {
   return {
     inputTokens: result.usage.input_tokens,
@@ -623,7 +623,7 @@ function extractUsage(
  * non-enumerable `_request_id` property on response objects.
  */
 function extractRequestId(
-  result: Anthropic.Beta.Messages.BetaMessage,
+  result: URHQ.Beta.Messages.BetaMessage,
 ): string | undefined {
   return (result as { _request_id?: string | null })._request_id ?? undefined
 }
@@ -710,11 +710,11 @@ function getClassifierThinkingConfig(
  * prompt caching (1h TTL) across calls.
  */
 async function classifyYoloActionXml(
-  prefixMessages: Anthropic.MessageParam[],
+  prefixMessages: URHQ.MessageParam[],
   systemPrompt: string,
   userPrompt: string,
   userContentBlocks: Array<
-    Anthropic.TextBlockParam | Anthropic.ImageBlockParam
+    URHQ.TextBlockParam | URHQ.ImageBlockParam
   >,
   model: string,
   promptLengths: {
@@ -740,7 +740,7 @@ async function classifyYoloActionXml(
         ? 'xml_fast'
         : 'xml_thinking'
   const xmlSystemPrompt = replaceOutputFormatWithXml(systemPrompt)
-  const systemBlocks: Anthropic.TextBlockParam[] = [
+  const systemBlocks: URHQ.TextBlockParam[] = [
     {
       type: 'text' as const,
       text: xmlSystemPrompt,
@@ -759,7 +759,7 @@ async function classifyYoloActionXml(
   // Wrap all content (transcript + action) in <transcript> tags.
   // The action is the final tool_use block in the transcript.
   const wrappedContent: Array<
-    Anthropic.TextBlockParam | Anthropic.ImageBlockParam
+    URHQ.TextBlockParam | URHQ.ImageBlockParam
   > = [
     { type: 'text' as const, text: '<transcript>\n' },
     ...userContentBlocks,
@@ -997,7 +997,7 @@ async function classifyYoloActionXml(
 }
 
 /**
- * Use Opus to classify whether an agent action should be allowed or blocked.
+ * Use modelO to classify whether an agent action should be allowed or blocked.
  * Returns a YoloClassifierResult indicating the decision.
  *
  * On API errors, returns shouldBlock: true with unavailable: true so callers
@@ -1032,13 +1032,13 @@ export async function classifyYoloAction(
   const systemPrompt = await buildYoloSystemPrompt(context)
   const transcriptEntries = buildTranscriptEntries(messages)
   const urMdMessage = buildAgentMdMessage()
-  const prefixMessages: Anthropic.MessageParam[] = urMdMessage
+  const prefixMessages: URHQ.MessageParam[] = urMdMessage
     ? [urMdMessage]
     : []
 
   let toolCallsLength = actionCompact.length
   let userPromptsLength = 0
-  const userContentBlocks: Anthropic.TextBlockParam[] = []
+  const userContentBlocks: URHQ.TextBlockParam[] = []
   for (const entry of transcriptEntries) {
     for (const block of entry.content) {
       const serialized = toCompactBlock(block, entry.role, lookup)
@@ -1098,7 +1098,7 @@ export async function classifyYoloAction(
   // Place cache_control on the action block. In the two-stage classifier,
   // stage 2 shares the same transcript+action prefix as stage 1 — the
   // breakpoint here gives stage 2 a guaranteed cache hit on the full prefix.
-  // Budget: system (1) + CLAUDE.md (0–1) + action (1) = 2–3, under the
+  // Budget: system (1) + UR.md (0–1) + action (1) = 2–3, under the
   // API limit of 4 cache_control blocks.
   userContentBlocks.push({
     type: 'text' as const,
@@ -1316,7 +1316,7 @@ type AutoModeConfig = {
    */
   twoStageClassifier?: boolean | 'fast' | 'thinking'
   /**
-   * Ant builds normally use permissions_anthropic.txt; when true, use
+   * Ant builds normally use permissions_urhq.txt; when true, use
    * permissions_external.txt instead (dogfood the external template).
    */
   forceExternalPermissions?: boolean

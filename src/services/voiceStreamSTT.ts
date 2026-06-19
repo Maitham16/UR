@@ -18,7 +18,7 @@ import { getOauthConfig } from '../constants/oauth.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
   getURAIOAuthTokens,
-  isAnthropicAuthEnabled,
+  isURHQAuthEnabled,
 } from '../utils/auth.js'
 import { logForDebugging } from '../utils/debug.js'
 import { getUserAgent } from '../utils/http.js'
@@ -57,7 +57,7 @@ export type VoiceStreamCallbacks = {
 }
 
 // How finalize() resolved. `no_data_timeout` means zero server messages
-// after CloseStream — the silent-drop signature (anthropics/anthropic#287008).
+// after CloseStream — the silent-drop signature (urhqs/urhq#287008).
 export type FinalizeSource =
   | 'post_closestream_endpoint'
   | 'no_data_timeout'
@@ -100,7 +100,7 @@ export function isVoiceStreamAvailable(): boolean {
   // voice_stream uses the same OAuth as UR — available when the
   // user is authenticated with UR (UR.ai subscriber or has
   // valid OAuth tokens).
-  if (!isAnthropicAuthEnabled()) {
+  if (!isURHQAuthEnabled()) {
     return false
   }
   const tokens = getURAIOAuthTokens()
@@ -145,7 +145,7 @@ export async function connectVoiceStream(
 
   // Route through conversation-engine with Deepgram Nova 3 (bypassing
   // the server's project_bell_v2_config GrowthBook gate). The server
-  // side is anthropics/anthropic#278327 + #281372; this lets us ramp
+  // side is urhqs/urhq#278327 + #281372; this lets us ramp
   // clients independently.
   const isNova3 = getFeatureValue_CACHED_MAY_BE_STALE(
     'tengu_cobalt_frost',
@@ -504,7 +504,7 @@ export async function connectVoiceStream(
   ws.on('unexpected-response', (req: ClientRequest, res: IncomingMessage) => {
     const status = res.statusCode ?? 0
     // Bun's ws implementation on Windows can fire this event for a
-    // successful 101 Switching Protocols response (anthropics/ur#40510).
+    // successful 101 Switching Protocols response (urhqs/ur#40510).
     // 101 is never a rejection — bail before we destroy a working upgrade.
     if (status === 101) {
       logForDebugging(

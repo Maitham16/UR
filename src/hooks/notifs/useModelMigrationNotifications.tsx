@@ -7,26 +7,26 @@ import { useStartupNotification } from './useStartupNotification.js';
 // a notification if the write happened within the last 3s (i.e. this launch).
 // Future model migrations: add an entry to MIGRATIONS below.
 const MIGRATIONS: ((c: GlobalConfig) => Notification | undefined)[] = [
-// Sonnet 4.5 → 4.6 (pro/max/team premium)
+// modelS 4.5 → 4.6 (pro/max/team premium)
 c => {
-  if (!recent(c.sonnet45To46MigrationTimestamp)) return;
+  if (!recent(c.modelS45To46MigrationTimestamp)) return;
   return {
-    key: 'sonnet-46-update',
-    text: 'Model updated to Sonnet 4.6',
+    key: 'modelS-46-update',
+    text: 'Model updated to modelS 4.6',
     color: 'suggestion',
     priority: 'high',
     timeoutMs: 3000
   };
 },
-// Opus Pro → default, or pinned 4.0/4.1 → opus alias. Both land on the
-// current Opus default (4.6 for 1P).
+// modelO Pro → default, or pinned 4.0/4.1 → modelO alias. Both land on the
+// current modelO default (4.6 for 1P).
 c => {
-  const isLegacyRemap = Boolean(c.legacyOpusMigrationTimestamp);
-  const ts = c.legacyOpusMigrationTimestamp ?? c.opusProMigrationTimestamp;
+  const isLegacyRemap = Boolean(c.legacymodelOMigrationTimestamp);
+  const ts = c.legacymodelOMigrationTimestamp ?? c.modelOProMigrationTimestamp;
   if (!recent(ts)) return;
   return {
-    key: 'opus-pro-update',
-    text: isLegacyRemap ? 'Model updated to Opus 4.6 · Set UR_CODE_DISABLE_LEGACY_MODEL_REMAP=1 to opt out' : 'Model updated to Opus 4.6',
+    key: 'modelO-pro-update',
+    text: isLegacyRemap ? 'Model updated to modelO 4.6 · Set UR_CODE_DISABLE_LEGACY_MODEL_REMAP=1 to opt out' : 'Model updated to modelO 4.6',
     color: 'suggestion',
     priority: 'high',
     timeoutMs: isLegacyRemap ? 8000 : 3000

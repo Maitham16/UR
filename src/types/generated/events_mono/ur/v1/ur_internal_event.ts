@@ -30,7 +30,7 @@ export interface EnvironmentMetadata {
   is_claubbit?: boolean | undefined
   is_github_action?: boolean | undefined
   is_ur_action?: boolean | undefined
-  is_claude_ai_auth?: boolean | undefined
+  is_ur_ai_auth?: boolean | undefined
   version?: string | undefined
   /** GitHub Actions specific fields (only present when is_github_action is true) */
   github_event_name?: string | undefined
@@ -190,7 +190,7 @@ function createBaseEnvironmentMetadata(): EnvironmentMetadata {
     is_claubbit: false,
     is_github_action: false,
     is_ur_action: false,
-    is_claude_ai_auth: false,
+    is_ur_ai_auth: false,
     version: '',
     github_event_name: '',
     github_actions_runner_environment: '',
@@ -249,8 +249,8 @@ export const EnvironmentMetadata: MessageFns<EnvironmentMetadata> = {
       is_ur_action: isSet(object.is_ur_action)
         ? globalThis.Boolean(object.is_ur_action)
         : false,
-      is_claude_ai_auth: isSet(object.is_claude_ai_auth)
-        ? globalThis.Boolean(object.is_claude_ai_auth)
+      is_ur_ai_auth: isSet(object.is_ur_ai_auth)
+        ? globalThis.Boolean(object.is_ur_ai_auth)
         : false,
       version: isSet(object.version) ? globalThis.String(object.version) : '',
       github_event_name: isSet(object.github_event_name)
@@ -355,8 +355,8 @@ export const EnvironmentMetadata: MessageFns<EnvironmentMetadata> = {
     if (message.is_ur_action !== undefined) {
       obj.is_ur_action = message.is_ur_action
     }
-    if (message.is_claude_ai_auth !== undefined) {
-      obj.is_claude_ai_auth = message.is_claude_ai_auth
+    if (message.is_ur_ai_auth !== undefined) {
+      obj.is_ur_ai_auth = message.is_ur_ai_auth
     }
     if (message.version !== undefined) {
       obj.version = message.version
@@ -455,7 +455,7 @@ export const EnvironmentMetadata: MessageFns<EnvironmentMetadata> = {
     message.is_claubbit = object.is_claubbit ?? false
     message.is_github_action = object.is_github_action ?? false
     message.is_ur_action = object.is_ur_action ?? false
-    message.is_claude_ai_auth = object.is_claude_ai_auth ?? false
+    message.is_ur_ai_auth = object.is_ur_ai_auth ?? false
     message.version = object.version ?? ''
     message.github_event_name = object.github_event_name ?? ''
     message.github_actions_runner_environment =

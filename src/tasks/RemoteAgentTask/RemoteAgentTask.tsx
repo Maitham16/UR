@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { ToolUseBlock } from '@anthropic-ai/sdk/resources';
+import type { ToolUseBlock } from '@urhq-ai/sdk/resources';
 import { getRemoteSessionUrl } from '../../constants/product.js';
 import { OUTPUT_FILE_TAG, REMOTE_REVIEW_PROGRESS_TAG, REMOTE_REVIEW_TAG, STATUS_TAG, SUMMARY_TAG, TASK_ID_TAG, TASK_NOTIFICATION_TAG, TASK_TYPE_TAG, TOOL_USE_ID_TAG, ULTRAPLAN_TAG } from '../../constants/xml.js';
 import type { SDKAssistantMessage, SDKMessage } from '../../entrypoints/agentSdkTypes.js';
@@ -149,7 +149,7 @@ export function formatPreconditionError(error: BackgroundRemoteSessionPreconditi
     case 'not_logged_in':
       return 'Please run /login and sign in with your UR account (not Console).';
     case 'no_remote_environment':
-      return 'No cloud environment available. Set one up at https://claude.ai/code/onboarding?magic=env-setup';
+      return 'No cloud environment available. Set one up at https://ur.ai/code/onboarding?magic=env-setup';
     case 'not_in_git_repo':
       return 'Background tasks require a git repository. Initialize git or run from a git repository.';
     case 'no_git_remote':

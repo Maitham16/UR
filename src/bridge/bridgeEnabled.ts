@@ -69,7 +69,7 @@ export async function isBridgeEnabledBlocking(): Promise<boolean> {
 export async function getBridgeDisabledReason(): Promise<string | null> {
   if (feature('BRIDGE_MODE')) {
     if (!isURAISubscriber()) {
-      return 'Remote Control requires a claude.ai subscription. Run `ur auth login` to sign in with your claude.ai account.'
+      return 'Remote Control requires a ur.ai subscription. Run `ur auth login` to sign in with your ur.ai account.'
     }
     if (!hasProfileScope()) {
       return 'Remote Control requires a full-scope login token. Long-lived tokens (from `ur setup-token` or UR_CODE_OAUTH_TOKEN) are limited to inference-only for security reasons. Run `ur auth login` to use Remote Control.'

@@ -107,7 +107,7 @@ export function isAnalyticsToolDetailsLoggingEnabled(
   if (process.env.UR_CODE_ENTRYPOINT === 'local-agent') {
     return true
   }
-  if (mcpServerType === 'claudeai-proxy') {
+  if (mcpServerType === 'urai-proxy') {
     return true
   }
   if (mcpServerBaseUrl && isOfficialMcpUrl(mcpServerBaseUrl)) {
@@ -834,7 +834,7 @@ export function to1PEventFormat(
     is_conductor: envContext.isConductor,
     is_github_action: envContext.isGithubAction,
     is_ur_action: envContext.isURCodeAction,
-    is_claude_ai_auth: envContext.isURAiAuth,
+    is_ur_ai_auth: envContext.isURAiAuth,
     version: envContext.version,
     build_time: envContext.buildTime,
     deployment_environment: envContext.deploymentEnvironment,

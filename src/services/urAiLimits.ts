@@ -1,6 +1,6 @@
 // @ts-nocheck
-import { APIError } from '@anthropic-ai/sdk'
-import type { MessageParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import { APIError } from '@urhq-ai/sdk'
+import type { MessageParam } from '@urhq-ai/sdk/resources/index.mjs'
 import isEqual from 'lodash-es/isEqual.js'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import { isURAISubscriber } from '../utils/auth.js'
@@ -11,8 +11,8 @@ import { getSmallFastModel } from '../utils/model/model.js'
 import { isEssentialTrafficOnly } from '../utils/privacyLevel.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from './analytics/index.js'
 import { logEvent } from './analytics/index.js'
-import { getAPIMetadata } from './api/claude.js'
-import { getAnthropicClient } from './api/client.js'
+import { getAPIMetadata } from './api/ur.js'
+import { getURHQClient } from './api/client.js'
 import {
   processRateLimitHeaders,
   shouldProcessRateLimits,
@@ -30,8 +30,8 @@ type QuotaStatus = 'allowed' | 'allowed_warning' | 'rejected'
 type RateLimitType =
   | 'five_hour'
   | 'seven_day'
-  | 'seven_day_opus'
-  | 'seven_day_sonnet'
+  | 'seven_day_modelO'
+  | 'seven_day_modelS'
   | 'overage'
 
 export type { RateLimitType }
@@ -80,8 +80,8 @@ const EARLY_WARNING_CLAIM_MAP: Record<string, RateLimitType> = {
 const RATE_LIMIT_DISPLAY_NAMES: Record<RateLimitType, string> = {
   five_hour: 'session limit',
   seven_day: 'weekly limit',
-  seven_day_opus: 'Opus limit',
-  seven_day_sonnet: 'Sonnet limit',
+  seven_day_modelO: 'modelO limit',
+  seven_day_modelS: 'modelS limit',
   overage: 'extra usage limit',
 }
 
@@ -123,7 +123,7 @@ export type OverageDisabledReason =
 export type URAILimits = {
   status: QuotaStatus
   // unifiedRateLimitFallbackAvailable is currently used to warn users that set
-  // their model to Opus whenever they are about to run out of quota. It does
+  // their model to modelO whenever they are about to run out of quota. It does
   // not change the actual model that is used.
   unifiedRateLimitFallbackAvailable: boolean
   resetsAt?: number
@@ -169,9 +169,9 @@ function extractRawUtilization(headers: globalThis.Headers): RawUtilization {
     ['seven_day', '7d'],
   ] as const) {
     const util = headers.get(
-      `anthropic-ratelimit-unified-${abbrev}-utilization`,
+      `urhq-ratelimit-unified-${abbrev}-utilization`,
     )
-    const reset = headers.get(`anthropic-ratelimit-unified-${abbrev}-reset`)
+    const reset = headers.get(`urhq-ratelimit-unified-${abbrev}-reset`)
     if (util !== null && reset !== null) {
       result[key] = { utilization: Number(util), resets_at: Number(reset) }
     }
@@ -189,7 +189,7 @@ export function emitStatusChange(limits: URAILimits) {
     (limits.resetsAt ? limits.resetsAt - Date.now() / 1000 : 0) / (60 * 60),
   )
 
-  logEvent('tengu_claudeai_limits_status_changed', {
+  logEvent('tengu_urai_limits_status_changed', {
     status:
       limits.status as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     unifiedRateLimitFallbackAvailable: limits.unifiedRateLimitFallbackAvailable,
@@ -199,7 +199,7 @@ export function emitStatusChange(limits: URAILimits) {
 
 async function makeTestQuery() {
   const model = getSmallFastModel()
-  const anthropic = await getAnthropicClient({
+  const urhq = await getURHQClient({
     maxRetries: 0,
     model,
     source: 'quota_check',
@@ -207,7 +207,7 @@ async function makeTestQuery() {
   const messages: MessageParam[] = [{ role: 'user', content: 'quota' }]
   const betas = getModelBetas(model)
   // biome-ignore lint/plugin: quota check needs raw response access via asResponse()
-  return anthropic.beta.messages
+  return urhq.beta.messages
     .create({
       model,
       max_tokens: 1,
@@ -262,16 +262,16 @@ function getHeaderBasedEarlyWarning(
     EARLY_WARNING_CLAIM_MAP,
   )) {
     const surpassedThreshold = headers.get(
-      `anthropic-ratelimit-unified-${claimAbbrev}-surpassed-threshold`,
+      `urhq-ratelimit-unified-${claimAbbrev}-surpassed-threshold`,
     )
 
     // If threshold header is present, user has crossed a warning threshold
     if (surpassedThreshold !== null) {
       const utilizationHeader = headers.get(
-        `anthropic-ratelimit-unified-${claimAbbrev}-utilization`,
+        `urhq-ratelimit-unified-${claimAbbrev}-utilization`,
       )
       const resetHeader = headers.get(
-        `anthropic-ratelimit-unified-${claimAbbrev}-reset`,
+        `urhq-ratelimit-unified-${claimAbbrev}-reset`,
       )
 
       const utilization = utilizationHeader
@@ -307,10 +307,10 @@ function getTimeRelativeEarlyWarning(
   const { rateLimitType, claimAbbrev, windowSeconds, thresholds } = config
 
   const utilizationHeader = headers.get(
-    `anthropic-ratelimit-unified-${claimAbbrev}-utilization`,
+    `urhq-ratelimit-unified-${claimAbbrev}-utilization`,
   )
   const resetHeader = headers.get(
-    `anthropic-ratelimit-unified-${claimAbbrev}-reset`,
+    `urhq-ratelimit-unified-${claimAbbrev}-reset`,
   )
 
   if (utilizationHeader === null || resetHeader === null) {
@@ -378,22 +378,22 @@ function computeNewLimitsFromHeaders(
   headers: globalThis.Headers,
 ): URAILimits {
   const status =
-    (headers.get('anthropic-ratelimit-unified-status') as QuotaStatus) ||
+    (headers.get('urhq-ratelimit-unified-status') as QuotaStatus) ||
     'allowed'
-  const resetsAtHeader = headers.get('anthropic-ratelimit-unified-reset')
+  const resetsAtHeader = headers.get('urhq-ratelimit-unified-reset')
   const resetsAt = resetsAtHeader ? Number(resetsAtHeader) : undefined
   const unifiedRateLimitFallbackAvailable =
-    headers.get('anthropic-ratelimit-unified-fallback') === 'available'
+    headers.get('urhq-ratelimit-unified-fallback') === 'available'
 
   // Headers for rate limit type and overage support
   const rateLimitType = headers.get(
-    'anthropic-ratelimit-unified-representative-claim',
+    'urhq-ratelimit-unified-representative-claim',
   ) as RateLimitType | null
   const overageStatus = headers.get(
-    'anthropic-ratelimit-unified-overage-status',
+    'urhq-ratelimit-unified-overage-status',
   ) as QuotaStatus | null
   const overageResetsAtHeader = headers.get(
-    'anthropic-ratelimit-unified-overage-reset',
+    'urhq-ratelimit-unified-overage-reset',
   )
   const overageResetsAt = overageResetsAtHeader
     ? Number(overageResetsAtHeader)
@@ -401,7 +401,7 @@ function computeNewLimitsFromHeaders(
 
   // Reason why overage is disabled (spending cap or wallet empty)
   const overageDisabledReason = headers.get(
-    'anthropic-ratelimit-unified-overage-disabled-reason',
+    'urhq-ratelimit-unified-overage-disabled-reason',
   ) as OverageDisabledReason | null
 
   // Determine if we're using overage (standard limits rejected but overage allowed)
@@ -442,7 +442,7 @@ function computeNewLimitsFromHeaders(
 function cacheExtraUsageDisabledReason(headers: globalThis.Headers): void {
   // A null reason means extra usage is enabled (no disabled reason header)
   const reason =
-    headers.get('anthropic-ratelimit-unified-overage-disabled-reason') ?? null
+    headers.get('urhq-ratelimit-unified-overage-disabled-reason') ?? null
   const cached = getGlobalConfig().cachedExtraUsageDisabledReason
   if (cached !== reason) {
     saveGlobalConfig(current => ({

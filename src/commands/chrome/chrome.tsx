@@ -12,7 +12,7 @@ import { isChromeExtensionInstalled } from '../../utils/urInChrome/setup.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { env } from '../../utils/env.js';
 import { isRunningOnHomespace } from '../../utils/envUtils.js';
-const CHROME_EXTENSION_URL = 'https://claude.ai/chrome';
+const CHROME_EXTENSION_URL = 'https://ur.ai/chrome';
 const CHROME_PERMISSIONS_URL = 'https://clau.de/chrome/permissions';
 const CHROME_RECONNECT_URL = 'https://clau.de/chrome/reconnect';
 type MenuAction = 'install-extension' | 'reconnect' | 'manage-permissions' | 'toggle-default';
@@ -213,7 +213,7 @@ function URInChromeMenu(t0) {
   }
   let t8;
   if ($[23] !== isURAISubscriber) {
-    t8 = true && !isURAISubscriber && <Text color="error">UR in Chrome requires a claude.ai subscription.</Text>;
+    t8 = true && !isURAISubscriber && <Text color="error">UR in Chrome requires a ur.ai subscription.</Text>;
     $[23] = isURAISubscriber;
     $[24] = t8;
   } else {

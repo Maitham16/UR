@@ -106,12 +106,12 @@ export function modelSupportsThinking(model: string): boolean {
   // IMPORTANT: Do not change thinking support without notifying the model
   // launch DRI and research. This can greatly affect model quality and bashing.
   const canonical = getCanonicalName(model)
-  // 1P and Foundry: all UR 4+ models (including Haiku 4.5)
+  // 1P and Foundry: all UR 4+ models (including modelH 4.5)
   if (provider === 'foundry' || provider === 'firstParty') {
-    return !canonical.includes('claude-3-')
+    return !canonical.includes('ur-3-')
   }
-  // 3P (Bedrock/Vertex): only Opus 4+ and Sonnet 4+
-  return canonical.includes('sonnet-4') || canonical.includes('opus-4')
+  // 3P (Bedrock/Vertex): only modelO 4+ and modelS 4+
+  return canonical.includes('modelS-4') || canonical.includes('modelO-4')
 }
 
 // @[MODEL LAUNCH]: Add the new model to the allowlist if it supports adaptive thinking.
@@ -125,14 +125,14 @@ export function modelSupportsAdaptiveThinking(model: string): boolean {
     return false
   }
   // Supported by a subset of UR 4 models
-  if (canonical.includes('opus-4-6') || canonical.includes('sonnet-4-6')) {
+  if (canonical.includes('modelO-4-6') || canonical.includes('modelS-4-6')) {
     return true
   }
   // Exclude any other known legacy models (allowlist above catches 4-6 variants first)
   if (
-    canonical.includes('opus') ||
-    canonical.includes('sonnet') ||
-    canonical.includes('haiku')
+    canonical.includes('modelO') ||
+    canonical.includes('modelS') ||
+    canonical.includes('modelH')
   ) {
     return false
   }

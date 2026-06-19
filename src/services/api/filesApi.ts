@@ -24,7 +24,7 @@ import {
 // Files API is currently in beta. oauth-2025-04-20 enables Bearer OAuth
 // on public-api routes (auth.py: "oauth_auth" not in beta_versions → 404).
 const FILES_API_BETA_HEADER = 'files-api-2025-04-14,oauth-2025-04-20'
-const ANTHROPIC_VERSION = '2023-06-01'
+const URHQ_VERSION = '2023-06-01'
 
 function getDefaultApiBaseUrl(): string {
   return process.env.UR_CODE_API_BASE_URL || ''
@@ -131,8 +131,8 @@ export async function downloadFile(
 
   const headers = {
     Authorization: `Bearer ${config.oauthToken}`,
-    'anthropic-version': ANTHROPIC_VERSION,
-    'anthropic-beta': FILES_API_BETA_HEADER,
+    'urhq-version': URHQ_VERSION,
+    'urhq-beta': FILES_API_BETA_HEADER,
   }
 
   logDebug(`Downloading file ${fileId} from ${url}`)
@@ -379,8 +379,8 @@ export async function uploadFile(
 
   const headers = {
     Authorization: `Bearer ${config.oauthToken}`,
-    'anthropic-version': ANTHROPIC_VERSION,
-    'anthropic-beta': FILES_API_BETA_HEADER,
+    'urhq-version': URHQ_VERSION,
+    'urhq-beta': FILES_API_BETA_HEADER,
   }
 
   logDebug(`Uploading file ${filePath} as ${relativePath}`)
@@ -614,8 +614,8 @@ export async function listFilesCreatedAfter(
   const baseUrl = config.baseUrl || getDefaultApiBaseUrl()
   const headers = {
     Authorization: `Bearer ${config.oauthToken}`,
-    'anthropic-version': ANTHROPIC_VERSION,
-    'anthropic-beta': FILES_API_BETA_HEADER,
+    'urhq-version': URHQ_VERSION,
+    'urhq-beta': FILES_API_BETA_HEADER,
   }
 
   logDebug(`Listing files created after ${afterCreatedAt}`)

@@ -80,7 +80,7 @@ import {
 import {
   clearURAIMcpConfigsCache,
   fetchURAIMcpConfigsIfEligible,
-} from './claudeai.js'
+} from './urai.js'
 import { registerElicitationHandler } from './elicitationHandler.js'
 import { getMcpPrefix } from './mcpStringUtils.js'
 import { commandBelongsToServer, excludeStalePluginClients } from './utils.js'
@@ -511,7 +511,7 @@ export function useManageMCPConnections(
                     const { content, meta } = notification.params
                     logMCPDebug(
                       client.name,
-                      `notifications/claude/channel: ${content.slice(0, 80)}`,
+                      `notifications/ur/channel: ${content.slice(0, 80)}`,
                     )
                     logEvent('tengu_mcp_channel_message', {
                       content_length: content.length,
@@ -539,7 +539,7 @@ export function useManageMCPConnections(
                 // side, text in the general channel can't accidentally match.
                 if (
                   client.capabilities?.experimental?.[
-                    'claude/channel/permission'
+                    'ur/channel/permission'
                   ] !== undefined
                 ) {
                   client.client.setNotificationHandler(
@@ -554,7 +554,7 @@ export function useManageMCPConnections(
                         ) ?? false
                       logMCPDebug(
                         client.name,
-                        `notifications/claude/channel/permission: ${request_id} → ${behavior} (${resolved ? 'matched pending' : 'no pending entry — stale or unknown ID'})`,
+                        `notifications/ur/channel/permission: ${request_id} → ${behavior} (${resolved ? 'matched pending' : 'no pending entry — stale or unknown ID'})`,
                       )
                     },
                   )
@@ -567,7 +567,7 @@ export function useManageMCPConnections(
                 // the gate says skip but the earlier handler keeps enqueuing.
                 // Map.delete — safe when never registered.
                 client.client.removeNotificationHandler(
-                  'notifications/claude/channel',
+                  'notifications/ur/channel',
                 )
                 client.client.removeNotificationHandler(
                   CHANNEL_PERMISSION_METHOD,
@@ -598,7 +598,7 @@ export function useManageMCPConnections(
                     gate.kind === 'disabled'
                       ? 'Channels are not currently available'
                       : gate.kind === 'auth'
-                        ? 'Channels require claude.ai authentication · run /login'
+                        ? 'Channels require ur.ai authentication · run /login'
                         : gate.kind === 'policy'
                           ? 'Channels are not enabled for your org · have an administrator set channelsEnabled: true in managed settings'
                           : gate.reason
@@ -865,12 +865,12 @@ export function useManageMCPConnections(
       // logout). Kick off the fetch now so it overlaps with loadAllPlugins()
       // inside getURCodeMcpConfigs; it's awaited only at the dedup step.
       // Phase 2 below awaits the same promise — no second network call.
-      let claudeaiPromise: Promise<Record<string, ScopedMcpServerConfig>>
+      let uraiPromise: Promise<Record<string, ScopedMcpServerConfig>>
       if (isStrictMcpConfig || doesEnterpriseMcpConfigExist()) {
-        claudeaiPromise = Promise.resolve({})
+        uraiPromise = Promise.resolve({})
       } else {
         clearURAIMcpConfigsCache()
-        claudeaiPromise = fetchURAIMcpConfigsIfEligible()
+        uraiPromise = fetchURAIMcpConfigsIfEligible()
       }
 
       // Phase 1: Load UR configs. Plugin MCP servers that duplicate a
@@ -879,7 +879,7 @@ export function useManageMCPConnections(
       const { servers: urCodeConfigs, errors: mcpErrors } =
         isStrictMcpConfig
           ? { servers: {}, errors: [] }
-          : await getURCodeMcpConfigs(dynamicMcpConfig, claudeaiPromise)
+          : await getURCodeMcpConfigs(dynamicMcpConfig, uraiPromise)
       if (cancelled) return
 
       // Add MCP errors to plugin errors for UI visibility (deduplicated)
@@ -903,31 +903,31 @@ export function useManageMCPConnections(
       })
 
       // Phase 2: Await ur.ai configs (started above; memoized — no second fetch)
-      let claudeaiConfigs: Record<string, ScopedMcpServerConfig> = {}
+      let uraiConfigs: Record<string, ScopedMcpServerConfig> = {}
       if (!isStrictMcpConfig) {
-        claudeaiConfigs = filterMcpServersByPolicy(
-          await claudeaiPromise,
+        uraiConfigs = filterMcpServersByPolicy(
+          await uraiPromise,
         ).allowed
         if (cancelled) return
 
         // Suppress ur.ai connectors that duplicate an enabled manual server.
         // Keys never collide (`slack` vs `ur.ai Slack`) so the merge below
         // won't catch this — need content-based dedup by URL signature.
-        if (Object.keys(claudeaiConfigs).length > 0) {
+        if (Object.keys(uraiConfigs).length > 0) {
           const { servers: dedupedURAi } = dedupURAiMcpServers(
-            claudeaiConfigs,
+            uraiConfigs,
             configs,
           )
-          claudeaiConfigs = dedupedURAi
+          uraiConfigs = dedupedURAi
         }
 
-        if (Object.keys(claudeaiConfigs).length > 0) {
+        if (Object.keys(uraiConfigs).length > 0) {
           // Add ur.ai servers as pending immediately so they show up in UI
           setAppState(prevState => {
             const existingServerNames = new Set(
               prevState.mcp.clients.map(c => c.name),
             )
-            const newClients = Object.entries(claudeaiConfigs)
+            const newClients = Object.entries(uraiConfigs)
               .filter(([name]) => !existingServerNames.has(name))
               .map(([name, config]) => ({
                 name,
@@ -947,32 +947,32 @@ export function useManageMCPConnections(
           })
 
           // Now start connecting (only enabled servers)
-          const enabledClaudeaiConfigs = Object.fromEntries(
-            Object.entries(claudeaiConfigs).filter(
+          const enabledURaiConfigs = Object.fromEntries(
+            Object.entries(uraiConfigs).filter(
               ([name]) => !isMcpServerDisabled(name),
             ),
           )
           getMcpToolsCommandsAndResources(
             onConnectionAttempt,
-            enabledClaudeaiConfigs,
+            enabledURaiConfigs,
           ).catch(error => {
             logMCPError(
               'useManageMcpConnections',
-              `Failed to get claude.ai MCP resources: ${errorMessage(error)}`,
+              `Failed to get ur.ai MCP resources: ${errorMessage(error)}`,
             )
           })
         }
       }
 
       // Log server counts after both phases complete
-      const allConfigs = { ...configs, ...claudeaiConfigs }
+      const allConfigs = { ...configs, ...uraiConfigs }
       const counts = {
         enterprise: 0,
         global: 0,
         project: 0,
         user: 0,
         plugin: 0,
-        claudeai: 0,
+        urai: 0,
       }
       // Ant-only: collect stdio command basenames to correlate with RSS/FPS
       // metrics. Stdio servers like rust-analyzer can be heavy and we want to
@@ -984,7 +984,7 @@ export function useManageMCPConnections(
         else if (serverConfig.scope === 'project') counts.project++
         else if (serverConfig.scope === 'local') counts.user++
         else if (serverConfig.scope === 'dynamic') counts.plugin++
-        else if (serverConfig.scope === 'claudeai') counts.claudeai++
+        else if (serverConfig.scope === 'urai') counts.urai++
 
         if (
           process.env.USER_TYPE === 'ant' &&

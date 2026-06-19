@@ -13,7 +13,7 @@ import { getOauthConfig } from '../constants/oauth.js';
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js';
 import type { Root } from '../ink.js';
 import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js';
-import { queryHaiku } from '../services/api/claude.js';
+import { querymodelH } from '../services/api/ur.js';
 import { getSessionLogsViaOAuth, getTeleportEvents } from '../services/api/sessionIngress.js';
 import { getOrganizationUUID } from '../services/oauth/client.js';
 import { AppStateProvider } from '../state/AppState.js';
@@ -79,13 +79,13 @@ You should keep it short and simple, ideally no more than 6 words. Avoid using j
 Use sentence case for the title (capitalize only the first word and proper nouns), not Title Case.
 
 The branch name should be clear, concise, and accurately reflect the content of the coding task.
-You should keep it short and simple, ideally no more than 4 words. The branch should always start with "claude/" and should be all lower case, with words separated by dashes.
+You should keep it short and simple, ideally no more than 4 words. The branch should always start with "ur/" and should be all lower case, with words separated by dashes.
 
 Return a JSON object with "title" and "branch" fields.
 
-Example 1: {"title": "Fix login button not working on mobile", "branch": "claude/fix-mobile-login-button"}
-Example 2: {"title": "Update README with installation instructions", "branch": "claude/update-readme"}
-Example 3: {"title": "Improve performance of data processing script", "branch": "claude/improve-data-processing"}
+Example 1: {"title": "Fix login button not working on mobile", "branch": "ur/fix-mobile-login-button"}
+Example 2: {"title": "Update README with installation instructions", "branch": "ur/update-readme"}
+Example 3: {"title": "Improve performance of data processing script", "branch": "ur/improve-data-processing"}
 
 Here is the session description:
 <description>{description}</description>
@@ -96,16 +96,16 @@ type TitleAndBranch = {
 };
 
 /**
- * Generates a title and branch name for a coding session using UR Haiku
+ * Generates a title and branch name for a coding session using UR modelH
  * @param description The description/prompt for the session
  * @returns Promise<TitleAndBranch> The generated title and branch name
  */
 async function generateTitleAndBranch(description: string, signal: AbortSignal): Promise<TitleAndBranch> {
   const fallbackTitle = truncateToWidth(description, 75);
-  const fallbackBranch = 'claude/task';
+  const fallbackBranch = 'ur/task';
   try {
     const userPrompt = SESSION_TITLE_AND_BRANCH_PROMPT.replace('{description}', description);
-    const response = await queryHaiku({
+    const response = await querymodelH({
       systemPrompt: asSystemPrompt([]),
       userPrompt,
       outputFormat: {
@@ -644,7 +644,7 @@ export async function pollRemoteSessionEvents(sessionId: string, afterId: string
   }
   const headers = {
     ...getOAuthHeaders(accessToken),
-    'anthropic-beta': 'ccr-byoc-2025-07-29',
+    'urhq-beta': 'ccr-byoc-2025-07-29',
     'x-organization-uuid': orgUUID
   };
   const eventsUrl = `${getOauthConfig().BASE_API_URL}/v1/sessions/${sessionId}/events`;
@@ -726,7 +726,7 @@ export async function pollRemoteSessionEvents(sessionId: string, afterId: string
  *   API, passes file_id as seed_bundle_file_id on the session context. CCR
  *   downloads it and clones from the bundle. No GitHub dependency — works for
  *   local-only repos. Reach: 54% of CLI sessions (anything with .git/).
- *   Backend: anthropic#303856.
+ *   Backend: urhq#303856.
  */
 export async function teleportToRemote(options: {
   initialMessage: string | null;
@@ -814,7 +814,7 @@ export async function teleportToRemote(options: {
       return null;
     }
 
-    // Explicit environmentId short-circuits Haiku title-gen + env selection.
+    // Explicit environmentId short-circuits modelH title-gen + env selection.
     // Still runs repo detection so the container gets a working directory —
     // the code_review orchestrator reads --repo-dir $(pwd), it doesn't clone
     // (bughunter.go:520 sets a git source too; env-manager does the checkout
@@ -823,7 +823,7 @@ export async function teleportToRemote(options: {
       const url = `${getOauthConfig().BASE_API_URL}/v1/sessions`;
       const headers = {
         ...getOAuthHeaders(accessToken),
-        'anthropic-beta': 'ccr-byoc-2025-07-29',
+        'urhq-beta': 'ccr-byoc-2025-07-29',
         'x-organization-uuid': orgUUID
       };
       const envVars = {
@@ -916,7 +916,7 @@ export async function teleportToRemote(options: {
 
     const repoInfo = await detectCurrentRepositoryWithHost();
 
-    // Generate title and branch name for the session. Skip the Haiku call
+    // Generate title and branch name for the session. Skip the modelH call
     // when both title and outcome branch are explicitly provided.
     let sessionTitle: string;
     let sessionBranch: string;
@@ -1011,7 +1011,7 @@ export async function teleportToRemote(options: {
       if (!bundle.success) {
         logError(new Error(`Bundle upload failed: ${bundle.error}`));
         // Only steer users to GitHub setup when there's a remote to clone from.
-        const setup = repoInfo ? '. Please setup GitHub on https://claude.ai/code' : '';
+        const setup = repoInfo ? '. Please setup GitHub on https://ur.ai/code' : '';
         let msg: string;
         switch (bundle.failReason) {
           case 'empty_repo':
@@ -1060,23 +1060,23 @@ export async function teleportToRemote(options: {
     }
     logForDebugging(`Available environments: ${environments.map(e => `${e.environment_id} (${e.name}, ${e.kind})`).join(', ')}`);
 
-    // Select environment based on settings, then anthropic_cloud preference, then first available.
-    // Prefer anthropic_cloud environments over byoc: anthropic_cloud environments (e.g. "Default")
+    // Select environment based on settings, then urhq_cloud preference, then first available.
+    // Prefer urhq_cloud environments over byoc: urhq_cloud environments (e.g. "Default")
     // are the standard compute environments with full repo access, whereas byoc environments
     // (e.g. "monorepo") are user-owned compute that may not support the current repository.
     const settings = getSettings_DEPRECATED();
     const defaultEnvironmentId = options.useDefaultEnvironment ? undefined : settings?.remote?.defaultEnvironmentId;
-    let cloudEnv = environments.find(env => env.kind === 'anthropic_cloud');
+    let cloudEnv = environments.find(env => env.kind === 'urhq_cloud');
     // When the caller opts out of their configured default, do not fall
     // through to a BYOC env that may not support the current repo or the
     // requested permission mode. Retry once for eventual consistency,
     // then fail loudly.
     if (options.useDefaultEnvironment && !cloudEnv) {
-      logForDebugging(`No anthropic_cloud in env list (${environments.length} envs); retrying fetchEnvironments`);
+      logForDebugging(`No urhq_cloud in env list (${environments.length} envs); retrying fetchEnvironments`);
       const retried = await fetchEnvironments();
-      cloudEnv = retried?.find(env => env.kind === 'anthropic_cloud');
+      cloudEnv = retried?.find(env => env.kind === 'urhq_cloud');
       if (!cloudEnv) {
-        logError(new Error(`No anthropic_cloud environment available after retry (got: ${(retried ?? environments).map(e => `${e.name} (${e.kind})`).join(', ')}). Silent byoc fallthrough would launch into a dead env — fail fast instead.`));
+        logError(new Error(`No urhq_cloud environment available after retry (got: ${(retried ?? environments).map(e => `${e.name} (${e.kind})`).join(', ')}). Silent byoc fallthrough would launch into a dead env — fail fast instead.`));
         return null;
       }
       if (retried) environments = retried;
@@ -1097,7 +1097,7 @@ export async function teleportToRemote(options: {
     const url = `${getOauthConfig().BASE_API_URL}/v1/sessions`;
     const headers = {
       ...getOAuthHeaders(accessToken),
-      'anthropic-beta': 'ccr-byoc-2025-07-29',
+      'urhq-beta': 'ccr-byoc-2025-07-29',
       'x-organization-uuid': orgUUID
     };
     const sessionContext = {
@@ -1205,7 +1205,7 @@ export async function archiveRemoteSession(sessionId: string): Promise<void> {
   if (!orgUUID) return;
   const headers = {
     ...getOAuthHeaders(accessToken),
-    'anthropic-beta': 'ccr-byoc-2025-07-29',
+    'urhq-beta': 'ccr-byoc-2025-07-29',
     'x-organization-uuid': orgUUID
   };
   const url = `${getOauthConfig().BASE_API_URL}/v1/sessions/${sessionId}/archive`;

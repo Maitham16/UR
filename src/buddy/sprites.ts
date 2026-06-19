@@ -11,7 +11,7 @@ import {
   ghost,
   goose,
   mushroom,
-  octopus,
+  octmodelO,
   owl,
   penguin,
   rabbit,
@@ -139,7 +139,7 @@ const BODIES: Record<Species, string[][]> = {
       '  `-vvvv-´  ',
     ],
   ],
-  [octopus]: [
+  [octmodelO]: [
     [
       '            ',
       '   .----.   ',
@@ -484,7 +484,7 @@ export function renderFace(bones: CompanionBones): string {
       return `=${eye}ω${eye}=`
     case dragon:
       return `<${eye}~${eye}>`
-    case octopus:
+    case octmodelO:
       return `~(${eye}${eye})~`
     case owl:
       return `(${eye})(${eye})`

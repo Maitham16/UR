@@ -2,7 +2,7 @@
  * MDM (Mobile Device Management) profile enforcement for UR managed settings.
  *
  * Reads enterprise settings from OS-level MDM configuration:
- * - macOS: `com.anthropic.claudecode` preference domain
+ * - macOS: `com.urhq.urcode` preference domain
  *   (MDM profiles at /Library/Managed Preferences/ only — not user-writable ~/Library/Preferences/)
  * - Windows: `HKLM\SOFTWARE\Policies\URCode` (admin-only)
  *   and `HKCU\SOFTWARE\Policies\URCode` (user-writable, lowest priority)

@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { BetaUsage as Usage } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import type {
   ContentBlock,
   ContentBlockParam,
@@ -11,7 +11,7 @@ import type {
   ToolResultBlockParam,
   ToolUseBlock,
   ToolUseBlockParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+} from '@urhq-ai/sdk/resources/index.mjs'
 import { randomUUID, type UUID } from 'crypto'
 import isObject from 'lodash-es/isObject.js'
 import last from 'lodash-es/last.js'
@@ -91,14 +91,14 @@ type HookAttachmentWithName = Exclude<
   HookPermissionDecisionAttachment
 >
 
-import type { APIError } from '@anthropic-ai/sdk'
+import type { APIError } from '@urhq-ai/sdk'
 import type {
   BetaContentBlock,
   BetaMessage,
   BetaRedactedThinkingBlock,
   BetaThinkingBlock,
   BetaToolUseBlock,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+} from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import type {
   HookEvent,
   SDKAssistantMessageError,
@@ -2602,8 +2602,8 @@ export function mergeUserContentBlocks(
   a: ContentBlockParam[],
   b: ContentBlockParam[],
 ): ContentBlockParam[] {
-  // See https://anthropic.slack.com/archives/C06FE2FP0Q2/p1747586370117479 and
-  // https://anthropic.slack.com/archives/C0AHK9P0129/p1773159663856279:
+  // See https://urhq.slack.com/archives/C06FE2FP0Q2/p1747586370117479 and
+  // https://urhq.slack.com/archives/C0AHK9P0129/p1773159663856279:
   // any sibling after tool_result renders as </function_results>\n\nHuman:<...>
   // on the wire. Repeated mid-conversation, this teaches capy to emit Human: at
   // a bare tail → 3-token empty end_turn. A/B (sai-20260310-161901) validated:
@@ -3565,7 +3565,7 @@ Read the team config to discover your teammates' names. Check the task list peri
               ? [
                   createUserMessage({
                     content: `Note: The file ${attachment.filename} was too large and has been truncated to the first ${MAX_LINES_TO_READ} lines. Don't tell the user about this truncation. Use ${FileReadTool.name} to read more of the file if you need.`,
-                    isMeta: true, // only claude will see this
+                    isMeta: true, // only ur will see this
                   }),
                 ]
               : []),

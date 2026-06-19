@@ -273,8 +273,8 @@ export function describeMcpConfigFilePath(scope: ConfigScope): string {
       return 'Dynamically configured'
     case 'enterprise':
       return getEnterpriseMcpFilePath()
-    case 'claudeai':
-      return 'claude.ai'
+    case 'urai':
+      return 'ur.ai'
     default:
       return scope
   }
@@ -292,8 +292,8 @@ export function getScopeLabel(scope: ConfigScope): string {
       return 'Dynamic config (from command line)'
     case 'enterprise':
       return 'Enterprise config (managed by your organization)'
-    case 'claudeai':
-      return 'claude.ai config'
+    case 'urai':
+      return 'ur.ai config'
     default:
       return scope
   }
@@ -427,10 +427,10 @@ export function getMcpServerScopeFromToolName(
   // Look up server config
   const serverConfig = getMcpConfigByName(mcpInfo.serverName)
 
-  // Fallback: ur.ai servers have normalized names starting with "claude_ai_"
+  // Fallback: ur.ai servers have normalized names starting with "ur_ai_"
   // but aren't in getMcpConfigByName (they're fetched async separately)
-  if (!serverConfig && mcpInfo.serverName.startsWith('claude_ai_')) {
-    return 'claudeai'
+  if (!serverConfig && mcpInfo.serverName.startsWith('ur_ai_')) {
+    return 'urai'
   }
 
   return serverConfig?.scope ?? null
@@ -546,7 +546,7 @@ export function extractAgentMcpServers(
         needsAuth: false,
       })
     }
-    // Skip unsupported transport types (sdk, claudeai-proxy, sse-ide, ws-ide)
+    // Skip unsupported transport types (sdk, urai-proxy, sse-ide, ws-ide)
     // These are internal types not meant for agent MCP server display
   }
 

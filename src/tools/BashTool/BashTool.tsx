@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle';
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultBlockParam } from '@urhq-ai/sdk/resources/index.mjs';
 import { copyFile, stat as fsStat, truncate as fsTruncate, link } from 'fs/promises';
 import * as React from 'react';
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js';
@@ -772,7 +772,7 @@ export const BashTool = buildTool({
     }
     let strippedStdout = stripEmptyLines(stdout);
 
-    // UR hints protocol: CLIs/SDKs gated on CLAUDECODE=1 emit a
+    // UR hints protocol: CLIs/SDKs gated on URCODE=1 emit a
     // `<ur-hint />` tag to stderr (merged into stdout here). Scan,
     // record for useURCodeHintRecommendation to surface, then strip
     // so the model never sees the tag — a zero-token side channel.

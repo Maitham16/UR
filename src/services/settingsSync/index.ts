@@ -7,7 +7,7 @@
  * - Interactive CLI: Uploads local settings to remote (incremental, only changed entries)
  * - CCR: Downloads remote settings to local before plugin installation
  *
- * Backend API: anthropic/anthropic#218817
+ * Backend API: urhq/urhq#218817
  */
 
 import { feature } from 'bun:bundle'
@@ -32,7 +32,7 @@ import { classifyAxiosError } from '../../utils/errors.js'
 import { getRepoRemoteHash } from '../../utils/git.js'
 import {
   getAPIProvider,
-  isFirstPartyAnthropicBaseUrl,
+  isFirstPartyURHQBaseUrl,
 } from '../../utils/model/providers.js'
 import { markInternalWrite } from '../../utils/settings/internalWrites.js'
 import { getSettingsFilePathForSource } from '../../utils/settings/settings.js'
@@ -211,7 +211,7 @@ async function doDownloadUserSettings(
  * download a no-op there. Upload is independently guarded by getIsInteractive().
  */
 function isUsingOAuth(): boolean {
-  if (getAPIProvider() !== 'firstParty' || !isFirstPartyAnthropicBaseUrl()) {
+  if (getAPIProvider() !== 'firstParty' || !isFirstPartyURHQBaseUrl()) {
     return false
   }
 
@@ -234,7 +234,7 @@ function getSettingsSyncAuthHeaders(): {
     return {
       headers: {
         Authorization: `Bearer ${oauthTokens.accessToken}`,
-        'anthropic-beta': OAUTH_BETA_HEADER,
+        'urhq-beta': OAUTH_BETA_HEADER,
       },
     }
   }
@@ -484,7 +484,7 @@ async function writeFileForSync(
  *
  * After writing, invalidates relevant caches:
  * - resetSettingsCache() for settings files
- * - clearMemoryFileCaches() for memory files (CLAUDE.md)
+ * - clearMemoryFileCaches() for memory files (UR.md)
  */
 async function applyRemoteEntriesToLocal(
   entries: Record<string, string>,

@@ -2,12 +2,12 @@
 import type {
   BetaContentBlock,
   BetaWebSearchTool20250305,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+} from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { queryModelWithStreaming } from '../../services/api/claude.js'
+import { queryModelWithStreaming } from '../../services/api/ur.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
@@ -178,9 +178,9 @@ export const WebSearchTool = buildTool({
     // Enable for Vertex AI with supported models (UR 4.0+)
     if (provider === 'vertex') {
       const supportsWebSearch =
-        model.includes('claude-opus-4') ||
-        model.includes('claude-sonnet-4') ||
-        model.includes('claude-haiku-4')
+        model.includes('ur-modelO-4') ||
+        model.includes('ur-modelS-4') ||
+        model.includes('ur-modelH-4')
 
       return supportsWebSearch
     }
@@ -260,7 +260,7 @@ export const WebSearchTool = buildTool({
     })
     const toolSchema = makeToolSchema(input)
 
-    const useHaiku = getFeatureValue_CACHED_MAY_BE_STALE(
+    const usemodelH = getFeatureValue_CACHED_MAY_BE_STALE(
       'tengu_plum_vx3',
       false,
     )
@@ -271,15 +271,15 @@ export const WebSearchTool = buildTool({
       systemPrompt: asSystemPrompt([
         'You are an assistant for performing a web search tool use',
       ]),
-      thinkingConfig: useHaiku
+      thinkingConfig: usemodelH
         ? { type: 'disabled' as const }
         : context.options.thinkingConfig,
       tools: [],
       signal: context.abortController.signal,
       options: {
         getToolPermissionContext: async () => appState.toolPermissionContext,
-        model: useHaiku ? getSmallFastModel() : context.options.mainLoopModel,
-        toolChoice: useHaiku ? { type: 'tool', name: 'web_search' } : undefined,
+        model: usemodelH ? getSmallFastModel() : context.options.mainLoopModel,
+        toolChoice: usemodelH ? { type: 'tool', name: 'web_search' } : undefined,
         isNonInteractiveSession: context.options.isNonInteractiveSession,
         hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
         extraToolSchemas: [toolSchema],

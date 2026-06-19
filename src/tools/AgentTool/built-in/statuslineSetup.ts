@@ -39,8 +39,8 @@ How to use the statusLine command:
      "transcript_path": "string", // Path to the conversation transcript
      "cwd": "string",         // Current working directory
      "model": {
-       "id": "string",           // Model ID (e.g., "claude-3-5-sonnet-20241022")
-       "display_name": "string"  // Display name (e.g., "UR 3.5 Sonnet")
+       "id": "string",           // Model ID (e.g., "ur-3-5-modelS-20241022")
+       "display_name": "string"  // Display name (e.g., "UR 3.5 modelS")
      },
      "workspace": {
        "current_dir": "string",  // Current working directory path
@@ -138,7 +138,7 @@ export const STATUSLINE_SETUP_AGENT: BuiltInAgentDefinition = {
   tools: ['Read', 'Edit'],
   source: 'built-in',
   baseDir: 'built-in',
-  model: 'sonnet',
+  model: 'modelS',
   color: 'orange',
   getSystemPrompt: () => STATUSLINE_SYSTEM_PROMPT,
 }

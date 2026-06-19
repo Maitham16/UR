@@ -159,11 +159,11 @@ export const getUserContext = memoize(
     const startTime = Date.now()
     logForDiagnosticsNoPII('info', 'user_context_started')
 
-    // UR_CODE_DISABLE_CLAUDE_MDS: hard off, always.
+    // UR_CODE_DISABLE_UR_MDS: hard off, always.
     // --bare: skip auto-discovery (cwd walk), BUT honor explicit --add-dir.
     // --bare means "skip what I didn't ask for", not "ignore what I asked for".
     const shouldDisableAgentMd =
-      isEnvTruthy(process.env.UR_CODE_DISABLE_CLAUDE_MDS) ||
+      isEnvTruthy(process.env.UR_CODE_DISABLE_UR_MDS) ||
       (isBareMode() && getAdditionalDirectoriesForAgentMd().length === 0)
     // Await the async I/O (readFile/readdir directory walk) so the event
     // loop yields naturally at the first fs.readFile.

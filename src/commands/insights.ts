@@ -15,7 +15,7 @@ import {
 import { tmpdir } from 'os'
 import { extname, join } from 'path'
 import type { Command } from '../commands.js'
-import { queryWithModel } from '../services/api/claude.js'
+import { queryWithModel } from '../services/api/ur.js'
 import {
   AGENT_TOOL_NAME,
   LEGACY_AGENT_TOOL_NAME,
@@ -26,7 +26,7 @@ import { toError } from '../utils/errors.js'
 import { execFileNoThrow } from '../utils/execFileNoThrow.js'
 import { logError } from '../utils/log.js'
 import { extractTextContent } from '../utils/messages.js'
-import { getDefaultOpusModel } from '../utils/model/model.js'
+import { getDefaultmodelOModel } from '../utils/model/model.js'
 import {
   getProjectsDir,
   getSessionFilesWithMtime,
@@ -38,14 +38,14 @@ import { countCharInString } from '../utils/stringUtils.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
 import { escapeXmlAttr as escapeHtml } from '../utils/xml.js'
 
-// Model for facet extraction and summarization (Opus - best quality)
+// Model for facet extraction and summarization (modelO - best quality)
 function getAnalysisModel(): string {
-  return getDefaultOpusModel()
+  return getDefaultmodelOModel()
 }
 
-// Model for narrative insights (Opus - best quality)
+// Model for narrative insights (modelO - best quality)
 function getInsightsModel(): string {
-  return getDefaultOpusModel()
+  return getDefaultmodelOModel()
 }
 
 // ============================================================================
@@ -106,7 +106,7 @@ const collectFromRemoteHost: (
         const result = { copied: 0, skipped: 0 }
 
         // Create temp directory
-        const tempDir = await mkdtemp(join(tmpdir(), 'claude-hs-'))
+        const tempDir = await mkdtemp(join(tmpdir(), 'ur-hs-'))
 
         try {
           // SCP the projects folder
@@ -264,13 +264,13 @@ type SessionFacets = {
   goal_categories: Record<string, number>
   outcome: string
   user_satisfaction_counts: Record<string, number>
-  claude_helpfulness: string
+  ur_helpfulness: string
   session_type: string
   friction_counts: Record<string, number>
   friction_detail: string
   primary_success: string
   brief_summary: string
-  user_instructions_to_claude?: string[]
+  user_instructions_to_ur?: string[]
 }
 
 type AggregatedData = {
@@ -378,7 +378,7 @@ const LABEL_MAP: Record<string, string> = {
   wrong_approach: 'Wrong Approach',
   buggy_code: 'Buggy Code',
   user_rejected_action: 'User Rejected Action',
-  claude_got_blocked: 'UR Got Blocked',
+  ur_got_blocked: 'UR Got Blocked',
   user_stopped_early: 'User Stopped Early',
   wrong_file_or_location: 'Wrong File/Location',
   excessive_changes: 'Excessive Changes',
@@ -1016,7 +1016,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT matching this schema:
   "goal_categories": {"category_name": count, ...},
   "outcome": "fully_achieved|mostly_achieved|partially_achieved|not_achieved|unclear_from_transcript",
   "user_satisfaction_counts": {"level": count, ...},
-  "claude_helpfulness": "unhelpful|slightly_helpful|moderately_helpful|very_helpful|essential",
+  "ur_helpfulness": "unhelpful|slightly_helpful|moderately_helpful|very_helpful|essential",
   "session_type": "single_task|multi_task|iterative_refinement|exploration|quick_question",
   "friction_counts": {"friction_type": count, ...},
   "friction_detail": "One sentence describing friction or empty",
@@ -1087,7 +1087,7 @@ export function detectMultiClauding(
   allSessionMessages.sort((a, b) => a.ts - b.ts)
 
   const multiURSessionPairs = new Set<string>()
-  const messagesDuringMulticlaude = new Set<string>()
+  const messagesDuringMultiur = new Set<string>()
 
   // Sliding window: sessionLastIndex tracks the most recent index for each session
   let windowStart = 0
@@ -1116,11 +1116,11 @@ export function detectMultiClauding(
         if (between.sessionId !== msg.sessionId) {
           const pair = [msg.sessionId, between.sessionId].sort().join(':')
           multiURSessionPairs.add(pair)
-          messagesDuringMulticlaude.add(
+          messagesDuringMultiur.add(
             `${allSessionMessages[prevIndex]!.ts}:${msg.sessionId}`,
           )
-          messagesDuringMulticlaude.add(`${between.ts}:${between.sessionId}`)
-          messagesDuringMulticlaude.add(`${msg.ts}:${msg.sessionId}`)
+          messagesDuringMultiur.add(`${between.ts}:${between.sessionId}`)
+          messagesDuringMultiur.add(`${msg.ts}:${msg.sessionId}`)
           break
         }
       }
@@ -1139,7 +1139,7 @@ export function detectMultiClauding(
   return {
     overlap_events: multiURSessionPairs.size,
     sessions_involved: sessionsWithOverlaps.size,
-    user_messages_during: messagesDuringMulticlaude.size,
+    user_messages_during: messagesDuringMultiur.size,
   }
 }
 
@@ -1263,8 +1263,8 @@ function aggregateData(
       }
 
       // Helpfulness
-      result.helpfulness[sessionFacets.claude_helpfulness] =
-        (result.helpfulness[sessionFacets.claude_helpfulness] || 0) + 1
+      result.helpfulness[sessionFacets.ur_helpfulness] =
+        (result.helpfulness[sessionFacets.ur_helpfulness] || 0) + 1
 
       // Session types
       result.session_types[sessionFacets.session_type] =
@@ -1417,8 +1417,8 @@ Include 3 friction categories with 2 examples each.`,
 
 RESPOND WITH ONLY A VALID JSON OBJECT:
 {
-  "claude_md_additions": [
-    {"addition": "A specific line or block to add to CLAUDE.md based on workflow patterns. E.g., 'Always run tests after modifying auth-related files'", "why": "1 sentence explaining why this would help based on actual sessions", "prompt_scaffold": "Instructions for where to add this in CLAUDE.md. E.g., 'Add under ## Testing section'"}
+  "ur_md_additions": [
+    {"addition": "A specific line or block to add to UR.md based on workflow patterns. E.g., 'Always run tests after modifying auth-related files'", "why": "1 sentence explaining why this would help based on actual sessions", "prompt_scaffold": "Instructions for where to add this in UR.md. E.g., 'Add under ## Testing section'"}
   ],
   "features_to_try": [
     {"feature": "Feature name from CC FEATURES REFERENCE above", "one_liner": "What it does", "why_for_you": "Why this would help YOU based on your sessions", "example_code": "Actual command or config to copy"}
@@ -1428,7 +1428,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
   ]
 }
 
-IMPORTANT for claude_md_additions: PRIORITIZE instructions that appear MULTIPLE TIMES in the user data. If user told UR the same thing in 2+ sessions (e.g., 'always run tests', 'use TypeScript'), that's a PRIME candidate - they shouldn't have to repeat themselves.
+IMPORTANT for ur_md_additions: PRIORITIZE instructions that appear MULTIPLE TIMES in the user data. If user told UR the same thing in 2+ sessions (e.g., 'always run tests', 'use TypeScript'), that's a PRIME candidate - they shouldn't have to repeat themselves.
 
 IMPORTANT for features_to_try: Pick 2-3 from the CC FEATURES REFERENCE above. Include 2-3 items for each category.`,
     maxTokens: 8192,
@@ -1522,7 +1522,7 @@ type InsightResults = {
     }>
   }
   suggestions?: {
-    claude_md_additions?: Array<{
+    ur_md_additions?: Array<{
       addition: string
       why: string
       where?: string
@@ -1617,7 +1617,7 @@ async function generateParallelInsights(
   // Build data context string
   const facetSummaries = Array.from(facets.values())
     .slice(0, 50)
-    .map(f => `- ${f.brief_summary} (${f.outcome}, ${f.claude_helpfulness})`)
+    .map(f => `- ${f.brief_summary} (${f.outcome}, ${f.ur_helpfulness})`)
     .join('\n')
 
   const frictionDetails = Array.from(facets.values())
@@ -1627,7 +1627,7 @@ async function generateParallelInsights(
     .join('\n')
 
   const userInstructions = Array.from(facets.values())
-    .flatMap(f => f.user_instructions_to_claude || [])
+    .flatMap(f => f.user_instructions_to_ur || [])
     .slice(0, 15)
     .map(i => `- ${i}`)
     .join('\n')
@@ -1662,7 +1662,7 @@ async function generateParallelInsights(
     facetSummaries +
     '\n\nFRICTION DETAILS:\n' +
     frictionDetails +
-    '\n\nUSER INSTRUCTIONS TO CLAUDE:\n' +
+    '\n\nUSER INSTRUCTIONS TO UR:\n' +
     (userInstructions || 'None captured')
 
   // Run sections in parallel first (excluding at_a_glance)
@@ -2065,21 +2065,21 @@ function generateHtmlReport(
   const suggestionsHtml = suggestions
     ? `
     ${
-      suggestions.claude_md_additions &&
-      suggestions.claude_md_additions.length > 0
+      suggestions.ur_md_additions &&
+      suggestions.ur_md_additions.length > 0
         ? `
     <h2 id="section-features">Existing CC Features to Try</h2>
-    <div class="claude-md-section">
-      <h3>Suggested CLAUDE.md Additions</h3>
-      <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Just copy this into UR to add it to your CLAUDE.md.</p>
-      <div class="claude-md-actions">
+    <div class="ur-md-section">
+      <h3>Suggested UR.md Additions</h3>
+      <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Just copy this into UR to add it to your UR.md.</p>
+      <div class="ur-md-actions">
         <button class="copy-all-btn" onclick="copyAllCheckedAgentMd()">Copy All Checked</button>
       </div>
-      ${suggestions.claude_md_additions
+      ${suggestions.ur_md_additions
         .map(
           (add, i) => `
-        <div class="claude-md-item">
-          <input type="checkbox" id="cmd-${i}" class="cmd-checkbox" checked data-text="${escapeHtml(add.prompt_scaffold || add.where || 'Add to CLAUDE.md')}\\n\\n${escapeHtml(add.addition)}">
+        <div class="ur-md-item">
+          <input type="checkbox" id="cmd-${i}" class="cmd-checkbox" checked data-text="${escapeHtml(add.prompt_scaffold || add.where || 'Add to UR.md')}\\n\\n${escapeHtml(add.addition)}">
           <label for="cmd-${i}">
             <code class="cmd-code">${escapeHtml(add.addition)}</code>
             <button class="copy-btn" onclick="copyCmdItem(${i})">Copy</button>
@@ -2651,7 +2651,7 @@ function generateHtmlReport(
 // ============================================================================
 
 /**
- * Structured export format for claudescope consumption
+ * Structured export format for urscope consumption
  */
 export type InsightsExport = {
   metadata: {
@@ -3082,8 +3082,8 @@ const usageReport: Command = {
         .slice(0, 15)
       const username = process.env.SAFEUSER || process.env.USER || 'unknown'
       const filename = `${username}_insights_${timestamp}.html`
-      const s3Path = `s3://anthropic-serve/atamkin/cc-user-reports/${filename}`
-      const s3Url = `https://s3-frontend.infra.ant.dev/anthropic-serve/atamkin/cc-user-reports/${filename}`
+      const s3Path = `s3://urhq-serve/atamkin/cc-user-reports/${filename}`
+      const s3Url = `https://s3-frontend.infra.ant.dev/urhq-serve/atamkin/cc-user-reports/${filename}`
 
       reportUrl = s3Url
       try {

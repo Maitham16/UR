@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultBlockParam } from '@urhq-ai/sdk/resources/index.mjs';
 import * as React from 'react';
 import type { Message, ProgressMessage } from 'src/types/message.js';
 import { extractTag } from 'src/utils/messages.js';

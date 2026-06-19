@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle'
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolResultBlockParam } from '@urhq-ai/sdk/resources/index.mjs'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { dirname } from 'path'
 import { getProjectRoot } from 'src/bootstrap/state.js'
@@ -162,7 +162,7 @@ async function executeForkedSkill(
       'fork' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     invocation_trigger: (queryDepth > 0
       ? 'nested-skill'
-      : 'claude-proactive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      : 'ur-proactive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     query_depth: queryDepth,
     ...(parentAgentId && {
       parent_agent_id:
@@ -685,7 +685,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
         'inline' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       invocation_trigger: (queryDepth > 0
         ? 'nested-skill'
-        : 'claude-proactive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        : 'ur-proactive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       query_depth: queryDepth,
       ...(parentAgentId && {
         parent_agent_id:
@@ -806,8 +806,8 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
           }
         }
 
-        // Carry [1m] suffix over — otherwise a skill with `model: opus` on an
-        // opus[1m] session drops the effective window to 200K and trips autocompact.
+        // Carry [1m] suffix over — otherwise a skill with `model: modelO` on an
+        // modelO[1m] session drops the effective window to 200K and trips autocompact.
         if (model) {
           modifiedContext = {
             ...modifiedContext,
@@ -1039,7 +1039,7 @@ async function executeRemoteSkill(
       'remote' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     invocation_trigger: (queryDepth > 0
       ? 'nested-skill'
-      : 'claude-proactive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      : 'ur-proactive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     query_depth: queryDepth,
     ...(parentAgentId && {
       parent_agent_id:

@@ -152,7 +152,7 @@ function StatusLineInner({
   } = useNotifications();
   // AppState-sourced model — same source as API requests. getMainLoopModel()
   // re-reads settings.json on every call, so another session's /model write
-  // would leak into this session's statusline (anthropics/ur#37596).
+  // would leak into this session's statusline (urhqs/ur#37596).
   const mainLoopModel = useMainLoopModel();
 
   // Keep latest values in refs for stable callback access

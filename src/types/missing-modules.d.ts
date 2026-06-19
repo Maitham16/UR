@@ -7,20 +7,20 @@
 // the importing code paths are either dead in this build, gated behind
 // feature flags that are off, or dynamically optional.
 
-declare module '@anthropic-ai/bedrock-sdk' {
-  export const AnthropicBedrock: any
+declare module '@urhq-ai/bedrock-sdk' {
+  export const URHQBedrock: any
   const defaultExport: any
   export default defaultExport
 }
 
-declare module '@anthropic-ai/foundry-sdk' {
-  export const AnthropicFoundry: any
+declare module '@urhq-ai/foundry-sdk' {
+  export const URHQFoundry: any
   const defaultExport: any
   export default defaultExport
 }
 
-declare module '@anthropic-ai/vertex-sdk' {
-  export const AnthropicVertex: any
+declare module '@urhq-ai/vertex-sdk' {
+  export const URHQVertex: any
   const defaultExport: any
   export default defaultExport
 }

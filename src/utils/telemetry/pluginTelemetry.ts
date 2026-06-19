@@ -36,7 +36,7 @@ const BUILTIN_MARKETPLACE_NAME = 'builtin'
 // sites. Not per-org, not rotated — per-org salt would defeat cross-org
 // distinct-count, rotation would break trend lines. Customers can compute the
 // same hash on their known plugin names to reverse-match their own telemetry.
-const PLUGIN_ID_HASH_SALT = 'claude-plugin-telemetry-v1'
+const PLUGIN_ID_HASH_SALT = 'ur-plugin-telemetry-v1'
 
 /**
  * Opaque per-plugin aggregation key. Input is the name@marketplace string as
@@ -94,7 +94,7 @@ export type EnabledVia =
 /** How a skill/command invocation was triggered. */
 export type InvocationTrigger =
   | 'user-slash'
-  | 'claude-proactive'
+  | 'ur-proactive'
   | 'nested-skill'
 
 /** Where a skill invocation executes. */
@@ -144,7 +144,7 @@ export function buildPluginTelemetryFields(
   const scope = getTelemetryPluginScope(name, marketplace, managedNames)
   // Both official marketplaces and builtin plugins are UR-controlled
   // — safe to expose real names in the redacted columns.
-  const isAnthropicControlled =
+  const isURHQControlled =
     scope === 'official' || scope === 'default-bundle'
   return {
     plugin_id_hash: hashPluginId(
@@ -153,13 +153,13 @@ export function buildPluginTelemetryFields(
     ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     plugin_scope:
       scope as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    plugin_name_redacted: (isAnthropicControlled
+    plugin_name_redacted: (isURHQControlled
       ? name
       : 'third-party') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    marketplace_name_redacted: (isAnthropicControlled && marketplace
+    marketplace_name_redacted: (isURHQControlled && marketplace
       ? marketplace
       : 'third-party') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    is_official_plugin: isAnthropicControlled,
+    is_official_plugin: isURHQControlled,
   }
 }
 

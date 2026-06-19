@@ -300,7 +300,7 @@ import {
 import { runWithWorkload, WORKLOAD_CRON } from 'src/utils/workloadContext.js'
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
+import type { ContentBlockParam } from '@urhq-ai/sdk/resources/messages.mjs'
 import type { AppState } from 'src/state/AppStateStore.js'
 import {
   fileHistoryRewind,
@@ -1641,9 +1641,9 @@ function runHeadlessStreaming(
           headers: connection.config.headers,
           oauth: connection.config.oauth,
         }
-      } else if (connection.config.type === 'claudeai-proxy') {
+      } else if (connection.config.type === 'urai-proxy') {
         config = {
-          type: 'claudeai-proxy' as const,
+          type: 'urai-proxy' as const,
           url: connection.config.url,
           id: connection.config.id,
         }
@@ -1681,11 +1681,11 @@ function runHeadlessStreaming(
       ) {
         const exp = { ...connection.capabilities.experimental }
         if (
-          exp['claude/channel'] &&
+          exp['ur/channel'] &&
           (!isChannelsEnabled() ||
             !isChannelAllowlisted(connection.config.pluginSource))
         ) {
-          delete exp['claude/channel']
+          delete exp['ur/channel']
         }
         if (Object.keys(exp).length > 0) {
           capabilities = { experimental: exp }
@@ -2799,7 +2799,7 @@ function runHeadlessStreaming(
   // extension via handleAuthDone → mcp_reconnect.
   const oauthAuthPromises = new Map<string, Promise<void>>()
 
-  // In-flight UR OAuth flow (claude_authenticate). Single-slot: a
+  // In-flight UR OAuth flow (ur_authenticate). Single-slot: a
   // second authenticate request cleans up the first. The service holds the
   // PKCE verifier + localhost listener; the promise settles after
   // installOAuthTokens — after it resolves, the in-process memoized token
@@ -3516,12 +3516,12 @@ function runHeadlessStreaming(
               `No active OAuth flow for server: ${serverName}`,
             )
           }
-        } else if (message.request.subtype === 'claude_authenticate') {
+        } else if (message.request.subtype === 'ur_authenticate') {
           // UR OAuth over the control channel. The SDK client owns
           // the user's browser (we're headless in -p mode); we hand back
           // both URLs and wait. Automatic URL → localhost listener catches
           // the redirect if the browser is on this host; manual URL → the
-          // success page shows "code#state" for claude_oauth_callback.
+          // success page shows "code#state" for ur_oauth_callback.
           const { loginWithURAi } = message.request
 
           // Clean up any prior flow. cleanup() closes the localhost listener
@@ -3581,10 +3581,10 @@ function runHeadlessStreaming(
 
           // Attach the rejection handler before awaiting so a synchronous
           // startOAuthFlow failure doesn't surface as an unhandled rejection.
-          // The claude_oauth_callback handler re-awaits flow for the manual
+          // The ur_oauth_callback handler re-awaits flow for the manual
           // path and surfaces the real error to the client.
           void flow.catch(err =>
-            logForDebugging(`claude_authenticate flow ended: ${err}`, {
+            logForDebugging(`ur_authenticate flow ended: ${err}`, {
               level: 'info',
             }),
           )
@@ -3611,27 +3611,27 @@ function runHeadlessStreaming(
             sendControlResponseError(message, errorMessage(error))
           }
         } else if (
-          message.request.subtype === 'claude_oauth_callback' ||
-          message.request.subtype === 'claude_oauth_wait_for_completion'
+          message.request.subtype === 'ur_oauth_callback' ||
+          message.request.subtype === 'ur_oauth_wait_for_completion'
         ) {
           if (!urOAuth) {
             sendControlResponseError(
               message,
-              'No active claude_authenticate flow',
+              'No active ur_authenticate flow',
             )
           } else {
             // Inject the manual code synchronously — must happen in stdin
-            // message order so a subsequent claude_authenticate doesn't
+            // message order so a subsequent ur_authenticate doesn't
             // replace the service before this code lands.
-            if (message.request.subtype === 'claude_oauth_callback') {
+            if (message.request.subtype === 'ur_oauth_callback') {
               urOAuth.service.handleManualAuthCodeInput({
                 authorizationCode: message.request.authorizationCode,
                 state: message.request.state,
               })
             }
             // Detach the await — the stdin reader is serial and blocking
-            // here deadlocks claude_oauth_wait_for_completion: flow may
-            // only resolve via a future claude_oauth_callback on stdin,
+            // here deadlocks ur_oauth_wait_for_completion: flow may
+            // only resolve via a future ur_oauth_callback on stdin,
             // which can't be read while we're parked. Capture the binding;
             // urOAuth is nulled in flow's own .finally.
             const { flow } = urOAuth
@@ -3786,12 +3786,12 @@ function runHeadlessStreaming(
             sendControlResponseError(message, errorMessage(error))
           }
         } else if (message.request.subtype === 'generate_session_title') {
-          // Fire-and-forget so the Haiku call does not block the stdin loop
+          // Fire-and-forget so the modelH call does not block the stdin loop
           // (which would delay processing of subsequent user messages /
           // interrupts for the duration of the API roundtrip).
           const { description, persist } = message.request
           // Reuse the live controller only if it has not already been aborted
-          // (e.g. by interrupt()); an aborted signal would cause queryHaiku to
+          // (e.g. by interrupt()); an aborted signal would cause querymodelH to
           // immediately throw APIUserAbortError → {title: null}.
           const titleSignal = (
             abortController && !abortController.signal.aborted
@@ -4741,7 +4741,7 @@ function handleChannelEnable(
       const { content, meta } = notification.params
       logMCPDebug(
         serverName,
-        `notifications/claude/channel: ${content.slice(0, 80)}`,
+        `notifications/ur/channel: ${content.slice(0, 80)}`,
       )
       logEvent('tengu_mcp_channel_message', {
         content_length: content.length,
@@ -4817,7 +4817,7 @@ function reregisterChannelHandlerAfterReconnect(
       const { content, meta } = notification.params
       logMCPDebug(
         connection.name,
-        `notifications/claude/channel: ${content.slice(0, 80)}`,
+        `notifications/ur/channel: ${content.slice(0, 80)}`,
       )
       logEvent('tengu_mcp_channel_message', {
         content_length: content.length,

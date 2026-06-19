@@ -463,7 +463,7 @@ export const createAndSaveSnapshot = async (
               : subprocessEnv()) as typeof process.env),
             SHELL: binShell,
             GIT_EDITOR: 'true',
-            CLAUDECODE: '1',
+            URCODE: '1',
           },
           timeout: SNAPSHOT_CREATION_TIMEOUT,
           maxBuffer: 1024 * 1024, // 1MB buffer

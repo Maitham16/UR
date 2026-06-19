@@ -9,7 +9,7 @@ import { homedir, userInfo } from 'os'
 import { join } from 'path'
 
 /** macOS preference domain for UR MDM profiles. */
-export const MACOS_PREFERENCE_DOMAIN = 'com.anthropic.claudecode'
+export const MACOS_PREFERENCE_DOMAIN = 'com.urhq.urcode'
 
 /**
  * Windows registry key paths for UR MDM policies.

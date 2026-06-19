@@ -4,7 +4,7 @@ import type { Command } from '../../commands.js'
 const command: Command = {
   name: 'chrome',
   description: 'UR in Chrome (Beta) settings',
-  availability: ['claude-ai'],
+  availability: ['ur-ai'],
   isEnabled: () => !getIsNonInteractiveSession(),
   type: 'local-jsx',
   load: () => import('./chrome.js'),

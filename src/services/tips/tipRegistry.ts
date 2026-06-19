@@ -472,20 +472,20 @@ const externalTips: Tip[] = [
     isRelevant: async () => true,
   },
   {
-    id: 'opusplan-mode-reminder',
+    id: 'modelOplan-mode-reminder',
     content: async () =>
-      `Your default model setting is Opus Plan Mode. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to activate Plan Mode and plan with UR Opus.`,
+      `Your default model setting is modelO Plan Mode. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to activate Plan Mode and plan with UR modelO.`,
     cooldownSessions: 2,
     async isRelevant() {
       if (process.env.USER_TYPE === 'ant') return false
       const config = getGlobalConfig()
       const modelSetting = getUserSpecifiedModelSetting()
-      const hasOpusPlanMode = modelSetting === 'opusplan'
-      // Show reminder if they have Opus Plan Mode and haven't used plan mode recently (3+ days)
+      const hasmodelOPlanMode = modelSetting === 'modelOplan'
+      // Show reminder if they have modelO Plan Mode and haven't used plan mode recently (3+ days)
       const daysSinceLastUse = config.lastPlanModeUse
         ? (Date.now() - config.lastPlanModeUse) / (1000 * 60 * 60 * 24)
         : Infinity
-      return hasOpusPlanMode && daysSinceLastUse > 3
+      return hasmodelOPlanMode && daysSinceLastUse > 3
     },
   },
   {
@@ -591,11 +591,11 @@ const externalTips: Tip[] = [
   {
     id: 'guest-passes',
     content: async ctx => {
-      const claude = color('claude', ctx.theme)
+      const ur = color('ur', ctx.theme)
       const reward = getCachedReferrerReward()
       return reward
-        ? `Share UR and earn ${claude(formatCreditAmount(reward))} of extra usage · ${claude('/passes')}`
-        : `You have free guest passes to share · ${claude('/passes')}`
+        ? `Share UR and earn ${ur(formatCreditAmount(reward))} of extra usage · ${ur('/passes')}`
+        : `You have free guest passes to share · ${ur('/passes')}`
     },
     cooldownSessions: 3,
     isRelevant: async () => {
@@ -610,12 +610,12 @@ const externalTips: Tip[] = [
   {
     id: 'overage-credit',
     content: async ctx => {
-      const claude = color('claude', ctx.theme)
+      const ur = color('ur', ctx.theme)
       const info = getCachedOverageCreditGrant()
       const amount = info ? formatGrantAmount(info) : null
       if (!amount) return ''
       // Copy from "OC & Bulk Overages copy" doc (#5 — CLI Rotating tip)
-      return `${claude(`${amount} in extra usage, on us`)} · third-party apps · ${claude('/extra-usage')}`
+      return `${ur(`${amount} in extra usage, on us`)} · third-party apps · ${ur('/extra-usage')}`
     },
     cooldownSessions: 3,
     isRelevant: async () => shouldShowOverageCreditUpsell(),
@@ -639,7 +639,7 @@ const internalOnlyTips: Tip[] =
         {
           id: 'important-agentmd',
           content: async () =>
-            '[ANT-ONLY] Use "IMPORTANT:" prefix for must-follow CLAUDE.md rules',
+            '[ANT-ONLY] Use "IMPORTANT:" prefix for must-follow UR.md rules',
           cooldownSessions: 30,
           isRelevant: async () => true,
         },

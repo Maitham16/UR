@@ -513,7 +513,7 @@ To fix this issue:
     )
     if (installResult.code !== 0) {
       const error = new AutoUpdaterError(
-        `Failed to install new version of claude: ${installResult.stdout} ${installResult.stderr}`,
+        `Failed to install new version of ur: ${installResult.stdout} ${installResult.stderr}`,
       )
       logError(error)
       return 'install_failed'
@@ -549,7 +549,7 @@ async function removeURAliasesFromShellConfigs(): Promise<void> {
 
       if (hadAlias) {
         await writeFileLines(configFile, filtered)
-        logForDebugging(`Removed claude alias from ${configFile}`)
+        logForDebugging(`Removed ur alias from ${configFile}`)
       }
     } catch (error) {
       // Don't fail the whole operation if one file can't be processed

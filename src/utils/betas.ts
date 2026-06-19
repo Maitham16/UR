@@ -107,10 +107,10 @@ export function modelSupportsISP(model: string): boolean {
     return true
   }
   if (provider === 'firstParty') {
-    return !canonical.includes('claude-3-')
+    return !canonical.includes('ur-3-')
   }
   return (
-    canonical.includes('claude-opus-4') || canonical.includes('claude-sonnet-4')
+    canonical.includes('ur-modelO-4') || canonical.includes('ur-modelS-4')
   )
 }
 
@@ -118,9 +118,9 @@ function vertexModelSupportsWebSearch(model: string): boolean {
   const canonical = getCanonicalName(model)
   // Web search only supported on UR 4.0+ models on Vertex
   return (
-    canonical.includes('claude-opus-4') ||
-    canonical.includes('claude-sonnet-4') ||
-    canonical.includes('claude-haiku-4')
+    canonical.includes('ur-modelO-4') ||
+    canonical.includes('ur-modelS-4') ||
+    canonical.includes('ur-modelH-4')
   )
 }
 
@@ -135,12 +135,12 @@ export function modelSupportsContextManagement(model: string): boolean {
     return true
   }
   if (provider === 'firstParty') {
-    return !canonical.includes('claude-3-')
+    return !canonical.includes('ur-3-')
   }
   return (
-    canonical.includes('claude-opus-4') ||
-    canonical.includes('claude-sonnet-4') ||
-    canonical.includes('claude-haiku-4')
+    canonical.includes('ur-modelO-4') ||
+    canonical.includes('ur-modelS-4') ||
+    canonical.includes('ur-modelH-4')
   )
 }
 
@@ -153,12 +153,12 @@ export function modelSupportsStructuredOutputs(model: string): boolean {
     return false
   }
   return (
-    canonical.includes('claude-sonnet-4-6') ||
-    canonical.includes('claude-sonnet-4-5') ||
-    canonical.includes('claude-opus-4-1') ||
-    canonical.includes('claude-opus-4-5') ||
-    canonical.includes('claude-opus-4-6') ||
-    canonical.includes('claude-haiku-4-5')
+    canonical.includes('ur-modelS-4-6') ||
+    canonical.includes('ur-modelS-4-5') ||
+    canonical.includes('ur-modelO-4-1') ||
+    canonical.includes('ur-modelO-4-5') ||
+    canonical.includes('ur-modelO-4-6') ||
+    canonical.includes('ur-modelH-4-5')
   )
 }
 
@@ -189,13 +189,13 @@ export function modelSupportsAutoMode(model: string): boolean {
     }
     if (process.env.USER_TYPE === 'ant') {
       // Denylist: block known-unsupported ur models, allow everything else (ant-internal models etc.)
-      if (m.includes('claude-3-')) return false
+      if (m.includes('ur-3-')) return false
       // ur-*-4 not followed by -[6-9]: blocks bare -4, -4-YYYYMMDD, -4@, -4-0 thru -4-5
-      if (/claude-(opus|sonnet|haiku)-4(?!-[6-9])/.test(m)) return false
+      if (/ur-(modelO|modelS|modelH)-4(?!-[6-9])/.test(m)) return false
       return true
     }
     // External allowlist (firstParty already checked above).
-    return /^claude-(opus|sonnet)-4-6/.test(m)
+    return /^ur-(modelO|modelS)-4-6/.test(m)
   }
   return false
 }
@@ -243,11 +243,11 @@ export const getAllModelBetas = memoize((model: string): string[] => {
   }
 
   const betaHeaders = []
-  const isHaiku = getCanonicalName(model).includes('haiku')
+  const ismodelH = getCanonicalName(model).includes('modelH')
   const provider = getAPIProvider()
   const includeFirstPartyOnlyBetas = shouldIncludeFirstPartyOnlyBetas()
 
-  if (!isHaiku) {
+  if (!ismodelH) {
     betaHeaders.push(UR_CODE_20250219_BETA_HEADER)
     if (
       process.env.USER_TYPE === 'ant' &&
@@ -271,7 +271,7 @@ export const getAllModelBetas = memoize((model: string): string[] => {
     betaHeaders.push(INTERLEAVED_THINKING_BETA_HEADER)
   }
 
-  // Skip the API-side Haiku thinking summarizer — the summary is only used
+  // Skip the API-side modelH thinking summarizer — the summary is only used
   // for ctrl+o display, which interactive users rarely open. The API returns
   // redacted_thinking blocks instead; AssistantRedactedThinkingMessage already
   // renders those as a stub. SDK / print-mode keep summaries because callers
@@ -291,7 +291,7 @@ export const getAllModelBetas = memoize((model: string): string[] => {
   // the summary with a signature so the original can be restored on subsequent
   // turns — same mechanism as thinking blocks. Ant-only while we measure
   // TTFT/TTLT/capacity; betas already flow to tengu_api_success for splitting.
-  // Backend independently requires Capability.ANTHROPIC_INTERNAL_RESEARCH.
+  // Backend independently requires Capability.URHQ_INTERNAL_RESEARCH.
   //
   // USE_CONNECTOR_TEXT_SUMMARIZATION is tri-state: =1 forces on (opt-in even
   // if GB is off), =0 forces off (opt-out of a GB rollout you were bucketed
@@ -340,7 +340,7 @@ export const getAllModelBetas = memoize((model: string): string[] => {
     betaHeaders.push(STRUCTURED_OUTPUTS_BETA_HEADER)
   }
   // JSON tool_use format (FC v3) — ~4.5% output token reduction vs ANTML.
-  // Sends the v2 header (2026-03-28) added in anthropics/anthropic#337072 to
+  // Sends the v2 header (2026-03-28) added in urhqs/urhq#337072 to
   // isolate the CC A/B cohort from ~9.2M/week existing v1 senders. Ant-only
   // while the restored JsonToolUseOutputParser soaks.
   if (
@@ -365,11 +365,11 @@ export const getAllModelBetas = memoize((model: string): string[] => {
     betaHeaders.push(PROMPT_CACHING_SCOPE_BETA_HEADER)
   }
 
-  // If ANTHROPIC_BETAS is set, split it by commas and add to betaHeaders.
+  // If URHQ_BETAS is set, split it by commas and add to betaHeaders.
   // This is an explicit user opt-in, so honor it regardless of model.
-  if (process.env.ANTHROPIC_BETAS) {
+  if (process.env.URHQ_BETAS) {
     betaHeaders.push(
-      ...process.env.ANTHROPIC_BETAS.split(',')
+      ...process.env.URHQ_BETAS.split(',')
         .map(_ => _.trim())
         .filter(Boolean),
     )
@@ -399,8 +399,8 @@ export const getBedrockExtraBodyParamsBetas = memoize(
  * subscriber checks and allowlist validation with warnings.
  *
  * @param options.isAgenticQuery - When true, ensures the beta headers needed
- *   for agentic queries are present. For non-Haiku models these are already
- *   included by getAllModelBetas(); for Haiku they're excluded since
+ *   for agentic queries are present. For non-modelH models these are already
+ *   included by getAllModelBetas(); for modelH they're excluded since
  *   non-agentic calls (compaction, classifiers, token estimation) don't need them.
  */
 export function getMergedBetas(
@@ -410,8 +410,8 @@ export function getMergedBetas(
   const baseBetas = [...getModelBetas(model)]
 
   // Agentic queries always need ur and cli-internal beta headers.
-  // For non-Haiku models these are already in baseBetas; for Haiku they're
-  // excluded by getAllModelBetas() since non-agentic Haiku calls don't need them.
+  // For non-modelH models these are already in baseBetas; for modelH they're
+  // excluded by getAllModelBetas() since non-agentic modelH calls don't need them.
   if (options?.isAgenticQuery) {
     if (!baseBetas.includes(UR_CODE_20250219_BETA_HEADER)) {
       baseBetas.push(UR_CODE_20250219_BETA_HEADER)

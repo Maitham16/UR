@@ -4,7 +4,7 @@ import { has1mContext } from './context.js'
 export function isBilledAsExtraUsage(
   model: string | null,
   isFastMode: boolean,
-  isOpus1mMerged: boolean,
+  ismodelO1mMerged: boolean,
 ): boolean {
   if (!isURAISubscriber()) return false
   if (isFastMode) return true
@@ -14,10 +14,10 @@ export function isBilledAsExtraUsage(
     .toLowerCase()
     .replace(/\[1m\]$/, '')
     .trim()
-  const isOpus46 = m === 'opus' || m.includes('opus-4-6')
-  const isSonnet46 = m === 'sonnet' || m.includes('sonnet-4-6')
+  const ismodelO46 = m === 'modelO' || m.includes('modelO-4-6')
+  const ismodelS46 = m === 'modelS' || m.includes('modelS-4-6')
 
-  if (isOpus46 && isOpus1mMerged) return false
+  if (ismodelO46 && ismodelO1mMerged) return false
 
-  return isOpus46 || isSonnet46
+  return ismodelO46 || ismodelS46
 }

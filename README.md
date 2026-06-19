@@ -119,7 +119,7 @@ Do not commit secrets, passwords, API keys, OAuth tokens, private keys, `.env` f
 
 ## Project Context
 
-UR reads project instructions from `CLAUDE.md` files and can load project assets from `.ur/`. Shared project configuration may be committed, but local files such as `.ur/settings.local.json`, `.ur/memory/`, `.ur/index/`, and `CLAUDE.local.md` are ignored by Git.
+UR reads project instructions from `UR.md` files and can load project assets from `.ur/`. Shared project configuration may be committed, but local files such as `.ur/settings.local.json`, `.ur/memory/`, `.ur/index/`, and `UR.local.md` are ignored by Git.
 
 ## Development
 

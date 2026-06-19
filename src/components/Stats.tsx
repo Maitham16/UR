@@ -1096,7 +1096,7 @@ function renderStatsToAnsi(stats: URCodeStats, activeTab: 'Overview' | 'Models')
 function renderOverviewToAnsi(stats: URCodeStats): string[] {
   const lines: string[] = [];
   const theme = getTheme(resolveThemeSetting(getGlobalConfig().theme));
-  const h = (text: string) => applyColor(text, theme.claude as Color);
+  const h = (text: string) => applyColor(text, theme.ur as Color);
 
   // Two-column helper with fixed spacing
   // Column 1: label (18 chars) + value + padding to reach col 2

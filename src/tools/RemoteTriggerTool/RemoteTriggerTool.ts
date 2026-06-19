@@ -81,7 +81,7 @@ export const RemoteTriggerTool = buildTool({
     const accessToken = getURAIOAuthTokens()?.accessToken
     if (!accessToken) {
       throw new Error(
-        'Not authenticated with a claude.ai account. Run /login and try again.',
+        'Not authenticated with a ur.ai account. Run /login and try again.',
       )
     }
     const orgUUID = await getOrganizationUUID()
@@ -93,8 +93,8 @@ export const RemoteTriggerTool = buildTool({
     const headers = {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01',
-      'anthropic-beta': TRIGGERS_BETA,
+      'urhq-version': '2023-06-01',
+      'urhq-beta': TRIGGERS_BETA,
       'x-organization-uuid': orgUUID,
     }
 

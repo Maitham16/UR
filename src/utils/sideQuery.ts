@@ -1,6 +1,6 @@
 // @ts-nocheck
-import type Anthropic from '@anthropic-ai/sdk'
-import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages.js'
+import type URHQ from '@urhq-ai/sdk'
+import type { BetaToolUnion } from '@urhq-ai/sdk/resources/beta/messages.js'
 import {
   getLastApiCompletionTimestamp,
   setLastApiCompletionTimestamp,
@@ -13,19 +13,19 @@ import {
 } from '../constants/system.js'
 import { logEvent } from '../services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../services/analytics/metadata.js'
-import { getAPIMetadata } from '../services/api/claude.js'
-import { getAnthropicClient } from '../services/api/client.js'
+import { getAPIMetadata } from '../services/api/ur.js'
+import { getURHQClient } from '../services/api/client.js'
 import { getModelBetas, modelSupportsStructuredOutputs } from './betas.js'
 import { computeFingerprint } from './fingerprint.js'
 import { normalizeModelStringForAPI } from './model/model.js'
 
-type MessageParam = Anthropic.MessageParam
-type TextBlockParam = Anthropic.TextBlockParam
-type Tool = Anthropic.Tool
-type ToolChoice = Anthropic.ToolChoice
-type BetaMessage = Anthropic.Beta.Messages.BetaMessage
-type BetaJSONOutputFormat = Anthropic.Beta.Messages.BetaJSONOutputFormat
-type BetaThinkingConfigParam = Anthropic.Beta.Messages.BetaThinkingConfigParam
+type MessageParam = URHQ.MessageParam
+type TextBlockParam = URHQ.TextBlockParam
+type Tool = URHQ.Tool
+type ToolChoice = URHQ.ToolChoice
+type BetaMessage = URHQ.Beta.Messages.BetaMessage
+type BetaJSONOutputFormat = URHQ.Beta.Messages.BetaJSONOutputFormat
+type BetaThinkingConfigParam = URHQ.Beta.Messages.BetaThinkingConfigParam
 
 export type SideQueryOptions = {
   /** Model to use for the query */
@@ -122,7 +122,7 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
     stop_sequences,
   } = opts
 
-  const client = await getAnthropicClient({
+  const client = await getURHQClient({
     maxRetries,
     model,
     source: 'side_query',

@@ -20,7 +20,7 @@ import { isBridgeEnabled } from '../../bridge/bridgeEnabled.js';
 import { ThemePicker } from '../ThemePicker.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../../state/AppState.js';
 import { ModelPicker } from '../ModelPicker.js';
-import { modelDisplayString, isOpus1mMergeEnabled } from '../../utils/model/model.js';
+import { modelDisplayString, ismodelO1mMergeEnabled } from '../../utils/model/model.js';
 import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
 import { ChannelDowngradeDialog, type ChannelDowngradeChoice } from '../ChannelDowngradeDialog.js';
 import { Dialog } from '../design-system/Dialog.js';
@@ -212,7 +212,7 @@ export function Config({
       mainLoopModelForSession: null
     }));
     setChanges(prev_0 => {
-      const valStr = modelDisplayString(value) + (isBilledAsExtraUsage(value, false, isOpus1mMergeEnabled()) ? ' · Billed as extra usage' : '');
+      const valStr = modelDisplayString(value) + (isBilledAsExtraUsage(value, false, ismodelO1mMergeEnabled()) ? ' · Billed as extra usage' : '');
       if ('model' in prev_0) {
         const {
           model,
@@ -885,7 +885,7 @@ export function Config({
         ...getGlobalConfig(),
         urInChromeDefaultEnabled: enabled_5
       });
-      logEvent('tengu_claude_in_chrome_setting_changed', {
+      logEvent('tengu_ur_in_chrome_setting_changed', {
         enabled: enabled_5
       });
     }
@@ -975,7 +975,7 @@ export function Config({
     }
   }] : []), ...(shouldShowExternalIncludesToggle ? [{
     id: 'showExternalIncludesDialog',
-    label: 'External CLAUDE.md includes',
+    label: 'External UR.md includes',
     value: (() => {
       const projectConfig = getCurrentProjectConfig();
       if (projectConfig.hasAgentMdExternalIncludesApproved) {
@@ -1100,7 +1100,7 @@ export function Config({
       return `Set ${key} to ${chalk.bold(value_2)}`;
     });
     // Check for API key changes
-    // On homespace, ANTHROPIC_API_KEY is preserved in process.env for child
+    // On homespace, URHQ_API_KEY is preserved in process.env for child
     // processes but ignored by UR itself (see auth.ts).
     const effectiveApiKey = isRunningOnHomespace() ? undefined : undefined;
     const initialUsingCustomKey = Boolean(effectiveApiKey && initialConfig.current.customApiKeyResponses?.approved?.includes(normalizeApiKeyForConfig(effectiveApiKey)));
@@ -1108,7 +1108,7 @@ export function Config({
     if (initialUsingCustomKey !== currentUsingCustomKey) {
       formattedChanges.push(`${currentUsingCustomKey ? 'Enabled' : 'Disabled'} custom API key`);
       logEvent('tengu_config_changed', {
-        key: 'env.ANTHROPIC_API_KEY' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        key: 'env.URHQ_API_KEY' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         value: currentUsingCustomKey as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
     }
@@ -1488,7 +1488,7 @@ export function Config({
         setTabsHidden(false);
         // First-open-then-Enter from unset: picker highlights "Default"
         // (initial=null) and confirming would write null, silently
-        // switching Opus-fallback → follow-leader. Treat as no-op.
+        // switching modelO-fallback → follow-leader. Treat as no-op.
         if (globalConfig.teammateDefaultModel === undefined && model_1 === null) {
           return;
         }

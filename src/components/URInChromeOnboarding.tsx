@@ -6,7 +6,7 @@ import { Box, Link, Newline, Text, useInput } from '../ink.js';
 import { isChromeExtensionInstalled } from '../utils/urInChrome/setup.js';
 import { saveGlobalConfig } from '../utils/config.js';
 import { Dialog } from './design-system/Dialog.js';
-const CHROME_EXTENSION_URL = 'https://claude.ai/chrome';
+const CHROME_EXTENSION_URL = 'https://ur.ai/chrome';
 const CHROME_PERMISSIONS_URL = 'https://clau.de/chrome/permissions';
 type Props = {
   onDone(): void;
@@ -21,7 +21,7 @@ export function URInChromeOnboarding(t0) {
   let t2;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = () => {
-      logEvent("tengu_claude_in_chrome_onboarding_shown", {});
+      logEvent("tengu_ur_in_chrome_onboarding_shown", {});
       isChromeExtensionInstalled().then(setIsExtensionInstalled);
       saveGlobalConfig(_temp);
     };

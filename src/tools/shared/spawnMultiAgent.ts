@@ -309,7 +309,7 @@ async function handleSpawnSplitPane(
   const { setAppState, getAppState } = context
   const { name, prompt, agent_type, cwd, plan_mode_required } = input
 
-  // Resolve model: 'inherit' → leader's model; undefined → default Opus
+  // Resolve model: 'inherit' → leader's model; undefined → default modelO
   const model = resolveTeammateModel(input.model, getAppState().mainLoopModel)
 
   if (!name || !prompt) {
@@ -435,7 +435,7 @@ async function handleSpawnSplitPane(
 
   const flagsStr = inheritedFlags ? ` ${inheritedFlags}` : ''
   // Propagate env vars that teammates need but may not inherit from tmux split-window shells.
-  // Includes CLAUDECODE, UR_CODE_EXPERIMENTAL_AGENT_TEAMS, and API provider vars.
+  // Includes URCODE, UR_CODE_EXPERIMENTAL_AGENT_TEAMS, and API provider vars.
   const envStr = buildInheritedEnvVars()
   const spawnCommand = `cd ${quote([workingDir])} && env ${envStr} ${quote([binaryPath])} ${teammateArgs}${flagsStr}`
 
@@ -549,7 +549,7 @@ async function handleSpawnSeparateWindow(
   const { setAppState, getAppState } = context
   const { name, prompt, agent_type, cwd, plan_mode_required } = input
 
-  // Resolve model: 'inherit' → leader's model; undefined → default Opus
+  // Resolve model: 'inherit' → leader's model; undefined → default modelO
   const model = resolveTeammateModel(input.model, getAppState().mainLoopModel)
 
   if (!name || !prompt) {
@@ -642,7 +642,7 @@ async function handleSpawnSeparateWindow(
 
   const flagsStr = inheritedFlags ? ` ${inheritedFlags}` : ''
   // Propagate env vars that teammates need but may not inherit from tmux split-window shells.
-  // Includes CLAUDECODE, UR_CODE_EXPERIMENTAL_AGENT_TEAMS, and API provider vars.
+  // Includes URCODE, UR_CODE_EXPERIMENTAL_AGENT_TEAMS, and API provider vars.
   const envStr = buildInheritedEnvVars()
   const spawnCommand = `cd ${quote([workingDir])} && env ${envStr} ${quote([binaryPath])} ${teammateArgs}${flagsStr}`
 
@@ -844,7 +844,7 @@ async function handleSpawnInProcess(
   const { setAppState, getAppState } = context
   const { name, prompt, agent_type, plan_mode_required } = input
 
-  // Resolve model: 'inherit' → leader's model; undefined → default Opus
+  // Resolve model: 'inherit' → leader's model; undefined → default modelO
   const model = resolveTeammateModel(input.model, getAppState().mainLoopModel)
 
   if (!name || !prompt) {

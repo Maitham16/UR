@@ -22,7 +22,7 @@ type Props = {
   onDone(): void;
   startingMessage?: string;
   mode?: 'login' | 'setup-token';
-  forceLoginMethod?: 'claudeai' | 'console';
+  forceLoginMethod?: 'urai' | 'console';
 };
 type OAuthStatus = {
   state: 'idle';
@@ -61,7 +61,7 @@ export function ConsoleOAuthFlow({
   const settings = getSettings_DEPRECATED() || {};
   const forceLoginMethod = forceLoginMethodProp ?? settings.forceLoginMethod;
   const orgUUID = settings.forceLoginOrgUUID;
-  const forcedMethodMessage = forceLoginMethod === 'claudeai' ? 'Login method pre-selected: Subscription Plan (UR Pro/Max)' : forceLoginMethod === 'console' ? 'Login method pre-selected: API Usage Billing (Anthropic Console)' : null;
+  const forcedMethodMessage = forceLoginMethod === 'urai' ? 'Login method pre-selected: Subscription Plan (UR Pro/Max)' : forceLoginMethod === 'console' ? 'Login method pre-selected: API Usage Billing (URHQ Console)' : null;
   const terminal = useTerminalNotification();
   const [oauthStatus, setOAuthStatus] = useState<OAuthStatus>(() => {
     if (mode === 'setup-token') {
@@ -69,7 +69,7 @@ export function ConsoleOAuthFlow({
         state: 'ready_to_start'
       };
     }
-    if (forceLoginMethod === 'claudeai' || forceLoginMethod === 'console') {
+    if (forceLoginMethod === 'urai' || forceLoginMethod === 'console') {
       return {
         state: 'ready_to_start'
       };
@@ -83,7 +83,7 @@ export function ConsoleOAuthFlow({
   const [oauthService] = useState(() => new OAuthService());
   const [loginWithURAi, setLoginWithURAi] = useState(() => {
     // Use UR AI auth for setup-token mode to support user:inference scope
-    return mode === 'setup-token' || forceLoginMethod === 'claudeai';
+    return mode === 'setup-token' || forceLoginMethod === 'urai';
   });
   // After a few seconds we suggest the user to copy/paste url if the
   // browser did not open automatically. In this flow we expect the user to
@@ -94,8 +94,8 @@ export function ConsoleOAuthFlow({
 
   // Log forced login method on mount
   useEffect(() => {
-    if (forceLoginMethod === 'claudeai') {
-      logEvent('tengu_oauth_claudeai_forced', {});
+    if (forceLoginMethod === 'urai') {
+      logEvent('tengu_oauth_urai_forced', {});
     } else if (forceLoginMethod === 'console') {
       logEvent('tengu_oauth_console_forced', {});
     }
@@ -385,7 +385,7 @@ function OAuthStatusMessage(t0) {
         if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
           t4 = {
             label: <Text>UR account with subscription ·{" "}<Text dimColor={true}>Pro, Max, Team, or Enterprise</Text>{false && <Text>{"\n"}<Text color="warning">[ANT-ONLY]</Text>{" "}<Text dimColor={true}>Please use this option unless you need to login to a special org for accessing sensitive data (e.g. customer data, HIPI data) with the Console option</Text></Text>}{"\n"}</Text>,
-            value: "claudeai"
+            value: "urai"
           };
           $[3] = t4;
         } else {
@@ -394,7 +394,7 @@ function OAuthStatusMessage(t0) {
         let t5;
         if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
           t5 = {
-            label: <Text>Anthropic Console account ·{" "}<Text dimColor={true}>API usage billing</Text>{"\n"}</Text>,
+            label: <Text>URHQ Console account ·{" "}<Text dimColor={true}>API usage billing</Text>{"\n"}</Text>,
             value: "console"
           };
           $[4] = t5;
@@ -423,8 +423,8 @@ function OAuthStatusMessage(t0) {
                 setOAuthStatus({
                   state: "ready_to_start"
                 });
-                if (value_0 === "claudeai") {
-                  logEvent("tengu_oauth_claudeai_selected", {});
+                if (value_0 === "urai") {
+                  logEvent("tengu_oauth_urai_selected", {});
                   setLoginWithURAi(true);
                 } else {
                   logEvent("tengu_oauth_console_selected", {});

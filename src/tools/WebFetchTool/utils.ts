@@ -5,7 +5,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
-import { queryHaiku } from '../../services/api/claude.js'
+import { querymodelH } from '../../services/api/ur.js'
 import { AbortError } from '../../utils/errors.js'
 import { getWebFetchUserAgent } from '../../utils/http.js'
 import { logError } from '../../utils/log.js'
@@ -29,7 +29,7 @@ class DomainBlockedError extends Error {
 class DomainCheckFailedError extends Error {
   constructor(domain: string) {
     super(
-      `Unable to verify if domain ${domain} is safe to fetch. This may be due to network restrictions or enterprise security policies blocking claude.ai.`,
+      `Unable to verify if domain ${domain} is safe to fetch. This may be due to network restrictions or enterprise security policies blocking ur.ai.`,
     )
     this.name = 'DomainCheckFailedError'
   }
@@ -435,8 +435,8 @@ export async function getURLMarkdownContent(
 
   // Binary content: save raw bytes to disk with a proper extension so UR
   // can inspect the file later. We still fall through to the utf-8 decode +
-  // Haiku path below — for PDFs in particular the decoded string has enough
-  // ASCII structure (/Title, text streams) that Haiku can summarize it, and
+  // modelH path below — for PDFs in particular the decoded string has enough
+  // ASCII structure (/Title, text streams) that modelH can summarize it, and
   // the saved file is a supplement rather than a replacement.
   let persistedPath: string | undefined
   let persistedSize: number | undefined
@@ -502,7 +502,7 @@ export async function applyPromptToMarkdown(
     prompt,
     isPreapprovedDomain,
   )
-  const assistantMessage = await queryHaiku({
+  const assistantMessage = await querymodelH({
     systemPrompt: asSystemPrompt([]),
     userPrompt: modelPrompt,
     signal,

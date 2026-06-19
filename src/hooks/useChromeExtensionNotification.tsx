@@ -25,7 +25,7 @@ async function _temp() {
   if (true && !isURAISubscriber()) {
     return {
       key: "chrome-requires-subscription",
-      jsx: <Text color="error">UR in Chrome requires a claude.ai subscription</Text>,
+      jsx: <Text color="error">UR in Chrome requires a ur.ai subscription</Text>,
       priority: "immediate",
       timeoutMs: 5000
     };
@@ -34,14 +34,14 @@ async function _temp() {
   if (!installed && !isRunningOnHomespace()) {
     return {
       key: "chrome-extension-not-detected",
-      jsx: <Text color="warning">Chrome extension not detected · https://claude.ai/chrome to install</Text>,
+      jsx: <Text color="warning">Chrome extension not detected · https://ur.ai/chrome to install</Text>,
       priority: "immediate",
       timeoutMs: 3000
     };
   }
   if (chromeFlag === undefined) {
     return {
-      key: "claude-in-chrome-default-enabled",
+      key: "ur-in-chrome-default-enabled",
       text: "UR in Chrome enabled \xB7 /chrome",
       priority: "low"
     };

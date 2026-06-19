@@ -422,7 +422,7 @@ export async function setup(
       process.env.UR_CODE_ENTRYPOINT !== 'local-agent' &&
       // Same for CCD (UR in Desktop) — apps#29127 passes the flag
       // unconditionally to unlock mid-session bypass switching
-      process.env.UR_CODE_ENTRYPOINT !== 'claude-desktop'
+      process.env.UR_CODE_ENTRYPOINT !== 'ur-desktop'
     ) {
       // Only await if permission mode is set to bypass
       const [isDocker, hasInternet] = await Promise.all([

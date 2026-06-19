@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { BetaMessageStreamParams } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import type { Attributes, Meter, MetricOptions } from '@opentelemetry/api'
 import type { logs } from '@opentelemetry/api-logs'
 import type { LoggerProvider } from '@opentelemetry/sdk-logs'
@@ -114,12 +114,12 @@ type State = {
   // Last API request for bug reports
   lastAPIRequest: Omit<BetaMessageStreamParams, 'messages'> | null
   // Messages from the last API request (ant-only; reference, not clone).
-  // Captures the exact post-compaction, CLAUDE.md-injected message set sent
+  // Captures the exact post-compaction, UR.md-injected message set sent
   // to the API so /share's serialized_conversation.json reflects reality.
   lastAPIRequestMessages: BetaMessageStreamParams['messages'] | null
   // Last auto-mode classifier request(s) for /share transcript
   lastClassifierRequests: unknown[] | null
-  // CLAUDE.md content cached by context.ts for the auto-mode classifier.
+  // UR.md content cached by context.ts for the auto-mode classifier.
   // Breaks the yoloClassifier → agentmd → filesystem → permissions cycle.
   cachedAgentMdContent: string | null
   // In-memory error log for recent errors
@@ -204,7 +204,7 @@ type State = {
   systemPromptSectionCache: Map<string, string | null>
   // Last date emitted to the model (for detecting midnight date changes)
   lastEmittedDate: string | null
-  // Additional directories from --add-dir flag (for CLAUDE.md loading)
+  // Additional directories from --add-dir flag (for UR.md loading)
   additionalDirectoriesForAgentMd: string[]
   // Channel server allowlist from --channels flag (servers whose channel
   // notifications should register this session). Parsed once in main.tsx —
@@ -400,7 +400,7 @@ function getInitialState(): State {
     systemPromptSectionCache: new Map(),
     // Last date emitted to the model
     lastEmittedDate: null,
-    // Additional directories from --add-dir flag (for CLAUDE.md loading)
+    // Additional directories from --add-dir flag (for UR.md loading)
     additionalDirectoriesForAgentMd: [],
     // Channel server allowlist from --channels flag
     allowedChannels: [],
@@ -1234,7 +1234,7 @@ export function setAllowedSettingSources(sources: SettingSource[]): void {
 
 export function preferThirdPartyAuthentication(): boolean {
   // IDE extension should behave as 1P for authentication reasons.
-  return getIsNonInteractiveSession() && STATE.clientType !== 'claude-vscode'
+  return getIsNonInteractiveSession() && STATE.clientType !== 'ur-vscode'
 }
 
 export function setInlinePlugins(plugins: Array<string>): void {
@@ -1571,7 +1571,7 @@ export function addSlowOperation(operation: string, durationMs: number): void {
   if (process.env.USER_TYPE !== 'ant') return
   // Skip tracking for editor sessions (user editing a prompt file in $EDITOR)
   // These are intentionally slow since the user is drafting text
-  if (operation.includes('exec') && operation.includes('claude-prompt-')) {
+  if (operation.includes('exec') && operation.includes('ur-prompt-')) {
     return
   }
   const now = Date.now()
