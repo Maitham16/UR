@@ -42,7 +42,8 @@
     "test": "bun test",
     "smoke": "node ./bin/ur.js --version",
     "secrets:scan": "bash scripts/secret-scan.sh",
-    "package:check": "npm pack --dry-run"
+    "package:check": "npm pack --dry-run",
+    "prepare": "node -e \"\""
   },
   "dependencies": {
     "@alcalzone/ansi-tokenize": "^0.1.0",
