@@ -1,0 +1,26 @@
+{
+  "name": "powerpoint",
+  "version": "0.1.0",
+  "description": "Build, convert, review, and theme PowerPoint decks from UR — through the Office PowerPoint MCP server (python-pptx, ~32 tools, templates) with a python-pptx fallback.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/ur-agent"
+  },
+  "homepage": "https://github.com/Maitham16/ur-agent/tree/master/marketplace-plugins/powerpoint",
+  "repository": "https://github.com/Maitham16/ur-agent",
+  "license": "LicenseRef-UR-Agent-Non-Commercial-Self-Responsibility",
+  "keywords": ["powerpoint", "pptx", "slides", "presentation", "office", "mcp"],
+  "mcpServers": {
+    "powerpoint": {
+      "command": "uvx",
+      "args": ["--from", "office-powerpoint-mcp-server", "ppt_mcp_server"]
+    }
+  },
+  "userConfig": {
+    "PPTX_DIR": {
+      "type": "directory",
+      "title": "Default decks directory",
+      "description": "Where new .pptx files are written when no path is given. Defaults to the current working directory."
+    }
+  }
+}

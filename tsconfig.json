@@ -1,0 +1,51 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "src/*": ["./src/*"],
+      "bun:bundle": ["./src/types/bun-bundle.d.ts"],
+      "@urhq-ai/sdk": ["./src/urhq-sdk.ts"],
+      "@urhq-ai/sdk/error": ["./src/urhq-sdk-error.ts"],
+      "@urhq-ai/sdk/streaming.mjs": ["./src/urhq-sdk.ts"],
+      "@urhq-ai/sdk/resources": ["./src/urhq-sdk.ts"],
+      "@urhq-ai/sdk/resources/index.mjs": ["./src/urhq-sdk.ts"],
+      "@urhq-ai/sdk/resources/messages.js": ["./src/urhq-sdk.ts"],
+      "@urhq-ai/sdk/resources/messages.mjs": ["./src/urhq-sdk.ts"],
+      "@urhq-ai/sdk/resources/messages/messages.mjs": [
+        "./src/urhq-sdk.ts"
+      ],
+      "@urhq-ai/sdk/resources/beta/messages.js": [
+        "./src/urhq-sdk.ts"
+      ],
+      "@urhq-ai/sdk/resources/beta/messages/messages.js": [
+        "./src/urhq-sdk.ts"
+      ],
+      "@urhq-ai/sdk/resources/beta/messages/messages.mjs": [
+        "./src/urhq-sdk.ts"
+      ],
+      "@urhq-ai/sdk/*": ["./src/urhq-sdk.ts"]
+    },
+    "types": ["bun-types"],
+    "lib": ["ESNext"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules", "dist"]
+}

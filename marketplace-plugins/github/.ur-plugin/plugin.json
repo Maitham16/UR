@@ -1,0 +1,31 @@
+{
+  "name": "github",
+  "version": "0.1.0",
+  "description": "Drive GitHub from UR: review and open pull requests, triage issues, and check repo health — through GitHub's official remote MCP server or the gh CLI.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/ur-agent"
+  },
+  "homepage": "https://github.com/Maitham16/ur-agent/tree/master/marketplace-plugins/github",
+  "repository": "https://github.com/Maitham16/ur-agent",
+  "license": "LicenseRef-UR-Agent-Non-Commercial-Self-Responsibility",
+  "keywords": ["github", "pull-request", "issues", "ci", "devops", "mcp"],
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${user_config.GITHUB_TOKEN}"
+      }
+    }
+  },
+  "userConfig": {
+    "GITHUB_TOKEN": {
+      "type": "string",
+      "title": "GitHub token",
+      "description": "Fine-grained or classic personal access token used by the official GitHub MCP server. Scope it to the repositories and toolsets you want UR to reach. The gh CLI uses its own gh auth login session and does not read this value.",
+      "required": true,
+      "sensitive": true
+    }
+  }
+}

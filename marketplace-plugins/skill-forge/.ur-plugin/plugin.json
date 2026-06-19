@@ -1,0 +1,13 @@
+{
+  "name": "skill-forge",
+  "version": "0.1.0",
+  "description": "Have the agent author complete skills for you: describe what you want, and the active model writes a ready-to-use SKILL.md (frontmatter, steps, success criteria) and saves it to your skills directory.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/ur-agent"
+  },
+  "homepage": "https://github.com/Maitham16/ur-agent/tree/master/marketplace-plugins/skill-forge",
+  "repository": "https://github.com/Maitham16/ur-agent",
+  "license": "LicenseRef-UR-Agent-Non-Commercial-Self-Responsibility",
+  "keywords": ["skill", "authoring", "generator", "automation", "meta"]
+}

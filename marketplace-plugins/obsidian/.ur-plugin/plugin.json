@@ -1,0 +1,42 @@
+{
+  "name": "obsidian",
+  "version": "0.1.0",
+  "description": "Turn UR into an Obsidian second-brain operator: capture atomic notes, daily notes, Maps of Content, backlinks, and cited vault search — via direct vault edits or the Obsidian Local REST API MCP server.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/ur-agent"
+  },
+  "homepage": "https://github.com/Maitham16/ur-agent/tree/master/marketplace-plugins/obsidian",
+  "repository": "https://github.com/Maitham16/ur-agent",
+  "license": "LicenseRef-UR-Agent-Non-Commercial-Self-Responsibility",
+  "keywords": ["obsidian", "second-brain", "zettelkasten", "pkm", "notes", "mcp"],
+  "mcpServers": {
+    "obsidian": {
+      "type": "http",
+      "url": "${user_config.OBSIDIAN_API_URL}",
+      "headers": {
+        "Authorization": "Bearer ${user_config.OBSIDIAN_API_KEY}"
+      }
+    }
+  },
+  "userConfig": {
+    "OBSIDIAN_VAULT_PATH": {
+      "type": "directory",
+      "title": "Obsidian vault path",
+      "description": "Absolute path to your vault root. Used for direct file operations, which work even when Obsidian is not running.",
+      "required": true
+    },
+    "OBSIDIAN_API_URL": {
+      "type": "string",
+      "title": "Local REST API MCP URL",
+      "description": "Built-in MCP endpoint of the Obsidian Local REST API plugin. Default is the encrypted localhost port; switch to http://127.0.0.1:27123/mcp/ if you enabled the non-encrypted server.",
+      "default": "https://127.0.0.1:27124/mcp/"
+    },
+    "OBSIDIAN_API_KEY": {
+      "type": "string",
+      "title": "Local REST API key",
+      "description": "API key from the Obsidian Local REST API plugin settings. Only needed for live MCP control of a running vault; direct vault edits do not require it.",
+      "sensitive": true
+    }
+  }
+}

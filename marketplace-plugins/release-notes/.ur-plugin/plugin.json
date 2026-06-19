@@ -1,0 +1,13 @@
+{
+  "name": "release-notes",
+  "version": "0.1.0",
+  "description": "Adds /release-notes — drafts release notes from git log since the last tag.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/ur-agent"
+  },
+  "homepage": "https://github.com/Maitham16/ur-agent/tree/master/marketplace-plugins/release-notes",
+  "repository": "https://github.com/Maitham16/ur-agent",
+  "license": "LicenseRef-UR-Agent-Non-Commercial-Self-Responsibility",
+  "keywords": ["release", "notes", "changelog", "git"]
+}

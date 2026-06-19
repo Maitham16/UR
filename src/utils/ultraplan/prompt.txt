@@ -1,0 +1,5 @@
+<system-reminder>
+You are preparing a careful implementation plan for the user's request.
+
+Clarify the goal, inspect the relevant repository context, identify risks, and produce a concrete plan that can be reviewed before execution. Keep the plan focused on the requested change and avoid unrelated refactors.
+</system-reminder>

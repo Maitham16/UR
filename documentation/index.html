@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>UR Agent Documentation</title>
+    <meta name="description" content="Professional documentation, tutorials, examples, and command reference for UR Agent.">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+
+    <aside class="sidebar" aria-label="Primary navigation">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">UR</div>
+        <div>
+          <strong>UR Agent</strong>
+          <span>Documentation</span>
+        </div>
+      </div>
+
+      <label class="search-box">
+        <span>Search docs</span>
+        <input id="globalSearch" type="search" placeholder="Try workflow, model, PR, A2A">
+      </label>
+
+      <nav class="nav-list" id="sectionNav">
+        <a href="#overview">Overview</a>
+        <a href="#quickstart">Quickstart</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#mental-model">Mental Model</a>
+        <a href="#features">Feature Map</a>
+        <a href="#tutorials">Tutorials</a>
+        <a href="#commands">Command Reference</a>
+        <a href="#slash">Slash Commands</a>
+        <a href="#configuration">Configuration</a>
+        <a href="#project-files">Project Files</a>
+        <a href="#examples">Examples</a>
+        <a href="#troubleshooting">Troubleshooting</a>
+      </nav>
+    </aside>
+
+    <main id="content" class="content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Version 1.14.1</p>
+          <h1>UR Agent Documentation</h1>
+          <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR Agent.</p>
+        </div>
+        <div class="topbar-actions">
+          <a class="button" href="#quickstart">Start</a>
+          <a class="button secondary" href="#commands">Commands</a>
+        </div>
+      </header>
+
+      <section id="overview" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">What UR Is</p>
+          <h2>Terminal coding agent with local-first model routing</h2>
+          <p>UR runs from the terminal, uses the local Ollama app for model calls, and combines project context, tools, MCP, plugins, skills, workflows, automations, and agent orchestration into one CLI.</p>
+        </div>
+        <div class="stat-grid">
+          <article>
+            <strong>Local-first runtime</strong>
+            <span>Model traffic goes through the local Ollama endpoint. Local and Ollama Cloud-backed models exposed by the app are valid.</span>
+          </article>
+          <article>
+            <strong>Interactive and headless</strong>
+            <span>Use <code>ur</code> for iterative work or <code>ur -p</code> for scripts, CI, webhooks, SDK calls, and agent handoffs.</span>
+          </article>
+          <article>
+            <strong>Agent platform</strong>
+            <span>Workflows, patterns, crews, goals, evals, memory, knowledge, A2A, provenance, and templates are first-class commands.</span>
+          </article>
+          <article>
+            <strong>Release checks</strong>
+            <span>Typecheck, tests, bundle verification, smoke, package checks, and secret scan are part of the release path.</span>
+          </article>
+        </div>
+      </section>
+
+      <section id="quickstart" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Install And Run</p>
+          <h2>Quickstart</h2>
+          <p>Install from npm, verify the binary, then choose interactive or print mode.</p>
+        </div>
+        <div class="steps">
+          <article class="step">
+            <span>1</span>
+            <h3>Install</h3>
+            <pre><code>npm install -g ur-agent
+ur --version</code></pre>
+          </article>
+          <article class="step">
+            <span>2</span>
+            <h3>Start a session</h3>
+            <pre><code>ur
+ur --model qwen3-coder:480b-cloud</code></pre>
+          </article>
+          <article class="step">
+            <span>3</span>
+            <h3>Run once in scripts</h3>
+            <pre><code>ur -p "Summarize this repository"
+ur -p --output-format json "Review the current diff"</code></pre>
+          </article>
+        </div>
+        <div class="callout">
+          <strong>Runtime requirement</strong>
+          <p>UR expects Bun and a local Ollama app/server at <code>http://localhost:11434/api</code>. Set <code>OLLAMA_MODEL</code> or <code>UR_MODEL</code> to force a model; otherwise UR routes from the models exposed by Ollama.</p>
+        </div>
+      </section>
+
+      <section id="architecture" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Runtime</p>
+          <h2>Architecture</h2>
+          <p>The CLI is the control plane. Project context and <code>.ur</code> assets feed agent orchestration, which uses local Ollama models and approved tools to produce code, docs, PRs, reports, and automation outputs.</p>
+        </div>
+        <figure class="diagram">
+          <img src="assets/ur-architecture.svg" alt="UR Agent runtime architecture diagram">
+        </figure>
+      </section>
+
+      <section id="mental-model" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">How To Think About It</p>
+          <h2>Mental model</h2>
+        </div>
+        <div class="concept-grid">
+          <article>
+            <h3>Session</h3>
+            <p>A conversation with tools, project context, slash commands, memory, and resumable history.</p>
+          </article>
+          <article>
+            <h3>Headless run</h3>
+            <p><code>ur -p</code> executes one prompt and exits. This is the base for automations, evals, triggers, SDK calls, and A2A tasks.</p>
+          </article>
+          <article>
+            <h3>Project context</h3>
+            <p><code>UR.md</code>, <code>AGENTS.md</code>, <code>.ur/agents</code>, <code>.ur/workflows</code>, memory, knowledge, and settings shape behavior.</p>
+          </article>
+          <article>
+            <h3>Permission boundary</h3>
+            <p>Tool access is controlled by permission mode, allowed/disallowed tools, sandbox settings, and user approval.</p>
+          </article>
+          <article>
+            <h3>Agent orchestration</h3>
+            <p>Patterns, workflows, crews, goals, automations, and evals coordinate multiple specialized runs.</p>
+          </article>
+          <article>
+            <h3>Evidence and verification</h3>
+            <p>Self-review, verifier gates, evals, claim ledgers, browser QA, and traces help keep outputs auditable.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="features" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Capabilities</p>
+          <h2>Feature map</h2>
+          <p>Each group below links the major UR surfaces to when you should use them.</p>
+        </div>
+        <div id="featureGrid" class="feature-grid"></div>
+      </section>
+
+      <section id="tutorials" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Tutorials</p>
+          <h2>Complete workflows</h2>
+          <p>Use these as practical starting points for the agent features.</p>
+        </div>
+        <div class="tutorials">
+          <article>
+            <h3>Ship a coding change through PR</h3>
+            <ol>
+              <li>Start with <code>ur</code> and make the implementation.</li>
+              <li>Run <code>ur agent-task status</code> to see branch and task state.</li>
+              <li>Run <code>ur agent-task diff</code> for the working diff summary.</li>
+              <li>Dry-run PR creation: <code>ur agent-task pr --create --dry-run</code>.</li>
+              <li>Create only after review passes: <code>ur agent-task pr --create</code>.</li>
+            </ol>
+            <pre><code>ur agent-task status
+ur agent-task diff
+ur agent-task pr --create --dry-run</code></pre>
+          </article>
+
+          <article>
+            <h3>Run a checkpointed workflow</h3>
+            <ol>
+              <li>Create a sample workflow under <code>.ur/workflows</code>.</li>
+              <li>Validate and inspect the DAG.</li>
+              <li>Run it offline first, then live with a concurrency cap.</li>
+            </ol>
+            <pre><code>ur workflow init release
+ur workflow validate release
+ur workflow graph release --ascii
+ur workflow run release --dry-run
+ur workflow run release --live --concurrency 2</code></pre>
+          </article>
+
+          <article>
+            <h3>Use a multi-agent pattern</h3>
+            <ol>
+              <li>List patterns: PEER, DOE, concurrent, handoff, debate.</li>
+              <li>Preview the plan for your task.</li>
+              <li>Save or execute the compiled workflow.</li>
+            </ol>
+            <pre><code>ur pattern list
+ur pattern show peer
+ur pattern run peer "Refactor auth and verify tests" --save
+ur pattern run concurrent "Audit browser QA" --execute --dry-run</code></pre>
+          </article>
+
+          <article>
+            <h3>Build a project knowledge base</h3>
+            <ol>
+              <li>Add curated files, directories, and notes.</li>
+              <li>Build lexical or embedding indexes.</li>
+              <li>Search with provenance.</li>
+            </ol>
+            <pre><code>ur knowledge add docs --label docs
+ur knowledge add --note "Release requires bundle, smoke, package check"
+ur knowledge build
+ur knowledge search "release checks"</code></pre>
+          </article>
+
+          <article>
+            <h3>Coordinate a headless crew</h3>
+            <ol>
+              <li>Create a crew from a long goal.</li>
+              <li>Add or inspect tasks.</li>
+              <li>Run workers in dry-run mode first.</li>
+            </ol>
+            <pre><code>ur crew create docs --goal "Document every public agent feature"
+ur crew show docs
+ur crew run docs --workers 3 --dry-run</code></pre>
+          </article>
+
+          <article>
+            <h3>Install recurring automations</h3>
+            <ol>
+              <li>Create project-local automation specs.</li>
+              <li>Dry-run due jobs.</li>
+              <li>Install a resident scheduler when ready.</li>
+            </ol>
+            <pre><code>ur automation create nightly --schedule "0 9 * * 1-5" --prompt "Review open tasks"
+ur automation run-due --dry-run
+ur automation install --platform launchd --interval 300
+ur automation status</code></pre>
+          </article>
+
+          <article>
+            <h3>Drive a change from a spec</h3>
+            <ol>
+              <li>Create a spec with requirements, design, tasks, and approval state.</li>
+              <li>Inspect or approve each phase.</li>
+              <li>Run the task list one item at a time, or use <code>--all</code>.</li>
+            </ol>
+            <pre><code>ur spec init demo --goal "1. add a utils.add function 2. add a test"
+ur spec status demo
+ur spec approve demo requirements
+ur spec run demo --all --dry-run</code></pre>
+          </article>
+
+          <article>
+            <h3>Escalate hard work to an oracle model</h3>
+            <ol>
+              <li>Ask UR to plan the fast/oracle model route.</li>
+              <li>Run routine work on the fast tier.</li>
+              <li>Force or auto-trigger oracle escalation for hard debugging and review.</li>
+            </ol>
+            <pre><code>ur escalate plan "debug the scheduler race"
+ur escalate run "refactor the cache layer" --force-oracle --dry-run
+ur escalate oracle "is this lock-free queue correct?"</code></pre>
+          </article>
+
+          <article>
+            <h3>Compare multiple agent attempts</h3>
+            <ol>
+              <li>Run multiple agents against the same task in isolated worktrees.</li>
+              <li>Let the deterministic self-review gate score the candidate diffs.</li>
+              <li>Apply the winner only when you are ready.</li>
+            </ol>
+            <pre><code>ur arena "implement a debounce helper" --agents 2 --dry-run
+ur arena "fix the parser" --agents 3
+ur arena "fix the parser" --agents 3 --apply</code></pre>
+          </article>
+
+          <article>
+            <h3>Repair failing CI in a bounded loop</h3>
+            <ol>
+              <li>Run the build or test command.</li>
+              <li>Summarize the failure and launch a fix attempt.</li>
+              <li>Rerun until the command passes or the retry budget is exhausted.</li>
+            </ol>
+            <pre><code>ur ci-loop --command "bun test" --dry-run
+ur ci-loop --command "bun test" --max-attempts 3
+ur ci-loop --from-log failure.log --dry-run</code></pre>
+          </article>
+
+          <article>
+            <h3>Capture reviewable artifacts</h3>
+            <ol>
+              <li>Capture the current diff or a test run under <code>.ur/artifacts</code>.</li>
+              <li>Review the saved body and status.</li>
+              <li>Approve, reject, or add feedback.</li>
+            </ol>
+            <pre><code>ur artifacts capture-diff
+ur artifacts capture-tests --command "bun test"
+ur artifacts show 1
+ur artifacts approve 1</code></pre>
+          </article>
+        </div>
+      </section>
+
+      <section id="commands" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Reference</p>
+          <h2>CLI command reference</h2>
+          <p>The table covers the public top-level commands from <code>ur --help</code>, with examples and common next steps.</p>
+        </div>
+        <div class="toolbar">
+          <div class="filter-group" id="commandFilters" aria-label="Command category filters"></div>
+          <button class="button secondary compact" id="clearFilters" type="button">Clear</button>
+        </div>
+        <div id="commandGrid" class="command-grid"></div>
+      </section>
+
+      <section id="slash" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Interactive Mode</p>
+          <h2>Slash and local commands</h2>
+          <p>Inside an interactive session, use <code>/help</code> to see what is enabled for your context. These are the main command families shipped by the repo.</p>
+        </div>
+        <div id="slashGrid" class="reference-grid"></div>
+      </section>
+
+      <section id="configuration" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Operate Safely</p>
+          <h2>Configuration and security</h2>
+        </div>
+        <div class="reference-grid">
+          <article>
+            <h3>Models</h3>
+            <pre><code>OLLAMA_MODEL=qwen3-coder:480b-cloud ur
+UR_MODEL=qwen3-coder:480b-cloud ur
+ur --model qwen2.5-coder:latest</code></pre>
+            <p><code>OLLAMA_MODEL</code> wins over <code>UR_MODEL</code>. Without either, UR routes from local Ollama model inventory.</p>
+          </article>
+          <article>
+            <h3>Permissions</h3>
+            <pre><code>ur -p --allowed-tools "Read,Edit,Bash(git:*)" \
+  --disallowed-tools "Bash(rm:*)" \
+  "Review the current diff"</code></pre>
+            <p>Use explicit tool boundaries for automation. Reserve <code>--dangerously-skip-permissions</code> for disposable sandboxes.</p>
+          </article>
+          <article>
+            <h3>Verifier</h3>
+            <pre><code>UR_VERIFIER_MODE=strict
+UR_VERIFIER_MODE=loose
+UR_VERIFIER_MODE=off
+UR_VERIFIER_AUTO_SUBAGENT=1</code></pre>
+            <p>L1 gates catch false done claims and loops. <code>/verify</code> manually runs deeper verification.</p>
+          </article>
+          <article>
+            <h3>MCP and plugins</h3>
+            <pre><code>ur mcp list
+ur mcp add-json local-tools '{"command":"node","args":["server.js"]}'
+ur plugin list
+ur plugin install &lt;plugin&gt;</code></pre>
+            <p>MCP servers and plugins expand tool access. Treat them as trusted code.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="project-files" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Workspace Layout</p>
+          <h2>Project files UR understands</h2>
+        </div>
+        <div id="fileGrid" class="reference-grid"></div>
+      </section>
+
+      <section id="examples" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Examples</p>
+          <h2>Copy-ready examples</h2>
+          <p>Use these snippets as templates for common workflows.</p>
+        </div>
+        <div id="exampleGrid" class="examples-grid"></div>
+      </section>
+
+      <section id="troubleshooting" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Debugging</p>
+          <h2>Troubleshooting</h2>
+        </div>
+        <div class="reference-grid">
+          <article>
+            <h3>Installed version is old</h3>
+            <pre><code>npm uninstall -g ur-agent
+npm install -g ur-agent@latest --registry=https://registry.npmjs.org/
+hash -r
+which -a ur
+ur --version</code></pre>
+          </article>
+          <article>
+            <h3>Ollama model not found</h3>
+            <pre><code>ollama list
+ur model-doctor
+ur model-route "Fix a TypeScript test failure"</code></pre>
+          </article>
+          <article>
+            <h3>Automation did not run</h3>
+            <pre><code>ur automation list
+ur automation status
+ur automation run-due --dry-run
+ur automation daemon --once --dry-run</code></pre>
+          </article>
+          <article>
+            <h3>Need evidence of what happened</h3>
+            <pre><code>/trace 20
+ur agent-inspect --file session.jsonl
+ur artifacts list
+ur eval report starter
+ur claim-ledger validate</code></pre>
+          </article>
+          <article>
+            <h3>New agent-platform command is missing</h3>
+            <pre><code>ur --version
+ur --help | grep -E "spec|arena|escalate|ci-loop|artifacts"
+npm install -g ur-agent@latest --registry=https://registry.npmjs.org/
+hash -r</code></pre>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <button class="back-to-top" id="backToTop" type="button" aria-label="Back to top">Top</button>
+    <script src="app.js"></script>
+  </body>
+</html>

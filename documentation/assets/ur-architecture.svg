@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="560" viewBox="0 0 1120 560" role="img" aria-labelledby="title desc">
+  <title id="title">UR Agent runtime architecture</title>
+  <desc id="desc">A diagram showing users, the UR CLI, project context, tools, agent orchestration, local Ollama models, and outputs.</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#eef6f3"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#10201b" flood-opacity=".14"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M2 2 L10 6 L2 10 Z" fill="#2f6f63"/>
+    </marker>
+  </defs>
+  <rect width="1120" height="560" rx="28" fill="url(#panel)"/>
+  <g filter="url(#shadow)">
+    <rect x="48" y="64" width="180" height="104" rx="16" fill="#ffffff" stroke="#d8e4df"/>
+    <text x="72" y="102" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#14231f">User</text>
+    <text x="72" y="132" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">Terminal, CI,</text>
+    <text x="72" y="152" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">webhook, SDK</text>
+
+    <rect x="314" y="52" width="244" height="128" rx="18" fill="#ffffff" stroke="#cfe0da"/>
+    <text x="344" y="94" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="800" fill="#14231f">UR CLI</text>
+    <text x="344" y="126" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">Interactive TUI, `ur -p`,</text>
+    <text x="344" y="146" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">slash commands, workflows</text>
+
+    <rect x="672" y="52" width="200" height="128" rx="18" fill="#ffffff" stroke="#cfe0da"/>
+    <text x="702" y="94" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="800" fill="#14231f">Ollama</text>
+    <text x="702" y="126" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">Local endpoint, model</text>
+    <text x="702" y="146" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">routing, embeddings</text>
+
+    <rect x="64" y="274" width="220" height="150" rx="18" fill="#ffffff" stroke="#d8e4df"/>
+    <text x="94" y="314" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="800" fill="#14231f">Project Context</text>
+    <text x="94" y="346" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">UR.md, AGENTS.md,</text>
+    <text x="94" y="366" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">.ur/ settings, memory,</text>
+    <text x="94" y="386" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">knowledge, workflows</text>
+
+    <rect x="362" y="260" width="270" height="178" rx="20" fill="#ffffff" stroke="#cfe0da"/>
+    <text x="396" y="302" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" fill="#14231f">Agent Orchestration</text>
+    <text x="396" y="334" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">Patterns, crews, goals,</text>
+    <text x="396" y="354" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">automations, evals,</text>
+    <text x="396" y="374" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">A2A delegation</text>
+
+    <rect x="730" y="260" width="300" height="178" rx="20" fill="#ffffff" stroke="#cfe0da"/>
+    <text x="764" y="302" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" fill="#14231f">Tools And Outputs</text>
+    <text x="764" y="334" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">Read/Edit/Bash, MCP, plugins,</text>
+    <text x="764" y="354" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">PRs, docs, reports, tests,</text>
+    <text x="764" y="374" font-family="Inter, Arial, sans-serif" font-size="14" fill="#49615b">published artifacts</text>
+  </g>
+  <g fill="none" stroke="#2f6f63" stroke-width="3" marker-end="url(#arrow)">
+    <path d="M228 116 H304"/>
+    <path d="M558 116 H660"/>
+    <path d="M436 180 V248"/>
+    <path d="M314 328 H294"/>
+    <path d="M632 348 H718"/>
+    <path d="M868 260 V190"/>
+  </g>
+  <g font-family="Inter, Arial, sans-serif" font-size="13" fill="#31514a">
+    <text x="248" y="102">commands</text>
+    <text x="590" y="102">chat/embed</text>
+    <text x="454" y="220">plans</text>
+    <text x="300" y="314">context</text>
+    <text x="654" y="334">tools</text>
+    <text x="888" y="224">results</text>
+  </g>
+</svg>

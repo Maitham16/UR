@@ -1,0 +1,39 @@
+{
+  "name": "gitlab",
+  "version": "0.1.0",
+  "description": "Drive GitLab from UR: review and open merge requests, triage issues, and watch CI/CD pipelines — through GitLab's official MCP server or the glab CLI.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/ur-agent"
+  },
+  "homepage": "https://github.com/Maitham16/ur-agent/tree/master/marketplace-plugins/gitlab",
+  "repository": "https://github.com/Maitham16/ur-agent",
+  "license": "LicenseRef-UR-Agent-Non-Commercial-Self-Responsibility",
+  "keywords": ["gitlab", "merge-request", "issues", "ci-cd", "pipeline", "mcp"],
+  "mcpServers": {
+    "gitlab": {
+      "type": "http",
+      "url": "${user_config.GITLAB_MCP_URL}"
+    }
+  },
+  "userConfig": {
+    "GITLAB_MCP_URL": {
+      "type": "string",
+      "title": "GitLab MCP server URL",
+      "description": "HTTP endpoint of the GitLab MCP server. Use gitlab.com or your self-managed host. Authentication is handled by OAuth on first connect (requires GitLab Duo, beta features on).",
+      "default": "https://gitlab.com/api/v4/mcp"
+    },
+    "GITLAB_HOST": {
+      "type": "string",
+      "title": "glab host",
+      "description": "Hostname the glab CLI targets. Set to your instance for self-managed GitLab.",
+      "default": "gitlab.com"
+    },
+    "GITLAB_TOKEN": {
+      "type": "string",
+      "title": "GitLab token (glab, optional)",
+      "description": "Personal access token (api scope) for the glab CLI on self-managed or CI. Optional: glab can also use its own glab auth login session.",
+      "sensitive": true
+    }
+  }
+}

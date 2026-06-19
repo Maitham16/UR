@@ -1,0 +1,74 @@
+{
+  "name": "ur-inline-diffs",
+  "displayName": "UR Inline Diffs",
+  "description": "Review UR inline diff bundles from .ur/ide/diffs inside VS Code.",
+  "version": "1.15.0",
+  "publisher": "ur-agent",
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:urInlineDiffs",
+    "onCommand:urInlineDiffs.refresh",
+    "onCommand:urInlineDiffs.open",
+    "onCommand:urInlineDiffs.comment"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ur",
+          "title": "UR",
+          "icon": "media/ur.svg"
+        }
+      ]
+    },
+    "views": {
+      "ur": [
+        {
+          "id": "urInlineDiffs",
+          "name": "Inline Diffs"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "urInlineDiffs.refresh",
+        "title": "UR: Refresh Inline Diffs"
+      },
+      {
+        "command": "urInlineDiffs.open",
+        "title": "UR: Open Inline Diff"
+      },
+      {
+        "command": "urInlineDiffs.comment",
+        "title": "UR: Comment On Inline Diff"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "urInlineDiffs.refresh",
+          "when": "view == urInlineDiffs",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "urInlineDiffs.open",
+          "when": "view == urInlineDiffs && viewItem == diff",
+          "group": "inline"
+        },
+        {
+          "command": "urInlineDiffs.comment",
+          "when": "view == urInlineDiffs && viewItem == diff",
+          "group": "inline"
+        }
+      ]
+    }
+  }
+}

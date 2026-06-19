@@ -1,0 +1,27 @@
+{
+  "name": "miro",
+  "version": "0.1.0",
+  "description": "Create and read Miro boards from UR: spin up boards, generate diagrams, drop sticky-note clusters, and summarize a board — through Miro's official MCP server (OAuth) with a REST API fallback.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/ur-agent"
+  },
+  "homepage": "https://github.com/Maitham16/ur-agent/tree/master/marketplace-plugins/miro",
+  "repository": "https://github.com/Maitham16/ur-agent",
+  "license": "LicenseRef-UR-Agent-Non-Commercial-Self-Responsibility",
+  "keywords": ["miro", "whiteboard", "diagram", "board", "brainstorm", "mcp"],
+  "mcpServers": {
+    "miro": {
+      "type": "http",
+      "url": "${user_config.MIRO_MCP_URL}"
+    }
+  },
+  "userConfig": {
+    "MIRO_MCP_URL": {
+      "type": "string",
+      "title": "Miro MCP server URL",
+      "description": "Official Miro MCP endpoint. Authentication is OAuth 2.1 with dynamic client registration on first connect; you pick the team to grant access to. Enterprise accounts need admin approval.",
+      "default": "https://mcp.miro.com/"
+    }
+  }
+}

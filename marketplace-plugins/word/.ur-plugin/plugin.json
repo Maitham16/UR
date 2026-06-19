@@ -1,0 +1,26 @@
+{
+  "name": "word",
+  "version": "0.1.0",
+  "description": "Create, convert, review, and edit Microsoft Word documents from UR — through the Office Word MCP server (python-docx, ~54 tools) with a pandoc / python-docx fallback.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/ur-agent"
+  },
+  "homepage": "https://github.com/Maitham16/ur-agent/tree/master/marketplace-plugins/word",
+  "repository": "https://github.com/Maitham16/ur-agent",
+  "license": "LicenseRef-UR-Agent-Non-Commercial-Self-Responsibility",
+  "keywords": ["word", "docx", "document", "office", "mcp"],
+  "mcpServers": {
+    "word": {
+      "command": "uvx",
+      "args": ["--from", "office-word-mcp-server", "word_mcp_server"]
+    }
+  },
+  "userConfig": {
+    "DOCX_DIR": {
+      "type": "directory",
+      "title": "Default documents directory",
+      "description": "Where new .docx files are written when no path is given. Defaults to the current working directory."
+    }
+  }
+}

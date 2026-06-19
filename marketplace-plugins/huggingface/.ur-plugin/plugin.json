@@ -1,0 +1,36 @@
+{
+  "name": "huggingface",
+  "version": "0.1.0",
+  "description": "Work the Hugging Face Hub from UR: search and vet models and datasets, read model cards, and download weights — through the official Hugging Face MCP server or the hf CLI.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/ur-agent"
+  },
+  "homepage": "https://github.com/Maitham16/ur-agent/tree/master/marketplace-plugins/huggingface",
+  "repository": "https://github.com/Maitham16/ur-agent",
+  "license": "LicenseRef-UR-Agent-Non-Commercial-Self-Responsibility",
+  "keywords": ["huggingface", "models", "datasets", "machine-learning", "hub", "mcp"],
+  "mcpServers": {
+    "huggingface": {
+      "type": "http",
+      "url": "https://huggingface.co/mcp",
+      "headers": {
+        "Authorization": "Bearer ${user_config.HF_TOKEN}"
+      }
+    }
+  },
+  "userConfig": {
+    "HF_TOKEN": {
+      "type": "string",
+      "title": "Hugging Face token",
+      "description": "Access token used by the official Hugging Face MCP server. A read token is enough for search and gated downloads; use a write token only if you intend to push. The hf CLI uses its own hf auth login session or the HF_TOKEN environment variable.",
+      "required": true,
+      "sensitive": true
+    },
+    "HF_DOWNLOAD_DIR": {
+      "type": "directory",
+      "title": "Default download directory",
+      "description": "Where /hf-download places files when no target is given. Defaults to a folder named after the repo in the current directory."
+    }
+  }
+}
