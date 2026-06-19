@@ -1,7 +1,6 @@
 node_modules/
 .git/
 .bun/
-dist/
 build/
 coverage/
 .nyc_output/

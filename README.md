@@ -128,7 +128,7 @@ bun run dev
 bun test
 bun run smoke
 npm pack --dry-run
-bun run build
+bun run bundle
 ```
 
 The package is configured for GitHub installation through `github:Maitham16/ur-agent`. It is not published to the npm registry yet.

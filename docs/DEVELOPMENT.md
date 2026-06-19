@@ -36,12 +36,12 @@ bun run secrets:scan
 npm pack --dry-run
 ```
 
-`bun run typecheck` and `bun run build` are kept as development commands, but this fork still has pre-existing type and bundle issues. The GitHub install path uses the runnable source launcher in `bin/ur.js`.
+`bun run typecheck` and `bun run bundle` are kept as development commands. The GitHub install path uses the bundled launcher in `dist/cli.js`.
 
 ## Build
 
 ```sh
-bun run build
+bun run bundle
 ```
 
 The build output goes to `dist/`, which is ignored by Git.

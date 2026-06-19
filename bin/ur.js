@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const entrypoint = resolve(packageRoot, 'src/entrypoints/cli.tsx')
+const bundledEntrypoint = resolve(packageRoot, 'dist/cli.js')
 const preload = resolve(packageRoot, 'plugins/bunBundleDev.ts')
 const packageJsonPath = resolve(packageRoot, 'package.json')
 
@@ -36,27 +37,31 @@ const issuesUrl =
 const bun = process.env.BUN_BIN || process.env.BUN_EXECUTABLE || 'bun'
 const ollamaModel =
   process.env.OLLAMA_MODEL || process.env.UR_MODEL || 'llama3.2'
-const args = [
-  'run',
-  '--preload',
-  preload,
-  '--define',
-  defineMacro('MACRO.VERSION', version),
-  '--define',
-  defineMacro('MACRO.BUILD_TIME', ''),
-  '--define',
-  defineMacro('MACRO.PACKAGE_URL', packageName),
-  '--define',
-  defineMacro('MACRO.NATIVE_PACKAGE_URL', undefined),
-  '--define',
-  defineMacro('MACRO.FEEDBACK_CHANNEL', issuesUrl),
-  '--define',
-  defineMacro('MACRO.ISSUES_EXPLAINER', `file an issue at ${issuesUrl}`),
-  '--define',
-  defineMacro('MACRO.VERSION_CHANGELOG', ''),
-  entrypoint,
-  ...process.argv.slice(2),
-]
+const userArgs = process.argv.slice(2)
+const args =
+  existsSync(bundledEntrypoint)
+    ? [bundledEntrypoint, ...userArgs]
+    : [
+        'run',
+        '--preload',
+        preload,
+        '--define',
+        defineMacro('MACRO.VERSION', version),
+        '--define',
+        defineMacro('MACRO.BUILD_TIME', ''),
+        '--define',
+        defineMacro('MACRO.PACKAGE_URL', packageName),
+        '--define',
+        defineMacro('MACRO.NATIVE_PACKAGE_URL', undefined),
+        '--define',
+        defineMacro('MACRO.FEEDBACK_CHANNEL', issuesUrl),
+        '--define',
+        defineMacro('MACRO.ISSUES_EXPLAINER', `file an issue at ${issuesUrl}`),
+        '--define',
+        defineMacro('MACRO.VERSION_CHANGELOG', ''),
+        entrypoint,
+        ...userArgs,
+      ]
 
 const child = spawn(bun, args, {
   cwd: process.cwd(),
