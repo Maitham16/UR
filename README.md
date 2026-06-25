@@ -24,7 +24,7 @@ bun remove -g ur-agent
 ### Then, install:
 
 ```sh
-bun add -g github:Maitham16/ur-agent
+bun add -g github:Maitham16/UR-mapek
 ur --version
 ur
 ```
@@ -32,7 +32,7 @@ ur
 If you prefer npm for the global install, Bun is still required at runtime:
 
 ```sh
-npm install -g github:Maitham16/ur-agent
+npm install -g github:Maitham16/UR-mapek
 ur --version
 ```
 
@@ -131,7 +131,7 @@ npm pack --dry-run
 bun run bundle
 ```
 
-The package is configured for GitHub installation through `github:Maitham16/ur-agent`. It is not published to the npm registry yet.
+The package is configured for GitHub installation through `github:Maitham16/UR-mapek`. It is not published to the npm registry yet.
 
 ## Designed By
 
