@@ -303,12 +303,13 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       // Note: diff:back is handled by left arrow in detail mode
     },
   },
-  // Model picker effort cycling (ant-only)
+  // Model picker effort cycling + thinking toggle
   {
     context: 'ModelPicker',
     bindings: {
       left: 'modelPicker:decreaseEffort',
       right: 'modelPicker:increaseEffort',
+      t: 'modelPicker:toggleThinking',
     },
   },
   // Select component navigation (used by /model, /resume, permission prompts, etc.)

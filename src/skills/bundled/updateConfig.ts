@@ -8,7 +8,13 @@ import { registerBundledSkill } from '../bundledSkills.js'
  * This keeps the skill prompt in sync with the actual types.
  */
 function generateSettingsSchema(): string {
-  const jsonSchema = toJSONSchema(SettingsSchema(), { io: 'input' })
+  // `unrepresentable: 'any'` keeps the conversion from throwing on Zod types
+  // that have no JSON Schema equivalent (e.g. the `z.undefined()` branch in
+  // the enabledPlugins union); those become an open `{}` schema instead.
+  const jsonSchema = toJSONSchema(SettingsSchema(), {
+    io: 'input',
+    unrepresentable: 'any',
+  })
   return jsonStringify(jsonSchema, null, 2)
 }
 
