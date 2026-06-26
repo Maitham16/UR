@@ -205,11 +205,22 @@ export function cacheOllamaModelMetadata(
   }
 }
 
+// Cloud models have large server-side context; /api/show under-reports it — floor it.
+const OLLAMA_CLOUD_MIN_CONTEXT = 131072
+
+export function isOllamaCloudModel(model: string): boolean {
+  return /[-:]cloud$/i.test(model.trim())
+}
+
 export function getOllamaContextLengthForModel(
   model: string,
 ): number | undefined {
-  return ollamaModelMetadataByName.get(normalizeOllamaModelName(model))
+  const cached = ollamaModelMetadataByName.get(normalizeOllamaModelName(model))
     ?.contextLength
+  if (isOllamaCloudModel(model)) {
+    return Math.max(cached ?? 0, OLLAMA_CLOUD_MIN_CONTEXT)
+  }
+  return cached
 }
 
 export function clearOllamaModelMetadataCacheForTests(): void {

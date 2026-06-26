@@ -4,7 +4,7 @@
 
 ### Fixed
 - **Clipboard image paste.** An image the clipboard reported as present but the native reader couldn't decode was silently dropped — "found in clipboard but not attached." `getImageFromClipboard` now falls back to the osascript path instead of treating a native `null` as authoritative.
-- **Token truncation on Ollama Cloud models.** An explicit `UR_OLLAMA_NUM_CTX` is no longer capped by the context length reported by `/api/show`, which is frequently missing or wrong for cloud models and silently truncated prompts. Pair with `OLLAMA_CONTEXT_TOKENS` to lift the auto-compaction threshold the same way.
+- **Token truncation on Ollama Cloud models.** Cloud models (the `-cloud` / `:cloud` suffix) now default to a 128K-token context floor for both `num_ctx` and auto-compaction, instead of the small or missing value `/api/show` reports for them — so prompts are no longer silently truncated, with no env vars required. The reported value is still used when it is larger, and `UR_OLLAMA_NUM_CTX` (no longer capped to the detected value) / `OLLAMA_CONTEXT_TOKENS` still override.
 
 ### Changed
 - **Default model** is now `qwen3-coder:480b-cloud` instead of `llama3.2`, so a session started without an explicit model no longer falls back to a 3B model.
