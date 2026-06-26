@@ -36,7 +36,7 @@ const issuesUrl =
 
 const bun = process.env.BUN_BIN || process.env.BUN_EXECUTABLE || 'bun'
 const ollamaModel =
-  process.env.OLLAMA_MODEL || process.env.UR_MODEL || 'llama3.2'
+  process.env.OLLAMA_MODEL || process.env.UR_MODEL || 'qwen3-coder:480b-cloud'
 const userArgs = process.argv.slice(2)
 const args =
   existsSync(bundledEntrypoint)

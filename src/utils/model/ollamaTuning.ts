@@ -33,7 +33,8 @@ export function computeOllamaNumCtx(input: NumCtxInput): number | undefined {
       : n
 
   if (override !== undefined) {
-    return override > 0 ? cap(override) : undefined
+    // explicit override wins; detected context is unreliable for cloud models
+    return override > 0 ? override : undefined
   }
 
   const headroom = maxTokens > 0 ? maxTokens : OUTPUT_HEADROOM_TOKENS

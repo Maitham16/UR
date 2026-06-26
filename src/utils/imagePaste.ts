@@ -141,7 +141,8 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
       }
       const native = readClipboard(IMAGE_MAX_WIDTH, IMAGE_MAX_HEIGHT)
       if (!native) {
-        return null
+        // native reader can miss formats detection caught — fall back to osascript
+        throw new Error('native clipboard read returned null')
       }
       // The native path caps dimensions but not file size. A complex
       // 2000×2000 PNG can still exceed the 3.75MB raw / 5MB base64 API
