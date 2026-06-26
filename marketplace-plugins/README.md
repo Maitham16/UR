@@ -23,12 +23,16 @@ them are published.
 | [`word`](./word) | `/docx-new` (+3) | Create, convert, review, and edit Word documents — via the Office Word MCP server or a pandoc / python-docx fallback. |
 | [`powerpoint`](./powerpoint) | `/pptx-new` (+3) | Build, convert, review, and theme PowerPoint decks — via the Office PowerPoint MCP server or a python-pptx fallback. |
 | [`miro`](./miro) | `/miro-board` (+3) | Create boards, diagrams, and sticky clusters and summarize boards — via Miro's official MCP server or the REST API. |
+| [`skill-forge`](./skill-forge) | `/forge-skill` (+1) | The active model authors a complete `SKILL.md` from your description and saves it to your skills directory. |
 
-The last seven are **integration plugins**: each bundles an official MCP server,
+Seven of these are **integration plugins**: each bundles an official MCP server,
 several slash commands, and a methodology skill, and prompts for its config
 (tokens, vault path, output folders) on enable. The Office plugins run their MCP
 server through `uvx` (install `uv`) and fall back to local Python libraries.
 Secrets are stored in secure storage, never in plaintext settings.
+
+[`skill-forge`](./skill-forge) is a **meta plugin** (no MCP): its commands run as
+prompts, so the active session model authors and saves the skill for you.
 
 ## Adding a new plugin
 

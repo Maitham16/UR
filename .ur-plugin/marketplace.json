@@ -5,7 +5,7 @@
     "url": "https://github.com/Maitham16/ur-agent"
   },
   "metadata": {
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "First-party plugins for UR Agent. This marketplace is hosted in the same repository as the agent itself."
   },
   "plugins": [
@@ -99,6 +99,13 @@
       "description": "/miro-board, /miro-diagram, /miro-stickies, /miro-export — create boards, diagrams, and sticky clusters and summarize boards via Miro's official MCP server or the REST API.",
       "category": "integration",
       "tags": ["miro", "whiteboard", "diagram", "board", "brainstorm", "mcp"]
+    },
+    {
+      "name": "skill-forge",
+      "source": "./marketplace-plugins/skill-forge",
+      "description": "/forge-skill, /skill-refine — the active model authors a complete SKILL.md from your description and saves it to your skills directory. Complements the built-in /create-skill scaffolder.",
+      "category": "meta",
+      "tags": ["skill", "authoring", "generator", "automation", "meta"]
     }
   ]
 }
