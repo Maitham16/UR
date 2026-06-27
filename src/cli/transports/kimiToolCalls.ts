@@ -224,6 +224,14 @@ function headerFromQuestion(question: string, index: number): string {
   return word.slice(0, 12)
 }
 
+function stringField(input: Record<string, unknown>, names: string[]): string {
+  for (const name of names) {
+    const value = input[name]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return ''
+}
+
 function normalizeQuestionOption(value: unknown): Record<string, unknown> | null {
   const option = objectValue(value)
   if (!option) return null
@@ -247,8 +255,17 @@ function normalizeQuestionOption(value: unknown): Record<string, unknown> | null
 
 function normalizeQuestion(value: unknown, index: number): Record<string, unknown> | null {
   const question = objectValue(value)
-  if (!question || typeof question.question !== 'string') return null
-  const questionText = question.question.trim()
+  if (!question) return null
+  const questionText = stringField(question, [
+    'question',
+    'questionText',
+    'question_text',
+    'prompt',
+    'text',
+    'title',
+    'message',
+    'body',
+  ])
   if (!questionText || !Array.isArray(question.options)) return null
   const options = question.options
     .map(normalizeQuestionOption)

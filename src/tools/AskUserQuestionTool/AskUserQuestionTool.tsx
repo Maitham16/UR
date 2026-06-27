@@ -19,6 +19,13 @@ function headerFromQuestion(question: string, index: number): string {
   const word = question.replace(/[^A-Za-z0-9]+/g, ' ').split(/\s+/).find(part => part && !stopWords.has(part.toLowerCase())) ?? `Question ${index + 1}`;
   return word.slice(0, ASK_USER_QUESTION_TOOL_CHIP_WIDTH);
 }
+function stringField(input: Record<string, unknown>, names: string[]): string {
+  for (const name of names) {
+    const value = input[name];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
 function normalizeQuestionOptionInput(value: unknown): unknown {
   if (typeof value === 'string') {
     const label = value.trim();
@@ -42,8 +49,8 @@ function normalizeQuestionOptionInput(value: unknown): unknown {
 }
 function normalizeQuestionInput(value: unknown, index: number): unknown {
   const question = objectValue(value);
-  if (!question || typeof question.question !== 'string' || !Array.isArray(question.options)) return value;
-  const questionText = question.question.trim();
+  if (!question || !Array.isArray(question.options)) return value;
+  const questionText = stringField(question, ['question', 'questionText', 'question_text', 'prompt', 'text', 'title', 'message', 'body']);
   if (!questionText) return value;
   return {
     question: questionText,
@@ -181,7 +188,7 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
   name: ASK_USER_QUESTION_TOOL_NAME,
   searchHint: 'prompt the user with a multiple-choice question',
   maxResultSizeChars: 100_000,
-  shouldDefer: true,
+  shouldDefer: false,
   async description() {
     return DESCRIPTION;
   },

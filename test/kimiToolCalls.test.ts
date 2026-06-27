@@ -88,6 +88,42 @@ test('bare AskUserQuestion JSON is converted and normalized', () => {
   })
 })
 
+test('bare AskUserQuestion JSON accepts prompt aliases and missing descriptions', () => {
+  const result = parseTextToolCalls(
+    'Let me clarify what you want.\n{"questions":[{"prompt":"Which game should I build from \\"Mario egg\\"?","options":[{"label":"Platformer"},{"label":"Egg puzzle"},{"label":"Pet sim"}]},{"text":"Which visual style should I use?","options":[{"label":"Pixel art"},{"label":"Cartoon"},{"label":"Minimal"}]}]}',
+    {
+      availableToolNames: new Set(['AskUserQuestion']),
+      parseBareJsonToolCalls: true,
+    },
+  )
+
+  expect(result.text).toBe('Let me clarify what you want.\n')
+  expect(result.toolCalls).toHaveLength(1)
+  expect(result.toolCalls[0]!.name).toBe('AskUserQuestion')
+  expect(result.toolCalls[0]!.input).toEqual({
+    questions: [
+      {
+        question: 'Which game should I build from "Mario egg"?',
+        header: 'game',
+        options: [
+          { label: 'Platformer', description: 'Platformer' },
+          { label: 'Egg puzzle', description: 'Egg puzzle' },
+          { label: 'Pet sim', description: 'Pet sim' },
+        ],
+      },
+      {
+        question: 'Which visual style should I use?',
+        header: 'visual',
+        options: [
+          { label: 'Pixel art', description: 'Pixel art' },
+          { label: 'Cartoon', description: 'Cartoon' },
+          { label: 'Minimal', description: 'Minimal' },
+        ],
+      },
+    ],
+  })
+})
+
 test('remote transport synthesizes bare AskUserQuestion JSON into a tool use', () => {
   const message = {
     message: {

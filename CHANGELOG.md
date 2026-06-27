@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.2
+
+### Fixed
+- **Clarification dialogs.** `AskUserQuestion` is now loaded without a
+  `ToolSearch` round trip and accepts common question text aliases such as
+  `prompt` and `text`, preventing malformed clarification attempts from
+  surfacing as validation errors.
+
 ## 1.11.1
 
 ### Changed
