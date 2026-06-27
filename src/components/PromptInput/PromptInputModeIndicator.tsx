@@ -48,7 +48,7 @@ function PromptChar(t0) {
     themeColor
   } = t0;
   const teammateColor = themeColor;
-  const color = teammateColor ?? (false ? "subtle" : undefined);
+  const color = teammateColor ?? "rgb(212,175,55)"; // UR gold chevron (Standard of Ur)
   let t1;
   if ($[0] !== color || $[1] !== isLoading) {
     t1 = <Text color={color} dimColor={isLoading}>{figures.pointer} </Text>;

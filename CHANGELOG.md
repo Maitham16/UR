@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.12.2
+
+### Changed
+- **Ziggurat of Ur spinner.** Replaced the canoe spinner with the Ziggurat of
+  Ur catching light: an up-pyramid whose lit face sweeps across (`△ ◭ ▲ ◮`)
+  with a gold glint at the fully-lit peak.
+- **Lapis & gold prompt.** The prompt input rules are now dashed lapis-lazuli
+  (Standard of Ur), with a Standard-of-Ur gold chevron and a soft navy
+  drop-shadow beneath the box so the prompt reads as a card floating above the
+  surface.
+
 ## 1.12.1
 
 ### Changed

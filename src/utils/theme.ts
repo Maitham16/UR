@@ -124,7 +124,7 @@ const lightTheme: Theme = {
   permissionShimmer: 'rgb(96,165,250)', // Lighter action blue for shimmer effect
   planMode: 'rgb(13,148,136)', // Deep teal
   ide: 'rgb(30,118,196)', // Polished blue
-  promptBorder: 'rgb(153,153,153)', // Medium gray
+  promptBorder: 'rgb(28,78,138)', // Lapis lazuli (Standard of Ur)
   promptBorderShimmer: 'rgb(183,183,183)', // Lighter gray for shimmer effect
   text: 'rgb(0,0,0)', // Black
   inverseText: 'rgb(255,255,255)', // White
@@ -206,7 +206,7 @@ const lightAnsiTheme: Theme = {
   permissionShimmer: 'ansi:blueBright',
   planMode: 'ansi:cyan',
   ide: 'ansi:blueBright',
-  promptBorder: 'ansi:white',
+  promptBorder: 'ansi:blue',
   promptBorderShimmer: 'ansi:whiteBright',
   text: 'ansi:black',
   inverseText: 'ansi:white',
@@ -287,7 +287,7 @@ const darkAnsiTheme: Theme = {
   permissionShimmer: 'ansi:blueBright',
   planMode: 'ansi:cyanBright',
   ide: 'ansi:blue',
-  promptBorder: 'ansi:white',
+  promptBorder: 'ansi:blue',
   promptBorderShimmer: 'ansi:whiteBright',
   text: 'ansi:whiteBright',
   inverseText: 'ansi:black',
@@ -368,7 +368,7 @@ const lightDaltonizedTheme: Theme = {
   permissionShimmer: 'rgb(86,180,233)', // Lighter clear blue for shimmer
   planMode: 'rgb(0,158,115)', // Color-blind friendly teal
   ide: 'rgb(0,114,178)', // Clear blue
-  promptBorder: 'rgb(153,153,153)', // Medium gray
+  promptBorder: 'rgb(28,78,138)', // Lapis lazuli (Standard of Ur)
   promptBorderShimmer: 'rgb(183,183,183)', // Lighter gray for shimmer
   text: 'rgb(0,0,0)', // Black
   inverseText: 'rgb(255,255,255)', // White
@@ -449,7 +449,7 @@ const darkTheme: Theme = {
   permissionShimmer: 'rgb(186,230,253)', // Lighter sky action for shimmer
   planMode: 'rgb(45,212,191)', // Bright teal
   ide: 'rgb(96,165,250)', // Bright blue
-  promptBorder: 'rgb(136,136,136)', // Medium gray
+  promptBorder: 'rgb(28,78,138)', // Lapis lazuli (Standard of Ur)
   promptBorderShimmer: 'rgb(166,166,166)', // Lighter gray for shimmer
   text: 'rgb(255,255,255)', // White
   inverseText: 'rgb(0,0,0)', // Black
@@ -530,7 +530,7 @@ const darkDaltonizedTheme: Theme = {
   permissionShimmer: 'rgb(142,210,245)', // Lighter accessible blue for shimmer
   planMode: 'rgb(0,158,115)', // Accessible teal
   ide: 'rgb(86,180,233)', // Accessible blue
-  promptBorder: 'rgb(136,136,136)', // Medium gray
+  promptBorder: 'rgb(28,78,138)', // Lapis lazuli (Standard of Ur)
   promptBorderShimmer: 'rgb(166,166,166)', // Lighter gray for shimmer
   text: 'rgb(255,255,255)', // White
   inverseText: 'rgb(0,0,0)', // Black

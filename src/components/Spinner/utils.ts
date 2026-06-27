@@ -2,13 +2,13 @@
 import type { RGBColor as RGBColorString } from '../../ink/styles.js'
 import type { RGBColor as RGBColorType } from './types.js'
 
-// The spinner is a Mashoof (مشحوف) — the marsh canoe — bobbing on the water.
-// The frames are boat-hull arcs at different heights: ⌣ riding a crest, ⏝
-// level, ‿ settled in a trough. The forward+reverse construction in
-// SpinnerGlyph/Spinner turns these into a gentle up-down bob loop
-// (⌣ ⏝ ‿ ‿ ⏝ ⌣ …), lingering briefly at each crest and trough like real swell.
+// The spinner is the Ziggurat of Ur catching light. The frames are an up-
+// pyramid whose lit face sweeps across — outline → left-lit → full → right-lit
+// — so it shines like sun moving over the terraces. The forward+reverse
+// construction in SpinnerGlyph/Spinner loops the sweep (△ ◭ ▲ ◮ ◮ ▲ ◭ △), and
+// SpinnerGlyph adds a gold glint at the fully-lit ▲ peak.
 export function getDefaultCharacters(): string[] {
-  return ['⌣', '⏝', '‿']
+  return ['△', '◭', '▲', '◮']
 }
 
 // Interpolate between two RGB colors
