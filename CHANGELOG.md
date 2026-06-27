@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.3
+
+### Changed
+- **Read-only web browsing.** `WebSearch` and `WebFetch` now run without
+  prompting by default, while still respecting explicit deny or ask rules.
+- **Source visibility.** `WebFetch` tool results now include the fetched URL so
+  final answers can mention where the result came from.
+
 ## 1.11.2
 
 ### Fixed

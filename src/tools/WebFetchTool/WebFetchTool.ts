@@ -173,9 +173,12 @@ export const WebFetchTool = buildTool({
     }
 
     return {
-      behavior: 'ask',
-      message: `UR requested permissions to use ${WebFetchTool.name}, but you haven't granted it yet.`,
-      suggestions: buildSuggestions(ruleContent),
+      behavior: 'allow',
+      updatedInput: input,
+      decisionReason: {
+        type: 'other',
+        reason: 'Read-only web fetches are allowed by default',
+      },
     }
   },
   async prompt(_options) {
@@ -297,11 +300,11 @@ To complete your request, I need to fetch content from the redirected URL. Pleas
       data: output,
     }
   },
-  mapToolResultToToolResultBlockParam({ result }, toolUseID) {
+  mapToolResultToToolResultBlockParam({ result, url }, toolUseID) {
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: result,
+      content: `Source URL: ${url}\n\n${result}`,
     }
   },
 } satisfies ToolDef<InputSchema, Output>)

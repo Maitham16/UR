@@ -13,6 +13,7 @@ import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
 import { createUserMessage } from '../../utils/messages.js'
 import { getMainLoopModel, getSmallFastModel } from '../../utils/model/model.js'
+import { getRuleByContentsForTool } from '../../utils/permissions/permissions.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { getWebSearchPrompt, WEB_SEARCH_TOOL_NAME } from './prompt.js'
@@ -207,18 +208,66 @@ export const WebSearchTool = buildTool({
   toAutoClassifierInput(input) {
     return input.query
   },
-  async checkPermissions(_input): Promise<PermissionResult> {
-    return {
-      behavior: 'passthrough',
-      message: 'WebSearchTool requires permission.',
-      suggestions: [
-        {
-          type: 'addRules',
-          rules: [{ toolName: WEB_SEARCH_TOOL_NAME }],
-          behavior: 'allow',
-          destination: 'localSettings',
+  async checkPermissions(input, context): Promise<PermissionResult> {
+    const appState = context.getAppState()
+    const permissionContext = appState.toolPermissionContext
+    const ruleContent = input.query
+
+    const denyRule = getRuleByContentsForTool(
+      permissionContext,
+      WebSearchTool,
+      'deny',
+    ).get(ruleContent)
+    if (denyRule) {
+      return {
+        behavior: 'deny',
+        message: `${WebSearchTool.name} denied access to ${ruleContent}.`,
+        decisionReason: {
+          type: 'rule',
+          rule: denyRule,
         },
-      ],
+      }
+    }
+
+    const askRule = getRuleByContentsForTool(
+      permissionContext,
+      WebSearchTool,
+      'ask',
+    ).get(ruleContent)
+    if (askRule) {
+      return {
+        behavior: 'ask',
+        message: `UR requested permissions to use ${WebSearchTool.name}, but you haven't granted it yet.`,
+        decisionReason: {
+          type: 'rule',
+          rule: askRule,
+        },
+      }
+    }
+
+    const allowRule = getRuleByContentsForTool(
+      permissionContext,
+      WebSearchTool,
+      'allow',
+    ).get(ruleContent)
+    if (allowRule) {
+      return {
+        behavior: 'allow',
+        updatedInput: input,
+        decisionReason: {
+          type: 'rule',
+          rule: allowRule,
+        },
+      }
+    }
+
+    return {
+      behavior: 'allow',
+      updatedInput: input,
+      decisionReason: {
+        type: 'other',
+        reason: 'Read-only web searches are allowed by default',
+      },
     }
   },
   async prompt() {
