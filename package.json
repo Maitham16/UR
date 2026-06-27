@@ -21,7 +21,7 @@
     "ur"
   ],
   "bin": {
-    "ur": "./bin/ur.js"
+    "ur": "bin/ur.js"
   },
   "files": [
     "bin",
