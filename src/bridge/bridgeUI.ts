@@ -27,8 +27,13 @@ import type {
   SpawnMode,
 } from './types.js'
 
-async function generateQr(_url: string): Promise<string[]> {
-  return []
+async function generateQr(url: string): Promise<string[]> {
+  const text = await qrToString(url, {
+    type: 'utf8',
+    errorCorrectionLevel: 'L',
+    small: true,
+  })
+  return text.trimEnd().split(/\r?\n/)
 }
 
 export function createBridgeLogger(options: {
