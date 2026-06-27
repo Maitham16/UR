@@ -17,7 +17,7 @@ You need:
 
 ```sh
 ur --version
-# expected: 1.11.3 (Ur)
+# expected: 1.12.0 (Ur)
 ```
 
 ## 1. Marketplace tree resolves

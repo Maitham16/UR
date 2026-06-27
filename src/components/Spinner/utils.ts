@@ -2,8 +2,13 @@
 import type { RGBColor as RGBColorString } from '../../ink/styles.js'
 import type { RGBColor as RGBColorType } from './types.js'
 
+// The spinner is a Mashoof (مشحوف) — the marsh canoe — bobbing on the water.
+// The frames are boat-hull arcs at different heights: ⌣ riding a crest, ⏝
+// level, ‿ settled in a trough. The forward+reverse construction in
+// SpinnerGlyph/Spinner turns these into a gentle up-down bob loop
+// (⌣ ⏝ ‿ ‿ ⏝ ⌣ …), lingering briefly at each crest and trough like real swell.
 export function getDefaultCharacters(): string[] {
-  return ['·', '▖', '▃', '▆', '█', '⌂']
+  return ['⌣', '⏝', '‿']
 }
 
 // Interpolate between two RGB colors
