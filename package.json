@@ -38,7 +38,7 @@
     "dev": "bun --watch run src/entrypoints/cli.tsx",
     "bundle": "node scripts/bundle.mjs",
     "release:check": "node scripts/release-check.mjs",
-    "typecheck": "bun x tsc --noEmit",
+    "typecheck": "bun run tsc --noEmit",
     "test": "bun test",
     "smoke": "node ./bin/ur.js --version",
     "secrets:scan": "bash scripts/secret-scan.sh",
