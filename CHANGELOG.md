@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.13.0
+
+### Fixed
+- **Image paste hint.** When the clipboard holds no image, the image paste
+  shortcut (`ctrl+v`, `alt+v` on Windows) no longer shows a circular "use
+  ctrl+v to paste images" message — the very key that was just pressed. It now
+  tells you to copy an image (e.g. a screenshot) first, then press the shortcut
+  to paste it. SSH sessions keep the existing `scp` hint.
+
 ## 1.12.3
 
 ### Added
