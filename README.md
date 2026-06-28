@@ -104,9 +104,10 @@ ur plugin --help
 - [Usage Guide](docs/USAGE.md)
 - [Configuration](docs/CONFIGURATION.md)
 - [Agent Trend Coverage](docs/AGENT_TRENDS.md)
+- [Agent Feature Expansion](docs/AGENT_FEATURES.md)
 - [Development Guide](docs/DEVELOPMENT.md)
 
-The `examples/` directory also contains prompt examples for coding, research, browser, image, video, MCP, memory, and agent-trend workflows.
+The `examples/` directory also contains prompt examples for coding, research, browser, image, video, MCP, memory, agent-trend, and agent-feature workflows.
 
 ## License And Responsibility
 

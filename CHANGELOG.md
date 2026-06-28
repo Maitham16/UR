@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.12.3
+
+### Added
+- **Agent feature expansion commands.** Added `ur agent-features`,
+  `ur agent-templates`, `ur automation`, `ur agent-task`, `ur model-doctor`,
+  `ur semantic-memory`, `ur claim-ledger`, and `ur browser-qa` so the agent
+  platform roadmap is visible and executable from both CLI and slash command
+  surfaces.
+- **Opt-in A2A task server.** `ur a2a serve` now exposes loopback Agent Card,
+  health, and dry-run task endpoints from the launcher, with off-loopback binds
+  requiring a bearer token.
+- **Project scaffolds and examples.** `ur agent-features init` creates reusable
+  project assets for agents, automations, GitHub workflow entrypoints, A2A,
+  memory, provenance, and browser QA, with `examples/agent_features.md`
+  documenting the workflow.
+
+### Fixed
+- **Agent template typo safety.** `ur agent-templates install <name>` now
+  rejects unknown template names instead of interpreting a misspelling as
+  "install all templates."
+- **Ollama model inspection request.** `ur model-doctor` now uses the preferred
+  `/api/show` request body key (`model`) when inspecting local Ollama models.
+
+### Verified
+- Added focused Bun tests for feature scaffolds, template installation,
+  automations, PR dry-run generation, local memory/provenance/browser QA
+  commands, and the model-doctor Ollama request body.
+
 ## 1.12.2
 
 ### Changed

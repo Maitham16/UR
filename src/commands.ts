@@ -61,13 +61,20 @@ import hardenCmd from './commands/harden/index.js'
 import stability from './commands/stability/index.js'
 import evidence from './commands/evidence/index.js'
 import actions from './commands/actions/index.js'
+import agentFeatures from './commands/agent-features/index.js'
+import agentTask from './commands/agent-task/index.js'
+import agentTemplates from './commands/agent-templates/index.js'
 import agentTrends from './commands/agent-trends/index.js'
 import a2aCard from './commands/a2a-card/index.js'
+import automation from './commands/automation/index.js'
+import browserQa from './commands/browser-qa/index.js'
+import claimLedger from './commands/claim-ledger/index.js'
 import dna from './commands/dna/index.js'
 import osCmd from './commands/os/index.js'
 import workspace from './commands/workspace/index.js'
 import project from './commands/project/index.js'
 import remember from './commands/remember/index.js'
+import semanticMemory from './commands/semantic-memory/index.js'
 import forget from './commands/forget/index.js'
 import research from './commands/research/index.js'
 import paper from './commands/paper/index.js'
@@ -208,6 +215,7 @@ import env from './commands/env/index.js'
 import exit from './commands/exit/index.js'
 import exportCommand from './commands/export/index.js'
 import model from './commands/model/index.js'
+import modelDoctor from './commands/model-doctor/index.js'
 import tag from './commands/tag/index.js'
 import outputStyle from './commands/output-style/index.js'
 import remoteEnv from './commands/remote-env/index.js'
@@ -325,6 +333,7 @@ const COMMANDS = memoize((): Command[] => [
   mcp,
   memory,
   model,
+  modelDoctor,
   outputStyle,
   remoteEnv,
   plugin,
@@ -358,13 +367,20 @@ const COMMANDS = memoize((): Command[] => [
   stability,
   evidence,
   actions,
+  agentFeatures,
+  agentTask,
+  agentTemplates,
   agentTrends,
   a2aCard,
+  automation,
+  browserQa,
+  claimLedger,
   dna,
   osCmd,
   workspace,
   project,
   remember,
+  semanticMemory,
   forget,
   research,
   paper,

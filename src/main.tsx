@@ -42,6 +42,7 @@ import type { McpSdkServerConfig, McpServerConfig, ScopedMcpServerConfig } from 
 import { isPolicyAllowed, loadPolicyLimits, refreshPolicyLimits, waitForPolicyLimitsToLoad } from './services/policyLimits/index.js';
 import { loadRemoteManagedSettings, refreshRemoteManagedSettings } from './services/remoteManagedSettings/index.js';
 import type { ToolInputJSONSchema } from './Tool.js';
+import type { LocalCommandModule } from './types/command.js';
 import { createSyntheticOutputTool, isSyntheticOutputToolEnabled } from './tools/SyntheticOutputTool/SyntheticOutputTool.js';
 import { getTools } from './tools.js';
 import { canUserConfigureAdvisor, getInitialAdvisorSetting, isAdvisorEnabled, isValidAdvisorModel, modelSupportsAdvisor } from './utils/advisor.js';
@@ -4294,6 +4295,86 @@ async function run(): Promise<CommanderCommand> {
     console.log(opts.json ? JSON.stringify(report, null, 2) : formatAgentTrendReport(report));
     process.exit(0);
   });
+  const quoteLocalCommandArg = (value: string) => JSON.stringify(value);
+  const runLocalTextCommand = async (load: () => Promise<LocalCommandModule>, args: string) => {
+    const {
+      call
+    } = await load();
+    const result = await call(args, {} as never);
+    if (result.type === 'text' && typeof result.value === 'string') {
+      // biome-ignore lint/suspicious/noConsole:: CLI command output
+      console.log(result.value);
+    } else if (result.type === 'compact' && typeof result.displayText === 'string') {
+      // biome-ignore lint/suspicious/noConsole:: CLI command output
+      console.log(result.displayText);
+    }
+    process.exit(0);
+  };
+  program.command('agent-features [action]').alias('agent-roadmap').description('Show or initialize UR agent feature expansion scaffolds').option('--json', 'Output as JSON').option('--force', 'Overwrite existing scaffold files').action(async (action: string | undefined, opts: {
+    json?: boolean;
+    force?: boolean;
+  }) => {
+    const args = [action, opts.json ? '--json' : undefined, opts.force ? '--force' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/agent-features/agent-features.js'), args);
+  });
+  program.command('agent-templates [action] [names...]').alias('agent-template').description('List or install reusable project agent templates').option('--json', 'Output as JSON').option('--force', 'Overwrite existing agent template files').action(async (action: string | undefined, names: string[] = [], opts: {
+    json?: boolean;
+    force?: boolean;
+  }) => {
+    const args = [action, ...names, opts.json ? '--json' : undefined, opts.force ? '--force' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/agent-templates/agent-templates.js'), args);
+  });
+  program.command('automation [action] [name]').alias('automations').description('Manage project-local UR automation specs').option('--schedule <cron>', 'Cron expression for create').option('--prompt <prompt>', 'Prompt text for create').option('--now <isoDate>', 'Override current time for run-due checks').option('--disabled', 'Create automation disabled').option('--dry-run', 'Show runnable command without executing it').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, opts: {
+    schedule?: string;
+    prompt?: string;
+    now?: string;
+    disabled?: boolean;
+    dryRun?: boolean;
+    json?: boolean;
+  }) => {
+    const args = [action, name, opts.schedule ? `--schedule ${quoteLocalCommandArg(opts.schedule)}` : undefined, opts.prompt ? `--prompt ${quoteLocalCommandArg(opts.prompt)}` : undefined, opts.now ? `--now ${quoteLocalCommandArg(opts.now)}` : undefined, opts.disabled ? '--disabled' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/automation/automation.js'), args);
+  });
+  program.command('agent-task [action]').alias('task-pr').description('Summarize task state, git diff status, and PR handoff commands').option('--create', 'Create a GitHub PR with gh for the current branch').option('--draft', 'Create the PR as draft').option('--base <branch>', 'Base branch for PR creation').option('--title <title>', 'PR title').option('--body <body>', 'PR body').option('--dry-run', 'Print the gh command without creating a PR').option('--json', 'Output as JSON').action(async (action: string | undefined, opts: {
+    create?: boolean;
+    draft?: boolean;
+    base?: string;
+    title?: string;
+    body?: string;
+    dryRun?: boolean;
+    json?: boolean;
+  }) => {
+    const args = [action, opts.create ? '--create' : undefined, opts.draft ? '--draft' : undefined, opts.base ? `--base ${quoteLocalCommandArg(opts.base)}` : undefined, opts.title ? `--title ${quoteLocalCommandArg(opts.title)}` : undefined, opts.body ? `--body ${quoteLocalCommandArg(opts.body)}` : undefined, opts.dryRun ? '--dry-run' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/agent-task/agent-task.js'), args);
+  });
+  program.command('model-doctor [model]').alias('model-capabilities').description('Inspect local Ollama models and report likely agent capabilities').option('--json', 'Output as JSON').action(async (model: string | undefined, opts: {
+    json?: boolean;
+  }) => {
+    const args = [model, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/model-doctor/model-doctor.js'), args);
+  });
+  program.command('semantic-memory [action] [query...]').alias('memory-index').description('Build and search the project-local memory index').option('--json', 'Output as JSON').action(async (action: string | undefined, query: string[] = [], opts: {
+    json?: boolean;
+  }) => {
+    const args = [action, ...query, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/semantic-memory/semantic-memory.js'), args);
+  });
+  program.command('claim-ledger [action]').alias('claims').description('Manage project claim-to-source provenance ledger').option('--claim <text>', 'Claim text to add').option('--source <kindRef>', 'Source as kind:ref, for example web:https://example.com').option('--confidence <level>', 'low, medium, or high').option('--json', 'Output as JSON').action(async (action: string | undefined, opts: {
+    claim?: string;
+    source?: string;
+    confidence?: string;
+    json?: boolean;
+  }) => {
+    const args = [action, opts.claim ? `--claim ${quoteLocalCommandArg(opts.claim)}` : undefined, opts.source ? `--source ${quoteLocalCommandArg(opts.source)}` : undefined, opts.confidence ? `--confidence ${quoteLocalCommandArg(opts.confidence)}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/claim-ledger/claim-ledger.js'), args);
+  });
+  program.command('browser-qa [action] [fixture]').description('Validate and smoke-run browser QA replay fixtures').option('--dry-run', 'Show what would run without fetching the target').option('--json', 'Output as JSON').action(async (action: string | undefined, fixture: string | undefined, opts: {
+    dryRun?: boolean;
+    json?: boolean;
+  }) => {
+    const args = [action, fixture, opts.dryRun ? '--dry-run' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/browser-qa/browser-qa.js'), args);
+  });
   const a2a = program.command('a2a').description('A2A interoperability utilities').configureHelp(createSortedHelpConfig());
   a2a.command('card').description('Print UR Agent Card metadata for A2A discovery').option('--base-url <url>', 'Base URL to use for the Agent Card endpoint').option('--compact', 'Output compact JSON').action(async (opts: {
     baseUrl?: string;
@@ -4307,6 +4388,23 @@ async function run(): Promise<CommanderCommand> {
       baseUrl: opts.baseUrl
     }, !opts.compact));
     process.exit(0);
+  });
+  a2a.command('serve').description('Start an opt-in local A2A task server').option('--host <host>', 'Host to bind', '127.0.0.1').option('--port <port>', 'Port to bind', '8765').option('--token <token>', 'Bearer token required for task execution').option('--dry-run', 'Return spawned UR command without executing prompts').action(async (opts: {
+    host?: string;
+    port?: string;
+    token?: string;
+    dryRun?: boolean;
+  }) => {
+    const {
+      serveA2A
+    } = await import('./services/agents/a2aServer.js');
+    await serveA2A({
+      host: opts.host ?? '127.0.0.1',
+      port: Number(opts.port ?? '8765'),
+      token: opts.token,
+      dryRun: opts.dryRun,
+      cwd: process.cwd()
+    });
   });
   if (feature('TRANSCRIPT_CLASSIFIER')) {
     // Skip when tengu_auto_mode_config.enabled === 'disabled' (circuit breaker).

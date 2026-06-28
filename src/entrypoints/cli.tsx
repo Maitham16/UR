@@ -42,6 +42,25 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Fast-path long-running A2A server before full interactive startup.
+  if (args[0] === 'a2a' && args[1] === 'serve' && !args.includes('--help') && !args.includes('-h')) {
+    const valueAfter = (flag: string, fallback?: string): string | undefined => {
+      const index = args.indexOf(flag);
+      return index === -1 ? fallback : args[index + 1] ?? fallback;
+    };
+    const {
+      serveA2A
+    } = await import('../services/agents/a2aServer.js');
+    await serveA2A({
+      host: valueAfter('--host', '127.0.0.1')!,
+      port: Number(valueAfter('--port', '8765')),
+      token: valueAfter('--token'),
+      dryRun: args.includes('--dry-run'),
+      cwd: process.cwd()
+    });
+    return;
+  }
+
   // For all other paths, load the startup profiler
   const {
     profileCheckpoint

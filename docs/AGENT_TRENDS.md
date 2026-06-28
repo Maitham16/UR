@@ -10,6 +10,17 @@ ur agent-trends
 ur agent-trends --json
 ur a2a card
 ur a2a card --base-url https://example.com
+ur agent-features
+ur agent-features init
+ur agent-templates install
+ur model-doctor
+ur automation create nightly --schedule "0 9 * * 1-5" --prompt "Review open tasks"
+ur automation run-due
+ur agent-task pr --create --dry-run
+ur a2a serve --dry-run
+ur semantic-memory build
+ur claim-ledger validate
+ur browser-qa validate
 ```
 
 Inside an interactive session:
