@@ -37,4 +37,25 @@ describe('documentation coverage', () => {
       expect(features).toContain(subagent)
     }
   })
+
+  test('documents AST-aware editing and built-in LSP support', () => {
+    const features = readFileSync(
+      join(process.cwd(), 'docs', 'AGENT_FEATURES.md'),
+      'utf8',
+    )
+
+    expect(features).toContain('AST-aware editing')
+    expect(features).toContain('symbol rename')
+    expect(features).toContain('function/class move')
+    expect(features).toContain('unused-code detection')
+    expect(features).toContain('caller mapping')
+    for (const server of [
+      'typescript-language-server',
+      'pyright-langserver',
+      'rust-analyzer',
+      'gopls',
+    ]) {
+      expect(features).toContain(server)
+    }
+  })
 })

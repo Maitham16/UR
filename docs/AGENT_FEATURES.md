@@ -68,6 +68,8 @@ ur spec verify auth-refactor
 
 | Addition | Surface | What it adds |
 | --- | --- | --- |
+| AST-aware editing | `ur repo-edit rename\|move\|organize-imports\|unused\|callers`, `src/services/repoEditing/ast/*` | Uses the TypeScript compiler API, LSP, and Tree-sitter fallback engines instead of blind text replacement. Supports symbol rename, function/class move, import updates, unused-code detection, caller mapping, patch preview, diagnostics before/after edits, and rollback on new diagnostics or failed checks. |
+| Built-in LSP servers | `LSPTool`, `src/services/lsp/config.ts` | Auto-discovers installed `typescript-language-server`, `pyright-langserver`, `rust-analyzer`, and `gopls` after workspace trust. LSP-backed editing and code intelligence can use TypeScript, Python, Rust, and Go servers without requiring a plugin. |
 | Executable skill directories | `ur skill list\|show\|run\|init`, `src/skills/skillSpec.ts` | A `.ur/skills/<name>/` directory with `skill.yaml` compiles into a `WorkflowSpec`. Supports `instructions.md`, `scripts/`, `templates/`, and `checklists/`. Step prompts support `$ARGUMENTS`, `$0..$N`, and `$ARGUMENTS[N]`. |
 | Semantic repo index | `ur code-index repo build\|status\|search\|symbols\|callers\|tests\|docs\|configs`, `src/utils/codeIndex/repoIndex.ts` | Offline, dependency-free indexes under `.ur/code-index/`: `repo.json`, `symbols.json`, `calls.json`, `tests.json`, `docs.json`, `configs.json`. Classifies files, extracts symbols, records intra-file calls, maps tests, and indexes doc refs and config keys. |
 

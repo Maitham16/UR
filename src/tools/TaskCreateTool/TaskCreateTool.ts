@@ -29,6 +29,22 @@ const inputSchema = lazySchema(() =>
       .record(z.string(), z.unknown())
       .optional()
       .describe('Arbitrary metadata to attach to the task'),
+    blocks: z
+      .array(z.string())
+      .optional()
+      .describe('Task IDs that this task blocks at creation time'),
+    blockedBy: z
+      .array(z.string())
+      .optional()
+      .describe('Task IDs that block this task at creation time'),
+    addBlocks: z
+      .array(z.string())
+      .optional()
+      .describe('Alias for blocks, accepted for compatibility with TaskUpdate'),
+    addBlockedBy: z
+      .array(z.string())
+      .optional()
+      .describe('Alias for blockedBy, accepted for compatibility with TaskUpdate'),
   }),
 )
 type InputSchema = ReturnType<typeof inputSchema>
@@ -64,7 +80,7 @@ export const TaskCreateTool = buildTool({
   userFacingName() {
     return 'TaskCreate'
   },
-  shouldDefer: true,
+  shouldDefer: false,
   isEnabled() {
     return isTodoV2Enabled()
   },
@@ -77,15 +93,31 @@ export const TaskCreateTool = buildTool({
   renderToolUseMessage() {
     return null
   },
-  async call({ subject, description, activeForm, metadata }, context) {
+  async call(
+    {
+      subject,
+      description,
+      activeForm,
+      metadata,
+      blocks,
+      blockedBy,
+      addBlocks,
+      addBlockedBy,
+    },
+    context,
+  ) {
+    const initialBlocks = [...new Set([...(blocks ?? []), ...(addBlocks ?? [])])]
+    const initialBlockedBy = [
+      ...new Set([...(blockedBy ?? []), ...(addBlockedBy ?? [])]),
+    ]
     const taskId = await createTask(getTaskListId(), {
       subject,
       description,
       activeForm,
       status: 'pending',
       owner: undefined,
-      blocks: [],
-      blockedBy: [],
+      blocks: initialBlocks,
+      blockedBy: initialBlockedBy,
       metadata,
     })
 

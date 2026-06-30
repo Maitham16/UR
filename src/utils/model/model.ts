@@ -523,20 +523,18 @@ export function parseUserSpecifiedModel(
     ? normalizedModel.replace(/\[1m]$/i, '').trim()
     : normalizedModel
 
-  if (isModelAlias(modelString)) {
-    switch (modelString) {
-      case 'modelOplan':
-        return getDefaultmodelSModel() + (has1mTag ? '[1m]' : '') // modelS is default, modelO in plan mode
-      case 'modelS':
-        return getDefaultmodelSModel() + (has1mTag ? '[1m]' : '')
-      case 'modelH':
-        return getDefaultmodelHModel() + (has1mTag ? '[1m]' : '')
-      case 'modelO':
-        return getDefaultmodelOModel() + (has1mTag ? '[1m]' : '')
-      case 'best':
-        return getBestModel()
-      default:
-    }
+  switch (modelString) {
+    case 'modeloplan':
+      return getDefaultmodelSModel() + (has1mTag ? '[1m]' : '') // modelS is default, modelO in plan mode
+    case 'models':
+      return getDefaultmodelSModel() + (has1mTag ? '[1m]' : '')
+    case 'modelh':
+      return getDefaultmodelHModel() + (has1mTag ? '[1m]' : '')
+    case 'modelo':
+      return getDefaultmodelOModel() + (has1mTag ? '[1m]' : '')
+    case 'best':
+      return getBestModel()
+    default:
   }
 
   // modelO 4/4.1 are no longer available on the first-party API (same as

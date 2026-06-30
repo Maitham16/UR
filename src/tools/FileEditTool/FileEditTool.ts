@@ -392,15 +392,16 @@ export const FileEditTool = buildTool({
   },
   async call(
     input: FileEditInput,
-    {
+    toolUseContext,
+    _,
+    parentMessage,
+  ) {
+    const {
       readFileState,
       userModified,
       updateFileHistoryState,
       dynamicSkillDirTriggers,
-    },
-    _,
-    parentMessage,
-  ) {
+    } = toolUseContext
     const { file_path, old_string, new_string, replace_all = false } = input
 
     // 1. Get current state
@@ -441,7 +442,7 @@ export const FileEditTool = buildTool({
       await fileHistoryTrackEdit(
         updateFileHistoryState,
         absoluteFilePath,
-        parentMessage.uuid,
+        parentMessage?.uuid ?? '',
       )
     }
 
@@ -485,7 +486,7 @@ export const FileEditTool = buildTool({
     )
 
     // 4.5 Lifecycle hooks around file edits
-    const toolUseID = toolUseContext.toolUseId ?? parentMessage.uuid
+    const toolUseID = toolUseContext.toolUseId ?? parentMessage?.uuid ?? ''
     const beforeEdit = await executeBeforeEditHooks(
       absoluteFilePath,
       actualOldString,

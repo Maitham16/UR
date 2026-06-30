@@ -6,7 +6,7 @@
  * comments, strings, shadowed names, or unrelated identifiers with the same text.
  */
 
-import { join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import ts from 'typescript'
 import type {
   CallersOptions,
@@ -111,6 +111,15 @@ function collectRelatedSymbols(ctx: TypeScriptEngineContext, symbol: ts.Symbol):
     if (aliased) result.add(aliased)
   }
   return result
+}
+
+function symbolsRelated(ctx: TypeScriptEngineContext, a: ts.Symbol, b: ts.Symbol): boolean {
+  const aSymbols = collectRelatedSymbols(ctx, a)
+  const bSymbols = collectRelatedSymbols(ctx, b)
+  for (const symbol of aSymbols) {
+    if (bSymbols.has(symbol)) return true
+  }
+  return false
 }
 
 function dedupeEdits(edits: TextEdit[]): TextEdit[] {
@@ -233,8 +242,107 @@ export function tsMoveFunction(
   let removeEnd = end
   while (removeEnd < sourceSf.text.length && /\s/.test(sourceSf.text[removeEnd])) removeEnd++
   edits.push({ file: sourceFileRel, start: removeStart, end: removeEnd, newText: '' })
+  edits.push(...updateImportsForMovedSymbol(ctx, root, sourceFileRel, targetRel, symbolName))
 
   return { edits: dedupeEdits(edits) }
+}
+
+function updateImportsForMovedSymbol(
+  ctx: TypeScriptEngineContext,
+  root: string,
+  sourceFileRel: string,
+  targetFileRel: string,
+  symbolName: string,
+): TextEdit[] {
+  const edits: TextEdit[] = []
+  for (const sourceFile of allSourceFiles(ctx, root)) {
+    const rel = relativePath(sourceFile.fileName, root)
+    if (rel === sourceFileRel || rel === targetFileRel) continue
+    ts.forEachChild(sourceFile, function visit(node: ts.Node): void {
+      if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) {
+        ts.forEachChild(node, visit)
+        return
+      }
+      const importedFile = resolveRelativeImport(rel, node.moduleSpecifier.text)
+      if (importedFile !== stripKnownExtension(sourceFileRel)) {
+        ts.forEachChild(node, visit)
+        return
+      }
+      const namedBindings = node.importClause?.namedBindings
+      if (!namedBindings || !ts.isNamedImports(namedBindings)) {
+        ts.forEachChild(node, visit)
+        return
+      }
+      const elementIndex = namedBindings.elements.findIndex(element =>
+        (element.propertyName?.text ?? element.name.text) === symbolName,
+      )
+      if (elementIndex === -1) {
+        ts.forEachChild(node, visit)
+        return
+      }
+
+      const nextSpecifier = moduleSpecifierBetween(rel, targetFileRel)
+      if (namedBindings.elements.length === 1) {
+        edits.push({
+          file: rel,
+          start: node.moduleSpecifier.getStart(sourceFile) + 1,
+          end: node.moduleSpecifier.getEnd() - 1,
+          newText: nextSpecifier,
+        })
+      } else {
+        const element = namedBindings.elements[elementIndex]!
+        const removal = removalRangeForNamedImport(sourceFile, element, elementIndex < namedBindings.elements.length - 1)
+        edits.push({ file: rel, ...removal, newText: '' })
+        edits.push({
+          file: rel,
+          start: node.getEnd(),
+          end: node.getEnd(),
+          newText: `\nimport { ${symbolName} } from "${nextSpecifier}"`,
+        })
+      }
+      ts.forEachChild(node, visit)
+    })
+  }
+  return edits
+}
+
+function stripKnownExtension(file: string): string {
+  return file.replace(/\.(tsx?|jsx?|mjs|cjs|mts|cts)$/i, '')
+}
+
+function normalizePath(value: string): string {
+  return value.split('\\').join('/')
+}
+
+function resolveRelativeImport(importingFileRel: string, specifier: string): string | undefined {
+  if (!specifier.startsWith('.')) return undefined
+  const base = normalizePath(join(dirname(importingFileRel), specifier))
+  return stripKnownExtension(base)
+}
+
+function moduleSpecifierBetween(importingFileRel: string, targetFileRel: string): string {
+  let specifier = normalizePath(relative(dirname(importingFileRel), stripKnownExtension(targetFileRel)))
+  if (!specifier.startsWith('.')) specifier = `./${specifier}`
+  return specifier
+}
+
+function removalRangeForNamedImport(
+  sourceFile: ts.SourceFile,
+  element: ts.ImportSpecifier,
+  hasNext: boolean,
+): Pick<TextEdit, 'start' | 'end'> {
+  let start = element.getStart(sourceFile)
+  let end = element.getEnd()
+  if (hasNext) {
+    while (end < sourceFile.text.length && /\s/.test(sourceFile.text[end]!)) end++
+    if (sourceFile.text[end] === ',') end++
+    while (end < sourceFile.text.length && /\s/.test(sourceFile.text[end]!)) end++
+  } else {
+    while (start > 0 && /\s/.test(sourceFile.text[start - 1]!)) start--
+    if (sourceFile.text[start - 1] === ',') start--
+    while (start > 0 && /\s/.test(sourceFile.text[start - 1]!)) start--
+  }
+  return { start, end }
 }
 
 export function tsOrganizeImports(
@@ -283,9 +391,7 @@ export function tsFindUnused(
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
         const symbol = ctx.checker.getSymbolAtLocation(node.name)
         if (symbol && symbol.declarations?.length === 1) {
-          const references = (ctx.checker as ts.TypeChecker & { findReferences?: (node: ts.Node) => { references: { isDefinition: boolean }[] }[] }).findReferences?.(node.name)
-          const refs = references?.[0]?.references ?? []
-          if (refs.filter(r => !r.isDefinition).length === 0) {
+          if (countSymbolReferences(ctx, symbol, node.name) === 0) {
             const loc = sourceFile.getLineAndCharacterOfPosition(node.name.getStart(sourceFile))
             result.push({ file: rel, line: loc.line + 1, column: loc.character + 1, name: node.name.text, kind: 'variable' })
           }
@@ -295,6 +401,31 @@ export function tsFindUnused(
     })
   }
   return result
+}
+
+function countSymbolReferences(
+  ctx: TypeScriptEngineContext,
+  targetSymbol: ts.Symbol,
+  declarationName: ts.Identifier,
+): number {
+  let count = 0
+  const declarationFile = declarationName.getSourceFile().fileName
+  const declarationStart = declarationName.getStart(declarationName.getSourceFile())
+  for (const sourceFile of allSourceFiles(ctx, ctx.program.getCurrentDirectory())) {
+    ts.forEachChild(sourceFile, function visit(node: ts.Node): void {
+      if (ts.isIdentifier(node)) {
+        const symbol = ctx.checker.getSymbolAtLocation(node)
+        if (symbol && symbolsRelated(ctx, symbol, targetSymbol)) {
+          const isDeclaration =
+            sourceFile.fileName === declarationFile &&
+            node.getStart(sourceFile) === declarationStart
+          if (!isDeclaration) count++
+        }
+      }
+      ts.forEachChild(node, visit)
+    })
+  }
+  return count
 }
 
 export function tsFindCallers(

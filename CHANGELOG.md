@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.22.6
+
+### Fixed
+- Fixed Bash tool runtime execution failing every command with
+  `timeoutMs is not defined` by keeping the command hook timeout value in scope
+  before lifecycle hooks run.
+- Fixed Edit/Update tool runtime execution failing with
+  `toolUseContext is not defined` by preserving the full tool context inside
+  file edit calls.
+
+### Verified
+- Added lifecycle runtime regressions for both `BashTool.call` and
+  `FileEditTool.call`.
+- Verified source and production bundle release checks for the `1.22.6` build.
+
 ## 1.22.3
 
 ### Added

@@ -28,6 +28,7 @@ describe('AST-aware read operations', () => {
     const ctx = loadProgram(dir, ['src/app.ts'])
     const refs = tsFindUnused(ctx, { root: dir, file: 'src/app.ts' })
     expect(refs.map(r => r.name)).toContain('unused')
+    expect(refs.map(r => r.name)).not.toContain('used')
     rmSync(dir, { recursive: true, force: true })
   })
 

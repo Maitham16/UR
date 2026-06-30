@@ -41,4 +41,29 @@ describe('AST-aware move', () => {
     expect(readFileSync(join(dir, 'src/a.ts'), 'utf-8')).not.toContain('export function helper')
     rmSync(dir, { recursive: true, force: true })
   })
+
+  test('applyMoveAst updates simple named imports for moved function', async () => {
+    const dir = tempDir('ur-ast-move-imports-')
+    writeRepo(dir, {
+      'src/a.ts': 'export function helper(): number { return 1 }\n',
+      'src/b.ts': '',
+      'src/c.ts': 'import { helper } from "./a"\nconsole.log(helper())\n',
+    })
+
+    const result = await applyMoveAst({
+      root: dir,
+      symbol: 'helper',
+      targetFile: 'src/b.ts',
+      file: 'src/a.ts',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(readFileSync(join(dir, 'src/c.ts'), 'utf-8')).toContain(
+      'import { helper } from "./b"',
+    )
+    expect(readFileSync(join(dir, 'src/c.ts'), 'utf-8')).not.toContain(
+      'from "./a"',
+    )
+    rmSync(dir, { recursive: true, force: true })
+  })
 })

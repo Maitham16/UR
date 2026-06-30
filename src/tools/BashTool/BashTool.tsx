@@ -657,6 +657,7 @@ export const BashTool = buildTool({
     const preventCwdChanges = !isMainThread;
     try {
       const toolUseID = toolUseContext.toolUseId ?? parentMessage?.uuid ?? '';
+      const timeoutMs = input.timeout || getDefaultTimeoutMs();
 
       // Lifecycle hook: before command runs
       await executeBeforeCommandHooks(

@@ -16,7 +16,7 @@ import type { DiagnosticFile, DiagnosticSnapshot, DiagnosticSource } from './typ
 const execAsync = promisify(exec)
 
 const DEFAULT_COMMANDS: Partial<Record<string, string>> = {
-  python: 'python3 -m pyright --outputjson',
+  python: 'pyright --outputjson',
   rust: 'cargo check --message-format=json',
   go: 'go vet ./...',
 }
@@ -34,9 +34,33 @@ export async function collectDiagnostics(
   if (options.externalCommand) {
     return runExternalCommand(root, files, options.externalCommand)
   }
+
+  const snapshots: DiagnosticSnapshot[] = []
   const tsFiles = files.filter(isTypeScriptPath)
   if (tsFiles.length > 0) {
-    return collectTsDiagnostics(root, tsFiles)
+    snapshots.push(collectTsDiagnostics(root, tsFiles))
+  }
+
+  const externalByLanguage = new Map<string, string[]>()
+  for (const file of files.filter(file => !isTypeScriptPath(file))) {
+    const language = languageFromPath(file)
+    if (!language) continue
+    externalByLanguage.set(language, [
+      ...(externalByLanguage.get(language) ?? []),
+      file,
+    ])
+  }
+  for (const [language, languageFiles] of externalByLanguage) {
+    const command = resolveDefaultExternalCommand(language)
+    if (!command) continue
+    snapshots.push(await runExternalCommand(root, languageFiles, command))
+  }
+
+  if (snapshots.length === 1) {
+    return snapshots[0]!
+  }
+  if (snapshots.length > 1) {
+    return mergeSnapshots(snapshots)
   }
   return emptySnapshot('none')
 }
@@ -55,6 +79,28 @@ export function diagnosticsDiff(
 function isTypeScriptPath(file: string): boolean {
   const ext = file.toLowerCase()
   return ext.endsWith('.ts') || ext.endsWith('.tsx') || ext.endsWith('.js') || ext.endsWith('.jsx')
+}
+
+function languageFromPath(file: string): string | undefined {
+  const ext = file.toLowerCase()
+  if (ext.endsWith('.py') || ext.endsWith('.pyi')) return 'python'
+  if (ext.endsWith('.rs')) return 'rust'
+  if (ext.endsWith('.go')) return 'go'
+  return undefined
+}
+
+function mergeSnapshots(snapshots: DiagnosticSnapshot[]): DiagnosticSnapshot {
+  const files: Record<string, DiagnosticFile[]> = {}
+  for (const snapshot of snapshots) {
+    for (const [file, diagnostics] of Object.entries(snapshot.files)) {
+      files[file] = [...(files[file] ?? []), ...diagnostics]
+    }
+  }
+  return {
+    files,
+    collectedAt: new Date().toISOString(),
+    source: snapshots.some(s => s.source === 'external') ? 'external' : 'tsc',
+  }
 }
 
 function loadTsConfig(root: string): { config?: ts.ParsedCommandLine; error?: string } {
@@ -149,17 +195,39 @@ async function runExternalCommand(
   }
 }
 
-function parseExternalOutput(stdout: string): Record<string, DiagnosticFile[]> {
+export function parseExternalOutput(stdout: string): Record<string, DiagnosticFile[]> {
   const files: Record<string, DiagnosticFile[]> = {}
+  const add = (entry: DiagnosticFile): void => {
+    files[entry.file] = files[entry.file] ?? []
+    files[entry.file]!.push(entry)
+  }
+
+  try {
+    const parsed = JSON.parse(stdout)
+    for (const entry of diagnosticsFromJsonObject(parsed)) {
+      add(entry)
+    }
+    if (Object.keys(files).length > 0) return files
+  } catch {
+    // Fall through to JSONL/plain-text parsing.
+  }
+
   for (const line of stdout.split('\n')) {
     if (!line.trim()) continue
     let parsed: unknown
     try {
       parsed = JSON.parse(line)
     } catch {
+      const plain = parsePlainDiagnosticLine(line)
+      if (plain) add(plain)
       continue
     }
     if (!parsed || typeof parsed !== 'object') continue
+    const jsonEntries = diagnosticsFromJsonObject(parsed)
+    if (jsonEntries.length > 0) {
+      for (const entry of jsonEntries) add(entry)
+      continue
+    }
     const asRecord = parsed as Record<string, unknown>
     const file =
       typeof asRecord.file === 'string'
@@ -182,18 +250,88 @@ function parseExternalOutput(stdout: string): Record<string, DiagnosticFile[]> {
         : asRecord.severity === 'warning'
           ? 'warning'
           : 'error'
-    const entry: DiagnosticFile = {
+    add({
       file,
       line: lineNum || 1,
       column: columnNum || 1,
       severity,
       message,
       code: typeof asRecord.code === 'string' || typeof asRecord.code === 'number' ? asRecord.code : undefined,
-    }
-    files[file] = files[file] ?? []
-    files[file]!.push(entry)
+    })
   }
   return files
+}
+
+function diagnosticsFromJsonObject(value: unknown): DiagnosticFile[] {
+  if (!value || typeof value !== 'object') return []
+  const record = value as Record<string, unknown>
+
+  if (Array.isArray(record.generalDiagnostics)) {
+    return record.generalDiagnostics.flatMap(diagnostic => {
+      if (!diagnostic || typeof diagnostic !== 'object') return []
+      const diag = diagnostic as Record<string, unknown>
+      const file = typeof diag.file === 'string' ? diag.file : undefined
+      const message = typeof diag.message === 'string' ? diag.message : undefined
+      const range = diag.range as { start?: { line?: unknown; character?: unknown } } | undefined
+      if (!file || !message) return []
+      return [{
+        file,
+        line: Number(range?.start?.line ?? 0) + 1,
+        column: Number(range?.start?.character ?? 0) + 1,
+        severity: toSeverity(diag.severity),
+        message,
+        code: typeof diag.rule === 'string' ? diag.rule : undefined,
+      }]
+    })
+  }
+
+  if (record.reason === 'compiler-message' && record.message && typeof record.message === 'object') {
+    const messageRecord = record.message as Record<string, unknown>
+    const spans = Array.isArray(messageRecord.spans) ? messageRecord.spans : []
+    const span =
+      spans.find(span => span && typeof span === 'object' && (span as { is_primary?: unknown }).is_primary === true) ??
+      spans[0]
+    if (span && typeof span === 'object') {
+      const spanRecord = span as Record<string, unknown>
+      const file = typeof spanRecord.file_name === 'string' ? spanRecord.file_name : undefined
+      const message = typeof messageRecord.message === 'string' ? messageRecord.message : undefined
+      if (file && message) {
+        const code =
+          messageRecord.code && typeof messageRecord.code === 'object'
+            ? (messageRecord.code as { code?: unknown }).code
+            : undefined
+        return [{
+          file,
+          line: Number(spanRecord.line_start ?? 1),
+          column: Number(spanRecord.column_start ?? 1),
+          severity: toSeverity(messageRecord.level),
+          message,
+          code: typeof code === 'string' || typeof code === 'number' ? code : undefined,
+        }]
+      }
+    }
+  }
+
+  return []
+}
+
+function parsePlainDiagnosticLine(line: string): DiagnosticFile | null {
+  const match = /^(.*?):(\d+):(?:(\d+):)?\s*(.+)$/.exec(line.trim())
+  if (!match) return null
+  return {
+    file: match[1]!,
+    line: Number(match[2]),
+    column: Number(match[3] ?? 1),
+    severity: 'error',
+    message: match[4]!,
+  }
+}
+
+function toSeverity(value: unknown): DiagnosticFile['severity'] {
+  if (value === 'warning' || value === 'information' || value === 'hint') {
+    return value
+  }
+  return 'error'
 }
 
 export function resolveDefaultExternalCommand(language: string): string | undefined {

@@ -44,13 +44,15 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
 - **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")
 - **description**: What needs to be done
 - **activeForm** (optional): Present continuous form shown in the spinner when the task is in_progress (e.g., "Fixing authentication bug"). If omitted, the spinner shows the subject instead.
+- **blocks** / **addBlocks** (optional): Task IDs this task blocks
+- **blockedBy** / **addBlockedBy** (optional): Task IDs that block this task
 
 All tasks are created with status \`pending\`.
 
 ## Tips
 
 - Create tasks with clear, specific subjects that describe the outcome
-- After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) if needed
+- Provide dependencies during creation when known, or use TaskUpdate later to adjust them
 ${teammateTips}- Check TaskList first to avoid creating duplicate tasks
 `
 }

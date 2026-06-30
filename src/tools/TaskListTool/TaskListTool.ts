@@ -49,7 +49,7 @@ export const TaskListTool = buildTool({
   userFacingName() {
     return 'TaskList'
   },
-  shouldDefer: true,
+  shouldDefer: false,
   isEnabled() {
     return isTodoV2Enabled()
   },

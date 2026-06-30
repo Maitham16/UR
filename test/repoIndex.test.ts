@@ -2,6 +2,8 @@ import { expect, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { call as codeIndexCall } from '../src/commands/code-index/code-index.ts'
+import { runWithCwdOverride } from '../src/utils/cwd.ts'
 import {
   buildRepoIndex,
   findCallers,
@@ -136,4 +138,45 @@ test('findTestsForFile maps tests to source files', async () => {
   }
   expect(findTestsForFile(tests, 'src/greet.ts').length).toBe(1)
   expect(findTestsForFile(tests, 'src/missing.ts').length).toBe(0)
+})
+
+test('code-index repo CLI builds and queries semantic repo artifacts', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'ur-repo-cli-'))
+  fixture(tmp, 'src/greet.ts', 'export function greet() { return "hi" }\ngreet()\n')
+  fixture(tmp, 'src/greet.test.ts', 'test("greets", () => expect(greet()).toBe("hi"))')
+  fixture(tmp, 'docs/guide.md', '# Guide\nUse greet.\n')
+  fixture(tmp, 'package.json', '{"name": "demo", "scripts": {"test": "bun test"}}')
+
+  const build = await runWithCwdOverride(tmp, () =>
+    codeIndexCall('repo build --json'),
+  )
+  expect(build.type).toBe('text')
+  expect(JSON.parse(build.value).files).toBeGreaterThanOrEqual(4)
+
+  const symbols = await runWithCwdOverride(tmp, () =>
+    codeIndexCall('repo symbols greet --json'),
+  )
+  expect(JSON.parse(symbols.value).hits.some((h: { name: string }) => h.name === 'greet')).toBe(true)
+
+  const callers = await runWithCwdOverride(tmp, () =>
+    codeIndexCall('repo callers greet --json'),
+  )
+  expect(JSON.parse(callers.value).hits.some((h: { callee: string }) => h.callee === 'greet')).toBe(true)
+
+  const tests = await runWithCwdOverride(tmp, () =>
+    codeIndexCall('repo tests src/greet.ts --json'),
+  )
+  expect(JSON.parse(tests.value).hits.some((h: { file: string }) => h.file === 'src/greet.test.ts')).toBe(true)
+
+  const docs = await runWithCwdOverride(tmp, () =>
+    codeIndexCall('repo docs guide --json'),
+  )
+  expect(JSON.parse(docs.value).hits.some((h: { path: string }) => h.path === 'docs/guide.md')).toBe(true)
+
+  const configs = await runWithCwdOverride(tmp, () =>
+    codeIndexCall('repo configs package --json'),
+  )
+  expect(JSON.parse(configs.value).hits.some((h: { path: string }) => h.path === 'package.json')).toBe(true)
+
+  rmSync(tmp, { recursive: true, force: true })
 })

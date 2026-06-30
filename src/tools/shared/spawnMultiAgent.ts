@@ -97,7 +97,10 @@ export function resolveTeammateModel(
   if (inputModel === 'inherit') {
     return leaderModel ?? getDefaultTeammateModel(leaderModel)
   }
-  return inputModel ?? getDefaultTeammateModel(leaderModel)
+  if (inputModel) {
+    return parseUserSpecifiedModel(inputModel)
+  }
+  return getDefaultTeammateModel(leaderModel)
 }
 
 // ============================================================================

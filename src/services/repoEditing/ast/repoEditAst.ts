@@ -192,7 +192,14 @@ export async function applyRenameAst(options: RenameOptions): Promise<ApplyResul
 }
 
 export async function planMoveAst(options: MoveOptions): Promise<EditPlan> {
-  const files = options.file ? [options.file, options.targetFile] : [options.targetFile]
+  const repoFiles = await listRepoCodeFiles(options.root)
+  const files = [
+    ...new Set([
+      ...repoFiles.filter(p => /\.(ts|tsx|js|jsx)$/i.test(p)),
+      ...(options.file ? [options.file] : []),
+      options.targetFile,
+    ]),
+  ]
   const ctx = loadProgram(options.root, files)
   const edit = tsMoveFunction(ctx, options)
   const diagnosticsBefore = options.skipDiagnostics
