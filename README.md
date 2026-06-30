@@ -8,7 +8,7 @@ The package installs a global `ur` command from npm or this GitHub repository. T
 
 - Bun. This workspace was verified with Bun 1.3.14.
 - Node.js-compatible shell environment
-- A local Ollama app/server for model requests at http://localhost:11434/api
+- A local Ollama app/server for model requests (default http://localhost:11434/api; LAN hosts supported via `--discover-ollama` or `--ollama-host`)
 - Optional: GitHub CLI, tmux, and IDE integrations for workflows that use them
 
 ## Install
@@ -111,6 +111,7 @@ ur artifacts capture-diff
 ur bg run "fix the flaky parser test" --worktree --dry-run
 ur ide diff capture --title "Working tree review"
 ur eval bench list
+ur --discover-ollama
 ```
 
 ## Documentation
@@ -118,6 +119,7 @@ ur eval bench list
 - [Usage Guide](docs/USAGE.md)
 - [Configuration](docs/CONFIGURATION.md)
 - [Agent Trend Coverage](docs/AGENT_TRENDS.md)
+- [1.16.0 Upgrade Notes](docs/AGENT_UPGRADE_1.16.0.md)
 - [Agent Feature Expansion](docs/AGENT_FEATURES.md)
 - [Development Guide](docs/DEVELOPMENT.md)
 - [Static Documentation Site](documentation/index.html)

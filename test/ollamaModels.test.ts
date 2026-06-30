@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test'
 import { getContextWindowForModel } from '../src/utils/context.js'
 import {
+  clearOllamaBaseUrlOverride,
+  setOllamaBaseUrlOverride,
+} from '../src/utils/model/ollamaConfig.js'
+import {
   cacheOllamaModelMetadata,
   cacheOllamaModelsFromTags,
   clearOllamaModelMetadataCacheForTests,
@@ -26,12 +30,13 @@ test('parseOllamaModelNames returns sorted unique model names', () => {
   ).toEqual(['llama3.2:latest', 'mistral:7b', 'qwen2.5-coder:latest'])
 })
 
-test('getOllamaBaseUrl always returns the local endpoint and ignores env overrides', () => {
+test('getOllamaBaseUrl returns the local endpoint by default', () => {
+  clearOllamaBaseUrlOverride()
   const originalBase = process.env.OLLAMA_BASE_URL
   const originalHost = process.env.OLLAMA_HOST
   try {
-    process.env.OLLAMA_HOST = '127.0.0.1:9999/'
-    process.env.OLLAMA_BASE_URL = 'https://ollama.example.test/'
+    delete process.env.OLLAMA_HOST
+    delete process.env.OLLAMA_BASE_URL
     expect(getOllamaBaseUrl()).toBe('http://localhost:11434')
   } finally {
     if (originalBase === undefined) {
@@ -39,6 +44,37 @@ test('getOllamaBaseUrl always returns the local endpoint and ignores env overrid
     } else {
       process.env.OLLAMA_BASE_URL = originalBase
     }
+    if (originalHost === undefined) {
+      delete process.env.OLLAMA_HOST
+    } else {
+      process.env.OLLAMA_HOST = originalHost
+    }
+  }
+})
+
+test('getOllamaBaseUrl reads OLLAMA_HOST env override', () => {
+  clearOllamaBaseUrlOverride()
+  const originalHost = process.env.OLLAMA_HOST
+  try {
+    process.env.OLLAMA_HOST = '192.168.1.50:11434'
+    expect(getOllamaBaseUrl()).toBe('http://192.168.1.50:11434')
+  } finally {
+    if (originalHost === undefined) {
+      delete process.env.OLLAMA_HOST
+    } else {
+      process.env.OLLAMA_HOST = originalHost
+    }
+  }
+})
+
+test('getOllamaBaseUrl prefers session override', () => {
+  const originalHost = process.env.OLLAMA_HOST
+  try {
+    process.env.OLLAMA_HOST = '10.0.0.5:11434'
+    setOllamaBaseUrlOverride('http://ollama.local:11434')
+    expect(getOllamaBaseUrl()).toBe('http://ollama.local:11434')
+  } finally {
+    clearOllamaBaseUrlOverride()
     if (originalHost === undefined) {
       delete process.env.OLLAMA_HOST
     } else {

@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.16.0
+
+### Added
+- **Network Ollama discovery.** `ur --discover-ollama` scans active local subnets
+  for Ollama servers on port 11434, verifies each via `/api/tags`, and shows an
+  interactive host picker. The chosen host is persisted to user settings under
+  `ollama.host` and used for all subsequent Ollama calls.
+- **`--ollama-host <url>` CLI flag.** Point UR at a specific Ollama server for a
+  single session without writing settings.
+- **`ollama` settings block** in `~/.ur/settings.json` with `host` and
+  `lanDiscovery` keys.
+
+### Changed
+- **Version bump.** Updated from 1.15.0 to 1.16.0 across `package.json`,
+  `bunfig.toml`, the VS Code extension, and bundled CLI.
+
+### Verified
+- Added `test/ollamaDiscovery.test.ts` and updated `test/ollamaModels.test.ts`.
+- Rebuilt `dist/cli.js` and verified typecheck, full test suite, bundle,
+  package check, and version output.
+
+## 1.15.0
+
+### Changed
+- **Version bump.** Updated from 1.14.0 to 1.15.0 across `package.json`, `bunfig.toml`, and bundled CLI.
+
+### Verified
+- Rebuilt `dist/cli.js` at 1.15.0 and verified release check, package check, and version output.
+
 ## 1.14.1
 
 ### Changed

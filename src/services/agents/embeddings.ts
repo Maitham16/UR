@@ -7,6 +7,8 @@
  * embedder is available or a request fails.
  */
 
+import { getOllamaBaseUrl } from '../../utils/model/ollamaConfig.js'
+
 export type Embedder = (texts: string[]) => Promise<number[][]>
 
 export const DEFAULT_EMBED_MODEL = 'nomic-embed-text'
@@ -14,8 +16,7 @@ export const DEFAULT_EMBED_MODEL = 'nomic-embed-text'
 export function getOllamaEmbedBaseUrl(
   env: Record<string, string | undefined> = process.env,
 ): string {
-  const raw = env.OLLAMA_BASE_URL || env.OLLAMA_HOST || 'http://localhost:11434'
-  return /^https?:\/\//.test(raw) ? raw : `http://${raw}`
+  return getOllamaBaseUrl(env)
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

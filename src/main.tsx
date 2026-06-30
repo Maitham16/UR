@@ -90,7 +90,7 @@ import { filterCommandsForRemoteMode, getCommands } from './commands.js';
 import type { StatsStore } from './context/stats.js';
 import { launchAssistantInstallWizard, launchAssistantSessionChooser, launchInvalidSettingsDialog, launchResumeChooser, launchSnapshotUpdateDialog, launchTeleportRepoMismatchDialog, launchTeleportResumeWrapper } from './dialogLaunchers.js';
 import { SHOW_CURSOR } from './ink/termio/dec.js';
-import { exitWithError, exitWithMessage, getRenderContext, renderAndRun, showSetupScreens } from './interactiveHelpers.js';
+import { exitWithError, exitWithMessage, getRenderContext, renderAndRun, showSetupDialog, showSetupScreens } from './interactiveHelpers.js';
 import { initBuiltinPlugins } from './plugins/bundled/index.js';
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { checkQuotaStatus } from './services/urAiLimits.js';
@@ -119,6 +119,14 @@ import { getModelDeprecationWarning } from './utils/model/deprecation.js';
 import { getDefaultMainLoopModel, getUserSpecifiedModelSetting, normalizeModelStringForAPI, parseUserSpecifiedModel } from './utils/model/model.js';
 import { ensureModelStringsInitialized } from './utils/model/modelStrings.js';
 import { listOllamaModelNames, refreshOllamaModelMetadata } from './utils/model/ollamaModels.js';
+import {
+  discoverOllamaHosts,
+  type DiscoveredHost,
+} from './utils/model/ollamaDiscovery.js';
+import {
+  getOllamaBaseUrl,
+  setOllamaBaseUrlOverride,
+} from './utils/model/ollamaConfig.js';
 import { getAPIProvider } from './utils/model/providers.js';
 import { PERMISSION_MODES } from './utils/permissions/PermissionMode.js';
 import { checkAndDisableBypassPermissions, getAutoModeEnabledStateIfCached, initializeToolPermissionContext, initialPermissionModeFromCLI, isDefaultPermissionModeAuto, parseToolListFromCLI, removeDangerousPermissions, stripDangerousPermissionsForAutoMode, verifyAutoModeGateAccess } from './utils/permissions/permissionSetup.js';
@@ -131,7 +139,13 @@ import { countFilesRoundedRg } from './utils/ripgrep.js';
 import { processSessionStartHooks, processSetupHooks } from './utils/sessionStart.js';
 import { cacheSessionTitle, getSessionIdFromLog, loadTranscriptFromFile, saveAgentSetting, saveMode, searchSessionsByCustomTitle, sessionIdExists } from './utils/sessionStorage.js';
 import { ensureMdmSettingsLoaded } from './utils/settings/mdm/settings.js';
-import { getInitialSettings, getManagedSettingsKeysForLogging, getSettingsForSource, getSettingsWithErrors } from './utils/settings/settings.js';
+import {
+  getInitialSettings,
+  getManagedSettingsKeysForLogging,
+  getSettingsForSource,
+  getSettingsWithErrors,
+  updateSettingsForSource,
+} from './utils/settings/settings.js';
 import { resetSettingsCache } from './utils/settings/settingsCache.js';
 import type { ValidationError } from './utils/settings/validation.js';
 import { DEFAULT_TASKS_MODE_TASK_LIST_ID, TASK_STATUSES } from './utils/tasks.js';
@@ -1000,6 +1014,8 @@ async function run(): Promise<CommanderCommand> {
     }
     return value;
   })).option('--agent <agent>', `Agent for the current session. Overrides the 'agent' setting.`).option('--betas <betas...>', 'Beta headers to include in API requests (API key users only)').option('--fallback-model <model>', 'Enable automatic fallback to specified model when default model is overloaded (only works with --print)').addOption(new Option('--workload <tag>', 'Workload tag for billing-header attribution (cc_workload). Process-scoped; set by SDK daemon callers that spawn subprocesses for cron work. (only works with --print)').hideHelp()).option('--settings <file-or-json>', 'Path to a settings JSON file or a JSON string to load additional settings from').option('--add-dir <directories...>', 'Additional directories to allow tool access to').option('--ide', 'Automatically connect to IDE on startup if exactly one valid IDE is available', () => true).option('--strict-mcp-config', 'Only use MCP servers from --mcp-config, ignoring all other MCP configurations', () => true).option('--session-id <uuid>', 'Use a specific session ID for the conversation (must be a valid UUID)').option('-n, --name <name>', 'Set a display name for this session (shown in /resume and terminal title)').option('--agents <json>', 'JSON object defining custom agents (e.g. \'{"reviewer": {"description": "Reviews code", "prompt": "You are a code reviewer"}}\')').option('--setting-sources <sources>', 'Comma-separated list of setting sources to load (user, project, local).')
+  .option('--discover-ollama', 'Discover Ollama servers on the local network and choose one at startup')
+  .option('--ollama-host <url>', 'Use a specific Ollama server URL for this session (overrides settings and environment)')
   // gh-33508: <paths...> (variadic) consumed everything until the next
   // --flag. `ur --plugin-dir /path mcp add --transport http` swallowed
   // `mcp` and `add` as paths, then choked on --transport as an unknown
@@ -2301,6 +2317,42 @@ async function run(): Promise<CommanderCommand> {
       const orgValidation = await validateForceLoginOrg();
       if (!orgValidation.valid) {
         await exitWithError(root, (orgValidation as { valid: false; message: string }).message);
+      }
+
+      // Discover and choose an Ollama host when requested. Show after setup
+      // screens so the user isn't interrupted before trust/onboarding.
+      if (getAPIProvider() === 'ollama') {
+        const ollamaHostOverride = (options as { ollamaHost?: string }).ollamaHost
+        if (ollamaHostOverride) {
+          setOllamaBaseUrlOverride(ollamaHostOverride)
+        }
+        const discoverFlag = (options as { discoverOllama?: boolean }).discoverOllama
+        const lanDiscoverySetting = getSettingsForSource('userSettings')?.ollama?.lanDiscovery
+        if (discoverFlag || lanDiscoverySetting) {
+          const discovered = await discoverOllamaHosts({
+            signal: AbortSignal.timeout(8_000),
+          }).catch(() => [] as DiscoveredHost[])
+          if (discovered.length > 0 || lanDiscoverySetting) {
+            const currentHost = getOllamaBaseUrl()
+            const {
+              OllamaHostPicker
+            } = await import('./components/OllamaHostPicker.js');
+            const chosenHost = await showSetupDialog<string | null>(root, done => (
+              <OllamaHostPicker
+                discovered={discovered}
+                currentHost={currentHost}
+                onSelect={done}
+              />
+            ))
+            setOllamaBaseUrlOverride(chosenHost)
+            if (chosenHost) {
+              const existing = getSettingsForSource('userSettings')?.ollama
+              updateSettingsForSource('userSettings', {
+                ollama: { ...existing, host: chosenHost },
+              })
+            }
+          }
+        }
       }
     }
 

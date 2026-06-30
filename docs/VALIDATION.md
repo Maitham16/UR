@@ -8,7 +8,8 @@ You need:
 
 - A running Ollama server (`ollama serve`) with at least one model available
   in the local Ollama app. Local models and Ollama Cloud-backed models both
-  work because UR talks to the local app.
+  work because UR talks to the configured Ollama host.
+- A second Ollama server on the LAN if you want to test network discovery.
 - UR installed globally (`npm install -g ur-agent`) or this repo installed
   globally (`bun add -g github:Maitham16/UR-mapek`) or a
   local checkout (`bun run dev`).
@@ -17,7 +18,25 @@ You need:
 
 ```sh
 ur --version
-# expected: 1.15.0 (Ur)
+# expected: 1.16.0 (Ur)
+```
+
+## 0.1 Network Ollama discovery (1.16.0)
+
+With at least one other Ollama server reachable on your LAN:
+
+```sh
+ur --discover-ollama
+```
+
+Expected: a picker appears listing `This computer` plus the LAN host(s). Select
+the LAN host, then run a prompt and confirm traffic goes to the selected host.
+
+Without a LAN host, you can still verify host configuration:
+
+```sh
+ur --ollama-host http://localhost:11434 -p "say hi"
+ur --settings '{"ollama":{"host":"http://localhost:11434"}}' -p "say hi"
 ```
 
 ## 1. Marketplace tree resolves

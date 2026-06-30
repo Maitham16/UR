@@ -2,7 +2,7 @@ import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import type { LocalCommandCall } from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
-
+import { getOllamaBaseUrl } from '../../utils/model/ollamaConfig.js'
 type OllamaTag = {
   name?: string
   model?: string
@@ -26,15 +26,6 @@ export type ModelCapability = {
   family?: string
   likelyVision: boolean
   likelyCode: boolean
-}
-
-export function normalizeOllamaBaseUrl(value: string | undefined): string {
-  const base = value?.trim() || 'http://localhost:11434'
-  return base.replace(/\/api\/?$/, '').replace(/\/$/, '')
-}
-
-function getOllamaBaseUrl(): string {
-  return normalizeOllamaBaseUrl(process.env.OLLAMA_HOST)
 }
 
 type JsonRequestOptions = {

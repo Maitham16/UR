@@ -1,4 +1,5 @@
 import { isEnvTruthy } from 'src/utils/envUtils.js'
+import { getOllamaBaseUrl } from '../utils/model/ollamaConfig.js'
 
 // Default to prod config, override with test/staging if enabled
 type OauthConfigType = 'prod' | 'staging' | 'local'
@@ -140,7 +141,7 @@ export function getOauthConfig(): {
   // OAuth is not used for local Ollama-only execution. All URLs are left
   // empty so the type surface is complete but no network calls are made.
   return {
-    BASE_API_URL: 'http://localhost:11434',
+    BASE_API_URL: getOllamaBaseUrl(),
     UR_AI_ORIGIN: '',
     UR_AI_AUTHORIZE_URL: '',
     CONSOLE_AUTHORIZE_URL: '',

@@ -6,7 +6,7 @@
  * Pull a model first, e.g. `ollama pull nomic-embed-text`.
  */
 
-const OLLAMA_BASE_URL = 'http://localhost:11434'
+import { getOllamaBaseUrl } from '../model/ollamaConfig.js'
 
 export const DEFAULT_EMBED_MODEL = 'nomic-embed-text'
 
@@ -35,7 +35,7 @@ export async function embedTexts(
   }
   let response: Response
   try {
-    response = await fetch(`${OLLAMA_BASE_URL}/api/embed`, {
+    response = await fetch(`${getOllamaBaseUrl()}/api/embed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: options.model, input: texts }),
@@ -44,7 +44,7 @@ export async function embedTexts(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     throw new Error(
-      `Could not reach the local Ollama app at ${OLLAMA_BASE_URL} for embeddings: ${message}`,
+      `Could not reach the Ollama app at ${getOllamaBaseUrl()} for embeddings: ${message}`,
     )
   }
 

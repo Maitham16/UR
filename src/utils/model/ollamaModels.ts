@@ -1,7 +1,7 @@
 import type { ModelOption } from './modelOptions.js'
+import { getOllamaBaseUrl } from './ollamaConfig.js'
 import { categorizeOllamaModels } from './ollamaRouter.js'
 
-const OLLAMA_BASE_URL = 'http://localhost:11434'
 const ollamaModelMetadataByName = new Map<string, OllamaModelMetadata>()
 let cachedOllamaModelNames: string[] = []
 
@@ -23,9 +23,7 @@ type RefreshOptions = {
   timeoutMs?: number
 }
 
-export function getOllamaBaseUrl(): string {
-  return OLLAMA_BASE_URL
-}
+export { getOllamaBaseUrl }
 
 export function parseOllamaModelNames(value: unknown): string[] {
   if (!value || typeof value !== 'object' || !('models' in value)) {

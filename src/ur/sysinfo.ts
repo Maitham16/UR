@@ -10,6 +10,7 @@ import {
   pickSmallFastModel,
   recommendedCoderModelToPull,
 } from '../utils/model/ollamaRouter.js'
+import { getOllamaBaseUrl } from '../utils/model/ollamaConfig.js'
 
 export function commandExists(bin: string): boolean {
   try {
@@ -59,7 +60,7 @@ export function workspaceInfo(cwd: string): string {
 export async function urDoctor(cwd: string): Promise<string> {
   const lines: string[] = ['UR doctor', '', osInfo(), '']
 
-  const host = 'http://localhost:11434'
+  const host = getOllamaBaseUrl()
   let ollama: string
   let ollamaModels: string[] = []
   try {

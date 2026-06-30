@@ -953,6 +953,21 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Enable background memory consolidation (auto-dream). When set, overrides the server-side default.',
         ),
+      ollama: z
+        .object({
+          host: z
+            .string()
+            .optional()
+            .describe('URL of the Ollama server to use (e.g. http://192.168.1.50:11434)'),
+          lanDiscovery: z
+            .boolean()
+            .optional()
+            .describe(
+              'When true, UR asks to discover Ollama servers on the local network at startup',
+            ),
+        })
+        .optional()
+        .describe('Ollama backend configuration'),
       showThinkingSummaries: z
         .boolean()
         .optional()

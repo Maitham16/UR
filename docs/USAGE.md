@@ -64,7 +64,22 @@ ur --model qwen3-coder:480b-cloud
 ur --model qwen2.5-coder:latest
 ```
 
-UR talks only to the local Ollama app at the fixed endpoint `http://localhost:11434/api`. The endpoint cannot be changed from UR. Models exposed by that local app are valid, including Ollama Cloud-backed models. UR does not call provider APIs directly or manage model API keys.
+UR talks to the local Ollama app at `http://localhost:11434/api` by default, but you can point it at another Ollama server on your LAN or in another location:
+
+```sh
+# Discover and pick a LAN Ollama server at startup
+ur --discover-ollama
+
+# Point to a specific Ollama server for this session
+ur --ollama-host http://192.168.1.50:11434
+
+# Persistent setting
+ur --settings '{"ollama":{"host":"http://192.168.1.50:11434"}}'
+```
+
+Precedence: `--ollama-host` > `OLLAMA_HOST` env > `ollama.host` setting > `localhost:11434`.
+
+Models exposed by the chosen Ollama app are valid, including local models and Ollama Cloud-backed models. UR does not call provider APIs directly or manage model API keys.
 
 ## Project Instructions
 

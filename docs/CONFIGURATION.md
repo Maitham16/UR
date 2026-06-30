@@ -4,22 +4,65 @@ UR reads configuration from CLI flags, environment variables, and project or use
 
 ## Model Provider
 
-UR runs models strictly through the local Ollama app. The request endpoint is fixed and cannot be reconfigured from UR:
+UR runs models strictly through the local Ollama app. The default request endpoint is:
 
 ```text
 http://localhost:11434/api
 ```
 
-Any model exposed by that local Ollama app can be used, including local models and Ollama Cloud-backed models. UR does not call remote provider APIs directly and does not manage model API keys.
+Any model exposed by that Ollama app can be used, including local models and Ollama Cloud-backed models. UR does not call remote provider APIs directly and does not manage model API keys.
 
-Model selection environment variables:
+### Reconfiguring the Ollama host
+
+The endpoint can be changed from UR in three ways, in order of precedence:
+
+1. `--ollama-host <url>` CLI flag (session only)
+2. `OLLAMA_HOST` environment variable
+3. `ollama.host` in user settings (`~/.ur/settings.json`)
+
+Examples:
+
+```sh
+# Session-only
+ur --ollama-host http://192.168.1.50:11434
+
+# Via environment
+OLLAMA_HOST=http://192.168.1.50:11434 ur
+
+# Persistent setting
+ur --settings '{"ollama":{"host":"http://192.168.1.50:11434"}}'
+```
+
+Model selection environment variables still work the same way:
 
 ```sh
 OLLAMA_MODEL=qwen3-coder:480b-cloud
 UR_MODEL=qwen3-coder:480b-cloud
 ```
 
-`OLLAMA_MODEL` selects the model name and takes precedence over `UR_MODEL`. If neither is set, UR lets its Ollama router choose from the model list advertised by the local Ollama app. If that discovery fails, the built-in fallback is `qwen3-coder:480b-cloud`. Neither variable can change the endpoint.
+`OLLAMA_MODEL` selects the model name and takes precedence over `UR_MODEL`. If neither is set, UR lets its Ollama router choose from the model list advertised by the configured Ollama app. If that discovery fails, the built-in fallback is `qwen3-coder:480b-cloud`.
+
+### Discovering LAN Ollama servers
+
+UR can scan your active local subnets for other Ollama servers and show a picker. This works for both wired Ethernet and wireless (Wi-Fi/WLAN) interfaces:
+
+```sh
+ur --discover-ollama
+```
+
+To make the picker appear on every startup, enable it in user settings:
+
+```json
+{
+  "ollama": {
+    "lanDiscovery": true
+  }
+}
+```
+
+The scan is limited to active local IPv4 interfaces, ignores loopback/link-local
+addresses, and uses bounded concurrency with short timeouts. It is opt-in and
+never runs automatically unless enabled.
 
 ## CLI Flags
 

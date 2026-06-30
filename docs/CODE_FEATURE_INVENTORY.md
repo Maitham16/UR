@@ -1,7 +1,7 @@
 # UR Agent code feature inventory
 
 This file is a code-derived inventory of what this agent can do in the
-`ur-agent` 1.15.0 source tree. It is meant to cover behavior that is easy to
+`ur-agent` 1.16.0 source tree. It is meant to cover behavior that is easy to
 miss in user-facing documentation.
 
 Sources traced include:

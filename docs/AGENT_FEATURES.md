@@ -32,7 +32,15 @@ ur claim-ledger add --claim "..." --source web:https://example.com
 ur claim-ledger validate
 ur browser-qa validate
 ur browser-qa run home-page-smoke --dry-run
+ur --discover-ollama
+ur --ollama-host http://192.168.1.50:11434
 ```
+
+## v1.16.0 Additions
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Network Ollama discovery | `ur --discover-ollama`, `ur --ollama-host <url>`, `settings.ollama` | Scans active local subnets for Ollama servers on port 11434, verifies via `/api/tags`, shows a host picker, and persists the chosen host. |
 
 ## v1.15.0 Additions
 

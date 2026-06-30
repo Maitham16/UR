@@ -18,6 +18,7 @@ import {
   cacheOllamaModelMetadata,
   getOllamaContextLengthForModel,
 } from '../../utils/model/ollamaModels.js'
+import { getOllamaBaseUrl } from '../../utils/model/ollamaConfig.js'
 import {
   computeOllamaNumCtx,
   getOllamaKeepAlive,
@@ -100,7 +101,6 @@ type OllamaChatRequest = {
   format?: unknown
 }
 
-const OLLAMA_BASE_URL = 'http://localhost:11434'
 const DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS = 300_000
 const REMOTE_OLLAMA_REQUEST_TIMEOUT_MS = 120_000
 const ollamaModelCapabilitiesCache = new Map<
@@ -234,9 +234,6 @@ function createLinkedAbortController(options?: RequestOptions): AbortController 
   return controller
 }
 
-function getOllamaBaseUrl(): string {
-  return OLLAMA_BASE_URL
-}
 
 export function getOllamaRequestTimeoutMs(
   options?: RequestOptions,
