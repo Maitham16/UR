@@ -195,6 +195,7 @@ export function createLSPServerInstance(
             // Don't claim to support workspace folders changes since we don't handle
             // workspace/didChangeWorkspaceFolders notifications
             workspaceFolders: false,
+            applyEdit: true,
           },
           textDocument: {
             synchronization: {
@@ -219,6 +220,11 @@ export function createLSPServerInstance(
             definition: {
               dynamicRegistration: false,
               linkSupport: true,
+            },
+            rename: {
+              dynamicRegistration: false,
+              prepareSupport: true,
+              prepareSupportDefaultBehavior: 1,
             },
             references: {
               dynamicRegistration: false,

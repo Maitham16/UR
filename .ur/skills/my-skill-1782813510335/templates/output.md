@@ -1,0 +1,5 @@
+# Output template
+
+## Summary
+
+## Details

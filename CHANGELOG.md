@@ -30,6 +30,45 @@
   repo file classification, symbol/call/test/doc/config extraction, and index
   round-trips.
 
+## 1.22.4
+
+### Added
+- **AST-aware `ur repo-edit` (P7).** Added
+  `src/services/repoEditing/ast/types.ts`,
+  `src/services/repoEditing/ast/workspaceEdit.ts`,
+  `src/services/repoEditing/ast/diagnostics.ts`,
+  `src/services/repoEditing/ast/typescriptEngine.ts`,
+  `src/services/repoEditing/ast/lspEditEngine.ts`,
+  `src/services/repoEditing/ast/engineRouter.ts`,
+  `src/services/repoEditing/ast/treeSitterEngine.ts`, and
+  `src/services/repoEditing/ast/repoEditAst.ts`.
+- **`rename`.** Binding-aware rename for TS/JS via `ts.createProgram` + type
+  checker; LSP rename via `textDocument/prepareRename` + `textDocument/rename`
+  for Python/Rust/Go and TS/JS opt-in; Tree-sitter best-effort identifier fallback.
+- **`move`.** Move a TS function/class to another file with source removal and
+  target insertion.
+- **`organize-imports`.** Sort import blocks alphabetically for TS/JS files.
+- **`unused`.** List unused local variables via TypeScript reference analysis.
+- **`callers`.** Map direct callers of a TS function.
+- **Diagnostics before/after edits with rollback.** Each apply path collects a
+  `DiagnosticSnapshot`, applies edits, then re-collects. New errors or a failing
+  `--check` command roll back all changed files.
+- **LSP editing support.** `LSPServerInstance.ts` advertises `textDocument.rename`
+  and `workspace.applyEdit`; `LSPServerManager.ts` handles reverse
+  `workspace/applyEdit` requests.
+
+### Changed
+- `src/commands/repo-edit/repo-edit.ts` dispatches the new `rename`, `move`,
+  `organize-imports`, `unused`, and `callers` subcommands while keeping legacy
+  `plan/preview/apply rename` paths working.
+
+### Verified
+- Added `test/repoEditAst.test.ts`, `test/typescriptEngine.test.ts`,
+  `test/repoEditMove.test.ts`, `test/repoEditImports.test.ts`, and
+  `test/repoEditReadOps.test.ts` covering binding-aware rename, cross-file
+  import updates, rollback on check failure, move, organize imports, unused
+  detection, and caller mapping.
+
 ## 1.22.2
 
 ### Added

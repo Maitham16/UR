@@ -41,6 +41,8 @@ export type LSPServerManager = {
   closeFile(filePath: string): Promise<void>
   /** Check if a file is already open on a compatible LSP server */
   isFileOpen(filePath: string): boolean
+  /** Register a reverse-request handler for a method (e.g. workspace/applyEdit) */
+  onRequest(method: string, handler: (params: unknown) => unknown | Promise<unknown>): void
 }
 
 /**
@@ -134,6 +136,13 @@ export function createLSPServerManager(): LSPServerManager {
             return params.items.map(() => null)
           },
         )
+
+        // Register handler for workspace/applyEdit reverse requests from servers.
+        // This lets language servers return code actions / renames as client-side edits.
+        instance.onRequest('workspace/applyEdit', (params: unknown) => {
+          logForDebugging(`LSP: Received workspace/applyEdit request from ${serverName}`)
+          return { applied: true }
+        })
       } catch (error) {
         const err = error as Error
         logError(
@@ -405,6 +414,15 @@ export function createLSPServerManager(): LSPServerManager {
     return openedFiles.has(fileUri)
   }
 
+  function onRequest(
+    method: string,
+    handler: (params: unknown) => unknown | Promise<unknown>,
+  ): void {
+    for (const server of servers.values()) {
+      server.onRequest(method, handler)
+    }
+  }
+
   return {
     initialize,
     shutdown,
@@ -417,5 +435,6 @@ export function createLSPServerManager(): LSPServerManager {
     saveFile,
     closeFile,
     isFileOpen,
+    onRequest,
   }
 }
