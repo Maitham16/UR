@@ -11,6 +11,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { safeParseJSON } from '../../utils/json.js'
+import { addRunArtifact } from './runArtifacts.js'
 
 export type CommandLogEntry = {
   at: string
@@ -41,6 +42,11 @@ export function appendCommandLog(
   const path = commandLogPath(cwd, runId)
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, `${JSON.stringify(full)}\n`, { flag: 'a' })
+  addRunArtifact(cwd, runId, {
+    kind: 'command-log',
+    path: commandLogPath(cwd, runId),
+    title: `commands.jsonl (${entry.command.slice(0, 60)})`,
+  })
   return full
 }
 
@@ -52,14 +58,13 @@ export function readCommandLog(cwd: string, runId: string): CommandLogEntry[] {
       .split('\n')
       .filter(Boolean)
       .map(line => safeParseJSON(line, false))
-      .filter((item): item is CommandLogEntry =>
-        Boolean(
-          item &&
-            typeof item === 'object' &&
-            typeof item.command === 'string' &&
-            typeof item.exitCode === 'number',
-        ),
-      )
+      .filter((item): item is CommandLogEntry => {
+        if (!item || typeof item !== 'object') return false
+        const obj = item as Record<string, unknown>
+        return (
+          typeof obj.command === 'string' && typeof obj.exitCode === 'number'
+        )
+      })
   } catch {
     return []
   }

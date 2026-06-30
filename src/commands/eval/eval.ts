@@ -40,6 +40,8 @@ import type { LocalCommandCall } from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { getCwd } from '../../utils/cwd.js'
 import { isNetworkRestricted } from '../../utils/offlineMode.js'
+import { getSessionId } from '../../bootstrap/state.js'
+import { loadRunManifests, readRunManifest, type RunManifest } from '../../services/agents/runArtifacts.js'
 
 function optionValue(tokens: string[], flag: string): string | undefined {
   const index = tokens.indexOf(flag)
@@ -78,6 +80,7 @@ const EVAL_FLAGS_WITH_VALUES = new Set([
   '--category',
   '--max-turns',
   '--model',
+  '--repeat',
   '--strategy',
   '--format',
 ])
@@ -171,7 +174,7 @@ export const call: LocalCommandCall = async (args: string) => {
           : 'No saved reports yet. Run an eval first.',
       }
     }
-    const outPath = buildLeaderboard(cwd, reports, { format })
+    const outPath = buildLeaderboard(cwd, reports, { format, runId: getSessionId() })
     return { type: 'text', value: `Wrote leaderboard to ${outPath}` }
   }
 
@@ -299,8 +302,10 @@ export const call: LocalCommandCall = async (args: string) => {
     }
 
     const writeMetrics = tokens.includes('--metrics')
+    const runId = getSessionId()
+    process.env.UR_RUN_ID = runId
     const report: EvalReport = await runSuite(suite, runner, { category, judge })
-    if (!dryRun) saveReport(cwd, report)
+    if (!dryRun) saveReport(cwd, report, { runId })
     if (writeMetrics) {
       const { writeRunMetrics } = await import('../../services/agents/evals.js')
       for (const item of report.cases) {
@@ -384,8 +389,34 @@ export const call: LocalCommandCall = async (args: string) => {
       },
     }))
 
+    const runId = getSessionId()
+    process.env.UR_RUN_ID = runId
     const report = await runSuiteCompare(suite, labels, { judge: baseJudge })
     return { type: 'text', value: formatCompareReport(report, json) }
+  }
+
+  if (command === 'runs' || command === 'run-artifacts') {
+    const runId = name
+    if (!runId) {
+      const manifests = loadRunManifests(cwd)
+      if (json) return { type: 'text', value: JSON.stringify({ runs: manifests.map(m => m.runId) }, null, 2) }
+      if (manifests.length === 0) return { type: 'text', value: 'No run artifacts yet.' }
+      return {
+        type: 'text',
+        value: manifests.map(m => `- ${m.runId} (${m.artifacts.length} artifacts) — ${m.startedAt}`).join('\n'),
+      }
+    }
+    const manifest = readRunManifest(cwd, runId)
+    if (!manifest) return { type: 'text', value: `No run manifest for ${runId}.` }
+    if (json) return { type: 'text', value: JSON.stringify(manifest, null, 2) }
+    const lines = [
+      `Run: ${manifest.runId}`,
+      `Started: ${manifest.startedAt}`,
+      `Artifacts: ${manifest.artifacts.length}`,
+      '',
+      ...manifest.artifacts.map(a => `- ${a.kind}: ${a.path}${a.title ? ` — ${a.title}` : ''}`),
+    ]
+    return { type: 'text', value: lines.join('\n') }
   }
 
   return { type: 'text', value: `Unknown eval command: ${command}` }

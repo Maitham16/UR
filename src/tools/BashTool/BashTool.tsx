@@ -657,8 +657,9 @@ export const BashTool = buildTool({
     let result: ExecResult;
     const isMainThread = !toolUseContext.agentId;
     const preventCwdChanges = !isMainThread;
+    const toolUseID = toolUseContext.toolUseId ?? parentMessage?.uuid ?? '';
+    const commandStartTime = Date.now();
     try {
-      const toolUseID = toolUseContext.toolUseId ?? parentMessage?.uuid ?? '';
       const timeoutMs = input.timeout || getDefaultTimeoutMs();
 
       // Lifecycle hook: before command runs
@@ -674,6 +675,19 @@ export const BashTool = buildTool({
           signal: abortController.signal,
         },
       );
+
+      // Self-checking command discipline: record the intent to run this command
+      // before execution so the log is complete even if the command crashes.
+      appendCommandLog(getCwd(), getSessionId(), {
+        command: input.command,
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        reason: input.description,
+        nextAction: 'running',
+        durationMs: 0,
+        toolUseId: toolUseID,
+      });
 
       // Use the new async generator version of runShellCommand
       const commandGenerator = runShellCommand({
@@ -854,6 +868,20 @@ export const BashTool = buildTool({
     if (isMainThread && extracted.hints.length > 0) {
       for (const hint of extracted.hints) maybeRecordPluginHint(hint);
     }
+    // Self-checking command discipline: log every executed shell command
+    // with its outcome, reason, and duration for audit/eval/failure memory.
+    const commandLogDurationMs = typeof commandStartTime === 'number' ? Date.now() - commandStartTime : undefined;
+    appendCommandLog(getCwd(), getSessionId(), {
+      command: input.command,
+      exitCode: result.code,
+      stdout: stdout.length > 16_000 ? stdout.slice(0, 16_000) + '...[truncated]' : stdout,
+      stderr: stderrForShellReset.length > 8_000 ? stderrForShellReset.slice(0, 8_000) + '...[truncated]' : stderrForShellReset,
+      reason: input.description,
+      nextAction: interpretationResult?.message,
+      durationMs: commandLogDurationMs,
+      toolUseId: toolUseID,
+    });
+
     let isImage = isImageOutput(strippedStdout);
 
     // Cap image dimensions + size if present (CC-304 — see

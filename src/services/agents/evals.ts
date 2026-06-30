@@ -9,6 +9,7 @@ import {
 import { join } from 'node:path'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { safeParseJSON } from '../../utils/json.js'
+import { addRunArtifact } from './runArtifacts.js'
 import { parseHeadlessOutput } from './cliStepRunner.js'
 import type { Verdict } from './executor.js'
 import {
@@ -113,14 +114,19 @@ export type EvalRunMetrics = {
   outputTokens?: number
   model?: string
   filesChanged?: number
+  /** First-class edit count used for leaderboard comparisons. Defaults to insertions + deletions. */
+  editCount?: number
   insertions?: number
   deletions?: number
   testPassed?: boolean
+  testsPassed?: number
+  testsFailed?: number
   testCommand?: string
   testStdout?: string
   testStderr?: string
   commandFailures?: number
   humanEditsNeeded?: number
+  humanInterventions?: number
   rollbacks?: number
 }
 
@@ -148,9 +154,13 @@ export type EvalReport = {
   totalInputTokens?: number
   totalOutputTokens?: number
   totalFilesChanged?: number
+  totalEditCount?: number
   totalCommandFailures?: number
   totalHumanEditsNeeded?: number
+  totalHumanInterventions?: number
   totalRollbacks?: number
+  testsPassed?: number
+  testsFailed?: number
   testPassRate?: number
   cases: EvalCaseResult[]
 }
@@ -340,6 +350,12 @@ function buildReport(name: string, cases: EvalCaseResult[]): EvalReport {
   }
   const metrics = cases.map(c => c.metrics)
   const testRuns = metrics.filter(m => m?.testPassed !== undefined)
+  const testsPassed = testRuns.filter(m => m?.testPassed).length
+  const testsFailed = testRuns.filter(m => m?.testPassed === false).length
+  const editCount = sum(metrics.map(m =>
+    m?.editCount ?? ((m?.insertions ?? 0) + (m?.deletions ?? 0)),
+  ))
+  const humanInterventions = sum(metrics.map(m => m?.humanInterventions ?? m?.humanEditsNeeded))
   return {
     name,
     generatedAt: new Date().toISOString(),
@@ -348,14 +364,18 @@ function buildReport(name: string, cases: EvalCaseResult[]): EvalReport {
     failed: cases.length - passed,
     passRate: cases.length > 0 ? Number((passed / cases.length).toFixed(2)) : 0,
     byCategory,
-    totalDurationMs: sum(metrics.map(m => m?.durationMs)),
+    totalDurationMs: sum(cases.map(c => c.metrics?.durationMs ?? c.durationMs)),
     totalCostUSD: metrics.length > 0 ? Number(sum(metrics.map(m => m?.costUSD)).toFixed(6)) : undefined,
     totalInputTokens: sum(metrics.map(m => m?.inputTokens)) || undefined,
     totalOutputTokens: sum(metrics.map(m => m?.outputTokens)) || undefined,
     totalFilesChanged: sum(metrics.map(m => m?.filesChanged)) || undefined,
+    totalEditCount: editCount || undefined,
     totalCommandFailures: sum(metrics.map(m => m?.commandFailures)) || undefined,
     totalHumanEditsNeeded: sum(metrics.map(m => m?.humanEditsNeeded)) || undefined,
+    totalHumanInterventions: humanInterventions || undefined,
     totalRollbacks: sum(metrics.map(m => m?.rollbacks)) || undefined,
+    testsPassed: testRuns.length > 0 ? testsPassed : undefined,
+    testsFailed: testRuns.length > 0 ? testsFailed : undefined,
     testPassRate: testRuns.length > 0 ? Number((testRuns.filter(m => m?.testPassed).length / testRuns.length).toFixed(2)) : undefined,
     cases,
   }
@@ -487,9 +507,11 @@ export type CompareCell = {
   passed: boolean
   durationMs: number
   costUSD?: number
+  editCount?: number
   rollbacks?: number
   commandFailures?: number
   humanEditsNeeded?: number
+  humanInterventions?: number
   testPassed?: boolean
 }
 
@@ -511,9 +533,13 @@ export type CompareReport = {
       passRate: number
       totalCostUSD?: number
       totalDurationMs: number
+      totalEditCount: number
       totalRollbacks: number
       totalCommandFailures: number
       totalHumanEditsNeeded: number
+      totalHumanInterventions: number
+      testsPassed?: number
+      testsFailed?: number
       testPassRate?: number
     }
   >
@@ -544,9 +570,11 @@ export async function runSuiteCompare(
         passed: item.passed,
         durationMs: item.durationMs,
         costUSD: item.metrics?.costUSD,
+        editCount: item.metrics?.editCount ?? ((item.metrics?.insertions ?? 0) + (item.metrics?.deletions ?? 0)),
         rollbacks: item.metrics?.rollbacks,
         commandFailures: item.metrics?.commandFailures,
         humanEditsNeeded: item.metrics?.humanEditsNeeded,
+        humanInterventions: item.metrics?.humanInterventions ?? item.metrics?.humanEditsNeeded,
         testPassed: item.metrics?.testPassed,
       }
     }
@@ -562,9 +590,13 @@ export async function runSuiteCompare(
       passRate: report.passRate,
       totalCostUSD: report.totalCostUSD,
       totalDurationMs: report.totalDurationMs,
+      totalEditCount: report.totalEditCount ?? 0,
       totalRollbacks: report.totalRollbacks ?? 0,
       totalCommandFailures: report.totalCommandFailures ?? 0,
       totalHumanEditsNeeded: report.totalHumanEditsNeeded ?? 0,
+      totalHumanInterventions: report.totalHumanInterventions ?? report.totalHumanEditsNeeded ?? 0,
+      testsPassed: report.testsPassed,
+      testsFailed: report.testsFailed,
       testPassRate:
         testRuns.length > 0
           ? Number((testRuns.filter(c => c.metrics?.testPassed).length / testRuns.length).toFixed(2))
@@ -589,18 +621,21 @@ export function formatCompareReport(report: CompareReport, json: boolean): strin
     `Cases: ${report.totalCases} | Labels: ${report.labels.join(', ')}`,
     '',
   ]
-  const totalsHeader = ['Label', 'Pass rate', 'Tests', 'Cost', 'Time', 'Rollbacks', 'Cmd failures', 'Human edits']
+  const totalsHeader = ['Label', 'Pass rate', 'Tests', 'Edits', 'Cost', 'Time', 'Rollbacks', 'Cmd failures', 'Human intervention']
   const totalsRows = [totalsHeader, ...report.labels.map(name => {
     const b = report.byLabel[name]
     return [
       name,
       `${Math.round(b.passRate * 100)}%`,
-      b.testPassRate !== undefined ? `${Math.round(b.testPassRate * 100)}%` : '—',
+      b.testsPassed !== undefined || b.testsFailed !== undefined
+        ? `${b.testsPassed ?? 0}/${(b.testsPassed ?? 0) + (b.testsFailed ?? 0)}`
+        : b.testPassRate !== undefined ? `${Math.round(b.testPassRate * 100)}%` : '—',
+      String(b.totalEditCount),
       typeof b.totalCostUSD === 'number' ? `$${b.totalCostUSD.toFixed(6)}` : '—',
       `${b.totalDurationMs}ms`,
       String(b.totalRollbacks),
       String(b.totalCommandFailures),
-      String(b.totalHumanEditsNeeded),
+      String(b.totalHumanInterventions),
     ]
   })]
   lines.push(formatTable(totalsRows))
@@ -862,9 +897,16 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
       outputTokens: childMetrics?.outputTokens ?? getTotalOutputTokens(),
       model: options.model ?? childMetrics?.model ?? firstModelName(modelUsage),
       filesChanged: diffStats.filesChanged,
+      editCount:
+        diffStats.insertions +
+        diffStats.deletions +
+        (childMetrics?.linesAdded ?? getTotalLinesAdded()) +
+        (childMetrics?.linesRemoved ?? getTotalLinesRemoved()),
       insertions: diffStats.insertions + (childMetrics?.linesAdded ?? getTotalLinesAdded()),
       deletions: diffStats.deletions + (childMetrics?.linesRemoved ?? getTotalLinesRemoved()),
       testPassed: testResult?.testPassed,
+      testsPassed: testResult ? (testResult.testPassed ? 1 : 0) : undefined,
+      testsFailed: testResult ? (testResult.testPassed ? 0 : 1) : undefined,
       testCommand: testResult?.testCommand,
       testStdout: testResult?.testStdout,
       testStderr: testResult?.testStderr,
@@ -873,6 +915,7 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
         (result.code !== 0 ? 1 : 0) +
         (testResult && !testResult.testPassed ? 1 : 0),
       humanEditsNeeded: countHumanEdits(output),
+      humanInterventions: countHumanEdits(output),
       rollbacks: countRollbacks(output),
     }
 
@@ -944,8 +987,10 @@ export function buildDashboardHtml(
       ['Cost', fmtUsd(report.totalCostUSD)],
       ['Tokens', `${num(report.totalInputTokens)} / ${num(report.totalOutputTokens)}`],
       ['Files changed', num(report.totalFilesChanged)],
+      ['Edit count', num(report.totalEditCount)],
+      ['Tests passed', report.testsPassed !== undefined || report.testsFailed !== undefined ? `${report.testsPassed ?? 0}/${(report.testsPassed ?? 0) + (report.testsFailed ?? 0)}` : '—'],
       ['Command failures', num(report.totalCommandFailures)],
-      ['Human edits', num(report.totalHumanEditsNeeded)],
+      ['Human intervention', num(report.totalHumanInterventions ?? report.totalHumanEditsNeeded)],
       ['Rollbacks', num(report.totalRollbacks)],
       ['Duration', `${num(report.totalDurationMs, '0')}ms`],
     ]
@@ -970,10 +1015,11 @@ export function buildDashboardHtml(
       `<td>${fmtUsd(m?.costUSD)}</td>` +
       `<td>${num(m?.inputTokens)} / ${num(m?.outputTokens)}</td>` +
       `<td>${num(m?.filesChanged)} <span class="muted">+${num(m?.insertions)} −${num(m?.deletions)}</span></td>` +
+      `<td>${num(m?.editCount ?? ((m?.insertions ?? 0) + (m?.deletions ?? 0)))}</td>` +
       `<td>${testBadge}</td>` +
       `<td><code>${escapeHtml(commandsRun || '—')}</code></td>` +
       `<td>${num(m?.commandFailures)}</td>` +
-      `<td>${m?.humanEditsNeeded ? `<span class="badge warn">${m.humanEditsNeeded}</span>` : '—'}</td>` +
+      `<td>${m?.humanInterventions || m?.humanEditsNeeded ? `<span class="badge warn">${m.humanInterventions ?? m.humanEditsNeeded}</span>` : '—'}</td>` +
       `<td>${num(m?.rollbacks)}</td>` +
       `<td><code>${escapeHtml(c.outputPreview.slice(0, 60))}</code></td>` +
       `</tr>`
@@ -995,7 +1041,7 @@ export function buildDashboardHtml(
       `${summaryCards(report)}` +
       `<table class="cats"><thead><tr><th>category</th><th>pass</th></tr></thead><tbody>${cats}</tbody></table>` +
       `<h3>Task timeline</h3>` +
-      `<table class="cases timeline"><thead><tr><th></th><th>case</th><th>category</th><th>model used</th><th>time</th><th>cost</th><th>tokens</th><th>diffs produced</th><th>tests passed/failed</th><th>commands run</th><th>command failures</th><th>human edits</th><th>rollbacks</th><th>output</th></tr></thead>` +
+      `<table class="cases timeline"><thead><tr><th></th><th>case</th><th>category</th><th>model used</th><th>time</th><th>cost</th><th>tokens</th><th>diffs produced</th><th>edit count</th><th>tests passed/failed</th><th>commands run</th><th>command failures</th><th>human intervention</th><th>rollbacks</th><th>output</th></tr></thead>` +
       `<tbody>${rows}</tbody></table></section>`
     )
   }
@@ -1090,12 +1136,15 @@ export type LeaderboardFormat = 'html' | 'json' | 'md'
 export function buildLeaderboard(
   cwd: string,
   reports: EvalReport[],
-  options: { format?: LeaderboardFormat; title?: string } = {},
+  options: { format?: LeaderboardFormat; title?: string; runId?: string } = {},
 ): string {
   const format = options.format ?? 'html'
   const title = options.title ?? 'UR Public Leaderboard'
+  const runId = options.runId ?? process.env.UR_RUN_ID
   if (format === 'json') {
-    const path = join(resultsDir(cwd), 'leaderboard.json')
+    const dir = resultsDir(cwd)
+    mkdirSync(dir, { recursive: true })
+    const path = join(dir, 'leaderboard.json')
     writeFileSync(
       path,
       JSON.stringify(
@@ -1104,6 +1153,9 @@ export function buildLeaderboard(
         2,
       ) + '\n',
     )
+    if (runId) {
+      addRunArtifact(cwd, runId, { kind: 'leaderboard', path, title })
+    }
     return path
   }
   if (format === 'md') {
@@ -1111,9 +1163,14 @@ export function buildLeaderboard(
     mkdirSync(dir, { recursive: true })
     const path = join(dir, 'leaderboard.md')
     writeFileSync(path, formatLeaderboardMarkdown(title, reports))
+    if (runId) {
+      addRunArtifact(cwd, runId, { kind: 'leaderboard', path, title })
+    }
     return path
   }
-  const path = join(evalsDir(cwd), 'leaderboard.html')
+  const dir = evalsDir(cwd)
+  mkdirSync(dir, { recursive: true })
+  const path = join(dir, 'leaderboard.html')
   const html = buildDashboardHtml(reports, [])
   writeFileSync(
     path,
@@ -1121,6 +1178,9 @@ export function buildLeaderboard(
       .replace('<title>UR Eval Dashboard</title>', `<title>${escapeHtml(title)}</title>`)
       .replace('<h1>UR Eval Dashboard</h1>', `<h1>${escapeHtml(title)}</h1>`),
   )
+  if (runId) {
+    addRunArtifact(cwd, runId, { kind: 'leaderboard', path, title })
+  }
   return path
 }
 
@@ -1129,12 +1189,12 @@ function formatLeaderboardMarkdown(title: string, reports: EvalReport[]): string
     `# ${title}`,
     `generated ${new Date().toISOString()}`,
     '',
-    '| Suite | Pass rate | Tests | Cost | Tokens | Files | Failures | Rollbacks | Human edits |',
-    '|---|---|---|---|---|---|---|---|---|',
+    '| Suite | Pass rate | Tests passed | Edit count | Cost | Tokens | Files | Failures | Rollbacks | Human intervention |',
+    '|---|---|---|---|---|---|---|---|---|---|',
   ]
   for (const r of reports) {
     lines.push(
-      `| ${r.name} | ${Math.round(r.passRate * 100)}% | ${r.testPassRate !== undefined ? `${Math.round(r.testPassRate * 100)}%` : '—'} | ${r.totalCostUSD !== undefined ? `$${r.totalCostUSD.toFixed(6)}` : '—'} | ${r.totalInputTokens ?? '—'} / ${r.totalOutputTokens ?? '—'} | ${r.totalFilesChanged ?? '—'} | ${r.totalCommandFailures ?? '—'} | ${r.totalRollbacks ?? '—'} | ${r.totalHumanEditsNeeded ?? '—'} |`,
+      `| ${r.name} | ${Math.round(r.passRate * 100)}% | ${r.testsPassed !== undefined || r.testsFailed !== undefined ? `${r.testsPassed ?? 0}/${(r.testsPassed ?? 0) + (r.testsFailed ?? 0)}` : r.testPassRate !== undefined ? `${Math.round(r.testPassRate * 100)}%` : '—'} | ${r.totalEditCount ?? '—'} | ${r.totalCostUSD !== undefined ? `$${r.totalCostUSD.toFixed(6)}` : '—'} | ${r.totalInputTokens ?? '—'} / ${r.totalOutputTokens ?? '—'} | ${r.totalFilesChanged ?? '—'} | ${r.totalCommandFailures ?? '—'} | ${r.totalRollbacks ?? '—'} | ${r.totalHumanInterventions ?? r.totalHumanEditsNeeded ?? '—'} |`,
     )
   }
   return lines.join('\n') + '\n'
@@ -1439,10 +1499,17 @@ export function importBenchmarkSuite(
   return { suite, path: saved.path, created: saved.created, records: records.length }
 }
 
-export function saveReport(cwd: string, report: EvalReport): string {
+export function saveReport(cwd: string, report: EvalReport, options: { runId?: string } = {}): string {
   mkdirSync(resultsDir(cwd), { recursive: true })
   const path = join(resultsDir(cwd), `${suiteSlug(report.name)}.json`)
   writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`)
+  if (options.runId) {
+    addRunArtifact(cwd, options.runId, {
+      kind: 'eval-report',
+      path,
+      title: `${report.name} — ${report.passed}/${report.total} passed`,
+    })
+  }
   return path
 }
 
@@ -1529,7 +1596,12 @@ Commands:
 - \`ur eval run <suite> --dry-run\` — exercise the suite offline (no model calls)
 - \`ur eval run <suite> --category coding\` — run only one category
 - \`ur eval report <suite>\` — re-print the last run's report
+- \`ur eval compare <suite> pool codex claude\` — compare one suite across model/runner labels
 - \`ur eval dashboard\` — render the local task timeline with commands, diffs, tests, model, tokens, time, and cost
+- \`ur eval builtin list\` — show small public benchmark suites
+- \`ur eval builtin bug-fix\` — install a built-in suite
+- \`ur eval leaderboard --format md\` — render a publishable local leaderboard
+- \`ur eval route "fix this auth bug"\` — show model routing for a task
 - \`ur eval bench list\` — show supported benchmark adapters
 - \`ur eval bench swe-bench --file local.jsonl --name local-swe\` — import a local benchmark export as a UR suite
 
@@ -1592,9 +1664,16 @@ export function formatEvalReport(report: EvalReport, json: boolean): string {
       ? `Tokens: ${report.totalInputTokens ?? 0} in / ${report.totalOutputTokens ?? 0} out`
       : null,
     report.totalFilesChanged !== undefined ? `Files changed: ${report.totalFilesChanged}` : null,
+    report.totalEditCount !== undefined ? `Edit count: ${report.totalEditCount}` : null,
+    report.testsPassed !== undefined || report.testsFailed !== undefined
+      ? `Tests passed: ${report.testsPassed ?? 0}/${(report.testsPassed ?? 0) + (report.testsFailed ?? 0)}`
+      : null,
     report.totalCommandFailures !== undefined ? `Command failures: ${report.totalCommandFailures}` : null,
     report.totalHumanEditsNeeded !== undefined
       ? `Human edits needed: ${report.totalHumanEditsNeeded}`
+      : null,
+    report.totalHumanInterventions !== undefined
+      ? `Human interventions: ${report.totalHumanInterventions}`
       : null,
     report.totalRollbacks !== undefined ? `Rollbacks: ${report.totalRollbacks}` : null,
     report.totalDurationMs > 0 ? `Duration: ${report.totalDurationMs}ms` : null,
