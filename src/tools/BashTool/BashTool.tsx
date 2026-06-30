@@ -54,6 +54,8 @@ import {
   formatFailureHints,
   recordFailure,
 } from '../../services/agents/failureMemory.js';
+import { appendCommandLog } from '../../services/agents/commandLog.js';
+import { getSessionId } from '../../bootstrap/state.js';
 import { bashToolHasPermission, commandHasAnyCd, matchWildcardPattern, permissionRuleExtractPrefix } from './bashPermissions.js';
 import { interpretCommandResult } from './commandSemantics.js';
 import { getDefaultTimeoutMs, getMaxTimeoutMs, getSimplePrompt } from './prompt.js';
