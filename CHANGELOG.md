@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.23.3
+
+### Fixed
+- `repoIndex` tests failing in CI because `listIndexableFiles` silently returned `[]` when ripgrep (`rg`) was unavailable. Added a Node.js recursive file walker fallback that applies the same extension and skip-segment filters.
+
 ## 1.23.2
 
 ### Added
