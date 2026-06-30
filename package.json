@@ -1,6 +1,6 @@
 {
   "name": "ur-agent",
-  "version": "1.22.7",
+  "version": "1.22.8",
   "description": "UR terminal coding agent CLI",
   "type": "module",
   "packageManager": "bun@1.3.14",
