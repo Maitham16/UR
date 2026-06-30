@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "builtin-py-package-repair",
+  "description": "Small Python package repair benchmark. Each case asks UR to fix packaging metadata in a fresh worktree.",
+  "cases": [
+    {
+      "id": "missing-dep",
+      "category": "py-package-repair",
+      "prompt": "You are in a fresh Python repo with a setup.py that installs a package but forgets install_requires=['requests']. Create src/mypkg/__init__.py that imports requests. Ask UR to fix setup.py, install the package in editable mode (or write the fix), and verify the import would work. Finish with VERDICT: PASS if setup.py references requests.",
+      "expect": {
+        "contains": ["VERDICT:"],
+        "testCommand": "grep -q 'requests' setup.py"
+      }
+    },
+    {
+      "id": "missing-pyproject",
+      "category": "py-package-repair",
+      "prompt": "You are in a fresh Python repo with only setup.py and no pyproject.toml. Ask UR to add a minimal pyproject.toml with build-system requires, project name, and version. Finish with VERDICT: PASS if pyproject.toml exists with [project] section.",
+      "expect": {
+        "contains": ["VERDICT:"],
+        "testCommand": "grep -q '\\[project\\]' pyproject.toml"
+      }
+    },
+    {
+      "id": "entrypoint",
+      "category": "py-package-repair",
+      "prompt": "You are in a fresh Python repo with a CLI script src/mypkg/cli.py but no console_scripts entry point. Ask UR to fix setup.py or pyproject.toml so it exposes a 'mypkg' command, and create a minimal package structure. Finish with VERDICT: PASS if an entry point references mypkg.cli:main or similar.",
+      "expect": {
+        "contains": ["VERDICT:"],
+        "testCommand": "grep -qE 'console_scripts|mypkg.cli' setup.py pyproject.toml 2>/dev/null"
+      }
+    }
+  ]
+}

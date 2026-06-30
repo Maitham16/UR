@@ -13,6 +13,9 @@ import { randomUUID } from 'node:crypto'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { findCanonicalGitRoot, findGitRoot, gitExe } from '../../utils/git.js'
 import { safeParseJSON } from '../../utils/json.js'
+import { listModelCapabilities } from '../../commands/model-doctor/model-doctor.js'
+import { resolveModelForTask } from './modelRouter.js'
+import { loadModelPool } from './modelPool.js'
 
 export type BackgroundTaskStatus =
   | 'queued'
@@ -75,6 +78,7 @@ export type StartBackgroundTaskOptions = {
   body?: string
   push?: boolean
   model?: string
+  routeStrategy?: 'auto' | 'cheap' | 'strong' | 'default'
   maxTurns?: number
   skipPermissions?: boolean
   dryRun?: boolean
@@ -89,6 +93,11 @@ export type StartBackgroundTaskResult = {
   task: BackgroundTask
   command: string[]
   dryRun: boolean
+}
+
+export type StartExistingBackgroundTaskOptions = {
+  dryRun?: boolean
+  bin?: { file: string; baseArgs: string[] }
 }
 
 function now(): string {
@@ -276,24 +285,49 @@ export function createBackgroundTask(
   return task
 }
 
-export function startBackgroundTask(
-  options: StartBackgroundTaskOptions,
-): StartBackgroundTaskResult {
-  const task = createBackgroundTask(options)
-  const entry = cliEntry(options.bin)
-  const command = [...entry.baseArgs, 'bg', 'worker', task.id]
-  if (options.dryRun) {
-    return { task, command: [entry.file, ...command], dryRun: true }
+function buildWorkerCommand(
+  task: BackgroundTask,
+  bin?: { file: string; baseArgs: string[] },
+): { entry: { file: string; baseArgs: string[] }; command: string[] } {
+  const entry = cliEntry(bin)
+  return {
+    entry,
+    command: [...entry.baseArgs, 'bg', 'worker', task.id],
   }
+}
 
+async function resolveTaskEnv(task: BackgroundTask): Promise<NodeJS.ProcessEnv> {
+  const base = { ...process.env }
+  const model = task.model ?? (await resolveRouteStrategyModel(task))
+  if (model) {
+    base.UR_MODEL = model
+    base.OLLAMA_MODEL = model
+  }
+  return base
+}
+
+async function resolveRouteStrategyModel(task: BackgroundTask): Promise<string | undefined> {
+  // BackgroundTask stores only model today; route strategy is resolved here when caller sets it.
+  const strategy = (task as { routeStrategy?: string }).routeStrategy
+  if (!strategy) return undefined
+  const { models } = await listModelCapabilities()
+  return resolveModelForTask(task.task, strategy as import('./modelRouter.js').RouteStrategy, loadModelPool(task.cwd), models)
+}
+
+async function spawnBackgroundWorker(
+  task: BackgroundTask,
+  bin?: { file: string; baseArgs: string[] },
+): Promise<string[]> {
+  const { entry, command } = buildWorkerCommand(task, bin)
   const out = openSync(task.logFile, 'a')
   const err = openSync(task.logFile, 'a')
   try {
+    const env = await resolveTaskEnv(task)
     const child = spawn(entry.file, command, {
       cwd: task.cwd,
       detached: true,
       stdio: ['ignore', out, err],
-      env: process.env,
+      env,
     })
     child.unref()
     updateTask(task.cwd, task.id, t => {
@@ -303,18 +337,46 @@ export function startBackgroundTask(
     closeSync(out)
     closeSync(err)
   }
+  return [entry.file, ...command]
+}
+
+export async function startBackgroundTask(
+  options: StartBackgroundTaskOptions,
+): Promise<StartBackgroundTaskResult> {
+  const task = createBackgroundTask(options)
+  const { entry, command } = buildWorkerCommand(task, options.bin)
+  if (options.dryRun) {
+    return { task, command: [entry.file, ...command], dryRun: true }
+  }
+
+  await spawnBackgroundWorker(task, options.bin)
 
   return { task, command: [entry.file, ...command], dryRun: false }
 }
 
-export function fanoutBackgroundTasks(
+export function startExistingBackgroundTask(
+  cwd: string,
+  id: string,
+  options: StartExistingBackgroundTaskOptions = {},
+): StartBackgroundTaskResult | null {
+  const task = getBackgroundTask(cwd, id)
+  if (!task) return null
+  const { entry, command } = buildWorkerCommand(task, options.bin)
+  if (options.dryRun) {
+    return { task, command: [entry.file, ...command], dryRun: true }
+  }
+  spawnBackgroundWorker(task, options.bin)
+  return { task, command: [entry.file, ...command], dryRun: false }
+}
+
+export async function fanoutBackgroundTasks(
   options: FanoutBackgroundOptions,
-): StartBackgroundTaskResult[] {
+): Promise<StartBackgroundTaskResult[]> {
   const count = Math.max(1, Math.min(32, Math.floor(options.agents || 1)))
   const results: StartBackgroundTaskResult[] = []
   for (let i = 1; i <= count; i++) {
     results.push(
-      startBackgroundTask({
+      await startBackgroundTask({
         ...options,
         task:
           count === 1

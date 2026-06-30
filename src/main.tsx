@@ -4710,18 +4710,19 @@ async function run(): Promise<CommanderCommand> {
     const args = [action, ...rest, opts.note ? '--note' : undefined, opts.label ? `--label ${quoteLocalCommandArg(opts.label)}` : undefined, opts.embeddings ? '--embeddings' : undefined, opts.embedModel ? `--embed-model ${quoteLocalCommandArg(opts.embedModel)}` : undefined, opts.olderThan ? `--older-than ${opts.olderThan}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/knowledge/knowledge.js'), args);
   });
-  program.command('eval [action] [name]').alias('evals').description('Public agent eval harness: init, list, validate, run, report, benchmark adapters').option('--file <path>', 'Local benchmark JSON/JSONL file for eval bench').option('--name <suite>', 'Suite name when importing a benchmark adapter').option('--limit <n>', 'Limit imported benchmark records').option('--dry-run', 'Run offline without calling any model').option('--category <c>', 'Only run cases in this category').option('--max-turns <n>', 'Max agentic turns per case when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each case (sandboxes only)').option('--force', 'Overwrite existing files on init/import').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, opts: {
+  program.command('eval [action] [name] [rest...]').alias('evals').description('Public agent eval harness: init, list, validate, run, report, compare, benchmark adapters').option('--file <path>', 'Local benchmark JSON/JSONL file for eval bench').option('--name <suite>', 'Suite name when importing a benchmark adapter').option('--limit <n>', 'Limit imported benchmark records').option('--dry-run', 'Run offline without calling any model').option('--metrics', 'Write per-case metrics files after running').option('--category <c>', 'Only run cases in this category').option('--max-turns <n>', 'Max agentic turns per case when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each case (sandboxes only)').option('--force', 'Overwrite existing files on init/import').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, rest: string[] = [], opts: {
     file?: string;
     name?: string;
     limit?: string;
     dryRun?: boolean;
+    metrics?: boolean;
     category?: string;
     maxTurns?: string;
     skipPermissions?: boolean;
     force?: boolean;
     json?: boolean;
   }) => {
-    const args = [action, name, opts.file ? `--file ${quoteLocalCommandArg(opts.file)}` : undefined, opts.name ? `--name ${quoteLocalCommandArg(opts.name)}` : undefined, opts.limit ? `--limit ${opts.limit}` : undefined, opts.dryRun ? '--dry-run' : undefined, opts.category ? `--category ${quoteLocalCommandArg(opts.category)}` : undefined, opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.force ? '--force' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const args = [action, name, ...rest, opts.file ? `--file ${quoteLocalCommandArg(opts.file)}` : undefined, opts.name ? `--name ${quoteLocalCommandArg(opts.name)}` : undefined, opts.limit ? `--limit ${opts.limit}` : undefined, opts.dryRun ? '--dry-run' : undefined, opts.metrics ? '--metrics' : undefined, opts.category ? `--category ${quoteLocalCommandArg(opts.category)}` : undefined, opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.force ? '--force' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/eval/eval.js'), args);
   });
   program.command('code-index [action] [query...]').alias('codeindex').description('Build and query a local semantic code index (embeddings via the local Ollama app)').option('--graph', 'Also build or watch the structural code graph').option('--repo', 'Also build or watch the semantic repo index').option('--dry-run', 'Preview watch mode without starting a watcher').option('--json', 'Output as JSON').action(async (action: string | undefined, query: string[] = [], opts: {

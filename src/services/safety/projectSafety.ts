@@ -8,6 +8,12 @@ import { dirname, join, relative } from 'node:path'
 import { safeParseJSON } from '../../utils/json.js'
 
 export type PermissionClass = 'read' | 'write' | 'execute' | 'network'
+export type ApprovalLevel =
+  | 'read-only'
+  | 'edit-project'
+  | 'run-safe-commands'
+  | 'run-network-commands'
+  | 'destructive-commands'
 export type SafetyBehavior = 'allow' | 'ask' | 'deny'
 export type SandboxDisposition = 'not-needed' | 'recommended' | 'required'
 
@@ -30,6 +36,7 @@ export type ProjectSafetyPolicy = {
 export type ShellSafetyEvaluation = {
   command: string
   behavior: SafetyBehavior
+  approvalLevel: ApprovalLevel
   permissions: PermissionClass[]
   sandbox: SandboxDisposition
   reasons: string[]
@@ -281,6 +288,32 @@ function classifyPermissions(command: string, policy: ProjectSafetyPolicy): Perm
   return [...permissions]
 }
 
+export function approvalLevelForEvaluation(
+  permissions: PermissionClass[],
+  matchedAsk: SafetyPolicyRule[] = [],
+): ApprovalLevel {
+  if (matchedAsk.length > 0) return 'destructive-commands'
+  if (permissions.includes('network')) return 'run-network-commands'
+  if (permissions.includes('execute')) return 'run-safe-commands'
+  if (permissions.includes('write')) return 'edit-project'
+  return 'read-only'
+}
+
+export function formatApprovalLevel(level: ApprovalLevel): string {
+  switch (level) {
+    case 'read-only':
+      return 'read-only'
+    case 'edit-project':
+      return 'edit project'
+    case 'run-safe-commands':
+      return 'run safe commands'
+    case 'run-network-commands':
+      return 'run network commands'
+    case 'destructive-commands':
+      return 'destructive commands'
+  }
+}
+
 export function evaluateShellSafetyPolicy(
   command: string,
   cwd: string,
@@ -305,6 +338,7 @@ export function evaluateShellSafetyPolicy(
       : matchedAsk.length > 0 || input?.dangerouslyDisableSandbox
         ? 'ask'
         : 'allow'
+  const approvalLevel = approvalLevelForEvaluation(permissions, matchedAsk)
   const reasons = [
     ...matchedDeny.map(rule => rule.reason),
     ...matchedAsk.map(rule => rule.reason),
@@ -318,6 +352,7 @@ export function evaluateShellSafetyPolicy(
   return {
     command,
     behavior,
+    approvalLevel,
     permissions,
     sandbox,
     reasons,
@@ -332,6 +367,7 @@ export function formatShellSafetyEvaluation(
   if (json) return JSON.stringify(evaluation, null, 2)
   return [
     `Safety decision: ${evaluation.behavior}`,
+    `Approval level: ${formatApprovalLevel(evaluation.approvalLevel)}`,
     `Permissions: ${evaluation.permissions.join(', ')}`,
     `Sandbox: ${evaluation.sandbox}`,
     'Reasons:',

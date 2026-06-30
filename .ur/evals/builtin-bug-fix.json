@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "builtin-bug-fix",
+  "description": "Small bug-fixing benchmark. Each case asks UR to fix a known defect in a fresh worktree and verify with a test command.",
+  "cases": [
+    {
+      "id": "off-by-one",
+      "category": "bug-fix",
+      "prompt": "You are in a fresh TypeScript repo. Create src/findIndex.ts containing a function that returns the index of a target in an array. It currently returns -1 for the last element because the loop stops too early. Fix the off-by-one bug, add a test file src/findIndex.test.ts using your preferred runner, and run the tests. Finish with VERDICT: PASS if tests pass, otherwise VERDICT: FAIL.",
+      "expect": {
+        "contains": [
+          "VERDICT:"
+        ],
+        "testCommand": "cd src && (ls findIndex.ts findIndex.test.ts && echo present)"
+      }
+    },
+    {
+      "id": "null-guard",
+      "category": "bug-fix",
+      "prompt": "You are in a fresh JavaScript repo. Create src/greet.js with a greet(name) function. It currently crashes when name is null/undefined because it calls name.toUpperCase(). Add a null guard so it returns 'Hello, stranger' for missing input. Add a test file and run it. Finish with VERDICT: PASS if tests pass.",
+      "expect": {
+        "contains": [
+          "VERDICT:"
+        ],
+        "testCommand": "cd src && (ls greet.js greet.test.js && echo present)"
+      }
+    },
+    {
+      "id": "missing-await",
+      "category": "bug-fix",
+      "prompt": "You are in a fresh TypeScript repo. Create src/fetcher.ts with an async fetchData() function that forgets to await a Promise, returning the Promise object instead of the resolved value. Fix it, add a test using a mocked Promise, and run the tests. Finish with VERDICT: PASS if tests pass.",
+      "expect": {
+        "contains": [
+          "VERDICT:"
+        ],
+        "testCommand": "cd src && (ls fetcher.ts fetcher.test.ts && echo present)"
+      }
+    }
+  ]
+}

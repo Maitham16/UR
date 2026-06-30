@@ -19,7 +19,7 @@ import {
   createBackgroundTask,
   getBackgroundTask,
   listBackgroundTasks,
-  startBackgroundTask,
+  startExistingBackgroundTask,
   type BackgroundTask,
 } from '../../services/agents/backgroundRunner.js'
 import { buildPrSummary, formatPrSummary } from '../../services/agents/prSummary.js'
@@ -28,7 +28,7 @@ function usage(): string {
   return [
     'Usage:',
     '  ur task start <name> [--worktree] [--base <branch>] [--model <model>] [--max-turns <n>] [--json]',
-    '  ur task run <id> [--json]',
+    '  ur task run <id> [--dry-run] [--json]',
     '  ur task pr <id> [--create] [--draft] [--base <branch>] [--title <text>] [--body <text>] [--dry-run] [--json]',
     '  ur task list [--json]',
     '  ur task status <id> [--json]',
@@ -125,13 +125,18 @@ export const call: LocalCommandCall = async (args: string) => {
   if (action === 'run') {
     const id = pos[1]
     if (!id) return { type: 'text', value: usage() }
-    const result = startBackgroundTask({ cwd, task: id })
+    const existing = getBackgroundTask(cwd, id) ?? listBackgroundTasks(cwd).find(t => t.id.startsWith(id))
+    if (!existing) return { type: 'text', value: `Task ${id} not found.` }
+    const result = startExistingBackgroundTask(cwd, existing.id, {
+      dryRun: tokens.includes('--dry-run'),
+    })
+    if (!result) return { type: 'text', value: `Task ${id} not found.` }
     const task = result.task
     return {
       type: 'text',
       value: json
         ? JSON.stringify({ task, command: result.command }, null, 2)
-        : `Started task ${task.id}\nCommand: ${result.command.join(' ')}\nLog: ${task.logFile}`,
+        : `${result.dryRun ? 'Would start' : 'Started'} task ${task.id}\nCommand: ${result.command.join(' ')}\nLog: ${task.logFile}`,
     }
   }
 

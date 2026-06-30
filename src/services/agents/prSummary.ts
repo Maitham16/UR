@@ -14,6 +14,7 @@ export type PrSummary = {
   description: string
   changedFiles: string[]
   testsRun: string[]
+  detectedTestCommands: string[]
   risks: string[]
   rollbackCommand: string
   remainingTodos: string[]
@@ -26,6 +27,7 @@ export type PrSummaryOptions = {
   description?: string
   base?: string
   rollbackCommand?: string
+  testsRun?: string[]
   extraRisks?: string[]
   extraTodos?: string[]
 }
@@ -102,19 +104,26 @@ function defaultRisks(cwd: string, changedFiles: string[]): string[] {
 }
 
 export async function buildPrSummary(options: PrSummaryOptions): Promise<PrSummary> {
-  const { cwd, title, description = '', base, rollbackCommand, extraRisks = [], extraTodos = [] } = options
+  const { cwd, title, description = '', base, rollbackCommand, testsRun = [], extraRisks = [], extraTodos = [] } = options
   const files = await changedFiles(cwd, base)
   const stat = await diffStat(cwd, base)
-  const tests = detectTests(cwd)
+  const detected = detectTests(cwd)
   const risks = [...defaultRisks(cwd, files), ...extraRisks]
   const todos: string[] = []
-  if (tests.length === 0) todos.push('No test command detected — verify manually.')
+  if (testsRun.length === 0) {
+    todos.push(
+      detected.length
+        ? `Run and record verification: ${detected.join(', ')}.`
+        : 'No test command detected — verify manually.',
+    )
+  }
   todos.push(...extraTodos)
   return {
     title,
     description,
     changedFiles: files,
-    testsRun: tests,
+    testsRun,
+    detectedTestCommands: detected,
     risks,
     rollbackCommand: rollbackCommand ?? (findGitRoot(cwd) ? 'git reset --hard HEAD' : 'manual file restore'),
     remainingTodos: todos,
@@ -127,16 +136,22 @@ export function formatPrSummary(summary: PrSummary, json = false): string {
   const lines = [
     `# ${summary.title}`,
     '',
-    summary.description,
+    '## Summary',
+    summary.description || 'No summary provided.',
     '',
     '## Changed files',
     ...(summary.changedFiles.length
       ? summary.changedFiles.map(f => `- ${f}`)
       : ['- no tracked changes detected']),
     '',
-    '## Tests to run',
+    '## Tests run',
     ...(summary.testsRun.length
       ? summary.testsRun.map(t => `- ${t}`)
+      : ['- none recorded by UR for this PR handoff']),
+    '',
+    '## Detected verification commands',
+    ...(summary.detectedTestCommands.length
+      ? summary.detectedTestCommands.map(t => `- ${t}`)
       : ['- no test commands detected']),
     '',
     '## Risks',

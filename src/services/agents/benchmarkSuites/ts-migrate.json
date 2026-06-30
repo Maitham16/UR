@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "builtin-ts-migrate",
+  "description": "Small TypeScript migration benchmark. Each case asks UR to convert JavaScript to typed TypeScript.",
+  "cases": [
+    {
+      "id": "add-types",
+      "category": "ts-migrate",
+      "prompt": "You are in a fresh repo. Create src/person.js with a function createPerson(name, age) that returns an object and a usage file. Ask UR to rename it to src/person.ts, add TypeScript interface Person { name: string; age: number }, annotate the function, and run npx tsc --noEmit (or a local tsc if available). Finish with VERDICT: PASS if no type errors are reported.",
+      "expect": {
+        "contains": ["VERDICT:"],
+        "testCommand": "ls src/person.ts"
+      }
+    },
+    {
+      "id": "null-types",
+      "category": "ts-migrate",
+      "prompt": "You are in a fresh repo. Create src/config.js with getConfig(key) that may return undefined. Ask UR to migrate it to src/config.ts, add strict null checks via type annotations, and create a usage file that handles undefined. Run type check. Finish with VERDICT: PASS if types are sound.",
+      "expect": {
+        "contains": ["VERDICT:"],
+        "testCommand": "ls src/config.ts"
+      }
+    },
+    {
+      "id": "module-types",
+      "category": "ts-migrate",
+      "prompt": "You are in a fresh repo. Create src/math.js with CommonJS exports (module.exports = { add, subtract }). Ask UR to migrate to src/math.ts using ESM exports, add TypeScript types, create src/math.test.ts, and run tests. Finish with VERDICT: PASS if tests pass.",
+      "expect": {
+        "contains": ["VERDICT:"],
+        "testCommand": "ls src/math.ts"
+      }
+    }
+  ]
+}

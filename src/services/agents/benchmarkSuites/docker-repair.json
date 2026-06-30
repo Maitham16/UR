@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "builtin-docker-repair",
+  "description": "Small Docker repair benchmark. Each case asks UR to fix a broken Dockerfile in a fresh worktree.",
+  "cases": [
+    {
+      "id": "base-image-typo",
+      "category": "docker-repair",
+      "prompt": "You are in a fresh repo with a broken Dockerfile that uses FROM node:22-sllm (typo). Fix the base image to node:22-slim, add a small src/index.js that prints 'ok', and make the image build. Run docker build -t test-repair . if Docker is available, otherwise check syntax with 'docker --version'. Finish with VERDICT: PASS if the Dockerfile is valid and index.js exists.",
+      "expect": {
+        "contains": ["VERDICT:"],
+        "testCommand": "cat Dockerfile | grep -q 'FROM node:22-slim' && ls src/index.js"
+      }
+    },
+    {
+      "id": "missing-cmd",
+      "category": "docker-repair",
+      "prompt": "You are in a fresh repo with a Dockerfile that copies files but has no CMD or ENTRYPOINT, so the container exits immediately. Add a CMD that runs node src/server.js, create src/server.js that listens on port 3000 and responds with 'hello', and verify the files exist. Finish with VERDICT: PASS.",
+      "expect": {
+        "contains": ["VERDICT:"],
+        "testCommand": "cat Dockerfile | grep -qE 'CMD|ENTRYPOINT' && ls src/server.js"
+      }
+    },
+    {
+      "id": "cache-layer-order",
+      "category": "docker-repair",
+      "prompt": "You are in a fresh repo with a Dockerfile that copies package.json after copying the entire source tree, ruining Docker layer caching. Reorder the instructions so dependencies are installed before source code is copied. Create package.json with a single dependency (e.g., leftpad) and src/index.js. Finish with VERDICT: PASS if the Dockerfile copies package.json before src/.",
+      "expect": {
+        "contains": ["VERDICT:"],
+        "testCommand": "cat Dockerfile | awk '/COPY package\\.json/{a=NR}/COPY src\\//{b=NR} END{exit !(a && b && a < b)}' && ls package.json src/index.js"
+      }
+    }
+  ]
+}

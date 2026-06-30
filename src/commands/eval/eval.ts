@@ -2,12 +2,14 @@ import {
   BENCHMARK_ADAPTERS,
   type BenchmarkAdapterId,
   type EvalReport,
+  buildLeaderboard,
   evalsDir,
   formatEvalReport,
   formatReliabilityReport,
   formatSuiteValidation,
   importBenchmarkSuite,
   listSuites,
+  loadAllReports,
   loadReport,
   loadSuite,
   makeCliEvalRunner,
@@ -15,6 +17,7 @@ import {
   makeDryEvalRunner,
   makeDryJudgeRunner,
   runSuite,
+  runSuiteCompare,
   runSuiteReliability,
   saveReliabilityReport,
   saveReport,
@@ -22,7 +25,15 @@ import {
   suiteSlug,
   validateEvalSuite,
   writeDashboard,
+  type CompareLabel,
+  formatCompareReport,
 } from '../../services/agents/evals.js'
+import {
+  getBuiltinSuite,
+  installBuiltinSuite,
+  listBuiltinSuiteIds,
+  type BuiltinSuiteId,
+} from '../../services/agents/benchmarkSuites.js'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { LocalCommandCall } from '../../types/command.js'
@@ -97,6 +108,46 @@ export const call: LocalCommandCall = async (args: string) => {
       type: 'text',
       value: `Wrote eval dashboard to ${path}\nOpen it in a browser (local-first, no network).`,
     }
+  }
+
+  if (command === 'builtin' || command === 'benchmarks') {
+    if (!name || name === 'list') {
+      const ids = listBuiltinSuiteIds()
+      if (json) return { type: 'text', value: JSON.stringify({ suites: ids }, null, 2) }
+      return {
+        type: 'text',
+        value: `Built-in benchmark suites:\n${ids.map(id => `  - ${id}`).join('\n')}`,
+      }
+    }
+    const suite = getBuiltinSuite(name as BuiltinSuiteId)
+    if (!suite) {
+      return {
+        type: 'text',
+        value: `Unknown builtin suite: ${name}\nAvailable: ${listBuiltinSuiteIds().join(', ')}`,
+      }
+    }
+    const { path, created } = installBuiltinSuite(cwd, name as BuiltinSuiteId, { force })
+    return {
+      type: 'text',
+      value: `${created ? 'Installed' : 'Already exists'} builtin suite ${name} at ${path}\nRun: ur eval run ${suite.name}`,
+    }
+  }
+
+  if (command === 'leaderboard') {
+    const format = (optionValue(tokens, '--format') ?? 'html') as 'html' | 'json' | 'md'
+    const reports: EvalReport[] = name
+      ? [loadReport(cwd, name)].filter((r): r is EvalReport => r !== null)
+      : loadAllReports(cwd)
+    if (reports.length === 0) {
+      return {
+        type: 'text',
+        value: name
+          ? `No saved report for ${name}. Run it first: ur eval run ${name}`
+          : 'No saved reports yet. Run an eval first.',
+      }
+    }
+    const outPath = buildLeaderboard(cwd, reports, { format })
+    return { type: 'text', value: `Wrote leaderboard to ${outPath}` }
   }
 
   if (command === 'report') {
@@ -229,6 +280,51 @@ export const call: LocalCommandCall = async (args: string) => {
     if (json) return { type: 'text', value: formatEvalReport(report, true) }
     const header = dryRun ? '(dry run — no model calls; grading exercised offline)\n\n' : ''
     return { type: 'text', value: `${header}${formatEvalReport(report, false)}` }
+  }
+
+  if (command === 'compare') {
+    const suiteName = positional[1]
+    const labelNames = positional.slice(2)
+    if (!suite || labelNames.length < 2) {
+      return {
+        type: 'text',
+        value:
+          'Usage: ur eval compare <suite> <label1> <label2> [...]\n' +
+          'Labels are model/runner names (e.g., pool codex claude). Each label sets UR_MODEL for its run.',
+      }
+    }
+    const dryRun = tokens.includes('--dry-run')
+    const skipPermissions =
+      tokens.includes('--skip-permissions') ||
+      tokens.includes('--dangerously-skip-permissions')
+    const maxTurnsValue = Number(optionValue(tokens, '--max-turns') ?? '20')
+    const maxTurns =
+      Number.isFinite(maxTurnsValue) && maxTurnsValue > 0 ? maxTurnsValue : 20
+    const baseJudge = dryRun
+      ? makeDryJudgeRunner()
+      : makeCliJudgeRunner({ cwd, maxTurns, skipPermissions })
+
+    const labels: CompareLabel[] = labelNames.map(name => ({
+      name,
+      model: name,
+      runnerFactory: () => {
+        const base = dryRun
+          ? makeDryEvalRunner()
+          : makeCliEvalRunner({ cwd, maxTurns, skipPermissions })
+        return async evalCase => {
+          const oldModel = process.env.UR_MODEL
+          process.env.UR_MODEL = name
+          try {
+            return await base(evalCase)
+          } finally {
+            process.env.UR_MODEL = oldModel
+          }
+        }
+      },
+    }))
+
+    const report = await runSuiteCompare(suite, labels, { judge: baseJudge })
+    return { type: 'text', value: formatCompareReport(report, json) }
   }
 
   return { type: 'text', value: `Unknown eval command: ${command}` }

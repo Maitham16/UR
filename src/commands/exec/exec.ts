@@ -110,7 +110,7 @@ export function execCommandForPrompt(
   return [process.execPath, process.argv[1] ?? '', ...args]
 }
 
-export function runExecPool(
+export async function runExecPool(
   prompts: string[],
   opts: {
     cwd: string
@@ -121,7 +121,7 @@ export function runExecPool(
     worktree?: boolean
     dryRun?: boolean
   },
-): StartBackgroundTaskResult[] {
+): Promise<StartBackgroundTaskResult[]> {
   if (opts.dryRun) {
     return prompts.map((prompt, index) => ({
       task: {
@@ -144,7 +144,7 @@ export function runExecPool(
   if (opts.concurrency === 1 && prompts.length === 1) {
     const command = execCommandForPrompt(prompts[0]!, opts)
     return [
-      startBackgroundTask({
+      await startBackgroundTask({
         cwd: opts.cwd,
         task: prompts[0]!,
         worktree: opts.worktree,
@@ -155,7 +155,7 @@ export function runExecPool(
     ]
   }
 
-  return fanoutBackgroundTasks({
+  return await fanoutBackgroundTasks({
     cwd: opts.cwd,
     task: prompts[0]!,
     agents: Math.min(prompts.length, opts.concurrency),
@@ -190,7 +190,7 @@ export const call: LocalCommandCall = async (args: string) => {
     return { type: 'text', value: usage() }
   }
 
-  const results = runExecPool(prompts, {
+  const results = await runExecPool(prompts, {
     cwd: getCwd(),
     concurrency,
     maxTurns,

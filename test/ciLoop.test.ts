@@ -9,6 +9,10 @@ import {
   summarizeFailure,
   type CommandExec,
 } from '../src/services/agents/ciLoop.ts'
+import {
+  findSimilarFailures,
+  formatFailureHints,
+} from '../src/services/agents/failureMemory.ts'
 
 test('splitCommand handles quotes and flags', () => {
   expect(splitCommand('bun test')).toEqual({ file: 'bun', args: ['test'] })
@@ -42,6 +46,14 @@ test('runCiLoop heals: fail -> fix -> fail -> fix -> pass', async () => {
   expect(result.attempts.length).toBe(3)
   expect(runIdx).toBe(3)
   expect(fixes).toBe(2)
+  const failures = findSimilarFailures(tmp, 'bun test', 'FAIL: boom')
+  expect(failures.some(record => record.attemptedFix?.includes('patched'))).toBe(true)
+  expect(
+    failures.some(record =>
+      record.finalResolution?.includes('Command passed on attempt 3'),
+    ),
+  ).toBe(true)
+  expect(formatFailureHints(failures)).toContain('resolution:')
   rmSync(tmp, { recursive: true, force: true })
 })
 

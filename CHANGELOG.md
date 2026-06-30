@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.22.7
+
+### Fixed
+- Fixed `ur task run <id>` so it starts the queued worktree task created by
+  `ur task start` instead of creating a second background task whose prompt is
+  the id.
+- Added explicit sandbox approval levels for `read-only`, `edit project`,
+  `run safe commands`, `run network commands`, and `destructive commands`.
+- Made task PR summaries PR-shaped and evidence-safe: they now include a
+  labeled summary, changed files, tests run, detected verification commands,
+  risks, rollback command, and remaining TODOs without claiming tests ran when
+  UR has no recorded evidence.
+- Extended CI-loop failure memory so failed commands record attempted fixes and
+  eventual resolutions, allowing future similar failures to surface the fix
+  history.
+
+### Verified
+- Added focused coverage for approval-level mapping, `ur task start` to
+  `ur task run`, PR-quality output sections, and CI-loop failure memory.
+- Verified source and production bundle release checks for the `1.22.7` build.
+
 ## 1.22.6
 
 ### Fixed

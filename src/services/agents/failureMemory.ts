@@ -39,7 +39,13 @@ export function recordResolution(
   failedCommand: string,
   resolution: string,
 ): TaskMemoryEntry {
-  return appendProjectMemory(cwd, 'accepted', `Resolved failure for "${failedCommand}": ${resolution}`, {
+  const text = [
+    `Failed command: ${failedCommand}`,
+    'Error: see previous failure memory for the original trace',
+    `Resolution: ${resolution}`,
+  ].join('\n')
+  return appendProjectMemory(cwd, 'attempt', text, {
+    status: 'accepted',
     source: 'failure-memory',
   })
 }

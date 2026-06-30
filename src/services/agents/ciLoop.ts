@@ -18,6 +18,7 @@ import {
   type HeadlessRunner,
 } from './headlessAgent.js'
 import { type ExecTargetConfig, wrapCommand } from './execTarget.js'
+import { recordFailure, recordResolution } from './failureMemory.js'
 
 export type CommandResult = { code: number; stdout: string; stderr: string }
 export type CommandExec = (file: string, args: string[], cwd: string) => Promise<CommandResult>
@@ -94,6 +95,9 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
     ? wrapCommand(options.execTarget, parsed, cwd)
     : parsed
   const attempts: CiAttempt[] = []
+  let lastFailure:
+    | { summary: string; attemptedFix?: string }
+    | undefined
 
   if (options.dryRun) {
     return {
@@ -110,16 +114,33 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
     if (attempt === 1 && options.seedError) {
       summary = summarizeFailure(options.seedError)
       attempts.push({ attempt, code: 1, passed: false, summary })
+      recordFailure(cwd, {
+        failedCommand: command,
+        errorTrace: summary,
+      })
+      lastFailure = { summary }
       options.onEvent?.({ attempt, phase: 'run', detail: 'seeded from log' })
     } else {
       options.onEvent?.({ attempt, phase: 'run', detail: command })
       const run = await exec(file, args, cwd)
       if (run.code === 0) {
         attempts.push({ attempt, code: 0, passed: true })
+        if (lastFailure) {
+          recordResolution(
+            cwd,
+            command,
+            `Command passed on attempt ${attempt} after ${attempt - 1} failed attempt(s).`,
+          )
+        }
         return { command, status: 'passed', attempts }
       }
       summary = summarizeFailure(`${run.stdout}\n${run.stderr}`)
       attempts.push({ attempt, code: run.code, passed: false, summary })
+      recordFailure(cwd, {
+        failedCommand: command,
+        errorTrace: summary,
+      })
+      lastFailure = { summary }
     }
 
     if (attempt === maxAttempts) break
@@ -133,6 +154,15 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
     })
     const last = attempts[attempts.length - 1]
     last.fixVerdict = fix.verdict ?? null
+    lastFailure = {
+      summary,
+      attemptedFix: fix.output.slice(0, 2000),
+    }
+    recordFailure(cwd, {
+      failedCommand: command,
+      errorTrace: summary,
+      attemptedFix: lastFailure.attemptedFix,
+    })
 
     if (options.commit || options.push) {
       const diff = await git('git', ['diff', 'HEAD'], cwd)

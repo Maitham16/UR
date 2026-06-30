@@ -13,6 +13,7 @@ import { getCwd } from '../../utils/cwd.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 import {
   evaluateShellSafetyPolicy,
+  formatApprovalLevel,
   formatShellSafetyEvaluation,
   loadProjectSafetyPolicy,
   writeProjectSafetyPolicy,
@@ -27,10 +28,11 @@ function usage(): string {
     '  ur sandbox eval <command> [--json]',
     '',
     'Approval levels (from project safety policy):',
-    '  read       inspect files and command output',
-    '  write      create, edit, move, or delete files / repo state',
-    '  execute    run code, scripts, package managers, build tools',
-    '  network    send data to another host, API, or remote service',
+    '  read-only             inspect files and command output',
+    '  edit project          create, edit, move, or delete project files',
+    '  run safe commands     run local builds, tests, scripts, and tools',
+    '  run network commands  send data to another host, API, or remote service',
+    '  destructive commands  remove data, rewrite history, or destroy resources',
     '',
     'Sandbox modes:',
     '  Docker, temporary worktree, and OS sandbox (macOS sandbox-exec / Linux bwrap)',
@@ -114,10 +116,11 @@ export const call: LocalCommandCall = async (args: string) => {
     if (!command) return { type: 'text', value: usage() }
     const policy = loadProjectSafetyPolicy(cwd)
     const evaluation = evaluateShellSafetyPolicy(command, cwd)
-    const level = evaluation.permissions.length ? evaluation.permissions.join('/') : 'read-only'
     const result = {
       command,
-      level,
+      level: evaluation.approvalLevel,
+      approvalLevel: evaluation.approvalLevel,
+      approvalLabel: formatApprovalLevel(evaluation.approvalLevel),
       ...evaluation,
       policy,
     }
@@ -126,7 +129,7 @@ export const call: LocalCommandCall = async (args: string) => {
       type: 'text',
       value: [
         `Command: ${command}`,
-        `Approval level: ${level}`,
+        `Approval level: ${formatApprovalLevel(evaluation.approvalLevel)}`,
         formatShellSafetyEvaluation(evaluation),
       ].join('\n\n'),
     }

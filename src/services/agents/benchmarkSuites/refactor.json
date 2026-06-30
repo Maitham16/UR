@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "builtin-refactor",
+  "description": "Small refactoring benchmark. Each case asks UR to clean up code in a fresh worktree and keep tests green.",
+  "cases": [
+    {
+      "id": "extract-function",
+      "category": "refactor",
+      "prompt": "You are in a fresh TypeScript repo. Create src/checkout.ts with a long calculateTotal(price, quantity, tax, discount) function that mixes subtotal, tax, and discount math inline. Refactor it by extracting helper functions (subtotal, taxAmount, discountAmount) while preserving behavior. Add tests and run them. Finish with VERDICT: PASS if tests pass.",
+      "expect": {
+        "contains": ["VERDICT:"],
+        "testCommand": "cd src && (ls checkout.ts checkout.test.ts && echo present)"
+      }
+    },
+    {
+      "id": "rename-fields",
+      "category": "refactor",
+      "prompt": "You are in a fresh TypeScript repo. Create src/user.ts with an interface using abbreviated field names (fn, ln, em). Refactor to readable names (firstName, lastName, email) and update a small usage file. Add tests and run them. Finish with VERDICT: PASS if tests pass.",
+      "expect": {
+        "contains": ["VERDICT:"],
+        "testCommand": "cd src && (ls user.ts user.test.ts && echo present)"
+      }
+    },
+    {
+      "id": "remove-duplication",
+      "category": "refactor",
+      "prompt": "You are in a fresh JavaScript repo. Create src/validators.js with three form validation functions that duplicate the same empty-check logic. Refactor to share a single isEmpty helper. Add tests and run them. Finish with VERDICT: PASS if tests pass.",
+      "expect": {
+        "contains": ["VERDICT:"],
+        "testCommand": "cd src && (ls validators.js validators.test.js && echo present)"
+      }
+    }
+  ]
+}

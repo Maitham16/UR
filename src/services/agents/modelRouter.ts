@@ -12,6 +12,11 @@
  */
 
 import type { ModelCapability } from '../../commands/model-doctor/model-doctor.js'
+import {
+  classifyTaskComplexity,
+  pickBestCoderModel,
+  pickSmallFastModel,
+} from '../../utils/model/ollamaRouter.js'
 import { type IntentCategory, routeIntent } from './intentRouter.js'
 
 export type ModelNeed = 'vision' | 'code' | 'long-context' | 'embeddings'
@@ -161,6 +166,33 @@ export function recommendModel(
     rationale,
     ranked,
   }
+}
+
+export type RouteStrategy = 'auto' | 'cheap' | 'strong' | 'default'
+
+export type ModelPool = {
+  cheap?: string[]
+  strong?: string[]
+  default?: string[]
+}
+
+export function resolveModelForTask(
+  task: string,
+  strategy: RouteStrategy,
+  pool: ModelPool,
+  localModels: ModelCapability[],
+): string | undefined {
+  if (strategy === 'default') return pool.default?.[0]
+  const localNames = localModels.map(m => m.name)
+  if (strategy === 'cheap') {
+    return pickSmallFastModel(localNames, undefined) ?? pool.cheap?.[0] ?? pool.default?.[0]
+  }
+  if (strategy === 'strong') {
+    return pickBestCoderModel(localNames, undefined) ?? pool.strong?.[0] ?? pool.default?.[0]
+  }
+  return classifyTaskComplexity(task) === 'simple'
+    ? resolveModelForTask(task, 'cheap', pool, localModels)
+    : resolveModelForTask(task, 'strong', pool, localModels)
 }
 
 export function formatModelRoute(result: ModelRouteResult, json: boolean): string {

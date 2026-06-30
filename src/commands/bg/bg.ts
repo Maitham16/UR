@@ -92,7 +92,7 @@ export const call: LocalCommandCall = async (args: string) => {
   if (action === 'run') {
     const task = pos.slice(1).join(' ').trim()
     if (!task) return { type: 'text', value: usage() }
-    const result = startBackgroundTask(startOptions(tokens, task))
+    const result = await startBackgroundTask(startOptions(tokens, task))
     if (json) return { type: 'text', value: JSON.stringify(result, null, 2) }
     return {
       type: 'text',
@@ -105,7 +105,7 @@ export const call: LocalCommandCall = async (args: string) => {
   if (action === 'fanout') {
     const task = pos.slice(1).join(' ').trim()
     if (!task) return { type: 'text', value: usage() }
-    const results = fanoutBackgroundTasks({
+    const results = await fanoutBackgroundTasks({
       ...startOptions(tokens, task),
       agents: numberOption(tokens, '--agents') ?? 3,
     })

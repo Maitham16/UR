@@ -17,9 +17,11 @@ function usage(): string {
     '  ur safety init',
     '  ur safety check --command "<cmd>" [--json]',
     '',
-    'The default policy separates read/write/execute/network permissions,',
-    'asks before destructive operations, recommends sandboxing for risky',
-    'operations, and blocks common secret exfiltration paths.',
+    'The default policy maps commands to approval levels: read-only,',
+    'edit project, run safe commands, run network commands, and',
+    'destructive commands. It asks before destructive operations,',
+    'recommends sandboxing for risky operations, and blocks common secret',
+    'exfiltration paths.',
   ].join('\n')
 }
 

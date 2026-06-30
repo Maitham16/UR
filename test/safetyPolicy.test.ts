@@ -45,8 +45,22 @@ describe('project safety policy', () => {
     try {
       const evaluation = evaluateShellSafetyPolicy('rg TODO src', dir)
       expect(evaluation.behavior).toBe('allow')
+      expect(evaluation.approvalLevel).toBe('read-only')
       expect(evaluation.permissions).toEqual(['read'])
       expect(evaluation.sandbox).toBe('not-needed')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('maps commands to explicit approval levels', () => {
+    const dir = tempDir('ur-safety-levels-')
+    try {
+      expect(evaluateShellSafetyPolicy('rg TODO src', dir).approvalLevel).toBe('read-only')
+      expect(evaluateShellSafetyPolicy('touch generated.txt', dir).approvalLevel).toBe('edit-project')
+      expect(evaluateShellSafetyPolicy('bun test', dir).approvalLevel).toBe('run-safe-commands')
+      expect(evaluateShellSafetyPolicy('curl https://example.invalid', dir).approvalLevel).toBe('run-network-commands')
+      expect(evaluateShellSafetyPolicy('rm -rf build', dir).approvalLevel).toBe('destructive-commands')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -74,6 +88,7 @@ describe('project safety policy', () => {
       expect(result.type).toBe('text')
       if (result.type !== 'text') throw new Error('expected text')
       expect(result.value).toContain('Safety decision: ask')
+      expect(result.value).toContain('Approval level: destructive commands')
       expect(result.value).toContain('Permissions: write')
     } finally {
       rmSync(dir, { recursive: true, force: true })
