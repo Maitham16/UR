@@ -6,7 +6,7 @@
  * re-embeds what changed. Deleted files are pruned.
  */
 
-import { readFile, stat } from 'node:fs/promises'
+import { readdir, readFile, stat } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { ripGrep } from '../ripgrep.js'
 import { chunkText } from './chunker.js'
@@ -58,7 +58,27 @@ function isSkipped(relPath: string): boolean {
   return false
 }
 
-/** List candidate source files (relative POSIX paths), honoring .gitignore. */
+async function walkIndexableFiles(root: string): Promise<string[]> {
+  const out: string[] = []
+  async function walk(dir: string): Promise<void> {
+    const entries = await readdir(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') && entry.name !== '.github') continue
+      const abs = resolve(dir, entry.name)
+      const rel = toPosix(relative(root, abs))
+      if (isSkipped(rel)) continue
+      if (entry.isDirectory()) {
+        await walk(abs)
+      } else if (entry.isFile() && hasIndexableExtension(rel)) {
+        out.push(rel)
+      }
+    }
+  }
+  await walk(root)
+  return out.sort()
+}
+
+/** List candidate source files (relative POSIX paths), honoring .gitignore when ripgrep is available. */
 export async function listIndexableFiles(
   root: string,
   signal: AbortSignal,
@@ -67,7 +87,7 @@ export async function listIndexableFiles(
   try {
     absFiles = await ripGrep(['--files', '--hidden'], root, signal)
   } catch {
-    return []
+    absFiles = await walkIndexableFiles(root)
   }
   const result: string[] = []
   for (const abs of absFiles) {
