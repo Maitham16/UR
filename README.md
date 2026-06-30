@@ -132,6 +132,7 @@ as first-class subcommands in the shipped CLI.
 | `ur safety` | Inspect or initialize project shell safety policy and evaluate command risk before execution. |
 | `ur context-pack` | Write project architecture context, task memory, and compressed context under `.ur/`. |
 | `ur bg` | Run and manage detached local background agents with optional worktrees and PR creation. |
+| `ur worktree` | List, inspect, and clean up UR agent worktrees. |
 | `ur automation` | Store and run project-local scheduled automation specs under `.ur/automations/`. |
 | `ur workflow` | Define, validate, graph, run, and resume declarative agent workflows. |
 | `ur crew` | Run a lead and worker subagent crew over a shared task board. |
@@ -155,6 +156,10 @@ as first-class subcommands in the shipped CLI.
 | `ur a2a card` | Print UR Agent Card metadata for agent interoperability. |
 | `ur a2a serve` | Start an opt-in local A2A task server with bearer or delegation auth. |
 | `ur sdk` | Show programmatic headless usage and scaffold SDK examples. |
+
+New slash skills run agentic work in isolated git worktrees with clean commits and PR output:
+`/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`.
+Install matching agent templates with `ur agent-templates install`.
 
 New built-in tools (exposed through MCP and the ACP server): GitHub, API, Browser, Docker, TestRunner, Database. File-system and terminal tools are already built in (FileRead, FileEdit, FileWrite, Glob, Grep, Bash, PowerShell).
 

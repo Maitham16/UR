@@ -74,6 +74,7 @@ import browserQa from './commands/browser-qa/index.js'
 import claimLedger from './commands/claim-ledger/index.js'
 import pattern from './commands/pattern/index.js'
 import workflow from './commands/workflow/index.js'
+import worktree from './commands/worktree/index.js'
 import agentInspect from './commands/agent-inspect/index.js'
 import route from './commands/route/index.js'
 import modelRoute from './commands/model-route/index.js'
@@ -409,6 +410,7 @@ const COMMANDS = memoize((): Command[] => [
   claimLedger,
   pattern,
   workflow,
+  worktree,
   agentInspect,
   route,
   modelRoute,

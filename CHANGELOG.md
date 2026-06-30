@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.21.0
+
+### Added
+- **Agent skill runner (`agentSkillRunner.ts`).** Reusable helper that wraps
+  `startBackgroundTask({ worktree: true, pr: true })`, polls the background
+  manifest to completion, and returns a PR-style summary with branch, commits,
+  PR URL, and diff summary.
+- **New slash skills for agent worktrees.** Added `/debug-v2`, `/refactor`,
+  `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, and
+  `/latex-paper` bundled slash skills. Each expands into a prompt that instructs
+  the model to work in an isolated git worktree and produce a clean branch,
+  commits, and PR.
+- **Matching agent templates.** Added `debug-v2`, `refactor`, `paper-implementation`,
+  `benchmark`, `security-review`, `dockerize`, and `latex-paper` templates to
+  `AGENT_TEMPLATES`; install them with `ur agent-templates install`.
+- **`ur worktree` command.** Added `ur worktree list|status|clean` to inspect
+  and clean up UR agent worktrees created by background runs.
+
+### Changed
+- **Background runner exports.** Exported `commitIfNeeded` and `createPullRequest`
+  from `backgroundRunner.ts` so the agent skill runner can inspect and finalize
+  PR state.
+- **Version bump.** Updated from 1.20.0 to 1.21.0 across `package.json`,
+  `bunfig.toml`, the VS Code extension manifest, and the bundled CLI.
+
+### Verified
+- Added tests for the agent skill runner, each new bundled skill, and the new
+  `ur worktree` command.
+
 ## 1.20.0
 
 ### Added

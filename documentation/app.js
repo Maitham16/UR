@@ -13,15 +13,15 @@ const featureGroups = [
   },
   {
     title: 'Agent platform',
-    tags: ['spec', 'workflow', 'pattern', 'crew', 'goal'],
+    tags: ['spec', 'workflow', 'pattern', 'crew', 'goal', 'worktree'],
     text: 'Spec-driven development, durable workflows, collaboration patterns, parallel crews, long-horizon goals, live execution boards, and resumable checkpoint state.',
-    commands: ['ur spec', 'ur workflow', 'ur pattern', 'ur crew', 'ur goal'],
+    commands: ['ur spec', 'ur workflow', 'ur pattern', 'ur crew', 'ur goal', 'ur worktree'],
   },
   {
     title: 'Judging, escalation, and repair',
     tags: ['oracle', 'arena', 'CI', 'artifacts'],
     text: 'Capability-aware fast/oracle model routing, best-of-N agent judging, test-first execution loops, self-healing CI loops, and reviewable artifacts for diffs, test runs, plans, and feedback.',
-    commands: ['ur escalate', 'ur arena', 'ur test-first', 'ur ci-loop', 'ur artifacts'],
+    commands: ['ur escalate', 'ur arena', 'ur test-first', 'ur ci-loop', 'ur artifacts', 'ur bg'],
   },
   {
     title: 'Reliable repo editing',
@@ -91,6 +91,20 @@ const commands = [
     examples: ['ur a2a card', 'ur a2a serve --dry-run', 'ur a2a token mint --secret "$UR_A2A_DELEGATION_SECRET" --scope coding,review'],
   },
   {
+    name: 'bg',
+    category: 'Agent Platform',
+    aliases: ['background-agent'],
+    summary: 'Run and manage detached local background agents with optional worktrees and PR creation.',
+    examples: ['ur bg run "fix the flaky parser test" --worktree', 'ur bg list --json', 'ur bg status <id> --json'],
+  },
+  {
+    name: 'worktree',
+    category: 'Agent Platform',
+    aliases: ['worktrees'],
+    summary: 'List, inspect, and clean up UR agent worktrees created by background runs.',
+    examples: ['ur worktree list', 'ur worktree status <id>', 'ur worktree clean --dry-run'],
+  },
+  {
     name: 'agent-features',
     category: 'Agent Platform',
     aliases: ['agent-roadmap'],
@@ -115,8 +129,8 @@ const commands = [
     name: 'agent-templates',
     category: 'Agent Platform',
     aliases: ['agent-template'],
-    summary: 'List or install reusable project agent templates such as reviewer, test-runner, security-auditor, and docs-researcher.',
-    examples: ['ur agent-templates list', 'ur agent-templates install reviewer test-runner', 'ur agent-templates install --force'],
+    summary: 'List or install reusable project agent templates such as reviewer, test-runner, security-auditor, debug-v2, refactor, paper-implementation, benchmark, security-review, dockerize, and latex-paper.',
+    examples: ['ur agent-templates list', 'ur agent-templates install reviewer test-runner', 'ur agent-templates install debug-v2 refactor --force'],
   },
   {
     name: 'agent-trends',
@@ -390,8 +404,13 @@ const slashGroups = [
   },
   {
     title: 'Agents and orchestration',
-    items: ['/agents', '/agent-templates', '/spec', '/workflow', '/pattern', '/crew', '/goal', '/arena', '/route', '/role-mode'],
+    items: ['/agents', '/agent-templates', '/spec', '/workflow', '/pattern', '/crew', '/goal', '/arena', '/route', '/role-mode', '/bg'],
     text: 'Manage agents, install role modes, run specs and workflows, and coordinate multi-agent work.',
+  },
+  {
+    title: 'Agent skills',
+    items: ['/debug-v2', '/refactor', '/paper-implementation', '/benchmark', '/security-review', '/dockerize', '/latex-paper', '/simplify', '/debug'],
+    text: 'Bundled slash skills that dispatch focused agent work in isolated git worktrees with clean commits and PR output.',
   },
   {
     title: 'Memory and evidence',

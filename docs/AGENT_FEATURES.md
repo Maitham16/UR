@@ -49,7 +49,18 @@ ur browser-qa validate
 ur browser-qa run home-page-smoke --dry-run
 ur --discover-ollama
 ur --ollama-host http://192.168.1.50:11434
+ur worktree list
+ur worktree clean --dry-run
 ```
+
+## v1.21.0 Additions
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Agent skill runner | `src/services/agents/agentSkillRunner.ts` | Reusable wrapper around `startBackgroundTask({ worktree: true, pr: true })` that polls to completion and returns a PR-style summary. |
+| Worktree slash skills | `/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper` | Bundled slash skills that expand into prompts for isolated worktree work with clean commits and PR output. |
+| Agent templates | `ur agent-templates install` | Adds `debug-v2`, `refactor`, `paper-implementation`, `benchmark`, `security-review`, `dockerize`, and `latex-paper` reusable agent templates under `.ur/agents/`. |
+| Worktree command | `ur worktree list\|status\|clean` | Inspect and clean up UR agent worktrees created by `ur bg` or slash skills. |
 
 ## v1.20.0 Additions
 

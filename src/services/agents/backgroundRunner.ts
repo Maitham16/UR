@@ -537,7 +537,7 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
   })
 }
 
-async function commitIfNeeded(task: BackgroundTask, cwd: string): Promise<void> {
+export async function commitIfNeeded(task: BackgroundTask, cwd: string): Promise<void> {
   const status = await git(cwd, ['status', '--porcelain'])
   if (status.code !== 0 || !status.stdout.trim()) return
   await git(cwd, ['add', '-A'])
@@ -548,7 +548,7 @@ async function commitIfNeeded(task: BackgroundTask, cwd: string): Promise<void> 
   }
 }
 
-async function createPullRequest(task: BackgroundTask, cwd: string): Promise<BackgroundTask['pr']> {
+export async function createPullRequest(task: BackgroundTask, cwd: string): Promise<BackgroundTask['pr']> {
   if (!task.pr?.enabled) return task.pr
   const pr = { ...task.pr }
   await commitIfNeeded(task, cwd)

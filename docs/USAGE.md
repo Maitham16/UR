@@ -154,6 +154,8 @@ ur exec "add tests for the parser" --concurrency 4 --json
 ur ci-loop --command "bun test" --dry-run
 ur artifacts capture-diff
 ur bg run "fix the flaky parser test" --worktree --dry-run
+ur worktree list
+ur worktree clean --dry-run
 ur repo-edit index
 ur repo-edit plan rename oldName --to newName
 ur repo-edit preview rename oldName --to newName

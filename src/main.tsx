@@ -4424,6 +4424,13 @@ async function run(): Promise<CommanderCommand> {
     const args = [action, ...task, opts.agents ? `--agents ${opts.agents}` : undefined, opts.worktree ? '--worktree' : undefined, opts.pr ? '--pr' : undefined, opts.draft ? '--draft' : undefined, opts.base ? `--base ${quoteLocalCommandArg(opts.base)}` : undefined, opts.title ? `--title ${quoteLocalCommandArg(opts.title)}` : undefined, opts.body ? `--body ${quoteLocalCommandArg(opts.body)}` : undefined, opts.push === false ? '--no-push' : undefined, opts.model ? `--model ${quoteLocalCommandArg(opts.model)}` : undefined, opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.tail ? `--tail ${opts.tail}` : undefined, opts.dryRun ? '--dry-run' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/bg/bg.js'), args);
   });
+  program.command('worktree [action] [id]').alias('worktrees').description('List, inspect, and clean up UR agent worktrees').option('--dry-run', 'Show what would be cleaned without removing anything').option('--json', 'Output as JSON').action(async (action: string | undefined, id: string | undefined, opts: {
+    dryRun?: boolean;
+    json?: boolean;
+  }) => {
+    const args = [action, id, opts.dryRun ? '--dry-run' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/worktree/worktree.js'), args);
+  });
   program.command('model-doctor [model]').alias('model-capabilities').description('Inspect local Ollama models and report likely agent capabilities').option('--json', 'Output as JSON').action(async (model: string | undefined, opts: {
     json?: boolean;
   }) => {
