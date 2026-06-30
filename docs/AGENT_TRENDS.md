@@ -46,6 +46,8 @@ ur safety check --command "rm -rf build"
 ur context-pack scan
 ur context-pack remember --decision "Use manifest commands first"
 ur context-pack compress
+ur acp serve --port 8123
+ur exec "add tests for the parser" --concurrency 4 --json
 ur ci-loop --command "bun test" --dry-run
 ur artifacts capture-diff
 ur artifacts capture-tests --command "bun test"
@@ -88,6 +90,8 @@ Inside an interactive session:
 | Self-healing CI | Covered | `ur ci-loop` runs a command, summarizes failures, invokes a fix agent, and re-runs with bounded retries; commits/pushes are self-review gated | Wire to `ur trigger` so a failed CI webhook auto-launches the loop |
 | Verifiable artifacts | Covered | `ur artifacts` records plans/diffs/test-runs with approve/reject/feedback under `.ur/artifacts/`; comments steer active background agents through stream-json inbox injection | Attach browser-QA screenshots and link artifacts to claim-ledger entries |
 | Native IDE review | Covered | `ur ide diff` writes `.ur/ide/diffs/` bundles and `extensions/vscode-ur-inline-diffs/` provides a VS Code tree/webview/comment surface | Add JetBrains packaging if demand appears |
+| ACP / IDE agent server | Covered | `ur acp serve|stop|status` exposes an HTTP+JSON-RPC agent server so VS Code/Cursor/Zed extensions can list tools, call tools, and submit tasks | Ship reference editor extensions |
+| External tool integration | Covered | Built-in `GitHub`, `Api`, `Browser`, `Docker`, `TestRunner`, and `Database` tools complement existing file-system, terminal, web, and MCP tools | Add richer output parsing and error recovery |
 
 ## v1.13.9 Direct CLI Surfaces
 

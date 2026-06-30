@@ -149,10 +149,14 @@ as first-class subcommands in the shipped CLI.
 | `ur mcp` | Configure and manage Model Context Protocol servers. |
 | `ur plugin` | Install, update, enable, disable, and validate UR plugins. |
 | `ur role-mode` | Install built-in Architect, Code, Debug, and Ask role modes. |
+| `ur acp` | Start/stop/status the Agent Communication Protocol server for IDE extensions. |
+| `ur exec` | Run one or more prompts in non-interactive mode with optional concurrency. |
 | `ur ide diff` | Capture editor-readable inline diff bundles. |
 | `ur a2a card` | Print UR Agent Card metadata for agent interoperability. |
 | `ur a2a serve` | Start an opt-in local A2A task server with bearer or delegation auth. |
 | `ur sdk` | Show programmatic headless usage and scaffold SDK examples. |
+
+New built-in tools (exposed through MCP and the ACP server): GitHub, API, Browser, Docker, TestRunner, Database. File-system and terminal tools are already built in (FileRead, FileEdit, FileWrite, Glob, Grep, Bash, PowerShell).
 
 Examples:
 
@@ -176,6 +180,8 @@ ur repo-edit apply rename oldName --to newName --check "bun test"
 ur code-index search "where is the rate limiter configured"
 ur artifacts capture-tests --command "bun test"
 ur agent-task pr --create --dry-run
+ur acp serve --port 8123
+ur exec "add tests for the parser" --concurrency 4 --json
 ```
 
 ## Project Context
@@ -285,6 +291,7 @@ CLI. Rebuild it after source, version, or macro changes.
 - [Configuration](docs/CONFIGURATION.md)
 - [Agent Feature Expansion](docs/AGENT_FEATURES.md)
 - [Agent Trend Coverage](docs/AGENT_TRENDS.md)
+- [1.20.0 Upgrade Notes](docs/AGENT_UPGRADE_1.20.0.md)
 - [1.19.0 Upgrade Notes](docs/AGENT_UPGRADE_1.19.0.md)
 - [1.18.0 Upgrade Notes](docs/AGENT_UPGRADE_1.18.0.md)
 - [1.17.0 Upgrade Notes](docs/AGENT_UPGRADE_1.17.0.md)

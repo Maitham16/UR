@@ -4817,6 +4817,77 @@ async function run(): Promise<CommanderCommand> {
     }
     process.exit(result.valid ? 0 : 1);
   });
+  const acp = program.command('acp').description('Agent Communication Protocol server for IDE extensions').configureHelp(createSortedHelpConfig());
+  acp.command('serve').description('Start an opt-in local ACP server').option('--host <host>', 'Host to bind', '127.0.0.1').option('--port <port>', 'Port to bind', '8123').option('--token <token>', 'Static bearer token required for requests').option('--dry-run', 'Return server options without starting').action(async (opts: {
+    host?: string;
+    port?: string;
+    token?: string;
+    dryRun?: boolean;
+  }) => {
+    const { serveAcp } = await import('./services/agents/acpServer.js');
+    await serveAcp({
+      host: opts.host ?? '127.0.0.1',
+      port: Number(opts.port ?? '8123'),
+      token: opts.token,
+      dryRun: opts.dryRun,
+      cwd: process.cwd()
+    });
+  });
+  acp.command('stop').description('Stop the running ACP server').action(async () => {
+    const { stopAcpServer } = await import('./services/agents/acpServer.js');
+    await stopAcpServer();
+    // biome-ignore lint/suspicious/noConsole:: CLI command output
+    console.log('ACP server stopped');
+    process.exit(0);
+  });
+  acp.command('status').description('Show ACP server status').option('--json', 'Output as JSON').action(async (opts: {
+    json?: boolean;
+  }) => {
+    const { getAcpServerPort } = await import('./services/agents/acpServer.js');
+    const port = getAcpServerPort();
+    const result = { running: port !== null, port };
+    if (opts.json) {
+      // biome-ignore lint/suspicious/noConsole:: CLI command output
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      // biome-ignore lint/suspicious/noConsole:: CLI command output
+      console.log(`ACP server: ${result.running ? `running on port ${result.port}` : 'not running'}`);
+    }
+    process.exit(0);
+  });
+  program.command('exec [prompts...]')
+    .description('Run one or more prompts in non-interactive mode with optional concurrency')
+    .option('--file <jsonl>', 'Read prompts from a JSONL file')
+    .option('--concurrency <n>', 'Number of parallel agents', '1')
+    .option('--max-turns <n>', 'Maximum turns per prompt')
+    .option('--model <model>', 'Ollama model to use')
+    .option('--output-dir <dir>', 'Directory to write per-prompt outputs')
+    .option('--worktree', 'Run each prompt in its own worktree')
+    .option('--dry-run', 'Print commands without running')
+    .option('--json', 'Output as JSON')
+    .action(async (prompts: string[], opts: {
+      file?: string;
+      concurrency?: string;
+      maxTurns?: string;
+      model?: string;
+      outputDir?: string;
+      worktree?: boolean;
+      dryRun?: boolean;
+      json?: boolean;
+    }) => {
+      const args = [
+        ...prompts.map(quoteLocalCommandArg),
+        opts.file ? `--file ${opts.file}` : undefined,
+        opts.concurrency ? `--concurrency ${opts.concurrency}` : undefined,
+        opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined,
+        opts.model ? `--model ${opts.model}` : undefined,
+        opts.outputDir ? `--output-dir ${opts.outputDir}` : undefined,
+        opts.worktree ? '--worktree' : undefined,
+        opts.dryRun ? '--dry-run' : undefined,
+        opts.json ? '--json' : undefined,
+      ].filter(Boolean).join(' ');
+      await runLocalTextCommand(() => import('./commands/exec/exec.js'), args);
+    });
   if (feature('TRANSCRIPT_CLASSIFIER')) {
     // Skip when tengu_auto_mode_config.enabled === 'disabled' (circuit breaker).
     // Reads from disk cache — GrowthBook isn't initialized at registration time.

@@ -31,6 +31,9 @@ ur safety check --command "rm -rf build"
 ur context-pack scan
 ur context-pack remember --decision "Use package scripts before ad hoc commands"
 ur context-pack compress
+ur acp serve --port 8123
+ur acp status --json
+ur exec "add tests for the parser" --concurrency 4 --json
 ur repo-edit index
 ur repo-edit preview rename oldName --to newName
 ur repo-edit apply rename oldName --to newName --check "bun test"
@@ -47,6 +50,19 @@ ur browser-qa run home-page-smoke --dry-run
 ur --discover-ollama
 ur --ollama-host http://192.168.1.50:11434
 ```
+
+## v1.20.0 Additions
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| ACP server for IDE extensions | `ur acp serve\|stop\|status` | HTTP+JSON-RPC Agent Communication Protocol server that exposes tool listing, tool calls, task submission, and status for VS Code/Cursor/Zed-like editors. |
+| Non-interactive pool execution | `ur exec [prompts...]` | Run one or more prompts headlessly with optional concurrency, worktrees, output capture, and dry-run. |
+| GitHub tool | `GitHub` | PR/issue/repo operations via the `gh` CLI. |
+| API tool | `Api` | REST HTTP calls with JSON/text output. |
+| Browser tool | `Browser` | Headless browser automation (fetch/goto/click/type/evaluate/screenshot); interactive actions require `UR_BROWSER_TOOL=1`. |
+| Docker tool | `Docker` | Container and compose operations via the `docker` CLI. |
+| Test-runner tool | `TestRunner` | Auto-detect and run project tests. |
+| Database tool | `Database` | SQL queries against SQLite, Postgres, MySQL, and DuckDB. |
 
 ## v1.19.0 Additions
 

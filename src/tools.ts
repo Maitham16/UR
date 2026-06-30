@@ -9,6 +9,12 @@ import { FileWriteTool } from './tools/FileWriteTool/FileWriteTool.js'
 import { GlobTool } from './tools/GlobTool/GlobTool.js'
 import { NotebookEditTool } from './tools/NotebookEditTool/NotebookEditTool.js'
 import { WebFetchTool } from './tools/WebFetchTool/WebFetchTool.js'
+import { GitHubTool } from './tools/GitHubTool/GitHubTool.js'
+import { ApiTool } from './tools/ApiTool/ApiTool.js'
+import { BrowserTool } from './tools/BrowserTool/BrowserTool.js'
+import { DockerTool } from './tools/DockerTool/DockerTool.js'
+import { TestRunnerTool } from './tools/TestRunnerTool/TestRunnerTool.js'
+import { DatabaseTool } from './tools/DatabaseTool/DatabaseTool.js'
 import { TaskStopTool } from './tools/TaskStopTool/TaskStopTool.js'
 import { BriefTool } from './tools/BriefTool/BriefTool.js'
 // Dead code elimination: conditional import for ant-only tools
@@ -210,6 +216,12 @@ export function getAllBaseTools(): Tools {
     FileWriteTool,
     NotebookEditTool,
     WebFetchTool,
+    GitHubTool,
+    ApiTool,
+    BrowserTool,
+    DockerTool,
+    TestRunnerTool,
+    DatabaseTool,
     TodoWriteTool,
     WebSearchTool,
     TaskStopTool,

@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.20.0
+
+### Added
+- **ACP server (`ur acp`).** Added an HTTP+JSON-RPC Agent Communication
+  Protocol server for IDE extensions. Supports `initialize`, `tools/list`,
+  `tools/call`, `tasks/send`, `tasks/get`, `tasks/cancel`, and `shutdown`.
+  Runs on `127.0.0.1:8123` by default with optional bearer-token auth.
+- **`ur exec` pool execution.** Added a non-interactive pool command that runs
+  one or more prompts with optional concurrency, worktrees, output capture,
+  and dry-run mode.
+- **GitHub tool.** Added `GitHubTool` for PR/issue/repo operations via the
+  `gh` CLI.
+- **API tool.** Added `ApiTool` for REST HTTP calls with JSON/text output.
+- **Browser tool.** Added `BrowserTool` for headless browser automation
+  (fetch/goto/click/type/evaluate/screenshot). Disabled by default; enable
+  with `UR_BROWSER_TOOL=1`.
+- **Docker tool.** Added `DockerTool` wrapping the `docker` CLI for container
+  and compose operations.
+- **Test-runner tool.** Added `TestRunnerTool` that auto-detects the project
+  test command from `package.json` scripts, `Makefile`, `Cargo.toml`,
+  `pyproject.toml`, or `go.mod`.
+- **Database tool.** Added `DatabaseTool` for SQL queries against SQLite,
+  Postgres, MySQL, and DuckDB.
+
+### Changed
+- **Tool surface.** File-system and terminal tools (`FileRead`, `FileEdit`,
+  `FileWrite`, `Glob`, `Grep`, `Bash`, `PowerShell`) are now automatically
+  exposed through the existing MCP server and the new ACP server.
+- **Version bump.** Updated from 1.19.0 to 1.20.0 across `package.json`,
+  `bunfig.toml`, the VS Code extension manifest, and the bundled CLI.
+
+### Verified
+- Added focused tests for the ACP server/client, `ur exec`, GitHub tool,
+  API tool, browser tool, Docker tool, test-runner tool, and database tool.
+
 ## 1.19.0
 
 ### Added

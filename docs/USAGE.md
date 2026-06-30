@@ -123,6 +123,8 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur ci-loop ...` to run tests, repair failures, and rerun with a bounded loop
 - `ur artifacts ...` to capture reviewable diffs, test runs, notes, and feedback
 - `ur ide diff ...` to capture editor-readable inline diff bundles
+- `ur acp ...` to start/stop/status the Agent Communication Protocol server for IDE extensions
+- `ur exec ...` to run prompts in non-interactive mode with optional concurrency
 - `ur eval bench ...` to import local SWE-bench, Terminal-Bench, or Aider Polyglot exports
 - `ur doctor` to inspect CLI health
 - `ur update` or `ur upgrade` to check for updates
@@ -147,6 +149,8 @@ ur safety check --command "rm -rf build"
 ur context-pack scan
 ur context-pack remember --constraint "Run command evidence before claiming success"
 ur context-pack compress
+ur acp serve --port 8123
+ur exec "add tests for the parser" --concurrency 4 --json
 ur ci-loop --command "bun test" --dry-run
 ur artifacts capture-diff
 ur bg run "fix the flaky parser test" --worktree --dry-run

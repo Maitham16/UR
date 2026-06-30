@@ -77,6 +77,13 @@ const commands = [
     examples: ['ur -p "Summarize this repository"', 'ur -p --output-format json "Review the current diff"', 'ur -p --json-schema \'{"type":"object"}\' "Return structured output"'],
   },
   {
+    name: 'acp',
+    category: 'Interop',
+    aliases: [],
+    summary: 'Agent Communication Protocol server for IDE extensions: serve, stop, and status.',
+    examples: ['ur acp serve --port 8123', 'ur acp status --json', 'ur acp stop'],
+  },
+  {
     name: 'a2a',
     category: 'Interop',
     aliases: [],
@@ -334,6 +341,13 @@ const commands = [
     aliases: [],
     summary: 'Set up a long-lived authentication token when that subscription surface is enabled.',
     examples: ['ur setup-token'],
+  },
+  {
+    name: 'exec',
+    category: 'Automation',
+    aliases: [],
+    summary: 'Run one or more prompts in non-interactive mode with optional concurrency, worktrees, and output capture.',
+    examples: ['ur exec "add tests for the parser" --json', 'ur exec --file prompts.jsonl --concurrency 4 --output-dir ./outputs', 'ur exec "refactor auth" --worktree --dry-run'],
   },
   {
     name: 'trigger',

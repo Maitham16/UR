@@ -43,7 +43,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.19.0</p>
+          <p class="eyebrow">Version 1.20.0</p>
           <h1>UR Agent Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR Agent.</p>
         </div>
@@ -248,6 +248,19 @@ ur safety check --command "rm -rf build"
 ur context-pack scan
 ur context-pack remember --decision "Use manifest commands first"
 ur context-pack compress</code></pre>
+          </article>
+
+          <article>
+            <h3>Start the ACP server and run a prompt pool</h3>
+            <ol>
+              <li>Start the Agent Communication Protocol server for IDE extensions.</li>
+              <li>Run one or more prompts in non-interactive mode with concurrency.</li>
+              <li>Capture per-prompt outputs to a directory.</li>
+            </ol>
+            <pre><code>ur acp serve --port 8123
+ur acp status --json
+ur exec "add tests for the parser" --concurrency 4 --json
+ur exec --file prompts.jsonl --output-dir ./outputs --dry-run</code></pre>
           </article>
 
           <article>
