@@ -968,6 +968,12 @@ export const SettingsSchema = lazySchema(() =>
         })
         .optional()
         .describe('Ollama backend configuration'),
+      offline: z
+        .boolean()
+        .optional()
+        .describe(
+          'Offline / local-first mode: disable cloud APIs, telemetry, auto-updates, remote control, and web-dependent commands. Local Ollama and filesystem tools still work.',
+        ),
       showThinkingSummaries: z
         .boolean()
         .optional()

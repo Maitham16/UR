@@ -24,7 +24,19 @@ export function getPrivacyLevel(): PrivacyLevel {
   if (process.env.DISABLE_TELEMETRY) {
     return 'no-telemetry'
   }
+  if (isNetworkRestricted()) {
+    return 'essential-traffic'
+  }
   return 'default'
+}
+
+function isNetworkRestricted(): boolean {
+  return (
+    process.env.UR_OFFLINE === '1' ||
+    process.env.UR_NO_CLOUD === '1' ||
+    ['1', 'true', 'yes', 'on'].includes((process.env.UR_OFFLINE ?? '').toLowerCase().trim()) ||
+    ['1', 'true', 'yes', 'on'].includes((process.env.UR_NO_CLOUD ?? '').toLowerCase().trim())
+  )
 }
 
 /**

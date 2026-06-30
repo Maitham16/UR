@@ -85,7 +85,7 @@ import { isAnalyticsDisabled } from 'src/services/analytics/config.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
 import { initializeAnalyticsGates } from 'src/services/analytics/sink.js';
-import { getOriginalCwd, setAdditionalDirectoriesForAgentMd, setIsRemoteMode, setMainLoopModelOverride, setMainThreadAgentType, setTeleportedSessionInfo } from './bootstrap/state.js';
+import { getOriginalCwd, getOfflineMode, setAdditionalDirectoriesForAgentMd, setIsRemoteMode, setMainLoopModelOverride, setMainThreadAgentType, setOfflineMode, setTeleportedSessionInfo } from './bootstrap/state.js';
 import { filterCommandsForRemoteMode, getCommands } from './commands.js';
 import type { StatsStore } from './context/stats.js';
 import { launchAssistantInstallWizard, launchAssistantSessionChooser, launchInvalidSettingsDialog, launchResumeChooser, launchSnapshotUpdateDialog, launchTeleportRepoMismatchDialog, launchTeleportResumeWrapper } from './dialogLaunchers.js';
@@ -1016,6 +1016,7 @@ async function run(): Promise<CommanderCommand> {
   })).option('--agent <agent>', `Agent for the current session. Overrides the 'agent' setting.`).option('--betas <betas...>', 'Beta headers to include in API requests (API key users only)').option('--fallback-model <model>', 'Enable automatic fallback to specified model when default model is overloaded (only works with --print)').addOption(new Option('--workload <tag>', 'Workload tag for billing-header attribution (cc_workload). Process-scoped; set by SDK daemon callers that spawn subprocesses for cron work. (only works with --print)').hideHelp()).option('--settings <file-or-json>', 'Path to a settings JSON file or a JSON string to load additional settings from').option('--add-dir <directories...>', 'Additional directories to allow tool access to').option('--ide', 'Automatically connect to IDE on startup if exactly one valid IDE is available', () => true).option('--strict-mcp-config', 'Only use MCP servers from --mcp-config, ignoring all other MCP configurations', () => true).option('--session-id <uuid>', 'Use a specific session ID for the conversation (must be a valid UUID)').option('-n, --name <name>', 'Set a display name for this session (shown in /resume and terminal title)').option('--agents <json>', 'JSON object defining custom agents (e.g. \'{"reviewer": {"description": "Reviews code", "prompt": "You are a code reviewer"}}\')').option('--setting-sources <sources>', 'Comma-separated list of setting sources to load (user, project, local).')
   .option('--discover-ollama', 'Discover Ollama servers on the local network and choose one at startup')
   .option('--ollama-host <url>', 'Use a specific Ollama server URL for this session (overrides settings and environment)')
+  .option('--offline', 'Offline / local-first mode: disable cloud APIs, telemetry, auto-updates, remote control, and web-dependent commands. Local Ollama and filesystem tools still work.')
   // gh-33508: <paths...> (variadic) consumed everything until the next
   // --flag. `ur --plugin-dir /path mcp add --transport http` swallowed
   // `mcp` and `add` as paths, then choked on --transport as an unknown
@@ -1031,6 +1032,15 @@ async function run(): Promise<CommanderCommand> {
       bare?: boolean;
     }).bare) {
       process.env.UR_CODE_SIMPLE = '1';
+    }
+
+    // --offline = local-first mode. Disable cloud APIs, telemetry,
+    // auto-updates, remote control, and web-dependent commands early.
+    if ((options as {
+      offline?: boolean;
+    }).offline) {
+      setOfflineMode(true);
+      process.env.UR_OFFLINE = '1';
     }
 
     // Ignore "code" as a prompt - treat it the same as no prompt
@@ -1290,6 +1300,12 @@ async function run(): Promise<CommanderCommand> {
     // trust is established and GrowthBook has auth headers.
     let remoteControl = false;
     const remoteControlName = typeof remoteControlOption === 'string' && remoteControlOption.length > 0 ? remoteControlOption : undefined;
+
+    // Offline mode conflicts with remote/bridge/cloud features.
+    if (getOfflineMode() && (remote !== null || remoteControlOption !== undefined)) {
+      process.stderr.write(chalk.yellow('Offline mode is active; --remote/--rc flags are ignored.\n'));
+      remoteControlOption = undefined;
+    }
 
     // Validate session ID if provided
     if (sessionId) {
@@ -2270,7 +2286,7 @@ async function run(): Promise<CommanderCommand> {
 
       // Now that trust is established and GrowthBook has auth headers,
       // resolve the --remote-control / --rc entitlement gate.
-      if (feature('BRIDGE_MODE') && remoteControlOption !== undefined) {
+      if (feature('BRIDGE_MODE') && remoteControlOption !== undefined && !getOfflineMode()) {
         const {
           getBridgeDisabledReason
         } = await import('./bridge/bridgeEnabled.js');

@@ -1,6 +1,7 @@
 import type { Command } from '../../commands.js'
 import { isPolicyAllowed } from '../../services/policyLimits/index.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isNetworkRestricted } from '../../utils/offlineMode.js'
 import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
 
 const feedback = {
@@ -18,7 +19,8 @@ const feedback = {
       isEnvTruthy(process.env.DISABLE_BUG_COMMAND) ||
       isEssentialTrafficOnly() ||
       process.env.USER_TYPE === 'ant' ||
-      !isPolicyAllowed('allow_product_feedback')
+      !isPolicyAllowed('allow_product_feedback') ||
+      isNetworkRestricted()
     ),
   load: () => import('./feedback.js'),
 } satisfies Command

@@ -1,6 +1,7 @@
 import type { Command } from '../../commands.js'
 import { getSubscriptionType } from '../../utils/auth.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isNetworkRestricted } from '../../utils/offlineMode.js'
 
 const upgrade = {
   type: 'local-jsx',
@@ -9,7 +10,8 @@ const upgrade = {
   availability: ['ur-ai'],
   isEnabled: () =>
     !isEnvTruthy(process.env.DISABLE_UPGRADE_COMMAND) &&
-    getSubscriptionType() !== 'enterprise',
+    getSubscriptionType() !== 'enterprise' &&
+    !isNetworkRestricted(),
   load: () => import('./upgrade.js'),
 } satisfies Command
 

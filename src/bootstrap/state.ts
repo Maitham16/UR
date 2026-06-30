@@ -198,6 +198,10 @@ type State = {
   mainThreadAgentType: string | undefined
   // Remote mode (--remote flag)
   isRemoteMode: boolean
+  // Offline / local-first mode (--offline flag): disable cloud APIs, telemetry,
+  // auto-updates, remote control, and web-dependent commands. Local Ollama and
+  // filesystem tools still work.
+  offlineMode: boolean
   // Direct connect server URL (for display in header)
   directConnectServerUrl: string | undefined
   // System prompt section cache state
@@ -389,6 +393,8 @@ function getInitialState(): State {
     mainThreadAgentType: undefined,
     // Remote mode
     isRemoteMode: false,
+    // Offline / local-first mode
+    offlineMode: false,
     ...(process.env.USER_TYPE === 'ant'
       ? {
           replBridgeActive: false,
@@ -1635,6 +1641,14 @@ export function getIsRemoteMode(): boolean {
 
 export function setIsRemoteMode(value: boolean): void {
   STATE.isRemoteMode = value
+}
+
+export function getOfflineMode(): boolean {
+  return STATE.offlineMode
+}
+
+export function setOfflineMode(value: boolean): void {
+  STATE.offlineMode = value
 }
 
 // System prompt section accessors

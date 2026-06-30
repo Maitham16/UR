@@ -6,6 +6,7 @@
  */
 
 import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isNetworkRestricted } from '../../utils/offlineMode.js'
 import { isTelemetryDisabled } from '../../utils/privacyLevel.js'
 
 /**
@@ -22,7 +23,8 @@ export function isAnalyticsDisabled(): boolean {
     isEnvTruthy(process.env.UR_CODE_USE_BEDROCK) ||
     isEnvTruthy(process.env.UR_CODE_USE_VERTEX) ||
     isEnvTruthy(process.env.UR_CODE_USE_FOUNDRY) ||
-    isTelemetryDisabled()
+    isTelemetryDisabled() ||
+    isNetworkRestricted()
   )
 }
 

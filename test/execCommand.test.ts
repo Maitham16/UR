@@ -45,10 +45,16 @@ describe('ur exec command', () => {
   })
 
   test('call returns usage when no prompts provided', async () => {
-    const result = await call('')
-    expect(result.type).toBe('text')
-    if (result.type === 'text') {
-      expect(result.value).toContain('Usage:')
+    const originalIsTTY = process.stdin.isTTY
+    process.stdin.isTTY = true
+    try {
+      const result = await call('')
+      expect(result.type).toBe('text')
+      if (result.type === 'text') {
+        expect(result.value).toContain('Usage:')
+      }
+    } finally {
+      process.stdin.isTTY = originalIsTTY
     }
   })
 

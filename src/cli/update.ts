@@ -26,9 +26,14 @@ import { getPackageManager } from 'src/utils/nativeInstaller/packageManagers.js'
 import { writeToStdout } from 'src/utils/process.js'
 import { gte } from 'src/utils/semver.js'
 import { getInitialSettings } from 'src/utils/settings/settings.js'
+import { isNetworkRestricted, offlineBlockReason } from 'src/utils/offlineMode.js'
 import { formatUpdateAvailableMessage } from 'src/utils/updateNotice.js'
 
 export async function update() {
+  if (isNetworkRestricted()) {
+    writeToStdout(`${offlineBlockReason('auto-update')}\n`)
+    await gracefulShutdown(1)
+  }
   logEvent('tengu_update_check', {})
   writeToStdout(`Current version: ${MACRO.VERSION}\n`)
 
