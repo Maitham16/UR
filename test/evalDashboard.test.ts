@@ -27,8 +27,12 @@ function makeReport(): EvalReport {
     totalInputTokens: 300,
     totalOutputTokens: 150,
     totalFilesChanged: 3,
+    totalEditCount: 11,
     totalCommandFailures: 1,
     totalHumanEditsNeeded: 0,
+    totalHumanInterventions: 0,
+    testsPassed: 1,
+    testsFailed: 1,
     testPassRate: 0.5,
     cases: [
       {
@@ -46,6 +50,7 @@ function makeReport(): EvalReport {
           outputTokens: 75,
           model: 'claude-sonnet-4',
           filesChanged: 2,
+          editCount: 11,
           insertions: 10,
           deletions: 1,
           testPassed: true,
@@ -69,6 +74,7 @@ function makeReport(): EvalReport {
           outputTokens: 75,
           model: 'gpt-4o',
           filesChanged: 1,
+          editCount: 0,
           insertions: 0,
           deletions: 0,
           testPassed: false,
@@ -88,14 +94,18 @@ describe('eval dashboard', () => {
     expect(html).toContain('Test pass rate')
     expect(html).toContain('Cost')
     expect(html).toContain('Files changed')
+    expect(html).toContain('Edit count')
+    expect(html).toContain('Tests passed')
     expect(html).toContain('Command failures')
-    expect(html).toContain('Human edits')
+    expect(html).toContain('Human intervention')
     expect(html).toContain('Task timeline')
     expect(html).toContain('model used')
     expect(html).toContain('commands run')
     expect(html).toContain('diffs produced')
+    expect(html).toContain('edit count')
     expect(html).toContain('tests passed/failed')
     expect(html).toContain('command failures')
+    expect(html).toContain('human intervention')
     expect(html).toContain('fix-1')
     expect(html).toContain('claude-sonnet-4')
     expect(html).toContain('gpt-4o')

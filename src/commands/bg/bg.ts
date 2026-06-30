@@ -35,6 +35,7 @@ function positionals(tokens: string[]): string[] {
     '--body',
     '--base',
     '--tail',
+    '--route',
   ])
   const values: string[] = []
   for (let i = 0; i < tokens.length; i++) {
@@ -51,8 +52,8 @@ function positionals(tokens: string[]): string[] {
 function usage(): string {
   return [
     'Usage:',
-    '  ur bg run "<task>" [--worktree] [--pr] [--title "..."] [--body "..."] [--base main] [--model m] [--max-turns N] [--skip-permissions] [--dry-run] [--json]',
-    '  ur bg fanout "<task>" --agents N [--worktree] [--pr] [--dry-run] [--json]',
+    '  ur bg run "<task>" [--worktree] [--pr] [--title "..."] [--body "..."] [--base main] [--model m] [--route auto|cheap|strong|default] [--max-turns N] [--skip-permissions] [--dry-run] [--json]',
+    '  ur bg fanout "<task>" --agents N [--worktree] [--pr] [--route auto|cheap|strong|default] [--dry-run] [--json]',
     '  ur bg list [--json]',
     '  ur bg status <id> [--json]',
     '  ur bg logs <id> [--tail N]',
@@ -73,6 +74,7 @@ function startOptions(tokens: string[], task: string) {
     body: option(tokens, '--body'),
     push: !tokens.includes('--no-push'),
     model: option(tokens, '--model'),
+    routeStrategy: option(tokens, '--route') as 'auto' | 'cheap' | 'strong' | 'default' | undefined,
     maxTurns: numberOption(tokens, '--max-turns'),
     skipPermissions: tokens.includes('--skip-permissions'),
     dryRun: tokens.includes('--dry-run'),

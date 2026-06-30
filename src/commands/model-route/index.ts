@@ -5,8 +5,8 @@ const modelRoute = {
   name: 'model-route',
   aliases: ['model-pick'],
   description:
-    'Recommend the best local Ollama model for a task by capability fit',
-  argumentHint: '<task...> [--json]',
+    'Recommend and resolve the best model for a task using local capabilities and cheap/strong/default pools',
+  argumentHint: '<task...> [--strategy auto|cheap|strong|default] [--json]',
   supportsNonInteractive: true,
   load: () => import('./model-route.js'),
 } satisfies Command

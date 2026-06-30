@@ -31,6 +31,7 @@ export type BackgroundTask = {
   cwd: string
   runCwd: string
   model?: string
+  routeStrategy?: 'auto' | 'cheap' | 'strong' | 'default'
   maxTurns?: number
   skipPermissions?: boolean
   offline?: boolean
@@ -259,6 +260,7 @@ export function createBackgroundTask(
     cwd: root,
     runCwd: root,
     model: options.model,
+    routeStrategy: options.routeStrategy,
     maxTurns: options.maxTurns,
     skipPermissions: options.skipPermissions,
     logFile: join(logsDir(root), `${id}.log`),
@@ -313,11 +315,10 @@ async function resolveTaskEnv(task: BackgroundTask): Promise<NodeJS.ProcessEnv> 
 }
 
 async function resolveRouteStrategyModel(task: BackgroundTask): Promise<string | undefined> {
-  // BackgroundTask stores only model today; route strategy is resolved here when caller sets it.
-  const strategy = (task as { routeStrategy?: string }).routeStrategy
+  const strategy = task.routeStrategy
   if (!strategy) return undefined
   const { models } = await listModelCapabilities()
-  return resolveModelForTask(task.task, strategy as import('./modelRouter.js').RouteStrategy, loadModelPool(task.cwd), models)
+  return resolveModelForTask(task.task, strategy, loadModelPool(task.cwd), models)
 }
 
 async function spawnBackgroundWorker(
@@ -360,18 +361,18 @@ export async function startBackgroundTask(
   return { task, command: [entry.file, ...command], dryRun: false }
 }
 
-export function startExistingBackgroundTask(
+export async function startExistingBackgroundTask(
   cwd: string,
   id: string,
   options: StartExistingBackgroundTaskOptions = {},
-): StartBackgroundTaskResult | null {
+): Promise<StartBackgroundTaskResult | null> {
   const task = getBackgroundTask(cwd, id)
   if (!task) return null
   const { entry, command } = buildWorkerCommand(task, options.bin)
   if (options.dryRun) {
     return { task, command: [entry.file, ...command], dryRun: true }
   }
-  spawnBackgroundWorker(task, options.bin)
+  await spawnBackgroundWorker(task, options.bin)
   return { task, command: [entry.file, ...command], dryRun: false }
 }
 

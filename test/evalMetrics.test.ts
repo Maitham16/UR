@@ -28,10 +28,12 @@ describe('eval child metrics', () => {
         outputTokens: 50,
         model: 'claude-sonnet-4-20250514',
         filesChanged: 2,
+        editCount: 13,
         insertions: 10,
         deletions: 3,
         commandFailures: 1,
         humanEditsNeeded: 0,
+        humanInterventions: 0,
       },
     })
     const report = await runSuite(suite, runner)
@@ -40,6 +42,7 @@ describe('eval child metrics', () => {
     expect(report.cases[0].metrics?.outputTokens).toBe(50)
     expect(report.cases[0].metrics?.model).toBe('claude-sonnet-4-20250514')
     expect(report.cases[0].metrics?.filesChanged).toBe(2)
+    expect(report.totalEditCount).toBe(13)
     expect(report.totalCostUSD).toBe(0.0042)
     expect(report.totalInputTokens).toBe(100)
     expect(report.totalOutputTokens).toBe(50)
@@ -74,10 +77,14 @@ describe('eval child metrics', () => {
         inputTokens: 10,
         outputTokens: 10,
         testPassed: evalCase.id === 'pass',
+        testsPassed: evalCase.id === 'pass' ? 1 : 0,
+        testsFailed: evalCase.id === 'pass' ? 0 : 1,
       },
     })
     const report = await runSuite(suite, runner)
     expect(report.passed).toBe(1)
+    expect(report.testsPassed).toBe(1)
+    expect(report.testsFailed).toBe(1)
     expect(report.testPassRate).toBe(0.5)
     expect(report.totalCostUSD).toBe(0.002)
     expect(report.totalInputTokens).toBe(20)
@@ -155,15 +162,20 @@ describe('eval child metrics', () => {
         inputTokens: 30,
         outputTokens: 20,
         filesChanged: 1,
+        insertions: 7,
+        deletions: 2,
         commandFailures: 0,
         humanEditsNeeded: 1,
+        humanInterventions: 1,
         testPassed: true,
       },
     })
     const report = await runSuite(suite, runner)
     expect(report.totalCostUSD).toBe(0.003)
     expect(report.totalFilesChanged).toBe(1)
+    expect(report.totalEditCount).toBe(9)
     expect(report.totalHumanEditsNeeded).toBe(1)
+    expect(report.totalHumanInterventions).toBe(1)
     expect(report.testPassRate).toBe(1)
     expect(report.totalDurationMs).toBeGreaterThanOrEqual(500)
   })

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -58,16 +58,54 @@ describe('eval benchmark suites', () => {
         totalInputTokens: 10,
         totalOutputTokens: 20,
         totalFilesChanged: 1,
+        totalEditCount: 4,
         totalCommandFailures: 0,
         totalHumanEditsNeeded: 0,
+        totalHumanInterventions: 0,
         totalRollbacks: 1,
+        testsPassed: 1,
+        testsFailed: 1,
         testPassRate: 0.5,
         cases: [],
       }
       const path = buildLeaderboard(dir, [report], { format: 'md' })
       expect(path.endsWith('leaderboard.md')).toBe(true)
+      const markdown = readFileSync(path, 'utf8')
+      expect(markdown).toContain('Tests passed')
+      expect(markdown).toContain('Edit count')
+      expect(markdown).toContain('Human intervention')
+      expect(markdown).toContain('| demo | 50% | 1/2 | 4 |')
     } finally {
       rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('writes json and html leaderboards from a fresh directory', () => {
+    const report: EvalReport = {
+      name: 'fresh-demo',
+      generatedAt: new Date().toISOString(),
+      total: 1,
+      passed: 1,
+      failed: 0,
+      passRate: 1,
+      byCategory: { demo: { passed: 1, total: 1 } },
+      totalDurationMs: 10,
+      cases: [],
+    }
+    const jsonDir = mkdtempSync(join(tmpdir(), 'ur-eval-leaderboard-json-'))
+    const htmlDir = mkdtempSync(join(tmpdir(), 'ur-eval-leaderboard-html-'))
+    try {
+      const jsonPath = buildLeaderboard(jsonDir, [report], { format: 'json' })
+      const htmlPath = buildLeaderboard(htmlDir, [report], { format: 'html' })
+
+      expect(jsonPath.endsWith('leaderboard.json')).toBe(true)
+      expect(htmlPath.endsWith('leaderboard.html')).toBe(true)
+      expect(existsSync(jsonPath)).toBe(true)
+      expect(existsSync(htmlPath)).toBe(true)
+      expect(readFileSync(htmlPath, 'utf8')).toContain('UR Public Leaderboard')
+    } finally {
+      rmSync(jsonDir, { recursive: true, force: true })
+      rmSync(htmlDir, { recursive: true, force: true })
     }
   })
 })

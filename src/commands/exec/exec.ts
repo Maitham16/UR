@@ -1,13 +1,7 @@
 import type { LocalCommandCall } from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { getCwd } from '../../utils/cwd.js'
-import {
-  fanoutBackgroundTasks,
-  getBackgroundTask,
-  readBackgroundLog,
-  startBackgroundTask,
-  type StartBackgroundTaskResult,
-} from '../../services/agents/backgroundRunner.js'
+import type { StartBackgroundTaskResult } from '../../services/agents/backgroundRunner.js'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -141,6 +135,11 @@ export async function runExecPool(
     }))
   }
 
+  const {
+    fanoutBackgroundTasks,
+    startBackgroundTask,
+  } = await import('../../services/agents/backgroundRunner.js')
+
   if (opts.concurrency === 1 && prompts.length === 1) {
     const command = execCommandForPrompt(prompts[0]!, opts)
     return [
@@ -199,13 +198,16 @@ export const call: LocalCommandCall = async (args: string) => {
     worktree,
     dryRun,
   })
+  const background = results.some(result => !result.dryRun)
+    ? await import('../../services/agents/backgroundRunner.js')
+    : null
 
   const outputs = results.map((result, index) => {
     const prompt = prompts[index] ?? prompts[0]!
     const task = result.dryRun
       ? undefined
-      : getBackgroundTask(getCwd(), result.task.id)
-    const log = task ? readBackgroundLog(getCwd(), result.task.id) : null
+      : background?.getBackgroundTask(getCwd(), result.task.id)
+    const log = task ? background!.readBackgroundLog(getCwd(), result.task.id) : null
     const content = log ?? ''
     if (outputDir && !result.dryRun) {
       writeOutputFile(outputDir, prompt, content)

@@ -1,4 +1,5 @@
 import { mkdir, readdir, readFile, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
 import { join } from 'path'
 import { getSessionId } from '../bootstrap/state.js'
 import { logForDebugging } from './debug.js'
@@ -11,15 +12,34 @@ import { getPlatform } from './platform.js'
 // null = checked disk, no files exist (don't check again)
 // string = loaded and cached (use cached value)
 let sessionEnvScript: string | null | undefined = undefined
+let sessionEnvDirPath: string | undefined = undefined
 
 export async function getSessionEnvDirPath(): Promise<string> {
+  if (sessionEnvDirPath) {
+    return sessionEnvDirPath
+  }
   const sessionEnvDir = join(
     getURConfigHomeDir(),
     'session-env',
     getSessionId(),
   )
-  await mkdir(sessionEnvDir, { recursive: true })
-  return sessionEnvDir
+  try {
+    await mkdir(sessionEnvDir, { recursive: true })
+    sessionEnvDirPath = sessionEnvDir
+    return sessionEnvDirPath
+  } catch (error: unknown) {
+    const code = getErrnoCode(error)
+    if (code !== 'EACCES' && code !== 'EPERM' && code !== 'EROFS') {
+      throw error
+    }
+    const fallbackDir = join(tmpdir(), 'ur-session-env', getSessionId())
+    await mkdir(fallbackDir, { recursive: true })
+    logForDebugging(
+      `Falling back to temp session environment directory after ${code} at ${sessionEnvDir}: ${fallbackDir}`,
+    )
+    sessionEnvDirPath = fallbackDir
+    return sessionEnvDirPath
+  }
 }
 
 export async function getHookEnvFilePath(
@@ -55,6 +75,7 @@ export async function clearCwdEnvFiles(): Promise<void> {
 export function invalidateSessionEnvCache(): void {
   logForDebugging('Invalidating session environment cache')
   sessionEnvScript = undefined
+  sessionEnvDirPath = undefined
 }
 
 export async function getSessionEnvironmentScript(): Promise<string | null> {

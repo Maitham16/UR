@@ -134,7 +134,7 @@ export const call: LocalCommandCall = async (args: string) => {
     if (tokens.includes('--offline') && !isNetworkRestricted()) {
       process.env.UR_OFFLINE = '1'
     }
-    const result = startExistingBackgroundTask(cwd, existing.id, {
+    const result = await startExistingBackgroundTask(cwd, existing.id, {
       dryRun: tokens.includes('--dry-run'),
     })
     if (!result) return { type: 'text', value: `Task ${id} not found.` }

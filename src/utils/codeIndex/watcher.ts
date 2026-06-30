@@ -1,23 +1,11 @@
 import chokidar, { type FSWatcher } from 'chokidar'
-import { extname, relative, sep } from 'node:path'
 import { registerCleanup } from '../cleanupRegistry.js'
 import { logForDebugging } from '../debug.js'
 import { buildCodeGraph } from './graph.js'
 import { buildOrUpdateIndex } from './indexer.js'
 import { buildRepoIndex } from './repoIndex.js'
-
-const WATCH_EXTENSIONS = new Set([
-  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts',
-  '.py', '.pyi', '.rb', '.go', '.rs', '.java', '.kt', '.kts', '.scala',
-  '.c', '.cc', '.cpp', '.cxx', '.h', '.hpp', '.hxx', '.cs', '.swift',
-  '.php', '.lua', '.dart', '.ex', '.exs', '.erl', '.clj', '.hs', '.ml',
-  '.sh', '.bash', '.zsh', '.sql', '.graphql', '.gql', '.proto',
-  '.vue', '.svelte', '.astro', '.css', '.scss', '.sass', '.less',
-  '.md', '.mdx', '.rst', '.adoc', '.txt',
-  '.json', '.yaml', '.yml', '.toml',
-])
-
-const SKIP_SEGMENTS = new Set(['node_modules', '.git', 'dist', 'build', '.ur'])
+import { isCodeIndexWatchable, shouldIgnoreWatchPath } from './watchPaths.js'
+export { isCodeIndexWatchable } from './watchPaths.js'
 
 export type CodeIndexWatchOptions = {
   root: string
@@ -37,30 +25,6 @@ let activeRoot: string | null = null
 let activeTimer: ReturnType<typeof setTimeout> | null = null
 let running = false
 let rerun = false
-
-function toPosix(path: string): string {
-  return sep === '\\' ? path.replaceAll('\\', '/') : path
-}
-
-export function isCodeIndexWatchable(root: string, path: string): boolean {
-  const rel = toPosix(relative(root, path))
-  if (!rel || rel.startsWith('..')) return false
-  const segments = rel.split('/')
-  if (segments.some(segment => SKIP_SEGMENTS.has(segment))) return false
-  if (rel.endsWith('.min.js') || rel.endsWith('.min.css')) return false
-  if (rel.endsWith('.lock') || rel.endsWith('lock.json')) return false
-  return WATCH_EXTENSIONS.has(extname(rel).toLowerCase())
-}
-
-function shouldIgnoreWatchPath(root: string, path: string): boolean {
-  const rel = toPosix(relative(root, path))
-  if (!rel || rel.startsWith('..')) return false
-  const segments = rel.split('/')
-  if (segments.some(segment => SKIP_SEGMENTS.has(segment))) return true
-  const ext = extname(rel).toLowerCase()
-  if (!ext) return false
-  return !isCodeIndexWatchable(root, path)
-}
 
 async function rebuild(options: CodeIndexWatchOptions): Promise<void> {
   if (running) {

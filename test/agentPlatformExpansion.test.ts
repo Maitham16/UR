@@ -7,7 +7,9 @@ import type { ModelCapability } from '../src/commands/model-doctor/model-doctor.
 import {
   deriveModelNeeds,
   recommendModel,
+  resolveModelForTask,
   scoreModel,
+  shouldUseStrongModel,
 } from '../src/services/agents/modelRouter.js'
 import {
   buildTriggerCommand,
@@ -96,6 +98,36 @@ describe('modelRouter', () => {
     const result = recommendModel('do anything', [])
     expect(result.recommended).toBeNull()
     expect(result.rationale).toContain('No local Ollama models')
+  })
+
+  test('auto strategy uses cheap local models for simple tasks and strong models for planning/security/debugging', () => {
+    const models: ModelCapability[] = [
+      {
+        name: 'llama3.2:3b',
+        advertisedCapabilities: [],
+        contextLength: 8_000,
+        likelyVision: false,
+        likelyCode: false,
+      },
+      {
+        name: 'qwen2.5-coder:32b',
+        advertisedCapabilities: ['tools'],
+        contextLength: 128_000,
+        likelyVision: false,
+        likelyCode: true,
+      },
+    ]
+    const pool = {
+      cheap: ['llama3.2:3b'],
+      strong: ['qwen2.5-coder:32b'],
+      default: ['llama3.2:3b'],
+    }
+    expect(shouldUseStrongModel('hi')).toBe(false)
+    expect(shouldUseStrongModel('plan the auth refactor')).toBe(true)
+    expect(shouldUseStrongModel('debug this production security failure')).toBe(true)
+    expect(resolveModelForTask('hi', 'auto', pool, models)).toBe('llama3.2:3b')
+    expect(resolveModelForTask('plan the auth refactor', 'auto', pool, models)).toBe('qwen2.5-coder:32b')
+    expect(resolveModelForTask('security review this diff', 'auto', pool, models)).toBe('qwen2.5-coder:32b')
   })
 })
 

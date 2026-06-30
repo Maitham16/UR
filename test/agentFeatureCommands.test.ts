@@ -126,7 +126,7 @@ describe('agent feature commands', () => {
     const { call } = await import('../src/commands/bg/bg.js')
 
     const created = await runWithCwdOverride(dir, () =>
-      call('run "Fix the flaky test" --worktree --pr --title "Fix flaky test" --dry-run --json'),
+      call('run "Fix the flaky test" --worktree --pr --route strong --title "Fix flaky test" --dry-run --json'),
     )
 
     expect(created.type).toBe('text')
@@ -136,6 +136,7 @@ describe('agent feature commands', () => {
     expect(parsed.task.task).toBe('Fix the flaky test')
     expect(parsed.task.worktree.enabled).toBe(true)
     expect(parsed.task.pr.enabled).toBe(true)
+    expect(parsed.task.routeStrategy).toBe('strong')
     expect(parsed.command.join(' ')).toContain('bg worker')
 
     const listed = await runWithCwdOverride(dir, () => call('list --json'))

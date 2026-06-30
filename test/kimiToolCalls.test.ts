@@ -4,8 +4,8 @@ import {
   parseClarifyingQuestions,
   parseTextToolCalls,
   reconcileToolName,
+  synthesizeKimiToolCalls,
 } from '../src/cli/transports/kimiToolCalls.ts'
-import { synthesizeKimiToolCalls } from '../src/cli/transports/ccrClient.ts'
 
 const TOOLSET = new Set([
   'AskUserQuestion',

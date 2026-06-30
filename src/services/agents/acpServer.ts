@@ -13,6 +13,7 @@ import { getTools } from '../../tools.js'
 import { createAbortController } from '../../utils/abortController.js'
 import { createFileStateCacheWithSizeLimit } from '../../utils/fileStateCache.js'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
+import { getErrnoCode } from '../../utils/errors.js'
 import { getMainLoopModel } from '../../utils/model/model.js'
 import { logError } from '../../utils/log.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
@@ -408,7 +409,7 @@ async function dispatchMethod(
   }
 }
 
-async function handleAcpRequest(
+export async function handleAcpRequest(
   request: Request,
   options: AcpServeOptions,
 ): Promise<Response> {
@@ -462,6 +463,32 @@ export async function stopAcpServer(): Promise<void> {
   acpTasks.clear()
 }
 
+function pickFallbackPort(): number {
+  return 49_152 + Math.floor(Math.random() * 16_384)
+}
+
+function startAcpHttpServer(options: AcpServeOptions): ReturnType<typeof Bun.serve> {
+  const ports = options.port === 0
+    ? [0, ...Array.from({ length: 10 }, () => pickFallbackPort())]
+    : [options.port]
+  let lastError: unknown
+  for (const port of ports) {
+    try {
+      return Bun.serve({
+        hostname: options.host,
+        port,
+        fetch: request => handleAcpRequest(request, options),
+      })
+    } catch (error: unknown) {
+      lastError = error
+      if (options.port !== 0 || getErrnoCode(error) !== 'EADDRINUSE') {
+        throw error
+      }
+    }
+  }
+  throw lastError
+}
+
 export async function serveAcp(options: AcpServeOptions): Promise<void> {
   if (!isLoopback(options.host) && !options.token) {
     throw new Error('Refusing to bind ACP server off-loopback without --token')
@@ -473,11 +500,7 @@ export async function serveAcp(options: AcpServeOptions): Promise<void> {
   await stopAcpServer()
   acpTasks.clear()
 
-  acpServer = Bun.serve({
-    hostname: options.host,
-    port: options.port,
-    fetch: request => handleAcpRequest(request, options),
-  })
+  acpServer = startAcpHttpServer(options)
 
   // eslint-disable-next-line no-console
   console.log(`ACP server listening on http://${options.host}:${acpServer.port}`)

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { chunkText } from '../src/utils/codeIndex/chunker.ts'
 import { cosineSimilarity, loadIndex, saveIndex, sha1 } from '../src/utils/codeIndex/store.ts'
 import { isCodeIndexEnabled } from '../src/utils/codeIndex/index.ts'
-import { isCodeIndexWatchable } from '../src/utils/codeIndex/watcher.ts'
+import { isCodeIndexWatchable } from '../src/utils/codeIndex/watchPaths.ts'
 import type { CodeIndex } from '../src/utils/codeIndex/types.ts'
 
 test('cosineSimilarity: identical vectors = 1, orthogonal = 0', () => {

@@ -176,6 +176,21 @@ export type ModelPool = {
   default?: string[]
 }
 
+export function shouldUseStrongModel(task: string): boolean {
+  const route = routeIntent(task)
+  if (route.category === 'planning' || route.category === 'security' || route.category === 'review') {
+    return true
+  }
+  if (
+    /\b(plan|planning|design|architecture|strategy|roadmap|critical|risky|dangerous|debug|root cause|stack ?trace|security|vulnerab|auth|credential|secret|sandbox|permission|migrat|refactor|production|release)\b/i.test(
+      task,
+    )
+  ) {
+    return true
+  }
+  return classifyTaskComplexity(task) === 'complex'
+}
+
 export function resolveModelForTask(
   task: string,
   strategy: RouteStrategy,
@@ -190,7 +205,7 @@ export function resolveModelForTask(
   if (strategy === 'strong') {
     return pickBestCoderModel(localNames, undefined) ?? pool.strong?.[0] ?? pool.default?.[0]
   }
-  return classifyTaskComplexity(task) === 'simple'
+  return shouldUseStrongModel(task) === false
     ? resolveModelForTask(task, 'cheap', pool, localModels)
     : resolveModelForTask(task, 'strong', pool, localModels)
 }

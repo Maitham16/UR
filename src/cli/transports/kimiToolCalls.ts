@@ -671,6 +671,54 @@ export function parseTextToolCalls(
   }
 }
 
+export function synthesizeKimiToolCalls(message: unknown): void {
+  const m = (message as { message?: { content?: unknown; stop_reason?: unknown } })?.message
+  if (!m || !Array.isArray(m.content)) return
+  const content = m.content as Array<Record<string, unknown>>
+  const synthesized: Array<Record<string, unknown>> = []
+  let changed = false
+  for (const block of content) {
+    if (
+      block.type === 'text' &&
+      typeof block.text === 'string' &&
+      (block.text.includes('<|tool_call') ||
+        looksLikeBareJsonToolCallPrefix(block.text) ||
+        block.text.includes('\n{'))
+    ) {
+      const { text, toolCalls } = parseTextToolCalls(block.text, {
+        availableToolNames: new Set([
+          'TaskCreate',
+          'Write',
+          'Edit',
+          'AskUserQuestion',
+          'Bash',
+          'Read',
+          'TaskUpdate',
+        ]),
+        parseBareJsonToolCalls: true,
+      })
+      if (toolCalls.length > 0) {
+        block.text = text
+        for (const tc of toolCalls) {
+          synthesized.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.name,
+            input: tc.input,
+          })
+        }
+        changed = true
+      }
+    }
+  }
+  if (!changed) return
+  const kept = content.filter(
+    b => !(b.type === 'text' && typeof b.text === 'string' && b.text.trim() === ''),
+  )
+  m.content = [...kept, ...synthesized]
+  m.stop_reason = 'tool_use'
+}
+
 // --- Plain-prose clarifying-question fallback --------------------------------
 // Open models frequently ignore the AskUserQuestion tool and instead write
 // clarifying questions as ordinary prose (e.g. "1. What engine? Pygame, Unity,

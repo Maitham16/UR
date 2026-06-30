@@ -4,10 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AcpClient } from '../src/services/agents/acpClient.js'
 import {
-  getAcpServerPort,
-  serveAcp,
+  handleAcpRequest,
   stopAcpServer,
 } from '../src/services/agents/acpServer.js'
+
+const ACP_TEST_TIMEOUT_MS = 15_000
 
 function tempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -16,26 +17,28 @@ function tempDir(prefix: string): string {
 async function withAcpServer(
   dir: string,
   token: string | undefined,
-  fn: (port: number, client: AcpClient) => Promise<void>,
+  fn: (
+    port: number,
+    client: AcpClient,
+    fetchImpl: typeof fetch,
+  ) => Promise<void>,
   dryRun = false,
 ): Promise<void> {
-  const port = 0 // let Bun pick a free port
-  // Start the server in the background; it never resolves on its own.
-  serveAcp({
-    host: '127.0.0.1',
-    port,
-    token,
-    cwd: dir,
-    dryRun,
-  }).catch(() => {})
-  // Wait for the server to start and register its port.
-  while (getAcpServerPort() === null) {
-    await new Promise(resolve => setTimeout(resolve, 10))
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = typeof input === 'string' || input instanceof URL
+      ? input
+      : input.url
+    return handleAcpRequest(new Request(url, init), {
+      host: '127.0.0.1',
+      port: 0,
+      token,
+      cwd: dir,
+      dryRun,
+    })
   }
-  const actualPort = getAcpServerPort()!
-  const client = new AcpClient({ baseUrl: `http://127.0.0.1:${actualPort}`, token })
+  const client = new AcpClient({ baseUrl: 'http://127.0.0.1', token, fetch: fetchImpl })
   try {
-    await fn(actualPort, client)
+    await fn(0, client, fetchImpl)
   } finally {
     await stopAcpServer()
   }
@@ -45,8 +48,8 @@ describe('ACP server', () => {
   test('healthz returns ok', async () => {
     const dir = tempDir('ur-acp-')
     try {
-      await withAcpServer(dir, undefined, async port => {
-        const res = await fetch(`http://127.0.0.1:${port}/healthz`)
+      await withAcpServer(dir, undefined, async (_port, _client, fetchImpl) => {
+        const res = await fetchImpl('http://127.0.0.1/healthz')
         expect(res.status).toBe(200)
         const body = await res.json()
         expect(body.result.ok).toBe(true)
@@ -54,7 +57,7 @@ describe('ACP server', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
-  })
+  }, ACP_TEST_TIMEOUT_MS)
 
   test('initialize returns server metadata', async () => {
     const dir = tempDir('ur-acp-')
@@ -67,7 +70,7 @@ describe('ACP server', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
-  })
+  }, ACP_TEST_TIMEOUT_MS)
 
   test('tools/list returns built-in tools', async () => {
     const dir = tempDir('ur-acp-')
@@ -81,23 +84,27 @@ describe('ACP server', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
-  })
+  }, ACP_TEST_TIMEOUT_MS)
 
   test('rejects unauthorized requests when token is configured', async () => {
     const dir = tempDir('ur-acp-')
     try {
-      await withAcpServer(dir, 'secret-token', async (port) => {
-        const badClient = new AcpClient({ baseUrl: `http://127.0.0.1:${port}` })
+      await withAcpServer(dir, 'secret-token', async (_port, _client, fetchImpl) => {
+        const badClient = new AcpClient({ baseUrl: 'http://127.0.0.1', fetch: fetchImpl })
         await expect(badClient.call('initialize')).rejects.toThrow('ACP error -32001')
 
-        const goodClient = new AcpClient({ baseUrl: `http://127.0.0.1:${port}`, token: 'secret-token' })
+        const goodClient = new AcpClient({
+          baseUrl: 'http://127.0.0.1',
+          token: 'secret-token',
+          fetch: fetchImpl,
+        })
         const result = (await goodClient.call('initialize')) as { name: string }
         expect(result.name).toBe('ur-agent')
       })
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
-  })
+  }, ACP_TEST_TIMEOUT_MS)
 
   test('tasks/send returns a stable task id that tasks/get can fetch', async () => {
     const dir = tempDir('ur-acp-')
@@ -121,7 +128,7 @@ describe('ACP server', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
-  })
+  }, ACP_TEST_TIMEOUT_MS)
 
   test('IDE diff capture and select are available through ACP client/server', async () => {
     const dir = tempDir('ur-acp-')
@@ -153,5 +160,5 @@ describe('ACP server', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
-  })
+  }, ACP_TEST_TIMEOUT_MS)
 })
