@@ -5,10 +5,16 @@ import type {
   CommandMetadata,
   PluginAuthor,
   PluginManifest,
+  PluginManifestLanguageAdapter,
 } from '../utils/plugins/schemas.js'
 import type { HooksSettings } from '../utils/settings/types.js'
 
-export type { PluginAuthor, PluginManifest, CommandMetadata }
+export type {
+  PluginAuthor,
+  PluginManifest,
+  CommandMetadata,
+  PluginManifestLanguageAdapter,
+}
 
 /**
  * Definition for a built-in plugin that ships with the CLI.
@@ -63,6 +69,11 @@ export type LoadedPlugin = {
   skillsPaths?: string[] // Additional skill paths from manifest
   outputStylesPath?: string
   outputStylesPaths?: string[] // Additional output style paths from manifest
+  templatesPath?: string
+  templatesPaths?: string[] // Additional template paths from manifest
+  validatorsPath?: string
+  validatorsPaths?: string[] // Additional validator paths from manifest
+  languageAdapters?: Record<string, PluginManifestLanguageAdapter>
   hooksConfig?: HooksSettings
   mcpServers?: Record<string, McpServerConfig>
   lspServers?: Record<string, LspServerConfig>
@@ -75,6 +86,9 @@ export type PluginComponent =
   | 'skills'
   | 'hooks'
   | 'output-styles'
+  | 'templates'
+  | 'validators'
+  | 'language-adapters'
 
 /**
  * Discriminated union of plugin error types.

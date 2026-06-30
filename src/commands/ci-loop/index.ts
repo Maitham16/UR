@@ -7,7 +7,7 @@ const ciLoop = {
   description:
     'Self-healing CI: run a build/test command and, on failure, capture the error, fix it, and re-run with bounded retries',
   argumentHint:
-    '[--command "bun test"] [--max-attempts 3] [--commit] [--push] [--from-log <file>] [--dry-run] [--json]',
+    '[--command "bun test"] [--max-attempts 3] [--commit] [--push] [--from-log <file>] [--dry-run] [--json] [--allow-generated]',
   supportsNonInteractive: true,
   load: () => import('./ci-loop.js'),
 } satisfies Command

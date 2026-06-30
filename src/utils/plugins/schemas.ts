@@ -520,6 +520,87 @@ const PluginManifestOutputStylesSchema = lazySchema(() =>
   }),
 )
 
+/**
+ * Schema for agent template definitions in plugin manifest.
+ *
+ * Plugins can ship reusable agent templates as markdown files under templates/.
+ * Each template file follows the same frontmatter shape as .ur/agents/*.md and
+ * is surfaced by `ur agent-templates list/install` alongside built-in templates.
+ */
+const PluginManifestTemplatesSchema = lazySchema(() =>
+  z.object({
+    templates: z.union([
+      RelativePath().describe(
+        'Path to additional templates directory or file (in addition to those in the templates/ directory, if it exists), relative to the plugin root',
+      ),
+      z
+        .array(
+          RelativePath().describe(
+            'Path to additional templates directory or file (in addition to those in the templates/ directory, if it exists), relative to the plugin root',
+          ),
+        )
+        .describe('List of paths to additional template directories or files'),
+    ]),
+  }),
+)
+
+/**
+ * Schema for validator definitions in plugin manifest.
+ *
+ * Plugins can ship deterministic verifier gates as JSON files under validators/.
+ * Each validator declares a name, the command that proves correctness, optional
+ * file patterns that trigger it, and an optional timeout.
+ */
+const PluginManifestValidatorsSchema = lazySchema(() =>
+  z.object({
+    validators: z.union([
+      RelativePath().describe(
+        'Path to additional validators directory or file (in addition to those in the validators/ directory, if it exists), relative to the plugin root',
+      ),
+      z
+        .array(
+          RelativePath().describe(
+            'Path to additional validators directory or file (in addition to those in the validators/ directory, if it exists), relative to the plugin root',
+          ),
+        )
+        .describe(
+          'List of paths to additional validator directories or files',
+        ),
+    ]),
+  }),
+)
+
+/**
+ * Schema for language adapter definitions in plugin manifest.
+ *
+ * Plugins can extend AST-aware repo editing with new languages by declaring
+ * adapters. Each adapter maps file extensions to a preferred engine and,
+ * optionally, a tree-sitter grammar package or LSP server config reference.
+ */
+const PluginManifestLanguageAdaptersSchema = lazySchema(() =>
+  z.object({
+    languageAdapters: z.record(
+      z.string().min(1),
+      z.object({
+        extensions: z
+          .array(fileExtension())
+          .describe('File extensions this adapter handles'),
+        engine: z
+          .enum(['typescript', 'lsp', 'treesitter'])
+          .describe('Preferred engine for this language'),
+        grammarPackage: z
+          .string()
+          .optional()
+          .describe('Optional npm package providing a tree-sitter grammar'),
+        lspServerName: z
+          .string()
+          .optional()
+          .describe('Optional reference to an LSP server declared in lspServers'),
+      }),
+    ),
+  }),
+)
+
 // Helper validators for LSP config
 const nonEmptyString = lazySchema(() => z.string().min(1))
 const fileExtension = lazySchema(() =>
@@ -886,6 +967,9 @@ export const PluginManifestSchema = lazySchema(() =>
     ...PluginManifestAgentsSchema().partial().shape,
     ...PluginManifestSkillsSchema().partial().shape,
     ...PluginManifestOutputStylesSchema().partial().shape,
+    ...PluginManifestTemplatesSchema().partial().shape,
+    ...PluginManifestValidatorsSchema().partial().shape,
+    ...PluginManifestLanguageAdaptersSchema().partial().shape,
     ...PluginManifestChannelsSchema().partial().shape,
     ...PluginManifestMcpServerSchema().partial().shape,
     ...PluginManifestLspServerSchema().partial().shape,
@@ -1651,6 +1735,9 @@ export type PluginManifest = z.infer<ReturnType<typeof PluginManifestSchema>>
 export type PluginManifestChannel = NonNullable<
   PluginManifest['channels']
 >[number]
+export type PluginManifestLanguageAdapter = NonNullable<
+  PluginManifest['languageAdapters']
+>[string]
 
 export type PluginMarketplace = z.infer<
   ReturnType<typeof PluginMarketplaceSchema>

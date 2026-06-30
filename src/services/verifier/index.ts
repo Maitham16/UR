@@ -41,6 +41,8 @@ import {
   runGateCommands,
   type VerifyConfig,
 } from './projectGates.js'
+import { loadPluginValidators, type PluginValidator } from '../../utils/plugins/loadPluginValidators.js'
+import picomatch from 'picomatch'
 import { buildSubagentNudge, type SubagentNudge } from './subagentNudge.js'
 
 export type VerifierMode = 'off' | 'loose' | 'strict'
@@ -82,6 +84,7 @@ export class Verifier {
   readonly ledger = new ToolEffectLedger()
   private loops: LoopDetector
   private configPromise: Promise<VerifyConfig | null>
+  private pluginValidatorsPromise: Promise<PluginValidator[]>
   private rejectionsByTurn = new Map<string, number>()
   private nudgedTurns = new Set<string>()
   private userTaskHintByTurn = new Map<string, string>()
@@ -95,6 +98,7 @@ export class Verifier {
     this.maxRejections = options.maxRejectionsPerTurn ?? DEFAULT_MAX_REJECTIONS_PER_TURN
     this.loops = new LoopDetector(options.repeatThreshold)
     this.configPromise = loadVerifyConfig(options.cwd)
+    this.pluginValidatorsPromise = loadPluginValidators()
     this.mode = resolveMode(options.mode)
     // L2 is opt-in: the deep verification subagent only auto-spawns when the
     // user explicitly enables it via UR_VERIFIER_AUTO_SUBAGENT. By default the
@@ -198,6 +202,29 @@ export class Verifier {
           return { ok: false, reminder: failed.reminder }
         }
       }
+
+      // 4. Plugin validator gates
+      const pluginValidators = await this.pluginValidatorsPromise
+      const validatorCommands = pickPluginValidators(
+        pluginValidators,
+        modifiedFiles,
+        ranBash,
+      )
+      for (const { command, timeoutMs: validatorTimeoutMs } of validatorCommands) {
+        const result = await runGateCommands(
+          [command],
+          this.cwd,
+          validatorTimeoutMs ?? timeoutMs,
+        )
+        if (!result.ok) {
+          this.bumpRejection(turnId)
+          const failed = result as Extract<typeof result, { ok: false }>
+          return {
+            ok: false,
+            reminder: `[plugin validator] ${failed.reminder}`,
+          }
+        }
+      }
     }
 
     return { ok: true }
@@ -264,6 +291,22 @@ export class Verifier {
       command => command.command,
     )
   }
+}
+
+function pickPluginValidators(
+  validators: PluginValidator[],
+  modifiedFiles: string[],
+  ranBash: boolean,
+): PluginValidator[] {
+  return validators.filter(v => {
+    if (v.when === 'always') return true
+    if (v.when === 'afterBash') return ranBash
+    // Default afterEdit
+    if (modifiedFiles.length === 0) return false
+    if (!v.patterns || v.patterns.length === 0) return true
+    const matcher = picomatch(v.patterns)
+    return modifiedFiles.some(file => matcher(file))
+  })
 }
 
 export { ToolEffectLedger } from './ledger.js'

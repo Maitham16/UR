@@ -1,7 +1,7 @@
 {
   "name": "ur-agent",
-  "version": "1.23.0",
-  "description": "UR terminal coding agent CLI",
+  "version": "1.23.1",
+  "description": "UR — autonomous engineering workflow engine (plan, execute, test, verify, document, benchmark, reproduce)",
   "type": "module",
   "packageManager": "bun@1.3.14",
   "repository": {

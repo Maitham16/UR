@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { loadPluginTemplates } from '../../utils/plugins/loadPluginTemplates.js'
 
 export type AgentFeatureId =
   | 'task-pr'
@@ -260,6 +261,8 @@ export type AgentTemplate = {
   permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
   memory?: 'project' | 'local' | 'user'
   body: string
+  /** Set when the template is contributed by a plugin. */
+  plugin?: string
 }
 
 export const AGENT_TEMPLATES: AgentTemplate[] = [
@@ -503,8 +506,22 @@ function renderAgentTemplate(template: AgentTemplate): string {
   return `${frontmatter.join('\n')}${template.body.trim()}\n`
 }
 
+export async function getAllAgentTemplates(): Promise<AgentTemplate[]> {
+  const pluginTemplates = await loadPluginTemplates().catch(err => {
+    // Defensive: if plugin loading is broken, still return built-in templates.
+    console.error('Failed to load plugin templates:', err)
+    return []
+  })
+  return [...AGENT_TEMPLATES, ...pluginTemplates]
+}
+
 export function listAgentTemplateNames(): string[] {
   return AGENT_TEMPLATES.map(template => template.name)
+}
+
+export async function listAllAgentTemplateNames(): Promise<string[]> {
+  const all = await getAllAgentTemplates()
+  return all.map(template => template.name)
 }
 
 export function installAgentTemplates(
@@ -520,6 +537,31 @@ export function installAgentTemplates(
   mkdirSync(join(root, 'agents'), { recursive: true })
   for (const template of AGENT_TEMPLATES) {
     if (!wanted.has(template.name)) continue
+    writeSeedFile(
+      root,
+      {
+        path: `agents/${template.name}.md`,
+        content: renderAgentTemplate(template),
+      },
+      result,
+      force,
+    )
+  }
+
+  return result
+}
+
+export async function installAllAgentTemplates(
+  cwd: string,
+  options: { force?: boolean } = {},
+): Promise<ScaffoldResult> {
+  const all = await getAllAgentTemplates()
+  const root = join(cwd, '.ur')
+  const result: ScaffoldResult = { root, created: [], skipped: [] }
+  const force = options.force === true
+
+  mkdirSync(join(root, 'agents'), { recursive: true })
+  for (const template of all) {
     writeSeedFile(
       root,
       {

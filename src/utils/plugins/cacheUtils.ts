@@ -15,7 +15,10 @@ import {
   clearPluginHookCache,
   pruneRemovedPluginHooks,
 } from './loadPluginHooks.js'
+import { clearPluginLanguageAdaptersCache } from './loadPluginLanguageAdapters.js'
 import { clearPluginOutputStyleCache } from './loadPluginOutputStyles.js'
+import { clearPluginTemplatesCache } from './loadPluginTemplates.js'
+import { clearPluginValidatorsCache } from './loadPluginValidators.js'
 import { clearPluginCache, getPluginCachePath } from './pluginLoader.js'
 import { clearPluginOptionsCache } from './pluginOptionsStorage.js'
 import { isPluginZipCacheEnabled } from './zipCache.js'
@@ -39,6 +42,9 @@ export function clearAllPluginCaches(): void {
   clearPluginOptionsCache()
   clearPluginOutputStyleCache()
   clearAllOutputStylesCache()
+  clearPluginTemplatesCache()
+  clearPluginValidatorsCache()
+  clearPluginLanguageAdaptersCache()
 }
 
 export function clearAllCaches(): void {

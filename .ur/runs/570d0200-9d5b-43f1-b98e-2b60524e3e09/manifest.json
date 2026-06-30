@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "runId": "570d0200-9d5b-43f1-b98e-2b60524e3e09",
+  "cwd": "/Users/maith/Desktop/ur3-dev/UR-1.19.0",
+  "startedAt": "2026-06-30T19:38:57.173Z",
+  "updatedAt": "2026-06-30T19:38:57.220Z",
+  "artifacts": [
+    {
+      "kind": "command-log",
+      "path": "/Users/maith/Desktop/ur3-dev/UR-1.19.0/.ur/runs/570d0200-9d5b-43f1-b98e-2b60524e3e09/commands.jsonl",
+      "title": "commands.jsonl (printf ur-hook-runtime)",
+      "at": "2026-06-30T19:38:57.220Z"
+    }
+  ]
+}

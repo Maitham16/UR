@@ -23,6 +23,7 @@ export type RunArtifact = {
     | 'task-memory'
     | 'model-route'
     | 'run-metrics'
+    | 'ci-cannot-fix'
   path: string
   title?: string
   at?: string

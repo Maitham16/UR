@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import ts from 'typescript'
 import type { DiagnosticFile, DiagnosticSnapshot, DiagnosticSource } from './types.js'
+import { languageFromPathWithAdapters } from './engineRouter.js'
 
 const execAsync = promisify(exec)
 
@@ -43,7 +44,7 @@ export async function collectDiagnostics(
 
   const externalByLanguage = new Map<string, string[]>()
   for (const file of files.filter(file => !isTypeScriptPath(file))) {
-    const language = languageFromPath(file)
+    const language = await languageFromPathWithAdapters(file)
     if (!language) continue
     externalByLanguage.set(language, [
       ...(externalByLanguage.get(language) ?? []),
@@ -81,13 +82,6 @@ function isTypeScriptPath(file: string): boolean {
   return ext.endsWith('.ts') || ext.endsWith('.tsx') || ext.endsWith('.js') || ext.endsWith('.jsx')
 }
 
-function languageFromPath(file: string): string | undefined {
-  const ext = file.toLowerCase()
-  if (ext.endsWith('.py') || ext.endsWith('.pyi')) return 'python'
-  if (ext.endsWith('.rs')) return 'rust'
-  if (ext.endsWith('.go')) return 'go'
-  return undefined
-}
 
 function mergeSnapshots(snapshots: DiagnosticSnapshot[]): DiagnosticSnapshot {
   const files: Record<string, DiagnosticFile[]> = {}

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.23.1
+
+### Added
+- **CI agent (`ur ci-loop`)** with agent constitution: hard rules against hiding failures, deleting without approval, editing generated/vendor files, claiming tests passed without execution, and changing public API without warning.
+- **Plugin marketplace extensibility** for `templates`, `validators`, and `languageAdapters` alongside existing MCP tools and skills.
+
+### Changed
+- UR identity updated to "autonomous engineering workflow engine (plan, execute, test, verify, document, benchmark, reproduce)".
+
 ## 1.22.8
 
 ### Added

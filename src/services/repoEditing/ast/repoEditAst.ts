@@ -89,7 +89,7 @@ async function listRepoCodeFiles(root: string): Promise<string[]> {
 
 async function computeRenameEdit(options: RenameOptions, attempt = 0): Promise<WorkspaceEdit> {
   const language = options.file ? languageFromPath(options.file) : undefined
-  const selection = resolveEngine(language ?? 'ts', {
+  const selection = await resolveEngine(language ?? 'ts', {
     preferLsp: options.engine === 'lsp',
     preferTreeSitter: options.engine === 'treesitter',
   })

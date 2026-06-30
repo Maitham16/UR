@@ -94,6 +94,10 @@ export type Engine = 'typescript' | 'lsp' | 'treesitter'
 export type EngineSelection = {
   engine: Engine
   reason: string
+  /** Optional tree-sitter grammar package supplied by a plugin adapter. */
+  grammarPackage?: string
+  /** Optional LSP server name supplied by a plugin adapter. */
+  lspServerName?: string
 }
 
 export type Position = {

@@ -1376,6 +1376,8 @@ export async function createPluginFromPath(
     agentsDirExists,
     skillsDirExists,
     outputStylesDirExists,
+    templatesDirExists,
+    validatorsDirExists,
   ] = await Promise.all([
     !manifest.commands ? pathExists(join(pluginPath, 'commands')) : false,
     !manifest.agents ? pathExists(join(pluginPath, 'agents')) : false,
@@ -1383,6 +1385,8 @@ export async function createPluginFromPath(
     !manifest.outputStyles
       ? pathExists(join(pluginPath, 'output-styles'))
       : false,
+    !manifest.templates ? pathExists(join(pluginPath, 'templates')) : false,
+    !manifest.validators ? pathExists(join(pluginPath, 'validators')) : false,
   ])
 
   const commandsPath = join(pluginPath, 'commands')
@@ -1608,6 +1612,67 @@ export async function createPluginFromPath(
     if (validPaths.length > 0) {
       plugin.outputStylesPaths = validPaths
     }
+  }
+
+  // Step 4f: Register templates directory if detected
+  const templatesPath = join(pluginPath, 'templates')
+  if (templatesDirExists) {
+    plugin.templatesPath = templatesPath
+  }
+
+  // Step 4g: Process additional template paths from manifest
+  if (manifest.templates) {
+    const templatePaths = Array.isArray(manifest.templates)
+      ? manifest.templates
+      : [manifest.templates]
+
+    const validPaths = await validatePluginPaths(
+      templatePaths,
+      pluginPath,
+      manifest.name,
+      source,
+      'templates',
+      'Template',
+      'specified in manifest but',
+      errors,
+    )
+
+    if (validPaths.length > 0) {
+      plugin.templatesPaths = validPaths
+    }
+  }
+
+  // Step 4h: Register validators directory if detected
+  const validatorsPath = join(pluginPath, 'validators')
+  if (validatorsDirExists) {
+    plugin.validatorsPath = validatorsPath
+  }
+
+  // Step 4i: Process additional validator paths from manifest
+  if (manifest.validators) {
+    const validatorPaths = Array.isArray(manifest.validators)
+      ? manifest.validators
+      : [manifest.validators]
+
+    const validPaths = await validatePluginPaths(
+      validatorPaths,
+      pluginPath,
+      manifest.name,
+      source,
+      'validators',
+      'Validator',
+      'specified in manifest but',
+      errors,
+    )
+
+    if (validPaths.length > 0) {
+      plugin.validatorsPaths = validPaths
+    }
+  }
+
+  // Step 4j: Register inline language adapters from manifest
+  if (manifest.languageAdapters) {
+    plugin.languageAdapters = manifest.languageAdapters
   }
 
   // Step 5: Load hooks configuration
