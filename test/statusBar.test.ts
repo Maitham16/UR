@@ -3,6 +3,8 @@ import {
   buildDefaultStatusBar,
   statusBarShouldDisplay,
 } from '../src/utils/statusBar.js'
+import { getEffectiveStatusLineSettings } from '../src/components/StatusLine.js'
+import { getProviderRuntimeInfo } from '../src/services/providers/providerRegistry.js'
 
 describe('UR-AGENT status bar', () => {
   test('formats compact runtime state', () => {
@@ -50,5 +52,34 @@ describe('UR-AGENT status bar', () => {
         isTTY: false,
       }),
     ).toBe(true)
+  })
+
+  test('uses in-session provider/model over stale persisted settings', () => {
+    const effective = getEffectiveStatusLineSettings(
+      {
+        provider: {
+          active: 'codex-cli',
+          model: 'codex/gpt-5.5',
+        },
+      },
+      {
+        active: 'gemini-cli',
+        model: 'gemini-cli/gemini-3.5-flash',
+      },
+    )
+    const runtime = getProviderRuntimeInfo(effective)
+    const text = buildDefaultStatusBar({
+      version: '1.28.0',
+      providerLabel: runtime.providerLabel,
+      authMode: runtime.authLabel,
+      model: runtime.model,
+    })
+
+    expect(runtime.provider).toBe('gemini-cli')
+    expect(runtime.model).toBe('gemini-cli/gemini-3.5-flash')
+    expect(text).toContain('Provider: Gemini CLI')
+    expect(text).toContain('model: gemini-cli/gemini-3.5-flash')
+    expect(text).not.toContain('Codex CLI')
+    expect(text).not.toContain('codex/gpt-5.5')
   })
 })

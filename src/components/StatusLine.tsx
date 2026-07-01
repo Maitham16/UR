@@ -3,7 +3,7 @@ import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { logEvent } from 'src/services/analytics/index.js';
-import { getProviderRuntimeInfo } from 'src/services/providers/providerRegistry.js';
+import { getProviderRuntimeInfo, type ProviderSettings } from 'src/services/providers/providerRegistry.js';
 import { useAppState, useSetAppState } from 'src/state/AppState.js';
 import type { PermissionMode } from 'src/utils/permissions/PermissionMode.js';
 import { getIsRemoteMode, getKairosActive, getMainThreadAgentType, getOriginalCwd, getSdkBetas, getSessionId } from '../bootstrap/state.js';
@@ -32,6 +32,17 @@ import { buildDefaultStatusBar, statusBarShouldDisplay } from '../utils/statusBa
 import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/tokens.js';
 import { getCurrentWorktreeSession } from '../utils/worktree.js';
 import { isVimModeEnabled } from './PromptInput/utils.js';
+export function getEffectiveStatusLineSettings(settings: ReadonlySettings, providerSelection?: ProviderSettings | null): ReadonlySettings {
+  if (!providerSelection) {
+    return settings;
+  }
+  return {
+    ...settings,
+    provider: {
+      ...providerSelection
+    }
+  };
+}
 export function statusLineShouldDisplay(settings: ReadonlySettings): boolean {
   let isKairosActive = false;
   if (feature('KAIROS')) {
@@ -57,7 +68,11 @@ function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200k
   const providerRuntime = getProviderRuntimeInfo(settings);
   const outputStyleName = settings?.outputStyle || DEFAULT_OUTPUT_STYLE_NAME;
   const currentUsage = getCurrentUsage(messages);
-  const contextWindowSize = getContextWindowForModel(runtimeModel, getSdkBetas());
+  const contextWindowSize = getContextWindowForModel(
+    runtimeModel,
+    getSdkBetas(),
+    providerRuntime.provider === 'ollama' ? 'ollama' : 'foundry',
+  );
   const contextPercentages = calculateContextPercentages(currentUsage, contextWindowSize);
   const sessionId = getSessionId();
   const sessionName = getCurrentSessionTitle(sessionId);
@@ -173,6 +188,7 @@ function StatusLineInner({
   const tasks = useAppState(s => s.tasks);
   const setAppState = useSetAppState();
   const settings = useSettings();
+  const providerSelection = useAppState(s => s.provider);
   const [branch, setBranch] = useState<string | null>(null);
   const {
     addNotification
@@ -181,7 +197,14 @@ function StatusLineInner({
   // re-reads settings.json on every call, so another session's /model write
   // would leak into this session's statusline (urhqs/ur#37596).
   const mainLoopModel = useMainLoopModel();
-  const providerRuntime = getProviderRuntimeInfo(settings);
+  const effectiveSettings = getEffectiveStatusLineSettings(settings, providerSelection);
+  const providerRuntime = getProviderRuntimeInfo(effectiveSettings);
+  const providerRuntimeKey = [
+    providerRuntime.provider,
+    providerRuntime.model ?? '',
+    providerRuntime.baseUrl ?? '',
+    providerRuntime.fallback ?? '',
+  ].join('|');
   const taskValues = Object.values(tasks);
   const taskRunningCount = taskValues.filter(task => task.status === 'running' || task.status === 'pending').length;
   const defaultStatusLineText = buildDefaultStatusBar({
@@ -198,8 +221,8 @@ function StatusLineInner({
   });
 
   // Keep latest values in refs for stable callback access
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
+  const settingsRef = useRef(effectiveSettings);
+  settingsRef.current = effectiveSettings;
   const vimModeRef = useRef(vimMode);
   vimModeRef.current = vimMode;
   const permissionModeRef = useRef(permissionMode);
@@ -216,12 +239,14 @@ function StatusLineInner({
     permissionMode: PermissionMode;
     vimMode: VimMode | undefined;
     mainLoopModel: ModelName;
+    providerRuntimeKey: string;
   }>({
     messageId: null,
     exceeds200kTokens: false,
     permissionMode,
     vimMode,
-    mainLoopModel
+    mainLoopModel,
+    providerRuntimeKey
   });
 
   // Debounce timer ref
@@ -304,21 +329,22 @@ function StatusLineInner({
   // Only trigger update when assistant message, permission mode, vim mode, or model actually changes
   useEffect(() => {
     if (!settings?.statusLine) return;
-    if (lastAssistantMessageId !== previousStateRef.current.messageId || permissionMode !== previousStateRef.current.permissionMode || vimMode !== previousStateRef.current.vimMode || mainLoopModel !== previousStateRef.current.mainLoopModel) {
+    if (lastAssistantMessageId !== previousStateRef.current.messageId || permissionMode !== previousStateRef.current.permissionMode || vimMode !== previousStateRef.current.vimMode || mainLoopModel !== previousStateRef.current.mainLoopModel || providerRuntimeKey !== previousStateRef.current.providerRuntimeKey) {
       // Don't update messageId here — let doUpdate handle it so
       // exceeds200kTokens is recalculated with the latest messages
       previousStateRef.current.permissionMode = permissionMode;
       previousStateRef.current.vimMode = vimMode;
       previousStateRef.current.mainLoopModel = mainLoopModel;
+      previousStateRef.current.providerRuntimeKey = providerRuntimeKey;
       scheduleUpdate();
     }
-  }, [lastAssistantMessageId, permissionMode, vimMode, mainLoopModel, scheduleUpdate]);
+  }, [lastAssistantMessageId, permissionMode, vimMode, mainLoopModel, providerRuntimeKey, scheduleUpdate]);
 
   // When the statusLine command changes (hot reload), log the next result
-  const statusLineCommand = settings?.statusLine?.command;
+  const statusLineCommand = effectiveSettings?.statusLine?.command;
   const isFirstSettingsRender = useRef(true);
   useEffect(() => {
-    if (!settings?.statusLine) return;
+    if (!effectiveSettings?.statusLine) return;
     if (isFirstSettingsRender.current) {
       isFirstSettingsRender.current = false;
       return;
@@ -329,7 +355,7 @@ function StatusLineInner({
 
   // Separate effect for logging on mount
   useEffect(() => {
-    const statusLine = settings?.statusLine;
+    const statusLine = effectiveSettings?.statusLine;
     if (statusLine) {
       logEvent('tengu_status_line_mount', {
         command_length: statusLine.command.length,
@@ -374,8 +400,8 @@ function StatusLineInner({
   }, []); // Only run once on mount, not when doUpdate changes
 
   // Get padding from settings or default to 0
-  const paddingX = settings?.statusLine?.padding ?? 0;
-  const renderedStatusLineText = settings?.statusLine ? statusLineText : defaultStatusLineText;
+  const paddingX = effectiveSettings?.statusLine?.padding ?? 0;
+  const renderedStatusLineText = effectiveSettings?.statusLine ? statusLineText : defaultStatusLineText;
 
   // StatusLine must have stable height in fullscreen — the footer is
   // flexShrink:0 so a 0→1 row change when the command finishes steals

@@ -10,6 +10,7 @@ import {
 } from '../permissions/permissionSetup.js'
 import { syncPermissionRulesFromDisk } from '../permissions/permissions.js'
 import { loadAllPermissionRulesFromDisk } from '../permissions/permissionsLoader.js'
+import { getActiveProviderSettings } from '../../services/providers/providerRegistry.js'
 import type { SettingSource } from './constants.js'
 import { getInitialSettings } from './settings.js'
 
@@ -78,6 +79,7 @@ export function applySettingsChange(
     return {
       ...prev,
       settings: newSettings,
+      provider: getActiveProviderSettings(newSettings),
       toolPermissionContext: newContext,
       // Only propagate a defined new value — when the disk key is absent
       // (e.g. /effort max for non-ants writes undefined; --effort CLI flag),

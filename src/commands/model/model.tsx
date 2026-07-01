@@ -140,6 +140,7 @@ function SetModelAndClose({
   }) => void;
 }): React.ReactNode {
   const isFastMode = useAppState(s => s.fastMode);
+  const providerSelection = useAppState(s => s.provider);
   const setAppState = useSetAppState();
   const model = args === 'default' ? null : args;
   React.useEffect(() => {
@@ -165,13 +166,14 @@ function SetModelAndClose({
         return;
       }
 
+      const currentProvider = providerSelection?.active ?? getActiveProviderSettings(getInitialSettings()).active ?? 'ollama';
+
       // Skip validation for default model
       if (!model) {
-        setModel(null);
+        setModel(null, currentProvider);
         return;
       }
 
-      const currentProvider = getActiveProviderSettings(getInitialSettings()).active ?? 'ollama';
       const providerValidation = validateProviderModelPair(currentProvider, model);
       if (providerValidation.valid === false) {
         onDone(`Invalid model for current provider:\n  Selected provider: ${currentProvider}\n  Selected model: ${model}\n  Valid models for ${currentProvider}: ${providerValidation.validModels.join(', ') || '(no models discovered)'}\n  Suggested action: Run /model and choose a model from ${currentProvider}${providerValidation.suggestedModel ? `, or run: ur config set model ${providerValidation.suggestedModel}` : ''}\n  Error: ${providerValidation.error}`, {
@@ -186,14 +188,23 @@ function SetModelAndClose({
         });
         return;
       }
-      setModel(model);
+      setModel(model, currentProvider);
       return;
     }
-    function setModel(modelValue: string | null): void {
+    function setModel(modelValue: string | null, provider?: string): void {
       setAppState(prev => ({
         ...prev,
         mainLoopModel: modelValue,
-        mainLoopModelForSession: null
+        mainLoopModelForSession: null,
+        ...(provider
+          ? {
+              provider: {
+                ...(prev.provider ?? {}),
+                active: provider,
+                model: modelValue ?? undefined,
+              },
+            }
+          : {}),
       }));
       let message = `Set model to ${chalk.bold(renderModelLabel(modelValue))}`;
       let wasFastModeToggledOn = undefined;
@@ -221,7 +232,7 @@ function SetModelAndClose({
       onDone(message);
     }
     void handleModelChange();
-  }, [model, onDone, setAppState]);
+  }, [model, onDone, providerSelection?.active, setAppState]);
   return null;
 }
 function isKnownAlias(model: string): boolean {

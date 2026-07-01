@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.28.1
+
+- Keep the status bar synchronized with in-session provider/model changes from
+  `/model`, `/model <model>`, and `/provider`, instead of waiting for persisted
+  settings to reload.
+- Add a regression test proving the status bar prefers the active in-session
+  provider/model over stale persisted settings.
+
 ## 1.28.0
 
 - Subscription CLI providers (Codex, Claude Code, Gemini, Antigravity) now

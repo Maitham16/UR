@@ -37,6 +37,10 @@ import type { PermissionMode } from '../utils/permissions/PermissionMode.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import type { SettingsJson } from '../utils/settings/types.js'
 import { shouldEnableThinkingByDefault } from '../utils/thinking.js'
+import {
+  getActiveProviderSettings,
+  type ProviderSettings,
+} from '../services/providers/providerRegistry.js'
 import type { Store } from './store.js'
 
 export type CompletionBoundary =
@@ -89,6 +93,7 @@ export type FooterItem =
 
 export type AppState = DeepImmutable<{
   settings: SettingsJson
+  provider: ProviderSettings
   verbose: boolean
   mainLoopModel: ModelSetting
   mainLoopModelForSession: ModelSetting
@@ -465,8 +470,11 @@ export function getDefaultAppState(): AppState {
       ? 'plan'
       : 'default'
 
+  const initialSettings = getInitialSettings()
+
   return {
-    settings: getInitialSettings(),
+    settings: initialSettings,
+    provider: getActiveProviderSettings(initialSettings),
     tasks: {},
     agentNameRegistry: new Map(),
     verbose: false,

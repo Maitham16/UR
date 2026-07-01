@@ -146,6 +146,7 @@ import {
   getSettingsWithErrors,
   updateSettingsForSource,
 } from './utils/settings/settings.js';
+import { getActiveProviderSettings } from './services/providers/providerRegistry.js';
 import { resetSettingsCache } from './utils/settings/settingsCache.js';
 import type { ValidationError } from './utils/settings/validation.js';
 import { DEFAULT_TASKS_MODE_TASK_LIST_ID, TASK_STATUSES } from './utils/tasks.js';
@@ -2991,8 +2992,10 @@ async function run(): Promise<CommanderCommand> {
       /* eslint-enable @typescript-eslint/no-require-imports */
       ccrMirrorEnabled = isCcrMirrorEnabled();
     }
+    const initialSettings = getInitialSettings();
     const initialState: AppState = {
-      settings: getInitialSettings(),
+      settings: initialSettings,
+      provider: getActiveProviderSettings(initialSettings),
       tasks: {},
       agentNameRegistry: new Map(),
       verbose: verbose ?? getGlobalConfig().verbose ?? false,

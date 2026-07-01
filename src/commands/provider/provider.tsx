@@ -10,6 +10,31 @@ import type { LocalJSXCommandCall } from '../../types/command.js'
 import { getProviderRuntimeInfo } from '../../services/providers/providerRegistry.js'
 import { useSettings } from '../../hooks/useSettings.js'
 
+function ApplyProviderAndClose({
+  provider,
+  message,
+  onDone,
+}: {
+  provider: { active?: string; model?: string; baseUrl?: string; commandPath?: string; fallback?: string }
+  message: string
+  onDone: (result?: string, options?: { display?: 'system' | 'normal' }) => void
+}): React.ReactNode {
+  const setAppState = useSetAppState()
+
+  React.useEffect(() => {
+    setAppState(prev => ({
+      ...prev,
+      provider: {
+        ...(prev.provider ?? {}),
+        ...provider,
+      },
+    }))
+    onDone(message)
+  }, [message, onDone, provider, setAppState])
+
+  return null
+}
+
 function ProviderPickerWrapper({
   onDone,
 }: {
@@ -152,7 +177,8 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
 
     const result = setSafeProviderConfig('provider', args)
     if (result.ok) {
-      onDone(result.message)
+      const saved = getActiveProviderSettings(getInitialSettings())
+      return <ApplyProviderAndClose provider={saved} message={result.message} onDone={onDone} />
     } else {
       onDone(result.message, { display: 'system' })
     }
