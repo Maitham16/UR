@@ -19,39 +19,73 @@ export async function createStandardAPIClient(
 ): Promise<URHQ> {
   const { providerId, apiKey, baseUrl, maxRetries } = options
 
+  // Create the base messages API object
+  const messagesAPI = {
+    async create(params: any) {
+      // Make API call to the provider
+      const endpoint = getAPIEndpoint(providerId, baseUrl)
+
+      try {
+        const response = await axios.post(
+          endpoint,
+          buildAPIRequest(providerId, params),
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            timeout: 60000,
+          }
+        )
+
+        return parseAPIResponse(providerId, response.data)
+      } catch (error) {
+        throw new Error(
+          `Provider ${providerId} API call failed: ${error instanceof Error ? error.message : 'unknown error'}`
+        )
+      }
+    },
+    async countTokens(params: any) {
+      return {
+        input_tokens: estimateTokenCount(params),
+      }
+    },
+    // withResponse wraps create() to return both data and response metadata
+    async withResponse(params: any) {
+      const endpoint = getAPIEndpoint(providerId, baseUrl)
+      const clientRequestId = params?.headers?.['x-client-request-id']
+
+      try {
+        const response = await axios.post(
+          endpoint,
+          buildAPIRequest(providerId, params),
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+              ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
+            },
+            timeout: 60000,
+          }
+        )
+
+        const data = parseAPIResponse(providerId, response.data)
+        return {
+          data,
+          response,
+          request_id: response.data?.id ?? response.headers?.['x-request-id'] ?? randomUUID(),
+        }
+      } catch (error) {
+        throw new Error(
+          `Provider ${providerId} API call failed: ${error instanceof Error ? error.message : 'unknown error'}`
+        )
+      }
+    },
+  }
+
   return {
     beta: {
-      messages: {
-        async create(params: any) {
-          // Make API call to the provider
-          const endpoint = getAPIEndpoint(providerId, baseUrl)
-
-          try {
-            const response = await axios.post(
-              endpoint,
-              buildAPIRequest(providerId, params),
-              {
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${apiKey}`,
-                },
-                timeout: 60000,
-              }
-            )
-
-            return parseAPIResponse(providerId, response.data)
-          } catch (error) {
-            throw new Error(
-              `Provider ${providerId} API call failed: ${error instanceof Error ? error.message : 'unknown error'}`
-            )
-          }
-        },
-        async countTokens(params: any) {
-          return {
-            input_tokens: estimateTokenCount(params),
-          }
-        },
-      },
+      messages: messagesAPI,
     },
   } as URHQ
 }
