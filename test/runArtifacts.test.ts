@@ -1,15 +1,27 @@
 import { describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   addRunArtifact,
+  appendRunAction,
+  appendRunTestsLog,
+  initializeResearchTrace,
   loadRunManifests,
+  readRunActions,
   readRunManifest,
+  runActionsPath,
   runArtifactsDir,
+  runDiffPath,
   runManifestPath,
+  runPlanPath,
+  runReportPath,
+  runTestsLogPath,
   upsertRunManifest,
+  writeRunDiff,
   writeRunManifest,
+  writeRunPlan,
+  writeRunReport,
 } from '../src/services/agents/runArtifacts.js'
 
 function withTempDir(fn: (dir: string) => void): void {
@@ -92,6 +104,59 @@ describe('run artifacts', () => {
       }))
       expect(updated.runId).toBe('run-up')
       expect(updated.artifacts.length).toBe(1)
+    })
+  })
+
+  test('initializeResearchTrace creates required research-grade files', () => {
+    withTempDir(dir => {
+      const manifest = initializeResearchTrace(dir, 'trace-1', {
+        goal: 'prove trace bundle',
+      })
+
+      expect(manifest.runId).toBe('trace-1')
+      expect(existsSync(runPlanPath(dir, 'trace-1'))).toBe(true)
+      expect(existsSync(runActionsPath(dir, 'trace-1'))).toBe(true)
+      expect(existsSync(runDiffPath(dir, 'trace-1'))).toBe(true)
+      expect(existsSync(runTestsLogPath(dir, 'trace-1'))).toBe(true)
+      expect(existsSync(runReportPath(dir, 'trace-1'))).toBe(true)
+
+      const plan = JSON.parse(readFileSync(runPlanPath(dir, 'trace-1'), 'utf-8')) as {
+        goal: string
+      }
+      expect(plan.goal).toBe('prove trace bundle')
+
+      const kinds = readRunManifest(dir, 'trace-1')!.artifacts.map(a => a.kind)
+      expect(kinds).toContain('plan')
+      expect(kinds).toContain('actions')
+      expect(kinds).toContain('diff')
+      expect(kinds).toContain('tests-log')
+      expect(kinds).toContain('report')
+    })
+  })
+
+  test('trace artifact writers append actions and evidence', () => {
+    withTempDir(dir => {
+      writeRunPlan(dir, 'trace-2', { goal: 'run checks' })
+      appendRunAction(dir, 'trace-2', {
+        kind: 'command',
+        status: 'passed',
+        command: 'bun test',
+        exitCode: 0,
+        stdout: 'ok',
+        stderr: '',
+        reason: 'run tests',
+        nextAction: 'report success',
+      })
+      appendRunTestsLog(dir, 'trace-2', 'test output')
+      writeRunDiff(dir, 'trace-2', 'diff --git a/a b/a\n')
+      writeRunReport(dir, 'trace-2', '# report')
+
+      const actions = readRunActions(dir, 'trace-2')
+      expect(actions.length).toBe(1)
+      expect(actions[0].command).toBe('bun test')
+      expect(readFileSync(runTestsLogPath(dir, 'trace-2'), 'utf-8')).toContain('test output')
+      expect(readFileSync(runDiffPath(dir, 'trace-2'), 'utf-8')).toContain('diff --git')
+      expect(readFileSync(runReportPath(dir, 'trace-2'), 'utf-8')).toContain('# report')
     })
   })
 })

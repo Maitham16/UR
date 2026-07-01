@@ -1,7 +1,7 @@
 # UR Agent
 
 <p align="center">
-  <strong>Local-first terminal coding agent for real engineering workflows.</strong>
+  <strong>Autonomous engineering workflow engine for reproducible software work.</strong>
 </p>
 
 <p align="center">
@@ -10,10 +10,13 @@
   <a href="./QUALITY.md"><img alt="quality gate" src="https://img.shields.io/badge/quality-release%20gated-brightgreen.svg"></a>
 </p>
 
-UR Agent is a Bun and TypeScript command-line coding agent: a reproducible
-autonomous software engineering agent. It opens a stateful interactive terminal
-session by default, can run one-shot prompts for scripts, and includes workflow
-commands for specification-driven development,
+UR Agent is a Bun and TypeScript autonomous engineering workflow engine: a
+reproducible autonomous software engineering agent built for disciplined local
+and CI-driven work. It is not only chat, autocomplete, or code edits: UR is
+built to plan, execute, test, verify, document, benchmark, and reproduce
+software work. It opens a stateful interactive terminal session by default, can
+run one-shot prompts for scripts, and includes workflow commands for
+specification-driven development,
 multi-agent execution, test-first quality loops, CI repair loops, background
 agents, MCP servers, plugins, skills, memory, permission safety policy,
 project context packing, verification, and local model routing.
@@ -52,8 +55,10 @@ handing work off to other tools or agents when needed.
 - **Verification and provenance.** Use `ur test-first`, the built-in verifier,
   `/verify`, `.ur/verify.json`, `ur artifacts`, `ur claim-ledger`, and `/trace`
   to make results easier to inspect.
-- **Extensible tool surface.** Add MCP servers, plugins, skills, role modes,
-  custom agents, IDE diff bundles, A2A endpoints, and local knowledge indexes.
+- **Extensible tool surface.** Add MCP tools, plugin marketplace entries,
+  executable skills, reusable templates, deterministic validators, language
+  adapters, LSP servers, role modes, custom agents, IDE diff bundles, A2A
+  endpoints, and local knowledge indexes.
 
 ## Quick Start
 
@@ -163,7 +168,7 @@ as first-class subcommands in the shipped CLI.
 | `ur model-doctor` | Inspect Ollama models and report likely agent capabilities. |
 | `ur model-route` | Recommend a local model for a task by capability fit. |
 | `ur mcp` | Configure and manage Model Context Protocol servers. |
-| `ur plugin` | Install, update, enable, disable, and validate UR plugins. |
+| `ur plugin` | Install, update, enable, disable, and validate UR plugins that can add MCP tools, skills, templates, validators, language adapters, LSP servers, agents, hooks, output styles, and commands. |
 | `ur role-mode` | Install built-in Architect, Code, Debug, and Ask role modes. |
 | `ur acp` | Start/stop/status the Agent Communication Protocol server for IDE extensions. |
 | `ur exec` | Run one or more prompts in non-interactive mode with optional concurrency. |
@@ -177,6 +182,28 @@ New slash skills run agentic work in isolated git worktrees with clean commits a
 Install matching agent templates with `ur agent-templates install`.
 
 New built-in tools (exposed through MCP and the ACP server): GitHub, API, Browser, Docker, TestRunner, Database. File-system and terminal tools are already built in (FileRead, FileEdit, FileWrite, Glob, Grep, Bash, PowerShell).
+
+### Plugin Marketplace
+
+UR plugins are trusted local extension bundles. A marketplace entry can install
+commands, MCP tools, executable skills, reusable templates, deterministic
+validators, language adapters, LSP server metadata, agents, hooks, and output
+styles. The bundled `engineering-discipline` reference plugin demonstrates the
+full extension contract with a `/discipline-check` command, a
+`reproducible-release` skill, a release-verifier template, a release-gate
+validator, and Markdown language-adapter metadata.
+
+```sh
+ur plugin list
+ur plugin install engineering-discipline@ur-plugins-official
+ur plugin install hello@ur-plugins-official
+ur plugin update <plugin>
+ur plugin disable <plugin>
+```
+
+The npm package includes `README.md`, `QUALITY.md`, `docs/`, `documentation/`,
+and `marketplace-plugins/`, so the npm package page and installed artifact both
+carry the marketplace documentation.
 
 UR also documents the core Cursor-style agent primitives as first-class,
 project-backed features: Agent surfaces (`ur`, `ur agents`, `ur crew`, `ur bg`),
@@ -328,11 +355,16 @@ bun run bundle
 bun run smoke
 bun run secrets:scan
 bun run release:check
-npm pack --dry-run
+bun run package:check
+npm publish --dry-run
 ```
 
 `dist/cli.js` is intentionally tracked because GitHub installs use the bundled
 CLI. Rebuild it after source, version, or macro changes.
+
+The GitHub workflow runs production bundle, smoke, release, package, and global
+install checks only after the Bun test step succeeds. Do not publish or tag a
+release until that GitHub run is green.
 
 ## Documentation
 

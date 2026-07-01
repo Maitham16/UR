@@ -34,6 +34,7 @@ export type ModelRouteResult = {
   recommended: string | null
   rationale: string
   ranked: ModelScore[]
+  localOnly?: boolean
 }
 
 const LONG_CONTEXT_THRESHOLD = 32_000
@@ -58,6 +59,7 @@ export function deriveModelNeeds(
     category === 'coding' ||
     category === 'testing' ||
     category === 'review' ||
+    category === 'security' ||
     /\b(code|implement|refactor|function|class|bug|compile)\b/.test(clean)
   ) {
     needs.add('code')
@@ -129,14 +131,52 @@ export function scoreModel(
   return { name: model.name, score: Number(score.toFixed(2)), reasons }
 }
 
+export function isCloudModelName(name: string): boolean {
+  const normalized = name.toLowerCase()
+  if (/^gpt-oss([:_-]|$)/.test(normalized)) return false
+  return /(^|[:_-])cloud($|[:_-])/.test(normalized) ||
+    /^(codex|claude|anthropic|openai)(:|-|$)/.test(normalized) ||
+    /^gpt-?(?:3(?:\.5)?|4o|4\.1|4|5)(?:[:_.-]|$)/.test(normalized) ||
+    /^(o1|o3|o4|o5)(:|-|$)/.test(normalized) ||
+    /^(gemini|mistral-large)(:|-|$)/.test(normalized)
+}
+
+function filterLocalOnlyModels(models: ModelCapability[], localOnly?: boolean): ModelCapability[] {
+  return localOnly ? models.filter(model => !isCloudModelName(model.name)) : models
+}
+
+function filterLocalOnlyNames(names: string[] | undefined, localOnly?: boolean): string[] | undefined {
+  if (!names) return undefined
+  return localOnly ? names.filter(name => !isCloudModelName(name)) : names
+}
+
+export function filterModelPoolForLocalOnly(pool: ModelPool, localOnly?: boolean): ModelPool {
+  if (!localOnly) return pool
+  return {
+    ...(pool.cheap ? { cheap: filterLocalOnlyNames(pool.cheap, true) ?? [] } : {}),
+    ...(pool.strong ? { strong: filterLocalOnlyNames(pool.strong, true) ?? [] } : {}),
+    ...(pool.default ? { default: filterLocalOnlyNames(pool.default, true) ?? [] } : {}),
+  }
+}
+
+function isCodeCapableModel(model: ModelCapability): boolean {
+  return model.likelyCode || /\b(code|coder|codestral|codellama|starcoder)\b/i.test(model.name)
+}
+
 export function recommendModel(
   task: string,
   models: ModelCapability[],
+  options: { localOnly?: boolean } = {},
 ): ModelRouteResult {
   const route = routeIntent(task)
   const needs = deriveModelNeeds(task, route.category)
+  const routableModels = filterLocalOnlyModels(models, options.localOnly)
+  const candidateModels =
+    options.localOnly && needs.includes('code')
+      ? routableModels.filter(isCodeCapableModel)
+      : routableModels
 
-  const ranked = models
+  const ranked = candidateModels
     .map(model => scoreModel(model, needs))
     .sort((a, b) => b.score - a.score)
 
@@ -144,12 +184,15 @@ export function recommendModel(
   // A vision task with no vision model is a hard miss; surface it explicitly.
   const visionMissing =
     needs.includes('vision') &&
-    !models.some(model => model.likelyVision)
+    !routableModels.some(model => model.likelyVision)
 
   let rationale: string
   if (!top) {
-    rationale =
-      'No local Ollama models found. Start Ollama or pull a model, then re-run.'
+    rationale = options.localOnly && needs.includes('code')
+      ? 'No local-only code-capable Ollama models found after filtering cloud and non-code models. Pull a local coding model, then re-run.'
+      : options.localOnly
+      ? 'No local-only Ollama models found after filtering cloud models. Pull a local model, then re-run.'
+      : 'No local Ollama models found. Start Ollama or pull a model, then re-run.'
   } else if (needs.length === 0) {
     rationale = `No special capability needs detected for a "${route.category}" task; any installed model should work.`
   } else if (visionMissing) {
@@ -165,6 +208,7 @@ export function recommendModel(
     recommended: top?.name ?? null,
     rationale,
     ranked,
+    localOnly: options.localOnly || undefined,
   }
 }
 
@@ -196,18 +240,28 @@ export function resolveModelForTask(
   strategy: RouteStrategy,
   pool: ModelPool,
   localModels: ModelCapability[],
+  options: { localOnly?: boolean } = {},
 ): string | undefined {
-  if (strategy === 'default') return pool.default?.[0]
-  const localNames = localModels.map(m => m.name)
+  const localOnly = options.localOnly
+  if (strategy === 'default') return filterLocalOnlyNames(pool.default, localOnly)?.[0]
+  const taskNeedsCode = deriveModelNeeds(task, routeIntent(task).category).includes('code')
+  const filteredLocalModels = localOnly && taskNeedsCode
+    ? filterLocalOnlyModels(localModels, true).filter(isCodeCapableModel)
+    : filterLocalOnlyModels(localModels, localOnly)
+  const localNames = filteredLocalModels.map(m => m.name)
+  const effectivePool = filterModelPoolForLocalOnly(pool, localOnly)
+  const cheapPool = effectivePool.cheap
+  const strongPool = effectivePool.strong
+  const defaultPool = effectivePool.default
   if (strategy === 'cheap') {
-    return pickSmallFastModel(localNames, undefined) ?? pool.cheap?.[0] ?? pool.default?.[0]
+    return pickSmallFastModel(localNames, undefined) ?? cheapPool?.[0] ?? defaultPool?.[0]
   }
   if (strategy === 'strong') {
-    return pickBestCoderModel(localNames, undefined) ?? pool.strong?.[0] ?? pool.default?.[0]
+    return pickBestCoderModel(localNames, undefined) ?? strongPool?.[0] ?? defaultPool?.[0]
   }
   return shouldUseStrongModel(task) === false
-    ? resolveModelForTask(task, 'cheap', pool, localModels)
-    : resolveModelForTask(task, 'strong', pool, localModels)
+    ? resolveModelForTask(task, 'cheap', pool, localModels, options)
+    : resolveModelForTask(task, 'strong', pool, localModels, options)
 }
 
 export function formatModelRoute(result: ModelRouteResult, json: boolean): string {

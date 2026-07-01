@@ -50,7 +50,7 @@ const featureGroups = [
   {
     title: 'Interoperability',
     tags: ['MCP', 'plugins', 'A2A', 'SDK'],
-    text: 'MCP servers, plugin marketplaces, A2A Agent Card and task server, delegation tokens, and a TypeScript SDK wrapper around headless UR.',
+    text: 'MCP servers, plugin marketplaces for skills, templates, validators, language adapters, A2A Agent Card and task server, delegation tokens, and a TypeScript SDK wrapper around headless UR.',
     commands: ['ur mcp', 'ur plugin', 'ur a2a', 'ur sdk'],
   },
   {
@@ -297,8 +297,8 @@ const commands = [
     name: 'plugin',
     category: 'Interop',
     aliases: ['plugins'],
-    summary: 'Manage UR plugins and plugin marketplaces.',
-    examples: ['ur plugin list', 'ur plugin install hello@ur-plugins-official', 'ur plugin update <plugin>', 'ur plugin disable <plugin>'],
+    summary: 'Manage UR plugins and marketplaces for MCP tools, skills, templates, validators, and language adapters.',
+    examples: ['ur plugin list', 'ur plugin install hello@ur-plugins-official', 'ur plugin install engineering-discipline@ur-plugins-official', 'ur plugin update <plugin>', 'ur plugin disable <plugin>'],
   },
   {
     name: 'repo-edit',

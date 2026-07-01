@@ -16,6 +16,13 @@ import { safeParseJSON } from '../../utils/json.js'
 import { listModelCapabilities } from '../../commands/model-doctor/model-doctor.js'
 import { resolveModelForTask } from './modelRouter.js'
 import { loadModelPool } from './modelPool.js'
+import { appendCommandLog } from './commandLog.js'
+import {
+  appendRunAction,
+  initializeResearchTrace,
+  writeRunDiff,
+  writeRunReport,
+} from './runArtifacts.js'
 
 export type BackgroundTaskStatus =
   | 'queued'
@@ -197,6 +204,10 @@ function quote(arg: string): string {
   return /^[a-zA-Z0-9_./:=@+-]+$/.test(arg) ? arg : JSON.stringify(arg)
 }
 
+function formatCommand(args: string[]): string {
+  return args.map(quote).join(' ')
+}
+
 export function listBackgroundTasks(cwd: string): BackgroundTask[] {
   return loadManifest(cwd).tasks.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
@@ -287,6 +298,24 @@ export function createBackgroundTask(
   const manifest = loadManifest(root)
   manifest.tasks.push(task)
   saveManifest(root, manifest)
+  initializeResearchTrace(root, id, {
+    kind: 'background-task',
+    status: 'planned',
+    task: options.task,
+    worktree: options.worktree ?? false,
+    pr: options.pr ?? false,
+    model: options.model,
+    routeStrategy: options.routeStrategy,
+    offline: options.offline ?? false,
+  })
+  appendRunAction(root, id, {
+    kind: 'background-task-created',
+    title: options.task,
+    status: 'planned',
+    reason: 'create detached local UR background task',
+    nextAction: options.dryRun ? 'report planned worker command' : 'spawn background worker',
+    data: { task },
+  })
   return task
 }
 
@@ -318,7 +347,9 @@ async function resolveRouteStrategyModel(task: BackgroundTask): Promise<string |
   const strategy = task.routeStrategy
   if (!strategy) return undefined
   const { models } = await listModelCapabilities()
-  return resolveModelForTask(task.task, strategy, loadModelPool(task.cwd), models)
+  return resolveModelForTask(task.task, strategy, loadModelPool(task.cwd), models, {
+    localOnly: task.offline ?? false,
+  })
 }
 
 async function spawnBackgroundWorker(
@@ -336,9 +367,32 @@ async function spawnBackgroundWorker(
       stdio: ['ignore', out, err],
       env,
     })
+    child.on('error', error => {
+      appendCommandLog(task.cwd, task.id, {
+        command: formatCommand([entry.file, ...command]),
+        exitCode: 1,
+        stdout: '',
+        stderr: error.message,
+        reason: 'spawn detached background worker process',
+        nextAction: 'inspect worker spawn failure before retrying',
+      })
+      updateTask(task.cwd, task.id, t => {
+        t.status = 'failed'
+        t.error = error.message
+        t.completedAt = now()
+      })
+    })
     child.unref()
     updateTask(task.cwd, task.id, t => {
       t.workerPid = child.pid
+    })
+    appendCommandLog(task.cwd, task.id, {
+      command: formatCommand([entry.file, ...command]),
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+      reason: 'spawn detached background worker process',
+      nextAction: 'monitor background task log and output files',
     })
   } finally {
     closeSync(out)
@@ -597,10 +651,28 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
     child.on('error', error => {
       writeFileSync(task.logFile, `\n[agent spawn error] ${error.message}\n`, { flag: 'a' })
       cleanup()
+      appendCommandLog(task.cwd, task.id, {
+        command: formatCommand([entry.file, ...args]),
+        exitCode: 1,
+        stdout: '',
+        stderr: error.message,
+        reason: 'run background headless agent',
+        nextAction: 'mark task failed and inspect background spawn error',
+      })
       resolve(1)
     })
     child.on('close', code => {
       cleanup()
+      appendCommandLog(task.cwd, task.id, {
+        command: formatCommand([entry.file, ...args]),
+        exitCode: code ?? 1,
+        stdout: existsSync(task.outputFile) ? readFileSync(task.outputFile, 'utf-8').slice(-16_000) : '',
+        stderr: existsSync(task.logFile) ? readFileSync(task.logFile, 'utf-8').slice(-8_000) : '',
+        reason: 'run background headless agent',
+        nextAction: (code ?? 1) === 0
+          ? 'create PR if requested and mark task completed'
+          : 'mark task failed and inspect background log',
+      })
       resolve(code ?? 1)
     })
   })
@@ -669,6 +741,14 @@ export async function runBackgroundWorker(cwd: string, id: string): Promise<Back
   try {
     const runCwd = await setupWorktree(task)
     writeFileSync(task.logFile, `[${now()}] running in ${runCwd}\n`, { flag: 'a' })
+    appendRunAction(task.cwd, task.id, {
+      kind: 'background-worker-start',
+      title: task.task,
+      status: 'running',
+      reason: 'start background worker in resolved run directory',
+      nextAction: 'run headless agent and collect output',
+      data: { runCwd },
+    })
     const exitCode = await runHeadlessAgent(task, runCwd)
     const pr = task.pr?.enabled ? await createPullRequest(task, runCwd) : task.pr
     const completed = updateTask(task.cwd, task.id, t => {
@@ -678,6 +758,8 @@ export async function runBackgroundWorker(cwd: string, id: string): Promise<Back
       if (pr) t.pr = pr
     })
     writeFileSync(task.logFile, `[${now()}] worker finished with exit ${exitCode}\n`, { flag: 'a' })
+    await captureBackgroundDiff(runCwd, task.cwd, task.id)
+    writeRunReport(task.cwd, task.id, formatBackgroundTask(completed ?? task))
     return completed ?? task
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -687,8 +769,31 @@ export async function runBackgroundWorker(cwd: string, id: string): Promise<Back
       t.completedAt = now()
     })
     writeFileSync(task.logFile, `[${now()}] worker failed: ${message}\n`, { flag: 'a' })
+    appendRunAction(task.cwd, task.id, {
+      kind: 'background-worker-failed',
+      title: task.task,
+      status: 'failed',
+      stderr: message,
+      reason: 'background worker threw before normal completion',
+      nextAction: 'inspect background log and retry or rollback',
+    })
+    writeRunReport(task.cwd, task.id, formatBackgroundTask(failed ?? task))
     return failed ?? task
   }
+}
+
+async function captureBackgroundDiff(runCwd: string, rootCwd: string, runId: string): Promise<void> {
+  const diff = await execFileNoThrowWithCwd(gitExe(), ['diff', '--no-ext-diff', '--'], {
+    cwd: runCwd,
+    timeout: 30_000,
+    preserveOutputOnError: true,
+    audit: {
+      cwd: rootCwd,
+      runId,
+      reason: 'capture background task research trace diff.patch',
+    },
+  })
+  writeRunDiff(rootCwd, runId, diff.code === 0 ? diff.stdout : `${diff.stdout}\n${diff.stderr}`.trim())
 }
 
 export function stopBackgroundTask(cwd: string, id: string): BackgroundTask | null {

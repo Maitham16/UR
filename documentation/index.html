@@ -43,7 +43,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.22.3</p>
+          <p class="eyebrow">Version 1.24.0</p>
           <h1>UR Agent Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR Agent.</p>
         </div>
@@ -56,8 +56,8 @@
       <section id="overview" class="section">
         <div class="section-heading">
           <p class="eyebrow">What UR Is</p>
-          <h2>Terminal coding agent with local-first model routing</h2>
-          <p>UR runs from the terminal, uses the local Ollama app for model calls, and combines project context, tools, MCP, plugins, skills, workflows, automations, and agent orchestration into one CLI.</p>
+          <h2>Autonomous engineering workflow engine</h2>
+          <p>UR is not only chat, autocomplete, or code edits. It turns work into a plan, executes patches, tests and verifies them, documents the result, benchmarks behavior, and keeps the run reproducible from the terminal.</p>
         </div>
         <div class="stat-grid">
           <article>
@@ -73,6 +73,10 @@
             <span>Workflows, patterns, crews, goals, evals, memory, knowledge, A2A, provenance, and templates are first-class commands.</span>
           </article>
           <article>
+            <strong>Plugin marketplace</strong>
+            <span>Plugins can add MCP tools, skills, templates, validators, language adapters, LSP servers, agents, hooks, and output styles.</span>
+          </article>
+          <article>
             <strong>Reliable repo editing</strong>
             <span><code>ur repo-edit</code> indexes files and symbols, plans AST-aware renames, previews patches, and rolls back failed multi-file applies.</span>
           </article>
@@ -86,7 +90,7 @@
           </article>
           <article>
             <strong>Release checks</strong>
-            <span>Typecheck, tests, bundle verification, smoke, package checks, and secret scan are part of the release path.</span>
+            <span>Typecheck, tests, bundle verification, smoke, package checks, secret scan, and dry-run publish are part of the release path.</span>
           </article>
         </div>
       </section>
@@ -442,7 +446,7 @@ UR_VERIFIER_AUTO_SUBAGENT=1</code></pre>
 ur mcp add-json local-tools '{"command":"node","args":["server.js"]}'
 ur plugin list
 ur plugin install &lt;plugin&gt;</code></pre>
-            <p>MCP servers and plugins expand tool access. Treat them as trusted code.</p>
+            <p>MCP servers and marketplace plugins expand tools, executable skills, templates, validators, language adapters, and review workflows. Treat them as trusted code.</p>
           </article>
         </div>
       </section>

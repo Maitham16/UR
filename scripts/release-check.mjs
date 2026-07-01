@@ -33,7 +33,7 @@ if (!packageJson.homepage?.includes(expectedRepo)) {
   fail(`package.json homepage must point at ${expectedRepo}`)
 }
 
-const expectedFiles = ['bin', 'dist', 'docs', 'documentation', 'extensions', 'examples', 'CHANGELOG.md', 'QUALITY.md', 'README.md', 'LICENSE']
+const expectedFiles = ['bin', 'dist', 'docs', 'documentation', 'extensions', 'examples', 'marketplace-plugins', 'CHANGELOG.md', 'QUALITY.md', 'README.md', 'LICENSE']
 for (const file of expectedFiles) {
   if (!packageJson.files?.includes(file)) {
     fail(`package.json files is missing ${file}`)

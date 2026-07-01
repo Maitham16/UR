@@ -1,0 +1,7 @@
+{
+  "name": "release-gate",
+  "command": "bun run typecheck && bun run lint && bun test && bun run release:check",
+  "when": "always",
+  "patterns": ["src/**", "test/**", "package.json", "bunfig.toml", "docs/**", "README.md"],
+  "timeoutMs": 120000
+}

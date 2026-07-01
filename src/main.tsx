@@ -4536,11 +4536,19 @@ async function run(): Promise<CommanderCommand> {
     const args = [...task, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/route/route.js'), args);
   });
-  program.command('model-route [task...]').alias('model-pick').description('Recommend the best local Ollama model for a task by capability fit').option('--json', 'Output as JSON').action(async (task: string[] = [], opts: {
+  program.command('model-route [task...]').alias('model-pick').description('Recommend the best local Ollama model for a task by capability fit').option('--strategy <strategy>', 'Routing strategy: auto|cheap|strong|default').option('--offline', 'Filter cloud models and route only to local/no-cloud models').option('--json', 'Output as JSON').action(async (task: string[] = [], opts: {
+    strategy?: string;
+    offline?: boolean;
     json?: boolean;
   }) => {
-    const args = [...task, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const args = [...task, opts.strategy ? `--strategy ${quoteLocalCommandArg(opts.strategy)}` : undefined, opts.offline ? '--offline' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/model-route/model-route.js'), args);
+  });
+  program.command('local-first').alias('offline-readiness').alias('local').description('Show UR readiness for no-cloud, private, lab, offline, and edge/server environments').option('--json', 'Output as JSON').action(async (opts: {
+    json?: boolean;
+  }) => {
+    const args = [opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/local-first/local-first.js'), args);
   });
   program.command('crew [action] [name]').alias('crews').description('Headless agent crew: a lead splits a goal into a shared task board that worker subagents claim and run').option('--goal <goal>', 'Goal text for create').option('--task <task>', 'Subtask text for add').option('--lead <agent>', 'Lead/worker subagent type (default general-purpose)').option('--workers <n>', 'Number of parallel workers for run').option('--worktrees', 'Run each worker in its own git worktree').option('--dry-run', 'Run offline without calling any model').option('--resume', 'Reopen in-progress tasks and continue the board').option('--max-turns <n>', 'Max agentic turns per task when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each worker (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, opts: {
     goal?: string;
@@ -4606,7 +4614,7 @@ async function run(): Promise<CommanderCommand> {
     const args = [...task, opts.agents ? `--agents ${opts.agents}` : undefined, opts.models ? `--models ${quoteLocalCommandArg(opts.models)}` : undefined, opts.apply ? '--apply' : undefined, opts.keep ? '--keep' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/arena/arena.js'), args);
   });
-  program.command('ci-loop').alias('heal').description('Self-healing CI: run a build/test command and, on failure, capture the error, fix it, and re-run with bounded retries').option('--command <cmd>', 'Command to run (default "bun test")').option('--max-attempts <n>', 'Maximum fix attempts (default 3)').option('--from-log <path>', 'Seed the first failure from an existing log file').option('--commit', 'Commit each fix (self-review gated)').option('--push', 'Commit and push each fix').option('--dry-run', 'Show the plan without running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to the fix agent (sandboxes only)').option('--max-turns <n>', 'Max agentic turns for the fix agent').option('--json', 'Output as JSON').action(async (opts: {
+  program.command('ci-loop').alias('heal').description('CI agent: run a build/test command, fix failures, rerun until green, or prove cannot-fix with command evidence').option('--command <cmd>', 'Command to run, e.g. "bun test", "pytest", or "npm run build" (default "bun test")').option('--max-attempts <n>', 'Maximum fix attempts (default 3)').option('--from-log <path>', 'Seed the first failure from an existing log file').option('--commit', 'Commit each fix (self-review gated)').option('--push', 'Commit and push each fix').option('--dry-run', 'Show the plan without running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to the fix agent (sandboxes only)').option('--max-turns <n>', 'Max agentic turns for the fix agent').option('--allow-generated', 'Allow edits to generated/vendor files').option('--allow-delete', 'Explicitly allow file deletions by the fix agent').option('--json', 'Output as JSON').action(async (opts: {
     command?: string;
     maxAttempts?: string;
     fromLog?: string;
@@ -4615,9 +4623,11 @@ async function run(): Promise<CommanderCommand> {
     dryRun?: boolean;
     skipPermissions?: boolean;
     maxTurns?: string;
+    allowGenerated?: boolean;
+    allowDelete?: boolean;
     json?: boolean;
   }) => {
-    const args = [opts.command ? `--command ${quoteLocalCommandArg(opts.command)}` : undefined, opts.maxAttempts ? `--max-attempts ${opts.maxAttempts}` : undefined, opts.fromLog ? `--from-log ${quoteLocalCommandArg(opts.fromLog)}` : undefined, opts.commit ? '--commit' : undefined, opts.push ? '--push' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const args = [opts.command ? `--command ${quoteLocalCommandArg(opts.command)}` : undefined, opts.maxAttempts ? `--max-attempts ${opts.maxAttempts}` : undefined, opts.fromLog ? `--from-log ${quoteLocalCommandArg(opts.fromLog)}` : undefined, opts.commit ? '--commit' : undefined, opts.push ? '--push' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined, opts.allowGenerated ? '--allow-generated' : undefined, opts.allowDelete ? '--allow-delete' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/ci-loop/ci-loop.js'), args);
   });
   program.command('test-first [action]').alias('quality-loop').alias('tf-loop').description('Detect project stack, run compile/test/lint loops, store failure traces, and install edit-time verify gates').option('--max-attempts <n>', 'Maximum fix attempts (default 3)').option('--install-gates', 'Write detected commands to .ur/verify.json afterEdit').option('--dry-run', 'Show detected commands without running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to the fix agent (sandboxes only)').option('--max-turns <n>', 'Max agentic turns for the fix agent').option('--json', 'Output as JSON').action(async (action: string | undefined, opts: {

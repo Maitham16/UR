@@ -4,7 +4,9 @@ import {
   setOfflineMode,
 } from '../src/bootstrap/state.js'
 import {
+  formatLocalFirstProfile,
   isNetworkRestricted,
+  localFirstProfile,
   offlineBlockReason,
   offlineModeSummary,
 } from '../src/utils/offlineMode.js'
@@ -54,6 +56,21 @@ describe('offline mode', () => {
     expect(summary.offline).toBe(true)
     expect(summary.blockedCategories).toContain('cloud model APIs')
     expect(summary.blockedCategories).toContain('telemetry')
+    setOfflineMode(false)
+  })
+
+  test('localFirstProfile describes no-cloud/private/offline strengths', () => {
+    setOfflineMode(true)
+    const profile = localFirstProfile(process.cwd())
+    expect(profile.offline).toBe(true)
+    expect(profile.posture).toContain('no cloud required')
+    expect(profile.posture).toContain('private codebase friendly')
+    expect(profile.posture).toContain('offline environment compatible')
+    expect(profile.blockedCloudSurfaces).toContain('cloud model APIs')
+    expect(profile.recommendedCommands).toContain('ur --offline')
+    const formatted = formatLocalFirstProfile(profile, false)
+    expect(formatted).toContain('Local-first mode: active')
+    expect(formatted).toContain('edge and server development oriented')
     setOfflineMode(false)
   })
 })

@@ -661,6 +661,10 @@ export function BrowseMarketplace({
         {/* What will be installed */}
         <Box flexDirection="column" marginBottom={1}>
           <Text bold>Will install:</Text>
+          {selectedPlugin.entry.capabilities && <Text dimColor>
+              · Capabilities:{' '}
+              {selectedPlugin.entry.capabilities.join(', ')}
+            </Text>}
           {selectedPlugin.entry.commands && <Text dimColor>
               · Commands:{' '}
               {Array.isArray(selectedPlugin.entry.commands) ? selectedPlugin.entry.commands.join(', ') : Object.keys(selectedPlugin.entry.commands).join(', ')}
@@ -676,7 +680,27 @@ export function BrowseMarketplace({
               · MCP Servers:{' '}
               {Array.isArray(selectedPlugin.entry.mcpServers) ? selectedPlugin.entry.mcpServers.join(', ') : typeof selectedPlugin.entry.mcpServers === 'object' ? Object.keys(selectedPlugin.entry.mcpServers).join(', ') : 'configured'}
             </Text>}
-          {!selectedPlugin.entry.commands && !selectedPlugin.entry.agents && !selectedPlugin.entry.hooks && !selectedPlugin.entry.mcpServers && <>
+          {selectedPlugin.entry.skills && <Text dimColor>
+              · Skills:{' '}
+              {Array.isArray(selectedPlugin.entry.skills) ? selectedPlugin.entry.skills.join(', ') : selectedPlugin.entry.skills}
+            </Text>}
+          {selectedPlugin.entry.templates && <Text dimColor>
+              · Templates:{' '}
+              {Array.isArray(selectedPlugin.entry.templates) ? selectedPlugin.entry.templates.join(', ') : selectedPlugin.entry.templates}
+            </Text>}
+          {selectedPlugin.entry.validators && <Text dimColor>
+              · Validators:{' '}
+              {Array.isArray(selectedPlugin.entry.validators) ? selectedPlugin.entry.validators.join(', ') : selectedPlugin.entry.validators}
+            </Text>}
+          {selectedPlugin.entry.languageAdapters && <Text dimColor>
+              · Language adapters:{' '}
+              {Object.keys(selectedPlugin.entry.languageAdapters).join(', ')}
+            </Text>}
+          {selectedPlugin.entry.lspServers && <Text dimColor>
+              · LSP Servers:{' '}
+              {Array.isArray(selectedPlugin.entry.lspServers) ? selectedPlugin.entry.lspServers.map(String).join(', ') : typeof selectedPlugin.entry.lspServers === 'object' ? Object.keys(selectedPlugin.entry.lspServers).join(', ') : selectedPlugin.entry.lspServers}
+            </Text>}
+          {!selectedPlugin.entry.capabilities && !selectedPlugin.entry.commands && !selectedPlugin.entry.agents && !selectedPlugin.entry.hooks && !selectedPlugin.entry.mcpServers && !selectedPlugin.entry.skills && !selectedPlugin.entry.templates && !selectedPlugin.entry.validators && !selectedPlugin.entry.languageAdapters && !selectedPlugin.entry.lspServers && <>
                 {typeof selectedPlugin.entry.source === 'object' && 'source' in selectedPlugin.entry.source && (selectedPlugin.entry.source.source === 'github' || selectedPlugin.entry.source.source === 'url' || selectedPlugin.entry.source.source === 'npm' || selectedPlugin.entry.source.source === 'pip') ? <Text dimColor>
                     · Component summary not available for remote plugin
                   </Text> :

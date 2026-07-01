@@ -63,6 +63,19 @@ describe('agent feature scaffolds', () => {
 })
 
 describe('agent feature commands', () => {
+  test('local-first command reports private offline readiness', async () => {
+    const dir = tempDir('ur-local-first-command-')
+    const { call } = await import('../src/commands/local-first/local-first.js')
+
+    const result = await runWithCwdOverride(dir, () => call('--json'))
+    expect(result.type).toBe('text')
+    if (result.type !== 'text') throw new Error('expected text')
+    const parsed = JSON.parse(result.value)
+    expect(parsed.posture).toContain('no cloud required')
+    expect(parsed.posture).toContain('private codebase friendly')
+    expect(parsed.recommendedCommands).toContain('ur --offline')
+  })
+
   test('agent-templates rejects unknown names without installing everything', async () => {
     const dir = tempDir('ur-template-command-')
     const { call } = await import('../src/commands/agent-templates/agent-templates.js')

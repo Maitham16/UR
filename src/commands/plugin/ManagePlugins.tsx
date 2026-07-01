@@ -148,6 +148,22 @@ async function getBaseFileNames(dirPath: string): Promise<string[]> {
   }
 }
 
+async function getJsonBaseFileNames(dirPath: string): Promise<string[]> {
+  try {
+    const entries = await fs.readdir(dirPath, {
+      withFileTypes: true
+    });
+    return entries.filter((entry: Dirent) => entry.isFile() && entry.name.endsWith('.json')).map((entry: Dirent) => path.basename(entry.name, '.json'));
+  } catch (error) {
+    const errorMsg = errorMessage(error);
+    logForDebugging(`Failed to read plugin JSON components from ${dirPath}: ${errorMsg}`, {
+      level: 'error'
+    });
+    logError(toError(error));
+    return [];
+  }
+}
+
 /**
  * Get list of skill directory names from a skills directory
  * Skills are directories containing a SKILL.md file
@@ -203,6 +219,10 @@ function PluginComponentsDisplay({
     commands?: string | string[] | Record<string, unknown> | null;
     agents?: string | string[] | Record<string, unknown> | null;
     skills?: string | string[] | Record<string, unknown> | null;
+    templates?: string | string[] | Record<string, unknown> | null;
+    validators?: string | string[] | Record<string, unknown> | null;
+    languageAdapters?: string[] | null;
+    lspServers?: unknown;
     hooks?: unknown;
     mcpServers?: unknown;
   } | null>(null);
@@ -223,6 +243,10 @@ function PluginComponentsDisplay({
               commands: null,
               agents: null,
               skills: skillNames.length > 0 ? skillNames : null,
+              templates: null,
+              validators: null,
+              languageAdapters: null,
+              lspServers: null,
               hooks: hookEvents.length > 0 ? hookEvents : null,
               mcpServers: mcpServerNames.length > 0 ? mcpServerNames : null
             });
@@ -294,6 +318,36 @@ function PluginComponentsDisplay({
             }
           }
 
+          const templatePathList = [];
+          if (plugin.templatesPath) {
+            templatePathList.push(plugin.templatesPath);
+          }
+          if (plugin.templatesPaths) {
+            templatePathList.push(...plugin.templatesPaths);
+          }
+          const templateList: string[] = [];
+          for (const templatePath of templatePathList) {
+            if (typeof templatePath === 'string') {
+              const templateNames = await getBaseFileNames(templatePath);
+              templateList.push(...templateNames);
+            }
+          }
+
+          const validatorPathList = [];
+          if (plugin.validatorsPath) {
+            validatorPathList.push(plugin.validatorsPath);
+          }
+          if (plugin.validatorsPaths) {
+            validatorPathList.push(...plugin.validatorsPaths);
+          }
+          const validatorList: string[] = [];
+          for (const validatorPath of validatorPathList) {
+            if (typeof validatorPath === 'string') {
+              const validatorNames = await getJsonBaseFileNames(validatorPath);
+              validatorList.push(...validatorNames);
+            }
+          }
+
           // Combine hooks from both sources
           const hooksList = [];
           if (plugin.hooksConfig) {
@@ -311,10 +365,21 @@ function PluginComponentsDisplay({
           if (pluginEntry.mcpServers) {
             mcpServersList.push(pluginEntry.mcpServers);
           }
+          const lspServersList = [];
+          if (plugin.lspServers) {
+            lspServersList.push(Object.keys(plugin.lspServers));
+          }
+          if (pluginEntry.lspServers) {
+            lspServersList.push(pluginEntry.lspServers);
+          }
           setComponents({
             commands: commandList.length > 0 ? commandList : null,
             agents: agentList.length > 0 ? agentList : null,
             skills: skillList.length > 0 ? skillList : null,
+            templates: templateList.length > 0 ? templateList : null,
+            validators: validatorList.length > 0 ? validatorList : null,
+            languageAdapters: plugin.languageAdapters ? Object.keys(plugin.languageAdapters) : null,
+            lspServers: lspServersList.length > 0 ? lspServersList : null,
             hooks: hooksList.length > 0 ? hooksList : null,
             mcpServers: mcpServersList.length > 0 ? mcpServersList : null
           });
@@ -328,7 +393,7 @@ function PluginComponentsDisplay({
       }
     }
     void loadComponents();
-  }, [plugin.name, plugin.commandsPath, plugin.commandsPaths, plugin.agentsPath, plugin.agentsPaths, plugin.skillsPath, plugin.skillsPaths, plugin.hooksConfig, plugin.mcpServers, marketplace]);
+  }, [plugin.name, plugin.commandsPath, plugin.commandsPaths, plugin.agentsPath, plugin.agentsPaths, plugin.skillsPath, plugin.skillsPaths, plugin.templatesPath, plugin.templatesPaths, plugin.validatorsPath, plugin.validatorsPaths, plugin.languageAdapters, plugin.hooksConfig, plugin.mcpServers, plugin.lspServers, marketplace]);
   if (loading) {
     return null; // Don't show loading state for cleaner UI
   }
@@ -341,7 +406,7 @@ function PluginComponentsDisplay({
   if (!components) {
     return null; // No components info available
   }
-  const hasComponents = components.commands || components.agents || components.skills || components.hooks || components.mcpServers;
+  const hasComponents = components.commands || components.agents || components.skills || components.templates || components.validators || components.languageAdapters || components.lspServers || components.hooks || components.mcpServers;
   if (!hasComponents) {
     return null; // No components defined
   }
@@ -358,6 +423,21 @@ function PluginComponentsDisplay({
       {components.skills ? <Text dimColor>
           • Skills:{' '}
           {typeof components.skills === 'string' ? components.skills : Array.isArray(components.skills) ? components.skills.join(', ') : Object.keys(components.skills).join(', ')}
+        </Text> : null}
+      {components.templates ? <Text dimColor>
+          • Templates:{' '}
+          {typeof components.templates === 'string' ? components.templates : Array.isArray(components.templates) ? components.templates.join(', ') : Object.keys(components.templates).join(', ')}
+        </Text> : null}
+      {components.validators ? <Text dimColor>
+          • Validators:{' '}
+          {typeof components.validators === 'string' ? components.validators : Array.isArray(components.validators) ? components.validators.join(', ') : Object.keys(components.validators).join(', ')}
+        </Text> : null}
+      {components.languageAdapters ? <Text dimColor>
+          • Language adapters: {components.languageAdapters.join(', ')}
+        </Text> : null}
+      {components.lspServers ? <Text dimColor>
+          • LSP Servers:{' '}
+          {typeof components.lspServers === 'string' ? components.lspServers : Array.isArray(components.lspServers) ? components.lspServers.map(String).join(', ') : typeof components.lspServers === 'object' && components.lspServers !== null ? Object.keys(components.lspServers).join(', ') : String(components.lspServers)}
         </Text> : null}
       {components.hooks ? <Text dimColor>
           • Hooks:{' '}

@@ -7,7 +7,7 @@
 // surface in CI instead.
 
 import { describe, expect, test } from 'bun:test'
-import { readdir, readFile } from 'node:fs/promises'
+import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   PluginManifestSchema,
@@ -43,6 +43,46 @@ describe('repo marketplace tree', () => {
     }
     expect(result.data.name).toBe('ur-plugins-official')
     expect(result.data.plugins.length).toBeGreaterThan(0)
+  })
+
+  test('official marketplace advertises standard agent extension capabilities', async () => {
+    const raw = await readFile(
+      join(REPO, '.ur-plugin', 'marketplace.json'),
+      'utf8',
+    )
+    const parsed = JSON.parse(raw)
+    const result = PluginMarketplaceSchema().safeParse(parsed)
+    if (!result.success) {
+      throw new Error(
+        `marketplace.json invalid: ${JSON.stringify(result.error.format(), null, 2)}`,
+      )
+    }
+    const capabilities = new Set(
+      result.data.plugins.flatMap(plugin => plugin.capabilities ?? []),
+    )
+    expect([...capabilities]).toEqual(
+      expect.arrayContaining([
+        'mcp-tools',
+        'skills',
+        'templates',
+        'validators',
+        'language-adapters',
+      ]),
+    )
+
+    const reference = result.data.plugins.find(
+      plugin => plugin.name === 'engineering-discipline',
+    )
+    expect(reference?.capabilities).toEqual(
+      expect.arrayContaining([
+        'commands',
+        'skills',
+        'templates',
+        'validators',
+        'language-adapters',
+        'lsp-servers',
+      ]),
+    )
   })
 
   test('hello plugin manifest parses against PluginManifestSchema', async () => {
@@ -104,6 +144,32 @@ describe('repo marketplace tree', () => {
       }
       expect(result.data.name).toBe(entry.name)
     }
+  })
+
+  test('engineering-discipline reference plugin ships every marketplace extension surface', async () => {
+    const root = join(REPO, 'marketplace-plugins', 'engineering-discipline')
+    const manifestRaw = await readFile(
+      join(root, '.ur-plugin', 'plugin.json'),
+      'utf8',
+    )
+    const manifest = JSON.parse(manifestRaw)
+    const result = PluginManifestSchema().safeParse(manifest)
+    if (!result.success) {
+      throw new Error(
+        `engineering-discipline plugin.json invalid: ${JSON.stringify(result.error.format(), null, 2)}`,
+      )
+    }
+
+    expect(result.data.skills).toBe('./skills')
+    expect(result.data.templates).toBe('./templates')
+    expect(result.data.validators).toBe('./validators')
+    expect(Object.keys(result.data.languageAdapters ?? {})).toContain('markdown')
+    expect(Object.keys(result.data.lspServers ?? {})).toContain('markdown')
+
+    await stat(join(root, 'commands', 'discipline-check.md'))
+    await stat(join(root, 'skills', 'reproducible-release', 'SKILL.md'))
+    await stat(join(root, 'templates', 'release-verifier.md'))
+    await stat(join(root, 'validators', 'release-gate.json'))
   })
 
   test('every plugin command markdown file has frontmatter', async () => {

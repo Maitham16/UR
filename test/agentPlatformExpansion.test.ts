@@ -6,6 +6,8 @@ import { runWithCwdOverride } from '../src/utils/cwd.js'
 import type { ModelCapability } from '../src/commands/model-doctor/model-doctor.js'
 import {
   deriveModelNeeds,
+  filterModelPoolForLocalOnly,
+  isCloudModelName,
   recommendModel,
   resolveModelForTask,
   scoreModel,
@@ -128,6 +130,56 @@ describe('modelRouter', () => {
     expect(resolveModelForTask('hi', 'auto', pool, models)).toBe('llama3.2:3b')
     expect(resolveModelForTask('plan the auth refactor', 'auto', pool, models)).toBe('qwen2.5-coder:32b')
     expect(resolveModelForTask('security review this diff', 'auto', pool, models)).toBe('qwen2.5-coder:32b')
+  })
+
+  test('local-only routing filters cloud models for offline work', () => {
+    const models: ModelCapability[] = [
+      {
+        name: 'kimi-k2.7-code:cloud',
+        advertisedCapabilities: ['tools'],
+        contextLength: 128_000,
+        likelyVision: false,
+        likelyCode: true,
+      },
+      {
+        name: 'qwen2.5-coder:7b',
+        advertisedCapabilities: ['tools'],
+        contextLength: 32_000,
+        likelyVision: false,
+        likelyCode: true,
+      },
+    ]
+    const pool = {
+      cheap: ['qwen2.5-coder:7b'],
+      strong: ['kimi-k2.7-code:cloud', 'gpt-4o', 'qwen2.5-coder:7b'],
+      default: ['kimi-k2.7-code:cloud'],
+    }
+
+    expect(isCloudModelName('kimi-k2.7-code:cloud')).toBe(true)
+    expect(isCloudModelName('gpt-4o')).toBe(true)
+    expect(isCloudModelName('gpt-oss:20b')).toBe(false)
+    expect(filterModelPoolForLocalOnly(pool, true)).toEqual({
+      cheap: ['qwen2.5-coder:7b'],
+      strong: ['qwen2.5-coder:7b'],
+      default: [],
+    })
+    expect(recommendModel('security review', models, { localOnly: true }).recommended).toBe('qwen2.5-coder:7b')
+    expect(resolveModelForTask('security review', 'strong', pool, models, { localOnly: true })).toBe('qwen2.5-coder:7b')
+    expect(resolveModelForTask('simple note', 'default', pool, models, { localOnly: true })).toBeUndefined()
+
+    const embeddingOnly = recommendModel('security review', [
+      {
+        name: 'nomic-embed-text:latest',
+        advertisedCapabilities: [],
+        contextLength: 8_000,
+        likelyVision: false,
+        likelyCode: false,
+        embeddingLength: 768,
+      },
+    ], { localOnly: true })
+    expect(embeddingOnly.recommended).toBeNull()
+    expect(embeddingOnly.rationale).toContain('code-capable')
+    expect(resolveModelForTask('security review', 'strong', pool, [models[0]!], { localOnly: true })).toBe('qwen2.5-coder:7b')
   })
 })
 

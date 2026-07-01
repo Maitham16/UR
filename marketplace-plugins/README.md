@@ -24,6 +24,7 @@ them are published.
 | [`powerpoint`](./powerpoint) | `/pptx-new` (+3) | Build, convert, review, and theme PowerPoint decks — via the Office PowerPoint MCP server or a python-pptx fallback. |
 | [`miro`](./miro) | `/miro-board` (+3) | Create boards, diagrams, and sticky clusters and summarize boards — via Miro's official MCP server or the REST API. |
 | [`skill-forge`](./skill-forge) | `/forge-skill` (+1) | The active model authors a complete `SKILL.md` from your description and saves it to your skills directory. |
+| [`engineering-discipline`](./engineering-discipline) | `/discipline-check` | Reference plugin that ships a command, executable skill, agent template, validator, and Markdown language adapter metadata. |
 
 Seven of these are **integration plugins**: each bundles an official MCP server,
 several slash commands, and a methodology skill, and prompts for its config
@@ -34,14 +35,28 @@ Secrets are stored in secure storage, never in plaintext settings.
 [`skill-forge`](./skill-forge) is a **meta plugin** (no MCP): its commands run as
 prompts, so the active session model authors and saves the skill for you.
 
+[`engineering-discipline`](./engineering-discipline) is a **marketplace
+capability reference plugin**. It demonstrates every standard extension surface
+UR accepts from marketplace plugins: commands, executable skills, reusable agent
+templates, deterministic validators, language adapters, and LSP server metadata.
+
 ## Adding a new plugin
 
 1. Copy `hello/` to a new directory, e.g. `marketplace-plugins/my-plugin/`.
 2. Edit `my-plugin/.ur-plugin/plugin.json` with the plugin's real metadata.
 3. Replace the example command in `my-plugin/commands/` with your own.
-4. Add an entry to `.ur-plugin/marketplace.json` (sibling to existing
+4. Add optional extension folders as needed:
+   - `skills/<name>/SKILL.md`
+   - `templates/<name>.md`
+   - `validators/<name>.json`
+   - `mcpServers` or `lspServers` in `.ur-plugin/plugin.json`
+   - `languageAdapters` in `.ur-plugin/plugin.json`
+5. Add an entry to `.ur-plugin/marketplace.json` (sibling to existing
    entries).
-5. Open a PR against `Maitham16/UR-mapek`.
+6. Set the entry's `capabilities` array so users can see whether it adds MCP
+   tools, skills, templates, validators, language adapters, LSP servers,
+   commands, agents, or hooks before installation.
+7. Open a PR against `Maitham16/UR-mapek`.
 
 See [`hello/README.md`](./hello/README.md) for the smallest possible example.
 

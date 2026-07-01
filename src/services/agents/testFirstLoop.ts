@@ -17,6 +17,14 @@ import {
   type HeadlessRunner,
 } from './headlessAgent.js'
 import { splitCommand, summarizeFailure, type CommandResult } from './ciLoop.js'
+import { getSessionId } from '../../bootstrap/state.js'
+import {
+  appendRunAction,
+  appendRunTestsLog,
+  initializeResearchTrace,
+  writeRunDiff,
+  writeRunReport,
+} from './runArtifacts.js'
 
 export type { QualityCommand, QualityPhase }
 export type TestFirstStack = ProjectQualityStack
@@ -83,6 +91,10 @@ const defaultExec: TestFirstCommandExec = async (command, cwd) => {
     timeout: 10 * 60 * 1000,
     preserveOutputOnError: true,
     maxBuffer: 2_000_000,
+    audit: {
+      cwd,
+      reason: `run test-first quality command: ${command}`,
+    },
   })
   return { code: result.code, stdout: result.stdout, stderr: result.stderr }
 }
@@ -175,22 +187,46 @@ export async function runTestFirstLoop(
   const cwd = options.cwd
   const stack = detectTestFirstStack(cwd)
   const traceDir = options.traceDir ?? defaultTraceDir(cwd)
+  const runId = getSessionId()
+  initializeResearchTrace(cwd, runId, {
+    kind: 'test-first',
+    status: 'planned',
+    goal: 'Detect stack, run compile/test/lint commands, and fix until green.',
+    commands: stack.commands,
+    missingPhases: stack.missingPhases,
+  })
+  appendRunAction(cwd, runId, {
+    kind: 'test-first-plan',
+    title: 'Detected test-first command plan',
+    status: stack.commands.length > 0 ? 'planned' : 'skipped',
+    data: {
+      languages: stack.languages,
+      packageManagers: stack.packageManagers,
+      commands: stack.commands,
+      missingPhases: stack.missingPhases,
+    },
+  })
   const maxAttempts = Math.max(1, options.maxAttempts ?? 3)
   const exec = options.exec ?? defaultExec
   const runner =
     options.runner ?? (options.dryRun ? makeDryHeadlessRunner() : defaultHeadlessRunner())
   let installedVerifyPath: string | undefined
 
+  const finish = (result: TestFirstLoopResult): TestFirstLoopResult => {
+    writeRunReport(cwd, runId, formatTestFirstResult(result, false))
+    return result
+  }
+
   if (options.installGates) {
     installedVerifyPath = installTestFirstGates(cwd, stack).path
   }
 
   if (stack.commands.length === 0) {
-    return { status: 'not-configured', stack, attempts: [], traceDir }
+    return finish({ status: 'not-configured', stack, attempts: [], traceDir })
   }
 
   if (options.dryRun) {
-    return { status: 'planned', stack, attempts: [], traceDir, installedVerifyPath }
+    return finish({ status: 'planned', stack, attempts: [], traceDir, installedVerifyPath })
   }
 
   const attempts: TestFirstAttempt[] = []
@@ -203,6 +239,22 @@ export async function runTestFirstLoop(
       const started = Date.now()
       const result = await exec(qualityCommand.command, cwd)
       const durationMs = Date.now() - started
+      appendRunTestsLog(
+        cwd,
+        runId,
+        [
+          `# attempt ${attemptNumber} ${qualityCommand.phase}: ${qualityCommand.command}`,
+          `exitCode: ${result.code}`,
+          `durationMs: ${durationMs}`,
+          '',
+          '## stdout',
+          result.stdout.trimEnd(),
+          '',
+          '## stderr',
+          result.stderr.trimEnd(),
+          '',
+        ].join('\n'),
+      )
       const baseRun = {
         attempt: attemptNumber,
         phase: qualityCommand.phase,
@@ -226,6 +278,26 @@ export async function runTestFirstLoop(
               ),
             }
       attempt.runs.push(run)
+      appendRunAction(cwd, runId, {
+        kind: 'test-first-command',
+        title: `${qualityCommand.phase}: ${qualityCommand.command}`,
+        status: run.passed ? 'passed' : 'failed',
+        command: qualityCommand.command,
+        exitCode: result.code,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        reason: `run detected ${qualityCommand.phase} command`,
+        nextAction: run.passed
+          ? 'continue to the next detected quality command'
+          : 'capture failure trace and invoke fix agent if attempts remain',
+        data: {
+          attempt: attemptNumber,
+          phase: qualityCommand.phase,
+          durationMs,
+          tracePath: run.tracePath,
+          summary: run.summary,
+        },
+      })
       if (!run.passed) {
         failingRun = run
         break
@@ -233,7 +305,8 @@ export async function runTestFirstLoop(
     }
 
     if (!failingRun) {
-      return { status: 'passed', stack, attempts, traceDir, installedVerifyPath }
+      await captureCurrentDiff(cwd, runId)
+      return finish({ status: 'passed', stack, attempts, traceDir, installedVerifyPath })
     }
 
     if (attemptNumber === maxAttempts) break
@@ -263,13 +336,41 @@ export async function runTestFirstLoop(
     })
     attempt.fixVerdict = fix.verdict ?? null
     attempt.fixOutput = String(fix.output ?? '').slice(-1000)
+    appendRunAction(cwd, runId, {
+      kind: 'test-first-fix-agent',
+      title: `Fix attempt ${attemptNumber}`,
+      status: fix.isError ? 'failed' : 'running',
+      reason: 'invoke fix agent after failing quality command',
+      nextAction: fix.isError ? 'stop because the fix runner failed' : 'rerun detected commands',
+      data: {
+        attempt: attemptNumber,
+        verdict: fix.verdict ?? null,
+        outputTail: attempt.fixOutput,
+      },
+    })
     if (fix.isError) {
       attempt.blockedByRunner = true
-      return { status: 'blocked', stack, attempts, traceDir, installedVerifyPath }
+      await captureCurrentDiff(cwd, runId)
+      return finish({ status: 'blocked', stack, attempts, traceDir, installedVerifyPath })
     }
   }
 
-  return { status: 'exhausted', stack, attempts, traceDir, installedVerifyPath }
+  await captureCurrentDiff(cwd, runId)
+  return finish({ status: 'exhausted', stack, attempts, traceDir, installedVerifyPath })
+}
+
+async function captureCurrentDiff(cwd: string, runId: string): Promise<void> {
+  const diff = await execFileNoThrowWithCwd('git', ['diff', '--no-ext-diff', '--'], {
+    cwd,
+    timeout: 30_000,
+    preserveOutputOnError: true,
+    audit: {
+      cwd,
+      runId,
+      reason: 'capture research trace diff.patch',
+    },
+  })
+  writeRunDiff(cwd, runId, diff.code === 0 ? diff.stdout : `${diff.stdout}\n${diff.stderr}`.trim())
 }
 
 export function formatTestFirstResult(

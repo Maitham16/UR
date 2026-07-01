@@ -13,6 +13,12 @@ import {
   resetRunState,
   saveWorkflow,
 } from './workflows.js'
+import { getSessionId } from '../../bootstrap/state.js'
+import {
+  appendRunAction,
+  initializeResearchTrace,
+  writeRunReport,
+} from './runArtifacts.js'
 
 export type RunWorkflowOptions = {
   cwd: string
@@ -48,6 +54,21 @@ export async function runWorkflowSpec(
 ): Promise<ExecResult> {
   const stateName = options.stateName ?? spec.name
   const loop = options.loop ?? deriveLoop(spec)
+  const runId = getSessionId()
+
+  initializeResearchTrace(options.cwd, runId, {
+    kind: 'workflow',
+    status: 'planned',
+    workflow: spec.name,
+    pattern: spec.pattern,
+    steps: spec.steps.map(step => ({
+      id: step.id,
+      agent: step.agent,
+      dependsOn: step.dependsOn ?? [],
+      gate: step.gate,
+    })),
+    loop,
+  })
 
   let resumeCompleted: string[] = []
   if (options.resume) {
@@ -64,16 +85,50 @@ export async function runWorkflowSpec(
         skipPermissions: options.skipPermissions,
       })
 
-  return executeWorkflow(spec, {
+  const result = await executeWorkflow(spec, {
     runStep,
     loop,
     resumeCompleted,
     maxConcurrency: options.maxConcurrency,
-    onEvent: options.onEvent,
+    onEvent: event => {
+      options.onEvent?.(event)
+      appendRunAction(options.cwd, runId, {
+        kind: `workflow-${event.kind}`,
+        title: event.kind,
+        status: event.kind === 'finish'
+          ? event.status === 'completed'
+            ? 'passed'
+            : 'failed'
+          : 'running',
+        reason: 'execute declarative UR workflow',
+        nextAction: event.kind === 'finish' ? 'write workflow report' : 'continue workflow execution',
+        data: event as unknown as Record<string, unknown>,
+      })
+    },
     onCheckpoint: stepId => {
       markStepComplete(options.cwd, stateName, stepId)
     },
   })
+  writeRunReport(options.cwd, runId, formatWorkflowTraceReport(result))
+  return result
+}
+
+function formatWorkflowTraceReport(result: ExecResult): string {
+  return [
+    `# Workflow ${result.name}`,
+    '',
+    `Status: ${result.status}`,
+    `Iterations: ${result.iterations}`,
+    '',
+    '## Steps',
+    ...result.steps.map(step =>
+      [
+        `- ${step.id} [${step.status}] agent=${step.agent}`,
+        step.verdict ? `  verdict: ${step.verdict}` : null,
+        step.error ? `  error: ${step.error}` : null,
+      ].filter(Boolean).join('\n'),
+    ),
+  ].join('\n')
 }
 
 /** Persist a spec then run it (used by pattern --execute). */

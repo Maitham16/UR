@@ -853,10 +853,14 @@ Plugin loading supports:
 - plugin commands
 - plugin agents
 - plugin skills
+- plugin templates
+- plugin validators
 - plugin hooks
 - output styles
 - MCP servers
 - LSP servers
+- language adapters
+- marketplace capability metadata
 - plugin settings
 - duplicate-name handling
 - enable/disable state
@@ -890,6 +894,8 @@ Bundled marketplace plugin families in `marketplace-plugins/**`:
 - PowerPoint deck creation, markdown-to-deck, review, theme, and deck-craft
   skill
 - release notes
+- reproducible release discipline, release-gate validator, release verifier
+  template, and Markdown language-adapter metadata
 - skill forge and skill authoring
 - Word document creation, markdown-to-docx, edit, review, and document-craft
   skill

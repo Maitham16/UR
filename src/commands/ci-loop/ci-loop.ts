@@ -21,6 +21,7 @@ export const call: LocalCommandCall = async (args: string) => {
   const maxTurnsRaw = option(tokens, '--max-turns')
   const fromLog = option(tokens, '--from-log')
   const allowGenerated = tokens.includes('--allow-generated')
+  const allowDeletion = tokens.includes('--allow-delete') || tokens.includes('--allow-deletion')
 
   let seedError: string | undefined
   if (fromLog) {
@@ -45,6 +46,7 @@ export const call: LocalCommandCall = async (args: string) => {
     seedError,
     execTarget: isContainerized(target) ? target : undefined,
     allowGenerated,
+    requireApprovalForDeletion: !allowDeletion,
   })
 
   return { type: 'text', value: formatCiLoopResult(result, json) }

@@ -12,10 +12,13 @@ import {
   OnFailureHookInputSchema,
 } from '../src/entrypoints/sdk/coreSchemas.js'
 import { getDefaultAppState } from '../src/state/AppStateStore.js'
+import { getSessionId } from '../src/bootstrap/state.js'
+import { readCommandLog } from '../src/services/agents/commandLog.js'
 import { BashTool } from '../src/tools/BashTool/BashTool.js'
 import { FileEditTool } from '../src/tools/FileEditTool/FileEditTool.js'
 import { createFileStateCacheWithSizeLimit } from '../src/utils/fileStateCache.js'
 import { getFileModificationTime } from '../src/utils/file.js'
+import { runWithCwdOverride } from '../src/utils/cwd.js'
 
 function makeToolUseContext() {
   return {
@@ -200,6 +203,40 @@ describe('lifecycle hooks', () => {
 
     expect(result.data.stdout).toBe('ur-hook-runtime')
     expect(result.data.interrupted).toBe(false)
+  })
+
+  it('logs failed BashTool commands with the actual exit code', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ur-bash-log-failure-'))
+    try {
+      await runWithCwdOverride(dir, async () => {
+        const context = makeToolUseContext()
+        let thrown: unknown
+        try {
+          await BashTool.call(
+            {
+              command: 'sh -c "echo nope; exit 7"',
+              timeout: 2_000,
+              description: 'exercise failed command audit',
+              dangerouslyDisableSandbox: true,
+            } as never,
+            context as never,
+            undefined as never,
+            undefined as never,
+          )
+        } catch (error) {
+          thrown = error
+        }
+        expect(thrown).toBeTruthy()
+        const logs = readCommandLog(dir, getSessionId())
+        const failed = logs.find(log => log.command.includes('echo nope'))
+        expect(failed?.exitCode).toBe(7)
+        expect(failed?.stdout).toContain('nope')
+        expect(failed?.reason).toBe('exercise failed command audit')
+        expect(failed?.nextAction).toBeTruthy()
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('ships the Bash timeout binding in the production bundle', () => {

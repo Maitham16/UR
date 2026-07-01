@@ -54,7 +54,7 @@ import {
   formatFailureHints,
   recordFailure,
 } from '../../services/agents/failureMemory.js';
-import { appendCommandLog } from '../../services/agents/commandLog.js';
+import { appendCommandLog, defaultNextAction } from '../../services/agents/commandLog.js';
 import { getSessionId } from '../../bootstrap/state.js';
 import { bashToolHasPermission, commandHasAnyCd, matchWildcardPattern, permissionRuleExtractPrefix } from './bashPermissions.js';
 import { interpretCommandResult } from './commandSemantics.js';
@@ -654,11 +654,26 @@ export const BashTool = buildTool({
     let interpretationResult: ReturnType<typeof interpretCommandResult> | undefined;
     let progressCounter = 0;
     let wasInterrupted = false;
-    let result: ExecResult;
+    let result: ExecResult | undefined;
     const isMainThread = !toolUseContext.agentId;
     const preventCwdChanges = !isMainThread;
     const toolUseID = toolUseContext.toolUseId ?? parentMessage?.uuid ?? '';
     const commandStartTime = Date.now();
+    let commandOutcomeLogged = false;
+    const logCommandOutcome = (exitCode: number, stdout: string, stderr: string, nextAction?: string) => {
+      if (commandOutcomeLogged) return;
+      commandOutcomeLogged = true;
+      appendCommandLog(getCwd(), getSessionId(), {
+        command: input.command,
+        exitCode,
+        stdout: stdout.length > 16_000 ? stdout.slice(0, 16_000) + '...[truncated]' : stdout,
+        stderr: stderr.length > 8_000 ? stderr.slice(0, 8_000) + '...[truncated]' : stderr,
+        reason: input.description,
+        nextAction: nextAction ?? defaultNextAction(exitCode),
+        durationMs: Date.now() - commandStartTime,
+        toolUseId: toolUseID,
+      });
+    };
     try {
       const timeoutMs = input.timeout || getDefaultTimeoutMs();
 
@@ -675,19 +690,6 @@ export const BashTool = buildTool({
           signal: abortController.signal,
         },
       );
-
-      // Self-checking command discipline: record the intent to run this command
-      // before execution so the log is complete even if the command crashes.
-      appendCommandLog(getCwd(), getSessionId(), {
-        command: input.command,
-        exitCode: 0,
-        stdout: '',
-        stderr: '',
-        reason: input.description,
-        nextAction: 'running',
-        durationMs: 0,
-        toolUseId: toolUseID,
-      });
 
       // Use the new async generator version of runShellCommand
       const commandGenerator = runShellCommand({
@@ -787,6 +789,12 @@ export const BashTool = buildTool({
       // Annotate output with sandbox violations if any (stderr is in stdout)
       const outputWithSbFailures = SandboxManager.annotateStderrWithSandboxFailures(input.command, result.stdout || '');
       if (result.preSpawnError) {
+        logCommandOutcome(
+          result.code || 1,
+          outputWithSbFailures,
+          result.preSpawnError,
+          'fix command setup failure before retrying',
+        );
         throw new Error(result.preSpawnError);
       }
       if (interpretationResult.isError && !isInterrupt) {
@@ -801,9 +809,26 @@ export const BashTool = buildTool({
         // stderr is merged into stdout (merged fd); outputWithSbFailures
         // already has the full output. Pass '' for stdout to avoid
         // duplication in getErrorParts() and processBashCommand.
+        logCommandOutcome(
+          result.code,
+          outputWithSbFailures,
+          '',
+          interpretationResult.message ?? defaultNextAction(result.code),
+        );
         throw new ShellError('', outputWithSbFailures + hints, result.code, result.interrupted);
       }
       wasInterrupted = result.interrupted;
+    } catch (error) {
+      if (!commandOutcomeLogged) {
+        const message = error instanceof Error ? error.message : String(error);
+        logCommandOutcome(
+          result?.code ?? 1,
+          result?.stdout ?? '',
+          message,
+          'inspect thrown command error and decide whether to fix, retry, or rollback',
+        );
+      }
+      throw error;
     } finally {
       if (setToolJSX) setToolJSX(null);
     }
@@ -870,17 +895,12 @@ export const BashTool = buildTool({
     }
     // Self-checking command discipline: log every executed shell command
     // with its outcome, reason, and duration for audit/eval/failure memory.
-    const commandLogDurationMs = typeof commandStartTime === 'number' ? Date.now() - commandStartTime : undefined;
-    appendCommandLog(getCwd(), getSessionId(), {
-      command: input.command,
-      exitCode: result.code,
-      stdout: stdout.length > 16_000 ? stdout.slice(0, 16_000) + '...[truncated]' : stdout,
-      stderr: stderrForShellReset.length > 8_000 ? stderrForShellReset.slice(0, 8_000) + '...[truncated]' : stderrForShellReset,
-      reason: input.description,
-      nextAction: interpretationResult?.message,
-      durationMs: commandLogDurationMs,
-      toolUseId: toolUseID,
-    });
+    logCommandOutcome(
+      result.code,
+      stdout,
+      stderrForShellReset,
+      interpretationResult?.message ?? defaultNextAction(result.code),
+    );
 
     let isImage = isImageOutput(strippedStdout);
 

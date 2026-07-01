@@ -38,7 +38,8 @@ bun run bundle
 bun run smoke
 bun run secrets:scan
 bun run release:check
-npm pack --dry-run
+bun run package:check
+npm publish --dry-run
 ```
 
 Use `ur test-first detect` when adding a feature to inspect the repository's
@@ -50,7 +51,7 @@ shell commands. Use `ur context-pack scan` when a change adds new manifests,
 command surfaces, or architecture rules that should be captured as project
 context.
 
-The GitHub install path uses the bundled launcher in `dist/cli.js`, so `bun run bundle` must be run before packaging or pushing a release. `bun run release:check` verifies that `package.json`, `bunfig.toml`, the bundle, docs, and `node ./bin/ur.js --version` agree.
+The GitHub install path uses the bundled launcher in `dist/cli.js`, so `bun run bundle` must be run before packaging or pushing a release. `bun run release:check` verifies that `package.json`, `bunfig.toml`, the bundle, docs, and `node ./bin/ur.js --version` agree. The GitHub workflow keeps production bundle, release, package, and global-install checks behind the Bun test step; do not publish, tag, or push release artifacts until that workflow is green.
 
 ## Build
 

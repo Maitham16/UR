@@ -18,7 +18,14 @@ import {
   makeDryHeadlessRunner,
   type HeadlessRunner,
 } from './headlessAgent.js'
-import { addRunArtifact } from './runArtifacts.js'
+import {
+  addRunArtifact,
+  appendRunAction,
+  appendRunTestsLog,
+  initializeResearchTrace,
+  writeRunDiff,
+  writeRunReport,
+} from './runArtifacts.js'
 import { getSessionId } from '../../bootstrap/state.js'
 import { type ExecTargetConfig, wrapCommand } from './execTarget.js'
 import { recordFailure, recordResolution } from './failureMemory.js'
@@ -93,6 +100,10 @@ const defaultExec: CommandExec = async (file, args, cwd) => {
     cwd,
     timeout: 10 * 60 * 1000,
     preserveOutputOnError: true,
+    audit: {
+      cwd,
+      reason: `run CI loop command: ${[file, ...args].join(' ')}`,
+    },
   })
   return { code: r.code, stdout: r.stdout, stderr: r.stderr }
 }
@@ -120,6 +131,12 @@ export type CiLoopResult = {
   constitutionWarnings?: string[]
 }
 
+export type GitStatusChange = {
+  status: string
+  path: string
+  deleted: boolean
+}
+
 export type CiLoopOptions = {
   cwd: string
   command: string
@@ -142,8 +159,28 @@ export type CiLoopOptions = {
   requireApprovalForDeletion?: boolean
 }
 
+export function parseGitStatusChanges(output: string): GitStatusChange[] {
+  return output
+    .split('\n')
+    .map(line => {
+      if (!line.trim() || line.length < 4) return null
+      const status = line.slice(0, 2)
+      const rawPath = line.slice(3).trim()
+      const path = rawPath.includes(' -> ')
+        ? rawPath.split(' -> ').pop()!.trim()
+        : rawPath
+      return {
+        status,
+        path,
+        deleted: status.includes('D'),
+      }
+    })
+    .filter((change): change is GitStatusChange => Boolean(change?.path))
+}
+
 export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
   const { cwd, command } = options
+  const runId = getSessionId()
   const maxAttempts = Math.max(1, options.maxAttempts ?? 3)
   const exec = options.exec ?? defaultExec
   const git = options.git ?? defaultExec
@@ -154,18 +191,62 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
     ? wrapCommand(options.execTarget, parsed, cwd)
     : parsed
   const attempts: CiAttempt[] = []
+  const constitutionWarnings = new Set<string>()
   let lastFailure:
     | { summary: string; attemptedFix?: string }
     | undefined
 
+  const addConstitutionWarning = (warning: string) => {
+    constitutionWarnings.add(warning)
+  }
+
+  const withConstitutionWarnings = (result: CiLoopResult): CiLoopResult => {
+    const warnings = [
+      ...(result.constitutionWarnings ?? []),
+      ...[...constitutionWarnings].filter(warning => !(result.constitutionWarnings ?? []).includes(warning)),
+    ]
+    return warnings.length > 0 ? { ...result, constitutionWarnings: warnings } : result
+  }
+
+  initializeResearchTrace(cwd, runId, {
+    kind: 'ci-loop',
+    status: 'planned',
+    goal: 'Run a build/test command, fix failures, and rerun until green or exhausted.',
+    command,
+    maxAttempts,
+    commit: options.commit ?? false,
+    push: options.push ?? false,
+    dryRun: options.dryRun ?? false,
+  })
+  appendRunAction(cwd, runId, {
+    kind: 'ci-loop-plan',
+    title: command,
+    status: options.dryRun ? 'skipped' : 'planned',
+    command,
+    reason: 'start self-healing CI loop',
+    nextAction: options.dryRun ? 'report dry-run plan' : 'execute command and capture evidence',
+    data: {
+      maxAttempts,
+      commit: options.commit ?? false,
+      push: options.push ?? false,
+      execTarget: options.execTarget,
+    },
+  })
+
+  const finish = async (result: CiLoopResult): Promise<CiLoopResult> => {
+    await captureCurrentDiff(cwd, runId)
+    writeRunReport(cwd, runId, formatCiLoopResult(result, false))
+    return result
+  }
+
   if (options.dryRun) {
-    return {
+    return finish({
       command,
       status: 'failed',
       attempts: [
         { attempt: 1, code: -1, passed: false, summary: `[dry-run] would run "${command}" and fix up to ${maxAttempts} time(s).` },
       ],
-    }
+    })
   }
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -173,6 +254,17 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
     if (attempt === 1 && options.seedError) {
       summary = summarizeFailure(options.seedError)
       attempts.push({ attempt, code: 1, passed: false, summary })
+      appendRunAction(cwd, runId, {
+        kind: 'ci-loop-seeded-failure',
+        title: `attempt ${attempt}: seeded failure`,
+        status: 'failed',
+        command,
+        exitCode: 1,
+        stderr: options.seedError,
+        reason: 'seed CI loop from existing failure log',
+        nextAction: 'invoke fix agent if attempts remain',
+        data: { attempt, summary },
+      })
       recordFailure(cwd, {
         failedCommand: command,
         errorTrace: summary,
@@ -182,6 +274,35 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
     } else {
       options.onEvent?.({ attempt, phase: 'run', detail: command })
       const run = await exec(file, args, cwd)
+      appendRunTestsLog(
+        cwd,
+        runId,
+        [
+          `# CI attempt ${attempt}: ${command}`,
+          `exitCode: ${run.code}`,
+          '',
+          '## stdout',
+          run.stdout.trimEnd(),
+          '',
+          '## stderr',
+          run.stderr.trimEnd(),
+          '',
+        ].join('\n'),
+      )
+      appendRunAction(cwd, runId, {
+        kind: 'ci-loop-command',
+        title: `attempt ${attempt}: ${command}`,
+        status: run.code === 0 ? 'passed' : 'failed',
+        command,
+        exitCode: run.code,
+        stdout: run.stdout,
+        stderr: run.stderr,
+        reason: 'run CI/build/test command',
+        nextAction: run.code === 0
+          ? 'record success and finish'
+          : 'summarize failure and invoke fix agent if attempts remain',
+        data: { attempt },
+      })
       if (run.code === 0) {
         attempts.push({ attempt, code: 0, passed: true })
         if (lastFailure) {
@@ -191,7 +312,7 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
             `Command passed on attempt ${attempt} after ${attempt - 1} failed attempt(s).`,
           )
         }
-        return { command, status: 'passed', attempts }
+        return finish(withConstitutionWarnings({ command, status: 'passed', attempts }))
       }
       summary = summarizeFailure(`${run.stdout}\n${run.stderr}`)
       attempts.push({ attempt, code: run.code, passed: false, summary })
@@ -219,48 +340,102 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
       summary,
       attemptedFix: fix.output.slice(0, 2000),
     }
+    appendRunAction(cwd, runId, {
+      kind: 'ci-loop-fix-agent',
+      title: `fix attempt ${attempt}`,
+      status: fix.verdict === 'PASS' ? 'passed' : fix.isError ? 'failed' : 'running',
+      reason: 'invoke fix agent after CI failure',
+      nextAction: fix.isError ? 'stop because fix agent failed' : 'rerun CI command',
+      data: {
+        attempt,
+        verdict: fix.verdict ?? null,
+        outputTail: fix.output.slice(-1200),
+      },
+    })
     recordFailure(cwd, {
       failedCommand: command,
       errorTrace: summary,
       attemptedFix: lastFailure.attemptedFix,
     })
 
+    if (fix.isError) {
+      const fixSummary = summarizeFailure(fix.output, 20) || fix.output.slice(-1000)
+      return finish(withConstitutionWarnings({
+        command,
+        status: 'cannot-fix',
+        attempts,
+        cannotFixReason: `Fix agent failed after CI attempt ${attempt}: ${fixSummary}`,
+      }))
+    }
+
+    const changedFileDetails = await listChangedFileDetails(git, cwd)
+
     // Constitution guard: detect deletion intent in the fix output.
     const requireApprovalForDeletion = options.requireApprovalForDeletion ?? true
     if (requireApprovalForDeletion) {
       const deletion = detectDeletionIntent(fix.output)
+      const deletedFiles = changedFileDetails
+        .filter(change => change.deleted)
+        .map(change => change.path)
       if (deletion.detected) {
         last.blockedByConstitution = true
         last.constitutionNotes = [
           `Deletion intent detected in fix output and blocked: ${deletion.matches.join(', ')}`,
         ]
-        return {
+        return finish({
           command,
           status: 'blocked',
           attempts,
           cannotFixReason: 'Fix proposed deletion without explicit approval; blocked by agent constitution.',
           constitutionWarnings: deletion.matches,
-        }
+        })
+      }
+      if (deletedFiles.length > 0) {
+        last.blockedByConstitution = true
+        last.constitutionNotes = [
+          ...(last.constitutionNotes ?? []),
+          `Deleted files detected in git status and blocked: ${deletedFiles.join(', ')}`,
+        ]
+        return finish(withConstitutionWarnings({
+          command,
+          status: 'blocked',
+          attempts,
+          cannotFixReason: 'Fix deleted files without explicit approval; blocked by agent constitution.',
+          constitutionWarnings: deletedFiles,
+        }))
       }
     }
 
     // Constitution guard: detect changes to generated/vendor files after the fix.
     if (!allowGenerated) {
-      const changedFiles = await listChangedFiles(git, cwd)
+      const changedFiles = changedFileDetails.map(change => change.path)
       const generatedChanged = changedFiles.filter(isGeneratedFile)
       if (generatedChanged.length > 0) {
         last.blockedByConstitution = true
         last.constitutionNotes = [
-          `Generated/vendor files changed by fix and were reverted: ${generatedChanged.join(', ')}`,
+          `Generated/vendor files changed by fix and were blocked: ${generatedChanged.join(', ')}`,
         ]
-        // Revert the generated files so the next attempt starts clean.
-        await git('git', ['checkout', '--', ...generatedChanged], cwd)
+        // Restore generated/vendor files so the blocked run does not leave those edits behind.
+        const restore = await git('git', ['checkout', '--', ...generatedChanged], cwd)
+        const restoreNote = restore.code === 0
+          ? `Generated/vendor files were restored after violation: ${generatedChanged.join(', ')}`
+          : `Generated/vendor files changed and automatic restore failed: ${generatedChanged.join(', ')}`
+        addConstitutionWarning(restoreNote)
+        return finish(withConstitutionWarnings({
+          command,
+          status: 'blocked',
+          attempts,
+          cannotFixReason: 'Fix edited generated/vendor files without --allow-generated; blocked by agent constitution.',
+          constitutionWarnings: generatedChanged,
+        }))
       }
       const publicApiChanged = detectPublicApiChanges(changedFiles)
       if (publicApiChanged.length > 0) {
+        const warning = `Public API surface changed by fix; review compatibility before merging: ${publicApiChanged.join(', ')}`
+        addConstitutionWarning(warning)
         last.constitutionNotes = [
           ...(last.constitutionNotes ?? []),
-          `Public API surface changed by fix: ${publicApiChanged.join(', ')}`,
+          warning,
         ]
       }
     }
@@ -269,7 +444,7 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
       const diff = await git('git', ['diff', 'HEAD'], cwd)
       if (hasBlockingFindings(reviewDiff(diff.stdout))) {
         last.blockedByReview = true
-        return { command, status: 'blocked', attempts }
+        return finish({ command, status: 'blocked', attempts })
       }
       // Constitution guard: do not auto-commit changes to generated/vendor files unless explicitly allowed.
       if (!allowGenerated) {
@@ -277,20 +452,23 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
         const generatedChanged = changedFiles.filter(isGeneratedFile)
         if (generatedChanged.length > 0) {
           last.blockedByReview = true
-          return {
+          return finish({
             command,
             status: 'blocked',
             attempts,
-          }
+          })
         }
         const publicApiChanged = detectPublicApiChanges(changedFiles)
         if (publicApiChanged.length > 0) {
           last.blockedByReview = true
-          return {
+          addConstitutionWarning(
+            `Public API surface changed by fix; commit/push blocked until reviewed: ${publicApiChanged.join(', ')}`,
+          )
+          return finish(withConstitutionWarnings({
             command,
             status: 'blocked',
             attempts,
-          }
+          }))
         }
       }
       await git('git', ['add', '-A'], cwd)
@@ -310,34 +488,43 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
     ? `Constitution violations prevented fixes: ${finalAttempt.constitutionNotes.join('; ')}`
     : `The command "${command}" still failed after ${maxAttempts} attempts. The fix agent could not make it pass.`
 
-  const runId = getSessionId()
   addRunArtifact(cwd, runId, {
     kind: 'ci-cannot-fix',
     path: 'ci-cannot-fix.md',
     title: `CI cannot fix: ${command}`,
   })
 
-  return {
+  return finish(withConstitutionWarnings({
     command,
     status: 'cannot-fix',
     attempts,
     cannotFixReason,
     constitutionWarnings: finalAttempt?.constitutionNotes,
-  }
+  }))
+}
+
+async function captureCurrentDiff(cwd: string, runId: string): Promise<void> {
+  const diff = await execFileNoThrowWithCwd('git', ['diff', '--no-ext-diff', '--'], {
+    cwd,
+    timeout: 30_000,
+    preserveOutputOnError: true,
+    audit: {
+      cwd,
+      runId,
+      reason: 'capture research trace diff.patch',
+    },
+  })
+  writeRunDiff(cwd, runId, diff.code === 0 ? diff.stdout : `${diff.stdout}\n${diff.stderr}`.trim())
 }
 
 async function listChangedFiles(git: CommandExec, cwd: string): Promise<string[]> {
+  return (await listChangedFileDetails(git, cwd)).map(change => change.path)
+}
+
+async function listChangedFileDetails(git: CommandExec, cwd: string): Promise<GitStatusChange[]> {
   const status = await git('git', ['status', '--porcelain=v1'], cwd)
   if (status.code !== 0) return []
-  return status.stdout
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean)
-    .map(line => {
-      // Porcelain v1 format: XY path or XY path -> "original" for renames; take the new path.
-      const m = line.match(/^\s*\S+\s+(?:.*?\s+->\s+)?(.+)$/)
-      return m?.[1] ?? line.slice(3).trim()
-    })
+  return parseGitStatusChanges(status.stdout)
 }
 
 export function formatCiLoopResult(result: CiLoopResult, json: boolean): string {

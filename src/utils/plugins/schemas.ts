@@ -1355,6 +1355,24 @@ export const PluginMarketplaceEntrySchema = lazySchema(() =>
         .array(z.string())
         .optional()
         .describe('Tags for searchability and discovery'),
+      capabilities: z
+        .array(
+          z.enum([
+            'commands',
+            'agents',
+            'mcp-tools',
+            'skills',
+            'templates',
+            'validators',
+            'language-adapters',
+            'lsp-servers',
+            'hooks',
+          ]),
+        )
+        .optional()
+        .describe(
+          'High-level extension surfaces this plugin contributes. Used by marketplace discovery to show whether a plugin adds commands, MCP tools, skills, templates, validators, language adapters, LSP servers, agents, or hooks.',
+        ),
       strict: z
         .boolean()
         .optional()

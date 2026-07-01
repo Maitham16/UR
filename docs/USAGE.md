@@ -153,7 +153,9 @@ UR includes slash commands and CLI subcommands for common workflows:
 
 - `/help` or `ur --help` for command discovery
 - `ur mcp ...` to configure MCP servers
-- `ur plugin ...` to manage plugins and marketplaces
+- `ur plugin ...` to manage plugins and marketplaces. Marketplace plugins can
+  add MCP tools, commands, executable skills, templates, validators, language
+  adapters, LSP servers, agents, hooks, and output styles.
 - `ur agents` to list configured agents
 - `ur agent-trends` to inspect coverage for current agent technology trends
 - `ur a2a card` to print UR's Agent Card metadata for A2A discovery

@@ -8,6 +8,7 @@ import {
   commandLogPath,
   readCommandLog,
 } from '../src/services/agents/commandLog.js'
+import { readRunActions } from '../src/services/agents/runArtifacts.js'
 
 function withTempDir(fn: (dir: string) => void): void {
   const tempDir = mkdtempSync(join(tmpdir(), 'ur-command-log-'))
@@ -94,6 +95,32 @@ describe('command log', () => {
     withTempDir(tempDir => {
       const logs = readCommandLog(tempDir, 'no-such-run')
       expect(logs).toEqual([])
+    })
+  })
+
+  test('appendCommandLog fills audit defaults and mirrors to actions.json', () => {
+    withTempDir(tempDir => {
+      const runId = 'run-actions'
+      appendCommandLog(tempDir, runId, {
+        command: 'false',
+        exitCode: 1,
+        stdout: '',
+        stderr: 'nope',
+      })
+
+      const logs = readCommandLog(tempDir, runId)
+      expect(logs[0].reason).toBe('unspecified command reason')
+      expect(logs[0].nextAction).toContain('inspect failure output')
+
+      const actions = readRunActions(tempDir, runId)
+      expect(actions.length).toBe(1)
+      expect(actions[0].kind).toBe('command')
+      expect(actions[0].status).toBe('failed')
+      expect(actions[0].command).toBe('false')
+      expect(actions[0].exitCode).toBe(1)
+      expect(actions[0].stderr).toBe('nope')
+      expect(actions[0].reason).toBe('unspecified command reason')
+      expect(actions[0].nextAction).toContain('inspect failure output')
     })
   })
 })

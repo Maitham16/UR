@@ -11,7 +11,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { safeParseJSON } from '../../utils/json.js'
-import { addRunArtifact } from './runArtifacts.js'
+import { addRunArtifact, appendRunAction } from './runArtifacts.js'
 
 export type CommandLogEntry = {
   at: string
@@ -19,10 +19,15 @@ export type CommandLogEntry = {
   exitCode: number
   stdout: string
   stderr: string
-  reason?: string
-  nextAction?: string
+  reason: string
+  nextAction: string
   durationMs?: number
   toolUseId?: string
+}
+
+export type CommandLogInput = Omit<CommandLogEntry, 'at' | 'reason' | 'nextAction'> & {
+  reason?: string
+  nextAction?: string
 }
 
 export function commandLogDir(cwd: string, runId: string): string {
@@ -36,9 +41,16 @@ export function commandLogPath(cwd: string, runId: string): string {
 export function appendCommandLog(
   cwd: string,
   runId: string,
-  entry: Omit<CommandLogEntry, 'at'>,
+  entry: CommandLogInput,
 ): CommandLogEntry {
-  const full: CommandLogEntry = { ...entry, at: new Date().toISOString() }
+  const full: CommandLogEntry = {
+    ...entry,
+    stdout: entry.stdout ?? '',
+    stderr: entry.stderr ?? '',
+    reason: entry.reason?.trim() || 'unspecified command reason',
+    nextAction: entry.nextAction?.trim() || defaultNextAction(entry.exitCode),
+    at: new Date().toISOString(),
+  }
   const path = commandLogPath(cwd, runId)
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, `${JSON.stringify(full)}\n`, { flag: 'a' })
@@ -46,6 +58,21 @@ export function appendCommandLog(
     kind: 'command-log',
     path: commandLogPath(cwd, runId),
     title: `commands.jsonl (${entry.command.slice(0, 60)})`,
+  })
+  appendRunAction(cwd, runId, {
+    kind: 'command',
+    title: entry.command.slice(0, 80),
+    status: full.exitCode === 0 ? 'passed' : 'failed',
+    command: full.command,
+    exitCode: full.exitCode,
+    stdout: full.stdout,
+    stderr: full.stderr,
+    reason: full.reason,
+    nextAction: full.nextAction,
+    data: {
+      durationMs: full.durationMs,
+      toolUseId: full.toolUseId,
+    },
   })
   return full
 }
@@ -65,7 +92,20 @@ export function readCommandLog(cwd: string, runId: string): CommandLogEntry[] {
           typeof obj.command === 'string' && typeof obj.exitCode === 'number'
         )
       })
+      .map(entry => ({
+        ...entry,
+        stdout: entry.stdout ?? '',
+        stderr: entry.stderr ?? '',
+        reason: entry.reason || 'unspecified command reason',
+        nextAction: entry.nextAction || defaultNextAction(entry.exitCode),
+      }))
   } catch {
     return []
   }
+}
+
+export function defaultNextAction(exitCode: number): string {
+  return exitCode === 0
+    ? 'continue; command completed successfully'
+    : 'inspect failure output and decide whether to fix, retry, or rollback'
 }

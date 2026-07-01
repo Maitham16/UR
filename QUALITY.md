@@ -16,7 +16,8 @@ bun run bundle
 bun run smoke
 bun run secrets:scan
 bun run release:check
-npm pack --dry-run
+bun run package:check
+npm publish --dry-run
 ```
 
 For project-specific feature work, `ur test-first detect` shows the detected
@@ -30,7 +31,9 @@ the repo architecture and manifest-derived command set; `ur context-pack
 compress` preserves task decisions, constraints, commands, and diffs.
 
 `bun run release:check` is also wired into `prepack`, so stale bundles and
-version drift fail before packaging.
+version drift fail before packaging. The GitHub workflow must keep production
+bundle, release, package, and global-install checks after the Bun test step;
+do not tag or publish until that workflow is green.
 
 ## Documentation Gate
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.24.0
+
+### Added
+- Plugin marketplace capability metadata for MCP tools, executable skills,
+  templates, validators, language adapters, LSP servers, hooks, agents, and
+  commands.
+- Bundled `engineering-discipline` reference plugin with `/discipline-check`,
+  `reproducible-release`, release-verifier template, release-gate validator,
+  and Markdown language-adapter metadata.
+- Release readiness test that keeps production bundle, release, package, and
+  global-install GitHub checks behind successful Bun tests.
+
+### Changed
+- npm package now includes `marketplace-plugins/` and documents the
+  marketplace surfaces in the npm README.
+- UR product positioning is documented as an autonomous engineering workflow
+  engine for plan, execute, test, verify, document, benchmark, and reproduce.
+
 ## 1.23.3
 
 ### Fixed

@@ -21,7 +21,18 @@ type ExecFileOptions = {
   env?: NodeJS.ProcessEnv
   stdin?: 'ignore' | 'inherit' | 'pipe'
   input?: string
+  audit?: CommandAuditOptions | false
 }
+
+type CommandAuditOptions = {
+  cwd?: string
+  runId?: string
+  reason?: string
+  nextAction?: string
+  toolUseId?: string
+}
+
+type ExecFileResult = { stdout: string; stderr: string; code: number; error?: string }
 
 export function execFileNoThrow(
   file: string,
@@ -31,7 +42,7 @@ export function execFileNoThrow(
     preserveOutputOnError: true,
     useCwd: true,
   },
-): Promise<{ stdout: string; stderr: string; code: number; error?: string }> {
+): Promise<ExecFileResult> {
   return execFileNoThrowWithCwd(file, args, {
     abortSignal: options.abortSignal,
     timeout: options.timeout,
@@ -40,6 +51,7 @@ export function execFileNoThrow(
     env: options.env,
     stdin: options.stdin,
     input: options.input,
+    audit: options.audit,
   })
 }
 
@@ -53,6 +65,7 @@ type ExecFileWithCwdOptions = {
   shell?: boolean | string | undefined
   stdin?: 'ignore' | 'inherit' | 'pipe'
   input?: string
+  audit?: CommandAuditOptions | false
 }
 
 type ExecaResultWithError = {
@@ -99,13 +112,21 @@ export function execFileNoThrowWithCwd(
     shell,
     stdin: finalStdin,
     input: finalInput,
+    audit,
   }: ExecFileWithCwdOptions = {
     timeout: 10 * SECONDS_IN_MINUTE * MS_IN_SECOND,
     preserveOutputOnError: true,
     maxBuffer: 1_000_000,
   },
-): Promise<{ stdout: string; stderr: string; code: number; error?: string }> {
+): Promise<ExecFileResult> {
   return new Promise(resolve => {
+    const resolveWithAudit = (result: ExecFileResult): void => {
+      void auditExecFileResult(file, args, result, {
+        cwd: finalCwd,
+        audit,
+      }).finally(() => resolve(result))
+    }
+
     // Use execa for cross-platform .bat/.cmd compatibility on Windows
     execa(file, args, {
       maxBuffer,
@@ -122,7 +143,7 @@ export function execFileNoThrowWithCwd(
         if (result.failed) {
           if (finalPreserveOutput) {
             const errorCode = result.exitCode ?? 1
-            void resolve({
+            resolveWithAudit({
               stdout: result.stdout || '',
               stderr: result.stderr || '',
               code: errorCode,
@@ -132,10 +153,10 @@ export function execFileNoThrowWithCwd(
               ),
             })
           } else {
-            void resolve({ stdout: '', stderr: '', code: result.exitCode ?? 1 })
+            resolveWithAudit({ stdout: '', stderr: '', code: result.exitCode ?? 1 })
           }
         } else {
-          void resolve({
+          resolveWithAudit({
             stdout: result.stdout,
             stderr: result.stderr,
             code: 0,
@@ -144,7 +165,47 @@ export function execFileNoThrowWithCwd(
       })
       .catch((error: ExecaError) => {
         logError(error)
-        void resolve({ stdout: '', stderr: '', code: 1 })
+        resolveWithAudit({ stdout: '', stderr: String(error.message ?? error), code: 1 })
       })
   })
+}
+
+function quoteCommandArg(arg: string): string {
+  return /^[a-zA-Z0-9_./:=@+-]+$/.test(arg) ? arg : JSON.stringify(arg)
+}
+
+function formatCommand(file: string, args: string[]): string {
+  return [file, ...args].map(quoteCommandArg).join(' ')
+}
+
+async function auditExecFileResult(
+  file: string,
+  args: string[],
+  result: ExecFileResult,
+  options: {
+    cwd?: string
+    audit?: CommandAuditOptions | false
+  },
+): Promise<void> {
+  if (options.audit === false || process.env.UR_DISABLE_COMMAND_AUDIT === '1') {
+    return
+  }
+  const cwd = options.audit?.cwd ?? options.cwd ?? getCwd()
+  try {
+    const [{ appendCommandLog, defaultNextAction }, { getSessionId }] = await Promise.all([
+      import('../services/agents/commandLog.js'),
+      import('../bootstrap/state.js'),
+    ])
+    appendCommandLog(cwd, options.audit?.runId ?? getSessionId(), {
+      command: formatCommand(file, args),
+      exitCode: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      reason: options.audit?.reason ?? 'execute local process command',
+      nextAction: options.audit?.nextAction ?? defaultNextAction(result.code),
+      toolUseId: options.audit?.toolUseId,
+    })
+  } catch (error) {
+    logError(error)
+  }
 }
