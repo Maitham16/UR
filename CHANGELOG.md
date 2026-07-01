@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.30.3
+
+- Fix Codex CLI dispatch for real interactive terminals by inheriting terminal
+  stdin for `codex exec`. Codex treats both `/dev/null` and closed pipes as
+  piped stdin, so the previous `1.30.2` EOF approach still triggered
+  `Reading additional input from stdin`.
+
 ## 1.30.2
 
 - Fix Codex subscription dispatch failing with `exited 1 ... Reading additional

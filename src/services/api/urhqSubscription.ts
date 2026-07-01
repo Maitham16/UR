@@ -20,21 +20,23 @@ export type SubscriptionCliResult = {
 export type SubscriptionCliRunner = (
   command: string,
   args: string[],
-  options: { input?: string; signal?: AbortSignal; timeoutMs?: number },
+  options: { input?: string; signal?: AbortSignal; timeoutMs?: number; stdinMode?: SubscriptionCliStdinMode },
 ) => Promise<SubscriptionCliResult>
+
+export type SubscriptionCliStdinMode = 'ignore' | 'inherit' | 'pipe'
 
 type CliSpec = {
   args: (model: string, prompt: string) => string[]
-  // 'close' provides an empty, closed stdin pipe (EOF). Codex `exec` reads
-  // "additional input from stdin" even when the prompt is an argument; with
-  // stdin ignored (/dev/null) it exits 1, so it needs a real closed pipe.
-  stdin?: 'ignore' | 'close'
+  stdinMode?: SubscriptionCliStdinMode
 }
 
 // Non-interactive invocation per official CLI. The prompt is passed as an
 // argument; the model flag maps the scoped model id to the CLI's own name.
 const CLI_SPECS: Record<string, CliSpec> = {
-  'codex-cli': { args: (model, prompt) => ['exec', '--model', model, prompt], stdin: 'close' },
+  // Codex exec treats any non-TTY stdin (including /dev/null or a closed pipe)
+  // as "additional input from stdin". Inherit terminal stdin so the prompt
+  // argument remains the only prompt content in interactive UR sessions.
+  'codex-cli': { args: (model, prompt) => ['exec', '--model', model, prompt], stdinMode: 'inherit' },
   'claude-code-cli': {
     args: (model, prompt) => ['-p', prompt, '--model', model, '--output-format', 'json'],
   },
@@ -65,9 +67,7 @@ export function createURHQSubscriptionClient(
     }
     const prompt = messagesToPrompt(params)
     const result = await run(options.commandPath, spec.args(model, prompt), {
-      // Codex needs a closed (EOF) stdin, not /dev/null; other CLIs take the
-      // prompt as an argument and leave stdin ignored.
-      input: spec.stdin === 'close' ? '' : undefined,
+      stdinMode: spec.stdinMode,
       signal: requestOptions?.signal,
       timeoutMs: options.timeoutMs ?? 120_000,
     })
@@ -131,14 +131,18 @@ export function createURHQSubscriptionClient(
   return { beta: { messages: messagesAPI } } as URHQ
 }
 
-export function getSubscriptionCliStdinMode(input?: string): 'ignore' | 'pipe' {
+export function getSubscriptionCliStdinMode(
+  input?: string,
+  mode?: SubscriptionCliStdinMode,
+): SubscriptionCliStdinMode {
+  if (mode) return mode
   return input === undefined ? 'ignore' : 'pipe'
 }
 
 const defaultRunner: SubscriptionCliRunner = (command, args, options) =>
   new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      stdio: [getSubscriptionCliStdinMode(options.input), 'pipe', 'pipe'],
+      stdio: [getSubscriptionCliStdinMode(options.input, options.stdinMode), 'pipe', 'pipe'],
       signal: options.signal,
     })
     let stdout = ''
@@ -160,7 +164,7 @@ const defaultRunner: SubscriptionCliRunner = (command, args, options) =>
       if (timer) clearTimeout(timer)
       resolve({ code: code ?? 1, stdout, stderr })
     })
-    if (options.input !== undefined) {
+    if (options.input !== undefined && child.stdin) {
       child.stdin?.write(options.input)
       child.stdin?.end()
     }

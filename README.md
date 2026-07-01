@@ -304,7 +304,7 @@ viewer mode.
 Example:
 
 ```text
-UR-AGENT v1.30.1 | Provider: Codex CLI | Auth: subscription | model: codex/gpt-5.5 | mode: ask | branch: main | tasks: idle
+UR-AGENT v1.30.3 | Provider: Codex CLI | Auth: subscription | model: codex/gpt-5.5 | mode: ask | branch: main | tasks: idle
 ```
 
 The bar reflects the active in-session provider/model immediately after a

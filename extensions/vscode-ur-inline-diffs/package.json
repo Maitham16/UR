@@ -2,7 +2,7 @@
   "name": "ur-inline-diffs",
   "displayName": "UR Inline Diffs",
   "description": "Review, apply, and reject UR inline diff bundles from .ur/ide/diffs inside VS Code.",
-  "version": "1.30.1",
+  "version": "1.30.3",
   "publisher": "ur-agent",
   "engines": {
     "vscode": "^1.92.0"

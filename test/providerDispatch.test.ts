@@ -50,15 +50,18 @@ describe('subscription CLI dispatch is real (not faked)', () => {
     expect(res.content[0].text).not.toBe('Subscription CLI response') // regression guard
   })
 
-  test('default runner does not pipe empty stdin when prompt is already an argument', () => {
+  test('default runner ignores stdin when prompt is already an argument', () => {
     expect(getSubscriptionCliStdinMode(undefined)).toBe('ignore')
     expect(getSubscriptionCliStdinMode('')).toBe('pipe')
+    expect(getSubscriptionCliStdinMode(undefined, 'inherit')).toBe('inherit')
   })
 
-  test('codex-cli is dispatched with a closed empty stdin, not /dev/null (stdin-block fix)', async () => {
+  test('codex-cli inherits terminal stdin so Codex does not read extra piped input', async () => {
     let receivedInput: string | undefined = 'unset'
-    const runner = async (_c: string, _a: string[], opts: { input?: string }) => {
+    let receivedStdinMode: string | undefined
+    const runner = async (_c: string, _a: string[], opts: { input?: string; stdinMode?: string }) => {
       receivedInput = opts?.input
+      receivedStdinMode = opts?.stdinMode
       return { code: 0, stdout: 'ok', stderr: '' }
     }
     const client = createURHQSubscriptionClient('codex-cli', {
@@ -71,9 +74,9 @@ describe('subscription CLI dispatch is real (not faked)', () => {
       messages: userMessages(),
       max_tokens: 16,
     })
-    // Empty string -> stdin pipe that is written and closed (EOF); undefined -> ignore.
-    expect(receivedInput).toBe('')
-    expect(getSubscriptionCliStdinMode(receivedInput)).toBe('pipe')
+    expect(receivedInput).toBeUndefined()
+    expect(receivedStdinMode).toBe('inherit')
+    expect(getSubscriptionCliStdinMode(receivedInput, receivedStdinMode as 'inherit')).toBe('inherit')
   })
 
   test('arg-mode CLIs (claude/gemini) leave stdin ignored', async () => {
