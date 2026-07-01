@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle';
 import * as React from 'react';
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { logEvent } from 'src/services/analytics/index.js';
 import { useAppState, useSetAppState } from 'src/state/AppState.js';
 import type { PermissionMode } from 'src/utils/permissions/PermissionMode.js';
@@ -16,23 +16,34 @@ import { getRawUtilization } from '../services/urAiLimits.js';
 import type { Message } from '../types/message.js';
 import type { StatusLineCommandInput } from '../types/statusLine.js';
 import type { VimMode } from '../types/textInputTypes.js';
+import type { AutoUpdaterResult } from '../utils/autoUpdater.js';
 import { checkHasTrustDialogAccepted } from '../utils/config.js';
 import { calculateContextPercentages, getContextWindowForModel } from '../utils/context.js';
 import { getCwd } from '../utils/cwd.js';
 import { logForDebugging } from '../utils/debug.js';
 import { isFullscreenEnvEnabled } from '../utils/fullscreen.js';
+import { getCachedBranch } from '../utils/git/gitFilesystem.js';
 import { createBaseHookInput, executeStatusLineCommand } from '../utils/hooks.js';
 import { getLastAssistantMessage } from '../utils/messages.js';
 import { getRuntimeMainLoopModel, type ModelName, renderModelName } from '../utils/model/model.js';
 import { getCurrentSessionTitle } from '../utils/sessionStorage.js';
+import { buildDefaultStatusBar, statusBarShouldDisplay } from '../utils/statusBar.js';
 import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/tokens.js';
 import { getCurrentWorktreeSession } from '../utils/worktree.js';
 import { isVimModeEnabled } from './PromptInput/utils.js';
 export function statusLineShouldDisplay(settings: ReadonlySettings): boolean {
-  // Assistant mode: statusline fields (model, permission mode, cwd) reflect the
-  // REPL/daemon process, not what the agent child is actually running. Hide it.
-  if (feature('KAIROS') && getKairosActive()) return false;
-  return settings?.statusLine !== undefined;
+  let isKairosActive = false;
+  if (feature('KAIROS')) {
+    isKairosActive = getKairosActive();
+  }
+  return statusBarShouldDisplay({
+    settingsStatusLineConfigured: settings?.statusLine !== undefined,
+    isKairosActive,
+    isTTY: process.stdout.isTTY,
+    isCI: process.env.CI === 'true' || process.env.CI === '1',
+    term: process.env.TERM,
+    disabled: process.env.UR_STATUS_BAR === '0' || process.env.UR_STATUS_BAR === 'false'
+  });
 }
 function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200kTokens: boolean, settings: ReadonlySettings, messages: Message[], addedDirs: string[], mainLoopModel: ModelName, vimMode?: VimMode): StatusLineCommandInput {
   const agentType = getMainThreadAgentType();
@@ -132,6 +143,8 @@ type Props = {
   messagesRef: React.RefObject<Message[]>;
   lastAssistantMessageId: string | null;
   vimMode?: VimMode;
+  autoUpdaterResult?: AutoUpdaterResult | null;
+  isAutoUpdating?: boolean;
 };
 export function getLastAssistantMessageId(messages: Message[]): string | null {
   return getLastAssistantMessage(messages)?.uuid ?? null;
@@ -139,14 +152,18 @@ export function getLastAssistantMessageId(messages: Message[]): string | null {
 function StatusLineInner({
   messagesRef,
   lastAssistantMessageId,
-  vimMode
+  vimMode,
+  autoUpdaterResult,
+  isAutoUpdating
 }: Props): React.ReactNode {
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
   const permissionMode = useAppState(s => s.toolPermissionContext.mode);
   const additionalWorkingDirectories = useAppState(s => s.toolPermissionContext.additionalWorkingDirectories);
   const statusLineText = useAppState(s => s.statusLineText);
+  const tasks = useAppState(s => s.tasks);
   const setAppState = useSetAppState();
   const settings = useSettings();
+  const [branch, setBranch] = useState<string | null>(null);
   const {
     addNotification
   } = useNotifications();
@@ -154,6 +171,18 @@ function StatusLineInner({
   // re-reads settings.json on every call, so another session's /model write
   // would leak into this session's statusline (urhqs/ur#37596).
   const mainLoopModel = useMainLoopModel();
+  const taskValues = Object.values(tasks);
+  const taskRunningCount = taskValues.filter(task => task.status === 'running' || task.status === 'pending').length;
+  const defaultStatusLineText = buildDefaultStatusBar({
+    version: MACRO.VERSION,
+    model: renderModelName(mainLoopModel),
+    mode: permissionMode,
+    branch,
+    taskRunningCount,
+    taskTotalCount: taskValues.length,
+    latestVersion: autoUpdaterResult?.status === 'success' ? null : autoUpdaterResult?.version,
+    isCheckingUpdate: isAutoUpdating
+  });
 
   // Keep latest values in refs for stable callback access
   const settingsRef = useRef(settings);
@@ -190,6 +219,9 @@ function StatusLineInner({
 
   // Stable update function — reads latest values from refs
   const doUpdate = useCallback(async () => {
+    if (!settingsRef.current?.statusLine) {
+      return;
+    }
     // Cancel any in-flight requests
     abortControllerRef.current?.abort();
     const controller = new AbortController();
@@ -223,6 +255,28 @@ function StatusLineInner({
     }
   }, [messagesRef, setAppState]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const refreshBranch = async () => {
+      try {
+        const nextBranch = await getCachedBranch();
+        if (!cancelled) {
+          setBranch(nextBranch);
+        }
+      } catch {
+        if (!cancelled) {
+          setBranch(null);
+        }
+      }
+    };
+    void refreshBranch();
+    const timer = setInterval(refreshBranch, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
   // Stable debounced schedule function — no deps, uses refs
   const scheduleUpdate = useCallback(() => {
     if (debounceTimerRef.current !== undefined) {
@@ -236,6 +290,7 @@ function StatusLineInner({
 
   // Only trigger update when assistant message, permission mode, vim mode, or model actually changes
   useEffect(() => {
+    if (!settings?.statusLine) return;
     if (lastAssistantMessageId !== previousStateRef.current.messageId || permissionMode !== previousStateRef.current.permissionMode || vimMode !== previousStateRef.current.vimMode || mainLoopModel !== previousStateRef.current.mainLoopModel) {
       // Don't update messageId here — let doUpdate handle it so
       // exceeds200kTokens is recalculated with the latest messages
@@ -250,6 +305,7 @@ function StatusLineInner({
   const statusLineCommand = settings?.statusLine?.command;
   const isFirstSettingsRender = useRef(true);
   useEffect(() => {
+    if (!settings?.statusLine) return;
     if (isFirstSettingsRender.current) {
       isFirstSettingsRender.current = false;
       return;
@@ -306,14 +362,15 @@ function StatusLineInner({
 
   // Get padding from settings or default to 0
   const paddingX = settings?.statusLine?.padding ?? 0;
+  const renderedStatusLineText = settings?.statusLine ? statusLineText : defaultStatusLineText;
 
   // StatusLine must have stable height in fullscreen — the footer is
   // flexShrink:0 so a 0→1 row change when the command finishes steals
   // a row from ScrollBox and shifts content. Reserve the row while loading
   // (same trick as PromptInputFooterLeftSide).
   return <Box paddingX={paddingX} gap={2}>
-      {statusLineText ? <Text dimColor wrap="truncate">
-          <Ansi>{statusLineText}</Ansi>
+      {renderedStatusLineText ? <Text dimColor wrap="truncate">
+          <Ansi>{renderedStatusLineText}</Ansi>
         </Text> : isFullscreenEnvEnabled() ? <Text> </Text> : null}
     </Box>;
 }

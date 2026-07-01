@@ -33,7 +33,7 @@ const packageName =
 const issuesUrl =
   typeof packageMetadata.bugs?.url === 'string'
     ? packageMetadata.bugs.url
-    : 'https://github.com/Maitham16/UR-mapek/issues'
+    : 'https://github.com/Maitham16/UR/issues'
 
 const bun = process.env.BUN_BIN || process.env.BUN_EXECUTABLE || 'bun'
 const ollamaModel =
@@ -72,13 +72,13 @@ function readJson(req) {
 function buildAgentCard(baseUrl) {
   return {
     protocolVersion: '0.3.0',
-    name: 'UR Agent',
+    name: 'UR-AGENT',
     description:
       'Local-first terminal coding agent powered through the local Ollama app, with MCP tools, custom agents, browser workflows, memory, verifier gates, and permission controls.',
     url: `${baseUrl}/a2a`,
     version,
     documentationUrl:
-      'https://github.com/Maitham16/UR-mapek/blob/master/docs/AGENT_TRENDS.md',
+      'https://github.com/Maitham16/UR/blob/master/docs/AGENT_TRENDS.md',
     capabilities: {
       streaming: true,
       pushNotifications: false,
@@ -88,7 +88,7 @@ function buildAgentCard(baseUrl) {
     defaultOutputModes: ['text/plain', 'text/markdown', 'application/json'],
     provider: {
       organization: 'Maitham Al-rubaye',
-      url: 'https://github.com/Maitham16/UR-mapek',
+      url: 'https://github.com/Maitham16/UR',
     },
     skills: [
       {
@@ -258,7 +258,7 @@ const child = spawn(bun, args, {
 child.on('error', error => {
   if (error.code === 'ENOENT') {
     console.error(
-      'Ur requires Bun to run. Install Bun from https://bun.sh, then retry.',
+      'UR-AGENT requires Bun to run. Install Bun from https://bun.sh, then retry.',
     )
     process.exit(1)
   }

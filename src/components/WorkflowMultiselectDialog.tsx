@@ -79,7 +79,7 @@ export function WorkflowMultiselectDialog(t0) {
   const handleCancel = t3;
   let t4;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = <Box><Text dimColor={true}>More workflow examples (issue triage, CI fixes, etc.) at:{" "}<Link url="https://github.com/Maitham16/UR-mapek">https://github.com/Maitham16/UR-mapek</Link></Text></Box>;
+    t4 = <Box><Text dimColor={true}>More workflow examples (issue triage, CI fixes, etc.) at:{" "}<Link url="https://github.com/Maitham16/UR">https://github.com/Maitham16/UR</Link></Text></Box>;
     $[4] = t4;
   } else {
     t4 = $[4];

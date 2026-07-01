@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="560" viewBox="0 0 1120 560" role="img" aria-labelledby="title desc">
-  <title id="title">UR Agent runtime architecture</title>
+  <title id="title">UR-AGENT runtime architecture</title>
   <desc id="desc">A diagram showing users, the UR CLI, project context, tools, agent orchestration, local Ollama models, and outputs.</desc>
   <defs>
     <linearGradient id="panel" x1="0" x2="1" y1="0" y2="1">

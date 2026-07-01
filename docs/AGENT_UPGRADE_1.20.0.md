@@ -1,4 +1,4 @@
-# UR Agent 1.20.0 Upgrade Notes
+# UR-AGENT 1.20.0 Upgrade Notes
 
 UR 1.20.0 adds IDE integration and a richer tool surface for agent workflows.
 

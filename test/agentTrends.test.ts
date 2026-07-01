@@ -9,7 +9,7 @@ describe('agent trend coverage', () => {
   test('exports a versioned A2A Agent Card with normalized endpoint URL', () => {
     const card = buildA2AAgentCard({ baseUrl: 'https://example.com/root/?x=1#frag' })
 
-    expect(card.name).toBe('UR Agent')
+    expect(card.name).toBe('UR-AGENT')
     expect(card.version).toBe(MACRO.VERSION)
     expect(card.url).toBe('https://example.com/root/a2a')
     expect(card.documentationUrl).toContain('docs/AGENT_TRENDS.md')
@@ -43,7 +43,7 @@ describe('agent trend coverage', () => {
   test('formats a human-readable professional report', () => {
     const text = formatAgentTrendReport(buildAgentTrendReport())
 
-    expect(text).toContain('UR Agent Trend Coverage')
+    expect(text).toContain('UR-AGENT Trend Coverage')
     expect(text).toContain('[covered] Local-first model runtime')
     expect(text).toContain('[covered] MCP tool ecosystem')
     expect(text).toContain('[adapter-ready] A2A / Agent Card interoperability')

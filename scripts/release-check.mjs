@@ -17,12 +17,14 @@ function fail(message) {
 
 const packageJson = JSON.parse(read('package.json'))
 const version = packageJson.version
+const oldLowerRepo = 'Maitham16/' + 'ur-agent'
+const oldMapekRepo = 'Maitham16/' + 'UR-' + 'mapek'
 
 if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
   fail(`package.json version is not valid semver: ${version}`)
 }
 
-const expectedRepo = 'Maitham16/UR-mapek'
+const expectedRepo = 'Maitham16/UR'
 if (!packageJson.repository?.url?.includes(expectedRepo)) {
   fail(`package.json repository must point at ${expectedRepo}`)
 }
@@ -33,7 +35,7 @@ if (!packageJson.homepage?.includes(expectedRepo)) {
   fail(`package.json homepage must point at ${expectedRepo}`)
 }
 
-const expectedFiles = ['bin', 'dist', 'docs', 'documentation', 'extensions', 'examples', 'marketplace-plugins', 'CHANGELOG.md', 'QUALITY.md', 'README.md', 'LICENSE']
+const expectedFiles = ['bin', 'dist', 'docs', 'documentation', 'extensions', 'examples', 'plugins', 'CHANGELOG.md', 'CONTRIBUTING.md', 'QUALITY.md', 'README.md', 'RELEASE.md', 'SECURITY.md', 'LICENSE']
 for (const file of expectedFiles) {
   if (!packageJson.files?.includes(file)) {
     fail(`package.json files is missing ${file}`)
@@ -44,8 +46,8 @@ const bunfig = read('bunfig.toml')
 if (!bunfig.includes(`"MACRO.VERSION" = '"${version}"'`)) {
   fail(`bunfig.toml MACRO.VERSION must be ${version}`)
 }
-if (bunfig.includes('Maitham16/ur-agent')) {
-  fail('bunfig.toml still references Maitham16/ur-agent')
+if (bunfig.includes(oldLowerRepo) || bunfig.includes(oldMapekRepo)) {
+  fail('bunfig.toml still references an old repository')
 }
 
 const distPath = join(root, 'dist', 'cli.js')
@@ -56,11 +58,16 @@ if (!existsSync(distPath)) {
   if (!dist.includes(version)) {
     fail(`dist/cli.js does not contain package version ${version}; run bun run bundle`)
   }
-  if (dist.includes('1.10.2 (Ur)') || dist.includes('1.10.1 (Ur)')) {
+  const staleVersionLabel = '(U' + 'r)'
+  if (dist.includes(`1.10.2 ${staleVersionLabel}`) || dist.includes(`1.10.1 ${staleVersionLabel}`)) {
     fail('dist/cli.js still contains an older release version string')
   }
-  if (dist.includes('https://github.com/Maitham16/ur-agent')) {
-    fail('dist/cli.js still references stale Maitham16/ur-agent public URLs; run bun run bundle')
+  if (
+    dist.includes(`https://github.com/${oldLowerRepo}`) ||
+    dist.includes(`https://github.com/${oldMapekRepo}`) ||
+    dist.includes(`github:${oldMapekRepo}`)
+  ) {
+    fail('dist/cli.js still references old repository URLs; run bun run bundle')
   }
 }
 
@@ -75,8 +82,8 @@ for (const [path, content] of [
   ['docs/CONFIGURATION.md', config],
   ['docs/VALIDATION.md', validation],
 ]) {
-  if (content.includes('Maitham16/ur-agent')) {
-    fail(`${path} still references Maitham16/ur-agent`)
+  if (content.includes(oldLowerRepo) || content.includes(oldMapekRepo)) {
+    fail(`${path} still references an old repository`)
   }
 }
 
@@ -96,8 +103,8 @@ try {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim()
-  if (output !== `${version} (Ur)`) {
-    fail(`node ./bin/ur.js --version returned "${output}", expected "${version} (Ur)"`)
+  if (output !== `${version} (UR-AGENT)`) {
+    fail(`node ./bin/ur.js --version returned "${output}", expected "${version} (UR-AGENT)"`)
   }
 } catch (error) {
   fail(`node ./bin/ur.js --version failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -111,4 +118,4 @@ if (failures.length > 0) {
   process.exit(1)
 }
 
-console.log(`Release check passed for UR ${version}.`)
+console.log(`Release check passed for UR-AGENT ${version}.`)

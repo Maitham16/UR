@@ -2,16 +2,16 @@
   "name": "ur-plugins-official",
   "owner": {
     "name": "Maitham Al-rubaye",
-    "url": "https://github.com/Maitham16/ur-agent"
+    "url": "https://github.com/Maitham16/UR"
   },
   "metadata": {
     "version": "0.5.0",
-    "description": "First-party plugins for UR Agent. This marketplace is hosted in the same repository as the agent itself and advertises plugin capability surfaces for commands, MCP tools, skills, templates, validators, and language adapters."
+    "description": "First-party plugins for UR-AGENT. This marketplace is hosted in the same repository as the agent itself and advertises plugin capability surfaces for commands, MCP tools, skills, templates, validators, and language adapters."
   },
   "plugins": [
     {
       "name": "hello",
-      "source": "./marketplace-plugins/hello",
+      "source": "./plugins/core/hello",
       "description": "Example plugin that adds a `/hello` command. Useful as a template for new plugins.",
       "category": "examples",
       "tags": ["example", "template", "starter"],
@@ -19,7 +19,7 @@
     },
     {
       "name": "git-summary",
-      "source": "./marketplace-plugins/git-summary",
+      "source": "./plugins/core/git-summary",
       "description": "/git-summary — one-paragraph factual summary of the working tree and recent commits. Useful before standup, before a PR, or before clocking out.",
       "category": "workflow",
       "tags": ["git", "summary", "standup"],
@@ -27,7 +27,7 @@
     },
     {
       "name": "code-review",
-      "source": "./marketplace-plugins/code-review",
+      "source": "./plugins/core/code-review",
       "description": "/code-review — structured review of the working diff against a base ref. Covers correctness, style, test coverage, and security with a mandatory TL;DR verdict.",
       "category": "quality",
       "tags": ["code-review", "git", "diff", "quality"],
@@ -35,7 +35,7 @@
     },
     {
       "name": "explain-error",
-      "source": "./marketplace-plugins/explain-error",
+      "source": "./plugins/core/explain-error",
       "description": "/explain-error — re-runs a failing command, decodes the error in plain English, and proposes two concrete next steps ordered by likelihood.",
       "category": "debugging",
       "tags": ["debug", "error", "troubleshooting"],
@@ -43,7 +43,7 @@
     },
     {
       "name": "release-notes",
-      "source": "./marketplace-plugins/release-notes",
+      "source": "./plugins/core/release-notes",
       "description": "/release-notes — drafts release notes from git log since the last tag, grouped by Features / Fixes / Documentation / Other.",
       "category": "workflow",
       "tags": ["release", "notes", "changelog", "git"],
@@ -51,7 +51,7 @@
     },
     {
       "name": "evaluate-response",
-      "source": "./marketplace-plugins/evaluate-response",
+      "source": "./plugins/core/evaluate-response",
       "description": "/evaluate-response — adversarial self-evaluation of the most recent assistant turn. Catches hallucinated completions, missed sub-questions, and narrated-but-not-done work.",
       "category": "quality",
       "tags": ["quality", "self-evaluation", "verifier"],
@@ -59,7 +59,7 @@
     },
     {
       "name": "obsidian",
-      "source": "./marketplace-plugins/obsidian",
+      "source": "./plugins/core/obsidian",
       "description": "/second-brain, /daily-note, /moc, /backlinks, /vault-search — operate an Obsidian vault as a second brain via direct file edits or the Local REST API MCP server.",
       "category": "knowledge",
       "tags": ["obsidian", "second-brain", "zettelkasten", "pkm", "notes", "mcp"],
@@ -67,7 +67,7 @@
     },
     {
       "name": "github",
-      "source": "./marketplace-plugins/github",
+      "source": "./plugins/core/github",
       "description": "/gh-pr-review, /gh-pr-create, /gh-issues, /gh-repo-health — drive GitHub through the official remote MCP server or the gh CLI.",
       "category": "integration",
       "tags": ["github", "pull-request", "issues", "ci", "devops", "mcp"],
@@ -75,7 +75,7 @@
     },
     {
       "name": "gitlab",
-      "source": "./marketplace-plugins/gitlab",
+      "source": "./plugins/core/gitlab",
       "description": "/gl-mr-review, /gl-mr-create, /gl-issues, /gl-pipeline — drive GitLab through the official MCP server or the glab CLI.",
       "category": "integration",
       "tags": ["gitlab", "merge-request", "issues", "ci-cd", "pipeline", "mcp"],
@@ -83,7 +83,7 @@
     },
     {
       "name": "huggingface",
-      "source": "./marketplace-plugins/huggingface",
+      "source": "./plugins/core/huggingface",
       "description": "/hf-model-search, /hf-dataset-search, /hf-model-card, /hf-download — search, vet, and fetch Hugging Face models and datasets via the official MCP server or the hf CLI.",
       "category": "integration",
       "tags": ["huggingface", "models", "datasets", "machine-learning", "hub", "mcp"],
@@ -91,7 +91,7 @@
     },
     {
       "name": "word",
-      "source": "./marketplace-plugins/word",
+      "source": "./plugins/core/word",
       "description": "/docx-new, /docx-from-md, /docx-review, /docx-edit — create, convert, review, and edit Word documents via the Office Word MCP server or a pandoc / python-docx fallback.",
       "category": "documents",
       "tags": ["word", "docx", "document", "office", "mcp"],
@@ -99,7 +99,7 @@
     },
     {
       "name": "powerpoint",
-      "source": "./marketplace-plugins/powerpoint",
+      "source": "./plugins/core/powerpoint",
       "description": "/pptx-new, /pptx-from-md, /pptx-review, /pptx-theme — build, convert, review, and theme PowerPoint decks via the Office PowerPoint MCP server or a python-pptx fallback.",
       "category": "documents",
       "tags": ["powerpoint", "pptx", "slides", "presentation", "office", "mcp"],
@@ -107,7 +107,7 @@
     },
     {
       "name": "miro",
-      "source": "./marketplace-plugins/miro",
+      "source": "./plugins/core/miro",
       "description": "/miro-board, /miro-diagram, /miro-stickies, /miro-export — create boards, diagrams, and sticky clusters and summarize boards via Miro's official MCP server or the REST API.",
       "category": "integration",
       "tags": ["miro", "whiteboard", "diagram", "board", "brainstorm", "mcp"],
@@ -115,7 +115,7 @@
     },
     {
       "name": "skill-forge",
-      "source": "./marketplace-plugins/skill-forge",
+      "source": "./plugins/core/skill-forge",
       "description": "/forge-skill, /skill-refine — the active model authors a complete SKILL.md from your description and saves it to your skills directory. Complements the built-in /create-skill scaffolder.",
       "category": "meta",
       "tags": ["skill", "authoring", "generator", "automation", "meta"],
@@ -123,7 +123,7 @@
     },
     {
       "name": "engineering-discipline",
-      "source": "./marketplace-plugins/engineering-discipline",
+      "source": "./plugins/core/engineering-discipline",
       "description": "/discipline-check plus a reproducible-release skill, release-verifier template, release-gate validator, and Markdown language adapter metadata.",
       "category": "quality",
       "tags": ["workflow", "ci", "release", "validator", "template", "language-adapter"],

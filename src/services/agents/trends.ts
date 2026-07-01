@@ -403,13 +403,13 @@ export function buildA2AAgentCard(
 
   return {
     protocolVersion: '0.3.0',
-    name: 'UR Agent',
+    name: 'UR-AGENT',
     description:
       'Local-first terminal coding agent powered through the local Ollama app, with MCP tools, custom agents, browser workflows, memory, verifier gates, and permission controls.',
     url,
     version: urVersion,
     documentationUrl:
-      'https://github.com/Maitham16/UR-mapek/blob/master/docs/AGENT_TRENDS.md',
+      'https://github.com/Maitham16/UR/blob/master/docs/AGENT_TRENDS.md',
     capabilities: {
       streaming: true,
       pushNotifications: false,
@@ -435,7 +435,7 @@ export function buildA2AAgentCard(
     defaultOutputModes: ['text/plain', 'text/markdown', 'application/json'],
     provider: {
       organization: 'Maitham Al-rubaye',
-      url: 'https://github.com/Maitham16/UR-mapek',
+      url: 'https://github.com/Maitham16/UR',
     },
     skills: [
       {
@@ -510,7 +510,7 @@ export function formatAgentTrendReport(
   report: AgentTrendReport = buildAgentTrendReport(),
 ): string {
   const lines = [
-    `UR Agent Trend Coverage`,
+    `UR-AGENT Trend Coverage`,
     `Version: ${report.urVersion}`,
     `Generated: ${report.generatedAt}`,
     '',

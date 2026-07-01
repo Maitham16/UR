@@ -1,4 +1,4 @@
-# UR Agent 1.18.0 Upgrade Notes
+# UR-AGENT 1.18.0 Upgrade Notes
 
 UR 1.18.0 adds the P0 test-first execution loop.
 

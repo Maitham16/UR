@@ -66,7 +66,7 @@ const commands = [
     name: 'ur',
     category: 'Core',
     aliases: [],
-    summary: 'Start an interactive UR Agent session in the current workspace.',
+    summary: 'Start an interactive UR-AGENT session in the current workspace.',
     examples: ['ur', 'ur --model qwen3-coder:480b-cloud', 'ur --continue', 'ur --resume'],
   },
   {
@@ -374,7 +374,7 @@ const commands = [
     name: 'update',
     category: 'Ops',
     aliases: ['upgrade'],
-    summary: 'Check for updates and install if available. Interactive sessions also show an update-available notice when a newer package is published.',
+    summary: 'Check npm for UR-AGENT updates. Interactive sessions also show an update-available notice when a newer package is published.',
     examples: ['ur update', 'ur upgrade'],
   },
   {

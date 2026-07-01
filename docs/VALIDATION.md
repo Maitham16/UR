@@ -11,14 +11,14 @@ You need:
   work because UR talks to the configured Ollama host.
 - A second Ollama server on the LAN if you want to test network discovery.
 - UR installed globally (`npm install -g ur-agent`) or this repo installed
-  globally (`bun add -g github:Maitham16/UR-mapek`) or a
+  globally (`bun add -g github:Maitham16/UR`) or a
   local checkout (`bun run dev`).
 
 ## 0. Smoke
 
 ```sh
 ur --version
-# expected: 1.19.0 (Ur)
+# expected: 1.24.0 (UR-AGENT)
 ```
 
 ## 0.1 Permission safety and context pack (1.19.0)
@@ -125,7 +125,7 @@ Then inside:
 
 Expected: the plugin picker lists `ur-plugins-official` and `hello`. If the
 marketplace failed to clone, you'll see no entries — fall back to
-`/plugin marketplace add github:Maitham16/UR-mapek` and re-run `/plugin`.
+`/plugin marketplace add github:Maitham16/UR` and re-run `/plugin`.
 
 Install `hello`:
 
@@ -295,7 +295,7 @@ Expected: no `unknown option` or `too many arguments` parser errors.
 ## What to do if any step fails
 
 - Step 1 (marketplace): check `ls ~/.ur/marketplaces/` — `ur-plugins-official`
-  should be there. If absent, `gh repo clone Maitham16/UR-mapek` manually
+  should be there. If absent, `gh repo clone Maitham16/UR` manually
   into `~/.ur/marketplaces/ur-plugins-official` as a fallback.
 - Steps 2-5 (verifier): set `UR_VERIFIER_MODE=off` and re-run to confirm
   the issue is the verifier path, not the rest of the loop. Then file an

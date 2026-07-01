@@ -1,6 +1,6 @@
-# UR Agent Documentation Site
+# UR-AGENT Documentation Site
 
-This folder is a static documentation project for UR Agent.
+This folder is a static documentation project for UR-AGENT.
 
 Open `index.html` directly in a browser. No build step or dev server is
 required.

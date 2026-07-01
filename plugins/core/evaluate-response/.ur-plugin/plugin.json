@@ -1,0 +1,13 @@
+{
+  "name": "evaluate-response",
+  "version": "0.1.0",
+  "description": "Adds /evaluate-response — adversarial self-evaluation of the most recent assistant turn.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/UR"
+  },
+  "homepage": "https://github.com/Maitham16/UR/tree/master/plugins/core/evaluate-response",
+  "repository": "https://github.com/Maitham16/UR",
+  "license": "LicenseRef-UR-AGENT-Non-Commercial-Self-Responsibility",
+  "keywords": ["quality", "self-evaluation", "verifier"]
+}

@@ -187,6 +187,21 @@ UR includes slash commands and CLI subcommands for common workflows:
 
 Interactive sessions also check the published package version and show
 `Update available: <current> -> <latest>` when a newer release is available.
+Source checkouts print
+`Development build detected. To update, pull latest source or install from npm.`
+instead of attempting to mutate the checkout.
+
+## Status bar
+
+Interactive sessions include a compact bottom status bar when stdout is a real
+terminal:
+
+```text
+UR-AGENT v1.24.0 | model: qwen3-coder:480b-cloud | mode: ask | branch: main | tasks: idle | Update: 1.23.3 -> 1.24.0 available
+```
+
+The bar is not rendered in non-interactive mode, CI, dumb terminals, or
+assistant viewer mode. Custom status-line hooks override the built-in bar.
 
 Run each command with `--help` for exact flags.
 

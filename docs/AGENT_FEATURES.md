@@ -68,8 +68,8 @@ ur spec verify auth-refactor
 
 | Addition | Surface | What it adds |
 | --- | --- | --- |
-| Plugin marketplace capability surfaces | `.ur-plugin/marketplace.json`, `src/utils/plugins/schemas.ts`, `marketplace-plugins/engineering-discipline/` | Marketplace entries can advertise MCP tools, executable skills, templates, validators, language adapters, LSP servers, hooks, agents, and commands. The `engineering-discipline` reference plugin ships a command, reproducible-release skill, release-verifier template, release-gate validator, and Markdown adapter metadata. |
-| Autonomous engineering workflow identity | `README.md`, `documentation/`, `marketplace-plugins/engineering-discipline/skills/reproducible-release` | Positions UR as an autonomous engineering workflow engine: plan, execute, test, verify, document, benchmark, and reproduce, with command evidence and rollback discipline as the product promise. |
+| Plugin marketplace capability surfaces | `.ur-plugin/marketplace.json`, `src/utils/plugins/schemas.ts`, `plugins/core/engineering-discipline/` | Marketplace entries can advertise MCP tools, executable skills, templates, validators, language adapters, LSP servers, hooks, agents, and commands. The `engineering-discipline` reference plugin ships a command, reproducible-release skill, release-verifier template, release-gate validator, and Markdown adapter metadata. |
+| Autonomous engineering workflow identity | `README.md`, `documentation/`, `plugins/core/engineering-discipline/skills/reproducible-release` | Positions UR as an autonomous engineering workflow engine: plan, execute, test, verify, document, benchmark, and reproduce, with command evidence and rollback discipline as the product promise. |
 | Release readiness guard | `.github/workflows/test.yml`, `test/releaseReadiness.test.ts` | Asserts production bundle, release, package, and global-install checks run only after the Bun test step succeeds in GitHub CI. |
 
 ## v1.22.3 Additions

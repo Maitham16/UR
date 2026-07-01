@@ -12,7 +12,7 @@ import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS as SafeString,
 } from '../../services/analytics/index.js'
-import { OFFICIAL_MARKETPLACE_NAME } from './officialMarketplace.js'
+import { OFFICIAL_MARKETPLACE_SOURCE } from './officialMarketplace.js'
 
 export type PluginFetchSource =
   | 'install_counts'
@@ -41,7 +41,7 @@ const KNOWN_PUBLIC_HOSTS = new Set([
   'storage.googleapis.com',
 ])
 
-const OFFICIAL_MARKETPLACE_ORG = 'Maitham16'
+const OFFICIAL_MARKETPLACE_REPO = OFFICIAL_MARKETPLACE_SOURCE.repo
 
 /**
  * Extract hostname from a URL or git spec and bucket to the allowlist.
@@ -70,7 +70,7 @@ function extractHost(urlOrSpec: string): string {
  * dashboard separate first-party from user-configured marketplaces.
  */
 function isOfficialRepo(urlOrSpec: string): boolean {
-  return urlOrSpec.includes(`${OFFICIAL_MARKETPLACE_ORG}/${OFFICIAL_MARKETPLACE_NAME}`)
+  return urlOrSpec.includes(OFFICIAL_MARKETPLACE_REPO)
 }
 
 export function logPluginFetch(

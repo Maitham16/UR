@@ -1,4 +1,4 @@
-# UR Agent code feature inventory
+# UR-AGENT code feature inventory
 
 This file is a code-derived inventory of what this agent can do in the
 `ur-agent` 1.19.0 source tree. It is meant to cover behavior that is easy to
@@ -22,7 +22,7 @@ Sources traced include:
 - `src/utils/plugins/**`
 - `src/entrypoints/mcp.ts`
 - `src/sdk/index.ts`
-- `marketplace-plugins/**`
+- `plugins/core/**`
 
 Notes:
 
@@ -876,7 +876,7 @@ Plugin loading supports:
 - strict known-marketplace policy
 - managed plugin settings
 
-Bundled marketplace plugin families in `marketplace-plugins/**`:
+Bundled marketplace plugin families in `plugins/core/**`:
 
 - code review
 - evaluate response

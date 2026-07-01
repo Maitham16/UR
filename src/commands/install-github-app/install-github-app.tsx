@@ -182,7 +182,7 @@ function InstallGitHubApp(props: {
     }
   }, [state.selectedRepoName, state.workflowAction, state.selectedWorkflows, state.useCurrentRepo, state.workflowExists, state.secretExists, state.authType]);
   async function openGitHubAppInstallation() {
-    const installUrl = 'https://github.com/Maitham16/UR-mapek';
+    const installUrl = 'https://github.com/Maitham16/UR';
     await openBrowser(installUrl);
   }
   async function checkRepositoryPermissions(repoName: string): Promise<{
@@ -288,7 +288,7 @@ function InstallGitHubApp(props: {
           repoWarnings.push({
             title: 'Invalid GitHub URL format',
             message: 'The repository URL format appears to be invalid.',
-            instructions: ['Use format: owner/repo', 'Example: Maitham16/UR-mapek']
+            instructions: ['Use format: owner/repo', 'Example: Maitham16/UR']
           });
         } else {
           repoName_1 = match[1]?.replace(/\.git$/, '') || '';
@@ -298,7 +298,7 @@ function InstallGitHubApp(props: {
         repoWarnings.push({
           title: 'Repository format warning',
           message: 'Repository should be in format "owner/repo"',
-          instructions: ['Use format: owner/repo', 'Example: Maitham16/UR-mapek']
+          instructions: ['Use format: owner/repo', 'Example: Maitham16/UR']
         });
       }
       const permissionCheck = await checkRepositoryPermissions(repoName_1);

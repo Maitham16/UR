@@ -84,7 +84,7 @@ export function ExistingWorkflowStep(t0) {
   }
   let t8;
   if ($[12] === Symbol.for("react.memo_cache_sentinel")) {
-    t8 = <Box marginTop={1}><Text dimColor={true}>View the latest workflow template at:{" "}<Text color="ur">https://github.com/Maitham16/UR-mapek</Text></Text></Box>;
+    t8 = <Box marginTop={1}><Text dimColor={true}>View the latest workflow template at:{" "}<Text color="ur">https://github.com/Maitham16/UR</Text></Text></Box>;
     $[12] = t8;
   } else {
     t8 = $[12];

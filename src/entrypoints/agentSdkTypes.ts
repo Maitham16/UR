@@ -1,6 +1,6 @@
 // @ts-nocheck
 /**
- * Main entrypoint for UR Agent SDK types.
+ * Main entrypoint for UR-AGENT SDK types.
  *
  * This file re-exports the public SDK API from:
  * - sdk/coreTypes.ts - Common serializable types (messages, configs)

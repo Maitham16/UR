@@ -1,0 +1,13 @@
+{
+  "name": "explain-error",
+  "version": "0.1.0",
+  "description": "Adds /explain-error — re-runs a failing command and diagnoses the error in plain English.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/UR"
+  },
+  "homepage": "https://github.com/Maitham16/UR/tree/master/plugins/core/explain-error",
+  "repository": "https://github.com/Maitham16/UR",
+  "license": "LicenseRef-UR-AGENT-Non-Commercial-Self-Responsibility",
+  "keywords": ["debug", "error", "troubleshooting"]
+}

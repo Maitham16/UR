@@ -22,9 +22,9 @@ import { isEnvTruthy } from '../envUtils.js'
 import { sideQuery } from '../sideQuery.js'
 import { getAllSocketPaths, getSecureSocketPath } from './common.js'
 
-const EXTENSION_DOWNLOAD_URL = 'https://github.com/Maitham16/UR-mapek'
+const EXTENSION_DOWNLOAD_URL = 'https://github.com/Maitham16/UR'
 const BUG_REPORT_URL =
-  'https://github.com/Maitham16/UR-mapek/issues/new'
+  'https://github.com/Maitham16/UR/issues/new'
 
 const SAFE_BRIDGE_STRING_KEYS = new Set([
   'bridge_status',

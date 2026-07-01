@@ -1,0 +1,12 @@
+{
+  "name": "command-template",
+  "displayName": "Command Template",
+  "version": "0.1.0",
+  "description": "Minimal UR-AGENT plugin template that contributes one slash command.",
+  "author": {
+    "name": "UR-AGENT"
+  },
+  "commands": {
+    "example": "./commands/example.md"
+  }
+}

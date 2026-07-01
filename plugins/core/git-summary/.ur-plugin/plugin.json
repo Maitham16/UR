@@ -1,0 +1,13 @@
+{
+  "name": "git-summary",
+  "version": "0.1.0",
+  "description": "Adds /git-summary — a one-paragraph factual summary of the working tree and recent history.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/UR"
+  },
+  "homepage": "https://github.com/Maitham16/UR/tree/master/plugins/core/git-summary",
+  "repository": "https://github.com/Maitham16/UR",
+  "license": "LicenseRef-UR-AGENT-Non-Commercial-Self-Responsibility",
+  "keywords": ["git", "summary", "standup", "workflow"]
+}

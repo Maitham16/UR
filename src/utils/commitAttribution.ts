@@ -18,10 +18,8 @@ import { getCanonicalName, type ModelName } from './model/model.js'
 import { sequential } from './sequential.js'
 
 const INTERNAL_MODEL_REPOS = [
-  'github.com:Maitham16/UR-mapek',
-  'github.com/Maitham16/UR-mapek',
-  'github.com:Maitham16/ur-agent',
-  'github.com/Maitham16/ur-agent',
+  'github.com:Maitham16/UR',
+  'github.com/Maitham16/UR',
 ]
 
 /**

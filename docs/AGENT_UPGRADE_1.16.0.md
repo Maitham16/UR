@@ -1,4 +1,4 @@
-# UR Agent 1.16.0 Upgrade Notes
+# UR-AGENT 1.16.0 Upgrade Notes
 
 UR 1.16.0 adds local-network Ollama discovery. The agent can now find Ollama
 servers on your LAN, let you pick one at startup, and remember the choice for

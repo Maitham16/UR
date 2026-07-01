@@ -1,4 +1,4 @@
-# UR Agent 1.19.0 Upgrade Notes
+# UR-AGENT 1.19.0 Upgrade Notes
 
 UR 1.19.0 adds two P0 agent reliability surfaces: project safety policy and
 project context packing.

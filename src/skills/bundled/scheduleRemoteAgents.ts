@@ -206,7 +206,7 @@ You CANNOT delete triggers. If the user asks to delete, direct them to: https://
       "session_context": {
         "model": "ur-modelS-4-6",
         "sources": [
-          {"git_repository": {"url": "${gitRepoUrl || 'https://github.com/Maitham16/UR-mapek'}"}}
+          {"git_repository": {"url": "${gitRepoUrl || 'https://github.com/Maitham16/UR'}"}}
         ],
         "allowed_tools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]
       },

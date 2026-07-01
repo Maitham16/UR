@@ -10,6 +10,8 @@
 - `src/services/` contains API, MCP, analytics, sync, safety, context, and
   runtime services.
 - `src/components/` and `src/ink/` implement the terminal UI.
+- `plugins/core/`, `plugins/community/`, and `plugins/examples/` contain
+  shipped plugins, contributed plugin staging, and copyable plugin templates.
 - `examples/` contains example prompts and workflows.
 - `test/` contains Bun tests for local UR utility modules.
 
@@ -34,11 +36,12 @@ bun run dev
 bun run typecheck
 bun run lint
 bun test
-bun run bundle
+bun run build
 bun run smoke
 bun run secrets:scan
 bun run release:check
 bun run package:check
+npm pack --dry-run
 npm publish --dry-run
 ```
 
@@ -71,7 +74,7 @@ only the root README. Check:
 - `docs/`
 - `documentation/`
 - `examples/`
-- extension and marketplace README files when the feature affects them
+- extension and plugin README files when the feature affects them
 
 For top-level commands, also update the static documentation site command data
 in `documentation/app.js` and any relevant tutorial section in
@@ -94,7 +97,7 @@ ur --version
 This package is configured for install without cloning:
 
 ```sh
-bun add -g github:Maitham16/UR-mapek
+bun add -g github:Maitham16/UR
 ```
 
 The package exposes the global `ur` command from `bin/ur.js`. That launcher reads `package.json` for version and repository metadata, then runs `src/entrypoints/cli.tsx` with Bun.

@@ -1,4 +1,4 @@
-# UR Agent 1.17.0 Upgrade Notes
+# UR-AGENT 1.17.0 Upgrade Notes
 
 UR 1.17.0 adds the P0 reliable repo editing surface.
 

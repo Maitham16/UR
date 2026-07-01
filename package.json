@@ -1,18 +1,18 @@
 {
   "name": "ur-agent",
   "version": "1.24.0",
-  "description": "UR — autonomous engineering workflow engine (plan, execute, test, verify, document, benchmark, reproduce)",
+  "description": "UR-AGENT — autonomous engineering workflow engine (plan, execute, test, verify, document, benchmark, reproduce)",
   "type": "module",
   "packageManager": "bun@1.3.14",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Maitham16/UR-mapek.git"
+    "url": "git+https://github.com/Maitham16/UR.git"
   },
   "bugs": {
-    "url": "https://github.com/Maitham16/UR-mapek/issues"
+    "url": "https://github.com/Maitham16/UR/issues"
   },
-  "homepage": "https://github.com/Maitham16/UR-mapek#readme",
-  "license": "LicenseRef-UR-Agent-Non-Commercial-Self-Responsibility",
+  "homepage": "https://github.com/Maitham16/UR#readme",
+  "license": "LicenseRef-UR-AGENT-Non-Commercial-Self-Responsibility",
   "keywords": [
     "agent",
     "cli",
@@ -30,16 +30,20 @@
     "documentation",
     "extensions",
     "examples",
-    "marketplace-plugins",
+    "plugins",
     "CHANGELOG.md",
+    "CONTRIBUTING.md",
     "QUALITY.md",
     "README.md",
+    "RELEASE.md",
+    "SECURITY.md",
     "LICENSE"
   ],
   "scripts": {
     "start": "node ./bin/ur.js",
     "dev": "bun --watch run src/entrypoints/cli.tsx",
     "bundle": "node scripts/bundle.mjs",
+    "build": "node scripts/bundle.mjs",
     "release:check": "node scripts/release-check.mjs",
     "typecheck": "bun run tsc --noEmit",
     "lint": "node scripts/lint.mjs",

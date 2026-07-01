@@ -981,7 +981,7 @@ async function run(): Promise<CommanderCommand> {
     }
     profileCheckpoint('preAction_after_settings_sync');
   });
-  program.name('ur').description(`Ur — autonomous engineering workflow engine (plan, execute, test, verify, document, benchmark, reproduce). Starts an interactive session by default; use -p/--print for non-interactive output.`).argument('[prompt]', 'Your prompt', String)
+  program.name('ur').description(`UR-AGENT — autonomous engineering workflow engine (plan, execute, test, verify, document, benchmark, reproduce). Starts an interactive session by default; use -p/--print for non-interactive output.`).argument('[prompt]', 'Your prompt', String)
   // Subcommands inherit helpOption via commander's copyInheritedSettings —
   // setting it once here covers mcp, plugin, auth, and all other subcommands.
   .helpOption('-h, --help', 'Display help for command').option('-d, --debug [filter]', 'Enable debug mode with optional category filtering (e.g., "api,hooks" or "!1p,!file")', (_value: string | true) => {
@@ -3872,7 +3872,7 @@ async function run(): Promise<CommanderCommand> {
         pendingHookMessages
       }, renderAndRun);
     }
-  }).version(`${MACRO.VERSION} (Ur)`, '-v, --version', 'Output the version number');
+  }).version(`${MACRO.VERSION} (UR-AGENT)`, '-v, --version', 'Output the version number');
 
   // Worktree flags
   program.option('-w, --worktree [name]', 'Create a new git worktree for this session (optionally specify a name)');
@@ -4809,7 +4809,7 @@ async function run(): Promise<CommanderCommand> {
     await runLocalTextCommand(() => import('./commands/role-mode/role-mode.js'), args);
   });
   const a2a = program.command('a2a').description('A2A interoperability utilities').configureHelp(createSortedHelpConfig());
-  a2a.command('card').description('Print UR Agent Card metadata for A2A discovery').option('--base-url <url>', 'Base URL to use for the Agent Card endpoint').option('--compact', 'Output compact JSON').action(async (opts: {
+  a2a.command('card').description('Print UR-AGENT Card metadata for A2A discovery').option('--base-url <url>', 'Base URL to use for the Agent Card endpoint').option('--compact', 'Output compact JSON').action(async (opts: {
     baseUrl?: string;
     compact?: boolean;
   }) => {
@@ -5053,7 +5053,7 @@ async function run(): Promise<CommanderCommand> {
   // - We perform exact string comparison (including SHA) to detect any change
   // - This ensures users always get the latest build, even when only the SHA changes
   // - UI shows both versions including build metadata for clarity
-  program.command('update').alias('upgrade').description('Check for updates and install if available').action(async () => {
+  program.command('update').alias('upgrade').description('Check npm for UR-AGENT updates').action(async () => {
     const {
       update
     } = await import('src/cli/update.js');

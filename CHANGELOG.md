@@ -13,7 +13,7 @@
   global-install GitHub checks behind successful Bun tests.
 
 ### Changed
-- npm package now includes `marketplace-plugins/` and documents the
+- npm package now includes `plugins/` and documents the
   marketplace surfaces in the npm README.
 - UR product positioning is documented as an autonomous engineering workflow
   engine for plan, execute, test, verify, document, benchmark, and reproduce.
@@ -764,7 +764,7 @@
   agent identity, and multimodal workflows. The report includes source
   references for each trend.
 - **A2A Agent Card export.** New `ur a2a card` CLI command and `/a2a-card`
-  slash command print UR Agent Card metadata for discovery by A2A-aware tools.
+  slash command print UR-AGENT Card metadata for discovery by A2A-aware tools.
 - **Professional trend docs.** `docs/AGENT_TRENDS.md` documents the coverage
   matrix, source/trust policy, and prioritized roadmap.
 
@@ -806,7 +806,7 @@
   discovery is unavailable.
 - **Repository metadata now matches production.** Package metadata, docs, bundled
   issue links, marketplace defaults, and GitHub workflow templates now point to
-  `Maitham16/UR-mapek`.
+  `Maitham16/UR`.
 
 ### Added
 - **Release consistency gate.** `bun run release:check` verifies package,

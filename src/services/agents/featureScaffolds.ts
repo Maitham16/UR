@@ -751,7 +751,7 @@ runner; \`ur trigger\` is the inbound parser that decides what to run.
   {
     path: '.github/workflows/ur-agent.yml',
     root: 'project',
-    content: `name: UR Agent
+    content: `name: UR-AGENT
 
 on:
   workflow_dispatch:

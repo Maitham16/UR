@@ -15,9 +15,9 @@ const packageName = typeof name === 'string' ? name : 'ur-agent'
 const issues =
   typeof packageJson.bugs?.url === 'string'
     ? packageJson.bugs.url
-    : 'https://github.com/Maitham16/UR-mapek/issues'
+    : 'https://github.com/Maitham16/UR/issues'
 
-console.log(`Bundling UR v${version} ...`)
+console.log(`Bundling UR-AGENT v${version} ...`)
 execFileSync(
   'bun',
   [

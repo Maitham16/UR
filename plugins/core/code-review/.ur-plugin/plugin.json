@@ -1,0 +1,13 @@
+{
+  "name": "code-review",
+  "version": "0.1.0",
+  "description": "Adds /code-review — structured review of the working diff against a base ref.",
+  "author": {
+    "name": "Maitham Al-rubaye",
+    "url": "https://github.com/Maitham16/UR"
+  },
+  "homepage": "https://github.com/Maitham16/UR/tree/master/plugins/core/code-review",
+  "repository": "https://github.com/Maitham16/UR",
+  "license": "LicenseRef-UR-AGENT-Non-Commercial-Self-Responsibility",
+  "keywords": ["code-review", "git", "diff", "quality"]
+}

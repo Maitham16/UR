@@ -26,9 +26,9 @@ const MAX_RELEASE_NOTES_SHOWN = 5
  * 3. Next time the user starts UR, the cached changelog is available immediately
  */
 export const CHANGELOG_URL =
-  'https://github.com/Maitham16/UR-mapek'
+  'https://github.com/Maitham16/UR'
 const RAW_CHANGELOG_URL =
-  'https://raw.githubusercontent.com/Maitham16/UR-mapek/refs/heads/master/CHANGELOG.md'
+  'https://raw.githubusercontent.com/Maitham16/UR/refs/heads/master/CHANGELOG.md'
 
 /**
  * Get the path for the cached changelog file.

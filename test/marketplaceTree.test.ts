@@ -87,7 +87,7 @@ describe('repo marketplace tree', () => {
 
   test('hello plugin manifest parses against PluginManifestSchema', async () => {
     const raw = await readFile(
-      join(REPO, 'marketplace-plugins', 'hello', '.ur-plugin', 'plugin.json'),
+      join(REPO, 'plugins/core', 'hello', '.ur-plugin', 'plugin.json'),
       'utf8',
     )
     const parsed = JSON.parse(raw)
@@ -147,7 +147,7 @@ describe('repo marketplace tree', () => {
   })
 
   test('engineering-discipline reference plugin ships every marketplace extension surface', async () => {
-    const root = join(REPO, 'marketplace-plugins', 'engineering-discipline')
+    const root = join(REPO, 'plugins/core', 'engineering-discipline')
     const manifestRaw = await readFile(
       join(root, '.ur-plugin', 'plugin.json'),
       'utf8',

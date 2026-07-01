@@ -1,4 +1,4 @@
-# Upgrading to UR Agent v1.22.0
+# Upgrading to UR-AGENT v1.22.0
 
 ## What's new
 

@@ -1,4 +1,4 @@
-# UR Agent
+# UR-AGENT
 
 <p align="center">
   <strong>Autonomous engineering workflow engine for reproducible software work.</strong>
@@ -10,7 +10,7 @@
   <a href="./QUALITY.md"><img alt="quality gate" src="https://img.shields.io/badge/quality-release%20gated-brightgreen.svg"></a>
 </p>
 
-UR Agent is a Bun and TypeScript autonomous engineering workflow engine: a
+UR-AGENT is a Bun and TypeScript autonomous engineering workflow engine: a
 reproducible autonomous software engineering agent built for disciplined local
 and CI-driven work. It is not only chat, autocomplete, or code edits: UR is
 built to plan, execute, test, verify, document, benchmark, and reproduce
@@ -84,12 +84,13 @@ Install the global `ur` command:
 ```sh
 npm install -g ur-agent
 ur --version
+ur --help
 ```
 
 Install directly from GitHub when you want this repository build:
 
 ```sh
-bun add -g github:Maitham16/UR-mapek
+bun add -g github:Maitham16/UR
 ur --version
 ```
 
@@ -116,6 +117,18 @@ Resume previous work:
 ```sh
 ur --continue
 ur --resume
+```
+
+Check for npm updates:
+
+```sh
+ur upgrade
+```
+
+Source checkouts report:
+
+```text
+Development build detected. To update, pull latest source or install from npm.
 ```
 
 Choose a model or Ollama host:
@@ -173,9 +186,24 @@ as first-class subcommands in the shipped CLI.
 | `ur acp` | Start/stop/status the Agent Communication Protocol server for IDE extensions. |
 | `ur exec` | Run one or more prompts in non-interactive mode with optional concurrency. |
 | `ur ide diff` | Capture editor-readable inline diff bundles. |
-| `ur a2a card` | Print UR Agent Card metadata for agent interoperability. |
+| `ur a2a card` | Print UR-AGENT Card metadata for agent interoperability. |
 | `ur a2a serve` | Start an opt-in local A2A task server with bearer or delegation auth. |
 | `ur sdk` | Show programmatic headless usage and scaffold SDK examples. |
+
+### Status Bar
+
+Interactive sessions show a compact bottom status bar when the terminal supports
+it. It is hidden in CI, dumb terminals, non-interactive mode, and assistant
+viewer mode.
+
+Example:
+
+```text
+UR-AGENT v1.24.0 | model: qwen3-coder:480b-cloud | mode: ask | branch: main | tasks: idle | Update: 1.23.3 -> 1.24.0 available
+```
+
+If a custom status-line hook is configured, UR-AGENT uses that hook output
+instead of the built-in bar.
 
 New slash skills run agentic work in isolated git worktrees with clean commits and PR output:
 `/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`.
@@ -202,8 +230,9 @@ ur plugin disable <plugin>
 ```
 
 The npm package includes `README.md`, `QUALITY.md`, `docs/`, `documentation/`,
-and `marketplace-plugins/`, so the npm package page and installed artifact both
-carry the marketplace documentation.
+and `plugins/`, so the npm package page and installed artifact both carry the
+marketplace documentation, core plugins, community staging directory, and
+example plugin template. See [Plugin Guide](docs/plugins.md).
 
 UR also documents the core Cursor-style agent primitives as first-class,
 project-backed features: Agent surfaces (`ur`, `ur agents`, `ur crew`, `ur bg`),
@@ -265,7 +294,6 @@ UR reads repository instructions and local runtime state from project files:
 - `UR.local.md` is for private local instructions.
 - `.ur/skills/` stores project skills.
 - `.ur/agents/` stores custom agents and role modes.
-- `.ur/specs/`, `.ur/artifacts/`, `.ur/automations/`, `.ur/test-first/`,
 - `.ur/safety-policy.json` configures project shell safety rules for read,
   write, execute, and network command classes.
 - `.ur/project-manifest.json` and `.ur/context/` hold architecture summaries,
@@ -297,7 +325,9 @@ settings, generated indexes, memory, logs, and secrets out of Git.
   agents, A2A, analytics, sync, and API integration.
 - `extensions/vscode-ur-inline-diffs/` contains the VS Code inline diff review
   extension.
-- `marketplace-plugins/` contains bundled example marketplace plugins.
+- `plugins/core/` contains first-party marketplace plugins.
+- `plugins/community/` stages contributed plugins.
+- `plugins/examples/` contains plugin templates users can copy.
 
 ## Safety Model
 
@@ -351,11 +381,12 @@ Build and verify a release:
 bun run typecheck
 bun run lint
 bun test
-bun run bundle
+bun run build
 bun run smoke
 bun run secrets:scan
 bun run release:check
 bun run package:check
+npm pack --dry-run
 npm publish --dry-run
 ```
 
@@ -378,7 +409,11 @@ release until that GitHub run is green.
 - [1.18.0 Upgrade Notes](docs/AGENT_UPGRADE_1.18.0.md)
 - [1.17.0 Upgrade Notes](docs/AGENT_UPGRADE_1.17.0.md)
 - [Development Guide](docs/DEVELOPMENT.md)
+- [Plugin Guide](docs/plugins.md)
 - [Validation Runbook](docs/VALIDATION.md)
+- [Release Runbook](RELEASE.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
 - [Static Documentation Site](documentation/index.html)
 
 The `examples/` directory includes prompt and workflow examples for coding,
@@ -386,8 +421,8 @@ research, browser, image, video, MCP, memory, and agent-platform tasks.
 
 ## License
 
-UR Agent is released under the
-[UR Agent Non-Commercial Self-Responsibility License](LICENSE).
+UR-AGENT is released under the
+[UR-AGENT Non-Commercial Self-Responsibility License](LICENSE).
 
 Personal, educational, research, evaluation, and other non-commercial use is
 permitted. Commercial use requires prior written permission from Maitham

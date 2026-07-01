@@ -1,4 +1,4 @@
-# UR Agent 1.15.0 Upgrade Notes
+# UR-AGENT 1.15.0 Upgrade Notes
 
 UR 1.15.0 keeps the agent local-first and Ollama-centered. The new agent
 platform surfaces do not add Anthropic, OpenAI, or other direct provider API
