@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.30.2
+
+- Fix Codex subscription dispatch failing with `exited 1 ... Reading additional
+  input from stdin`. `codex exec` reads stdin even when the prompt is an
+  argument; UR now gives it a closed, empty stdin pipe (EOF) instead of
+  `/dev/null`, so a logged-in Codex CLI runs correctly. Other subscription CLIs
+  are unchanged (prompt as argument, stdin ignored).
+
 ## 1.30.1
 
 - Fix Codex CLI runtime dispatch by ignoring stdin when UR already passes the

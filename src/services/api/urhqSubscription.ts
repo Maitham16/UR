@@ -25,12 +25,16 @@ export type SubscriptionCliRunner = (
 
 type CliSpec = {
   args: (model: string, prompt: string) => string[]
+  // 'close' provides an empty, closed stdin pipe (EOF). Codex `exec` reads
+  // "additional input from stdin" even when the prompt is an argument; with
+  // stdin ignored (/dev/null) it exits 1, so it needs a real closed pipe.
+  stdin?: 'ignore' | 'close'
 }
 
 // Non-interactive invocation per official CLI. The prompt is passed as an
 // argument; the model flag maps the scoped model id to the CLI's own name.
 const CLI_SPECS: Record<string, CliSpec> = {
-  'codex-cli': { args: (model, prompt) => ['exec', '--model', model, prompt] },
+  'codex-cli': { args: (model, prompt) => ['exec', '--model', model, prompt], stdin: 'close' },
   'claude-code-cli': {
     args: (model, prompt) => ['-p', prompt, '--model', model, '--output-format', 'json'],
   },
@@ -61,6 +65,9 @@ export function createURHQSubscriptionClient(
     }
     const prompt = messagesToPrompt(params)
     const result = await run(options.commandPath, spec.args(model, prompt), {
+      // Codex needs a closed (EOF) stdin, not /dev/null; other CLIs take the
+      // prompt as an argument and leave stdin ignored.
+      input: spec.stdin === 'close' ? '' : undefined,
       signal: requestOptions?.signal,
       timeoutMs: options.timeoutMs ?? 120_000,
     })

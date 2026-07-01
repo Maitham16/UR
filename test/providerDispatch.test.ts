@@ -55,6 +55,47 @@ describe('subscription CLI dispatch is real (not faked)', () => {
     expect(getSubscriptionCliStdinMode('')).toBe('pipe')
   })
 
+  test('codex-cli is dispatched with a closed empty stdin, not /dev/null (stdin-block fix)', async () => {
+    let receivedInput: string | undefined = 'unset'
+    const runner = async (_c: string, _a: string[], opts: { input?: string }) => {
+      receivedInput = opts?.input
+      return { code: 0, stdout: 'ok', stderr: '' }
+    }
+    const client = createURHQSubscriptionClient('codex-cli', {
+      commandPath: 'codex',
+      maxRetries: 1,
+      runner,
+    })
+    await client.beta.messages.create({
+      model: 'codex/gpt-5.5',
+      messages: userMessages(),
+      max_tokens: 16,
+    })
+    // Empty string -> stdin pipe that is written and closed (EOF); undefined -> ignore.
+    expect(receivedInput).toBe('')
+    expect(getSubscriptionCliStdinMode(receivedInput)).toBe('pipe')
+  })
+
+  test('arg-mode CLIs (claude/gemini) leave stdin ignored', async () => {
+    let receivedInput: string | undefined = 'unset'
+    const runner = async (_c: string, _a: string[], opts: { input?: string }) => {
+      receivedInput = opts?.input
+      return { code: 0, stdout: 'ok', stderr: '' }
+    }
+    const client = createURHQSubscriptionClient('gemini-cli', {
+      commandPath: 'gemini',
+      maxRetries: 1,
+      runner,
+    })
+    await client.beta.messages.create({
+      model: 'gemini-cli/gemini-2.5-pro',
+      messages: userMessages(),
+      max_tokens: 16,
+    })
+    expect(receivedInput).toBeUndefined()
+    expect(getSubscriptionCliStdinMode(receivedInput)).toBe('ignore')
+  })
+
   test('claude-code-cli parses JSON stdout (.result)', async () => {
     const { runner, calls } = recordingRunner({ stdout: JSON.stringify({ result: 'claude says hi' }) })
     const client = createURHQSubscriptionClient('claude-code-cli', {
