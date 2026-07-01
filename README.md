@@ -143,9 +143,11 @@ ur --ollama-host http://192.168.1.50:11434
 ur --discover-ollama
 ```
 
-Model selection precedence is `OLLAMA_MODEL`, then `UR_MODEL`, then the model
-router over the configured Ollama host. If model discovery fails, the built-in
-fallback is `qwen3-coder:480b-cloud`.
+For Ollama sessions, model selection precedence is `OLLAMA_MODEL`, then
+`UR_MODEL`, then the model router over the configured Ollama host. Once a
+provider/model pair is selected with `/model` or `ur config set`, runtime
+requests use that provider backend; they do not fall back to Ollama unless
+`ollama` is the selected provider.
 
 ### Legal Provider Auth
 
@@ -195,7 +197,10 @@ Use quotes for shell values with spaces.
 In the interactive app, `/model` shows providers first and then shows only the
 selected provider's models. OpenAI API and Codex CLI, Claude API and Claude
 Code, and Gemini API and Gemini CLI are separate access paths; subscription
-logins and API keys are not interchangeable.
+logins and API keys are not interchangeable. The final confirmation includes
+the runtime backend that will receive the next agent request. Use
+`ur provider status` to show the active provider, model, access type, and
+runtime backend.
 
 Security policy: UR-AGENT never scrapes browser sessions, extracts OAuth
 tokens, bypasses subscription/quota/region/organization restrictions, proxies a

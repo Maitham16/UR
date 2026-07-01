@@ -51,15 +51,14 @@ ur -p \
 
 ## Models And Providers
 
-The wrapper in `bin/ur.js` honors explicit model choices in this order:
+For Ollama sessions, the wrapper in `bin/ur.js` honors explicit model choices
+in this order:
 
 1. `OLLAMA_MODEL`
 2. `UR_MODEL`
 
-If neither variable is set, UR lets its Ollama router choose from the models
-exposed by your local Ollama app. That list can include local models and
-Ollama Cloud-backed models. If routing cannot discover a model list, the
-built-in fallback is `qwen3-coder:480b-cloud`.
+If neither variable is set and `ollama` is the selected provider, UR lets its
+Ollama router choose from the models exposed by your local Ollama app.
 
 You can also choose the model for a single session:
 
@@ -109,6 +108,13 @@ ur config set model <model>
 ur config set base_url <url>
 ur config set provider.fallback ollama
 ```
+
+In the interactive app, `/model` chooses a provider first and then a model from
+that provider only. The saved pair controls the runtime backend for the next
+agent request. There is no cross-provider fallback: OpenAI API does not fall
+back to Codex CLI or Ollama, Claude Code does not fall back to Claude API, and
+local/server providers do not leak cloud model lists. Use `ur provider status`
+to inspect the active provider, model, access type, and runtime backend.
 
 Provider values accept canonical IDs and common aliases. For example,
 `claude`, `Claude Code`, and `claude-code-cli` all select

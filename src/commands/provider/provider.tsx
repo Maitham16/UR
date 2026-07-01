@@ -76,6 +76,7 @@ function ShowProviderAndClose({
 
   let message = `Current provider: ${chalk.bold(providerRuntime.providerLabel)} (${providerRuntime.provider})`
   message += `\nAuth mode: ${providerRuntime.authLabel}`
+  message += `\nRuntime backend: ${providerRuntime.runtimeBackend}`
 
   if (providerRuntime.model) {
     message += `\nModel: ${chalk.bold(providerRuntime.model)}`

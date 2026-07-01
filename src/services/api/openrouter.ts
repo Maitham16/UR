@@ -7,6 +7,7 @@
 import type URHQ from '@urhq-ai/sdk'
 import axios from 'axios'
 import { randomUUID } from 'crypto'
+import { createOneShotMessageStream } from './streamingAdapters.js'
 
 export async function createOpenRouterClient(
   options: {
@@ -72,7 +73,7 @@ export async function createOpenRouterClient(
           async withResponse() {
             const { response, data } = await requestPromise
             return {
-              data,
+              data: createOneShotMessageStream(data),
               response,
               request_id: response.data?.id ?? response.headers?.['x-request-id'] ?? randomUUID(),
             }

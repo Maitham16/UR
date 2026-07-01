@@ -21,20 +21,20 @@ environment variables only when the user explicitly selects API mode.
 
 ## Provider matrix
 
-| Provider | Access type | Legal path |
-| --- | --- | --- |
-| Codex CLI | subscription | official Codex CLI login |
-| Claude Code | subscription | official Claude Code login |
-| Gemini CLI | subscription | official Gemini Code Assist login |
-| Antigravity | subscription | official Antigravity login, where supported |
-| OpenAI | API | `OPENAI_API_KEY` |
-| Anthropic Claude | API | `ANTHROPIC_API_KEY` |
-| Gemini | API | `GEMINI_API_KEY` |
-| OpenRouter | API/router | `OPENROUTER_API_KEY` |
-| Ollama | local | localhost Ollama runtime |
-| LM Studio | local | local OpenAI-compatible server |
-| llama.cpp | local | local OpenAI-compatible server |
-| vLLM | local/server | OpenAI-compatible server |
+| Provider | Access type | Runtime backend | Legal path |
+| --- | --- | --- | --- |
+| Codex CLI | subscription | `subscription-cli:codex` | official Codex CLI login |
+| Claude Code | subscription | `subscription-cli:claude-code` | official Claude Code login |
+| Gemini CLI | subscription | `subscription-cli:gemini` | official Gemini Code Assist login |
+| Antigravity | subscription | `subscription-cli:antigravity` | official Antigravity login, where supported |
+| OpenAI API | API | `api:openai` | `OPENAI_API_KEY` |
+| Claude API | API | `api:anthropic` | `ANTHROPIC_API_KEY` |
+| Gemini API | API | `api:gemini` | `GEMINI_API_KEY` |
+| OpenRouter | API/router | `api:openrouter` | `OPENROUTER_API_KEY` |
+| Ollama | local | `ollama` | localhost Ollama runtime |
+| LM Studio | local/server | `openai-compatible:lmstudio` | local OpenAI-compatible server |
+| llama.cpp | local/server | `openai-compatible:llama.cpp` | local OpenAI-compatible server |
+| vLLM | local/server | `openai-compatible:vllm` | OpenAI-compatible server |
 
 ## Commands
 
@@ -65,7 +65,8 @@ UR-AGENT shows providers first, then only models available for the selected prov
 
 ## Runtime provider routing
 
-When you select a provider and model, all agent requests are routed through that provider's backend:
+When you select a provider and model, every agent request is routed through that
+provider's backend:
 
 - **Subscription providers** spawn the official CLI command
 - **API providers** make direct HTTP API calls with your API key
@@ -77,7 +78,10 @@ The selected provider determines:
 - How authentication works
 - What error messages you see
 
-**Important:** Ollama is only used when `ollama` is the selected provider. Selecting another provider routes all requests through that provider's backend.
+**Important:** Ollama is only used when `ollama` is the selected provider.
+Selecting another provider routes requests through that provider's backend. If
+runtime dispatch fails, UR reports the selected provider, selected model, and
+runtime backend instead of switching to Ollama.
 
 ### `/model` command flow
 
@@ -106,6 +110,7 @@ After selecting a model, the confirmation shows:
 - Selected provider and access type
 - Selected model name
 - Model source (live/cache/static)
+- Runtime backend
 - Effort level (if applicable)
 - Thinking status (if enabled)
 
@@ -129,6 +134,7 @@ After selecting a model, the confirmation shows:
   Selected provider: Codex CLI (subscription)
   Selected model: codex/gpt-5.5
   Model source: static
+  Runtime backend: subscription-cli:codex
 ```
 
 ### CLI workflow
@@ -209,11 +215,7 @@ Warning: Current model "gpt-5.5" is not available for provider "anthropic-api" a
 
 **Check active provider and model:**
 ```sh
-# Show current configuration
-ur config get provider
-ur config get model
-
-# Or use the status command
+# Show selected provider, model, access type, credential, readiness, and backend
 ur provider status
 ```
 
@@ -232,10 +234,12 @@ ur provider status
 - For local providers, ensure server is running and model is pulled
 
 **Requests going to wrong backend:**
-- Verify selected provider: `ur config get provider`
+- Verify selected provider and runtime backend: `ur provider status`
 - Change provider: `ur config set provider <provider-id>`
+- Choose a scoped model: `/model`
 - The selected provider determines which backend receives requests
 - Ollama is only used when `ollama` is the selected provider
+- Runtime dispatch validates the provider/model pair before sending a request
 
 **Dynamic discovery fails:**
 - Local/server providers: check server is running at configured URL
@@ -244,12 +248,10 @@ ur provider status
 
 **Debug active runtime backend:**
 ```sh
-# Show detailed provider status
-ur provider doctor
-
-# Check which backend will be used
-# After selecting provider, all requests go through that provider's backend
+ur provider status
 ```
+
+`ur provider doctor` adds detailed diagnostics for the same selected provider.
 
 Provider config and doctor commands accept canonical IDs and common aliases:
 

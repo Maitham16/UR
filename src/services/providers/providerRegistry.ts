@@ -108,6 +108,7 @@ export type ProviderRuntimeInfo = {
   accessType: ProviderAccessType
   accessTypeLabel: string
   credentialType: ProviderCredentialType
+  runtimeBackend: string
   authMode: ProviderAuthMode
   authLabel: string
   model?: string
@@ -472,7 +473,7 @@ export function getActiveProviderSettings(settings: SettingsJson = getInitialSet
         : undefined
   return {
     active,
-    model: configured.model ?? settings.model,
+    model: configured.model ?? (configured.active ? undefined : settings.model),
     baseUrl: configured.baseUrl,
     commandPath: configured.commandPath,
     fallback,
@@ -489,11 +490,46 @@ export function getProviderRuntimeInfo(settings: SettingsJson = getInitialSettin
     accessType: definition.accessType,
     accessTypeLabel: getProviderAccessTypeLabel(definition),
     credentialType: definition.credentialType,
+    runtimeBackend: getProviderRuntimeBackend(provider),
     authMode: definition.authMode,
     authLabel: authModeLabel(definition.authMode),
     model: providerSettings.model,
     baseUrl: providerSettings.baseUrl ?? definition.defaultBaseUrl,
     fallback: providerSettings.fallback,
+  }
+}
+
+export function getProviderRuntimeBackend(providerId: ProviderId | string): string {
+  const provider = resolveProviderId(providerId)
+  switch (provider) {
+    case 'ollama':
+      return 'ollama'
+    case 'lmstudio':
+      return 'openai-compatible:lmstudio'
+    case 'llama.cpp':
+      return 'openai-compatible:llama.cpp'
+    case 'vllm':
+      return 'openai-compatible:vllm'
+    case 'openai-compatible':
+      return 'openai-compatible'
+    case 'codex-cli':
+      return 'subscription-cli:codex'
+    case 'claude-code-cli':
+      return 'subscription-cli:claude-code'
+    case 'gemini-cli':
+      return 'subscription-cli:gemini'
+    case 'antigravity-cli':
+      return 'subscription-cli:antigravity'
+    case 'openai-api':
+      return 'api:openai'
+    case 'anthropic-api':
+      return 'api:anthropic'
+    case 'gemini-api':
+      return 'api:gemini'
+    case 'openrouter':
+      return 'api:openrouter'
+    default:
+      return `unknown:${providerId}`
   }
 }
 
@@ -1214,6 +1250,7 @@ export function formatProviderList(json = false): string {
     accessTypeLabel: getProviderAccessTypeLabel(provider),
     credentialType: provider.credentialType,
     modelDiscoveryType: provider.modelDiscoveryType,
+    runtimeBackend: getProviderRuntimeBackend(provider.id),
     authMode: provider.authMode,
     accessPath: provider.accessPathLabel,
     legalPath: provider.legalPath,
@@ -1222,10 +1259,10 @@ export function formatProviderList(json = false): string {
     return JSON.stringify(providers, null, 2)
   }
   return [
-    'Provider | ID | Aliases | Access type | Credential | Model discovery | Access path',
-    '--- | --- | --- | --- | --- | --- | ---',
+    'Provider | ID | Aliases | Access type | Credential | Model discovery | Runtime backend | Access path',
+    '--- | --- | --- | --- | --- | --- | --- | ---',
     ...providers.map(provider =>
-      `${provider.name} | ${provider.id} | ${provider.aliases.slice(0, 3).join(', ') || '-'} | ${provider.accessTypeLabel} | ${provider.credentialType} | ${provider.modelDiscoveryType} | ${provider.accessPath}`,
+      `${provider.name} | ${provider.id} | ${provider.aliases.slice(0, 3).join(', ') || '-'} | ${provider.accessTypeLabel} | ${provider.credentialType} | ${provider.modelDiscoveryType} | ${provider.runtimeBackend} | ${provider.accessPath}`,
     ),
   ].join('\n')
 }
@@ -1238,6 +1275,7 @@ export function formatProviderDoctor(result: ProviderDoctorResult, json = false)
     `Provider: ${result.displayName} (${result.provider})`,
     `Access: ${getProviderAccessTypeLabel(getProviderDefinition(result.provider))}`,
     `Credential: ${getProviderDefinition(result.provider).credentialType}`,
+    `Runtime backend: ${getProviderRuntimeBackend(result.provider)}`,
     `Auth: ${authModeLabel(result.authMode)}`,
     `Status: ${result.ok ? 'ready' : 'not ready'}`,
   ]
@@ -1263,7 +1301,9 @@ export function formatProviderStatus(result: ProviderDoctorResult, json = false)
   const failure = result.failureReason ? `\nFailure reason: ${result.failureReason}` : ''
   const fix = result.suggestedFix ? `\nSuggested fix: ${result.suggestedFix}` : ''
   const definition = getProviderDefinition(result.provider)
-  return `Selected provider: ${result.displayName} (${result.provider})\nAccess type: ${getProviderAccessTypeLabel(definition)}\nCredential: ${definition.credentialType}\nAuth mode: ${authModeLabel(result.authMode)}\nReady: ${result.ok ? 'yes' : 'no'}${failure}${fix}`
+  const settings = getActiveProviderSettings(getInitialSettings())
+  const model = settings.model ? `\nActive model: ${settings.model}` : ''
+  return `Selected provider: ${result.displayName} (${result.provider})\nAccess type: ${getProviderAccessTypeLabel(definition)}\nCredential: ${definition.credentialType}\nRuntime backend: ${getProviderRuntimeBackend(result.provider)}${model}\nAuth mode: ${authModeLabel(result.authMode)}\nReady: ${result.ok ? 'yes' : 'no'}${failure}${fix}`
 }
 
 // Provider-specific model definitions
@@ -1376,6 +1416,10 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
 }
 
 const cachedModelsByProvider = new Map<ProviderId, ProviderModelDefinition[]>()
+
+export function clearProviderModelCacheForTests(): void {
+  cachedModelsByProvider.clear()
+}
 
 function providerBaseUrl(
   provider: ProviderId,
@@ -1694,13 +1738,21 @@ export function validateProviderModelPair(
   )
   const cachedModels = getCachedProviderModels(provider).map(model => model.id)
   const staticModelIds = staticModelsForProvider(provider).map(model => model.id)
-  const validModelIds = suppliedModels.length > 0 ? suppliedModels : cachedModels.length > 0 ? cachedModels : staticModelIds
+  const hasDynamicModels = models.some(model => model.isDynamic)
+  const validModelIds =
+    suppliedModels.length > 0
+      ? suppliedModels
+      : hasDynamicModels
+        ? cachedModels.length > 0
+          ? cachedModels
+          : staticModelIds
+        : Array.from(new Set([...staticModelIds, ...cachedModels]))
 
   if (validModelIds.includes(modelId)) {
     return { valid: true }
   }
 
-  if (models.some(m => m.isDynamic) && options.allowUncachedDynamic && validModelIds.length === 0) {
+  if (hasDynamicModels && options.allowUncachedDynamic && validModelIds.length === 0) {
     return { valid: true }
   }
 

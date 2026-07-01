@@ -39,6 +39,7 @@ import {
 import {
   shouldEnableThinkingByDefault,
 } from '../utils/thinking.js'
+import { resolveActiveProviderModel } from '../services/api/providerClient.js'
 
 const selectCurrentProvider = (s: { provider?: { active?: string } }) =>
   s.provider?.active ?? 'ollama'
@@ -63,6 +64,7 @@ type SelectionMetadata = {
   providerName: string
   accessType: string
   modelSource: ProviderModelSource
+  runtimeBackend: string
 }
 
 type Props = {
@@ -224,7 +226,26 @@ export function ProviderFirstModelPicker({
     }
 
     // Update provider and model in settings only after the scoped pair validates.
+    let runtimeBackend: string | undefined
     if (selectedProvider) {
+      try {
+        const runtime = resolveActiveProviderModel({
+          settings: {
+            provider: {
+              active: selectedProvider.value as ProviderId,
+              model: value,
+            },
+            model: value,
+          },
+          model: value,
+          source: '/model',
+        })
+        runtimeBackend = runtime.runtimeBackend
+      } catch (error) {
+        setModelWarning(error instanceof Error ? error.message : String(error))
+        return
+      }
+
       const saveResult = setProviderModel(selectedProvider.value, value, {
         availableModels: modelOptions.map(option => option.value),
         modelSource,
@@ -252,6 +273,7 @@ export function ProviderFirstModelPicker({
       providerName: selectedProvider.label,
       accessType: selectedProvider.accessType,
       modelSource,
+      runtimeBackend: runtimeBackend ?? 'unknown',
     } : undefined)
   }
 

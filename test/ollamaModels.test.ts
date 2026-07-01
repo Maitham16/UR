@@ -139,7 +139,7 @@ test('cacheOllamaModelsFromTags stores advertised context lengths', () => {
 
     expect(getOllamaContextLengthForModel('minimax-m3:cloud')).toBe(524_288)
     expect(getOllamaContextLengthForModel('minimax-m3')).toBe(524_288)
-    expect(getContextWindowForModel('minimax-m3:cloud')).toBe(524_288)
+    expect(getContextWindowForModel('minimax-m3:cloud', undefined, 'ollama')).toBe(524_288)
   })
 })
 
@@ -153,7 +153,7 @@ test('cacheOllamaModelMetadata reads context length from api/show model_info', (
     })
 
     expect(getOllamaContextLengthForModel('minimax-m3:cloud')).toBe(524_288)
-    expect(getContextWindowForModel('minimax-m3:cloud')).toBe(524_288)
+    expect(getContextWindowForModel('minimax-m3:cloud', undefined, 'ollama')).toBe(524_288)
   })
 })
 
@@ -166,7 +166,7 @@ test('OLLAMA_CONTEXT_TOKENS overrides advertised Ollama context length', () => {
       },
     })
 
-    expect(getContextWindowForModel('minimax-m3:cloud')).toBe(123_456)
+    expect(getContextWindowForModel('minimax-m3:cloud', undefined, 'ollama')).toBe(123_456)
   })
 })
 

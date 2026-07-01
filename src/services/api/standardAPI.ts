@@ -7,6 +7,7 @@
 import type URHQ from '@urhq-ai/sdk'
 import axios from 'axios'
 import { randomUUID } from 'crypto'
+import { createOneShotMessageStream } from './streamingAdapters.js'
 
 export async function createStandardAPIClient(
   options: {
@@ -50,7 +51,7 @@ export async function createStandardAPIClient(
           async withResponse() {
             const { response, data } = await requestPromise
             return {
-              data,
+              data: createOneShotMessageStream(data),
               response,
               request_id: response.data?.id ?? response.headers?.['x-request-id'] ?? randomUUID(),
             }
@@ -100,7 +101,7 @@ function buildAPIRequest(providerId: string, params: any): any {
     case 'openai-api':
       return {
         model: params.model,
-        messages: params.messages,
+        messages: toOpenAIMessages(params),
         max_tokens: params.max_tokens,
         stream: false,
       }
@@ -114,6 +115,43 @@ function buildAPIRequest(providerId: string, params: any): any {
     default:
       return params
   }
+}
+
+function toOpenAIMessages(params: any): Array<{ role: string; content: string }> {
+  const messages: Array<{ role: string; content: string }> = []
+  const system = systemToText(params.system)
+  if (system) {
+    messages.push({ role: 'system', content: system })
+  }
+  for (const message of params.messages ?? []) {
+    messages.push({
+      role: message.role,
+      content: contentToText(message.content),
+    })
+  }
+  return messages
+}
+
+function systemToText(system: any): string {
+  if (!system) return ''
+  if (typeof system === 'string') return system
+  if (Array.isArray(system)) {
+    return system.map(block => block?.text ?? '').join('\n\n')
+  }
+  return ''
+}
+
+function contentToText(content: any): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map(block => {
+      if (typeof block === 'string') return block
+      if (block?.type === 'text') return block.text ?? ''
+      if (block?.type === 'tool_result') return block.content ?? ''
+      return ''
+    })
+    .join('\n')
 }
 
 function parseAPIResponse(providerId: string, data: any): any {

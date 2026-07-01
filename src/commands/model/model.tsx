@@ -59,7 +59,7 @@ function ModelPickerWrapper(t0) {
         mainLoopModel: model,
         mainLoopModelForSession: null
       }));
-      let message = metadata ? `Selected provider: ${chalk.bold(metadata.providerName)} (${metadata.accessType})\nSelected model: ${chalk.bold(renderModelLabel(model))}\nModel source: ${metadata.modelSource}` : `Set model to ${chalk.bold(renderModelLabel(model))}`;
+      let message = metadata ? `Selected provider: ${chalk.bold(metadata.providerName)} (${metadata.accessType})\nSelected model: ${chalk.bold(renderModelLabel(model))}\nModel source: ${metadata.modelSource}\nRuntime backend: ${metadata.runtimeBackend}` : `Set model to ${chalk.bold(renderModelLabel(model))}`;
       if (effort !== undefined) {
         message = message + ` with ${chalk.bold(effort)} effort`;
       }

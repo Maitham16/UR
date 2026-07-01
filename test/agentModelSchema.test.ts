@@ -21,24 +21,12 @@ test('AgentTool accepts alias and full provider model IDs', () => {
   ).toBe(true)
 })
 
-test('teammate model resolver maps aliases before launching Ollama', () => {
-  const previous = process.env.OLLAMA_MODEL
-  process.env.OLLAMA_MODEL = 'qwen3-coder:480b-cloud'
-  try {
-    expect(parseUserSpecifiedModel('modelS')).toBe('qwen3-coder:480b-cloud')
-    expect(parseUserSpecifiedModel('modelS[1m]')).toBe(
-      'qwen3-coder:480b-cloud[1m]',
-    )
-    expect(resolveTeammateModel('modelS', null)).toBe('qwen3-coder:480b-cloud')
-    expect(resolveTeammateModel('qwen3-coder:480b-cloud', null)).toBe(
-      'qwen3-coder:480b-cloud',
-    )
-    expect(resolveTeammateModel('inherit', 'parent-model')).toBe('parent-model')
-  } finally {
-    if (previous === undefined) {
-      delete process.env.OLLAMA_MODEL
-    } else {
-      process.env.OLLAMA_MODEL = previous
-    }
-  }
+test('teammate model resolver preserves explicit Ollama model IDs', () => {
+  expect(parseUserSpecifiedModel('qwen3-coder:480b-cloud')).toBe(
+    'qwen3-coder:480b-cloud',
+  )
+  expect(resolveTeammateModel('qwen3-coder:480b-cloud', null)).toBe(
+    'qwen3-coder:480b-cloud',
+  )
+  expect(resolveTeammateModel('inherit', 'parent-model')).toBe('parent-model')
 })

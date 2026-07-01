@@ -6,7 +6,7 @@ import { resolveAntModel } from './model/antModels.js'
 import { getCanonicalName } from './model/model.js'
 import { getModelCapability } from './model/modelCapabilities.js'
 import { getOllamaContextLengthForModel } from './model/ollamaModels.js'
-import { getAPIProvider } from './model/providers.js'
+import { getAPIProvider, type APIProvider } from './model/providers.js'
 
 // Model context window size (200k tokens for all models right now)
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -57,8 +57,9 @@ export function modelSupports1M(model: string): boolean {
 export function getContextWindowForModel(
   model: string,
   betas?: string[],
+  apiProvider: APIProvider = getAPIProvider(),
 ): number {
-  if (getAPIProvider() === 'ollama') {
+  if (apiProvider === 'ollama') {
     const override = parseInt(process.env.OLLAMA_CONTEXT_TOKENS || '', 10)
     if (!isNaN(override) && override > 0) {
       return override

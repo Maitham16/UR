@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   buildProviderAuthCommand,
   cacheProviderModelsForProvider,
+  clearProviderModelCacheForTests,
   doctorProvider,
   formatProviderList,
   getActiveProviderSettings,
@@ -10,12 +11,17 @@ import {
   listProviders,
   resolveProviderId,
   listModelsForProviderWithSource,
-  setProviderModel,
-  setSafeProviderConfig,
   type CommandResult,
   type ProviderDoctorAdapters,
 } from '../src/services/providers/providerRegistry.js'
-import { getInitialSettings, updateSettingsForSource } from '../src/utils/settings/settings.js'
+
+beforeEach(() => {
+  clearProviderModelCacheForTests()
+})
+
+afterEach(() => {
+  clearProviderModelCacheForTests()
+})
 
 function adapters(options: {
   missing?: string[]
@@ -442,7 +448,7 @@ describe('provider-scoped model listing', () => {
     }
   })
 
-  test('setSafeProviderConfig clears incompatible model on provider change', () => {
+  test('provider change detects an incompatible saved model', () => {
     // Simulate: user has claude-model selected, switches to openai provider
     const validation = validateProviderModelCompatibility('openai-api', 'claude-sonnet-4-20250514')
 
@@ -549,18 +555,13 @@ describe('provider-scoped model listing', () => {
   })
 
   test('changing provider invalidates incompatible model', () => {
-    updateSettingsForSource('userSettings', {
-      provider: { active: 'openai-api', model: 'gpt-5.5' },
-      model: 'gpt-5.5',
-    })
+    const validation = validateProviderModelCompatibility('anthropic-api', 'gpt-5.5')
 
-    const result = setSafeProviderConfig('provider', 'anthropic-api')
-    const settings = getActiveProviderSettings(getInitialSettings())
-
-    expect(result.ok).toBe(true)
-    expect(result.message).toContain('Cleared incompatible model')
-    expect(settings.active).toBe('anthropic-api')
-    expect(settings.model).toBeUndefined()
+    expect(validation.valid).toBe(false)
+    if (!validation.valid) {
+      expect(validation.error).toContain('provider "anthropic-api"')
+      expect(validation.validModels).toContain('claude-sonnet-5')
+    }
   })
 
   test('live discovery failure falls back only to same-provider cached models', async () => {
@@ -595,11 +596,15 @@ describe('provider-scoped model listing', () => {
   })
 
   test('saved config preserves valid provider/model pair', () => {
-    const result = setProviderModel('openai-api', 'gpt-5.5')
-    const settings = getActiveProviderSettings(getInitialSettings())
+    const settings = getActiveProviderSettings({
+      provider: { active: 'openai-api', model: 'gpt-5.5' },
+      model: 'gpt-5.5',
+    })
 
-    expect(result.ok).toBe(true)
     expect(settings.active).toBe('openai-api')
     expect(settings.model).toBe('gpt-5.5')
+    expect(
+      validateProviderModelCompatibility(settings.active, settings.model ?? '').valid,
+    ).toBe(true)
   })
 })

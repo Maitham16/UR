@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.27.6
+
+- Route runtime requests through the selected provider/model pair instead of
+  allowing stale Ollama/default-provider paths to handle non-Ollama requests.
+- Add runtime dispatch validation, backend labels, and focused mocked dispatch
+  tests for subscription CLI, API, Ollama, and OpenAI-compatible providers.
+- Fix malformed message rendering from crashing startup when an undefined entry
+  appears in the UI message list.
+
 ## 1.27.5
 
 - Make `/model` provider-first and provider-scoped, with clear subscription,

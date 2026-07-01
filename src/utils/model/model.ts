@@ -38,6 +38,10 @@ import {
   pickBestCoderModel,
   pickSmallFastModel,
 } from './ollamaRouter.js'
+import {
+  getActiveProviderSettings,
+  getDefaultModelForProvider,
+} from '../../services/providers/providerRegistry.js'
 
 export type ModelShortName = string
 export type ModelName = string
@@ -235,6 +239,15 @@ export function getRuntimeMainLoopModel(params: {
  * @returns The default model setting to use
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
+  const settings = getSettings_DEPRECATED() || {}
+  const activeProvider = getActiveProviderSettings(settings).active ?? 'ollama'
+  if (activeProvider !== 'ollama') {
+    const providerDefault = getDefaultModelForProvider(activeProvider)
+    if (providerDefault) {
+      return providerDefault
+    }
+  }
+
   if (getAPIProvider() === 'ollama') {
     return getDefaultOllamaModel()
   }

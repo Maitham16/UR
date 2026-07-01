@@ -58,7 +58,18 @@ In the interactive app, `/model` is provider-first: choose a provider, then
 choose a model from that provider only. The picker labels providers as
 subscription login, API key, local runtime, or OpenAI-compatible endpoint and
 shows model source as `live`, `cache`, or `static`. Changing providers clears an
-incompatible saved model instead of silently carrying it across providers.
+incompatible saved model instead of silently carrying it across providers. The
+saved provider/model pair controls the runtime backend for the next agent
+request; Ollama is only used when `ollama` is the selected provider.
+
+Use this to inspect the active runtime path:
+
+```sh
+ur provider status
+```
+
+The status output includes active provider, active model, access type,
+credential type, and runtime backend.
 
 API keys are not written to UR settings. Set them in the environment when you
 explicitly choose API mode:
@@ -98,7 +109,9 @@ OLLAMA_MODEL=qwen3-coder:480b-cloud
 UR_MODEL=qwen3-coder:480b-cloud
 ```
 
-`OLLAMA_MODEL` selects the model name and takes precedence over `UR_MODEL`. If neither is set, UR lets its Ollama router choose from the model list advertised by the configured Ollama app. If that discovery fails, the built-in fallback is `qwen3-coder:480b-cloud`.
+`OLLAMA_MODEL` selects the model name and takes precedence over `UR_MODEL` only
+for Ollama runtime sessions. If neither is set, UR lets its Ollama router choose
+from the model list advertised by the configured Ollama app.
 
 ### Discovering LAN Ollama servers
 
