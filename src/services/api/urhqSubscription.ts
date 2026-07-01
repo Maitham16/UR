@@ -48,18 +48,31 @@ export async function createURHQSubscriptionClient(
   }
 
   const messagesAPI = {
-    async create(params: any, options?: any) {
-      const { response, data } = await doRequest(params, options?.headers)
+    create(params: any, options?: any) {
+      // Handle streaming requests - return object with withResponse method
+      if (params.stream) {
+        const requestPromise = doRequest(params, options?.headers)
+        return {
+          async withResponse() {
+            const { response, data } = await requestPromise
+            return {
+              data,
+              response,
+              request_id: data.id,
+            }
+          },
+        }
+      }
 
-      // Return an object with withResponse method, matching URHQ SDK pattern
-      return {
+      // Non-streaming: return data directly with withResponse method attached
+      return doRequest(params, options?.headers).then(({ response, data }) => ({
         ...data,
         withResponse: () => ({
           data,
           response,
           request_id: data.id,
         }),
-      }
+      }))
     },
     async countTokens(params: any) {
       return {
