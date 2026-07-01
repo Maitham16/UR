@@ -2,13 +2,20 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'bun:test'
 import {
   buildProviderAuthCommand,
+  cacheProviderModelsForProvider,
   doctorProvider,
   formatProviderList,
+  getActiveProviderSettings,
   getProviderRuntimeInfo,
+  listProviders,
   resolveProviderId,
+  listModelsForProviderWithSource,
+  setProviderModel,
+  setSafeProviderConfig,
   type CommandResult,
   type ProviderDoctorAdapters,
 } from '../src/services/providers/providerRegistry.js'
+import { getInitialSettings, updateSettingsForSource } from '../src/utils/settings/settings.js'
 
 function adapters(options: {
   missing?: string[]
@@ -47,10 +54,39 @@ describe('provider registry legal access paths', () => {
     const text = formatProviderList()
 
     expect(text).toContain('ID')
+    expect(text).toContain('Access type')
+    expect(text).toContain('Credential')
     expect(text).toContain('claude-code-cli')
     expect(text).toContain('claude')
     expect(text).toContain('antigravity-cli')
     expect(text).toContain('agy')
+  })
+
+  test('/model provider entries show access type and credential type', () => {
+    const providers = listProviders()
+    const codex = providers.find(provider => provider.id === 'codex-cli')
+    const openai = providers.find(provider => provider.id === 'openai-api')
+    const ollama = providers.find(provider => provider.id === 'ollama')
+    const lmstudio = providers.find(provider => provider.id === 'lmstudio')
+
+    expect(codex?.accessType).toBe('subscription')
+    expect(codex?.credentialType).toBe('cli-login')
+    expect(openai?.accessType).toBe('api')
+    expect(openai?.credentialType).toBe('api-key')
+    expect(ollama?.accessType).toBe('local')
+    expect(ollama?.credentialType).toBe('local-runtime')
+    expect(lmstudio?.accessType).toBe('server')
+    expect(lmstudio?.credentialType).toBe('openai-compatible-endpoint')
+  })
+
+  test('API and subscription providers are visually distinct', () => {
+    const text = formatProviderList()
+
+    expect(text).toContain('Codex CLI | codex-cli')
+    expect(text).toContain('subscription')
+    expect(text).toContain('cli-login')
+    expect(text).toContain('OpenAI API | openai-api')
+    expect(text).toContain('api-key')
   })
 
   test('reports Codex CLI missing', async () => {
@@ -273,6 +309,8 @@ describe('provider registry legal access paths', () => {
     })
 
     expect(info.providerLabel).toBe('OpenRouter')
+    expect(info.accessType).toBe('api')
+    expect(info.credentialType).toBe('api-key')
     expect(info.authLabel).toBe('API')
     expect(info.model).toBe('openai/gpt-4.1')
   })
@@ -316,6 +354,8 @@ describe('provider-scoped model listing', () => {
 
     // Ollama uses dynamic discovery
     expect(ollamaModels.some(m => m.isDynamic)).toBe(true)
+    expect(ollamaModels.some(m => m.id.includes('gpt-'))).toBe(false)
+    expect(ollamaModels.some(m => m.id.includes('claude'))).toBe(false)
   })
 
   test('isModelSupportedByProvider returns true only for provider models', () => {
@@ -332,7 +372,10 @@ describe('provider-scoped model listing', () => {
     // Anthropic provider does NOT support GPT models
     expect(isModelSupportedByProvider('anthropic-api', 'gpt-5.5')).toBe(false)
 
-    // Dynamic providers accept any model name
+    // Dynamic providers require live/cached scoped discovery.
+    expect(isModelSupportedByProvider('ollama', 'llama3')).toBe(false)
+    cacheProviderModelsForProvider('ollama', ['llama3', 'qwen3-coder'])
+    cacheProviderModelsForProvider('lmstudio', ['custom-model'])
     expect(isModelSupportedByProvider('ollama', 'llama3')).toBe(true)
     expect(isModelSupportedByProvider('ollama', 'qwen3-coder')).toBe(true)
     expect(isModelSupportedByProvider('lmstudio', 'custom-model')).toBe(true)
@@ -349,6 +392,7 @@ describe('provider-scoped model listing', () => {
   })
 
   test('getValidModelIdsForProvider returns only non-dynamic model IDs', () => {
+    cacheProviderModelsForProvider('ollama', ['llama3', 'qwen3-coder'])
     const openaiModels = getValidModelIdsForProvider('openai-api')
     const ollamaModels = getValidModelIdsForProvider('ollama')
 
@@ -356,13 +400,13 @@ describe('provider-scoped model listing', () => {
     expect(openaiModels).toContain('gpt-4o')
     expect(openaiModels).not.toContain('dynamic')
 
-    // Ollama uses dynamic discovery, so no static model IDs
-    expect(ollamaModels).toEqual([])
+    expect(ollamaModels).toEqual(['llama3', 'qwen3-coder'])
   })
 
   test('validateProviderModelCompatibility returns valid for compatible pairs', () => {
     const result1 = validateProviderModelCompatibility('openai-api', 'gpt-5.5')
     const result2 = validateProviderModelCompatibility('anthropic-api', 'claude-sonnet-5')
+    cacheProviderModelsForProvider('ollama', ['llama3'])
     const result3 = validateProviderModelCompatibility('ollama', 'llama3')
 
     expect(result1.valid).toBe(true)
@@ -382,10 +426,10 @@ describe('provider-scoped model listing', () => {
     }
   })
 
-  test('validateProviderModelCompatibility handles dynamic providers', () => {
+  test('validateProviderModelCompatibility rejects uncached dynamic providers', () => {
     const result = validateProviderModelCompatibility('ollama', 'any-custom-model')
 
-    expect(result.valid).toBe(true)
+    expect(result.valid).toBe(false)
   })
 
   test('validateProviderModelCompatibility handles unknown provider', () => {
@@ -398,7 +442,7 @@ describe('provider-scoped model listing', () => {
     }
   })
 
-  test('changing provider invalidates incompatible model', () => {
+  test('setSafeProviderConfig clears incompatible model on provider change', () => {
     // Simulate: user has claude-model selected, switches to openai provider
     const validation = validateProviderModelCompatibility('openai-api', 'claude-sonnet-4-20250514')
 
@@ -419,5 +463,143 @@ describe('provider-scoped model listing', () => {
     if (!validation.valid) {
       expect(validation.error).toContain('Unknown provider')
     }
+  })
+
+  test('/model shows providers before models using provider metadata', () => {
+    const providers = listProviders()
+    const firstProvider = providers[0]
+    const firstProviderModels = listModelsForProvider(firstProvider.id)
+
+    expect(firstProvider).toHaveProperty('accessType')
+    expect(firstProvider).toHaveProperty('credentialType')
+    expect(firstProviderModels.length).toBeGreaterThan(0)
+  })
+
+  test('selecting provider A shows only provider A models', async () => {
+    const result = await listModelsForProviderWithSource('openai-api')
+    const ids = result.models.map(model => model.id)
+
+    expect(result.source).toBe('static')
+    expect(ids).toContain('gpt-5.5')
+    expect(ids.some(id => id.startsWith('claude-code/'))).toBe(false)
+    expect(ids.some(id => id.startsWith('gemini-cli/'))).toBe(false)
+  })
+
+  test('selecting provider B shows only provider B models', async () => {
+    const result = await listModelsForProviderWithSource('anthropic-api')
+    const ids = result.models.map(model => model.id)
+
+    expect(result.source).toBe('static')
+    expect(ids).toContain('claude-sonnet-5')
+    expect(ids.some(id => id.startsWith('codex/'))).toBe(false)
+    expect(ids.some(id => id.startsWith('gemini-cli/'))).toBe(false)
+  })
+
+  test('OpenAI API models do not appear under Codex CLI and vice versa', () => {
+    const codexModels = listModelsForProvider('codex-cli').map(model => model.id)
+    const openaiModels = listModelsForProvider('openai-api').map(model => model.id)
+    const intersection = codexModels.filter(model => openaiModels.includes(model))
+
+    expect(intersection).toEqual([])
+    expect(codexModels.every(model => model.startsWith('codex/'))).toBe(true)
+    expect(openaiModels.every(model => !model.startsWith('codex/'))).toBe(true)
+  })
+
+  test('Claude API and Claude Code are separated', () => {
+    const claudeCodeModels = listModelsForProvider('claude-code-cli').map(model => model.id)
+    const claudeApiModels = listModelsForProvider('anthropic-api').map(model => model.id)
+
+    expect(claudeCodeModels.filter(model => claudeApiModels.includes(model))).toEqual([])
+    expect(claudeCodeModels.every(model => model.startsWith('claude-code/'))).toBe(true)
+    expect(claudeApiModels.every(model => !model.startsWith('claude-code/'))).toBe(true)
+  })
+
+  test('Gemini API and Gemini CLI are separated', () => {
+    const geminiCliModels = listModelsForProvider('gemini-cli').map(model => model.id)
+    const geminiApiModels = listModelsForProvider('gemini-api').map(model => model.id)
+
+    expect(geminiCliModels.filter(model => geminiApiModels.includes(model))).toEqual([])
+    expect(geminiCliModels.every(model => model.startsWith('gemini-cli/'))).toBe(true)
+    expect(geminiApiModels.every(model => !model.startsWith('gemini-cli/'))).toBe(true)
+  })
+
+  test('local providers do not leak cloud/API models', async () => {
+    const result = await listModelsForProviderWithSource('lmstudio', {
+      settings: { provider: { active: 'lmstudio', baseUrl: 'http://localhost:1234/v1' } },
+      adapters: adapters({
+        fetch: async () => new Response(JSON.stringify({ data: [{ id: 'local-coder' }] })),
+      }),
+    })
+    const ids = result.models.map(model => model.id)
+
+    expect(result.source).toBe('live')
+    expect(ids).toEqual(['local-coder'])
+    expect(ids.some(id => id.includes('gpt-') || id.includes('claude') || id.includes('gemini-'))).toBe(false)
+  })
+
+  test('invalid provider/model pair is rejected with scoped error', () => {
+    const validation = validateProviderModelCompatibility('codex-cli', 'gpt-5.5')
+
+    expect(validation.valid).toBe(false)
+    if (!validation.valid) {
+      expect(validation.error).toContain('provider "codex-cli"')
+      expect(validation.error).toContain('Run /model')
+      expect(validation.validModels).toContain('codex/gpt-5.5')
+    }
+  })
+
+  test('changing provider invalidates incompatible model', () => {
+    updateSettingsForSource('userSettings', {
+      provider: { active: 'openai-api', model: 'gpt-5.5' },
+      model: 'gpt-5.5',
+    })
+
+    const result = setSafeProviderConfig('provider', 'anthropic-api')
+    const settings = getActiveProviderSettings(getInitialSettings())
+
+    expect(result.ok).toBe(true)
+    expect(result.message).toContain('Cleared incompatible model')
+    expect(settings.active).toBe('anthropic-api')
+    expect(settings.model).toBeUndefined()
+  })
+
+  test('live discovery failure falls back only to same-provider cached models', async () => {
+    cacheProviderModelsForProvider('lmstudio', ['lmstudio-local'])
+    const result = await listModelsForProviderWithSource('lmstudio', {
+      settings: { provider: { active: 'lmstudio', baseUrl: 'http://localhost:1234/v1' } },
+      adapters: adapters({
+        fetch: async () => {
+          throw new Error('connection refused')
+        },
+      }),
+    })
+    const ids = result.models.map(model => model.id)
+
+    expect(result.source).toBe('cache')
+    expect(ids).toEqual(['lmstudio-local'])
+    expect(ids).not.toContain('gpt-5.5')
+    expect(result.warning).toContain('lmstudio')
+  })
+
+  test('empty live model list shows clear scoped error', async () => {
+    const result = await listModelsForProviderWithSource('vllm', {
+      settings: { provider: { active: 'vllm', baseUrl: 'http://localhost:8000/v1' } },
+      adapters: adapters({
+        fetch: async () => new Response(JSON.stringify({ data: [] })),
+      }),
+    })
+
+    expect(result.models).toEqual([])
+    expect(result.warning).toContain('vllm')
+    expect(result.warning).toContain('returned no models')
+  })
+
+  test('saved config preserves valid provider/model pair', () => {
+    const result = setProviderModel('openai-api', 'gpt-5.5')
+    const settings = getActiveProviderSettings(getInitialSettings())
+
+    expect(result.ok).toBe(true)
+    expect(settings.active).toBe('openai-api')
+    expect(settings.model).toBe('gpt-5.5')
   })
 })

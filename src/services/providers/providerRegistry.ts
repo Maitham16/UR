@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
+import { getOllamaBaseUrl } from '../../utils/model/ollamaConfig.js'
 import { getInitialSettings, updateSettingsForSource } from '../../utils/settings/settings.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
 import { which } from '../../utils/which.js'
@@ -25,7 +26,16 @@ export type ProviderAliasEntry = {
   canonical: ProviderId
   aliases: string[]
 }
-export type ProviderAccessType = 'subscription' | 'api' | 'local'
+export type ProviderAccessType = 'subscription' | 'api' | 'local' | 'server'
+export type ProviderCredentialType =
+  | 'cli-login'
+  | 'api-key'
+  | 'local-runtime'
+  | 'openai-compatible-endpoint'
+export type ProviderModelDiscoveryType = 'static' | 'live'
+export type ProviderStatusCheckType = 'cli-login' | 'api-key' | 'endpoint'
+export type ProviderModelListType = 'static' | 'ollama-tags' | 'openai-compatible-models'
+export type ProviderModelValidationType = 'static-list' | 'discovered-list'
 export type ProviderAuthMode =
   | 'subscription'
   | 'enterprise-login'
@@ -46,8 +56,15 @@ export type ProviderDefinition = {
   displayName: string
   statusBarName: string
   accessType: ProviderAccessType
+  accessTypeLabel?: string
+  credentialType: ProviderCredentialType
+  modelDiscoveryType: ProviderModelDiscoveryType
+  statusCheck: ProviderStatusCheckType
+  listModels: ProviderModelListType
+  validateModel: ProviderModelValidationType
   authMode: ProviderAuthMode
   legalPath: string
+  accessPathLabel: string
   envKey?: string
   commandCandidates?: string[]
   versionArgs?: string[]
@@ -88,6 +105,9 @@ export type ProviderDoctorResult = {
 export type ProviderRuntimeInfo = {
   provider: ProviderId
   providerLabel: string
+  accessType: ProviderAccessType
+  accessTypeLabel: string
+  credentialType: ProviderCredentialType
   authMode: ProviderAuthMode
   authLabel: string
   model?: string
@@ -109,16 +129,45 @@ export type ProviderDoctorAdapters = {
   env?: Record<string, string | undefined>
 }
 
+export type ProviderConnectionStatus = 'connected' | 'missing' | 'unavailable' | 'unknown'
+
+export type ProviderStatusSummary = {
+  provider: ProviderId
+  displayName: string
+  accessType: ProviderAccessType
+  accessTypeLabel: string
+  credentialType: ProviderCredentialType
+  status: ProviderConnectionStatus
+  label: string
+  checks: ProviderCheck[]
+  doctor: ProviderDoctorResult
+}
+
+export type ProviderModelSource = 'live' | 'cache' | 'static'
+
+export type ProviderModelDiscoveryResult = {
+  provider: ProviderId
+  models: ProviderModelDefinition[]
+  source: ProviderModelSource
+  warning?: string
+}
+
 const LOCALHOST_RE = /^(https?:\/\/)?(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?(\/|$)/i
 
 export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
   'codex-cli': {
     id: 'codex-cli',
-    displayName: 'ChatGPT/Codex',
-    statusBarName: 'ChatGPT/Codex',
+    displayName: 'Codex CLI',
+    statusBarName: 'Codex CLI',
     accessType: 'subscription',
+    credentialType: 'cli-login',
+    modelDiscoveryType: 'static',
+    statusCheck: 'cli-login',
+    listModels: 'static',
+    validateModel: 'static-list',
     authMode: 'subscription',
     legalPath: 'official Codex CLI login',
+    accessPathLabel: 'subscription login via official Codex CLI',
     commandCandidates: ['codex'],
     versionArgs: ['--version'],
     statusArgs: ['login', 'status'],
@@ -130,8 +179,14 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     displayName: 'Claude Code',
     statusBarName: 'Claude Code',
     accessType: 'subscription',
+    credentialType: 'cli-login',
+    modelDiscoveryType: 'static',
+    statusCheck: 'cli-login',
+    listModels: 'static',
+    validateModel: 'static-list',
     authMode: 'subscription',
     legalPath: 'official Claude Code CLI login',
+    accessPathLabel: 'subscription login via official Claude Code CLI',
     commandCandidates: ['claude'],
     versionArgs: ['--version'],
     statusArgs: ['auth', 'status'],
@@ -142,8 +197,14 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     displayName: 'Gemini CLI',
     statusBarName: 'Gemini CLI',
     accessType: 'subscription',
+    credentialType: 'cli-login',
+    modelDiscoveryType: 'static',
+    statusCheck: 'cli-login',
+    listModels: 'static',
+    validateModel: 'static-list',
     authMode: 'enterprise-login',
     legalPath: 'official Gemini Code Assist login',
+    accessPathLabel: 'subscription login via official Gemini CLI',
     commandCandidates: ['gemini'],
     versionArgs: ['--version'],
     loginArgs: [],
@@ -155,8 +216,14 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     displayName: 'Antigravity',
     statusBarName: 'Antigravity',
     accessType: 'subscription',
+    credentialType: 'cli-login',
+    modelDiscoveryType: 'static',
+    statusCheck: 'cli-login',
+    listModels: 'static',
+    validateModel: 'static-list',
     authMode: 'personal-login',
     legalPath: 'official Antigravity CLI login, where supported',
+    accessPathLabel: 'subscription login via official Antigravity CLI',
     commandCandidates: ['agy', 'antigravity', 'google-antigravity', 'ag'],
     versionArgs: ['--version'],
     loginArgs: [],
@@ -166,17 +233,29 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     displayName: 'OpenAI API',
     statusBarName: 'OpenAI',
     accessType: 'api',
+    credentialType: 'api-key',
+    modelDiscoveryType: 'static',
+    statusCheck: 'api-key',
+    listModels: 'static',
+    validateModel: 'static-list',
     authMode: 'api',
     legalPath: 'OPENAI_API_KEY',
+    accessPathLabel: 'API key from OPENAI_API_KEY',
     envKey: 'OPENAI_API_KEY',
   },
   'anthropic-api': {
     id: 'anthropic-api',
-    displayName: 'Anthropic Claude API',
-    statusBarName: 'Anthropic',
+    displayName: 'Claude API',
+    statusBarName: 'Claude API',
     accessType: 'api',
+    credentialType: 'api-key',
+    modelDiscoveryType: 'static',
+    statusCheck: 'api-key',
+    listModels: 'static',
+    validateModel: 'static-list',
     authMode: 'api',
     legalPath: 'ANTHROPIC_API_KEY',
+    accessPathLabel: 'API key from ANTHROPIC_API_KEY',
     envKey: 'ANTHROPIC_API_KEY',
   },
   'gemini-api': {
@@ -184,8 +263,14 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     displayName: 'Gemini API',
     statusBarName: 'Gemini API',
     accessType: 'api',
+    credentialType: 'api-key',
+    modelDiscoveryType: 'static',
+    statusCheck: 'api-key',
+    listModels: 'static',
+    validateModel: 'static-list',
     authMode: 'api',
     legalPath: 'GEMINI_API_KEY',
+    accessPathLabel: 'API key from GEMINI_API_KEY',
     envKey: 'GEMINI_API_KEY',
   },
   openrouter: {
@@ -193,8 +278,14 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     displayName: 'OpenRouter',
     statusBarName: 'OpenRouter',
     accessType: 'api',
+    credentialType: 'api-key',
+    modelDiscoveryType: 'static',
+    statusCheck: 'api-key',
+    listModels: 'static',
+    validateModel: 'static-list',
     authMode: 'api',
     legalPath: 'OPENROUTER_API_KEY',
+    accessPathLabel: 'API key from OPENROUTER_API_KEY',
     envKey: 'OPENROUTER_API_KEY',
   },
   'openai-compatible': {
@@ -202,8 +293,15 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     displayName: 'OpenAI-compatible',
     statusBarName: 'OpenAI-compatible',
     accessType: 'api',
+    accessTypeLabel: 'server/api',
+    credentialType: 'openai-compatible-endpoint',
+    modelDiscoveryType: 'live',
+    statusCheck: 'endpoint',
+    listModels: 'openai-compatible-models',
+    validateModel: 'discovered-list',
     authMode: 'api',
     legalPath: 'user-selected OpenAI-compatible base URL with API key only when required by that endpoint',
+    accessPathLabel: 'OpenAI-compatible endpoint',
     envKey: 'OPENAI_API_KEY',
     endpointKind: 'openai-compatible',
   },
@@ -212,8 +310,14 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     displayName: 'Ollama',
     statusBarName: 'Ollama',
     accessType: 'local',
+    credentialType: 'local-runtime',
+    modelDiscoveryType: 'live',
+    statusCheck: 'endpoint',
+    listModels: 'ollama-tags',
+    validateModel: 'discovered-list',
     authMode: 'local',
     legalPath: 'localhost Ollama runtime',
+    accessPathLabel: 'local Ollama runtime',
     defaultBaseUrl: 'http://localhost:11434',
     endpointKind: 'ollama',
   },
@@ -221,9 +325,16 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     id: 'lmstudio',
     displayName: 'LM Studio',
     statusBarName: 'LM Studio',
-    accessType: 'local',
+    accessType: 'server',
+    accessTypeLabel: 'local/server',
+    credentialType: 'openai-compatible-endpoint',
+    modelDiscoveryType: 'live',
+    statusCheck: 'endpoint',
+    listModels: 'openai-compatible-models',
+    validateModel: 'discovered-list',
     authMode: 'local',
     legalPath: 'local OpenAI-compatible server',
+    accessPathLabel: 'local OpenAI-compatible endpoint',
     defaultBaseUrl: 'http://localhost:1234/v1',
     endpointKind: 'openai-compatible',
   },
@@ -231,9 +342,16 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     id: 'llama.cpp',
     displayName: 'llama.cpp',
     statusBarName: 'llama.cpp',
-    accessType: 'local',
+    accessType: 'server',
+    accessTypeLabel: 'local/server',
+    credentialType: 'openai-compatible-endpoint',
+    modelDiscoveryType: 'live',
+    statusCheck: 'endpoint',
+    listModels: 'openai-compatible-models',
+    validateModel: 'discovered-list',
     authMode: 'local',
     legalPath: 'local OpenAI-compatible server',
+    accessPathLabel: 'local OpenAI-compatible endpoint',
     defaultBaseUrl: 'http://localhost:8080/v1',
     endpointKind: 'openai-compatible',
   },
@@ -241,9 +359,16 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     id: 'vllm',
     displayName: 'vLLM',
     statusBarName: 'vLLM',
-    accessType: 'local',
+    accessType: 'server',
+    accessTypeLabel: 'local/server',
+    credentialType: 'openai-compatible-endpoint',
+    modelDiscoveryType: 'live',
+    statusCheck: 'endpoint',
+    listModels: 'openai-compatible-models',
+    validateModel: 'discovered-list',
     authMode: 'local',
     legalPath: 'OpenAI-compatible server',
+    accessPathLabel: 'OpenAI-compatible endpoint runtime',
     defaultBaseUrl: 'http://localhost:8000/v1',
     endpointKind: 'openai-compatible',
   },
@@ -361,6 +486,9 @@ export function getProviderRuntimeInfo(settings: SettingsJson = getInitialSettin
   return {
     provider,
     providerLabel: definition.statusBarName,
+    accessType: definition.accessType,
+    accessTypeLabel: getProviderAccessTypeLabel(definition),
+    credentialType: definition.credentialType,
     authMode: definition.authMode,
     authLabel: authModeLabel(definition.authMode),
     model: providerSettings.model,
@@ -381,6 +509,23 @@ export function authModeLabel(mode: ProviderAuthMode): string {
       return 'API'
     case 'local':
       return 'local'
+  }
+}
+
+export function getProviderAccessTypeLabel(provider: ProviderDefinition): string {
+  return provider.accessTypeLabel ?? provider.accessType
+}
+
+export function credentialTypeLabel(type: ProviderCredentialType): string {
+  switch (type) {
+    case 'cli-login':
+      return 'subscription login'
+    case 'api-key':
+      return 'API key'
+    case 'local-runtime':
+      return 'local runtime'
+    case 'openai-compatible-endpoint':
+      return 'OpenAI-compatible endpoint'
   }
 }
 
@@ -436,6 +581,7 @@ export function setSafeProviderConfig(
   }
 
   let settings: SettingsJson
+  let providerModelInvalidated = false
   try {
     if (key === 'provider') {
       const provider = resolveProviderId(trimmed)
@@ -445,7 +591,22 @@ export function setSafeProviderConfig(
           message: `Unknown provider "${trimmed}". Run: ur provider list`,
         }
       }
-      settings = { provider: { active: provider } } as SettingsJson
+      const currentSettings = getInitialSettings()
+      const currentModel = getActiveProviderSettings(currentSettings).model
+      const nextProviderSettings: ProviderSettings = { active: provider }
+      let invalidated = false
+      if (currentModel) {
+        const validation = validateProviderModelPair(provider, currentModel)
+        if (validation.valid === false) {
+          nextProviderSettings.model = undefined
+          invalidated = true
+          providerModelInvalidated = true
+        }
+      }
+      settings = {
+        provider: nextProviderSettings,
+        ...(invalidated ? { model: undefined } : {}),
+      } as SettingsJson
     } else if (key === 'provider.fallback') {
       const fallback = trimmed === 'disabled' ? 'disabled' : resolveProviderId(trimmed)
       if (!fallback) {
@@ -461,13 +622,11 @@ export function setSafeProviderConfig(
       // Validate model against current provider
       const currentSettings = getInitialSettings()
       const currentProvider = getActiveProviderSettings(currentSettings).active ?? 'ollama'
-      const validation = validateProviderModelCompatibility(currentProvider, trimmed)
+      const validation = validateProviderModelPair(currentProvider, trimmed)
       if (validation.valid === false) {
-        const validModelsStr = validation.validModels.join(', ') || '(uses dynamic discovery)'
-        const suggestedModel = validation.suggestedModel ?? 'see provider docs'
         return {
           ok: false,
-          message: `${validation.error} Valid models for ${currentProvider}: ${validModelsStr}. Suggested: ${suggestedModel}`,
+          message: validation.error,
         }
       }
       settings = { provider: { model: trimmed }, model: trimmed } as SettingsJson
@@ -494,7 +653,10 @@ export function setSafeProviderConfig(
         ? 'disabled'
         : resolveProviderId(trimmed) ?? trimmed
       : trimmed
-  return { ok: true, message: `Set ${key} to ${savedValue}.` }
+  return {
+    ok: true,
+    message: `Set ${key} to ${savedValue}.${providerModelInvalidated ? ' Cleared incompatible model for the new provider; run /model to choose a scoped model.' : ''}`,
+  }
 }
 
 function outputText(result: CommandResult): string {
@@ -577,7 +739,9 @@ async function checkEndpoint(
   result: ProviderDoctorResult,
 ): Promise<void> {
   if (!definition.endpointKind) return
-  const baseUrl = settings.baseUrl ?? definition.defaultBaseUrl
+  const baseUrl =
+    settings.baseUrl ??
+    (definition.id === 'ollama' ? getOllamaBaseUrl() : definition.defaultBaseUrl)
   if (!baseUrl) {
     result.checks.push({
       name: 'base_url',
@@ -832,7 +996,7 @@ export async function doctorProvider(
     await checkSubscriptionProvider(definition, settingsForProvider, options.adapters ?? {}, result)
   } else if (definition.accessType === 'api') {
     await checkApiProvider(definition, settingsForProvider, options.adapters ?? {}, result)
-  } else {
+  } else if (definition.accessType === 'local' || definition.accessType === 'server') {
     await checkEndpoint(definition, settingsForProvider, options.adapters ?? {}, result)
   }
 
@@ -847,6 +1011,86 @@ export async function doctorActiveProvider(options: {
   const settings = options.settings ?? getInitialSettings()
   const active = getActiveProviderSettings(settings).active ?? 'ollama'
   return doctorProvider(active, options)
+}
+
+export function getConnectionStatusFromDoctorResult(result: ProviderDoctorResult): ProviderConnectionStatus {
+  if (result.ok) {
+    return 'connected'
+  }
+  if (result.failureReason?.includes('CLI missing') || result.failureReason?.includes('not found')) {
+    return 'missing'
+  }
+  if (
+    result.failureReason?.includes('not logged in') ||
+    result.failureReason?.includes('not authenticated') ||
+    result.failureReason?.includes('API key missing') ||
+    result.failureReason?.includes('endpoint') ||
+    result.failureReason?.includes('HTTP')
+  ) {
+    return 'unavailable'
+  }
+  return 'unknown'
+}
+
+export function formatProviderStatusLabel(
+  status: ProviderConnectionStatus,
+  provider: ProviderDefinition,
+  checks: ProviderCheck[],
+): string {
+  switch (status) {
+    case 'connected':
+      if (provider.credentialType === 'api-key' && provider.envKey) {
+        return `${provider.envKey} found`
+      }
+      if (provider.id === 'ollama') {
+        return 'localhost reachable'
+      }
+      if (provider.credentialType === 'openai-compatible-endpoint') {
+        return 'OpenAI-compatible endpoint reachable'
+      }
+      if (provider.credentialType === 'cli-login') {
+        return 'subscription login connected'
+      }
+      return 'connected'
+    case 'missing':
+      if (provider.commandCandidates) {
+        return `CLI not found (tried: ${provider.commandCandidates.join(', ')})`
+      }
+      return 'missing'
+    case 'unavailable': {
+      const failCheck = checks.find(check => check.status === 'fail' || check.status === 'warn')
+      return failCheck?.message ?? 'unavailable'
+    }
+    case 'unknown':
+      return 'status unknown'
+  }
+}
+
+export async function getProviderStatus(
+  providerId: ProviderId | string,
+  options: {
+    settings?: SettingsJson
+    adapters?: ProviderDoctorAdapters
+  } = {},
+): Promise<ProviderStatusSummary> {
+  const provider = resolveProviderId(providerId)
+  if (!provider) {
+    throw new Error(`Unknown provider "${providerId}". Run: ur provider list`)
+  }
+  const definition = getProviderDefinition(provider)
+  const doctor = await doctorProvider(provider, options)
+  const status = getConnectionStatusFromDoctorResult(doctor)
+  return {
+    provider,
+    displayName: definition.displayName,
+    accessType: definition.accessType,
+    accessTypeLabel: getProviderAccessTypeLabel(definition),
+    credentialType: definition.credentialType,
+    status,
+    label: formatProviderStatusLabel(status, definition, doctor.checks),
+    checks: doctor.checks,
+    doctor,
+  }
 }
 
 export function authAliasForProvider(provider: ProviderId): 'chatgpt' | 'claude' | 'gemini' | 'antigravity' | 'provider' {
@@ -967,17 +1211,21 @@ export function formatProviderList(json = false): string {
     name: provider.displayName,
     aliases: providerAliasesFor(provider.id),
     accessType: provider.accessType,
+    accessTypeLabel: getProviderAccessTypeLabel(provider),
+    credentialType: provider.credentialType,
+    modelDiscoveryType: provider.modelDiscoveryType,
     authMode: provider.authMode,
+    accessPath: provider.accessPathLabel,
     legalPath: provider.legalPath,
   }))
   if (json) {
     return JSON.stringify(providers, null, 2)
   }
   return [
-    'Provider | ID | Aliases | Access type | Legal path',
-    '--- | --- | --- | --- | ---',
+    'Provider | ID | Aliases | Access type | Credential | Model discovery | Access path',
+    '--- | --- | --- | --- | --- | --- | ---',
     ...providers.map(provider =>
-      `${provider.name} | ${provider.id} | ${provider.aliases.slice(0, 3).join(', ') || '-'} | ${provider.accessType} | ${provider.legalPath}`,
+      `${provider.name} | ${provider.id} | ${provider.aliases.slice(0, 3).join(', ') || '-'} | ${provider.accessTypeLabel} | ${provider.credentialType} | ${provider.modelDiscoveryType} | ${provider.accessPath}`,
     ),
   ].join('\n')
 }
@@ -988,6 +1236,8 @@ export function formatProviderDoctor(result: ProviderDoctorResult, json = false)
   }
   const lines = [
     `Provider: ${result.displayName} (${result.provider})`,
+    `Access: ${getProviderAccessTypeLabel(getProviderDefinition(result.provider))}`,
+    `Credential: ${getProviderDefinition(result.provider).credentialType}`,
     `Auth: ${authModeLabel(result.authMode)}`,
     `Status: ${result.ok ? 'ready' : 'not ready'}`,
   ]
@@ -1012,7 +1262,8 @@ export function formatProviderStatus(result: ProviderDoctorResult, json = false)
   }
   const failure = result.failureReason ? `\nFailure reason: ${result.failureReason}` : ''
   const fix = result.suggestedFix ? `\nSuggested fix: ${result.suggestedFix}` : ''
-  return `Selected provider: ${result.displayName} (${result.provider})\nAuth mode: ${authModeLabel(result.authMode)}\nReady: ${result.ok ? 'yes' : 'no'}${failure}${fix}`
+  const definition = getProviderDefinition(result.provider)
+  return `Selected provider: ${result.displayName} (${result.provider})\nAccess type: ${getProviderAccessTypeLabel(definition)}\nCredential: ${definition.credentialType}\nAuth mode: ${authModeLabel(result.authMode)}\nReady: ${result.ok ? 'yes' : 'no'}${failure}${fix}`
 }
 
 // Provider-specific model definitions
@@ -1026,41 +1277,41 @@ export type ProviderModelDefinition = {
 }
 
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
-  // OpenAI subscription CLI (codex) - uses ChatGPT/Codex subscription
+  // OpenAI subscription CLI (codex) - uses Codex CLI subscription login
   'codex-cli': [
-    { id: 'gpt-5.5', displayName: 'GPT-5.5', description: 'Latest OpenAI model', isDefault: true },
-    { id: 'gpt-5.4', displayName: 'GPT-5.4', description: 'Advanced reasoning and coding' },
-    { id: 'gpt-5.4-mini', displayName: 'GPT-5.4 Mini', description: 'Fast, efficient variant' },
-    { id: 'gpt-4o', displayName: 'GPT-4o', description: 'Previous generation flagship' },
-    { id: 'gpt-4o-mini', displayName: 'GPT-4o Mini', description: 'Fast GPT-4o variant' },
-    { id: 'o1', displayName: 'o1', description: 'Deep reasoning model' },
-    { id: 'o3-mini', displayName: 'o3-mini', description: 'Fast reasoning model' },
+    { id: 'codex/gpt-5.5', displayName: 'GPT-5.5 (Codex CLI)', description: 'Subscription model through official Codex CLI login', isDefault: true },
+    { id: 'codex/gpt-5.4', displayName: 'GPT-5.4 (Codex CLI)', description: 'Subscription model through official Codex CLI login' },
+    { id: 'codex/gpt-5.4-mini', displayName: 'GPT-5.4 Mini (Codex CLI)', description: 'Fast subscription model through official Codex CLI login' },
+    { id: 'codex/gpt-4o', displayName: 'GPT-4o (Codex CLI)', description: 'Subscription model through official Codex CLI login' },
+    { id: 'codex/gpt-4o-mini', displayName: 'GPT-4o Mini (Codex CLI)', description: 'Fast subscription model through official Codex CLI login' },
+    { id: 'codex/o1', displayName: 'o1 (Codex CLI)', description: 'Reasoning model through official Codex CLI login' },
+    { id: 'codex/o3-mini', displayName: 'o3-mini (Codex CLI)', description: 'Fast reasoning model through official Codex CLI login' },
   ],
   // Anthropic subscription CLI (Claude Code) - uses Claude Code subscription
   'claude-code-cli': [
-    { id: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: 'Balanced performance and speed', isDefault: true },
-    { id: 'claude-opus-4-8', displayName: 'Claude Opus 4.8', description: 'Most powerful Claude model' },
-    { id: 'claude-opus-4-7', displayName: 'Claude Opus 4.7', description: 'High-end reasoning' },
-    { id: 'claude-opus-4-6', displayName: 'Claude Opus 4.6', description: 'Advanced problem solving' },
-    { id: 'claude-opus-4-5', displayName: 'Claude Opus 4.5', description: 'Previous Opus generation' },
-    { id: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6', description: 'Fast Sonnet variant' },
-    { id: 'claude-sonnet-4-5', displayName: 'Claude Sonnet 4.5', description: 'Previous Sonnet generation' },
-    { id: 'claude-haiku-4-5', displayName: 'Claude Haiku 4.5', description: 'Fastest Claude model' },
+    { id: 'claude-code/sonnet-5', displayName: 'Claude Sonnet 5 (Claude Code)', description: 'Subscription model through official Claude Code login', isDefault: true },
+    { id: 'claude-code/opus-4-8', displayName: 'Claude Opus 4.8 (Claude Code)', description: 'Subscription model through official Claude Code login' },
+    { id: 'claude-code/opus-4-7', displayName: 'Claude Opus 4.7 (Claude Code)', description: 'Subscription model through official Claude Code login' },
+    { id: 'claude-code/opus-4-6', displayName: 'Claude Opus 4.6 (Claude Code)', description: 'Subscription model through official Claude Code login' },
+    { id: 'claude-code/opus-4-5', displayName: 'Claude Opus 4.5 (Claude Code)', description: 'Subscription model through official Claude Code login' },
+    { id: 'claude-code/sonnet-4-6', displayName: 'Claude Sonnet 4.6 (Claude Code)', description: 'Subscription model through official Claude Code login' },
+    { id: 'claude-code/sonnet-4-5', displayName: 'Claude Sonnet 4.5 (Claude Code)', description: 'Subscription model through official Claude Code login' },
+    { id: 'claude-code/haiku-4-5', displayName: 'Claude Haiku 4.5 (Claude Code)', description: 'Subscription model through official Claude Code login' },
   ],
   // Google subscription CLI (Gemini Code Assist) - uses Gemini enterprise subscription
   'gemini-cli': [
-    { id: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Most intelligent for agentic tasks', isDefault: true },
-    { id: 'gemini-3.1-pro', displayName: 'Gemini 3.1 Pro', description: 'Advanced problem solving (preview)' },
-    { id: 'gemini-3.1-flash-lite', displayName: 'Gemini 3.1 Flash Lite', description: 'Budget-friendly performance' },
-    { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Complex reasoning and coding' },
-    { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', description: 'Low-latency tasks' },
-    { id: 'gemini-2.5-flash-lite', displayName: 'Gemini 2.5 Flash Lite', description: 'Fastest Gemini model' },
+    { id: 'gemini-cli/gemini-3.5-flash', displayName: 'Gemini 3.5 Flash (Gemini CLI)', description: 'Subscription model through official Gemini CLI login', isDefault: true },
+    { id: 'gemini-cli/gemini-3.1-pro', displayName: 'Gemini 3.1 Pro (Gemini CLI)', description: 'Subscription model through official Gemini CLI login' },
+    { id: 'gemini-cli/gemini-3.1-flash-lite', displayName: 'Gemini 3.1 Flash Lite (Gemini CLI)', description: 'Subscription model through official Gemini CLI login' },
+    { id: 'gemini-cli/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro (Gemini CLI)', description: 'Subscription model through official Gemini CLI login' },
+    { id: 'gemini-cli/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash (Gemini CLI)', description: 'Subscription model through official Gemini CLI login' },
+    { id: 'gemini-cli/gemini-2.5-flash-lite', displayName: 'Gemini 2.5 Flash Lite (Gemini CLI)', description: 'Subscription model through official Gemini CLI login' },
   ],
   // Antigravity CLI - Google's agentic platform
   'antigravity-cli': [
-    { id: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Most intelligent for agentic tasks', isDefault: true },
-    { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Complex reasoning and coding' },
-    { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', description: 'Low-latency tasks' },
+    { id: 'antigravity/gemini-3.5-flash', displayName: 'Gemini 3.5 Flash (Antigravity)', description: 'Subscription model through official Antigravity login', isDefault: true },
+    { id: 'antigravity/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro (Antigravity)', description: 'Subscription model through official Antigravity login' },
+    { id: 'antigravity/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash (Antigravity)', description: 'Subscription model through official Antigravity login' },
   ],
   // OpenAI API - direct API access with OPENAI_API_KEY
   'openai-api': [
@@ -1124,6 +1375,225 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   ],
 }
 
+const cachedModelsByProvider = new Map<ProviderId, ProviderModelDefinition[]>()
+
+function providerBaseUrl(
+  provider: ProviderId,
+  definition: ProviderDefinition,
+  settings: SettingsJson,
+): string | undefined {
+  const providerSettings = getActiveProviderSettings(settings)
+  if (providerSettings.baseUrl) {
+    return providerSettings.baseUrl
+  }
+  if (provider === 'ollama') {
+    return getOllamaBaseUrl(process.env, settings)
+  }
+  return definition.defaultBaseUrl
+}
+
+function parseOpenAICompatibleModelNames(value: unknown): string[] {
+  if (!value || typeof value !== 'object') {
+    return []
+  }
+  const data = (value as { data?: unknown; models?: unknown }).data ?? (value as { models?: unknown }).models
+  if (!Array.isArray(data)) {
+    return []
+  }
+  const names = data.flatMap(model => {
+    if (typeof model === 'string') {
+      const trimmed = model.trim()
+      return trimmed ? [trimmed] : []
+    }
+    if (!model || typeof model !== 'object') {
+      return []
+    }
+    const entry = model as { id?: unknown; name?: unknown; model?: unknown }
+    const name = entry.id ?? entry.name ?? entry.model
+    if (typeof name !== 'string') {
+      return []
+    }
+    const trimmed = name.trim()
+    return trimmed ? [trimmed] : []
+  })
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+}
+
+function parseOllamaModelNamesFromTags(value: unknown): string[] {
+  if (!value || typeof value !== 'object' || !('models' in value)) {
+    return []
+  }
+  const models = (value as { models?: unknown }).models
+  if (!Array.isArray(models)) {
+    return []
+  }
+  const names = models.flatMap(model => {
+    if (!model || typeof model !== 'object') {
+      return []
+    }
+    const entry = model as { name?: unknown; model?: unknown }
+    const name = entry.name ?? entry.model
+    if (typeof name !== 'string') {
+      return []
+    }
+    const trimmed = name.trim()
+    return trimmed ? [trimmed] : []
+  })
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+}
+
+function modelDefinitionsFromNames(
+  provider: ProviderId,
+  names: string[],
+  source: ProviderModelSource,
+): ProviderModelDefinition[] {
+  const providerName = getProviderDefinition(provider).displayName
+  return names.map(name => ({
+    id: name,
+    displayName: name,
+    description:
+      source === 'cache'
+        ? `Cached ${providerName} model`
+        : `Discovered from ${providerName}`,
+  }))
+}
+
+function getCachedProviderModels(provider: ProviderId): ProviderModelDefinition[] {
+  return cachedModelsByProvider.get(provider) ?? []
+}
+
+export function cacheProviderModelsForProvider(
+  providerId: ProviderId | string,
+  models: string[] | ProviderModelDefinition[],
+): void {
+  const provider = resolveProviderId(providerId)
+  if (!provider) {
+    return
+  }
+  const definitions =
+    typeof models[0] === 'string'
+      ? modelDefinitionsFromNames(provider, models as string[], 'cache')
+      : (models as ProviderModelDefinition[])
+  if (definitions.length > 0) {
+    cachedModelsByProvider.set(provider, definitions)
+  }
+}
+
+function staticModelsForProvider(provider: ProviderId): ProviderModelDefinition[] {
+  return (PROVIDER_MODELS[provider] ?? []).filter(model => !model.isDynamic)
+}
+
+async function discoverLiveModelsForProvider(
+  provider: ProviderId,
+  options: {
+    settings?: SettingsJson
+    adapters?: ProviderDoctorAdapters
+    signal?: AbortSignal
+  } = {},
+): Promise<ProviderModelDefinition[]> {
+  const definition = getProviderDefinition(provider)
+  if (!definition.endpointKind) {
+    return []
+  }
+  const settings = options.settings ?? getInitialSettings()
+  const baseUrl = providerBaseUrl(provider, definition, settings)
+  if (!baseUrl) {
+    throw new Error(`No base_url configured for provider "${provider}".`)
+  }
+  const url = endpointUrl(baseUrl, definition.endpointKind)
+  const env = options.adapters?.env ?? process.env
+  const response = await (options.adapters?.fetch ?? fetch)(url, {
+    method: 'GET',
+    signal: options.signal,
+    headers:
+      definition.accessType === 'api' && definition.envKey && env[definition.envKey]
+        ? { Authorization: `Bearer ${env[definition.envKey]}` }
+        : undefined,
+  })
+  if (!response.ok) {
+    throw new Error(`${url} returned HTTP ${response.status}.`)
+  }
+  const body = await response.json()
+  const names =
+    definition.endpointKind === 'ollama'
+      ? parseOllamaModelNamesFromTags(body)
+      : parseOpenAICompatibleModelNames(body)
+  return modelDefinitionsFromNames(provider, names, 'live')
+}
+
+export async function listModelsForProviderWithSource(
+  providerId: ProviderId | string,
+  options: {
+    settings?: SettingsJson
+    adapters?: ProviderDoctorAdapters
+    signal?: AbortSignal
+  } = {},
+): Promise<ProviderModelDiscoveryResult> {
+  const provider = resolveProviderId(providerId)
+  if (!provider) {
+    return {
+      provider: 'ollama',
+      models: [],
+      source: 'static',
+      warning: `Unknown provider "${providerId}". Run: ur provider list`,
+    }
+  }
+
+  const definition = getProviderDefinition(provider)
+  if (definition.modelDiscoveryType === 'static') {
+    return {
+      provider,
+      models: staticModelsForProvider(provider),
+      source: 'static',
+    }
+  }
+
+  try {
+    const liveModels = await discoverLiveModelsForProvider(provider, options)
+    if (liveModels.length > 0) {
+      cachedModelsByProvider.set(provider, liveModels)
+      return {
+        provider,
+        models: liveModels,
+        source: 'live',
+      }
+    }
+    const cachedModels = getCachedProviderModels(provider)
+    if (cachedModels.length > 0) {
+      return {
+        provider,
+        models: cachedModels,
+        source: 'cache',
+        warning: `Live model discovery for "${provider}" returned no models. Showing cached ${provider} models only.`,
+      }
+    }
+    const staticModels = staticModelsForProvider(provider)
+    return {
+      provider,
+      models: staticModels,
+      source: staticModels.length > 0 ? 'static' : 'live',
+      warning: `Live model discovery for "${provider}" returned no models.`,
+    }
+  } catch (error) {
+    const cachedModels = getCachedProviderModels(provider)
+    if (cachedModels.length > 0) {
+      return {
+        provider,
+        models: cachedModels,
+        source: 'cache',
+        warning: `Live model discovery for "${provider}" failed: ${error instanceof Error ? error.message : String(error)}. Showing cached ${provider} models only.`,
+      }
+    }
+    const staticModels = staticModelsForProvider(provider)
+    return {
+      provider,
+      models: staticModels,
+      source: staticModels.length > 0 ? 'static' : 'live',
+      warning: `Live model discovery for "${provider}" failed: ${error instanceof Error ? error.message : String(error)}.`,
+    }
+  }
+}
+
 /**
  * List all models available for a specific provider.
  * For providers with dynamic discovery, this returns a placeholder that triggers live discovery.
@@ -1143,20 +1613,7 @@ export function isModelSupportedByProvider(
   providerId: ProviderId | string,
   modelId: string,
 ): boolean {
-  const provider = resolveProviderId(providerId)
-  if (!provider) {
-    return false
-  }
-  const models = PROVIDER_MODELS[provider]
-  if (!models) {
-    return false
-  }
-  // For dynamic providers, any model name is valid (will be discovered at runtime)
-  const hasDynamic = models.some(m => m.isDynamic)
-  if (hasDynamic) {
-    return true
-  }
-  return models.some(m => m.id === modelId)
+  return validateProviderModelPair(providerId, modelId).valid
 }
 
 /**
@@ -1171,7 +1628,7 @@ export function getDefaultModelForProvider(providerId: ProviderId | string): str
   if (!models) {
     return undefined
   }
-  const defaultModel = models.find(m => m.isDefault)
+  const defaultModel = models.find(m => m.isDefault && !m.isDynamic) ?? models.find(m => !m.isDynamic)
   return defaultModel?.id
 }
 
@@ -1179,17 +1636,40 @@ export function getDefaultModelForProvider(providerId: ProviderId | string): str
  * Get valid model IDs for a provider (for error messages and validation).
  */
 export function getValidModelIdsForProvider(providerId: ProviderId | string): string[] {
-  const models = listModelsForProvider(providerId)
-  return models.filter(m => !m.isDynamic).map(m => m.id)
+  const provider = resolveProviderId(providerId)
+  if (!provider) {
+    return []
+  }
+  const cached = getCachedProviderModels(provider)
+  if (cached.length > 0) {
+    return cached.map(model => model.id)
+  }
+  return staticModelsForProvider(provider).map(model => model.id)
+}
+
+export function formatInvalidProviderModelMessage(
+  providerId: ProviderId | string,
+  modelId: string,
+  validModels: string[],
+  suggestedModel?: string,
+): string {
+  const provider = resolveProviderId(providerId) ?? String(providerId)
+  const validList = validModels.length > 0 ? validModels.join(', ') : '(no models discovered)'
+  const suggested = suggestedModel ?? validModels[0] ?? '<valid-model>'
+  return `Model "${modelId}" is not available for provider "${provider}". Valid models for ${provider}: ${validList}. Run /model and choose a model from ${provider}, or run: ur config set model ${suggested}`
 }
 
 /**
  * Validate that a provider-model pair is compatible.
  * Returns an error message if invalid, or null if valid.
  */
-export function validateProviderModelCompatibility(
+export function validateProviderModelPair(
   providerId: ProviderId | string,
   modelId: string,
+  options: {
+    availableModels?: Array<string | ProviderModelDefinition>
+    allowUncachedDynamic?: boolean
+  } = {},
 ): { valid: true } | { valid: false; error: string; validModels: string[]; suggestedModel?: string } {
   const provider = resolveProviderId(providerId)
   if (!provider) {
@@ -1209,27 +1689,75 @@ export function validateProviderModelCompatibility(
     }
   }
 
-  // Check if this is a dynamic provider (discovers models at runtime)
-  const hasDynamic = models.some(m => m.isDynamic)
-  if (hasDynamic) {
-    // Dynamic providers accept any model name
+  const suppliedModels = (options.availableModels ?? []).map(model =>
+    typeof model === 'string' ? model : model.id,
+  )
+  const cachedModels = getCachedProviderModels(provider).map(model => model.id)
+  const staticModelIds = staticModelsForProvider(provider).map(model => model.id)
+  const validModelIds = suppliedModels.length > 0 ? suppliedModels : cachedModels.length > 0 ? cachedModels : staticModelIds
+
+  if (validModelIds.includes(modelId)) {
     return { valid: true }
   }
 
-  // Check if the model is in the provider's model list
-  const modelExists = models.some(m => m.id === modelId)
-  if (modelExists) {
+  if (models.some(m => m.isDynamic) && options.allowUncachedDynamic && validModelIds.length === 0) {
     return { valid: true }
   }
 
-  // Model not found - build helpful error message
-  const validModelIds = getValidModelIdsForProvider(provider)
   const defaultModel = getDefaultModelForProvider(provider)
 
   return {
     valid: false,
-    error: `Model "${modelId}" is not available for provider "${provider}".`,
+    error: formatInvalidProviderModelMessage(provider, modelId, validModelIds, defaultModel),
     validModels: validModelIds,
     suggestedModel: defaultModel,
+  }
+}
+
+export const validateProviderModelCompatibility = validateProviderModelPair
+
+export function setProviderModel(
+  providerId: ProviderId | string,
+  modelId: string,
+  options: {
+    availableModels?: Array<string | ProviderModelDefinition>
+    modelSource?: ProviderModelSource
+  } = {},
+): { ok: true; message: string; provider: ProviderId; model: string; modelSource: ProviderModelSource } | { ok: false; message: string } {
+  const provider = resolveProviderId(providerId)
+  if (!provider) {
+    return {
+      ok: false,
+      message: `Unknown provider "${providerId}". Run: ur provider list`,
+    }
+  }
+  const validation = validateProviderModelPair(provider, modelId, {
+    availableModels: options.availableModels,
+  })
+  if (validation.valid === false) {
+    return {
+      ok: false,
+      message: validation.error,
+    }
+  }
+  const result = updateSettingsForSource('userSettings', {
+    provider: {
+      active: provider,
+      model: modelId,
+    },
+    model: modelId,
+  } as SettingsJson)
+  if (result.error) {
+    return {
+      ok: false,
+      message: `Failed to write UR-AGENT settings: ${result.error.message}`,
+    }
+  }
+  return {
+    ok: true,
+    message: `Selected provider ${provider} (${getProviderAccessTypeLabel(getProviderDefinition(provider))}) with model ${modelId} (${options.modelSource ?? 'static'}).`,
+    provider,
+    model: modelId,
+    modelSource: options.modelSource ?? 'static',
   }
 }

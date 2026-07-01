@@ -23,7 +23,7 @@ environment variables only when the user explicitly selects API mode.
 
 | Provider | Access type | Legal path |
 | --- | --- | --- |
-| ChatGPT/Codex | subscription | official Codex CLI login |
+| Codex CLI | subscription | official Codex CLI login |
 | Claude Code | subscription | official Claude Code login |
 | Gemini CLI | subscription | official Gemini Code Assist login |
 | Antigravity | subscription | official Antigravity login, where supported |
@@ -61,7 +61,7 @@ ur config set provider.fallback ollama
 
 ## Provider-scoped model selection
 
-UR-AGENT shows only models available for the selected provider. This prevents selecting incompatible model/provider combinations.
+UR-AGENT shows providers first, then only models available for the selected provider. This prevents incompatible model/provider pairs and keeps subscription CLI, API-key, and local/server runtime model lists separate.
 
 ## Runtime provider routing
 
@@ -69,7 +69,7 @@ When you select a provider and model, all agent requests are routed through that
 
 - **Subscription providers** spawn the official CLI command
 - **API providers** make direct HTTP API calls with your API key
-- **Local providers** connect to the configured local endpoint
+- **Local/server providers** connect to the configured local or OpenAI-compatible endpoint
 
 The selected provider determines:
 - Which backend receives your requests
@@ -86,7 +86,7 @@ When you run `/model` in the interactive agent, you get a **two-step provider-fi
 **Step 1: Provider Selection**
 
 You see all configured providers with:
-- Provider name (e.g., "ChatGPT/Codex", "OpenAI API", "Ollama")
+- Provider name (e.g., "Codex CLI", "OpenAI API", "Ollama")
 - Access type: `subscription`, `api`, `local`, or `server`
 - Connection status: `connected`, `missing`, `unavailable`, or `unknown`
 - Credential type: `cli-login`, `api-key`, `local-runtime`, or `openai-compatible-endpoint`
@@ -113,23 +113,22 @@ After selecting a model, the confirmation shows:
 ```
 /model
 → Step 1: Select provider
-  ChatGPT/Codex · subscription · connected
+  Codex CLI · subscription · subscription login connected
   OpenAI API · api · OPENAI_API_KEY found
   Ollama · local · localhost reachable
   
-→ Select: ChatGPT/Codex
+→ Select: Codex CLI
 
 → Step 2: Select model
-  gpt-4o · Most capable GPT-4 model
-  gpt-4o-mini · Fast and efficient variant
-  o1 · Reasoning model
+  codex/gpt-5.5 · Subscription model through official Codex CLI login · static
+  codex/gpt-5.4-mini · Fast subscription model through official Codex CLI login · static
   
-→ Select: gpt-4o
+→ Select: codex/gpt-5.5
 
 → Confirmation:
-  Provider: ChatGPT/Codex (subscription)
-  Model: gpt-4o
-  Source: static
+  Selected provider: Codex CLI (subscription)
+  Selected model: codex/gpt-5.5
+  Model source: static
 ```
 
 ### CLI workflow
@@ -142,11 +141,11 @@ ur config set provider openai-api
 /model
 
 # 3. Select a model from the filtered list
-ur config set model gpt-4o
+ur config set model gpt-5.5
 
 # 4. Switch to a different provider - model list updates automatically
 ur config set provider anthropic-api
-# Now /model shows only Claude models, not GPT models
+# Now /model shows only Claude API models, not Codex CLI or OpenAI API models
 ```
 
 ### Model discovery behavior
@@ -155,13 +154,13 @@ ur config set provider anthropic-api
 | --- | --- | --- |
 | Subscription CLI (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Static list of provider-specific models | static |
 | API providers (openai-api, anthropic-api, gemini-api, openrouter) | Static list of provider-specific models | static |
-| Local providers (ollama, lmstudio, llama.cpp, vllm) | Dynamic discovery from local server | live |
+| Local/server providers (ollama, lmstudio, llama.cpp, vllm) | Dynamic discovery from the selected provider endpoint | live |
 | OpenAI-compatible | Dynamic discovery from configured endpoint | live |
 
 ### API vs Subscription distinction
 
 **Subscription providers** require official CLI login:
-- `codex-cli` — ChatGPT/Codex subscription via `codex login`
+- `codex-cli` — Codex CLI subscription via `codex login`
 - `claude-code-cli` — Claude Code subscription via `claude auth login`
 - `gemini-cli` — Gemini Code Assist enterprise login
 - `antigravity-cli` — Antigravity subscription login
@@ -172,7 +171,7 @@ ur config set provider anthropic-api
 - `gemini-api` — requires `GEMINI_API_KEY`
 - `openrouter` — requires `OPENROUTER_API_KEY`
 
-**Local providers** require local runtime:
+**Local/server providers** require local runtime or endpoint:
 - `ollama` — localhost Ollama server
 - `lmstudio` — LM Studio OpenAI-compatible server
 - `llama.cpp` — llama.cpp server mode
@@ -192,18 +191,18 @@ When you set a model that is incompatible with the current provider, UR-AGENT sh
 ```
 Invalid model for current provider:
   Selected provider: openai-api
-  Selected model: claude-sonnet-4-20250514
-  Error: Model "claude-sonnet-4-20250514" is not available for provider "openai-api".
-  Valid models for openai-api: gpt-4o, gpt-4o-mini, o1, o3-mini, gpt-4-turbo
-  Suggested: ur config set model gpt-4o
+  Selected model: claude-sonnet-5
+  Valid models for openai-api: gpt-5.5, gpt-5.4, gpt-5.4-mini, gpt-4o, gpt-4o-mini, o1, o3-mini
+  Suggested action: Run /model and choose a model from openai-api, or run: ur config set model gpt-5.5
+  Error: Model "claude-sonnet-5" is not available for provider "openai-api".
 ```
 
 When you change providers, UR-AGENT warns if the current model is incompatible:
 
 ```
-Warning: Current model "gpt-4o" is not available for provider "anthropic-api".
-  Valid models for anthropic-api: claude-sonnet-4-20250514, claude-opus-4-20250514, claude-3-5-sonnet-20241022, claude-3-haiku-20240307
-  After changing provider, run: ur config set model claude-sonnet-4-20250514
+Warning: Current model "gpt-5.5" is not available for provider "anthropic-api" and will be cleared.
+  Valid models for anthropic-api: claude-sonnet-5, claude-opus-4-8, claude-opus-4-7
+  After changing provider, run /model or: ur config set model claude-sonnet-5
 ```
 
 ### Troubleshooting
@@ -239,7 +238,7 @@ ur provider status
 - Ollama is only used when `ollama` is the selected provider
 
 **Dynamic discovery fails:**
-- Local providers: check server is running at configured URL
+- Local/server providers: check server is running at configured URL
 - OpenAI-compatible: verify base_url and API key (if required)
 - Fallback only to same provider's cached models (never other providers)
 
@@ -293,7 +292,7 @@ fallback option.
   where installed. It launches only an installed official CLI command where
   supported; UR-AGENT does not invent flags.
 
-## API and local providers
+## API and local/server providers
 
 API providers require explicit user selection and environment keys:
 
@@ -312,7 +311,7 @@ ur config set base_url http://localhost:1234/v1
 ur config set model local-model-name
 ```
 
-Local providers use their normal servers:
+Local/server providers use their normal endpoints:
 
 - Ollama: `http://localhost:11434`
 - LM Studio: `http://localhost:1234/v1`

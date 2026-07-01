@@ -43,6 +43,7 @@ export async function createProviderClient(
   // Route to appropriate client based on provider type
   switch (provider.accessType) {
     case 'local':
+    case 'server':
       // Local providers use Ollama-compatible API
       return createLocalProviderClient(providerId, options)
 
@@ -186,6 +187,7 @@ export async function validateProviderRuntime(
   // Check based on provider type
   switch (provider.accessType) {
     case 'local':
+    case 'server':
       // Check if local endpoint is reachable
       const baseUrl = providerSettings.baseUrl ?? provider.defaultBaseUrl
       if (!baseUrl) {

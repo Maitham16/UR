@@ -163,6 +163,7 @@ describe('provider separation', () => {
     // Both may have gpt-4o but they're separate providers
     expect(codexModels.length).toBeGreaterThan(0)
     expect(openaiModels.length).toBeGreaterThan(0)
+    expect(codexModels.map(m => m.id).filter(id => openaiModels.some(m => m.id === id))).toEqual([])
   })
 
   test('claude-code-cli models are separate from anthropic-api', () => {
@@ -173,6 +174,7 @@ describe('provider separation', () => {
 
     expect(claudeCodeModels.length).toBeGreaterThan(0)
     expect(anthropicApiModels.length).toBeGreaterThan(0)
+    expect(claudeCodeModels.map(m => m.id).filter(id => anthropicApiModels.some(m => m.id === id))).toEqual([])
   })
 
   test('gemini-cli models are separate from gemini-api', () => {
@@ -183,6 +185,7 @@ describe('provider separation', () => {
 
     expect(geminiCliModels.length).toBeGreaterThan(0)
     expect(geminiApiModels.length).toBeGreaterThan(0)
+    expect(geminiCliModels.map(m => m.id).filter(id => geminiApiModels.some(m => m.id === id))).toEqual([])
   })
 })
 

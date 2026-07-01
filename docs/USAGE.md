@@ -122,6 +122,11 @@ Claude Code, Gemini CLI, or Antigravity where supported. UR-AGENT never scrapes
 browser sessions, extracts OAuth tokens, or bypasses provider restrictions.
 OpenAI-compatible local or cloud endpoints use `base_url` plus `model`.
 
+Use `/model` in an interactive session to select provider first and model
+second. OpenAI API and Codex CLI, Claude API and Claude Code, and Gemini API and
+Gemini CLI are separate providers; a subscription login does not grant API-key
+access, and an API key does not grant subscription CLI access.
+
 ## Project Instructions
 
 Add a `UR.md` file to the repository root for team-shared instructions. UR loads it as project context.

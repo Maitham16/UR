@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.27.5
+
+- Make `/model` provider-first and provider-scoped, with clear subscription,
+  API-key, local runtime, and OpenAI-compatible server labels.
+- Keep model discovery, validation, fallback, and saved config scoped to the
+  selected provider so CLI, API, and local model lists do not leak into each
+  other.
+- Update provider documentation and tests for the provider/model selection
+  flow.
+
 ## 1.25.3
 
 - Add provider alias resolution so `ur config set provider claude`,

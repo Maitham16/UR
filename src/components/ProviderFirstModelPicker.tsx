@@ -1,28 +1,27 @@
 // @ts-nocheck
 import { _c } from 'react/compiler-runtime'
-import capitalize from 'lodash-es/capitalize.js'
 import * as React from 'react'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
 import {
   listProviders,
-  doctorProvider,
+  getProviderAccessTypeLabel,
+  getProviderStatus,
   type ProviderId,
   type ProviderDefinition,
-  type ProviderCheck,
-  listModelsForProvider,
-  validateProviderModelCompatibility,
-  getDefaultModelForProvider,
+  type ProviderConnectionStatus,
+  type ProviderModelSource,
+  listModelsForProviderWithSource,
+  setProviderModel,
+  validateProviderModelPair,
 } from 'src/services/providers/providerRegistry.js'
 import { useAppState, useSetAppState } from 'src/state/AppState.js'
-import { getSettingsForSource, updateSettingsForSource } from 'src/utils/settings/settings.js'
-import { getOllamaModelOptions, type ModelOption } from 'src/utils/model/ollamaModels.js'
-import { getAPIProvider } from 'src/utils/model/providers.js'
+import { getSettingsForSource } from 'src/utils/settings/settings.js'
+import type { ModelOption } from 'src/utils/model/modelOptions.js'
 import { Box, Text } from '../ink.js'
-import { useKeybindings } from '../keybindings/useKeybinding.js'
 import { useAppState as useAppStateSelector } from '../state/AppState.js'
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js'
 import { Select } from './CustomSelect/index.js'
@@ -32,25 +31,18 @@ import { Pane } from './design-system/Pane.js'
 import {
   convertEffortValueToLevel,
   type EffortLevel,
-  getDefaultEffortForModel,
   modelSupportsEffort,
-  modelSupportsMaxEffort,
 } from '../utils/effort.js'
 import {
-  getDefaultMainLoopModel,
-  modelDisplayString,
   parseUserSpecifiedModel,
 } from '../utils/model/model.js'
 import {
-  modelSupportsThinking,
   shouldEnableThinkingByDefault,
 } from '../utils/thinking.js'
-import { effortLevelToSymbol } from './EffortIndicator.js'
 
 const selectCurrentProvider = (s: { provider?: { active?: string } }) =>
   s.provider?.active ?? 'ollama'
 const selectEffortValue = (s: { effortValue?: unknown }) => s.effortValue
-const selectFastMode = (s: { fastMode?: boolean }) => false
 const selectThinkingEnabled = (s: { thinkingEnabled?: boolean }) => s.thinkingEnabled
 
 type Step = 'provider' | 'model'
@@ -59,85 +51,30 @@ type ProviderStatusOption = {
   value: string
   label: string
   description: string
-  status: 'connected' | 'missing' | 'unavailable' | 'unknown'
+  status: ProviderConnectionStatus
+  statusLabel: string
   accessType: string
   credentialType: string
   provider: ProviderDefinition
 }
 
+type SelectionMetadata = {
+  providerId: ProviderId
+  providerName: string
+  accessType: string
+  modelSource: ProviderModelSource
+}
+
 type Props = {
   initial: string | null
-  onSelect: (model: string | null, effort: EffortLevel | undefined) => void
+  onSelect: (
+    model: string | null,
+    effort: EffortLevel | undefined,
+    metadata?: SelectionMetadata,
+  ) => void
   onCancel?: () => void
   isStandaloneCommand?: boolean
   headerText?: string
-}
-
-function getStatusFromDoctorResult(
-  doctorResult: Awaited<ReturnType<typeof doctorProvider>>,
-): 'connected' | 'missing' | 'unavailable' | 'unknown' {
-  if (doctorResult.ok) {
-    return 'connected'
-  }
-  if (doctorResult.failureReason?.includes('CLI missing') || doctorResult.failureReason?.includes('not found')) {
-    return 'missing'
-  }
-  if (doctorResult.failureReason?.includes('not logged in') || doctorResult.failureReason?.includes('not authenticated')) {
-    return 'unavailable'
-  }
-  if (doctorResult.failureReason?.includes('API key missing') || doctorResult.failureReason?.includes('endpoint')) {
-    return 'unavailable'
-  }
-  return 'unknown'
-}
-
-function getCredentialType(provider: ProviderDefinition): string {
-  switch (provider.authMode) {
-    case 'subscription':
-      return 'cli-login'
-    case 'enterprise-login':
-    case 'personal-login':
-      return 'cli-login'
-    case 'api':
-      return 'api-key'
-    case 'local':
-      return provider.endpointKind ? 'openai-compatible-endpoint' : 'local-runtime'
-    default:
-      return 'unknown'
-  }
-}
-
-function formatStatusMessage(
-  status: 'connected' | 'missing' | 'unavailable' | 'unknown',
-  provider: ProviderDefinition,
-  checks: ProviderCheck[],
-): string {
-  switch (status) {
-    case 'connected':
-      if (provider.accessType === 'api') {
-        const envKey = provider.envKey
-        if (envKey) {
-          return `${envKey} found`
-        }
-      }
-      if (provider.accessType === 'local' || provider.accessType === 'subscription') {
-        return 'connected'
-      }
-      return 'available'
-    case 'missing':
-      if (provider.commandCandidates) {
-        return `CLI not found (tried: ${provider.commandCandidates.join(', ')})`
-      }
-      return 'CLI not found'
-    case 'unavailable':
-      const failCheck = checks.find(c => c.status === 'fail' || c.status === 'warn')
-      if (failCheck) {
-        return failCheck.message
-      }
-      return 'not available'
-    case 'unknown':
-      return 'status unknown'
-  }
 }
 
 export function ProviderFirstModelPicker({
@@ -157,16 +94,16 @@ export function ProviderFirstModelPicker({
   const [loadingProviders, setLoadingProviders] = useState(true)
   const [loadingModels, setLoadingModels] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState<ProviderStatusOption | null>(null)
-  const [modelSource, setModelSource] = useState<'live' | 'cache' | 'static'>('static')
+  const [modelSource, setModelSource] = useState<ProviderModelSource>('static')
+  const [modelWarning, setModelWarning] = useState<string | null>(null)
 
-  const isFastMode = useAppState(selectFastMode)
   const effortValue = useAppState(selectEffortValue)
-  const [effort, setEffort] = useState<EffortLevel | undefined>(
+  const [effort] = useState<EffortLevel | undefined>(
     effortValue !== undefined ? convertEffortValueToLevel(effortValue) : undefined,
   )
   const appThinkingEnabled = useAppState(selectThinkingEnabled)
-  const [hasToggledThinking, setHasToggledThinking] = useState(false)
-  const [thinkingEnabled, setThinkingEnabled] = useState(
+  const hasToggledThinking = false
+  const [thinkingEnabled] = useState(
     () => appThinkingEnabled ?? shouldEnableThinkingByDefault(),
   )
 
@@ -175,21 +112,23 @@ export function ProviderFirstModelPicker({
     async function loadProviderStatus() {
       setLoadingProviders(true)
       const providers = listProviders()
+      const settings = getSettingsForSource('userSettings')
 
       const options: ProviderStatusOption[] = await Promise.all(
         providers.map(async provider => {
-          const settings = getSettingsForSource('userSettings')
-          const doctorResult = await doctorProvider(provider.id, { settings })
-          const status = getStatusFromDoctorResult(doctorResult)
-          const credentialType = getCredentialType(provider)
+          const status = await getProviderStatus(provider.id, {
+            settings: settings ?? undefined,
+          })
+          const accessType = getProviderAccessTypeLabel(provider)
 
           return {
             value: provider.id,
             label: provider.displayName,
-            description: `${capitalize(provider.accessType)} · ${formatStatusMessage(status, provider, doctorResult.checks)}`,
-            status,
-            accessType: provider.accessType,
-            credentialType,
+            description: `${accessType} · ${status.label}`,
+            status: status.status,
+            statusLabel: status.label,
+            accessType,
+            credentialType: provider.credentialType,
             provider,
           }
         }),
@@ -208,57 +147,22 @@ export function ProviderFirstModelPicker({
 
     async function loadModels() {
       setLoadingModels(true)
+      setModelWarning(null)
       const providerId = selectedProvider.value as ProviderId
-      const isLocalProvider = ['ollama', 'lmstudio', 'llama.cpp', 'vllm'].includes(providerId)
-
-      try {
-        if (isLocalProvider) {
-          // Dynamic discovery for local providers
-          const controller = new AbortController()
-          const options = await getOllamaModelOptions(controller.signal)
-          setModelOptions(options)
-          setModelSource('live')
-          controller.abort()
-        } else {
-          // Static models for API/subscription providers
-          const models = listModelsForProvider(providerId)
-          if (models.length > 0) {
-            const hasDynamic = models.some(m => m.isDynamic)
-            if (hasDynamic) {
-              // Dynamic provider (e.g., openai-compatible)
-              const controller = new AbortController()
-              const options = await getOllamaModelOptions(controller.signal)
-              setModelOptions(options)
-              setModelSource('live')
-              controller.abort()
-            } else {
-              // Static models
-              const options: ModelOption[] = models.map(model => ({
-                value: model.id,
-                label: model.displayName,
-                description: model.description,
-              }))
-              setModelOptions(options)
-              setModelSource('static')
-            }
-          } else {
-            setModelOptions([])
-            setModelSource('static')
-          }
-        }
-      } catch (error) {
-        // Fallback to static models only for this provider
-        const models = listModelsForProvider(providerId)
-        const options: ModelOption[] = models
-          .filter(m => !m.isDynamic)
-          .map(model => ({
-            value: model.id,
-            label: model.displayName,
-            description: `${model.description} (cached)`,
-          }))
-        setModelOptions(options)
-        setModelSource('cache')
-      }
+      const controller = new AbortController()
+      const result = await listModelsForProviderWithSource(providerId, {
+        settings: getSettingsForSource('userSettings') ?? undefined,
+        signal: controller.signal,
+      })
+      controller.abort()
+      const options: ModelOption[] = result.models.map(model => ({
+        value: model.id,
+        label: model.displayName,
+        description: `${model.description} · ${result.source}`,
+      }))
+      setModelOptions(options)
+      setModelSource(result.source)
+      setModelWarning(result.warning ?? null)
 
       setLoadingModels(false)
     }
@@ -310,21 +214,25 @@ export function ProviderFirstModelPicker({
 
     // Validate provider/model compatibility
     if (selectedProvider) {
-      const validation = validateProviderModelCompatibility(selectedProvider.value, value)
+      const validation = validateProviderModelPair(selectedProvider.value, value, {
+        availableModels: modelOptions.map(option => option.value),
+      })
       if (validation.valid === false) {
-        // Should not happen since we filter models, but handle it
+        setModelWarning(validation.error)
         return
       }
     }
 
-    // Update provider and model in settings
+    // Update provider and model in settings only after the scoped pair validates.
     if (selectedProvider) {
-      updateSettingsForSource('userSettings', {
-        provider: {
-          active: selectedProvider.value as ProviderId,
-          model: value,
-        },
+      const saveResult = setProviderModel(selectedProvider.value, value, {
+        availableModels: modelOptions.map(option => option.value),
+        modelSource,
       })
+      if (!saveResult.ok) {
+        setModelWarning(saveResult.message)
+        return
+      }
     }
 
     // Update app state
@@ -339,26 +247,19 @@ export function ProviderFirstModelPicker({
       ...(hasToggledThinking ? { thinkingEnabled } : {}),
     }))
 
-    // Show confirmation message
-    const confirmationParts = [
-      `Provider: ${selectedProvider?.label} (${selectedProvider?.accessType})`,
-      `Model: ${focusedModel?.label || value}`,
-      `Source: ${modelSource}`,
-    ]
-    if (effort) {
-      confirmationParts.push(`Effort: ${capitalize(effort)}`)
-    }
-    if (thinkingEnabled && focusedModel && modelSupportsThinking(parseUserSpecifiedModel(value))) {
-      confirmationParts.push(`Thinking: on`)
-    }
-
-    onSelect(value, effort)
+    onSelect(value, effort, selectedProvider ? {
+      providerId: selectedProvider.value as ProviderId,
+      providerName: selectedProvider.label,
+      accessType: selectedProvider.accessType,
+      modelSource,
+    } : undefined)
   }
 
   function handleBack() {
     setStep('provider')
     setSelectedProvider(null)
     setModelOptions([])
+    setModelWarning(null)
   }
 
   // Provider selection view
@@ -403,9 +304,10 @@ export function ProviderFirstModelPicker({
                   </Box>
                   <Text dimColor>
                     Status: <Text color={focusedProvider.status === 'connected' ? 'success' : 'error'}>{focusedProvider.status}</Text>
+                    <Text dimColor> · {focusedProvider.statusLabel}</Text>
                   </Text>
                   <Text dimColor>
-                    {focusedProvider.provider.legalPath}
+                    {focusedProvider.provider.accessPathLabel}
                   </Text>
                   {focusedProvider.status !== 'connected' && (
                     <Text dimColor color="subtle">
@@ -451,6 +353,9 @@ export function ProviderFirstModelPicker({
             Showing models for {selectedProvider?.label} ({selectedProvider?.accessType})
           </Text>
           <Text dimColor color="subtle">
+            Model source: {modelSource}
+          </Text>
+          <Text dimColor color="subtle">
             Press Esc to change provider
           </Text>
         </Box>
@@ -491,8 +396,16 @@ export function ProviderFirstModelPicker({
               </Box>
             )}
 
+            {modelWarning && (
+              <Box marginBottom={1} flexDirection="column">
+                <Text dimColor color="error">
+                  {modelWarning}
+                </Text>
+              </Box>
+            )}
+
             {modelOptions.length === 0 && (
-              <Box marginBottom={1}>
+              <Box marginBottom={1} flexDirection="column">
                 <Text dimColor color="error">
                   No models available for this provider.
                 </Text>

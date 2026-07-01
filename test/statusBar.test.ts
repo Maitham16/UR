@@ -8,7 +8,7 @@ describe('UR-AGENT status bar', () => {
   test('formats compact runtime state', () => {
     const text = buildDefaultStatusBar({
       version: '1.25.3',
-      providerLabel: 'ChatGPT/Codex',
+      providerLabel: 'Codex CLI',
       authMode: 'subscription',
       model: 'modelH',
       mode: 'acceptEdits',
@@ -19,7 +19,7 @@ describe('UR-AGENT status bar', () => {
     })
 
     expect(text).toContain('UR-AGENT v1.25.3')
-    expect(text).toContain('Provider: ChatGPT/Codex')
+    expect(text).toContain('Provider: Codex CLI')
     expect(text).toContain('Auth: subscription')
     expect(text).toContain('model: modelH')
     expect(text).toContain('mode: acceptEdits')

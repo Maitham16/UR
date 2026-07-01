@@ -11,7 +11,6 @@ import {
   setSafeProviderConfig,
   doctorProvider,
   validateProviderModelCompatibility,
-  listModelsForProvider,
 } from '../../services/providers/providerRegistry.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 
@@ -111,8 +110,9 @@ export async function configSetHandler(
       writeError(`Invalid model for current provider:
   Selected provider: ${currentProvider}
   Selected model: ${value}
-  Error: ${validation.error}
-  Valid models for ${currentProvider}: ${validation.validModels.join(', ') || '(none - uses dynamic discovery)'}${validation.suggestedModel ? `\n  Suggested: ur config set model ${validation.suggestedModel}` : ''}`)
+  Valid models for ${currentProvider}: ${validation.validModels.join(', ') || '(no models discovered)'}
+  Suggested action: Run /model and choose a model from ${currentProvider}${validation.suggestedModel ? `, or run: ur config set model ${validation.suggestedModel}` : ''}
+  Error: ${validation.error}`)
       process.exit(1)
     }
   }
@@ -128,9 +128,9 @@ export async function configSetHandler(
         if (validation.valid === false) {
           const validModelsStr = validation.validModels.join(', ') || '(uses dynamic discovery)'
           const suggestedModel = validation.suggestedModel ?? '<model-name>'
-          writeError(`Warning: Current model "${currentModel}" is not available for provider "${newProvider}".
+          writeError(`Warning: Current model "${currentModel}" is not available for provider "${newProvider}" and will be cleared.
   Valid models for ${newProvider}: ${validModelsStr}
-  After changing provider, run: ur config set model ${suggestedModel}`)
+  After changing provider, run /model or: ur config set model ${suggestedModel}`)
           // Continue with provider change, but warn user
         }
       }

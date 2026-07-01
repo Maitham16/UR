@@ -1,7 +1,7 @@
 // @ts-nocheck
 import capitalize from 'lodash-es/capitalize.js'
 import * as React from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useExitOnCtrlCDWithKeybindings } from 'src/hooks/useExitOnCtrlCDWithKeybindings.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -31,12 +31,7 @@ import {
   modelDisplayString,
   parseUserSpecifiedModel,
 } from '../utils/model/model.js'
-import { getModelOptions, type ModelOption } from '../utils/model/modelOptions.js'
-import {
-  getOllamaModelOptions,
-  mergeModelOptions,
-} from '../utils/model/ollamaModels.js'
-import { getAPIProvider } from '../utils/model/providers.js'
+import type { ModelOption } from '../utils/model/modelOptions.js'
 import {
   getSettingsForSource,
   updateSettingsForSource,
@@ -46,11 +41,10 @@ import {
   shouldEnableThinkingByDefault,
 } from '../utils/thinking.js'
 import {
-  listModelsForProvider,
-  isModelSupportedByProvider,
-  validateProviderModelCompatibility,
+  getActiveProviderSettings,
+  listModelsForProviderWithSource,
+  validateProviderModelPair,
 } from '../services/providers/providerRegistry.js'
-import { getAPIProvider } from '../utils/model/providers.js'
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js'
 import { Select } from './CustomSelect/index.js'
 import { Byline } from './design-system/Byline.js'
@@ -110,76 +104,43 @@ export function ModelPicker({
   const [thinkingEnabled, setThinkingEnabled] = useState(
     () => appThinkingEnabled ?? shouldEnableThinkingByDefault(),
   )
-  const [ollamaModelOptions, setOllamaModelOptions] = useState<ModelOption[]>([])
   const [providerModelOptions, setProviderModelOptions] = useState<ModelOption[]>([])
-  const currentProvider = getAPIProvider()
-  const isOllamaProvider = currentProvider === 'ollama'
-  const isLocalProvider = ['ollama', 'lmstudio', 'llama.cpp', 'vllm'].includes(currentProvider)
+  const [pickerError, setPickerError] = useState<string | null>(null)
+  const currentProvider =
+    getActiveProviderSettings(getSettingsForSource('userSettings') ?? {}).active ?? 'ollama'
 
   // Load models for the current provider
   useEffect(() => {
-    // For Ollama and other local providers, use dynamic discovery
-    if (isOllamaProvider) {
-      const controller = new AbortController()
-      getOllamaModelOptions(controller.signal)
-        .then(options => {
-          if (!controller.signal.aborted) {
-            setOllamaModelOptions(options)
-            setProviderModelOptions(options)
-          }
-        })
-        .catch(() => {
-          if (!controller.signal.aborted) {
-            setOllamaModelOptions([])
-            setProviderModelOptions([])
-          }
-        })
-      return () => controller.abort()
-    }
+    const controller = new AbortController()
+    listModelsForProviderWithSource(currentProvider, {
+      settings: getSettingsForSource('userSettings') ?? undefined,
+      signal: controller.signal,
+    })
+      .then(result => {
+        if (controller.signal.aborted) return
+        setProviderModelOptions(result.models.map(model => ({
+          value: model.id,
+          label: model.displayName,
+          description: `${model.description} · ${result.source}`,
+        })))
+        setPickerError(result.warning ?? null)
+      })
+      .catch(error => {
+        if (controller.signal.aborted) return
+        setProviderModelOptions([])
+        setPickerError(error instanceof Error ? error.message : String(error))
+      })
+    return () => controller.abort()
+  }, [currentProvider])
 
-    // For other local providers with dynamic discovery
-    if (isLocalProvider) {
-      const controller = new AbortController()
-      getOllamaModelOptions(controller.signal)
-        .then(options => {
-          if (!controller.signal.aborted) {
-            setProviderModelOptions(options)
-          }
-        })
-        .catch(() => {
-          if (!controller.signal.aborted) {
-            setProviderModelOptions([])
-          }
-        })
-      return () => controller.abort()
-    }
-
-    // For API providers, get models from the provider registry
-    const models = listModelsForProvider(currentProvider)
-    if (models.length > 0) {
-      const options = models.map(model => ({
-        value: model.id,
-        label: model.displayName,
-        description: model.description,
-      }))
-      setProviderModelOptions(options)
-    } else {
-      setProviderModelOptions([])
-    }
-  }, [currentProvider, isOllamaProvider, isLocalProvider])
-
-  const baseModelOptions = getModelOptions(isFastMode ?? false)
-  // For local providers, use only discovered models. For API providers, use provider-specific models.
-  const modelOptions = isLocalProvider
-    ? providerModelOptions
-    : providerModelOptions.length > 0
-      ? providerModelOptions
-      : mergeModelOptions(baseModelOptions, ollamaModelOptions)
+  const modelOptions = providerModelOptions
 
   // If the agent's current model is a full ID not in the alias list, inject it
   // as an option so it can round-trip through confirm without being overwritten.
   const optionsWithInitial =
-    initial !== null && !modelOptions.some(opt => opt.value === initial)
+    initial !== null && validateProviderModelPair(currentProvider, initial, {
+      availableModels: modelOptions.map(option => option.value),
+    }).valid && !modelOptions.some(opt => opt.value === initial)
       ? [
           ...modelOptions,
           {
@@ -260,6 +221,15 @@ export function ModelPicker({
     logEvent('tengu_model_command_menu_effort', {
       effort: effort as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
+    if (value !== NO_PREFERENCE) {
+      const validation = validateProviderModelPair(currentProvider, value, {
+        availableModels: modelOptions.map(option => option.value),
+      })
+      if (validation.valid === false) {
+        setPickerError(validation.error)
+        return
+      }
+    }
     if (!skipSettingsWrite) {
       const effortLevel = resolvePickerEffortPersistence(
         effort,
@@ -384,6 +354,11 @@ export function ModelPicker({
             </Text>
           )}
         </Box>
+        {pickerError && (
+          <Box marginBottom={1}>
+            <Text color="error">{pickerError}</Text>
+          </Box>
+        )}
         {fastModeNotice}
       </Box>
       {isStandaloneCommand && (

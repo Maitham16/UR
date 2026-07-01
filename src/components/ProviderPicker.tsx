@@ -1,23 +1,19 @@
 // @ts-nocheck
-import { _c } from 'react/compiler-runtime'
-import capitalize from 'lodash-es/capitalize.js'
 import * as React from 'react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
 import {
   listProviders,
-  type ProviderDefinition,
-  getProviderRuntimeInfo,
-  validateProviderModelCompatibility,
-  getDefaultModelForProvider,
+  getProviderAccessTypeLabel,
+  getActiveProviderSettings,
+  setSafeProviderConfig,
 } from 'src/services/providers/providerRegistry.js'
-import { useAppState, useSetAppState } from 'src/state/AppState.js'
-import { getSettingsForSource, updateSettingsForSource } from 'src/utils/settings/settings.js'
+import { useSetAppState } from 'src/state/AppState.js'
+import { getSettingsForSource } from 'src/utils/settings/settings.js'
 import { Box, Text } from '../ink.js'
-import { useKeybindings } from '../keybindings/useKeybinding.js'
 import { useAppState as useAppStateSelector } from '../state/AppState.js'
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js'
 import { Select } from './CustomSelect/index.js'
@@ -51,7 +47,7 @@ export function ProviderPicker({
   const selectOptions = providers.map(provider => ({
     value: provider.id,
     label: provider.displayName,
-    description: `${capitalize(provider.accessType)} · ${provider.authMode} auth`,
+    description: `${getProviderAccessTypeLabel(provider)} · ${provider.credentialType}`,
   }))
 
   const visibleCount = Math.min(10, selectOptions.length)
@@ -70,17 +66,19 @@ export function ProviderPicker({
       to_provider: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
 
-    // Update provider in settings
-    updateSettingsForSource('userSettings', {
-      provider: { active: value },
-    })
+    const result = setSafeProviderConfig('provider', value)
+    if (!result.ok) {
+      return
+    }
+    const saved = getActiveProviderSettings(getSettingsForSource('userSettings') ?? {})
 
     // Update app state
     setAppState(prev => ({
       ...prev,
       provider: {
         ...(prev.provider ?? {}),
-        active: value,
+        active: saved.active ?? value,
+        model: saved.model,
       },
     }))
 
@@ -121,8 +119,8 @@ export function ProviderPicker({
           {focusedProvider && (
             <Text dimColor>
               {focusedProvider.displayName} ({focusedProvider.id}) ·{' '}
-              {capitalize(focusedProvider.accessType)} ·{' '}
-              {focusedProvider.legalPath}
+              {getProviderAccessTypeLabel(focusedProvider)} ·{' '}
+              {focusedProvider.accessPathLabel}
             </Text>
           )}
         </Box>

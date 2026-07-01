@@ -10,7 +10,7 @@ UR-AGENT supports official provider access paths only:
   and Antigravity CLI where officially supported.
 - Explicit API providers: OpenAI, Anthropic, Gemini, OpenRouter, and
   OpenAI-compatible endpoints.
-- Local providers: Ollama, LM Studio, llama.cpp, and vLLM OpenAI-compatible
+- Local/server providers: Ollama, LM Studio, llama.cpp, and vLLM OpenAI-compatible
   server mode.
 
 UR-AGENT never scrapes browser sessions, extracts OAuth refresh tokens, reads
@@ -53,6 +53,12 @@ Provider values accept canonical IDs and common aliases. Examples:
 `Claude Code`, `gemini-cli`, `gemini`, `antigravity-cli`, `antigravity`,
 `agy`, `ollama`, `lmstudio`, `LM Studio`, `llama.cpp`, and `vllm`.
 Values with spaces should be quoted in shell commands.
+
+In the interactive app, `/model` is provider-first: choose a provider, then
+choose a model from that provider only. The picker labels providers as
+subscription login, API key, local runtime, or OpenAI-compatible endpoint and
+shows model source as `live`, `cache`, or `static`. Changing providers clears an
+incompatible saved model instead of silently carrying it across providers.
 
 API keys are not written to UR settings. Set them in the environment when you
 explicitly choose API mode:

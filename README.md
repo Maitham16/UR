@@ -179,18 +179,23 @@ Use quotes for shell values with spaces.
 
 | Provider | Access type | Legal path |
 | --- | --- | --- |
-| ChatGPT/Codex | subscription | official Codex CLI login |
+| Codex CLI | subscription | official Codex CLI login |
 | Claude Code | subscription | official Claude Code login |
 | Gemini CLI | subscription | official Gemini Code Assist login |
 | Antigravity | subscription | official Antigravity login, where supported |
-| OpenAI | API | `OPENAI_API_KEY` |
-| Anthropic Claude | API | `ANTHROPIC_API_KEY` |
-| Gemini | API | `GEMINI_API_KEY` |
+| OpenAI API | API key | `OPENAI_API_KEY` |
+| Claude API | API key | `ANTHROPIC_API_KEY` |
+| Gemini API | API key | `GEMINI_API_KEY` |
 | OpenRouter | API/router | `OPENROUTER_API_KEY` |
 | Ollama | local | localhost Ollama runtime |
-| LM Studio | local | local OpenAI-compatible server |
-| llama.cpp | local | local OpenAI-compatible server |
+| LM Studio | local/server | local OpenAI-compatible server |
+| llama.cpp | local/server | local OpenAI-compatible server |
 | vLLM | local/server | OpenAI-compatible server |
+
+In the interactive app, `/model` shows providers first and then shows only the
+selected provider's models. OpenAI API and Codex CLI, Claude API and Claude
+Code, and Gemini API and Gemini CLI are separate access paths; subscription
+logins and API keys are not interchangeable.
 
 Security policy: UR-AGENT never scrapes browser sessions, extracts OAuth
 tokens, bypasses subscription/quota/region/organization restrictions, proxies a

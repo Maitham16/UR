@@ -17,6 +17,8 @@ import { checkmodelO1mAccess, checkmodelS1mAccess } from '../../utils/model/chec
 import { getDefaultMainLoopModelSetting, ismodelO1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { validateModel } from '../../utils/model/validateModel.js';
+import { getActiveProviderSettings, setProviderModel, validateProviderModelPair } from '../../services/providers/providerRegistry.js';
+import { getInitialSettings } from '../../utils/settings/settings.js';
 function ModelPickerWrapper(t0) {
   const $ = _c(17);
   const {
@@ -46,7 +48,7 @@ function ModelPickerWrapper(t0) {
   const handleCancel = t1;
   let t2;
   if ($[3] !== isFastMode || $[4] !== mainLoopModel || $[5] !== onDone || $[6] !== setAppState) {
-    t2 = function handleSelect(model, effort) {
+    t2 = function handleSelect(model, effort, metadata) {
       logEvent("tengu_model_command_menu", {
         action: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         from_model: mainLoopModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -57,7 +59,7 @@ function ModelPickerWrapper(t0) {
         mainLoopModel: model,
         mainLoopModelForSession: null
       }));
-      let message = `Set model to ${chalk.bold(renderModelLabel(model))}`;
+      let message = metadata ? `Selected provider: ${chalk.bold(metadata.providerName)} (${metadata.accessType})\nSelected model: ${chalk.bold(renderModelLabel(model))}\nModel source: ${metadata.modelSource}` : `Set model to ${chalk.bold(renderModelLabel(model))}`;
       if (effort !== undefined) {
         message = message + ` with ${chalk.bold(effort)} effort`;
       }
@@ -170,11 +172,23 @@ function SetModelAndClose({
         return;
       }
 
-      // Skip validation for known aliases - they're predefined and should work
-      if (isKnownAlias(model)) {
-        setModel(model);
+      const currentProvider = getActiveProviderSettings(getInitialSettings()).active ?? 'ollama';
+      const providerValidation = validateProviderModelPair(currentProvider, model);
+      if (providerValidation.valid === false) {
+        onDone(`Invalid model for current provider:\n  Selected provider: ${currentProvider}\n  Selected model: ${model}\n  Valid models for ${currentProvider}: ${providerValidation.validModels.join(', ') || '(no models discovered)'}\n  Suggested action: Run /model and choose a model from ${currentProvider}${providerValidation.suggestedModel ? `, or run: ur config set model ${providerValidation.suggestedModel}` : ''}\n  Error: ${providerValidation.error}`, {
+          display: 'system'
+        });
         return;
       }
+      const saved = setProviderModel(currentProvider, model);
+      if (!saved.ok) {
+        onDone(saved.message, {
+          display: 'system'
+        });
+        return;
+      }
+      setModel(model);
+      return;
 
       // Validate and set custom model
       try {
