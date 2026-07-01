@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import * as React from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
 import { ModelPicker } from '../../components/ModelPicker.js';
+import { ProviderFirstModelPicker } from '../../components/ProviderFirstModelPicker.js';
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
@@ -101,7 +102,7 @@ function ModelPickerWrapper(t0) {
   }
   let t4;
   if ($[11] !== handleCancel || $[12] !== handleSelect || $[13] !== mainLoopModel || $[14] !== mainLoopModelForSession || $[15] !== t3) {
-    t4 = <ModelPicker initial={mainLoopModel} sessionModel={mainLoopModelForSession} onSelect={handleSelect} onCancel={handleCancel} isStandaloneCommand={true} showFastModeNotice={t3} />;
+    t4 = <ProviderFirstModelPicker initial={mainLoopModel} onSelect={handleSelect} onCancel={handleCancel} isStandaloneCommand={true} />;
     $[11] = handleCancel;
     $[12] = handleSelect;
     $[13] = mainLoopModel;

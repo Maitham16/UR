@@ -249,6 +249,7 @@ import exit from './commands/exit/index.js'
 import exportCommand from './commands/export/index.js'
 import model from './commands/model/index.js'
 import modelDoctor from './commands/model-doctor/index.js'
+import provider from './commands/provider/index.js'
 import localFirst from './commands/local-first/index.js'
 import tag from './commands/tag/index.js'
 import outputStyle from './commands/output-style/index.js'
@@ -368,6 +369,7 @@ const COMMANDS = memoize((): Command[] => [
   memory,
   model,
   modelDoctor,
+  provider,
   localFirst,
   outputStyle,
   remoteEnv,

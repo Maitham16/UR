@@ -108,7 +108,15 @@ const ollamaModelCapabilitiesCache = new Map<
   OllamaModelCapabilities | null
 >()
 
-export function createOllamaURHQClient(): unknown {
+let ollamaBaseUrlOverride: string | undefined
+
+export function createOllamaURHQClient(
+  options?: { baseUrlOverride?: string }
+): unknown {
+  if (options?.baseUrlOverride) {
+    ollamaBaseUrlOverride = options.baseUrlOverride
+  }
+
   return {
     beta: {
       messages: {
@@ -130,6 +138,13 @@ export function createOllamaURHQClient(): unknown {
       },
     },
   }
+}
+
+/**
+ * Get the current Ollama base URL, respecting any override.
+ */
+export function getEffectiveOllamaBaseUrl(): string {
+  return ollamaBaseUrlOverride ?? getOllamaBaseUrl()
 }
 
 function createStreamingRequest(
@@ -185,7 +200,7 @@ async function fetchOllamaChat(
       params.model,
       controller.signal,
     )
-    const response = await fetch(`${getOllamaBaseUrl()}/api/chat`, {
+    const response = await fetch(`${getEffectiveOllamaBaseUrl()}/api/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -530,7 +545,7 @@ async function getOllamaModelCapabilities(
   }
 
   try {
-    const response = await fetch(`${getOllamaBaseUrl()}/api/show`, {
+    const response = await fetch(`${getEffectiveOllamaBaseUrl()}/api/show`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -10,6 +10,8 @@ import {
   resolveProviderId,
   setSafeProviderConfig,
   doctorProvider,
+  validateProviderModelCompatibility,
+  listModelsForProvider,
 } from '../../services/providers/providerRegistry.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 
@@ -98,6 +100,41 @@ export async function configSetHandler(
       `Unsupported config key "${key}". Supported: provider, provider.fallback, provider.command_path, model, base_url`,
     )
     process.exit(1)
+  }
+
+  // Validate provider/model compatibility when setting model
+  if (key === 'model') {
+    const settings = getInitialSettings()
+    const currentProvider = getActiveProviderSettings(settings).active ?? 'ollama'
+    const validation = validateProviderModelCompatibility(currentProvider, value)
+    if (validation.valid === false) {
+      writeError(`Invalid model for current provider:
+  Selected provider: ${currentProvider}
+  Selected model: ${value}
+  Error: ${validation.error}
+  Valid models for ${currentProvider}: ${validation.validModels.join(', ') || '(none - uses dynamic discovery)'}${validation.suggestedModel ? `\n  Suggested: ur config set model ${validation.suggestedModel}` : ''}`)
+      process.exit(1)
+    }
+  }
+
+  // When setting provider, validate that current model is compatible
+  if (key === 'provider') {
+    const settings = getInitialSettings()
+    const currentModel = getActiveProviderSettings(settings).model
+    if (currentModel) {
+      const newProvider = resolveProviderId(value)
+      if (newProvider) {
+        const validation = validateProviderModelCompatibility(newProvider, currentModel)
+        if (validation.valid === false) {
+          const validModelsStr = validation.validModels.join(', ') || '(uses dynamic discovery)'
+          const suggestedModel = validation.suggestedModel ?? '<model-name>'
+          writeError(`Warning: Current model "${currentModel}" is not available for provider "${newProvider}".
+  Valid models for ${newProvider}: ${validModelsStr}
+  After changing provider, run: ur config set model ${suggestedModel}`)
+          // Continue with provider change, but warn user
+        }
+      }
+    }
   }
 
   const result = setSafeProviderConfig(key, value)

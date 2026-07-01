@@ -45,6 +45,12 @@ import {
   modelSupportsThinking,
   shouldEnableThinkingByDefault,
 } from '../utils/thinking.js'
+import {
+  listModelsForProvider,
+  isModelSupportedByProvider,
+  validateProviderModelCompatibility,
+} from '../services/providers/providerRegistry.js'
+import { getAPIProvider } from '../utils/model/providers.js'
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js'
 import { Select } from './CustomSelect/index.js'
 import { Byline } from './design-system/Byline.js'
@@ -105,33 +111,70 @@ export function ModelPicker({
     () => appThinkingEnabled ?? shouldEnableThinkingByDefault(),
   )
   const [ollamaModelOptions, setOllamaModelOptions] = useState<ModelOption[]>([])
-  const isOllamaProvider = getAPIProvider() === 'ollama'
+  const [providerModelOptions, setProviderModelOptions] = useState<ModelOption[]>([])
+  const currentProvider = getAPIProvider()
+  const isOllamaProvider = currentProvider === 'ollama'
+  const isLocalProvider = ['ollama', 'lmstudio', 'llama.cpp', 'vllm'].includes(currentProvider)
 
+  // Load models for the current provider
   useEffect(() => {
-    if (!isOllamaProvider) {
-      setOllamaModelOptions([])
-      return
+    // For Ollama and other local providers, use dynamic discovery
+    if (isOllamaProvider) {
+      const controller = new AbortController()
+      getOllamaModelOptions(controller.signal)
+        .then(options => {
+          if (!controller.signal.aborted) {
+            setOllamaModelOptions(options)
+            setProviderModelOptions(options)
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setOllamaModelOptions([])
+            setProviderModelOptions([])
+          }
+        })
+      return () => controller.abort()
     }
-    const controller = new AbortController()
-    getOllamaModelOptions(controller.signal)
-      .then(options => {
-        if (!controller.signal.aborted) {
-          setOllamaModelOptions(options)
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setOllamaModelOptions([])
-        }
-      })
-    return () => controller.abort()
-  }, [isOllamaProvider])
+
+    // For other local providers with dynamic discovery
+    if (isLocalProvider) {
+      const controller = new AbortController()
+      getOllamaModelOptions(controller.signal)
+        .then(options => {
+          if (!controller.signal.aborted) {
+            setProviderModelOptions(options)
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setProviderModelOptions([])
+          }
+        })
+      return () => controller.abort()
+    }
+
+    // For API providers, get models from the provider registry
+    const models = listModelsForProvider(currentProvider)
+    if (models.length > 0) {
+      const options = models.map(model => ({
+        value: model.id,
+        label: model.displayName,
+        description: model.description,
+      }))
+      setProviderModelOptions(options)
+    } else {
+      setProviderModelOptions([])
+    }
+  }, [currentProvider, isOllamaProvider, isLocalProvider])
 
   const baseModelOptions = getModelOptions(isFastMode ?? false)
-  const modelOptions = useMemo(
-    () => mergeModelOptions(baseModelOptions, ollamaModelOptions),
-    [baseModelOptions, ollamaModelOptions],
-  )
+  // For local providers, use only discovered models. For API providers, use provider-specific models.
+  const modelOptions = isLocalProvider
+    ? providerModelOptions
+    : providerModelOptions.length > 0
+      ? providerModelOptions
+      : mergeModelOptions(baseModelOptions, ollamaModelOptions)
 
   // If the agent's current model is a full ID not in the alias list, inject it
   // as an option so it can round-trip through confirm without being overwritten.

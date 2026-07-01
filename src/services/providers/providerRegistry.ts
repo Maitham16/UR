@@ -458,6 +458,18 @@ export function setSafeProviderConfig(
     } else if (key === 'provider.command_path') {
       settings = { provider: { commandPath: trimmed } } as SettingsJson
     } else if (key === 'model') {
+      // Validate model against current provider
+      const currentSettings = getInitialSettings()
+      const currentProvider = getActiveProviderSettings(currentSettings).active ?? 'ollama'
+      const validation = validateProviderModelCompatibility(currentProvider, trimmed)
+      if (validation.valid === false) {
+        const validModelsStr = validation.validModels.join(', ') || '(uses dynamic discovery)'
+        const suggestedModel = validation.suggestedModel ?? 'see provider docs'
+        return {
+          ok: false,
+          message: `${validation.error} Valid models for ${currentProvider}: ${validModelsStr}. Suggested: ${suggestedModel}`,
+        }
+      }
       settings = { provider: { model: trimmed }, model: trimmed } as SettingsJson
     } else {
       settings = { provider: { baseUrl: normalizeBaseUrl(trimmed) } } as SettingsJson
@@ -1001,4 +1013,183 @@ export function formatProviderStatus(result: ProviderDoctorResult, json = false)
   const failure = result.failureReason ? `\nFailure reason: ${result.failureReason}` : ''
   const fix = result.suggestedFix ? `\nSuggested fix: ${result.suggestedFix}` : ''
   return `Selected provider: ${result.displayName} (${result.provider})\nAuth mode: ${authModeLabel(result.authMode)}\nReady: ${result.ok ? 'yes' : 'no'}${failure}${fix}`
+}
+
+// Provider-specific model definitions
+// Each provider has its own set of models. This is the single source of truth.
+export type ProviderModelDefinition = {
+  id: string
+  displayName: string
+  description: string
+  isDefault?: boolean
+  isDynamic?: boolean  // For providers that support live model discovery
+}
+
+export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
+  'codex-cli': [
+    { id: 'gpt-4o', displayName: 'GPT-4o', description: 'Most capable GPT-4 model' },
+    { id: 'gpt-4o-mini', displayName: 'GPT-4o Mini', description: 'Fast and efficient GPT-4o variant' },
+    { id: 'o1', displayName: 'o1', description: 'Reasoning model for complex tasks' },
+    { id: 'o3-mini', displayName: 'o3-mini', description: 'Fast reasoning model' },
+  ],
+  'claude-code-cli': [
+    { id: 'claude-sonnet-4-20250514', displayName: 'Claude Sonnet 4', description: 'Most balanced Claude model', isDefault: true },
+    { id: 'claude-opus-4-20250514', displayName: 'Claude Opus 4', description: 'Most powerful Claude model' },
+    { id: 'claude-3-5-sonnet-20241022', displayName: 'Claude 3.5 Sonnet', description: 'Previous generation Sonnet' },
+  ],
+  'gemini-cli': [
+    { id: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash', description: 'Fast Gemini model', isDefault: true },
+    { id: 'gemini-2.0-pro', displayName: 'Gemini 2.0 Pro', description: 'Most capable Gemini model' },
+  ],
+  'antigravity-cli': [
+    { id: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash', description: 'Fast Gemini model', isDefault: true },
+  ],
+  'openai-api': [
+    { id: 'gpt-4o', displayName: 'GPT-4o', description: 'Most capable GPT-4 model', isDefault: true },
+    { id: 'gpt-4o-mini', displayName: 'GPT-4o Mini', description: 'Fast and efficient GPT-4o variant' },
+    { id: 'o1', displayName: 'o1', description: 'Reasoning model for complex tasks' },
+    { id: 'o3-mini', displayName: 'o3-mini', description: 'Fast reasoning model' },
+    { id: 'gpt-4-turbo', displayName: 'GPT-4 Turbo', description: 'Previous generation GPT-4' },
+  ],
+  'anthropic-api': [
+    { id: 'claude-sonnet-4-20250514', displayName: 'Claude Sonnet 4', description: 'Most balanced Claude model', isDefault: true },
+    { id: 'claude-opus-4-20250514', displayName: 'Claude Opus 4', description: 'Most powerful Claude model' },
+    { id: 'claude-3-5-sonnet-20241022', displayName: 'Claude 3.5 Sonnet', description: 'Previous generation Sonnet' },
+    { id: 'claude-3-haiku-20240307', displayName: 'Claude 3 Haiku', description: 'Fastest Claude model' },
+  ],
+  'gemini-api': [
+    { id: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash', description: 'Fast Gemini model', isDefault: true },
+    { id: 'gemini-2.0-pro', displayName: 'Gemini 2.0 Pro', description: 'Most capable Gemini model' },
+    { id: 'gemini-1.5-flash', displayName: 'Gemini 1.5 Flash', description: 'Previous generation Flash' },
+  ],
+  'openrouter': [
+    { id: 'openai/gpt-4o', displayName: 'GPT-4o', description: 'OpenAI GPT-4o via OpenRouter' },
+    { id: 'anthropic/claude-3.5-sonnet', displayName: 'Claude 3.5 Sonnet', description: 'Anthropic Claude via OpenRouter' },
+    { id: 'google/gemini-pro-1.5', displayName: 'Gemini Pro 1.5', description: 'Google Gemini via OpenRouter' },
+  ],
+  'openai-compatible': [
+    { id: 'custom', displayName: 'Custom Model', description: 'Model name from provider endpoint', isDynamic: true },
+  ],
+  'ollama': [
+    { id: 'dynamic', displayName: 'Discovered Models', description: 'Models discovered from Ollama server', isDynamic: true, isDefault: true },
+  ],
+  'lmstudio': [
+    { id: 'dynamic', displayName: 'Discovered Models', description: 'Models discovered from LM Studio server', isDynamic: true, isDefault: true },
+  ],
+  'llama.cpp': [
+    { id: 'dynamic', displayName: 'Discovered Models', description: 'Models discovered from llama.cpp server', isDynamic: true, isDefault: true },
+  ],
+  'vllm': [
+    { id: 'dynamic', displayName: 'Discovered Models', description: 'Models discovered from vLLM server', isDynamic: true, isDefault: true },
+  ],
+}
+
+/**
+ * List all models available for a specific provider.
+ * For providers with dynamic discovery, this returns a placeholder that triggers live discovery.
+ */
+export function listModelsForProvider(providerId: ProviderId | string): ProviderModelDefinition[] {
+  const provider = resolveProviderId(providerId)
+  if (!provider) {
+    return []
+  }
+  return PROVIDER_MODELS[provider] ?? []
+}
+
+/**
+ * Check if a model is supported by a specific provider.
+ */
+export function isModelSupportedByProvider(
+  providerId: ProviderId | string,
+  modelId: string,
+): boolean {
+  const provider = resolveProviderId(providerId)
+  if (!provider) {
+    return false
+  }
+  const models = PROVIDER_MODELS[provider]
+  if (!models) {
+    return false
+  }
+  // For dynamic providers, any model name is valid (will be discovered at runtime)
+  const hasDynamic = models.some(m => m.isDynamic)
+  if (hasDynamic) {
+    return true
+  }
+  return models.some(m => m.id === modelId)
+}
+
+/**
+ * Get the default model for a provider.
+ */
+export function getDefaultModelForProvider(providerId: ProviderId | string): string | undefined {
+  const provider = resolveProviderId(providerId)
+  if (!provider) {
+    return undefined
+  }
+  const models = PROVIDER_MODELS[provider]
+  if (!models) {
+    return undefined
+  }
+  const defaultModel = models.find(m => m.isDefault)
+  return defaultModel?.id
+}
+
+/**
+ * Get valid model IDs for a provider (for error messages and validation).
+ */
+export function getValidModelIdsForProvider(providerId: ProviderId | string): string[] {
+  const models = listModelsForProvider(providerId)
+  return models.filter(m => !m.isDynamic).map(m => m.id)
+}
+
+/**
+ * Validate that a provider-model pair is compatible.
+ * Returns an error message if invalid, or null if valid.
+ */
+export function validateProviderModelCompatibility(
+  providerId: ProviderId | string,
+  modelId: string,
+): { valid: true } | { valid: false; error: string; validModels: string[]; suggestedModel?: string } {
+  const provider = resolveProviderId(providerId)
+  if (!provider) {
+    return {
+      valid: false,
+      error: `Unknown provider "${providerId}". Run: ur provider list`,
+      validModels: [],
+    }
+  }
+
+  const models = PROVIDER_MODELS[provider]
+  if (!models) {
+    return {
+      valid: false,
+      error: `No models defined for provider "${provider}".`,
+      validModels: [],
+    }
+  }
+
+  // Check if this is a dynamic provider (discovers models at runtime)
+  const hasDynamic = models.some(m => m.isDynamic)
+  if (hasDynamic) {
+    // Dynamic providers accept any model name
+    return { valid: true }
+  }
+
+  // Check if the model is in the provider's model list
+  const modelExists = models.some(m => m.id === modelId)
+  if (modelExists) {
+    return { valid: true }
+  }
+
+  // Model not found - build helpful error message
+  const validModelIds = getValidModelIdsForProvider(provider)
+  const defaultModel = getDefaultModelForProvider(provider)
+
+  return {
+    valid: false,
+    error: `Model "${modelId}" is not available for provider "${provider}".`,
+    validModels: validModelIds,
+    suggestedModel: defaultModel,
+  }
 }

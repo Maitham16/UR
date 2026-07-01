@@ -287,3 +287,135 @@ describe('provider registry legal access paths', () => {
     expect(source).not.toContain('readFile')
   })
 })
+
+describe('provider-scoped model listing', () => {
+  const {
+    listModelsForProvider,
+    isModelSupportedByProvider,
+    getDefaultModelForProvider,
+    getValidModelIdsForProvider,
+    validateProviderModelCompatibility,
+  } = require('../src/services/providers/providerRegistry.js')
+
+  test('listModelsForProvider returns models only for specified provider', () => {
+    const openaiModels = listModelsForProvider('openai-api')
+    const anthropicModels = listModelsForProvider('anthropic-api')
+    const ollamaModels = listModelsForProvider('ollama')
+
+    // OpenAI models
+    expect(openaiModels.some(m => m.id === 'gpt-4o')).toBe(true)
+    expect(openaiModels.some(m => m.id === 'gpt-4o-mini')).toBe(true)
+    expect(openaiModels.some(m => m.id === 'o1')).toBe(true)
+    // OpenAI should NOT have Claude models
+    expect(openaiModels.some(m => m.id.includes('claude'))).toBe(false)
+
+    // Anthropic models
+    expect(anthropicModels.some(m => m.id.includes('claude'))).toBe(true)
+    // Anthropic should NOT have GPT models
+    expect(anthropicModels.some(m => m.id.includes('gpt-'))).toBe(false)
+
+    // Ollama uses dynamic discovery
+    expect(ollamaModels.some(m => m.isDynamic)).toBe(true)
+  })
+
+  test('isModelSupportedByProvider returns true only for provider models', () => {
+    // OpenAI provider supports GPT models
+    expect(isModelSupportedByProvider('openai-api', 'gpt-4o')).toBe(true)
+    expect(isModelSupportedByProvider('openai-api', 'o1')).toBe(true)
+    // OpenAI provider does NOT support Claude models
+    expect(isModelSupportedByProvider('openai-api', 'claude-sonnet-4-20250514')).toBe(false)
+
+    // Anthropic provider supports Claude models
+    expect(isModelSupportedByProvider('anthropic-api', 'claude-sonnet-4-20250514')).toBe(true)
+    // Anthropic provider does NOT support GPT models
+    expect(isModelSupportedByProvider('anthropic-api', 'gpt-4o')).toBe(false)
+
+    // Dynamic providers accept any model name
+    expect(isModelSupportedByProvider('ollama', 'llama3')).toBe(true)
+    expect(isModelSupportedByProvider('ollama', 'qwen3-coder')).toBe(true)
+    expect(isModelSupportedByProvider('lmstudio', 'custom-model')).toBe(true)
+  })
+
+  test('getDefaultModelForProvider returns provider default', () => {
+    const openaiDefault = getDefaultModelForProvider('openai-api')
+    const anthropicDefault = getDefaultModelForProvider('anthropic-api')
+    const geminiDefault = getDefaultModelForProvider('gemini-api')
+
+    expect(openaiDefault).toBe('gpt-4o')
+    expect(anthropicDefault).toBe('claude-sonnet-4-20250514')
+    expect(geminiDefault).toBe('gemini-2.0-flash')
+  })
+
+  test('getValidModelIdsForProvider returns only non-dynamic model IDs', () => {
+    const openaiModels = getValidModelIdsForProvider('openai-api')
+    const ollamaModels = getValidModelIdsForProvider('ollama')
+
+    expect(openaiModels).toContain('gpt-4o')
+    expect(openaiModels).toContain('gpt-4o-mini')
+    expect(openaiModels).not.toContain('dynamic')
+
+    // Ollama uses dynamic discovery, so no static model IDs
+    expect(ollamaModels).toEqual([])
+  })
+
+  test('validateProviderModelCompatibility returns valid for compatible pairs', () => {
+    const result1 = validateProviderModelCompatibility('openai-api', 'gpt-4o')
+    const result2 = validateProviderModelCompatibility('anthropic-api', 'claude-sonnet-4-20250514')
+    const result3 = validateProviderModelCompatibility('ollama', 'llama3')
+
+    expect(result1.valid).toBe(true)
+    expect(result2.valid).toBe(true)
+    expect(result3.valid).toBe(true)
+  })
+
+  test('validateProviderModelCompatibility returns error for incompatible pairs', () => {
+    const result = validateProviderModelCompatibility('openai-api', 'claude-sonnet-4-20250514')
+
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.error).toContain('not available for provider')
+      expect(result.error).toContain('openai-api')
+      expect(result.validModels).toContain('gpt-4o')
+      expect(result.suggestedModel).toBe('gpt-4o')
+    }
+  })
+
+  test('validateProviderModelCompatibility handles dynamic providers', () => {
+    const result = validateProviderModelCompatibility('ollama', 'any-custom-model')
+
+    expect(result.valid).toBe(true)
+  })
+
+  test('validateProviderModelCompatibility handles unknown provider', () => {
+    const result = validateProviderModelCompatibility('unknown-provider', 'some-model')
+
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.error).toContain('Unknown provider')
+      expect(result.validModels).toEqual([])
+    }
+  })
+
+  test('changing provider invalidates incompatible model', () => {
+    // Simulate: user has claude-model selected, switches to openai provider
+    const validation = validateProviderModelCompatibility('openai-api', 'claude-sonnet-4-20250514')
+
+    expect(validation.valid).toBe(false)
+    if (!validation.valid) {
+      expect(validation.error).toContain('not available')
+      expect(validation.validModels.length).toBeGreaterThan(0)
+      expect(validation.suggestedModel).toBeDefined()
+    }
+  })
+
+  test('empty model list gives clear error for providers without models', () => {
+    const models = listModelsForProvider('unknown-provider' as any)
+    expect(models).toEqual([])
+
+    const validation = validateProviderModelCompatibility('unknown-provider' as any, 'model')
+    expect(validation.valid).toBe(false)
+    if (!validation.valid) {
+      expect(validation.error).toContain('Unknown provider')
+    }
+  })
+})
