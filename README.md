@@ -194,13 +194,48 @@ Use quotes for shell values with spaces.
 | llama.cpp | local/server | local OpenAI-compatible server |
 | vLLM | local/server | OpenAI-compatible server |
 
-In the interactive app, `/model` shows providers first and then shows only the
-selected provider's models. OpenAI API and Codex CLI, Claude API and Claude
-Code, and Gemini API and Gemini CLI are separate access paths; subscription
-logins and API keys are not interchangeable. The final confirmation includes
-the runtime backend that will receive the next agent request. Use
-`ur provider status` to show the active provider, model, access type, and
-runtime backend.
+#### Provider-first model selection
+
+In the interactive app, `/model` is a two-step, provider-first picker:
+
+1. **Choose a provider.** Every provider is listed with its display name,
+   internal ID, access type (`subscription`, `api`, `local`, `server`),
+   credential type, and a live connection status (`connected`, `missing`,
+   `unavailable`, `unknown`).
+2. **Choose a model.** Only the selected provider's models are shown, labelled
+   by source: `live` (discovered from the endpoint), `cache` (last discovery),
+   or `static` (predefined). Local/server providers (Ollama, LM Studio,
+   llama.cpp, vLLM) and OpenAI-compatible endpoints are discovered live; API and
+   subscription providers use their curated model list.
+
+Model lists never cross providers: OpenAI API vs Codex CLI, Claude API vs Claude
+Code, and Gemini API vs Gemini CLI are separate access paths, and subscription
+logins and API keys are not interchangeable. The provider/model pair is
+validated before it is saved and again before every request; changing provider
+clears an incompatible model. `ur config set provider X` warns and clears an
+incompatible model, and `ur config set model Y` is validated against the active
+provider. The confirmation shows the selected provider, model, model source, and
+the runtime backend that will receive the next request.
+
+#### Runtime dispatch
+
+The selected provider/model drives every agent request — the assistant's own
+identity line in the system prompt reflects it too:
+
+- **Subscription** providers spawn the official CLI (`codex`, `claude`,
+  `gemini`, `agy`) in non-interactive mode with the scoped model and prompt; a
+  non-zero exit or empty output fails clearly (never placeholder text).
+- **API** providers call each service in its native wire format — Anthropic
+  `x-api-key` + `anthropic-version` on `/v1/messages`, OpenAI `Bearer` on
+  `/v1/chat/completions`, Gemini `x-goog-api-key` on `:generateContent`,
+  OpenRouter on its OpenAI-compatible chat endpoint.
+- **Local/server** providers call the configured endpoint (`/v1/chat/completions`
+  for LM Studio/llama.cpp/vLLM; the native API for Ollama).
+
+Ollama is used only when Ollama is selected. There is no silent cross-provider
+fallback: if dispatch fails, UR reports the selected provider, model, and runtime
+backend. Use `ur provider status` (or `ur provider doctor <id>`) to inspect the
+active provider, model, access type, and backend.
 
 Security policy: UR-AGENT never scrapes browser sessions, extracts OAuth
 tokens, bypasses subscription/quota/region/organization restrictions, proxies a
@@ -269,11 +304,13 @@ viewer mode.
 Example:
 
 ```text
-UR-AGENT v1.25.3 | Provider: Ollama | Auth: local | model: qwen3-coder:480b-cloud | mode: ask | branch: main | tasks: idle | Update: 1.25.2 -> 1.25.3 available
+UR-AGENT v1.30.1 | Provider: Codex CLI | Auth: subscription | model: codex/gpt-5.5 | mode: ask | branch: main | tasks: idle
 ```
 
-If a custom status-line hook is configured, UR-AGENT uses that hook output
-instead of the built-in bar.
+The bar reflects the active in-session provider/model immediately after a
+`/model`, `/model <model>`, or `/provider` change — it does not wait for
+persisted settings to reload. If a custom status-line hook is configured,
+UR-AGENT uses that hook output instead of the built-in bar.
 
 ### IDE Integration
 
@@ -290,7 +327,31 @@ ur ide diff show <id>
 ```
 
 The extension is local-only. It reads and writes diff metadata inside the
-current workspace and does not call model providers or network services.
+current workspace and does not call model providers or network services. In the
+UR Inline Diffs view you can preview a bundle, **Apply** it (a confirmed
+`git apply`, never a silent write), **Reject** it, or run **UR: Show Status**.
+
+Inspect and configure integration per editor:
+
+```sh
+ur ide status               # workspace, ACP server, provider/model, plugin count
+ur ide doctor               # pass/warn/fail checks; reports missing config clearly
+ur ide config zed           # print the .zed/settings.json ACP block
+ur ide config vscode        # VS Code / Cursor / Windsurf setup
+```
+
+Editors connect either through the native UR extension/plugin (VS Code family,
+JetBrains) or the stdio Agent Client Protocol (Zed, ACP Neovim, generic ACP
+clients). Start an ACP surface with:
+
+```sh
+ur acp stdio                        # stdio ACP agent for editors (Zed, Neovim)
+ur acp serve --port 8123 [--debug]  # HTTP JSON-RPC server for scripts/clients
+ur acp status
+```
+
+See the [IDE Guide](docs/IDE.md) and [ACP Guide](docs/ACP.md) for per-editor
+setup, supported features, and limitations.
 
 New slash skills run agentic work in isolated git worktrees with clean commits and PR output:
 `/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`.
@@ -310,11 +371,16 @@ validator, and Markdown language-adapter metadata.
 
 ```sh
 ur plugin list
+ur plugin doctor
 ur plugin install engineering-discipline@ur-plugins-official
 ur plugin install hello@ur-plugins-official
 ur plugin update <plugin>
 ur plugin disable <plugin>
 ```
+
+`ur plugin doctor` validates every installed, project, and bundled plugin
+manifest and reports its declared components and capability surface, so you can
+review what a plugin touches before enabling it.
 
 The npm package includes `README.md`, `QUALITY.md`, `docs/`, `documentation/`,
 and `plugins/`, so the npm package page and installed artifact both carry the
@@ -497,6 +563,8 @@ release until that GitHub run is green.
 - [1.18.0 Upgrade Notes](docs/AGENT_UPGRADE_1.18.0.md)
 - [1.17.0 Upgrade Notes](docs/AGENT_UPGRADE_1.17.0.md)
 - [Development Guide](docs/DEVELOPMENT.md)
+- [IDE Guide](docs/IDE.md)
+- [ACP Guide](docs/ACP.md)
 - [Plugin Guide](docs/plugins.md)
 - [Validation Runbook](docs/VALIDATION.md)
 - [Release Runbook](RELEASE.md)

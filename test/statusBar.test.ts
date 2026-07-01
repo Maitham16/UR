@@ -64,7 +64,7 @@ describe('UR-AGENT status bar', () => {
       },
       {
         active: 'gemini-cli',
-        model: 'gemini-cli/gemini-3.5-flash',
+        model: 'gemini-cli/gemini-2.5-pro',
       },
     )
     const runtime = getProviderRuntimeInfo(effective)
@@ -76,9 +76,9 @@ describe('UR-AGENT status bar', () => {
     })
 
     expect(runtime.provider).toBe('gemini-cli')
-    expect(runtime.model).toBe('gemini-cli/gemini-3.5-flash')
+    expect(runtime.model).toBe('gemini-cli/gemini-2.5-pro')
     expect(text).toContain('Provider: Gemini CLI')
-    expect(text).toContain('model: gemini-cli/gemini-3.5-flash')
+    expect(text).toContain('model: gemini-cli/gemini-2.5-pro')
     expect(text).not.toContain('Codex CLI')
     expect(text).not.toContain('codex/gpt-5.5')
   })

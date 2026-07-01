@@ -158,7 +158,7 @@ ur config set provider anthropic-api
 
 | Provider type | Model discovery | Source label |
 | --- | --- | --- |
-| Subscription CLI (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Static list of provider-specific models | static |
+| Subscription CLI (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Static list of provider-scoped CLI model aliases/names | static |
 | API providers (openai-api, anthropic-api, gemini-api, openrouter) | Static list of provider-specific models | static |
 | Local/server providers (ollama, lmstudio, llama.cpp, vllm) | Dynamic discovery from the selected provider endpoint | live |
 | OpenAI-compatible | Dynamic discovery from configured endpoint | live |
@@ -210,6 +210,10 @@ Warning: Current model "gpt-5.5" is not available for provider "anthropic-api" a
   Valid models for anthropic-api: claude-sonnet-5, claude-opus-4-8, claude-opus-4-7
   After changing provider, run /model or: ur config set model claude-sonnet-5
 ```
+
+For subscription CLIs, UR stores scoped IDs such as `claude-code/sonnet` and
+passes only the CLI model name (`sonnet`) to the official command. Stale scoped
+IDs such as `claude-code/sonnet-5` are rejected before runtime dispatch.
 
 ### Troubleshooting
 

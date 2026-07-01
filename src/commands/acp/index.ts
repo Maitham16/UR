@@ -4,7 +4,7 @@ const acp = {
   type: 'local',
   name: 'acp',
   description: 'Manage the local Agent Communication Protocol (ACP) server for IDE extensions',
-  argumentHint: '[serve|stop|status] [--host] [--port] [--token] [--json]',
+  argumentHint: '[serve|stdio|stop|status] [--host] [--port] [--token] [--debug] [--json]',
   supportsNonInteractive: true,
   load: () => import('./acp.js'),
 } satisfies Command

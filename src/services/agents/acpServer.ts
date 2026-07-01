@@ -125,12 +125,58 @@ function buildToolUseContext(tools: ReturnType<typeof getTools>, readFileStateCa
   }
 }
 
-async function handleInitialize(): Promise<unknown> {
+async function handleInitialize(options: AcpServeOptions): Promise<unknown> {
   return {
     name: 'ur-agent',
     version: MACRO.VERSION,
     protocolVersion: '0.1.0',
+    workspaceRoot: options.cwd,
+    capabilities: {
+      tools: true,
+      tasks: true,
+      sessions: true,
+      ide: true,
+      streaming: false,
+      cancellation: true,
+    },
   }
+}
+
+const acpSessions = new Map<string, { id: string; cwd: string; createdAt: string }>()
+
+async function handleSessionNew(
+  params: Record<string, unknown> | undefined,
+  options: AcpServeOptions,
+): Promise<unknown> {
+  const cwd = typeof params?.cwd === 'string' ? params.cwd : options.cwd
+  const session = { id: `sess_${randomUUID()}`, cwd, createdAt: now() }
+  acpSessions.set(session.id, session)
+  return { sessionId: session.id, workspaceRoot: session.cwd }
+}
+
+async function handleSessionPrompt(
+  params: Record<string, unknown> | undefined,
+  options: AcpServeOptions,
+): Promise<unknown> {
+  const sessionId = typeof params?.sessionId === 'string' ? params.sessionId : undefined
+  if (sessionId && !acpSessions.has(sessionId)) {
+    throw new Error(`unknown session: ${sessionId}`)
+  }
+  const sent = (await handleTasksSend(params, options)) as { task: AcpTaskRecord }
+  return { sessionId: sessionId ?? null, ...sent }
+}
+
+async function handleSessionCancel(
+  params: Record<string, unknown> | undefined,
+  options: AcpServeOptions,
+): Promise<unknown> {
+  const taskId = typeof params?.taskId === 'string' ? params.taskId : undefined
+  if (taskId) {
+    return handleTasksCancel({ id: taskId }, options)
+  }
+  const sessionId = typeof params?.sessionId === 'string' ? params.sessionId : ''
+  acpSessions.delete(sessionId)
+  return { sessionId, canceled: true }
 }
 
 async function handleToolsList(): Promise<unknown> {
@@ -387,7 +433,13 @@ async function dispatchMethod(
 ): Promise<unknown> {
   switch (method) {
     case 'initialize':
-      return handleInitialize()
+      return handleInitialize(options)
+    case 'session/new':
+      return handleSessionNew(params, options)
+    case 'session/prompt':
+      return handleSessionPrompt(params, options)
+    case 'session/cancel':
+      return handleSessionCancel(params, options)
     case 'tools/list':
       return handleToolsList()
     case 'tools/call':
@@ -403,7 +455,11 @@ async function dispatchMethod(
     case 'ide/select':
       return handleIdeSelect(params, options)
     case 'shutdown':
-      return {}
+      // Stop after the response flushes so the client receives an ack.
+      setTimeout(() => {
+        void stopAcpServer()
+      }, 10)
+      return { ok: true }
     default:
       throw new Error(`unknown method: ${method}`)
   }
@@ -439,12 +495,25 @@ export async function handleAcpRequest(
     return jsonResponse(400, rpcError(id, -32600, 'invalid request'))
   }
 
+  if (options.debug) {
+    // eslint-disable-next-line no-console
+    console.error(`[acp] ${method} ${jsonStringify(body.params ?? {})}`)
+  }
+
   try {
     const result = await dispatchMethod(method, body.params, options)
+    if (options.debug) {
+      // eslint-disable-next-line no-console
+      console.error(`[acp] ${method} -> ok`)
+    }
     return jsonResponse(200, rpcResponse(id, result))
   } catch (error) {
     logError(error)
     const message = error instanceof Error ? error.message : String(error)
+    if (options.debug) {
+      // eslint-disable-next-line no-console
+      console.error(`[acp] ${method} -> error: ${message}`)
+    }
     return jsonResponse(500, rpcError(id, -32603, message))
   }
 }
@@ -461,6 +530,7 @@ export async function stopAcpServer(): Promise<void> {
     acpServer = null
   }
   acpTasks.clear()
+  acpSessions.clear()
 }
 
 function pickFallbackPort(): number {

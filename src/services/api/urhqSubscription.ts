@@ -64,12 +64,9 @@ export function createURHQSubscriptionClient(
       signal: requestOptions?.signal,
       timeoutMs: options.timeoutMs ?? 120_000,
     })
-    if (result.code !== 0) {
-      throw new Error(
-        `Subscription CLI "${options.commandPath}" for ${providerId} exited ${result.code}: ${
-          result.stderr.trim() || result.stdout.trim() || 'no output'
-        }`,
-      )
+    const failure = formatCliFailure(providerId, options.commandPath, model, result)
+    if (failure) {
+      throw new Error(failure)
     }
     const text = extractText(result.stdout)
     if (!text) {
@@ -127,9 +124,16 @@ export function createURHQSubscriptionClient(
   return { beta: { messages: messagesAPI } } as URHQ
 }
 
+export function getSubscriptionCliStdinMode(input?: string): 'ignore' | 'pipe' {
+  return input === undefined ? 'ignore' : 'pipe'
+}
+
 const defaultRunner: SubscriptionCliRunner = (command, args, options) =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal })
+    const child = spawn(command, args, {
+      stdio: [getSubscriptionCliStdinMode(options.input), 'pipe', 'pipe'],
+      signal: options.signal,
+    })
     let stdout = ''
     let stderr = ''
     const timer = options.timeoutMs
@@ -149,15 +153,93 @@ const defaultRunner: SubscriptionCliRunner = (command, args, options) =>
       if (timer) clearTimeout(timer)
       resolve({ code: code ?? 1, stdout, stderr })
     })
-    if (options.input) {
+    if (options.input !== undefined) {
       child.stdin?.write(options.input)
+      child.stdin?.end()
     }
-    child.stdin?.end()
   })
 
 function cliModelName(model: string): string {
   const slash = model.indexOf('/')
   return slash >= 0 ? model.slice(slash + 1) : model
+}
+
+function formatCliFailure(
+  providerId: string,
+  commandPath: string,
+  model: string,
+  result: SubscriptionCliResult,
+): string | null {
+  const parsed = parseCliJsonFailure(result.stdout)
+  if (result.code === 0 && !parsed?.isError) {
+    return null
+  }
+
+  const rawStderr = result.stderr.trim()
+  const rawStdout = result.stdout.trim()
+  const summary =
+    summarizeKnownCliFailure(rawStderr) ??
+    parsed?.message ??
+    summarizeKnownCliFailure(rawStdout) ??
+    firstUsefulLine(rawStderr) ??
+    firstUsefulLine(rawStdout) ??
+    'no output'
+  const status = parsed?.status ? ` (status ${parsed.status})` : ''
+  const exit = result.code === 0 ? 'reported an error' : `exited ${result.code}`
+  return `Subscription CLI "${commandPath}" for ${providerId} ${exit}${status} with model "${model}": ${summary}. Suggested action: run /model and choose a valid model for ${providerId}, or run: ur provider doctor ${providerId}. UR did not fall back to another provider.`
+}
+
+function parseCliJsonFailure(stdout: string): { isError: boolean; status?: string | number; message?: string } | null {
+  const raw = stdout.trim()
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return null
+    const entry = parsed as {
+      is_error?: unknown
+      api_error_status?: unknown
+      result?: unknown
+      error?: unknown
+      message?: unknown
+      response?: unknown
+    }
+    const isError = entry.is_error === true || entry.error !== undefined
+    if (!isError) return null
+    const message = [entry.result, entry.message, entry.error, entry.response]
+      .find(value => typeof value === 'string' && value.trim()) as string | undefined
+    const status =
+      typeof entry.api_error_status === 'number' || typeof entry.api_error_status === 'string'
+        ? entry.api_error_status
+        : undefined
+    return { isError, status, message: message?.trim() }
+  } catch {
+    return null
+  }
+}
+
+function summarizeKnownCliFailure(text: string): string | null {
+  if (!text) return null
+  const reasonMessage = text.match(/reasonMessage:\s*'([^']+)'/)?.[1]
+  if (reasonMessage) return reasonMessage
+  if (/IneligibleTierError|UNSUPPORTED_CLIENT/i.test(text)) {
+    return 'The selected Gemini CLI account/client is not eligible for this Gemini Code Assist runtime.'
+  }
+  if (/There's an issue with the selected model/i.test(text)) {
+    return firstUsefulLine(text)
+  }
+  return null
+}
+
+function firstUsefulLine(text: string): string | null {
+  const line = text
+    .split(/\r?\n/)
+    .map(value => value.trim())
+    .find(value => value && !value.startsWith('at ') && !value.startsWith('file://'))
+  return line ? truncate(line, 800) : null
+}
+
+function truncate(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value
 }
 
 function messagesToPrompt(params: any): string {

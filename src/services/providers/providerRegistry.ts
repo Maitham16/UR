@@ -1372,21 +1372,13 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   ],
   // Anthropic subscription CLI (Claude Code) - uses Claude Code subscription
   'claude-code-cli': [
-    { id: 'claude-code/sonnet-5', displayName: 'Claude Sonnet 5 (Claude Code)', description: 'Subscription model through official Claude Code login', isDefault: true },
-    { id: 'claude-code/opus-4-8', displayName: 'Claude Opus 4.8 (Claude Code)', description: 'Subscription model through official Claude Code login' },
-    { id: 'claude-code/opus-4-7', displayName: 'Claude Opus 4.7 (Claude Code)', description: 'Subscription model through official Claude Code login' },
-    { id: 'claude-code/opus-4-6', displayName: 'Claude Opus 4.6 (Claude Code)', description: 'Subscription model through official Claude Code login' },
-    { id: 'claude-code/opus-4-5', displayName: 'Claude Opus 4.5 (Claude Code)', description: 'Subscription model through official Claude Code login' },
-    { id: 'claude-code/sonnet-4-6', displayName: 'Claude Sonnet 4.6 (Claude Code)', description: 'Subscription model through official Claude Code login' },
-    { id: 'claude-code/sonnet-4-5', displayName: 'Claude Sonnet 4.5 (Claude Code)', description: 'Subscription model through official Claude Code login' },
-    { id: 'claude-code/haiku-4-5', displayName: 'Claude Haiku 4.5 (Claude Code)', description: 'Subscription model through official Claude Code login' },
+    { id: 'claude-code/sonnet', displayName: 'Claude Sonnet (Claude Code)', description: 'Claude Code CLI alias resolved by the official CLI', isDefault: true },
+    { id: 'claude-code/opus', displayName: 'Claude Opus (Claude Code)', description: 'Claude Code CLI alias; requires Opus access on the signed-in account' },
+    { id: 'claude-code/fable', displayName: 'Claude Fable (Claude Code)', description: 'Claude Code CLI alias resolved by the official CLI where available' },
   ],
   // Google subscription CLI (Gemini Code Assist) - uses Gemini enterprise subscription
   'gemini-cli': [
-    { id: 'gemini-cli/gemini-3.5-flash', displayName: 'Gemini 3.5 Flash (Gemini CLI)', description: 'Subscription model through official Gemini CLI login', isDefault: true },
-    { id: 'gemini-cli/gemini-3.1-pro', displayName: 'Gemini 3.1 Pro (Gemini CLI)', description: 'Subscription model through official Gemini CLI login' },
-    { id: 'gemini-cli/gemini-3.1-flash-lite', displayName: 'Gemini 3.1 Flash Lite (Gemini CLI)', description: 'Subscription model through official Gemini CLI login' },
-    { id: 'gemini-cli/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro (Gemini CLI)', description: 'Subscription model through official Gemini CLI login' },
+    { id: 'gemini-cli/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro (Gemini CLI)', description: 'Subscription model through official Gemini CLI login', isDefault: true },
     { id: 'gemini-cli/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash (Gemini CLI)', description: 'Subscription model through official Gemini CLI login' },
     { id: 'gemini-cli/gemini-2.5-flash-lite', displayName: 'Gemini 2.5 Flash Lite (Gemini CLI)', description: 'Subscription model through official Gemini CLI login' },
   ],

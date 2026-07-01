@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.30.1
+
+- Fix Codex CLI runtime dispatch by ignoring stdin when UR already passes the
+  prompt as a command argument. This prevents `codex exec` from treating UR's
+  closed pipe as extra stdin and exiting after `Reading additional input from
+  stdin...`.
+
+## 1.30.0
+
+- IDE integration commands: `ur ide status`, `ur ide doctor`, and `ur ide config
+  <editor>` for VS Code, Cursor, Windsurf, Zed, JetBrains, Neovim, and generic
+  ACP clients. Status shows workspace, ACP server, provider/model, plugin count,
+  and warnings; config generation states each editor's integration mechanism
+  honestly (native extension, stdio ACP, or manual).
+- ACP server completion: `initialize` now advertises capabilities and the
+  workspace root; added `session/new`, `session/prompt`, and `session/cancel`;
+  `shutdown` actually stops the server; added `--debug` request logging.
+- New stdio Agent Client Protocol agent (`ur acp stdio`) so Zed and ACP-capable
+  Neovim clients can launch UR natively, with `session/update` streaming.
+- `ur plugin doctor` validates installed, project, and bundled plugin manifests
+  and reports declared components and the capability surface; a broken plugin is
+  reported without crashing the scan.
+- VS Code Inline Diffs extension: explicit Apply (confirmed `git apply`) and
+  Reject actions plus a status command; no silent writes.
+- New docs: `docs/IDE.md`, `docs/ACP.md`, expanded `docs/plugins.md` (manifest
+  reference, doctor, hooks, permissions, troubleshooting), and README quickstarts.
+
+## 1.29.1
+
+- Replace fabricated Claude Code and Gemini CLI static model names with
+  provider-scoped CLI model aliases/names that the official CLIs can receive.
+- Reject stale subscription CLI selections such as `claude-code/sonnet-5` before
+  runtime dispatch instead of forwarding `sonnet-5` to Claude Code.
+- Summarize subscription CLI model/account failures with provider, model,
+  suggested action, and an explicit no-cross-provider-fallback note.
+
+## 1.29.0
+
+- Customer release consolidating the multi-provider selection and runtime
+  dispatch work (1.27.5–1.28.1) into a single production line.
+- System-prompt identity now reflects the selected provider and runtime backend
+  (e.g. "running through the Codex CLI provider"), so the assistant's self-report
+  matches the `/model` choice instead of a generic default.
+- Refresh documentation to cover the full provider/model feature set: provider-
+  first `/model` flow, provider-scoped discovery, real subscription CLI dispatch,
+  native API wire formats, runtime backends, and troubleshooting.
+
 ## 1.28.1
 
 - Keep the status bar synchronized with in-session provider/model changes from

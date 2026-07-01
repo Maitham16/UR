@@ -4,7 +4,7 @@
  */
 /* eslint-disable custom-rules/no-process-exit -- CLI subcommand handlers intentionally exit */
 import figures from 'figures'
-import { basename, dirname } from 'path'
+import { basename, dirname, join, resolve } from 'path'
 import { setUseCoworkPlugins } from '../../bootstrap/state.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -48,6 +48,7 @@ import {
   parsePluginIdentifier,
   scopeToSettingSource,
 } from '../../utils/plugins/pluginIdentifier.js'
+import { formatPluginDoctor, runPluginDoctor } from '../../utils/plugins/pluginDoctor.js'
 import { loadAllPlugins } from '../../utils/plugins/pluginLoader.js'
 import type { PluginSource } from '../../utils/plugins/schemas.js'
 import {
@@ -98,6 +99,35 @@ function printValidationResult(result: ValidationResult): void {
 }
 
 // plugin validate
+/**
+ * `ur plugin doctor` — validate installed/project/bundled plugin manifests and
+ * report their declared components and capability surface.
+ */
+export async function pluginDoctorHandler(options: {
+  json?: boolean
+  path?: string
+}): Promise<void> {
+  const roots: string[] = []
+  if (options.path) roots.push(resolve(options.path))
+  roots.push(join(process.cwd(), '.ur', 'plugins'))
+  try {
+    const data = loadInstalledPluginsV2()
+    for (const installations of Object.values(data.plugins ?? {})) {
+      for (const installation of installations as Array<{ installPath?: string }>) {
+        if (typeof installation?.installPath === 'string') roots.push(installation.installPath)
+      }
+    }
+  } catch {
+    // Best effort: still report project/--path plugins even if the manifest can't load.
+  }
+  const report = runPluginDoctor(roots)
+  // eslint-disable-next-line no-console
+  console.log(formatPluginDoctor(report, options.json))
+  if (!report.ok) {
+    process.exitCode = 1
+  }
+}
+
 export async function pluginValidateHandler(
   manifestPath: string,
   options: { cowork?: boolean },

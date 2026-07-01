@@ -221,7 +221,7 @@ describe('runtime request dispatch', () => {
 
   test('selected claude-code does not call Claude API backend', async () => {
     const calls: string[] = []
-    await streamModelResponse('claude-code-cli', 'claude-code/sonnet-5', userMessages(), {
+    await streamModelResponse('claude-code-cli', 'claude-code/sonnet', userMessages(), {
       clientFactory: recordingFactory(calls),
     })
     expect(calls).toEqual(['claude-code-cli'])
@@ -239,7 +239,7 @@ describe('runtime request dispatch', () => {
 
   test('selected gemini-cli does not call Gemini API backend', async () => {
     const calls: string[] = []
-    await streamModelResponse('gemini-cli', 'gemini-cli/gemini-3.5-flash', userMessages(), {
+    await streamModelResponse('gemini-cli', 'gemini-cli/gemini-2.5-pro', userMessages(), {
       clientFactory: recordingFactory(calls),
     })
     expect(calls).toEqual(['gemini-cli'])
@@ -298,6 +298,16 @@ describe('runtime request dispatch', () => {
     const calls: string[] = []
     await expect(
       streamModelResponse('openai-api', 'claude-sonnet-5', userMessages(), {
+        clientFactory: recordingFactory(calls),
+      }),
+    ).rejects.toThrow('runtime dispatch cannot use')
+    expect(calls).toEqual([])
+  })
+
+  test('stale claude-code static model is rejected before spawning Claude CLI', async () => {
+    const calls: string[] = []
+    await expect(
+      streamModelResponse('claude-code-cli', 'claude-code/sonnet-5', userMessages(), {
         clientFactory: recordingFactory(calls),
       }),
     ).rejects.toThrow('runtime dispatch cannot use')

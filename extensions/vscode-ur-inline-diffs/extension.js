@@ -1,6 +1,10 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const { execFile } = require('node:child_process')
+const { promisify } = require('node:util')
 const vscode = require('vscode')
+
+const execFileAsync = promisify(execFile)
 
 function workspaceRoot() {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
@@ -171,13 +175,96 @@ async function commentDiff(item, provider) {
   vscode.window.showInformationMessage(`Added UR comment to ${bundle.id}.`)
 }
 
+function setBundleStatus(root, bundleId, status) {
+  const manifest = loadManifest(root)
+  const bundle = manifest.diffs.find(diff => diff.id === bundleId)
+  if (!bundle) return null
+  bundle.status = status
+  bundle.updatedAt = new Date().toISOString()
+  writeJson(manifestPath(root), manifest)
+  writeJson(metadataPath(root, bundle), bundle)
+  return bundle
+}
+
+// Apply the captured patch to the working tree. Never silent: the user is asked
+// to confirm, and the result is reported. Uses `git apply` from the repo root.
+async function applyDiff(item, provider) {
+  const root = workspaceRoot()
+  const bundle = item?.bundle
+  if (!root || !bundle) {
+    vscode.window.showWarningMessage('No UR inline diff selected.')
+    return
+  }
+  const patch = patchPath(root, bundle)
+  if (!fs.existsSync(patch)) {
+    vscode.window.showErrorMessage(`UR patch file missing for ${bundle.id}.`)
+    return
+  }
+  const choice = await vscode.window.showWarningMessage(
+    `Apply UR patch ${bundle.id} to your working tree? This modifies ${bundle.files?.length ?? 0} file(s).`,
+    { modal: true },
+    'Apply',
+  )
+  if (choice !== 'Apply') return
+  try {
+    await execFileAsync('git', ['apply', '--whitespace=nowarn', patch], { cwd: root })
+    setBundleStatus(root, bundle.id, 'applied')
+    provider.refresh()
+    vscode.window.showInformationMessage(`Applied UR patch ${bundle.id}.`)
+  } catch (error) {
+    const message = error?.stderr || error?.message || String(error)
+    vscode.window.showErrorMessage(`Failed to apply UR patch ${bundle.id}: ${message}`)
+  }
+}
+
+async function rejectDiff(item, provider) {
+  const root = workspaceRoot()
+  const bundle = item?.bundle
+  if (!root || !bundle) {
+    vscode.window.showWarningMessage('No UR inline diff selected.')
+    return
+  }
+  const updated = setBundleStatus(root, bundle.id, 'rejected')
+  if (!updated) {
+    vscode.window.showErrorMessage(`UR inline diff not found: ${bundle.id}`)
+    return
+  }
+  provider.refresh()
+  vscode.window.showInformationMessage(`Rejected UR patch ${bundle.id} (no files changed).`)
+}
+
+async function showStatus(channel) {
+  const root = workspaceRoot()
+  if (!root) {
+    vscode.window.showWarningMessage('Open a workspace folder to query UR status.')
+    return
+  }
+  channel.clear()
+  channel.show(true)
+  channel.appendLine('Running: ur ide status')
+  try {
+    const { stdout } = await execFileAsync('ur', ['ide', 'status'], { cwd: root })
+    channel.appendLine(stdout.trim())
+  } catch (error) {
+    channel.appendLine(
+      `Could not run \`ur ide status\`: ${error?.message || String(error)}\n` +
+        'Ensure the UR CLI is installed and on PATH.',
+    )
+  }
+}
+
 function activate(context) {
   const provider = new DiffProvider()
+  const channel = vscode.window.createOutputChannel('UR')
   context.subscriptions.push(
+    channel,
     vscode.window.registerTreeDataProvider('urInlineDiffs', provider),
     vscode.commands.registerCommand('urInlineDiffs.refresh', () => provider.refresh()),
     vscode.commands.registerCommand('urInlineDiffs.open', item => openDiff(item)),
     vscode.commands.registerCommand('urInlineDiffs.comment', item => commentDiff(item, provider)),
+    vscode.commands.registerCommand('urInlineDiffs.apply', item => applyDiff(item, provider)),
+    vscode.commands.registerCommand('urInlineDiffs.reject', item => rejectDiff(item, provider)),
+    vscode.commands.registerCommand('urInlineDiffs.status', () => showStatus(channel)),
   )
 }
 

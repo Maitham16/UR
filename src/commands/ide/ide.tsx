@@ -427,6 +427,12 @@ export async function call(onDone: (result?: string, options?: {
     onDone(await runIdeDiffCommand(trimmedArgs));
     return null;
   }
+  const infoAction = trimmedArgs.split(/\s+/)[0];
+  if (infoAction === 'status' || infoAction === 'doctor' || infoAction === 'config') {
+    const { runIdeInfoCommand } = await import('./ideInfoCommand.js');
+    onDone(await runIdeInfoCommand(trimmedArgs));
+    return null;
+  }
   const {
     options: {
       dynamicMcpConfig

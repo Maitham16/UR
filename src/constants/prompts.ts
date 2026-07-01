@@ -24,6 +24,7 @@ import {
 } from '../utils/model/model.js'
 import { getAntModelOverrideConfig } from '../utils/model/antModels.js'
 import { getAPIProvider } from '../utils/model/providers.js'
+import { getProviderRuntimeInfo } from '../services/providers/providerRegistry.js'
 import { getSkillToolCommands } from 'src/commands.js'
 import { SKILL_TOOL_NAME } from '../tools/SkillTool/constants.js'
 import { getOutputStyleConfig } from './outputStyles.js'
@@ -641,6 +642,18 @@ The following MCP servers have provided instructions for how to use their tools 
 ${instructionBlocks}`
 }
 
+// Identity line for the system prompt: the model plus the actually-selected
+// provider and runtime backend, so the assistant reflects the /model choice
+// instead of a generic default.
+function describeModelAndProvider(modelId: string): string {
+  const marketingName = getMarketingNameForModel(modelId)
+  const base = marketingName
+    ? `You are powered by the model named ${marketingName}. The exact model ID is ${modelId}.`
+    : `You are powered by the model ${modelId}.`
+  const runtime = getProviderRuntimeInfo()
+  return `${base} You are running through the ${runtime.providerLabel} provider (${runtime.accessTypeLabel}; runtime backend ${runtime.runtimeBackend}).`
+}
+
 export async function computeEnvInfo(
   modelId: string,
   additionalWorkingDirectories?: string[],
@@ -659,10 +672,7 @@ export async function computeEnvInfo(
   if (process.env.USER_TYPE === 'ant' && isUndercover()) {
     // suppress
   } else {
-    const marketingName = getMarketingNameForModel(modelId)
-    modelDescription = marketingName
-      ? `You are powered by the model named ${marketingName}. The exact model ID is ${modelId}.`
-      : `You are powered by the model ${modelId}.`
+    modelDescription = describeModelAndProvider(modelId)
   }
 
   const additionalDirsInfo =
@@ -698,10 +708,7 @@ export async function computeSimpleEnvInfo(
   if (process.env.USER_TYPE === 'ant' && isUndercover()) {
     // suppress
   } else {
-    const marketingName = getMarketingNameForModel(modelId)
-    modelDescription = marketingName
-      ? `You are powered by the model named ${marketingName}. The exact model ID is ${modelId}.`
-      : `You are powered by the model ${modelId}.`
+    modelDescription = describeModelAndProvider(modelId)
   }
 
   const cutoff = getKnowledgeCutoff(modelId)

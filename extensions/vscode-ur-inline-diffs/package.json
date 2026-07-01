@@ -1,8 +1,8 @@
 {
   "name": "ur-inline-diffs",
   "displayName": "UR Inline Diffs",
-  "description": "Review UR inline diff bundles from .ur/ide/diffs inside VS Code.",
-  "version": "1.25.3",
+  "description": "Review, apply, and reject UR inline diff bundles from .ur/ide/diffs inside VS Code.",
+  "version": "1.30.1",
   "publisher": "ur-agent",
   "engines": {
     "vscode": "^1.92.0"
@@ -14,7 +14,10 @@
     "onView:urInlineDiffs",
     "onCommand:urInlineDiffs.refresh",
     "onCommand:urInlineDiffs.open",
-    "onCommand:urInlineDiffs.comment"
+    "onCommand:urInlineDiffs.comment",
+    "onCommand:urInlineDiffs.apply",
+    "onCommand:urInlineDiffs.reject",
+    "onCommand:urInlineDiffs.status"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -47,12 +50,29 @@
       {
         "command": "urInlineDiffs.comment",
         "title": "UR: Comment On Inline Diff"
+      },
+      {
+        "command": "urInlineDiffs.apply",
+        "title": "UR: Apply Inline Diff"
+      },
+      {
+        "command": "urInlineDiffs.reject",
+        "title": "UR: Reject Inline Diff"
+      },
+      {
+        "command": "urInlineDiffs.status",
+        "title": "UR: Show Status (provider, model, plugins)"
       }
     ],
     "menus": {
       "view/title": [
         {
           "command": "urInlineDiffs.refresh",
+          "when": "view == urInlineDiffs",
+          "group": "navigation"
+        },
+        {
+          "command": "urInlineDiffs.status",
           "when": "view == urInlineDiffs",
           "group": "navigation"
         }
@@ -64,9 +84,19 @@
           "group": "inline"
         },
         {
+          "command": "urInlineDiffs.apply",
+          "when": "view == urInlineDiffs && viewItem == diff",
+          "group": "1_actions"
+        },
+        {
+          "command": "urInlineDiffs.reject",
+          "when": "view == urInlineDiffs && viewItem == diff",
+          "group": "1_actions"
+        },
+        {
           "command": "urInlineDiffs.comment",
           "when": "view == urInlineDiffs && viewItem == diff",
-          "group": "inline"
+          "group": "2_review"
         }
       ]
     }

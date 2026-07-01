@@ -33,7 +33,8 @@ function positionals(tokens: string[]): string[] {
 function usage(): string {
   return [
     'Usage:',
-    '  ur acp serve [--host 127.0.0.1] [--port 8123] [--token <secret>] [--dry-run]',
+    '  ur acp serve [--host 127.0.0.1] [--port 8123] [--token <secret>] [--dry-run] [--debug]',
+    '  ur acp stdio            Run a stdio ACP agent for editors (Zed, ACP Neovim)',
     '  ur acp stop',
     '  ur acp status [--json]',
   ].join('\n')
@@ -47,9 +48,16 @@ export const call: LocalCommandCall = async (args: string) => {
   const port = Number(option(tokens, '--port') ?? '8123')
   const token = option(tokens, '--token')
   const dryRun = tokens.includes('--dry-run')
+  const debug = tokens.includes('--debug')
 
-  if (action === 'serve') {
-    await serveAcp({ host, port, token, cwd: process.cwd(), dryRun })
+  if (action === 'serve' || action === 'start') {
+    await serveAcp({ host, port, token, cwd: process.cwd(), dryRun, debug })
+    return { type: 'text', value: '' }
+  }
+
+  if (action === 'stdio') {
+    const { startAcpStdioAgent } = await import('../../services/agents/acpStdio.js')
+    await startAcpStdioAgent({ cwd: process.cwd() })
     return { type: 'text', value: '' }
   }
 

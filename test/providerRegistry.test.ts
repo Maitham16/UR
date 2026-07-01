@@ -391,10 +391,12 @@ describe('provider-scoped model listing', () => {
     const openaiDefault = getDefaultModelForProvider('openai-api')
     const anthropicDefault = getDefaultModelForProvider('anthropic-api')
     const geminiDefault = getDefaultModelForProvider('gemini-api')
+    const geminiCliDefault = getDefaultModelForProvider('gemini-cli')
 
     expect(openaiDefault).toBe('gpt-5.5')
     expect(anthropicDefault).toBe('claude-sonnet-5')
     expect(geminiDefault).toBe('gemini-3.5-flash')
+    expect(geminiCliDefault).toBe('gemini-cli/gemini-2.5-pro')
   })
 
   test('getValidModelIdsForProvider returns only non-dynamic model IDs', () => {
@@ -516,8 +518,18 @@ describe('provider-scoped model listing', () => {
     const claudeApiModels = listModelsForProvider('anthropic-api').map(model => model.id)
 
     expect(claudeCodeModels.filter(model => claudeApiModels.includes(model))).toEqual([])
+    expect(claudeCodeModels).toContain('claude-code/sonnet')
+    expect(claudeCodeModels).not.toContain('claude-code/sonnet-5')
+    expect(claudeCodeModels).not.toContain('claude-code/opus-4-8')
     expect(claudeCodeModels.every(model => model.startsWith('claude-code/'))).toBe(true)
     expect(claudeApiModels.every(model => !model.startsWith('claude-code/'))).toBe(true)
+
+    const stale = validateProviderModelCompatibility('claude-code-cli', 'claude-code/sonnet-5')
+    expect(stale.valid).toBe(false)
+    if (!stale.valid) {
+      expect(stale.validModels).toContain('claude-code/sonnet')
+      expect(stale.validModels).not.toContain('claude-code/sonnet-5')
+    }
   })
 
   test('Gemini API and Gemini CLI are separated', () => {
@@ -525,6 +537,8 @@ describe('provider-scoped model listing', () => {
     const geminiApiModels = listModelsForProvider('gemini-api').map(model => model.id)
 
     expect(geminiCliModels.filter(model => geminiApiModels.includes(model))).toEqual([])
+    expect(geminiCliModels).toContain('gemini-cli/gemini-2.5-pro')
+    expect(geminiCliModels).not.toContain('gemini-cli/gemini-3.5-flash')
     expect(geminiCliModels.every(model => model.startsWith('gemini-cli/'))).toBe(true)
     expect(geminiApiModels.every(model => !model.startsWith('gemini-cli/'))).toBe(true)
   })

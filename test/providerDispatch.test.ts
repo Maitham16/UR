@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 import axios from 'axios'
-import { createURHQSubscriptionClient } from '../src/services/api/urhqSubscription.js'
+import {
+  createURHQSubscriptionClient,
+  getSubscriptionCliStdinMode,
+} from '../src/services/api/urhqSubscription.js'
 import { createStandardAPIClient } from '../src/services/api/standardAPI.js'
 import { createOpenAICompatibleClient } from '../src/services/api/openaiCompatible.js'
 import { resolveActiveProviderModel } from '../src/services/api/providerClient.js'
@@ -47,18 +50,25 @@ describe('subscription CLI dispatch is real (not faked)', () => {
     expect(res.content[0].text).not.toBe('Subscription CLI response') // regression guard
   })
 
+  test('default runner does not pipe empty stdin when prompt is already an argument', () => {
+    expect(getSubscriptionCliStdinMode(undefined)).toBe('ignore')
+    expect(getSubscriptionCliStdinMode('')).toBe('pipe')
+  })
+
   test('claude-code-cli parses JSON stdout (.result)', async () => {
-    const { runner } = recordingRunner({ stdout: JSON.stringify({ result: 'claude says hi' }) })
+    const { runner, calls } = recordingRunner({ stdout: JSON.stringify({ result: 'claude says hi' }) })
     const client = createURHQSubscriptionClient('claude-code-cli', {
       commandPath: 'claude',
       maxRetries: 1,
       runner,
     })
     const res = await client.beta.messages.create({
-      model: 'claude-code/sonnet-5',
+      model: 'claude-code/sonnet',
       messages: userMessages(),
       max_tokens: 16,
     })
+    expect(calls[0].args).toContain('sonnet')
+    expect(calls[0].args).not.toContain('sonnet-5')
     expect(res.content[0].text).toBe('claude says hi')
   })
 
@@ -70,12 +80,83 @@ describe('subscription CLI dispatch is real (not faked)', () => {
       runner,
     })
     const res = await client.beta.messages.create({
-      model: 'gemini-cli/gemini-3.5-flash',
+      model: 'gemini-cli/gemini-2.5-pro',
       messages: userMessages(),
       max_tokens: 16,
     })
-    expect(calls[0].args).toContain('gemini-3.5-flash')
+    expect(calls[0].args).toContain('gemini-2.5-pro')
     expect(res.content[0].text).toBe('gemini plain text')
+  })
+
+  test('cli JSON error is reported as provider-scoped failure, not assistant text', async () => {
+    const { runner } = recordingRunner({
+      code: 1,
+      stdout: JSON.stringify({
+        type: 'result',
+        is_error: true,
+        api_error_status: 404,
+        result: "There's an issue with the selected model (sonnet-5).",
+      }),
+    })
+    const client = createURHQSubscriptionClient('claude-code-cli', {
+      commandPath: 'claude',
+      maxRetries: 1,
+      runner,
+    })
+    let message = ''
+    try {
+      await client.beta.messages.create({
+        model: 'claude-code/sonnet',
+        messages: userMessages(),
+        max_tokens: 16,
+      })
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error)
+    }
+    expect(message).toContain('claude-code-cli exited 1 (status 404) with model "sonnet"')
+    expect(message).toContain('UR did not fall back to another provider')
+  })
+
+  test('cli success exit with is_error JSON is still treated as failure', async () => {
+    const { runner } = recordingRunner({
+      code: 0,
+      stdout: JSON.stringify({ is_error: true, result: 'model unavailable' }),
+    })
+    const client = createURHQSubscriptionClient('claude-code-cli', {
+      commandPath: 'claude',
+      maxRetries: 1,
+      runner,
+    })
+    await expect(
+      client.beta.messages.create({
+        model: 'claude-code/sonnet',
+        messages: userMessages(),
+        max_tokens: 16,
+      }),
+    ).rejects.toThrow('reported an error with model "sonnet"')
+  })
+
+  test('gemini account-tier errors are summarized without dumping the stack', async () => {
+    const { runner } = recordingRunner({
+      code: 55,
+      stderr: `Error authenticating: IneligibleTierError: This client is no longer supported
+    at throwIneligibleOrProjectIdError (file:///bundle.js:1:1) {
+      reasonCode: 'UNSUPPORTED_CLIENT',
+      reasonMessage: 'This client is no longer supported for Gemini Code Assist for individuals.'
+    }`,
+    })
+    const client = createURHQSubscriptionClient('gemini-cli', {
+      commandPath: 'gemini',
+      maxRetries: 1,
+      runner,
+    })
+    await expect(
+      client.beta.messages.create({
+        model: 'gemini-cli/gemini-2.5-pro',
+        messages: userMessages(),
+        max_tokens: 16,
+      }),
+    ).rejects.toThrow('This client is no longer supported for Gemini Code Assist for individuals.')
   })
 
   test('non-zero exit fails clearly, does not fabricate a response', async () => {

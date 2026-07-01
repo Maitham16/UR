@@ -4310,6 +4310,17 @@ async function run(): Promise<CommanderCommand> {
     await pluginListHandler(options);
   });
 
+  // Plugin doctor command
+  pluginCmd.command('doctor').description('Validate plugin manifests and report declared components and capabilities').option('--json', 'Output as JSON').option('--path <dir>', 'Also scan a specific plugin or plugins directory').action(async (options: {
+    json?: boolean;
+    path?: string;
+  }) => {
+    const {
+      pluginDoctorHandler
+    } = await import('./cli/handlers/plugins.js');
+    await pluginDoctorHandler(options);
+  });
+
   // Marketplace subcommands
   const marketplaceCmd = pluginCmd.command('marketplace').description('Manage UR marketplaces').configureHelp(createSortedHelpConfig());
   marketplaceCmd.command('add <source>').description('Add a marketplace from a URL, path, or GitHub repo').addOption(coworkOption()).option('--sparse <paths...>', 'Limit checkout to specific directories via git sparse-checkout (for monorepos). Example: --sparse .ur-plugin plugins').option('--scope <scope>', 'Where to declare the marketplace: user (default), project, or local').action(async (source: string, options: {

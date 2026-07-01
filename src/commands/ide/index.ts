@@ -4,7 +4,7 @@ const ide = {
   type: 'local-jsx',
   name: 'ide',
   description: 'Manage IDE integrations, status, and inline diff bundles',
-  argumentHint: '[open|diff capture|diff list|diff show <id>]',
+  argumentHint: '[open|status|doctor|config <editor>|diff capture|diff list|diff show <id>]',
   load: () => import('./ide.js'),
 } satisfies Command
 

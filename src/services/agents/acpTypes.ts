@@ -1,5 +1,8 @@
 export type AcpMethod =
   | 'initialize'
+  | 'session/new'
+  | 'session/prompt'
+  | 'session/cancel'
   | 'tools/list'
   | 'tools/call'
   | 'tasks/send'
@@ -8,6 +11,23 @@ export type AcpMethod =
   | 'ide/diffCapture'
   | 'ide/select'
   | 'shutdown'
+
+export type AcpCapabilities = {
+  tools: boolean
+  tasks: boolean
+  sessions: boolean
+  ide: boolean
+  streaming: boolean
+  cancellation: boolean
+}
+
+export type AcpInitializeResult = {
+  name: string
+  version: string
+  protocolVersion: string
+  workspaceRoot: string
+  capabilities: AcpCapabilities
+}
 
 export type AcpRequest = {
   jsonrpc: '2.0'
@@ -61,4 +81,5 @@ export type AcpServeOptions = {
   token?: string
   cwd: string
   dryRun?: boolean
+  debug?: boolean
 }
