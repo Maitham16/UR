@@ -22,6 +22,20 @@ export const PROVIDER_IDS = [
 ] as const
 
 export type ProviderId = (typeof PROVIDER_IDS)[number]
+
+// Single default used when no provider is configured (first run). This is the
+// only place the Ollama default is hardcoded; every other site derives from it.
+export const DEFAULT_PROVIDER_ID: ProviderId = 'ollama'
+
+// Wire/runtime family a provider belongs to. Drives request shaping in the API
+// adapters and exposes real provider identity to the rest of the runtime.
+export type ProviderFamily =
+  | 'anthropic'
+  | 'openai'
+  | 'google'
+  | 'openai-compatible'
+  | 'ollama'
+
 export type ProviderAliasEntry = {
   canonical: ProviderId
   aliases: string[]
@@ -464,7 +478,9 @@ export function getProviderDefinition(id: ProviderId): ProviderDefinition {
 
 export function getActiveProviderSettings(settings: SettingsJson = getInitialSettings()): ProviderSettings {
   const configured = settings.provider ?? {}
-  const active = configured.active ? resolveProviderId(configured.active) ?? 'ollama' : 'ollama'
+  const active = configured.active
+    ? resolveProviderId(configured.active) ?? DEFAULT_PROVIDER_ID
+    : DEFAULT_PROVIDER_ID
   const fallback =
     configured.fallback === 'disabled'
       ? 'disabled'
@@ -482,7 +498,7 @@ export function getActiveProviderSettings(settings: SettingsJson = getInitialSet
 
 export function getProviderRuntimeInfo(settings: SettingsJson = getInitialSettings()): ProviderRuntimeInfo {
   const providerSettings = getActiveProviderSettings(settings)
-  const provider = providerSettings.active ?? 'ollama'
+  const provider = providerSettings.active ?? DEFAULT_PROVIDER_ID
   const definition = getProviderDefinition(provider)
   return {
     provider,
@@ -531,6 +547,33 @@ export function getProviderRuntimeBackend(providerId: ProviderId | string): stri
     default:
       return `unknown:${providerId}`
   }
+}
+
+const PROVIDER_FAMILIES: Record<ProviderId, ProviderFamily> = {
+  'anthropic-api': 'anthropic',
+  'claude-code-cli': 'anthropic',
+  'openai-api': 'openai',
+  'codex-cli': 'openai',
+  'gemini-api': 'google',
+  'gemini-cli': 'google',
+  'antigravity-cli': 'google',
+  openrouter: 'openai-compatible',
+  'openai-compatible': 'openai-compatible',
+  lmstudio: 'openai-compatible',
+  'llama.cpp': 'openai-compatible',
+  vllm: 'openai-compatible',
+  ollama: 'ollama',
+}
+
+export function getProviderFamily(providerId: ProviderId | string): ProviderFamily {
+  const provider = resolveProviderId(providerId)
+  return provider ? PROVIDER_FAMILIES[provider] : 'openai-compatible'
+}
+
+// True selected provider id (never collapsed). This is the runtime source of
+// provider identity for dispatch and request shaping.
+export function getRuntimeProviderId(settings: SettingsJson = getInitialSettings()): ProviderId {
+  return getActiveProviderSettings(settings).active ?? DEFAULT_PROVIDER_ID
 }
 
 export function authModeLabel(mode: ProviderAuthMode): string {
@@ -1006,7 +1049,7 @@ export async function doctorProvider(
 ): Promise<ProviderDoctorResult> {
   const allSettings = options.settings ?? getInitialSettings()
   const providerSettings = getActiveProviderSettings(allSettings)
-  const active = provider ?? providerSettings.active ?? 'ollama'
+  const active = provider ?? providerSettings.active ?? DEFAULT_PROVIDER_ID
   const definition = getProviderDefinition(active)
   const settingsForProvider: ProviderSettings = {
     ...providerSettings,
@@ -1045,7 +1088,7 @@ export async function doctorActiveProvider(options: {
   adapters?: ProviderDoctorAdapters
 } = {}): Promise<ProviderDoctorResult> {
   const settings = options.settings ?? getInitialSettings()
-  const active = getActiveProviderSettings(settings).active ?? 'ollama'
+  const active = getActiveProviderSettings(settings).active ?? DEFAULT_PROVIDER_ID
   return doctorProvider(active, options)
 }
 

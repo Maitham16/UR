@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.28.0
+
+- Subscription CLI providers (Codex, Claude Code, Gemini, Antigravity) now
+  perform real dispatch: the official CLI is spawned in non-interactive mode with
+  the scoped model and prompt, and its stdout becomes the response. Non-zero exit
+  or empty output fails clearly instead of returning placeholder text.
+- API providers now use each provider's native wire format: Anthropic
+  `x-api-key` + `anthropic-version` on `/v1/messages`, OpenAI `Authorization:
+  Bearer` on `/v1/chat/completions`, Gemini `x-goog-api-key` on
+  `:generateContent`, routed by a new provider-family classifier.
+- Real runtime provider identity: `getRuntimeProviderId`/`getProviderFamily`
+  expose the true selected provider; `getAPIProvider` is derived from it rather
+  than string-matching raw settings.
+- Fix saved local/server (live-discovery) model pairs being rejected on a cold
+  process; the endpoint is treated as the source of truth before discovery runs.
+  Static (API/subscription) pairs remain strictly validated.
+- Add behavior-proving tests that exercise the real clients (CLI runner, mocked
+  HTTP) and assert wire format, response content, identity, and cold-cache
+  restart — not just provider-id routing. Centralize the Ollama default and
+  remove dead code.
+
 ## 1.27.6
 
 - Route runtime requests through the selected provider/model pair instead of

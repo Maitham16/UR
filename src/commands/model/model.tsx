@@ -16,7 +16,6 @@ import { MODEL_ALIASES } from '../../utils/model/aliases.js';
 import { checkmodelO1mAccess, checkmodelS1mAccess } from '../../utils/model/check1mAccess.js';
 import { getDefaultMainLoopModelSetting, ismodelO1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
-import { validateModel } from '../../utils/model/validateModel.js';
 import { getActiveProviderSettings, setProviderModel, validateProviderModelPair } from '../../services/providers/providerRegistry.js';
 import { getInitialSettings } from '../../utils/settings/settings.js';
 function ModelPickerWrapper(t0) {
@@ -189,27 +188,6 @@ function SetModelAndClose({
       }
       setModel(model);
       return;
-
-      // Validate and set custom model
-      try {
-        // Don't use parseUserSpecifiedModel for non-aliases since it lowercases the input
-        // and model names are case-sensitive
-        const {
-          valid,
-          error: error_0
-        } = await validateModel(model);
-        if (valid) {
-          setModel(model);
-        } else {
-          onDone(error_0 || `Model '${model}' not found`, {
-            display: 'system'
-          });
-        }
-      } catch (error) {
-        onDone(`Failed to validate model: ${(error as Error).message}`, {
-          display: 'system'
-        });
-      }
     }
     function setModel(modelValue: string | null): void {
       setAppState(prev => ({

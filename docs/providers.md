@@ -68,9 +68,9 @@ UR-AGENT shows providers first, then only models available for the selected prov
 When you select a provider and model, every agent request is routed through that
 provider's backend:
 
-- **Subscription providers** spawn the official CLI command
-- **API providers** make direct HTTP API calls with your API key
-- **Local/server providers** connect to the configured local or OpenAI-compatible endpoint
+- **Subscription providers** spawn the official CLI command (e.g. `codex`, `claude`, `gemini`) in non-interactive mode, pass the prompt and the provider-scoped model, and map its stdout to the response. A non-zero exit or empty output fails clearly — it is never replaced with placeholder text.
+- **API providers** make direct HTTP calls in each provider's native wire format: Anthropic uses `x-api-key` + `anthropic-version` against `/v1/messages`; OpenAI uses `Authorization: Bearer` against `/v1/chat/completions`; Gemini uses `x-goog-api-key` against `…:generateContent`; OpenRouter uses its OpenAI-compatible chat endpoint.
+- **Local/server providers** connect to the configured local or OpenAI-compatible endpoint (`/v1/chat/completions` for LM Studio, llama.cpp and vLLM; the native tags/chat API for Ollama)
 
 The selected provider determines:
 - Which backend receives your requests
@@ -245,6 +245,9 @@ ur provider status
 - Local/server providers: check server is running at configured URL
 - OpenAI-compatible: verify base_url and API key (if required)
 - Fallback only to same provider's cached models (never other providers)
+
+**Saved local/server model rejected after restart:**
+- A model saved via `/model` for a live-discovery provider (`ollama`, `lmstudio`, `llama.cpp`, `vllm`, `openai-compatible`) is accepted on a fresh process even before discovery has repopulated the in-memory model cache. The endpoint is the source of truth, so a saved model is not rejected pre-discovery. Static providers (API/subscription) remain strictly validated against their model list.
 
 **Debug active runtime backend:**
 ```sh

@@ -10,7 +10,7 @@
 import type URHQ from '@urhq-ai/sdk'
 import type { MessageParam } from '@urhq-ai/sdk/resources/index.mjs'
 import {
-  formatInvalidProviderModelMessage,
+  DEFAULT_PROVIDER_ID,
   getActiveProviderSettings,
   getDefaultModelForProvider,
   getProviderAccessTypeLabel,
@@ -53,7 +53,7 @@ export function resolveActiveProviderModel(
 ): ProviderRuntimeSelection {
   const settings = options.settings ?? getInitialSettings()
   const providerSettings = getActiveProviderSettings(settings)
-  const providerId = providerSettings.active ?? 'ollama'
+  const providerId = providerSettings.active ?? DEFAULT_PROVIDER_ID
   const provider = getProviderDefinition(providerId)
   if (!provider) {
     throw new Error(
@@ -77,9 +77,12 @@ export function resolveActiveProviderModel(
   }
 
   const validation = validateProviderModelPair(providerId, model, {
-    // Preserve the legacy first-run Ollama path when no explicit provider.model
-    // has been saved yet. Explicit saved pairs stay strict.
-    allowUncachedDynamic: providerId === 'ollama' && !configuredModel,
+    // Live-discovery providers have no static list and their discovered models
+    // live in an in-memory cache that is empty on a cold process. The server is
+    // the authority, so a saved model can't be disproven before discovery runs:
+    // accept it here rather than rejecting a valid saved pair after restart.
+    // Static providers stay strict.
+    allowUncachedDynamic: provider.modelDiscoveryType === 'live',
   })
   if (validation.valid === false) {
     throw new Error(

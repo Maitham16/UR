@@ -1,2 +1,0 @@
-{"command":"printf ur-hook-runtime","exitCode":0,"stdout":"","stderr":"","nextAction":"running","durationMs":0,"toolUseId":"test-tool-use","at":"2026-06-30T18:49:54.238Z"}
-{"command":"printf ur-hook-runtime","exitCode":0,"stdout":"ur-hook-runtime\n","stderr":"","durationMs":60,"toolUseId":"test-tool-use","at":"2026-06-30T18:49:54.298Z"}
