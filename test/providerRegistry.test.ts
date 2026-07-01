@@ -320,15 +320,17 @@ describe('provider-scoped model listing', () => {
 
   test('isModelSupportedByProvider returns true only for provider models', () => {
     // OpenAI provider supports GPT models
+    expect(isModelSupportedByProvider('openai-api', 'gpt-5.5')).toBe(true)
     expect(isModelSupportedByProvider('openai-api', 'gpt-4o')).toBe(true)
     expect(isModelSupportedByProvider('openai-api', 'o1')).toBe(true)
     // OpenAI provider does NOT support Claude models
-    expect(isModelSupportedByProvider('openai-api', 'claude-sonnet-4-20250514')).toBe(false)
+    expect(isModelSupportedByProvider('openai-api', 'claude-sonnet-5')).toBe(false)
 
     // Anthropic provider supports Claude models
-    expect(isModelSupportedByProvider('anthropic-api', 'claude-sonnet-4-20250514')).toBe(true)
+    expect(isModelSupportedByProvider('anthropic-api', 'claude-sonnet-5')).toBe(true)
+    expect(isModelSupportedByProvider('anthropic-api', 'claude-opus-4-8')).toBe(true)
     // Anthropic provider does NOT support GPT models
-    expect(isModelSupportedByProvider('anthropic-api', 'gpt-4o')).toBe(false)
+    expect(isModelSupportedByProvider('anthropic-api', 'gpt-5.5')).toBe(false)
 
     // Dynamic providers accept any model name
     expect(isModelSupportedByProvider('ollama', 'llama3')).toBe(true)
@@ -341,17 +343,17 @@ describe('provider-scoped model listing', () => {
     const anthropicDefault = getDefaultModelForProvider('anthropic-api')
     const geminiDefault = getDefaultModelForProvider('gemini-api')
 
-    expect(openaiDefault).toBe('gpt-4o')
-    expect(anthropicDefault).toBe('claude-sonnet-4-20250514')
-    expect(geminiDefault).toBe('gemini-2.0-flash')
+    expect(openaiDefault).toBe('gpt-5.5')
+    expect(anthropicDefault).toBe('claude-sonnet-5')
+    expect(geminiDefault).toBe('gemini-3.5-flash')
   })
 
   test('getValidModelIdsForProvider returns only non-dynamic model IDs', () => {
     const openaiModels = getValidModelIdsForProvider('openai-api')
     const ollamaModels = getValidModelIdsForProvider('ollama')
 
+    expect(openaiModels).toContain('gpt-5.5')
     expect(openaiModels).toContain('gpt-4o')
-    expect(openaiModels).toContain('gpt-4o-mini')
     expect(openaiModels).not.toContain('dynamic')
 
     // Ollama uses dynamic discovery, so no static model IDs
@@ -359,8 +361,8 @@ describe('provider-scoped model listing', () => {
   })
 
   test('validateProviderModelCompatibility returns valid for compatible pairs', () => {
-    const result1 = validateProviderModelCompatibility('openai-api', 'gpt-4o')
-    const result2 = validateProviderModelCompatibility('anthropic-api', 'claude-sonnet-4-20250514')
+    const result1 = validateProviderModelCompatibility('openai-api', 'gpt-5.5')
+    const result2 = validateProviderModelCompatibility('anthropic-api', 'claude-sonnet-5')
     const result3 = validateProviderModelCompatibility('ollama', 'llama3')
 
     expect(result1.valid).toBe(true)
@@ -369,14 +371,14 @@ describe('provider-scoped model listing', () => {
   })
 
   test('validateProviderModelCompatibility returns error for incompatible pairs', () => {
-    const result = validateProviderModelCompatibility('openai-api', 'claude-sonnet-4-20250514')
+    const result = validateProviderModelCompatibility('openai-api', 'claude-sonnet-5')
 
     expect(result.valid).toBe(false)
     if (!result.valid) {
       expect(result.error).toContain('not available for provider')
       expect(result.error).toContain('openai-api')
-      expect(result.validModels).toContain('gpt-4o')
-      expect(result.suggestedModel).toBe('gpt-4o')
+      expect(result.validModels).toContain('gpt-5.5')
+      expect(result.suggestedModel).toBe('gpt-5.5')
     }
   })
 

@@ -1026,59 +1026,99 @@ export type ProviderModelDefinition = {
 }
 
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
+  // OpenAI subscription CLI (codex) - uses ChatGPT/Codex subscription
   'codex-cli': [
-    { id: 'gpt-4o', displayName: 'GPT-4o', description: 'Most capable GPT-4 model' },
-    { id: 'gpt-4o-mini', displayName: 'GPT-4o Mini', description: 'Fast and efficient GPT-4o variant' },
-    { id: 'o1', displayName: 'o1', description: 'Reasoning model for complex tasks' },
+    { id: 'gpt-5.5', displayName: 'GPT-5.5', description: 'Latest OpenAI model', isDefault: true },
+    { id: 'gpt-5.4', displayName: 'GPT-5.4', description: 'Advanced reasoning and coding' },
+    { id: 'gpt-5.4-mini', displayName: 'GPT-5.4 Mini', description: 'Fast, efficient variant' },
+    { id: 'gpt-4o', displayName: 'GPT-4o', description: 'Previous generation flagship' },
+    { id: 'gpt-4o-mini', displayName: 'GPT-4o Mini', description: 'Fast GPT-4o variant' },
+    { id: 'o1', displayName: 'o1', description: 'Deep reasoning model' },
     { id: 'o3-mini', displayName: 'o3-mini', description: 'Fast reasoning model' },
   ],
+  // Anthropic subscription CLI (Claude Code) - uses Claude Code subscription
   'claude-code-cli': [
-    { id: 'claude-sonnet-4-20250514', displayName: 'Claude Sonnet 4', description: 'Most balanced Claude model', isDefault: true },
-    { id: 'claude-opus-4-20250514', displayName: 'Claude Opus 4', description: 'Most powerful Claude model' },
-    { id: 'claude-3-5-sonnet-20241022', displayName: 'Claude 3.5 Sonnet', description: 'Previous generation Sonnet' },
+    { id: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: 'Balanced performance and speed', isDefault: true },
+    { id: 'claude-opus-4-8', displayName: 'Claude Opus 4.8', description: 'Most powerful Claude model' },
+    { id: 'claude-opus-4-7', displayName: 'Claude Opus 4.7', description: 'High-end reasoning' },
+    { id: 'claude-opus-4-6', displayName: 'Claude Opus 4.6', description: 'Advanced problem solving' },
+    { id: 'claude-opus-4-5', displayName: 'Claude Opus 4.5', description: 'Previous Opus generation' },
+    { id: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6', description: 'Fast Sonnet variant' },
+    { id: 'claude-sonnet-4-5', displayName: 'Claude Sonnet 4.5', description: 'Previous Sonnet generation' },
+    { id: 'claude-haiku-4-5', displayName: 'Claude Haiku 4.5', description: 'Fastest Claude model' },
   ],
+  // Google subscription CLI (Gemini Code Assist) - uses Gemini enterprise subscription
   'gemini-cli': [
-    { id: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash', description: 'Fast Gemini model', isDefault: true },
-    { id: 'gemini-2.0-pro', displayName: 'Gemini 2.0 Pro', description: 'Most capable Gemini model' },
+    { id: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Most intelligent for agentic tasks', isDefault: true },
+    { id: 'gemini-3.1-pro', displayName: 'Gemini 3.1 Pro', description: 'Advanced problem solving (preview)' },
+    { id: 'gemini-3.1-flash-lite', displayName: 'Gemini 3.1 Flash Lite', description: 'Budget-friendly performance' },
+    { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Complex reasoning and coding' },
+    { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', description: 'Low-latency tasks' },
+    { id: 'gemini-2.5-flash-lite', displayName: 'Gemini 2.5 Flash Lite', description: 'Fastest Gemini model' },
   ],
+  // Antigravity CLI - Google's agentic platform
   'antigravity-cli': [
-    { id: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash', description: 'Fast Gemini model', isDefault: true },
+    { id: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Most intelligent for agentic tasks', isDefault: true },
+    { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Complex reasoning and coding' },
+    { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', description: 'Low-latency tasks' },
   ],
+  // OpenAI API - direct API access with OPENAI_API_KEY
   'openai-api': [
-    { id: 'gpt-4o', displayName: 'GPT-4o', description: 'Most capable GPT-4 model', isDefault: true },
-    { id: 'gpt-4o-mini', displayName: 'GPT-4o Mini', description: 'Fast and efficient GPT-4o variant' },
-    { id: 'o1', displayName: 'o1', description: 'Reasoning model for complex tasks' },
+    { id: 'gpt-5.5', displayName: 'GPT-5.5', description: 'Latest OpenAI model', isDefault: true },
+    { id: 'gpt-5.4', displayName: 'GPT-5.4', description: 'Advanced reasoning and coding' },
+    { id: 'gpt-5.4-mini', displayName: 'GPT-5.4 Mini', description: 'Fast, efficient variant' },
+    { id: 'gpt-4o', displayName: 'GPT-4o', description: 'Previous generation flagship' },
+    { id: 'gpt-4o-mini', displayName: 'GPT-4o Mini', description: 'Fast GPT-4o variant' },
+    { id: 'o1', displayName: 'o1', description: 'Deep reasoning model' },
     { id: 'o3-mini', displayName: 'o3-mini', description: 'Fast reasoning model' },
-    { id: 'gpt-4-turbo', displayName: 'GPT-4 Turbo', description: 'Previous generation GPT-4' },
   ],
+  // Anthropic API - direct API access with ANTHROPIC_API_KEY
   'anthropic-api': [
-    { id: 'claude-sonnet-4-20250514', displayName: 'Claude Sonnet 4', description: 'Most balanced Claude model', isDefault: true },
-    { id: 'claude-opus-4-20250514', displayName: 'Claude Opus 4', description: 'Most powerful Claude model' },
-    { id: 'claude-3-5-sonnet-20241022', displayName: 'Claude 3.5 Sonnet', description: 'Previous generation Sonnet' },
-    { id: 'claude-3-haiku-20240307', displayName: 'Claude 3 Haiku', description: 'Fastest Claude model' },
+    { id: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: 'Balanced performance and speed', isDefault: true },
+    { id: 'claude-opus-4-8', displayName: 'Claude Opus 4.8', description: 'Most powerful Claude model' },
+    { id: 'claude-opus-4-7', displayName: 'Claude Opus 4.7', description: 'High-end reasoning' },
+    { id: 'claude-opus-4-6', displayName: 'Claude Opus 4.6', description: 'Advanced problem solving' },
+    { id: 'claude-opus-4-5', displayName: 'Claude Opus 4.5', description: 'Previous Opus generation' },
+    { id: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6', description: 'Fast Sonnet variant' },
+    { id: 'claude-sonnet-4-5', displayName: 'Claude Sonnet 4.5', description: 'Previous Sonnet generation' },
+    { id: 'claude-haiku-4-5', displayName: 'Claude Haiku 4.5', description: 'Fastest Claude model' },
   ],
+  // Google Gemini API - direct API access with GEMINI_API_KEY
   'gemini-api': [
-    { id: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash', description: 'Fast Gemini model', isDefault: true },
-    { id: 'gemini-2.0-pro', displayName: 'Gemini 2.0 Pro', description: 'Most capable Gemini model' },
-    { id: 'gemini-1.5-flash', displayName: 'Gemini 1.5 Flash', description: 'Previous generation Flash' },
+    { id: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Most intelligent for agentic tasks', isDefault: true },
+    { id: 'gemini-3.1-pro', displayName: 'Gemini 3.1 Pro', description: 'Advanced problem solving (preview)' },
+    { id: 'gemini-3.1-flash-lite', displayName: 'Gemini 3.1 Flash Lite', description: 'Budget-friendly performance' },
+    { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Complex reasoning and coding' },
+    { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', description: 'Low-latency tasks' },
+    { id: 'gemini-2.5-flash-lite', displayName: 'Gemini 2.5 Flash Lite', description: 'Fastest Gemini model' },
   ],
+  // OpenRouter - multi-provider router (openai/*, anthropic/*, google/*, etc.)
   'openrouter': [
+    { id: 'openai/gpt-5.5', displayName: 'GPT-5.5', description: 'OpenAI GPT-5.5 via OpenRouter', isDefault: true },
+    { id: 'openai/gpt-5.4', displayName: 'GPT-5.4', description: 'OpenAI GPT-5.4 via OpenRouter' },
     { id: 'openai/gpt-4o', displayName: 'GPT-4o', description: 'OpenAI GPT-4o via OpenRouter' },
-    { id: 'anthropic/claude-3.5-sonnet', displayName: 'Claude 3.5 Sonnet', description: 'Anthropic Claude via OpenRouter' },
-    { id: 'google/gemini-pro-1.5', displayName: 'Gemini Pro 1.5', description: 'Google Gemini via OpenRouter' },
+    { id: 'anthropic/claude-sonnet-5', displayName: 'Claude Sonnet 5', description: 'Anthropic Claude via OpenRouter' },
+    { id: 'anthropic/claude-opus-4-8', displayName: 'Claude Opus 4.8', description: 'Anthropic Claude via OpenRouter' },
+    { id: 'google/gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Google Gemini via OpenRouter' },
+    { id: 'google/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Google Gemini via OpenRouter' },
   ],
+  // OpenAI-compatible endpoint - dynamic discovery from custom base_url
   'openai-compatible': [
     { id: 'custom', displayName: 'Custom Model', description: 'Model name from provider endpoint', isDynamic: true },
   ],
+  // Ollama - local runtime with dynamic model discovery
   'ollama': [
     { id: 'dynamic', displayName: 'Discovered Models', description: 'Models discovered from Ollama server', isDynamic: true, isDefault: true },
   ],
+  // LM Studio - local OpenAI-compatible server
   'lmstudio': [
     { id: 'dynamic', displayName: 'Discovered Models', description: 'Models discovered from LM Studio server', isDynamic: true, isDefault: true },
   ],
+  // llama.cpp - local server mode
   'llama.cpp': [
     { id: 'dynamic', displayName: 'Discovered Models', description: 'Models discovered from llama.cpp server', isDynamic: true, isDefault: true },
   ],
+  // vLLM - local/server OpenAI-compatible
   'vllm': [
     { id: 'dynamic', displayName: 'Discovered Models', description: 'Models discovered from vLLM server', isDynamic: true, isDefault: true },
   ],
