@@ -20,6 +20,10 @@ ur --continue
 ur --resume
 ```
 
+When UR needs a focused clarification, it uses the `AskUserQuestion` dialog.
+Professional clarification prompts can provide up to eight concrete options;
+UR also accepts custom "Other" answers when the dialog includes one.
+
 ## Print Mode
 
 Print mode is useful for scripts and shell pipelines:
@@ -107,6 +111,7 @@ API modes are explicit and read keys only from environment variables:
 `OPENROUTER_API_KEY`. Subscription modes call official CLIs such as Codex,
 Claude Code, Gemini CLI, or Antigravity where supported. UR-AGENT never scrapes
 browser sessions, extracts OAuth tokens, or bypasses provider restrictions.
+OpenAI-compatible local or cloud endpoints use `base_url` plus `model`.
 
 ## Project Instructions
 
@@ -221,11 +226,26 @@ Interactive sessions include a compact bottom status bar when stdout is a real
 terminal:
 
 ```text
-UR-AGENT v1.25.1 | Provider: Ollama | Auth: local | model: qwen3-coder:480b-cloud | mode: ask | branch: main | tasks: idle | Update: 1.25.0 -> 1.25.1 available
+UR-AGENT v1.25.2 | Provider: Ollama | Auth: local | model: qwen3-coder:480b-cloud | mode: ask | branch: main | tasks: idle | Update: 1.25.1 -> 1.25.2 available
 ```
 
 The bar is not rendered in non-interactive mode, CI, dumb terminals, or
 assistant viewer mode. Custom status-line hooks override the built-in bar.
+
+## IDE Integration
+
+UR can write editor-readable inline diff bundles for review:
+
+```sh
+ur ide diff capture --title "Parser fix"
+ur ide diff list
+ur ide diff show <id>
+```
+
+The bundled VS Code extension is packaged locally from
+`extensions/vscode-ur-inline-diffs/` when UR installs it. It does not rely on
+the stale marketplace extension ID, and it only reads or writes
+`.ur/ide/diffs` files in the current workspace.
 
 Run each command with `--help` for exact flags.
 

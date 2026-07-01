@@ -31,6 +31,14 @@ npm whoami
 npm view ur-agent@$(node -p "require('./package.json').version") version
 ```
 
+Before committing a release, verify the public docs match the current feature
+set and version:
+
+```bash
+rg -n "Version [0-9]|expected: [0-9]|UR-AGENT v[0-9]" README.md docs documentation
+bun test test/docsCoverage.test.ts
+```
+
 If `npm whoami` fails, run:
 
 ```bash

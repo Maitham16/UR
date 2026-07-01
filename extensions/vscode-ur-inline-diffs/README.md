@@ -2,6 +2,10 @@
 
 Native VS Code surface for UR inline diff bundles.
 
+UR-AGENT packages this extension from the repository as a local VSIX when the
+CLI installs the public IDE integration. It does not depend on an unpublished
+marketplace extension ID.
+
 ## Workflow
 
 Create a bundle from the UR CLI:

@@ -986,7 +986,7 @@ export const connectToServer = memoize(
           name: 'ur',
           title: 'UR',
           version: MACRO.VERSION ?? 'unknown',
-          description: "URHQ's agentic coding tool",
+          description: 'UR-AGENT autonomous engineering workflow engine',
           websiteUrl: PRODUCT_URL,
         },
         {
@@ -3281,7 +3281,7 @@ export async function setupSdkMcpClients(
           name: 'ur',
           title: 'UR',
           version: MACRO.VERSION ?? 'unknown',
-          description: "URHQ's agentic coding tool",
+          description: 'UR-AGENT autonomous engineering workflow engine',
           websiteUrl: PRODUCT_URL,
         },
         {

@@ -2,8 +2,8 @@ const featureGroups = [
   {
     title: 'Core agent runtime',
     tags: ['interactive', 'headless', 'models'],
-    text: 'Interactive terminal sessions, one-shot print mode, JSON and stream-json output, resumable conversations, custom agents, model routing, and local Ollama execution.',
-    commands: ['ur', 'ur -p', 'ur --resume', 'ur --continue', 'ur --model <model>'],
+    text: 'Interactive terminal sessions, one-shot print mode, JSON and stream-json output, resumable conversations, custom agents, model routing, local runtimes, and legal provider adapters.',
+    commands: ['ur', 'ur -p', 'ur --resume', 'ur --continue', 'ur --model <model>', 'ur provider'],
   },
   {
     title: 'Project context',
@@ -52,6 +52,12 @@ const featureGroups = [
     tags: ['MCP', 'plugins', 'A2A', 'SDK'],
     text: 'MCP servers, plugin marketplaces for skills, templates, validators, language adapters, A2A Agent Card and task server, delegation tokens, and a TypeScript SDK wrapper around headless UR.',
     commands: ['ur mcp', 'ur plugin', 'ur a2a', 'ur sdk'],
+  },
+  {
+    title: 'Providers and auth',
+    tags: ['subscription', 'API', 'local', 'status bar'],
+    text: 'Official subscription CLI login, explicit API-key providers, local/OpenAI-compatible runtimes, provider doctor checks, non-secret config, fallback hints, and provider-aware status-bar output.',
+    commands: ['ur provider list', 'ur provider status', 'ur provider doctor', 'ur auth chatgpt', 'ur config set provider ollama'],
   },
   {
     title: 'Security and operations',
@@ -164,8 +170,8 @@ const commands = [
     name: 'auth',
     category: 'Ops',
     aliases: [],
-    summary: 'Manage authentication surfaces that are enabled in this build.',
-    examples: ['ur auth', 'ur setup-token'],
+    summary: 'Launch official subscription CLI login flows for ChatGPT/Codex, Claude Code, Gemini CLI, and Antigravity where supported.',
+    examples: ['ur auth chatgpt', 'ur auth claude', 'ur auth gemini', 'ur auth antigravity'],
   },
   {
     name: 'automation',
@@ -194,6 +200,13 @@ const commands = [
     aliases: ['project-manifest', 'ctx-pack'],
     summary: 'Summarize repository architecture from manifests and instructions, record task memory, and compress old context under `.ur/context`.',
     examples: ['ur context-pack scan', 'ur context-pack remember --decision "Use package scripts first"', 'ur context-pack remember --command "bun run typecheck"', 'ur context-pack compress'],
+  },
+  {
+    name: 'config',
+    category: 'Ops',
+    aliases: ['settings'],
+    summary: 'Open the config panel or persist safe non-secret provider settings.',
+    examples: ['ur config', 'ur config set provider ollama', 'ur config set model qwen3-coder:480b-cloud', 'ur config set base_url http://localhost:11434/v1', 'ur config set provider.fallback ollama'],
   },
   {
     name: 'test-first',
@@ -297,8 +310,15 @@ const commands = [
     name: 'plugin',
     category: 'Interop',
     aliases: ['plugins'],
-    summary: 'Manage UR plugins and marketplaces for MCP tools, skills, templates, validators, and language adapters.',
+    summary: 'Manage UR plugins and marketplaces for MCP tools, skills, templates, validators, language adapters, LSP servers, agents, hooks, output styles, and commands.',
     examples: ['ur plugin list', 'ur plugin install hello@ur-plugins-official', 'ur plugin install engineering-discipline@ur-plugins-official', 'ur plugin update <plugin>', 'ur plugin disable <plugin>'],
+  },
+  {
+    name: 'provider',
+    category: 'Models',
+    aliases: ['providers'],
+    summary: 'List, inspect, and diagnose legal model provider adapters without reading hidden credential files.',
+    examples: ['ur provider list', 'ur provider status', 'ur provider doctor', 'ur provider doctor codex-cli', 'ur provider doctor ollama --json'],
   },
   {
     name: 'repo-edit',
@@ -501,6 +521,21 @@ const projectFiles = [
     example: 'ur artifacts capture-diff',
   },
   {
+    title: '.ur/runs/',
+    text: 'Research-grade run traces with plan, actions, diff, tests, and report files for auditable agent runs.',
+    example: '/trace',
+  },
+  {
+    title: '.ur/hooks.json',
+    text: 'Project lifecycle hooks for BeforeEdit, AfterEdit, BeforeCommand, AfterCommand, BeforeCommit, and OnFailure.',
+    example: '/hooks',
+  },
+  {
+    title: '.ur/ide/diffs/',
+    text: 'Editor-readable inline diff bundles consumed by the bundled VS Code review extension.',
+    example: 'ur ide diff capture --title "Parser fix"',
+  },
+  {
     title: '.ur/safety-policy.json',
     text: 'Project shell safety policy for read/write/execute/network classes, destructive-command approval, sandbox posture, and secret exfiltration denial.',
     example: 'ur safety init',
@@ -519,6 +554,11 @@ const projectFiles = [
     title: '.ur/repo-edit/',
     text: 'Reliable repo-edit index data with file metadata, tokens, and JavaScript/TypeScript symbols.',
     example: 'ur repo-edit index',
+  },
+  {
+    title: '.ur/code-index/',
+    text: 'Semantic repo index files for files, symbols, imports, callers, tests, docs, and configs.',
+    example: 'ur code-index repo build',
   },
   {
     title: '.ur/test-first/',
@@ -547,6 +587,11 @@ const examples = [
     title: 'Model routing',
     text: 'Let UR recommend a model before a difficult run.',
     code: 'ur model-route "Implement a browser screenshot comparison test"\nur --model qwen3-coder:480b-cloud',
+  },
+  {
+    title: 'Provider setup',
+    text: 'Inspect legal provider paths, choose a local provider, and keep fallback explicit.',
+    code: 'ur provider list\nur provider doctor\nur config set provider ollama\nur config set model qwen3-coder:480b-cloud\nur config set provider.fallback ollama',
   },
   {
     title: 'PR handoff with self-review',

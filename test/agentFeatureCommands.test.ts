@@ -317,7 +317,7 @@ describe('agent feature commands', () => {
       expect(`${manifest.publisher}.${manifest.name}`).toBe(
         'ur-agent.ur-inline-diffs',
       )
-      expect(manifest.version).toBe('1.25.1')
+      expect(manifest.version).toBe('1.25.2')
     } finally {
       unlinkSync(vsixPath)
     }

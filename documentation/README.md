@@ -21,6 +21,10 @@ When a command writes project state, also update `projectFiles` in `app.js`.
 For safety or context features, include the relevant `.ur/` paths and validation
 commands so the static docs match the implementation.
 
+When provider, auth, update, status-bar, IDE integration, or plugin behavior
+changes, update `index.html`, `app.js`, and the matching markdown guide under
+`docs/` in the same patch.
+
 For public feature patches, also check the project-wide docs set:
 
 - root `README.md`

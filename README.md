@@ -204,7 +204,7 @@ as first-class subcommands in the shipped CLI.
 | `ur test-first` | Detect the project stack, run compile/test/lint commands, store failure traces, and install edit-time verify gates. |
 | `ur safety` | Inspect or initialize project shell safety policy and evaluate command risk before execution. |
 | `ur context-pack` | Write project architecture context, task memory, and compressed context under `.ur/`. Supports memory kinds `decision`, `constraint`, `command`, `diff`, `note`, `architecture`, `preference`, `attempt`, `accepted`, and `rejected`. |
-| `ur hooks` | Configure lifecycle hooks (`BeforeEdit`, `AfterEdit`, `BeforeCommand`, `AfterCommand`, `BeforeCommit`, `OnFailure`) via settings files. |
+| `/hooks` | Inspect lifecycle hooks (`BeforeEdit`, `AfterEdit`, `BeforeCommand`, `AfterCommand`, `BeforeCommit`, `OnFailure`) configured via settings files. |
 | `ur bg` | Run and manage detached local background agents with optional worktrees and PR creation. |
 | `ur worktree` | List, inspect, and clean up UR agent worktrees. |
 | `ur automation` | Store and run project-local scheduled automation specs under `.ur/automations/`. |
@@ -250,11 +250,28 @@ viewer mode.
 Example:
 
 ```text
-UR-AGENT v1.25.1 | Provider: Ollama | Auth: local | model: qwen3-coder:480b-cloud | mode: ask | branch: main | tasks: idle | Update: 1.25.0 -> 1.25.1 available
+UR-AGENT v1.25.2 | Provider: Ollama | Auth: local | model: qwen3-coder:480b-cloud | mode: ask | branch: main | tasks: idle | Update: 1.25.1 -> 1.25.2 available
 ```
 
 If a custom status-line hook is configured, UR-AGENT uses that hook output
 instead of the built-in bar.
+
+### IDE Integration
+
+`ur ide diff` captures review bundles under `.ur/ide/diffs/` so editors can
+show agent diffs without scraping terminal output. The shipped VS Code inline
+diff extension is bundled inside this repository and packaged as a local VSIX
+when installed from UR-AGENT; the public install path does not depend on an
+unpublished marketplace extension ID.
+
+```sh
+ur ide diff capture --title "Parser fix"
+ur ide diff list
+ur ide diff show <id>
+```
+
+The extension is local-only. It reads and writes diff metadata inside the
+current workspace and does not call model providers or network services.
 
 New slash skills run agentic work in isolated git worktrees with clean commits and PR output:
 `/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`.
@@ -452,6 +469,7 @@ release until that GitHub run is green.
 
 - [Usage Guide](docs/USAGE.md)
 - [Configuration](docs/CONFIGURATION.md)
+- [Provider Guide](docs/providers.md)
 - [Agent Feature Expansion](docs/AGENT_FEATURES.md)
 - [Agent Trend Coverage](docs/AGENT_TRENDS.md)
 - [1.22.0 Upgrade Notes](docs/AGENT_UPGRADE_1.22.0.md)

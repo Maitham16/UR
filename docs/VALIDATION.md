@@ -18,7 +18,7 @@ You need:
 
 ```sh
 ur --version
-# expected: 1.25.1 (UR-AGENT)
+# expected: 1.25.2 (UR-AGENT)
 ```
 
 ## 0.1 Permission safety and context pack (1.19.0)

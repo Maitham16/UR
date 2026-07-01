@@ -58,4 +58,38 @@ describe('documentation coverage', () => {
       expect(features).toContain(server)
     }
   })
+
+  test('documents current provider, status bar, update, and IDE behavior', () => {
+    const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8')
+    const usage = readFileSync(join(process.cwd(), 'docs', 'USAGE.md'), 'utf8')
+    const providers = readFileSync(
+      join(process.cwd(), 'docs', 'providers.md'),
+      'utf8',
+    )
+    const features = readFileSync(
+      join(process.cwd(), 'docs', 'AGENT_FEATURES.md'),
+      'utf8',
+    )
+    const site = readFileSync(
+      join(process.cwd(), 'documentation', 'index.html'),
+      'utf8',
+    )
+
+    for (const doc of [readme, usage, providers, features, site]) {
+      expect(doc).toContain('ur provider')
+      expect(doc).toContain('ur auth chatgpt')
+      expect(doc).toContain('OpenAI-compatible')
+    }
+
+    expect(readme).toContain('UR-AGENT v1.25.2')
+    expect(usage).toContain('UR-AGENT v1.25.2')
+    expect(site).toContain('Version 1.25.2')
+    expect(site).toContain('Update: 1.25.1 -&gt; 1.25.2 available')
+    expect(readme).toContain('Development build detected. To update, pull latest source or install from npm.')
+    expect(features).toContain('AskUserQuestion')
+    expect(features).toContain('up to eight concrete options')
+    expect(usage).toContain('does not rely on')
+    expect(usage).toContain('the stale marketplace extension ID')
+    expect(readme).toContain('packaged as a local VSIX')
+  })
 })

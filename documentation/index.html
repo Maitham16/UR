@@ -21,12 +21,13 @@
 
       <label class="search-box">
         <span>Search docs</span>
-        <input id="globalSearch" type="search" placeholder="Try workflow, model, PR, A2A">
+        <input id="globalSearch" type="search" placeholder="Try provider, workflow, model, PR, A2A">
       </label>
 
       <nav class="nav-list" id="sectionNav">
         <a href="#overview">Overview</a>
         <a href="#quickstart">Quickstart</a>
+        <a href="#providers">Providers</a>
         <a href="#architecture">Architecture</a>
         <a href="#mental-model">Mental Model</a>
         <a href="#features">Feature Map</a>
@@ -43,7 +44,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.24.0</p>
+          <p class="eyebrow">Version 1.25.2</p>
           <h1>UR-AGENT Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-AGENT.</p>
         </div>
@@ -62,7 +63,7 @@
         <div class="stat-grid">
           <article>
             <strong>Local-first runtime</strong>
-            <span>Model traffic goes through the local Ollama endpoint. Local and Ollama Cloud-backed models exposed by the app are valid.</span>
+            <span>Use local Ollama/OpenAI-compatible runtimes for private and offline work, or explicitly select official subscription/API provider paths.</span>
           </article>
           <article>
             <strong>Interactive and headless</strong>
@@ -75,6 +76,10 @@
           <article>
             <strong>Plugin marketplace</strong>
             <span>Plugins can add MCP tools, skills, templates, validators, language adapters, LSP servers, agents, hooks, and output styles.</span>
+          </article>
+          <article>
+            <strong>Legal provider routing</strong>
+            <span><code>ur provider</code>, <code>ur auth</code>, and safe <code>ur config set</code> commands select official subscription, API, and local providers without storing secrets.</span>
           </article>
           <article>
             <strong>Reliable repo editing</strong>
@@ -123,7 +128,39 @@ ur -p --output-format json "Review the current diff"</code></pre>
         </div>
         <div class="callout">
           <strong>Runtime requirement</strong>
-          <p>UR expects Bun and a local Ollama app/server at <code>http://localhost:11434/api</code>. Set <code>OLLAMA_MODEL</code> or <code>UR_MODEL</code> to force a model; otherwise UR routes from the models exposed by Ollama.</p>
+          <p>UR expects Bun. For local-first work, run a local Ollama app/server at <code>http://localhost:11434/api</code>. Set <code>OLLAMA_MODEL</code> or <code>UR_MODEL</code> to force a model, or use <code>ur provider</code> and <code>ur config set</code> to select official subscription, API, or OpenAI-compatible providers.</p>
+        </div>
+      </section>
+
+      <section id="providers" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Legal Access Paths</p>
+          <h2>Providers and authentication</h2>
+          <p>UR-AGENT integrates official access paths only. It never scrapes browser sessions, extracts OAuth tokens, reads hidden provider auth files, bypasses provider restrictions, or proxies consumer web sessions as APIs.</p>
+        </div>
+        <div class="reference-grid">
+          <article>
+            <h3>Subscription CLI login</h3>
+            <pre><code>ur auth chatgpt
+ur auth claude
+ur auth gemini
+ur auth antigravity
+ur provider doctor</code></pre>
+            <p>Subscription modes call official CLIs such as Codex CLI, Claude Code CLI, Gemini CLI, and Antigravity where supported. UR checks CLI presence and official login status without reading hidden credential files.</p>
+          </article>
+          <article>
+            <h3>API and local providers</h3>
+            <pre><code>ur config set provider openai-compatible
+ur config set base_url http://localhost:11434/v1
+ur config set model qwen3-coder:480b-cloud
+ur config set provider.fallback ollama</code></pre>
+            <p>API providers require explicit selection and read keys only from environment variables. Local providers include Ollama, LM Studio, llama.cpp server mode, and vLLM OpenAI-compatible server mode.</p>
+          </article>
+          <article>
+            <h3>Status bar and updates</h3>
+            <pre><code>UR-AGENT v1.25.2 | Provider: Ollama | Auth: local | model: qwen3-coder:480b-cloud | mode: ask | branch: main | tasks: idle | Update: 1.25.1 -&gt; 1.25.2 available</code></pre>
+            <p>The interactive status bar shows provider, auth mode, model, branch, task state, checks status when known, and update availability. It is hidden in CI, dumb terminals, and non-interactive mode.</p>
+          </article>
         </div>
       </section>
 
@@ -131,7 +168,7 @@ ur -p --output-format json "Review the current diff"</code></pre>
         <div class="section-heading">
           <p class="eyebrow">Runtime</p>
           <h2>Architecture</h2>
-          <p>The CLI is the control plane. Project context and <code>.ur</code> assets feed agent orchestration, which uses local Ollama models and approved tools to produce code, docs, PRs, reports, and automation outputs.</p>
+          <p>The CLI is the control plane. Project context and <code>.ur</code> assets feed agent orchestration, which uses approved provider adapters, local-first model runtimes, and approved tools to produce code, docs, PRs, reports, and automation outputs.</p>
         </div>
         <figure class="diagram">
           <img src="assets/ur-architecture.svg" alt="UR-AGENT runtime architecture diagram">
@@ -448,6 +485,13 @@ ur plugin list
 ur plugin install &lt;plugin&gt;</code></pre>
             <p>MCP servers and marketplace plugins expand tools, executable skills, templates, validators, language adapters, and review workflows. Treat them as trusted code.</p>
           </article>
+          <article>
+            <h3>IDE inline diffs</h3>
+            <pre><code>ur ide diff capture --title "Parser fix"
+ur ide diff list
+ur ide diff show &lt;id&gt;</code></pre>
+            <p>UR packages its bundled VS Code inline-diffs extension as a local VSIX. The public install path does not depend on the stale marketplace extension ID.</p>
+          </article>
         </div>
       </section>
 
@@ -481,6 +525,12 @@ npm install -g ur-agent@latest --registry=https://registry.npmjs.org/
 hash -r
 which -a ur
 ur --version</code></pre>
+          </article>
+          <article>
+            <h3>Source checkout update message</h3>
+            <pre><code>ur upgrade
+# Development build detected. To update, pull latest source or install from npm.</code></pre>
+            <p>Source checkouts do not self-mutate. npm-installed builds compare against the latest <code>ur-agent</code> version and print the exact install command when an update is available.</p>
           </article>
           <article>
             <h3>Ollama model not found</h3>

@@ -23,7 +23,9 @@ The default local request endpoint is:
 http://localhost:11434/api
 ```
 
-Any model exposed by that Ollama app can be used, including local models and Ollama Cloud-backed models. UR does not call remote provider APIs directly and does not manage model API keys.
+Any model exposed by that Ollama app can be used, including local models and
+Ollama Cloud-backed models. Explicit API providers may call their configured
+API endpoints, but UR does not store model API keys in settings.
 
 Provider configuration commands:
 
@@ -31,6 +33,10 @@ Provider configuration commands:
 ur provider list
 ur provider doctor
 ur provider status
+ur auth chatgpt
+ur auth claude
+ur auth gemini
+ur auth antigravity
 ur config set provider ollama
 ur config set provider openai-compatible
 ur config set provider.fallback ollama

@@ -62,7 +62,31 @@ ur eval dashboard
 ur spec init auth-refactor --goal "refactor login without changing behavior"
 ur spec run auth-refactor --all
 ur spec verify auth-refactor
+ur provider list
+ur provider status
+ur provider doctor
+ur auth chatgpt
+ur auth claude
+ur auth gemini
+ur auth antigravity
+ur config set provider ollama
+ur config set provider openai-compatible
+ur config set model qwen3-coder:480b-cloud
+ur config set base_url http://localhost:11434/v1
+ur config set provider.fallback ollama
+ur upgrade
 ```
+
+## v1.25.x Additions
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Legal multi-provider connectivity | `ur provider list\|status\|doctor`, `ur auth chatgpt\|claude\|gemini\|antigravity`, `ur config set provider ...` | Official-only access paths for subscription CLIs, explicit API-key providers, and local/OpenAI-compatible runtimes. UR stores only safe non-secret preferences and never scrapes browser sessions, extracts OAuth tokens, reads hidden provider auth files, bypasses provider restrictions, or proxies consumer web sessions as APIs. |
+| Provider-aware status bar | Interactive bottom status bar, `src/components/StatusLine.tsx`, `src/utils/statusBar.ts` | Shows UR-AGENT version, active provider, auth mode, selected model, mode, git branch, task state, checks/build state when known, and update availability. Hidden in CI, dumb terminals, and non-interactive mode; custom status-line hooks still override it. |
+| Clean update checks | `ur upgrade`, `ur update`, `src/cli/update.ts` | Detects development/source checkouts and prints a short pull-or-install message instead of attempting self-mutation. npm-installed builds compare the local version with `ur-agent` on npm and print update, latest, registry failure, and malformed-response states without stale planning text. |
+| Bundled IDE extension install | `extensions/vscode-ur-inline-diffs/`, `src/utils/ide.ts`, `ur ide diff` | Public VS Code install now packages the repo's bundled inline-diffs extension as a local VSIX instead of trying an unpublished marketplace ID. The extension remains local-only and reviews `.ur/ide/diffs` bundles from the current workspace. |
+| Professional clarification dialogs | `AskUserQuestion`, `src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx` | Supports up to eight concrete options, infers labels from description-only option objects, accepts prompt aliases, rejects duplicate inferred labels, and is loaded without ToolSearch preloading so typed schemas are available before use. |
+| Documentation release sync | `README.md`, `docs/`, `documentation/`, `CHANGELOG.md` | Keeps the npm README, static documentation site, provider guide, usage guide, feature ledger, validation runbook, and release notes aligned with current release behavior. |
 
 ## v1.24.0 Additions
 
@@ -137,7 +161,7 @@ while keeping them project-local and manifest-backed:
 | Primitive | UR surface | Project-backed source |
 | --- | --- | --- |
 | Agent | `ur`, `ur agents`, `ur crew`, `ur bg`, `ur agent-templates` | `.ur/agents/`, `AGENTS.md`, `UR.md` |
-| Rules | `ur context-pack scan`, `ur safety`, `ur guardrails`, `ur hooks` | `AGENTS.md`, `UR.md`, `.cursor/rules/*.mdc`, `.cursorrules`, `.ur/safety-policy.json`, `.ur/guardrails.json`, `.ur/hooks.json` |
+| Rules | `ur context-pack scan`, `ur safety`, `ur guardrails`, `/hooks` | `AGENTS.md`, `UR.md`, `.cursor/rules/*.mdc`, `.cursorrules`, `.ur/safety-policy.json`, `.ur/guardrails.json`, `.ur/hooks.json` |
 | MCP | `ur mcp`, built-in MCP server mode, MCP tools/resources | `.mcp.json`, `.ur/mcp/`, plugin manifests |
 | Skills | `/skills`, `/create-skill`, bundled skills, plugin skills | `.ur/skills/`, user skills, plugin skill folders |
 | CLI | `ur --help`, `ur -p`, `ur exec`, `ur acp`, workflow subcommands | `package.json` scripts, `.ur/project-manifest.json`, `.ur/verify.json` |

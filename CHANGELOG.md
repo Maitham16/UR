@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.25.2
+
+- Refresh public documentation so README, docs, static site, validation runbook,
+  and code inventory all describe the current UR-AGENT feature set.
+- Document the recent provider auth, status bar, bundled VS Code extension,
+  `ur upgrade`, and AskUserQuestion schema fixes as first-class release
+  behavior.
+- Bump package, Bun macro, VS Code extension, and validation examples to the
+  1.25.2 release line.
+
 ## 1.25.1
 
 - Fix VS Code extension installation to use the bundled UR-AGENT inline-diffs extension instead of the stale unpublished `urhq.ur` marketplace ID.
