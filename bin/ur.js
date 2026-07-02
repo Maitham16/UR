@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -101,14 +101,24 @@ const args =
 
 assertBunAvailable()
 
+const shouldPipeChildOutput = !process.stdout.isTTY || !process.stderr.isTTY
 const child = spawn(bun, args, {
   cwd: process.cwd(),
   env: {
     ...process.env,
     ...(ollamaModel ? { OLLAMA_MODEL: ollamaModel } : {}),
   },
-  stdio: 'inherit',
+  stdio: shouldPipeChildOutput ? ['inherit', 'pipe', 'pipe'] : 'inherit',
 })
+
+if (shouldPipeChildOutput) {
+  child.stdout?.on('data', chunk => {
+    writeSync(1, chunk)
+  })
+  child.stderr?.on('data', chunk => {
+    writeSync(2, chunk)
+  })
+}
 
 child.on('error', error => {
   if (error.code === 'ENOENT') {
