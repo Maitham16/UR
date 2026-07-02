@@ -101,7 +101,12 @@ function ShowProviderAndClose({
 
   let message = `Current provider: ${chalk.bold(providerRuntime.providerLabel)} (${providerRuntime.provider})`
   message += `\nAuth mode: ${providerRuntime.authLabel}`
+  message += `\nProvider kind: ${providerRuntime.providerKind}`
+  message += `\nUses external CLI: ${providerRuntime.usesExternalCli ? 'yes' : 'no'}`
+  message += `\nUR-native tool calls: ${providerRuntime.supportsNativeToolCalls ? 'yes' : 'no'}`
+  message += `\nUR-native streaming: ${providerRuntime.supportsNativeStreaming ? 'yes' : 'no'}`
   message += `\nRuntime backend: ${providerRuntime.runtimeBackend}`
+  message += `\nSafety boundary: ${providerRuntime.safetyBoundaryLabel}`
 
   if (providerRuntime.model) {
     message += `\nModel: ${chalk.bold(providerRuntime.model)}`

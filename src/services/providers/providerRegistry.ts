@@ -55,12 +55,26 @@ export type ProviderStatusCheckType = 'subscription-login' | 'cli-login' | 'api-
 export type ProviderModelListType = 'static' | 'ollama-tags' | 'openai-compatible-models'
 export type ProviderModelValidationType = 'static-list' | 'discovered-list'
 export type ProviderRuntimeKind = 'ur-native' | 'external-app'
+export type ProviderKind = 'ur-native' | 'subscription-cli' | 'subscription-placeholder'
+export type ProviderSafetyBoundary =
+  | 'ur-native-runtime'
+  | 'external-subscription-cli'
+  | 'unconfigured-subscription'
 export type ProviderAuthMode =
   | 'subscription'
   | 'enterprise-login'
   | 'personal-login'
   | 'api'
   | 'local'
+
+export type ProviderCapabilities = {
+  providerKind: ProviderKind
+  usesExternalCli: boolean
+  supportsNativeToolCalls: boolean
+  supportsNativeStreaming: boolean
+  safetyBoundary: ProviderSafetyBoundary
+  safetyBoundaryLabel: string
+}
 
 export type ProviderSettings = {
   active?: ProviderId
@@ -82,6 +96,12 @@ export type ProviderDefinition = {
   listModels: ProviderModelListType
   validateModel: ProviderModelValidationType
   runtimeKind: ProviderRuntimeKind
+  providerKind: ProviderKind
+  usesExternalCli: boolean
+  supportsNativeToolCalls: boolean
+  supportsNativeStreaming: boolean
+  safetyBoundary: ProviderSafetyBoundary
+  safetyBoundaryLabel: string
   authMode: ProviderAuthMode
   legalPath: string
   accessPathLabel: string
@@ -109,6 +129,12 @@ export type ProviderDoctorResult = {
   displayName: string
   accessType: ProviderAccessType
   authMode: ProviderAuthMode
+  providerKind: ProviderKind
+  usesExternalCli: boolean
+  supportsNativeToolCalls: boolean
+  supportsNativeStreaming: boolean
+  safetyBoundary: ProviderSafetyBoundary
+  safetyBoundaryLabel: string
   selected: boolean
   ok: boolean
   checks: ProviderCheck[]
@@ -127,6 +153,12 @@ export type ProviderRuntimeInfo = {
   accessType: ProviderAccessType
   accessTypeLabel: string
   credentialType: ProviderCredentialType
+  providerKind: ProviderKind
+  usesExternalCli: boolean
+  supportsNativeToolCalls: boolean
+  supportsNativeStreaming: boolean
+  safetyBoundary: ProviderSafetyBoundary
+  safetyBoundaryLabel: string
   runtimeBackend: string
   authMode: ProviderAuthMode
   authLabel: string
@@ -157,6 +189,12 @@ export type ProviderStatusSummary = {
   accessType: ProviderAccessType
   accessTypeLabel: string
   credentialType: ProviderCredentialType
+  providerKind: ProviderKind
+  usesExternalCli: boolean
+  supportsNativeToolCalls: boolean
+  supportsNativeStreaming: boolean
+  safetyBoundary: ProviderSafetyBoundary
+  safetyBoundaryLabel: string
   status: ProviderConnectionStatus
   label: string
   checks: ProviderCheck[]
@@ -174,6 +212,42 @@ export type ProviderModelDiscoveryResult = {
 
 const LOCALHOST_RE = /^(https?:\/\/)?(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?(\/|$)/i
 
+export const UR_NATIVE_PROVIDER_BOUNDARY =
+  'UR-native runtime: UR owns provider request shaping, native tool-call parsing, native streaming, and UR-run tool permission/sandbox/verifier flow.'
+
+export const SUBSCRIPTION_CLI_PROVIDER_BOUNDARY =
+  'External vendor CLI boundary: UR passes prompt text to the official CLI and receives final text output. UR-native tool calling, UR Bash/File tool execution, UR-native streaming, local command permissions, sandbox guarantees, and verifier/done-gate checks apply to UR-run tools/final UR output, not to actions the external CLI performs internally.'
+
+export const UNCONFIGURED_SUBSCRIPTION_PROVIDER_BOUNDARY =
+  'Unconfigured subscription placeholder: no runtime is attached. Choose a specific subscription CLI, API, local, or server provider.'
+
+const UR_NATIVE_CAPABILITIES: ProviderCapabilities = {
+  providerKind: 'ur-native',
+  usesExternalCli: false,
+  supportsNativeToolCalls: true,
+  supportsNativeStreaming: true,
+  safetyBoundary: 'ur-native-runtime',
+  safetyBoundaryLabel: UR_NATIVE_PROVIDER_BOUNDARY,
+}
+
+const SUBSCRIPTION_CLI_CAPABILITIES: ProviderCapabilities = {
+  providerKind: 'subscription-cli',
+  usesExternalCli: true,
+  supportsNativeToolCalls: false,
+  supportsNativeStreaming: false,
+  safetyBoundary: 'external-subscription-cli',
+  safetyBoundaryLabel: SUBSCRIPTION_CLI_PROVIDER_BOUNDARY,
+}
+
+const SUBSCRIPTION_PLACEHOLDER_CAPABILITIES: ProviderCapabilities = {
+  providerKind: 'subscription-placeholder',
+  usesExternalCli: false,
+  supportsNativeToolCalls: false,
+  supportsNativeStreaming: false,
+  safetyBoundary: 'unconfigured-subscription',
+  safetyBoundaryLabel: UNCONFIGURED_SUBSCRIPTION_PROVIDER_BOUNDARY,
+}
+
 export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
   subscription: {
     id: 'subscription',
@@ -186,6 +260,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'static',
     validateModel: 'static-list',
     runtimeKind: 'ur-native',
+    ...SUBSCRIPTION_PLACEHOLDER_CAPABILITIES,
     authMode: 'subscription',
     legalPath: 'independent subscription runtime only',
     accessPathLabel: 'subscription login; no external provider app bridge',
@@ -201,6 +276,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'static',
     validateModel: 'static-list',
     runtimeKind: 'external-app',
+    ...SUBSCRIPTION_CLI_CAPABILITIES,
     authMode: 'subscription',
     legalPath: 'official Codex CLI login',
     accessPathLabel: 'subscription login via official Codex CLI',
@@ -221,6 +297,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'static',
     validateModel: 'static-list',
     runtimeKind: 'external-app',
+    ...SUBSCRIPTION_CLI_CAPABILITIES,
     authMode: 'subscription',
     legalPath: 'official Claude Code CLI login',
     accessPathLabel: 'subscription login via official Claude Code CLI',
@@ -240,6 +317,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'static',
     validateModel: 'static-list',
     runtimeKind: 'external-app',
+    ...SUBSCRIPTION_CLI_CAPABILITIES,
     authMode: 'enterprise-login',
     legalPath: 'official Gemini Code Assist login',
     accessPathLabel: 'subscription login via official Gemini CLI',
@@ -260,6 +338,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'static',
     validateModel: 'static-list',
     runtimeKind: 'external-app',
+    ...SUBSCRIPTION_CLI_CAPABILITIES,
     authMode: 'personal-login',
     legalPath: 'official Antigravity CLI login, where supported',
     accessPathLabel: 'subscription login via official Antigravity CLI',
@@ -278,6 +357,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'static',
     validateModel: 'discovered-list',
     runtimeKind: 'ur-native',
+    ...UR_NATIVE_CAPABILITIES,
     authMode: 'api',
     legalPath: 'OPENAI_API_KEY',
     accessPathLabel: 'API key from OPENAI_API_KEY',
@@ -294,6 +374,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'static',
     validateModel: 'discovered-list',
     runtimeKind: 'ur-native',
+    ...UR_NATIVE_CAPABILITIES,
     authMode: 'api',
     legalPath: 'ANTHROPIC_API_KEY',
     accessPathLabel: 'API key from ANTHROPIC_API_KEY',
@@ -310,6 +391,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'static',
     validateModel: 'discovered-list',
     runtimeKind: 'ur-native',
+    ...UR_NATIVE_CAPABILITIES,
     authMode: 'api',
     legalPath: 'GEMINI_API_KEY',
     accessPathLabel: 'API key from GEMINI_API_KEY',
@@ -326,6 +408,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'static',
     validateModel: 'discovered-list',
     runtimeKind: 'ur-native',
+    ...UR_NATIVE_CAPABILITIES,
     authMode: 'api',
     legalPath: 'OPENROUTER_API_KEY',
     accessPathLabel: 'API key from OPENROUTER_API_KEY',
@@ -343,6 +426,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'openai-compatible-models',
     validateModel: 'discovered-list',
     runtimeKind: 'ur-native',
+    ...UR_NATIVE_CAPABILITIES,
     authMode: 'api',
     legalPath: 'user-selected OpenAI-compatible base URL with API key only when required by that endpoint',
     accessPathLabel: 'OpenAI-compatible endpoint',
@@ -360,6 +444,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'ollama-tags',
     validateModel: 'discovered-list',
     runtimeKind: 'ur-native',
+    ...UR_NATIVE_CAPABILITIES,
     authMode: 'local',
     legalPath: 'localhost Ollama runtime',
     accessPathLabel: 'local Ollama runtime',
@@ -378,6 +463,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'openai-compatible-models',
     validateModel: 'discovered-list',
     runtimeKind: 'ur-native',
+    ...UR_NATIVE_CAPABILITIES,
     authMode: 'local',
     legalPath: 'local OpenAI-compatible server',
     accessPathLabel: 'local OpenAI-compatible endpoint',
@@ -396,6 +482,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'openai-compatible-models',
     validateModel: 'discovered-list',
     runtimeKind: 'ur-native',
+    ...UR_NATIVE_CAPABILITIES,
     authMode: 'local',
     legalPath: 'local OpenAI-compatible server',
     accessPathLabel: 'local OpenAI-compatible endpoint',
@@ -414,6 +501,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'openai-compatible-models',
     validateModel: 'discovered-list',
     runtimeKind: 'ur-native',
+    ...UR_NATIVE_CAPABILITIES,
     authMode: 'local',
     legalPath: 'OpenAI-compatible server',
     accessPathLabel: 'OpenAI-compatible endpoint runtime',
@@ -543,6 +631,12 @@ export function getProviderRuntimeInfo(settings: SettingsJson = getInitialSettin
     accessType: definition.accessType,
     accessTypeLabel: getProviderAccessTypeLabel(definition),
     credentialType: definition.credentialType,
+    providerKind: definition.providerKind,
+    usesExternalCli: definition.usesExternalCli,
+    supportsNativeToolCalls: definition.supportsNativeToolCalls,
+    supportsNativeStreaming: definition.supportsNativeStreaming,
+    safetyBoundary: definition.safetyBoundary,
+    safetyBoundaryLabel: definition.safetyBoundaryLabel,
     runtimeBackend: getProviderRuntimeBackend(provider),
     authMode: definition.authMode,
     authLabel: authModeLabel(definition.authMode),
@@ -1199,6 +1293,12 @@ export async function doctorProvider(
     displayName: definition.displayName,
     accessType: definition.accessType,
     authMode: definition.authMode,
+    providerKind: definition.providerKind,
+    usesExternalCli: definition.usesExternalCli,
+    supportsNativeToolCalls: definition.supportsNativeToolCalls,
+    supportsNativeStreaming: definition.supportsNativeStreaming,
+    safetyBoundary: definition.safetyBoundary,
+    safetyBoundaryLabel: definition.safetyBoundaryLabel,
     selected: active === providerSettings.active,
     ok: true,
     checks: [
@@ -1206,6 +1306,11 @@ export async function doctorProvider(
         name: 'legal_path',
         status: 'pass',
         message: definition.legalPath,
+      },
+      {
+        name: 'runtime_boundary',
+        status: 'pass',
+        message: definition.safetyBoundaryLabel,
       },
     ],
   }
@@ -1308,6 +1413,12 @@ export async function getProviderStatus(
     accessType: definition.accessType,
     accessTypeLabel: getProviderAccessTypeLabel(definition),
     credentialType: definition.credentialType,
+    providerKind: definition.providerKind,
+    usesExternalCli: definition.usesExternalCli,
+    supportsNativeToolCalls: definition.supportsNativeToolCalls,
+    supportsNativeStreaming: definition.supportsNativeStreaming,
+    safetyBoundary: definition.safetyBoundary,
+    safetyBoundaryLabel: definition.safetyBoundaryLabel,
     status,
     label: formatProviderStatusLabel(status, definition, doctor.checks),
     checks: doctor.checks,
@@ -1437,7 +1548,13 @@ export function formatProviderList(json = false): string {
     credentialType: provider.credentialType,
     modelDiscoveryType: provider.modelDiscoveryType,
     runtimeKind: provider.runtimeKind,
+    providerKind: provider.providerKind,
+    usesExternalCli: provider.usesExternalCli,
+    supportsNativeToolCalls: provider.supportsNativeToolCalls,
+    supportsNativeStreaming: provider.supportsNativeStreaming,
     runtimeBackend: getProviderRuntimeBackend(provider.id),
+    safetyBoundary: provider.safetyBoundary,
+    safetyBoundaryLabel: provider.safetyBoundaryLabel,
     authMode: provider.authMode,
     accessPath: provider.accessPathLabel,
     legalPath: provider.legalPath,
@@ -1446,10 +1563,10 @@ export function formatProviderList(json = false): string {
     return JSON.stringify(providers, null, 2)
   }
   return [
-    'Provider | ID | Aliases | Access type | Credential | Model discovery | Runtime kind | Runtime backend | Access path',
-    '--- | --- | --- | --- | --- | --- | --- | --- | ---',
+    'Provider | ID | Aliases | Access type | Credential | Model discovery | Provider kind | External CLI | Native tools | Native streaming | Runtime backend | Boundary | Access path',
+    '--- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---',
     ...providers.map(provider =>
-      `${provider.name} | ${provider.id} | ${provider.aliases.slice(0, 3).join(', ') || '-'} | ${provider.accessTypeLabel} | ${provider.credentialType} | ${provider.modelDiscoveryType} | ${provider.runtimeKind} | ${provider.runtimeBackend} | ${provider.accessPath}`,
+      `${provider.name} | ${provider.id} | ${provider.aliases.slice(0, 3).join(', ') || '-'} | ${provider.accessTypeLabel} | ${provider.credentialType} | ${provider.modelDiscoveryType} | ${provider.providerKind} | ${provider.usesExternalCli ? 'yes' : 'no'} | ${provider.supportsNativeToolCalls ? 'yes' : 'no'} | ${provider.supportsNativeStreaming ? 'yes' : 'no'} | ${provider.runtimeBackend} | ${provider.safetyBoundary} | ${provider.accessPath}`,
     ),
   ].join('\n')
 }
@@ -1464,7 +1581,12 @@ export function formatProviderDoctor(result: ProviderDoctorResult, json = false)
     `Access: ${getProviderAccessTypeLabel(getProviderDefinition(result.provider))}`,
     `Credential: ${getProviderDefinition(result.provider).credentialType}`,
     `Runtime kind: ${getProviderDefinition(result.provider).runtimeKind}`,
+    `Provider kind: ${result.providerKind}`,
+    `Uses external CLI: ${result.usesExternalCli ? 'yes' : 'no'}`,
+    `UR-native tool calls: ${result.supportsNativeToolCalls ? 'yes' : 'no'}`,
+    `UR-native streaming: ${result.supportsNativeStreaming ? 'yes' : 'no'}`,
     `Runtime backend: ${getProviderRuntimeBackend(result.provider)}`,
+    `Safety boundary: ${result.safetyBoundaryLabel}`,
     `Runtime available: ${runtimeBlock ? 'no' : 'yes'}`,
     `Auth: ${authModeLabel(result.authMode)}`,
     `Status: ${result.ok ? 'ready' : 'not ready'}`,
@@ -1498,7 +1620,7 @@ export function formatProviderStatus(result: ProviderDoctorResult, json = false)
   const model = settings.model ? `\nActive model: ${settings.model}` : ''
   const runtimeBlock = getProviderRuntimeBlockReason(result.provider)
   const runtime = `\nRuntime available: ${runtimeBlock ? 'no' : 'yes'}${runtimeBlock ? `\nRuntime note: ${runtimeBlock}` : ''}`
-  return `Selected provider: ${result.displayName} (${result.provider})\nAccess type: ${getProviderAccessTypeLabel(definition)}\nCredential: ${definition.credentialType}\nRuntime kind: ${definition.runtimeKind}\nRuntime backend: ${getProviderRuntimeBackend(result.provider)}${model}${runtime}\nAuth mode: ${authModeLabel(result.authMode)}\nReady: ${result.ok ? 'yes' : 'no'}${failure}${fix}`
+  return `Selected provider: ${result.displayName} (${result.provider})\nAccess type: ${getProviderAccessTypeLabel(definition)}\nCredential: ${definition.credentialType}\nRuntime kind: ${definition.runtimeKind}\nProvider kind: ${result.providerKind}\nUses external CLI: ${result.usesExternalCli ? 'yes' : 'no'}\nUR-native tool calls: ${result.supportsNativeToolCalls ? 'yes' : 'no'}\nUR-native streaming: ${result.supportsNativeStreaming ? 'yes' : 'no'}\nRuntime backend: ${getProviderRuntimeBackend(result.provider)}\nSafety boundary: ${result.safetyBoundaryLabel}${model}${runtime}\nAuth mode: ${authModeLabel(result.authMode)}\nReady: ${result.ok ? 'yes' : 'no'}${failure}${fix}`
 }
 
 // Provider-specific model definitions

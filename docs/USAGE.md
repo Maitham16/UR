@@ -122,6 +122,14 @@ using your subscription login (`ur auth <provider>`). The generic
 `subscription` entry is an internal placeholder and is hidden from listings;
 UR does not list fake subscription models.
 
+Subscription CLI providers have an explicit external-CLI boundary. UR passes
+prompt text to the official CLI and receives final text output. UR-native tool
+calling, UR Bash/File tool execution, UR-native streaming, local command
+permissions, sandbox guarantees, and verifier/done-gate checks apply to UR-run
+tools/final UR output, not to actions the external CLI performs internally.
+Use `ur provider status` or `ur provider doctor <provider>` to see provider
+kind, external CLI usage, native tool/streaming support, and the boundary text.
+
 Provider values accept canonical IDs and common aliases. For example,
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
 `lmstudio`, `llama.cpp`, and `vllm` are UR-native runtime providers, and

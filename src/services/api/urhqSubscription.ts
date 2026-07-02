@@ -2,11 +2,14 @@
  * Subscription CLI provider client.
  * Spawns the official CLI (Codex, Claude Code, Gemini, Antigravity) in
  * non-interactive mode, feeds the prompt, and maps stdout into a response.
+ * This is an external vendor CLI boundary: UR does not expose native tool
+ * calling, native streaming, or UR Bash/File execution semantics inside the CLI.
  * It never fabricates output: a non-zero exit or empty stdout fails clearly.
  */
 
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'crypto'
+import { SUBSCRIPTION_CLI_PROVIDER_BOUNDARY } from '../providers/providerRegistry.js'
 import type { ProviderMessageClient } from './providerClient.js'
 import { createBufferedMessageReplayStream } from './streamingAdapters.js'
 
@@ -133,7 +136,7 @@ export function createURHQSubscriptionClient(
     const text = extractText(result.stdout)
     if (!text) {
       throw new Error(
-        `Subscription CLI "${options.commandPath}" for ${providerId} produced no output.`,
+        `Subscription CLI "${options.commandPath}" for ${providerId} produced no output. Boundary: ${SUBSCRIPTION_CLI_PROVIDER_BOUNDARY}`,
       )
     }
     const data: SubscriptionResponse = {
@@ -252,7 +255,7 @@ function formatCliFailure(
     'no output'
   const status = parsed?.status ? ` (status ${parsed.status})` : ''
   const exit = result.code === 0 ? 'reported an error' : `exited ${result.code}`
-  return `Subscription CLI "${commandPath}" for ${providerId} ${exit}${status} with model "${model}": ${summary}. Suggested action: run /model and choose a valid model for ${providerId}, or run: ur provider doctor ${providerId}. UR did not fall back to another provider.`
+  return `Subscription CLI "${commandPath}" for ${providerId} ${exit}${status} with model "${model}": ${summary}. Suggested action: run /model and choose a valid model for ${providerId}, or run: ur provider doctor ${providerId}. UR did not fall back to another provider. Boundary: ${SUBSCRIPTION_CLI_PROVIDER_BOUNDARY}`
 }
 
 function parseCliJsonFailure(stdout: string): { isError: boolean; status?: string | number; message?: string } | null {

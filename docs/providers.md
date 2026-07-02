@@ -2,11 +2,12 @@
 
 UR-AGENT integrates official model access paths only. API-key providers, local
 runtimes, and OpenAI-compatible servers are UR-native backends: UR owns the
-conversation loop, tool loop, streaming, errors, and output. Subscription CLI
-providers (Codex CLI, Claude Code, Gemini CLI, Antigravity) are external app
-bridges: they are first-class in `/model` and dispatch each turn through the
-vendor's official CLI using your subscription login. They are optional, never
-required dependencies, and never used as a silent fallback.
+conversation loop, native tool-call parsing, streaming, errors, and UR-run tool
+execution. Subscription CLI providers (Codex CLI, Claude Code, Gemini CLI,
+Antigravity) are external app bridges: they are first-class in `/model` and
+dispatch each turn through the vendor's official CLI using your subscription
+login. They are optional, never required dependencies, and never used as a
+silent fallback.
 
 ## Legal auth policy
 
@@ -25,21 +26,40 @@ variables only when the user explicitly selects API mode.
 
 ## Provider matrix
 
-| Provider | Access type | Runtime kind | Runtime backend | Legal path |
-| --- | --- | --- | --- | --- |
-| Subscription | subscription | unavailable until configured | `subscription:unconfigured` | independent subscription runtime only |
-| OpenAI API | API | UR-native | `api:openai` | `OPENAI_API_KEY` |
-| Claude API | API | UR-native | `api:anthropic` | `ANTHROPIC_API_KEY` |
-| Gemini API | API | UR-native | `api:gemini` | `GEMINI_API_KEY` |
-| OpenRouter | API/router | UR-native | `api:openrouter` | `OPENROUTER_API_KEY` |
-| Ollama | local | UR-native | `ollama` | localhost Ollama runtime |
-| LM Studio | local/server | UR-native | `openai-compatible:lmstudio` | local OpenAI-compatible server |
-| llama.cpp | local/server | UR-native | `openai-compatible:llama.cpp` | local OpenAI-compatible server |
-| vLLM | local/server | UR-native | `openai-compatible:vllm` | OpenAI-compatible server |
-| Codex CLI | subscription | external app bridge | `subscription-cli:codex` | official Codex CLI login |
-| Claude Code | subscription | external app bridge | `subscription-cli:claude-code` | official Claude Code CLI login |
-| Gemini CLI | subscription | external app bridge | `subscription-cli:gemini` | official Gemini Code Assist login |
-| Antigravity | subscription | external app bridge | `subscription-cli:antigravity` | official Antigravity CLI login, where supported |
+| Provider | Access type | Provider kind | External CLI | Native tools | Native streaming | Runtime backend | Legal path |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Subscription | subscription | subscription-placeholder | no | no | no | `subscription:unconfigured` | independent subscription runtime only |
+| OpenAI API | API | UR-native | no | yes | yes | `api:openai` | `OPENAI_API_KEY` |
+| Claude API | API | UR-native | no | yes | yes | `api:anthropic` | `ANTHROPIC_API_KEY` |
+| Gemini API | API | UR-native | no | yes | yes | `api:gemini` | `GEMINI_API_KEY` |
+| OpenRouter | API/router | UR-native | no | yes | yes | `api:openrouter` | `OPENROUTER_API_KEY` |
+| Ollama | local | UR-native | no | yes | yes | `ollama` | localhost Ollama runtime |
+| LM Studio | local/server | UR-native | no | yes | yes | `openai-compatible:lmstudio` | local OpenAI-compatible server |
+| llama.cpp | local/server | UR-native | no | yes | yes | `openai-compatible:llama.cpp` | local OpenAI-compatible server |
+| vLLM | local/server | UR-native | no | yes | yes | `openai-compatible:vllm` | OpenAI-compatible server |
+| Codex CLI | subscription | subscription-cli | yes | no | no | `subscription-cli:codex` | official Codex CLI login |
+| Claude Code | subscription | subscription-cli | yes | no | no | `subscription-cli:claude-code` | official Claude Code CLI login |
+| Gemini CLI | subscription | subscription-cli | yes | no | no | `subscription-cli:gemini` | official Gemini Code Assist login |
+| Antigravity | subscription | subscription-cli | yes | no | no | `subscription-cli:antigravity` | official Antigravity CLI login, where supported |
+
+## Runtime boundary
+
+UR-native providers use UR's provider adapters and tool loop. For those
+providers, UR owns request shaping, native tool-call parsing, native streaming,
+and the UR-run Bash/File tool permission, sandbox, and verifier flow.
+
+Subscription CLI providers use a different boundary:
+
+> External vendor CLI boundary: UR passes prompt text to the official CLI and
+> receives final text output. UR-native tool calling, UR Bash/File tool
+> execution, UR-native streaming, local command permissions, sandbox guarantees,
+> and verifier/done-gate checks apply to UR-run tools/final UR output, not to
+> actions the external CLI performs internally.
+
+That means the external CLI may have its own tool use, streaming, filesystem
+access, network access, permissions, and safety behavior. UR reports CLI
+failures as provider-scoped errors and does not fabricate assistant text or
+silently switch to another provider.
 
 ## Commands
 
@@ -78,8 +98,9 @@ through that provider's backend:
 - **Local/server providers** connect to the configured local or OpenAI-compatible endpoint (`/v1/chat/completions` for LM Studio, llama.cpp and vLLM; the native tags/chat API for Ollama)
 - **Subscription CLI providers** (Codex CLI, Claude Code, Gemini CLI,
   Antigravity) dispatch the turn through the vendor's official CLI using your
-  subscription login. Failures remain provider-scoped and never fall back to
-  Ollama or any other provider.
+  subscription login. They do not use UR-native tool calling, UR-native
+  streaming, or UR Bash/File tool execution inside the external CLI. Failures
+  remain provider-scoped and never fall back to Ollama or any other provider.
 - The generic **`subscription`** entry is an internal placeholder with no
   models and no backend; it is hidden from listings. Choose a specific
   subscription CLI, API, or local/server provider instead.
@@ -108,6 +129,8 @@ You see all configured providers with:
 - Credential type: `cli-login`, `api-key`, `local-runtime`, or `openai-compatible-endpoint`
 - Short status message (e.g., "OPENAI_API_KEY found", "CLI not found", "localhost reachable")
 - Runtime kind: `UR-native` or `external app bridge`
+- Provider kind and boundary: `ur-native`, `subscription-cli`, or
+  `subscription-placeholder`
 
 **Step 2: Model Selection**
 
@@ -124,6 +147,9 @@ After selecting a model, the confirmation shows:
 - Selected model name
 - Model source (live/cache/static)
 - Runtime backend
+- Provider status and doctor output also show provider kind, whether an
+  external CLI is used, whether UR-native tool calls/streaming are supported,
+  and the exact safety boundary.
 - Effort level (if applicable)
 - Thinking status (if enabled)
 
@@ -173,7 +199,7 @@ ur config set provider anthropic-api
 | API providers (openai-api, anthropic-api, gemini-api, openrouter) | Live discovery from the provider's `/models` endpoint using your connected key (curated fallback until connected) | live |
 | Local/server providers (ollama, lmstudio, llama.cpp, vllm) | Dynamic discovery from the selected provider endpoint | live |
 | OpenAI-compatible | Dynamic discovery from configured endpoint | live |
-| Subscription CLIs (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Curated list (the official CLIs expose no models API); first-class in `/model`, dispatched via the official CLI. Log in with `ur auth <provider>` | static |
+| Subscription CLIs (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Curated list (the official CLIs expose no models API); first-class in `/model`, dispatched via the official CLI. External CLI behavior depends on the vendor CLI. Log in with `ur auth <provider>` | static |
 
 ### API vs Subscription distinction
 
@@ -220,7 +246,9 @@ ur connect logout openai-api           # clear a stored key
 - **Subscription providers** (`codex-cli`, `claude-code-cli`, `gemini-cli`,
   `antigravity-cli`) connect through their official CLI login using your own
   account; the session is persisted by that CLI. UR never scrapes or copies
-  those tokens.
+  those tokens. UR-native tools, sandbox guarantees, local command permissions,
+  and verifier/done-gate checks apply to UR-run tools/final UR output, not to
+  internal actions performed by the external CLI.
 - **API providers** (`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`)
   store the key in your OS keychain (macOS Keychain, with an encrypted file
   fallback) — the same secure store UR uses for its own credentials. At runtime
@@ -268,8 +296,9 @@ ur provider status
 - Run `ur provider doctor <provider>` to check CLI presence and login status
 - Install the vendor's official CLI if it is missing, then log in with
   `ur auth <chatgpt|claude|gemini|antigravity>`
-- Remember these run through the external vendor CLI; UR-native behavior
-  (API/local/server providers) does not require them
+- Remember these run through the external vendor CLI; UR-native tool calls,
+  UR-native streaming, Bash/File tool semantics, sandbox guarantees, and local
+  command permissions do not apply to what the external CLI does internally
 
 **Provider shows "unavailable":**
 - Check API key: `echo $OPENAI_API_KEY`

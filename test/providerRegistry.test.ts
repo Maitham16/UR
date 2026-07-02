@@ -13,13 +13,17 @@ import {
   clearProviderModelCacheForTests,
   doctorProvider,
   formatProviderList,
+  formatProviderDoctor,
+  formatProviderStatus,
   getActiveProviderSettings,
+  getProviderDefinition,
   getProviderRuntimeInfo,
   listProviders,
   resolveProviderId,
   listModelsForProviderWithSource,
   setProviderModel,
   setSafeProviderConfig,
+  SUBSCRIPTION_CLI_PROVIDER_BOUNDARY,
   type CommandResult,
   type ProviderDoctorAdapters,
 } from '../src/services/providers/providerRegistry.js'
@@ -114,9 +118,53 @@ describe('provider registry legal access paths', () => {
     expect(codex?.accessType).toBe('subscription')
     expect(codex?.credentialType).toBe('cli-login')
     expect(codex?.runtimeKind).toBe('external-app')
+    expect(codex?.providerKind).toBe('subscription-cli')
+    expect(codex?.usesExternalCli).toBe(true)
+    expect(codex?.supportsNativeToolCalls).toBe(false)
+    expect(codex?.supportsNativeStreaming).toBe(false)
+    expect(codex?.safetyBoundaryLabel).toBe(SUBSCRIPTION_CLI_PROVIDER_BOUNDARY)
     expect(openai?.accessType).toBe('api')
     expect(openai?.credentialType).toBe('api-key')
     expect(openai?.runtimeKind).toBe('ur-native')
+    expect(openai?.providerKind).toBe('ur-native')
+    expect(openai?.usesExternalCli).toBe(false)
+    expect(openai?.safetyBoundary).toBe('ur-native-runtime')
+    expect(openai?.safetyBoundaryLabel).not.toContain('External vendor CLI boundary')
+  })
+
+  test('provider list exposes subscription CLI capability boundaries', () => {
+    const text = formatProviderList()
+    const json = JSON.parse(formatProviderList(true)) as Array<{
+      id: string
+      providerKind: string
+      usesExternalCli: boolean
+      supportsNativeToolCalls: boolean
+      supportsNativeStreaming: boolean
+      safetyBoundary: string
+      safetyBoundaryLabel: string
+    }>
+    const codex = json.find(provider => provider.id === 'codex-cli')
+    const openai = json.find(provider => provider.id === 'openai-api')
+
+    expect(text).toContain('Provider kind')
+    expect(text).toContain('Native tools')
+    expect(text).toContain('codex-cli')
+    expect(text).toContain('subscription-cli')
+    expect(codex).toMatchObject({
+      providerKind: 'subscription-cli',
+      usesExternalCli: true,
+      supportsNativeToolCalls: false,
+      supportsNativeStreaming: false,
+      safetyBoundary: 'external-subscription-cli',
+      safetyBoundaryLabel: SUBSCRIPTION_CLI_PROVIDER_BOUNDARY,
+    })
+    expect(openai).toMatchObject({
+      providerKind: 'ur-native',
+      usesExternalCli: false,
+      supportsNativeToolCalls: true,
+      supportsNativeStreaming: true,
+      safetyBoundary: 'ur-native-runtime',
+    })
   })
 
   test('reports Codex CLI missing', async () => {
@@ -173,6 +221,64 @@ describe('provider registry legal access paths', () => {
     })
 
     expect(result.ok).toBe(true)
+  })
+
+  test('provider doctor exposes external CLI safety boundary', async () => {
+    const result = await doctorProvider('codex-cli', {
+      adapters: adapters({
+        run: async (_file, args) =>
+          args[0] === 'login'
+            ? {
+                stdout: 'Logged in using ChatGPT',
+                stderr: '',
+                code: 0,
+              }
+            : {
+                stdout: 'codex-cli 1.0.0',
+                stderr: '',
+                code: 0,
+              },
+      }),
+      settings: {},
+    })
+    const text = formatProviderDoctor(result)
+    const status = formatProviderStatus(result)
+
+    expect(result.providerKind).toBe('subscription-cli')
+    expect(result.usesExternalCli).toBe(true)
+    expect(result.supportsNativeToolCalls).toBe(false)
+    expect(result.supportsNativeStreaming).toBe(false)
+    expect(result.safetyBoundaryLabel).toBe(SUBSCRIPTION_CLI_PROVIDER_BOUNDARY)
+    expect(result.checks.find(check => check.name === 'runtime_boundary')?.message).toBe(
+      SUBSCRIPTION_CLI_PROVIDER_BOUNDARY,
+    )
+    expect(text).toContain('Provider kind: subscription-cli')
+    expect(text).toContain('Uses external CLI: yes')
+    expect(text).toContain('UR-native tool calls: no')
+    expect(text).toContain('UR-native streaming: no')
+    expect(text).toContain(SUBSCRIPTION_CLI_PROVIDER_BOUNDARY)
+    expect(status).toContain('Provider kind: subscription-cli')
+    expect(status).toContain('Uses external CLI: yes')
+    expect(status).toContain(SUBSCRIPTION_CLI_PROVIDER_BOUNDARY)
+  })
+
+  test('native API provider status is not labeled with external CLI boundary', async () => {
+    const result = await doctorProvider('openai-api', {
+      adapters: adapters({ env: { OPENAI_API_KEY: 'sk-test' } }),
+      settings: {},
+    })
+    const text = formatProviderDoctor(result)
+    const status = formatProviderStatus(result)
+    const openai = getProviderDefinition('openai-api')
+
+    expect(openai.providerKind).toBe('ur-native')
+    expect(result.providerKind).toBe('ur-native')
+    expect(result.usesExternalCli).toBe(false)
+    expect(result.safetyBoundary).toBe('ur-native-runtime')
+    expect(text).toContain('Provider kind: ur-native')
+    expect(text).toContain('Uses external CLI: no')
+    expect(text).not.toContain('External vendor CLI boundary')
+    expect(status).not.toContain('External vendor CLI boundary')
   })
 
   test('reports Claude CLI missing and exposes subscription login command', async () => {
