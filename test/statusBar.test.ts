@@ -20,14 +20,15 @@ describe('UR-AGENT status bar', () => {
       checksStatus: 'tests passed',
     })
 
-    expect(text).toContain('UR-AGENT v1.25.3')
-    expect(text).toContain('Provider: Codex CLI')
-    expect(text).toContain('Auth: subscription')
-    expect(text).toContain('model: modelH')
-    expect(text).toContain('mode: acceptEdits')
-    expect(text).toContain('branch: main')
+    expect(text).toContain('Codex CLI')
+    expect(text).toContain('modelH')
+    expect(text).toContain('acceptEdits')
+    expect(text).toContain('main')
     expect(text).toContain('tasks: 1/3 running')
-    expect(text).toContain('checks: tests passed')
+    expect(text).toContain('tests passed')
+    expect(text).not.toContain('UR-AGENT')
+    expect(text).not.toContain('v1.25.3')
+    expect(text).not.toContain('Auth:')
   })
 
   test('shows update availability when known', () => {
@@ -36,7 +37,7 @@ describe('UR-AGENT status bar', () => {
       latestVersion: '1.25.0',
     })
 
-    expect(text).toContain('Update: 1.23.3 -> 1.25.0 available')
+    expect(text).toBe('update 1.25.0 available')
   })
 
   test('hides by default in CI, dumb terminals, and non-tty output', () => {
@@ -77,8 +78,8 @@ describe('UR-AGENT status bar', () => {
 
     expect(runtime.provider).toBe('gemini-cli')
     expect(runtime.model).toBe('gemini-cli/gemini-2.5-pro')
-    expect(text).toContain('Provider: Gemini CLI')
-    expect(text).toContain('model: gemini-cli/gemini-2.5-pro')
+    expect(text).toContain('Gemini CLI')
+    expect(text).toContain('gemini-cli/gemini-2.5-pro')
     expect(text).not.toContain('Codex CLI')
     expect(text).not.toContain('codex/gpt-5.5')
   })

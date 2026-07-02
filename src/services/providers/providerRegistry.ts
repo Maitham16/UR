@@ -657,8 +657,16 @@ export function isProviderRuntimeSelectable(
   return getProviderRuntimeBlockReason(providerId, env) === null
 }
 
-export function listProviders(): ProviderDefinition[] {
-  return PROVIDER_IDS.map(id => PROVIDERS[id])
+export function listProviders(options: {
+  includeExternalAppBridges?: boolean
+  env?: Record<string, string | undefined>
+} = {}): ProviderDefinition[] {
+  const includeExternal =
+    options.includeExternalAppBridges ??
+    externalAppProviderBridgeEnabled(options.env ?? process.env)
+  return PROVIDER_IDS
+    .map(id => PROVIDERS[id])
+    .filter(provider => includeExternal || provider.runtimeKind !== 'external-app')
 }
 
 function hasSecretLikeValue(value: string): boolean {

@@ -249,7 +249,7 @@ Interactive sessions include a compact bottom status bar when stdout is a real
 terminal:
 
 ```text
-UR-AGENT v1.30.4 | Provider: Ollama | Auth: local | model: llama3 | mode: ask | branch: main | tasks: idle | Update: 1.30.3 -> 1.30.4 available
+Ollama | llama3 | ask | main | update 1.30.5 available
 ```
 
 The bar is not rendered in non-interactive mode, CI, dumb terminals, or

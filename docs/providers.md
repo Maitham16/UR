@@ -125,7 +125,6 @@ After selecting a model, the confirmation shows:
 → Step 1: Select provider
   Ollama · local · local-runtime · localhost reachable
   OpenAI API · api · OPENAI_API_KEY found
-  Codex CLI · subscription · cli-login · external app bridge
   
 → Select: Ollama
 

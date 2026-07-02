@@ -46,7 +46,6 @@ export function statusBarShouldDisplay({
 export function buildDefaultStatusBar({
   version,
   providerLabel,
-  authMode,
   model,
   mode,
   branch,
@@ -56,39 +55,34 @@ export function buildDefaultStatusBar({
   latestVersion,
   isCheckingUpdate,
 }: StatusBarInput): string {
-  const parts = [`UR-AGENT v${version}`]
+  const parts: string[] = []
 
   if (providerLabel) {
-    parts.push(`Provider: ${providerLabel}`)
-  }
-  if (authMode) {
-    parts.push(`Auth: ${authMode}`)
+    parts.push(providerLabel)
   }
   if (model) {
-    parts.push(`model: ${model}`)
+    parts.push(model)
   }
   if (mode) {
-    parts.push(`mode: ${mode}`)
+    parts.push(mode)
   }
   if (branch && branch !== 'HEAD') {
-    parts.push(`branch: ${branch}`)
+    parts.push(branch)
   }
 
   if (taskTotalCount > 0) {
     parts.push(`tasks: ${taskRunningCount}/${taskTotalCount} running`)
-  } else {
-    parts.push('tasks: idle')
   }
 
   if (checksStatus) {
-    parts.push(`checks: ${checksStatus}`)
+    parts.push(checksStatus)
   }
 
   if (isCheckingUpdate) {
-    parts.push('Update: checking')
+    parts.push('update checking')
   } else if (isUpdateAvailable(version, latestVersion)) {
-    parts.push(`Update: ${version} -> ${latestVersion} available`)
+    parts.push(`update ${latestVersion} available`)
   }
 
-  return parts.join(' | ')
+  return parts.length > 0 ? parts.join(' | ') : 'ready'
 }

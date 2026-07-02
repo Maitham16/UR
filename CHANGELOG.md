@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.30.5
+
+- Hide external app bridge providers from normal `/model`, `/provider`, and
+  `ur provider list` output. The default provider UX now shows only UR-native
+  API, local, and OpenAI-compatible server runtimes.
+- Simplify the status bar to show only important runtime state: provider, model,
+  mode, branch, active tasks, checks, and update signals. Product name, version,
+  auth label, and idle task noise are omitted.
+
 ## 1.30.4
 
 - Make the default provider runtime independent of provider apps. Codex CLI,

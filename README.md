@@ -310,7 +310,7 @@ viewer mode.
 Example:
 
 ```text
-UR-AGENT v1.30.4 | Provider: Ollama | Auth: local | model: llama3 | mode: ask | branch: main | tasks: idle
+Ollama | llama3 | ask | main
 ```
 
 The bar reflects the active in-session provider/model immediately after a

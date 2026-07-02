@@ -318,7 +318,7 @@ const commands = [
     category: 'Models',
     aliases: ['providers'],
     summary: 'List, inspect, and diagnose legal model provider adapters without reading hidden credential files.',
-    examples: ['ur provider list', 'ur provider status', 'ur provider doctor', 'ur provider doctor codex-cli', 'ur provider doctor ollama --json'],
+    examples: ['ur provider list', 'ur provider status', 'ur provider doctor', 'ur provider doctor ollama', 'ur provider doctor ollama --json'],
   },
   {
     name: 'repo-edit',
