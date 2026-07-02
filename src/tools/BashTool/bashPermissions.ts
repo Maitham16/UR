@@ -8,6 +8,7 @@ import {
 } from '../../services/analytics/index.js'
 import {
   evaluateShellSafetyPolicy,
+  recordShellSafetyViolation,
   type ShellSafetyEvaluation,
 } from '../../services/safety/projectSafety.js'
 import type { ToolPermissionContext, ToolUseContext } from '../../Tool.js'
@@ -1779,12 +1780,29 @@ export async function bashToolHasPermission(
   )
   if (safetyEvaluation.behavior === 'deny') {
     const reason = safetyEvaluation.reasons.join('; ')
+    recordShellSafetyViolation(safetyEvaluation, reason)
     return {
       behavior: 'deny',
       message: `Blocked by project safety policy: ${reason}`,
       decisionReason: {
         type: 'other' as const,
         reason: `Project safety policy denied command: ${reason}`,
+      },
+    }
+  }
+  if (safetyEvaluation.sandboxMode === 'required' && !shouldUseSandbox(input)) {
+    const reason = safetyEvaluation.reasons.join('; ')
+    const unavailableReason =
+      SandboxManager.getSandboxUnavailableReason() ??
+      'sandbox is disabled, unavailable, or bypassed for this command'
+    const message = `Blocked by project safety policy: sandbox is required but unavailable. ${unavailableReason}`
+    recordShellSafetyViolation(safetyEvaluation, `${reason}; ${unavailableReason}`)
+    return {
+      behavior: 'deny',
+      message,
+      decisionReason: {
+        type: 'other' as const,
+        reason: `Project safety policy requires sandbox enforcement: ${reason}; ${unavailableReason}`,
       },
     }
   }

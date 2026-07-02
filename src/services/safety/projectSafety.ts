@@ -2,9 +2,18 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from 'node:path'
+import { homedir } from 'node:os'
 import { safeParseJSON } from '../../utils/json.js'
 
 export type PermissionClass = 'read' | 'write' | 'execute' | 'network'
@@ -16,6 +25,7 @@ export type ApprovalLevel =
   | 'destructive-commands'
 export type SafetyBehavior = 'allow' | 'ask' | 'deny'
 export type SandboxDisposition = 'not-needed' | 'recommended' | 'required'
+export type SandboxMode = 'disabled' | 'recommended' | 'required'
 
 export type SafetyPolicyRule = {
   pattern: string
@@ -39,8 +49,17 @@ export type ShellSafetyEvaluation = {
   approvalLevel: ApprovalLevel
   permissions: PermissionClass[]
   sandbox: SandboxDisposition
+  sandboxMode: SandboxMode
   reasons: string[]
   matchedRules: SafetyPolicyRule[]
+}
+
+export type ShellSafetyViolation = {
+  command: string
+  reason: string
+  policyDecision: SafetyBehavior
+  sandboxMode: SandboxMode
+  timestamp: Date
 }
 
 const READ_COMMANDS = new Set([
@@ -118,6 +137,8 @@ export const DEFAULT_PROJECT_SAFETY_POLICY: ProjectSafetyPolicy = {
     network: 'Can send data to another process, host, API, or remote service.',
   },
   askBefore: [
+    { pattern: String.raw`\b(npm|pnpm|yarn|bun|pip|pip3|python3?\s+-m\s+pip)\s+(install|add)\b`, reason: 'installs packages or changes dependency state' },
+    { pattern: String.raw`\b(cargo|go)\s+(install|get)\b`, reason: 'installs packages or downloads executable dependencies' },
     { pattern: String.raw`\brm\s+(-[^\s]*[rf][^\s]*|--recursive|--force)`, reason: 'removes files forcefully or recursively' },
     { pattern: String.raw`\bgit\s+reset\s+--hard\b`, reason: 'discards working tree changes' },
     { pattern: String.raw`\bgit\s+clean\s+-[^\s]*[fd]`, reason: 'deletes untracked files' },
@@ -131,6 +152,7 @@ export const DEFAULT_PROJECT_SAFETY_POLICY: ProjectSafetyPolicy = {
     { pattern: String.raw`\bkubectl\s+delete\b`, reason: 'deletes cluster resources' },
   ],
   deny: [
+    { pattern: String.raw`\brm\s+(-[^\s]*[rf][^\s]*|--recursive|--force).*(^|\s)/(?:\s|$|\*)`, reason: 'attempts to recursively delete the filesystem root' },
     { pattern: String.raw`\b(printenv|env)\b.*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)`, reason: 'prints secret-like environment variables' },
     { pattern: String.raw`\becho\b.*\$(\{?[A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Za-z0-9_]*\}?)`, reason: 'prints a secret-like environment variable' },
     { pattern: String.raw`\b(cat|less|more|head|tail|grep|rg)\b.*(\.env|id_rsa|id_ed25519|\.npmrc|\.pypirc|credentials|secrets|settings\.local\.json)`, reason: 'reads files that commonly contain secrets into the model-visible transcript' },
@@ -165,6 +187,31 @@ export const DEFAULT_PROJECT_SAFETY_POLICY: ProjectSafetyPolicy = {
     'rclone',
   ],
   sandboxRequiredFor: ['write', 'execute', 'network'],
+}
+
+const shellSafetyViolations: ShellSafetyViolation[] = []
+
+export function recordShellSafetyViolation(
+  evaluation: ShellSafetyEvaluation,
+  reason?: string,
+): ShellSafetyViolation {
+  const violation: ShellSafetyViolation = {
+    command: evaluation.command,
+    reason: reason ?? (evaluation.reasons.join('; ') || 'blocked by safety policy'),
+    policyDecision: evaluation.behavior,
+    sandboxMode: evaluation.sandboxMode,
+    timestamp: new Date(),
+  }
+  shellSafetyViolations.push(violation)
+  return violation
+}
+
+export function getShellSafetyViolations(): ShellSafetyViolation[] {
+  return [...shellSafetyViolations]
+}
+
+export function clearShellSafetyViolations(): void {
+  shellSafetyViolations.length = 0
 }
 
 export function safetyPolicyPath(cwd: string): string {
@@ -253,35 +300,172 @@ function firstCommandPrefix(command: string): string {
   return second ? `${first} ${second}` : first
 }
 
-function commandMatchesAny(command: string, prefixes: Iterable<string>): boolean {
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function commandMatchesPrefix(command: string, prefix: string): boolean {
   const lower = command.toLowerCase()
+  const normalized = prefix.trim().toLowerCase()
+  if (!normalized) return false
+  if (lower === normalized || lower.startsWith(`${normalized} `)) return true
+  const pattern = normalized
+    .split(/\s+/)
+    .map(escapeRegExp)
+    .join(String.raw`\s+`)
+  return new RegExp(String.raw`(?:^|[\s;&|()])${pattern}(?:$|[\s;&|()])`, 'i').test(
+    command,
+  )
+}
+
+function commandMatchesAny(command: string, prefixes: Iterable<string>): boolean {
   for (const prefix of prefixes) {
-    const normalized = prefix.toLowerCase()
-    if (lower === normalized || lower.startsWith(`${normalized} `)) return true
+    if (commandMatchesPrefix(command, prefix)) return true
   }
   return false
+}
+
+function shellTokens(command: string): string[] {
+  const matches = command.match(/"([^"\\]|\\.)*"|'[^']*'|[^\s;&|]+/g) ?? []
+  return matches.map(token => {
+    if (
+      (token.startsWith('"') && token.endsWith('"')) ||
+      (token.startsWith("'") && token.endsWith("'"))
+    ) {
+      return token.slice(1, -1)
+    }
+    return token
+  })
+}
+
+function commandSegments(command: string): string[] {
+  return command
+    .split(/\s*(?:&&|\|\||[;|\n])\s*/)
+    .map(segment => segment.trim())
+    .filter(Boolean)
+}
+
+function isFlag(token: string): boolean {
+  return token.startsWith('-') && token !== '-'
+}
+
+function candidatePathFromToken(token: string): string | null {
+  const trimmed = token.trim().replace(/^[<>=]+/, '')
+  if (!trimmed || isFlag(trimmed)) return null
+  if (/[$`{}[\]*?]/.test(trimmed)) return null
+  return trimmed
+}
+
+function extractWritePathCandidates(command: string): string[] {
+  const candidates: string[] = []
+  const redirectPattern = /(?:^|\s)(?:>{1,2}|<>)\s*(['"]?)([^'";&|]+)\1/g
+  for (const match of command.matchAll(redirectPattern)) {
+    const token = candidatePathFromToken(match[2] ?? '')
+    if (token) candidates.push(token)
+  }
+
+  for (const segment of commandSegments(command)) {
+    const tokens = shellTokens(segment)
+    const [cmd, subcmd] = tokens
+    if (!cmd) continue
+    const commandName = subcmd ? `${cmd} ${subcmd}` : cmd
+
+    if (['touch', 'mkdir', 'rm', 'rmdir', 'truncate', 'tee'].includes(cmd)) {
+      for (const token of tokens.slice(1)) {
+        const candidate = candidatePathFromToken(token)
+        if (candidate) candidates.push(candidate)
+      }
+      continue
+    }
+
+    if (['cp', 'mv'].includes(cmd)) {
+      const nonFlags = tokens.slice(1).filter(token => !isFlag(token))
+      const candidate = candidatePathFromToken(nonFlags.at(-1) ?? '')
+      if (candidate) candidates.push(candidate)
+      continue
+    }
+
+    if (commandName === 'git clean') {
+      candidates.push('.')
+    }
+  }
+
+  return candidates
+}
+
+function resolveHomePath(path: string): string {
+  if (path === '~') return homedir()
+  if (path.startsWith('~/')) return join(homedir(), path.slice(2))
+  return path
+}
+
+function resolveExistingPathOrParent(path: string): string {
+  let current = path
+  const missing: string[] = []
+  while (!existsSync(current)) {
+    const parent = dirname(current)
+    if (parent === current) return path
+    missing.unshift(basename(current))
+    current = parent
+  }
+  try {
+    return join(realpathSync(current), ...missing)
+  } catch {
+    return path
+  }
+}
+
+function resolveWorkspacePath(candidate: string, cwd: string): string {
+  const expanded = resolveHomePath(candidate)
+  const absolute = isAbsolute(expanded) ? expanded : resolve(cwd, expanded)
+  return resolveExistingPathOrParent(absolute)
+}
+
+function pathIsInsideWorkspace(path: string, cwd: string): boolean {
+  const realCwd = resolveExistingPathOrParent(cwd)
+  const rel = relative(realCwd, path)
+  return rel === '' || (!!rel && !rel.startsWith('..') && !isAbsolute(rel))
+}
+
+function detectWorkspaceWriteEscape(
+  command: string,
+  cwd: string,
+): SafetyPolicyRule[] {
+  const rules: SafetyPolicyRule[] = []
+  for (const candidate of extractWritePathCandidates(command)) {
+    const resolved = resolveWorkspacePath(candidate, cwd)
+    if (!pathIsInsideWorkspace(resolved, cwd)) {
+      rules.push({
+        pattern: candidate,
+        reason: `writes outside the workspace boundary: ${candidate}`,
+      })
+    }
+  }
+  return rules
 }
 
 function classifyPermissions(command: string, policy: ProjectSafetyPolicy): PermissionClass[] {
   const permissions = new Set<PermissionClass>()
   const lower = command.toLowerCase()
   const prefix = firstCommandPrefix(lower)
-  if (commandMatchesAny(prefix, READ_COMMANDS) || commandMatchesAny(lower, READ_COMMANDS)) {
+  if (commandMatchesAny(prefix, READ_COMMANDS) || commandMatchesAny(command, READ_COMMANDS)) {
     permissions.add('read')
   }
   if (
     commandMatchesAny(prefix, WRITE_COMMANDS) ||
+    commandMatchesAny(command, WRITE_COMMANDS) ||
     /(^|[^>])>{1,2}[^&]|<>\s*|(^|\s)(tee|sed\s+-i)\b/i.test(command)
   ) {
     permissions.add('write')
   }
   if (
     commandMatchesAny(prefix, EXECUTE_COMMANDS) ||
+    commandMatchesAny(command, EXECUTE_COMMANDS) ||
     /\b(bun|npm|pnpm|yarn|cargo|go|make|pytest|jest|vitest|node|python3?)\b/i.test(command)
   ) {
     permissions.add('execute')
   }
-  if (commandMatchesAny(lower, policy.networkCommands)) {
+  if (commandMatchesAny(command, policy.networkCommands)) {
     permissions.add('network')
   }
   if (permissions.size === 0) permissions.add('execute')
@@ -321,17 +505,30 @@ export function evaluateShellSafetyPolicy(
 ): ShellSafetyEvaluation {
   const policy = loadProjectSafetyPolicy(cwd)
   const permissions = classifyPermissions(command, policy)
-  const matchedDeny = policy.deny.filter(rule => compileRule(rule)?.test(command))
+  const matchedDeny = [
+    ...policy.deny.filter(rule => compileRule(rule)?.test(command)),
+    ...detectWorkspaceWriteEscape(command, cwd),
+  ]
   const matchedAsk = policy.askBefore.filter(rule => compileRule(rule)?.test(command))
   const sandboxRequired = permissions.some(permission =>
     policy.sandboxRequiredFor.includes(permission),
   )
+  const requiresStrictSandbox =
+    matchedDeny.length > 0 ||
+    matchedAsk.length > 0 ||
+    input?.dangerouslyDisableSandbox ||
+    permissions.includes('network')
+  const sandboxMode: SandboxMode = requiresStrictSandbox
+    ? 'required'
+    : sandboxRequired
+      ? 'recommended'
+      : 'disabled'
   const sandbox: SandboxDisposition =
-    matchedAsk.length > 0 || input?.dangerouslyDisableSandbox
+    sandboxMode === 'disabled'
+      ? 'not-needed'
+      : sandboxMode === 'required'
       ? 'required'
-      : sandboxRequired
-        ? 'recommended'
-        : 'not-needed'
+      : 'recommended'
   const behavior: SafetyBehavior =
     matchedDeny.length > 0
       ? 'deny'
@@ -346,8 +543,11 @@ export function evaluateShellSafetyPolicy(
   if (input?.dangerouslyDisableSandbox) {
     reasons.push('command requests sandbox bypass')
   }
-  if (sandbox !== 'not-needed') {
-    reasons.push(`sandbox ${sandbox} for ${permissions.join('/')} permission`)
+  if (permissions.includes('network')) {
+    reasons.push('network access requires sandbox network isolation')
+  }
+  if (sandboxMode !== 'disabled') {
+    reasons.push(`sandbox ${sandboxMode} for ${permissions.join('/')} permission`)
   }
   return {
     command,
@@ -355,6 +555,7 @@ export function evaluateShellSafetyPolicy(
     approvalLevel,
     permissions,
     sandbox,
+    sandboxMode,
     reasons,
     matchedRules: [...matchedDeny, ...matchedAsk],
   }
@@ -369,7 +570,7 @@ export function formatShellSafetyEvaluation(
     `Safety decision: ${evaluation.behavior}`,
     `Approval level: ${formatApprovalLevel(evaluation.approvalLevel)}`,
     `Permissions: ${evaluation.permissions.join(', ')}`,
-    `Sandbox: ${evaluation.sandbox}`,
+    `Sandbox: ${evaluation.sandboxMode}`,
     'Reasons:',
     ...(evaluation.reasons.length
       ? evaluation.reasons.map(reason => `  - ${reason}`)

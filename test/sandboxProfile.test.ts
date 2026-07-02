@@ -5,6 +5,7 @@ import {
   posixQuote,
   writableRoots,
 } from '../src/utils/sandbox/sandboxProfile.ts'
+import { SandboxManager } from '../src/utils/sandbox/sandboxRuntimeCompat.ts'
 
 test('posixQuote escapes single quotes safely', () => {
   expect(posixQuote('abc')).toBe("'abc'")
@@ -52,4 +53,56 @@ test('bwrap argv binds the workspace read-write over a read-only root', () => {
 test('bwrap argv unshares the network when requested', () => {
   const argv = buildBwrapArgv('/work/project', { denyNetwork: true })
   expect(argv).toContain('--unshare-net')
+})
+
+test('sandbox runtime exposes real network, filesystem, and violation state', () => {
+  const store = SandboxManager.getSandboxViolationStore()
+  store.clear()
+
+  SandboxManager.updateConfig({
+    network: {
+      allowedDomains: ['registry.npmjs.org'],
+      deniedDomains: ['example.invalid'],
+      blockAll: true,
+    },
+    filesystem: {
+      allowRead: ['/work/project'],
+      denyRead: ['/work/project/.env'],
+      allowWrite: ['/work/project'],
+      denyWrite: ['/work/project/.git'],
+    },
+    ignoreViolations: { network: ['localhost'] },
+  })
+
+  expect(SandboxManager.getNetworkRestrictionConfig()).toEqual({
+    allowedHosts: ['registry.npmjs.org'],
+    deniedHosts: ['example.invalid'],
+    blockAll: true,
+  })
+  expect(SandboxManager.getFsWriteConfig()).toEqual({
+    allowOnly: ['/work/project'],
+    denyWithinAllow: ['/work/project/.git'],
+  })
+  expect(SandboxManager.getFsReadConfig()).toEqual({
+    allowOnly: ['/work/project'],
+    denyOnly: ['/work/project/.env'],
+    allowWithinDeny: [],
+  })
+  expect(SandboxManager.getIgnoreViolations()).toEqual({
+    network: ['localhost'],
+  })
+
+  store.record({
+    command: 'curl https://example.invalid',
+    line: 'network access denied',
+    reason: 'network blocked by policy',
+    policyDecision: 'deny',
+    sandboxMode: 'required',
+  })
+  expect(store.getTotalCount()).toBe(1)
+  expect(store.getViolations()[0]?.command).toBe('curl https://example.invalid')
+  expect(store.getViolations()[0]?.timestamp).toBeInstanceOf(Date)
+
+  store.clear()
+  SandboxManager.reset()
 })

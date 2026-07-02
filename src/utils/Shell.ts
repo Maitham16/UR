@@ -5,6 +5,7 @@ import memoize from 'lodash-es/memoize.js'
 import { isAbsolute, resolve } from 'path'
 import { join as posixJoin } from 'path/posix'
 import { logEvent } from 'src/services/analytics/index.js'
+import { evaluateShellSafetyPolicy } from 'src/services/safety/projectSafety.js'
 import {
   getOriginalCwd,
   getSessionId,
@@ -32,7 +33,10 @@ import { accessSync } from 'fs'
 import { onCwdChangedForHooks } from './hooks/fileChangedWatcher.js'
 import { getURTempDirName } from './permissions/filesystem.js'
 import { getPlatform } from './platform.js'
-import { SandboxManager } from './sandbox/sandbox-adapter.js'
+import {
+  SandboxManager,
+  type SandboxRuntimeConfig,
+} from './sandbox/sandbox-adapter.js'
 import { invalidateSessionEnvCache } from './sessionEnvironment.js'
 import { createBashShellProvider } from './shell/bashProvider.js'
 import { getCachedPowerShellPath } from './shell/powershellDetection.js'
@@ -257,10 +261,15 @@ export async function exec(
   const sandboxBinShell = isSandboxedPowerShell ? '/bin/sh' : binShell
 
   if (shouldUseSandbox) {
+    const sandboxPolicy = evaluateShellSafetyPolicy(command, cwd)
+    const sandboxConfig: Partial<SandboxRuntimeConfig> | undefined =
+      sandboxPolicy.permissions.includes('network')
+        ? { network: { blockAll: true } }
+        : undefined
     commandString = await SandboxManager.wrapWithSandbox(
       commandString,
       sandboxBinShell,
-      undefined,
+      sandboxConfig,
       abortSignal,
     )
     // Create sandbox temp directory for sandboxed processes with secure permissions
