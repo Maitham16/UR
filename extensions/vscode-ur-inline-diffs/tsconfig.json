@@ -10,7 +10,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "rootDir": "./src",
-    "types": ["node", "vscode"],
+    "types": ["node", "vscode", "bun-types"],
     "noEmit": true
   },
   "include": ["src/**/*.ts"],

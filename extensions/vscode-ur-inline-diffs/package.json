@@ -17,7 +17,15 @@
     "onCommand:urInlineDiffs.comment",
     "onCommand:urInlineDiffs.apply",
     "onCommand:urInlineDiffs.reject",
-    "onCommand:urInlineDiffs.status"
+    "onCommand:urInlineDiffs.status",
+    "onCommand:urInlineDiffs.chat.new",
+    "onCommand:urInlineDiffs.chat.open",
+    "onCommand:urInlineDiffs.chat.cancel",
+    "onCommand:urInlineDiffs.chat.addFile",
+    "onCommand:urInlineDiffs.chat.addSelection",
+    "onCommand:urInlineDiffs.chat.explainSelection",
+    "onCommand:urInlineDiffs.chat.fixSelection",
+    "onCommand:urInlineDiffs.chat.generateTests"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -27,6 +35,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.92.0",
+    "bun-types": "^1.2.0",
     "esbuild": "^0.28.1",
     "typescript": "^5.7.0"
   },
@@ -78,6 +87,41 @@
         "command": "urInlineDiffs.status",
         "title": "UR: Show Status (provider, model, plugins)",
         "icon": "$(pulse)"
+      },
+      {
+        "command": "urInlineDiffs.chat.new",
+        "title": "UR: New Chat",
+        "icon": "$(comment-add)"
+      },
+      {
+        "command": "urInlineDiffs.chat.open",
+        "title": "UR: Open Chat",
+        "icon": "$(comment)"
+      },
+      {
+        "command": "urInlineDiffs.chat.cancel",
+        "title": "UR: Cancel Current Chat Request",
+        "icon": "$(stop-circle)"
+      },
+      {
+        "command": "urInlineDiffs.chat.addFile",
+        "title": "UR: Add Current File to Chat"
+      },
+      {
+        "command": "urInlineDiffs.chat.addSelection",
+        "title": "UR: Add Selection to Chat"
+      },
+      {
+        "command": "urInlineDiffs.chat.explainSelection",
+        "title": "UR: Explain Selection"
+      },
+      {
+        "command": "urInlineDiffs.chat.fixSelection",
+        "title": "UR: Fix Selection"
+      },
+      {
+        "command": "urInlineDiffs.chat.generateTests",
+        "title": "UR: Generate Tests for Selection"
       }
     ],
     "viewsWelcome": [
@@ -88,6 +132,16 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "urInlineDiffs.chat.new",
+          "when": "view == urInlineDiffs",
+          "group": "navigation"
+        },
+        {
+          "command": "urInlineDiffs.chat.open",
+          "when": "view == urInlineDiffs",
+          "group": "navigation"
+        },
         {
           "command": "urInlineDiffs.refresh",
           "when": "view == urInlineDiffs",
@@ -119,6 +173,28 @@
           "command": "urInlineDiffs.comment",
           "when": "view == urInlineDiffs && viewItem == diff",
           "group": "2_review"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "urInlineDiffs.chat.explainSelection",
+          "when": "editorHasSelection",
+          "group": "ur@1"
+        },
+        {
+          "command": "urInlineDiffs.chat.fixSelection",
+          "when": "editorHasSelection",
+          "group": "ur@2"
+        },
+        {
+          "command": "urInlineDiffs.chat.generateTests",
+          "when": "editorHasSelection",
+          "group": "ur@3"
+        },
+        {
+          "command": "urInlineDiffs.chat.addSelection",
+          "when": "editorHasSelection",
+          "group": "ur@4"
         }
       ]
     }

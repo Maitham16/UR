@@ -1,0 +1,360 @@
+// Orchestrates the chat panel: owns the active session, staged context
+// attachments, the in-flight urProcess turn, and pending permission
+// prompts. This is the one place chat commands, editor actions, and the
+// webview's postMessage traffic all converge — deliberately a single
+// pathway per the PR's "reuse the same chat pathway" requirement.
+
+import { randomUUID } from 'node:crypto'
+import * as vscode from 'vscode'
+import type {
+  ChatContentBlock,
+  ChatMessage,
+  ChatRole,
+  ChatSession,
+  ChatSessionRecord,
+  ControlRequestEnvelope,
+  PermissionDecision,
+  StdoutMessage,
+} from '../bridge/types.js'
+import { isControlCancelRequest } from '../bridge/types.js'
+import { runUrTurn, type UrTurnHandle, type UrTurnResult } from '../bridge/urProcess.js'
+import {
+  buildPromptWithAttachments,
+  captureEditorSnapshot,
+  describeUnavailableReason,
+  type ContextAttachment,
+  type SelectionSnapshot,
+} from '../context/ideContext.js'
+import { workspaceRoot } from '../diffs/store.js'
+import { appendMessage, createSession, listSessions, readSession, setCliSessionId } from '../sessions/sessionStore.js'
+import { ChatPanel, toWireAttachment, type WebviewInboundMessage } from './chatPanel.js'
+import { extractAssistantContentBlocks, extractToolResultContentBlocks } from './messageMapping.js'
+import { buildExplainPrompt, buildFixPrompt, buildGenerateTestsPrompt } from './prompts.js'
+
+type PendingPermission = {
+  resolve: (decision: PermissionDecision) => void
+  toolName: string
+  input: Record<string, unknown>
+}
+
+export class ChatController implements vscode.Disposable {
+  private panel: ChatPanel | undefined
+  private record: ChatSessionRecord | undefined
+  private attachments: ContextAttachment[] = []
+  private status: 'idle' | 'running' | 'canceled' | 'error' = 'idle'
+  private turnHandle: UrTurnHandle | undefined
+  private readonly pendingPermissions = new Map<string, PendingPermission>()
+
+  // --- commands ---
+
+  async newChat(): Promise<void> {
+    const root = this.requireWorkspaceRoot()
+    if (!root) return
+    this.turnHandle?.cancel()
+    this.record = createSession(root)
+    this.attachments = []
+    this.status = 'idle'
+    this.ensurePanel()
+    this.syncFullState()
+  }
+
+  async openChat(): Promise<void> {
+    const root = this.requireWorkspaceRoot()
+    if (!root) return
+    if (this.record) {
+      this.ensurePanel()
+      this.syncFullState()
+      return
+    }
+    const sessions = listSessions(root)
+    if (sessions.length === 0) {
+      await this.newChat()
+      return
+    }
+    const picked = await this.pickSession(sessions)
+    if (picked === undefined) return
+    if (picked === 'new') {
+      await this.newChat()
+      return
+    }
+    const record = readSession(root, picked)
+    if (!record) {
+      await this.newChat()
+      return
+    }
+    this.record = record
+    this.ensurePanel()
+    this.syncFullState()
+  }
+
+  cancelCurrentRequest(): void {
+    if (!this.turnHandle || this.status !== 'running') {
+      vscode.window.showInformationMessage('No UR chat request is currently running.')
+      return
+    }
+    this.turnHandle.cancel()
+    this.denyAllPending('Request was canceled.')
+  }
+
+  addCurrentFileToChat(): void {
+    this.stageAttachment('file')
+  }
+
+  addSelectionToChat(): void {
+    this.stageAttachment('selection')
+  }
+
+  async explainSelection(): Promise<void> {
+    await this.runEditorAction(buildExplainPrompt)
+  }
+
+  async fixSelection(): Promise<void> {
+    await this.runEditorAction(buildFixPrompt)
+  }
+
+  async generateTestsForSelection(): Promise<void> {
+    await this.runEditorAction(buildGenerateTestsPrompt)
+  }
+
+  async sendMessage(text: string): Promise<void> {
+    const trimmed = text.trim()
+    if (!trimmed) return
+    const prompt = buildPromptWithAttachments(trimmed, this.attachments)
+    this.attachments = []
+    this.panel?.post({ type: 'attachmentsChanged', attachments: [] })
+    await this.dispatchTurn(prompt)
+  }
+
+  dispose(): void {
+    this.turnHandle?.cancel()
+    this.denyAllPending('Extension is shutting down.')
+  }
+
+  // --- internals ---
+
+  private requireWorkspaceRoot(): string | undefined {
+    const root = workspaceRoot()
+    if (!root) {
+      vscode.window.showWarningMessage('Open a workspace folder to use UR Chat.')
+      return undefined
+    }
+    return root
+  }
+
+  private ensurePanel(): void {
+    if (!ChatPanel.isOpen) {
+      this.panel = ChatPanel.createOrShow(message => this.handleWebviewMessage(message))
+    }
+  }
+
+  private async pickSession(sessions: ChatSession[]): Promise<string | 'new' | undefined> {
+    type SessionQuickPickItem = vscode.QuickPickItem & { id: string | 'new' }
+    const items: SessionQuickPickItem[] = [
+      { id: 'new', label: '$(add) Start New Chat' },
+      ...sessions.map(
+        (session): SessionQuickPickItem => ({
+          id: session.id,
+          label: session.title,
+          description: new Date(session.updatedAt).toLocaleString(),
+        }),
+      ),
+    ]
+    const picked = await vscode.window.showQuickPick(items, {
+      title: 'UR Chat',
+      placeHolder: 'Resume a chat or start a new one',
+    })
+    return picked?.id
+  }
+
+  private stageAttachment(kind: 'file' | 'selection'): void {
+    const snapshot = captureEditorSnapshot()
+    const reason = describeUnavailableReason(snapshot, kind)
+    if (reason) {
+      vscode.window.showWarningMessage(reason)
+      return
+    }
+    const attachment: ContextAttachment =
+      kind === 'file' ? { kind: 'file', file: snapshot.activeFile! } : { kind: 'selection', selection: snapshot.selection! }
+    this.attachments.push(attachment)
+    this.ensurePanel()
+    this.panel?.post({ type: 'attachmentsChanged', attachments: this.attachments.map(toWireAttachment) })
+  }
+
+  private async runEditorAction(build: (selection: SelectionSnapshot) => string): Promise<void> {
+    const root = this.requireWorkspaceRoot()
+    if (!root) return
+    const snapshot = captureEditorSnapshot()
+    const reason = describeUnavailableReason(snapshot, 'selection')
+    if (reason) {
+      vscode.window.showWarningMessage(reason)
+      return
+    }
+    await this.dispatchTurn(build(snapshot.selection!))
+  }
+
+  /** The single pathway every turn goes through — manual sends and editor
+   * actions alike. */
+  private async dispatchTurn(promptText: string): Promise<void> {
+    const root = this.requireWorkspaceRoot()
+    if (!root) return
+    if (this.status === 'running') {
+      vscode.window.showWarningMessage('UR is already running a request. Cancel it first or wait for it to finish.')
+      return
+    }
+    if (!this.record) this.record = createSession(root)
+    this.ensurePanel()
+
+    const sessionId = this.record.session.id
+    const userMessage: ChatMessage = {
+      id: randomUUID(),
+      sessionId,
+      role: 'user',
+      content: [{ type: 'text', text: promptText }],
+      createdAt: new Date().toISOString(),
+    }
+    appendMessage(root, sessionId, userMessage)
+    this.record.messages.push(userMessage)
+    this.panel?.post({ type: 'messageAppended', message: userMessage })
+
+    this.status = 'running'
+    this.panel?.post({ type: 'statusChanged', status: this.status })
+
+    const resumeSessionId = this.record.session.cliSessionId
+
+    this.turnHandle = runUrTurn(
+      { cwd: root, prompt: promptText, resumeSessionId },
+      {
+        onMessage: message => this.handleStreamMessage(root, sessionId, message),
+        onControlRequest: request => this.handlePermissionRequest(request),
+        onExit: result => this.handleTurnExit(root, result),
+      },
+    )
+  }
+
+  private handleStreamMessage(root: string, sessionId: string, message: StdoutMessage): void {
+    if (message.type === 'system' && message.subtype === 'init' && typeof message.session_id === 'string') {
+      if (this.record && this.record.session.id === sessionId && !this.record.session.cliSessionId) {
+        setCliSessionId(root, sessionId, message.session_id)
+        this.record.session.cliSessionId = message.session_id
+      }
+      return
+    }
+    if (message.type === 'assistant') {
+      const blocks = extractAssistantContentBlocks(message)
+      if (blocks.length > 0) this.appendChatMessage(root, sessionId, 'assistant', blocks)
+      return
+    }
+    if (message.type === 'user') {
+      const blocks = extractToolResultContentBlocks(message)
+      if (blocks.length > 0) this.appendChatMessage(root, sessionId, 'status', blocks)
+      return
+    }
+    if (isControlCancelRequest(message)) {
+      const pending = this.pendingPermissions.get(message.request_id)
+      if (pending) {
+        this.pendingPermissions.delete(message.request_id)
+        pending.resolve({ behavior: 'deny', message: 'Permission request was canceled.' })
+      }
+      this.panel?.post({ type: 'permissionResolved', requestId: message.request_id })
+    }
+    // control_request is answered via onControlRequest; `result` is handled
+    // via onExit/UrTurnResult; anything else (keep_alive, control_response
+    // echoes) is intentionally not rendered.
+  }
+
+  private appendChatMessage(root: string, sessionId: string, role: ChatRole, content: ChatContentBlock[]): void {
+    if (!this.record || this.record.session.id !== sessionId) return
+    const message: ChatMessage = { id: randomUUID(), sessionId, role, content, createdAt: new Date().toISOString() }
+    appendMessage(root, sessionId, message)
+    this.record.messages.push(message)
+    this.panel?.post({ type: 'messageAppended', message })
+  }
+
+  private appendStatusText(root: string, text: string): void {
+    if (!this.record) return
+    this.appendChatMessage(root, this.record.session.id, 'status', [{ type: 'text', text }])
+  }
+
+  private handlePermissionRequest(request: ControlRequestEnvelope): Promise<PermissionDecision> {
+    return new Promise(resolve => {
+      const toolName = request.request.tool_name ?? 'tool'
+      const input = request.request.input ?? {}
+      this.pendingPermissions.set(request.request_id, { resolve, toolName, input })
+      this.panel?.post({ type: 'permissionRequest', requestId: request.request_id, toolName, input })
+    })
+  }
+
+  private handleTurnExit(root: string, result: UrTurnResult): void {
+    this.turnHandle = undefined
+    this.denyAllPending('The chat turn ended before this request was answered.')
+    if (result.canceled) {
+      this.status = 'canceled'
+      this.appendStatusText(root, 'Canceled.')
+    } else if (!result.ok) {
+      this.status = 'error'
+      const message = result.error ?? 'UR failed to complete this turn.'
+      this.appendStatusText(root, `Error: ${message}`)
+      this.panel?.post({ type: 'errorBanner', message })
+    } else {
+      this.status = 'idle'
+    }
+    this.panel?.post({ type: 'statusChanged', status: this.status })
+  }
+
+  private resolvePermission(requestId: string, decision: 'allow' | 'deny'): void {
+    const pending = this.pendingPermissions.get(requestId)
+    if (!pending) return
+    this.pendingPermissions.delete(requestId)
+    pending.resolve(
+      decision === 'allow'
+        ? { behavior: 'allow', updatedInput: pending.input }
+        : { behavior: 'deny', message: 'User denied this tool call from the UR Chat panel.' },
+    )
+    this.panel?.post({ type: 'permissionResolved', requestId })
+    const root = workspaceRoot()
+    if (root) this.appendStatusText(root, `${decision === 'allow' ? 'Allowed' : 'Denied'} ${pending.toolName}.`)
+  }
+
+  private denyAllPending(reason: string): void {
+    for (const [requestId, pending] of this.pendingPermissions) {
+      pending.resolve({ behavior: 'deny', message: reason })
+      this.panel?.post({ type: 'permissionResolved', requestId })
+    }
+    this.pendingPermissions.clear()
+  }
+
+  private handleWebviewMessage(message: WebviewInboundMessage): void {
+    if (message.type === 'ready') {
+      this.syncFullState()
+      return
+    }
+    if (message.type === 'send') {
+      void this.sendMessage(message.text)
+      return
+    }
+    if (message.type === 'cancel') {
+      this.cancelCurrentRequest()
+      return
+    }
+    if (message.type === 'permissionDecision') {
+      this.resolvePermission(message.requestId, message.decision)
+      return
+    }
+    if (message.type === 'removeAttachment') {
+      this.attachments.splice(message.index, 1)
+      this.panel?.post({ type: 'attachmentsChanged', attachments: this.attachments.map(toWireAttachment) })
+    }
+  }
+
+  private syncFullState(): void {
+    if (!this.record) return
+    this.ensurePanel()
+    this.panel?.post({
+      type: 'init',
+      session: this.record.session,
+      messages: this.record.messages,
+      status: this.status,
+      attachments: this.attachments.map(toWireAttachment),
+    })
+  }
+}
