@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Adapter layer for sandbox integrations.
  */
@@ -510,6 +509,9 @@ const isSupportedPlatform = memoize((): boolean => {
 function isPlatformInEnabledList(): boolean {
   try {
     const settings = getInitialSettings()
+    // Cast: enabledPlatforms is read via the schema's .passthrough() and is
+    // intentionally excluded from SandboxSettings' inferred type (see
+    // SandboxSettingsSchema in sandboxTypes.ts) — no typed accessor exists.
     const enabledPlatforms = (
       settings?.sandbox as { enabledPlatforms?: Platform[] } | undefined
     )?.enabledPlatforms
@@ -911,7 +913,9 @@ export interface ISandboxManager {
   getSocksProxyPort(): number | undefined
   getLinuxHttpSocketPath(): string | undefined
   getLinuxSocksSocketPath(): string | undefined
-  waitForNetworkInitialization(): Promise<boolean>
+  // Real runtime always resolves Promise<void> (see sandboxRuntimeCompat.ts);
+  // the sole caller (execHttpHook.ts) discards the resolved value.
+  waitForNetworkInitialization(): Promise<void>
   wrapWithSandbox(
     command: string,
     binShell?: string,

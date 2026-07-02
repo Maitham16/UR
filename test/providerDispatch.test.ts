@@ -237,6 +237,166 @@ describe('subscription CLI dispatch is real (not faked)', () => {
   })
 })
 
+describe('subscription CLI rejects image/multimodal content', () => {
+  function imageBlock() {
+    return { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'aGVsbG8=' } }
+  }
+
+  test('codex-cli rejects image content clearly and never spawns the CLI', async () => {
+    const { runner, calls } = recordingRunner({ stdout: 'the real answer' })
+    const client = createURHQSubscriptionClient('codex-cli', {
+      commandPath: '/usr/bin/codex',
+      maxRetries: 1,
+      model: 'codex/gpt-5.5',
+      runner,
+    })
+    let caught: Error | undefined
+    try {
+      await client.beta.messages.create({
+        model: 'codex/gpt-5.5',
+        messages: [
+          { role: 'user', content: [{ type: 'text', text: 'describe this' }, imageBlock()] },
+        ],
+        max_tokens: 16,
+      })
+    } catch (error) {
+      caught = error as Error
+    }
+    expect(caught?.name).toBe('ProviderCapabilityError')
+    expect(caught?.message).toContain('does not support image/multimodal input')
+    expect(caught?.message).toContain('codex-cli')
+    expect(calls).toHaveLength(0) // external CLI never spawned
+  })
+
+  test('claude-code-cli rejects image content clearly and never spawns the CLI', async () => {
+    const { runner, calls } = recordingRunner({ stdout: JSON.stringify({ result: 'claude says hi' }) })
+    const client = createURHQSubscriptionClient('claude-code-cli', {
+      commandPath: 'claude',
+      maxRetries: 1,
+      runner,
+    })
+    await expect(
+      client.beta.messages.create({
+        model: 'claude-code/sonnet',
+        messages: [{ role: 'user', content: [imageBlock()] }],
+        max_tokens: 16,
+      }),
+    ).rejects.toThrow('does not support image/multimodal input')
+    expect(calls).toHaveLength(0)
+  })
+
+  test('gemini-cli rejects image content clearly and never spawns the CLI', async () => {
+    const { runner, calls } = recordingRunner({ stdout: 'gemini plain text' })
+    const client = createURHQSubscriptionClient('gemini-cli', {
+      commandPath: 'gemini',
+      maxRetries: 1,
+      runner,
+    })
+    await expect(
+      client.beta.messages.create({
+        model: 'gemini-cli/gemini-2.5-pro',
+        messages: [{ role: 'user', content: [imageBlock()] }],
+        max_tokens: 16,
+      }),
+    ).rejects.toThrow('does not support image/multimodal input')
+    expect(calls).toHaveLength(0)
+  })
+
+  test('image in the system prompt is rejected before spawning the CLI', async () => {
+    const { runner, calls } = recordingRunner({ stdout: 'ok' })
+    const client = createURHQSubscriptionClient('codex-cli', {
+      commandPath: 'codex',
+      maxRetries: 1,
+      runner,
+    })
+    await expect(
+      client.beta.messages.create({
+        model: 'codex/gpt-5.5',
+        system: [imageBlock()],
+        messages: userMessages(),
+        max_tokens: 16,
+      }),
+    ).rejects.toThrow('does not support image/multimodal input')
+    expect(calls).toHaveLength(0)
+  })
+
+  test('image nested inside a tool_result block is still rejected (recursion preserved)', async () => {
+    const { runner, calls } = recordingRunner({ stdout: 'ok' })
+    const client = createURHQSubscriptionClient('claude-code-cli', {
+      commandPath: 'claude',
+      maxRetries: 1,
+      runner,
+    })
+    await expect(
+      client.beta.messages.create({
+        model: 'claude-code/sonnet',
+        messages: [
+          { role: 'user', content: [{ type: 'tool_result', content: [imageBlock()] }] },
+        ],
+        max_tokens: 16,
+      }),
+    ).rejects.toThrow('does not support image/multimodal input')
+    expect(calls).toHaveLength(0)
+  })
+
+  test('image on the streaming request path is rejected before spawning the CLI', async () => {
+    const { runner, calls } = recordingRunner({ stdout: 'the real answer' })
+    const client = createURHQSubscriptionClient('codex-cli', {
+      commandPath: 'codex',
+      maxRetries: 1,
+      runner,
+    })
+    const pending = client.beta.messages.create({
+      model: 'codex/gpt-5.5',
+      messages: [{ role: 'user', content: [imageBlock()] }],
+      max_tokens: 16,
+      stream: true,
+    })
+    await expect(pending.withResponse()).rejects.toThrow('does not support image/multimodal input')
+    expect(calls).toHaveLength(0)
+  })
+
+  test('rejection does not fabricate assistant text', async () => {
+    const { runner, calls } = recordingRunner({ stdout: 'the real answer' })
+    const client = createURHQSubscriptionClient('codex-cli', {
+      commandPath: 'codex',
+      maxRetries: 1,
+      runner,
+    })
+    let resolvedValue: unknown
+    let caught: unknown
+    try {
+      resolvedValue = await client.beta.messages.create({
+        model: 'codex/gpt-5.5',
+        messages: [{ role: 'user', content: [imageBlock()] }],
+        max_tokens: 16,
+      })
+    } catch (error) {
+      caught = error
+    }
+    expect(resolvedValue).toBeUndefined()
+    expect(caught).toBeInstanceOf(Error)
+    expect(calls).toHaveLength(0)
+  })
+
+  test('text-only content on the same providers is unaffected (regression guard)', async () => {
+    const { runner, calls } = recordingRunner({ stdout: 'the real answer' })
+    const client = createURHQSubscriptionClient('codex-cli', {
+      commandPath: '/usr/bin/codex',
+      maxRetries: 1,
+      model: 'codex/gpt-5.5',
+      runner,
+    })
+    const res = await client.beta.messages.create({
+      model: 'codex/gpt-5.5',
+      messages: userMessages(),
+      max_tokens: 16,
+    })
+    expect(calls).toHaveLength(1)
+    expect(res.content[0].text).toBe('the real answer')
+  })
+})
+
 describe('standard API wire formats', () => {
   afterEach(() => {
     if ((axios.post as any).mockRestore) (axios.post as any).mockRestore()

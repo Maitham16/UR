@@ -10,7 +10,7 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'crypto'
 import { SUBSCRIPTION_CLI_PROVIDER_BOUNDARY } from '../providers/providerRegistry.js'
-import type { ProviderMessageClient } from './providerClient.js'
+import { ProviderCapabilityError, type ProviderMessageClient } from './providerClient.js'
 import { createBufferedMessageReplayStream } from './streamingAdapters.js'
 
 export type SubscriptionCliResult = {
@@ -123,7 +123,7 @@ export function createURHQSubscriptionClient(
     if (!model) {
       throw new Error(`Provider "${providerId}" requires a model to dispatch to its CLI.`)
     }
-    const prompt = messagesToPrompt(params)
+    const prompt = messagesToPrompt(params, providerId)
     const result = await run(options.commandPath, spec.args(model, prompt), {
       stdinMode: spec.stdinMode,
       signal: requestOptions?.signal,
@@ -182,7 +182,7 @@ export function createURHQSubscriptionClient(
       }))
     },
     async countTokens(params: SubscriptionRequestParams) {
-      return { input_tokens: estimateTokens(messagesToPrompt(params)) }
+      return { input_tokens: estimateTokens(messagesToPrompt(params, providerId)) }
     },
   }
 
@@ -363,41 +363,43 @@ function contentArrayText(content: unknown): string | undefined {
     .join('')
 }
 
-function messagesToPrompt(params: SubscriptionRequestParams): string {
+function messagesToPrompt(params: SubscriptionRequestParams, providerId: string): string {
   const parts: string[] = []
-  const system = systemToText(params.system)
+  const system = systemToText(params.system, providerId)
   if (system) parts.push(system)
   const messages = params.messages ?? []
   const label = messages.length > 1
   for (const message of messages) {
-    const text = contentToText(message.content)
+    const text = contentToText(message.content, providerId)
     if (!text) continue
     parts.push(label ? `${capitalize(message.role)}: ${text}` : text)
   }
   return parts.join('\n\n')
 }
 
-function systemToText(system: MessageContent | undefined): string {
+function systemToText(system: MessageContent | undefined, providerId: string): string {
   if (!system) return ''
   if (typeof system === 'string') return system
   if (Array.isArray(system)) {
     return system
-      .map(block =>
-        isTextBlock(block) ? (block.text ?? '') : typeof block === 'string' ? block : '',
-      )
+      .map(block => {
+        assertNoImageBlock(block, providerId, 'the system prompt')
+        return isTextBlock(block) ? (block.text ?? '') : typeof block === 'string' ? block : ''
+      })
       .join('\n\n')
   }
   return ''
 }
 
-function contentToText(content: MessageContent | undefined): string {
+function contentToText(content: MessageContent | undefined, providerId: string): string {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
   return content
     .map(block => {
       if (typeof block === 'string') return block
+      assertNoImageBlock(block, providerId, 'message content')
       if (isTextBlock(block)) return block.text ?? ''
-      if (isToolResultBlock(block)) return contentToText(block.content)
+      if (isToolResultBlock(block)) return contentToText(block.content, providerId)
       return ''
     })
     .join('\n')
@@ -415,6 +417,21 @@ function isToolResultBlock(
       typeof block === 'object' &&
       !Array.isArray(block) &&
       block.type === 'tool_result',
+  )
+}
+
+function isImageBlock(block: MessageContentBlock): block is Record<string, unknown> & { type: 'image' } {
+  return Boolean(block && typeof block === 'object' && !Array.isArray(block) && block.type === 'image')
+}
+
+// External vendor CLIs receive a flattened text prompt — no channel for image bytes.
+function assertNoImageBlock(block: MessageContentBlock, providerId: string, context: string): void {
+  if (!isImageBlock(block)) return
+  throw new ProviderCapabilityError(
+    `Subscription CLI provider "${providerId}" does not support image/multimodal input in ${context}. ` +
+      `Switch to a UR-native multimodal API or local provider (OpenAI, Anthropic, Gemini, or an OpenAI-compatible local endpoint) to send images. ` +
+      `Boundary: ${SUBSCRIPTION_CLI_PROVIDER_BOUNDARY}`,
+    { providerId, capability: 'multimodal_input', context },
   )
 }
 
