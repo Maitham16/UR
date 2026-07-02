@@ -5,7 +5,10 @@
 
 import { randomUUID } from 'crypto'
 import { ProviderResponseParseError } from './providerClient.js'
-import { createOneShotMessageStream } from './streamingAdapters.js'
+import {
+  createOpenAISSEMessageStream,
+  mergeAbortSignals,
+} from './streamingAdapters.js'
 
 type URHQClient = {
   beta: { messages: any }
@@ -48,27 +51,63 @@ export async function createOpenAICompatibleClient(
     }
   }
 
+  async function doStream(params: any, requestOptions?: any, controller?: AbortController) {
+    const streamController = controller ?? new AbortController()
+    const signal = mergeAbortSignals([requestOptions?.signal, streamController.signal])
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.apiKey
+          ? { Authorization: `Bearer ${options.apiKey}` }
+          : {}),
+        ...(requestOptions?.headers ?? {}),
+      },
+      body: JSON.stringify(toOpenAICompatibleRequest({ ...params, stream: true })),
+      signal,
+    })
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      throw new Error(
+        `OpenAI-compatible streaming request failed for ${endpoint} (${response.status}): ${body || response.statusText}`,
+      )
+    }
+
+    const requestId =
+      response.headers.get('x-request-id') ??
+      response.headers.get('x-request-id'.toLowerCase()) ??
+      `openai-compatible-${randomUUID()}`
+    return {
+      response,
+      requestId,
+      data: createOpenAISSEMessageStream(response.body, {
+        controller: streamController,
+        signal,
+        model: params.model,
+        requestId,
+        providerName: 'openai-compatible',
+      }),
+    }
+  }
+
   return {
     beta: {
       messages: {
         create(params: any, requestOptions?: any) {
           if (params.stream) {
-            const requestPromise = doRequest(
-              { ...params, stream: false },
-              requestOptions,
-            )
+            const controller = new AbortController()
+            const requestPromise = doStream(params, requestOptions, controller)
             return {
               async withResponse() {
-                const { response, data } = await requestPromise
+                const { response, data, requestId } = await requestPromise
                 return {
-                  data: createOneShotMessageStream(data),
+                  data,
                   response,
-                  request_id:
-                    response.headers.get('x-request-id') ??
-                    response.headers.get('x-request-id'.toLowerCase()) ??
-                    data.id,
+                  request_id: requestId,
                 }
               },
+              controller,
             }
           }
           return doRequest(params, requestOptions).then(({ data }) => data)
@@ -90,7 +129,7 @@ export function toOpenAICompatibleRequest(params: any): any {
     messages: toOpenAIMessages(params),
     max_tokens: params.max_tokens,
     ...(params.temperature !== undefined && { temperature: params.temperature }),
-    stream: false,
+    stream: Boolean(params.stream),
     ...(tools.length > 0 ? { tools } : {}),
     ...(params.tool_choice !== undefined
       ? { tool_choice: mapOpenAIToolChoice(params.tool_choice) }

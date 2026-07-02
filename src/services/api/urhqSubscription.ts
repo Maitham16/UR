@@ -9,7 +9,7 @@
 import type URHQ from '@urhq-ai/sdk'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'crypto'
-import { createOneShotMessageStream } from './streamingAdapters.js'
+import { createBufferedMessageReplayStream } from './streamingAdapters.js'
 
 export type SubscriptionCliResult = {
   code: number
@@ -111,7 +111,7 @@ export function createURHQSubscriptionClient(
           async withResponse() {
             const { response, data } = await pending
             return {
-              data: createOneShotMessageStream(data),
+              data: createBufferedMessageReplayStream(data),
               response,
               request_id: data.id,
             }

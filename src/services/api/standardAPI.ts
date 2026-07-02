@@ -16,7 +16,13 @@ import {
   toOpenAITools,
 } from './openaiCompatible.js'
 import { ProviderResponseParseError } from './providerClient.js'
-import { createOneShotMessageStream } from './streamingAdapters.js'
+import {
+  createAnthropicSSEMessageStream,
+  createGeminiSSEMessageStream,
+  createOpenAISSEMessageStream,
+  getProviderRequestTimeoutMs,
+  mergeAbortSignals,
+} from './streamingAdapters.js'
 
 const ANTHROPIC_VERSION = '2023-06-01'
 
@@ -34,37 +40,77 @@ export async function createStandardAPIClient(options: {
   const { providerId, apiKey, baseUrl } = options
   const family = getProviderFamily(providerId)
 
-  async function doRequest(params: any, extraHeaders?: Record<string, string>) {
-    const endpoint = getAPIEndpoint(family, baseUrl, params.model)
+  async function doRequest(params: any, requestOptions?: any) {
+    const endpoint = getAPIEndpoint(family, baseUrl, params.model, false)
     const clientRequestId = params?.headers?.['x-client-request-id']
     const response = await axios.post(endpoint, buildAPIRequest(family, params), {
       headers: {
         'Content-Type': 'application/json',
         ...buildAuthHeaders(family, apiKey, params),
         ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
-        ...extraHeaders,
+        ...(requestOptions?.headers ?? {}),
       },
-      timeout: 60_000,
+      timeout: getProviderRequestTimeoutMs(),
+      signal: requestOptions?.signal,
     })
     return { response, data: parseAPIResponse(family, response.data, params.model) }
+  }
+
+  async function doStream(params: any, requestOptions?: any, controller?: AbortController) {
+    const endpoint = getAPIEndpoint(family, baseUrl, params.model, true)
+    const streamController = controller ?? new AbortController()
+    const signal = mergeAbortSignals([requestOptions?.signal, streamController.signal])
+    const clientRequestId = params?.headers?.['x-client-request-id']
+    const response = await axios.post(
+      endpoint,
+      buildAPIRequest(family, { ...params, stream: true }),
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildAuthHeaders(family, apiKey, params),
+          ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
+          ...(requestOptions?.headers ?? {}),
+        },
+        timeout: getProviderRequestTimeoutMs(),
+        responseType: 'stream',
+        signal,
+      },
+    )
+    const requestId = response.headers?.['x-request-id'] ?? `${family}-${randomUUID()}`
+    const streamOptions = {
+      controller: streamController,
+      signal,
+      model: params.model,
+      requestId,
+      providerName: family,
+    }
+    const data =
+      family === 'anthropic'
+        ? createAnthropicSSEMessageStream(response.data, streamOptions)
+        : family === 'google'
+          ? createGeminiSSEMessageStream(response.data, streamOptions)
+          : createOpenAISSEMessageStream(response.data, streamOptions)
+    return { response, data, requestId }
   }
 
   const messagesAPI = {
     create(params: any, requestOptions?: any) {
       if (params.stream) {
-        const pending = doRequest(params, requestOptions?.headers)
+        const controller = new AbortController()
+        const pending = doStream(params, requestOptions, controller)
         return {
           async withResponse() {
-            const { response, data } = await pending
+            const { response, data, requestId } = await pending
             return {
-              data: createOneShotMessageStream(data),
+              data,
               response,
-              request_id: data.id ?? response.headers?.['x-request-id'] ?? randomUUID(),
+              request_id: requestId,
             }
           },
+          controller,
         }
       }
-      return doRequest(params, requestOptions?.headers).then(({ response, data }) => ({
+      return doRequest(params, requestOptions).then(({ response, data }) => ({
         ...data,
         withResponse: () => ({
           data,
@@ -81,7 +127,12 @@ export async function createStandardAPIClient(options: {
   return { beta: { messages: messagesAPI } } as URHQClient
 }
 
-function getAPIEndpoint(family: string, baseUrl: string | undefined, model: string): string {
+function getAPIEndpoint(
+  family: string,
+  baseUrl: string | undefined,
+  model: string,
+  stream: boolean,
+): string {
   switch (family) {
     case 'openai':
       return baseUrl ?? 'https://api.openai.com/v1/chat/completions'
@@ -89,7 +140,8 @@ function getAPIEndpoint(family: string, baseUrl: string | undefined, model: stri
       return baseUrl ?? 'https://api.anthropic.com/v1/messages'
     case 'google': {
       const root = baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta'
-      return `${root.replace(/\/$/, '')}/models/${model}:generateContent`
+      const method = stream ? 'streamGenerateContent?alt=sse' : 'generateContent'
+      return `${root.replace(/\/$/, '')}/models/${model}:${method}`
     }
     default:
       return baseUrl ?? ''
@@ -128,7 +180,7 @@ function buildAPIRequest(family: string, params: any): any {
         messages: toOpenAIMessages(params),
         max_tokens: params.max_tokens,
         ...(params.temperature !== undefined && { temperature: params.temperature }),
-        stream: false,
+        stream: Boolean(params.stream),
         ...(tools.length > 0 ? { tools } : {}),
         ...(params.tool_choice !== undefined
           ? { tool_choice: mapOpenAIToolChoice(params.tool_choice) }
@@ -143,7 +195,7 @@ function buildAPIRequest(family: string, params: any): any {
         messages: params.messages,
         max_tokens: params.max_tokens ?? 4096,
         ...(params.temperature !== undefined && { temperature: params.temperature }),
-        stream: false,
+        stream: Boolean(params.stream),
         ...(tools.length > 0 ? { tools } : {}),
         ...(params.tool_choice !== undefined ? { tool_choice: params.tool_choice } : {}),
       }

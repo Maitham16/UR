@@ -11,7 +11,11 @@ import {
   toOpenAIMessages,
   toOpenAITools,
 } from './openaiCompatible.js'
-import { createOneShotMessageStream } from './streamingAdapters.js'
+import {
+  createOpenAISSEMessageStream,
+  getProviderRequestTimeoutMs,
+  mergeAbortSignals,
+} from './streamingAdapters.js'
 
 type URHQClient = {
   beta: { messages: any }
@@ -27,7 +31,7 @@ export async function createOpenRouterClient(
   const { apiKey, maxRetries } = options
   const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 
-  async function doRequest(params: any, extraHeaders?: Record<string, string>) {
+  async function doRequest(params: any, requestOptions?: any) {
     const clientRequestId = params?.headers?.['x-client-request-id']
     const tools = toOpenAITools(params.tools)
 
@@ -37,7 +41,7 @@ export async function createOpenRouterClient(
         model: params.model,
         messages: toOpenAIMessages(params),
         max_tokens: params.max_tokens,
-        stream: false,
+        stream: Boolean(params.stream),
         ...(tools.length > 0 ? { tools } : {}),
         ...(params.tool_choice !== undefined
           ? { tool_choice: mapOpenAIToolChoice(params.tool_choice) }
@@ -50,9 +54,10 @@ export async function createOpenRouterClient(
           'HTTP-Referer': 'https://ur-agent.local',
           'X-Title': 'UR-AGENT',
           ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
-          ...extraHeaders,
+          ...(requestOptions?.headers ?? {}),
         },
-        timeout: 60000,
+        timeout: getProviderRequestTimeoutMs(),
+        signal: requestOptions?.signal,
       }
     )
 
@@ -67,25 +72,71 @@ export async function createOpenRouterClient(
     }
   }
 
+  async function doStream(params: any, requestOptions?: any, controller?: AbortController) {
+    const clientRequestId = params?.headers?.['x-client-request-id']
+    const tools = toOpenAITools(params.tools)
+    const streamController = controller ?? new AbortController()
+    const signal = mergeAbortSignals([requestOptions?.signal, streamController.signal])
+
+    const response = await axios.post(
+      `${OPENROUTER_BASE}/chat/completions`,
+      {
+        model: params.model,
+        messages: toOpenAIMessages(params),
+        max_tokens: params.max_tokens,
+        stream: true,
+        ...(tools.length > 0 ? { tools } : {}),
+        ...(params.tool_choice !== undefined
+          ? { tool_choice: mapOpenAIToolChoice(params.tool_choice) }
+          : {}),
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://ur-agent.local',
+          'X-Title': 'UR-AGENT',
+          ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
+          ...(requestOptions?.headers ?? {}),
+        },
+        timeout: getProviderRequestTimeoutMs(),
+        responseType: 'stream',
+        signal,
+      },
+    )
+    const requestId = response.headers?.['x-request-id'] ?? `openrouter-${randomUUID()}`
+    return {
+      response,
+      requestId,
+      data: createOpenAISSEMessageStream(response.data, {
+        controller: streamController,
+        signal,
+        model: params.model,
+        requestId,
+        providerName: 'openrouter',
+      }),
+    }
+  }
+
   const messagesAPI = {
     create(params: any, options?: any) {
-      // Handle streaming requests - return object with withResponse method
       if (params.stream) {
-        const requestPromise = doRequest(params, options?.headers)
+        const controller = new AbortController()
+        const requestPromise = doStream(params, options, controller)
         return {
           async withResponse() {
-            const { response, data } = await requestPromise
+            const { response, data, requestId } = await requestPromise
             return {
-              data: createOneShotMessageStream(data),
+              data,
               response,
-              request_id: response.data?.id ?? response.headers?.['x-request-id'] ?? randomUUID(),
+              request_id: requestId,
             }
           },
+          controller,
         }
       }
 
-      // Non-streaming: return data directly with withResponse method attached
-      return doRequest(params, options?.headers).then(({ response, data }) => ({
+      return doRequest(params, options).then(({ response, data }) => ({
         ...data,
         withResponse: () => ({
           data,
