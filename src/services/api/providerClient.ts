@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Provider-aware LLM runtime dispatch.
  *
@@ -7,7 +6,6 @@
  * provider, and creates the backend client for that provider.
  */
 
-import type URHQ from '@urhq-ai/sdk'
 import type { MessageParam } from '@urhq-ai/sdk/resources/index.mjs'
 import {
   DEFAULT_PROVIDER_ID,
@@ -25,6 +23,27 @@ import {
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
 import { getProviderApiKey } from '../providers/providerCredentials.js'
+
+export type ProviderMessageClient = {
+  beta: {
+    messages: {
+      create: (
+        params: Record<string, unknown>,
+        options?: Record<string, unknown>,
+      ) => ProviderMessage | ProviderStreamCreateResult | Promise<ProviderMessage>
+      countTokens?: (params: Record<string, unknown>) => Promise<{ input_tokens: number }>
+    }
+  }
+}
+
+export type ProviderMessage = Record<string, unknown> & {
+  withResponse?: () => unknown
+}
+
+export type ProviderStreamCreateResult = {
+  withResponse: () => Promise<unknown>
+  controller?: AbortController
+}
 
 export class ProviderResponseParseError extends Error {
   readonly details?: unknown
@@ -53,7 +72,7 @@ export type ProviderClientOptions = {
   maxRetries?: number
   model?: string
   signal?: AbortSignal
-  fetchOverride?: ConstructorParameters<typeof URHQ>[0]['fetch']
+  fetchOverride?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   source?: string
 }
 
@@ -153,7 +172,7 @@ export function formatRuntimeDispatchError({
 export async function createProviderClient(
   providerId: ProviderId | string,
   options: ProviderClientOptions = {},
-): Promise<URHQ> {
+): Promise<ProviderMessageClient> {
   const resolved = resolveProviderId(providerId)
   if (!resolved) {
     throw new Error(`Unknown provider: ${providerId}`)
@@ -164,7 +183,7 @@ export async function createProviderClient(
     throw new Error(runtimeBlock)
   }
 
-  let client: URHQ
+  let client: ProviderMessageClient
   switch (provider.accessType) {
     case 'local':
       client = await createLocalProviderClient(resolved, options)
@@ -189,7 +208,10 @@ export async function createProviderClient(
   return tagClient(client, resolved)
 }
 
-function tagClient(client: URHQ, providerId: ProviderId): URHQ {
+function tagClient(
+  client: ProviderMessageClient,
+  providerId: ProviderId,
+): ProviderMessageClient {
   Object.defineProperties(client as object, {
     __urProviderId: { value: providerId, enumerable: false },
     __urRuntimeBackend: {
@@ -203,20 +225,20 @@ function tagClient(client: URHQ, providerId: ProviderId): URHQ {
 async function createLocalProviderClient(
   providerId: ProviderId,
   options: ProviderClientOptions = {},
-): Promise<URHQ> {
+): Promise<ProviderMessageClient> {
   if (providerId !== 'ollama') {
     throw new Error(
       `Provider "${providerId}" is not an Ollama runtime. Runtime backend is ${getProviderRuntimeBackend(providerId)}.`,
     )
   }
   const { createOllamaURHQClient } = await import('./ollama.js')
-  return createOllamaURHQClient() as URHQ
+  return createOllamaURHQClient() as ProviderMessageClient
 }
 
 async function createOpenAICompatibleProviderClient(
   providerId: ProviderId,
   options: ProviderClientOptions = {},
-): Promise<URHQ> {
+): Promise<ProviderMessageClient> {
   const settings = getInitialSettings()
   const providerSettings = getActiveProviderSettings(settings)
   const provider = getProviderDefinition(providerId)
@@ -233,17 +255,17 @@ async function createOpenAICompatibleProviderClient(
     options.apiKey ??
     (provider.envKey ? getProviderApiKey(providerId) : undefined)
   const { createOpenAICompatibleClient } = await import('./openaiCompatible.js')
-  return createOpenAICompatibleClient({
+  return await createOpenAICompatibleClient({
     baseUrl,
     apiKey,
     maxRetries: options.maxRetries ?? 3,
-  }) as URHQ
+  }) as ProviderMessageClient
 }
 
 async function createSubscriptionClient(
   providerId: ProviderId,
   options: ProviderClientOptions = {},
-): Promise<URHQ> {
+): Promise<ProviderMessageClient> {
   const provider = getProviderDefinition(providerId)
   const runtimeBlock = getProviderRuntimeBlockReason(providerId)
   if (runtimeBlock) {
@@ -269,13 +291,13 @@ async function createSubscriptionClient(
     commandPath,
     maxRetries: options.maxRetries ?? 3,
     model: options.model,
-  }) as URHQ
+  }) as ProviderMessageClient
 }
 
 async function createAPIClient(
   providerId: ProviderId,
   options: ProviderClientOptions = {},
-): Promise<URHQ> {
+): Promise<ProviderMessageClient> {
   const provider = getProviderDefinition(providerId)
   const settings = getInitialSettings()
   const providerSettings = getActiveProviderSettings(settings)
@@ -289,15 +311,15 @@ async function createAPIClient(
 
   if (providerId === 'openrouter') {
     const { createOpenRouterClient } = await import('./openrouter.js')
-    return createOpenRouterClient({
+    return await createOpenRouterClient({
       apiKey,
       maxRetries: options.maxRetries ?? 3,
       model: options.model,
-    }) as URHQ
+    }) as ProviderMessageClient
   }
 
   const { createStandardAPIClient } = await import('./standardAPI.js')
-  return createStandardAPIClient({
+  return await createStandardAPIClient({
     providerId,
     apiKey,
     baseUrl:
@@ -306,12 +328,12 @@ async function createAPIClient(
         : provider.defaultBaseUrl,
     maxRetries: options.maxRetries ?? 3,
     model: options.model,
-  }) as URHQ
+  }) as ProviderMessageClient
 }
 
 export async function getActiveProviderClient(
   options: ProviderClientOptions = {},
-): Promise<URHQ> {
+): Promise<ProviderMessageClient> {
   const runtime = resolveActiveProviderModel({ model: options.model })
   return createProviderClient(runtime.providerId, {
     ...options,
@@ -418,18 +440,29 @@ export async function streamModelResponse(
     runtime.providerId,
     { maxRetries: options.maxRetries, model: runtime.model, signal: options.signal },
   )
-  return client.beta.messages
-    .create(
-      {
-        model: runtime.model,
-        messages,
-        max_tokens: options.request?.max_tokens ?? 1024,
-        stream: true,
-        ...(options.request ?? {}),
-      },
-      { signal: options.signal },
-    )
-    .withResponse()
+  const result = client.beta.messages.create(
+    {
+      model: runtime.model,
+      messages,
+      max_tokens: options.request?.max_tokens ?? 1024,
+      stream: true,
+      ...(options.request ?? {}),
+    },
+    { signal: options.signal },
+  )
+  if (!isProviderStreamCreateResult(result)) {
+    throw new Error('Provider stream request did not return a stream response handle.')
+  }
+  return result.withResponse()
+}
+
+function isProviderStreamCreateResult(value: unknown): value is ProviderStreamCreateResult {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      'withResponse' in value &&
+      typeof (value as { withResponse?: unknown }).withResponse === 'function',
+  )
 }
 
 function resolveProviderRuntimePair(

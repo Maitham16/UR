@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Subscription CLI provider client.
  * Spawns the official CLI (Codex, Claude Code, Gemini, Antigravity) in
@@ -6,9 +5,9 @@
  * It never fabricates output: a non-zero exit or empty stdout fails clearly.
  */
 
-import type URHQ from '@urhq-ai/sdk'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'crypto'
+import type { ProviderMessageClient } from './providerClient.js'
 import { createBufferedMessageReplayStream } from './streamingAdapters.js'
 
 export type SubscriptionCliResult = {
@@ -28,6 +27,56 @@ export type SubscriptionCliStdinMode = 'ignore' | 'inherit' | 'pipe'
 type CliSpec = {
   args: (model: string, prompt: string) => string[]
   stdinMode?: SubscriptionCliStdinMode
+}
+
+type MessageContentBlock =
+  | string
+  | { type: 'text'; text?: string }
+  | { type: 'tool_result'; content?: MessageContent }
+  | Record<string, unknown>
+
+type MessageContent = string | MessageContentBlock[]
+
+type SubscriptionMessageParam = {
+  role: string
+  content: MessageContent
+}
+
+type SubscriptionRequestParams = {
+  model?: string
+  system?: MessageContent
+  messages?: SubscriptionMessageParam[]
+  stream?: boolean
+  headers?: Record<string, string>
+}
+
+type SubscriptionResponse = {
+  id: string
+  type: 'message'
+  role: 'assistant'
+  model?: string
+  content: Array<{ type: 'text'; text: string }>
+  stop_reason: 'end_turn'
+  stop_sequence: null
+  usage: {
+    input_tokens: number
+    output_tokens: number
+    cache_creation_input_tokens: 0
+    cache_read_input_tokens: 0
+  }
+}
+
+type ParsedCliObject = Record<string, unknown> & {
+  is_error?: unknown
+  api_error_status?: unknown
+  result?: unknown
+  error?: unknown
+  message?: unknown
+  response?: unknown
+  text?: unknown
+  output?: unknown
+  content?: unknown
+  choices?: unknown
 }
 
 // Non-interactive invocation per official CLI. The prompt is passed as an
@@ -53,14 +102,20 @@ export function createURHQSubscriptionClient(
     runner?: SubscriptionCliRunner
     timeoutMs?: number
   },
-): URHQ {
+): ProviderMessageClient {
   const spec = CLI_SPECS[providerId]
   if (!spec) {
     throw new Error(`No subscription CLI dispatch is configured for provider "${providerId}".`)
   }
   const run = options.runner ?? defaultRunner
 
-  async function doRequest(params: any, requestOptions?: any) {
+  async function doRequest(
+    params: SubscriptionRequestParams,
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<{
+    data: SubscriptionResponse
+    response: { headers: Record<string, string> }
+  }> {
     const model = cliModelName(params.model ?? options.model ?? '')
     if (!model) {
       throw new Error(`Provider "${providerId}" requires a model to dispatch to its CLI.`)
@@ -81,7 +136,7 @@ export function createURHQSubscriptionClient(
         `Subscription CLI "${options.commandPath}" for ${providerId} produced no output.`,
       )
     }
-    const data = {
+    const data: SubscriptionResponse = {
       id: `${providerId}-${randomUUID()}`,
       type: 'message',
       role: 'assistant',
@@ -104,7 +159,7 @@ export function createURHQSubscriptionClient(
   }
 
   const messagesAPI = {
-    create(params: any, requestOptions?: any) {
+    create(params: SubscriptionRequestParams, requestOptions?: { signal?: AbortSignal }) {
       if (params.stream) {
         const pending = doRequest(params, requestOptions)
         return {
@@ -123,12 +178,12 @@ export function createURHQSubscriptionClient(
         withResponse: () => ({ data, response, request_id: data.id }),
       }))
     },
-    async countTokens(params: any) {
+    async countTokens(params: SubscriptionRequestParams) {
       return { input_tokens: estimateTokens(messagesToPrompt(params)) }
     },
   }
 
-  return { beta: { messages: messagesAPI } } as URHQ
+  return { beta: { messages: messagesAPI } }
 }
 
 export function getSubscriptionCliStdinMode(
@@ -205,15 +260,8 @@ function parseCliJsonFailure(stdout: string): { isError: boolean; status?: strin
   if (!raw) return null
   try {
     const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return null
-    const entry = parsed as {
-      is_error?: unknown
-      api_error_status?: unknown
-      result?: unknown
-      error?: unknown
-      message?: unknown
-      response?: unknown
-    }
+    if (!isParsedCliObject(parsed)) return null
+    const entry = parsed
     const isError = entry.is_error === true || entry.error !== undefined
     if (!isError) return null
     const message = [entry.result, entry.message, entry.error, entry.response]
@@ -253,7 +301,66 @@ function truncate(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value
 }
 
-function messagesToPrompt(params: any): string {
+function extractText(stdout: string): string {
+  const raw = stdout.trim()
+  if (!raw) return ''
+  try {
+    const parsed = JSON.parse(raw)
+    if (typeof parsed === 'string') return parsed
+    if (!isParsedCliObject(parsed)) return raw
+    const candidate = cliTextCandidate(parsed)
+    if (typeof candidate === 'string' && candidate.trim()) return candidate
+  } catch {
+    // Not JSON: fall through to raw stdout.
+  }
+  return raw
+}
+
+function isParsedCliObject(value: unknown): value is ParsedCliObject {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function cliTextCandidate(parsed: ParsedCliObject): unknown {
+  return (
+    parsed.result ??
+    parsed.response ??
+    parsed.text ??
+    parsed.output ??
+    nestedMessageContent(parsed.message) ??
+    firstChoiceContent(parsed.choices) ??
+    contentArrayText(parsed.content)
+  )
+}
+
+function nestedMessageContent(message: unknown): unknown {
+  if (!message || typeof message !== 'object' || Array.isArray(message)) {
+    return undefined
+  }
+  return (message as { content?: unknown }).content
+}
+
+function firstChoiceContent(choices: unknown): unknown {
+  if (!Array.isArray(choices)) return undefined
+  const first = choices[0]
+  if (!first || typeof first !== 'object' || Array.isArray(first)) {
+    return undefined
+  }
+  const message = (first as { message?: unknown }).message
+  return nestedMessageContent(message)
+}
+
+function contentArrayText(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined
+  return content
+    .map(block =>
+      block && typeof block === 'object' && !Array.isArray(block)
+        ? ((block as { text?: unknown }).text ?? '')
+        : '',
+    )
+    .join('')
+}
+
+function messagesToPrompt(params: SubscriptionRequestParams): string {
   const parts: string[] = []
   const system = systemToText(params.system)
   if (system) parts.push(system)
@@ -267,47 +374,45 @@ function messagesToPrompt(params: any): string {
   return parts.join('\n\n')
 }
 
-function extractText(stdout: string): string {
-  const raw = stdout.trim()
-  if (!raw) return ''
-  try {
-    const parsed = JSON.parse(raw)
-    if (typeof parsed === 'string') return parsed
-    const candidate =
-      parsed.result ??
-      parsed.response ??
-      parsed.text ??
-      parsed.output ??
-      parsed.message?.content ??
-      parsed.choices?.[0]?.message?.content ??
-      (Array.isArray(parsed.content)
-        ? parsed.content.map((block: any) => block?.text ?? '').join('')
-        : undefined)
-    if (typeof candidate === 'string' && candidate.trim()) return candidate
-  } catch {
-    // Not JSON: fall through to raw stdout.
-  }
-  return raw
-}
-
-function systemToText(system: any): string {
+function systemToText(system: MessageContent | undefined): string {
   if (!system) return ''
   if (typeof system === 'string') return system
-  if (Array.isArray(system)) return system.map(block => block?.text ?? '').join('\n\n')
+  if (Array.isArray(system)) {
+    return system
+      .map(block =>
+        isTextBlock(block) ? (block.text ?? '') : typeof block === 'string' ? block : '',
+      )
+      .join('\n\n')
+  }
   return ''
 }
 
-function contentToText(content: any): string {
+function contentToText(content: MessageContent | undefined): string {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
   return content
     .map(block => {
       if (typeof block === 'string') return block
-      if (block?.type === 'text') return block.text ?? ''
-      if (block?.type === 'tool_result') return contentToText(block.content)
+      if (isTextBlock(block)) return block.text ?? ''
+      if (isToolResultBlock(block)) return contentToText(block.content)
       return ''
     })
     .join('\n')
+}
+
+function isTextBlock(block: MessageContentBlock): block is { type: 'text'; text?: string } {
+  return Boolean(block && typeof block === 'object' && !Array.isArray(block) && block.type === 'text')
+}
+
+function isToolResultBlock(
+  block: MessageContentBlock,
+): block is { type: 'tool_result'; content?: MessageContent } {
+  return Boolean(
+    block &&
+      typeof block === 'object' &&
+      !Array.isArray(block) &&
+      block.type === 'tool_result',
+  )
 }
 
 function capitalize(value: string): string {

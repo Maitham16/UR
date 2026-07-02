@@ -1,4 +1,9 @@
 // @ts-nocheck
+// Type-safety debt: this security-critical file mixes legacy parser AST shapes,
+// classifier results, and permission-rule variants across ~2k lines. Removing
+// the blanket suppression safely requires a dedicated pass that first types the
+// bash AST/permission union boundaries and adds focused regression coverage for
+// each permission decision branch. Do not add new unchecked code here.
 import { feature } from 'bun:bundle'
 import { APIUserAbortError } from '@urhq-ai/sdk'
 import type { z } from 'zod/v4'

@@ -1,7 +1,7 @@
-// @ts-nocheck
-import type URHQ from '@urhq-ai/sdk'
 import {
   createProviderClient,
+  type ProviderMessageClient,
+  type ProviderClientOptions,
   resolveActiveProviderModel,
 } from './providerClient.js'
 
@@ -22,9 +22,9 @@ export async function getURHQClient({
   apiKey?: string
   maxRetries: number
   model?: string
-  fetchOverride?: ConstructorParameters<typeof URHQ>[0]['fetch']
+  fetchOverride?: ProviderClientOptions['fetchOverride']
   source?: string
-}): Promise<URHQ> {
+}): Promise<ProviderMessageClient> {
   const runtime = resolveActiveProviderModel({ model, source })
   return createProviderClient(runtime.providerId, {
     apiKey,
