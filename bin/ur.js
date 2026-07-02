@@ -120,7 +120,7 @@ child.on('error', error => {
   process.exit(1)
 })
 
-child.on('exit', (code, signal) => {
+child.on('close', (code, signal) => {
   if (signal) {
     process.kill(process.pid, signal)
     return
