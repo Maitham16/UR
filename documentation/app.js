@@ -56,8 +56,8 @@ const featureGroups = [
   {
     title: 'Providers and auth',
     tags: ['subscription', 'API', 'local', 'status bar'],
-    text: 'Official subscription CLI login, explicit API-key providers, local/OpenAI-compatible runtimes, provider doctor checks, non-secret config, fallback hints, and provider-aware status-bar output.',
-    commands: ['ur provider list', 'ur provider status', 'ur provider doctor agy', 'ur auth chatgpt', 'ur config set provider "Claude Code"'],
+    text: 'UR-native API/local/OpenAI-compatible runtimes, optional external app bridge diagnostics, provider doctor checks, non-secret config, fallback hints, and provider-aware status-bar output.',
+    commands: ['ur provider list', 'ur provider status', 'ur provider doctor agy', 'ur config set provider openai-api', 'ur config set provider ollama'],
   },
   {
     title: 'Security and operations',
@@ -206,7 +206,7 @@ const commands = [
     category: 'Ops',
     aliases: ['settings'],
     summary: 'Open the config panel or persist safe non-secret provider settings.',
-    examples: ['ur config', 'ur config set provider ollama', 'ur config set provider claude', 'ur config set provider "Claude Code"', 'ur config set model qwen3-coder:480b-cloud', 'ur config set base_url http://localhost:11434/v1', 'ur config set provider.fallback ollama'],
+    examples: ['ur config', 'ur config set provider ollama', 'ur config set provider openai-api', 'ur config set provider anthropic-api', 'ur config set model qwen3-coder:480b-cloud', 'ur config set base_url http://localhost:11434/v1', 'ur config set provider.fallback ollama'],
   },
   {
     name: 'test-first',
@@ -591,7 +591,7 @@ const examples = [
   {
     title: 'Provider setup',
     text: 'Inspect legal provider paths, choose a local provider, and keep fallback explicit.',
-    code: 'ur provider list\nur provider doctor agy\nur config set provider "Claude Code"\nur config set provider ollama\nur config set model qwen3-coder:480b-cloud\nur config set provider.fallback ollama',
+    code: 'ur provider list\nur provider doctor agy\nur config set provider openai-api\nur config set provider ollama\nur config set model qwen3-coder:480b-cloud\nur config set provider.fallback ollama',
   },
   {
     title: 'PR handoff with self-review',

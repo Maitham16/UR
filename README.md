@@ -152,47 +152,51 @@ requests use that provider backend; they do not fall back to Ollama unless
 ### Legal Provider Auth
 
 UR-AGENT stores only safe provider preferences: provider name, model name,
-base URL, command path, fallback preference, and non-secret settings. API keys
-must stay in environment variables and subscription providers must authenticate
-through their official CLIs.
+base URL, fallback preference, and non-secret settings. API keys must stay in
+environment variables. API, local, and OpenAI-compatible server providers are
+UR-native runtimes and behave like Ollama: UR owns the conversation loop, tool
+loop, errors, and output.
+
+Subscription CLI integrations (Codex CLI, Claude Code, Gemini CLI, and
+Antigravity) are external app bridges. They are shown for diagnostics and can be
+checked with `ur provider doctor`, but they are not required and are disabled
+for normal runtime selection unless `UR_ENABLE_EXTERNAL_APP_PROVIDERS=1` is set.
 
 ```sh
 ur provider list
 ur provider status
 ur provider doctor
-ur auth chatgpt
-ur auth claude
-ur auth gemini
-ur auth antigravity
-ur config set provider codex-cli
-ur config set provider claude
-ur config set provider "Claude Code"
-ur config set provider antigravity
+ur config set provider ollama
+ur config set provider openai-api
+ur config set provider anthropic-api
+ur config set provider gemini-api
+ur config set provider openrouter
 ur config set model qwen3-coder:480b-cloud
 ur config set base_url http://localhost:11434
 ur config set provider.fallback ollama
 ```
 
 Provider config accepts canonical IDs and common aliases. Examples:
-`codex-cli`, `chatgpt`, `codex`, `claude-code-cli`, `claude`,
-`Claude Code`, `gemini-cli`, `gemini`, `antigravity-cli`, `antigravity`,
-`agy`, `ollama`, `lmstudio`, `LM Studio`, `llama.cpp`, and `vllm`.
+`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
+`lmstudio`, `LM Studio`, `llama.cpp`, and `vllm`. External app bridge aliases
+such as `codex-cli`, `claude-code-cli`, `gemini-cli`, and `antigravity-cli` are
+accepted only when the external bridge opt-in is enabled.
 Use quotes for shell values with spaces.
 
-| Provider | Access type | Legal path |
-| --- | --- | --- |
-| Codex CLI | subscription | official Codex CLI login |
-| Claude Code | subscription | official Claude Code login |
-| Gemini CLI | subscription | official Gemini Code Assist login |
-| Antigravity | subscription | official Antigravity login, where supported |
-| OpenAI API | API key | `OPENAI_API_KEY` |
-| Claude API | API key | `ANTHROPIC_API_KEY` |
-| Gemini API | API key | `GEMINI_API_KEY` |
-| OpenRouter | API/router | `OPENROUTER_API_KEY` |
-| Ollama | local | localhost Ollama runtime |
-| LM Studio | local/server | local OpenAI-compatible server |
-| llama.cpp | local/server | local OpenAI-compatible server |
-| vLLM | local/server | OpenAI-compatible server |
+| Provider | Access type | Runtime kind | Legal path |
+| --- | --- | --- | --- |
+| OpenAI API | API key | UR-native | `OPENAI_API_KEY` |
+| Claude API | API key | UR-native | `ANTHROPIC_API_KEY` |
+| Gemini API | API key | UR-native | `GEMINI_API_KEY` |
+| OpenRouter | API/router | UR-native | `OPENROUTER_API_KEY` |
+| Ollama | local | UR-native | localhost Ollama runtime |
+| LM Studio | local/server | UR-native | local OpenAI-compatible server |
+| llama.cpp | local/server | UR-native | local OpenAI-compatible server |
+| vLLM | local/server | UR-native | OpenAI-compatible server |
+| Codex CLI | subscription | external app bridge | official Codex CLI login |
+| Claude Code | subscription | external app bridge | official Claude Code login |
+| Gemini CLI | subscription | external app bridge | official Gemini Code Assist login |
+| Antigravity | subscription | external app bridge | official Antigravity login, where supported |
 
 #### Provider-first model selection
 
@@ -205,32 +209,34 @@ In the interactive app, `/model` is a two-step, provider-first picker:
 2. **Choose a model.** Only the selected provider's models are shown, labelled
    by source: `live` (discovered from the endpoint), `cache` (last discovery),
    or `static` (predefined). Local/server providers (Ollama, LM Studio,
-   llama.cpp, vLLM) and OpenAI-compatible endpoints are discovered live; API and
-   subscription providers use their curated model list.
+   llama.cpp, vLLM) and OpenAI-compatible endpoints are discovered live; API
+   providers use their curated model list. External app bridges are shown but
+   blocked unless explicitly opted in.
 
-Model lists never cross providers: OpenAI API vs Codex CLI, Claude API vs Claude
-Code, and Gemini API vs Gemini CLI are separate access paths, and subscription
-logins and API keys are not interchangeable. The provider/model pair is
-validated before it is saved and again before every request; changing provider
-clears an incompatible model. `ur config set provider X` warns and clears an
-incompatible model, and `ur config set model Y` is validated against the active
-provider. The confirmation shows the selected provider, model, model source, and
-the runtime backend that will receive the next request.
+Model lists never cross providers: OpenAI API, Claude API, Gemini API,
+OpenRouter, Ollama, and OpenAI-compatible local/server endpoints are separate
+access paths. API keys, local runtimes, and external app logins are not
+interchangeable. The provider/model pair is validated before it is saved and
+again before every request; changing provider clears an incompatible model.
+`ur config set provider X` warns and clears an incompatible model, and
+`ur config set model Y` is validated against the active provider. The
+confirmation shows the selected provider, model, model source, and the runtime
+backend that will receive the next request.
 
 #### Runtime dispatch
 
 The selected provider/model drives every agent request — the assistant's own
 identity line in the system prompt reflects it too:
 
-- **Subscription** providers spawn the official CLI (`codex`, `claude`,
-  `gemini`, `agy`) in non-interactive mode with the scoped model and prompt; a
-  non-zero exit or empty output fails clearly (never placeholder text).
 - **API** providers call each service in its native wire format — Anthropic
   `x-api-key` + `anthropic-version` on `/v1/messages`, OpenAI `Bearer` on
   `/v1/chat/completions`, Gemini `x-goog-api-key` on `:generateContent`,
   OpenRouter on its OpenAI-compatible chat endpoint.
 - **Local/server** providers call the configured endpoint (`/v1/chat/completions`
   for LM Studio/llama.cpp/vLLM; the native API for Ollama).
+- **External app bridges** for subscription CLIs are disabled by default because
+  they delegate the turn to another agent app. Opt in with
+  `UR_ENABLE_EXTERNAL_APP_PROVIDERS=1` only when that behavior is intentional.
 
 Ollama is used only when Ollama is selected. There is no silent cross-provider
 fallback: if dispatch fails, UR reports the selected provider, model, and runtime
@@ -304,7 +310,7 @@ viewer mode.
 Example:
 
 ```text
-UR-AGENT v1.30.3 | Provider: Codex CLI | Auth: subscription | model: codex/gpt-5.5 | mode: ask | branch: main | tasks: idle
+UR-AGENT v1.30.4 | Provider: Ollama | Auth: local | model: llama3 | mode: ask | branch: main | tasks: idle
 ```
 
 The bar reflects the active in-session provider/model immediately after a

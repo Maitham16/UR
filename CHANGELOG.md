@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.30.4
+
+- Make the default provider runtime independent of provider apps. Codex CLI,
+  Claude Code, Gemini CLI, and Antigravity are now treated as explicit external
+  app bridges and are blocked from normal `/model`, config save, and runtime
+  dispatch unless `UR_ENABLE_EXTERNAL_APP_PROVIDERS=1` is set.
+- Keep API, local, and OpenAI-compatible providers as the UR-native runtime path
+  so turns behave like Ollama: UR owns the conversation loop, tool loop, errors,
+  and output instead of delegating to another agent app.
+
 ## 1.30.3
 
 - Fix Codex CLI dispatch for real interactive terminals by inheriting terminal

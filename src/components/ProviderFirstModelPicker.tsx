@@ -17,6 +17,7 @@ import {
   listModelsForProviderWithSource,
   setProviderModel,
   validateProviderModelPair,
+  getProviderRuntimeBlockReason,
 } from 'src/services/providers/providerRegistry.js'
 import { useAppState, useSetAppState } from 'src/state/AppState.js'
 import { getSettingsForSource } from 'src/utils/settings/settings.js'
@@ -56,6 +57,7 @@ type ProviderStatusOption = {
   statusLabel: string
   accessType: string
   credentialType: string
+  runtimeBlockedReason: string | null
   provider: ProviderDefinition
 }
 
@@ -98,6 +100,7 @@ export function ProviderFirstModelPicker({
   const [selectedProvider, setSelectedProvider] = useState<ProviderStatusOption | null>(null)
   const [modelSource, setModelSource] = useState<ProviderModelSource>('static')
   const [modelWarning, setModelWarning] = useState<string | null>(null)
+  const [providerWarning, setProviderWarning] = useState<string | null>(null)
 
   const effortValue = useAppState(selectEffortValue)
   const [effort] = useState<EffortLevel | undefined>(
@@ -126,11 +129,12 @@ export function ProviderFirstModelPicker({
           return {
             value: provider.id,
             label: provider.displayName,
-            description: `${accessType} · ${status.label}`,
+            description: `${accessType} · ${provider.credentialType} · ${provider.runtimeKind === 'external-app' ? 'external app bridge' : status.label}`,
             status: status.status,
             statusLabel: status.label,
             accessType,
             credentialType: provider.credentialType,
+            runtimeBlockedReason: getProviderRuntimeBlockReason(provider.id),
             provider,
           }
         }),
@@ -191,6 +195,7 @@ export function ProviderFirstModelPicker({
 
   function handleProviderFocus(value: string) {
     setFocusedProviderValue(value)
+    setProviderWarning(null)
   }
 
   function handleModelFocus(value: string) {
@@ -200,6 +205,14 @@ export function ProviderFirstModelPicker({
   function handleProviderSelect(value: string) {
     const provider = providerOptions.find(p => p.value === value)
     if (provider) {
+      if (provider.runtimeBlockedReason) {
+        setProviderWarning(provider.runtimeBlockedReason)
+        return
+      }
+      if (provider.status !== 'connected') {
+        setProviderWarning(`Provider "${provider.value}" is ${provider.status}: ${provider.statusLabel}. Run \`ur provider doctor ${provider.value}\`, or choose a connected API/local/server provider.`)
+        return
+      }
       setSelectedProvider(provider)
       setStep('model')
       setFocusedModelValue(null)
@@ -331,9 +344,17 @@ export function ProviderFirstModelPicker({
                   <Text dimColor>
                     {focusedProvider.provider.accessPathLabel}
                   </Text>
+                  <Text dimColor color={focusedProvider.runtimeBlockedReason ? 'error' : 'subtle'}>
+                    Runtime: {focusedProvider.provider.runtimeKind === 'external-app' ? 'external app bridge (disabled for independent UR runtime)' : 'UR-native'}
+                  </Text>
                   {focusedProvider.status !== 'connected' && (
                     <Text dimColor color="subtle">
                       Tip: Run `ur provider doctor {focusedProvider.value}` for troubleshooting
+                    </Text>
+                  )}
+                  {providerWarning && focusedProvider.value === focusedProviderValue && (
+                    <Text dimColor color="error">
+                      {providerWarning}
                     </Text>
                   )}
                 </Box>

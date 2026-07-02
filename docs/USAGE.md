@@ -94,15 +94,14 @@ UR-AGENT also has explicit provider commands for legal access paths:
 ur provider list
 ur provider status
 ur provider doctor
+# Optional external app bridge diagnostics:
 ur auth chatgpt
-ur auth claude
-ur auth gemini
-ur auth antigravity
 ur config set provider ollama
-ur config set provider claude
-ur config set provider "Claude Code"
-ur config set provider antigravity
 ur provider doctor agy
+ur config set provider openai-api
+ur config set provider anthropic-api
+ur config set provider gemini-api
+ur config set provider openrouter
 ur config set provider openai-compatible
 ur config set model <model>
 ur config set base_url <url>
@@ -112,26 +111,30 @@ ur config set provider.fallback ollama
 In the interactive app, `/model` chooses a provider first and then a model from
 that provider only. The saved pair controls the runtime backend for the next
 agent request. There is no cross-provider fallback: OpenAI API does not fall
-back to Codex CLI or Ollama, Claude Code does not fall back to Claude API, and
-local/server providers do not leak cloud model lists. Use `ur provider status`
-to inspect the active provider, model, access type, and runtime backend.
+back to Ollama, Claude API does not fall back to Claude Code, and local/server
+providers do not leak cloud model lists. Use `ur provider status` to inspect the
+active provider, model, access type, and runtime backend.
 
 Provider values accept canonical IDs and common aliases. For example,
-`claude`, `Claude Code`, and `claude-code-cli` all select
-`claude-code-cli`; `antigravity`, `agy`, and `antigravity-cli` all select
-`antigravity-cli`.
+`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
+`lmstudio`, `llama.cpp`, and `vllm` are normal UR-native runtime providers.
+External app bridge aliases such as `codex-cli`, `claude-code-cli`,
+`gemini-cli`, and `antigravity-cli` are accepted only when the external bridge
+opt-in is enabled.
 
 API modes are explicit and read keys only from environment variables:
 `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, and
-`OPENROUTER_API_KEY`. Subscription modes call official CLIs such as Codex,
-Claude Code, Gemini CLI, or Antigravity where supported. UR-AGENT never scrapes
-browser sessions, extracts OAuth tokens, or bypasses provider restrictions.
-OpenAI-compatible local or cloud endpoints use `base_url` plus `model`.
+`OPENROUTER_API_KEY`. Codex CLI, Claude Code, Gemini CLI, and Antigravity are
+external app bridges, not required dependencies; they are blocked from normal
+runtime selection unless `UR_ENABLE_EXTERNAL_APP_PROVIDERS=1` is set. UR-AGENT
+never scrapes browser sessions, extracts OAuth tokens, or bypasses provider
+restrictions. OpenAI-compatible local or cloud endpoints use `base_url` plus
+`model`.
 
 Use `/model` in an interactive session to select provider first and model
-second. OpenAI API and Codex CLI, Claude API and Claude Code, and Gemini API and
-Gemini CLI are separate providers; a subscription login does not grant API-key
-access, and an API key does not grant subscription CLI access.
+second. OpenAI API, Claude API, Gemini API, OpenRouter, Ollama, and
+OpenAI-compatible endpoints stay separate; a subscription login does not grant
+API-key access, and an API key does not grant subscription CLI access.
 
 ## Project Instructions
 
@@ -246,7 +249,7 @@ Interactive sessions include a compact bottom status bar when stdout is a real
 terminal:
 
 ```text
-UR-AGENT v1.30.3 | Provider: Codex CLI | Auth: subscription | model: codex/gpt-5.5 | mode: ask | branch: main | tasks: idle | Update: 1.30.2 -> 1.30.3 available
+UR-AGENT v1.30.4 | Provider: Ollama | Auth: local | model: llama3 | mode: ask | branch: main | tasks: idle | Update: 1.30.3 -> 1.30.4 available
 ```
 
 The bar is not rendered in non-interactive mode, CI, dumb terminals, or

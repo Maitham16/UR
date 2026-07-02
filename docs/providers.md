@@ -1,8 +1,11 @@
 # UR-AGENT providers
 
-UR-AGENT integrates official model access paths only. It supports subscription
-CLI login flows, explicit API-key providers, and local OpenAI-compatible
-runtimes. It does not implement hidden or unofficial authentication.
+UR-AGENT integrates official model access paths only. API-key providers, local
+runtimes, and OpenAI-compatible servers are UR-native backends: UR owns the
+conversation loop, tool loop, streaming, errors, and output. Subscription CLI
+integrations are external app bridges, not required dependencies. They stay
+diagnosable, but normal runtime selection blocks them unless
+`UR_ENABLE_EXTERNAL_APP_PROVIDERS=1` is set.
 
 ## Legal auth policy
 
@@ -15,26 +18,26 @@ UR-AGENT never:
 - proxies a consumer web session as an API
 - claims provider support unless the official CLI/API path works
 
-UR-AGENT stores only safe config: provider name, model name, base URL, command
-path, fallback preference, and non-secret preferences. API keys are read from
-environment variables only when the user explicitly selects API mode.
+UR-AGENT stores only safe config: provider name, model name, base URL, fallback
+preference, and non-secret preferences. API keys are read from environment
+variables only when the user explicitly selects API mode.
 
 ## Provider matrix
 
-| Provider | Access type | Runtime backend | Legal path |
-| --- | --- | --- | --- |
-| Codex CLI | subscription | `subscription-cli:codex` | official Codex CLI login |
-| Claude Code | subscription | `subscription-cli:claude-code` | official Claude Code login |
-| Gemini CLI | subscription | `subscription-cli:gemini` | official Gemini Code Assist login |
-| Antigravity | subscription | `subscription-cli:antigravity` | official Antigravity login, where supported |
-| OpenAI API | API | `api:openai` | `OPENAI_API_KEY` |
-| Claude API | API | `api:anthropic` | `ANTHROPIC_API_KEY` |
-| Gemini API | API | `api:gemini` | `GEMINI_API_KEY` |
-| OpenRouter | API/router | `api:openrouter` | `OPENROUTER_API_KEY` |
-| Ollama | local | `ollama` | localhost Ollama runtime |
-| LM Studio | local/server | `openai-compatible:lmstudio` | local OpenAI-compatible server |
-| llama.cpp | local/server | `openai-compatible:llama.cpp` | local OpenAI-compatible server |
-| vLLM | local/server | `openai-compatible:vllm` | OpenAI-compatible server |
+| Provider | Access type | Runtime kind | Runtime backend | Legal path |
+| --- | --- | --- | --- | --- |
+| OpenAI API | API | UR-native | `api:openai` | `OPENAI_API_KEY` |
+| Claude API | API | UR-native | `api:anthropic` | `ANTHROPIC_API_KEY` |
+| Gemini API | API | UR-native | `api:gemini` | `GEMINI_API_KEY` |
+| OpenRouter | API/router | UR-native | `api:openrouter` | `OPENROUTER_API_KEY` |
+| Ollama | local | UR-native | `ollama` | localhost Ollama runtime |
+| LM Studio | local/server | UR-native | `openai-compatible:lmstudio` | local OpenAI-compatible server |
+| llama.cpp | local/server | UR-native | `openai-compatible:llama.cpp` | local OpenAI-compatible server |
+| vLLM | local/server | UR-native | `openai-compatible:vllm` | OpenAI-compatible server |
+| Codex CLI | subscription | external app bridge | `subscription-cli:codex` | official Codex CLI login |
+| Claude Code | subscription | external app bridge | `subscription-cli:claude-code` | official Claude Code login |
+| Gemini CLI | subscription | external app bridge | `subscription-cli:gemini` | official Gemini Code Assist login |
+| Antigravity | subscription | external app bridge | `subscription-cli:antigravity` | official Antigravity login, where supported |
 
 ## Commands
 
@@ -43,16 +46,14 @@ ur provider list
 ur provider status
 ur provider doctor
 ur provider doctor codex-cli
-ur auth chatgpt
-ur auth claude
-ur auth gemini
-ur auth antigravity
-ur config set provider codex-cli
-ur config set provider claude
-ur config set provider "Claude Code"
-ur config set provider antigravity
 ur provider doctor agy
+# Optional external app bridge diagnostics:
+ur auth chatgpt
 ur config set provider ollama
+ur config set provider openai-api
+ur config set provider anthropic-api
+ur config set provider gemini-api
+ur config set provider openrouter
 ur config set provider openai-compatible
 ur config set model <model>
 ur config set base_url <url>
@@ -61,16 +62,19 @@ ur config set provider.fallback ollama
 
 ## Provider-scoped model selection
 
-UR-AGENT shows providers first, then only models available for the selected provider. This prevents incompatible model/provider pairs and keeps subscription CLI, API-key, and local/server runtime model lists separate.
+UR-AGENT shows providers first, then only models available for the selected provider. This prevents incompatible model/provider pairs and keeps API-key, local/server, and external app bridge model lists separate.
 
 ## Runtime provider routing
 
-When you select a provider and model, every agent request is routed through that
-provider's backend:
+When you select a UR-native provider and model, every agent request is routed
+through that provider's backend:
 
-- **Subscription providers** spawn the official CLI command (e.g. `codex`, `claude`, `gemini`) in non-interactive mode, pass the prompt and the provider-scoped model, and map its stdout to the response. A non-zero exit or empty output fails clearly — it is never replaced with placeholder text.
 - **API providers** make direct HTTP calls in each provider's native wire format: Anthropic uses `x-api-key` + `anthropic-version` against `/v1/messages`; OpenAI uses `Authorization: Bearer` against `/v1/chat/completions`; Gemini uses `x-goog-api-key` against `…:generateContent`; OpenRouter uses its OpenAI-compatible chat endpoint.
 - **Local/server providers** connect to the configured local or OpenAI-compatible endpoint (`/v1/chat/completions` for LM Studio, llama.cpp and vLLM; the native tags/chat API for Ollama)
+- **External app bridges** for subscription CLIs are blocked by default because
+  they delegate turns to another agent app. If deliberately enabled with
+  `UR_ENABLE_EXTERNAL_APP_PROVIDERS=1`, failures still remain provider-scoped
+  and never fall back to Ollama.
 
 The selected provider determines:
 - Which backend receives your requests
@@ -95,6 +99,7 @@ You see all configured providers with:
 - Connection status: `connected`, `missing`, `unavailable`, or `unknown`
 - Credential type: `cli-login`, `api-key`, `local-runtime`, or `openai-compatible-endpoint`
 - Short status message (e.g., "OPENAI_API_KEY found", "CLI not found", "localhost reachable")
+- Runtime kind: `UR-native` or `external app bridge`
 
 **Step 2: Model Selection**
 
@@ -118,23 +123,23 @@ After selecting a model, the confirmation shows:
 ```
 /model
 → Step 1: Select provider
-  Codex CLI · subscription · subscription login connected
+  Ollama · local · local-runtime · localhost reachable
   OpenAI API · api · OPENAI_API_KEY found
-  Ollama · local · localhost reachable
+  Codex CLI · subscription · cli-login · external app bridge
   
-→ Select: Codex CLI
+→ Select: Ollama
 
 → Step 2: Select model
-  codex/gpt-5.5 · Subscription model through official Codex CLI login · static
-  codex/gpt-5.4-mini · Fast subscription model through official Codex CLI login · static
+  llama3 · discovered from Ollama · live
+  qwen3-coder:480b-cloud · discovered from Ollama · live
   
-→ Select: codex/gpt-5.5
+→ Select: llama3
 
 → Confirmation:
-  Selected provider: Codex CLI (subscription)
-  Selected model: codex/gpt-5.5
-  Model source: static
-  Runtime backend: subscription-cli:codex
+  Selected provider: Ollama (local)
+  Selected model: llama3
+  Model source: live
+  Runtime backend: ollama
 ```
 
 ### CLI workflow
@@ -151,21 +156,21 @@ ur config set model gpt-5.5
 
 # 4. Switch to a different provider - model list updates automatically
 ur config set provider anthropic-api
-# Now /model shows only Claude API models, not Codex CLI or OpenAI API models
+# Now /model shows only Claude API models, not OpenAI API or Ollama models
 ```
 
 ### Model discovery behavior
 
 | Provider type | Model discovery | Source label |
 | --- | --- | --- |
-| Subscription CLI (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Static list of provider-scoped CLI model aliases/names | static |
 | API providers (openai-api, anthropic-api, gemini-api, openrouter) | Static list of provider-specific models | static |
 | Local/server providers (ollama, lmstudio, llama.cpp, vllm) | Dynamic discovery from the selected provider endpoint | live |
 | OpenAI-compatible | Dynamic discovery from configured endpoint | live |
+| External app bridges (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Static bridge aliases; blocked by default for normal runtime | static |
 
 ### API vs Subscription distinction
 
-**Subscription providers** require official CLI login:
+**External app bridge providers** require official CLI login and explicit runtime opt-in:
 - `codex-cli` — Codex CLI subscription via `codex login`
 - `claude-code-cli` — Claude Code subscription via `claude auth login`
 - `gemini-cli` — Gemini Code Assist enterprise login
@@ -186,6 +191,8 @@ ur config set provider anthropic-api
 **Important:**
 - A ChatGPT/Claude/Gemini subscription does NOT give API access
 - An API key does NOT give subscription CLI access
+- UR does not require Codex CLI, Claude Code, Gemini CLI, or Antigravity to use
+  API, Ollama, or OpenAI-compatible providers
 - OpenAI API and Codex CLI are separate providers
 - Claude API and Claude Code are separate providers
 - Gemini API and Gemini CLI are separate providers
@@ -211,9 +218,9 @@ Warning: Current model "gpt-5.5" is not available for provider "anthropic-api" a
   After changing provider, run /model or: ur config set model claude-sonnet-5
 ```
 
-For subscription CLIs, UR stores scoped IDs such as `claude-code/sonnet` and
-passes only the CLI model name (`sonnet`) to the official command. Stale scoped
-IDs such as `claude-code/sonnet-5` are rejected before runtime dispatch.
+For external app bridges, UR stores scoped IDs such as `claude-code/sonnet`,
+but normal runtime dispatch rejects the bridge before spawning the external app
+unless `UR_ENABLE_EXTERNAL_APP_PROVIDERS=1` is set.
 
 ### Troubleshooting
 
@@ -223,9 +230,11 @@ IDs such as `claude-code/sonnet-5` are rejected before runtime dispatch.
 ur provider status
 ```
 
-**Provider shows "missing":**
-- Install the official CLI: `brew install codex` or equivalent
-- Run: `ur auth <provider>` to complete login
+**Provider is an external app bridge:**
+- Choose a UR-native API/local/server provider for normal UR interaction
+- Run `ur provider doctor <provider>` only to inspect the external app bridge
+- Set `UR_ENABLE_EXTERNAL_APP_PROVIDERS=1` only if you intentionally want UR to
+  delegate turns to that external app
 
 **Provider shows "unavailable":**
 - Check API key: `echo $OPENAI_API_KEY`

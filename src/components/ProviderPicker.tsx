@@ -9,6 +9,7 @@ import {
   listProviders,
   getProviderAccessTypeLabel,
   getActiveProviderSettings,
+  getProviderRuntimeBlockReason,
   setSafeProviderConfig,
 } from 'src/services/providers/providerRegistry.js'
 import { useSetAppState } from 'src/state/AppState.js'
@@ -47,13 +48,14 @@ export function ProviderPicker({
   const selectOptions = providers.map(provider => ({
     value: provider.id,
     label: provider.displayName,
-    description: `${getProviderAccessTypeLabel(provider)} · ${provider.credentialType}`,
+    description: `${getProviderAccessTypeLabel(provider)} · ${provider.credentialType} · ${provider.runtimeKind === 'external-app' ? 'external app bridge' : 'UR-native'}`,
   }))
 
   const visibleCount = Math.min(10, selectOptions.length)
   const hiddenCount = Math.max(0, selectOptions.length - visibleCount)
 
   const focusedProvider = providers.find(p => p.id === focusedValue)
+  const focusedBlockReason = focusedProvider ? getProviderRuntimeBlockReason(focusedProvider.id) : null
 
   function handleFocus(value: string) {
     setFocusedValue(value)
@@ -65,6 +67,11 @@ export function ProviderPicker({
       from_provider: currentProvider as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       to_provider: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
+
+    const runtimeBlock = getProviderRuntimeBlockReason(value)
+    if (runtimeBlock) {
+      return
+    }
 
     const result = setSafeProviderConfig('provider', value)
     if (!result.ok) {
@@ -121,6 +128,11 @@ export function ProviderPicker({
               {focusedProvider.displayName} ({focusedProvider.id}) ·{' '}
               {getProviderAccessTypeLabel(focusedProvider)} ·{' '}
               {focusedProvider.accessPathLabel}
+            </Text>
+          )}
+          {focusedBlockReason && (
+            <Text dimColor color="error">
+              {focusedBlockReason}
             </Text>
           )}
         </Box>

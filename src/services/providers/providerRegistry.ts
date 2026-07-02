@@ -6,19 +6,19 @@ import type { SettingsJson } from '../../utils/settings/types.js'
 import { which } from '../../utils/which.js'
 
 export const PROVIDER_IDS = [
-  'codex-cli',
-  'claude-code-cli',
-  'gemini-cli',
-  'antigravity-cli',
-  'openai-api',
-  'anthropic-api',
-  'gemini-api',
-  'openrouter',
-  'openai-compatible',
   'ollama',
   'lmstudio',
   'llama.cpp',
   'vllm',
+  'openai-compatible',
+  'openai-api',
+  'anthropic-api',
+  'gemini-api',
+  'openrouter',
+  'codex-cli',
+  'claude-code-cli',
+  'gemini-cli',
+  'antigravity-cli',
 ] as const
 
 export type ProviderId = (typeof PROVIDER_IDS)[number]
@@ -50,6 +50,7 @@ export type ProviderModelDiscoveryType = 'static' | 'live'
 export type ProviderStatusCheckType = 'cli-login' | 'api-key' | 'endpoint'
 export type ProviderModelListType = 'static' | 'ollama-tags' | 'openai-compatible-models'
 export type ProviderModelValidationType = 'static-list' | 'discovered-list'
+export type ProviderRuntimeKind = 'ur-native' | 'external-app'
 export type ProviderAuthMode =
   | 'subscription'
   | 'enterprise-login'
@@ -76,6 +77,7 @@ export type ProviderDefinition = {
   statusCheck: ProviderStatusCheckType
   listModels: ProviderModelListType
   validateModel: ProviderModelValidationType
+  runtimeKind: ProviderRuntimeKind
   authMode: ProviderAuthMode
   legalPath: string
   accessPathLabel: string
@@ -180,6 +182,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'cli-login',
     listModels: 'static',
     validateModel: 'static-list',
+    runtimeKind: 'external-app',
     authMode: 'subscription',
     legalPath: 'official Codex CLI login',
     accessPathLabel: 'subscription login via official Codex CLI',
@@ -199,6 +202,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'cli-login',
     listModels: 'static',
     validateModel: 'static-list',
+    runtimeKind: 'external-app',
     authMode: 'subscription',
     legalPath: 'official Claude Code CLI login',
     accessPathLabel: 'subscription login via official Claude Code CLI',
@@ -217,6 +221,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'cli-login',
     listModels: 'static',
     validateModel: 'static-list',
+    runtimeKind: 'external-app',
     authMode: 'enterprise-login',
     legalPath: 'official Gemini Code Assist login',
     accessPathLabel: 'subscription login via official Gemini CLI',
@@ -236,6 +241,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'cli-login',
     listModels: 'static',
     validateModel: 'static-list',
+    runtimeKind: 'external-app',
     authMode: 'personal-login',
     legalPath: 'official Antigravity CLI login, where supported',
     accessPathLabel: 'subscription login via official Antigravity CLI',
@@ -253,6 +259,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'api-key',
     listModels: 'static',
     validateModel: 'static-list',
+    runtimeKind: 'ur-native',
     authMode: 'api',
     legalPath: 'OPENAI_API_KEY',
     accessPathLabel: 'API key from OPENAI_API_KEY',
@@ -268,6 +275,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'api-key',
     listModels: 'static',
     validateModel: 'static-list',
+    runtimeKind: 'ur-native',
     authMode: 'api',
     legalPath: 'ANTHROPIC_API_KEY',
     accessPathLabel: 'API key from ANTHROPIC_API_KEY',
@@ -283,6 +291,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'api-key',
     listModels: 'static',
     validateModel: 'static-list',
+    runtimeKind: 'ur-native',
     authMode: 'api',
     legalPath: 'GEMINI_API_KEY',
     accessPathLabel: 'API key from GEMINI_API_KEY',
@@ -298,6 +307,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'api-key',
     listModels: 'static',
     validateModel: 'static-list',
+    runtimeKind: 'ur-native',
     authMode: 'api',
     legalPath: 'OPENROUTER_API_KEY',
     accessPathLabel: 'API key from OPENROUTER_API_KEY',
@@ -314,6 +324,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'endpoint',
     listModels: 'openai-compatible-models',
     validateModel: 'discovered-list',
+    runtimeKind: 'ur-native',
     authMode: 'api',
     legalPath: 'user-selected OpenAI-compatible base URL with API key only when required by that endpoint',
     accessPathLabel: 'OpenAI-compatible endpoint',
@@ -330,6 +341,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'endpoint',
     listModels: 'ollama-tags',
     validateModel: 'discovered-list',
+    runtimeKind: 'ur-native',
     authMode: 'local',
     legalPath: 'localhost Ollama runtime',
     accessPathLabel: 'local Ollama runtime',
@@ -347,6 +359,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'endpoint',
     listModels: 'openai-compatible-models',
     validateModel: 'discovered-list',
+    runtimeKind: 'ur-native',
     authMode: 'local',
     legalPath: 'local OpenAI-compatible server',
     accessPathLabel: 'local OpenAI-compatible endpoint',
@@ -364,6 +377,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'endpoint',
     listModels: 'openai-compatible-models',
     validateModel: 'discovered-list',
+    runtimeKind: 'ur-native',
     authMode: 'local',
     legalPath: 'local OpenAI-compatible server',
     accessPathLabel: 'local OpenAI-compatible endpoint',
@@ -381,6 +395,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusCheck: 'endpoint',
     listModels: 'openai-compatible-models',
     validateModel: 'discovered-list',
+    runtimeKind: 'ur-native',
     authMode: 'local',
     legalPath: 'OpenAI-compatible server',
     accessPathLabel: 'OpenAI-compatible endpoint runtime',
@@ -608,6 +623,40 @@ export function credentialTypeLabel(type: ProviderCredentialType): string {
   }
 }
 
+export function externalAppProviderBridgeEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.UR_ENABLE_EXTERNAL_APP_PROVIDERS === '1'
+}
+
+export function getProviderRuntimeKind(providerId: ProviderId | string): ProviderRuntimeKind | 'unknown' {
+  const provider = resolveProviderId(providerId)
+  return provider ? getProviderDefinition(provider).runtimeKind : 'unknown'
+}
+
+export function getProviderRuntimeBlockReason(
+  providerId: ProviderId | string,
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const provider = resolveProviderId(providerId)
+  if (!provider) {
+    return `Unknown provider "${providerId}". Run: ur provider list`
+  }
+  const definition = getProviderDefinition(provider)
+  if (definition.runtimeKind !== 'external-app') {
+    return null
+  }
+  if (externalAppProviderBridgeEnabled(env)) {
+    return null
+  }
+  return `Provider "${provider}" uses an external app bridge (${definition.displayName}), not a UR-native model endpoint. UR's independent runtime does not require Codex, Claude Code, Gemini CLI, or Antigravity to be installed. Choose an API/local/server provider such as openai-api, anthropic-api, gemini-api, openrouter, ollama, lmstudio, llama.cpp, or vllm. To intentionally delegate turns to the external app bridge, set UR_ENABLE_EXTERNAL_APP_PROVIDERS=1.`
+}
+
+export function isProviderRuntimeSelectable(
+  providerId: ProviderId | string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return getProviderRuntimeBlockReason(providerId, env) === null
+}
+
 export function listProviders(): ProviderDefinition[] {
   return PROVIDER_IDS.map(id => PROVIDERS[id])
 }
@@ -670,6 +719,13 @@ export function setSafeProviderConfig(
           message: `Unknown provider "${trimmed}". Run: ur provider list`,
         }
       }
+      const runtimeBlock = getProviderRuntimeBlockReason(provider)
+      if (runtimeBlock) {
+        return {
+          ok: false,
+          message: runtimeBlock,
+        }
+      }
       const currentSettings = getInitialSettings()
       const currentModel = getActiveProviderSettings(currentSettings).model
       const nextProviderSettings: ProviderSettings = { active: provider }
@@ -694,6 +750,15 @@ export function setSafeProviderConfig(
           message: `Unknown fallback provider "${trimmed}". Run: ur provider list`,
         }
       }
+      if (fallback !== 'disabled') {
+        const runtimeBlock = getProviderRuntimeBlockReason(fallback)
+        if (runtimeBlock) {
+          return {
+            ok: false,
+            message: runtimeBlock,
+          }
+        }
+      }
       settings = { provider: { fallback } } as SettingsJson
     } else if (key === 'provider.command_path') {
       settings = { provider: { commandPath: trimmed } } as SettingsJson
@@ -701,6 +766,13 @@ export function setSafeProviderConfig(
       // Validate model against current provider
       const currentSettings = getInitialSettings()
       const currentProvider = getActiveProviderSettings(currentSettings).active ?? 'ollama'
+      const runtimeBlock = getProviderRuntimeBlockReason(currentProvider)
+      if (runtimeBlock) {
+        return {
+          ok: false,
+          message: runtimeBlock,
+        }
+      }
       const validation = validateProviderModelPair(currentProvider, trimmed)
       if (validation.valid === false) {
         return {
@@ -1293,6 +1365,7 @@ export function formatProviderList(json = false): string {
     accessTypeLabel: getProviderAccessTypeLabel(provider),
     credentialType: provider.credentialType,
     modelDiscoveryType: provider.modelDiscoveryType,
+    runtimeKind: provider.runtimeKind,
     runtimeBackend: getProviderRuntimeBackend(provider.id),
     authMode: provider.authMode,
     accessPath: provider.accessPathLabel,
@@ -1302,10 +1375,10 @@ export function formatProviderList(json = false): string {
     return JSON.stringify(providers, null, 2)
   }
   return [
-    'Provider | ID | Aliases | Access type | Credential | Model discovery | Runtime backend | Access path',
-    '--- | --- | --- | --- | --- | --- | --- | ---',
+    'Provider | ID | Aliases | Access type | Credential | Model discovery | Runtime kind | Runtime backend | Access path',
+    '--- | --- | --- | --- | --- | --- | --- | --- | ---',
     ...providers.map(provider =>
-      `${provider.name} | ${provider.id} | ${provider.aliases.slice(0, 3).join(', ') || '-'} | ${provider.accessTypeLabel} | ${provider.credentialType} | ${provider.modelDiscoveryType} | ${provider.runtimeBackend} | ${provider.accessPath}`,
+      `${provider.name} | ${provider.id} | ${provider.aliases.slice(0, 3).join(', ') || '-'} | ${provider.accessTypeLabel} | ${provider.credentialType} | ${provider.modelDiscoveryType} | ${provider.runtimeKind} | ${provider.runtimeBackend} | ${provider.accessPath}`,
     ),
   ].join('\n')
 }
@@ -1314,14 +1387,20 @@ export function formatProviderDoctor(result: ProviderDoctorResult, json = false)
   if (json) {
     return JSON.stringify(result, null, 2)
   }
+  const runtimeBlock = getProviderRuntimeBlockReason(result.provider)
   const lines = [
     `Provider: ${result.displayName} (${result.provider})`,
     `Access: ${getProviderAccessTypeLabel(getProviderDefinition(result.provider))}`,
     `Credential: ${getProviderDefinition(result.provider).credentialType}`,
+    `Runtime kind: ${getProviderDefinition(result.provider).runtimeKind}`,
     `Runtime backend: ${getProviderRuntimeBackend(result.provider)}`,
+    `Runtime available: ${runtimeBlock ? 'no' : 'yes'}`,
     `Auth: ${authModeLabel(result.authMode)}`,
     `Status: ${result.ok ? 'ready' : 'not ready'}`,
   ]
+  if (runtimeBlock) {
+    lines.push(`Runtime note: ${runtimeBlock}`)
+  }
   for (const check of result.checks) {
     lines.push(`- ${check.status.toUpperCase()} ${check.name}: ${check.message}`)
   }
@@ -1346,7 +1425,9 @@ export function formatProviderStatus(result: ProviderDoctorResult, json = false)
   const definition = getProviderDefinition(result.provider)
   const settings = getActiveProviderSettings(getInitialSettings())
   const model = settings.model ? `\nActive model: ${settings.model}` : ''
-  return `Selected provider: ${result.displayName} (${result.provider})\nAccess type: ${getProviderAccessTypeLabel(definition)}\nCredential: ${definition.credentialType}\nRuntime backend: ${getProviderRuntimeBackend(result.provider)}${model}\nAuth mode: ${authModeLabel(result.authMode)}\nReady: ${result.ok ? 'yes' : 'no'}${failure}${fix}`
+  const runtimeBlock = getProviderRuntimeBlockReason(result.provider)
+  const runtime = `\nRuntime available: ${runtimeBlock ? 'no' : 'yes'}${runtimeBlock ? `\nRuntime note: ${runtimeBlock}` : ''}`
+  return `Selected provider: ${result.displayName} (${result.provider})\nAccess type: ${getProviderAccessTypeLabel(definition)}\nCredential: ${definition.credentialType}\nRuntime kind: ${definition.runtimeKind}\nRuntime backend: ${getProviderRuntimeBackend(result.provider)}${model}${runtime}\nAuth mode: ${authModeLabel(result.authMode)}\nReady: ${result.ok ? 'yes' : 'no'}${failure}${fix}`
 }
 
 // Provider-specific model definitions
@@ -1816,6 +1897,13 @@ export function setProviderModel(
     return {
       ok: false,
       message: `Unknown provider "${providerId}". Run: ur provider list`,
+    }
+  }
+  const runtimeBlock = getProviderRuntimeBlockReason(provider)
+  if (runtimeBlock) {
+    return {
+      ok: false,
+      message: runtimeBlock,
     }
   }
   const validation = validateProviderModelPair(provider, modelId, {

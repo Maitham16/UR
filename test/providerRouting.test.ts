@@ -9,7 +9,9 @@ import {
 import {
   cacheProviderModelsForProvider,
   clearProviderModelCacheForTests,
+  getProviderRuntimeBlockReason,
   getProviderRuntimeBackend,
+  isProviderRuntimeSelectable,
 } from '../src/services/providers/providerRegistry.js'
 
 beforeEach(() => {
@@ -104,6 +106,16 @@ describe('provider runtime routing', () => {
         expect(result.error).toContain('API key')
       }
     })
+  })
+
+  test('subscription CLI providers are external app bridges disabled by default', async () => {
+    expect(isProviderRuntimeSelectable('codex-cli')).toBe(false)
+    expect(getProviderRuntimeBlockReason('codex-cli')).toContain('external app bridge')
+    const result = await validateProviderRuntime('codex-cli')
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toContain('external app bridge')
+    }
   })
 })
 
@@ -201,12 +213,14 @@ describe('runtime request dispatch', () => {
     expect(calls).toEqual(['ollama'])
   })
 
-  test('selected codex-cli does not call Ollama backend', async () => {
+  test('selected codex-cli is blocked by default and does not call Ollama backend', async () => {
     const calls: string[] = []
-    await streamModelResponse('codex-cli', 'codex/gpt-5.5', userMessages(), {
-      clientFactory: recordingFactory(calls),
-    })
-    expect(calls).toEqual(['codex-cli'])
+    await expect(
+      streamModelResponse('codex-cli', 'codex/gpt-5.5', userMessages(), {
+        clientFactory: recordingFactory(calls),
+      }),
+    ).rejects.toThrow('external app bridge')
+    expect(calls).toEqual([])
     expect(calls).not.toContain('ollama')
   })
 
@@ -219,12 +233,14 @@ describe('runtime request dispatch', () => {
     expect(calls).not.toContain('ollama')
   })
 
-  test('selected claude-code does not call Claude API backend', async () => {
+  test('selected claude-code is blocked by default and does not call Claude API backend', async () => {
     const calls: string[] = []
-    await streamModelResponse('claude-code-cli', 'claude-code/sonnet', userMessages(), {
-      clientFactory: recordingFactory(calls),
-    })
-    expect(calls).toEqual(['claude-code-cli'])
+    await expect(
+      streamModelResponse('claude-code-cli', 'claude-code/sonnet', userMessages(), {
+        clientFactory: recordingFactory(calls),
+      }),
+    ).rejects.toThrow('external app bridge')
+    expect(calls).toEqual([])
     expect(calls).not.toContain('anthropic-api')
   })
 
@@ -237,13 +253,26 @@ describe('runtime request dispatch', () => {
     expect(calls).not.toContain('claude-code-cli')
   })
 
-  test('selected gemini-cli does not call Gemini API backend', async () => {
+  test('selected gemini-cli is blocked by default and does not call Gemini API backend', async () => {
     const calls: string[] = []
-    await streamModelResponse('gemini-cli', 'gemini-cli/gemini-2.5-pro', userMessages(), {
-      clientFactory: recordingFactory(calls),
-    })
-    expect(calls).toEqual(['gemini-cli'])
+    await expect(
+      streamModelResponse('gemini-cli', 'gemini-cli/gemini-2.5-pro', userMessages(), {
+        clientFactory: recordingFactory(calls),
+      }),
+    ).rejects.toThrow('external app bridge')
+    expect(calls).toEqual([])
     expect(calls).not.toContain('gemini-api')
+  })
+
+  test('external app bridge requires explicit opt-in before dispatch', async () => {
+    const calls: string[] = []
+    await withEnvSet({ UR_ENABLE_EXTERNAL_APP_PROVIDERS: '1' }, async () => {
+      await streamModelResponse('codex-cli', 'codex/gpt-5.5', userMessages(), {
+        clientFactory: recordingFactory(calls),
+      })
+    })
+    expect(calls).toEqual(['codex-cli'])
+    expect(calls).not.toContain('ollama')
   })
 
   test('selected gemini-api does not call Gemini CLI backend', async () => {
@@ -304,13 +333,13 @@ describe('runtime request dispatch', () => {
     expect(calls).toEqual([])
   })
 
-  test('stale claude-code static model is rejected before spawning Claude CLI', async () => {
+  test('stale claude-code selection is blocked before spawning Claude CLI', async () => {
     const calls: string[] = []
     await expect(
       streamModelResponse('claude-code-cli', 'claude-code/sonnet-5', userMessages(), {
         clientFactory: recordingFactory(calls),
       }),
-    ).rejects.toThrow('runtime dispatch cannot use')
+    ).rejects.toThrow('external app bridge')
     expect(calls).toEqual([])
   })
 
@@ -353,7 +382,6 @@ describe('runtime dry-run dispatch flow', () => {
   test('dispatches fake requests to selected backend and not Ollama', async () => {
     const flows = [
       ['ollama', 'llama3'],
-      ['codex-cli', 'codex/gpt-5.5'],
       ['openai-api', 'gpt-5.5'],
       ['lmstudio', 'local-model'],
     ] as const
@@ -423,6 +451,28 @@ function recordingFactory(calls: string[]) {
         },
       },
     } as any
+  }
+}
+
+async function withEnvSet<T>(
+  values: Record<string, string>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = new Map<string, string | undefined>()
+  for (const [key, value] of Object.entries(values)) {
+    previous.set(key, process.env[key])
+    process.env[key] = value
+  }
+  try {
+    return await run()
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
   }
 }
 

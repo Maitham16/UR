@@ -44,7 +44,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.30.3</p>
+          <p class="eyebrow">Version 1.30.4</p>
           <h1>UR-AGENT Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-AGENT.</p>
         </div>
@@ -140,18 +140,18 @@ ur -p --output-format json "Review the current diff"</code></pre>
         </div>
         <div class="reference-grid">
           <article>
-            <h3>Subscription CLI login</h3>
+            <h3>External app bridges</h3>
             <pre><code>ur auth chatgpt
 ur auth claude
 ur auth gemini
 ur auth antigravity
 ur provider doctor agy</code></pre>
-            <p>Subscription modes call official CLIs such as Codex CLI, Claude Code CLI, Gemini CLI, and Antigravity where supported. UR checks CLI presence and official login status without reading hidden credential files. Provider config accepts canonical IDs plus aliases such as <code>claude</code>, <code>Claude Code</code>, <code>antigravity</code>, and <code>agy</code>.</p>
+            <p>Codex CLI, Claude Code CLI, Gemini CLI, and Antigravity are optional external app bridges. UR checks CLI presence and official login status without reading hidden credential files, but normal runtime selection uses API, local, or OpenAI-compatible providers unless <code>UR_ENABLE_EXTERNAL_APP_PROVIDERS=1</code> is set.</p>
           </article>
           <article>
             <h3>API and local providers</h3>
             <pre><code>ur config set provider openai-compatible
-ur config set provider "Claude Code"
+ur config set provider openai-api
 ur config set base_url http://localhost:11434/v1
 ur config set model qwen3-coder:480b-cloud
 ur config set provider.fallback ollama</code></pre>
@@ -159,7 +159,7 @@ ur config set provider.fallback ollama</code></pre>
           </article>
           <article>
             <h3>Status bar and updates</h3>
-            <pre><code>UR-AGENT v1.30.3 | Provider: Codex CLI | Auth: subscription | model: codex/gpt-5.5 | mode: ask | branch: main | tasks: idle | Update: 1.30.2 -&gt; 1.30.3 available</code></pre>
+            <pre><code>UR-AGENT v1.30.4 | Provider: Ollama | Auth: local | model: llama3 | mode: ask | branch: main | tasks: idle | Update: 1.30.3 -&gt; 1.30.4 available</code></pre>
             <p>The interactive status bar shows provider, auth mode, model, branch, task state, checks status when known, and update availability. It is hidden in CI, dumb terminals, and non-interactive mode.</p>
           </article>
         </div>

@@ -6,12 +6,13 @@ UR reads configuration from CLI flags, environment variables, and project or use
 
 UR-AGENT supports official provider access paths only:
 
-- Subscription/login CLI providers: Codex CLI, Claude Code CLI, Gemini CLI,
-  and Antigravity CLI where officially supported.
 - Explicit API providers: OpenAI, Anthropic, Gemini, OpenRouter, and
   OpenAI-compatible endpoints.
 - Local/server providers: Ollama, LM Studio, llama.cpp, and vLLM OpenAI-compatible
   server mode.
+- External app bridges: Codex CLI, Claude Code CLI, Gemini CLI, and Antigravity
+  where officially supported. These are diagnostics/opt-in bridges, not required
+  dependencies for normal UR runtime.
 
 UR-AGENT never scrapes browser sessions, extracts OAuth refresh tokens, reads
 hidden provider auth files, bypasses provider restrictions, or proxies consumer
@@ -33,26 +34,24 @@ Provider configuration commands:
 ur provider list
 ur provider doctor
 ur provider status
-ur auth chatgpt
-ur auth claude
-ur auth gemini
-ur auth antigravity
 ur config set provider ollama
-ur config set provider claude
-ur config set provider "Claude Code"
-ur config set provider antigravity
-ur provider doctor agy
+ur config set provider openai-api
+ur config set provider anthropic-api
+ur config set provider gemini-api
+ur config set provider openrouter
 ur config set provider openai-compatible
+ur provider doctor agy
 ur config set provider.fallback ollama
 ur config set model <model>
 ur config set base_url <url>
 ```
 
 Provider values accept canonical IDs and common aliases. Examples:
-`codex-cli`, `chatgpt`, `codex`, `claude-code-cli`, `claude`,
-`Claude Code`, `gemini-cli`, `gemini`, `antigravity-cli`, `antigravity`,
-`agy`, `ollama`, `lmstudio`, `LM Studio`, `llama.cpp`, and `vllm`.
-Values with spaces should be quoted in shell commands.
+`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
+`lmstudio`, `LM Studio`, `llama.cpp`, and `vllm`. External app bridge aliases
+such as `codex-cli`, `claude-code-cli`, `gemini-cli`, and `antigravity-cli` are
+accepted only when `UR_ENABLE_EXTERNAL_APP_PROVIDERS=1` is set. Values with
+spaces should be quoted in shell commands.
 
 In the interactive app, `/model` is provider-first: choose a provider, then
 choose a model from that provider only. The picker labels providers as

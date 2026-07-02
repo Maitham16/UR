@@ -15,6 +15,7 @@ import {
   getDefaultModelForProvider,
   getProviderAccessTypeLabel,
   getProviderDefinition,
+  getProviderRuntimeBlockReason,
   getProviderRuntimeBackend,
   getValidModelIdsForProvider,
   resolveProviderId,
@@ -59,6 +60,10 @@ export function resolveActiveProviderModel(
     throw new Error(
       `Provider "${providerId}" is selected, but no runtime provider is registered. Run: ur provider list`,
     )
+  }
+  const runtimeBlock = getProviderRuntimeBlockReason(providerId)
+  if (runtimeBlock) {
+    throw new Error(runtimeBlock)
   }
 
   const configuredModel = providerSettings.model
@@ -142,6 +147,10 @@ export async function createProviderClient(
     throw new Error(`Unknown provider: ${providerId}`)
   }
   const provider = getProviderDefinition(resolved)
+  const runtimeBlock = getProviderRuntimeBlockReason(resolved)
+  if (runtimeBlock) {
+    throw new Error(runtimeBlock)
+  }
 
   let client: URHQ
   switch (provider.accessType) {
@@ -224,6 +233,10 @@ async function createSubscriptionClient(
   options: ProviderClientOptions = {},
 ): Promise<URHQ> {
   const provider = getProviderDefinition(providerId)
+  const runtimeBlock = getProviderRuntimeBlockReason(providerId)
+  if (runtimeBlock) {
+    throw new Error(runtimeBlock)
+  }
   const settings = getInitialSettings()
   const providerSettings = getActiveProviderSettings(settings)
   const { which } = await import('../../utils/which.js')
@@ -302,6 +315,10 @@ export async function validateProviderRuntime(
     return { ok: false, error: `Unknown provider: ${providerId}` }
   }
   const provider = getProviderDefinition(resolved)
+  const runtimeBlock = getProviderRuntimeBlockReason(resolved)
+  if (runtimeBlock) {
+    return { ok: false, error: runtimeBlock }
+  }
   const settings = getInitialSettings()
   const providerSettings = getActiveProviderSettings(settings)
   const scopedBaseUrl =
@@ -410,6 +427,10 @@ function resolveProviderRuntimePair(
   const provider = resolveProviderId(providerId)
   if (!provider) {
     throw new Error(`Unknown provider "${providerId}". Run: ur provider list`)
+  }
+  const runtimeBlock = getProviderRuntimeBlockReason(provider)
+  if (runtimeBlock) {
+    throw new Error(runtimeBlock)
   }
   const validation = validateProviderModelPair(provider, model)
   if (validation.valid === false) {
