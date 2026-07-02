@@ -532,8 +532,11 @@ export function useTypeahead({
   // Handle immediate suggestion logic (cheap operations)
   // biome-ignore lint/correctness/useExhaustiveDependencies: store is a stable context ref, read imperatively at call-time
   const updateSuggestions = useCallback(async (value: string, inputCursorOffset?: number): Promise<void> => {
-    // Use provided cursor offset or fall back to ref (avoids dependency on cursorOffset)
-    const effectiveCursorOffset = inputCursorOffset ?? cursorOffsetRef.current;
+    // Use provided cursor offset or fall back to ref (avoids dependency on cursorOffset).
+    // TextInput emits onChange before onOffsetChange; on the first "/" keystroke
+    // the ref can still be 0, which would suppress the slash-command menu.
+    const rawCursorOffset = inputCursorOffset ?? cursorOffsetRef.current;
+    const effectiveCursorOffset = value === '/' && rawCursorOffset === 0 ? 1 : rawCursorOffset;
     if (suppressSuggestions) {
       debouncedFetchFileSuggestions.cancel();
       clearSuggestions();

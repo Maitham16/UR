@@ -464,6 +464,13 @@ describe('provider registry legal access paths', () => {
     expect(info.model).toBe('openai/gpt-4.1')
   })
 
+  test('runtime info tolerates missing per-source settings', () => {
+    const info = getProviderRuntimeInfo(null)
+
+    expect(info.provider).toBe('ollama')
+    expect(info.providerLabel).toBe('Ollama')
+  })
+
   test('provider registry does not read hidden credential files', () => {
     const source = readFileSync('src/services/providers/providerRegistry.ts', 'utf8')
 

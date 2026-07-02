@@ -601,8 +601,9 @@ export function getProviderDefinition(id: ProviderId): ProviderDefinition {
   return PROVIDERS[id]
 }
 
-export function getActiveProviderSettings(settings: SettingsJson = getInitialSettings()): ProviderSettings {
-  const configured = settings.provider ?? {}
+export function getActiveProviderSettings(settings: SettingsJson | null = getInitialSettings()): ProviderSettings {
+  const effectiveSettings = settings ?? {}
+  const configured = effectiveSettings.provider ?? {}
   const active = configured.active
     ? resolveProviderId(configured.active) ?? DEFAULT_PROVIDER_ID
     : DEFAULT_PROVIDER_ID
@@ -614,14 +615,14 @@ export function getActiveProviderSettings(settings: SettingsJson = getInitialSet
         : undefined
   return {
     active,
-    model: configured.model ?? (configured.active ? undefined : settings.model),
+    model: configured.model ?? (configured.active ? undefined : effectiveSettings.model),
     baseUrl: configured.baseUrl,
     commandPath: configured.commandPath,
     fallback,
   }
 }
 
-export function getProviderRuntimeInfo(settings: SettingsJson = getInitialSettings()): ProviderRuntimeInfo {
+export function getProviderRuntimeInfo(settings: SettingsJson | null = getInitialSettings()): ProviderRuntimeInfo {
   const providerSettings = getActiveProviderSettings(settings)
   const provider = providerSettings.active ?? DEFAULT_PROVIDER_ID
   const definition = getProviderDefinition(provider)
