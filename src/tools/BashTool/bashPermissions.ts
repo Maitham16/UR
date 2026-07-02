@@ -1,9 +1,3 @@
-// @ts-nocheck
-// Type-safety debt: this security-critical file mixes legacy parser AST shapes,
-// classifier results, and permission-rule variants across ~2k lines. Removing
-// the blanket suppression safely requires a dedicated pass that first types the
-// bash AST/permission union boundaries and adds focused regression coverage for
-// each permission decision branch. Do not add new unchecked code here.
 import { feature } from 'bun:bundle'
 import { APIUserAbortError } from '@urhq-ai/sdk'
 import type { z } from 'zod/v4'
@@ -12,7 +6,10 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
-import { evaluateShellSafetyPolicy } from '../../services/safety/projectSafety.js'
+import {
+  evaluateShellSafetyPolicy,
+  type ShellSafetyEvaluation,
+} from '../../services/safety/projectSafety.js'
 import type { ToolPermissionContext, ToolUseContext } from '../../Tool.js'
 import type { PendingClassifierCheck } from '../../types/permissions.js'
 import { count } from '../../utils/array.js'
@@ -26,6 +23,7 @@ import {
 } from '../../utils/bash/ast.js'
 import {
   type CommandPrefixResult,
+  type CommandSubcommandPrefixResult,
   extractOutputRedirections,
   getCommandSubcommandPrefix,
   splitCommand_DEPRECATED,
@@ -84,6 +82,32 @@ import { checkPermissionMode } from './modeValidation.js'
 import { checkPathConstraints } from './pathValidation.js'
 import { checkSedConstraints } from './sedValidation.js'
 import { shouldUseSandbox } from './shouldUseSandbox.js'
+
+type BashToolInput = z.infer<typeof BashTool.inputSchema>
+
+type RuleMatchMode = 'exact' | 'prefix'
+
+type RuleMatchOptions = {
+  stripAllEnvVars?: boolean
+  skipCompoundCheck?: boolean
+}
+
+type RuleMatchResult = {
+  matchingDenyRules: PermissionRule[]
+  matchingAskRules: PermissionRule[]
+  matchingAllowRules: PermissionRule[]
+}
+
+type CdFilteredSubcommands = {
+  subcommands: string[]
+  astCommandsByIdx: (SimpleCommand | undefined)[]
+}
+
+type CommandSubcommandPrefixResolver = (
+  command: string,
+  abortSignal: AbortSignal,
+  isNonInteractiveSession: boolean,
+) => Promise<CommandSubcommandPrefixResult | null>
 
 // DCE cliff: Bun's feature() evaluator has a per-function complexity budget.
 // bashToolHasPermission is right at the limit. `import { X as Y }` aliases
@@ -783,13 +807,13 @@ export function stripAllLeadingEnvVars(
 }
 
 function filterRulesByContentsMatchingInput(
-  input: z.infer<typeof BashTool.inputSchema>,
+  input: BashToolInput,
   rules: Map<string, PermissionRule>,
-  matchMode: 'exact' | 'prefix',
+  matchMode: RuleMatchMode,
   {
     stripAllEnvVars = false,
     skipCompoundCheck = false,
-  }: { stripAllEnvVars?: boolean; skipCompoundCheck?: boolean } = {},
+  }: RuleMatchOptions = {},
 ): PermissionRule[] {
   const command = input.command.trim()
 
@@ -942,11 +966,11 @@ function filterRulesByContentsMatchingInput(
 }
 
 function matchingRulesForInput(
-  input: z.infer<typeof BashTool.inputSchema>,
+  input: BashToolInput,
   toolPermissionContext: ToolPermissionContext,
-  matchMode: 'exact' | 'prefix',
+  matchMode: RuleMatchMode,
   { skipCompoundCheck = false }: { skipCompoundCheck?: boolean } = {},
-) {
+): RuleMatchResult {
   const denyRuleByContents = getRuleByContentsForTool(
     toolPermissionContext,
     BashTool,
@@ -996,7 +1020,7 @@ function matchingRulesForInput(
  * Checks if the subcommand is an exact match for a permission rule
  */
 export const bashToolCheckExactMatchPermission = (
-  input: z.infer<typeof BashTool.inputSchema>,
+  input: BashToolInput,
   toolPermissionContext: ToolPermissionContext,
 ): PermissionResult => {
   const command = input.command.trim()
@@ -1055,7 +1079,7 @@ export const bashToolCheckExactMatchPermission = (
 }
 
 export const bashToolCheckPermission = (
-  input: z.infer<typeof BashTool.inputSchema>,
+  input: BashToolInput,
   toolPermissionContext: ToolPermissionContext,
   compoundCommandHasCd?: boolean,
   astCommand?: SimpleCommand,
@@ -1188,7 +1212,7 @@ export const bashToolCheckPermission = (
  * Processes an individual subcommand and applies prefix checks & suggestions
  */
 export async function checkCommandAndSuggestRules(
-  input: z.infer<typeof BashTool.inputSchema>,
+  input: BashToolInput,
   toolPermissionContext: ToolPermissionContext,
   commandPrefixResult: CommandPrefixResult | null | undefined,
   compoundCommandHasCd?: boolean,
@@ -1275,7 +1299,7 @@ export async function checkCommandAndSuggestRules(
  *   - passthrough should not occur since we're in auto-allow mode
  */
 function checkSandboxAutoAllow(
-  input: z.infer<typeof BashTool.inputSchema>,
+  input: BashToolInput,
   toolPermissionContext: ToolPermissionContext,
 ): PermissionResult {
   const command = input.command.trim()
@@ -1376,7 +1400,7 @@ function filterCdCwdSubcommands(
   astCommands: SimpleCommand[] | undefined,
   cwd: string,
   cwdMingw: string,
-): { subcommands: string[]; astCommandsByIdx: (SimpleCommand | undefined)[] } {
+): CdFilteredSubcommands {
   const subcommands: string[] = []
   const astCommandsByIdx: (SimpleCommand | undefined)[] = []
   for (let i = 0; i < rawSubcommands.length; i++) {
@@ -1396,7 +1420,7 @@ function filterCdCwdSubcommands(
  * bashToolHasPermission under Bun's feature() DCE complexity threshold.
  */
 function checkEarlyExitDeny(
-  input: z.infer<typeof BashTool.inputSchema>,
+  input: BashToolInput,
   toolPermissionContext: ToolPermissionContext,
 ): PermissionResult | null {
   const exactMatchResult = bashToolCheckExactMatchPermission(
@@ -1436,7 +1460,7 @@ function checkEarlyExitDeny(
  * feature('BASH_CLASSIFIER') evaluation and drops pendingClassifierCheck.
  */
 function checkSemanticsDeny(
-  input: z.infer<typeof BashTool.inputSchema>,
+  input: BashToolInput,
   toolPermissionContext: ToolPermissionContext,
   commands: readonly { text: string }[],
 ): PermissionResult | null {
@@ -1466,7 +1490,7 @@ function checkSemanticsDeny(
 function buildPendingClassifierCheck(
   command: string,
   toolPermissionContext: ToolPermissionContext,
-): { command: string; cwd: string; descriptions: string[] } | undefined {
+): PendingClassifierCheck | undefined {
   if (!isClassifierPermissionsEnabled()) {
     return undefined
   }
@@ -1610,7 +1634,7 @@ type AsyncClassifierCheckCallbacks = {
  * @param callbacks - Callbacks to check if we should continue and handle approval
  */
 export async function executeAsyncClassifierCheck(
-  pendingCheck: { command: string; cwd: string; descriptions: string[] },
+  pendingCheck: PendingClassifierCheck,
   signal: AbortSignal,
   isNonInteractiveSession: boolean,
   callbacks: AsyncClassifierCheckCallbacks,
@@ -1668,9 +1692,10 @@ export async function executeAsyncClassifierCheck(
  * The main implementation to check if we need to ask for user permission to call BashTool with a given input
  */
 export async function bashToolHasPermission(
-  input: z.infer<typeof BashTool.inputSchema>,
+  input: BashToolInput,
   context: ToolUseContext,
-  getCommandSubcommandPrefixFn = getCommandSubcommandPrefix,
+  getCommandSubcommandPrefixFn: CommandSubcommandPrefixResolver =
+    getCommandSubcommandPrefix,
 ): Promise<PermissionResult> {
   let appState = context.getAppState()
 
@@ -1745,9 +1770,13 @@ export async function bashToolHasPermission(
     astRoot = null
   }
 
-  const safetyEvaluation = evaluateShellSafetyPolicy(input.command, getCwd(), {
-    dangerouslyDisableSandbox: input.dangerouslyDisableSandbox,
-  })
+  const safetyEvaluation: ShellSafetyEvaluation = evaluateShellSafetyPolicy(
+    input.command,
+    getCwd(),
+    {
+      dangerouslyDisableSandbox: input.dangerouslyDisableSandbox,
+    },
+  )
   if (safetyEvaluation.behavior === 'deny') {
     const reason = safetyEvaluation.reasons.join('; ')
     return {
@@ -1806,7 +1835,7 @@ export async function bashToolHasPermission(
     // Clean parse: check semantic-level concerns (zsh builtins, eval, etc.)
     // that tokenize fine but are dangerous by name.
     const sem = checkSemantics(astResult.commands)
-    if (!sem.ok) {
+    if (sem.ok === false) {
       // Same deny-rule enforcement as the too-complex path: a user with
       // `Bash(eval:*)` deny expects `eval "rm"` blocked, not downgraded.
       const earlyExit = checkSemanticsDeny(
@@ -1847,7 +1876,7 @@ export async function bashToolHasPermission(
       'bashToolHasPermission: tree-sitter unavailable, using legacy shell-quote path',
     )
     const parseResult = tryParseShellCommand(input.command)
-    if (!parseResult.success) {
+    if (parseResult.success === false) {
       const decisionReason = {
         type: 'other' as const,
         reason: `Command contains malformed syntax that cannot be parsed: ${parseResult.error}`,
@@ -2009,7 +2038,7 @@ export async function bashToolHasPermission(
   // are handled by the operator logic (which generates "multiple operations" messages)
   const commandOperatorResult = await checkCommandOperatorPermissions(
     input,
-    (i: z.infer<typeof BashTool.inputSchema>) =>
+    (i: BashToolInput) =>
       bashToolHasPermission(i, context, getCommandSubcommandPrefixFn),
     { isNormalizedCdCommand, isNormalizedGitCommand },
     astRoot,
