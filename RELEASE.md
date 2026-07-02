@@ -36,8 +36,18 @@ set and version:
 
 ```bash
 rg -n "Version [0-9]|expected: [0-9]|UR-AGENT v[0-9]" README.md docs documentation
-bun test test/docsCoverage.test.ts
+bun test test/docsCoverage.test.ts test/docsCommands.test.ts
 ```
+
+Version bump checklist (all three must move together):
+
+1. `package.json` `version`
+2. `bunfig.toml` `MACRO.VERSION`
+3. `documentation/index.html` version eyebrow
+4. `extensions/vscode-ur-inline-diffs/package.json` `version` (the VSIX test
+   requires it to match the root package version)
+5. Add a `CHANGELOG.md` entry, then run `bun run build` so `dist/cli.js`
+   embeds the new version (`bun run release:check` verifies all of this).
 
 If `npm whoami` fails, run:
 

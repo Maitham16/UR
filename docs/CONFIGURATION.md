@@ -10,9 +10,10 @@ UR-AGENT supports official provider access paths only:
   OpenAI-compatible endpoints.
 - Local/server providers: Ollama, LM Studio, llama.cpp, and vLLM OpenAI-compatible
   server mode.
-- External app bridges: Codex CLI, Claude Code CLI, Gemini CLI, and Antigravity
-  where officially supported. These are diagnostics/opt-in bridges, not required
-  dependencies for normal UR runtime.
+- Subscription CLI providers: Codex CLI, Claude Code CLI, Gemini CLI, and
+  Antigravity where officially supported. These dispatch turns through the
+  vendor's official CLI using your subscription login. They are optional and
+  never required for normal UR runtime.
 
 UR-AGENT never scrapes browser sessions, extracts OAuth refresh tokens, reads
 hidden provider auth files, bypasses provider restrictions, or proxies consumer
@@ -48,10 +49,10 @@ ur config set base_url <url>
 
 Provider values accept canonical IDs and common aliases. Examples:
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
-`lmstudio`, `LM Studio`, `llama.cpp`, and `vllm`. External app bridge aliases
-such as `codex-cli`, `claude-code-cli`, `gemini-cli`, and `antigravity-cli` are
-accepted only when `UR_ENABLE_EXTERNAL_APP_PROVIDERS=1` is set. Values with
-spaces should be quoted in shell commands.
+`lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, and the subscription CLI
+providers `codex-cli` (`chatgpt`), `claude-code-cli` (`claude`), `gemini-cli`
+(`gemini`), and `antigravity-cli` (`agy`). Values with spaces should be quoted
+in shell commands.
 
 In the interactive app, `/model` is provider-first: choose a provider, then
 choose a model from that provider only. The picker labels providers as
@@ -70,8 +71,9 @@ ur provider status
 The status output includes active provider, active model, access type,
 credential type, and runtime backend.
 
-API keys are not written to UR settings. Set them in the environment when you
-explicitly choose API mode:
+API keys are never written to UR settings files. Store one securely with
+`ur connect <provider>` (OS keychain, with an encrypted file fallback), or set
+it in the environment when you explicitly choose API mode:
 
 ```sh
 OPENAI_API_KEY=...

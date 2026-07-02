@@ -9,8 +9,11 @@ function tempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
+// DatabaseTool shells out to the sqlite3 binary; skip when it is not installed.
+const hasSqlite3 = Bun.which('sqlite3') !== null
+
 describe('DatabaseTool', () => {
-  test('runs a sqlite query and returns rows', async () => {
+  test.skipIf(!hasSqlite3)('runs a sqlite query and returns rows', async () => {
     const dir = tempDir('ur-database-')
     try {
       const db = join(dir, 'test.db')

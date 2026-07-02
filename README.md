@@ -69,8 +69,10 @@ handing work off to other tools or agents when needed.
 ### Requirements
 
 - Bun. This repository is configured with `bun@1.3.14`.
-- A Node.js-compatible shell environment.
-- A running Ollama app or server. UR defaults to `http://localhost:11434/api`.
+- A Node.js-compatible shell environment (Node 18+ for the npm launcher).
+- For the default local setup: a running Ollama app or server
+  (`http://localhost:11434/api`). Any other supported provider (API key,
+  OpenAI-compatible server, or subscription CLI) works without Ollama.
 - Optional tools for specific workflows: GitHub CLI, tmux, and supported IDE
   integrations.
 
@@ -182,23 +184,33 @@ ur config set provider.fallback ollama
 
 Provider config accepts canonical IDs and common aliases. Examples:
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
-`lmstudio`, `LM Studio`, `llama.cpp`, and `vllm`. External app bridge aliases
-such as `codex-cli`, `claude-code-cli`, `gemini-cli`, and `antigravity-cli` are
-accepted only when the external bridge opt-in is enabled.
-Use quotes for shell values with spaces.
+`lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, and the subscription CLIs
+`codex-cli` (`chatgpt`), `claude-code-cli` (`claude`), `gemini-cli` (`gemini`),
+and `antigravity-cli` (`agy`). Use quotes for shell values with spaces.
+
+Connect accounts once with `ur connect` (or `/connect` in a session):
+
+```sh
+ur connect status                     # connection state for every provider
+ur connect codex-cli                  # subscription: launches the official login
+echo "$OPENAI_API_KEY" | ur connect openai-api   # API: store a key in the OS keychain
+ur connect logout openai-api          # clear a stored key
+```
 
 | Provider | Access type | Runtime kind | Legal path |
 | --- | --- | --- | --- |
-| Subscription | subscription | unavailable until configured | independent subscription runtime only |
-| OpenAI API | API key | UR-native | `OPENAI_API_KEY` |
-| Claude API | API key | UR-native | `ANTHROPIC_API_KEY` |
-| Gemini API | API key | UR-native | `GEMINI_API_KEY` |
-| OpenRouter | API/router | UR-native | `OPENROUTER_API_KEY` |
+| OpenAI API | API key | UR-native | `OPENAI_API_KEY` or `ur connect openai-api` |
+| Claude API | API key | UR-native | `ANTHROPIC_API_KEY` or `ur connect anthropic-api` |
+| Gemini API | API key | UR-native | `GEMINI_API_KEY` or `ur connect gemini-api` |
+| OpenRouter | API/router | UR-native | `OPENROUTER_API_KEY` or `ur connect openrouter` |
 | Ollama | local | UR-native | localhost Ollama runtime |
 | LM Studio | local/server | UR-native | local OpenAI-compatible server |
 | llama.cpp | local/server | UR-native | local OpenAI-compatible server |
 | vLLM | local/server | UR-native | OpenAI-compatible server |
-| External app bridges | subscription | opt-in diagnostics | disabled unless explicitly enabled |
+| Codex CLI | subscription | external app bridge | official Codex CLI login (`ur auth chatgpt`) |
+| Claude Code | subscription | external app bridge | official Claude Code login (`ur auth claude`) |
+| Gemini CLI | subscription | external app bridge | official Gemini Code Assist login (`ur auth gemini`) |
+| Antigravity | subscription | external app bridge | official Antigravity CLI login (`ur auth antigravity`) |
 
 #### Provider-first model selection
 
@@ -212,9 +224,10 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    by source: `live` (discovered from the endpoint), `cache` (last discovery),
    or `static` (predefined). Local/server providers (Ollama, LM Studio,
    llama.cpp, vLLM) and OpenAI-compatible endpoints are discovered live; API
-   providers use their curated model list. The generic `subscription` entry has
-   no models unless a real independent subscription backend is configured.
-   External app bridges are hidden unless explicitly opted in.
+   providers use live discovery from their `/models` endpoint once a key is
+   connected (with a curated fallback list before that). Subscription CLIs show
+   their curated model list because the official CLIs expose no models API. The
+   generic `subscription` entry is an internal placeholder hidden from listings.
 
 Model lists never cross providers: OpenAI API, Claude API, Gemini API,
 OpenRouter, Ollama, and OpenAI-compatible local/server endpoints are separate
@@ -269,10 +282,12 @@ as first-class subcommands in the shipped CLI.
 | `ur ci-loop` | Run a build or test command, hand failures to a fix agent, and retry with a bounded budget. |
 | `ur test-first` | Detect the project stack, run compile/test/lint commands, store failure traces, and install edit-time verify gates. |
 | `ur safety` | Inspect or initialize project shell safety policy and evaluate command risk before execution. |
+| `ur sandbox` | Inspect and manage the sandbox/permission architecture: status, dependency check, policy init, and command approval levels. |
 | `ur context-pack` | Write project architecture context, task memory, and compressed context under `.ur/`. Supports memory kinds `decision`, `constraint`, `command`, `diff`, `note`, `architecture`, `preference`, `attempt`, `accepted`, and `rejected`. |
 | `/hooks` | Inspect lifecycle hooks (`BeforeEdit`, `AfterEdit`, `BeforeCommand`, `AfterCommand`, `BeforeCommit`, `OnFailure`) configured via settings files. |
 | `ur bg` | Run and manage detached local background agents with optional worktrees and PR creation. |
 | `ur worktree` | List, inspect, and clean up UR agent worktrees. |
+| `ur task` | Start, run, and hand off worktree-per-task sessions with optional PR creation. |
 | `ur automation` | Store and run project-local scheduled automation specs under `.ur/automations/`. |
 | `ur workflow` | Define, validate, graph, run, and resume declarative agent workflows. |
 | `ur crew` | Run a lead and worker subagent crew over a shared task board; `--decompose` auto-splits tasks with risk/tests/rollback metadata. |
@@ -281,6 +296,7 @@ as first-class subcommands in the shipped CLI.
 | `ur repo-edit` | Build a repo edit index, plan AST-aware renames, preview patches, and apply with rollback. |
 | `ur code-index` | Build, query, or watch a local semantic code index using Ollama embeddings; `ur code-index repo` adds files/symbols/calls/tests/docs/configs. |
 | `ur semantic-memory` | Build and search a project-local memory index. |
+| `ur memory retention` | Configure and apply local memory retention policies (TTL, max entries, decay). |
 | `ur knowledge` | Manage a curated project knowledge base with provenance. |
 | `ur artifacts` | Capture diffs, test runs, notes, and review feedback under `.ur/artifacts/`. |
 | `ur claim-ledger` | Map generated claims to file, web, MCP, tool, or user sources. |
@@ -291,7 +307,10 @@ as first-class subcommands in the shipped CLI.
 | `ur eval bench` | Import local SWE-bench, Terminal-Bench, or Aider Polyglot exports. |
 | `ur model-doctor` | Inspect Ollama models and report likely agent capabilities. |
 | `ur model-route` | Recommend a local model for a task by capability fit. |
+| `ur route` | Classify a task and recommend the best subagent and collaboration pattern. |
+| `ur local-first` | Show readiness for no-cloud, private, lab, offline, and edge/server environments. |
 | `ur provider` | List, check, and diagnose legal model provider adapters. |
+| `ur connect` | Connect a provider account: subscription login or store an API key in the OS keychain. |
 | `ur auth chatgpt` | Launch the official Codex CLI login for ChatGPT subscription access. |
 | `ur auth claude` | Launch the official Claude Code login flow. |
 | `ur auth gemini` | Use the official Gemini CLI login flow where supported. |
@@ -306,6 +325,15 @@ as first-class subcommands in the shipped CLI.
 | `ur a2a card` | Print UR-AGENT Card metadata for agent interoperability. |
 | `ur a2a serve` | Start an opt-in local A2A task server with bearer or delegation auth. |
 | `ur sdk` | Show programmatic headless usage and scaffold SDK examples. |
+| `ur trigger` | Parse a GitHub/Slack webhook payload and optionally launch a headless UR run. |
+| `ur agent-templates` | List or install reusable project agent templates. |
+| `ur agent-task` | Summarize task state, git diff status, and PR handoff commands. |
+| `ur agent-inspect` | Reconstruct a per-subagent timeline from a session transcript. |
+| `ur agent-features` | Show or initialize agent feature expansion scaffolds. |
+| `ur agent-trends` | Show UR coverage for current agent technology trends. |
+| `ur agents` | List configured agents. |
+| `ur doctor` | Check the health of the UR installation and auto-updater. |
+| `ur update` | Check npm for UR-AGENT updates (`ur upgrade` is an alias). |
 
 ### Status Bar
 
@@ -404,8 +432,8 @@ project-backed features: Agent surfaces (`ur`, `ur agents`, `ur crew`, `ur bg`),
 Rules (`AGENTS.md`, `UR.md`, `.cursor/rules/*.mdc`, `.cursorrules`, safety and
 guardrail config), MCP (`ur mcp`, `.mcp.json`, plugin MCP servers), Skills
 (`/skills`, bundled, project, user, and plugin skills), CLI (`ur --help`, `ur -p`,
-`ur exec`, `ur acp`), and Models (`ur model`, `ur model-doctor`, Ollama routing
-and discovery).
+`ur exec`, `ur acp`), and Models (`/model`, `ur config set model`,
+`ur model-doctor`, Ollama routing and discovery).
 
 Examples:
 
@@ -525,6 +553,20 @@ the permission boundary matters.
 See [Configuration](docs/CONFIGURATION.md), [Validation](docs/VALIDATION.md),
 and [Quality Notes](QUALITY.md) for operational guidance.
 
+## Troubleshooting
+
+Common problems — `ur` not found after install, a provider that is selected
+but not connected, a model that belongs to another provider, unreachable local
+servers, plugin or editor connection issues — are covered with symptom, cause,
+fix, and a verification command in the
+[Troubleshooting Guide](docs/TROUBLESHOOTING.md). Start with:
+
+```sh
+ur --version
+ur provider status
+ur provider doctor
+```
+
 ## Development
 
 Install dependencies:
@@ -562,24 +604,32 @@ The GitHub workflow runs production bundle, smoke, release, package, and global
 install checks only after the Bun test step succeeds. Do not publish or tag a
 release until that GitHub run is green.
 
+## Package
+
+- npm package: [`ur-agent`](https://www.npmjs.com/package/ur-agent), binary `ur`.
+- The published package ships the bundled CLI (`dist/cli.js`), launcher
+  (`bin/ur.js`), documentation (`docs/`, `documentation/`, `examples/`), and
+  first-party plugins (`plugins/`, `.ur-plugin` marketplace manifest is part of
+  the repository).
+- Releases follow the [Release Runbook](RELEASE.md); every release is recorded
+  in [CHANGELOG.md](CHANGELOG.md).
+
 ## Documentation
 
 - [Usage Guide](docs/USAGE.md)
 - [Configuration](docs/CONFIGURATION.md)
 - [Provider Guide](docs/providers.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Agent Feature Expansion](docs/AGENT_FEATURES.md)
 - [Agent Trend Coverage](docs/AGENT_TRENDS.md)
-- [1.22.0 Upgrade Notes](docs/AGENT_UPGRADE_1.22.0.md)
-- [1.20.0 Upgrade Notes](docs/AGENT_UPGRADE_1.20.0.md)
-- [1.19.0 Upgrade Notes](docs/AGENT_UPGRADE_1.19.0.md)
-- [1.18.0 Upgrade Notes](docs/AGENT_UPGRADE_1.18.0.md)
-- [1.17.0 Upgrade Notes](docs/AGENT_UPGRADE_1.17.0.md)
+- [Changelog](CHANGELOG.md)
 - [Development Guide](docs/DEVELOPMENT.md)
 - [IDE Guide](docs/IDE.md)
 - [ACP Guide](docs/ACP.md)
 - [Plugin Guide](docs/plugins.md)
 - [Validation Runbook](docs/VALIDATION.md)
 - [Release Runbook](RELEASE.md)
+- [Quality Notes](QUALITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 - [Static Documentation Site](documentation/index.html)

@@ -40,7 +40,7 @@ do not tag or publish until that workflow is green.
 Public feature releases should update the full documentation set:
 
 - root README
-- changelog and upgrade notes
+- `CHANGELOG.md`
 - `docs/`
 - static site files under `documentation/`
 - examples
@@ -49,10 +49,15 @@ Public feature releases should update the full documentation set:
 ## Runtime Assumptions
 
 - UR runs through Bun.
-- Model requests go to the local Ollama app at `http://localhost:11434/api`.
-- The local Ollama app may expose local models or Ollama Cloud-backed models.
-- UR does not call model provider APIs directly and does not manage model API
-  keys.
+- The default provider is the local Ollama app at `http://localhost:11434/api`;
+  it may expose local models or Ollama Cloud-backed models.
+- Selecting an API provider (OpenAI, Anthropic, Gemini, OpenRouter) makes UR
+  call that provider's API directly, using a key stored via `ur connect`
+  (OS keychain) or read from an environment variable. Keys are never written
+  to settings files.
+- Selecting a subscription CLI provider (Codex CLI, Claude Code, Gemini CLI,
+  Antigravity) dispatches turns through the vendor's official CLI. There is no
+  silent cross-provider fallback.
 - The GitHub install path runs `dist/cli.js`, so the bundle must match the
   package version.
 

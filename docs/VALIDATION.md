@@ -18,7 +18,7 @@ You need:
 
 ```sh
 ur --version
-# expected: 1.25.3 (UR-AGENT)
+# expected: the version from package.json, e.g. "1.35.0 (UR-AGENT)"
 ```
 
 ## 0.1 Permission safety and context pack (1.19.0)

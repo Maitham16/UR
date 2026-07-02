@@ -115,24 +115,25 @@ back to Ollama, Claude API does not fall back to Claude Code, and local/server
 providers do not leak cloud model lists. Use `ur provider status` to inspect the
 active provider, model, access type, and runtime backend.
 
-The default provider list keeps subscription access visible as `subscription`,
-but it is marked unavailable unless a real independent subscription runtime is
-configured. UR does not list fake subscription models and does not call provider
-apps by default.
+The provider list shows API, local/server, and subscription CLI providers.
+Subscription CLIs (Codex CLI, Claude Code, Gemini CLI, Antigravity) are
+first-class: selecting one dispatches turns through the vendor's official CLI
+using your subscription login (`ur auth <provider>`). The generic
+`subscription` entry is an internal placeholder and is hidden from listings;
+UR does not list fake subscription models.
 
 Provider values accept canonical IDs and common aliases. For example,
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
-`lmstudio`, `llama.cpp`, and `vllm` are normal UR-native runtime providers.
-External app bridge aliases such as `codex-cli`, `claude-code-cli`,
-`gemini-cli`, and `antigravity-cli` are accepted only when the external bridge
-opt-in is enabled.
+`lmstudio`, `llama.cpp`, and `vllm` are UR-native runtime providers, and
+`codex-cli` (`chatgpt`), `claude-code-cli` (`claude`), `gemini-cli` (`gemini`),
+and `antigravity-cli` (`agy`) are subscription CLI providers.
 
-API modes are explicit and read keys only from environment variables:
+API modes are explicit. Keys are read from a key stored via
+`ur connect <provider>` (OS keychain) or from the environment variables
 `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, and
-`OPENROUTER_API_KEY`. Provider app bridges are not required dependencies; they
-are blocked from normal runtime selection unless
-`UR_ENABLE_EXTERNAL_APP_PROVIDERS=1` is set. UR-AGENT never scrapes browser
-sessions, extracts OAuth tokens, or bypasses provider restrictions.
+`OPENROUTER_API_KEY`. Subscription CLIs are optional, never required
+dependencies, and never used as a silent fallback. UR-AGENT never scrapes
+browser sessions, extracts OAuth tokens, or bypasses provider restrictions.
 OpenAI-compatible local or cloud endpoints use `base_url` plus `model`.
 
 Use `/model` in an interactive session to select provider first and model
@@ -208,6 +209,7 @@ Hooks are advisory by default. A `BeforeEdit`/`BeforeCommand`/`BeforeCommit` hoo
 UR includes slash commands and CLI subcommands for common workflows:
 
 - `/help` or `ur --help` for command discovery
+- `ur connect ...` to connect provider accounts (subscription login or stored API key)
 - `ur mcp ...` to configure MCP servers
 - `ur plugin ...` to manage plugins and marketplaces. Marketplace plugins can
   add MCP tools, commands, executable skills, templates, validators, language
@@ -238,6 +240,24 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur eval bench ...` to import local SWE-bench, Terminal-Bench, or Aider Polyglot exports
 - `ur crew ...` to run lead+worker agent crews with optional automatic task decomposition
 - `ur pattern ...` to run multi-agent collaboration patterns (PEER, DOE, concurrent, handoff, debate, parallel)
+- `ur workflow ...` to define, validate, graph, run, and resume declarative agent workflows
+- `ur goal ...` to track long-horizon objectives that persist across sessions
+- `ur task ...` to run worktree-per-task sessions with PR handoff
+- `ur worktree ...` to list, inspect, and clean up UR agent worktrees
+- `ur automation ...` to store and run project-local scheduled automation specs
+- `ur sandbox ...` to inspect sandbox/permission architecture and command approval levels
+- `ur knowledge ...` to manage a curated project knowledge base with provenance
+- `ur semantic-memory ...` to build and search the project-local memory index
+- `ur claim-ledger ...` to map generated claims to their sources
+- `ur route ...` to classify a task and recommend a subagent and collaboration pattern
+- `ur model-doctor` and `ur model-route ...` to inspect local Ollama models and pick one by capability fit
+- `ur local-first` to report readiness for offline/no-cloud environments
+- `ur browser-qa ...` to validate and smoke-run browser QA replay fixtures
+- `ur trigger ...` to parse GitHub/Slack webhook payloads and optionally launch a headless run
+- `ur agent-templates ...`, `ur agent-task ...`, `ur agent-inspect`, `ur agent-features`, and `ur agent-trends` for agent template, PR handoff, timeline, and coverage utilities
+- `ur role-mode ...` to install built-in Architect, Code, Debug, and Ask role modes
+- `ur a2a ...` for Agent Card metadata, delegation tokens, and the opt-in A2A task server
+- `ur sdk ...` to scaffold TS/Python headless SDK examples
 - `ur doctor` to inspect CLI health
 - `ur update` or `ur upgrade` to check for updates
 
@@ -253,11 +273,13 @@ Interactive sessions include a compact bottom status bar when stdout is a real
 terminal:
 
 ```text
-Ollama | llama3 | ask | main | update 1.30.6 available
+Ollama | llama3 | ask | main
 ```
 
-The bar is not rendered in non-interactive mode, CI, dumb terminals, or
-assistant viewer mode. Custom status-line hooks override the built-in bar.
+When a newer npm release exists, the bar appends an
+`update <version> available` segment. The bar is not rendered in
+non-interactive mode, CI, dumb terminals, or assistant viewer mode. Custom
+status-line hooks override the built-in bar.
 
 ## IDE Integration
 

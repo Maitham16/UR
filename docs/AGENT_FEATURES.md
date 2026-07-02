@@ -161,11 +161,11 @@ while keeping them project-local and manifest-backed:
 | Primitive | UR surface | Project-backed source |
 | --- | --- | --- |
 | Agent | `ur`, `ur agents`, `ur crew`, `ur bg`, `ur agent-templates` | `.ur/agents/`, `AGENTS.md`, `UR.md` |
-| Rules | `ur context-pack scan`, `ur safety`, `ur guardrails`, `/hooks` | `AGENTS.md`, `UR.md`, `.cursor/rules/*.mdc`, `.cursorrules`, `.ur/safety-policy.json`, `.ur/guardrails.json`, `.ur/hooks.json` |
+| Rules | `ur context-pack scan`, `ur safety`, `/guardrails`, `/hooks` | `AGENTS.md`, `UR.md`, `.cursor/rules/*.mdc`, `.cursorrules`, `.ur/safety-policy.json`, `.ur/guardrails.json`, `.ur/hooks.json` |
 | MCP | `ur mcp`, built-in MCP server mode, MCP tools/resources | `.mcp.json`, `.ur/mcp/`, plugin manifests |
 | Skills | `/skills`, `/create-skill`, bundled skills, plugin skills | `.ur/skills/`, user skills, plugin skill folders |
 | CLI | `ur --help`, `ur -p`, `ur exec`, `ur acp`, workflow subcommands | `package.json` scripts, `.ur/project-manifest.json`, `.ur/verify.json` |
-| Models | `ur model`, `ur model-doctor`, model router, Ollama discovery | Ollama endpoint, settings, `OLLAMA_MODEL`, model metadata cache |
+| Models | `/model`, `ur model-doctor`, model router, Ollama discovery | Ollama endpoint, settings, `OLLAMA_MODEL`, model metadata cache |
 
 ## v1.19.0 Additions
 

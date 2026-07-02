@@ -2,7 +2,6 @@ import type { LocalCommandCall } from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import {
   authAliasForProvider,
-  enableExternalBridge,
   getProviderDefinition,
   launchProviderAuth,
   PROVIDER_IDS,
@@ -65,11 +64,8 @@ async function connectProvider(provider: ProviderId, keyFlag?: string): Promise<
     if (alias === 'provider') {
       return `No official login is configured for ${provider}.`
     }
-    // Connecting is the explicit opt-in: enable the external-app bridge so the
-    // provider is usable at runtime without an environment variable.
-    const enabled = enableExternalBridge(provider)
     const result = await launchProviderAuth(alias)
-    return `${result.message}\n${enabled.message} It will run via the official ${def.displayName} CLI.`
+    return `${result.message}\nOnce logged in, ${def.displayName} runs via its official CLI. Select it with /model.`
   }
 
   if (def.envKey) {

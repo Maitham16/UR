@@ -44,7 +44,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.30.6</p>
+          <p class="eyebrow">Version 1.35.0</p>
           <h1>UR-AGENT Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-AGENT.</p>
         </div>
@@ -140,13 +140,13 @@ ur -p --output-format json "Review the current diff"</code></pre>
         </div>
         <div class="reference-grid">
           <article>
-            <h3>External app bridges</h3>
+            <h3>Subscription CLI providers</h3>
             <pre><code>ur auth chatgpt
 ur auth claude
 ur auth gemini
 ur auth antigravity
 ur provider doctor agy</code></pre>
-            <p>External app bridges are optional diagnostics only. Normal runtime selection uses API, local, OpenAI-compatible, or a real configured subscription backend; the generic subscription entry does not expose fake models and stays unavailable when no independent backend exists.</p>
+            <p>Codex CLI, Claude Code, Gemini CLI, and Antigravity are first-class providers that dispatch each turn through the vendor's official CLI using your subscription login. They are optional, never required, and never used as a silent fallback. The generic subscription entry is an internal placeholder hidden from listings and exposes no fake models.</p>
           </article>
           <article>
             <h3>API and local providers</h3>
@@ -155,11 +155,11 @@ ur config set provider openai-api
 ur config set base_url http://localhost:11434/v1
 ur config set model qwen3-coder:480b-cloud
 ur config set provider.fallback ollama</code></pre>
-            <p>API providers require explicit selection and read keys only from environment variables. Local providers include Ollama, LM Studio, llama.cpp server mode, and vLLM OpenAI-compatible server mode.</p>
+            <p>API providers require explicit selection and read keys from a key stored via <code>ur connect</code> (OS keychain) or from environment variables. Local providers include Ollama, LM Studio, llama.cpp server mode, and vLLM OpenAI-compatible server mode. Subscription CLI providers (Codex CLI, Claude Code, Gemini CLI, Antigravity) dispatch through the official vendor CLIs.</p>
           </article>
           <article>
             <h3>Status bar and updates</h3>
-            <pre><code>Ollama | llama3 | ask | main | update 1.30.6 available</code></pre>
+            <pre><code>Ollama | llama3 | ask | main | update 1.35.1 available</code></pre>
             <p>The interactive status bar shows only important runtime state: provider, model, mode, branch, active tasks, checks status when known, and update availability. It is hidden in CI, dumb terminals, and non-interactive mode.</p>
           </article>
         </div>

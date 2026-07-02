@@ -87,9 +87,12 @@ describe('documentation coverage', () => {
     expect(providers).toContain('ur provider doctor agy')
     expect(providers).toContain('`antigravity-cli` | `antigravity`, `agy`')
     expect(readme).toContain('Ollama | llama3 | ask | main')
-    expect(usage).toContain('Ollama | llama3 | ask | main | update 1.30.6 available')
-    expect(site).toContain('Version 1.30.6')
-    expect(site).toContain('update 1.30.6 available')
+    expect(usage).toContain('Ollama | llama3 | ask | main')
+    const packageVersion = JSON.parse(
+      readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
+    ).version as string
+    expect(site).toContain(`Version ${packageVersion}`)
+    expect(site).toMatch(/update \d+\.\d+\.\d+ available/)
     expect(readme).toContain('Development build detected. To update, pull latest source or install from npm.')
     expect(features).toContain('AskUserQuestion')
     expect(features).toContain('up to eight concrete options')

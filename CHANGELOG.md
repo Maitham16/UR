@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.35.0
+
+- New `ur connect` CLI command (same implementation as the `/connect` slash
+  command): `ur connect status`, `ur connect <provider>`,
+  `ur connect <provider> --key <KEY>`, and `ur connect logout <provider>`.
+  Provider doctor fix-it hints that referenced `ur connect` now work as shown.
+- `ur spec run`/`ur spec verify` now accept the documented `--kernel` flag
+  from the CLI (previously only the slash command parsed it).
+- Hidden non-functional legacy commands from `--help`: `ur setup-token`,
+  `ur auth login`, `ur auth logout`, and the native-build `ur install`
+  (no native package is published; use `ur update`).
+- Removed dead external-bridge gating code left over from pre-1.34 behavior
+  (`UR_ENABLE_EXTERNAL_APP_PROVIDERS` and the persisted opt-in list); the env
+  var was already ignored at runtime.
+- Documentation overhaul: provider/model docs now match the 1.34 first-class
+  subscription-CLI behavior everywhere; new `docs/TROUBLESHOOTING.md`;
+  README command table covers the full public CLI; static docs site updated
+  (stale `install`/`setup-token` entries replaced with `connect`, `ide`,
+  `skill`, `task`, `sandbox`, `memory`, `local-first`, `update`).
+- Removed stale duplicate docs (`docs/AGENT_UPGRADE_1.15.0.md` …
+  `1.22.0.md`, `docs/CODE_FEATURE_INVENTORY.md`); release history lives in
+  this changelog.
+- Fixed `.gitignore` ignoring itself, so ignore rules ship with the repo.
+
 ## 1.34.0
 
 - Restore the 1.30.3 subscription approach: Codex CLI, Claude Code, Gemini CLI

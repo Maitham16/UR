@@ -277,12 +277,10 @@ describe('runtime request dispatch', () => {
     expect(calls).not.toContain('gemini-api')
   })
 
-  test('external app bridge requires explicit opt-in before dispatch', async () => {
+  test('selected codex-cli dispatches through its CLI backend without an env opt-in', async () => {
     const calls: string[] = []
-    await withEnvSet({ UR_ENABLE_EXTERNAL_APP_PROVIDERS: '1' }, async () => {
-      await streamModelResponse('codex-cli', 'codex/gpt-5.5', userMessages(), {
-        clientFactory: recordingFactory(calls),
-      })
+    await streamModelResponse('codex-cli', 'codex/gpt-5.5', userMessages(), {
+      clientFactory: recordingFactory(calls),
     })
     expect(calls).toEqual(['codex-cli'])
     expect(calls).not.toContain('ollama')
@@ -464,28 +462,6 @@ function recordingFactory(calls: string[]) {
         },
       },
     } as any
-  }
-}
-
-async function withEnvSet<T>(
-  values: Record<string, string>,
-  run: () => Promise<T>,
-): Promise<T> {
-  const previous = new Map<string, string | undefined>()
-  for (const [key, value] of Object.entries(values)) {
-    previous.set(key, process.env[key])
-    process.env[key] = value
-  }
-  try {
-    return await run()
-  } finally {
-    for (const [key, value] of previous) {
-      if (value === undefined) {
-        delete process.env[key]
-      } else {
-        process.env[key] = value
-      }
-    }
   }
 }
 

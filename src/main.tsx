@@ -4168,7 +4168,11 @@ async function run(): Promise<CommanderCommand> {
   // ur auth
 
   const auth = program.command('auth').description('Manage authentication').configureHelp(createSortedHelpConfig());
-  auth.command('login').description('Sign in to your URHQ account').option('--email <email>', 'Pre-populate email address on the login page').option('--sso', 'Force SSO login flow').option('--console', 'Use URHQ Console (API usage billing) instead of UR subscription').option('--urai', 'Use UR subscription (default)').action(async ({
+  // Hidden: legacy first-party account login retained for compatibility only.
+  // Provider logins go through `ur auth <provider>` / `ur connect`.
+  auth.command('login', {
+    hidden: true
+  }).description('Sign in to your URHQ account').option('--email <email>', 'Pre-populate email address on the login page').option('--sso', 'Force SSO login flow').option('--console', 'Use URHQ Console (API usage billing) instead of UR subscription').option('--urai', 'Use UR subscription (default)').action(async ({
     email,
     sso,
     console: useConsole,
@@ -4198,7 +4202,9 @@ async function run(): Promise<CommanderCommand> {
     } = await import('./cli/handlers/auth.js');
     await authStatus(opts);
   });
-  auth.command('logout').description('Log out from your URHQ account').action(async () => {
+  auth.command('logout', {
+    hidden: true
+  }).description('Log out from your URHQ account').action(async () => {
     const {
       authLogout
     } = await import('./cli/handlers/auth.js');
@@ -4276,6 +4282,15 @@ async function run(): Promise<CommanderCommand> {
       configSetHandler
     } = await import('./cli/handlers/providers.js');
     await configSetHandler(key, value);
+  });
+
+  // Connect command - same implementation as the /connect slash command
+  program.command('connect [action] [provider]').description('Connect a provider account: subscription login (Codex, Claude, Gemini) or store an API key').option('--key <key>', 'API key to store for an API provider').option('--json', 'Output as JSON').action(async (action: string | undefined, providerArg: string | undefined, opts: {
+    key?: string;
+    json?: boolean;
+  }) => {
+    const args = [action, providerArg, opts.key ? `--key ${quoteLocalCommandArg(opts.key)}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/connect/connect.js'), args);
   });
 
   /**
@@ -4417,8 +4432,11 @@ async function run(): Promise<CommanderCommand> {
   });
   // END ANT-ONLY
 
-  // Setup token command
-  program.command('setup-token').description('Set up a long-lived authentication token (requires UR subscription)').action(async () => {
+  // Setup token command. Hidden: legacy first-party subscription token flow
+  // retained for compatibility only; not part of the public provider surface.
+  program.command('setup-token', {
+    hidden: true
+  }).description('Set up a long-lived authentication token (requires UR subscription)').action(async () => {
     const [{
       setupTokenHandler
     }, {
@@ -4664,15 +4682,16 @@ async function run(): Promise<CommanderCommand> {
     const args = [action, name, opts.objective ? `--objective ${quoteLocalCommandArg(opts.objective)}` : undefined, opts.workflow ? `--workflow ${quoteLocalCommandArg(opts.workflow)}` : undefined, opts.pattern ? `--pattern ${quoteLocalCommandArg(opts.pattern)}` : undefined, opts.note ? `--note ${quoteLocalCommandArg(opts.note)}` : undefined, opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined, opts.dryRun ? '--dry-run' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/goal/goal.js'), args);
   });
-  program.command('spec [action] [name] [phase]').alias('specs').description('Spec-driven development: scaffold requirements/design/tasks in .ur/specs and drive execution task-by-task').option('--goal <text>', 'Goal text for init').option('--all', 'Run all open tasks, not just the next one').option('--dry-run', 'Run offline without calling any model').option('--max-turns <n>', 'Max agentic turns per task when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each task (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, phase: string | undefined, opts: {
+  program.command('spec [action] [name] [phase]').alias('specs').description('Spec-driven development: scaffold requirements/design/tasks in .ur/specs and drive execution task-by-task').option('--goal <text>', 'Goal text for init').option('--all', 'Run all open tasks, not just the next one').option('--dry-run', 'Run offline without calling any model').option('--kernel', 'Run tasks through the agent kernel loop').option('--max-turns <n>', 'Max agentic turns per task when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each task (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, phase: string | undefined, opts: {
     goal?: string;
     all?: boolean;
     dryRun?: boolean;
+    kernel?: boolean;
     maxTurns?: string;
     skipPermissions?: boolean;
     json?: boolean;
   }) => {
-    const args = [action, name, phase, opts.goal ? `--goal ${quoteLocalCommandArg(opts.goal)}` : undefined, opts.all ? '--all' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const args = [action, name, phase, opts.goal ? `--goal ${quoteLocalCommandArg(opts.goal)}` : undefined, opts.all ? '--all' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.kernel ? '--kernel' : undefined, opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/spec/spec.js'), args);
   });
   program.command('escalate [action] [task...]').description('Capability-aware local model escalation: run on a fast model and auto-escalate hard work to the oracle').option('--dry-run', 'Run offline without calling any model').option('--force-oracle', 'Start on the oracle regardless of difficulty').option('--fast <model>', 'Pin the fast-tier model (policy)').option('--oracle <model>', 'Pin the oracle-tier model (policy)').option('--auto <onoff>', 'Enable/disable auto-escalation (policy): on|off').option('--max-turns <n>', 'Max agentic turns when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, task: string[] = [], opts: {
@@ -5173,7 +5192,11 @@ async function run(): Promise<CommanderCommand> {
   }
 
   // ur install
-  program.command('install [target]').description('Install UR native build. Use [target] to specify version (stable, latest, or specific version)').option('--force', 'Force installation even if already installed').action(async (target: string | undefined, options: {
+  // Hidden: the native-build installer has no published native package
+  // (MACRO.NATIVE_PACKAGE_URL is undefined in all builds). Use `ur update`.
+  program.command('install [target]', {
+    hidden: true
+  }).description('Install UR native build. Use [target] to specify version (stable, latest, or specific version)').option('--force', 'Force installation even if already installed').action(async (target: string | undefined, options: {
     force?: boolean;
   }) => {
     const {

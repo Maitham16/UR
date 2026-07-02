@@ -67,9 +67,6 @@ export type ProviderSettings = {
   baseUrl?: string
   commandPath?: string
   fallback?: ProviderId | 'disabled'
-  // External-app (subscription CLI) providers the user has explicitly connected
-  // and opted in to via `ur connect`. Persisted so the opt-in is one-time.
-  enabledExternalBridges?: ProviderId[]
 }
 
 export type ProviderDefinition = {
@@ -95,7 +92,6 @@ export type ProviderDefinition = {
   deviceLoginArgs?: string[]
   defaultBaseUrl?: string
   endpointKind?: 'ollama' | 'openai-compatible'
-  fallbackAllowed?: boolean
   unsupportedPersonalAccountMessage?: string
 }
 
@@ -651,58 +647,6 @@ export function credentialTypeLabel(type: ProviderCredentialType): string {
     case 'openai-compatible-endpoint':
       return 'OpenAI-compatible endpoint'
   }
-}
-
-export function externalAppProviderBridgeEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return env.UR_ENABLE_EXTERNAL_APP_PROVIDERS === '1'
-}
-
-/**
- * An external-app (subscription CLI) provider is usable when the env opt-in is
- * set OR the user has connected it via `ur connect` (persisted per-provider).
- */
-export function isExternalBridgeEnabled(
-  providerId: ProviderId | string,
-  env: Record<string, string | undefined> = process.env,
-  settings: SettingsJson = getInitialSettings(),
-): boolean {
-  if (externalAppProviderBridgeEnabled(env)) {
-    return true
-  }
-  const provider = resolveProviderId(providerId)
-  const enabled = (settings.provider as ProviderSettings | undefined)?.enabledExternalBridges
-  return Boolean(provider && Array.isArray(enabled) && enabled.includes(provider))
-}
-
-/**
- * Persist that the user has connected/opted in to an external-app subscription
- * provider, so it becomes usable without an environment variable.
- */
-export function enableExternalBridge(
-  providerId: ProviderId | string,
-): { ok: true; message: string } | { ok: false; message: string } {
-  const provider = resolveProviderId(providerId)
-  if (!provider) {
-    return { ok: false, message: `Unknown provider "${providerId}". Run: ur provider list` }
-  }
-  if (getProviderDefinition(provider).runtimeKind !== 'external-app') {
-    return { ok: true, message: `${provider} does not require an external-app opt-in.` }
-  }
-  const settings = getInitialSettings()
-  const current = (settings.provider as ProviderSettings | undefined)?.enabledExternalBridges ?? []
-  if (current.includes(provider)) {
-    return { ok: true, message: `${provider} is already enabled.` }
-  }
-  const result = updateSettingsForSource('userSettings', {
-    provider: {
-      ...(settings.provider ?? {}),
-      enabledExternalBridges: [...current, provider],
-    },
-  } as SettingsJson)
-  if (result.error) {
-    return { ok: false, message: `Failed to persist opt-in: ${result.error.message}` }
-  }
-  return { ok: true, message: `Enabled ${provider} for this account.` }
 }
 
 export function getProviderRuntimeKind(providerId: ProviderId | string): ProviderRuntimeKind | 'unknown' {
