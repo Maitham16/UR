@@ -15,6 +15,15 @@ UR-AGENT supports official provider access paths only:
   vendor's official CLI using your subscription login. They are optional and
   never required for normal UR runtime.
 
+Explicit API and local/server providers are UR-native: UR owns request
+shaping, native tool-call parsing, native streaming, and the UR-run Bash/File
+tool permission, sandbox, and verifier flow. Subscription CLI providers cross
+an external vendor CLI boundary instead — UR passes prompt text to the
+official CLI and receives final text output. UR-native tool calling, streaming,
+Bash/File tool execution, and sandbox guarantees apply to UR-run tools and
+final UR output, not to actions the external CLI performs internally. See
+[Provider Guide](providers.md) for the full provider capability matrix.
+
 UR-AGENT never scrapes browser sessions, extracts OAuth refresh tokens, reads
 hidden provider auth files, bypasses provider restrictions, or proxies consumer
 web sessions as APIs.
@@ -229,10 +238,46 @@ The default policy separates command behavior into read, write, execute, and
 network permission classes. It asks before destructive operations, recommends
 sandboxing for write/execute/network commands, and denies common secret-file or
 secret-like environment exfiltration patterns before broad Bash allow rules.
+Command classification parses the shell command with an AST parser and falls
+back to a conservative heuristic when parsing fails; anything it cannot
+confidently classify is routed to the normal permission prompt instead of
+being silently allowed.
 
 Run `ur safety init` to write `.ur/safety-policy.json`. Commit it only when the
 rules are safe and useful for the whole team; keep machine-local secrets and
 local settings out of Git.
+
+## Sandbox
+
+`ur sandbox` inspects the OS-level sandbox that wraps UR-run Bash/File tool
+commands:
+
+```sh
+ur sandbox status
+ur sandbox check
+ur sandbox eval "rm -rf build"
+```
+
+UR enforces this policy before running a UR Bash/File tool call, not after.
+Sandbox behavior has three modes, controlled by `sandbox.enabled` and
+`sandbox.failIfUnavailable` in settings:
+
+- **disabled** — `sandbox.enabled: false` (default). No OS-level confinement;
+  permission checks from the safety policy still apply.
+- **recommended** — `sandbox.enabled: true`, `sandbox.failIfUnavailable: false`.
+  Commands run sandboxed when OS support is available; if it is not, UR warns
+  and continues unsandboxed rather than blocking work.
+- **required** — `sandbox.enabled: true`, `sandbox.failIfUnavailable: true`.
+  UR fails closed: it refuses to start rather than run without a working
+  sandbox.
+
+OS confinement depends on platform support: `sandbox-exec` (Seatbelt) on
+macOS, or `bwrap` (bubblewrap) on Linux/WSL2. `ur sandbox check` reports
+missing dependencies for the current platform.
+
+This sandbox covers UR-run Bash/File tool commands only. For subscription CLI
+providers, it does not extend to actions the external CLI performs internally
+— see [Provider Guide](providers.md).
 
 ## Project Context Pack
 

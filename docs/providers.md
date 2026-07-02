@@ -26,27 +26,46 @@ variables only when the user explicitly selects API mode.
 
 ## Provider matrix
 
-| Provider | Access type | Provider kind | External CLI | Native tools | Native streaming | Runtime backend | Legal path |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Subscription | subscription | subscription-placeholder | no | no | no | `subscription:unconfigured` | independent subscription runtime only |
-| OpenAI API | API | UR-native | no | yes | yes | `api:openai` | `OPENAI_API_KEY` |
-| Claude API | API | UR-native | no | yes | yes | `api:anthropic` | `ANTHROPIC_API_KEY` |
-| Gemini API | API | UR-native | no | yes | yes | `api:gemini` | `GEMINI_API_KEY` |
-| OpenRouter | API/router | UR-native | no | yes | yes | `api:openrouter` | `OPENROUTER_API_KEY` |
-| Ollama | local | UR-native | no | yes | yes | `ollama` | localhost Ollama runtime |
-| LM Studio | local/server | UR-native | no | yes | yes | `openai-compatible:lmstudio` | local OpenAI-compatible server |
-| llama.cpp | local/server | UR-native | no | yes | yes | `openai-compatible:llama.cpp` | local OpenAI-compatible server |
-| vLLM | local/server | UR-native | no | yes | yes | `openai-compatible:vllm` | OpenAI-compatible server |
-| Codex CLI | subscription | subscription-cli | yes | no | no | `subscription-cli:codex` | official Codex CLI login |
-| Claude Code | subscription | subscription-cli | yes | no | no | `subscription-cli:claude-code` | official Claude Code CLI login |
-| Gemini CLI | subscription | subscription-cli | yes | no | no | `subscription-cli:gemini` | official Gemini Code Assist login |
-| Antigravity | subscription | subscription-cli | yes | no | no | `subscription-cli:antigravity` | official Antigravity CLI login, where supported |
+Concise capability matrix — provider kind, native tool calls, native streaming,
+multimodal input, external CLI boundary, and sandbox scope:
+
+| Provider | Access type | Provider kind | External CLI | Native tools | Native streaming | Multimodal input | Sandbox scope | Runtime backend | Legal path |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Subscription | subscription | subscription-placeholder | no | no | no | n/a | n/a (no runtime) | `subscription:unconfigured` | independent subscription runtime only |
+| OpenAI API | API | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:openai` | `OPENAI_API_KEY` |
+| Claude API | API | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:anthropic` | `ANTHROPIC_API_KEY` |
+| Gemini API | API | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:gemini` | `GEMINI_API_KEY` |
+| OpenRouter | API/router | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:openrouter` | `OPENROUTER_API_KEY` |
+| Ollama | local | UR-native | no | yes | yes | yes* | UR Bash/File sandbox | `ollama` | localhost Ollama runtime |
+| LM Studio | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:lmstudio` | local OpenAI-compatible server |
+| llama.cpp | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:llama.cpp` | local OpenAI-compatible server |
+| vLLM | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:vllm` | OpenAI-compatible server |
+| Codex CLI | subscription | subscription-cli | yes | no | no | no† | UR-run tools/output only† | `subscription-cli:codex` | official Codex CLI login |
+| Claude Code | subscription | subscription-cli | yes | no | no | no† | UR-run tools/output only† | `subscription-cli:claude-code` | official Claude Code CLI login |
+| Gemini CLI | subscription | subscription-cli | yes | no | no | no† | UR-run tools/output only† | `subscription-cli:gemini` | official Gemini Code Assist login |
+| Antigravity | subscription | subscription-cli | yes | no | no | no† | UR-run tools/output only† | `subscription-cli:antigravity` | official Antigravity CLI login, where supported |
+
+\* Ollama forwards images only to models that advertise vision support;
+unsupported models get a text placeholder instead of the image.
+
+† External vendor CLI boundary (see below): UR passes prompt text only to the
+official CLI, so image blocks are not forwarded, and UR-native tool/streaming/
+sandbox guarantees stop at UR-run tools and final UR output.
+
+Native tools and native streaming mean UR's own request/response loop parses
+tool calls and streams tokens for that provider. Multimodal input means UR
+preserves image content blocks (resized/normalized with `sharp`) into that
+provider's wire format instead of stripping them. Sandbox scope states what
+UR's OS-level sandbox (macOS `sandbox-exec`, Linux `bwrap`) actually covers
+for that provider — see [Sandbox](CONFIGURATION.md#sandbox) for mode
+details.
 
 ## Runtime boundary
 
 UR-native providers use UR's provider adapters and tool loop. For those
-providers, UR owns request shaping, native tool-call parsing, native streaming,
-and the UR-run Bash/File tool permission, sandbox, and verifier flow.
+providers, UR owns request shaping (including multimodal image-block mapping),
+native tool-call parsing, native streaming, and the UR-run Bash/File tool
+permission, sandbox, and verifier flow.
 
 Subscription CLI providers use a different boundary:
 

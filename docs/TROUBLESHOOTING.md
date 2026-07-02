@@ -30,13 +30,19 @@ ur --version
 
 ### Bun is missing or too old
 
-- Likely cause: UR runs through Bun; source checkouts and the GitHub install
-  path need Bun (this repository pins `bun@1.3.14`).
-- Fix: install Bun, then rerun.
+- Likely cause: UR is not Node-native. Every install path — npm, GitHub, and
+  source checkouts — executes the CLI through Bun (this repository pins
+  `bun@1.3.14`). The npm-installed `bin/ur.js` launcher starts under Node
+  only to detect Bun and re-exec into it; if Bun is missing or too old, the
+  launcher prints `UR-AGENT requires Bun ... at runtime` and exits instead of
+  falling back to Node.
+- Fix: install Bun, then rerun. Set `BUN_BIN` to an absolute Bun path if
+  `bun` is installed but not on `PATH`.
 
 ```sh
 npm install -g bun   # or: curl -fsSL https://bun.sh/install | bash
 bun --version
+ur --version
 ```
 
 ### Invalid or corrupted settings
@@ -156,12 +162,17 @@ ur -p --allowed-tools "Read,Edit,Bash(git:*)" "run the task"
 ### Permission or sandbox issues
 
 - Likely cause: the requested command is classified as write/execute/network
-  and requires approval, or sandbox dependencies are missing.
-- Fix: inspect the policy and the sandbox status.
+  and requires approval; OS sandbox dependencies (`sandbox-exec` on macOS,
+  `bwrap` on Linux/WSL2) are missing; or `sandbox.failIfUnavailable` (required
+  mode) is set and UR refused to start without a working sandbox.
+- Fix: inspect the policy and the sandbox status; install missing sandbox
+  dependencies, or relax `sandbox.enabled`/`sandbox.failIfUnavailable` in
+  settings if required mode is not intended.
 
 ```sh
 ur safety check --command "<the command>"
 ur sandbox status
+ur sandbox check
 ```
 
 ### Tests fail after an agent edit

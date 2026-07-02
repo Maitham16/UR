@@ -68,8 +68,14 @@ handing work off to other tools or agents when needed.
 
 ### Requirements
 
-- Bun. This repository is configured with `bun@1.3.14`.
-- A Node.js-compatible shell environment (Node 18+ for the npm launcher).
+- Bun `>=1.3.0` (this repository pins `bun@1.3.14`). Bun is mandatory: every
+  install path — npm, GitHub, or source checkout — runs the CLI through Bun,
+  not Node. UR-AGENT is not Node-native.
+- Node.js `>=18.18` only to start the npm-installed launcher script
+  (`bin/ur.js`), which immediately checks for Bun and re-execs into it. If Bun
+  is missing, the launcher errors out instead of falling back to Node.
+- `sharp` installs automatically as a native runtime dependency (image
+  resizing for file reads, pasted images, and multimodal provider input).
 - For the default local setup: a running Ollama app or server
   (`http://localhost:11434/api`). Any other supported provider (API key,
   OpenAI-compatible server, or subscription CLI) works without Ollama.
@@ -252,7 +258,10 @@ identity line in the system prompt reflects it too:
   for LM Studio/llama.cpp/vLLM; the native API for Ollama).
 - **Subscription CLIs** (Codex, Claude Code, Gemini, Antigravity) are external
   app bridges: selecting one dispatches the turn through the vendor's official
-  CLI using your subscription. Log in with `ur auth <provider>`.
+  CLI using your subscription. Log in with `ur auth <provider>`. UR-native
+  tool calling, UR-native streaming, UR Bash/File tool execution, and sandbox
+  guarantees apply to UR-run tools and final UR output — not to what the
+  external CLI does internally (see Provider Guide below).
 - **Subscription** access does not list fake models. If no independent
   subscription backend is configured, `/model` marks it unavailable and asks you
   to choose a connected local, server, or API provider.
@@ -502,9 +511,10 @@ settings, generated indexes, memory, logs, and secrets out of Git.
 
 ## Architecture
 
-- `bin/ur.js` is the global launcher. It reads package metadata, uses the
-  bundled `dist/cli.js` when available, and otherwise starts the TypeScript CLI
-  through Bun.
+- `bin/ur.js` is the global launcher, invoked via Node's shebang. It always
+  executes the CLI through Bun — `bun dist/cli.js` when the bundle is present,
+  otherwise `bun run` against the TypeScript entrypoint — and exits with an
+  install error if Bun is not found. Node never runs the CLI itself.
 - `src/entrypoints/cli.tsx` handles fast startup paths such as `--version`,
   A2A serving, background sessions, bridge mode, and daemon paths before loading
   the full CLI.
@@ -546,8 +556,16 @@ the permission boundary matters.
   scripts, instruction files, `.ur/verify.json`, and safety config.
 - The deep verification subagent is available through `/verify` and can be
   auto-enabled with `UR_VERIFIER_AUTO_SUBAGENT=1`.
-- OS-level sandbox support is available on macOS and Linux through UR's
-  sandbox settings.
+- UR enforces permission and sandbox policy before running UR Bash/File
+  tools, not after. Sandbox mode is `disabled` (default), `recommended`
+  (`sandbox.enabled: true`, best-effort), or `required`
+  (`sandbox.enabled: true` + `sandbox.failIfUnavailable: true`) — `required`
+  fails closed and refuses to start if OS sandbox support is unavailable.
+  OS confinement uses `sandbox-exec` (Seatbelt) on macOS or `bwrap`
+  (bubblewrap) on Linux/WSL2; see `ur sandbox status`.
+- This sandbox wraps UR-run Bash/File tool commands only. It does not extend
+  to actions a subscription CLI provider performs internally — see
+  [Provider Guide](docs/providers.md).
 - MCP servers can access external services; only enable servers you trust.
 
 See [Configuration](docs/CONFIGURATION.md), [Validation](docs/VALIDATION.md),

@@ -12,7 +12,8 @@ You need:
 - A second Ollama server on the LAN if you want to test network discovery.
 - UR installed globally (`npm install -g ur-agent`) or this repo installed
   globally (`bun add -g github:Maitham16/UR`) or a
-  local checkout (`bun run dev`).
+  local checkout (`bun run dev`). Bun is required at runtime for every path —
+  the npm launcher detects and execs Bun automatically; UR is not Node-native.
 
 ## 0. Smoke
 
