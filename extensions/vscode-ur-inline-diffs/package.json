@@ -19,7 +19,17 @@
     "onCommand:urInlineDiffs.reject",
     "onCommand:urInlineDiffs.status"
   ],
-  "main": "./extension.js",
+  "main": "./out/extension.js",
+  "scripts": {
+    "build": "node esbuild.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.92.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.7.0"
+  },
   "contributes": {
     "viewsContainers": {
       "activitybar": [

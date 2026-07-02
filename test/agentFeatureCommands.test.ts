@@ -293,7 +293,7 @@ describe('agent feature commands', () => {
       ),
     )
     expect(manifest.name).toBe('ur-inline-diffs')
-    expect(manifest.main).toBe('./extension.js')
+    expect(manifest.main).toBe('./out/extension.js')
     const commands = manifest.contributes.commands.map((command: { command: string }) => command.command)
     expect(commands).toContain('urInlineDiffs.open')
     expect(commands).toContain('urInlineDiffs.comment')
@@ -309,7 +309,7 @@ describe('agent feature commands', () => {
       expect(existsSync(vsixPath)).toBe(true)
       const files = unzipSync(new Uint8Array(readFileSync(vsixPath)))
       expect(files['extension/package.json']).toBeDefined()
-      expect(files['extension/extension.js']).toBeDefined()
+      expect(files['extension/out/extension.js']).toBeDefined()
       expect(files['extension.vsixmanifest']).toBeDefined()
       const manifest = JSON.parse(
         Buffer.from(files['extension/package.json']!).toString('utf8'),
