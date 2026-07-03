@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.37.4
+
+- Version bump: align package, build macro, VS Code extension, docs eyebrow, and
+  changelog for the 1.37.4 patch release.
+
 ## 1.37.3
 
 - Version bump: align package, build macro, VS Code extension, docs eyebrow, and
