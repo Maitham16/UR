@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   discoverAuthorizationServerMetadata,
   discoverOAuthServerInfo,

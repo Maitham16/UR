@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { ValidationResult } from 'src/Tool.js'
 import { isURSettingsPath } from '../permissions/filesystem.js'
 import { validateSettingsFileContent } from './validation.js'
@@ -34,7 +33,7 @@ export function validateInputForSettingsFileEdit(
   const updatedContent = getUpdatedContent()
   const afterValidation = validateSettingsFileContent(updatedContent)
 
-  if (!afterValidation.isValid) {
+  if (afterValidation.isValid === false) {
     return {
       result: false,
       message: `UR settings.json validation failed after edit:\n${afterValidation.error}\n\nFull schema:\n${afterValidation.fullSchema}\nIMPORTANT: Do not update the env unless explicitly instructed to do so.`,

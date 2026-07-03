@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Utility for persisting large tool results to disk instead of truncating them.
  */

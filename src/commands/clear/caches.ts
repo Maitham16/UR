@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Session cache clearing utilities.
  * This module is imported at startup by main.tsx, so keep imports minimal.

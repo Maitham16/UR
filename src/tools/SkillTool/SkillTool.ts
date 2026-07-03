@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle'
 import type { ToolResultBlockParam } from '@urhq-ai/sdk/resources/index.mjs'
 import uniqBy from 'lodash-es/uniqBy.js'

@@ -119,7 +119,7 @@ export function checkCachedPassesEligibility(): {
   const needsRefresh = now - timestamp > CACHE_EXPIRATION_MS
 
   return {
-    eligible,
+    eligible: Boolean(eligible),
     needsRefresh,
     hasCache: true,
   }

@@ -4,6 +4,11 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  missingRequiredPackageFiles,
+  releasePathViolations,
+  tarballPaths,
+} from './release-hygiene.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const nodeBin = process.env.NODE_BIN || 'node'
@@ -53,6 +58,7 @@ function packPackage(workDir) {
       encoding: 'utf8',
       env: {
         ...process.env,
+        npm_config_dry_run: 'false',
         npm_config_cache: join(workDir, 'npm-cache'),
       },
     },
@@ -69,6 +75,19 @@ function extractPackage(tarball, workDir) {
   execFileSync('mkdir', ['-p', extractDir])
   execFileSync('tar', ['-xzf', tarball, '-C', extractDir])
   return join(extractDir, 'package')
+}
+
+function checkPackageContents(tarball) {
+  const paths = tarballPaths(tarball)
+  const forbidden = releasePathViolations(paths)
+  for (const violation of forbidden) {
+    fail(`packed package includes forbidden release artifact: ${violation}`)
+  }
+
+  const missing = missingRequiredPackageFiles(paths)
+  for (const path of missing) {
+    fail(`packed package is missing required runtime file: ${path}`)
+  }
 }
 
 function runPackagedBin(packageRoot, args) {
@@ -97,6 +116,7 @@ function main() {
   const workDir = mkdtempSync(join(tmpdir(), 'ur-agent-package-check-'))
   try {
     const tarball = packPackage(workDir)
+    checkPackageContents(tarball)
     const packageRoot = extractPackage(tarball, workDir)
     const sourcePackage = readJson(join(root, 'package.json'))
     const packedPackage = readJson(join(packageRoot, 'package.json'))

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Extracts durable memories from the current session transcript
  * and writes them to the auto-memory directory (~/.ur/projects/<path>/memory/).
@@ -39,7 +38,6 @@ import { REPL_TOOL_NAME } from '../../tools/REPLTool/constants.js'
 import type {
   AssistantMessage,
   Message,
-  SystemLocalCommandMessage,
   SystemMessage,
 } from '../../types/message.js'
 import { createAbortController } from '../../utils/abortController.js'
@@ -273,9 +271,7 @@ function extractWrittenPaths(agentMessages: Message[]): string[] {
 // Initialization & Closure-scoped State
 // ============================================================================
 
-type AppendSystemMessageFn = (
-  msg: Exclude<SystemMessage, SystemLocalCommandMessage>,
-) => void
+type AppendSystemMessageFn = (msg: SystemMessage) => void
 
 /** The active extractor function, set by initExtractMemories(). */
 let extractor:

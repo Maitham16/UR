@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNotifications } from 'src/context/notifications.js';
@@ -493,7 +492,7 @@ export function useTypeahead({
   // subsequent tests in the shard. The subscriber still registers so
   // fileSuggestions tests that trigger a refresh directly work correctly.
   useEffect(() => {
-    if ("production" !== 'test') {
+    if (true) {
       startBackgroundCacheRefresh();
     }
     return onIndexBuildComplete(() => {

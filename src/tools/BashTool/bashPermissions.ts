@@ -1771,11 +1771,20 @@ export async function bashToolHasPermission(
     astRoot = null
   }
 
+  const autonomousSafetyMode =
+    appState.toolPermissionContext.mode === 'auto' ||
+    appState.toolPermissionContext.mode === 'dontAsk' ||
+    appState.toolPermissionContext.shouldAvoidPermissionPrompts === true
   const safetyEvaluation: ShellSafetyEvaluation = evaluateShellSafetyPolicy(
     input.command,
     getCwd(),
     {
       dangerouslyDisableSandbox: input.dangerouslyDisableSandbox,
+      autonomousMode: autonomousSafetyMode,
+      unsafeMode:
+        input.dangerouslyDisableSandbox === true &&
+        SandboxManager.areUnsandboxedCommandsAllowed(),
+      sandboxAvailable: SandboxManager.isSandboxingEnabled(),
     },
   )
   if (safetyEvaluation.behavior === 'deny') {

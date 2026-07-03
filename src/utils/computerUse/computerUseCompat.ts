@@ -43,14 +43,19 @@ export type ComputerUseAPI = Record<string, any>
 export const DEFAULT_GRANT_FLAGS = {}
 export const API_RESIZE_PARAMS = {}
 
-export function targetImageSize(width: number, height: number): {
-  width: number
-  height: number
-} {
-  return { width, height }
+export function targetImageSize(
+  width: number,
+  height: number,
+  _params?: unknown,
+): [number, number] {
+  return [width, height]
 }
 
-export function bindSessionContext(): (
+export function bindSessionContext(
+  _hostAdapter?: unknown,
+  _coordinateMode?: unknown,
+  _ctx?: unknown,
+): (
   name: string,
   args: unknown,
 ) => Promise<CuCallToolResult> {
@@ -65,7 +70,10 @@ export function bindSessionContext(): (
   })
 }
 
-export function buildComputerUseTools(): Array<{ name: string }> {
+export function buildComputerUseTools(
+  _capabilities?: unknown,
+  _coordinateMode?: unknown,
+): Array<{ name: string }> {
   return []
 }
 

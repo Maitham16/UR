@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { execa } from 'execa'
 import memoize from 'lodash-es/memoize.js'
 import { getSessionId } from '../bootstrap/state.js'

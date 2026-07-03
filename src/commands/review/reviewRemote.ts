@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Teleported /ultrareview execution. Creates a CCR session with the current repo,
  * sends the review prompt as the initial message, and registers a

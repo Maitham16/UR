@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { BetaToolUseBlock } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import type { ToolResultBlockParam } from '@urhq-ai/sdk/resources/messages/messages.mjs'
 import type { Tools } from '../Tool.js'
@@ -111,7 +110,10 @@ export function applyGrouping(
           content.type === 'tool_result' &&
           groupedToolUseIds.has(content.tool_use_id)
         ) {
-          resultsByToolUseId.set(content.tool_use_id, msg)
+          resultsByToolUseId.set(
+            content.tool_use_id,
+            msg as NormalizedUserMessage,
+          )
         }
       }
     }

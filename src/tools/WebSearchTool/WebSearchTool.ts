@@ -1,7 +1,5 @@
-// @ts-nocheck
 import type {
   BetaContentBlock,
-  BetaWebSearchTool20250305,
 } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
@@ -23,6 +21,14 @@ import {
   renderToolUseMessage,
   renderToolUseProgressMessage,
 } from './UI.js'
+
+type BetaWebSearchTool20250305 = {
+  type: 'web_search_20250305'
+  name: 'web_search'
+  allowed_domains?: string[]
+  blocked_domains?: string[]
+  max_uses?: number
+}
 
 const inputSchema = lazySchema(() =>
   z.strictObject({

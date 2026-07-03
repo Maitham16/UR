@@ -1,4 +1,3 @@
-// @ts-nocheck
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import {
   logEvent,
@@ -466,6 +465,7 @@ export type Attachment =
       /** Path relative to CWD at creation time, for stable display */
       displayPath: string
     }
+
   | {
       type: 'selected_lines_in_ide'
       ideName: string
@@ -716,6 +716,10 @@ export type Attachment =
       warningCount: number
       sample: string
     }
+
+function isAttachment(value: unknown): value is Attachment {
+  return typeof value === 'object' && value !== null && 'type' in value
+}
 
 export type TeammateMailboxAttachment = {
   type: 'teammate_mailbox'
@@ -1000,7 +1004,7 @@ export async function getAttachments(
     ...userAttachmentResults.flat(),
     ...threadAttachmentResults.flat(),
     ...mainThreadAttachmentResults.flat(),
-  ].filter(a => a !== undefined && a !== null)
+  ].filter(isAttachment)
 }
 
 async function maybe<A>(label: string, f: () => Promise<A[]>): Promise<A[]> {

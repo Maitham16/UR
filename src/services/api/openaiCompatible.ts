@@ -12,6 +12,10 @@ import {
   createOpenAISSEMessageStream,
   mergeAbortSignals,
 } from './streamingAdapters.js'
+import {
+  fetchWithProviderReliability,
+  normalizeOpenAICompatibleBaseUrl,
+} from './providerHttp.js'
 
 type URHQClient = {
   beta: { messages: any }
@@ -36,28 +40,31 @@ export async function createOpenAICompatibleClient(
     maxRetries?: number
   },
 ): Promise<URHQClient> {
-  const endpoint = `${options.baseUrl.replace(/\/$/, '')}/chat/completions`
+  const endpoint = normalizeOpenAICompatibleBaseUrl(options.baseUrl)
+  const maxRetries = options.maxRetries
 
   async function doRequest(params: any, requestOptions?: any) {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.apiKey
-          ? { Authorization: `Bearer ${options.apiKey}` }
-          : {}),
-        ...(requestOptions?.headers ?? {}),
+    const response = await fetchWithProviderReliability(
+      endpoint,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.apiKey
+            ? { Authorization: `Bearer ${options.apiKey}` }
+            : {}),
+          ...(requestOptions?.headers ?? {}),
+        },
+        body: JSON.stringify(toOpenAICompatibleRequest(params)),
       },
-      body: JSON.stringify(toOpenAICompatibleRequest(params)),
-      signal: requestOptions?.signal,
-    })
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '')
-      throw new Error(
-        `OpenAI-compatible request failed for ${endpoint} (${response.status}): ${body || response.statusText}`,
-      )
-    }
+      {
+        maxRetries,
+        timeoutMs: requestOptions?.timeoutMs,
+        signal: requestOptions?.signal,
+        failureMessage: (response, body) =>
+          `OpenAI-compatible request failed for ${endpoint} (${response.status}): ${body || response.statusText}`,
+      },
+    )
 
     const data = await response.json()
     return {
@@ -69,25 +76,27 @@ export async function createOpenAICompatibleClient(
   async function doStream(params: any, requestOptions?: any, controller?: AbortController) {
     const streamController = controller ?? new AbortController()
     const signal = mergeAbortSignals([requestOptions?.signal, streamController.signal])
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.apiKey
-          ? { Authorization: `Bearer ${options.apiKey}` }
-          : {}),
-        ...(requestOptions?.headers ?? {}),
+    const response = await fetchWithProviderReliability(
+      endpoint,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.apiKey
+            ? { Authorization: `Bearer ${options.apiKey}` }
+            : {}),
+          ...(requestOptions?.headers ?? {}),
+        },
+        body: JSON.stringify(toOpenAICompatibleRequest({ ...params, stream: true })),
       },
-      body: JSON.stringify(toOpenAICompatibleRequest({ ...params, stream: true })),
-      signal,
-    })
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '')
-      throw new Error(
-        `OpenAI-compatible streaming request failed for ${endpoint} (${response.status}): ${body || response.statusText}`,
-      )
-    }
+      {
+        maxRetries,
+        timeoutMs: requestOptions?.timeoutMs,
+        signal,
+        failureMessage: (response, body) =>
+          `OpenAI-compatible streaming request failed for ${endpoint} (${response.status}): ${body || response.statusText}`,
+      },
+    )
 
     const requestId =
       response.headers.get('x-request-id') ??

@@ -1376,7 +1376,7 @@ export const EMPTY_STRING_SET: ReadonlySet<string> = Object.freeze(
  * `AssistantMessage | NormalizedUserMessage`.
  */
 export function buildSubagentLookups(
-  messages: { message: AssistantMessage | NormalizedUserMessage }[],
+  messages: { message: NormalizedMessage }[],
 ): { lookups: MessageLookups; inProgressToolUseIDs: Set<string> } {
   const toolUseByToolUseID = new Map<string, ToolUseBlockParam>()
   const resolvedToolUseIDs = new Set<string>()

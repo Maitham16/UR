@@ -4,7 +4,6 @@
  * each request/response matches the target wire format.
  */
 
-import axios from 'axios'
 import { randomUUID } from 'crypto'
 import { getProviderFamily } from '../providers/providerRegistry.js'
 import {
@@ -22,10 +21,13 @@ import {
   ProviderResponseParseError,
 } from './providerClient.js'
 import {
+  axiosPostWithProviderReliability,
+  normalizeProviderEndpoint,
+} from './providerHttp.js'
+import {
   createAnthropicSSEMessageStream,
   createGeminiSSEMessageStream,
   createOpenAISSEMessageStream,
-  getProviderRequestTimeoutMs,
   mergeAbortSignals,
 } from './streamingAdapters.js'
 
@@ -42,22 +44,29 @@ export async function createStandardAPIClient(options: {
   model?: string
   baseUrl?: string
 }): Promise<URHQClient> {
-  const { providerId, apiKey, baseUrl } = options
+  const { providerId, apiKey, baseUrl, maxRetries } = options
   const family = getProviderFamily(providerId)
 
   async function doRequest(params: any, requestOptions?: any) {
     const endpoint = getAPIEndpoint(family, baseUrl, params.model, false)
     const clientRequestId = params?.headers?.['x-client-request-id']
-    const response = await axios.post(endpoint, buildAPIRequest(family, params), {
-      headers: {
-        'Content-Type': 'application/json',
-        ...buildAuthHeaders(family, apiKey, params),
-        ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
-        ...(requestOptions?.headers ?? {}),
+    const response = await axiosPostWithProviderReliability(
+      endpoint,
+      buildAPIRequest(family, params),
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildAuthHeaders(family, apiKey, params),
+          ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
+          ...(requestOptions?.headers ?? {}),
+        },
       },
-      timeout: getProviderRequestTimeoutMs(),
-      signal: requestOptions?.signal,
-    })
+      {
+        maxRetries,
+        timeoutMs: requestOptions?.timeoutMs,
+        signal: requestOptions?.signal,
+      },
+    )
     return { response, data: parseAPIResponse(family, response.data, params.model) }
   }
 
@@ -66,7 +75,7 @@ export async function createStandardAPIClient(options: {
     const streamController = controller ?? new AbortController()
     const signal = mergeAbortSignals([requestOptions?.signal, streamController.signal])
     const clientRequestId = params?.headers?.['x-client-request-id']
-    const response = await axios.post(
+    const response = await axiosPostWithProviderReliability(
       endpoint,
       buildAPIRequest(family, { ...params, stream: true }),
       {
@@ -76,8 +85,11 @@ export async function createStandardAPIClient(options: {
           ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
           ...(requestOptions?.headers ?? {}),
         },
-        timeout: getProviderRequestTimeoutMs(),
         responseType: 'stream',
+      },
+      {
+        maxRetries,
+        timeoutMs: requestOptions?.timeoutMs,
         signal,
       },
     )
@@ -140,9 +152,17 @@ function getAPIEndpoint(
 ): string {
   switch (family) {
     case 'openai':
-      return baseUrl ?? 'https://api.openai.com/v1/chat/completions'
+      return normalizeProviderEndpoint(
+        baseUrl,
+        'https://api.openai.com/v1',
+        '/chat/completions',
+      )
     case 'anthropic':
-      return baseUrl ?? 'https://api.anthropic.com/v1/messages'
+      return normalizeProviderEndpoint(
+        baseUrl,
+        'https://api.anthropic.com/v1',
+        '/messages',
+      )
     case 'google': {
       const root = baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta'
       const method = stream ? 'streamGenerateContent?alt=sse' : 'generateContent'

@@ -1,5 +1,4 @@
-// @ts-nocheck
-import { type StructuredPatchHunk, structuredPatch } from 'diff'
+import { type Hunk, type PatchOptions, structuredPatch } from 'diff'
 import { logError } from 'src/utils/log.js'
 import { expandPath } from 'src/utils/path.js'
 import { countCharInString } from 'src/utils/stringUtils.js'
@@ -244,7 +243,7 @@ export function getPatchForEdit({
   oldString: string
   newString: string
   replaceAll?: boolean
-}): { patch: StructuredPatchHunk[]; updatedFile: string } {
+}): { patch: Hunk[]; updatedFile: string } {
   return getPatchForEdits({
     filePath,
     fileContents,
@@ -268,7 +267,7 @@ export function getPatchForEdits({
   filePath: string
   fileContents: string
   edits: FileEdit[]
-}): { patch: StructuredPatchHunk[]; updatedFile: string } {
+}): { patch: Hunk[]; updatedFile: string } {
   let updatedFile = fileContents
   const appliedNewStrings: string[] = []
 
@@ -364,6 +363,10 @@ export function getSnippetForTwoFileDiff(
   fileAContents: string,
   fileBContents: string,
 ): string {
+  const patchOptions: PatchOptions & { timeout?: number } = {
+    context: 8,
+    timeout: DIFF_TIMEOUT_MS,
+  }
   const patch = structuredPatch(
     'file.txt',
     'file.txt',
@@ -371,10 +374,7 @@ export function getSnippetForTwoFileDiff(
     fileBContents,
     undefined,
     undefined,
-    {
-      context: 8,
-      timeout: DIFF_TIMEOUT_MS,
-    },
+    patchOptions,
   )
 
   if (!patch) {
@@ -382,12 +382,12 @@ export function getSnippetForTwoFileDiff(
   }
 
   const full = patch.hunks
-    .map(_ => ({
-      startLine: _.oldStart,
-      content: _.lines
+    .map(hunk => ({
+      startLine: hunk.oldStart,
+      content: hunk.lines
         // Filter out deleted lines AND diff metadata lines
-        .filter(_ => !_.startsWith('-') && !_.startsWith('\\'))
-        .map(_ => _.slice(1))
+        .filter(line => !line.startsWith('-') && !line.startsWith('\\'))
+        .map(line => line.slice(1))
         .join('\n'),
     }))
     .map(addLineNumbers)
@@ -416,7 +416,7 @@ const CONTEXT_LINES = 4
  * @returns The snippet text with line numbers and the starting line number
  */
 export function getSnippetForPatch(
-  patch: StructuredPatchHunk[],
+  patch: Hunk[],
   newFile: string,
 ): { formattedSnippet: string; startLine: number } {
   if (patch.length === 0) {
@@ -493,7 +493,7 @@ export function getSnippet(
   return { snippet, startLine: startLine + 1 }
 }
 
-export function getEditsForPatch(patch: StructuredPatchHunk[]): FileEdit[] {
+export function getEditsForPatch(patch: Hunk[]): FileEdit[] {
   return patch.map(hunk => {
     // Extract the changes from this hunk
     const contextLines: string[] = []
@@ -684,10 +684,10 @@ export function areFileEditsEquivalent(
   }
 
   // Try applying both sets of edits
-  let result1: { patch: StructuredPatchHunk[]; updatedFile: string } | null =
+  let result1: { patch: Hunk[]; updatedFile: string } | null =
     null
   let error1: string | null = null
-  let result2: { patch: StructuredPatchHunk[]; updatedFile: string } | null =
+  let result2: { patch: Hunk[]; updatedFile: string } | null =
     null
   let error2: string | null = null
 

@@ -1,6 +1,5 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle'
-import type URHQ from '@urhq-ai/sdk'
+import type { URHQ } from '@urhq-ai/sdk'
 import type { BetaToolUnion } from '@urhq-ai/sdk/resources/beta/messages.js'
 import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Eligibility check for remote managed settings.
  *

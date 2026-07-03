@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as React from 'react';
 import type { z } from 'zod/v4';
 import { MessageResponse } from '../../components/MessageResponse.js';

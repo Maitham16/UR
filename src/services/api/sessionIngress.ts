@@ -65,6 +65,13 @@ async function appendSessionLogImpl(
   url: string,
   headers: Record<string, string>,
 ): Promise<boolean> {
+  const entryUuid = entry.uuid
+  if (!entryUuid) {
+    logForDebugging(`Skipping session log entry without uuid for session ${sessionId}`)
+    logForDiagnosticsNoPII('error', 'session_persist_fail_missing_uuid')
+    return false
+  }
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const lastUuid = lastUuidMap.get(sessionId)
@@ -79,7 +86,7 @@ async function appendSessionLogImpl(
       })
 
       if (response.status === 200 || response.status === 201) {
-        lastUuidMap.set(sessionId, entry.uuid)
+        lastUuidMap.set(sessionId, entryUuid)
         logForDebugging(
           `Successfully persisted session log entry for session ${sessionId}`,
         )
@@ -91,11 +98,11 @@ async function appendSessionLogImpl(
         // This handles the scenario where entry was stored but client received an error
         // response, causing lastUuidMap to be stale
         const serverLastUuid = headerString(response.headers['x-last-uuid'])
-        if (serverLastUuid === entry.uuid) {
+        if (serverLastUuid === entryUuid) {
           // Our entry IS the last entry on server - it was stored successfully previously
-          lastUuidMap.set(sessionId, entry.uuid)
+          lastUuidMap.set(sessionId, entryUuid)
           logForDebugging(
-            `Session entry ${entry.uuid} already present on server, recovering from stale state`,
+            `Session entry ${entryUuid} already present on server, recovering from stale state`,
           )
           logForDiagnosticsNoPII('info', 'session_persist_recovered_from_409')
           return true
@@ -107,7 +114,7 @@ async function appendSessionLogImpl(
         if (serverLastUuid) {
           lastUuidMap.set(sessionId, String(serverLastUuid))
           logForDebugging(
-            `Session 409: adopting server lastUuid=${serverLastUuid} from header, retrying entry ${entry.uuid}`,
+            `Session 409: adopting server lastUuid=${serverLastUuid} from header, retrying entry ${entryUuid}`,
           )
         } else {
           // Server didn't return x-last-uuid (e.g. v1 endpoint). Re-fetch
@@ -117,7 +124,7 @@ async function appendSessionLogImpl(
           if (adoptedUuid) {
             lastUuidMap.set(sessionId, adoptedUuid)
             logForDebugging(
-              `Session 409: re-fetched ${logs!.length} entries, adopting lastUuid=${adoptedUuid}, retrying entry ${entry.uuid}`,
+              `Session 409: re-fetched ${logs!.length} entries, adopting lastUuid=${adoptedUuid}, retrying entry ${entryUuid}`,
             )
           } else {
             // Can't determine server state — give up

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { ProviderResponseParseError } from './providerClient.js'
+export { getProviderRequestTimeoutMs } from './providerHttp.js'
 
 type Usage = {
   input_tokens: number
@@ -28,13 +29,6 @@ function normalizeUsage(usage: any = {}): Usage {
     ...EMPTY_USAGE,
     ...usage,
   }
-}
-
-export function getProviderRequestTimeoutMs(): number {
-  const raw = process.env.API_TIMEOUT_MS ?? process.env.UR_API_TIMEOUT_MS
-  if (!raw) return 0
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
 }
 
 export function mergeAbortSignals(signals: Array<AbortSignal | undefined>): AbortSignal | undefined {

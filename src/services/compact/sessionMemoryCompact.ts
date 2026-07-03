@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * EXPERIMENT: Session memory compaction
  */

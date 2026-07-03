@@ -1,6 +1,6 @@
 // Stub: not included in leaked source
 export interface AnyZodRawShape {}
-export interface EffortLevel {}
+export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
 export interface ForkSessionOptions {}
 export interface ForkSessionResult {}
 export interface GetSessionInfoOptions {}

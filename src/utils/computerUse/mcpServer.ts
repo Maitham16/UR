@@ -26,7 +26,7 @@ const APP_ENUM_TIMEOUT_MS = 1000
 async function tryGetInstalledAppNames(): Promise<string[] | undefined> {
   const adapter = getComputerUseHostAdapter()
   const enumP = adapter.executor.listInstalledApps()
-  let timer: ReturnType<typeof setTimeout> | undefined
+  let timer: number | undefined
   const timeoutP = new Promise<undefined>(resolve => {
     timer = setTimeout(resolve, APP_ENUM_TIMEOUT_MS, undefined)
   })

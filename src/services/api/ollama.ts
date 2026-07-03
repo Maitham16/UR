@@ -387,6 +387,10 @@ function toOllamaChatRequest(
   return request
 }
 
+type OllamaSystemContentBlock = NonNullable<
+  Exclude<BetaMessageStreamParams['system'], string>
+>[number]
+
 function systemToText(system: BetaMessageStreamParams['system']): string {
   if (!system) {
     return ''
@@ -394,7 +398,7 @@ function systemToText(system: BetaMessageStreamParams['system']): string {
   if (typeof system === 'string') {
     return system
   }
-  return system.map(block => block.text).join('\n\n')
+  return system.map((block: OllamaSystemContentBlock) => block.text).join('\n\n')
 }
 
 function messagesToOllama(
@@ -1207,7 +1211,7 @@ function messageToTokenText(message: MessageParam): string {
     return content
   }
   return content
-    .map(block => {
+    .map((block: Exclude<MessageParam['content'], string>[number]) => {
       switch (block.type) {
         case 'text':
           return block.text

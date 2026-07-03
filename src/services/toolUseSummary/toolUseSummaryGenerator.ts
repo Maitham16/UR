@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Tool Use Summary Generator
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { APIError } from '@urhq-ai/sdk'
 import type { MessageParam } from '@urhq-ai/sdk/resources/index.mjs'
 import isEqual from 'lodash-es/isEqual.js'
@@ -207,15 +206,14 @@ async function makeTestQuery() {
   const messages: MessageParam[] = [{ role: 'user', content: 'quota' }]
   const betas = getModelBetas(model)
   // biome-ignore lint/plugin: quota check needs raw response access via asResponse()
-  return urhq.beta.messages
-    .create({
+  const response = await urhq.beta.messages.create({
       model,
       max_tokens: 1,
       messages,
       metadata: getAPIMetadata(),
       ...(betas.length > 0 ? { betas } : {}),
     })
-    .asResponse()
+  return response.asResponse()
 }
 
 export async function checkQuotaStatus(): Promise<void> {

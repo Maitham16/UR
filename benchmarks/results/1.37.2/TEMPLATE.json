@@ -1,0 +1,43 @@
+{
+  "$schema": "../../result.schema.json",
+  "schemaVersion": 1,
+  "template": true,
+  "agent": {
+    "name": "ur-agent",
+    "version": "1.37.2",
+    "commit": null
+  },
+  "date": "replace-with-run-date",
+  "benchmark": {
+    "name": "replace-with-benchmark-name",
+    "category": "internal-regression",
+    "taskCount": null
+  },
+  "runtime": {
+    "provider": "replace-with-provider",
+    "model": "replace-with-model",
+    "environment": {
+      "platform": "replace-with-platform",
+      "arch": "replace-with-arch",
+      "node": "replace-with-node-version",
+      "bun": "replace-with-bun-version",
+      "cwd": "replace-with-working-directory"
+    }
+  },
+  "results": {
+    "passed": null,
+    "failed": null,
+    "passRate": null,
+    "taskResults": [],
+    "failedTasks": [],
+    "failureCategories": {},
+    "wallTimeMs": null,
+    "tokenUsage": null,
+    "costUSD": null
+  },
+  "reproduction": {
+    "command": "replace-with-command-used-to-run-the-benchmark",
+    "inputReport": null,
+    "generatedBy": "scripts/benchmark-report.mjs"
+  }
+}

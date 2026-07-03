@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { querymodelH } from '../../services/api/ur.js'
 import type { Message } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'

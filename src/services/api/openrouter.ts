@@ -3,7 +3,6 @@
  * OpenRouter provides access to multiple models through a single API.
  */
 
-import axios from 'axios'
 import { randomUUID } from 'crypto'
 import {
   mapOpenAIToolChoice,
@@ -13,9 +12,9 @@ import {
 } from './openaiCompatible.js'
 import {
   createOpenAISSEMessageStream,
-  getProviderRequestTimeoutMs,
   mergeAbortSignals,
 } from './streamingAdapters.js'
+import { axiosPostWithProviderReliability } from './providerHttp.js'
 
 type URHQClient = {
   beta: { messages: any }
@@ -35,7 +34,7 @@ export async function createOpenRouterClient(
     const clientRequestId = params?.headers?.['x-client-request-id']
     const tools = toOpenAITools(params.tools)
 
-    const response = await axios.post(
+    const response = await axiosPostWithProviderReliability<any>(
       `${OPENROUTER_BASE}/chat/completions`,
       {
         model: params.model,
@@ -56,9 +55,12 @@ export async function createOpenRouterClient(
           ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
           ...(requestOptions?.headers ?? {}),
         },
-        timeout: getProviderRequestTimeoutMs(),
+      },
+      {
+        maxRetries,
+        timeoutMs: requestOptions?.timeoutMs,
         signal: requestOptions?.signal,
-      }
+      },
     )
 
     const data = response.data
@@ -78,7 +80,7 @@ export async function createOpenRouterClient(
     const streamController = controller ?? new AbortController()
     const signal = mergeAbortSignals([requestOptions?.signal, streamController.signal])
 
-    const response = await axios.post(
+    const response = await axiosPostWithProviderReliability<any>(
       `${OPENROUTER_BASE}/chat/completions`,
       {
         model: params.model,
@@ -99,8 +101,11 @@ export async function createOpenRouterClient(
           ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
           ...(requestOptions?.headers ?? {}),
         },
-        timeout: getProviderRequestTimeoutMs(),
         responseType: 'stream',
+      },
+      {
+        maxRetries,
+        timeoutMs: requestOptions?.timeoutMs,
         signal,
       },
     )

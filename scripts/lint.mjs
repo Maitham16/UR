@@ -22,6 +22,32 @@ const skipPrefixes = [
 const codeExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'])
 const jsonExtensions = new Set(['.json', '.jsonc'])
 const yamlExtensions = new Set(['.yaml', '.yml'])
+const coreRuntimePrefixes = [
+  'src/services/',
+  'src/tools/',
+  'src/utils/',
+  'src/commands/',
+  'src/hooks/',
+]
+// Staged TS migration baseline. These are pre-existing legacy/UI-heavy
+// suppressions outside tsconfig.strict-core.json; this number should only go
+// down as files are migrated.
+const coreTsNoCheckBaseline = 124
+let coreTsNoCheckCount = 0
+let strictCoreFiles = new Set()
+
+try {
+  const strictConfig = parseJsonc(
+    readFileSync(path.join(root, 'tsconfig.strict-core.json'), 'utf8'),
+    [],
+    { allowTrailingComma: true, disallowComments: false },
+  )
+  strictCoreFiles = new Set(
+    (strictConfig?.files ?? []).map(file => normalizePath(String(file))),
+  )
+} catch {
+  strictCoreFiles = new Set()
+}
 
 /** @type {{ file: string, line: number, column: number, rule: string, message: string }[]} */
 const issues = []
@@ -84,6 +110,25 @@ function checkConflictMarkers(file, text) {
     if (/^(<<<<<<<|=======|>>>>>>>)(?:\s|$)/.test(lines[index] ?? '')) {
       addIssue(file, index + 1, 1, 'no-merge-conflict-markers', 'merge conflict marker found')
     }
+  }
+}
+
+function checkTsNoCheck(file, text) {
+  if (!text.includes('@ts-nocheck')) return
+  const normalized = normalizePath(file)
+  const isCoreRuntime = coreRuntimePrefixes.some(prefix =>
+    normalized.startsWith(prefix),
+  )
+  if (!isCoreRuntime) return
+  coreTsNoCheckCount += 1
+  if (strictCoreFiles.has(normalized)) {
+    addIssue(
+      file,
+      1,
+      1,
+      'no-core-ts-nocheck',
+      '@ts-nocheck is forbidden in strict-core runtime files',
+    )
   }
 }
 
@@ -192,9 +237,20 @@ for (const file of listCandidateFiles()) {
 
   const text = readFileSync(absolute, 'utf8')
   checkConflictMarkers(file, text)
+  if (codeExtensions.has(ext)) checkTsNoCheck(file, text)
   if (codeExtensions.has(ext)) checkCode(file, text)
   if (jsonExtensions.has(ext)) checkJson(file, text)
   if (yamlExtensions.has(ext)) checkYaml(file, text)
+}
+
+if (coreTsNoCheckCount > coreTsNoCheckBaseline) {
+  addIssue(
+    'tsconfig.strict-core.json',
+    1,
+    1,
+    'no-new-core-ts-nocheck',
+    `core @ts-nocheck count increased to ${coreTsNoCheckCount}; baseline is ${coreTsNoCheckBaseline}`,
+  )
 }
 
 issues.sort((a, b) =>

@@ -23,6 +23,19 @@ npm pack --dry-run
 npm publish --dry-run
 ```
 
+If publishing or attaching a source archive, verify the actual zip artifact
+before release:
+
+```bash
+bun run release:create-source-zip
+bun run release:check-source-zip -- artifacts/source/ur-agent-$(node -p "require('./package.json').version")-source.zip
+```
+
+The source zip must contain source inputs such as `package.json`, `bun.lock`,
+`src/`, `bin/`, `scripts/`, `README.md`, `CHANGELOG.md`, and `SECURITY.md`,
+and must not contain local dependencies, runtime binaries, env files, logs,
+caches, test output folders, temp files, or nested archives.
+
 Also verify:
 
 ```bash

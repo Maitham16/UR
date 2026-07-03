@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type {
   McpbManifest,
   McpbUserConfigurationOption,
@@ -73,6 +72,26 @@ export type McpbCacheMetadata = {
  * Progress callback for download and extraction operations
  */
 export type ProgressCallback = (status: string) => void
+
+function manifestAuthorName(manifest: McpbManifest): string {
+  const author = manifest.author
+  if (
+    author &&
+    typeof author === 'object' &&
+    typeof (author as { name?: unknown }).name === 'string'
+  ) {
+    return (author as { name: string }).name
+  }
+  return 'unknown'
+}
+
+async function parseValidatedMcpbManifest(
+  manifestData: Uint8Array,
+): Promise<McpbManifest> {
+  return (await parseAndValidateManifestFromBytes(
+    manifestData,
+  )) as unknown as McpbManifest
+}
 
 /**
  * Check if a source string is an MCPB file reference
@@ -731,7 +750,7 @@ export async function loadMcpbFile(
     }
 
     const manifestData = new TextEncoder().encode(manifestContent)
-    const manifest = await parseAndValidateManifestFromBytes(manifestData)
+    const manifest = await parseValidatedMcpbManifest(manifestData)
 
     // Check for user_config requirement
     if (manifest.user_config && Object.keys(manifest.user_config).length > 0) {
@@ -850,9 +869,9 @@ export async function loadMcpbFile(
   }
 
   // Parse and validate manifest
-  const manifest = await parseAndValidateManifestFromBytes(manifestData)
+  const manifest = await parseValidatedMcpbManifest(manifestData)
   logForDebugging(
-    `MCPB manifest: ${manifest.name} v${manifest.version} by ${manifest.author.name}`,
+    `MCPB manifest: ${manifest.name} v${manifest.version} by ${manifestAuthorName(manifest)}`,
   )
 
   // Check if manifest has server config

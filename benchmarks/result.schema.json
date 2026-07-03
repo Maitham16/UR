@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Maitham16/UR/benchmarks/result.schema.json",
+  "title": "UR benchmark result",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "template",
+    "agent",
+    "date",
+    "benchmark",
+    "runtime",
+    "results",
+    "reproduction"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "template": { "type": "boolean" },
+    "agent": {
+      "type": "object",
+      "required": ["name", "version", "commit"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "commit": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "date": { "type": "string" },
+    "benchmark": {
+      "type": "object",
+      "required": ["name", "category", "taskCount"],
+      "properties": {
+        "name": { "type": "string" },
+        "category": {
+          "enum": [
+            "internal-regression",
+            "terminal-coding",
+            "provider-routing",
+            "tool-use",
+            "sandbox-safety",
+            "swe-bench-lite",
+            "terminal-bench",
+            "aider-polyglot",
+            "custom"
+          ]
+        },
+        "taskCount": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "runtime": {
+      "type": "object",
+      "required": ["provider", "model", "environment"],
+      "properties": {
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "environment": {
+          "type": "object",
+          "required": ["platform", "arch", "node", "bun", "cwd"],
+          "properties": {
+            "platform": { "type": "string" },
+            "arch": { "type": "string" },
+            "node": { "type": "string" },
+            "bun": { "type": ["string", "null"] },
+            "cwd": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "results": {
+      "type": "object",
+      "required": [
+        "passed",
+        "failed",
+        "passRate",
+        "taskResults",
+        "failedTasks",
+        "failureCategories",
+        "wallTimeMs",
+        "tokenUsage",
+        "costUSD"
+      ],
+      "properties": {
+        "passed": { "type": ["integer", "null"], "minimum": 0 },
+        "failed": { "type": ["integer", "null"], "minimum": 0 },
+        "passRate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "taskResults": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "category", "passed", "wallTimeMs", "failureCategory"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "category": { "type": "string" },
+              "passed": { "type": "boolean" },
+              "wallTimeMs": { "type": ["integer", "null"], "minimum": 0 },
+              "failureCategory": { "type": ["string", "null"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "failedTasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "category", "failureCategory", "failedChecks"],
+            "properties": {
+              "id": { "type": "string" },
+              "category": { "type": "string" },
+              "failureCategory": { "type": "string" },
+              "failedChecks": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          }
+        },
+        "failureCategories": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "wallTimeMs": { "type": ["integer", "null"], "minimum": 0 },
+        "tokenUsage": {
+          "type": ["object", "null"],
+          "required": ["inputTokens", "outputTokens", "totalTokens"],
+          "properties": {
+            "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
+            "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
+            "totalTokens": { "type": ["integer", "null"], "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "costUSD": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "reproduction": {
+      "type": "object",
+      "required": ["command", "inputReport", "generatedBy"],
+      "properties": {
+        "command": { "type": "string" },
+        "inputReport": { "type": ["string", "null"] },
+        "generatedBy": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -137,6 +137,8 @@ export function getOauthConfig(): {
   ROLES_URL: string
   API_KEY_URL: string
   OAUTH_FILE_SUFFIX: string
+  MCP_PROXY_URL: string
+  MCP_PROXY_PATH: string
 } {
   // OAuth is not used for local Ollama-only execution. All URLs are left
   // empty so the type surface is complete but no network calls are made.
@@ -153,5 +155,7 @@ export function getOauthConfig(): {
     ROLES_URL: '',
     API_KEY_URL: '',
     OAUTH_FILE_SUFFIX: '',
+    MCP_PROXY_URL: '',
+    MCP_PROXY_PATH: '/v1/mcp/{server_id}',
   }
 }

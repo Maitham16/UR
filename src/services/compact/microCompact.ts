@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle'
 import type { ToolResultBlockParam } from '@urhq-ai/sdk/resources/index.mjs'
 import type { QuerySource } from '../../constants/querySource.js'

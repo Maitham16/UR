@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { BetaUsage } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { shouldIncludeFirstPartyOnlyBetas } from './betas.js'

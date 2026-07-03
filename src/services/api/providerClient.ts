@@ -34,14 +34,28 @@ export type ProviderMessageClient = {
       countTokens?: (params: Record<string, unknown>) => Promise<{ input_tokens: number }>
     }
   }
+  models?: {
+    list: (params?: Record<string, unknown>) => AsyncIterable<unknown> | Iterable<unknown>
+  }
+}
+
+export type ProviderUsage = {
+  input_tokens: number
+  cache_creation_input_tokens?: number
+  cache_read_input_tokens?: number
+  output_tokens?: number
 }
 
 export type ProviderMessage = Record<string, unknown> & {
   withResponse?: () => unknown
+  asResponse?: () => Response | Promise<Response>
+  usage?: ProviderUsage
 }
 
 export type ProviderStreamCreateResult = {
   withResponse: () => Promise<unknown>
+  asResponse?: () => Response | Promise<Response>
+  usage?: ProviderUsage
   controller?: AbortController
 }
 

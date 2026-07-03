@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as React from 'react';
 import { getOauthProfileFromApiKey } from 'src/services/oauth/getOauthProfile.js';
 import { isURAISubscriber } from 'src/utils/auth.js';
@@ -32,7 +31,7 @@ async function _temp2() {
   return {
     key: "switch-to-subscription",
     jsx: <Text color="suggestion">Use your existing UR {subscriptionType} plan with UR<Text color="text" dimColor={true}>{" "}· /login to activate</Text></Text>,
-    priority: "low"
+    priority: "low" as const
   };
 }
 function _temp(current) {

@@ -1,4 +1,3 @@
-// @ts-nocheck
 // CCR session polling for /ultraplan. Waits for an approved ExitPlanMode
 // tool_result, then extracts the plan text. Uses pollRemoteSessionEvents
 // (shared with RemoteAgentTask) for pagination + typed SDKMessage[].
@@ -66,6 +65,36 @@ export type ScanResult =
  */
 export type UltraplanPhase = 'running' | 'needs_input' | 'plan_ready'
 
+function sdkMessageContent(message: SDKMessage): unknown {
+  if (!('message' in message)) {
+    return undefined
+  }
+  const sdkMessage = message.message
+  if (!sdkMessage || typeof sdkMessage !== 'object') {
+    return undefined
+  }
+  return (sdkMessage as { content?: unknown }).content
+}
+
+function isToolUseBlock(block: unknown): block is ToolUseBlock {
+  return (
+    !!block &&
+    typeof block === 'object' &&
+    (block as { type?: unknown }).type === 'tool_use' &&
+    typeof (block as { id?: unknown }).id === 'string' &&
+    typeof (block as { name?: unknown }).name === 'string'
+  )
+}
+
+function isToolResultBlockParam(block: unknown): block is ToolResultBlockParam {
+  return (
+    !!block &&
+    typeof block === 'object' &&
+    (block as { type?: unknown }).type === 'tool_result' &&
+    typeof (block as { tool_use_id?: unknown }).tool_use_id === 'string'
+  )
+}
+
 /**
  * Pure stateful classifier for the CCR event stream. Ingests SDKMessage[]
  * batches (as delivered by pollRemoteSessionEvents) and returns the current
@@ -102,18 +131,18 @@ export class ExitPlanModeScanner {
   ingest(newEvents: SDKMessage[]): ScanResult {
     for (const m of newEvents) {
       if (m.type === 'assistant') {
-        for (const block of m.message.content) {
-          if (block.type !== 'tool_use') continue
-          const tu = block as ToolUseBlock
-          if (tu.name === EXIT_PLAN_MODE_V2_TOOL_NAME) {
-            this.exitPlanCalls.push(tu.id)
+        const content = sdkMessageContent(m)
+        if (!Array.isArray(content)) continue
+        for (const block of content) {
+          if (isToolUseBlock(block) && block.name === EXIT_PLAN_MODE_V2_TOOL_NAME) {
+            this.exitPlanCalls.push(block.id)
           }
         }
       } else if (m.type === 'user') {
-        const content = m.message.content
+        const content = sdkMessageContent(m)
         if (!Array.isArray(content)) continue
         for (const block of content) {
-          if (block.type === 'tool_result') {
+          if (isToolResultBlockParam(block)) {
             this.results.set(block.tool_use_id, block)
           }
         }

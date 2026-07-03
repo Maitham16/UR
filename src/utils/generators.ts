@@ -1,4 +1,3 @@
-// @ts-nocheck
 const NO_VALUE = Symbol('NO_VALUE')
 
 export async function lastX<A>(as: AsyncGenerator<A>): Promise<A> {
@@ -62,7 +61,7 @@ export async function* all<A>(
       promises.add(next(generator))
       // TODO: Clean this up
       if (value !== undefined) {
-        yield value
+        yield value as Awaited<A>
       }
     } else if (waiting.length > 0) {
       // Start a new generator when one finishes

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { RenderableMessage } from '../types/message.js'
 import {
   INTERRUPT_MESSAGE,
@@ -16,6 +15,24 @@ const RENDERED_AS_SENTINEL = new Set([
 ])
 
 const searchTextCache = new WeakMap<RenderableMessage, string>()
+
+function memoryContentSearchText(memories: unknown): string {
+  if (!Array.isArray(memories)) {
+    return ''
+  }
+  return memories
+    .flatMap(memory => {
+      if (
+        memory &&
+        typeof memory === 'object' &&
+        typeof (memory as { content?: unknown }).content === 'string'
+      ) {
+        return [(memory as { content: string }).content]
+      }
+      return []
+    })
+    .join('\n')
+}
 
 /** Flatten a RenderableMessage to lowercased searchable text. WeakMap-
  *  cached — messages are append-only and immutable so a hit is always
@@ -106,9 +123,7 @@ function computeSearchText(msg: RenderableMessage): string {
       // relevant_memories attachments are absorbed into collapse groups
       // (collapseReadSearch.ts); their content is visible in transcript mode
       // via CollapsedReadSearchContent, so mirror it here for / search.
-      if (msg.relevantMemories) {
-        raw = msg.relevantMemories.map(m => m.content).join('\n')
-      }
+      raw = memoryContentSearchText(msg.relevantMemories)
       break
     }
     default:

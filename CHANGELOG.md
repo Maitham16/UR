@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.37.3
+
+- Version bump: align package, build macro, VS Code extension, docs eyebrow, and
+  changelog for the 1.37.3 patch release.
+
+## 1.37.2
+
+- Tightened provider reliability: API-provider calls now use a finite default
+  timeout, consistent retry handling for transient network/provider failures,
+  and safer OpenAI-compatible base URL normalization without changing streaming,
+  tool-call, multimodal, or local-provider routing behavior.
+- Hardened autonomous command safety: write, execute, and network commands now
+  require sandbox coverage in autonomous mode, unavailable sandboxes fail
+  closed unless explicit unsafe mode is set, and common secret read/exfiltration
+  patterns through pipes, redirects, and interpreter commands are denied.
+- Started real TypeScript strictness migration with a strict-core typecheck
+  stage, removed several core runtime `@ts-nocheck` suppressions by fixing the
+  underlying types, and added a lint guard against new core suppressions.
+- Improved release hygiene with package/source archive checks for dependency
+  trees, OS metadata, local env files, cache junk, logs, test output folders,
+  and nested archives; the secret scanner now works in both git checkouts and
+  extracted source archives.
+- Added reproducible benchmark report scaffolding so local eval runs can be
+  converted into versioned structured reports without claiming unmeasured
+  benchmark results.
+
 ## 1.35.1
 
 - Polished the bundled VS Code inline-diffs view with native toolbar icons,

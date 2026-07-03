@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Marketplace manager for UR plugins
  *
@@ -189,7 +188,7 @@ export function getDeclaredMarketplaces(): Record<string, DeclaredMarketplace> {
     ...implicit,
     ...getAddDirExtraMarketplaces(),
     ...(getInitialSettings().extraKnownMarketplaces ?? {}),
-  }
+  } as Record<string, DeclaredMarketplace>
 }
 
 /**

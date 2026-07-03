@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * The `.call()` override — thin adapter between `ToolUseContext` and
  * `bindSessionContext`. Spread into the MCP tool object in `client.ts`

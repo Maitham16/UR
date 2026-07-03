@@ -1569,6 +1569,10 @@ export function clearInvokedSkillsForAgent(agentId: string): void {
   }
 }
 
+export function isReplBridgeActive(): boolean {
+  return Boolean(STATE.replBridgeActive)
+}
+
 // Slow operations tracking for dev bar
 const MAX_SLOW_OPERATIONS = 10
 const SLOW_OPERATION_TTL_MS = 10000
@@ -1770,4 +1774,3 @@ export function getPromptId(): string | null {
 export function setPromptId(id: string | null): void {
   STATE.promptId = id
 }
-

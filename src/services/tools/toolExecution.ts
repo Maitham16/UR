@@ -24,6 +24,7 @@ import {
   getCodeEditToolDecisionCounter,
   getStatsStore,
 } from '../../bootstrap/state.js'
+import { getCwd } from '../../utils/cwd.js'
 import {
   buildCodeEditToolAttributes,
   isCodeEditingTool,

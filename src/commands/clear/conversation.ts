@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Conversation clearing utility.
  * This module has heavier dependencies and should be lazy-loaded when possible.

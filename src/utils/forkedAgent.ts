@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Helper for running forked agent query loops with usage tracking.
  *
@@ -537,7 +536,7 @@ export async function runForkedAgent({
     // Track the last recorded message UUID for parent chain continuity
     lastRecordedUuid =
       initialMessages.length > 0
-        ? initialMessages[initialMessages.length - 1]!.uuid
+        ? (initialMessages[initialMessages.length - 1]!.uuid as UUID)
         : null
   }
 
@@ -593,7 +592,7 @@ export async function runForkedAgent({
             ),
         )
         if (msg.type !== 'progress') {
-          lastRecordedUuid = msg.uuid
+          lastRecordedUuid = msg.uuid as UUID
         }
       }
     }

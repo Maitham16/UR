@@ -26,6 +26,7 @@ export type ApprovalLevel =
 export type SafetyBehavior = 'allow' | 'ask' | 'deny'
 export type SandboxDisposition = 'not-needed' | 'recommended' | 'required'
 export type SandboxMode = 'disabled' | 'recommended' | 'required'
+export type SafetyMode = 'developer' | 'autonomous-safe' | 'explicit-unsafe'
 
 export type SafetyPolicyRule = {
   pattern: string
@@ -50,8 +51,19 @@ export type ShellSafetyEvaluation = {
   permissions: PermissionClass[]
   sandbox: SandboxDisposition
   sandboxMode: SandboxMode
+  audit: ShellSafetyAuditMetadata
   reasons: string[]
   matchedRules: SafetyPolicyRule[]
+}
+
+export type ShellSafetyAuditMetadata = {
+  mode: SafetyMode
+  commandCategory: ApprovalLevel
+  decision: SafetyBehavior
+  sandboxRequired: boolean
+  sandboxAvailable: boolean | null
+  reason: string
+  unsafeBypassUsed: boolean
 }
 
 export type ShellSafetyViolation = {
@@ -59,6 +71,7 @@ export type ShellSafetyViolation = {
   reason: string
   policyDecision: SafetyBehavior
   sandboxMode: SandboxMode
+  audit: ShellSafetyAuditMetadata
   timestamp: Date
 }
 
@@ -155,11 +168,11 @@ export const DEFAULT_PROJECT_SAFETY_POLICY: ProjectSafetyPolicy = {
     { pattern: String.raw`\brm\s+(-[^\s]*[rf][^\s]*|--recursive|--force).*(^|\s)/(?:\s|$|\*)`, reason: 'attempts to recursively delete the filesystem root' },
     { pattern: String.raw`\b(printenv|env)\b.*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)`, reason: 'prints secret-like environment variables' },
     { pattern: String.raw`\becho\b.*\$(\{?[A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Za-z0-9_]*\}?)`, reason: 'prints a secret-like environment variable' },
-    { pattern: String.raw`\b(cat|less|more|head|tail|grep|rg)\b.*(\.env|id_rsa|id_ed25519|\.npmrc|\.pypirc|credentials|secrets|settings\.local\.json)`, reason: 'reads files that commonly contain secrets into the model-visible transcript' },
-    { pattern: String.raw`(\.env|id_rsa|id_ed25519|\.npmrc|\.pypirc|credentials|secrets|settings\.local\.json).*(curl|wget|nc|netcat|scp|ftp|gh\s+gist|gh\s+api|aws\s+s3|gsutil|rclone)`, reason: 'sends likely secret files to a remote sink' },
-    { pattern: String.raw`(curl|wget|nc|netcat|scp|ftp|gh\s+gist|gh\s+api|aws\s+s3|gsutil|rclone).*(\.env|id_rsa|id_ed25519|\.npmrc|\.pypirc|credentials|secrets|settings\.local\.json)`, reason: 'sends likely secret files to a remote sink' },
-    { pattern: String.raw`\$(\{?[A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Za-z0-9_]*\}?).*(curl|wget|nc|netcat|scp|ftp|gh\s+gist|gh\s+api)`, reason: 'sends secret-like environment values to a remote sink' },
-    { pattern: String.raw`(curl|wget|nc|netcat|scp|ftp|gh\s+gist|gh\s+api).*\$(\{?[A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Za-z0-9_]*\}?)`, reason: 'sends secret-like environment values to a remote sink' },
+    { pattern: String.raw`\b(cat|less|more|head|tail|grep|rg|awk|sed|python3?|perl|ruby|node|bash|sh)\b.*(\.env(?:\.[A-Za-z0-9_-]+)?|id_rsa|id_ed25519|\.npmrc|\.pypirc|credentials|secrets|settings\.local\.json)`, reason: 'reads files that commonly contain secrets into the model-visible transcript' },
+    { pattern: String.raw`(\.env(?:\.[A-Za-z0-9_-]+)?|id_rsa|id_ed25519|\.npmrc|\.pypirc|credentials|secrets|settings\.local\.json).*(curl|wget|nc|netcat|scp|ftp|gh\s+gist|gh\s+api|aws\s+s3|gsutil|rclone|python3?|perl|ruby|node|bash|sh)`, reason: 'sends likely secret files to a remote sink' },
+    { pattern: String.raw`(curl|wget|nc|netcat|scp|ftp|gh\s+gist|gh\s+api|aws\s+s3|gsutil|rclone|python3?|perl|ruby|node|bash|sh).*(\.env(?:\.[A-Za-z0-9_-]+)?|id_rsa|id_ed25519|\.npmrc|\.pypirc|credentials|secrets|settings\.local\.json)`, reason: 'sends likely secret files to a remote sink' },
+    { pattern: String.raw`\$(\{?[A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Za-z0-9_]*\}?).*(curl|wget|nc|netcat|scp|ftp|gh\s+gist|gh\s+api|python3?|perl|ruby|node|bash|sh)`, reason: 'sends secret-like environment values to a remote sink' },
+    { pattern: String.raw`(curl|wget|nc|netcat|scp|ftp|gh\s+gist|gh\s+api|python3?|perl|ruby|node|bash|sh).*\$(\{?[A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Za-z0-9_]*\}?)`, reason: 'sends secret-like environment values to a remote sink' },
   ],
   secretFiles: [
     '.env',
@@ -200,6 +213,7 @@ export function recordShellSafetyViolation(
     reason: reason ?? (evaluation.reasons.join('; ') || 'blocked by safety policy'),
     policyDecision: evaluation.behavior,
     sandboxMode: evaluation.sandboxMode,
+    audit: evaluation.audit,
     timestamp: new Date(),
   }
   shellSafetyViolations.push(violation)
@@ -501,7 +515,12 @@ export function formatApprovalLevel(level: ApprovalLevel): string {
 export function evaluateShellSafetyPolicy(
   command: string,
   cwd: string,
-  input?: { dangerouslyDisableSandbox?: boolean },
+  input?: {
+    dangerouslyDisableSandbox?: boolean
+    autonomousMode?: boolean
+    unsafeMode?: boolean
+    sandboxAvailable?: boolean
+  },
 ): ShellSafetyEvaluation {
   const policy = loadProjectSafetyPolicy(cwd)
   const permissions = classifyPermissions(command, policy)
@@ -513,11 +532,21 @@ export function evaluateShellSafetyPolicy(
   const sandboxRequired = permissions.some(permission =>
     policy.sandboxRequiredFor.includes(permission),
   )
+  const sandboxBypassAllowed =
+    input?.dangerouslyDisableSandbox === true && input?.unsafeMode === true
+  const mode: SafetyMode = sandboxBypassAllowed
+    ? 'explicit-unsafe'
+    : input?.autonomousMode === true
+      ? 'autonomous-safe'
+      : 'developer'
+  const autonomousSandboxRequired =
+    input?.autonomousMode === true && sandboxRequired && !sandboxBypassAllowed
   const requiresStrictSandbox =
     matchedDeny.length > 0 ||
     matchedAsk.length > 0 ||
-    input?.dangerouslyDisableSandbox ||
-    permissions.includes('network')
+    (input?.dangerouslyDisableSandbox === true && !sandboxBypassAllowed) ||
+    permissions.includes('network') ||
+    autonomousSandboxRequired
   const sandboxMode: SandboxMode = requiresStrictSandbox
     ? 'required'
     : sandboxRequired
@@ -541,13 +570,32 @@ export function evaluateShellSafetyPolicy(
     ...matchedAsk.map(rule => rule.reason),
   ]
   if (input?.dangerouslyDisableSandbox) {
-    reasons.push('command requests sandbox bypass')
+    reasons.push(
+      sandboxBypassAllowed
+        ? 'command requests explicitly allowed sandbox bypass'
+        : 'command requests sandbox bypass',
+    )
   }
   if (permissions.includes('network')) {
     reasons.push('network access requires sandbox network isolation')
   }
+  if (autonomousSandboxRequired) {
+    reasons.push(
+      `autonomous mode requires sandbox for ${permissions.join('/')} permission`,
+    )
+  }
   if (sandboxMode !== 'disabled') {
     reasons.push(`sandbox ${sandboxMode} for ${permissions.join('/')} permission`)
+  }
+  const reason = reasons.join('; ') || 'no blocking risk detected'
+  const audit: ShellSafetyAuditMetadata = {
+    mode,
+    commandCategory: approvalLevel,
+    decision: behavior,
+    sandboxRequired: sandboxMode === 'required',
+    sandboxAvailable: input?.sandboxAvailable ?? null,
+    reason,
+    unsafeBypassUsed: sandboxBypassAllowed,
   }
   return {
     command,
@@ -556,6 +604,7 @@ export function evaluateShellSafetyPolicy(
     permissions,
     sandbox,
     sandboxMode,
+    audit,
     reasons,
     matchedRules: [...matchedDeny, ...matchedAsk],
   }
@@ -571,6 +620,8 @@ export function formatShellSafetyEvaluation(
     `Approval level: ${formatApprovalLevel(evaluation.approvalLevel)}`,
     `Permissions: ${evaluation.permissions.join(', ')}`,
     `Sandbox: ${evaluation.sandboxMode}`,
+    `Safety mode: ${evaluation.audit.mode}`,
+    `Audit: category=${formatApprovalLevel(evaluation.audit.commandCategory)}, sandboxRequired=${String(evaluation.audit.sandboxRequired)}, sandboxAvailable=${evaluation.audit.sandboxAvailable === null ? 'unknown' : String(evaluation.audit.sandboxAvailable)}, unsafeBypass=${String(evaluation.audit.unsafeBypassUsed)}`,
     'Reasons:',
     ...(evaluation.reasons.length
       ? evaluation.reasons.map(reason => `  - ${reason}`)

@@ -3,6 +3,10 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  releasePathViolations,
+  sourceArchiveCandidatePaths,
+} from './release-hygiene.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const failures = []
@@ -15,13 +19,28 @@ function fail(message) {
   failures.push(message)
 }
 
+function checkSourceArchiveHygiene() {
+  const paths = sourceArchiveCandidatePaths(root)
+  const forbidden = releasePathViolations(paths)
+  for (const violation of forbidden) {
+    fail(`source archive candidate includes forbidden release artifact: ${violation}`)
+  }
+}
+
 const packageJson = JSON.parse(read('package.json'))
 const version = packageJson.version
 const oldLowerRepo = 'Maitham16/' + 'ur-agent'
 const oldMapekRepo = 'Maitham16/' + 'UR-' + 'mapek'
+const changelog = read('CHANGELOG.md')
 
 if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
   fail(`package.json version is not valid semver: ${version}`)
+}
+
+checkSourceArchiveHygiene()
+
+if (!changelog.includes(`## ${version}`)) {
+  fail(`CHANGELOG.md is missing an entry for ${version}`)
 }
 
 const expectedRepo = 'Maitham16/UR'
@@ -108,6 +127,21 @@ try {
   }
 } catch (error) {
   fail(`node ./bin/ur.js --version failed: ${error instanceof Error ? error.message : String(error)}`)
+}
+
+if (failures.length === 0) {
+  try {
+    execFileSync('bun', ['run', 'safety:matrix', '--', '--check'], {
+      cwd: root,
+      stdio: 'inherit',
+    })
+  } catch (error) {
+    fail(
+      `safety matrix freshness check failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    )
+  }
 }
 
 if (failures.length === 0) {

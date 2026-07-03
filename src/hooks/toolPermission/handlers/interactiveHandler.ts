@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle'
 import type { ContentBlockParam } from '@urhq-ai/sdk/resources/messages.mjs'
 import { randomUUID } from 'crypto'

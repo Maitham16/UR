@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react/compiler-runtime";
 import { execa } from 'execa';
 import { readFile } from 'fs/promises';
@@ -30,10 +29,10 @@ const INTERNAL_MARKETPLACE_NAME = 'ur-marketplace';
 const INTERNAL_MARKETPLACE_REPO = 'urhqs/ur-marketplace';
 const OFFICIAL_MARKETPLACE_REPO = 'urhqs/ur-plugins-official';
 function getMarketplaceName(): string {
-  return "external" === 'ant' ? INTERNAL_MARKETPLACE_NAME : OFFICIAL_MARKETPLACE_NAME;
+  return false ? INTERNAL_MARKETPLACE_NAME : OFFICIAL_MARKETPLACE_NAME;
 }
 function getMarketplaceRepo(): string {
-  return "external" === 'ant' ? INTERNAL_MARKETPLACE_REPO : OFFICIAL_MARKETPLACE_REPO;
+  return false ? INTERNAL_MARKETPLACE_REPO : OFFICIAL_MARKETPLACE_REPO;
 }
 function getPluginId(): string {
   return `thinkback@${getMarketplaceName()}`;

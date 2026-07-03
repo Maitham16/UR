@@ -135,6 +135,37 @@ describe('provider real streaming', () => {
     }
   })
 
+  test('OpenAI-compatible streaming rejects malformed tool_call deltas without a function name', async () => {
+    const original = globalThis.fetch
+    let calls = 0
+    globalThis.fetch = (async () => {
+      calls++
+      return responseFromChunks([
+        'data: {"id":"local_bad_tool","model":"local-model","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_bad","type":"function","function":{"arguments":"{}"}}]},"index":0}]}\n\n',
+        'data: {"id":"local_bad_tool","model":"local-model","choices":[{"delta":{},"index":0,"finish_reason":"tool_calls"}]}\n\n',
+        'data: [DONE]\n\n',
+      ])
+    }) as typeof fetch
+    try {
+      const client = await createOpenAICompatibleClient({
+        baseUrl: 'http://localhost:1234/v1',
+        maxRetries: 1,
+      })
+      const { data } = await client.beta.messages.create({
+        model: 'local-model',
+        messages: userMessages(),
+        max_tokens: 16,
+        stream: true,
+        tools: sampleTools,
+      }).withResponse()
+
+      await expect(collect(data)).rejects.toThrow('without a function name')
+      expect(calls).toBe(1)
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
   test('OpenRouter streams OpenAI-format tool_call deltas as tool_use input_json_delta', async () => {
     const post = spyOn(axios, 'post').mockResolvedValue({
       data: sse([

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react/compiler-runtime";
 /**
  * Surfaces plugin-install prompts driven by `<ur-hint />` tags

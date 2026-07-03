@@ -1,4 +1,3 @@
-// @ts-nocheck
 import chalk from 'chalk';
 import { randomBytes } from 'crypto';
 import { copyFile, mkdir, readFile, writeFile } from 'fs/promises';
@@ -120,7 +119,7 @@ export async function setupTerminal(theme: ThemeName): Promise<string> {
   maybeMarkProjectOnboardingComplete();
 
   // Install shell completions (ant-only, since the completion command is ant-only)
-  if ("external" === 'ant') {
+  if (false) {
     result += await setupShellCompletion(theme);
   }
   return result;

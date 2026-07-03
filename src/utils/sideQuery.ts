@@ -1,5 +1,4 @@
-// @ts-nocheck
-import type URHQ from '@urhq-ai/sdk'
+import type { URHQ } from '@urhq-ai/sdk'
 import type { BetaToolUnion } from '@urhq-ai/sdk/resources/beta/messages.js'
 import {
   getLastApiCompletionTimestamp,

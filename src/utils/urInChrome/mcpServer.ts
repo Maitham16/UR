@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   type URForChromeContext,
   createURForChromeMcpServer,

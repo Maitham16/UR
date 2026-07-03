@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as React from 'react';
 import { Text } from '../ink.js';
 import { isURAISubscriber } from '../utils/auth.js';
@@ -26,7 +25,7 @@ async function _temp() {
     return {
       key: "chrome-requires-subscription",
       jsx: <Text color="error">UR in Chrome requires a ur.ai subscription</Text>,
-      priority: "immediate",
+      priority: "immediate" as const,
       timeoutMs: 5000
     };
   }
@@ -35,7 +34,7 @@ async function _temp() {
     return {
       key: "chrome-extension-not-detected",
       jsx: <Text color="warning">Chrome extension not detected · https://ur.ai/chrome to install</Text>,
-      priority: "immediate",
+      priority: "immediate" as const,
       timeoutMs: 3000
     };
   }
@@ -43,7 +42,7 @@ async function _temp() {
     return {
       key: "ur-in-chrome-default-enabled",
       text: "UR in Chrome enabled \xB7 /chrome",
-      priority: "low"
+      priority: "low" as const
     };
   }
   return null;

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Plugin option storage and substitution.
  *

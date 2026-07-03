@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { execa } from 'execa';
 import * as React from 'react';
 import { useEffect, useState } from 'react';
@@ -130,7 +129,7 @@ function Web({
       name: 'uploading'
     });
     const result = await importGithubToken(token);
-    if (!result.ok) {
+    if (result.ok === false) {
       logEvent('tengu_remote_setup_result', {
         result: 'import_failed' as SafeString,
         error_kind: result.error.kind as SafeString

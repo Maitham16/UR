@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { URHQ } from '@urhq-ai/sdk'
 import type { BetaMessageParam as MessageParam } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import { getAPIProvider } from 'src/utils/model/providers.js'

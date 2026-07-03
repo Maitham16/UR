@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Channel notifications — lets an MCP server push user messages into the
  * conversation. A "channel" (Discord, Slack, SMS, etc.) is just an MCP server

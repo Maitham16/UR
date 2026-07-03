@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CLI `ComputerExecutor` implementation. Wraps native input and screen APIs.
  *

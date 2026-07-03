@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { type StructuredPatchHunk, structuredPatch } from 'diff'
 import { logEvent } from 'src/services/analytics/index.js'
 import { getLocCounter } from '../bootstrap/state.js'
@@ -59,11 +58,21 @@ export function countLinesChanged(
     numAdditions = newFileContent.split(/\r?\n/).length
   } else {
     numAdditions = patch.reduce(
-      (acc, hunk) => acc + count(hunk.lines, _ => _.startsWith('+')),
+      (acc, hunk) =>
+        acc +
+        count(
+          hunk.lines,
+          (line): boolean => typeof line === 'string' && line.startsWith('+'),
+        ),
       0,
     )
     numRemovals = patch.reduce(
-      (acc, hunk) => acc + count(hunk.lines, _ => _.startsWith('-')),
+      (acc, hunk) =>
+        acc +
+        count(
+          hunk.lines,
+          (line): boolean => typeof line === 'string' && line.startsWith('-'),
+        ),
       0,
     )
   }

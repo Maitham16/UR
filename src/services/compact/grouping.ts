@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { Message } from '../../types/message.js'
 
 /**

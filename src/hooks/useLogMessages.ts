@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { UUID } from 'crypto'
 import { useEffect, useRef } from 'react'
 import { useAppState } from '../state/AppState.js'

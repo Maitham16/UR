@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React from 'react';
 import { MessageResponse } from '../../components/MessageResponse.js';
 import { stringWidth } from '../../ink/stringWidth.js';
@@ -26,7 +25,7 @@ export function renderToolResultMessage(output: Output, _progressMessagesForMess
 }: {
   verbose: boolean;
 }): React.ReactNode {
-  if ("external" === 'ant') {
+  if (false) {
     return null;
   }
   const rawCommand = output.command ?? '';

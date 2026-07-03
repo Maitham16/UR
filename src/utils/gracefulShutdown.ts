@@ -1,4 +1,3 @@
-// @ts-nocheck
 import chalk from 'chalk'
 import { writeSync } from 'fs'
 import memoize from 'lodash-es/memoize.js'

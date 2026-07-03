@@ -412,6 +412,12 @@ export const SettingsSchema = lazySchema(() =>
             .string()
             .optional()
             .describe('Provider base URL without embedded credentials'),
+          timeoutMs: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe('Provider HTTP request timeout in milliseconds. Defaults to 120000.'),
           commandPath: z
             .string()
             .optional()

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { querymodelH } from '../../services/api/ur.js'
 import { logError } from '../log.js'
 import { extractTextContent } from '../messages.js'

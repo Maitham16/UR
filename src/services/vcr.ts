@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { BetaContentBlock } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import { createHash, randomUUID, type UUID } from 'crypto'
 import { mkdir, readFile, writeFile } from 'fs/promises'
@@ -173,6 +172,16 @@ function addCachedCostToTotalSessionCost(
   addToTotalSessionCost(costUSD, usage, model)
 }
 
+function isAssistantTranscriptMessage(
+  message: AssistantMessage | SystemAPIErrorMessage | StreamEvent,
+): message is AssistantMessage {
+  return (
+    message.type === 'assistant' &&
+    typeof message.message === 'object' &&
+    message.message !== null
+  )
+}
+
 function mapMessages(
   messages: (UserMessage | AssistantMessage)['message']['content'][],
   f: (s: unknown) => unknown,
@@ -282,7 +291,7 @@ function mapMessage(
   index: number,
   uuid?: UUID,
 ): AssistantMessage | SystemAPIErrorMessage | StreamEvent {
-  if (message.type === 'assistant') {
+  if (isAssistantTranscriptMessage(message)) {
     return mapAssistantMessage(message, f, index, uuid)
   } else {
     return message

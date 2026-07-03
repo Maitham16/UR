@@ -35,7 +35,6 @@ import type {
   AttachmentMessage,
   Message,
   ProgressMessage,
-  SystemLocalCommandMessage,
   SystemMessage,
   UserMessage,
 } from './types/message.js'
@@ -204,10 +203,8 @@ export type ToolUseContext = {
   setToolJSX?: SetToolJSXFn
   addNotification?: (notif: Notification) => void
   /** Append a UI-only system message to the REPL message list. Stripped at the
-   *  normalizeMessagesForAPI boundary — the Exclude<> makes that type-enforced. */
-  appendSystemMessage?: (
-    msg: Exclude<SystemMessage, SystemLocalCommandMessage>,
-  ) => void
+   *  normalizeMessagesForAPI boundary. */
+  appendSystemMessage?: (msg: SystemMessage) => void
   /** Send an OS-level notification (iTerm2, Kitty, Ghostty, bell, etc.) */
   sendOSNotification?: (opts: {
     message: string

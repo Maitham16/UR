@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Auto-install logic for the official UR marketplace.
  *
@@ -364,7 +363,8 @@ export async function checkAndInstallOfficialMarketplace(): Promise<OfficialMark
     return { installed: true, skipped: false }
   } catch (error) {
     // Handle installation failure
-    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorObj = toError(error)
+    const errorMessage = errorObj.message
 
     // On macOS, /usr/bin/git is an xcrun shim that always exists on PATH, so
     // checkGitAvailable() (which only does `which git`) passes even without

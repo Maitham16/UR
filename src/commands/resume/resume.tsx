@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react/compiler-runtime";
 import chalk from 'chalk';
 import type { UUID } from 'crypto';
@@ -155,6 +154,9 @@ function ResumeCommand({
       }
 
       // Different project - show command instead of resuming
+      if (!('command' in crossProjectCheck)) {
+        return;
+      }
       const raw = await setClipboard(crossProjectCheck.command);
       if (raw) process.stdout.write(raw);
 

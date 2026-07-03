@@ -420,3 +420,32 @@ Local/server providers use their normal endpoints:
 - LM Studio: `http://localhost:1234/v1`
 - llama.cpp server mode: `http://localhost:8080/v1`
 - vLLM server mode: `http://localhost:8000/v1`
+
+## Optional Live Provider Smoke
+
+`bun run provider:smoke` runs optional live checks only for providers with the
+required environment variables present. With no variables set it exits
+successfully and reports every provider as skipped, so CI does not need secrets.
+
+Configured providers run one short text request, a finite-timeout streaming
+request, and, when `PROVIDER_SMOKE_TOOL_CALLS=1`, a forced tool-call request.
+
+Required variables:
+
+| Provider | Required env vars | Optional env vars |
+| --- | --- | --- |
+| OpenAI-compatible | `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_MODEL` | `OPENAI_COMPATIBLE_API_KEY` |
+| OpenRouter | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` |  |
+| Anthropic | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | `ANTHROPIC_BASE_URL` |
+| Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL` | `GEMINI_BASE_URL` |
+| Ollama | `OLLAMA_MODEL` | `OLLAMA_BASE_URL` or `OLLAMA_HOST` |
+| LM Studio | `LMSTUDIO_BASE_URL`, `LMSTUDIO_MODEL` | `LMSTUDIO_API_KEY` |
+| vLLM | `VLLM_BASE_URL`, `VLLM_MODEL` | `VLLM_API_KEY` |
+
+Common knobs:
+
+```sh
+PROVIDER_SMOKE_TIMEOUT_MS=30000
+PROVIDER_SMOKE_MAX_RETRIES=0
+PROVIDER_SMOKE_TOOL_CALLS=1
+```

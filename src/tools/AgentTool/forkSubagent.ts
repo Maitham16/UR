@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle'
 import type { BetaToolUseBlock } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import { randomUUID } from 'crypto'

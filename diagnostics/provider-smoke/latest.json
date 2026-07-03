@@ -1,0 +1,217 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-03T20:10:54.649Z",
+  "timeoutMs": 250,
+  "maxRetries": 0,
+  "providers": [
+    {
+      "provider": "openai-compatible",
+      "configured": true,
+      "skipped": false,
+      "skipReason": null,
+      "model": "provider-smoke-test",
+      "endpoint": "http://127.0.0.1:9",
+      "timeoutMs": 250,
+      "checks": [
+        {
+          "name": "text",
+          "status": "failed",
+          "reason": "Unable to connect. Is the computer able to access the url?",
+          "durationMs": 5
+        },
+        {
+          "name": "streaming",
+          "status": "skipped",
+          "reason": "text request failed",
+          "durationMs": null
+        },
+        {
+          "name": "tool-call",
+          "status": "skipped",
+          "reason": "text request failed",
+          "durationMs": null
+        }
+      ]
+    },
+    {
+      "provider": "openrouter",
+      "configured": false,
+      "skipped": true,
+      "skipReason": "missing OPENROUTER_API_KEY, OPENROUTER_MODEL",
+      "model": null,
+      "endpoint": "https://openrouter.ai/api/v1",
+      "timeoutMs": 250,
+      "checks": [
+        {
+          "name": "text",
+          "status": "skipped",
+          "reason": "missing OPENROUTER_API_KEY, OPENROUTER_MODEL",
+          "durationMs": null
+        },
+        {
+          "name": "streaming",
+          "status": "skipped",
+          "reason": "missing OPENROUTER_API_KEY, OPENROUTER_MODEL",
+          "durationMs": null
+        },
+        {
+          "name": "tool-call",
+          "status": "skipped",
+          "reason": "missing OPENROUTER_API_KEY, OPENROUTER_MODEL",
+          "durationMs": null
+        }
+      ]
+    },
+    {
+      "provider": "anthropic-api",
+      "configured": false,
+      "skipped": true,
+      "skipReason": "missing ANTHROPIC_API_KEY, ANTHROPIC_MODEL",
+      "model": null,
+      "endpoint": "https://api.anthropic.com",
+      "timeoutMs": 250,
+      "checks": [
+        {
+          "name": "text",
+          "status": "skipped",
+          "reason": "missing ANTHROPIC_API_KEY, ANTHROPIC_MODEL",
+          "durationMs": null
+        },
+        {
+          "name": "streaming",
+          "status": "skipped",
+          "reason": "missing ANTHROPIC_API_KEY, ANTHROPIC_MODEL",
+          "durationMs": null
+        },
+        {
+          "name": "tool-call",
+          "status": "skipped",
+          "reason": "missing ANTHROPIC_API_KEY, ANTHROPIC_MODEL",
+          "durationMs": null
+        }
+      ]
+    },
+    {
+      "provider": "gemini-api",
+      "configured": false,
+      "skipped": true,
+      "skipReason": "missing GEMINI_API_KEY, GEMINI_MODEL",
+      "model": null,
+      "endpoint": "https://generativelanguage.googleapis.com",
+      "timeoutMs": 250,
+      "checks": [
+        {
+          "name": "text",
+          "status": "skipped",
+          "reason": "missing GEMINI_API_KEY, GEMINI_MODEL",
+          "durationMs": null
+        },
+        {
+          "name": "streaming",
+          "status": "skipped",
+          "reason": "missing GEMINI_API_KEY, GEMINI_MODEL",
+          "durationMs": null
+        },
+        {
+          "name": "tool-call",
+          "status": "skipped",
+          "reason": "missing GEMINI_API_KEY, GEMINI_MODEL",
+          "durationMs": null
+        }
+      ]
+    },
+    {
+      "provider": "ollama",
+      "configured": false,
+      "skipped": true,
+      "skipReason": "missing OLLAMA_MODEL",
+      "model": null,
+      "endpoint": "http://localhost:11434",
+      "timeoutMs": 250,
+      "checks": [
+        {
+          "name": "text",
+          "status": "skipped",
+          "reason": "missing OLLAMA_MODEL",
+          "durationMs": null
+        },
+        {
+          "name": "streaming",
+          "status": "skipped",
+          "reason": "missing OLLAMA_MODEL",
+          "durationMs": null
+        },
+        {
+          "name": "tool-call",
+          "status": "skipped",
+          "reason": "missing OLLAMA_MODEL",
+          "durationMs": null
+        }
+      ]
+    },
+    {
+      "provider": "lmstudio",
+      "configured": false,
+      "skipped": true,
+      "skipReason": "missing LMSTUDIO_BASE_URL, LMSTUDIO_MODEL",
+      "model": null,
+      "endpoint": null,
+      "timeoutMs": 250,
+      "checks": [
+        {
+          "name": "text",
+          "status": "skipped",
+          "reason": "missing LMSTUDIO_BASE_URL, LMSTUDIO_MODEL",
+          "durationMs": null
+        },
+        {
+          "name": "streaming",
+          "status": "skipped",
+          "reason": "missing LMSTUDIO_BASE_URL, LMSTUDIO_MODEL",
+          "durationMs": null
+        },
+        {
+          "name": "tool-call",
+          "status": "skipped",
+          "reason": "missing LMSTUDIO_BASE_URL, LMSTUDIO_MODEL",
+          "durationMs": null
+        }
+      ]
+    },
+    {
+      "provider": "vllm",
+      "configured": false,
+      "skipped": true,
+      "skipReason": "missing VLLM_BASE_URL, VLLM_MODEL",
+      "model": null,
+      "endpoint": null,
+      "timeoutMs": 250,
+      "checks": [
+        {
+          "name": "text",
+          "status": "skipped",
+          "reason": "missing VLLM_BASE_URL, VLLM_MODEL",
+          "durationMs": null
+        },
+        {
+          "name": "streaming",
+          "status": "skipped",
+          "reason": "missing VLLM_BASE_URL, VLLM_MODEL",
+          "durationMs": null
+        },
+        {
+          "name": "tool-call",
+          "status": "skipped",
+          "reason": "missing VLLM_BASE_URL, VLLM_MODEL",
+          "durationMs": null
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "passed": 0,
+    "skipped": 6,
+    "failed": 1,
+    "durationMs": 6
+  }
+}
