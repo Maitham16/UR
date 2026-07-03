@@ -4,7 +4,7 @@ const a2aCard = {
   type: 'local',
   name: 'a2a-card',
   aliases: ['agent-card'],
-  description: 'Print UR-Nexus Card metadata for A2A discovery',
+  description: 'Print UR Card metadata for A2A discovery',
   argumentHint: '[base-url]',
   supportsNonInteractive: true,
   load: () => import('./a2a-card.js'),

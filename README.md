@@ -383,7 +383,7 @@ as first-class subcommands in the shipped CLI.
 | `ur acp` | Start/stop/status the Agent Communication Protocol server for IDE extensions. |
 | `ur exec` | Run one or more prompts in non-interactive mode with optional concurrency. |
 | `ur ide diff` | Capture editor-readable inline diff bundles. |
-| `ur a2a card` | Print UR-Nexus Card metadata for agent interoperability. |
+| `ur a2a card` | Print UR Card metadata for agent interoperability. |
 | `ur a2a serve` | Start an opt-in local A2A task server with bearer or delegation auth. |
 | `ur sdk` | Show programmatic headless usage and scaffold SDK examples. |
 | `ur trigger` | Parse a GitHub/Slack webhook payload and optionally launch a headless UR run. |

@@ -67,7 +67,7 @@ curl -s http://127.0.0.1:8123/acp \
 
 ```json
 { "jsonrpc": "2.0", "id": 1,
-  "result": { "name": "ur-nexus", "protocolVersion": "0.1.0",
+  "result": { "name": "UR", "protocolVersion": "0.1.0",
     "workspaceRoot": "/path/to/project",
     "capabilities": { "tools": true, "tasks": true, "sessions": true,
       "ide": true, "streaming": false, "cancellation": true } } }

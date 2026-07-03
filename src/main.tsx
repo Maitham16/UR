@@ -4940,7 +4940,7 @@ async function run(): Promise<CommanderCommand> {
     await runLocalTextCommand(() => import('./commands/role-mode/role-mode.js'), args);
   });
   const a2a = program.command('a2a').description('A2A interoperability utilities').configureHelp(createSortedHelpConfig());
-  a2a.command('card').description('Print UR-Nexus Card metadata for A2A discovery').option('--base-url <url>', 'Base URL to use for the Agent Card endpoint').option('--compact', 'Output compact JSON').action(async (opts: {
+  a2a.command('card').description('Print UR Card metadata for A2A discovery').option('--base-url <url>', 'Base URL to use for the Agent Card endpoint').option('--compact', 'Output compact JSON').action(async (opts: {
     baseUrl?: string;
     compact?: boolean;
   }) => {

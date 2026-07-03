@@ -215,7 +215,7 @@ and route model work through the local Ollama-backed UR runtime.
 | Recurring automations | `ur automation` and `.ur/automations/` | Project-local automation specs with validation, next-run calculation, manual run, due-run, dry-run, and last-run state |
 | Model capability report | `ur model-doctor` | Local Ollama model inventory with context length, advertised capabilities, and likely vision/code readiness |
 | Reusable agent templates | `ur agent-templates install` | Project agents for review, tests, browser QA, docs research, security, release notes, PR fixes, and memory curation |
-| GitHub agent runner | `.github/workflows/ur-nexus.yml` scaffold | Opt-in CI entry point for manual prompts or `/ur` issue comments |
+| GitHub agent runner | `.github/workflows/ur.yml` scaffold | Opt-in CI entry point for manual prompts or `/ur` issue comments |
 | A2A adapter handoff | `ur a2a serve` | Loopback Agent Card and token-gated task execution endpoint |
 | Semantic memory index | `ur semantic-memory build|search` | Local memory index over durable memory, docs, README, and UR instructions |
 | Claim provenance ledger | `ur claim-ledger add|list|validate` | Maps generated claims to web, file, MCP, tool, or user sources |

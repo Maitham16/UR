@@ -64,7 +64,7 @@ describe('ACP server', () => {
     try {
       await withAcpServer(dir, undefined, async (_port, client) => {
         const result = await client.initialize()
-        expect(result.name).toBe('ur-nexus')
+        expect(result.name).toBe('UR')
         expect(result.protocolVersion).toBe('0.1.0')
       })
     } finally {
@@ -99,7 +99,7 @@ describe('ACP server', () => {
           fetch: fetchImpl,
         })
         const result = (await goodClient.call('initialize')) as { name: string }
-        expect(result.name).toBe('ur-nexus')
+        expect(result.name).toBe('UR')
       })
     } finally {
       rmSync(dir, { recursive: true, force: true })

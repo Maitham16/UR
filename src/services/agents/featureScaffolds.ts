@@ -92,7 +92,7 @@ export const AGENT_FEATURES: AgentFeature[] = [
     command: 'ur agent-features init',
     summary:
       'Adds an opt-in workflow that can run UR in GitHub Actions for issue comments or manual dispatch.',
-    scaffold: '.github/workflows/ur-nexus.yml',
+    scaffold: '.github/workflows/ur.yml',
   },
   {
     id: 'a2a-adapter',
@@ -744,14 +744,14 @@ the comment/message; the text after the keyword becomes the prompt. Keep the
 keyword and any allow-list of actors under your control — treat webhook content
 as untrusted input.
 
-The bundled GitHub Action (\`.github/workflows/ur-nexus.yml\`) is the outbound
+The bundled GitHub Action (\`.github/workflows/ur.yml\`) is the outbound
 runner; \`ur trigger\` is the inbound parser that decides what to run.
 `,
   },
   {
-    path: '.github/workflows/ur-nexus.yml',
+    path: '.github/workflows/ur.yml',
     root: 'project',
-    content: `name: UR-Nexus
+    content: `name: UR
 
 on:
   workflow_dispatch:
@@ -769,7 +769,7 @@ permissions:
   issues: write
 
 jobs:
-  ur-nexus:
+  ur:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.comment.body, '/ur')
     runs-on: ubuntu-latest
     steps:

@@ -27,19 +27,19 @@ function getURCodeGuideBasePrompt(): string {
     ? `${FILE_READ_TOOL_NAME}, \`find\`, and \`grep\``
     : `${FILE_READ_TOOL_NAME}, ${GLOB_TOOL_NAME}, and ${GREP_TOOL_NAME}`
 
-  return `You are the UR-Nexus guide agent. Your primary responsibility is helping users understand and use UR-Nexus, the UR-Nexus SDK, and the UR API (formerly the URHQ API) effectively.
+  return `You are the UR guide agent. Your primary responsibility is helping users understand and use UR, the UR SDK, and the UR API effectively.
 
 **Your expertise spans three domains:**
 
-1. **UR-Nexus / UR** (the CLI tool): Installation, configuration, hooks, skills, MCP servers, keyboard shortcuts, IDE integrations, settings, and workflows.
+1. **UR** (the CLI tool): Installation, configuration, hooks, skills, MCP servers, keyboard shortcuts, IDE integrations, settings, and workflows.
 
-2. **UR-Nexus SDK**: A framework for building custom AI agents based on UR technology. Available for Node.js/TypeScript and Python.
+2. **UR SDK**: A framework for building custom AI agents based on UR technology. Available for Node.js/TypeScript and Python.
 
-3. **UR API**: The UR API (formerly known as the URHQ API) for direct model interaction, tool use, and integrations.
+3. **UR API**: The UR API for direct model interaction, tool use, and integrations.
 
 **Documentation sources:**
 
-- **UR docs** (${UR_CODE_DOCS_MAP_URL}): Fetch this for questions about the UR-Nexus CLI tool, including:
+- **UR docs** (${UR_CODE_DOCS_MAP_URL}): Fetch this for questions about the UR CLI tool, including:
   - Installation, setup, and getting started
   - Hooks (pre/post command execution)
   - Custom skills
@@ -50,7 +50,7 @@ function getURCodeGuideBasePrompt(): string {
   - Subagents and plugins
   - Sandboxing and security
 
-- **UR-Nexus SDK docs** (${CDP_DOCS_MAP_URL}): Fetch this for questions about building agents with the SDK, including:
+- **UR SDK docs** (${CDP_DOCS_MAP_URL}): Fetch this for questions about building agents with the SDK, including:
   - SDK overview and getting started (Python and TypeScript)
   - Agent configuration + custom tools
   - Session management and permissions
@@ -97,7 +97,7 @@ function getFeedbackGuideline(): string {
 
 export const UR_CODE_GUIDE_AGENT: BuiltInAgentDefinition = {
   agentType: UR_CODE_GUIDE_AGENT_TYPE,
-  whenToUse: `Use this agent when the user asks questions ("Can UR...", "Does UR...", "How do I...") about: (1) UR (the CLI tool) - features, hooks, slash commands, MCP servers, settings, IDE integrations, keyboard shortcuts; (2) UR-Nexus SDK - building custom agents; (3) UR API (formerly URHQ API) - API usage, tool use, URHQ SDK usage. **IMPORTANT:** Before spawning a new agent, check if there is already a running or recently completed ur-guide agent that you can continue via ${SEND_MESSAGE_TOOL_NAME}.`,
+  whenToUse: `Use this agent when the user asks questions ("Can UR...", "Does UR...", "How do I...") about: (1) UR (the CLI tool) - features, hooks, slash commands, MCP servers, settings, IDE integrations, keyboard shortcuts; (2) UR SDK - building custom agents; (3) UR API - API usage, tool use, and SDK usage. **IMPORTANT:** Before spawning a new agent, check if there is already a running or recently completed ur-guide agent that you can continue via ${SEND_MESSAGE_TOOL_NAME}.`,
   // Ant-native builds: Glob/Grep tools are removed; use Bash (with embedded
   // bfs/ugrep via find/grep aliases) for local file search instead.
   tools: hasEmbeddedSearchTools()

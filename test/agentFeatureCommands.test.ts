@@ -56,7 +56,7 @@ describe('agent feature scaffolds', () => {
     const dir = tempDir('ur-feature-scaffold-')
     const result = scaffoldAgentFeatures(dir)
 
-    expect(result.created).toContain('.github/workflows/ur-nexus.yml')
+    expect(result.created).toContain('.github/workflows/ur.yml')
     expect(result.created).toContain('evidence/claims.schema.json')
     expect(result.created).toContain('browser-qa/example.json')
     expect(result.created).toContain('agents/reviewer.md')
