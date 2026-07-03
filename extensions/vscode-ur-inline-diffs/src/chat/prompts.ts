@@ -29,3 +29,15 @@ export function buildGenerateTestsPrompt(selection: SelectionSnapshot): string {
     [selectionAttachment(selection)],
   )
 }
+
+// `ur spec`/`ur workflow` are full agentic commands (init/list/run/verify/...),
+// not quick read-only CLI lookups, so these hand off to the agent through
+// chat rather than the extension guessing flags and shelling out directly.
+
+export function buildRunSpecPrompt(): string {
+  return 'List the specs in this project (.ur/specs, via `ur spec list`) and help me run the next pending task. If none exist yet, help me scaffold one with `ur spec init`.'
+}
+
+export function buildRunWorkflowPrompt(): string {
+  return 'List the workflows available in this project (`ur workflow list`) and help me run the appropriate one for my current task.'
+}

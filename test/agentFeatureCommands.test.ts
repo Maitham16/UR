@@ -300,6 +300,29 @@ describe('agent feature commands', () => {
     expect(manifest.contributes.views.ur[0].id).toBe('urInlineDiffs')
   })
 
+  test('VS Code inline diff extension manifest exposes the PR3 status/actions/search/options surfaces', () => {
+    const manifest = JSON.parse(
+      readFileSync(
+        join(process.cwd(), 'extensions', 'vscode-ur-inline-diffs', 'package.json'),
+        'utf-8',
+      ),
+    )
+    const viewIds = manifest.contributes.views.ur.map((view: { id: string }) => view.id)
+    expect(viewIds).toContain('urActions')
+
+    const commands = manifest.contributes.commands.map((command: { command: string }) => command.command)
+    for (const id of [
+      'urInlineDiffs.agentStatus',
+      'urInlineDiffs.agentOptions',
+      'urInlineDiffs.reviewCurrentDiff',
+      'urInlineDiffs.runVerifier',
+      'urInlineDiffs.searchActions',
+      'urActions.refresh',
+    ]) {
+      expect(commands).toContain(id)
+    }
+  })
+
   test('VS Code inline diff extension packages as bundled VSIX', async () => {
     const { createBundledVSCodeExtensionVsix } = await import('../src/utils/ide.js')
     const { unzipSync } = await import('fflate')

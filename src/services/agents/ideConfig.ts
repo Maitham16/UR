@@ -223,6 +223,12 @@ export type IdeStatus = {
   pluginCount: number
   detectedIdes: Array<{ name: string; connected: boolean }>
   warnings: string[]
+  /** 'disabled' | 'recommended' | 'required'. Optional so old JSON consumers
+   * parsing a status snapshot from before this field existed still work —
+   * this is purely additive to the --json shape, never a breaking change. */
+  sandboxMode?: 'disabled' | 'recommended' | 'required'
+  /** 'off' | 'loose' | 'strict'. Same additive-only contract as sandboxMode. */
+  verifierMode?: 'off' | 'loose' | 'strict'
 }
 
 export function formatIdeStatus(status: IdeStatus, json = false): string {
@@ -240,6 +246,8 @@ export function formatIdeStatus(status: IdeStatus, json = false): string {
     `Plugins loaded: ${status.pluginCount}`,
     `Detected IDEs: ${ide}`,
   ]
+  if (status.sandboxMode) lines.push(`Sandbox mode: ${status.sandboxMode}`)
+  if (status.verifierMode) lines.push(`Verifier mode: ${status.verifierMode}`)
   if (status.warnings.length > 0) {
     lines.push('Warnings:', ...status.warnings.map(w => `  - ${w}`))
   }

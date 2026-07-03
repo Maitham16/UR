@@ -21,6 +21,21 @@ const CHAT_COMMANDS = [
   'urInlineDiffs.chat.generateTests',
 ]
 
+const PR3_COMMANDS = [
+  'urInlineDiffs.agentStatus',
+  'urInlineDiffs.agentOptions',
+  'urInlineDiffs.reviewCurrentDiff',
+  'urInlineDiffs.runVerifier',
+  'urInlineDiffs.searchActions',
+  'urInlineDiffs.openSettings',
+  'urInlineDiffs.openDocs',
+  'urInlineDiffs.openArtifacts',
+  'urInlineDiffs.runSpec',
+  'urInlineDiffs.runWorkflow',
+  'urActions.refresh',
+  'urActions.openBackgroundLog',
+]
+
 describe('extension manifest', () => {
   test('keeps the existing extension id/name and Activity Bar container unchanged', () => {
     expect(extensionManifest.name).toBe('ur-inline-diffs')
@@ -64,5 +79,48 @@ describe('extension manifest', () => {
 
   test('extension version matches the root package version', () => {
     expect(extensionManifest.version).toBe(rootManifest.version)
+  })
+
+  test('the urActions view is registered alongside urInlineDiffs (additive, not a replacement)', () => {
+    const viewIds = extensionManifest.contributes.views.ur.map((view: { id: string }) => view.id)
+    expect(viewIds).toContain('urInlineDiffs')
+    expect(viewIds).toContain('urActions')
+  })
+
+  test('every PR3 command is registered in contributes.commands with an activation event', () => {
+    const commandIds = extensionManifest.contributes.commands.map((command: { command: string }) => command.command)
+    for (const id of PR3_COMMANDS) {
+      expect(commandIds).toContain(id)
+      expect(extensionManifest.activationEvents).toContain(`onCommand:${id}`)
+    }
+  })
+
+  test('every command declared in contributes.commands has a clean, non-empty title', () => {
+    for (const command of extensionManifest.contributes.commands as Array<{ command: string; title: string }>) {
+      expect(command.title.trim()).toBe(command.title)
+      expect(command.title.length).toBeGreaterThan(0)
+    }
+  })
+
+  test('command ids are unique across the whole manifest (no accidental duplicate registration)', () => {
+    const commandIds = extensionManifest.contributes.commands.map((command: { command: string }) => command.command)
+    expect(new Set(commandIds).size).toBe(commandIds.length)
+  })
+
+  test('diff bundle actions (open/apply/reject/comment) are wired into both the inline diff tree and the actions panel', () => {
+    const diffItemMenus = extensionManifest.contributes.menus['view/item/context'] as Array<{ command: string; when: string }>
+    for (const id of ['urInlineDiffs.open', 'urInlineDiffs.apply', 'urInlineDiffs.reject', 'urInlineDiffs.comment']) {
+      const entry = diffItemMenus.find(m => m.command === id)
+      expect(entry).toBeDefined()
+      expect(entry?.when).toContain('urInlineDiffs')
+      expect(entry?.when).toContain('urActions')
+    }
+  })
+
+  test('the actions panel has its own refresh button in its view/title menu', () => {
+    const titleMenus = extensionManifest.contributes.menus['view/title'] as Array<{ command: string; when: string }>
+    const refreshEntry = titleMenus.find(m => m.command === 'urActions.refresh')
+    expect(refreshEntry).toBeDefined()
+    expect(refreshEntry?.when).toContain('urActions')
   })
 })

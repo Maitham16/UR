@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import type { SelectionSnapshot } from '../context/ideContext.js'
-import { buildExplainPrompt, buildFixPrompt, buildGenerateTestsPrompt } from './prompts.js'
+import {
+  buildExplainPrompt,
+  buildFixPrompt,
+  buildGenerateTestsPrompt,
+  buildRunSpecPrompt,
+  buildRunWorkflowPrompt,
+} from './prompts.js'
 
 const selection: SelectionSnapshot = {
   path: 'src/foo.ts',
@@ -34,5 +40,18 @@ describe('editor action prompts', () => {
     for (const prompt of [buildExplainPrompt(selection), buildFixPrompt(selection), buildGenerateTestsPrompt(selection)]) {
       expect(prompt).toContain('```typescript\nfunction add(a, b) { return a + b }\n```')
     }
+  })
+})
+
+describe('spec/workflow prompts', () => {
+  test('run spec prompt references the real ur spec CLI surface', () => {
+    const prompt = buildRunSpecPrompt()
+    expect(prompt).toContain('ur spec list')
+    expect(prompt).toContain('ur spec init')
+  })
+
+  test('run workflow prompt references the real ur workflow CLI surface', () => {
+    const prompt = buildRunWorkflowPrompt()
+    expect(prompt).toContain('ur workflow list')
   })
 })

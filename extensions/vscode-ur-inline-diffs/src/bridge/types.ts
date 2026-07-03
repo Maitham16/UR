@@ -36,13 +36,90 @@ export interface DiffManifest {
   diffs: DiffArtifact[]
 }
 
-/**
- * Placeholder only for this PR. The full status card (acp, provider,
- * sandbox/verifier mode, warnings) lands with the agent identity panel.
- */
+// ---------------------------------------------------------------------------
+// Agent status card. Assembled from two existing CLI JSON surfaces
+// (`ur ide status --json`, `ur provider status --json`) plus `ur --version`
+// — see status/statusData.ts. Every capability field is a real value from
+// those surfaces, or the literal string 'unknown' when the surface doesn't
+// expose it. Nothing here is guessed.
+// ---------------------------------------------------------------------------
+
+export type KnownOrUnknown<T> = T | 'unknown'
+
 export interface AgentStatus {
+  urVersion: string
   workspaceRoot: string
-  raw: string
+  acp: { running: boolean; port: number | null; host: string }
+  provider: {
+    label: string
+    model?: string
+    providerKind: KnownOrUnknown<'ur-native' | 'subscription-cli' | 'subscription-placeholder'>
+    usesExternalCli: KnownOrUnknown<boolean>
+    supportsNativeToolCalls: KnownOrUnknown<boolean>
+    supportsNativeStreaming: KnownOrUnknown<boolean>
+    multimodal: KnownOrUnknown<boolean>
+    safetyBoundaryLabel?: string
+  }
+  sandboxMode: KnownOrUnknown<'disabled' | 'recommended' | 'required'>
+  verifierMode: KnownOrUnknown<'off' | 'loose' | 'strict'>
+  pluginCount: number
+  warnings: string[]
+}
+
+// ---------------------------------------------------------------------------
+// Actions panel: background tasks, read from the existing `ur bg list --json`
+// surface. Diff bundles reuse DiffArtifact above (same .ur/ide/diffs store).
+// ---------------------------------------------------------------------------
+
+export type BackgroundTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled'
+
+export interface BackgroundTaskSummary {
+  id: string
+  task: string
+  status: BackgroundTaskStatus
+  logFile: string
+}
+
+// ---------------------------------------------------------------------------
+// Agent Options panel: local/curated recommendations layered on top of the
+// real `ur provider list --json` surface. See options/agentOptions.ts.
+// ---------------------------------------------------------------------------
+
+export type ProviderKindValue = 'ur-native' | 'subscription-cli' | 'subscription-placeholder'
+export type ProviderAccessTypeValue = 'subscription' | 'api' | 'local' | 'server'
+
+/** One entry from `ur provider list --json`, narrowed to the fields the
+ * Agent Options panel reasons about, plus the extension's own curated
+ * multimodal derivation (not present in the CLI's JSON). */
+export interface ProviderOption {
+  id: string
+  displayName: string
+  providerKind: ProviderKindValue
+  accessType: ProviderAccessTypeValue
+  usesExternalCli: boolean
+  supportsNativeToolCalls: boolean
+  supportsNativeStreaming: boolean
+  multimodal: KnownOrUnknown<boolean>
+  safetyBoundaryLabel: string
+}
+
+export type RecommendationCategory =
+  | 'privacy'
+  | 'speed'
+  | 'multimodal'
+  | 'tool-calling'
+  | 'native-streaming'
+  | 'subscription-cli-access'
+  | 'local-offline'
+  | 'complex-refactor'
+  | 'docs-review'
+
+export interface CategoryRecommendation {
+  category: RecommendationCategory
+  title: string
+  rationale: string
+  recommendedProviderIds: string[]
+  caveat?: string
 }
 
 // ---------------------------------------------------------------------------

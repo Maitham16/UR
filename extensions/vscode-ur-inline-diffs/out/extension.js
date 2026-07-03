@@ -34,11 +34,394 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode7 = __toESM(require("vscode"));
+var vscode15 = __toESM(require("vscode"));
+
+// src/actions/actions.ts
+var vscode = __toESM(require("vscode"));
+async function openBackgroundLog(item) {
+  const logFile = item?.task.logFile;
+  if (!logFile) {
+    vscode.window.showWarningMessage("No log file for this background task.");
+    return;
+  }
+  try {
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(logFile));
+    await vscode.window.showTextDocument(doc, { preview: true });
+  } catch (error) {
+    vscode.window.showErrorMessage(
+      `Could not open background task log: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+// src/actions/actionsTreeProvider.ts
+var vscode4 = __toESM(require("vscode"));
+
+// src/diffs/store.ts
+var fs = __toESM(require("node:fs"));
+var path = __toESM(require("node:path"));
+var vscode2 = __toESM(require("vscode"));
+function workspaceRoot() {
+  return vscode2.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+function diffsRoot(root) {
+  return path.join(root, ".ur", "ide", "diffs");
+}
+function manifestPath(root) {
+  return path.join(diffsRoot(root), "manifest.json");
+}
+function patchPath(root, bundle) {
+  return path.join(diffsRoot(root), bundle.patchFile);
+}
+function metadataPath(root, bundle) {
+  return path.join(diffsRoot(root), bundle.metadataFile);
+}
+function readJson(file, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+function writeJson(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}
+`);
+}
+function loadManifest(root) {
+  const manifest = readJson(manifestPath(root), { version: 1, diffs: [] });
+  return Array.isArray(manifest.diffs) ? manifest : { version: 1, diffs: [] };
+}
+function loadBundleMetadata(root, bundle) {
+  return readJson(metadataPath(root, bundle), bundle);
+}
+function readPatch(root, bundle) {
+  const file = patchPath(root, bundle);
+  return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+}
+function writeManifest(root, manifest) {
+  writeJson(manifestPath(root), manifest);
+}
+function writeBundleMetadata(root, bundle) {
+  writeJson(metadataPath(root, bundle), bundle);
+}
+
+// src/diffs/treeProvider.ts
+var fs2 = __toESM(require("node:fs"));
+var path2 = __toESM(require("node:path"));
+var vscode3 = __toESM(require("vscode"));
+
+// src/util/format.ts
+function escapeHtml(text) {
+  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function formatCount(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+function formatRelativeTime(value) {
+  if (!value) return "unknown time";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const deltaMs = Date.now() - date.getTime();
+  const minute = 60 * 1e3;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (deltaMs < minute) return "just now";
+  if (deltaMs < hour) return `${Math.max(1, Math.floor(deltaMs / minute))}m ago`;
+  if (deltaMs < day) return `${Math.floor(deltaMs / hour)}h ago`;
+  if (deltaMs < 7 * day) return `${Math.floor(deltaMs / day)}d ago`;
+  return date.toLocaleDateString();
+}
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+function processErrorMessage(error) {
+  if (typeof error === "object" && error !== null && "stderr" in error) {
+    const stderr = error.stderr;
+    if (typeof stderr === "string" && stderr.trim()) return stderr.trim();
+  }
+  return errorMessage(error);
+}
+
+// src/diffs/treeProvider.ts
+function statusIcon(status) {
+  switch (status) {
+    case "approved":
+      return new vscode3.ThemeIcon("check", new vscode3.ThemeColor("testing.iconPassed"));
+    case "rejected":
+      return new vscode3.ThemeIcon("circle-slash", new vscode3.ThemeColor("testing.iconFailed"));
+    case "commented":
+      return new vscode3.ThemeIcon("comment-discussion", new vscode3.ThemeColor("charts.yellow"));
+    default:
+      return new vscode3.ThemeIcon("diff", new vscode3.ThemeColor("charts.blue"));
+  }
+}
+var DiffTreeItem = class extends vscode3.TreeItem {
+  bundle;
+  constructor(bundle) {
+    const title = bundle.title || bundle.id;
+    super(title, vscode3.TreeItemCollapsibleState.None);
+    this.bundle = bundle;
+    this.contextValue = "diff";
+    const fileCount = bundle.files?.length ?? 0;
+    const changedAt = bundle.updatedAt ?? bundle.createdAt;
+    this.description = `${bundle.status ?? "captured"} \xB7 ${formatCount(fileCount, "file")} \xB7 ${formatRelativeTime(changedAt)}`;
+    this.iconPath = statusIcon(bundle.status);
+    this.tooltip = new vscode3.MarkdownString(
+      [
+        `**${escapeHtml(title)}**`,
+        "",
+        `- ID: \`${escapeHtml(bundle.id)}\``,
+        `- Status: ${escapeHtml(bundle.status ?? "captured")}`,
+        `- Files: ${fileCount}`,
+        `- Patch: \`${escapeHtml(bundle.patchFile)}\``
+      ].join("\n")
+    );
+    this.command = {
+      command: "urInlineDiffs.open",
+      title: "Open Inline Diff",
+      arguments: [this]
+    };
+  }
+};
+var ActionItem = class extends vscode3.TreeItem {
+  constructor(label, description, icon, command, tooltip) {
+    super(label, vscode3.TreeItemCollapsibleState.None);
+    this.contextValue = "urAction";
+    this.description = description;
+    this.iconPath = new vscode3.ThemeIcon(icon);
+    this.tooltip = tooltip ?? `${label}${description ? ` \u2014 ${description}` : ""}`;
+    this.command = command;
+  }
+};
+var InfoItem = class extends vscode3.TreeItem {
+  constructor(label, description, icon = "info") {
+    super(label, vscode3.TreeItemCollapsibleState.None);
+    this.contextValue = "urInfo";
+    this.description = description;
+    this.iconPath = new vscode3.ThemeIcon(icon);
+    this.tooltip = `${label}${description ? ` \u2014 ${description}` : ""}`;
+  }
+};
+var DiffTreeProvider = class {
+  _onDidChangeTreeData = new vscode3.EventEmitter();
+  onDidChangeTreeData = this._onDidChangeTreeData.event;
+  refresh() {
+    this._onDidChangeTreeData.fire();
+  }
+  getTreeItem(item) {
+    return item;
+  }
+  getChildren() {
+    const root = workspaceRoot();
+    if (!root) {
+      return [
+        new InfoItem(
+          "Open a workspace folder",
+          "UR inline diffs are scoped to the active project",
+          "folder-opened"
+        )
+      ];
+    }
+    const manifest = loadManifest(root);
+    const diffs = manifest.diffs.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    if (diffs.length === 0) {
+      return [
+        new InfoItem(
+          "Ready for inline review",
+          fs2.existsSync(manifestPath(root)) ? "No pending diff bundles" : "No diff bundles captured yet",
+          "pass"
+        ),
+        new ActionItem("Show UR status", "Provider, model, plugins", "pulse", {
+          command: "urInlineDiffs.status",
+          title: "Show UR Status"
+        }),
+        new ActionItem("Refresh", path2.relative(root, manifestPath(root)), "refresh", {
+          command: "urInlineDiffs.refresh",
+          title: "Refresh Inline Diffs"
+        })
+      ];
+    }
+    return diffs.map((bundle) => new DiffTreeItem(bundle));
+  }
+};
+
+// src/bridge/urCli.ts
+var import_node_child_process = require("node:child_process");
+var import_node_util = require("node:util");
+var execFileAsync = (0, import_node_util.promisify)(import_node_child_process.execFile);
+async function runUrCli(args, options) {
+  try {
+    const { stdout, stderr } = await execFileAsync("ur", args, {
+      cwd: options.cwd,
+      shell: false
+    });
+    return { stdout, stderr };
+  } catch (error) {
+    throw new Error(formatUrCliError(args, error));
+  }
+}
+async function runUrCliCapture(args, options) {
+  try {
+    const { stdout, stderr } = await execFileAsync("ur", args, {
+      cwd: options.cwd,
+      shell: false
+    });
+    return { stdout, stderr, exitCode: 0 };
+  } catch (error) {
+    if (isCapturedNonZeroExit(error)) {
+      return { stdout: error.stdout, stderr: error.stderr, exitCode: error.code };
+    }
+    throw new Error(formatUrCliError(args, error));
+  }
+}
+function formatUrCliError(args, error) {
+  const stderr = hasStderr(error) ? error.stderr.trim() : "";
+  const detail = stderr || (error instanceof Error ? error.message : String(error));
+  return `Failed to run \`ur ${args.join(" ")}\`: ${detail}. Ensure the UR CLI is installed and on PATH.`;
+}
+function hasStderr(error) {
+  return typeof error === "object" && error !== null && "stderr" in error && typeof error.stderr === "string";
+}
+function isCapturedNonZeroExit(error) {
+  return typeof error === "object" && error !== null && typeof error.code === "number" && typeof error.stdout === "string";
+}
+
+// src/actions/background.ts
+var VALID_STATUSES = ["queued", "running", "completed", "failed", "canceled"];
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+function parseBackgroundListJson(raw) {
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!isRecord(data) || !Array.isArray(data.tasks)) return [];
+  const summaries = [];
+  for (const entry of data.tasks) {
+    if (!isRecord(entry)) continue;
+    if (typeof entry.id !== "string" || typeof entry.task !== "string") continue;
+    const status = VALID_STATUSES.includes(entry.status) ? entry.status : "queued";
+    summaries.push({
+      id: entry.id,
+      task: entry.task,
+      status,
+      logFile: typeof entry.logFile === "string" ? entry.logFile : ""
+    });
+  }
+  return summaries;
+}
+async function loadBackgroundTasks(cwd) {
+  try {
+    const { stdout } = await runUrCliCapture(["bg", "list", "--json"], { cwd });
+    return parseBackgroundListJson(stdout);
+  } catch {
+    return [];
+  }
+}
+
+// src/actions/actionsTreeProvider.ts
+function backgroundStatusIcon(status) {
+  switch (status) {
+    case "completed":
+      return new vscode4.ThemeIcon("check", new vscode4.ThemeColor("testing.iconPassed"));
+    case "failed":
+      return new vscode4.ThemeIcon("error", new vscode4.ThemeColor("testing.iconFailed"));
+    case "canceled":
+      return new vscode4.ThemeIcon("circle-slash", new vscode4.ThemeColor("charts.yellow"));
+    case "running":
+      return new vscode4.ThemeIcon("sync~spin", new vscode4.ThemeColor("charts.blue"));
+    default:
+      return new vscode4.ThemeIcon("clock");
+  }
+}
+var BackgroundTaskItem = class extends vscode4.TreeItem {
+  task;
+  constructor(task) {
+    super(task.task, vscode4.TreeItemCollapsibleState.None);
+    this.task = task;
+    this.contextValue = "backgroundTask";
+    this.description = task.status;
+    this.iconPath = backgroundStatusIcon(task.status);
+    this.tooltip = `${task.id} \u2014 ${task.status}${task.logFile ? `
+${task.logFile}` : ""}`;
+    if (task.logFile) {
+      this.command = { command: "urActions.openBackgroundLog", title: "Open Log", arguments: [this] };
+    }
+  }
+};
+var SectionItem = class extends vscode4.TreeItem {
+  constructor(kind, label, count) {
+    super(label, count > 0 ? vscode4.TreeItemCollapsibleState.Expanded : vscode4.TreeItemCollapsibleState.None);
+    this.kind = kind;
+    this.description = String(count);
+    this.contextValue = "urActionsSection";
+  }
+  kind;
+};
+var InfoItem2 = class extends vscode4.TreeItem {
+  constructor(label, description, icon = "info") {
+    super(label, vscode4.TreeItemCollapsibleState.None);
+    this.contextValue = "urInfo";
+    this.description = description;
+    this.iconPath = new vscode4.ThemeIcon(icon);
+    this.tooltip = `${label}${description ? ` \u2014 ${description}` : ""}`;
+  }
+};
+var ActionsTreeProvider = class {
+  _onDidChangeTreeData = new vscode4.EventEmitter();
+  onDidChangeTreeData = this._onDidChangeTreeData.event;
+  diffs = [];
+  backgroundTasks = [];
+  loaded = false;
+  refresh() {
+    this.loaded = false;
+    this._onDidChangeTreeData.fire();
+  }
+  getTreeItem(item) {
+    return item;
+  }
+  async getChildren(element) {
+    const root = workspaceRoot();
+    if (!root) {
+      return [new InfoItem2("Open a workspace folder", "UR actions are scoped to the active project", "folder-opened")];
+    }
+    if (!this.loaded) {
+      this.diffs = loadManifest(root).diffs;
+      this.backgroundTasks = await loadBackgroundTasks(root);
+      this.loaded = true;
+    }
+    if (!element) {
+      if (this.diffs.length === 0 && this.backgroundTasks.length === 0) {
+        return [new InfoItem2("No actions yet", "Diff bundles and background tasks will appear here", "pass")];
+      }
+      return [
+        new SectionItem("diffs", "Diff Bundles", this.diffs.length),
+        new SectionItem("background", "Background Tasks", this.backgroundTasks.length)
+      ];
+    }
+    if (element instanceof SectionItem && element.kind === "diffs") {
+      if (this.diffs.length === 0) {
+        return [new InfoItem2("No diff bundles", "Captured review bundles will appear here", "diff")];
+      }
+      return this.diffs.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).map((bundle) => new DiffTreeItem(bundle));
+    }
+    if (element instanceof SectionItem && element.kind === "background") {
+      if (this.backgroundTasks.length === 0) {
+        return [new InfoItem2("No background tasks", "Tasks started with `ur bg run` will appear here", "circle-outline")];
+      }
+      return this.backgroundTasks.map((task) => new BackgroundTaskItem(task));
+    }
+    return [];
+  }
+};
 
 // src/chat/chatController.ts
 var import_node_crypto2 = require("node:crypto");
-var vscode3 = __toESM(require("vscode"));
+var vscode6 = __toESM(require("vscode"));
 
 // src/bridge/types.ts
 function isControlRequest(message) {
@@ -52,7 +435,7 @@ function isCanUseToolRequest(message) {
 }
 
 // src/bridge/urProcess.ts
-var import_node_child_process = require("node:child_process");
+var import_node_child_process2 = require("node:child_process");
 var NdjsonBuffer = class {
   buffer = "";
   /** Feed a raw chunk (may contain zero, one, or many complete lines, and may
@@ -120,7 +503,7 @@ function buildControlResponse(requestId, decision) {
     }
   };
 }
-var defaultSpawn = (command, args, options) => (0, import_node_child_process.spawn)(command, args, options);
+var defaultSpawn = (command, args, options) => (0, import_node_child_process2.spawn)(command, args, options);
 function runUrTurn(request, handlers, deps = {}) {
   const spawnFn = deps.spawn ?? defaultSpawn;
   const command = deps.command ?? "ur";
@@ -139,7 +522,7 @@ function runUrTurn(request, handlers, deps = {}) {
       canceled: false,
       sawResult: false,
       stderr: "",
-      error: `Failed to start \`${command}\`: ${errorMessage(error)}. Ensure the UR CLI is installed and on PATH.`
+      error: `Failed to start \`${command}\`: ${errorMessage2(error)}. Ensure the UR CLI is installed and on PATH.`
     });
     return { cancel: () => {
     } };
@@ -175,7 +558,7 @@ function runUrTurn(request, handlers, deps = {}) {
       }).catch((error) => {
         writeControlResponse(child, message.request_id, {
           behavior: "deny",
-          message: `Permission prompt failed in the extension: ${errorMessage(error)}`
+          message: `Permission prompt failed in the extension: ${errorMessage2(error)}`
         });
       });
     }
@@ -190,7 +573,7 @@ function runUrTurn(request, handlers, deps = {}) {
     stderrChunks.push(chunk.toString("utf8"));
   });
   child.on("error", (error) => {
-    finish(null, `Failed to run \`${command}\`: ${errorMessage(error)}. Ensure the UR CLI is installed and on PATH.`);
+    finish(null, `Failed to run \`${command}\`: ${errorMessage2(error)}. Ensure the UR CLI is installed and on PATH.`);
   });
   child.on("exit", (code) => {
     for (const message of stdoutBuffer.flush()) {
@@ -219,12 +602,12 @@ function deriveErrorMessage(sawResult, resultIsError, exitCode, stderr) {
   if (trimmedStderr) return trimmedStderr;
   return `UR exited with code ${exitCode ?? "unknown"} and produced no result.`;
 }
-function errorMessage(error) {
+function errorMessage2(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
 // src/context/ideContext.ts
-var path = __toESM(require("node:path"));
+var path3 = __toESM(require("node:path"));
 function formatAttachmentLabel(attachment) {
   if (attachment.kind === "file") return `@${attachment.file.path}`;
   const { path: filePath, startLine, endLine } = attachment.selection;
@@ -263,12 +646,12 @@ function languageIdToFence(languageId) {
   return FENCE_OVERRIDES[languageId] ?? languageId;
 }
 function captureEditorSnapshot() {
-  const vscode8 = require("vscode");
-  const workspaceRoot2 = vscode8.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  const editor = vscode8.window.activeTextEditor;
+  const vscode16 = require("vscode");
+  const workspaceRoot2 = vscode16.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const editor = vscode16.window.activeTextEditor;
   if (!editor) return { workspaceRoot: workspaceRoot2 };
   const absolutePath = editor.document.uri.fsPath;
-  const relativePath = workspaceRoot2 ? path.relative(workspaceRoot2, absolutePath) : absolutePath;
+  const relativePath = workspaceRoot2 ? path3.relative(workspaceRoot2, absolutePath) : absolutePath;
   const activeFile = { path: relativePath, languageId: editor.document.languageId };
   const selection = editor.selection;
   if (selection.isEmpty) return { workspaceRoot: workspaceRoot2, activeFile };
@@ -283,90 +666,41 @@ function captureEditorSnapshot() {
   return { workspaceRoot: workspaceRoot2, activeFile, selection: selectionSnapshot };
 }
 
-// src/diffs/store.ts
-var fs = __toESM(require("node:fs"));
-var path2 = __toESM(require("node:path"));
-var vscode = __toESM(require("vscode"));
-function workspaceRoot() {
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-}
-function diffsRoot(root) {
-  return path2.join(root, ".ur", "ide", "diffs");
-}
-function manifestPath(root) {
-  return path2.join(diffsRoot(root), "manifest.json");
-}
-function patchPath(root, bundle) {
-  return path2.join(diffsRoot(root), bundle.patchFile);
-}
-function metadataPath(root, bundle) {
-  return path2.join(diffsRoot(root), bundle.metadataFile);
-}
-function readJson(file, fallback) {
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch {
-    return fallback;
-  }
-}
-function writeJson(file, value) {
-  fs.mkdirSync(path2.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}
-`);
-}
-function loadManifest(root) {
-  const manifest = readJson(manifestPath(root), { version: 1, diffs: [] });
-  return Array.isArray(manifest.diffs) ? manifest : { version: 1, diffs: [] };
-}
-function loadBundleMetadata(root, bundle) {
-  return readJson(metadataPath(root, bundle), bundle);
-}
-function readPatch(root, bundle) {
-  const file = patchPath(root, bundle);
-  return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
-}
-function writeManifest(root, manifest) {
-  writeJson(manifestPath(root), manifest);
-}
-function writeBundleMetadata(root, bundle) {
-  writeJson(metadataPath(root, bundle), bundle);
-}
-
 // src/sessions/sessionStore.ts
 var import_node_crypto = require("node:crypto");
-var fs2 = __toESM(require("node:fs"));
-var path3 = __toESM(require("node:path"));
+var fs3 = __toESM(require("node:fs"));
+var path4 = __toESM(require("node:path"));
 var SESSION_ID_PATTERN = /^[a-zA-Z0-9-]{1,128}$/;
 var TITLE_MAX_LENGTH = 60;
 var DEFAULT_TITLE = "New Chat";
 function chatRoot(root) {
-  return path3.join(root, ".ur", "ide", "chat");
+  return path4.join(root, ".ur", "ide", "chat");
 }
 function manifestPath2(root) {
-  return path3.join(chatRoot(root), "manifest.json");
+  return path4.join(chatRoot(root), "manifest.json");
 }
 function isValidSessionId(id) {
   return SESSION_ID_PATTERN.test(id);
 }
 function sessionFilePath(root, id) {
   if (!isValidSessionId(id)) return null;
-  const sessionsDir = path3.join(chatRoot(root), "sessions");
-  const target = path3.join(sessionsDir, `${id}.json`);
-  const resolvedDir = path3.resolve(sessionsDir) + path3.sep;
-  const resolvedTarget = path3.resolve(target);
+  const sessionsDir = path4.join(chatRoot(root), "sessions");
+  const target = path4.join(sessionsDir, `${id}.json`);
+  const resolvedDir = path4.resolve(sessionsDir) + path4.sep;
+  const resolvedTarget = path4.resolve(target);
   if (!resolvedTarget.startsWith(resolvedDir)) return null;
   return target;
 }
 function readJson2(file, fallback) {
   try {
-    return JSON.parse(fs2.readFileSync(file, "utf8"));
+    return JSON.parse(fs3.readFileSync(file, "utf8"));
   } catch {
     return fallback;
   }
 }
 function writeJson2(file, value) {
-  fs2.mkdirSync(path3.dirname(file), { recursive: true });
-  fs2.writeFileSync(file, `${JSON.stringify(value, null, 2)}
+  fs3.mkdirSync(path4.dirname(file), { recursive: true });
+  fs3.writeFileSync(file, `${JSON.stringify(value, null, 2)}
 `);
 }
 function readManifest(root) {
@@ -409,7 +743,7 @@ function listSessions(root, options = {}) {
 }
 function readSession(root, id) {
   const file = sessionFilePath(root, id);
-  if (!file || !fs2.existsSync(file)) return null;
+  if (!file || !fs3.existsSync(file)) return null;
   return readJson2(file, null);
 }
 function appendMessage(root, id, message) {
@@ -444,7 +778,7 @@ function deriveTitle(message) {
 }
 
 // src/chat/chatPanel.ts
-var vscode2 = __toESM(require("vscode"));
+var vscode5 = __toESM(require("vscode"));
 var ChatPanel = class _ChatPanel {
   static current;
   panel;
@@ -460,10 +794,10 @@ var ChatPanel = class _ChatPanel {
   }
   static createOrShow(onMessage) {
     if (_ChatPanel.current && !_ChatPanel.current.disposed) {
-      _ChatPanel.current.panel.reveal(vscode2.ViewColumn.Beside);
+      _ChatPanel.current.panel.reveal(vscode5.ViewColumn.Beside);
       return _ChatPanel.current;
     }
-    const panel = vscode2.window.createWebviewPanel("urChat", "UR Chat", vscode2.ViewColumn.Beside, {
+    const panel = vscode5.window.createWebviewPanel("urChat", "UR Chat", vscode5.ViewColumn.Beside, {
       enableScripts: true,
       retainContextWhenHidden: true
     });
@@ -871,6 +1205,12 @@ function buildGenerateTestsPrompt(selection) {
     [selectionAttachment(selection)]
   );
 }
+function buildRunSpecPrompt() {
+  return "List the specs in this project (.ur/specs, via `ur spec list`) and help me run the next pending task. If none exist yet, help me scaffold one with `ur spec init`.";
+}
+function buildRunWorkflowPrompt() {
+  return "List the workflows available in this project (`ur workflow list`) and help me run the appropriate one for my current task.";
+}
 
 // src/chat/chatController.ts
 var ChatController = class {
@@ -921,7 +1261,7 @@ var ChatController = class {
   }
   cancelCurrentRequest() {
     if (!this.turnHandle || this.status !== "running") {
-      vscode3.window.showInformationMessage("No UR chat request is currently running.");
+      vscode6.window.showInformationMessage("No UR chat request is currently running.");
       return;
     }
     this.turnHandle.cancel();
@@ -950,6 +1290,12 @@ var ChatController = class {
     this.panel?.post({ type: "attachmentsChanged", attachments: [] });
     await this.dispatchTurn(prompt);
   }
+  /** Opens chat and runs a fully-formed prompt through the same pathway as a
+   * manual send — used by Review Current Diff and Run Verifier so neither
+   * command invents a second way to talk to UR. */
+  async runStructuredPrompt(promptText) {
+    await this.dispatchTurn(promptText);
+  }
   dispose() {
     this.turnHandle?.cancel();
     this.denyAllPending("Extension is shutting down.");
@@ -958,7 +1304,7 @@ var ChatController = class {
   requireWorkspaceRoot() {
     const root = workspaceRoot();
     if (!root) {
-      vscode3.window.showWarningMessage("Open a workspace folder to use UR Chat.");
+      vscode6.window.showWarningMessage("Open a workspace folder to use UR Chat.");
       return void 0;
     }
     return root;
@@ -979,7 +1325,7 @@ var ChatController = class {
         })
       )
     ];
-    const picked = await vscode3.window.showQuickPick(items, {
+    const picked = await vscode6.window.showQuickPick(items, {
       title: "UR Chat",
       placeHolder: "Resume a chat or start a new one"
     });
@@ -989,7 +1335,7 @@ var ChatController = class {
     const snapshot = captureEditorSnapshot();
     const reason = describeUnavailableReason(snapshot, kind);
     if (reason) {
-      vscode3.window.showWarningMessage(reason);
+      vscode6.window.showWarningMessage(reason);
       return;
     }
     const attachment = kind === "file" ? { kind: "file", file: snapshot.activeFile } : { kind: "selection", selection: snapshot.selection };
@@ -1003,7 +1349,7 @@ var ChatController = class {
     const snapshot = captureEditorSnapshot();
     const reason = describeUnavailableReason(snapshot, "selection");
     if (reason) {
-      vscode3.window.showWarningMessage(reason);
+      vscode6.window.showWarningMessage(reason);
       return;
     }
     await this.dispatchTurn(build(snapshot.selection));
@@ -1014,7 +1360,7 @@ var ChatController = class {
     const root = this.requireWorkspaceRoot();
     if (!root) return;
     if (this.status === "running") {
-      vscode3.window.showWarningMessage("UR is already running a request. Cancel it first or wait for it to finish.");
+      vscode6.window.showWarningMessage("UR is already running a request. Cancel it first or wait for it to finish.");
       return;
     }
     if (!this.record) this.record = createSession(root);
@@ -1159,44 +1505,18 @@ var ChatController = class {
 
 // src/diffs/actions.ts
 var import_node_child_process3 = require("node:child_process");
-var fs3 = __toESM(require("node:fs"));
+var fs4 = __toESM(require("node:fs"));
 var import_node_util2 = require("node:util");
-var vscode4 = __toESM(require("vscode"));
-
-// src/bridge/urCli.ts
-var import_node_child_process2 = require("node:child_process");
-var import_node_util = require("node:util");
-var execFileAsync = (0, import_node_util.promisify)(import_node_child_process2.execFile);
-async function runUrCli(args, options) {
-  try {
-    const { stdout, stderr } = await execFileAsync("ur", args, {
-      cwd: options.cwd,
-      shell: false
-    });
-    return { stdout, stderr };
-  } catch (error) {
-    throw new Error(formatUrCliError(args, error));
-  }
-}
-function formatUrCliError(args, error) {
-  const stderr = hasStderr(error) ? error.stderr.trim() : "";
-  const detail = stderr || (error instanceof Error ? error.message : String(error));
-  return `Failed to run \`ur ${args.join(" ")}\`: ${detail}. Ensure the UR CLI is installed and on PATH.`;
-}
-function hasStderr(error) {
-  return typeof error === "object" && error !== null && "stderr" in error && typeof error.stderr === "string";
-}
-
-// src/diffs/actions.ts
+var vscode7 = __toESM(require("vscode"));
 var execFileAsync2 = (0, import_node_util2.promisify)(import_node_child_process3.execFile);
 async function commentDiff(item, provider) {
   const root = workspaceRoot();
   const bundle = item?.bundle;
   if (!root || !bundle) {
-    vscode4.window.showWarningMessage("No UR inline diff selected.");
+    vscode7.window.showWarningMessage("No UR inline diff selected.");
     return;
   }
-  const text = await vscode4.window.showInputBox({
+  const text = await vscode7.window.showInputBox({
     title: `Comment on ${bundle.id}`,
     prompt: "Comment text",
     ignoreFocusOut: true
@@ -1205,7 +1525,7 @@ async function commentDiff(item, provider) {
   const manifest = loadManifest(root);
   const manifestBundle = manifest.diffs.find((diff) => diff.id === bundle.id);
   if (!manifestBundle) {
-    vscode4.window.showErrorMessage(`UR inline diff not found: ${bundle.id}`);
+    vscode7.window.showErrorMessage(`UR inline diff not found: ${bundle.id}`);
     return;
   }
   const at = (/* @__PURE__ */ new Date()).toISOString();
@@ -1215,21 +1535,21 @@ async function commentDiff(item, provider) {
   writeManifest(root, manifest);
   writeBundleMetadata(root, manifestBundle);
   provider.refresh();
-  vscode4.window.showInformationMessage(`Added UR comment to ${bundle.id}.`);
+  vscode7.window.showInformationMessage(`Added UR comment to ${bundle.id}.`);
 }
 async function applyDiff(item, provider) {
   const root = workspaceRoot();
   const bundle = item?.bundle;
   if (!root || !bundle) {
-    vscode4.window.showWarningMessage("No UR inline diff selected.");
+    vscode7.window.showWarningMessage("No UR inline diff selected.");
     return;
   }
   const patch = patchPath(root, bundle);
-  if (!fs3.existsSync(patch)) {
-    vscode4.window.showErrorMessage(`UR patch file missing for ${bundle.id}.`);
+  if (!fs4.existsSync(patch)) {
+    vscode7.window.showErrorMessage(`UR patch file missing for ${bundle.id}.`);
     return;
   }
-  const choice = await vscode4.window.showWarningMessage(
+  const choice = await vscode7.window.showWarningMessage(
     `Apply UR patch ${bundle.id} to your working tree? This modifies ${bundle.files?.length ?? 0} file(s).`,
     { modal: true },
     "Apply"
@@ -1238,22 +1558,22 @@ async function applyDiff(item, provider) {
   try {
     await execFileAsync2("git", ["apply", "--whitespace=nowarn", patch], { cwd: root, shell: false });
   } catch (error) {
-    vscode4.window.showErrorMessage(`Failed to apply UR patch ${bundle.id}: ${gitErrorMessage(error)}`);
+    vscode7.window.showErrorMessage(`Failed to apply UR patch ${bundle.id}: ${processErrorMessage(error)}`);
     return;
   }
   try {
     const { stdout } = await runUrCli(["ide", "diff", "approve", bundle.id], { cwd: root });
     provider.refresh();
     if (isNotFoundResult(stdout)) {
-      vscode4.window.showWarningMessage(
+      vscode7.window.showWarningMessage(
         `Applied ${bundle.id} to disk, but no matching diff record was found to mark it approved.`
       );
       return;
     }
-    vscode4.window.showInformationMessage(`Applied UR patch ${bundle.id}.`);
+    vscode7.window.showInformationMessage(`Applied UR patch ${bundle.id}.`);
   } catch (error) {
-    vscode4.window.showErrorMessage(
-      `Applied ${bundle.id} to disk, but failed to record approval: ${errorMessage2(error)}`
+    vscode7.window.showErrorMessage(
+      `Applied ${bundle.id} to disk, but failed to record approval: ${errorMessage(error)}`
     );
   }
 }
@@ -1261,25 +1581,25 @@ async function rejectDiff(item, provider) {
   const root = workspaceRoot();
   const bundle = item?.bundle;
   if (!root || !bundle) {
-    vscode4.window.showWarningMessage("No UR inline diff selected.");
+    vscode7.window.showWarningMessage("No UR inline diff selected.");
     return;
   }
   try {
     const { stdout } = await runUrCli(["ide", "diff", "reject", bundle.id], { cwd: root });
     provider.refresh();
     if (isNotFoundResult(stdout)) {
-      vscode4.window.showErrorMessage(`UR inline diff not found: ${bundle.id}`);
+      vscode7.window.showErrorMessage(`UR inline diff not found: ${bundle.id}`);
       return;
     }
-    vscode4.window.showInformationMessage(`Rejected UR patch ${bundle.id} (no files changed).`);
+    vscode7.window.showInformationMessage(`Rejected UR patch ${bundle.id} (no files changed).`);
   } catch (error) {
-    vscode4.window.showErrorMessage(errorMessage2(error));
+    vscode7.window.showErrorMessage(errorMessage(error));
   }
 }
 async function showStatus(channel) {
   const root = workspaceRoot();
   if (!root) {
-    vscode4.window.showWarningMessage("Open a workspace folder to query UR status.");
+    vscode7.window.showWarningMessage("Open a workspace folder to query UR status.");
     return;
   }
   channel.clear();
@@ -1289,155 +1609,15 @@ async function showStatus(channel) {
     const { stdout } = await runUrCli(["ide", "status"], { cwd: root });
     channel.appendLine(stdout.trim());
   } catch (error) {
-    channel.appendLine(errorMessage2(error));
+    channel.appendLine(errorMessage(error));
   }
 }
 function isNotFoundResult(stdout) {
   return stdout.trim().toLowerCase().includes("not found");
 }
-function errorMessage2(error) {
-  return error instanceof Error ? error.message : String(error);
-}
-function gitErrorMessage(error) {
-  if (typeof error === "object" && error !== null && "stderr" in error) {
-    const stderr = error.stderr;
-    if (typeof stderr === "string" && stderr.trim()) return stderr.trim();
-  }
-  return errorMessage2(error);
-}
-
-// src/diffs/treeProvider.ts
-var fs4 = __toESM(require("node:fs"));
-var path4 = __toESM(require("node:path"));
-var vscode5 = __toESM(require("vscode"));
-
-// src/util/format.ts
-function escapeHtml(text) {
-  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-function formatCount(count, singular, plural = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-function formatRelativeTime(value) {
-  if (!value) return "unknown time";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  const deltaMs = Date.now() - date.getTime();
-  const minute = 60 * 1e3;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (deltaMs < minute) return "just now";
-  if (deltaMs < hour) return `${Math.max(1, Math.floor(deltaMs / minute))}m ago`;
-  if (deltaMs < day) return `${Math.floor(deltaMs / hour)}h ago`;
-  if (deltaMs < 7 * day) return `${Math.floor(deltaMs / day)}d ago`;
-  return date.toLocaleDateString();
-}
-
-// src/diffs/treeProvider.ts
-function statusIcon(status) {
-  switch (status) {
-    case "approved":
-      return new vscode5.ThemeIcon("check", new vscode5.ThemeColor("testing.iconPassed"));
-    case "rejected":
-      return new vscode5.ThemeIcon("circle-slash", new vscode5.ThemeColor("testing.iconFailed"));
-    case "commented":
-      return new vscode5.ThemeIcon("comment-discussion", new vscode5.ThemeColor("charts.yellow"));
-    default:
-      return new vscode5.ThemeIcon("diff", new vscode5.ThemeColor("charts.blue"));
-  }
-}
-var DiffTreeItem = class extends vscode5.TreeItem {
-  bundle;
-  constructor(bundle) {
-    const title = bundle.title || bundle.id;
-    super(title, vscode5.TreeItemCollapsibleState.None);
-    this.bundle = bundle;
-    this.contextValue = "diff";
-    const fileCount = bundle.files?.length ?? 0;
-    const changedAt = bundle.updatedAt ?? bundle.createdAt;
-    this.description = `${bundle.status ?? "captured"} \xB7 ${formatCount(fileCount, "file")} \xB7 ${formatRelativeTime(changedAt)}`;
-    this.iconPath = statusIcon(bundle.status);
-    this.tooltip = new vscode5.MarkdownString(
-      [
-        `**${escapeHtml(title)}**`,
-        "",
-        `- ID: \`${escapeHtml(bundle.id)}\``,
-        `- Status: ${escapeHtml(bundle.status ?? "captured")}`,
-        `- Files: ${fileCount}`,
-        `- Patch: \`${escapeHtml(bundle.patchFile)}\``
-      ].join("\n")
-    );
-    this.command = {
-      command: "urInlineDiffs.open",
-      title: "Open Inline Diff",
-      arguments: [this]
-    };
-  }
-};
-var ActionItem = class extends vscode5.TreeItem {
-  constructor(label, description, icon, command, tooltip) {
-    super(label, vscode5.TreeItemCollapsibleState.None);
-    this.contextValue = "urAction";
-    this.description = description;
-    this.iconPath = new vscode5.ThemeIcon(icon);
-    this.tooltip = tooltip ?? `${label}${description ? ` \u2014 ${description}` : ""}`;
-    this.command = command;
-  }
-};
-var InfoItem = class extends vscode5.TreeItem {
-  constructor(label, description, icon = "info") {
-    super(label, vscode5.TreeItemCollapsibleState.None);
-    this.contextValue = "urInfo";
-    this.description = description;
-    this.iconPath = new vscode5.ThemeIcon(icon);
-    this.tooltip = `${label}${description ? ` \u2014 ${description}` : ""}`;
-  }
-};
-var DiffTreeProvider = class {
-  _onDidChangeTreeData = new vscode5.EventEmitter();
-  onDidChangeTreeData = this._onDidChangeTreeData.event;
-  refresh() {
-    this._onDidChangeTreeData.fire();
-  }
-  getTreeItem(item) {
-    return item;
-  }
-  getChildren() {
-    const root = workspaceRoot();
-    if (!root) {
-      return [
-        new InfoItem(
-          "Open a workspace folder",
-          "UR inline diffs are scoped to the active project",
-          "folder-opened"
-        )
-      ];
-    }
-    const manifest = loadManifest(root);
-    const diffs = manifest.diffs.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-    if (diffs.length === 0) {
-      return [
-        new InfoItem(
-          "Ready for inline review",
-          fs4.existsSync(manifestPath(root)) ? "No pending diff bundles" : "No diff bundles captured yet",
-          "pass"
-        ),
-        new ActionItem("Show UR status", "Provider, model, plugins", "pulse", {
-          command: "urInlineDiffs.status",
-          title: "Show UR Status"
-        }),
-        new ActionItem("Refresh", path4.relative(root, manifestPath(root)), "refresh", {
-          command: "urInlineDiffs.refresh",
-          title: "Refresh Inline Diffs"
-        })
-      ];
-    }
-    return diffs.map((bundle) => new DiffTreeItem(bundle));
-  }
-};
 
 // src/diffs/webview.ts
-var vscode6 = __toESM(require("vscode"));
+var vscode8 = __toESM(require("vscode"));
 function renderDiffHtml(root, bundle) {
   const patch = readPatch(root, bundle);
   const comments = bundle.comments ?? [];
@@ -1485,43 +1665,663 @@ async function openDiff(item) {
   const root = workspaceRoot();
   const bundle = item?.bundle;
   if (!root || !bundle) {
-    vscode6.window.showWarningMessage("No UR inline diff selected.");
+    vscode8.window.showWarningMessage("No UR inline diff selected.");
     return;
   }
-  const panel = vscode6.window.createWebviewPanel("urInlineDiff", `UR ${bundle.id}`, vscode6.ViewColumn.Active, {
+  const panel = vscode8.window.createWebviewPanel("urInlineDiff", `UR ${bundle.id}`, vscode8.ViewColumn.Active, {
     enableScripts: false
   });
   const latest = loadBundleMetadata(root, bundle);
   panel.webview.html = renderDiffHtml(root, latest);
 }
 
+// src/misc/quickCommands.ts
+var vscode9 = __toESM(require("vscode"));
+var UR_DOCS_URL = "https://github.com/Maitham16/UR#readme";
+async function openSettings() {
+  await vscode9.commands.executeCommand("workbench.action.openSettings", "UR");
+}
+async function openDocs() {
+  await vscode9.env.openExternal(vscode9.Uri.parse(UR_DOCS_URL));
+}
+async function openArtifacts() {
+  const root = workspaceRoot();
+  if (!root) {
+    vscode9.window.showWarningMessage("Open a workspace folder to view UR artifacts.");
+    return;
+  }
+  const uri = vscode9.Uri.joinPath(vscode9.Uri.file(root), ".ur");
+  try {
+    await vscode9.commands.executeCommand("revealInExplorer", uri);
+  } catch {
+    vscode9.window.showInformationMessage("No .ur directory yet \u2014 it is created the first time UR runs in this workspace.");
+  }
+}
+async function runSpecAction(chat) {
+  await chat.runStructuredPrompt(buildRunSpecPrompt());
+}
+async function runWorkflowAction(chat) {
+  await chat.runStructuredPrompt(buildRunWorkflowPrompt());
+}
+
+// src/options/agentOptionsPanel.ts
+var vscode10 = __toESM(require("vscode"));
+
+// src/options/agentOptions.ts
+function ids(options) {
+  return options.map((o) => o.id);
+}
+function isLocalOrServer(option) {
+  return option.accessType === "local" || option.accessType === "server";
+}
+function buildRecommendations(options) {
+  const local = options.filter(isLocalOrServer);
+  const nativeStreaming = options.filter((o) => o.supportsNativeStreaming);
+  const multimodal = options.filter((o) => o.multimodal === true);
+  const toolCalling = options.filter((o) => o.supportsNativeToolCalls);
+  const subscriptionCli = options.filter((o) => o.providerKind === "subscription-cli");
+  const refactorCapable = options.filter((o) => o.providerKind === "ur-native" && o.supportsNativeToolCalls);
+  const recommendations = [
+    {
+      category: "privacy",
+      title: "Privacy",
+      rationale: "Local/self-hosted runtimes keep prompts, code, and responses on your machine; nothing is sent to a third-party API.",
+      recommendedProviderIds: ids(local)
+    },
+    {
+      category: "speed",
+      title: "Speed",
+      rationale: "Local/self-hosted runtimes avoid a network round-trip per request. This reflects request path structure only \u2014 actual throughput depends on your hardware and the model you load.",
+      recommendedProviderIds: ids(local)
+    },
+    {
+      category: "multimodal",
+      title: "Multimodal (image input)",
+      rationale: "These providers accept image content at the provider level. Local/self-hosted and OpenAI-compatible endpoints are marked unknown below since support depends on the model currently loaded, not a fixed provider fact.",
+      recommendedProviderIds: ids(multimodal)
+    },
+    {
+      category: "tool-calling",
+      title: "Native tool calling",
+      rationale: "UR-native providers support UR-native tool-call parsing. Subscription CLI providers do not \u2014 UR passes prompt text to the external CLI and receives final text only.",
+      recommendedProviderIds: ids(toolCalling)
+    },
+    {
+      category: "native-streaming",
+      title: "Native streaming",
+      rationale: "These providers stream tokens as they are generated. Subscription CLI providers return final text output only, with no UR-native token stream.",
+      recommendedProviderIds: ids(nativeStreaming)
+    },
+    {
+      category: "subscription-cli-access",
+      title: "Subscription CLI access",
+      rationale: "For using an existing Codex CLI / Claude Code / Gemini CLI / Antigravity subscription through UR.",
+      recommendedProviderIds: ids(subscriptionCli),
+      caveat: subscriptionCli[0]?.safetyBoundaryLabel ?? "External vendor CLI boundary: UR passes prompt text to the official CLI and receives final text output only."
+    },
+    {
+      category: "local-offline",
+      title: "Local / offline",
+      rationale: "Runs against a local or self-hosted endpoint; works without an internet connection once the runtime and model are available on your machine.",
+      recommendedProviderIds: ids(local)
+    },
+    {
+      category: "complex-refactor",
+      title: "Complex, multi-step refactors",
+      rationale: "Only UR-native providers with native tool calling get full UR tool-call parsing, sandbox, and verifier enforcement on every step. This is a structural capability statement, not a claim about model reasoning quality.",
+      recommendedProviderIds: ids(refactorCapable)
+    },
+    {
+      category: "docs-review",
+      title: "Docs / review writing",
+      rationale: "Docs and review tasks are typically single-turn text generation with light tool use, so no provider is structurally favored here \u2014 use whichever provider you already have configured for chat.",
+      recommendedProviderIds: []
+    }
+  ];
+  return recommendations;
+}
+
+// src/options/providerKnowledge.ts
+var MULTIMODAL_TRUE = /* @__PURE__ */ new Set(["openai-api", "anthropic-api", "gemini-api", "openrouter"]);
+var MULTIMODAL_FALSE = /* @__PURE__ */ new Set(["codex-cli", "claude-code-cli", "gemini-cli", "antigravity-cli"]);
+function deriveMultimodalSupport(providerId) {
+  if (MULTIMODAL_TRUE.has(providerId)) return true;
+  if (MULTIMODAL_FALSE.has(providerId)) return false;
+  return "unknown";
+}
+
+// src/options/providerOptionsLoader.ts
+var PROVIDER_KINDS = ["ur-native", "subscription-cli", "subscription-placeholder"];
+var ACCESS_TYPES = ["subscription", "api", "local", "server"];
+function isRecord2(value) {
+  return typeof value === "object" && value !== null;
+}
+function parseProviderListJson(raw) {
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(data)) return [];
+  const options = [];
+  for (const entry of data) {
+    if (!isRecord2(entry)) continue;
+    if (typeof entry.id !== "string" || typeof entry.name !== "string") continue;
+    const providerKind = PROVIDER_KINDS.includes(entry.providerKind) ? entry.providerKind : "subscription-placeholder";
+    const accessType = ACCESS_TYPES.includes(entry.accessType) ? entry.accessType : "api";
+    options.push({
+      id: entry.id,
+      displayName: entry.name,
+      providerKind,
+      accessType,
+      usesExternalCli: Boolean(entry.usesExternalCli),
+      supportsNativeToolCalls: Boolean(entry.supportsNativeToolCalls),
+      supportsNativeStreaming: Boolean(entry.supportsNativeStreaming),
+      multimodal: deriveMultimodalSupport(entry.id),
+      safetyBoundaryLabel: typeof entry.safetyBoundaryLabel === "string" ? entry.safetyBoundaryLabel : ""
+    });
+  }
+  return options;
+}
+async function loadProviderOptions(cwd) {
+  try {
+    const { stdout } = await runUrCliCapture(["provider", "list", "--json"], { cwd });
+    return parseProviderListJson(stdout);
+  } catch {
+    return [];
+  }
+}
+
+// src/options/agentOptionsPanel.ts
+function knownText(value) {
+  if (value === "unknown") return "unknown";
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  return String(value);
+}
+function displayNameFor(options, id) {
+  return options.find((o) => o.id === id)?.displayName ?? id;
+}
+function renderProviderTable(options) {
+  if (options.length === 0) return '<p class="meta">No providers found. Is the UR CLI on PATH?</p>';
+  const rows = options.map(
+    (o) => `<tr><td>${escapeHtml(o.displayName)}</td><td>${escapeHtml(o.providerKind)}</td><td>${escapeHtml(o.accessType)}</td><td>${escapeHtml(knownText(o.multimodal))}</td></tr>`
+  ).join("");
+  return `<table><thead><tr><th>Provider</th><th>Provider kind</th><th>Access type</th><th>Multimodal</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function renderCategory(options, rec) {
+  const names = rec.recommendedProviderIds.length > 0 ? rec.recommendedProviderIds.map((id) => escapeHtml(displayNameFor(options, id))).join(", ") : "(no provider structurally favored)";
+  const caveat = rec.caveat ? `<p class="caveat">${escapeHtml(rec.caveat)}</p>` : "";
+  return `<section class="category">
+    <h3>${escapeHtml(rec.title)}</h3>
+    <p>${escapeHtml(rec.rationale)}</p>
+    <p class="recommend"><strong>Recommended:</strong> ${names}</p>
+    ${caveat}
+  </section>`;
+}
+function renderOptionsHtml(options) {
+  const recommendations = buildRecommendations(options);
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 13px/1.6 var(--vscode-font-family); color: var(--vscode-foreground); padding: 20px; margin: 0; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+  h2 { font-size: 13px; margin: 20px 0 8px; color: var(--vscode-descriptionForeground); text-transform: uppercase; letter-spacing: 0.04em; }
+  .disclaimer { color: var(--vscode-descriptionForeground); border-left: 3px solid var(--vscode-textBlockQuote-border); padding: 8px 12px; margin-bottom: 20px; background: var(--vscode-textBlockQuote-background); }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 12px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border); }
+  th { color: var(--vscode-descriptionForeground); font-weight: 600; }
+  .category { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 12px 16px; margin-bottom: 14px; }
+  .category h3 { margin: 0 0 6px; font-size: 13px; }
+  .recommend { margin: 8px 0 0; }
+  .caveat { color: var(--vscode-descriptionForeground); font-style: italic; margin: 8px 0 0; }
+  .meta { color: var(--vscode-descriptionForeground); }
+  button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; padding: 6px 14px; cursor: pointer; font: inherit; }
+  button:hover { background: var(--vscode-button-hoverBackground); }
+</style>
+</head>
+<body>
+  <h1>UR Agent Options</h1>
+  <p class="disclaimer">Based on local, curated data and the UR CLI's own provider registry only. This is not live market research and does not rank model quality.</p>
+  <h2>Providers</h2>
+  ${renderProviderTable(options)}
+  <h2>Recommendations</h2>
+  ${recommendations.map((rec) => renderCategory(options, rec)).join("")}
+  <button id="refresh">Refresh</button>
+  <script>
+    const vscode = acquireVsCodeApi();
+    document.getElementById('refresh').addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
+  </script>
+</body>
+</html>`;
+}
+function renderLoadingHtml() {
+  return `<!doctype html><html><body style="font-family: var(--vscode-font-family); padding: 20px; color: var(--vscode-foreground);"><p>Loading UR agent options\u2026</p></body></html>`;
+}
+var AgentOptionsPanel = class _AgentOptionsPanel {
+  static current;
+  panel;
+  disposed = false;
+  constructor(panel, onRefresh) {
+    this.panel = panel;
+    this.panel.webview.onDidReceiveMessage((message) => {
+      if (message?.type === "refresh") onRefresh();
+    });
+    this.panel.onDidDispose(() => {
+      this.disposed = true;
+      if (_AgentOptionsPanel.current === this) _AgentOptionsPanel.current = void 0;
+    });
+  }
+  static createOrShow(onRefresh) {
+    if (_AgentOptionsPanel.current && !_AgentOptionsPanel.current.disposed) {
+      _AgentOptionsPanel.current.panel.reveal(vscode10.ViewColumn.Active);
+      return _AgentOptionsPanel.current;
+    }
+    const panel = vscode10.window.createWebviewPanel("urAgentOptions", "UR Agent Options", vscode10.ViewColumn.Active, {
+      enableScripts: true
+    });
+    const instance = new _AgentOptionsPanel(panel, onRefresh);
+    _AgentOptionsPanel.current = instance;
+    return instance;
+  }
+  render(options) {
+    if (this.disposed) return;
+    this.panel.webview.html = renderOptionsHtml(options);
+  }
+  renderLoading() {
+    if (this.disposed) return;
+    this.panel.webview.html = renderLoadingHtml();
+  }
+};
+async function showAgentOptions(cwd) {
+  if (!cwd) {
+    vscode10.window.showWarningMessage("Open a workspace folder to view UR agent options.");
+    return;
+  }
+  let panel;
+  const refresh = async () => {
+    if (!panel) return;
+    panel.renderLoading();
+    const options = await loadProviderOptions(cwd);
+    panel.render(options);
+  };
+  panel = AgentOptionsPanel.createOrShow(() => void refresh());
+  await refresh();
+}
+
+// src/review/reviewDiff.ts
+var import_node_child_process4 = require("node:child_process");
+var import_node_util3 = require("node:util");
+var vscode11 = __toESM(require("vscode"));
+
+// src/review/reviewPrompt.ts
+var LARGE_DIFF_THRESHOLD = 2e4;
+function buildReviewPrompt(diff) {
+  return [
+    "Review the current git diff for correctness, style, and potential bugs.",
+    "Point out specific issues with file references where possible, and suggest concrete improvements.",
+    "",
+    "```diff",
+    diff,
+    "```"
+  ].join("\n");
+}
+
+// src/review/reviewDiff.ts
+var execFileAsync3 = (0, import_node_util3.promisify)(import_node_child_process4.execFile);
+async function captureGitDiff(cwd) {
+  const { stdout } = await execFileAsync3("git", ["diff", "HEAD"], { cwd, shell: false });
+  return stdout;
+}
+async function reviewCurrentDiff(chat) {
+  const root = workspaceRoot();
+  if (!root) {
+    vscode11.window.showWarningMessage("Open a workspace folder to review a diff.");
+    return;
+  }
+  let diff;
+  try {
+    diff = await captureGitDiff(root);
+  } catch (error) {
+    vscode11.window.showErrorMessage(`Could not read the current git diff: ${processErrorMessage(error)}`);
+    return;
+  }
+  if (!diff.trim()) {
+    vscode11.window.showInformationMessage("No changes to review (working tree matches HEAD).");
+    return;
+  }
+  if (diff.length > LARGE_DIFF_THRESHOLD) {
+    const choice = await vscode11.window.showWarningMessage(
+      `The current diff is large (${diff.length.toLocaleString()} characters). Send it to UR for review?`,
+      { modal: true },
+      "Send"
+    );
+    if (choice !== "Send") return;
+  }
+  await chat.runStructuredPrompt(buildReviewPrompt(diff));
+}
+
+// src/search/searchQuickPick.ts
+var vscode12 = __toESM(require("vscode"));
+
+// src/search/actionRegistry.ts
+var ACTION_REGISTRY = [
+  { id: "newChat", label: "New Chat", commandId: "urInlineDiffs.chat.new", description: "Start a new UR chat session" },
+  { id: "openChat", label: "Open Chat", commandId: "urInlineDiffs.chat.open", description: "Open or resume a UR chat session" },
+  { id: "explainSelection", label: "Explain Selection", commandId: "urInlineDiffs.chat.explainSelection", description: "Ask UR to explain the current editor selection" },
+  { id: "fixSelection", label: "Fix Selection", commandId: "urInlineDiffs.chat.fixSelection", description: "Ask UR to fix the current editor selection" },
+  { id: "generateTests", label: "Generate Tests", commandId: "urInlineDiffs.chat.generateTests", description: "Ask UR to generate tests for the current selection" },
+  { id: "reviewCurrentDiff", label: "Review Current Diff", commandId: "urInlineDiffs.reviewCurrentDiff", description: "Send the current git diff to UR for review" },
+  { id: "runVerifier", label: "Run Verifier", commandId: "urInlineDiffs.runVerifier", description: "Run the UR verifier against the current changes" },
+  { id: "providerStatus", label: "Provider Status", commandId: "urInlineDiffs.status", description: "Show provider, model, and plugin status" },
+  { id: "agentStatus", label: "Agent Status", commandId: "urInlineDiffs.agentStatus", description: "Open the UR agent status card" },
+  { id: "agentOptions", label: "Agent Options", commandId: "urInlineDiffs.agentOptions", description: "Open curated provider recommendations" },
+  { id: "openSettings", label: "Open Settings", commandId: "urInlineDiffs.openSettings", description: "Open VS Code settings filtered to UR" },
+  { id: "openDocs", label: "Open Docs", commandId: "urInlineDiffs.openDocs", description: "Open the UR documentation" },
+  { id: "openArtifacts", label: "Open Artifacts", commandId: "urInlineDiffs.openArtifacts", description: "Reveal the .ur workspace directory" },
+  { id: "runSpec", label: "Run Spec", commandId: "urInlineDiffs.runSpec", description: "Ask UR to list and run specs (ur spec)" },
+  { id: "runWorkflow", label: "Run Workflow", commandId: "urInlineDiffs.runWorkflow", description: "Ask UR to list and run workflows (ur workflow)" },
+  { id: "refreshActions", label: "Refresh IDE Actions", commandId: "urActions.refresh", description: "Refresh the UR actions panel" }
+];
+
+// src/search/searchQuickPick.ts
+async function showSearchActions() {
+  const items = ACTION_REGISTRY.map((action) => ({
+    label: action.label,
+    detail: action.description,
+    commandId: action.commandId
+  }));
+  const picked = await vscode12.window.showQuickPick(items, {
+    title: "UR: Search Actions",
+    placeHolder: "Search UR actions",
+    matchOnDetail: true
+  });
+  if (!picked) return;
+  await vscode12.commands.executeCommand(picked.commandId);
+}
+
+// src/status/statusPanel.ts
+var vscode13 = __toESM(require("vscode"));
+
+// src/status/statusData.ts
+function isRecord3(value) {
+  return typeof value === "object" && value !== null;
+}
+function safeParseRecord(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    return isRecord3(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function asKnownString(value, allowed) {
+  return typeof value === "string" && allowed.includes(value) ? value : "unknown";
+}
+function asKnownBoolean(value) {
+  return typeof value === "boolean" ? value : "unknown";
+}
+function parseIdeStatusJson(raw, fallbackWorkspaceRoot = "") {
+  const data = safeParseRecord(raw);
+  const acpRaw = isRecord3(data.acp) ? data.acp : {};
+  const providerRaw = isRecord3(data.provider) ? data.provider : {};
+  return {
+    workspaceRoot: typeof data.workspaceRoot === "string" && data.workspaceRoot ? data.workspaceRoot : fallbackWorkspaceRoot,
+    acp: {
+      running: Boolean(acpRaw.running),
+      port: typeof acpRaw.port === "number" ? acpRaw.port : null,
+      host: typeof acpRaw.host === "string" ? acpRaw.host : "127.0.0.1"
+    },
+    pluginCount: typeof data.pluginCount === "number" ? data.pluginCount : 0,
+    warnings: Array.isArray(data.warnings) ? data.warnings.filter((w) => typeof w === "string") : [],
+    sandboxMode: asKnownString(data.sandboxMode, ["disabled", "recommended", "required"]),
+    verifierMode: asKnownString(data.verifierMode, ["off", "loose", "strict"]),
+    providerLabel: typeof providerRaw.label === "string" ? providerRaw.label : "Unknown provider",
+    providerModel: typeof providerRaw.model === "string" ? providerRaw.model : void 0
+  };
+}
+function parseProviderStatusJson(raw) {
+  const data = safeParseRecord(raw);
+  return {
+    providerId: typeof data.provider === "string" ? data.provider : void 0,
+    providerKind: asKnownString(data.providerKind, ["ur-native", "subscription-cli", "subscription-placeholder"]),
+    usesExternalCli: asKnownBoolean(data.usesExternalCli),
+    supportsNativeToolCalls: asKnownBoolean(data.supportsNativeToolCalls),
+    supportsNativeStreaming: asKnownBoolean(data.supportsNativeStreaming),
+    safetyBoundaryLabel: typeof data.safetyBoundaryLabel === "string" ? data.safetyBoundaryLabel : void 0
+  };
+}
+function errorMessage3(reason) {
+  return reason instanceof Error ? reason.message : String(reason);
+}
+var defaultRunner = runUrCliCapture;
+async function assembleAgentStatus(cwd, runCli = defaultRunner) {
+  const [ideResult, providerResult, versionResult] = await Promise.allSettled([
+    runCli(["ide", "status", "--json"], { cwd }),
+    runCli(["provider", "status", "--json"], { cwd }),
+    runCli(["--version"], { cwd })
+  ]);
+  const ide = ideResult.status === "fulfilled" ? parseIdeStatusJson(ideResult.value.stdout, cwd) : parseIdeStatusJson("", cwd);
+  const provider = providerResult.status === "fulfilled" ? parseProviderStatusJson(providerResult.value.stdout) : parseProviderStatusJson("");
+  const urVersion = versionResult.status === "fulfilled" ? versionResult.value.stdout.trim() || "unknown" : "unknown";
+  const warnings = [...ide.warnings];
+  if (ideResult.status === "rejected") warnings.push(`Could not read IDE status: ${errorMessage3(ideResult.reason)}`);
+  if (providerResult.status === "rejected") warnings.push(`Could not read provider status: ${errorMessage3(providerResult.reason)}`);
+  return {
+    urVersion,
+    workspaceRoot: ide.workspaceRoot,
+    acp: ide.acp,
+    provider: {
+      label: ide.providerLabel,
+      model: ide.providerModel,
+      providerKind: provider.providerKind,
+      usesExternalCli: provider.usesExternalCli,
+      supportsNativeToolCalls: provider.supportsNativeToolCalls,
+      supportsNativeStreaming: provider.supportsNativeStreaming,
+      multimodal: provider.providerId ? deriveMultimodalSupport(provider.providerId) : "unknown",
+      safetyBoundaryLabel: provider.safetyBoundaryLabel
+    },
+    sandboxMode: ide.sandboxMode,
+    verifierMode: ide.verifierMode,
+    pluginCount: ide.pluginCount,
+    warnings
+  };
+}
+
+// src/status/statusPanel.ts
+function knownText2(value) {
+  if (value === "unknown") return "unknown";
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  return String(value);
+}
+function row(label, value) {
+  return `<div class="row"><span class="label">${escapeHtml(label)}</span><span class="value">${escapeHtml(value)}</span></div>`;
+}
+function renderStatusHtml(status) {
+  const acp = status.acp.running ? `running on ${status.acp.host}:${status.acp.port}` : "not running";
+  const warnings = status.warnings.length === 0 ? '<p class="meta">No warnings.</p>' : `<ul>${status.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("")}</ul>`;
+  const boundary = status.provider.safetyBoundaryLabel ? row("Safety boundary", status.provider.safetyBoundaryLabel) : "";
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 13px/1.5 var(--vscode-font-family); color: var(--vscode-foreground); padding: 20px; margin: 0; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 16px; }
+  .row { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--vscode-panel-border); }
+  .label { color: var(--vscode-descriptionForeground); }
+  .value { text-align: right; word-break: break-word; }
+  section { margin-top: 20px; }
+  h2 { font-size: 13px; margin: 0 0 8px; color: var(--vscode-descriptionForeground); text-transform: uppercase; letter-spacing: 0.04em; }
+  button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; padding: 6px 14px; cursor: pointer; font: inherit; }
+  button:hover { background: var(--vscode-button-hoverBackground); }
+  .meta { color: var(--vscode-descriptionForeground); }
+  ul { margin: 4px 0 0; padding-left: 18px; }
+</style>
+</head>
+<body>
+  <h1>UR Agent Status</h1>
+  ${row("UR version", status.urVersion)}
+  ${row("Workspace root", status.workspaceRoot)}
+  ${row("Provider", status.provider.label)}
+  ${row("Model", status.provider.model ?? "(none selected)")}
+  ${row("Provider kind", knownText2(status.provider.providerKind))}
+  ${row("Uses external CLI", knownText2(status.provider.usesExternalCli))}
+  ${row("Native tool-call support", knownText2(status.provider.supportsNativeToolCalls))}
+  ${row("Native streaming support", knownText2(status.provider.supportsNativeStreaming))}
+  ${row("Multimodal support", knownText2(status.provider.multimodal))}
+  ${boundary}
+  ${row("Sandbox mode", knownText2(status.sandboxMode))}
+  ${row("Verifier mode", knownText2(status.verifierMode))}
+  ${row("ACP server", acp)}
+  ${row("Plugins loaded", String(status.pluginCount))}
+  <section>
+    <h2>Warnings</h2>
+    ${warnings}
+  </section>
+  <section>
+    <button id="refresh">Refresh</button>
+  </section>
+  <script>
+    const vscode = acquireVsCodeApi();
+    document.getElementById('refresh').addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
+  </script>
+</body>
+</html>`;
+}
+function renderLoadingHtml2() {
+  return `<!doctype html><html><body style="font-family: var(--vscode-font-family); padding: 20px; color: var(--vscode-foreground);"><p>Loading UR agent status\u2026</p></body></html>`;
+}
+var StatusPanel = class _StatusPanel {
+  static current;
+  panel;
+  disposed = false;
+  constructor(panel, onRefresh) {
+    this.panel = panel;
+    this.panel.webview.onDidReceiveMessage((message) => {
+      if (message?.type === "refresh") onRefresh();
+    });
+    this.panel.onDidDispose(() => {
+      this.disposed = true;
+      if (_StatusPanel.current === this) _StatusPanel.current = void 0;
+    });
+  }
+  static createOrShow(onRefresh) {
+    if (_StatusPanel.current && !_StatusPanel.current.disposed) {
+      _StatusPanel.current.panel.reveal(vscode13.ViewColumn.Active);
+      return _StatusPanel.current;
+    }
+    const panel = vscode13.window.createWebviewPanel("urAgentStatus", "UR Agent Status", vscode13.ViewColumn.Active, {
+      enableScripts: true
+    });
+    const instance = new _StatusPanel(panel, onRefresh);
+    _StatusPanel.current = instance;
+    return instance;
+  }
+  render(status) {
+    if (this.disposed) return;
+    this.panel.webview.html = renderStatusHtml(status);
+  }
+  renderLoading() {
+    if (this.disposed) return;
+    this.panel.webview.html = renderLoadingHtml2();
+  }
+};
+async function showAgentStatus(cwd) {
+  if (!cwd) {
+    vscode13.window.showWarningMessage("Open a workspace folder to view UR agent status.");
+    return;
+  }
+  let panel;
+  const refresh = async () => {
+    if (!panel) return;
+    panel.renderLoading();
+    const status = await assembleAgentStatus(cwd);
+    panel.render(status);
+  };
+  panel = StatusPanel.createOrShow(() => void refresh());
+  await refresh();
+}
+
+// src/verify/runVerifier.ts
+var vscode14 = __toESM(require("vscode"));
+
+// src/verify/verifierPrompt.ts
+function buildVerifierPrompt() {
+  return [
+    'Run verification on the current changes: spawn the verification subagent (Task tool, subagent_type="verification") to check the most recent task.',
+    "Include in the subagent prompt: the files changed in the most recent task, a short summary of the approach taken, and any test/lint/build commands defined in the project.",
+    "Wait for the VERDICT line from the subagent and report it verbatim, along with any findings. Do not declare the task complete unless the verdict is PASS."
+  ].join("\n");
+}
+
+// src/verify/runVerifier.ts
+async function runVerifier(chat) {
+  const root = workspaceRoot();
+  if (!root) {
+    vscode14.window.showWarningMessage("Open a workspace folder to run the UR verifier.");
+    return;
+  }
+  await chat.runStructuredPrompt(buildVerifierPrompt());
+}
+
 // src/extension.ts
 function activate(context) {
-  const provider = new DiffTreeProvider();
-  const channel = vscode7.window.createOutputChannel("UR");
-  const tree = vscode7.window.createTreeView("urInlineDiffs", {
-    treeDataProvider: provider,
+  const diffTreeProvider = new DiffTreeProvider();
+  const actionsTreeProvider = new ActionsTreeProvider();
+  const channel = vscode15.window.createOutputChannel("UR");
+  const diffTree = vscode15.window.createTreeView("urInlineDiffs", {
+    treeDataProvider: diffTreeProvider,
+    showCollapseAll: false
+  });
+  const actionsTree = vscode15.window.createTreeView("urActions", {
+    treeDataProvider: actionsTreeProvider,
     showCollapseAll: false
   });
   const chat = new ChatController();
+  const bothDiffViews = {
+    refresh: () => {
+      diffTreeProvider.refresh();
+      actionsTreeProvider.refresh();
+    }
+  };
   context.subscriptions.push(
     channel,
-    tree,
+    diffTree,
+    actionsTree,
     chat,
-    vscode7.commands.registerCommand("urInlineDiffs.refresh", () => provider.refresh()),
-    vscode7.commands.registerCommand("urInlineDiffs.open", (item) => openDiff(item)),
-    vscode7.commands.registerCommand("urInlineDiffs.comment", (item) => commentDiff(item, provider)),
-    vscode7.commands.registerCommand("urInlineDiffs.apply", (item) => applyDiff(item, provider)),
-    vscode7.commands.registerCommand("urInlineDiffs.reject", (item) => rejectDiff(item, provider)),
-    vscode7.commands.registerCommand("urInlineDiffs.status", () => showStatus(channel)),
-    vscode7.commands.registerCommand("urInlineDiffs.chat.new", () => chat.newChat()),
-    vscode7.commands.registerCommand("urInlineDiffs.chat.open", () => chat.openChat()),
-    vscode7.commands.registerCommand("urInlineDiffs.chat.cancel", () => chat.cancelCurrentRequest()),
-    vscode7.commands.registerCommand("urInlineDiffs.chat.addFile", () => chat.addCurrentFileToChat()),
-    vscode7.commands.registerCommand("urInlineDiffs.chat.addSelection", () => chat.addSelectionToChat()),
-    vscode7.commands.registerCommand("urInlineDiffs.chat.explainSelection", () => chat.explainSelection()),
-    vscode7.commands.registerCommand("urInlineDiffs.chat.fixSelection", () => chat.fixSelection()),
-    vscode7.commands.registerCommand("urInlineDiffs.chat.generateTests", () => chat.generateTestsForSelection())
+    vscode15.commands.registerCommand("urInlineDiffs.refresh", () => diffTreeProvider.refresh()),
+    vscode15.commands.registerCommand("urInlineDiffs.open", (item) => openDiff(item)),
+    vscode15.commands.registerCommand("urInlineDiffs.comment", (item) => commentDiff(item, bothDiffViews)),
+    vscode15.commands.registerCommand("urInlineDiffs.apply", (item) => applyDiff(item, bothDiffViews)),
+    vscode15.commands.registerCommand("urInlineDiffs.reject", (item) => rejectDiff(item, bothDiffViews)),
+    vscode15.commands.registerCommand("urInlineDiffs.status", () => showStatus(channel)),
+    vscode15.commands.registerCommand("urInlineDiffs.chat.new", () => chat.newChat()),
+    vscode15.commands.registerCommand("urInlineDiffs.chat.open", () => chat.openChat()),
+    vscode15.commands.registerCommand("urInlineDiffs.chat.cancel", () => chat.cancelCurrentRequest()),
+    vscode15.commands.registerCommand("urInlineDiffs.chat.addFile", () => chat.addCurrentFileToChat()),
+    vscode15.commands.registerCommand("urInlineDiffs.chat.addSelection", () => chat.addSelectionToChat()),
+    vscode15.commands.registerCommand("urInlineDiffs.chat.explainSelection", () => chat.explainSelection()),
+    vscode15.commands.registerCommand("urInlineDiffs.chat.fixSelection", () => chat.fixSelection()),
+    vscode15.commands.registerCommand("urInlineDiffs.chat.generateTests", () => chat.generateTestsForSelection()),
+    vscode15.commands.registerCommand("urInlineDiffs.agentStatus", () => showAgentStatus(workspaceRoot())),
+    vscode15.commands.registerCommand("urInlineDiffs.agentOptions", () => showAgentOptions(workspaceRoot())),
+    vscode15.commands.registerCommand("urInlineDiffs.reviewCurrentDiff", () => reviewCurrentDiff(chat)),
+    vscode15.commands.registerCommand("urInlineDiffs.runVerifier", () => runVerifier(chat)),
+    vscode15.commands.registerCommand("urInlineDiffs.searchActions", () => showSearchActions()),
+    vscode15.commands.registerCommand("urInlineDiffs.openSettings", () => openSettings()),
+    vscode15.commands.registerCommand("urInlineDiffs.openDocs", () => openDocs()),
+    vscode15.commands.registerCommand("urInlineDiffs.openArtifacts", () => openArtifacts()),
+    vscode15.commands.registerCommand("urInlineDiffs.runSpec", () => runSpecAction(chat)),
+    vscode15.commands.registerCommand("urInlineDiffs.runWorkflow", () => runWorkflowAction(chat)),
+    vscode15.commands.registerCommand("urActions.refresh", () => actionsTreeProvider.refresh()),
+    vscode15.commands.registerCommand("urActions.openBackgroundLog", (item) => openBackgroundLog(item))
   );
 }
 function deactivate() {

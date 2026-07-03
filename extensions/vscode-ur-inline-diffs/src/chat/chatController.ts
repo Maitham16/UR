@@ -125,6 +125,13 @@ export class ChatController implements vscode.Disposable {
     await this.dispatchTurn(prompt)
   }
 
+  /** Opens chat and runs a fully-formed prompt through the same pathway as a
+   * manual send — used by Review Current Diff and Run Verifier so neither
+   * command invents a second way to talk to UR. */
+  async runStructuredPrompt(promptText: string): Promise<void> {
+    await this.dispatchTurn(promptText)
+  }
+
   dispose(): void {
     this.turnHandle?.cancel()
     this.denyAllPending('Extension is shutting down.')

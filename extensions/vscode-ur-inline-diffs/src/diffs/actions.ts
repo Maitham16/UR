@@ -3,12 +3,20 @@ import * as fs from 'node:fs'
 import { promisify } from 'node:util'
 import * as vscode from 'vscode'
 import { runUrCli } from '../bridge/urCli.js'
-import type { DiffTreeItem, DiffTreeProvider } from './treeProvider.js'
+import { errorMessage, processErrorMessage } from '../util/format.js'
+import type { DiffTreeItem } from './treeProvider.js'
 import { loadManifest, patchPath, workspaceRoot, writeBundleMetadata, writeManifest } from './store.js'
 
 const execFileAsync = promisify(execFile)
 
-export async function commentDiff(item: DiffTreeItem | undefined, provider: DiffTreeProvider): Promise<void> {
+/** Narrow structural interface so any tree/list that shows diff bundles
+ * (the inline diff tree, the actions panel) can share these actions without
+ * depending on a concrete provider class. */
+export interface Refreshable {
+  refresh(): void
+}
+
+export async function commentDiff(item: DiffTreeItem | undefined, provider: Refreshable): Promise<void> {
   const root = workspaceRoot()
   const bundle = item?.bundle
   if (!root || !bundle) {
@@ -43,7 +51,7 @@ export async function commentDiff(item: DiffTreeItem | undefined, provider: Diff
 // then records the approval through `ur ide diff approve <id>` so the status
 // written to disk is always one IdeDiffStatus accepts. Never silently
 // "applied" — the CLI never issues that status value.
-export async function applyDiff(item: DiffTreeItem | undefined, provider: DiffTreeProvider): Promise<void> {
+export async function applyDiff(item: DiffTreeItem | undefined, provider: Refreshable): Promise<void> {
   const root = workspaceRoot()
   const bundle = item?.bundle
   if (!root || !bundle) {
@@ -65,7 +73,7 @@ export async function applyDiff(item: DiffTreeItem | undefined, provider: DiffTr
   try {
     await execFileAsync('git', ['apply', '--whitespace=nowarn', patch], { cwd: root, shell: false })
   } catch (error) {
-    vscode.window.showErrorMessage(`Failed to apply UR patch ${bundle.id}: ${gitErrorMessage(error)}`)
+    vscode.window.showErrorMessage(`Failed to apply UR patch ${bundle.id}: ${processErrorMessage(error)}`)
     return
   }
 
@@ -86,7 +94,7 @@ export async function applyDiff(item: DiffTreeItem | undefined, provider: DiffTr
   }
 }
 
-export async function rejectDiff(item: DiffTreeItem | undefined, provider: DiffTreeProvider): Promise<void> {
+export async function rejectDiff(item: DiffTreeItem | undefined, provider: Refreshable): Promise<void> {
   const root = workspaceRoot()
   const bundle = item?.bundle
   if (!root || !bundle) {
@@ -125,16 +133,4 @@ export async function showStatus(channel: vscode.OutputChannel): Promise<void> {
 
 function isNotFoundResult(stdout: string): boolean {
   return stdout.trim().toLowerCase().includes('not found')
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-function gitErrorMessage(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'stderr' in error) {
-    const stderr = (error as { stderr?: unknown }).stderr
-    if (typeof stderr === 'string' && stderr.trim()) return stderr.trim()
-  }
-  return errorMessage(error)
 }

@@ -24,3 +24,17 @@ export function formatRelativeTime(value?: string): string {
   if (deltaMs < 7 * day) return `${Math.floor(deltaMs / day)}d ago`
   return date.toLocaleDateString()
 }
+
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** Prefers a child process error's stderr (where git/CLI failures put their
+ * real message) over the generic "exited with code N" wrapper message. */
+export function processErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'stderr' in error) {
+    const stderr = (error as { stderr?: unknown }).stderr
+    if (typeof stderr === 'string' && stderr.trim()) return stderr.trim()
+  }
+  return errorMessage(error)
+}
