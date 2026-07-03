@@ -11,6 +11,7 @@ import type {
   PermissionDecision,
   StdoutMessage,
 } from './types.js'
+import { resolveUrCommand, type ResolvedUrCommand } from './urCommand.js'
 import { isCanUseToolRequest, isControlRequest } from './types.js'
 
 // Deliberately narrow interface — exactly what this module needs from a
@@ -21,7 +22,7 @@ export interface UrChildProcess {
   stdout: NodeJS.ReadableStream | null
   stderr: NodeJS.ReadableStream | null
   stdin: NodeJS.WritableStream | null
-  on(event: 'exit', listener: (code: number | null) => void): void
+  on(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): void
   on(event: 'error', listener: (error: Error) => void): void
   kill(signal?: NodeJS.Signals): boolean
 }
@@ -138,6 +139,7 @@ export function buildControlResponse(requestId: string, decision: PermissionDeci
 export interface UrTurnResult {
   ok: boolean
   exitCode: number | null
+  signal: NodeJS.Signals | null
   canceled: boolean
   /** True once a `result` NDJSON line was actually observed. If this is
    * false and `ok` is false, the failure came from stderr/exit code alone —
@@ -161,6 +163,7 @@ export interface UrTurnHandle {
 
 export interface UrTurnDeps {
   spawn?: SpawnFn
+  executable?: ResolvedUrCommand
   command?: string
 }
 
@@ -168,12 +171,12 @@ const defaultSpawn: SpawnFn = (command, args, options) => nodeSpawn(command, arg
 
 export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps: UrTurnDeps = {}): UrTurnHandle {
   const spawnFn = deps.spawn ?? defaultSpawn
-  const command = deps.command ?? 'ur'
-  const args = buildUrArgs(request)
+  const executable = deps.executable ?? (deps.command ? { command: deps.command, args: [], source: 'configured', display: deps.command } : resolveUrCommand({ cwd: request.cwd }))
+  const args = [...executable.args, ...buildUrArgs(request)]
 
   let child: UrChildProcess
   try {
-    child = spawnFn(command, args, {
+    child = spawnFn(executable.command, args, {
       cwd: request.cwd,
       shell: false,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -182,10 +185,18 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
     handlers.onExit({
       ok: false,
       exitCode: null,
+      signal: null,
       canceled: false,
       sawResult: false,
       stderr: '',
-      error: `Failed to start \`${command}\`: ${errorMessage(error)}. Ensure the UR CLI is installed and on PATH.`,
+      error: formatTurnFailure({
+        executable,
+        cwd: request.cwd,
+        exitCode: null,
+        signal: null,
+        stderr: '',
+        reason: `Failed to start: ${errorMessage(error)}`,
+      }),
     })
     return { cancel: () => {} }
   }
@@ -197,7 +208,7 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
   let canceled = false
   let settled = false
 
-  const finish = (exitCode: number | null, spawnError?: string) => {
+  const finish = (exitCode: number | null, signal: NodeJS.Signals | null, spawnError?: string) => {
     if (settled) return
     settled = true
     const stderr = stderrChunks.join('')
@@ -205,10 +216,11 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
     handlers.onExit({
       ok,
       exitCode,
+      signal,
       canceled,
       sawResult,
       stderr,
-      error: spawnError ?? (!ok && !canceled ? deriveErrorMessage(sawResult, resultIsError, exitCode, stderr) : undefined),
+      error: spawnError ?? (!ok && !canceled ? deriveErrorMessage(executable, request.cwd, sawResult, resultIsError, exitCode, signal, stderr) : undefined),
     })
   }
 
@@ -244,13 +256,24 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
     stderrChunks.push(chunk.toString('utf8'))
   })
   child.on('error', error => {
-    finish(null, `Failed to run \`${command}\`: ${errorMessage(error)}. Ensure the UR CLI is installed and on PATH.`)
+    finish(
+      null,
+      null,
+      formatTurnFailure({
+        executable,
+        cwd: request.cwd,
+        exitCode: null,
+        signal: null,
+        stderr: stderrChunks.join(''),
+        reason: `Failed to run: ${errorMessage(error)}`,
+      }),
+    )
   })
-  child.on('exit', code => {
+  child.on('exit', (code, signal) => {
     for (const message of stdoutBuffer.flush()) {
       handleMessage(message)
     }
-    finish(code)
+    finish(code, signal)
   })
 
   return {
@@ -271,11 +294,45 @@ function writeControlResponse(child: UrChildProcess, requestId: string, decision
   }
 }
 
-function deriveErrorMessage(sawResult: boolean, resultIsError: boolean, exitCode: number | null, stderr: string): string {
-  if (sawResult && resultIsError) return 'UR reported an error completing this turn.'
-  const trimmedStderr = stderr.trim()
-  if (trimmedStderr) return trimmedStderr
-  return `UR exited with code ${exitCode ?? 'unknown'} and produced no result.`
+function deriveErrorMessage(
+  executable: ResolvedUrCommand,
+  cwd: string,
+  sawResult: boolean,
+  resultIsError: boolean,
+  exitCode: number | null,
+  signal: NodeJS.Signals | null,
+  stderr: string,
+): string {
+  const reason = sawResult && resultIsError
+    ? 'UR reported an error completing this turn.'
+    : 'UR exited without producing a successful result.'
+  return formatTurnFailure({ executable, cwd, exitCode, signal, stderr, reason })
+}
+
+function formatTurnFailure(options: {
+  executable: ResolvedUrCommand
+  cwd: string
+  exitCode: number | null
+  signal: NodeJS.Signals | null
+  stderr: string
+  reason: string
+}): string {
+  const stderr = summarizeStderr(options.stderr)
+  return [
+    `UR chat backend failed.`,
+    `Executable: ${options.executable.display}`,
+    `cwd: ${options.cwd}`,
+    `Exit: code ${options.exitCode ?? 'unknown'}, signal ${options.signal ?? 'none'}`,
+    `stderr: ${stderr || '<empty>'}`,
+    options.reason,
+    `Hint: Set ur.executablePath in VS Code settings if the extension is using the wrong UR binary.`,
+  ].join('\n')
+}
+
+function summarizeStderr(stderr: string): string {
+  const trimmed = stderr.trim()
+  if (trimmed.length <= 2000) return trimmed
+  return `${trimmed.slice(0, 2000)}…`
 }
 
 function errorMessage(error: unknown): string {

@@ -17,6 +17,8 @@ import type {
   StdoutMessage,
 } from '../bridge/types.js'
 import { isControlCancelRequest } from '../bridge/types.js'
+import { resolveUrCommand } from '../bridge/urCommand.js'
+import { readUrCommandConfig } from '../bridge/urCli.js'
 import { runUrTurn, type UrTurnHandle, type UrTurnResult } from '../bridge/urProcess.js'
 import {
   buildPromptWithAttachments,
@@ -245,6 +247,7 @@ export class ChatController implements vscode.Disposable {
         onControlRequest: request => this.handlePermissionRequest(request),
         onExit: result => this.handleTurnExit(root, result),
       },
+      { executable: resolveUrCommand({ cwd: root, config: readUrCommandConfig() }) },
     )
   }
 

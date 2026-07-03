@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -113,11 +113,63 @@ const child = spawn(bun, args, {
 
 if (shouldPipeChildOutput) {
   child.stdout?.on('data', chunk => {
-    writeSync(1, chunk)
+    forwardChildOutput(child.stdout, process.stdout, chunk)
   })
   child.stderr?.on('data', chunk => {
-    writeSync(2, chunk)
+    forwardChildOutput(child.stderr, process.stderr, chunk)
   })
+}
+
+function forwardChildOutput(source, target, chunk) {
+  try {
+    const canContinue = target.write(chunk)
+    if (!canContinue) {
+      source.pause()
+      target.once('drain', () => source.resume())
+    }
+  } catch (error) {
+    if (isRetryableWriteError(error)) {
+      source.pause()
+      setTimeout(() => {
+        if (target.destroyed) return
+        try {
+          const canContinue = target.write(chunk)
+          if (canContinue) source.resume()
+          else target.once('drain', () => source.resume())
+        } catch (retryError) {
+          if (isRetryableWriteError(retryError)) {
+            forwardChildOutput(source, target, chunk)
+            return
+          }
+          if (!isBrokenPipe(retryError)) {
+            try {
+              process.stderr.write(`UR launcher output forwarding failed: ${retryError.message ?? String(retryError)}\n`)
+            } catch {
+              // Nothing sensible remains if stderr itself is unavailable.
+            }
+          }
+        }
+      }, 10)
+      return
+    }
+    if (isBrokenPipe(error)) {
+      source.destroy?.()
+      return
+    }
+    try {
+      process.stderr.write(`UR launcher output forwarding failed: ${error.message ?? String(error)}\n`)
+    } catch {
+      // Nothing sensible remains if stderr itself is unavailable.
+    }
+  }
+}
+
+function isRetryableWriteError(error) {
+  return error && (error.code === 'EAGAIN' || error.code === 'EWOULDBLOCK')
+}
+
+function isBrokenPipe(error) {
+  return error && error.code === 'EPIPE'
 }
 
 child.on('error', error => {
@@ -136,5 +188,5 @@ child.on('close', (code, signal) => {
     return
   }
 
-  process.exit(code ?? 1)
+  process.exitCode = code ?? 1
 })

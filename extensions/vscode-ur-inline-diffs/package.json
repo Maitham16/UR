@@ -2,7 +2,7 @@
   "name": "ur-inline-diffs",
   "displayName": "UR Inline Diffs",
   "description": "Review, apply, and reject UR inline diff bundles from .ur/ide/diffs inside VS Code.",
-  "version": "1.37.1",
+  "version": "1.37.2",
   "publisher": "ur-agent",
   "engines": {
     "vscode": "^1.92.0"
@@ -55,6 +55,24 @@
     "typescript": "^5.7.0"
   },
   "contributes": {
+    "configuration": {
+      "title": "UR",
+      "properties": {
+        "ur.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path or command name for the UR executable the extension should run. Leave empty to prefer a repo-local UR checkout in the workspace, then fall back to ur on PATH."
+        },
+        "ur.executableArgs": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional arguments inserted after ur.executablePath and before UR command arguments. Use this only for custom wrappers, for example when ur.executablePath points to bun and the first arg is a dist/cli.js path."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {

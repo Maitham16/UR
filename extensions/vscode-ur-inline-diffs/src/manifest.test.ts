@@ -68,6 +68,14 @@ describe('extension manifest', () => {
     expect(extensionManifest.main).toBe('./out/extension.js')
   })
 
+  test('contributes configurable UR executable settings', () => {
+    const properties = extensionManifest.contributes.configuration.properties
+    expect(properties['ur.executablePath']).toBeDefined()
+    expect(properties['ur.executablePath'].type).toBe('string')
+    expect(properties['ur.executableArgs']).toBeDefined()
+    expect(properties['ur.executableArgs'].type).toBe('array')
+  })
+
   test('every new chat command is registered in contributes.commands', () => {
     const commandIds = extensionManifest.contributes.commands.map((command: { command: string }) => command.command)
     for (const id of CHAT_COMMANDS) {

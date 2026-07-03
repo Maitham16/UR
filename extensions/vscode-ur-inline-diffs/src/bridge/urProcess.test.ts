@@ -144,8 +144,8 @@ class FakeChildProcess extends EventEmitter {
     this.stderr.emit('data', Buffer.from(text))
   }
 
-  exit(code: number | null) {
-    this.emit('exit', code)
+  exit(code: number | null, signal: NodeJS.Signals | null = null) {
+    this.emit('exit', code, signal)
   }
 }
 
@@ -166,9 +166,10 @@ describe('runUrTurn spawn options', () => {
     const { spawn, calls, getChild } = spawnRecorder()
     runUrTurn({ cwd: '/work', prompt: 'hi' }, noopHandlers(), { spawn })
     expect(calls).toHaveLength(1)
-    const options = calls[0]!.options as { shell?: boolean }
+    const options = calls[0]!.options as { shell?: boolean; stdio?: unknown }
     expect(options.shell).not.toBe(true)
     expect(options.shell).toBe(false)
+    expect(options.stdio).toEqual(['pipe', 'pipe', 'pipe'])
     getChild().exit(0)
   })
 
@@ -177,6 +178,33 @@ describe('runUrTurn spawn options', () => {
     runUrTurn({ cwd: '/some/workspace', prompt: 'hi' }, noopHandlers(), { spawn })
     expect(calls[0]!.command).toBe('ur')
     expect((calls[0]!.options as { cwd: string }).cwd).toBe('/some/workspace')
+  })
+
+  test('uses resolved executable prefix args while preserving chat protocol args', () => {
+    const { spawn, calls } = spawnRecorder()
+    runUrTurn(
+      { cwd: '/repo', prompt: 'hello' },
+      noopHandlers(),
+      {
+        spawn,
+        executable: {
+          command: 'bun',
+          args: ['/repo/dist/cli.js'],
+          source: 'workspace-dist',
+          display: 'bun /repo/dist/cli.js',
+        },
+      },
+    )
+
+    expect(calls[0]!.command).toBe('bun')
+    expect(calls[0]!.args.slice(0, 1)).toEqual(['/repo/dist/cli.js'])
+    expect(calls[0]!.args).toContain('-p')
+    expect(calls[0]!.args).toContain('--output-format')
+    expect(calls[0]!.args).toContain('stream-json')
+    expect(calls[0]!.args).toContain('--verbose')
+    expect(calls[0]!.args).toContain('--permission-prompt-tool')
+    expect(calls[0]!.args).toContain('stdio')
+    expect(calls[0]!.args.at(-1)).toBe('hello')
   })
 })
 
@@ -216,11 +244,29 @@ describe('runUrTurn message + result handling', () => {
   test('surfaces stderr as the error when the process exits non-zero with no result', () => {
     const { spawn, getChild } = spawnRecorder()
     let result: Parameters<Parameters<typeof runUrTurn>[1]['onExit']>[0] | undefined
-    runUrTurn({ cwd: '/work', prompt: 'hi' }, { ...noopHandlers(), onExit: r => { result = r } }, { spawn })
+    runUrTurn(
+      { cwd: '/work', prompt: 'hi' },
+      { ...noopHandlers(), onExit: r => { result = r } },
+      {
+        spawn,
+        executable: {
+          command: 'bun',
+          args: ['/work/dist/cli.js'],
+          source: 'workspace-dist',
+          display: 'bun /work/dist/cli.js',
+        },
+      },
+    )
     getChild().emitStderr('Error: When using --print, --output-format=stream-json requires --verbose\n')
-    getChild().exit(1)
+    getChild().exit(1, 'SIGTERM')
     expect(result?.ok).toBe(false)
+    expect(result?.exitCode).toBe(1)
+    expect(result?.signal).toBe('SIGTERM')
+    expect(result?.error).toContain('Executable: bun /work/dist/cli.js')
+    expect(result?.error).toContain('cwd: /work')
+    expect(result?.error).toContain('Exit: code 1, signal SIGTERM')
     expect(result?.error).toContain('requires --verbose')
+    expect(result?.error).toContain('Set ur.executablePath in VS Code settings if the extension is using the wrong UR binary.')
   })
 
   test('is_error result never gets reported as ok, even with exit code 0', () => {
@@ -241,7 +287,9 @@ describe('runUrTurn message + result handling', () => {
     runUrTurn({ cwd: '/work', prompt: 'hi' }, { ...noopHandlers(), onExit: r => { result = r } }, { spawn })
     expect(result?.ok).toBe(false)
     expect(result?.sawResult).toBe(false)
-    expect(result?.error).toContain('ur')
+    expect(result?.error).toContain('Executable: ur')
+    expect(result?.error).toContain('cwd: /work')
+    expect(result?.error).toContain('spawn ur ENOENT')
   })
 })
 

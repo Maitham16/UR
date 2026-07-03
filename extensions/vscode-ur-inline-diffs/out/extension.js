@@ -221,23 +221,66 @@ var DiffTreeProvider = class {
 };
 
 // src/bridge/urCli.ts
-var import_node_child_process = require("node:child_process");
+var import_node_child_process2 = require("node:child_process");
 var import_node_util = require("node:util");
-var execFileAsync = (0, import_node_util.promisify)(import_node_child_process.execFile);
+
+// src/bridge/urCommand.ts
+var import_node_child_process = require("node:child_process");
+var import_node_fs = require("node:fs");
+var import_node_path = require("node:path");
+function resolveUrCommand(options) {
+  const config = options.config ?? {};
+  const configuredPath = config.executablePath?.trim();
+  const configuredArgs = normalizeExecutableArgs(config.executableArgs);
+  if (configuredPath) {
+    return command(configuredPath, configuredArgs, "configured");
+  }
+  const pathExists = options.pathExists ?? import_node_fs.existsSync;
+  const bunCommand = options.bunCommand ?? "bun";
+  const nodeCommand = options.nodeCommand ?? "node";
+  const distEntrypoint = (0, import_node_path.join)(options.cwd, "dist", "cli.js");
+  if (pathExists(distEntrypoint) && (options.bunAvailable ?? isBunAvailable)(bunCommand)) {
+    return command(bunCommand, [distEntrypoint], "workspace-dist");
+  }
+  const launcherEntrypoint = (0, import_node_path.join)(options.cwd, "bin", "ur.js");
+  if (pathExists(launcherEntrypoint)) {
+    return command(nodeCommand, [launcherEntrypoint], "workspace-launcher");
+  }
+  return command("ur", [], "path");
+}
+function formatResolvedUrCommand(resolved) {
+  return [resolved.command, ...resolved.args].join(" ");
+}
+function command(commandName, args, source) {
+  const resolved = { command: commandName, args, source, display: "" };
+  return { ...resolved, display: formatResolvedUrCommand(resolved) };
+}
+function normalizeExecutableArgs(args) {
+  return Array.isArray(args) ? args.filter((arg) => typeof arg === "string" && arg.length > 0) : [];
+}
+function isBunAvailable(commandName) {
+  const result = (0, import_node_child_process.spawnSync)(commandName, ["--version"], { stdio: "ignore" });
+  return !result.error && result.status === 0;
+}
+
+// src/bridge/urCli.ts
+var execFileAsync = (0, import_node_util.promisify)(import_node_child_process2.execFile);
 async function runUrCli(args, options) {
+  const executable = resolveUrCommand({ cwd: options.cwd, config: readUrCommandConfig() });
   try {
-    const { stdout, stderr } = await execFileAsync("ur", args, {
+    const { stdout, stderr } = await execFileAsync(executable.command, [...executable.args, ...args], {
       cwd: options.cwd,
       shell: false
     });
     return { stdout, stderr };
   } catch (error) {
-    throw new Error(formatUrCliError(args, error));
+    throw new Error(formatUrCliError(args, error, executable, options.cwd));
   }
 }
 async function runUrCliCapture(args, options) {
+  const executable = resolveUrCommand({ cwd: options.cwd, config: readUrCommandConfig() });
   try {
-    const { stdout, stderr } = await execFileAsync("ur", args, {
+    const { stdout, stderr } = await execFileAsync(executable.command, [...executable.args, ...args], {
       cwd: options.cwd,
       shell: false
     });
@@ -246,13 +289,34 @@ async function runUrCliCapture(args, options) {
     if (isCapturedNonZeroExit(error)) {
       return { stdout: error.stdout, stderr: error.stderr, exitCode: error.code };
     }
-    throw new Error(formatUrCliError(args, error));
+    throw new Error(formatUrCliError(args, error, executable, options.cwd));
   }
 }
-function formatUrCliError(args, error) {
+function readUrCommandConfig() {
+  try {
+    const vscode18 = require("vscode");
+    const config = vscode18.workspace.getConfiguration("ur");
+    const executablePath = config.get("executablePath")?.trim();
+    const executableArgs = config.get("executableArgs") ?? [];
+    return {
+      executablePath: executablePath || void 0,
+      executableArgs: executableArgs.filter((arg) => typeof arg === "string" && arg.length > 0)
+    };
+  } catch {
+    return {};
+  }
+}
+function formatUrCliError(args, error, executable, cwd) {
   const stderr = hasStderr(error) ? error.stderr.trim() : "";
   const detail = stderr || (error instanceof Error ? error.message : String(error));
-  return `Failed to run \`ur ${args.join(" ")}\`: ${detail}. Ensure the UR CLI is installed and on PATH.`;
+  return [
+    `Failed to run UR command.`,
+    `Executable: ${executable.display}`,
+    `cwd: ${cwd}`,
+    `Args: ${args.join(" ")}`,
+    `Error: ${detail}`,
+    `Hint: Set ur.executablePath in VS Code settings if the extension is using the wrong UR binary.`
+  ].join("\n");
 }
 function hasStderr(error) {
   return typeof error === "object" && error !== null && "stderr" in error && typeof error.stderr === "string";
@@ -409,7 +473,7 @@ function isCanUseToolRequest(message) {
 }
 
 // src/bridge/urProcess.ts
-var import_node_child_process2 = require("node:child_process");
+var import_node_child_process3 = require("node:child_process");
 var NdjsonBuffer = class {
   buffer = "";
   /** Feed a raw chunk (may contain zero, one, or many complete lines, and may
@@ -477,14 +541,14 @@ function buildControlResponse(requestId, decision) {
     }
   };
 }
-var defaultSpawn = (command, args, options) => (0, import_node_child_process2.spawn)(command, args, options);
+var defaultSpawn = (command2, args, options) => (0, import_node_child_process3.spawn)(command2, args, options);
 function runUrTurn(request, handlers, deps = {}) {
   const spawnFn = deps.spawn ?? defaultSpawn;
-  const command = deps.command ?? "ur";
-  const args = buildUrArgs(request);
+  const executable = deps.executable ?? (deps.command ? { command: deps.command, args: [], source: "configured", display: deps.command } : resolveUrCommand({ cwd: request.cwd }));
+  const args = [...executable.args, ...buildUrArgs(request)];
   let child;
   try {
-    child = spawnFn(command, args, {
+    child = spawnFn(executable.command, args, {
       cwd: request.cwd,
       shell: false,
       stdio: ["pipe", "pipe", "pipe"]
@@ -493,10 +557,18 @@ function runUrTurn(request, handlers, deps = {}) {
     handlers.onExit({
       ok: false,
       exitCode: null,
+      signal: null,
       canceled: false,
       sawResult: false,
       stderr: "",
-      error: `Failed to start \`${command}\`: ${errorMessage2(error)}. Ensure the UR CLI is installed and on PATH.`
+      error: formatTurnFailure({
+        executable,
+        cwd: request.cwd,
+        exitCode: null,
+        signal: null,
+        stderr: "",
+        reason: `Failed to start: ${errorMessage2(error)}`
+      })
     });
     return { cancel: () => {
     } };
@@ -507,7 +579,7 @@ function runUrTurn(request, handlers, deps = {}) {
   let resultIsError = false;
   let canceled = false;
   let settled = false;
-  const finish = (exitCode, spawnError) => {
+  const finish = (exitCode, signal, spawnError) => {
     if (settled) return;
     settled = true;
     const stderr = stderrChunks.join("");
@@ -515,10 +587,11 @@ function runUrTurn(request, handlers, deps = {}) {
     handlers.onExit({
       ok,
       exitCode,
+      signal,
       canceled,
       sawResult,
       stderr,
-      error: spawnError ?? (!ok && !canceled ? deriveErrorMessage(sawResult, resultIsError, exitCode, stderr) : void 0)
+      error: spawnError ?? (!ok && !canceled ? deriveErrorMessage(executable, request.cwd, sawResult, resultIsError, exitCode, signal, stderr) : void 0)
     });
   };
   const handleMessage = (message) => {
@@ -547,13 +620,24 @@ function runUrTurn(request, handlers, deps = {}) {
     stderrChunks.push(chunk.toString("utf8"));
   });
   child.on("error", (error) => {
-    finish(null, `Failed to run \`${command}\`: ${errorMessage2(error)}. Ensure the UR CLI is installed and on PATH.`);
+    finish(
+      null,
+      null,
+      formatTurnFailure({
+        executable,
+        cwd: request.cwd,
+        exitCode: null,
+        signal: null,
+        stderr: stderrChunks.join(""),
+        reason: `Failed to run: ${errorMessage2(error)}`
+      })
+    );
   });
-  child.on("exit", (code) => {
+  child.on("exit", (code, signal) => {
     for (const message of stdoutBuffer.flush()) {
       handleMessage(message);
     }
-    finish(code);
+    finish(code, signal);
   });
   return {
     cancel: () => {
@@ -570,11 +654,26 @@ function writeControlResponse(child, requestId, decision) {
   } catch {
   }
 }
-function deriveErrorMessage(sawResult, resultIsError, exitCode, stderr) {
-  if (sawResult && resultIsError) return "UR reported an error completing this turn.";
-  const trimmedStderr = stderr.trim();
-  if (trimmedStderr) return trimmedStderr;
-  return `UR exited with code ${exitCode ?? "unknown"} and produced no result.`;
+function deriveErrorMessage(executable, cwd, sawResult, resultIsError, exitCode, signal, stderr) {
+  const reason = sawResult && resultIsError ? "UR reported an error completing this turn." : "UR exited without producing a successful result.";
+  return formatTurnFailure({ executable, cwd, exitCode, signal, stderr, reason });
+}
+function formatTurnFailure(options) {
+  const stderr = summarizeStderr(options.stderr);
+  return [
+    `UR chat backend failed.`,
+    `Executable: ${options.executable.display}`,
+    `cwd: ${options.cwd}`,
+    `Exit: code ${options.exitCode ?? "unknown"}, signal ${options.signal ?? "none"}`,
+    `stderr: ${stderr || "<empty>"}`,
+    options.reason,
+    `Hint: Set ur.executablePath in VS Code settings if the extension is using the wrong UR binary.`
+  ].join("\n");
+}
+function summarizeStderr(stderr) {
+  const trimmed = stderr.trim();
+  if (trimmed.length <= 2e3) return trimmed;
+  return `${trimmed.slice(0, 2e3)}\u2026`;
 }
 function errorMessage2(error) {
   return error instanceof Error ? error.message : String(error);
@@ -1367,7 +1466,8 @@ var ChatController = class {
         onMessage: (message) => this.handleStreamMessage(root, sessionId, message),
         onControlRequest: (request) => this.handlePermissionRequest(request),
         onExit: (result) => this.handleTurnExit(root, result)
-      }
+      },
+      { executable: resolveUrCommand({ cwd: root, config: readUrCommandConfig() }) }
     );
   }
   handleStreamMessage(root, sessionId, message) {
@@ -1489,13 +1589,13 @@ var ChatController = class {
 // src/chat/chatTreeProvider.ts
 var vscode7 = __toESM(require("vscode"));
 var ActionItem = class extends vscode7.TreeItem {
-  constructor(label, description, icon, command, tooltip) {
+  constructor(label, description, icon, command2, tooltip) {
     super(label, vscode7.TreeItemCollapsibleState.None);
     this.contextValue = "urChatAction";
     this.description = description;
     this.iconPath = new vscode7.ThemeIcon(icon);
     this.tooltip = tooltip ?? `${label}${description ? ` - ${description}` : ""}`;
-    this.command = command;
+    this.command = command2;
   }
 };
 var InfoItem3 = class extends vscode7.TreeItem {
@@ -1567,11 +1667,11 @@ var ChatTreeProvider = class {
 };
 
 // src/diffs/actions.ts
-var import_node_child_process3 = require("node:child_process");
+var import_node_child_process4 = require("node:child_process");
 var fs3 = __toESM(require("node:fs"));
 var import_node_util2 = require("node:util");
 var vscode8 = __toESM(require("vscode"));
-var execFileAsync2 = (0, import_node_util2.promisify)(import_node_child_process3.execFile);
+var execFileAsync2 = (0, import_node_util2.promisify)(import_node_child_process4.execFile);
 async function commentDiff(item, provider) {
   const root = workspaceRoot();
   const bundle = item?.bundle;
@@ -2181,7 +2281,7 @@ async function showAgentOptions(cwd) {
 }
 
 // src/review/reviewDiff.ts
-var import_node_child_process4 = require("node:child_process");
+var import_node_child_process5 = require("node:child_process");
 var import_node_util3 = require("node:util");
 var vscode13 = __toESM(require("vscode"));
 
@@ -2199,7 +2299,7 @@ function buildReviewPrompt(diff) {
 }
 
 // src/review/reviewDiff.ts
-var execFileAsync3 = (0, import_node_util3.promisify)(import_node_child_process4.execFile);
+var execFileAsync3 = (0, import_node_util3.promisify)(import_node_child_process5.execFile);
 async function captureGitDiff(cwd) {
   const { stdout } = await execFileAsync3("git", ["diff", "HEAD"], { cwd, shell: false });
   return stdout;

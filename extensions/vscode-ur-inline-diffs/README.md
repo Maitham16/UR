@@ -11,7 +11,13 @@ marketplace extension ID.
 
 The extension never talks to a model provider or network service directly —
 every AI request goes through your local `ur` CLI, the same way `ur` behaves
-in a terminal. Everything below requires the UR CLI on your `PATH`.
+in a terminal.
+
+When the opened workspace is a UR checkout, the extension prefers the
+workspace-local runtime (`bun dist/cli.js`, then `node bin/ur.js`) before
+falling back to `ur` on `PATH`. To force a specific binary, set
+`ur.executablePath` in VS Code settings. Use `ur.executableArgs` only for
+custom wrappers that need fixed arguments before normal UR arguments.
 
 ## Chat
 

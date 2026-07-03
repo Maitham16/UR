@@ -4,6 +4,8 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import type * as VscodeNamespace from 'vscode'
+import { resolveUrCommand, type ResolvedUrCommand, type UrCommandConfig } from './urCommand.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -17,14 +19,15 @@ export interface UrCliOptions {
 }
 
 export async function runUrCli(args: string[], options: UrCliOptions): Promise<UrCliResult> {
+  const executable = resolveUrCommand({ cwd: options.cwd, config: readUrCommandConfig() })
   try {
-    const { stdout, stderr } = await execFileAsync('ur', args, {
+    const { stdout, stderr } = await execFileAsync(executable.command, [...executable.args, ...args], {
       cwd: options.cwd,
       shell: false,
     })
     return { stdout, stderr }
   } catch (error) {
-    throw new Error(formatUrCliError(args, error))
+    throw new Error(formatUrCliError(args, error, executable, options.cwd))
   }
 }
 
@@ -41,8 +44,9 @@ export interface UrCliCaptureResult extends UrCliResult {
  * throw. Genuine spawn failures (`ur` missing from PATH, etc.) still throw.
  */
 export async function runUrCliCapture(args: string[], options: UrCliOptions): Promise<UrCliCaptureResult> {
+  const executable = resolveUrCommand({ cwd: options.cwd, config: readUrCommandConfig() })
   try {
-    const { stdout, stderr } = await execFileAsync('ur', args, {
+    const { stdout, stderr } = await execFileAsync(executable.command, [...executable.args, ...args], {
       cwd: options.cwd,
       shell: false,
     })
@@ -51,14 +55,36 @@ export async function runUrCliCapture(args: string[], options: UrCliOptions): Pr
     if (isCapturedNonZeroExit(error)) {
       return { stdout: error.stdout, stderr: error.stderr, exitCode: error.code }
     }
-    throw new Error(formatUrCliError(args, error))
+    throw new Error(formatUrCliError(args, error, executable, options.cwd))
   }
 }
 
-function formatUrCliError(args: string[], error: unknown): string {
+export function readUrCommandConfig(): UrCommandConfig {
+  try {
+    const vscode = require('vscode') as typeof VscodeNamespace
+    const config = vscode.workspace.getConfiguration('ur')
+    const executablePath = config.get<string>('executablePath')?.trim()
+    const executableArgs = config.get<string[]>('executableArgs') ?? []
+    return {
+      executablePath: executablePath || undefined,
+      executableArgs: executableArgs.filter(arg => typeof arg === 'string' && arg.length > 0),
+    }
+  } catch {
+    return {}
+  }
+}
+
+function formatUrCliError(args: string[], error: unknown, executable: ResolvedUrCommand, cwd: string): string {
   const stderr = hasStderr(error) ? error.stderr.trim() : ''
   const detail = stderr || (error instanceof Error ? error.message : String(error))
-  return `Failed to run \`ur ${args.join(' ')}\`: ${detail}. Ensure the UR CLI is installed and on PATH.`
+  return [
+    `Failed to run UR command.`,
+    `Executable: ${executable.display}`,
+    `cwd: ${cwd}`,
+    `Args: ${args.join(' ')}`,
+    `Error: ${detail}`,
+    `Hint: Set ur.executablePath in VS Code settings if the extension is using the wrong UR binary.`,
+  ].join('\n')
 }
 
 function hasStderr(error: unknown): error is { stderr: string } {

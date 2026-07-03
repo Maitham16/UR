@@ -86,9 +86,14 @@ Install it with `ur ide install` (offers the bundled VSIX) or from the
 packaged `.vsix`. The extension is bundled inside this repository and
 packaged as a local VSIX when installed from UR-AGENT; the public install
 path does not depend on an unpublished marketplace extension ID. Every
-feature below requires the UR CLI on your `PATH` — the extension calls `ur`
-as a local subprocess and never talks to a model provider or network service
-directly.
+feature below runs UR as a local subprocess and never talks to a model
+provider or network service directly.
+
+When the workspace itself is a UR checkout, the extension prefers the
+workspace-local runtime (`bun dist/cli.js`, then `node bin/ur.js`) before
+falling back to `ur` from `PATH`. Set `ur.executablePath` in VS Code settings
+to force a specific binary; `ur.executableArgs` can provide fixed wrapper
+arguments before normal UR command arguments.
 
 ### Chat panel
 
