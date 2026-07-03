@@ -88,6 +88,7 @@ ur provider status
 ur provider doctor
 ur provider doctor codex-cli
 ur provider doctor agy
+ur provider models [provider] --json
 # Subscription CLI logins (official vendor CLIs):
 ur auth chatgpt
 ur auth claude
@@ -100,6 +101,7 @@ ur config set provider gemini-api
 ur config set provider openrouter
 ur config set provider openai-compatible
 ur config set model <model>
+ur provider select-model <provider> <model> --json
 ur config set base_url <url>
 ur config set provider.fallback ollama
 ```

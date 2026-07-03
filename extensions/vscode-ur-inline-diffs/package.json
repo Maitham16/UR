@@ -2,7 +2,7 @@
   "name": "ur-inline-diffs",
   "displayName": "UR Inline Diffs",
   "description": "Review, apply, and reject UR inline diff bundles from .ur/ide/diffs inside VS Code.",
-  "version": "1.37.0",
+  "version": "1.37.1",
   "publisher": "ur-agent",
   "engines": {
     "vscode": "^1.92.0"
@@ -11,6 +11,7 @@
     "Other"
   ],
   "activationEvents": [
+    "onView:urChat",
     "onView:urInlineDiffs",
     "onView:urActions",
     "onCommand:urInlineDiffs.refresh",
@@ -32,6 +33,7 @@
     "onCommand:urInlineDiffs.reviewCurrentDiff",
     "onCommand:urInlineDiffs.runVerifier",
     "onCommand:urInlineDiffs.searchActions",
+    "onCommand:urInlineDiffs.pickModel",
     "onCommand:urInlineDiffs.openSettings",
     "onCommand:urInlineDiffs.openDocs",
     "onCommand:urInlineDiffs.openArtifacts",
@@ -64,6 +66,10 @@
     },
     "views": {
       "ur": [
+        {
+          "id": "urChat",
+          "name": "Chat"
+        },
         {
           "id": "urInlineDiffs",
           "name": "Inline Diffs"
@@ -166,6 +172,11 @@
         "icon": "$(search)"
       },
       {
+        "command": "urInlineDiffs.pickModel",
+        "title": "UR: Pick Model",
+        "icon": "$(symbol-variable)"
+      },
+      {
         "command": "urInlineDiffs.openSettings",
         "title": "UR: Open Settings"
       },
@@ -197,12 +208,40 @@
     ],
     "viewsWelcome": [
       {
+        "view": "urChat",
+        "contents": "Start a UR chat.\n[New Chat](command:urInlineDiffs.chat.new)  [Open Chat](command:urInlineDiffs.chat.open)  [Pick Model](command:urInlineDiffs.pickModel)"
+      },
+      {
         "view": "urInlineDiffs",
-        "contents": "UR inline diffs appear here when a review bundle is captured.\n[Show Status](command:urInlineDiffs.status)  [Refresh](command:urInlineDiffs.refresh)"
+        "contents": "Review diff bundles captured by `ur ide diff capture`.\n[Refresh](command:urInlineDiffs.refresh)  [Show Status](command:urInlineDiffs.status)"
+      },
+      {
+        "view": "urActions",
+        "contents": "Background tasks and diff actions will appear here.\n[Refresh](command:urActions.refresh)  [Search Actions](command:urInlineDiffs.searchActions)"
       }
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "urInlineDiffs.chat.new",
+          "when": "view == urChat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "urInlineDiffs.chat.open",
+          "when": "view == urChat",
+          "group": "navigation@2"
+        },
+        {
+          "command": "urInlineDiffs.searchActions",
+          "when": "view == urChat",
+          "group": "navigation@3"
+        },
+        {
+          "command": "urInlineDiffs.pickModel",
+          "when": "view == urChat",
+          "group": "navigation@4"
+        },
         {
           "command": "urInlineDiffs.chat.new",
           "when": "view == urInlineDiffs",

@@ -297,7 +297,11 @@ describe('agent feature commands', () => {
     const commands = manifest.contributes.commands.map((command: { command: string }) => command.command)
     expect(commands).toContain('urInlineDiffs.open')
     expect(commands).toContain('urInlineDiffs.comment')
-    expect(manifest.contributes.views.ur[0].id).toBe('urInlineDiffs')
+    expect(manifest.contributes.views.ur.map((view: { id: string }) => view.id)).toEqual([
+      'urChat',
+      'urInlineDiffs',
+      'urActions',
+    ])
   })
 
   test('VS Code inline diff extension manifest exposes the PR3 status/actions/search/options surfaces', () => {
@@ -317,6 +321,7 @@ describe('agent feature commands', () => {
       'urInlineDiffs.reviewCurrentDiff',
       'urInlineDiffs.runVerifier',
       'urInlineDiffs.searchActions',
+      'urInlineDiffs.pickModel',
       'urActions.refresh',
     ]) {
       expect(commands).toContain(id)

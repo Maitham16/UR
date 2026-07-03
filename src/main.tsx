@@ -4274,6 +4274,22 @@ async function run(): Promise<CommanderCommand> {
     } = await import('./cli/handlers/providers.js');
     await providerDoctorHandler(providerArg, options);
   });
+  provider.command('models [provider]').description('List models available for a provider').option('--json', 'Output as JSON').action(async (providerArg: string | undefined, options: {
+    json?: boolean;
+  }) => {
+    const {
+      providerModelsHandler
+    } = await import('./cli/handlers/providers.js');
+    await providerModelsHandler(providerArg, options);
+  });
+  provider.command('select-model <provider> <model...>').description('Select a provider-scoped model').option('--json', 'Output as JSON').action(async (providerArg: string, model: string[], options: {
+    json?: boolean;
+  }) => {
+    const {
+      providerSelectModelHandler
+    } = await import('./cli/handlers/providers.js');
+    await providerSelectModelHandler(providerArg, model, options);
+  });
 
   // ur config
   const configCmd = program.command('config').description('Manage safe UR-AGENT settings').configureHelp(createSortedHelpConfig());

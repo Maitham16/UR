@@ -20,6 +20,7 @@ export const ACTION_REGISTRY: ActionEntry[] = [
   { id: 'providerStatus', label: 'Provider Status', commandId: 'urInlineDiffs.status', description: 'Show provider, model, and plugin status' },
   { id: 'agentStatus', label: 'Agent Status', commandId: 'urInlineDiffs.agentStatus', description: 'Open the UR agent status card' },
   { id: 'agentOptions', label: 'Agent Options', commandId: 'urInlineDiffs.agentOptions', description: 'Open curated provider recommendations' },
+  { id: 'pickModel', label: 'Pick Model', commandId: 'urInlineDiffs.pickModel', description: 'Choose a provider-scoped UR model' },
   { id: 'openSettings', label: 'Open Settings', commandId: 'urInlineDiffs.openSettings', description: 'Open VS Code settings filtered to UR' },
   { id: 'openDocs', label: 'Open Docs', commandId: 'urInlineDiffs.openDocs', description: 'Open the UR documentation' },
   { id: 'openArtifacts', label: 'Open Artifacts', commandId: 'urInlineDiffs.openArtifacts', description: 'Reveal the .ur workspace directory' },

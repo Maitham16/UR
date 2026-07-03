@@ -12,6 +12,7 @@ const EXPECTED_LABELS = [
   'Provider Status',
   'Agent Status',
   'Agent Options',
+  'Pick Model',
   'Open Settings',
   'Open Docs',
   'Open Artifacts',
@@ -59,5 +60,6 @@ describe('ACTION_REGISTRY', () => {
     expect(byLabel['Fix Selection']).toBe('urInlineDiffs.chat.fixSelection')
     expect(byLabel['Generate Tests']).toBe('urInlineDiffs.chat.generateTests')
     expect(byLabel['Provider Status']).toBe('urInlineDiffs.status')
+    expect(byLabel['Pick Model']).toBe('urInlineDiffs.pickModel')
   })
 })

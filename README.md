@@ -178,12 +178,14 @@ placeholder and is hidden from the list.
 ur provider list
 ur provider status
 ur provider doctor
+ur provider models [provider] --json
 ur config set provider ollama
 ur config set provider openai-api
 ur config set provider anthropic-api
 ur config set provider gemini-api
 ur config set provider openrouter
 ur config set model qwen3-coder:480b-cloud
+ur provider select-model ollama qwen3-coder:480b-cloud --json
 ur config set base_url http://localhost:11434
 ur config set provider.fallback ollama
 ```

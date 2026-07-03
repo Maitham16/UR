@@ -2,8 +2,8 @@
 
 The professional UR IDE integration for VS Code, Cursor, and Windsurf: chat,
 inline diff review, an actions panel, an agent status card, a searchable
-command palette, and an agent options panel — all backed by the `ur` CLI
-already on your machine.
+command palette, a provider/model picker, and an agent options panel — all
+backed by the `ur` CLI already on your machine.
 
 UR-AGENT packages this extension from the repository as a local VSIX when the
 CLI installs the public IDE integration. It does not depend on an unpublished
@@ -14,6 +14,11 @@ every AI request goes through your local `ur` CLI, the same way `ur` behaves
 in a terminal. Everything below requires the UR CLI on your `PATH`.
 
 ## Chat
+
+The UR Activity Bar contains a **Chat** view with visible buttons for **New
+Chat**, **Open Chat**, **Pick Model**, and editor-context actions when a file
+or selection is active. You do not need to know command palette commands to
+start a conversation.
 
 **UR: New Chat** / **UR: Open Chat** open a chat panel that streams UR's
 response as it's generated, over the same NDJSON `stream-json` contract the
@@ -32,6 +37,10 @@ actions or send a message. **UR: Explain Selection**, **UR: Fix Selection**,
 and **UR: Generate Tests for Selection** (also on the editor right-click
 menu) open the same chat panel with a structured prompt built from the
 current selection; they are not a separate code path from chat.
+
+**UR: Pick Model** opens a provider-first picker, then a model picker scoped to
+that provider. Saving the choice goes through the same provider/model
+validation as `/model`.
 
 ## Inline diffs and actions panel
 

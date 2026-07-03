@@ -38,6 +38,9 @@ type PendingPermission = {
 }
 
 export class ChatController implements vscode.Disposable {
+  private readonly _onDidChangeState = new vscode.EventEmitter<void>()
+  readonly onDidChangeState = this._onDidChangeState.event
+
   private panel: ChatPanel | undefined
   private record: ChatSessionRecord | undefined
   private attachments: ContextAttachment[] = []
@@ -54,6 +57,7 @@ export class ChatController implements vscode.Disposable {
     this.record = createSession(root)
     this.attachments = []
     this.status = 'idle'
+    this._onDidChangeState.fire()
     this.ensurePanel()
     this.syncFullState()
   }
@@ -104,6 +108,10 @@ export class ChatController implements vscode.Disposable {
     this.stageAttachment('selection')
   }
 
+  isRequestRunning(): boolean {
+    return this.status === 'running'
+  }
+
   async explainSelection(): Promise<void> {
     await this.runEditorAction(buildExplainPrompt)
   }
@@ -135,6 +143,7 @@ export class ChatController implements vscode.Disposable {
   dispose(): void {
     this.turnHandle?.cancel()
     this.denyAllPending('Extension is shutting down.')
+    this._onDidChangeState.dispose()
   }
 
   // --- internals ---
@@ -224,6 +233,7 @@ export class ChatController implements vscode.Disposable {
     this.panel?.post({ type: 'messageAppended', message: userMessage })
 
     this.status = 'running'
+    this._onDidChangeState.fire()
     this.panel?.post({ type: 'statusChanged', status: this.status })
 
     const resumeSessionId = this.record.session.cliSessionId
@@ -305,6 +315,7 @@ export class ChatController implements vscode.Disposable {
     } else {
       this.status = 'idle'
     }
+    this._onDidChangeState.fire()
     this.panel?.post({ type: 'statusChanged', status: this.status })
   }
 

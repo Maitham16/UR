@@ -3,12 +3,14 @@
 // separately by test/agentFeatureCommands.test.ts's VSIX packaging test —
 // this is the same invariant checked from inside the extension's own tree).
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'bun:test'
 
 const extensionManifest = JSON.parse(readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf8'))
 const rootManifest = JSON.parse(readFileSync(join(import.meta.dir, '..', '..', '..', 'package.json'), 'utf8'))
+const extensionRoot = join(import.meta.dir, '..')
+const activityBarIconPath = join(extensionRoot, extensionManifest.contributes.viewsContainers.activitybar[0].icon)
 
 const CHAT_COMMANDS = [
   'urInlineDiffs.chat.new',
@@ -27,6 +29,7 @@ const PR3_COMMANDS = [
   'urInlineDiffs.reviewCurrentDiff',
   'urInlineDiffs.runVerifier',
   'urInlineDiffs.searchActions',
+  'urInlineDiffs.pickModel',
   'urInlineDiffs.openSettings',
   'urInlineDiffs.openDocs',
   'urInlineDiffs.openArtifacts',
@@ -41,7 +44,24 @@ describe('extension manifest', () => {
     expect(extensionManifest.name).toBe('ur-inline-diffs')
     expect(extensionManifest.publisher).toBe('ur-agent')
     expect(extensionManifest.contributes.viewsContainers.activitybar[0].id).toBe('ur')
-    expect(extensionManifest.contributes.views.ur[0].id).toBe('urInlineDiffs')
+    expect(extensionManifest.contributes.views.ur.map((view: { id: string }) => view.id)).toEqual([
+      'urChat',
+      'urInlineDiffs',
+      'urActions',
+    ])
+  })
+
+  test('Activity Bar icon points at a valid non-empty monochrome SVG', () => {
+    const container = extensionManifest.contributes.viewsContainers.activitybar[0]
+    expect(container.icon).toBe('media/ur.svg')
+    expect(existsSync(activityBarIconPath)).toBe(true)
+    const svg = readFileSync(activityBarIconPath, 'utf8')
+    expect(svg).toContain('<svg')
+    expect(svg).toContain('</svg>')
+    expect(svg).toContain('viewBox=')
+    expect(svg).toContain('<path')
+    expect(svg).toContain('currentColor')
+    expect(svg).not.toContain('<rect')
   })
 
   test('main still points at the bundled esbuild output', () => {
@@ -68,6 +88,19 @@ describe('extension manifest', () => {
     }
   })
 
+  test('command palette exposes the primary chat and search commands', () => {
+    const titlesByCommand = Object.fromEntries(
+      extensionManifest.contributes.commands.map((command: { command: string; title: string }) => [
+        command.command,
+        command.title,
+      ]),
+    )
+    expect(titlesByCommand['urInlineDiffs.chat.new']).toBe('UR: New Chat')
+    expect(titlesByCommand['urInlineDiffs.chat.open']).toBe('UR: Open Chat')
+    expect(titlesByCommand['urInlineDiffs.searchActions']).toBe('UR: Search Actions')
+    expect(titlesByCommand['urInlineDiffs.pickModel']).toBe('UR: Pick Model')
+  })
+
   test('editor selection actions are wired into the editor context menu', () => {
     const editorContextCommands = extensionManifest.contributes.menus['editor/context'].map(
       (entry: { command: string }) => entry.command,
@@ -81,8 +114,9 @@ describe('extension manifest', () => {
     expect(extensionManifest.version).toBe(rootManifest.version)
   })
 
-  test('the urActions view is registered alongside urInlineDiffs (additive, not a replacement)', () => {
+  test('the chat and actions views are registered alongside urInlineDiffs (additive, not a replacement)', () => {
     const viewIds = extensionManifest.contributes.views.ur.map((view: { id: string }) => view.id)
+    expect(viewIds).toContain('urChat')
     expect(viewIds).toContain('urInlineDiffs')
     expect(viewIds).toContain('urActions')
   })
@@ -122,5 +156,25 @@ describe('extension manifest', () => {
     const refreshEntry = titleMenus.find(m => m.command === 'urActions.refresh')
     expect(refreshEntry).toBeDefined()
     expect(refreshEntry?.when).toContain('urActions')
+  })
+
+  test('the Chat view has title actions for New Chat, Open Chat, and Search Actions', () => {
+    const titleMenus = extensionManifest.contributes.menus['view/title'] as Array<{ command: string; when: string }>
+    const chatTitleCommands = titleMenus.filter(m => m.when === 'view == urChat').map(m => m.command)
+    expect(chatTitleCommands).toContain('urInlineDiffs.chat.new')
+    expect(chatTitleCommands).toContain('urInlineDiffs.chat.open')
+    expect(chatTitleCommands).toContain('urInlineDiffs.searchActions')
+  })
+
+  test('sidebar welcome text is readable for Chat, Inline Diffs, and Actions', () => {
+    const welcomeByView = Object.fromEntries(
+      extensionManifest.contributes.viewsWelcome.map((entry: { view: string; contents: string }) => [
+        entry.view,
+        entry.contents,
+      ]),
+    )
+    expect(welcomeByView.urChat).toContain('Start a UR chat')
+    expect(welcomeByView.urInlineDiffs).toContain('Review diff bundles captured by `ur ide diff capture`')
+    expect(welcomeByView.urActions).toContain('Background tasks and diff actions will appear here')
   })
 })

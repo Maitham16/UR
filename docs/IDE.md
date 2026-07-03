@@ -78,8 +78,9 @@ applied or rejected:
 
 The bundled **UR Inline Diffs** extension is the professional IDE integration
 for VS Code, Cursor, and Windsurf. It adds a UR container to the Activity Bar
-with two views, **Inline Diffs** and **Actions**, plus a chat panel, a status
-card, an agent options panel, and a searchable command palette.
+with three views, **Chat**, **Inline Diffs**, and **Actions**, plus a chat
+panel, a status card, an agent options panel, a provider/model picker, and a
+searchable command palette.
 
 Install it with `ur ide install` (offers the bundled VSIX) or from the
 packaged `.vsix`. The extension is bundled inside this repository and
@@ -104,6 +105,12 @@ tool-result blocks render as they arrive; nothing is buffered and dumped only
 at the end. If the underlying `ur` process exits with an error, the panel
 shows an error banner — it never fabricates a success message when the run
 failed.
+
+The **Chat** view in the UR sidebar exposes **New Chat**, **Open Chat**,
+**Search Actions**, **Pick Model**, and editor-context actions when an editor
+or selection is available. **UR: Pick Model** uses the provider-first model
+catalog from the CLI and saves the selected provider/model pair through the
+same validation path as `/model`.
 
 **Permission prompts.** When a turn wants to use a tool that needs approval,
 UR emits a `control_request` message in the same stream. The chat panel shows

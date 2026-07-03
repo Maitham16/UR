@@ -44,6 +44,7 @@ Provider configuration commands:
 ur provider list
 ur provider doctor
 ur provider status
+ur provider models [provider] --json
 ur config set provider ollama
 ur config set provider openai-api
 ur config set provider anthropic-api
@@ -53,6 +54,7 @@ ur config set provider openai-compatible
 ur provider doctor agy
 ur config set provider.fallback ollama
 ur config set model <model>
+ur provider select-model <provider> <model> --json
 ur config set base_url <url>
 ```
 

@@ -95,7 +95,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
 
     if (!element) {
       if (this.diffs.length === 0 && this.backgroundTasks.length === 0) {
-        return [new InfoItem('No actions yet', 'Diff bundles and background tasks will appear here', 'pass')]
+        return []
       }
       return [
         new SectionItem('diffs', 'Diff Bundles', this.diffs.length),

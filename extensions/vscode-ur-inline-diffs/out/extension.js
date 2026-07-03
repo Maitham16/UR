@@ -34,7 +34,7 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode15 = __toESM(require("vscode"));
+var vscode17 = __toESM(require("vscode"));
 
 // src/actions/actions.ts
 var vscode = __toESM(require("vscode"));
@@ -107,8 +107,6 @@ function writeBundleMetadata(root, bundle) {
 }
 
 // src/diffs/treeProvider.ts
-var fs2 = __toESM(require("node:fs"));
-var path2 = __toESM(require("node:path"));
 var vscode3 = __toESM(require("vscode"));
 
 // src/util/format.ts
@@ -184,16 +182,6 @@ var DiffTreeItem = class extends vscode3.TreeItem {
     };
   }
 };
-var ActionItem = class extends vscode3.TreeItem {
-  constructor(label, description, icon, command, tooltip) {
-    super(label, vscode3.TreeItemCollapsibleState.None);
-    this.contextValue = "urAction";
-    this.description = description;
-    this.iconPath = new vscode3.ThemeIcon(icon);
-    this.tooltip = tooltip ?? `${label}${description ? ` \u2014 ${description}` : ""}`;
-    this.command = command;
-  }
-};
 var InfoItem = class extends vscode3.TreeItem {
   constructor(label, description, icon = "info") {
     super(label, vscode3.TreeItemCollapsibleState.None);
@@ -226,21 +214,7 @@ var DiffTreeProvider = class {
     const manifest = loadManifest(root);
     const diffs = manifest.diffs.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     if (diffs.length === 0) {
-      return [
-        new InfoItem(
-          "Ready for inline review",
-          fs2.existsSync(manifestPath(root)) ? "No pending diff bundles" : "No diff bundles captured yet",
-          "pass"
-        ),
-        new ActionItem("Show UR status", "Provider, model, plugins", "pulse", {
-          command: "urInlineDiffs.status",
-          title: "Show UR Status"
-        }),
-        new ActionItem("Refresh", path2.relative(root, manifestPath(root)), "refresh", {
-          command: "urInlineDiffs.refresh",
-          title: "Refresh Inline Diffs"
-        })
-      ];
+      return [];
     }
     return diffs.map((bundle) => new DiffTreeItem(bundle));
   }
@@ -396,7 +370,7 @@ var ActionsTreeProvider = class {
     }
     if (!element) {
       if (this.diffs.length === 0 && this.backgroundTasks.length === 0) {
-        return [new InfoItem2("No actions yet", "Diff bundles and background tasks will appear here", "pass")];
+        return [];
       }
       return [
         new SectionItem("diffs", "Diff Bundles", this.diffs.length),
@@ -607,7 +581,7 @@ function errorMessage2(error) {
 }
 
 // src/context/ideContext.ts
-var path3 = __toESM(require("node:path"));
+var path2 = __toESM(require("node:path"));
 function formatAttachmentLabel(attachment) {
   if (attachment.kind === "file") return `@${attachment.file.path}`;
   const { path: filePath, startLine, endLine } = attachment.selection;
@@ -646,12 +620,12 @@ function languageIdToFence(languageId) {
   return FENCE_OVERRIDES[languageId] ?? languageId;
 }
 function captureEditorSnapshot() {
-  const vscode16 = require("vscode");
-  const workspaceRoot2 = vscode16.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  const editor = vscode16.window.activeTextEditor;
+  const vscode18 = require("vscode");
+  const workspaceRoot2 = vscode18.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const editor = vscode18.window.activeTextEditor;
   if (!editor) return { workspaceRoot: workspaceRoot2 };
   const absolutePath = editor.document.uri.fsPath;
-  const relativePath = workspaceRoot2 ? path3.relative(workspaceRoot2, absolutePath) : absolutePath;
+  const relativePath = workspaceRoot2 ? path2.relative(workspaceRoot2, absolutePath) : absolutePath;
   const activeFile = { path: relativePath, languageId: editor.document.languageId };
   const selection = editor.selection;
   if (selection.isEmpty) return { workspaceRoot: workspaceRoot2, activeFile };
@@ -668,39 +642,39 @@ function captureEditorSnapshot() {
 
 // src/sessions/sessionStore.ts
 var import_node_crypto = require("node:crypto");
-var fs3 = __toESM(require("node:fs"));
-var path4 = __toESM(require("node:path"));
+var fs2 = __toESM(require("node:fs"));
+var path3 = __toESM(require("node:path"));
 var SESSION_ID_PATTERN = /^[a-zA-Z0-9-]{1,128}$/;
 var TITLE_MAX_LENGTH = 60;
 var DEFAULT_TITLE = "New Chat";
 function chatRoot(root) {
-  return path4.join(root, ".ur", "ide", "chat");
+  return path3.join(root, ".ur", "ide", "chat");
 }
 function manifestPath2(root) {
-  return path4.join(chatRoot(root), "manifest.json");
+  return path3.join(chatRoot(root), "manifest.json");
 }
 function isValidSessionId(id) {
   return SESSION_ID_PATTERN.test(id);
 }
 function sessionFilePath(root, id) {
   if (!isValidSessionId(id)) return null;
-  const sessionsDir = path4.join(chatRoot(root), "sessions");
-  const target = path4.join(sessionsDir, `${id}.json`);
-  const resolvedDir = path4.resolve(sessionsDir) + path4.sep;
-  const resolvedTarget = path4.resolve(target);
+  const sessionsDir = path3.join(chatRoot(root), "sessions");
+  const target = path3.join(sessionsDir, `${id}.json`);
+  const resolvedDir = path3.resolve(sessionsDir) + path3.sep;
+  const resolvedTarget = path3.resolve(target);
   if (!resolvedTarget.startsWith(resolvedDir)) return null;
   return target;
 }
 function readJson2(file, fallback) {
   try {
-    return JSON.parse(fs3.readFileSync(file, "utf8"));
+    return JSON.parse(fs2.readFileSync(file, "utf8"));
   } catch {
     return fallback;
   }
 }
 function writeJson2(file, value) {
-  fs3.mkdirSync(path4.dirname(file), { recursive: true });
-  fs3.writeFileSync(file, `${JSON.stringify(value, null, 2)}
+  fs2.mkdirSync(path3.dirname(file), { recursive: true });
+  fs2.writeFileSync(file, `${JSON.stringify(value, null, 2)}
 `);
 }
 function readManifest(root) {
@@ -743,7 +717,7 @@ function listSessions(root, options = {}) {
 }
 function readSession(root, id) {
   const file = sessionFilePath(root, id);
-  if (!file || !fs3.existsSync(file)) return null;
+  if (!file || !fs2.existsSync(file)) return null;
   return readJson2(file, null);
 }
 function appendMessage(root, id, message) {
@@ -1214,6 +1188,8 @@ function buildRunWorkflowPrompt() {
 
 // src/chat/chatController.ts
 var ChatController = class {
+  _onDidChangeState = new vscode6.EventEmitter();
+  onDidChangeState = this._onDidChangeState.event;
   panel;
   record;
   attachments = [];
@@ -1228,6 +1204,7 @@ var ChatController = class {
     this.record = createSession(root);
     this.attachments = [];
     this.status = "idle";
+    this._onDidChangeState.fire();
     this.ensurePanel();
     this.syncFullState();
   }
@@ -1273,6 +1250,9 @@ var ChatController = class {
   addSelectionToChat() {
     this.stageAttachment("selection");
   }
+  isRequestRunning() {
+    return this.status === "running";
+  }
   async explainSelection() {
     await this.runEditorAction(buildExplainPrompt);
   }
@@ -1299,6 +1279,7 @@ var ChatController = class {
   dispose() {
     this.turnHandle?.cancel();
     this.denyAllPending("Extension is shutting down.");
+    this._onDidChangeState.dispose();
   }
   // --- internals ---
   requireWorkspaceRoot() {
@@ -1377,6 +1358,7 @@ var ChatController = class {
     this.record.messages.push(userMessage);
     this.panel?.post({ type: "messageAppended", message: userMessage });
     this.status = "running";
+    this._onDidChangeState.fire();
     this.panel?.post({ type: "statusChanged", status: this.status });
     const resumeSessionId = this.record.session.cliSessionId;
     this.turnHandle = runUrTurn(
@@ -1448,6 +1430,7 @@ var ChatController = class {
     } else {
       this.status = "idle";
     }
+    this._onDidChangeState.fire();
     this.panel?.post({ type: "statusChanged", status: this.status });
   }
   resolvePermission(requestId, decision) {
@@ -1503,20 +1486,100 @@ var ChatController = class {
   }
 };
 
+// src/chat/chatTreeProvider.ts
+var vscode7 = __toESM(require("vscode"));
+var ActionItem = class extends vscode7.TreeItem {
+  constructor(label, description, icon, command, tooltip) {
+    super(label, vscode7.TreeItemCollapsibleState.None);
+    this.contextValue = "urChatAction";
+    this.description = description;
+    this.iconPath = new vscode7.ThemeIcon(icon);
+    this.tooltip = tooltip ?? `${label}${description ? ` - ${description}` : ""}`;
+    this.command = command;
+  }
+};
+var InfoItem3 = class extends vscode7.TreeItem {
+  constructor(label, description, icon = "comment-discussion") {
+    super(label, vscode7.TreeItemCollapsibleState.None);
+    this.contextValue = "urInfo";
+    this.description = description;
+    this.iconPath = new vscode7.ThemeIcon(icon);
+    this.tooltip = `${label}${description ? ` - ${description}` : ""}`;
+  }
+};
+var ChatTreeProvider = class {
+  constructor(chat) {
+    this.chat = chat;
+  }
+  chat;
+  _onDidChangeTreeData = new vscode7.EventEmitter();
+  onDidChangeTreeData = this._onDidChangeTreeData.event;
+  refresh() {
+    this._onDidChangeTreeData.fire();
+  }
+  getTreeItem(item) {
+    return item;
+  }
+  getChildren() {
+    const snapshot = captureEditorSnapshot();
+    const items = [
+      new InfoItem3("Start a UR chat", "Ask about this workspace or attach editor context."),
+      new ActionItem("New Chat", "Start a fresh UR session", "comment-add", {
+        command: "urInlineDiffs.chat.new",
+        title: "New Chat"
+      }),
+      new ActionItem("Open Chat", "Resume an existing session", "comment", {
+        command: "urInlineDiffs.chat.open",
+        title: "Open Chat"
+      }),
+      new ActionItem("Pick Model", "Choose provider and model", "symbol-variable", {
+        command: "urInlineDiffs.pickModel",
+        title: "Pick Model"
+      })
+    ];
+    if (snapshot.activeFile) {
+      items.push(
+        new ActionItem("Add Current File to Chat", snapshot.activeFile.path, "file-add", {
+          command: "urInlineDiffs.chat.addFile",
+          title: "Add Current File to Chat"
+        })
+      );
+    }
+    if (snapshot.selection) {
+      const lineRange = snapshot.selection.startLine === snapshot.selection.endLine ? `${snapshot.selection.path}:${snapshot.selection.startLine}` : `${snapshot.selection.path}:${snapshot.selection.startLine}-${snapshot.selection.endLine}`;
+      items.push(
+        new ActionItem("Add Selection to Chat", lineRange, "selection", {
+          command: "urInlineDiffs.chat.addSelection",
+          title: "Add Selection to Chat"
+        })
+      );
+    }
+    if (this.chat.isRequestRunning()) {
+      items.push(
+        new ActionItem("Cancel Current Chat Request", "Stop the running request", "stop-circle", {
+          command: "urInlineDiffs.chat.cancel",
+          title: "Cancel Current Chat Request"
+        })
+      );
+    }
+    return items;
+  }
+};
+
 // src/diffs/actions.ts
 var import_node_child_process3 = require("node:child_process");
-var fs4 = __toESM(require("node:fs"));
+var fs3 = __toESM(require("node:fs"));
 var import_node_util2 = require("node:util");
-var vscode7 = __toESM(require("vscode"));
+var vscode8 = __toESM(require("vscode"));
 var execFileAsync2 = (0, import_node_util2.promisify)(import_node_child_process3.execFile);
 async function commentDiff(item, provider) {
   const root = workspaceRoot();
   const bundle = item?.bundle;
   if (!root || !bundle) {
-    vscode7.window.showWarningMessage("No UR inline diff selected.");
+    vscode8.window.showWarningMessage("No UR inline diff selected.");
     return;
   }
-  const text = await vscode7.window.showInputBox({
+  const text = await vscode8.window.showInputBox({
     title: `Comment on ${bundle.id}`,
     prompt: "Comment text",
     ignoreFocusOut: true
@@ -1525,7 +1588,7 @@ async function commentDiff(item, provider) {
   const manifest = loadManifest(root);
   const manifestBundle = manifest.diffs.find((diff) => diff.id === bundle.id);
   if (!manifestBundle) {
-    vscode7.window.showErrorMessage(`UR inline diff not found: ${bundle.id}`);
+    vscode8.window.showErrorMessage(`UR inline diff not found: ${bundle.id}`);
     return;
   }
   const at = (/* @__PURE__ */ new Date()).toISOString();
@@ -1535,21 +1598,21 @@ async function commentDiff(item, provider) {
   writeManifest(root, manifest);
   writeBundleMetadata(root, manifestBundle);
   provider.refresh();
-  vscode7.window.showInformationMessage(`Added UR comment to ${bundle.id}.`);
+  vscode8.window.showInformationMessage(`Added UR comment to ${bundle.id}.`);
 }
 async function applyDiff(item, provider) {
   const root = workspaceRoot();
   const bundle = item?.bundle;
   if (!root || !bundle) {
-    vscode7.window.showWarningMessage("No UR inline diff selected.");
+    vscode8.window.showWarningMessage("No UR inline diff selected.");
     return;
   }
   const patch = patchPath(root, bundle);
-  if (!fs4.existsSync(patch)) {
-    vscode7.window.showErrorMessage(`UR patch file missing for ${bundle.id}.`);
+  if (!fs3.existsSync(patch)) {
+    vscode8.window.showErrorMessage(`UR patch file missing for ${bundle.id}.`);
     return;
   }
-  const choice = await vscode7.window.showWarningMessage(
+  const choice = await vscode8.window.showWarningMessage(
     `Apply UR patch ${bundle.id} to your working tree? This modifies ${bundle.files?.length ?? 0} file(s).`,
     { modal: true },
     "Apply"
@@ -1558,21 +1621,21 @@ async function applyDiff(item, provider) {
   try {
     await execFileAsync2("git", ["apply", "--whitespace=nowarn", patch], { cwd: root, shell: false });
   } catch (error) {
-    vscode7.window.showErrorMessage(`Failed to apply UR patch ${bundle.id}: ${processErrorMessage(error)}`);
+    vscode8.window.showErrorMessage(`Failed to apply UR patch ${bundle.id}: ${processErrorMessage(error)}`);
     return;
   }
   try {
     const { stdout } = await runUrCli(["ide", "diff", "approve", bundle.id], { cwd: root });
     provider.refresh();
     if (isNotFoundResult(stdout)) {
-      vscode7.window.showWarningMessage(
+      vscode8.window.showWarningMessage(
         `Applied ${bundle.id} to disk, but no matching diff record was found to mark it approved.`
       );
       return;
     }
-    vscode7.window.showInformationMessage(`Applied UR patch ${bundle.id}.`);
+    vscode8.window.showInformationMessage(`Applied UR patch ${bundle.id}.`);
   } catch (error) {
-    vscode7.window.showErrorMessage(
+    vscode8.window.showErrorMessage(
       `Applied ${bundle.id} to disk, but failed to record approval: ${errorMessage(error)}`
     );
   }
@@ -1581,25 +1644,25 @@ async function rejectDiff(item, provider) {
   const root = workspaceRoot();
   const bundle = item?.bundle;
   if (!root || !bundle) {
-    vscode7.window.showWarningMessage("No UR inline diff selected.");
+    vscode8.window.showWarningMessage("No UR inline diff selected.");
     return;
   }
   try {
     const { stdout } = await runUrCli(["ide", "diff", "reject", bundle.id], { cwd: root });
     provider.refresh();
     if (isNotFoundResult(stdout)) {
-      vscode7.window.showErrorMessage(`UR inline diff not found: ${bundle.id}`);
+      vscode8.window.showErrorMessage(`UR inline diff not found: ${bundle.id}`);
       return;
     }
-    vscode7.window.showInformationMessage(`Rejected UR patch ${bundle.id} (no files changed).`);
+    vscode8.window.showInformationMessage(`Rejected UR patch ${bundle.id} (no files changed).`);
   } catch (error) {
-    vscode7.window.showErrorMessage(errorMessage(error));
+    vscode8.window.showErrorMessage(errorMessage(error));
   }
 }
 async function showStatus(channel) {
   const root = workspaceRoot();
   if (!root) {
-    vscode7.window.showWarningMessage("Open a workspace folder to query UR status.");
+    vscode8.window.showWarningMessage("Open a workspace folder to query UR status.");
     return;
   }
   channel.clear();
@@ -1617,7 +1680,7 @@ function isNotFoundResult(stdout) {
 }
 
 // src/diffs/webview.ts
-var vscode8 = __toESM(require("vscode"));
+var vscode9 = __toESM(require("vscode"));
 function renderDiffHtml(root, bundle) {
   const patch = readPatch(root, bundle);
   const comments = bundle.comments ?? [];
@@ -1665,36 +1728,200 @@ async function openDiff(item) {
   const root = workspaceRoot();
   const bundle = item?.bundle;
   if (!root || !bundle) {
-    vscode8.window.showWarningMessage("No UR inline diff selected.");
+    vscode9.window.showWarningMessage("No UR inline diff selected.");
     return;
   }
-  const panel = vscode8.window.createWebviewPanel("urInlineDiff", `UR ${bundle.id}`, vscode8.ViewColumn.Active, {
+  const panel = vscode9.window.createWebviewPanel("urInlineDiff", `UR ${bundle.id}`, vscode9.ViewColumn.Active, {
     enableScripts: false
   });
   const latest = loadBundleMetadata(root, bundle);
   panel.webview.html = renderDiffHtml(root, latest);
 }
 
+// src/model/modelPicker.ts
+var vscode10 = __toESM(require("vscode"));
+function isRecord2(value) {
+  return typeof value === "object" && value !== null;
+}
+function parseProviderList(raw) {
+  try {
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data)) return [];
+    return data.flatMap((entry) => {
+      if (!isRecord2(entry) || typeof entry.id !== "string" || typeof entry.name !== "string") return [];
+      return [
+        {
+          id: entry.id,
+          name: entry.name,
+          accessTypeLabel: typeof entry.accessTypeLabel === "string" ? entry.accessTypeLabel : void 0,
+          providerKind: typeof entry.providerKind === "string" ? entry.providerKind : void 0,
+          runtimeBackend: typeof entry.runtimeBackend === "string" ? entry.runtimeBackend : void 0
+        }
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+function parseProviderModels(raw) {
+  try {
+    const data = JSON.parse(raw);
+    if (!isRecord2(data) || typeof data.provider !== "string" || !Array.isArray(data.models)) return void 0;
+    const source = data.source === "live" || data.source === "cache" || data.source === "static" ? data.source : "static";
+    return {
+      provider: data.provider,
+      source,
+      warning: typeof data.warning === "string" ? data.warning : void 0,
+      models: data.models.flatMap((model) => {
+        if (!isRecord2(model) || typeof model.id !== "string") return [];
+        return [
+          {
+            id: model.id,
+            displayName: typeof model.displayName === "string" ? model.displayName : void 0,
+            description: typeof model.description === "string" ? model.description : void 0,
+            isDefault: Boolean(model.isDefault)
+          }
+        ];
+      })
+    };
+  } catch {
+    return void 0;
+  }
+}
+function parseProviderStatus(raw) {
+  try {
+    const data = JSON.parse(raw);
+    if (!isRecord2(data)) return {};
+    return {
+      provider: typeof data.provider === "string" ? data.provider : void 0,
+      model: typeof data.model === "string" ? data.model : void 0
+    };
+  } catch {
+    return {};
+  }
+}
+function parseIdeStatus(raw) {
+  try {
+    const data = JSON.parse(raw);
+    if (!isRecord2(data)) return {};
+    const provider = isRecord2(data.provider) ? data.provider : {};
+    return {
+      model: typeof provider.model === "string" ? provider.model : void 0
+    };
+  } catch {
+    return {};
+  }
+}
+function selectionError(error) {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+async function pickProviderModel(cwd) {
+  if (!cwd) {
+    vscode10.window.showWarningMessage("Open a workspace folder to pick a UR model.");
+    return;
+  }
+  const [{ stdout: providerStdout }, statusResult, ideStatusResult] = await Promise.all([
+    runUrCliCapture(["provider", "list", "--json"], { cwd }),
+    runUrCliCapture(["provider", "status", "--json"], { cwd }).catch(() => ({ stdout: "" })),
+    runUrCliCapture(["ide", "status", "--json"], { cwd }).catch(() => ({ stdout: "" }))
+  ]);
+  const providers = parseProviderList(providerStdout);
+  if (providers.length === 0) {
+    vscode10.window.showWarningMessage("No UR providers were reported by `ur provider list`.");
+    return;
+  }
+  const providerStatus = parseProviderStatus(statusResult.stdout);
+  const ideStatus = parseIdeStatus(ideStatusResult.stdout);
+  const status = { provider: providerStatus.provider, model: providerStatus.model ?? ideStatus.model };
+  const pickedProvider = await vscode10.window.showQuickPick(
+    providers.map((provider) => ({
+      label: provider.name,
+      description: provider.id === status.provider ? "current" : provider.id,
+      detail: [provider.accessTypeLabel, provider.providerKind, provider.runtimeBackend].filter(Boolean).join(" \xB7 "),
+      provider
+    })),
+    {
+      title: "UR: Pick Model",
+      placeHolder: "Choose a provider first"
+    }
+  );
+  if (!pickedProvider) return;
+  let modelsStdout = "";
+  try {
+    const result = await runUrCliCapture(["provider", "models", pickedProvider.provider.id, "--json"], { cwd });
+    modelsStdout = result.stdout;
+  } catch (error) {
+    vscode10.window.showWarningMessage(
+      `UR could not list models for ${pickedProvider.provider.name}: ${selectionError(error)}`
+    );
+    return;
+  }
+  const modelResult = parseProviderModels(modelsStdout);
+  if (!modelResult || modelResult.models.length === 0) {
+    vscode10.window.showWarningMessage(
+      modelResult?.warning ?? `No models are available for ${pickedProvider.provider.name}. Run "ur provider doctor ${pickedProvider.provider.id}" to troubleshoot.`
+    );
+    return;
+  }
+  if (modelResult.warning) {
+    vscode10.window.showWarningMessage(modelResult.warning);
+  }
+  const pickedModel = await vscode10.window.showQuickPick(
+    modelResult.models.map((model) => ({
+      label: model.displayName ?? model.id,
+      description: [
+        model.id === status.model ? "current" : model.id,
+        model.isDefault ? "default" : "",
+        modelResult.source
+      ].filter(Boolean).join(" \xB7 "),
+      detail: model.description,
+      model
+    })),
+    {
+      title: `UR: Pick Model for ${pickedProvider.provider.name}`,
+      placeHolder: "Choose a model for this provider"
+    }
+  );
+  if (!pickedModel) return;
+  try {
+    const { stdout } = await runUrCliCapture(
+      ["provider", "select-model", pickedProvider.provider.id, pickedModel.model.id, "--json"],
+      { cwd }
+    );
+    const parsed = JSON.parse(stdout);
+    if (parsed.ok) {
+      vscode10.window.showInformationMessage(
+        `UR model set to ${parsed.model ?? pickedModel.model.id} for ${parsed.provider ?? pickedProvider.provider.id}.`
+      );
+      return;
+    }
+    vscode10.window.showErrorMessage(parsed.message ?? "UR could not save the selected model.");
+  } catch (error) {
+    vscode10.window.showErrorMessage(`UR could not save the selected model: ${selectionError(error)}`);
+  }
+}
+
 // src/misc/quickCommands.ts
-var vscode9 = __toESM(require("vscode"));
+var vscode11 = __toESM(require("vscode"));
 var UR_DOCS_URL = "https://github.com/Maitham16/UR#readme";
 async function openSettings() {
-  await vscode9.commands.executeCommand("workbench.action.openSettings", "UR");
+  await vscode11.commands.executeCommand("workbench.action.openSettings", "UR");
 }
 async function openDocs() {
-  await vscode9.env.openExternal(vscode9.Uri.parse(UR_DOCS_URL));
+  await vscode11.env.openExternal(vscode11.Uri.parse(UR_DOCS_URL));
 }
 async function openArtifacts() {
   const root = workspaceRoot();
   if (!root) {
-    vscode9.window.showWarningMessage("Open a workspace folder to view UR artifacts.");
+    vscode11.window.showWarningMessage("Open a workspace folder to view UR artifacts.");
     return;
   }
-  const uri = vscode9.Uri.joinPath(vscode9.Uri.file(root), ".ur");
+  const uri = vscode11.Uri.joinPath(vscode11.Uri.file(root), ".ur");
   try {
-    await vscode9.commands.executeCommand("revealInExplorer", uri);
+    await vscode11.commands.executeCommand("revealInExplorer", uri);
   } catch {
-    vscode9.window.showInformationMessage("No .ur directory yet \u2014 it is created the first time UR runs in this workspace.");
+    vscode11.window.showInformationMessage("No .ur directory yet \u2014 it is created the first time UR runs in this workspace.");
   }
 }
 async function runSpecAction(chat) {
@@ -1705,7 +1932,7 @@ async function runWorkflowAction(chat) {
 }
 
 // src/options/agentOptionsPanel.ts
-var vscode10 = __toESM(require("vscode"));
+var vscode12 = __toESM(require("vscode"));
 
 // src/options/agentOptions.ts
 function ids(options) {
@@ -1793,7 +2020,7 @@ function deriveMultimodalSupport(providerId) {
 // src/options/providerOptionsLoader.ts
 var PROVIDER_KINDS = ["ur-native", "subscription-cli", "subscription-placeholder"];
 var ACCESS_TYPES = ["subscription", "api", "local", "server"];
-function isRecord2(value) {
+function isRecord3(value) {
   return typeof value === "object" && value !== null;
 }
 function parseProviderListJson(raw) {
@@ -1806,7 +2033,7 @@ function parseProviderListJson(raw) {
   if (!Array.isArray(data)) return [];
   const options = [];
   for (const entry of data) {
-    if (!isRecord2(entry)) continue;
+    if (!isRecord3(entry)) continue;
     if (typeof entry.id !== "string" || typeof entry.name !== "string") continue;
     const providerKind = PROVIDER_KINDS.includes(entry.providerKind) ? entry.providerKind : "subscription-placeholder";
     const accessType = ACCESS_TYPES.includes(entry.accessType) ? entry.accessType : "api";
@@ -1918,10 +2145,10 @@ var AgentOptionsPanel = class _AgentOptionsPanel {
   }
   static createOrShow(onRefresh) {
     if (_AgentOptionsPanel.current && !_AgentOptionsPanel.current.disposed) {
-      _AgentOptionsPanel.current.panel.reveal(vscode10.ViewColumn.Active);
+      _AgentOptionsPanel.current.panel.reveal(vscode12.ViewColumn.Active);
       return _AgentOptionsPanel.current;
     }
-    const panel = vscode10.window.createWebviewPanel("urAgentOptions", "UR Agent Options", vscode10.ViewColumn.Active, {
+    const panel = vscode12.window.createWebviewPanel("urAgentOptions", "UR Agent Options", vscode12.ViewColumn.Active, {
       enableScripts: true
     });
     const instance = new _AgentOptionsPanel(panel, onRefresh);
@@ -1939,7 +2166,7 @@ var AgentOptionsPanel = class _AgentOptionsPanel {
 };
 async function showAgentOptions(cwd) {
   if (!cwd) {
-    vscode10.window.showWarningMessage("Open a workspace folder to view UR agent options.");
+    vscode12.window.showWarningMessage("Open a workspace folder to view UR agent options.");
     return;
   }
   let panel;
@@ -1956,7 +2183,7 @@ async function showAgentOptions(cwd) {
 // src/review/reviewDiff.ts
 var import_node_child_process4 = require("node:child_process");
 var import_node_util3 = require("node:util");
-var vscode11 = __toESM(require("vscode"));
+var vscode13 = __toESM(require("vscode"));
 
 // src/review/reviewPrompt.ts
 var LARGE_DIFF_THRESHOLD = 2e4;
@@ -1980,22 +2207,22 @@ async function captureGitDiff(cwd) {
 async function reviewCurrentDiff(chat) {
   const root = workspaceRoot();
   if (!root) {
-    vscode11.window.showWarningMessage("Open a workspace folder to review a diff.");
+    vscode13.window.showWarningMessage("Open a workspace folder to review a diff.");
     return;
   }
   let diff;
   try {
     diff = await captureGitDiff(root);
   } catch (error) {
-    vscode11.window.showErrorMessage(`Could not read the current git diff: ${processErrorMessage(error)}`);
+    vscode13.window.showErrorMessage(`Could not read the current git diff: ${processErrorMessage(error)}`);
     return;
   }
   if (!diff.trim()) {
-    vscode11.window.showInformationMessage("No changes to review (working tree matches HEAD).");
+    vscode13.window.showInformationMessage("No changes to review (working tree matches HEAD).");
     return;
   }
   if (diff.length > LARGE_DIFF_THRESHOLD) {
-    const choice = await vscode11.window.showWarningMessage(
+    const choice = await vscode13.window.showWarningMessage(
       `The current diff is large (${diff.length.toLocaleString()} characters). Send it to UR for review?`,
       { modal: true },
       "Send"
@@ -2006,7 +2233,7 @@ async function reviewCurrentDiff(chat) {
 }
 
 // src/search/searchQuickPick.ts
-var vscode12 = __toESM(require("vscode"));
+var vscode14 = __toESM(require("vscode"));
 
 // src/search/actionRegistry.ts
 var ACTION_REGISTRY = [
@@ -2020,6 +2247,7 @@ var ACTION_REGISTRY = [
   { id: "providerStatus", label: "Provider Status", commandId: "urInlineDiffs.status", description: "Show provider, model, and plugin status" },
   { id: "agentStatus", label: "Agent Status", commandId: "urInlineDiffs.agentStatus", description: "Open the UR agent status card" },
   { id: "agentOptions", label: "Agent Options", commandId: "urInlineDiffs.agentOptions", description: "Open curated provider recommendations" },
+  { id: "pickModel", label: "Pick Model", commandId: "urInlineDiffs.pickModel", description: "Choose a provider-scoped UR model" },
   { id: "openSettings", label: "Open Settings", commandId: "urInlineDiffs.openSettings", description: "Open VS Code settings filtered to UR" },
   { id: "openDocs", label: "Open Docs", commandId: "urInlineDiffs.openDocs", description: "Open the UR documentation" },
   { id: "openArtifacts", label: "Open Artifacts", commandId: "urInlineDiffs.openArtifacts", description: "Reveal the .ur workspace directory" },
@@ -2035,26 +2263,26 @@ async function showSearchActions() {
     detail: action.description,
     commandId: action.commandId
   }));
-  const picked = await vscode12.window.showQuickPick(items, {
+  const picked = await vscode14.window.showQuickPick(items, {
     title: "UR: Search Actions",
     placeHolder: "Search UR actions",
     matchOnDetail: true
   });
   if (!picked) return;
-  await vscode12.commands.executeCommand(picked.commandId);
+  await vscode14.commands.executeCommand(picked.commandId);
 }
 
 // src/status/statusPanel.ts
-var vscode13 = __toESM(require("vscode"));
+var vscode15 = __toESM(require("vscode"));
 
 // src/status/statusData.ts
-function isRecord3(value) {
+function isRecord4(value) {
   return typeof value === "object" && value !== null;
 }
 function safeParseRecord(raw) {
   try {
     const parsed = JSON.parse(raw);
-    return isRecord3(parsed) ? parsed : {};
+    return isRecord4(parsed) ? parsed : {};
   } catch {
     return {};
   }
@@ -2067,8 +2295,8 @@ function asKnownBoolean(value) {
 }
 function parseIdeStatusJson(raw, fallbackWorkspaceRoot = "") {
   const data = safeParseRecord(raw);
-  const acpRaw = isRecord3(data.acp) ? data.acp : {};
-  const providerRaw = isRecord3(data.provider) ? data.provider : {};
+  const acpRaw = isRecord4(data.acp) ? data.acp : {};
+  const providerRaw = isRecord4(data.provider) ? data.provider : {};
   return {
     workspaceRoot: typeof data.workspaceRoot === "string" && data.workspaceRoot ? data.workspaceRoot : fallbackWorkspaceRoot,
     acp: {
@@ -2214,10 +2442,10 @@ var StatusPanel = class _StatusPanel {
   }
   static createOrShow(onRefresh) {
     if (_StatusPanel.current && !_StatusPanel.current.disposed) {
-      _StatusPanel.current.panel.reveal(vscode13.ViewColumn.Active);
+      _StatusPanel.current.panel.reveal(vscode15.ViewColumn.Active);
       return _StatusPanel.current;
     }
-    const panel = vscode13.window.createWebviewPanel("urAgentStatus", "UR Agent Status", vscode13.ViewColumn.Active, {
+    const panel = vscode15.window.createWebviewPanel("urAgentStatus", "UR Agent Status", vscode15.ViewColumn.Active, {
       enableScripts: true
     });
     const instance = new _StatusPanel(panel, onRefresh);
@@ -2235,7 +2463,7 @@ var StatusPanel = class _StatusPanel {
 };
 async function showAgentStatus(cwd) {
   if (!cwd) {
-    vscode13.window.showWarningMessage("Open a workspace folder to view UR agent status.");
+    vscode15.window.showWarningMessage("Open a workspace folder to view UR agent status.");
     return;
   }
   let panel;
@@ -2250,7 +2478,7 @@ async function showAgentStatus(cwd) {
 }
 
 // src/verify/runVerifier.ts
-var vscode14 = __toESM(require("vscode"));
+var vscode16 = __toESM(require("vscode"));
 
 // src/verify/verifierPrompt.ts
 function buildVerifierPrompt() {
@@ -2265,7 +2493,7 @@ function buildVerifierPrompt() {
 async function runVerifier(chat) {
   const root = workspaceRoot();
   if (!root) {
-    vscode14.window.showWarningMessage("Open a workspace folder to run the UR verifier.");
+    vscode16.window.showWarningMessage("Open a workspace folder to run the UR verifier.");
     return;
   }
   await chat.runStructuredPrompt(buildVerifierPrompt());
@@ -2275,16 +2503,21 @@ async function runVerifier(chat) {
 function activate(context) {
   const diffTreeProvider = new DiffTreeProvider();
   const actionsTreeProvider = new ActionsTreeProvider();
-  const channel = vscode15.window.createOutputChannel("UR");
-  const diffTree = vscode15.window.createTreeView("urInlineDiffs", {
+  const channel = vscode17.window.createOutputChannel("UR");
+  const chat = new ChatController();
+  const chatTreeProvider = new ChatTreeProvider(chat);
+  const chatTree = vscode17.window.createTreeView("urChat", {
+    treeDataProvider: chatTreeProvider,
+    showCollapseAll: false
+  });
+  const diffTree = vscode17.window.createTreeView("urInlineDiffs", {
     treeDataProvider: diffTreeProvider,
     showCollapseAll: false
   });
-  const actionsTree = vscode15.window.createTreeView("urActions", {
+  const actionsTree = vscode17.window.createTreeView("urActions", {
     treeDataProvider: actionsTreeProvider,
     showCollapseAll: false
   });
-  const chat = new ChatController();
   const bothDiffViews = {
     refresh: () => {
       diffTreeProvider.refresh();
@@ -2293,35 +2526,40 @@ function activate(context) {
   };
   context.subscriptions.push(
     channel,
+    chatTree,
     diffTree,
     actionsTree,
     chat,
-    vscode15.commands.registerCommand("urInlineDiffs.refresh", () => diffTreeProvider.refresh()),
-    vscode15.commands.registerCommand("urInlineDiffs.open", (item) => openDiff(item)),
-    vscode15.commands.registerCommand("urInlineDiffs.comment", (item) => commentDiff(item, bothDiffViews)),
-    vscode15.commands.registerCommand("urInlineDiffs.apply", (item) => applyDiff(item, bothDiffViews)),
-    vscode15.commands.registerCommand("urInlineDiffs.reject", (item) => rejectDiff(item, bothDiffViews)),
-    vscode15.commands.registerCommand("urInlineDiffs.status", () => showStatus(channel)),
-    vscode15.commands.registerCommand("urInlineDiffs.chat.new", () => chat.newChat()),
-    vscode15.commands.registerCommand("urInlineDiffs.chat.open", () => chat.openChat()),
-    vscode15.commands.registerCommand("urInlineDiffs.chat.cancel", () => chat.cancelCurrentRequest()),
-    vscode15.commands.registerCommand("urInlineDiffs.chat.addFile", () => chat.addCurrentFileToChat()),
-    vscode15.commands.registerCommand("urInlineDiffs.chat.addSelection", () => chat.addSelectionToChat()),
-    vscode15.commands.registerCommand("urInlineDiffs.chat.explainSelection", () => chat.explainSelection()),
-    vscode15.commands.registerCommand("urInlineDiffs.chat.fixSelection", () => chat.fixSelection()),
-    vscode15.commands.registerCommand("urInlineDiffs.chat.generateTests", () => chat.generateTestsForSelection()),
-    vscode15.commands.registerCommand("urInlineDiffs.agentStatus", () => showAgentStatus(workspaceRoot())),
-    vscode15.commands.registerCommand("urInlineDiffs.agentOptions", () => showAgentOptions(workspaceRoot())),
-    vscode15.commands.registerCommand("urInlineDiffs.reviewCurrentDiff", () => reviewCurrentDiff(chat)),
-    vscode15.commands.registerCommand("urInlineDiffs.runVerifier", () => runVerifier(chat)),
-    vscode15.commands.registerCommand("urInlineDiffs.searchActions", () => showSearchActions()),
-    vscode15.commands.registerCommand("urInlineDiffs.openSettings", () => openSettings()),
-    vscode15.commands.registerCommand("urInlineDiffs.openDocs", () => openDocs()),
-    vscode15.commands.registerCommand("urInlineDiffs.openArtifacts", () => openArtifacts()),
-    vscode15.commands.registerCommand("urInlineDiffs.runSpec", () => runSpecAction(chat)),
-    vscode15.commands.registerCommand("urInlineDiffs.runWorkflow", () => runWorkflowAction(chat)),
-    vscode15.commands.registerCommand("urActions.refresh", () => actionsTreeProvider.refresh()),
-    vscode15.commands.registerCommand("urActions.openBackgroundLog", (item) => openBackgroundLog(item))
+    chat.onDidChangeState(() => chatTreeProvider.refresh()),
+    vscode17.window.onDidChangeActiveTextEditor(() => chatTreeProvider.refresh()),
+    vscode17.window.onDidChangeTextEditorSelection(() => chatTreeProvider.refresh()),
+    vscode17.commands.registerCommand("urInlineDiffs.refresh", () => diffTreeProvider.refresh()),
+    vscode17.commands.registerCommand("urInlineDiffs.open", (item) => openDiff(item)),
+    vscode17.commands.registerCommand("urInlineDiffs.comment", (item) => commentDiff(item, bothDiffViews)),
+    vscode17.commands.registerCommand("urInlineDiffs.apply", (item) => applyDiff(item, bothDiffViews)),
+    vscode17.commands.registerCommand("urInlineDiffs.reject", (item) => rejectDiff(item, bothDiffViews)),
+    vscode17.commands.registerCommand("urInlineDiffs.status", () => showStatus(channel)),
+    vscode17.commands.registerCommand("urInlineDiffs.chat.new", () => chat.newChat()),
+    vscode17.commands.registerCommand("urInlineDiffs.chat.open", () => chat.openChat()),
+    vscode17.commands.registerCommand("urInlineDiffs.chat.cancel", () => chat.cancelCurrentRequest()),
+    vscode17.commands.registerCommand("urInlineDiffs.chat.addFile", () => chat.addCurrentFileToChat()),
+    vscode17.commands.registerCommand("urInlineDiffs.chat.addSelection", () => chat.addSelectionToChat()),
+    vscode17.commands.registerCommand("urInlineDiffs.chat.explainSelection", () => chat.explainSelection()),
+    vscode17.commands.registerCommand("urInlineDiffs.chat.fixSelection", () => chat.fixSelection()),
+    vscode17.commands.registerCommand("urInlineDiffs.chat.generateTests", () => chat.generateTestsForSelection()),
+    vscode17.commands.registerCommand("urInlineDiffs.agentStatus", () => showAgentStatus(workspaceRoot())),
+    vscode17.commands.registerCommand("urInlineDiffs.agentOptions", () => showAgentOptions(workspaceRoot())),
+    vscode17.commands.registerCommand("urInlineDiffs.reviewCurrentDiff", () => reviewCurrentDiff(chat)),
+    vscode17.commands.registerCommand("urInlineDiffs.runVerifier", () => runVerifier(chat)),
+    vscode17.commands.registerCommand("urInlineDiffs.searchActions", () => showSearchActions()),
+    vscode17.commands.registerCommand("urInlineDiffs.pickModel", () => pickProviderModel(workspaceRoot())),
+    vscode17.commands.registerCommand("urInlineDiffs.openSettings", () => openSettings()),
+    vscode17.commands.registerCommand("urInlineDiffs.openDocs", () => openDocs()),
+    vscode17.commands.registerCommand("urInlineDiffs.openArtifacts", () => openArtifacts()),
+    vscode17.commands.registerCommand("urInlineDiffs.runSpec", () => runSpecAction(chat)),
+    vscode17.commands.registerCommand("urInlineDiffs.runWorkflow", () => runWorkflowAction(chat)),
+    vscode17.commands.registerCommand("urActions.refresh", () => actionsTreeProvider.refresh()),
+    vscode17.commands.registerCommand("urActions.openBackgroundLog", (item) => openBackgroundLog(item))
   );
 }
 function deactivate() {

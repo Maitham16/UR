@@ -6,9 +6,12 @@ import {
   formatProviderList,
   formatProviderStatus,
   getActiveProviderSettings,
+  getProviderDefinition,
+  listModelsForProviderWithSource,
   launchProviderAuth,
   type ProviderId,
   resolveProviderId,
+  setProviderModel,
   setSafeProviderConfig,
   doctorProvider,
   validateProviderModelCompatibility,
@@ -60,6 +63,84 @@ export async function providerDoctorHandler(
   const active = getActiveProviderSettings(settings).active ?? 'ollama'
   const result = await doctorProvider(provider ?? active, { settings })
   writeOutput(formatProviderDoctor(result, Boolean(options.json)))
+  process.exit(result.ok ? 0 : 1)
+}
+
+export async function providerModelsHandler(
+  providerArg: string | undefined,
+  options: JsonOption = {},
+): Promise<void> {
+  const settings = getInitialSettings()
+  const active = getActiveProviderSettings(settings).active ?? 'ollama'
+  const provider = providerArg ? resolveProviderId(providerArg) : active
+  if (!provider) {
+    writeError(`Unknown provider "${providerArg}". Run: ur provider list`)
+    process.exit(1)
+  }
+
+  const result = await listModelsForProviderWithSource(provider, { settings })
+  const definition = getProviderDefinition(provider)
+  const payload = {
+    provider,
+    displayName: definition.displayName,
+    source: result.source,
+    warning: result.warning,
+    models: result.models,
+  }
+
+  if (options.json) {
+    writeOutput(JSON.stringify(payload, null, 2))
+  } else {
+    const warning = result.warning ? [`Warning: ${result.warning}`] : []
+    writeOutput(
+      [
+        `Provider: ${definition.displayName} (${provider})`,
+        `Model source: ${result.source}`,
+        ...warning,
+        ...result.models.map(model => `${model.id}${model.isDefault ? ' (default)' : ''} - ${model.description}`),
+      ].join('\n'),
+    )
+  }
+  process.exit(result.models.length > 0 ? 0 : 1)
+}
+
+export async function providerSelectModelHandler(
+  providerArg: string,
+  values: string | string[],
+  options: JsonOption = {},
+): Promise<void> {
+  const model = Array.isArray(values) ? values.join(' ') : values
+  const provider = resolveProviderId(providerArg)
+  if (!provider) {
+    const message = `Unknown provider "${providerArg}". Run: ur provider list`
+    if (options.json) writeOutput(JSON.stringify({ ok: false, message }, null, 2))
+    else writeError(message)
+    process.exit(1)
+  }
+
+  const settings = getInitialSettings()
+  const discovered = await listModelsForProviderWithSource(provider, { settings })
+  const result = setProviderModel(provider, model, {
+    availableModels: discovered.models,
+    modelSource: discovered.source,
+  })
+  if (options.json) {
+    writeOutput(
+      JSON.stringify(
+        {
+          ...result,
+          warning: discovered.warning,
+        },
+        null,
+        2,
+      ),
+    )
+  } else if (result.ok) {
+    writeOutput(result.message)
+    if (discovered.warning) writeError(`Warning: ${discovered.warning}`)
+  } else {
+    writeError(result.message)
+  }
   process.exit(result.ok ? 0 : 1)
 }
 

@@ -1,9 +1,7 @@
-import * as fs from 'node:fs'
-import * as path from 'node:path'
 import * as vscode from 'vscode'
 import type { DiffArtifact } from '../bridge/types.js'
 import { escapeHtml, formatCount, formatRelativeTime } from '../util/format.js'
-import { loadManifest, manifestPath, workspaceRoot } from './store.js'
+import { loadManifest, workspaceRoot } from './store.js'
 
 function statusIcon(status: DiffArtifact['status'] | undefined): vscode.ThemeIcon {
   switch (status) {
@@ -48,23 +46,6 @@ export class DiffTreeItem extends vscode.TreeItem {
   }
 }
 
-class ActionItem extends vscode.TreeItem {
-  constructor(
-    label: string,
-    description: string,
-    icon: string,
-    command: vscode.Command,
-    tooltip?: string,
-  ) {
-    super(label, vscode.TreeItemCollapsibleState.None)
-    this.contextValue = 'urAction'
-    this.description = description
-    this.iconPath = new vscode.ThemeIcon(icon)
-    this.tooltip = tooltip ?? `${label}${description ? ` — ${description}` : ''}`
-    this.command = command
-  }
-}
-
 class InfoItem extends vscode.TreeItem {
   constructor(label: string, description: string, icon = 'info') {
     super(label, vscode.TreeItemCollapsibleState.None)
@@ -75,7 +56,7 @@ class InfoItem extends vscode.TreeItem {
   }
 }
 
-export type DiffTreeNode = DiffTreeItem | ActionItem | InfoItem
+export type DiffTreeNode = DiffTreeItem | InfoItem
 
 export class DiffTreeProvider implements vscode.TreeDataProvider<DiffTreeNode> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<void>()
@@ -107,21 +88,7 @@ export class DiffTreeProvider implements vscode.TreeDataProvider<DiffTreeNode> {
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
 
     if (diffs.length === 0) {
-      return [
-        new InfoItem(
-          'Ready for inline review',
-          fs.existsSync(manifestPath(root)) ? 'No pending diff bundles' : 'No diff bundles captured yet',
-          'pass',
-        ),
-        new ActionItem('Show UR status', 'Provider, model, plugins', 'pulse', {
-          command: 'urInlineDiffs.status',
-          title: 'Show UR Status',
-        }),
-        new ActionItem('Refresh', path.relative(root, manifestPath(root)), 'refresh', {
-          command: 'urInlineDiffs.refresh',
-          title: 'Refresh Inline Diffs',
-        }),
-      ]
+      return []
     }
 
     return diffs.map(bundle => new DiffTreeItem(bundle))
