@@ -64,6 +64,10 @@ UR.local.md
 .ur/worktrees/
 .ur/ide/
 .ur/runs/
+.ur-analysis/
+
+# Release build artifacts (regenerated; avoid nested archives in publish)
+artifacts/source/*.zip
 
 # OS and editor noise
 .DS_Store

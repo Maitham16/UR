@@ -1,2 +1,0 @@
-bin/ur.js
-scripts/bundle.mjs
