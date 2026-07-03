@@ -100,4 +100,34 @@ describe('documentation coverage', () => {
     expect(usage).toContain('the stale marketplace extension ID')
     expect(readme).toContain('packaged as a local VSIX')
   })
+
+  test('IDE docs describe the professional integration, not just inline diffs, and never claim JetBrains is implemented', () => {
+    const ide = readFileSync(join(process.cwd(), 'docs', 'IDE.md'), 'utf8')
+    const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8')
+    const extensionReadme = readFileSync(
+      join(process.cwd(), 'extensions', 'vscode-ur-inline-diffs', 'README.md'),
+      'utf8',
+    )
+
+    // The extension is chat + diffs + actions + status + search + options —
+    // guard against the docs regressing to the old inline-diff-only framing.
+    for (const feature of ['chat panel', 'Actions panel', 'Agent Status', 'Agent Options', 'Search Actions']) {
+      expect(ide).toContain(feature)
+    }
+    expect(ide).toContain('control_request')
+    expect(ide).toContain('.ur/ide/chat/')
+    expect(ide).toContain('stream-json')
+
+    // JetBrains must never be claimed as implemented in this repo.
+    expect(ide).toContain('JetBrains is not implemented')
+    expect(readme).toContain('JetBrains is not implemented')
+    expect(ide).not.toContain('Install the UR JetBrains plugin')
+
+    // Agent Options must stay explicitly non-authoritative.
+    expect(ide).toContain('not live market research')
+    expect(extensionReadme).toContain('not live market research')
+
+    // No lingering claim that the diff-apply path writes a fake 'applied' status.
+    expect(ide).not.toContain("status: 'applied'")
+  })
 })

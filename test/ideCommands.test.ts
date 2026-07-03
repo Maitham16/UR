@@ -67,6 +67,8 @@ describe('IDE status + doctor formatting', () => {
     pluginCount: 3,
     detectedIdes: [{ name: 'VS Code', connected: false }],
     warnings: [],
+    sandboxMode: 'recommended',
+    verifierMode: 'strict',
   }
 
   test('status shows workspace, server, provider/model, plugin count', () => {
@@ -76,6 +78,29 @@ describe('IDE status + doctor formatting', () => {
     expect(text).toContain('Codex CLI')
     expect(text).toContain('codex/gpt-5.5')
     expect(text).toContain('Plugins loaded: 3')
+  })
+
+  test('status includes sandbox mode and verifier mode when present', () => {
+    const text = formatIdeStatus(status)
+    expect(text).toContain('Sandbox mode: recommended')
+    expect(text).toContain('Verifier mode: strict')
+  })
+
+  test('formatIdeStatus and ideDoctorChecks stay backward compatible with a pre-sandboxMode/verifierMode status object', () => {
+    // Simulates a status snapshot serialized before these fields existed —
+    // the two new fields are optional specifically so old JSON payloads
+    // still parse and format without throwing.
+    const legacyStatus = { ...status } as IdeStatus
+    // biome-ignore lint/performance/noDelete: exercising the optional-field contract directly
+    delete (legacyStatus as { sandboxMode?: unknown }).sandboxMode
+    // biome-ignore lint/performance/noDelete: exercising the optional-field contract directly
+    delete (legacyStatus as { verifierMode?: unknown }).verifierMode
+    expect(() => formatIdeStatus(legacyStatus)).not.toThrow()
+    expect(formatIdeStatus(legacyStatus)).not.toContain('Sandbox mode:')
+    expect(formatIdeStatus(legacyStatus)).not.toContain('Verifier mode:')
+    expect(() => ideDoctorChecks(legacyStatus)).not.toThrow()
+    expect(() => formatIdeStatus(legacyStatus, true)).not.toThrow()
+    expect(JSON.parse(formatIdeStatus(legacyStatus, true))).not.toHaveProperty('sandboxMode')
   })
 
   test('doctor reports missing config clearly (no workspace + acp down)', () => {
@@ -116,5 +141,24 @@ describe('runIdeInfoCommand routing', () => {
     expect(parsed.workspaceRoot).toBe('/tmp/some-workspace')
     expect(parsed).toHaveProperty('acp')
     expect(parsed).toHaveProperty('pluginCount')
+  })
+
+  test('status --json includes sandboxMode and verifierMode with valid enum values', async () => {
+    const out = await runIdeInfoCommand('status --json', '/tmp/some-workspace')
+    const parsed = JSON.parse(out)
+    expect(['disabled', 'recommended', 'required']).toContain(parsed.sandboxMode)
+    expect(['off', 'loose', 'strict']).toContain(parsed.verifierMode)
+  })
+
+  test('verifierMode reflects UR_VERIFIER_MODE when set', async () => {
+    const original = process.env.UR_VERIFIER_MODE
+    try {
+      process.env.UR_VERIFIER_MODE = 'loose'
+      const out = await runIdeInfoCommand('status --json', '/tmp/some-workspace')
+      expect(JSON.parse(out).verifierMode).toBe('loose')
+    } finally {
+      if (original === undefined) delete process.env.UR_VERIFIER_MODE
+      else process.env.UR_VERIFIER_MODE = original
+    }
   })
 })

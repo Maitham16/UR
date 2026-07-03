@@ -12,14 +12,46 @@
   ],
   "activationEvents": [
     "onView:urInlineDiffs",
+    "onView:urActions",
     "onCommand:urInlineDiffs.refresh",
     "onCommand:urInlineDiffs.open",
     "onCommand:urInlineDiffs.comment",
     "onCommand:urInlineDiffs.apply",
     "onCommand:urInlineDiffs.reject",
-    "onCommand:urInlineDiffs.status"
+    "onCommand:urInlineDiffs.status",
+    "onCommand:urInlineDiffs.chat.new",
+    "onCommand:urInlineDiffs.chat.open",
+    "onCommand:urInlineDiffs.chat.cancel",
+    "onCommand:urInlineDiffs.chat.addFile",
+    "onCommand:urInlineDiffs.chat.addSelection",
+    "onCommand:urInlineDiffs.chat.explainSelection",
+    "onCommand:urInlineDiffs.chat.fixSelection",
+    "onCommand:urInlineDiffs.chat.generateTests",
+    "onCommand:urInlineDiffs.agentStatus",
+    "onCommand:urInlineDiffs.agentOptions",
+    "onCommand:urInlineDiffs.reviewCurrentDiff",
+    "onCommand:urInlineDiffs.runVerifier",
+    "onCommand:urInlineDiffs.searchActions",
+    "onCommand:urInlineDiffs.openSettings",
+    "onCommand:urInlineDiffs.openDocs",
+    "onCommand:urInlineDiffs.openArtifacts",
+    "onCommand:urInlineDiffs.runSpec",
+    "onCommand:urInlineDiffs.runWorkflow",
+    "onCommand:urActions.refresh",
+    "onCommand:urActions.openBackgroundLog"
   ],
-  "main": "./extension.js",
+  "main": "./out/extension.js",
+  "scripts": {
+    "build": "node esbuild.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.92.0",
+    "bun-types": "^1.2.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.7.0"
+  },
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -35,6 +67,10 @@
         {
           "id": "urInlineDiffs",
           "name": "Inline Diffs"
+        },
+        {
+          "id": "urActions",
+          "name": "Actions"
         }
       ]
     },
@@ -68,6 +104,95 @@
         "command": "urInlineDiffs.status",
         "title": "UR: Show Status (provider, model, plugins)",
         "icon": "$(pulse)"
+      },
+      {
+        "command": "urInlineDiffs.chat.new",
+        "title": "UR: New Chat",
+        "icon": "$(comment-add)"
+      },
+      {
+        "command": "urInlineDiffs.chat.open",
+        "title": "UR: Open Chat",
+        "icon": "$(comment)"
+      },
+      {
+        "command": "urInlineDiffs.chat.cancel",
+        "title": "UR: Cancel Current Chat Request",
+        "icon": "$(stop-circle)"
+      },
+      {
+        "command": "urInlineDiffs.chat.addFile",
+        "title": "UR: Add Current File to Chat"
+      },
+      {
+        "command": "urInlineDiffs.chat.addSelection",
+        "title": "UR: Add Selection to Chat"
+      },
+      {
+        "command": "urInlineDiffs.chat.explainSelection",
+        "title": "UR: Explain Selection"
+      },
+      {
+        "command": "urInlineDiffs.chat.fixSelection",
+        "title": "UR: Fix Selection"
+      },
+      {
+        "command": "urInlineDiffs.chat.generateTests",
+        "title": "UR: Generate Tests for Selection"
+      },
+      {
+        "command": "urInlineDiffs.agentStatus",
+        "title": "UR: Agent Status",
+        "icon": "$(info)"
+      },
+      {
+        "command": "urInlineDiffs.agentOptions",
+        "title": "UR: Agent Options",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "urInlineDiffs.reviewCurrentDiff",
+        "title": "UR: Review Current Diff",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "urInlineDiffs.runVerifier",
+        "title": "UR: Run Verifier",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "urInlineDiffs.searchActions",
+        "title": "UR: Search Actions",
+        "icon": "$(search)"
+      },
+      {
+        "command": "urInlineDiffs.openSettings",
+        "title": "UR: Open Settings"
+      },
+      {
+        "command": "urInlineDiffs.openDocs",
+        "title": "UR: Open Docs"
+      },
+      {
+        "command": "urInlineDiffs.openArtifacts",
+        "title": "UR: Open Artifacts"
+      },
+      {
+        "command": "urInlineDiffs.runSpec",
+        "title": "UR: Run Spec"
+      },
+      {
+        "command": "urInlineDiffs.runWorkflow",
+        "title": "UR: Run Workflow"
+      },
+      {
+        "command": "urActions.refresh",
+        "title": "UR: Refresh IDE Actions",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "urActions.openBackgroundLog",
+        "title": "UR: Open Background Task Log"
       }
     ],
     "viewsWelcome": [
@@ -79,6 +204,16 @@
     "menus": {
       "view/title": [
         {
+          "command": "urInlineDiffs.chat.new",
+          "when": "view == urInlineDiffs",
+          "group": "navigation"
+        },
+        {
+          "command": "urInlineDiffs.chat.open",
+          "when": "view == urInlineDiffs",
+          "group": "navigation"
+        },
+        {
           "command": "urInlineDiffs.refresh",
           "when": "view == urInlineDiffs",
           "group": "navigation"
@@ -87,28 +222,60 @@
           "command": "urInlineDiffs.status",
           "when": "view == urInlineDiffs",
           "group": "navigation"
+        },
+        {
+          "command": "urActions.refresh",
+          "when": "view == urActions",
+          "group": "navigation"
+        },
+        {
+          "command": "urInlineDiffs.agentStatus",
+          "when": "view == urActions",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "urInlineDiffs.open",
-          "when": "view == urInlineDiffs && viewItem == diff",
+          "when": "(view == urInlineDiffs || view == urActions) && viewItem == diff",
           "group": "inline"
         },
         {
           "command": "urInlineDiffs.apply",
-          "when": "view == urInlineDiffs && viewItem == diff",
+          "when": "(view == urInlineDiffs || view == urActions) && viewItem == diff",
           "group": "1_actions"
         },
         {
           "command": "urInlineDiffs.reject",
-          "when": "view == urInlineDiffs && viewItem == diff",
+          "when": "(view == urInlineDiffs || view == urActions) && viewItem == diff",
           "group": "1_actions"
         },
         {
           "command": "urInlineDiffs.comment",
-          "when": "view == urInlineDiffs && viewItem == diff",
+          "when": "(view == urInlineDiffs || view == urActions) && viewItem == diff",
           "group": "2_review"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "urInlineDiffs.chat.explainSelection",
+          "when": "editorHasSelection",
+          "group": "ur@1"
+        },
+        {
+          "command": "urInlineDiffs.chat.fixSelection",
+          "when": "editorHasSelection",
+          "group": "ur@2"
+        },
+        {
+          "command": "urInlineDiffs.chat.generateTests",
+          "when": "editorHasSelection",
+          "group": "ur@3"
+        },
+        {
+          "command": "urInlineDiffs.chat.addSelection",
+          "when": "editorHasSelection",
+          "group": "ur@4"
         }
       ]
     }

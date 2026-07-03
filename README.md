@@ -363,11 +363,17 @@ UR-AGENT uses that hook output instead of the built-in bar.
 
 ### IDE Integration
 
+The professional UR IDE integration is the **UR Inline Diffs** VS Code
+extension: a chat panel, inline diff review, an actions panel, an agent
+status card, a searchable command palette, and an agent options panel for VS
+Code, Cursor, and Windsurf. It is bundled inside this repository and
+packaged as a local VSIX when installed from UR-AGENT; the public install
+path does not depend on an unpublished marketplace extension ID. The
+extension never talks to a model provider or network service directly —
+every AI request goes through your local `ur` CLI, same as in a terminal.
+
 `ur ide diff` captures review bundles under `.ur/ide/diffs/` so editors can
-show agent diffs without scraping terminal output. The shipped VS Code inline
-diff extension is bundled inside this repository and packaged as a local VSIX
-when installed from UR-AGENT; the public install path does not depend on an
-unpublished marketplace extension ID.
+show agent diffs without scraping terminal output:
 
 ```sh
 ur ide diff capture --title "Parser fix"
@@ -375,27 +381,31 @@ ur ide diff list
 ur ide diff show <id>
 ```
 
-The extension is local-only. It reads and writes diff metadata inside the
-current workspace and does not call model providers or network services. In the
-UR Inline Diffs view you can preview a bundle, **Apply** it (a confirmed
-`git apply`, never a silent write), **Reject** it, or run **UR: Show Status**.
+In the **Inline Diffs** / **Actions** views you can preview a bundle,
+**Apply** it (a confirmed `git apply`, recorded through `ur ide diff
+approve` — never a silent write or an out-of-vocabulary status), **Reject**
+it, or run **UR: Agent Status**. Chat, editor actions (Explain/Fix/Generate
+Tests), diff review, and the verifier all route through the same CLI
+contract — see the [IDE Guide](docs/IDE.md) for the full feature list.
 
 Inspect and configure integration per editor:
 
 ```sh
-ur ide status               # workspace, ACP server, provider/model, plugin count
+ur ide status               # workspace, ACP server, provider/model, sandbox/verifier mode, plugin count
 ur ide doctor               # pass/warn/fail checks; reports missing config clearly
 ur ide config zed           # print the .zed/settings.json ACP block
 ur ide config vscode        # VS Code / Cursor / Windsurf setup
 ```
 
-Editors connect either through the native UR extension/plugin (VS Code family,
-JetBrains) or the stdio Agent Client Protocol (Zed, ACP Neovim, generic ACP
-clients). Start an ACP surface with:
+VS Code, Cursor, and Windsurf connect through the UR Inline Diffs extension;
+Zed and ACP-capable Neovim clients connect through the stdio Agent Client
+Protocol. **JetBrains is not implemented in this repository** — no plugin
+ships from here; only detection code for a future one exists. Start an ACP
+surface with:
 
 ```sh
 ur acp stdio                        # stdio ACP agent for editors (Zed, Neovim)
-ur acp serve --port 8123 [--debug]  # HTTP JSON-RPC server for scripts/clients
+ur acp serve --port 8123 [--debug]  # HTTP JSON-RPC server for scripts/clients (not the VS Code chat transport)
 ur acp status
 ```
 
@@ -526,8 +536,9 @@ settings, generated indexes, memory, logs, and secrets out of Git.
 - `src/services/` contains runtime services for MCP, verification, memory,
   code indexing, safety policy, context manifests, model routing, background
   agents, A2A, analytics, sync, and API integration.
-- `extensions/vscode-ur-inline-diffs/` contains the VS Code inline diff review
-  extension.
+- `extensions/vscode-ur-inline-diffs/` contains the professional VS Code IDE
+  extension (chat, streaming, inline diff review, actions panel, status
+  card, search, and agent options) for VS Code, Cursor, and Windsurf.
 - `plugins/core/` contains first-party marketplace plugins.
 - `plugins/community/` stages contributed plugins.
 - `plugins/examples/` contains plugin templates users can copy.

@@ -13,6 +13,26 @@ import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { getCwd } from '../../utils/cwd.js'
 import { detectRunningIDEs, toIDEDisplayName } from '../../utils/ide.js'
 import { loadInstalledPluginsV2 } from '../../utils/plugins/installedPluginsManager.js'
+import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
+
+// Read-only current-mode getters, composed from existing exported reads —
+// no sandbox or verifier runtime behavior is changed by adding a status
+// field. SandboxManager.isSandboxingEnabled()/isSandboxRequired() are the
+// same zero-arg checks `ur sandbox status` already uses.
+function currentSandboxMode(): IdeStatus['sandboxMode'] {
+  if (!SandboxManager.isSandboxingEnabled()) return 'disabled'
+  return SandboxManager.isSandboxRequired() ? 'required' : 'recommended'
+}
+
+// Mirrors the 3-line resolution in src/services/verifier/index.ts's
+// (module-private) resolveMode(): env var wins, else default to 'strict'.
+// Reproduced here as a plain env read rather than importing verifier
+// internals, since this command's scope is a read-only status snapshot.
+function currentVerifierMode(): IdeStatus['verifierMode'] {
+  const env = (process.env.UR_VERIFIER_MODE ?? '').toLowerCase()
+  if (env === 'off' || env === 'loose' || env === 'strict') return env
+  return 'strict'
+}
 
 function pluginCount(): number {
   try {
@@ -51,6 +71,8 @@ export async function collectIdeStatus(cwd: string): Promise<IdeStatus> {
     pluginCount: pluginCount(),
     detectedIdes: detected.names.map(name => ({ name, connected: false })),
     warnings,
+    sandboxMode: currentSandboxMode(),
+    verifierMode: currentVerifierMode(),
   }
 }
 
