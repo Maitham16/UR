@@ -152,6 +152,7 @@ import { hasEmbeddedSearchTools } from './embeddedTools.js'
 import { formatFileSize } from './format.js'
 import { validateImagesForAPI } from './imageValidation.js'
 import { safeParseJSON } from './json.js'
+import { stripEmptyParameterNames } from './toolInputSanitize.js'
 import { logError, logMCPDebug } from './log.js'
 import { normalizeLegacyToolName } from './permissions/permissionRuleParser.js'
 import {
@@ -2700,6 +2701,14 @@ export function normalizeContentFromAPI(
           normalizedInput = parsed ?? {}
         } else {
           normalizedInput = contentBlock.input
+        }
+
+        const sanitized = stripEmptyParameterNames(normalizedInput)
+        if (sanitized.stripped) {
+          normalizedInput = sanitized.input
+          logEvent('tengu_tool_input_empty_key_stripped', {
+            toolName: sanitizeToolNameForAnalytics(contentBlock.name),
+          })
         }
 
         // Then apply tool-specific corrections

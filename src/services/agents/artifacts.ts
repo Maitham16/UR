@@ -184,18 +184,26 @@ const defaultExec: CommandExec = async (file, args, cwd) => {
   return { code: r.code, stdout: r.stdout, stderr: r.stderr }
 }
 
+export async function getWorkingDiff(
+  cwd: string,
+  exec: CommandExec = defaultExec,
+): Promise<string> {
+  const diff = await exec('git', ['diff', 'HEAD'], cwd)
+  return diff.stdout
+}
+
 export async function captureDiff(
   cwd: string,
   title = 'Working tree diff',
   exec: CommandExec = defaultExec,
 ): Promise<Artifact | null> {
-  const diff = await exec('git', ['diff', 'HEAD'], cwd)
-  if (!diff.stdout.trim()) return null
-  const files = (diff.stdout.match(/^\+\+\+ /gm) ?? []).length
+  const stdout = await getWorkingDiff(cwd, exec)
+  if (!stdout.trim()) return null
+  const files = (stdout.match(/^\+\+\+ /gm) ?? []).length
   return recordArtifact(cwd, {
     kind: 'diff',
     title,
-    body: diff.stdout,
+    body: stdout,
     summary: `${files} file(s) changed`,
   })
 }

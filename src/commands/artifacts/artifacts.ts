@@ -136,7 +136,7 @@ export const call: LocalCommandCall = async (args: string) => {
       const { url } = await startArtifactsServer(cwd, port)
       return {
         type: 'text',
-        value: `Artifacts page: ${url} — open ${url}/artifacts/<id> for a single artifact. Stop with \`ur artifacts serve --stop\`.`,
+        value: `Artifacts page: ${url} — open ${url}/artifacts/<id> for a single artifact, ${url}/diff for live working-tree changes (VS Code-style diff). Stop with \`ur artifacts serve --stop\`.`,
       }
     } catch (error) {
       return { type: 'text', value: `Failed to start artifacts server on port ${port}: ${error}` }

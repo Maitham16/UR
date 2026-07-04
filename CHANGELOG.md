@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.43.1
+
+- Artifacts page renders diffs VS Code-style: side-by-side/inline views with
+  syntax highlighting via diff2html (plain-text fallback when offline). New
+  live view `/diff` shows current working-tree changes without manual capture,
+  with a one-click "Capture as artifact" button (`POST /api/capture-diff`,
+  `GET /api/diff`).
+- Tolerate empty-string parameter names in model tool calls: stripped before
+  validation instead of failing with `An unexpected parameter \`\` was
+  provided`.
+
 ## 1.43.0
 
 - Add `ur artifacts serve [--port 4180]`: a local web page for artifacts.
