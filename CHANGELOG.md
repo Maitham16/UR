@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.43.4
+
+- Tolerate hallucinated extra parameters on tool calls: when input validation
+  fails only because of unrecognized keys (e.g. `title`/`description` on a
+  `Write` call), those keys are stripped and the call is re-validated instead
+  of failing with `An unexpected parameter X was provided`. Genuine errors
+  (missing required fields, type mismatches) still surface normally.
+
 ## 1.43.3
 
 - Bias the assistant toward the interactive arrow-key select menu: the

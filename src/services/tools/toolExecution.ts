@@ -25,6 +25,7 @@ import {
   getStatsStore,
 } from '../../bootstrap/state.js'
 import { getCwd } from '../../utils/cwd.js'
+import { stripUnrecognizedKeys } from '../../utils/toolInputSanitize.js'
 import {
   buildCodeEditToolAttributes,
   isCodeEditingTool,
@@ -631,7 +632,31 @@ async function checkPermissionsAndCallTool(
   ) => void,
 ): Promise<MessageUpdateLazy[]> {
   // Validate input types with zod (surprisingly, the model is not great at generating valid input)
-  const parsedInput = tool.inputSchema.safeParse(input)
+  let parsedInput = tool.inputSchema.safeParse(input)
+  // Tolerate hallucinated extra parameters: if the ONLY problem is unrecognized
+  // keys (e.g. `title`/`description` on a Write call), strip them and re-validate
+  // instead of failing the whole call. Other errors (missing required, type
+  // mismatch) still surface normally.
+  if (
+    !parsedInput.success &&
+    parsedInput.error.issues.length > 0 &&
+    parsedInput.error.issues.every(issue => issue.code === 'unrecognized_keys')
+  ) {
+    const { input: cleaned, stripped } = stripUnrecognizedKeys(
+      input,
+      parsedInput.error.issues,
+    )
+    if (stripped.length > 0) {
+      const retry = tool.inputSchema.safeParse(cleaned)
+      if (retry.success) {
+        logEvent('tengu_tool_input_unrecognized_keys_stripped', {
+          toolName: sanitizeToolNameForAnalytics(tool.name),
+        })
+        input = cleaned as typeof input
+        parsedInput = retry
+      }
+    }
+  }
   if (!parsedInput.success) {
     let errorContent = formatZodValidationError(tool.name, parsedInput.error)
 
