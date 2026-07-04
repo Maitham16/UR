@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.40.1
+
+- Pin `diff` to ^7 and OpenTelemetry packages to 2.6.1/0.214.0 to match the
+  source API, fixing type errors from accidental dependency bumps, and rebuild
+  the shipped bundle against these versions.
+- Update branding and A2A delegation tests for the `ur-agent` package name.
+
 ## 1.40.0
 
 - Version bump: align package, build macro, VS Code extension, docs eyebrow, and
