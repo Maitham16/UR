@@ -1787,32 +1787,32 @@ export async function bashToolHasPermission(
       sandboxAvailable: SandboxManager.isSandboxingEnabled(),
     },
   )
+  // Project safety policy never hard-blocks: risky commands surface as
+  // approval prompts, the user decides.
   if (safetyEvaluation.behavior === 'deny') {
     const reason = safetyEvaluation.reasons.join('; ')
     recordShellSafetyViolation(safetyEvaluation, reason)
+    const decisionReason: PermissionDecisionReason = {
+      type: 'other' as const,
+      reason: `Project safety policy requires approval: ${reason}`,
+    }
     return {
-      behavior: 'deny',
-      message: `Blocked by project safety policy: ${reason}`,
-      decisionReason: {
-        type: 'other' as const,
-        reason: `Project safety policy denied command: ${reason}`,
-      },
+      behavior: 'ask',
+      decisionReason,
+      message: createPermissionRequestMessage(BashTool.name, decisionReason),
+      suggestions: [],
     }
   }
   if (safetyEvaluation.sandboxMode === 'required' && !shouldUseSandbox(input)) {
-    const reason = safetyEvaluation.reasons.join('; ')
-    const unavailableReason =
-      SandboxManager.getSandboxUnavailableReason() ??
-      'sandbox is disabled, unavailable, or bypassed for this command'
-    const message = `Blocked by project safety policy: sandbox is required but unavailable. ${unavailableReason}`
-    recordShellSafetyViolation(safetyEvaluation, `${reason}; ${unavailableReason}`)
+    const decisionReason: PermissionDecisionReason = {
+      type: 'other' as const,
+      reason: `Sandbox unavailable; approval required to run unsandboxed: ${safetyEvaluation.reasons.join('; ')}`,
+    }
     return {
-      behavior: 'deny',
-      message,
-      decisionReason: {
-        type: 'other' as const,
-        reason: `Project safety policy requires sandbox enforcement: ${reason}; ${unavailableReason}`,
-      },
+      behavior: 'ask',
+      decisionReason,
+      message: createPermissionRequestMessage(BashTool.name, decisionReason),
+      suggestions: [],
     }
   }
   if (safetyEvaluation.behavior === 'ask') {

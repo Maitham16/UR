@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.42.0
+
+- Project safety policy no longer hard-blocks commands. Risky or deny-matched
+  commands (package installs, destructive git operations, secret access,
+  sandbox-required commands when the sandbox is unavailable) now surface as
+  approval prompts instead of `Blocked by project safety policy` errors; the
+  user decides. `ur safety`/`ur sandbox` evaluation output is unchanged.
+
 ## 1.41.1
 
 - Harden provider tests against stored API keys in the local secure storage.

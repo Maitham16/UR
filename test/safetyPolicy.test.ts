@@ -239,7 +239,7 @@ describe('project safety policy', () => {
     }
   })
 
-  test('bash permission fails closed when autonomous mode requires sandbox but sandbox is unavailable', async () => {
+  test('bash permission asks for approval when autonomous mode requires sandbox but sandbox is unavailable', async () => {
     const dir = tempDir('ur-safety-bash-fail-closed-')
     try {
       updateSettingsForSource('localSettings', {
@@ -266,8 +266,43 @@ describe('project safety policy', () => {
         ),
       )
 
-      expect(result.behavior).toBe('deny')
-      expect(result.message).toContain('sandbox is required but unavailable')
+      expect(result.behavior).toBe('ask')
+      expect(result.message ?? '').not.toContain('Blocked by project safety policy')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      resetSettingsCache()
+    }
+  })
+
+  test('bash permission asks instead of blocking when sandbox is unavailable in interactive mode', async () => {
+    const dir = tempDir('ur-safety-bash-ask-')
+    try {
+      updateSettingsForSource('localSettings', {
+        sandbox: { enabled: true, failIfUnavailable: true, enabledPlatforms: [] },
+      } as never)
+      resetSettingsCache()
+
+      const result = await runWithCwdOverride(dir, () =>
+        bashToolHasPermission(
+          { command: 'pip3 install --user torchvision' } as any,
+          {
+            getAppState: () => ({
+              toolPermissionContext: {
+                mode: 'default',
+                additionalWorkingDirectories: new Map(),
+                alwaysAllowRules: {},
+                alwaysDenyRules: {},
+                alwaysAskRules: {},
+                isBypassPermissionsModeAvailable: false,
+                shouldAvoidPermissionPrompts: false,
+              },
+            }),
+          } as any,
+        ),
+      )
+
+      expect(result.behavior).toBe('ask')
+      expect(result.message ?? '').not.toContain('Blocked by project safety policy')
     } finally {
       rmSync(dir, { recursive: true, force: true })
       resetSettingsCache()
