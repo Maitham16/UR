@@ -58,9 +58,9 @@ describe('sandbox-adapter (direct regression coverage)', () => {
     expect(SandboxManager.isSandboxingEnabled()).toBe(false)
   })
 
-  test('default mode: sandboxing is enabled when sandbox setting is absent', async () => {
+  test('default mode: sandboxing is disabled when sandbox setting is absent', async () => {
     await withAvailableBaseSandbox(() => {
-      expect(SandboxManager.isSandboxingEnabled()).toBe(true)
+      expect(SandboxManager.isSandboxingEnabled()).toBe(false)
       expect(SandboxManager.getSandboxUnavailableReason()).toBeUndefined()
     })
   })

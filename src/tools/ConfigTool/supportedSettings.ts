@@ -130,6 +130,24 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     description: 'Enable extended thinking (false to disable)',
     appStateKey: 'thinkingEnabled',
   },
+  'sandbox.enabled': {
+    source: 'settings',
+    type: 'boolean',
+    description: 'Enable the OS-level sandbox for Bash/File tool commands',
+    path: ['sandbox', 'enabled'],
+  },
+  'sandbox.failIfUnavailable': {
+    source: 'settings',
+    type: 'boolean',
+    description: 'Refuse to start when sandbox.enabled is true but the sandbox cannot start',
+    path: ['sandbox', 'failIfUnavailable'],
+  },
+  'sandbox.allowUnsandboxedCommands': {
+    source: 'settings',
+    type: 'boolean',
+    description: 'Allow commands to run unsandboxed when they explicitly request it',
+    path: ['sandbox', 'allowUnsandboxedCommands'],
+  },
   'permissions.defaultMode': {
     source: 'settings',
     type: 'string',

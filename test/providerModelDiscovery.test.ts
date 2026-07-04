@@ -5,9 +5,23 @@ import {
   listModelsForProviderWithSource,
   listProviders,
 } from '../src/services/providers/providerRegistry.js'
+import {
+  clearProviderApiKey,
+  getStoredProviderApiKey,
+  setProviderApiKey,
+} from '../src/services/providers/providerCredentials.js'
 
-beforeEach(() => clearProviderModelCacheForTests())
-afterEach(() => clearProviderModelCacheForTests())
+let hadStoredOpenAiKey: string | undefined
+
+beforeEach(() => {
+  clearProviderModelCacheForTests()
+  hadStoredOpenAiKey = getStoredProviderApiKey('openai-api')
+  if (hadStoredOpenAiKey) clearProviderApiKey('openai-api')
+})
+afterEach(() => {
+  clearProviderModelCacheForTests()
+  if (hadStoredOpenAiKey) setProviderApiKey('openai-api', hadStoredOpenAiKey)
+})
 
 function fetchReturning(body: unknown, status = 200): typeof fetch {
   return (async () =>

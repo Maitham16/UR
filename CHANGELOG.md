@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.41.1
+
+- Harden provider tests against stored API keys in the local secure storage.
+- Revert sandbox default to disabled; expose `sandbox.enabled`,
+  `sandbox.failIfUnavailable`, and `sandbox.allowUnsandboxedCommands` through
+  the `/config` tool so users can toggle the sandbox on/off explicitly.
+
 ## 1.41.0
 
 - Persist the model chosen through the interactive `/model` picker to settings

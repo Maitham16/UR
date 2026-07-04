@@ -13,6 +13,11 @@ import {
   getProviderRuntimeBackend,
   isProviderRuntimeSelectable,
 } from '../src/services/providers/providerRegistry.js'
+import {
+  clearProviderApiKey,
+  getStoredProviderApiKey,
+  setProviderApiKey,
+} from '../src/services/providers/providerCredentials.js'
 
 beforeEach(() => {
   clearProviderModelCacheForTests()
@@ -474,6 +479,10 @@ async function withEnvCleared<T>(
     previous.set(key, process.env[key])
     delete process.env[key]
   }
+  const hadStoredOpenAi = getStoredProviderApiKey('openai-api')
+  const hadStoredAnthropic = getStoredProviderApiKey('anthropic-api')
+  if (hadStoredOpenAi) clearProviderApiKey('openai-api')
+  if (hadStoredAnthropic) clearProviderApiKey('anthropic-api')
   try {
     return await run()
   } finally {
@@ -484,5 +493,7 @@ async function withEnvCleared<T>(
         process.env[key] = value
       }
     }
+    if (hadStoredOpenAi) setProviderApiKey('openai-api', hadStoredOpenAi)
+    if (hadStoredAnthropic) setProviderApiKey('anthropic-api', hadStoredAnthropic)
   }
 }

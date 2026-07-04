@@ -365,6 +365,15 @@ Sandbox behavior has three modes, controlled by `sandbox.enabled` and
   UR fails closed: it refuses to start rather than run without a working
   sandbox.
 
+To turn the sandbox on or off, use the `/config` tool or run:
+
+```sh
+ur config set sandbox.enabled true
+ur config set sandbox.enabled false
+```
+
+You can also inspect the current state with `ur sandbox status`.
+
 OS confinement depends on platform support: `sandbox-exec` (Seatbelt) on
 macOS, or `bwrap` (bubblewrap) on Linux/WSL2. `ur sandbox check` reports
 missing dependencies for the current platform.
