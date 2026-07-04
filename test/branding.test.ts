@@ -15,6 +15,8 @@ describe('UR-Nexus branding', () => {
     expect(pkg.name).toBe('ur-agent')
     expect(pkg.description).toContain('UR-Nexus')
     expect(readme).toStartWith('# UR-Nexus')
+    expect(readme).toContain('The package name remains `ur-agent`')
+    expect(readme).toContain('command remains `ur`')
     expect(readme).not.toContain('UR-AGENT')
   })
 })

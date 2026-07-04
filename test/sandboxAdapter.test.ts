@@ -58,6 +58,13 @@ describe('sandbox-adapter (direct regression coverage)', () => {
     expect(SandboxManager.isSandboxingEnabled()).toBe(false)
   })
 
+  test('default mode: sandboxing is enabled when sandbox setting is absent', async () => {
+    await withAvailableBaseSandbox(() => {
+      expect(SandboxManager.isSandboxingEnabled()).toBe(true)
+      expect(SandboxManager.getSandboxUnavailableReason()).toBeUndefined()
+    })
+  })
+
   test('recommended mode (enabled, failIfUnavailable=false) does not fail closed when unavailable', () => {
     // enabledPlatforms: [] deterministically forces "unavailable" regardless of
     // whether this machine actually has bwrap/sandbox-exec installed.

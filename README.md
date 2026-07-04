@@ -66,41 +66,59 @@ handing work off to other tools or agents when needed.
 
 ## Prompt Planning and Task Board
 
-UR-Nexus can decompose short or long `ur exec` prompts into small executable
-task units before work starts. Each task records an id, title, description, status,
-dependencies, assigned logical agent role, input, expected output, and
-verification criteria. Simple prompts stay compact; complex prompts are split
-only when the wording or ordering makes separate tasks useful.
+UR-Nexus decomposes `ur exec` prompts into executable task units before work
+starts. Short prompts stay compact. Longer prompts are split into ordered small
+tasks only when the wording, dependencies, or file targets make separate tasks
+useful. Each task records id, order, title, description, status, dependencies,
+assigned logical agent role, input, expected output, verification criteria, file
+targets, risk level, and whether approval is required.
 
 During real `ur exec` runs the task board streams when a task status changes,
 then appears again in the final report. Quiet/non-interactive runs can suppress
-streaming while preserving the final board. Tasks move through `pending`,
-`ready`, `running`, `blocked`, `finished`, and `failed`:
+streaming while preserving the final board. Public status labels are
+action-oriented: queued, running, waiting approval, needs scope, needs context,
+paused for review, skipped by policy, finished, and failed.
 
 ```text
 [UR-Nexus Task Board]
+Agents: 1 active / 3 max
 
-1. ready    | executor | Update CLI branding
-2. running  | executor | Update README references
-3. blocked  | verifier | Validate release archive
+1. queued           | executor | Update CLI branding
+2. running          | executor | Update README references
+3. waiting approval | verifier | Validate release archive
 
-Progress: 0/3 finished, 1 running, 1 blocked, 0 failed
+Progress: 0/3 finished, 1 running, 1 queued, 1 waiting, 0 failed, 0 skipped
 ```
 
 Before a task runs, UR-Nexus checks that required files/resources exist and
-that assumptions are explicit. After a task runs, verification compares the
-executor's claims with evidence from workspace snapshots and observed command
-records. Strict verification rejects unsupported file-change and command claims;
-non-strict verification records them as warnings.
-Independent tasks can run through parallel logical workers, while tasks that
+that assumptions are explicit. Risky actions require explicit approval first:
+destructive commands, outside-workspace writes/deletes, network or external
+system actions, credential-sensitive access, exploit-like commands, and security
+testing. The approval request records the action, reason, command or path when
+available, and the approval decision in task evidence. Security-research prompts
+need scoped targets and authorization confirmation; local/lab/test targets are
+preferred unless the user confirms authorized external scope.
+
+Outside-workspace reads are allowed when requested or clearly required, and the
+outside path is recorded in the task board/evidence. Modifying or deleting
+outside-workspace files requires approval before execution.
+
+After a task runs, verification compares the executor's claims with evidence
+from workspace snapshots and observed command records. Strict verification
+rejects unsupported file-change and command claims; non-strict verification
+records them as warnings. Independent tasks can run through adaptive parallel
+logical workers: simple prompts use one agent, medium prompts use two or three
+when useful, and large independent graphs can use up to `maxAgents`. Tasks that
 depend on another task or target the same file are serialized.
-At the end of execution, `ur exec` reports task counts, finished/failed/blocked
-tasks, actual changed files, unreported changed files, verified commands,
-unverified command claims, verification failures, warnings, and remaining
-limitations. Command tracking is limited to commands surfaced by the task
-runner; provider-internal or detached activity is reported as unverified unless
-the executor exposes it as observed evidence. Use `--no-task-planning` to keep
-the legacy direct prompt execution path for a run.
+
+At the end of execution, `ur exec` reports task counts, the final ordered task
+board, active/max agents used, finished/waiting/failed/skipped tasks, actual
+changed files, outside-workspace files accessed or modified, verified commands,
+unverified command claims, approval decisions, verification failures, warnings,
+and remaining limitations. Command tracking is limited to commands surfaced by
+the task runner; provider-internal or detached activity is reported as
+unverified unless the executor exposes it as observed evidence. Use
+`--no-task-planning` to keep the legacy direct prompt execution path for a run.
 
 Planning defaults are safe and can be configured with:
 
@@ -688,6 +706,9 @@ release until that GitHub run is green.
 ## Package
 
 - npm package: [`ur-agent`](https://www.npmjs.com/package/ur-agent), binary `ur`.
+- The package name remains `ur-agent` for compatibility with existing installs
+  and legacy `ur-agent` configs. User-facing branding is `UR-Nexus`; the global
+  command remains `ur`. A future package rename would use `ur-nexus`.
 - The published package ships the bundled CLI (`dist/cli.js`), launcher
   (`bin/ur.js`), documentation (`docs/`, `documentation/`, `examples/`), and
   first-party plugins (`plugins/`, `.ur-plugin` marketplace manifest is part of

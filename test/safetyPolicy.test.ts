@@ -11,6 +11,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runWithCwdOverride } from '../src/utils/cwd.js'
 import { bashToolHasPermission } from '../src/tools/BashTool/bashPermissions.js'
+import { updateSettingsForSource } from '../src/utils/settings/settings.js'
+import { resetSettingsCache } from '../src/utils/settings/settingsCache.js'
 import {
   clearShellSafetyViolations,
   evaluateShellSafetyPolicy,
@@ -240,6 +242,11 @@ describe('project safety policy', () => {
   test('bash permission fails closed when autonomous mode requires sandbox but sandbox is unavailable', async () => {
     const dir = tempDir('ur-safety-bash-fail-closed-')
     try {
+      updateSettingsForSource('localSettings', {
+        sandbox: { enabled: true, failIfUnavailable: true, enabledPlatforms: [] },
+      } as never)
+      resetSettingsCache()
+
       const result = await runWithCwdOverride(dir, () =>
         bashToolHasPermission(
           { command: 'touch generated.txt' } as any,
@@ -263,6 +270,7 @@ describe('project safety policy', () => {
       expect(result.message).toContain('sandbox is required but unavailable')
     } finally {
       rmSync(dir, { recursive: true, force: true })
+      resetSettingsCache()
     }
   })
 

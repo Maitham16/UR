@@ -3,10 +3,31 @@ export type NexusTaskStatus =
   | 'ready'
   | 'running'
   | 'blocked'
+  | 'waiting-approval'
+  | 'needs-scope'
+  | 'needs-context'
+  | 'paused-review'
+  | 'skipped'
   | 'finished'
   | 'failed'
 
 export type NexusAgentRole = 'planner' | 'executor' | 'verifier' | 'reporter'
+export type NexusRiskLevel = 'low' | 'medium' | 'high'
+export type TaskApprovalStatus =
+  | 'not-required'
+  | 'waiting-approval'
+  | 'approved'
+  | 'skipped-by-policy'
+
+export type TaskApprovalDecision = {
+  taskId: string
+  taskTitle: string
+  status: TaskApprovalStatus
+  reason: string
+  action: string
+  command?: string
+  paths: string[]
+}
 
 export type NexusTaskInput = {
   prompt: string
@@ -18,6 +39,7 @@ export type NexusTaskInput = {
 
 export type NexusTask = {
   id: string
+  order: number
   title: string
   description: string
   status: NexusTaskStatus
@@ -26,6 +48,14 @@ export type NexusTask = {
   input: NexusTaskInput
   expectedOutput: string
   verificationCriteria: string[]
+  fileTargets: string[]
+  riskLevel: NexusRiskLevel
+  approvalRequired: boolean
+  approvalReason?: string
+  approvalAction?: string
+  approvalCommand?: string
+  approvalPaths: string[]
+  outsideWorkspacePaths: string[]
 }
 
 export type PromptPlanningConfig = {
@@ -66,6 +96,9 @@ export type TaskExecutionResult = {
   commandsRun?: string[]
   reportedCommands?: string[]
   observedCommands?: string[]
+  outsideWorkspaceReads?: string[]
+  outsideWorkspaceWrites?: string[]
+  approvalDecisions?: TaskApprovalDecision[]
   claims?: TaskClaim[]
   error?: string
 }
@@ -110,6 +143,13 @@ export type RunPromptPlanResult = {
   finished: number
   failed: number
   blocked: number
+  waitingApproval: number
+  skipped: number
+  maxAgentsAllowed: number
+  maxAgentsUsed: number
+  approvalDecisions: TaskApprovalDecision[]
+  outsideWorkspaceReads: string[]
+  outsideWorkspaceWrites: string[]
   taskResults: TaskRunRecord[]
 }
 
@@ -125,6 +165,9 @@ export type TaskRunRecord = {
   observedCommands: string[]
   reportedCommands: string[]
   unverifiedCommandClaims: string[]
+  outsideWorkspaceReads: string[]
+  outsideWorkspaceWrites: string[]
+  approvalDecisions: TaskApprovalDecision[]
   preVerification: TaskValidationResult
   postVerification?: TaskValidationResult
 }

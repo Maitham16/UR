@@ -153,9 +153,11 @@ never runs automatically unless enabled.
 
 ## Prompt Planning
 
-UR-Nexus can plan an `ur exec` prompt into small executable tasks, show a task
-board, run independent tasks through parallel logical workers, and verify task
-claims after execution. The defaults are:
+UR-Nexus can plan an `ur exec` prompt into ordered executable tasks, show a task
+board, run independent tasks through adaptive parallel logical workers, and
+verify task claims after execution. Short prompts stay as one compact task when
+splitting is not useful. Longer prompts are decomposed by explicit ordering,
+bullets, dependencies, and file targets. The defaults are:
 
 ```json
 {
@@ -168,9 +170,15 @@ claims after execution. The defaults are:
 ```
 
 `taskPlanning` enables prompt decomposition. `parallelAgents` allows independent
-tasks to run concurrently up to `maxAgents`. `showTaskBoard` renders visible
-progress during real execution and keeps the final board in the execution
-report. `strictVerification` rejects unsupported claims about changed files,
+tasks to run concurrently up to `maxAgents`; the scheduler still uses only the
+number of agents that is useful for the current dependency graph and file locks.
+Simple prompts use one agent, medium independent prompts use two or three when
+useful, and large independent task graphs can use the configured maximum.
+`showTaskBoard` renders visible progress during real execution and keeps the
+final ordered board in the execution report. The board shows ordered tasks,
+current status, the running task, finished tasks, tasks waiting for approval or
+context, active/max agents, queued tasks, and finished/failed/waiting/skipped
+counts. `strictVerification` rejects unsupported claims about changed files,
 commands, or generated output. With `--no-strict-verification`, unsupported
 claims become warnings and the task may finish when no hard execution error was
 observed.
@@ -189,12 +197,31 @@ ur exec "run quietly but keep the final board" --quiet
 ur exec "warn instead of failing unsupported claims" --no-strict-verification
 ```
 
+Risky actions use an approval-first workflow. UR-Nexus asks for approval before
+destructive commands, outside-workspace writes/deletes, network actions,
+credential-sensitive access, security testing commands, exploit-like commands,
+or commands that affect external systems. The request explains the action, why
+approval is required, and the command or file path when available. The action is
+not executed until approval evidence exists, and the decision is recorded in
+the final report.
+
+Outside-workspace reads are allowed when explicitly requested or clearly needed
+for the task, and the outside path is recorded as evidence. Modifying, removing,
+or deleting anything outside the workspace requires explicit approval first.
+For cybersecurity or security-research tasks, UR-Nexus supports authorized
+workflows by asking for target scope and authorization confirmation when needed.
+Vague requests are converted into scoped research tasks that wait for approval;
+local, lab, and test targets are preferred unless the user confirms authorized
+external scope.
+
 The final `ur exec` report is generated from task execution evidence only:
-finished, failed, and blocked task records, actual changed files from workspace
-snapshots, unreported changed files, verified commands surfaced by the executor,
-unverified command claims, verification failures, and warnings. Command tracking
-cannot prove detached or provider-internal activity unless the task runner
-surfaces those commands as observed evidence.
+finished, waiting approval/context, failed, and skipped task records, actual
+changed files from workspace snapshots, unreported changed files,
+outside-workspace files accessed or modified, verified commands surfaced by the
+executor, unverified command claims, approval decisions, verification failures,
+warnings, and remaining limitations. Command tracking cannot prove detached or
+provider-internal activity unless the task runner surfaces those commands as
+observed evidence.
 
 ## Project Safety Policy
 

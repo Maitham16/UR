@@ -54,8 +54,38 @@ export function validateBeforeExecution(
   const issues: VerificationIssue[] = []
   const knownFiles = normalizeSet(context.existingFiles)
 
-  if (task.status === 'blocked') {
-    issues.push(issue('task_blocked', `${task.id} is blocked before execution.`))
+  if (task.approvalRequired) {
+    issues.push(
+      issue(
+        'approval_required',
+        `${task.id} cannot continue safely without approval: ${
+          task.approvalReason ?? 'explicit approval is required'
+        }`,
+      ),
+    )
+  }
+  if (task.status === 'blocked' || task.status === 'needs-context') {
+    issues.push(
+      issue('needs_context', `${task.id} needs context before execution.`),
+    )
+  }
+  if (task.status === 'needs-scope') {
+    issues.push(
+      issue(
+        'needs_scope',
+        `${task.id} needs target scope and authorization confirmation before execution.`,
+      ),
+    )
+  }
+  if (task.status === 'paused-review') {
+    issues.push(
+      issue('paused_for_review', `${task.id} is paused for review.`),
+    )
+  }
+  if (task.status === 'skipped') {
+    issues.push(
+      issue('skipped_by_policy', `${task.id} was skipped by policy.`),
+    )
   }
   if (task.input.assumptions.length === 0) {
     issues.push(

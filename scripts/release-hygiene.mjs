@@ -35,7 +35,11 @@ const forbiddenRules = [
   },
   {
     label: 'OS metadata',
-    test: path => path.endsWith('/.DS_Store') || path === '.DS_Store',
+    test: path =>
+      path.endsWith('/.DS_Store') ||
+      path === '.DS_Store' ||
+      path === '__MACOSX' ||
+      path.startsWith('__MACOSX/'),
   },
   {
     label: 'local environment file',
@@ -67,6 +71,12 @@ const forbiddenRules = [
       /(^|\/)(tmp|temp)(\/|$)/.test(path) ||
       /\.(?:tmp|temp|swp|swo)$/.test(path) ||
       /~$/.test(path),
+  },
+  {
+    label: 'local debug or trash artifact',
+    test: path =>
+      /(^|\/)(?:\.Trash|Trash)(\/|$)/.test(path) ||
+      /(^|\/)(?:debug|trash)(?:[-_.][^/]*)?\.(?:json|log|txt|tmp)$/.test(path),
   },
   {
     label: 'TypeScript build cache',

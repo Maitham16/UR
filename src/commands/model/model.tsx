@@ -17,7 +17,7 @@ import { checkmodelO1mAccess, checkmodelS1mAccess } from '../../utils/model/chec
 import { getDefaultMainLoopModelSetting, ismodelO1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { getActiveProviderSettings, setProviderModel, validateProviderModelPair } from '../../services/providers/providerRegistry.js';
-import { getInitialSettings } from '../../utils/settings/settings.js';
+import { getInitialSettings, updateSettingsForSource } from '../../utils/settings/settings.js';
 function ModelPickerWrapper(t0) {
   const $ = _c(17);
   const {
@@ -58,6 +58,11 @@ function ModelPickerWrapper(t0) {
         mainLoopModel: model,
         mainLoopModelForSession: null
       }));
+      if (model && metadata) {
+        setProviderModel(metadata.providerId, model, {
+          modelSource: metadata.modelSource
+        });
+      }
       let message = metadata ? `Selected provider: ${chalk.bold(metadata.providerName)} (${metadata.accessType})\nSelected model: ${chalk.bold(renderModelLabel(model))}\nModel source: ${metadata.modelSource}\nRuntime backend: ${metadata.runtimeBackend}` : `Set model to ${chalk.bold(renderModelLabel(model))}`;
       if (effort !== undefined) {
         message = message + ` with ${chalk.bold(effort)} effort`;
@@ -206,6 +211,14 @@ function SetModelAndClose({
             }
           : {}),
       }));
+      if (modelValue === null) {
+        updateSettingsForSource('localSettings', {
+          model: undefined,
+          provider: {
+            model: undefined,
+          },
+        } as never);
+      }
       let message = `Set model to ${chalk.bold(renderModelLabel(modelValue))}`;
       let wasFastModeToggledOn = undefined;
       if (isFastModeEnabled()) {

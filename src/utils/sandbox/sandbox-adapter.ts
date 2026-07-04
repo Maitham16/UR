@@ -460,10 +460,10 @@ const checkDependencies = memoize((): SandboxDependencyCheck => {
 function getSandboxEnabledSetting(): boolean {
   try {
     const settings = getSettings_DEPRECATED()
-    return settings?.sandbox?.enabled ?? false
+    return settings?.sandbox?.enabled ?? true
   } catch (error) {
     logForDebugging(`Failed to get settings for sandbox check: ${error}`)
-    return false
+    return true
   }
 }
 

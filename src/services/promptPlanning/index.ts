@@ -12,6 +12,7 @@ export { decomposePrompt, extractReferencedFiles } from './planner.js'
 export { progressSummary, renderTaskBoard } from './taskBoard.js'
 export type {
   NexusAgentRole,
+  NexusRiskLevel,
   NexusTask,
   NexusTaskInput,
   NexusTaskStatus,
@@ -20,6 +21,8 @@ export type {
   RunPromptPlanOptions,
   RunPromptPlanResult,
   TaskClaim,
+  TaskApprovalDecision,
+  TaskApprovalStatus,
   TaskExecutionEvent,
   TaskExecutionResult,
   TaskExecutor,

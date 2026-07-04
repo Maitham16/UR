@@ -14,6 +14,7 @@ import {
   type PromptPlan,
   type PromptPlanningConfig,
   type RunPromptPlanResult,
+  type TaskApprovalDecision,
   type TaskExecutionEvent,
   type TaskExecutionResult,
   type TaskExecutor,
@@ -91,15 +92,22 @@ export type ExecFinalReport = {
     total: number
     finished: number
     failed: number
-    blocked: number
+    waitingApproval: number
+    skipped: number
   }
+  activeAgentsUsed: number
+  maxAgentsAllowed: number
   finishedTasks: Array<{ id: string; title: string; agent: string }>
   failedTasks: Array<{ id: string; title: string; agent: string }>
-  blockedTasks: Array<{ id: string; title: string; agent: string }>
+  waitingApprovalTasks: Array<{ id: string; title: string; agent: string }>
+  skippedTasks: Array<{ id: string; title: string; agent: string }>
   actualChangedFiles: string[]
   unreportedChangedFiles: string[]
+  outsideWorkspaceFilesAccessed: string[]
+  outsideWorkspaceFilesModified: string[]
   verifiedCommands: string[]
   unverifiedCommandClaims: string[]
+  approvalDecisions: TaskApprovalDecision[]
   filesChanged: string[]
   commandsRun: string[]
   verificationFailures: ExecVerificationFailure[]
@@ -231,13 +239,26 @@ async function currentChangedFiles(cwd: string): Promise<string[]> {
   return result.code === 0 ? parseGitStatusFiles(result.stdout) : []
 }
 
+export function changedFilesSinceBefore(
+  beforeFiles: Iterable<string>,
+  afterFiles: Iterable<string>,
+): string[] {
+  const before = new Set(beforeFiles)
+  return [...afterFiles].filter(file => !before.has(file))
+}
+
 function plannedTaskPrompt(task: NexusTask): string {
   return [
     `UR-Nexus planned task ${task.id}: ${task.title}`,
+    `Order: ${task.order}`,
+    `Risk level: ${task.riskLevel}`,
+    `Approval required: ${task.approvalRequired ? 'yes' : 'not required'}`,
+    ...(task.approvalReason ? [`Approval reason: ${task.approvalReason}`] : []),
     '',
     task.description,
     '',
     `Assigned role: ${task.assignedAgent}`,
+    `File targets: ${task.fileTargets.length > 0 ? task.fileTargets.join(', ') : 'not specified'}`,
     '',
     'Assumptions:',
     ...task.input.assumptions.map(value => `- ${value}`),
@@ -252,7 +273,7 @@ function plannedTaskPrompt(task: NexusTask): string {
 function defaultPlannedTaskExecutor(opts: RunExecPoolOptions): TaskExecutor {
   return async task => {
     const command = execCommandForPrompt(plannedTaskPrompt(task), opts)
-    const before = new Set(await currentChangedFiles(opts.cwd))
+    const before = await currentChangedFiles(opts.cwd)
     const result = await execFileNoThrowWithCwd(command[0]!, command.slice(1), {
       cwd: opts.cwd,
       timeout: 10 * 60_000,
@@ -265,12 +286,12 @@ function defaultPlannedTaskExecutor(opts: RunExecPoolOptions): TaskExecutor {
       },
     })
     const after = await currentChangedFiles(opts.cwd)
-    const changedFiles = after.filter(file => !before.has(file))
+    const changedFiles = changedFilesSinceBefore(before, after)
     const output = [result.stdout, result.stderr].filter(Boolean).join('\n')
     return {
       ok: result.code === 0,
       output,
-      changedFiles: changedFiles.length > 0 ? changedFiles : after,
+      changedFiles,
       commandsRun: [formatCommand(command)],
       error: result.code === 0 ? undefined : result.error ?? result.stderr,
     }
@@ -292,6 +313,16 @@ function taskLine(task: NexusTask): { id: string; title: string; agent: string }
     title: task.title,
     agent: String(task.assignedAgent),
   }
+}
+
+function isWaitingTask(task: NexusTask): boolean {
+  return [
+    'blocked',
+    'waiting-approval',
+    'needs-scope',
+    'needs-context',
+    'paused-review',
+  ].includes(task.status)
 }
 
 export function buildExecFinalReport(run: RunPromptPlanResult): ExecFinalReport {
@@ -321,19 +352,26 @@ export function buildExecFinalReport(run: RunPromptPlanResult): ExecFinalReport 
       total: run.tasks.length,
       finished: run.finished,
       failed: run.failed,
-      blocked: run.blocked,
+      waitingApproval: run.waitingApproval,
+      skipped: run.skipped,
     },
+    activeAgentsUsed: run.maxAgentsUsed,
+    maxAgentsAllowed: run.maxAgentsAllowed,
     finishedTasks: run.tasks.filter(task => task.status === 'finished').map(taskLine),
     failedTasks: run.tasks.filter(task => task.status === 'failed').map(taskLine),
-    blockedTasks: run.tasks.filter(task => task.status === 'blocked').map(taskLine),
+    waitingApprovalTasks: run.tasks.filter(isWaitingTask).map(taskLine),
+    skippedTasks: run.tasks.filter(task => task.status === 'skipped').map(taskLine),
     actualChangedFiles,
     unreportedChangedFiles: unique(
       run.taskResults.flatMap(record => record.unreportedChangedFiles),
     ),
+    outsideWorkspaceFilesAccessed: run.outsideWorkspaceReads,
+    outsideWorkspaceFilesModified: run.outsideWorkspaceWrites,
     verifiedCommands,
     unverifiedCommandClaims: unique(
       run.taskResults.flatMap(record => record.unverifiedCommandClaims),
     ),
+    approvalDecisions: run.approvalDecisions,
     filesChanged: actualChangedFiles,
     commandsRun: verifiedCommands,
     verificationFailures,
@@ -354,13 +392,27 @@ function formatList<T>(
   return items.length > 0 ? items.map(render) : [`- ${empty}`]
 }
 
+function formatApprovalDecision(decision: TaskApprovalDecision): string {
+  const details = [
+    decision.command ? `command: ${decision.command}` : '',
+    decision.paths.length > 0 ? `paths: ${decision.paths.join(', ')}` : '',
+  ].filter(Boolean)
+  return [
+    `- ${decision.taskId} | ${decision.status} | ${decision.action}`,
+    `  reason: ${decision.reason}`,
+    ...(details.length > 0 ? [`  ${details.join(' | ')}`] : []),
+  ].join('\n')
+}
+
 export function formatExecFinalReport(report: ExecFinalReport): string {
   return [
     'UR-Nexus task summary',
     `Total: ${report.summary.total}`,
     `Finished: ${report.summary.finished}`,
     `Failed: ${report.summary.failed}`,
-    `Blocked: ${report.summary.blocked}`,
+    `Waiting approval/input: ${report.summary.waitingApproval}`,
+    `Skipped: ${report.summary.skipped}`,
+    `Agents used: ${report.activeAgentsUsed} active / ${report.maxAgentsAllowed} max`,
     '',
     'Finished tasks:',
     ...formatList(
@@ -376,9 +428,16 @@ export function formatExecFinalReport(report: ExecFinalReport): string {
       task => `- ${task.id} | ${task.agent} | ${task.title}`,
     ),
     '',
-    'Blocked tasks:',
+    'Waiting approval/input tasks:',
     ...formatList(
-      report.blockedTasks,
+      report.waitingApprovalTasks,
+      'none',
+      task => `- ${task.id} | ${task.agent} | ${task.title}`,
+    ),
+    '',
+    'Skipped tasks:',
+    ...formatList(
+      report.skippedTasks,
       'none',
       task => `- ${task.id} | ${task.agent} | ${task.title}`,
     ),
@@ -386,6 +445,20 @@ export function formatExecFinalReport(report: ExecFinalReport): string {
     'Actual changed files:',
     ...formatList(
       report.actualChangedFiles,
+      'none observed',
+      file => `- ${file}`,
+    ),
+    '',
+    'Outside-workspace files accessed:',
+    ...formatList(
+      report.outsideWorkspaceFilesAccessed,
+      'none observed',
+      file => `- ${file}`,
+    ),
+    '',
+    'Outside-workspace files modified:',
+    ...formatList(
+      report.outsideWorkspaceFilesModified,
       'none observed',
       file => `- ${file}`,
     ),
@@ -409,6 +482,13 @@ export function formatExecFinalReport(report: ExecFinalReport): string {
       report.unverifiedCommandClaims,
       'none',
       command => `- ${command}`,
+    ),
+    '',
+    'Approval decisions:',
+    ...formatList(
+      report.approvalDecisions,
+      'none',
+      formatApprovalDecision,
     ),
     '',
     'Verification failures:',
@@ -437,7 +517,11 @@ function aggregateTask(
   run: RunPromptPlanResult,
   cwd: string,
 ): BackgroundTask {
-  const failed = run.failed > 0 || run.blocked > 0
+  const failed =
+    run.failed > 0 ||
+    run.blocked > 0 ||
+    run.waitingApproval > 0 ||
+    run.skipped > 0
   const now = new Date().toISOString()
   return {
     id: plan.id,
@@ -486,7 +570,7 @@ async function runPromptPlans(
         })
         const completedPlan = { ...plan, tasks: run.tasks }
         const taskBoard = config.showTaskBoard
-          ? renderTaskBoard(completedPlan)
+          ? renderTaskBoard(completedPlan, { maxAgents: run.maxAgentsAllowed })
           : undefined
         const finalReport = buildExecFinalReport(run)
         const command = finalReport.commandsRun

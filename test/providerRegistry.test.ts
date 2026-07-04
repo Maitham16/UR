@@ -28,6 +28,7 @@ import {
   type ProviderDoctorAdapters,
 } from '../src/services/providers/providerRegistry.js'
 import { resetSettingsCache } from '../src/utils/settings/settingsCache.js'
+import { updateSettingsForSource } from '../src/utils/settings/settings.js'
 
 beforeEach(() => {
   clearProviderModelCacheForTests()
@@ -796,6 +797,37 @@ describe('provider-scoped model listing', () => {
       expect(saved.provider.model).toBe('qwen3-coder:480b-cloud')
       expect(saved.model).toBe('qwen3-coder:480b-cloud')
       expect(existsSync(userPath)).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      resetStateForTests()
+      resetSettingsCache()
+    }
+  })
+
+  test('clearing the model removes it from saved settings', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ur-model-clear-'))
+    try {
+      resetStateForTests()
+      setOriginalCwd(dir)
+      setCwdState(dir)
+      resetSettingsCache()
+
+      setProviderModel('ollama', 'qwen3-coder:480b-cloud', {
+        availableModels: ['qwen3-coder:480b-cloud'],
+      })
+
+      const localPath = join(dir, '.ur', 'settings.local.json')
+      expect(JSON.parse(readFileSync(localPath, 'utf8')).model).toBe('qwen3-coder:480b-cloud')
+
+      updateSettingsForSource('localSettings', {
+        model: undefined,
+        provider: { model: undefined },
+      } as never)
+      resetSettingsCache()
+
+      const cleared = JSON.parse(readFileSync(localPath, 'utf8'))
+      expect(cleared.model).toBeUndefined()
+      expect(cleared.provider.model).toBeUndefined()
     } finally {
       rmSync(dir, { recursive: true, force: true })
       resetStateForTests()

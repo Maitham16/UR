@@ -4,14 +4,31 @@ import {
 } from './config.js'
 import type {
   NexusAgentRole,
+  NexusRiskLevel,
   NexusTask,
   PromptPlan,
   PromptPlanningConfig,
 } from './types.js'
+import { isAbsolute } from 'node:path'
 
 const URL_PATTERN = /\bhttps?:\/\/[^\s)]+/gi
 const PATH_PATTERN =
   /(?:^|[\s"'`(])((?:\.{0,2}\/)?(?:[A-Za-z0-9_.@-]+\/)+[A-Za-z0-9_.@/-]+|(?:README|CHANGELOG|RELEASE|SECURITY|CONTRIBUTING|QUALITY|LICENSE)(?:\.[A-Za-z0-9]+)?)\b/g
+const ABSOLUTE_PATH_PATTERN =
+  /(?:^|[\s"'`(])((?:\/[A-Za-z0-9_.@-]+)+\/?)(?=$|[\s"',.;:)])/g
+const DESTRUCTIVE_PATTERN =
+  /\b(rm\s+-[A-Za-z]*r|rm\s+-[A-Za-z]*f|delete|remove|wipe|destroy|drop\s+(?:database|table)|git\s+reset\s+--hard|mkfs|chmod\s+-R\s+777|chown\s+-R)\b/i
+const WRITE_PATTERN =
+  /\b(write|modify|edit|update|delete|remove|rm|move|rename|chmod|chown|overwrite)\b/i
+const READ_PATTERN = /\b(read|inspect|view|cat|open|list|show)\b/i
+const NETWORK_PATTERN =
+  /\b(curl|wget|ssh|scp|rsync|git\s+push|npm\s+(?:publish|install)|bun\s+add|kubectl|terraform\s+apply|deploy|production|cloud)\b/i
+const CREDENTIAL_PATTERN =
+  /\b(credential|api\s*key|secret|token|password|oauth|\.env)\b/i
+const SECURITY_PATTERN =
+  /\b(pentest|penetration\s+test|exploit|sqlmap|nmap|metasploit|payload|vulnerabilit(?:y|ies)|cve|xss|csrf|rce|security\s+scan|attack)\b/i
+const AUTHORIZED_SECURITY_PATTERN =
+  /\b(authorized|authorization|owned|own\s+system|my\s+(?:app|site|server|service)|localhost|127\.0\.0\.1|::1|lab|sandbox|ctf|test\s+target)\b/i
 
 function compact(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
@@ -39,6 +56,11 @@ export function extractReferencedFiles(text: string): string[] {
     const value = match[1]
     if (!value) continue
     if (value.includes('://')) continue
+    paths.push(value.replace(/[),.;:]+$/g, ''))
+  }
+  for (const match of text.matchAll(ABSOLUTE_PATH_PATTERN)) {
+    const value = match[1]
+    if (!value) continue
     paths.push(value.replace(/[),.;:]+$/g, ''))
   }
   return unique(paths)
@@ -102,11 +124,77 @@ function isCriticallyAmbiguous(segment: string): boolean {
   )
 }
 
+function extractCommand(segment: string): string | undefined {
+  const backtickCommand = segment.match(/`([^`]+)`/)?.[1]
+  if (backtickCommand) return compact(backtickCommand)
+
+  const runCommand = segment.match(/\b(?:run|execute)\s+(.+)$/i)?.[1]
+  if (runCommand && /(?:\s|^)(?:rm|curl|wget|nmap|sqlmap|git|npm|bun|ssh|scp|kubectl|terraform)\b/.test(runCommand)) {
+    return compact(runCommand)
+  }
+
+  if (
+    DESTRUCTIVE_PATTERN.test(segment) ||
+    NETWORK_PATTERN.test(segment) ||
+    SECURITY_PATTERN.test(segment)
+  ) {
+    return compact(segment)
+  }
+  return undefined
+}
+
+function isOutsideReadOnly(segment: string, outsidePaths: string[]): boolean {
+  return outsidePaths.length > 0 && READ_PATTERN.test(segment) && !WRITE_PATTERN.test(segment)
+}
+
+function riskSignals(segment: string, outsidePaths: string[]): string[] {
+  const signals: string[] = []
+  if (DESTRUCTIVE_PATTERN.test(segment)) signals.push('destructive command')
+  if (NETWORK_PATTERN.test(segment)) signals.push('network or external-system action')
+  if (CREDENTIAL_PATTERN.test(segment)) signals.push('credential-sensitive access')
+  if (SECURITY_PATTERN.test(segment)) signals.push('security research scope')
+  if (outsidePaths.length > 0 && !isOutsideReadOnly(segment, outsidePaths)) {
+    signals.push('outside-workspace modification')
+  }
+  return signals
+}
+
+function riskLevel(signals: string[], files: string[]): NexusRiskLevel {
+  if (signals.length > 0) return 'high'
+  if (files.length > 3) return 'medium'
+  return 'low'
+}
+
+function approvalReasonFor(
+  segment: string,
+  signals: string[],
+  outsidePaths: string[],
+): string | undefined {
+  if (signals.length === 0) return undefined
+  if (SECURITY_PATTERN.test(segment) && !AUTHORIZED_SECURITY_PATTERN.test(segment)) {
+    return 'Security research needs target scope and authorization confirmation before execution.'
+  }
+  if (outsidePaths.length > 0 && !isOutsideReadOnly(segment, outsidePaths)) {
+    return 'Modifying or deleting outside-workspace paths requires explicit approval.'
+  }
+  if (DESTRUCTIVE_PATTERN.test(segment)) {
+    return 'Destructive commands require explicit approval before execution.'
+  }
+  if (NETWORK_PATTERN.test(segment)) {
+    return 'Network or external-system actions require explicit approval before execution.'
+  }
+  if (CREDENTIAL_PATTERN.test(segment)) {
+    return 'Credential-sensitive access requires explicit approval before execution.'
+  }
+  return 'This task requires explicit approval before execution.'
+}
+
 function verificationCriteria(segment: string, files: string[]): string[] {
   const criteria = [
     `Result directly addresses: ${compact(segment)}`,
     'Assumptions are stated before execution when context is incomplete.',
     'Unsupported claims are rejected during verification.',
+    'Approval-required actions are not executed before approval evidence exists.',
   ]
   if (files.length > 0) {
     criteria.push('Referenced files exist before file-specific work starts.')
@@ -121,10 +209,17 @@ function makeTask(
   previousTaskId: string | null,
 ): NexusTask {
   const files = extractReferencedFiles(segment)
-  const blocked = isCriticallyAmbiguous(segment)
+  const outsidePaths = files.filter(file => isAbsolute(file))
+  const signals = riskSignals(segment, outsidePaths)
+  const approvalRequired = signals.length > 0
+  const approvalReason = approvalReasonFor(segment, signals, outsidePaths)
+  const command = extractCommand(segment)
+  const needsScope =
+    SECURITY_PATTERN.test(segment) && !AUTHORIZED_SECURITY_PATTERN.test(segment)
+  const needsContext = isCriticallyAmbiguous(segment)
   const dependencies =
     previousTaskId && needsPreviousTask(segment) ? [previousTaskId] : []
-  const assumptions = blocked
+  const assumptions = needsContext
     ? ['Critical target/context is missing; ask for clarification before execution.']
     : [
         'Use the current workspace as the source of truth.',
@@ -135,9 +230,16 @@ function makeTask(
 
   return {
     id: `task-${index + 1}`,
+    order: index + 1,
     title: titleFromSegment(segment),
     description: compact(segment) || 'Clarify the requested work.',
-    status: blocked ? 'blocked' : dependencies.length > 0 ? 'pending' : 'ready',
+    status: needsContext
+      ? 'needs-context'
+      : needsScope
+        ? 'needs-scope'
+        : approvalRequired
+          ? 'waiting-approval'
+          : dependencies.length > 0 ? 'pending' : 'ready',
     dependencies,
     assignedAgent: inferRole(segment),
     input: {
@@ -147,10 +249,20 @@ function makeTask(
       targetFiles: files,
       resources: extractUrls(segment),
     },
-    expectedOutput: blocked
+    expectedOutput: needsContext
       ? 'A clarification request naming the missing target or context.'
       : `Completed work for: ${compact(segment)}`,
     verificationCriteria: verificationCriteria(segment, files),
+    fileTargets: files,
+    riskLevel: riskLevel(signals, files),
+    approvalRequired,
+    approvalReason,
+    approvalAction: approvalRequired
+      ? compact(segment) || 'Approval-required task'
+      : undefined,
+    approvalCommand: command,
+    approvalPaths: outsidePaths,
+    outsideWorkspacePaths: outsidePaths,
   }
 }
 

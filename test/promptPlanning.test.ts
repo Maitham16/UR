@@ -35,8 +35,10 @@ function planWithTasks(tasks: NexusTask[]): PromptPlan {
 }
 
 function task(id: string, title: string, dependencies: string[] = []): NexusTask {
+  const order = Number(id.replace(/\D+/g, '')) || 1
   return {
     id,
+    order,
     title,
     description: title,
     status: dependencies.length > 0 ? 'pending' : 'ready',
@@ -51,6 +53,11 @@ function task(id: string, title: string, dependencies: string[] = []): NexusTask
     },
     expectedOutput: title,
     verificationCriteria: ['Output must match the requested task.'],
+    fileTargets: [],
+    riskLevel: 'low',
+    approvalRequired: false,
+    approvalPaths: [],
+    outsideWorkspacePaths: [],
   }
 }
 
@@ -59,7 +66,11 @@ describe('prompt planning', () => {
     const plan = decomposePrompt('Update README wording')
     expect(plan.tasks).toHaveLength(1)
     expect(plan.tasks[0]?.title).toBe('Update README wording')
+    expect(plan.tasks[0]?.order).toBe(1)
     expect(plan.tasks[0]?.status).toBe('ready')
+    expect(plan.tasks[0]?.fileTargets).toEqual(['README'])
+    expect(plan.tasks[0]?.riskLevel).toBe('low')
+    expect(plan.tasks[0]?.approvalRequired).toBe(false)
   })
 
   test('long prompt becomes multiple dependent tasks when ordering is explicit', () => {
@@ -71,18 +82,48 @@ describe('prompt planning', () => {
       ].join('\n'),
     )
     expect(plan.tasks).toHaveLength(3)
+    expect(plan.tasks.map(task => task.order)).toEqual([1, 2, 3])
     expect(plan.tasks[1]?.dependencies).toEqual(['task-1'])
     expect(plan.tasks[2]?.dependencies).toEqual(['task-2'])
     expect(plan.tasks[2]?.assignedAgent).toBe('reporter')
   })
 
-  test('ambiguous prompt is blocked with explicit assumptions', () => {
+  test('ambiguous prompt needs context with explicit assumptions', () => {
     const plan = decomposePrompt('fix it')
     expect(plan.tasks).toHaveLength(1)
-    expect(plan.tasks[0]?.status).toBe('blocked')
+    expect(plan.tasks[0]?.status).toBe('needs-context')
     expect(plan.tasks[0]?.input.assumptions.join(' ')).toContain(
       'Critical target/context is missing',
     )
+  })
+
+  test('risky command becomes waiting approval', () => {
+    const plan = decomposePrompt('Run `rm -rf build` to clean generated files')
+    expect(plan.tasks).toHaveLength(1)
+    expect(plan.tasks[0]?.status).toBe('waiting-approval')
+    expect(plan.tasks[0]?.riskLevel).toBe('high')
+    expect(plan.tasks[0]?.approvalRequired).toBe(true)
+    expect(plan.tasks[0]?.approvalCommand).toBe('rm -rf build')
+    expect(plan.tasks[0]?.approvalReason).toContain('Destructive commands')
+  })
+
+  test('destructive outside-workspace action requires approval', () => {
+    const plan = decomposePrompt('Delete /tmp/ur-nexus-outside-cache')
+    expect(plan.tasks[0]?.status).toBe('waiting-approval')
+    expect(plan.tasks[0]?.approvalRequired).toBe(true)
+    expect(plan.tasks[0]?.outsideWorkspacePaths).toEqual([
+      '/tmp/ur-nexus-outside-cache',
+    ])
+    expect(plan.tasks[0]?.approvalReason).toContain('outside-workspace')
+  })
+
+  test('outside-workspace read is tracked without approval requirement', () => {
+    const plan = decomposePrompt('Read /tmp/ur-nexus-notes.txt for context')
+    expect(plan.tasks[0]?.status).toBe('ready')
+    expect(plan.tasks[0]?.approvalRequired).toBe(false)
+    expect(plan.tasks[0]?.outsideWorkspacePaths).toEqual([
+      '/tmp/ur-nexus-notes.txt',
+    ])
   })
 
   test('task statuses transition through running to finished', async () => {
@@ -130,6 +171,103 @@ describe('prompt planning', () => {
       expect(maxActive).toBeGreaterThan(1)
     } finally {
       rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('approval-required task records waiting evidence without executing', async () => {
+    const dir = tempDir('ur-nexus-approval-')
+    try {
+      let executed = false
+      const current = {
+        ...task('t1', 'Delete /tmp/ur-nexus-cache'),
+        approvalRequired: true,
+        approvalReason: 'Modifying or deleting outside-workspace paths requires explicit approval.',
+        approvalAction: 'Delete /tmp/ur-nexus-cache',
+        approvalPaths: ['/tmp/ur-nexus-cache'],
+        outsideWorkspacePaths: ['/tmp/ur-nexus-cache'],
+        riskLevel: 'high' as const,
+      }
+      const result = await runPromptPlan(planWithTasks([current]), {
+        cwd: dir,
+        executeTask: async () => {
+          executed = true
+          return { ok: true, output: 'should not run' }
+        },
+      })
+      expect(executed).toBe(false)
+      expect(result.waitingApproval).toBe(1)
+      expect(result.approvalDecisions[0]?.paths).toEqual([
+        '/tmp/ur-nexus-cache',
+      ])
+      expect(result.tasks[0]?.status).toBe('waiting-approval')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('outside-workspace read evidence is preserved in run result', async () => {
+    const dir = tempDir('ur-nexus-outside-read-')
+    try {
+      const outside = '/tmp/ur-nexus-read-evidence.txt'
+      const result = await runPromptPlan(planWithTasks([task('t1', 'Read outside')]), {
+        cwd: dir,
+        executeTask: async () => ({
+          ok: true,
+          output: 'read outside file',
+          outsideWorkspaceReads: [outside],
+          commandsRun: ['cat /tmp/ur-nexus-read-evidence.txt'],
+        }),
+      })
+      expect(result.outsideWorkspaceReads).toEqual([outside])
+      expect(result.taskResults[0]?.outsideWorkspaceReads).toEqual([outside])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('adaptive scheduler uses rational agent counts', async () => {
+    const simpleDir = tempDir('ur-nexus-simple-agents-')
+    const largeDir = tempDir('ur-nexus-large-agents-')
+    try {
+      let simpleActive = 0
+      let simpleMaxActive = 0
+      const simple = await runPromptPlan(planWithTasks([task('t1', 'One task')]), {
+        cwd: simpleDir,
+        config: { maxAgents: 5 },
+        executeTask: async () => {
+          simpleActive += 1
+          simpleMaxActive = Math.max(simpleMaxActive, simpleActive)
+          await new Promise(resolve => setTimeout(resolve, 10))
+          simpleActive -= 1
+          return { ok: true, output: 'done', commandsRun: ['true'] }
+        },
+      })
+
+      let largeActive = 0
+      let largeMaxActive = 0
+      const largeTasks = Array.from({ length: 6 }, (_, index) =>
+        task(`t${index + 1}`, `Task ${index + 1}`),
+      )
+      const large = await runPromptPlan(planWithTasks(largeTasks), {
+        cwd: largeDir,
+        config: { maxAgents: 4 },
+        executeTask: async () => {
+          largeActive += 1
+          largeMaxActive = Math.max(largeMaxActive, largeActive)
+          await new Promise(resolve => setTimeout(resolve, 10))
+          largeActive -= 1
+          return { ok: true, output: 'done', commandsRun: ['true'] }
+        },
+      })
+
+      expect(simpleMaxActive).toBe(1)
+      expect(simple.maxAgentsUsed).toBe(1)
+      expect(largeMaxActive).toBe(4)
+      expect(large.maxAgentsUsed).toBe(4)
+      expect(large.maxAgentsAllowed).toBe(4)
+    } finally {
+      rmSync(simpleDir, { recursive: true, force: true })
+      rmSync(largeDir, { recursive: true, force: true })
     }
   })
 
@@ -192,9 +330,13 @@ describe('prompt planning', () => {
       ]),
     )
     expect(board).toContain('[UR-Nexus Task Board]')
+    expect(board).toContain('Agents: 1 active / 3 max')
+    expect(board).toContain('1. queued')
+    expect(board).toContain('2. running')
     expect(board).toContain('planner')
     expect(board).toContain('running')
     expect(board).toContain('Progress:')
+    expect(board).not.toMatch(/\b(blocked|denied|refused)\b/i)
   })
 
   test('verifier catches unsupported file and command claims', () => {

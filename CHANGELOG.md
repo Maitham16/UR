@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.41.0
+
+- Persist the model chosen through the interactive `/model` picker to settings
+  and clear saved model state when `/model default` is used.
+- Enable the sandbox by default when no explicit `sandbox.enabled` setting is
+  configured.
+
 ## 1.40.1
 
 - Pin `diff` to ^7 and OpenTelemetry packages to 2.6.1/0.214.0 to match the

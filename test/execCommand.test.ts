@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { call, readPrompts, runExecPool } from '../src/commands/exec/exec.js'
+import {
+  call,
+  changedFilesSinceBefore,
+  readPrompts,
+  runExecPool,
+} from '../src/commands/exec/exec.js'
 import { runWithCwdOverride } from '../src/utils/cwd.js'
 import type { TaskExecutionEvent } from '../src/services/promptPlanning/index.js'
 
@@ -11,6 +16,13 @@ function tempDir(prefix: string): string {
 }
 
 describe('ur exec command', () => {
+  test('changed file evidence excludes old dirty files when task changes nothing', () => {
+    expect(changedFilesSinceBefore(['old-dirty.ts'], ['old-dirty.ts'])).toEqual([])
+    expect(
+      changedFilesSinceBefore(['old-dirty.ts'], ['old-dirty.ts', 'new.ts']),
+    ).toEqual(['new.ts'])
+  })
+
   test('readPrompts returns positional prompts', async () => {
     const prompts = await readPrompts(['hello', 'world'])
     expect(prompts).toEqual(['hello', 'world'])
@@ -204,7 +216,8 @@ describe('ur exec command', () => {
           commandsRun: ['true'],
         }),
       })
-      expect(streamed.length).toBe(statuses.length)
+      expect(streamed.length).toBe(statuses.length + 1)
+      expect(streamed[0]).toContain('queued')
       expect(new Set(statuses).size).toBe(statuses.length)
       expect(streamed.at(-1)).toContain('finished')
     } finally {
@@ -414,6 +427,60 @@ describe('ur exec command', () => {
     }
   })
 
+  test('waiting approval and outside-workspace evidence appear in final report', async () => {
+    const dir = tempDir('ur-exec-approval-report-')
+    try {
+      const results = await runExecPool(['Delete /tmp/ur-nexus-outside-cache'], {
+        cwd: dir,
+        concurrency: 1,
+        planning: { taskPlanning: true },
+        executePlannedTask: async () => {
+          throw new Error('approval-required task should not execute')
+        },
+      })
+      const report = results[0]!.finalReport
+      expect(results[0]!.plannedRun?.waitingApproval).toBe(1)
+      expect(report?.summary.waitingApproval).toBe(1)
+      expect(report?.waitingApprovalTasks[0]?.title).toContain('/tmp/ur-nexus-outside-cache')
+      expect(report?.approvalDecisions[0]?.paths).toEqual([
+        '/tmp/ur-nexus-outside-cache',
+      ])
+      expect(results[0]!.finalReportText).toContain('Approval decisions:')
+      expect(results[0]!.finalReportText).not.toMatch(/\b(blocked|denied|refused)\b/i)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('final report includes outside-workspace files accessed and modified from evidence', async () => {
+    const dir = tempDir('ur-exec-outside-report-')
+    try {
+      const results = await runExecPool(['Inspect outside context'], {
+        cwd: dir,
+        concurrency: 1,
+        planning: { taskPlanning: true },
+        executePlannedTask: async () => ({
+          ok: true,
+          output: 'outside evidence recorded',
+          outsideWorkspaceReads: ['/tmp/input.txt'],
+          outsideWorkspaceWrites: ['/tmp/output.txt'],
+          commandsRun: ['cat /tmp/input.txt'],
+        }),
+      })
+      expect(results[0]!.finalReport?.outsideWorkspaceFilesAccessed).toEqual([
+        '/tmp/input.txt',
+      ])
+      expect(results[0]!.finalReport?.outsideWorkspaceFilesModified).toEqual([
+        '/tmp/output.txt',
+      ])
+      expect(results[0]!.finalReportText).toContain('Outside-workspace files accessed:')
+      expect(results[0]!.finalReportText).toContain('/tmp/input.txt')
+      expect(results[0]!.finalReportText).toContain('/tmp/output.txt')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test('verified commands appear as confirmed', async () => {
     const dir = tempDir('ur-exec-commands-')
     try {
@@ -501,6 +568,8 @@ describe('ur exec command', () => {
       const report = results[0]!.finalReport
       expect(report?.actualChangedFiles).toEqual(['src/actual.ts'])
       expect(report?.verifiedCommands).toEqual(['npm run lint'])
+      expect(report?.activeAgentsUsed).toBe(1)
+      expect(report?.maxAgentsAllowed).toBe(3)
       expect(report?.actualChangedFiles).not.toContain('src/claimed.ts')
       expect(report?.unreportedChangedFiles).toEqual(['src/actual.ts'])
       expect(report?.verificationFailures.map(f => f.code)).toContain(

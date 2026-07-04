@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   missingRequiredSourceZipEntries,
   missingRequiredPackageFiles,
@@ -8,13 +10,19 @@ import {
   requiredSourceZipEntries,
 } from '../scripts/release-hygiene.mjs'
 
+const repoRoot = join(import.meta.dir, '..')
+
 describe('release hygiene file-list checks', () => {
   test('rejects dependency, env, cache, log, and test-output artifacts', () => {
     const violations = releasePathViolations([
       'package/node_modules/pkg/index.js',
+      'package/extensions/vscode-ur-inline-diffs/node_modules/pkg/index.js',
       'package/.DS_Store',
+      'package/__MACOSX/._README.md',
       'package/.env.local',
       'package/debug.log',
+      'package/debug-output.json',
+      'package/.Trash/old-file',
       'package/dist/.cache/chunk.js',
       'package/test-results/result.json',
       'package/coverage/lcov.info',
@@ -25,11 +33,23 @@ describe('release hygiene file-list checks', () => {
       'package/bin/bun',
     ])
 
-    expect(violations).toHaveLength(12)
+    expect(violations).toHaveLength(16)
     expect(violations.join('\n')).toContain('node_modules')
+    expect(violations.join('\n')).toContain('__MACOSX')
     expect(violations.join('\n')).toContain('.env.local')
     expect(violations.join('\n')).toContain('dist/.cache')
+    expect(violations.join('\n')).toContain('debug-output.json')
     expect(violations.join('\n')).toContain('runtime binary')
+  })
+
+  test('strict-core files all exist on disk', () => {
+    const config = JSON.parse(
+      readFileSync(join(repoRoot, 'tsconfig.strict-core.json'), 'utf8'),
+    ) as { files: string[] }
+    expect(config.files).not.toContain('src/utils/shell.ts')
+    for (const file of config.files) {
+      expect(existsSync(join(repoRoot, file)), file).toBe(true)
+    }
   })
 
   test('allows required package runtime files', () => {
