@@ -1,6 +1,8 @@
 # Dependencies
 node_modules/
 .bun/
+# Project uses bun (bun.lock); ignore stray npm lock from accidental `npm i`
+package-lock.json
 
 # Build and generated output
 backup/
