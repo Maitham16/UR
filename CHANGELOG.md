@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.43.3
+
+- Bias the assistant toward the interactive arrow-key select menu: the
+  AskUserQuestion tool guidance now instructs the model to use the selectable
+  menu whenever it offers the user a choice, instead of asking a free-form
+  question in plain text that the user has to answer by typing.
+
 ## 1.43.2
 
 - Fix artifact pages hanging blank: diff viewer assets (diff2html,
