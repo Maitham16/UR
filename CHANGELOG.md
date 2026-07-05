@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.43.6
+
+- Render output from reasoning models on OpenAI-compatible providers (LM Studio,
+  vLLM). The streaming and non-streaming parsers now read `reasoning_content`
+  (and `reasoning`) deltas and surface them as thinking blocks. Models that emit
+  their output in the reasoning field (e.g. NVIDIA Nemotron, DeepSeek-R1
+  distills, QwQ) previously produced an empty response with no error.
+
 ## 1.43.5
 
 - Fix model discovery for OpenAI-compatible providers (LM Studio, llama.cpp,

@@ -145,6 +145,15 @@ async function* streamOpenAIEvents(
     pendingArgs: string
   }>()
 
+  let activeThinkingIndex: number | null = null
+
+  const stopThinking = function* () {
+    if (activeThinkingIndex !== null) {
+      yield { type: 'content_block_stop', index: activeThinkingIndex }
+      activeThinkingIndex = null
+    }
+  }
+
   const stopText = function* () {
     if (activeTextIndex !== null) {
       yield { type: 'content_block_stop', index: activeTextIndex }
@@ -154,12 +163,30 @@ async function* streamOpenAIEvents(
 
   const ensureText = function* () {
     if (activeTextIndex === null) {
+      for (const event of stopThinking()) yield event
       activeTextIndex = blockIndex++
       sawBlock = true
       yield {
         type: 'content_block_start',
         index: activeTextIndex,
         content_block: { type: 'text', text: '' },
+      }
+    }
+  }
+
+  // Reasoning models served over the OpenAI-compatible API (LM Studio, vLLM)
+  // stream chain-of-thought in `delta.reasoning_content` (or `delta.reasoning`)
+  // rather than `delta.content`. Surface it as a thinking block so models that
+  // put their output there don't render as an empty response.
+  const ensureThinking = function* () {
+    if (activeThinkingIndex === null) {
+      for (const event of stopText()) yield event
+      activeThinkingIndex = blockIndex++
+      sawBlock = true
+      yield {
+        type: 'content_block_start',
+        index: activeThinkingIndex,
+        content_block: { type: 'thinking', thinking: '' },
       }
     }
   }
@@ -205,6 +232,20 @@ async function* streamOpenAIEvents(
     }
     for (const choice of chunk?.choices ?? []) {
       const delta = choice?.delta ?? {}
+      const reasoning =
+        typeof delta.reasoning_content === 'string'
+          ? delta.reasoning_content
+          : typeof delta.reasoning === 'string'
+            ? delta.reasoning
+            : ''
+      if (reasoning.length > 0) {
+        for (const event of ensureThinking()) yield event
+        yield {
+          type: 'content_block_delta',
+          index: activeThinkingIndex,
+          delta: { type: 'thinking_delta', thinking: reasoning },
+        }
+      }
       if (typeof delta.content === 'string' && delta.content.length > 0) {
         for (const event of ensureText()) yield event
         yield {
@@ -252,6 +293,7 @@ async function* streamOpenAIEvents(
   }
 
   for (const event of stopText()) yield event
+  for (const event of stopThinking()) yield event
   for (const [index, state] of toolStates.entries()) {
     if (state.blockIndex === undefined) {
       throw new ProviderResponseParseError(

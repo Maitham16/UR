@@ -548,6 +548,15 @@ function parseOpenAIMessageContent(
   providerName: string,
 ): any[] {
   const content: any[] = []
+  const reasoning =
+    typeof message?.reasoning_content === 'string'
+      ? message.reasoning_content
+      : typeof message?.reasoning === 'string'
+        ? message.reasoning
+        : ''
+  if (reasoning.length > 0) {
+    content.push({ type: 'thinking', thinking: reasoning })
+  }
   const text = openAIMessageText(message?.content, legacyText)
   if (text.length > 0) {
     content.push({ type: 'text', text })
