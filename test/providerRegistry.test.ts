@@ -412,6 +412,77 @@ describe('provider registry legal access paths', () => {
     expect(result.failureReason).toContain('HTTP 503')
   })
 
+  test('lmstudio discovery falls back to /v1/models when base_url omits /v1', async () => {
+    const seen: string[] = []
+    const result = await listModelsForProviderWithSource('lmstudio', {
+      adapters: adapters({
+        fetch: async (input: unknown) => {
+          const url = String(input)
+          seen.push(url)
+          if (url.endsWith('/v1/models')) {
+            return new Response(JSON.stringify({ data: [{ id: 'qwen2.5-coder' }] }))
+          }
+          return new Response('not found', { status: 404 })
+        },
+      }),
+      settings: { provider: { active: 'lmstudio', baseUrl: 'http://172.20.10.5:1234' } },
+    })
+
+    expect(result.source).toBe('live')
+    expect(result.models.map(model => model.id)).toContain('qwen2.5-coder')
+    expect(seen.some(url => url.endsWith('/v1/models'))).toBe(true)
+  })
+
+  test('lmstudio discovery uses /models directly when base_url already has /v1', async () => {
+    const seen: string[] = []
+    const result = await listModelsForProviderWithSource('lmstudio', {
+      adapters: adapters({
+        fetch: async (input: unknown) => {
+          seen.push(String(input))
+          return new Response(JSON.stringify({ data: [{ id: 'phi-4' }] }))
+        },
+      }),
+      settings: { provider: { active: 'lmstudio', baseUrl: 'http://172.20.10.5:1234/v1' } },
+    })
+
+    expect(result.models.map(model => model.id)).toContain('phi-4')
+    expect(seen).toEqual(['http://172.20.10.5:1234/v1/models'])
+  })
+
+  test('doctor reports the /v1 path that actually returns models', async () => {
+    const result = await doctorProvider('lmstudio', {
+      adapters: adapters({
+        fetch: async (input: unknown) => {
+          const url = String(input)
+          if (url.endsWith('/v1/models')) {
+            return new Response(JSON.stringify({ data: [{ id: 'qwen2.5-coder' }] }))
+          }
+          return new Response('not found', { status: 404 })
+        },
+      }),
+      settings: { provider: { active: 'lmstudio', baseUrl: 'http://172.20.10.5:1234' } },
+    })
+
+    const endpoint = result.checks.find(check => check.name === 'endpoint')
+    expect(endpoint?.status).toBe('pass')
+    expect(endpoint?.message).toContain('/v1/models')
+  })
+
+  test('doctor warns when endpoint is reachable but returns no models', async () => {
+    const result = await doctorProvider('lmstudio', {
+      adapters: adapters({
+        fetch: async () => new Response(JSON.stringify({ data: [] })),
+      }),
+      settings: { provider: { active: 'lmstudio', baseUrl: 'http://172.20.10.5:1234' } },
+    })
+
+    const endpoint = result.checks.find(check => check.name === 'endpoint')
+    const models = result.checks.find(check => check.name === 'models')
+    expect(endpoint?.status).toBe('pass')
+    expect(models?.status).toBe('warn')
+    expect(models?.message).toContain('no models')
+  })
+
   test('reports missing API keys only for API providers', async () => {
     const result = await doctorProvider('openai-api', {
       adapters: adapters({ env: {} }),

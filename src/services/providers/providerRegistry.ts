@@ -1011,6 +1011,22 @@ function endpointUrl(baseUrl: string, kind: 'ollama' | 'openai-compatible'): str
   return `${trimmed}/models`
 }
 
+/**
+ * Candidate model-list URLs for an OpenAI-compatible endpoint. Users commonly
+ * set base_url to just `host:port` (no `/v1`), which points model discovery at
+ * `/models` — the wrong path for LM Studio, llama.cpp, and vLLM, which serve
+ * their model list under `/v1`. When the base URL has no version/api segment we
+ * also try `/v1/models` so discovery still finds models.
+ */
+function openAiCompatibleModelUrls(baseUrl: string): string[] {
+  const trimmed = baseUrl.replace(/\/+$/, '')
+  const urls = [`${trimmed}/models`]
+  if (!/\/(v\d+|api)(\/|$)/i.test(trimmed)) {
+    urls.push(`${trimmed}/v1/models`)
+  }
+  return urls
+}
+
 function isLocalBaseUrl(value: string): boolean {
   return LOCALHOST_RE.test(value)
 }
@@ -1034,60 +1050,105 @@ async function checkEndpoint(
     addFailure(result, 'missing base_url', 'Run: ur config set base_url <url>')
     return
   }
-  const url = endpointUrl(baseUrl, definition.endpointKind)
-  try {
-    const response = await (adapters.fetch ?? fetch)(url, {
-      method: 'GET',
-      headers:
-        definition.accessType === 'api' && (adapters.env ?? process.env)[definition.envKey ?? '']
-          ? { Authorization: `Bearer ${(adapters.env ?? process.env)[definition.envKey ?? '']}` }
-          : undefined,
-    })
+  // Probe the same candidate paths discovery uses, so the doctor reflects the
+  // URL that actually yields models (e.g. `/v1/models` when base_url omits /v1).
+  const candidates =
+    definition.endpointKind === 'ollama'
+      ? [endpointUrl(baseUrl, 'ollama')]
+      : openAiCompatibleModelUrls(baseUrl)
+  const headers =
+    definition.accessType === 'api' && (adapters.env ?? process.env)[definition.envKey ?? '']
+      ? { Authorization: `Bearer ${(adapters.env ?? process.env)[definition.envKey ?? '']}` }
+      : undefined
+  const fetchImpl = adapters.fetch ?? fetch
+  let reachableUrl: string | undefined
+  let modelsUrl: string | undefined
+  let modelsBody = ''
+  let lastStatus: number | undefined
+  let lastError: Error | undefined
+  for (const candidate of candidates) {
+    let response: Response
+    try {
+      response = await fetchImpl(candidate, { method: 'GET', headers })
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      continue
+    }
     if (!response.ok) {
+      lastStatus = response.status
+      continue
+    }
+    reachableUrl ??= candidate
+    const body = await response.text().catch(() => '')
+    let parsed: unknown = null
+    try {
+      parsed = JSON.parse(body)
+    } catch {
+      parsed = null
+    }
+    const names =
+      definition.endpointKind === 'ollama'
+        ? parseOllamaModelNamesFromTags(parsed)
+        : parseOpenAICompatibleModelNames(parsed)
+    if (names.length > 0) {
+      modelsUrl = candidate
+      modelsBody = body
+      break
+    }
+  }
+  if (!reachableUrl) {
+    if (lastStatus !== undefined) {
       result.checks.push({
         name: 'endpoint',
         status: 'fail',
-        message: `${url} returned HTTP ${response.status}.`,
+        message: `${candidates[0]} returned HTTP ${lastStatus}.`,
       })
       addFailure(
         result,
-        `endpoint returned HTTP ${response.status}`,
+        `endpoint returned HTTP ${lastStatus}`,
         `Start the provider server or update base_url: ur config set base_url ${baseUrl}`,
       )
-      return
+    } else {
+      result.checks.push({
+        name: 'endpoint',
+        status: 'fail',
+        message: `${candidates[0]} is not reachable.`,
+      })
+      addFailure(
+        result,
+        lastError?.message ?? 'endpoint unavailable',
+        `Start the provider server or update base_url: ur config set base_url ${baseUrl}`,
+      )
     }
+    return
+  }
+  const chosenUrl = modelsUrl ?? reachableUrl
+  result.checks.push({
+    name: 'endpoint',
+    status: 'pass',
+    message: `${chosenUrl} is reachable.`,
+  })
+  if (!modelsUrl) {
     result.checks.push({
-      name: 'endpoint',
-      status: 'pass',
-      message: `${url} is reachable.`,
+      name: 'models',
+      status: 'warn',
+      message: `${reachableUrl} is reachable but returned no models. Load a model in the server, or check that base_url includes the API path (e.g. /v1).`,
     })
-    if (settings.model) {
-      const body = await response.text().catch(() => '')
-      if (body && !body.includes(settings.model)) {
-        result.checks.push({
-          name: 'model',
-          status: 'warn',
-          message: `Model "${settings.model}" was not found in the detectable model list.`,
-        })
-      } else {
-        result.checks.push({
-          name: 'model',
-          status: 'pass',
-          message: `Model "${settings.model}" is detectable.`,
-        })
-      }
+  }
+  if (settings.model) {
+    if (modelsBody && !modelsBody.includes(settings.model)) {
+      result.checks.push({
+        name: 'model',
+        status: 'warn',
+        message: `Model "${settings.model}" was not found in the detectable model list.`,
+      })
+    } else if (modelsBody) {
+      result.checks.push({
+        name: 'model',
+        status: 'pass',
+        message: `Model "${settings.model}" is detectable.`,
+      })
     }
-  } catch (error) {
-    result.checks.push({
-      name: 'endpoint',
-      status: 'fail',
-      message: `${url} is not reachable.`,
-    })
-    addFailure(
-      result,
-      error instanceof Error ? error.message : 'endpoint unavailable',
-      `Start the provider server or update base_url: ur config set base_url ${baseUrl}`,
-    )
   }
 }
 
@@ -1861,25 +1922,52 @@ async function discoverLiveModelsForProvider(
   if (!baseUrl) {
     throw new Error(`No base_url configured for provider "${provider}".`)
   }
-  const url = endpointUrl(baseUrl, definition.endpointKind)
   const env = options.adapters?.env ?? process.env
-  const response = await (options.adapters?.fetch ?? fetch)(url, {
-    method: 'GET',
-    signal: options.signal,
-    headers:
-      definition.accessType === 'api' && definition.envKey && env[definition.envKey]
-        ? { Authorization: `Bearer ${env[definition.envKey]}` }
-        : undefined,
-  })
-  if (!response.ok) {
-    throw new Error(`${url} returned HTTP ${response.status}.`)
+  const fetchImpl = options.adapters?.fetch ?? fetch
+  const headers =
+    definition.accessType === 'api' && definition.envKey && env[definition.envKey]
+      ? { Authorization: `Bearer ${env[definition.envKey]}` }
+      : undefined
+
+  if (definition.endpointKind === 'ollama') {
+    const url = endpointUrl(baseUrl, 'ollama')
+    const response = await fetchImpl(url, { method: 'GET', signal: options.signal, headers })
+    if (!response.ok) {
+      throw new Error(`${url} returned HTTP ${response.status}.`)
+    }
+    const names = parseOllamaModelNamesFromTags(await response.json())
+    return modelDefinitionsFromNames(provider, names, 'live')
   }
-  const body = await response.json()
-  const names =
-    definition.endpointKind === 'ollama'
-      ? parseOllamaModelNamesFromTags(body)
-      : parseOpenAICompatibleModelNames(body)
-  return modelDefinitionsFromNames(provider, names, 'live')
+
+  // OpenAI-compatible: try candidate paths (`/models`, then `/v1/models` when
+  // the base URL omits a version segment). Return the first that yields models;
+  // if a server is reachable but has none, return empty ("no models") rather
+  // than throwing; only throw when no candidate is reachable at all.
+  let reachedOk = false
+  let lastError: Error | undefined
+  for (const url of openAiCompatibleModelUrls(baseUrl)) {
+    let response: Response
+    try {
+      response = await fetchImpl(url, { method: 'GET', signal: options.signal, headers })
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      continue
+    }
+    if (!response.ok) {
+      lastError = new Error(`${url} returned HTTP ${response.status}.`)
+      continue
+    }
+    reachedOk = true
+    const body = await response.json().catch(() => null)
+    const names = parseOpenAICompatibleModelNames(body)
+    if (names.length > 0) {
+      return modelDefinitionsFromNames(provider, names, 'live')
+    }
+  }
+  if (!reachedOk && lastError) {
+    throw lastError
+  }
+  return []
 }
 
 function apiModelsRequest(

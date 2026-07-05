@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.43.5
+
+- Fix model discovery for OpenAI-compatible providers (LM Studio, llama.cpp,
+  vLLM) when base_url omits the API version segment. Discovery and `ur provider
+  doctor` now also try `/v1/models` when base_url is just `host:port`, so
+  `/model` lists the server's models instead of "returned no models". The
+  doctor reports the path that actually returns models and warns when an
+  endpoint is reachable but empty, instead of a misleading bare-`/models` pass.
+
 ## 1.43.4
 
 - Tolerate hallucinated extra parameters on tool calls: when input validation
