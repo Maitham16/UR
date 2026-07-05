@@ -114,6 +114,7 @@ export type ProviderDefinition = {
   defaultBaseUrl?: string
   endpointKind?: 'ollama' | 'openai-compatible'
   unsupportedPersonalAccountMessage?: string
+  disabled?: boolean
 }
 
 export type ProviderCheckStatus = 'pass' | 'warn' | 'fail' | 'skip'
@@ -285,6 +286,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     statusArgs: ['login', 'status'],
     loginArgs: ['login'],
     deviceLoginArgs: ['login', '--device-auth'],
+    disabled: true,
   },
   'claude-code-cli': {
     id: 'claude-code-cli',
@@ -305,6 +307,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     versionArgs: ['--version'],
     statusArgs: ['auth', 'status'],
     loginArgs: ['auth', 'login'],
+    disabled: true,
   },
   'gemini-cli': {
     id: 'gemini-cli',
@@ -326,7 +329,8 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     loginArgs: [],
     unsupportedPersonalAccountMessage:
       'Personal Google account login is not enabled by UR-Nexus. Use an official Gemini Code Assist Standard/Enterprise path if your Gemini CLI supports it.',
-  },
+    disabled: true,
+    },
   'antigravity-cli': {
     id: 'antigravity-cli',
     displayName: 'Antigravity',
@@ -345,6 +349,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     commandCandidates: ['agy', 'antigravity', 'google-antigravity', 'ag'],
     versionArgs: ['--version'],
     loginArgs: [],
+    disabled: true,
   },
   'openai-api': {
     id: 'openai-api',
@@ -463,11 +468,12 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'openai-compatible-models',
     validateModel: 'discovered-list',
     runtimeKind: 'ur-native',
-    ...UR_NATIVE_CAPABILITIES,
+    ...SUBSCRIPTION_CLI_CAPABILITIES,
     authMode: 'local',
     legalPath: 'local OpenAI-compatible server',
     accessPathLabel: 'local OpenAI-compatible endpoint',
     defaultBaseUrl: 'http://localhost:1234/v1',
+    disabled: true,
     endpointKind: 'openai-compatible',
   },
   'llama.cpp': {
@@ -788,7 +794,7 @@ export function listProviders(
   // The internal generic "subscription" placeholder is hidden from listings.
   return PROVIDER_IDS
     .map(id => PROVIDERS[id])
-    .filter(provider => provider.id !== 'subscription')
+    .filter(provider => provider.id !== 'subscription' && !provider.disabled)
 }
 
 function hasSecretLikeValue(value: string): boolean {
