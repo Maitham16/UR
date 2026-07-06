@@ -71,7 +71,7 @@ describe('provider registry legal access paths', () => {
     expect(resolveProviderId('not-a-provider')).toBeNull()
   })
 
-  test('provider list shows all providers including subscription CLIs by default', () => {
+  test('provider list shows active providers and hides disabled subscription CLIs by default', () => {
     const text = formatProviderList()
 
     expect(text).toContain('ID')
@@ -79,51 +79,47 @@ describe('provider registry legal access paths', () => {
     expect(text).toContain('Credential')
     expect(text).toContain('ollama')
     expect(text).toContain('openai-api')
-    expect(text).toContain('codex-cli')
-    expect(text).toContain('claude-code-cli')
-    expect(text).toContain('gemini-cli')
-    expect(text).toContain('antigravity-cli')
+    expect(text).not.toContain('codex-cli')
+    expect(text).not.toContain('claude-code-cli')
+    expect(text).not.toContain('gemini-cli')
+    expect(text).not.toContain('antigravity-cli')
   })
 
-  test('subscription CLI providers are listed by default (1.30.3 behavior)', () => {
+  test('subscription CLI providers are hidden by default', () => {
     const providers = listProviders()
 
-    expect(providers.some(provider => provider.id === 'codex-cli')).toBe(true)
-    expect(providers.some(provider => provider.id === 'gemini-cli')).toBe(true)
+    expect(providers.some(provider => provider.id === 'codex-cli')).toBe(false)
+    expect(providers.some(provider => provider.id === 'gemini-cli')).toBe(false)
     // The internal generic "subscription" placeholder is hidden from listings.
     expect(providers.some(provider => provider.id === 'subscription')).toBe(false)
   })
 
   test('/model provider entries show access type and credential type', () => {
     const providers = listProviders()
-    const codex = providers.find(provider => provider.id === 'codex-cli')
     const openai = providers.find(provider => provider.id === 'openai-api')
     const ollama = providers.find(provider => provider.id === 'ollama')
-    const lmstudio = providers.find(provider => provider.id === 'lmstudio')
+    const llama = providers.find(provider => provider.id === 'llama.cpp')
 
-    expect(codex?.accessType).toBe('subscription')
-    expect(codex?.credentialType).toBe('cli-login')
     expect(openai?.accessType).toBe('api')
     expect(openai?.credentialType).toBe('api-key')
     expect(ollama?.accessType).toBe('local')
     expect(ollama?.credentialType).toBe('local-runtime')
-    expect(lmstudio?.accessType).toBe('server')
-    expect(lmstudio?.credentialType).toBe('openai-compatible-endpoint')
+    expect(llama?.accessType).toBe('server')
+    expect(llama?.credentialType).toBe('openai-compatible-endpoint')
   })
 
   test('API and subscription providers are metadata-distinct', () => {
-    const providers = listProviders()
-    const codex = providers.find(provider => provider.id === 'codex-cli')
-    const openai = providers.find(provider => provider.id === 'openai-api')
+    const codex = getProviderDefinition('codex-cli')
+    const openai = listProviders().find(provider => provider.id === 'openai-api')
 
-    expect(codex?.accessType).toBe('subscription')
-    expect(codex?.credentialType).toBe('cli-login')
-    expect(codex?.runtimeKind).toBe('external-app')
-    expect(codex?.providerKind).toBe('subscription-cli')
-    expect(codex?.usesExternalCli).toBe(true)
-    expect(codex?.supportsNativeToolCalls).toBe(false)
-    expect(codex?.supportsNativeStreaming).toBe(false)
-    expect(codex?.safetyBoundaryLabel).toBe(SUBSCRIPTION_CLI_PROVIDER_BOUNDARY)
+    expect(codex.accessType).toBe('subscription')
+    expect(codex.credentialType).toBe('cli-login')
+    expect(codex.runtimeKind).toBe('external-app')
+    expect(codex.providerKind).toBe('subscription-cli')
+    expect(codex.usesExternalCli).toBe(true)
+    expect(codex.supportsNativeToolCalls).toBe(false)
+    expect(codex.supportsNativeStreaming).toBe(false)
+    expect(codex.safetyBoundaryLabel).toBe(SUBSCRIPTION_CLI_PROVIDER_BOUNDARY)
     expect(openai?.accessType).toBe('api')
     expect(openai?.credentialType).toBe('api-key')
     expect(openai?.runtimeKind).toBe('ur-native')
@@ -133,7 +129,7 @@ describe('provider registry legal access paths', () => {
     expect(openai?.safetyBoundaryLabel).not.toContain('External vendor CLI boundary')
   })
 
-  test('provider list exposes subscription CLI capability boundaries', () => {
+  test('provider list exposes subscription CLI capability boundaries when enabled', () => {
     const text = formatProviderList()
     const json = JSON.parse(formatProviderList(true)) as Array<{
       id: string
@@ -144,13 +140,13 @@ describe('provider registry legal access paths', () => {
       safetyBoundary: string
       safetyBoundaryLabel: string
     }>
-    const codex = json.find(provider => provider.id === 'codex-cli')
+    const codex = getProviderDefinition('codex-cli')
     const openai = json.find(provider => provider.id === 'openai-api')
 
     expect(text).toContain('Provider kind')
     expect(text).toContain('Native tools')
-    expect(text).toContain('codex-cli')
-    expect(text).toContain('subscription-cli')
+    expect(text).not.toContain('codex-cli')
+    expect(text).not.toContain('subscription-cli')
     expect(codex).toMatchObject({
       providerKind: 'subscription-cli',
       usesExternalCli: true,

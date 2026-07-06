@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-06T01:35:18.327Z",
+  "generatedAt": "2026-07-06T02:02:20.696Z",
   "timeoutMs": 250,
   "maxRetries": 0,
   "providers": [
@@ -17,7 +17,7 @@
           "name": "text",
           "status": "failed",
           "reason": "Unable to connect. Is the computer able to access the url?",
-          "durationMs": 7
+          "durationMs": 6
         },
         {
           "name": "streaming",
@@ -212,6 +212,6 @@
     "passed": 0,
     "skipped": 6,
     "failed": 1,
-    "durationMs": 7
+    "durationMs": 6
   }
 }

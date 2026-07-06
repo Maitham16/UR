@@ -100,10 +100,10 @@ describe('API provider live model discovery', () => {
 })
 
 describe('subscription provider visibility', () => {
-  test('subscription CLI providers are shown by default (1.30.3 behavior)', () => {
+  test('subscription CLI providers are hidden by default', () => {
     const shown = listProviders().map(p => p.id)
     for (const id of ['codex-cli', 'claude-code-cli', 'gemini-cli', 'antigravity-cli']) {
-      expect(shown).toContain(id)
+      expect(shown).not.toContain(id)
     }
     // The internal generic "subscription" placeholder is hidden from listings.
     expect(shown).not.toContain('subscription')
