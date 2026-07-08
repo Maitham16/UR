@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.44.1
+
+- Fix task board rendering: finished, failed, and skipped tasks now render as
+  checked instead of unchecked.
+- Deduplicate consecutive task board emissions and keep final boards clean
+  (single header, single progress summary).
+
 ## 1.44.0
 
 - Add `verifier.askBeforeGates` setting (default `false`). When enabled, UR asks
