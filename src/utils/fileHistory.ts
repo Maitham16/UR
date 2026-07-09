@@ -1106,6 +1106,95 @@ async function readFileAsyncOrNull(path: string): Promise<string | null> {
   }
 }
 
+/**
+ * Undoes the most recent file edit by restoring the most recently modified
+ * tracked file to its content from just before the current snapshot window
+ * (i.e. before the last turn's edits to it). Unlike fileHistoryRewind (which
+ * restores ALL files to a message snapshot), this restores just the one file
+ * that was touched last.
+ *
+ * Semantics note: trackEdit backs a file up into the CURRENT snapshot the
+ * first time it is edited within that snapshot window, so the latest
+ * snapshot's backup holds the pre-edit content for the last turn. Restoring
+ * the first-version (v1) backup instead would silently revert EVERY edit
+ * made to the file across the whole session — a data-loss trap when a file
+ * has accumulated many good edits (that behavior lives in /rewind, where
+ * the user explicitly picks a checkpoint).
+ *
+ * Returns the restored (or deleted) file path, or null if there was nothing
+ * to undo.
+ */
+export async function fileHistoryUndoLastEdit(
+  updateFileHistoryState: (
+    updater: (prev: FileHistoryState) => FileHistoryState,
+  ) => void,
+): Promise<string | null> {
+  if (!fileHistoryEnabled()) {
+    return null
+  }
+
+  let captured: FileHistoryState | undefined
+  updateFileHistoryState(state => {
+    captured = state
+    return state
+  })
+  if (!captured || captured.snapshots.length === 0) return null
+
+  const latestSnapshot = captured.snapshots.at(-1)
+  if (!latestSnapshot) return null
+
+  // Among the files tracked in the latest snapshot, find the one with the
+  // most recent backup time — that's the most recently edited file. A null
+  // backupFileName means the file did not exist when the turn started (it
+  // was newly created); undoing that edit is deletion, so such entries are
+  // legitimate candidates and must not be skipped.
+  let latestFile: string | null = null
+  let latestBackup: FileHistoryBackup | null = null
+  for (const [trackingPath, backup] of Object.entries(
+    latestSnapshot.trackedFileBackups,
+  )) {
+    if (
+      latestBackup === null ||
+      backup.backupTime > latestBackup.backupTime
+    ) {
+      latestBackup = backup
+      latestFile = trackingPath
+    }
+  }
+  if (!latestFile || !latestBackup) return null
+
+  const filePath = maybeExpandFilePath(latestFile)
+
+  if (latestBackup.backupFileName === null) {
+    // The file didn't exist before this turn's edit — undo means delete it.
+    try {
+      await unlink(filePath)
+      logForDebugging(
+        `FileHistory: [Undo] Deleted ${filePath} (was newly created this turn)`,
+      )
+      return filePath
+    } catch (e: unknown) {
+      if (!isENOENT(e)) logError(e as Error)
+      return null
+    }
+  }
+
+  try {
+    if (await checkOriginFileChanged(filePath, latestBackup.backupFileName)) {
+      await restoreBackup(filePath, latestBackup.backupFileName)
+      logForDebugging(
+        `FileHistory: [Undo] Restored ${filePath} from ${latestBackup.backupFileName}`,
+      )
+      return filePath
+    }
+    // File unchanged from backup — nothing to undo.
+    return null
+  } catch (error) {
+    logError(error as Error)
+    return null
+  }
+}
+
 const ENABLE_DUMP_STATE = false
 function maybeDumpStateForDebug(state: FileHistoryState): void {
   if (ENABLE_DUMP_STATE) {
