@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.44.3
+
+- Make thinking visually distinct from answers: thinking blocks are labeled
+  "model reasoning to itself — not the answer" (dim italic, left-bordered when
+  expanded); answer text carries an accent-colored ⏺ marker.
+- Pin the live task panel: it stays visible above the prompt while the agent
+  works (previously hidden during turns), with real-time status icons
+  (✔ done, ■ in progress, □ pending, ✘ failed, ⚠ skipped). `showExpandedTodos`
+  now defaults on; ctrl+T still toggles.
+- Add tasks on request: saying "add to your tasks …" now creates the task
+  immediately, even mid-turn, and it appears live in the pinned panel.
+- Add `/undo`: restores the most recently edited file to its content from
+  before the last turn's edits (deletes a file the last edit created). Full
+  checkpoint restore remains `/rewind`.
+- Reject shell commands with unterminated quotes before execution, with a
+  diagnostic that names the defect, suggests the quoted-heredoc fix, and
+  tells the model not to retry the identical command.
+- Add Concise, JSON-strict, Debug-verbose, and Release-notes output styles.
+- Ollama: drop text-form tool calls that duplicate native ones (no more
+  double-executed Writes); tolerate and strip up to two hallucinated extra
+  keys on bare-JSON Write/Edit calls instead of leaking them as prose.
+- Fix the test suite: repaired two committed test files that failed or
+  poisoned other suites via global module mocks — the suite is now fully
+  green (1134 pass, 0 fail).
+- TypeScript now covers test/ (fixed all 171 surfaced errors) and 544
+  compiled files no longer end in megabyte-scale inline sourcemap comments —
+  VS Code diagnostics and long-line problems are gone.
+- Repo hygiene: untracked committed local state (.ur state files, FUSE
+  artifact, stray yarn.lock) and added ignore rules; added UR.md project
+  memory so the agent learns the repo across sessions.
+- `Task` status schema now includes `failed` and `skipped`, matching what
+  crew/workflow runs produce and the task panel renders.
+
 ## 1.44.2
 
 - Fix Ollama streamed tool-call accumulation: Ollama streams each completed

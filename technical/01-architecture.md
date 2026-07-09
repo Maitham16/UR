@@ -30,6 +30,10 @@ bin/ur.js  →  dist/cli.js (bundled from src/entrypoints/cli.tsx)
    status line, and dialog launchers (`src/screens/`, `src/components/`, vendored Ink fork in
    `src/ink/`). Input supports vim mode (`src/vim`), custom keybindings (`src/keybindings`),
    paste/image handling, `!` shell mode, `#` memory notes, and `/` command typeahead.
+   Visual language: thinking blocks render dim/italic labeled "model reasoning to itself"
+   (left-bordered when expanded via ctrl+o); user-facing answers carry an accent-colored ⏺
+   marker; the live task panel (TaskListV2) is pinned in the fixed bottom region above the
+   prompt — visible while the agent works, statuses updating in real time (ctrl+T toggles).
 2. **QueryEngine** (`src/QueryEngine.ts`) — orchestrates a turn: builds the system prompt,
    assembles the tool pool (`src/tools.ts:assembleToolPool` — built-ins + MCP, deny-rule
    filtered, sorted for prompt-cache stability), streams the model response, dispatches tool

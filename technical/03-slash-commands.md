@@ -21,6 +21,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/tag <tag-name>` | jsx | Toggle a searchable tag on this session | `/tag experiments` |
 | `/branch [name]` (`/fork`) | jsx | Branch the conversation at this point | `/branch try-other-approach` |
 | `/rewind` (`/checkpoint`) | local | Restore code and/or conversation to a previous checkpoint | `/rewind` |
+| `/undo` | local | Restore the most recently edited file to its pre-edit (last turn) content; deletes a file the last edit created | `/undo` |
 | `/export [filename]` | jsx | Export conversation to file or clipboard | `/export session.md` |
 | `/copy` | jsx | Copy the last response to the clipboard | `/copy` |
 | `/btw <question>` | jsx | Quick side question without derailing the main thread | `/btw what does SIGPIPE mean?` |

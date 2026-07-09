@@ -20,7 +20,7 @@ users don't call tools directly.
 | `Glob` | Fast filename pattern matching | `pattern`, `path` | "Find all *.test.ts files" |
 | `Grep` | Regex content search (ripgrep-backed) | `pattern`, `path`, `glob`, output modes | "Where is refreshToken referenced?" |
 | `CodeSearch` | Semantic code search over the local embedding index (only when `UR_CODE_INDEX` enabled) | `query` | "Find code that debounces user input" |
-| `Bash` | Run shell commands; supports background tasks, sandboxing, safety checks (`src/tools/BashTool/bashSecurity.ts`) | `command`, `timeout`, `run_in_background`, sandbox overrides | "Run the test suite" |
+| `Bash` | Run shell commands; supports background tasks, sandboxing, safety checks (`src/tools/BashTool/bashSecurity.ts`); commands with unterminated quotes are rejected pre-execution with an actionable diagnostic (errorCode 11, heredoc guidance) | `command`, `timeout`, `run_in_background`, sandbox overrides | "Run the test suite" |
 | `PowerShell` | Windows PowerShell variant (enabled on Windows) | same shape as Bash | — |
 
 ## Web & network tools

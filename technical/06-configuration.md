@@ -228,4 +228,6 @@ global + command-scoped bindings; see `useGlobalKeybindings.tsx` / `useCommandKe
 
 `outputStyle` setting selects a style; custom styles load from an output-styles directory
 (`src/outputStyles/loadOutputStylesDir.ts`). `/output-style` is deprecated in favor of
-`/config`.
+`/config`. Built-in styles (`src/constants/outputStyles.ts`) include Explanatory,
+Concise, JSON-strict (every response a parseable JSON object), Debug-verbose
+(hypothesis-driven diagnostics), and Release-notes (changelog tone).
