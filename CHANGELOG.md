@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.44.4
+
+- The agent now learns from every run automatically — no `/learn run` needed.
+  ci-loop, arena, escalation, and test-first completions fold their pass/fail
+  outcome (per task category and model) into `.ur/learning/stats.json` as a
+  pure JSON update: zero model calls, zero tokens, idempotent, and failure of
+  the store can never break the run that produced the outcome.
+- The `auto` routing strategy consumes that evidence: when a model has a
+  proven track record for a task's category (≥ 3 recorded runs, ≥ 60% pass
+  rate) and is currently selectable, it is chosen directly. Categories that
+  history shows a cheap local model handles reliably stop paying for the
+  strong tier — tokens go down because of evidence, not guesswork. With thin
+  or absent evidence, routing falls through to the exact previous heuristics,
+  so behavior can never degrade below today's.
+- `/escalate` keeps consuming the same store (learned difficulty bias), which
+  now grows by itself, so tier selection sharpens run over run.
+- New `autoMemoryExtractionInterval` setting: run the auto-memory extraction
+  agent every N eligible turns instead of every turn. The default (1) is
+  unchanged; the extraction is a forked agent call on the session model, so
+  this is an explicit token/compute dial for long sessions.
+
 ## 1.44.3
 
 - Make thinking visually distinct from answers: thinking blocks are labeled

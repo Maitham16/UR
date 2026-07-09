@@ -130,6 +130,7 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 ```jsonc
 {
   "autoMemoryEnabled": true, "autoMemoryDirectory": "…",
+  "autoMemoryExtractionInterval": 1,   // run extraction every N turns (token dial)
   "verifier": { "askBeforeGates": true },
   "autoDreamEnabled": false,
   "plansDirectory": "…"

@@ -86,11 +86,18 @@ reports "likely agent capabilities":
 /model-doctor llama3.3 --json
 ```
 
-### `/learn` feedback loop (learning.ts)
-Mines artifacts and CI outcomes into per-category/per-model success rates and reflective
-lessons that bias `escalate`, `arena`, and `model-route`:
+### Automatic learning loop (learning.ts)
+Every ci-loop, arena, escalation, and test-first run **automatically** records its
+pass/fail outcome (per task category and model) into `.ur/learning/stats.json` — a pure
+JSON fold, no model calls. The `auto` routing strategy and `/escalate`'s difficulty bias
+consume this evidence: a model with ≥3 recorded runs and a ≥60% success rate for the
+task's category is preferred when selectable; thin evidence falls back to the static
+heuristics unchanged. The store is idempotent (outcome keys dedupe) and best-effort
+(a broken store never fails a run). `/learn` remains for inspection and the optional
+LLM reflection pass:
 ```
-/learn run --reflect && /learn stats
+/learn stats            # view what the agent has learned
+/learn run --reflect    # optional: distill failures into lessons (uses a model)
 ```
 
 ## Session behavior knobs

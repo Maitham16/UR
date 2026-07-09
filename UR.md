@@ -66,6 +66,18 @@ very code you are editing — be careful, verify, and prefer small reviewable st
   live (✔ done, ■ in progress, □ pending). When the user says "add to your
   tasks …", create the task immediately (TaskCreate prompt has the rule).
 
+## Learning loop
+
+- Learning is automatic: ci-loop / arena / escalation / test-first record
+  pass/fail per category+model into `.ur/learning/stats.json` on completion
+  (`recordOutcome` in learning.ts — pure JSON, never throws). The `auto`
+  route strategy and escalate's difficulty bias consume it; ≥3 runs at ≥60%
+  pass rate lets a proven cheap model win the route (that's the token saver).
+  Never make recording able to fail a run, and never let thin evidence
+  override the static heuristics.
+- `autoMemoryExtractionInterval` setting throttles the turn-end auto-memory
+  extraction fork (default 1 = every turn) — it's the user's token dial.
+
 ## Docs
 
 - `technical/` holds code-derived specs (commands, tools, providers, config,
