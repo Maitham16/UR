@@ -48,8 +48,16 @@ secrets.json
 tokens.json
 oauth-token.json
 
+# Stray lockfiles from other package managers (bun.lock is canonical)
+yarn.lock
+
+# FUSE filesystem artifacts (files held open during deletion)
+.fuse_hidden*
+
 # UR local state that should stay machine-specific
 UR.local.md
+.ur/context/
+.ur/plans/
 .ur/settings.local.json
 .ur/*.local.json
 .ur/index/
