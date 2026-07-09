@@ -144,6 +144,40 @@ function sameKeys(
   )
 }
 
+/**
+ * Like sameKeys but tolerates hallucinated extra keys (e.g. a bare-JSON
+ * Write with an invented "encoding": "utf-8"). Requires all required keys
+ * and at most `maxExtra` unknown keys — a high unknown-key count means the
+ * object is probably not this tool call at all. Callers should strip the
+ * extras before executing (tool input schemas are strict).
+ */
+function hasRequiredKeys(
+  value: Record<string, unknown>,
+  required: string[],
+  optional: string[] = [],
+  maxExtra = 2,
+): boolean {
+  if (!required.every(key => Object.prototype.hasOwnProperty.call(value, key)))
+    return false
+  const allowed = new Set([...required, ...optional])
+  const extras = Object.keys(value).filter(key => !allowed.has(key))
+  return extras.length <= maxExtra
+}
+
+/** Returns a copy of value containing only the allowed keys. */
+function pickKeys(
+  value: Record<string, unknown>,
+  required: string[],
+  optional: string[] = [],
+): Record<string, unknown> {
+  const allowed = new Set([...required, ...optional])
+  const out: Record<string, unknown> = {}
+  for (const [key, v] of Object.entries(value)) {
+    if (allowed.has(key)) out[key] = v
+  }
+  return out
+}
+
 function parseJsonishString(raw: string): string {
   try {
     return JSON.parse(`"${raw}"`) as string
@@ -520,22 +554,31 @@ function maybeBareJsonToolCall(
 
   if (
     hasTool(availableToolNames, 'Write') &&
-    sameKeys(input, ['file_path', 'content']) &&
+    hasRequiredKeys(input, ['file_path', 'content']) &&
     typeof input.file_path === 'string' &&
     typeof input.content === 'string'
   ) {
-    return { id: `bare_${Date.now().toString(36)}_${index}`, name: 'Write', input }
+    // Strip hallucinated extras (e.g. "encoding") — Write's schema is strict.
+    return {
+      id: `bare_${Date.now().toString(36)}_${index}`,
+      name: 'Write',
+      input: pickKeys(input, ['file_path', 'content']),
+    }
   }
 
   if (
     hasTool(availableToolNames, 'Edit') &&
-    sameKeys(input, ['file_path', 'old_string', 'new_string'], ['replace_all']) &&
+    hasRequiredKeys(input, ['file_path', 'old_string', 'new_string'], ['replace_all']) &&
     typeof input.file_path === 'string' &&
     typeof input.old_string === 'string' &&
     typeof input.new_string === 'string' &&
     (input.replace_all === undefined || typeof input.replace_all === 'boolean')
   ) {
-    return { id: `bare_${Date.now().toString(36)}_${index}`, name: 'Edit', input }
+    return {
+      id: `bare_${Date.now().toString(36)}_${index}`,
+      name: 'Edit',
+      input: pickKeys(input, ['file_path', 'old_string', 'new_string'], ['replace_all']),
+    }
   }
 
   if (hasTool(availableToolNames, 'AskUserQuestion')) {

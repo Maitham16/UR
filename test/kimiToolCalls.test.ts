@@ -631,3 +631,28 @@ test('bare JSON write call with raw newlines and trailing comma is repaired', ()
   expect(toolCalls[0]?.name).toBe('Write')
   expect(toolCalls[0]?.input.content).toBe('import os\nprint(1)\n')
 })
+
+test('bare JSON write call with a hallucinated extra key is recognized and stripped', () => {
+  const text =
+    '{"file_path": "/tmp/a.py", "content": "print(1)", "encoding": "utf-8"}'
+  const { toolCalls } = parseBareJsonToolCalls(text, {
+    availableToolNames: new Set(['Write']),
+    parseBareJsonToolCalls: true,
+  })
+  expect(toolCalls).toHaveLength(1)
+  expect(toolCalls[0]?.name).toBe('Write')
+  expect(toolCalls[0]?.input).toEqual({
+    file_path: '/tmp/a.py',
+    content: 'print(1)',
+  })
+})
+
+test('objects with many unknown keys are not misparsed as Write calls', () => {
+  const text =
+    '{"file_path": "/tmp/a.py", "content": "x", "a": 1, "b": 2, "c": 3}'
+  const { toolCalls } = parseBareJsonToolCalls(text, {
+    availableToolNames: new Set(['Write']),
+    parseBareJsonToolCalls: true,
+  })
+  expect(toolCalls).toHaveLength(0)
+})

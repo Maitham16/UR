@@ -115,3 +115,16 @@ test('lenient parser returns null for hopeless input', () => {
   expect(parseToolInputJsonLenient('not json at all')).toBeNull()
   expect(parseToolInputJsonLenient('')).toBeNull()
 })
+
+// --- Canonical arg keys: dedup must not be defeated by key order.
+
+test('mergeToolCalls dedupes cumulative resends regardless of key order', () => {
+  const target: OllamaToolCall[] = []
+  mergeToolCalls(target, [
+    { function: { name: 'Write', arguments: { file_path: '/a.py', content: 'x' } } },
+  ])
+  mergeToolCalls(target, [
+    { function: { name: 'Write', arguments: { content: 'x', file_path: '/a.py' } } },
+  ])
+  expect(target).toHaveLength(1)
+})

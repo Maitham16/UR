@@ -887,6 +887,40 @@ async function* streamURHQEvents(
   const kimiParsed = parseKimiToolCalls(text)
   textToolCalls.push(...kimiParsed.toolCalls)
 
+  // Some local models emit the SAME call twice: once natively via
+  // message.tool_calls AND once narrated as JSON in the content text. Without
+  // dedup both execute — the user sees duplicated Write/Bash rows with
+  // mismatched results and the model gets confusing double feedback. Drop
+  // text-form calls whose reconciled name + serialized input match a native
+  // structured call.
+  if (toolCalls.length > 0 && textToolCalls.length > 0) {
+    const structuredKeys = new Set(
+      toolCalls
+        .filter(c => c.function?.name)
+        .map(
+          c =>
+            `${reconcileToolName(c.function!.name!, availableToolNames)} ${toolArgsKey(
+              typeof c.function?.arguments === 'string'
+                ? parseToolInput(c.function.arguments)
+                : (c.function?.arguments ?? {}),
+            )}`,
+        ),
+    )
+    const deduped = textToolCalls.filter(
+      tc =>
+        !structuredKeys.has(
+          `${reconcileToolName(tc.name, availableToolNames)} ${toolArgsKey(tc.input ?? {})}`,
+        ),
+    )
+    if (deduped.length !== textToolCalls.length) {
+      logForDebugging(
+        `Ollama: dropped ${textToolCalls.length - deduped.length} text-form tool call(s) duplicating native tool_calls`,
+      )
+      textToolCalls.length = 0
+      textToolCalls.push(...deduped)
+    }
+  }
+
   // When the model wrote clarifying questions as plain prose instead of calling
   // AskUserQuestion, synthesize the tool call so the multiple-choice picker
   // renders (the streamed prose remains as a preamble).
@@ -1164,13 +1198,27 @@ function isEmptyToolArgs(value: unknown): boolean {
   return false
 }
 
+/** Canonical serialization for duplicate detection: object keys are sorted
+ *  recursively so `{a,b}` and `{b,a}` produce the same key. */
 function toolArgsKey(value: unknown): string {
   if (typeof value === 'string') return value
   try {
-    return JSON.stringify(value ?? {})
+    return JSON.stringify(sortKeysDeep(value ?? {}))
   } catch {
     return String(value)
   }
+}
+
+function sortKeysDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeysDeep)
+  if (isPlainObject(value)) {
+    const sorted: Record<string, unknown> = {}
+    for (const key of Object.keys(value).sort()) {
+      sorted[key] = sortKeysDeep(value[key])
+    }
+    return sorted
+  }
+  return value
 }
 
 /**
