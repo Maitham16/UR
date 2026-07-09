@@ -114,14 +114,20 @@ export function tryQuoteShellArgs(args: unknown[]): ShellQuoteResult {
  * Security: This prevents command injection via HackerOne #3482049 where
  * shell-quote's correct parsing of ambiguous input can be exploited.
  */
-export function hasMalformedTokens(
-  command: string,
-  parsed: ParseEntry[],
-): boolean {
-  // Check for unterminated quotes in the original command. shell-quote drops
-  // an unmatched quote without leaving any trace in the tokens, so this must
-  // inspect the raw string. Walk with bash semantics: backslash escapes the
-  // next char outside single-quotes; no escapes inside single-quotes.
+/**
+ * Detects unterminated quotes in a command by walking the raw string with bash
+ * semantics: backslash escapes the next char outside single-quotes; no escapes
+ * inside single-quotes. Returns true if the command has an odd number of
+ * unescaped double or single quotes — i.e. bash would fail with
+ * "unexpected EOF while looking for matching `"`" or a syntax error.
+ *
+ * This is the raw-quote-parity subset of hasMalformedTokens, exported
+ * separately for use as a low-false-positive pre-execution syntax gate.
+ * Unlike hasMalformedTokens, it does NOT inspect decoded token contents, so
+ * it does not flag literal apostrophes/brackets inside strings (e.g.
+ * `echo "it's fine"` or the `'\''` idiom) as malformed.
+ */
+export function hasUnbalancedQuotes(command: string): boolean {
   let inSingle = false
   let inDouble = false
   let doubleCount = 0
@@ -140,7 +146,18 @@ export function hasMalformedTokens(
       inSingle = !inSingle
     }
   }
-  if (doubleCount % 2 !== 0 || singleCount % 2 !== 0) return true
+  return doubleCount % 2 !== 0 || singleCount % 2 !== 0
+}
+
+export function hasMalformedTokens(
+  command: string,
+  parsed: ParseEntry[],
+): boolean {
+  // Check for unterminated quotes in the original command. shell-quote drops
+  // an unmatched quote without leaving any trace in the tokens, so this must
+  // inspect the raw string. Walk with bash semantics: backslash escapes the
+  // next char outside single-quotes; no escapes inside single-quotes.
+  if (hasUnbalancedQuotes(command)) return true
 
   for (const entry of parsed) {
     if (typeof entry !== 'string') continue

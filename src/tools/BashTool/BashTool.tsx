@@ -15,6 +15,7 @@ import { backgroundExistingForegroundTask, markTaskNotified, registerForeground,
 import type { AgentId } from '../../types/ids.js';
 import type { AssistantMessage } from '../../types/message.js';
 import { parseForSecurity } from '../../utils/bash/ast.js';
+import { hasUnbalancedQuotes, tryParseShellCommand } from '../../utils/bash/shellQuote.js';
 import { getCwd } from '../../utils/cwd.js';
 import { splitCommand_DEPRECATED, splitCommandWithOperators } from '../../utils/bash/commands.js';
 import { extractURCodeHints } from '../../utils/urCodeHints.js';
@@ -546,6 +547,30 @@ export const BashTool = buildTool({
           errorCode: 10
         };
       }
+    }
+    // Quote-safety: reject commands with unterminated quotes before execution
+    // so the model gets a precise diagnostic instead of raw bash "unexpected
+    // EOF while looking for matching `"`" stderr. See GAP 2 in
+    // .ur/plans/top-tier-agent-features.md. Uses hasUnbalancedQuotes (raw
+    // parity walk) rather than hasMalformedTokens to avoid false positives on
+    // literal apostrophes/brackets inside strings.
+    const parseResult = tryParseShellCommand(input.command);
+    if (parseResult.success === false) {
+      const parseError: string = parseResult.error;
+      return {
+        result: false,
+        message:
+          `Command rejected: the shell command could not be parsed (${parseError}), so bash would fail with a syntax error before doing anything useful. Common causes: an unterminated " or ' (often from a multi-line \`python -c "...\`\` whose closing quote was dropped), or a copy-paste that lost a bracket. Fixes: (1) close the quote/bracket; (2) for multi-line literals use a quoted heredoc, e.g. \`python -c "$(cat <<'EOF'\n...\nEOF\n)"\`; or (3) write the script to a file and run that. Do not retry the identical command — re-emit a corrected one.`,
+        errorCode: 11
+      };
+    }
+    if (hasUnbalancedQuotes(input.command)) {
+      return {
+        result: false,
+        message:
+          `Command rejected: the shell command has unbalanced quotes (an unterminated " or '), so bash would fail with "unexpected EOF while looking for matching \`"\`" before doing anything useful. Common causes: a multi-line \`python -c "...\`\` whose closing quote was dropped, or a copy-paste that lost a quote. Fixes: (1) close the quote; (2) for multi-line literals use a quoted heredoc, e.g. \`python -c "$(cat <<'EOF'\n...\nEOF\n)"\`; or (3) write the script to a file and run that. Do not retry the identical command — re-emit a corrected one.`,
+        errorCode: 11
+      };
     }
     return {
       result: true
