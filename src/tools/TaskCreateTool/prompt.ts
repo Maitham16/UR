@@ -24,6 +24,7 @@ Use this tool proactively in these scenarios:
 - Non-trivial and complex tasks - Tasks that require careful planning or multiple operations${teammateContext}
 - Plan mode - When using plan mode, create a task list to track the work
 - User explicitly requests todo list - When the user directly asks you to use the todo list
+- User asks to queue work - When the user says "add to your tasks", "add this to your task list", "put this on the list", "queue this up", or anything similar, IMMEDIATELY call this tool with that request — even if you are in the middle of other work and even if the item sounds small. The user is watching the live task panel and expects the item to appear there right away. Acknowledge briefly and continue what you were doing unless asked to switch.
 - User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
 - After receiving new instructions - Immediately capture user requirements as tasks
 - When you start working on a task - Mark it as in_progress BEFORE beginning work
@@ -38,6 +39,8 @@ Skip using this tool when:
 - The task is purely conversational or informational
 
 NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+
+EXCEPTION: none of the "skip" rules apply when the user explicitly asks for an item to be added to the task list ("add to your tasks …"). An explicit request always wins — create the task.
 
 ## Task Fields
 

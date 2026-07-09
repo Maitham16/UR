@@ -612,7 +612,9 @@ function createDefaultGlobalConfig(): GlobalConfig {
     promptQueueUseCount: 0,
     btwUseCount: 0,
     todoFeatureEnabled: true,
-    showExpandedTodos: false,
+    // Default ON: the task panel stays pinned above the prompt so users see
+    // live task status (in progress / done / pending) without a toggle.
+    showExpandedTodos: true,
     messageIdleNotifThresholdMs: 60000,
     autoConnectIde: false,
     autoInstallIdeExtension: true,

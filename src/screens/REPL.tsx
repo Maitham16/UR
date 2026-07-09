@@ -4614,7 +4614,12 @@ export function REPL({
                 {toolJSX?.isLocalJSXCommand && toolJSX.isImmediate && !toolJsxCentered && <Box flexDirection="column" width="100%">
                       {toolJSX.jsx}
                     </Box>}
-                {!showSpinner && !toolJSX?.isLocalJSXCommand && showExpandedTodos && tasksV2 && tasksV2.length > 0 && <Box width="100%" flexDirection="column">
+                {/* Task panel is pinned in the fixed bottom region so it moves
+                    with the screen and stays visible while the agent works
+                    (no !showSpinner gate — the Spinner no longer renders its
+                    own copy). Statuses update live via the TasksV2Store
+                    fs-watcher. Toggleable via the tasks expanded view. */}
+                {!toolJSX?.isLocalJSXCommand && showExpandedTodos && tasksV2 && tasksV2.length > 0 && <Box width="100%" flexDirection="column">
                       <TaskListV2 tasks={tasksV2} isStandalone={true} />
                     </Box>}
                 {focusedInputDialog === 'sandbox-permission' && <SandboxPermissionRequest key={sandboxPermissionRequestQueue[0]!.hostPattern.host} hostPattern={sandboxPermissionRequestQueue[0]!.hostPattern} onUserResponse={(response: {

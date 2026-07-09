@@ -234,7 +234,9 @@ export function AssistantTextMessage(t0) {
         const t3 = isSelected ? "messageActionsBackground" : undefined;
         let t4;
         if ($[22] !== isSelected || $[23] !== shouldShowDot) {
-          t4 = shouldShowDot && <NoSelect fromLeftEdge={true} minWidth={2}><Text color={isSelected ? "suggestion" : "text"}>{BLACK_CIRCLE}</Text></NoSelect>;
+          // Accent-colored dot marks text addressed to the user (the answer),
+          // in deliberate contrast to the dim italic "∴ Thinking" blocks.
+          t4 = shouldShowDot && <NoSelect fromLeftEdge={true} minWidth={2}><Text color={isSelected ? "suggestion" : "ur"}>{BLACK_CIRCLE}</Text></NoSelect>;
           $[22] = isSelected;
           $[23] = shouldShowDot;
           $[24] = t4;
