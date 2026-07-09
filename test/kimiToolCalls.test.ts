@@ -598,3 +598,36 @@ test('no synthesis when the turn contains a code block', () => {
     ),
   ).toBeNull()
 })
+
+// --- Regression: Kimi-marker tool calls with almost-JSON arguments.
+// Local models emit raw newlines inside JSON string values; parseArgs used to
+// silently return {} which executed Write with empty input and failed
+// validation with "required parameter `file_path` is missing".
+
+test('kimi-format call with raw newlines in content is repaired, not emptied', () => {
+  const text =
+    '<|tool_call_begin|>Write<|tool_call_argument_begin|>' +
+    '{"file_path": "/home/u/tests/__init__.py", "content": "line1\nline2\n"}' +
+    '<|tool_call_end|>'
+  const { toolCalls } = parseTextToolCalls(text, {
+    availableToolNames: new Set(['Write']),
+  })
+  expect(toolCalls).toHaveLength(1)
+  expect(toolCalls[0]?.name).toBe('Write')
+  expect(toolCalls[0]?.input).toEqual({
+    file_path: '/home/u/tests/__init__.py',
+    content: 'line1\nline2\n',
+  })
+})
+
+test('bare JSON write call with raw newlines and trailing comma is repaired', () => {
+  const text =
+    '{"file_path": "/tmp/a.py", "content": "import os\nprint(1)\n",}'
+  const { toolCalls } = parseBareJsonToolCalls(text, {
+    availableToolNames: new Set(['Write']),
+    parseBareJsonToolCalls: true,
+  })
+  expect(toolCalls).toHaveLength(1)
+  expect(toolCalls[0]?.name).toBe('Write')
+  expect(toolCalls[0]?.input.content).toBe('import os\nprint(1)\n')
+})

@@ -17,7 +17,9 @@ function publicStatus(task: NexusTask): string {
   if (task.status === 'needs-scope') return 'needs scope'
   if (task.status === 'waiting-approval') return 'waiting approval'
   if (task.status === 'paused-review') return 'paused for review'
-  if (task.status === 'skipped') return 'skipped by policy'
+  if (task.status === 'skipped') return 'skipped'
+  if (task.status === 'failed') return 'failed'
+  if (task.status === 'finished') return 'completed'
   return task.status
 }
 
@@ -43,6 +45,10 @@ export function progressSummary(tasks: NexusTask[]): string {
   return `Progress: ${finished}/${tasks.length} finished, ${running} running, ${queued} queued, ${waiting} waiting, ${failed} failed, ${skipped} skipped`
 }
 
+function isFinished(task: NexusTask): boolean {
+  return task.status === 'finished' || task.status === 'failed' || task.status === 'skipped'
+}
+
 export function renderTaskBoard(
   planOrTasks: PromptPlan | NexusTask[],
   options: TaskBoardOptions = {},
@@ -57,7 +63,8 @@ export function renderTaskBoard(
   const rows = orderedTasks.map(task => {
     const status = pad(publicStatus(task), 18)
     const agent = pad(String(task.assignedAgent), 8)
-    return `${task.order}. ${status} | ${agent} | ${task.title}`
+    const check = isFinished(task) ? '[✓]' : '[ ]'
+    return `${check} ${task.order}. ${status} | ${agent} | ${task.title}`
   })
 
   return [

@@ -1,0 +1,3 @@
+{"id":"1783556295805-88159b","at":"2026-07-09T00:18:15.805Z","kind":"attempt","text":"Failed command: ls /Users/maith/Desktop/ur3-dev/UR-1.43.3/src/providers\nError: ls: /Users/maith/Desktop/ur3-dev/UR-1.43.3/src/providers: No such file or directory\n","status":"rejected","source":"failure-memory"}
+{"id":"1783557659413-10446b","at":"2026-07-09T00:40:59.413Z","kind":"attempt","text":"Failed command: unalias rg && which rg\nError: rg not found\n","status":"rejected","source":"failure-memory"}
+{"id":"1783557664143-5fd9f3","at":"2026-07-09T00:41:04.143Z","kind":"attempt","text":"Failed command: command -v rg && echo '---' && command -v grep && echo '---' && command -v ag\nError: alias rg=rg\n---\n/usr/bin/grep\n---\n","status":"rejected","source":"failure-memory"}

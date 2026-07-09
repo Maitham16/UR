@@ -238,6 +238,16 @@ function getTaskIcon(status: Task['status']): {
         icon: figures.squareSmall,
         color: undefined
       };
+    case 'failed':
+      return {
+        icon: figures.cross,
+        color: 'error'
+      };
+    case 'skipped':
+      return {
+        icon: figures.warning,
+        color: 'warning'
+      };
   }
 }
 function TaskItem(t0) {

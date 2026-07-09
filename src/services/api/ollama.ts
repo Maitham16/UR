@@ -33,6 +33,8 @@ import {
   reconcileToolName,
   type ParsedToolCall,
 } from '../../cli/transports/kimiToolCalls.js'
+import { parseToolInputJsonLenient } from '../../utils/json.js'
+import { logForDebugging } from '../../utils/debug.js'
 
 type OllamaMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -51,7 +53,7 @@ type OllamaTool = {
   }
 }
 
-type OllamaToolCall = {
+export type OllamaToolCall = {
   function?: {
     name?: string
     arguments?: unknown
@@ -321,6 +323,30 @@ function isTruthyEnv(value: string | undefined): boolean {
   return !['0', 'false', 'no', 'off'].includes(value.toLowerCase())
 }
 
+/**
+ * One-time-per-model warning when tool definitions are silently dropped
+ * because the model does not advertise the `tools` capability in /api/show.
+ * Without this, the agent degrades to parsing tool calls out of prose with
+ * no signal to the user about why quality fell off a cliff.
+ */
+const warnedToolsUnsupportedModels = new Set<string>()
+
+/**
+ * Appended to the system prompt when tools were requested but the model
+ * cannot receive native tool definitions. The format below is exactly what
+ * parseBareJsonToolCalls / parseKimiToolCalls recover from plain text, so a
+ * cooperative model still gets working tool calls instead of dead prose.
+ */
+const TEXT_TOOL_CALL_HINT = [
+  '',
+  'IMPORTANT: This runtime could not register native tool-calling for the current model.',
+  'To invoke a tool, output ONLY a single-line JSON object with that tool’s arguments, e.g.:',
+  '{"file_path": "/abs/path/file.py", "content": "full file content"}   (Write)',
+  '{"file_path": "/abs/path/file.py", "old_string": "before", "new_string": "after"}   (Edit)',
+  '{"command": "ls -la"}   (Bash)',
+  'Escape newlines inside JSON strings as \\n. Do not wrap the JSON in prose or code fences.',
+].join('\n')
+
 function toOllamaChatRequest(
   params: BetaMessageStreamParams,
   stream: boolean,
@@ -328,9 +354,20 @@ function toOllamaChatRequest(
 ): OllamaChatRequest {
   const supportsTools = modelCapabilityEnabled(capabilities, 'tools')
   const tools = supportsTools ? toOllamaTools(params.tools) : []
+  const toolsRequested = (params.tools?.length ?? 0) > 0
+  const toolsDropped = toolsRequested && !supportsTools
+  if (toolsDropped && !warnedToolsUnsupportedModels.has(params.model)) {
+    warnedToolsUnsupportedModels.add(params.model)
+    logForDebugging(
+      `Ollama model "${params.model}" does not advertise the 'tools' capability; ` +
+        'tool definitions are not sent and tool calls fall back to text parsing. ' +
+        'Expect degraded agent behavior — prefer a tools-capable model (check with: ollama show <model>).',
+      { level: 'warn' },
+    )
+  }
   const systemMessage: OllamaMessage = {
     role: 'system',
-    content: systemToText(params.system),
+    content: systemToText(params.system) + (toolsDropped ? TEXT_TOOL_CALL_HINT : ''),
   }
   const think = getOllamaThink(params, capabilities)
   const request: OllamaChatRequest = {
@@ -1116,19 +1153,104 @@ function ollamaResponseToURHQMessage(
   } as BetaMessage
 }
 
-function mergeToolCalls(target: OllamaToolCall[], incoming: OllamaToolCall[]) {
-  for (let i = 0; i < incoming.length; i++) {
-    const current = incoming[i]
-    if (!current) {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isEmptyToolArgs(value: unknown): boolean {
+  if (value === undefined || value === null) return true
+  if (typeof value === 'string') return value.trim() === ''
+  if (isPlainObject(value)) return Object.keys(value).length === 0
+  return false
+}
+
+function toolArgsKey(value: unknown): string {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value ?? {})
+  } catch {
+    return String(value)
+  }
+}
+
+/**
+ * Accumulates streamed tool calls across chunks.
+ *
+ * Ollama streams each completed tool call in its own chunk as a
+ * single-element `tool_calls` array — it does NOT re-send a cumulative
+ * array. The previous positional merge (`target[i] = incoming[i]`) therefore
+ * overwrote call N-1 with call N, collapsing multi-call turns (e.g. several
+ * Write calls scaffolding a test suite) into just the last call, and a later
+ * chunk carrying empty arguments could clobber good arguments via `??`.
+ *
+ * Rules:
+ * - A named call with complete arguments is appended.
+ * - A nameless entry is an argument fragment for the call being built:
+ *   string fragments concatenate, object fragments shallow-merge.
+ * - A same-name entry with string arguments while the last call is still a
+ *   string accumulates (fragment-streaming proxies re-send the name).
+ * - An entry identical to one already recorded (same name + serialized args)
+ *   is skipped, so cumulative-style resends stay idempotent.
+ * - Empty arguments never overwrite non-empty arguments.
+ */
+// Exported for tests (test/ollamaToolCalls.test.ts).
+export function mergeToolCalls(
+  target: OllamaToolCall[],
+  incoming: OllamaToolCall[],
+) {
+  for (const current of incoming) {
+    const fn = current?.function
+    if (!fn) {
       continue
     }
-    target[i] = {
-      function: {
-        name: current.function?.name ?? target[i]?.function?.name,
-        arguments:
-          current.function?.arguments ?? target[i]?.function?.arguments ?? {},
-      },
+    const name = fn.name
+    const args = fn.arguments
+    const last = target[target.length - 1]
+
+    if (!name) {
+      if (!last?.function) {
+        continue
+      }
+      const prev = last.function.arguments
+      if (typeof prev === 'string' && typeof args === 'string') {
+        last.function.arguments = prev + args
+      } else if (isPlainObject(prev) && isPlainObject(args)) {
+        last.function.arguments = { ...prev, ...args }
+      } else if (isEmptyToolArgs(prev) && !isEmptyToolArgs(args)) {
+        last.function.arguments = args
+      }
+      continue
     }
+
+    if (
+      last?.function?.name === name &&
+      typeof args === 'string' &&
+      typeof last.function.arguments === 'string'
+    ) {
+      last.function.arguments = last.function.arguments + args
+      continue
+    }
+
+    const key = toolArgsKey(args)
+    const duplicate = target.some(
+      t =>
+        t.function?.name === name &&
+        toolArgsKey(t.function?.arguments) === key,
+    )
+    if (duplicate) {
+      continue
+    }
+
+    if (
+      isEmptyToolArgs(args) &&
+      last?.function?.name === name &&
+      !isEmptyToolArgs(last.function.arguments)
+    ) {
+      // Trailing empty resend of the call we already have — ignore.
+      continue
+    }
+
+    target.push({ function: { name, arguments: args ?? {} } })
   }
 }
 
@@ -1241,9 +1363,12 @@ function parseToolInput(input: unknown): unknown {
   if (typeof input !== 'string') {
     return input ?? {}
   }
-  try {
-    return JSON.parse(input)
-  } catch {
-    return {}
+  const parsed = parseToolInputJsonLenient(input)
+  if (parsed === null && input.trim().length > 0) {
+    logForDebugging(
+      `Ollama tool call arguments failed to parse even after repair: ${input.slice(0, 200)}`,
+      { level: 'warn' },
+    )
   }
+  return parsed ?? {}
 }

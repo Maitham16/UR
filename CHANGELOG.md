@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.44.2
+
+- Fix Ollama streamed tool-call accumulation: Ollama streams each completed
+  tool call in its own chunk, but the merge logic overwrote call N-1 with
+  call N, collapsing multi-call turns (e.g. several `Write` calls scaffolding
+  a test suite) into just the last call. Calls now append; string argument
+  fragments concatenate; empty argument resends no longer clobber good
+  arguments; cumulative resends stay idempotent.
+- Repair almost-JSON tool-call arguments instead of silently emptying them.
+  Local models routinely emit raw newlines inside JSON string values,
+  markdown fences, and trailing commas; strict parsing collapsed the whole
+  input to `{}`, which surfaced as `InputValidationError: required parameter
+  \`file_path\` is missing` and trapped the model in a retry loop. A lenient
+  parser (`parseToolInputJsonLenient`) now repairs these across the Kimi
+  marker parser, the bare-JSON text parser, the Ollama input parser, and
+  streamed tool-input normalization. Repairs are tracked via the
+  `tengu_tool_input_json_repaired` event; only genuinely hopeless input still
+  falls back to `{}`.
+- Warn (once per model, in debug logs) when an Ollama model does not
+  advertise the `tools` capability, since tool definitions are then silently
+  dropped. In that mode the system prompt now includes a concise instruction
+  telling the model to emit single-line bare-JSON tool arguments — the exact
+  format the text parser recovers — instead of leaving it to guess.
+
+## 1.44.1
+
+- Fix task board rendering: finished, failed, and skipped tasks now render as
+  checked instead of unchecked.
+- Deduplicate consecutive task board emissions and keep final boards clean
+  (single header, single progress summary).
+
 ## 1.44.0
 
 - Add `verifier.askBeforeGates` setting (default `false`). When enabled, UR asks

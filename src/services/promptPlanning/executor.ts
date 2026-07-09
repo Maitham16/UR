@@ -192,6 +192,9 @@ function issueValues(
   )
 }
 
+// Track the last board emitted for this run to avoid printing duplicate boards.
+const lastBoardByRun = new WeakMap<RunPromptPlanOptions, string>()
+
 function emitBoard(
   options: RunPromptPlanOptions,
   tasks: NexusTask[],
@@ -201,13 +204,18 @@ function emitBoard(
     ...DEFAULT_PROMPT_PLANNING_CONFIG,
     ...resolvePromptPlanningConfig(options.config),
   }
-  if (config.showTaskBoard) {
-    options.onEvent?.({
-      type: 'board',
-      board: renderTaskBoard(tasks, { maxAgents }),
-      tasks,
-    })
-  }
+  if (!config.showTaskBoard) return
+
+  const board = renderTaskBoard(tasks, { maxAgents })
+  const lastBoard = lastBoardByRun.get(options)
+  if (lastBoard === board) return
+  lastBoardByRun.set(options, board)
+
+  options.onEvent?.({
+    type: 'board',
+    board,
+    tasks,
+  })
 }
 
 function emitStatus(

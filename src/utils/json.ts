@@ -275,3 +275,94 @@ export function addItemToJSONCArray(content: string, newItem: unknown): string {
     return jsonStringify([newItem], null, 4)
   }
 }
+
+/**
+ * Escapes literal control characters (raw newlines, tabs, etc.) that appear
+ * inside JSON string literals. Local models frequently emit tool-call
+ * arguments like {"content": "line1
+ * line2"} with real newlines inside the string, which strict JSON.parse
+ * rejects. Characters outside string literals are left untouched so
+ * structural whitespace stays valid.
+ */
+function escapeControlCharsInJsonStrings(text: string): string {
+  let out = ''
+  let inString = false
+  let escaped = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i] as string
+    if (!inString) {
+      if (ch === '"') inString = true
+      out += ch
+      continue
+    }
+    if (escaped) {
+      escaped = false
+      out += ch
+      continue
+    }
+    if (ch === '\\') {
+      escaped = true
+      out += ch
+      continue
+    }
+    if (ch === '"') {
+      inString = false
+      out += ch
+      continue
+    }
+    const code = ch.charCodeAt(0)
+    if (code < 0x20) {
+      switch (ch) {
+        case '\n':
+          out += '\\n'
+          break
+        case '\r':
+          out += '\\r'
+          break
+        case '\t':
+          out += '\\t'
+          break
+        default:
+          out += `\\u${code.toString(16).padStart(4, '0')}`
+      }
+      continue
+    }
+    out += ch
+  }
+  return out
+}
+
+/**
+ * Lenient parser for model-generated tool-call argument JSON.
+ *
+ * Local/small models routinely produce almost-JSON: markdown code fences,
+ * raw control characters inside strings (unescaped newlines in file content
+ * are the classic case), and trailing commas. Strict parsing failures used to
+ * silently collapse the whole input to {}, which surfaces to the user as
+ * "required parameter X is missing" and to the model as an unrecoverable
+ * retry loop (see reports of Write failing with empty input on Ollama).
+ *
+ * Tries strict JSON.parse first; on failure applies conservative repairs and
+ * retries. Returns null when the input still cannot be parsed, so callers
+ * decide their own fallback (and can log the failure).
+ */
+export function parseToolInputJsonLenient(raw: string): unknown | null {
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    // fall through to repair attempts
+  }
+  let s = raw.trim()
+  // Markdown code fences around the object
+  s = s.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/, '')
+  // Raw control characters inside string literals
+  s = escapeControlCharsInJsonStrings(s)
+  // Trailing commas before } or ]
+  s = s.replace(/,\s*([}\]])/g, '$1')
+  try {
+    return JSON.parse(s)
+  } catch {
+    return null
+  }
+}

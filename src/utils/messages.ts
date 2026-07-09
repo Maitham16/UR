@@ -151,7 +151,7 @@ import { stripIdeContextTags } from './displayTags.js'
 import { hasEmbeddedSearchTools } from './embeddedTools.js'
 import { formatFileSize } from './format.js'
 import { validateImagesForAPI } from './imageValidation.js'
-import { safeParseJSON } from './json.js'
+import { parseToolInputJsonLenient, safeParseJSON } from './json.js'
 import { stripEmptyParameterNames } from './toolInputSanitize.js'
 import { logError, logMCPDebug } from './log.js'
 import { normalizeLegacyToolName } from './permissions/permissionRuleParser.js'
@@ -2681,21 +2681,33 @@ export function normalizeContentFromAPI(
         // TODO: This needs patching as recursive fields can still be stringified
         let normalizedInput: unknown
         if (typeof contentBlock.input === 'string') {
-          const parsed = safeParseJSON(contentBlock.input)
+          let parsed = safeParseJSON(contentBlock.input, false)
           if (parsed === null && contentBlock.input.length > 0) {
-            // TET/FC-v3 diagnostic: the streamed tool input JSON failed to
-            // parse. We fall back to {} which means downstream validation
-            // sees empty input. The raw prefix goes to debug log only — no
-            // PII-tagged proto column exists for it yet.
-            logEvent('tengu_tool_input_json_parse_fail', {
-              toolName: sanitizeToolNameForAnalytics(contentBlock.name),
-              inputLen: contentBlock.input.length,
-            })
-            if (process.env.USER_TYPE === 'ant') {
-              logForDebugging(
-                `tool input JSON parse fail: ${contentBlock.input.slice(0, 200)}`,
-                { level: 'warn' },
-              )
+            // Strict parse failed. Before collapsing to {} (which surfaces to
+            // the user as "required parameter missing" and traps local models
+            // in a retry loop), attempt conservative repair: markdown fences,
+            // raw control characters inside strings, trailing commas.
+            parsed = parseToolInputJsonLenient(contentBlock.input)
+            if (parsed !== null) {
+              logEvent('tengu_tool_input_json_repaired', {
+                toolName: sanitizeToolNameForAnalytics(contentBlock.name),
+                inputLen: contentBlock.input.length,
+              })
+            } else {
+              // TET/FC-v3 diagnostic: the streamed tool input JSON failed to
+              // parse. We fall back to {} which means downstream validation
+              // sees empty input. The raw prefix goes to debug log only — no
+              // PII-tagged proto column exists for it yet.
+              logEvent('tengu_tool_input_json_parse_fail', {
+                toolName: sanitizeToolNameForAnalytics(contentBlock.name),
+                inputLen: contentBlock.input.length,
+              })
+              if (process.env.USER_TYPE === 'ant') {
+                logForDebugging(
+                  `tool input JSON parse fail: ${contentBlock.input.slice(0, 200)}`,
+                  { level: 'warn' },
+                )
+              }
             }
           }
           normalizedInput = parsed ?? {}

@@ -1,3 +1,5 @@
+import { parseToolInputJsonLenient } from '../../utils/json.js'
+
 export interface ParsedToolCall {
   id: string
   name: string
@@ -26,11 +28,14 @@ function parseArgs(raw: string): Record<string, unknown> {
     const v = JSON.parse(s)
     return v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
   } catch {
-    try {
-      return JSON.parse(s.replace(/,\s*([}\]])/g, '$1')) as Record<string, unknown>
-    } catch {
-      return {}
-    }
+    // Local models routinely emit almost-JSON here (raw newlines inside
+    // string values, trailing commas). Silently returning {} used to turn
+    // these calls into empty tool inputs that fail validation with
+    // "required parameter missing" and send the model into a retry loop.
+    const repaired = parseToolInputJsonLenient(s)
+    return repaired && typeof repaired === 'object' && !Array.isArray(repaired)
+      ? (repaired as Record<string, unknown>)
+      : {}
   }
 }
 
@@ -197,6 +202,10 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
   } catch {
     const end = findJsonObjectEnd(trimmed, 0)
     if (end !== null && trimmed.slice(end).trim()) return null
+    const repaired = parseToolInputJsonLenient(trimmed)
+    if (repaired && typeof repaired === 'object' && !Array.isArray(repaired)) {
+      return repaired as Record<string, unknown>
+    }
     return parseLooseWriteObject(trimmed) ?? parseLooseEditObject(trimmed)
   }
 }
