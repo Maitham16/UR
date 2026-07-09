@@ -17,9 +17,9 @@ describe('/debug-v2 bundled skill', () => {
     expect(skill.name).toBe('debug-v2')
     expect(skill.aliases).toContain('debug2')
     expect(skill.userInvocable).toBe(true)
-    expect(skill.allowedTools).toContain('Agent')
+    expect((skill as Extract<typeof skill, { type: 'prompt' }>).allowedTools).toContain('Agent')
 
-    const prompt = await skill.getPromptForCommand('parser crashes on empty input', {} as never)
+    const prompt = await (skill as Extract<typeof skill, { type: 'prompt' }>).getPromptForCommand('parser crashes on empty input', {} as never)
     expect(prompt).toHaveLength(1)
     expect(prompt[0]!.type).toBe('text')
     const text = prompt[0]!.type === 'text' ? prompt[0]!.text : ''

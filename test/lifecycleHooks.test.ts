@@ -57,7 +57,7 @@ describe('lifecycle hooks', () => {
       'BeforeCommit',
       'OnFailure',
     ]) {
-      expect(HOOK_EVENTS).toContain(event)
+      expect(HOOK_EVENTS as readonly string[]).toContain(event)
     }
   })
 

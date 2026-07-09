@@ -98,7 +98,7 @@ describe('provider runtime routing', () => {
   test('validateProviderRuntime fails for missing OpenAI-compatible base URL', async () => {
     const result = await validateProviderRuntime('openai-compatible')
     expect(result.ok).toBe(false)
-    if (!result.ok) {
+    if (result.ok === false) {
       expect(result.error).toContain('base URL')
     }
   })
@@ -107,7 +107,7 @@ describe('provider runtime routing', () => {
     await withEnvCleared(['OPENAI_API_KEY'], async () => {
       const result = await validateProviderRuntime('openai-api')
       expect(result.ok).toBe(false)
-      if (!result.ok) {
+      if (result.ok === false) {
         expect(result.error).toContain('API key')
       }
     })
@@ -119,7 +119,7 @@ describe('provider runtime routing', () => {
     // validateProviderRuntime checks the official CLI is present; in CI it is
     // absent, so it reports not-found — never a bridge block.
     const result = await validateProviderRuntime('codex-cli')
-    if (!result.ok) {
+    if (result.ok === false) {
       expect(result.error).not.toContain('external app bridge')
     }
   })

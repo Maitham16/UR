@@ -47,8 +47,8 @@ describe('subscription CLI dispatch is real (not faked)', () => {
     expect(calls[0].args).toContain('--model')
     expect(calls[0].args).toContain('gpt-5.5') // provider prefix stripped
     expect(calls[0].args.join(' ')).toContain('hello') // prompt forwarded
-    expect(res.content[0].text).toBe('the real answer')
-    expect(res.content[0].text).not.toBe('Subscription CLI response') // regression guard
+    expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('the real answer')
+    expect((res as { content: Array<{ text?: string }> }).content[0]?.text).not.toBe('Subscription CLI response') // regression guard
   })
 
   test('default runner ignores stdin when prompt is already an argument', () => {
@@ -114,7 +114,7 @@ describe('subscription CLI dispatch is real (not faked)', () => {
     })
     expect(calls[0].args).toContain('sonnet')
     expect(calls[0].args).not.toContain('sonnet-5')
-    expect(res.content[0].text).toBe('claude says hi')
+    expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('claude says hi')
   })
 
   test('gemini-cli returns raw stdout when not JSON', async () => {
@@ -130,7 +130,7 @@ describe('subscription CLI dispatch is real (not faked)', () => {
       max_tokens: 16,
     })
     expect(calls[0].args).toContain('gemini-2.5-pro')
-    expect(res.content[0].text).toBe('gemini plain text')
+    expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('gemini plain text')
   })
 
   test('cli JSON error is reported as provider-scoped failure, not assistant text', async () => {
@@ -352,7 +352,7 @@ describe('subscription CLI rejects image/multimodal content', () => {
       max_tokens: 16,
       stream: true,
     })
-    await expect(pending.withResponse()).rejects.toThrow('does not support image/multimodal input')
+    await expect((pending as { withResponse: () => Promise<unknown> }).withResponse()).rejects.toThrow('does not support image/multimodal input')
     expect(calls).toHaveLength(0)
   })
 
@@ -393,7 +393,7 @@ describe('subscription CLI rejects image/multimodal content', () => {
       max_tokens: 16,
     })
     expect(calls).toHaveLength(1)
-    expect(res.content[0].text).toBe('the real answer')
+    expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('the real answer')
   })
 })
 
@@ -424,14 +424,14 @@ describe('standard API wire formats', () => {
       messages: userMessages(),
       max_tokens: 32,
     })
-    const [url, body, config] = post.mock.calls[0]
+    const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
     expect(url).toBe('https://api.anthropic.com/v1/messages')
     expect(config.headers['x-api-key']).toBe('sk-ant-test')
     expect(config.headers['anthropic-version']).toBeDefined()
     expect(config.headers.Authorization).toBeUndefined()
     expect(body.system).toBe('be terse')
     expect(body.messages).toEqual(userMessages())
-    expect(res.content[0].text).toBe('hi from claude')
+    expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('hi from claude')
   })
 
   test('gemini-api posts generateContent with contents/parts', async () => {
@@ -452,11 +452,11 @@ describe('standard API wire formats', () => {
       messages: userMessages(),
       max_tokens: 32,
     })
-    const [url, body, config] = post.mock.calls[0]
+    const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
     expect(url).toContain('/models/gemini-3.5-flash:generateContent')
     expect(config.headers['x-goog-api-key']).toBe('gm-key')
     expect(body.contents[0].parts[0].text).toBe('hello')
-    expect(res.content[0].text).toBe('hi from gemini')
+    expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('hi from gemini')
   })
 
   test('openai-api posts chat/completions with Bearer', async () => {
@@ -482,7 +482,7 @@ describe('standard API wire formats', () => {
     const [url, , config] = post.mock.calls[0]
     expect(url).toBe('https://api.openai.com/v1/chat/completions')
     expect(config.headers.Authorization).toBe('Bearer sk-openai')
-    expect(res.content[0].text).toBe('hi from openai')
+    expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('hi from openai')
   })
 })
 
@@ -514,7 +514,7 @@ describe('openai-compatible adapter', () => {
       })
       expect(seen[0].url).toBe('http://localhost:1234/v1/chat/completions')
       expect(seen[0].body.model).toBe('local-model')
-      expect(res.content[0].text).toBe('hi from lmstudio')
+      expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('hi from lmstudio')
     } finally {
       globalThis.fetch = original
     }
@@ -540,7 +540,7 @@ describe('real provider identity', () => {
       ollama: 'ollama',
     }
     for (const id of PROVIDER_IDS) {
-      expect(getProviderFamily(id)).toBe(expected[id])
+      expect(getProviderFamily(id) as string).toBe(expected[id as keyof typeof expected])
     }
   })
 

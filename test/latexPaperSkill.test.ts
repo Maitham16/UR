@@ -13,7 +13,7 @@ describe('/latex-paper bundled skill', () => {
     expect(skill.aliases).toContain('latex')
     expect(skill.userInvocable).toBe(true)
 
-    const prompt = await skill.getPromptForCommand('survey of local-first agents', {} as never)
+    const prompt = await (skill as Extract<typeof skill, { type: 'prompt' }>).getPromptForCommand('survey of local-first agents', {} as never)
     const text = prompt[0]!.type === 'text' ? prompt[0]!.text : ''
     expect(text).toContain('worktree')
     expect(text).toContain('build')

@@ -91,7 +91,7 @@ describe('evaluateDoneGate', () => {
   test('write_claim with no mutating effect fails with a reminder', () => {
     const r = evaluateDoneGate('write_claim', false, false)
     expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.reminder).toContain('Write')
+    if (r.ok === false) expect(r.reminder).toContain('Write')
   })
   test('run_claim requires a Bash success', () => {
     expect(evaluateDoneGate('run_claim', false, false).ok).toBe(false)
@@ -222,7 +222,7 @@ describe('projectGates', () => {
     try {
       const r = await runGateCommands(['false'], cwd, 5000)
       expect(r.ok).toBe(false)
-      if (!r.ok) {
+      if (r.ok === false) {
         expect(r.command).toBe('false')
         expect(r.reminder).toContain('FAILED')
       }
@@ -253,7 +253,7 @@ describe('Verifier integration', () => {
       v.beginTurn(TURN)
       const r = await v.checkTurn(TURN, 'I created the file.', false)
       expect(r.ok).toBe(false)
-      if (!r.ok) expect(r.reminder).toContain('Write')
+      if (r.ok === false) expect(r.reminder).toContain('Write')
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }
@@ -266,7 +266,7 @@ describe('Verifier integration', () => {
       v.beginTurn(TURN)
       const r = await v.checkTurn(TURN, '', false)
       expect(r.ok).toBe(false)
-      if (!r.ok) expect(r.reminder).toContain('Empty')
+      if (r.ok === false) expect(r.reminder).toContain('Empty')
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }
@@ -304,7 +304,7 @@ describe('Verifier integration', () => {
       )
       const r = await v.checkTurn(TURN, 'I created the file.', true)
       expect(r.ok).toBe(false)
-      if (!r.ok) expect(r.reminder).toContain('FAILED')
+      if (r.ok === false) expect(r.reminder).toContain('FAILED')
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }
@@ -374,7 +374,7 @@ describe('Verifier integration', () => {
       )
       const r = await v.checkTurn(TURN, 'I edited the file.', true)
       expect(r.ok).toBe(false)
-      if (!r.ok) {
+      if (r.ok === false) {
         expect(r.reminder).toContain('bun run typecheck')
         expect(r.reminder).toContain('auto gate failed')
       }

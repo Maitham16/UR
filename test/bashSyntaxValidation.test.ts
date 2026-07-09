@@ -2,15 +2,9 @@ import { describe, expect, test } from 'bun:test'
 import { BashTool } from '../src/tools/BashTool/BashTool.js'
 import type { ValidationResult } from '../src/Tool.js'
 
-// validateInput does not read context in the quote-safety path, so a minimal
-// stub is sufficient (mirrors the pattern in test/lifecycleHooks.test.ts).
-const stubContext = {} as never
-
+// BashTool's concrete validateInput takes only the input.
 async function validate(command: string): Promise<ValidationResult> {
-  return BashTool.validateInput!(
-    { command } as never,
-    stubContext,
-  )
+  return BashTool.validateInput!({ command } as never)
 }
 
 describe('BashTool.validateInput quote-safety', () => {
@@ -26,7 +20,7 @@ describe('BashTool.validateInput quote-safety', () => {
 
     const result = await validate(cmd)
     expect(result.result).toBe(false)
-    if (!result.result) {
+    if (result.result === false) {
       const msg = result.message
       // Must name the defect so the model knows what to fix.
       expect(msg).toMatch(/unbalanced|unterminated/i)
@@ -41,7 +35,7 @@ describe('BashTool.validateInput quote-safety', () => {
   test('rejects a simple unterminated double quote', async () => {
     const result = await validate('echo "hello world')
     expect(result.result).toBe(false)
-    if (!result.result) {
+    if (result.result === false) {
       expect(result.message).toMatch(/unbalanced|unterminated/i)
       expect(result.errorCode).toBe(11)
     }
@@ -50,7 +44,7 @@ describe('BashTool.validateInput quote-safety', () => {
   test('rejects an unterminated single quote', async () => {
     const result = await validate("echo 'it does not close")
     expect(result.result).toBe(false)
-    if (!result.result) {
+    if (result.result === false) {
       expect(result.message).toMatch(/unbalanced|unterminated/i)
     }
   })

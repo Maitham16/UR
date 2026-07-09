@@ -17,7 +17,7 @@ describe('persistent project memory', () => {
 
   it('TASK_MEMORY_KINDS includes the new categories', () => {
     for (const kind of ['architecture', 'preference', 'attempt', 'accepted', 'rejected']) {
-      expect(TASK_MEMORY_KINDS).toContain(kind)
+      expect(TASK_MEMORY_KINDS as readonly string[]).toContain(kind)
     }
   })
 

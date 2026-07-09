@@ -99,13 +99,13 @@ describe('project context pack', () => {
     try {
       writeProject(dir)
       const { call } = await import('../src/commands/context-pack/context-pack.js')
-      const scan = await runWithCwdOverride(dir, () => call('scan'))
+      const scan = await runWithCwdOverride(dir, () => call('scan', {} as never))
       expect(scan.type).toBe('text')
       if (scan.type !== 'text') throw new Error('expected text')
       expect(scan.value).toContain('.ur/project-manifest.json')
 
       const remembered = await runWithCwdOverride(dir, () =>
-        call('remember --decision "Use manifest commands first"'),
+        call('remember --decision "Use manifest commands first"', {} as never),
       )
       expect(remembered.type).toBe('text')
       if (remembered.type !== 'text') throw new Error('expected text')

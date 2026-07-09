@@ -145,7 +145,7 @@ function countTasks(tasks: Task[]): Record<Task['status'], number> {
       counts[task.status] += 1
       return counts
     },
-    { pending: 0, in_progress: 0, completed: 0 },
+    { pending: 0, in_progress: 0, completed: 0, failed: 0, skipped: 0 },
   )
 }
 

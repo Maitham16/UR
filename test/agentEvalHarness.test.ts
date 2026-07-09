@@ -131,6 +131,7 @@ describe('eval persistence and command', () => {
       passed: 1,
       failed: 0,
       passRate: 1,
+      totalDurationMs: 0,
       byCategory: { coding: { passed: 1, total: 1 } },
       cases: [],
     })
@@ -149,15 +150,15 @@ describe('eval persistence and command', () => {
     const dir = tempDir('ur-eval-cmd-')
     const { call } = await import('../src/commands/eval/eval.js')
 
-    const init = await runWithCwdOverride(dir, () => call('init'))
+    const init = await runWithCwdOverride(dir, () => call('init', {} as never))
     if (init.type !== 'text') throw new Error('expected text')
     expect(init.value).toContain('starter.json')
 
-    const list = await runWithCwdOverride(dir, () => call('list'))
+    const list = await runWithCwdOverride(dir, () => call('list', {} as never))
     if (list.type !== 'text') throw new Error('expected text')
     expect(list.value).toContain('starter')
 
-    const run = await runWithCwdOverride(dir, () => call('run starter --dry-run --json'))
+    const run = await runWithCwdOverride(dir, () => call('run starter --dry-run --json', {} as never))
     if (run.type !== 'text') throw new Error('expected text')
     const report = JSON.parse(run.value)
     expect(report.total).toBeGreaterThan(0)

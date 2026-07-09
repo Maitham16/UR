@@ -25,7 +25,7 @@ function makeContext() {
     setResponseLength: () => {},
     updateFileHistoryState: () => {},
     updateAttributionState: () => {},
-  }
+  } as never
 }
 
 describe('ApiTool', () => {
@@ -54,18 +54,15 @@ describe('ApiTool', () => {
 
   test('fetches a URL and returns structured output', async () => {
     const originalFetch = globalThis.fetch
-    globalThis.fetch = async () =>
+    globalThis.fetch = (async () =>
       new Response(JSON.stringify({ hello: 'world' }), {
         status: 200,
         statusText: 'OK',
         headers: { 'content-type': 'application/json' },
-      })
+      })) as unknown as typeof fetch
     try {
       const result = await ApiTool.call(
         { url: 'https://example.com/api', method: 'GET' } as never,
-        makeContext(),
-        async () => ({ behavior: 'allow' as const, updatedInput: { url: 'https://example.com/api', method: 'GET' } }),
-        { role: 'assistant', content: [] } as never,
       )
       const data = result.data as { status: number; body: { hello: string } }
       expect(data.status).toBe(200)

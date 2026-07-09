@@ -42,7 +42,7 @@ describe('discoverOllamaHosts', () => {
     const socket = {
       destroyed: false,
       destroy: () => {
-        socket.destroyed = true
+        ;(socket as { destroyed: boolean }).destroyed = true
       },
       end: () => {},
       on: (event: string, handler: () => void) => {
@@ -68,7 +68,7 @@ describe('discoverOllamaHosts', () => {
   beforeEach(() => {
     connectCount = 0
     fetchCalls = []
-    globalThis.fetch = async (input: RequestInfo | URL, _init?: RequestInit) => {
+    globalThis.fetch = (async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = new URL(String(input))
       fetchCalls.push({ host: url.hostname, port: Number(url.port) })
       if (url.hostname === '192.168.1.50') {
@@ -88,7 +88,7 @@ describe('discoverOllamaHosts', () => {
         } as Response
       }
       return { ok: false } as Response
-    }
+    }) as unknown as typeof fetch
   })
 
   afterEach(() => {

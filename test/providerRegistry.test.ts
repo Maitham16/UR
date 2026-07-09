@@ -42,7 +42,7 @@ function adapters(options: {
   missing?: string[]
   env?: Record<string, string | undefined>
   run?: (file: string, args: string[]) => Promise<CommandResult>
-  fetch?: typeof fetch
+  fetch?: ProviderDoctorAdapters['fetch']
 } = {}): ProviderDoctorAdapters {
   const missing = new Set(options.missing ?? [])
   return {

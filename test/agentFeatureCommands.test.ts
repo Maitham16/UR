@@ -68,7 +68,7 @@ describe('agent feature commands', () => {
     const dir = tempDir('ur-local-first-command-')
     const { call } = await import('../src/commands/local-first/local-first.js')
 
-    const result = await runWithCwdOverride(dir, () => call('--json'))
+    const result = await runWithCwdOverride(dir, () => call('--json', {} as never))
     expect(result.type).toBe('text')
     if (result.type !== 'text') throw new Error('expected text')
     const parsed = JSON.parse(result.value)
@@ -81,7 +81,7 @@ describe('agent feature commands', () => {
     const dir = tempDir('ur-template-command-')
     const { call } = await import('../src/commands/agent-templates/agent-templates.js')
 
-    const result = await runWithCwdOverride(dir, () => call('install revier'))
+    const result = await runWithCwdOverride(dir, () => call('install revier', {} as never))
 
     expect(result.type).toBe('text')
     if (result.type === 'text') {
@@ -96,7 +96,7 @@ describe('agent feature commands', () => {
     const { call } = await import('../src/commands/automation/automation.js')
 
     const invalid = await runWithCwdOverride(dir, () =>
-      call('create bad --schedule "not cron" --prompt "Review"'),
+      call('create bad --schedule "not cron" --prompt "Review"', {} as never),
     )
     expect(invalid.type).toBe('text')
     if (invalid.type === 'text') {
@@ -104,14 +104,14 @@ describe('agent feature commands', () => {
     }
 
     const created = await runWithCwdOverride(dir, () =>
-      call('create nightly --schedule "* * * * *" --prompt "Review open tasks" --json'),
+      call('create nightly --schedule "* * * * *" --prompt "Review open tasks" --json', {} as never),
     )
     expect(created.type).toBe('text')
     if (created.type !== 'text') throw new Error('expected text')
     expect(JSON.parse(created.value).name).toBe('nightly')
 
     const due = await runWithCwdOverride(dir, () =>
-      call('run-due --dry-run --now 2100-01-01T00:00:00.000Z --json'),
+      call('run-due --dry-run --now 2100-01-01T00:00:00.000Z --json', {} as never),
     )
     expect(due.type).toBe('text')
     if (due.type !== 'text') throw new Error('expected text')
@@ -125,7 +125,7 @@ describe('agent feature commands', () => {
     const { call } = await import('../src/commands/agent-task/agent-task.js')
 
     const result = await runWithCwdOverride(dir, () =>
-      call('pr --create --dry-run --title "Test PR" --body "Body text"'),
+      call('pr --create --dry-run --title "Test PR" --body "Body text"', {} as never),
     )
 
     expect(result.type).toBe('text')
@@ -140,7 +140,7 @@ describe('agent feature commands', () => {
     const { call } = await import('../src/commands/bg/bg.js')
 
     const created = await runWithCwdOverride(dir, () =>
-      call('run "Fix the flaky test" --worktree --pr --route strong --title "Fix flaky test" --dry-run --json'),
+      call('run "Fix the flaky test" --worktree --pr --route strong --title "Fix flaky test" --dry-run --json', {} as never),
     )
 
     expect(created.type).toBe('text')
@@ -153,7 +153,7 @@ describe('agent feature commands', () => {
     expect(parsed.task.routeStrategy).toBe('strong')
     expect(parsed.command.join(' ')).toContain('bg worker')
 
-    const listed = await runWithCwdOverride(dir, () => call('list --json'))
+    const listed = await runWithCwdOverride(dir, () => call('list --json', {} as never))
     if (listed.type !== 'text') throw new Error('expected text')
     expect(JSON.parse(listed.value).tasks).toHaveLength(1)
   })
@@ -163,7 +163,7 @@ describe('agent feature commands', () => {
     const { call } = await import('../src/commands/bg/bg.js')
 
     const result = await runWithCwdOverride(dir, () =>
-      call('fanout "Improve the parser" --agents 2 --dry-run --json'),
+      call('fanout "Improve the parser" --agents 2 --dry-run --json', {} as never),
     )
 
     expect(result.type).toBe('text')
@@ -185,19 +185,19 @@ describe('agent feature commands', () => {
     } = await import('../src/services/agents/backgroundRunner.js')
 
     const bgResult = await runWithCwdOverride(dir, () =>
-      bg.call('run "Implement feature" --dry-run --json'),
+      bg.call('run "Implement feature" --dry-run --json', {} as never),
     )
     if (bgResult.type !== 'text') throw new Error('expected text')
     const taskId = JSON.parse(bgResult.value).task.id
 
     const artifactResult = await runWithCwdOverride(dir, () =>
-      artifacts.call(`add --kind plan --title "Plan" --body "Initial plan" --task ${taskId} --json`),
+      artifacts.call(`add --kind plan --title "Plan" --body "Initial plan" --task ${taskId} --json`, {} as never),
     )
     if (artifactResult.type !== 'text') throw new Error('expected text')
     const artifactId = JSON.parse(artifactResult.value).id
 
     const comment = await runWithCwdOverride(dir, () =>
-      artifacts.call(`comment ${artifactId} --feedback "Use the simpler path"`),
+      artifacts.call(`comment ${artifactId} --feedback "Use the simpler path"`, {} as never),
     )
     expect(comment.type).toBe('text')
     if (comment.type === 'text') {
@@ -228,9 +228,9 @@ describe('agent feature commands', () => {
     const { call } = await import('../src/commands/memory-retention/memory-retention.js')
 
     await runWithCwdOverride(dir, () =>
-      call('set --ttl-days 365 --max-entries 10 --json'),
+      call('set --ttl-days 365 --max-entries 10 --json', {} as never),
     )
-    const pruned = await runWithCwdOverride(dir, () => call('prune --json'))
+    const pruned = await runWithCwdOverride(dir, () => call('prune --json', {} as never))
 
     expect(pruned.type).toBe('text')
     if (pruned.type !== 'text') throw new Error('expected text')
@@ -244,7 +244,7 @@ describe('agent feature commands', () => {
     const dir = tempDir('ur-code-index-watch-')
     const { call } = await import('../src/commands/code-index/code-index.js')
 
-    const result = await runWithCwdOverride(dir, () => call('watch --dry-run --json'))
+    const result = await runWithCwdOverride(dir, () => call('watch --dry-run --json', {} as never))
 
     expect(result.type).toBe('text')
     if (result.type !== 'text') throw new Error('expected text')
@@ -369,7 +369,7 @@ describe('agent feature commands', () => {
     const { call } = await import('../src/commands/eval/eval.js')
 
     const imported = await runWithCwdOverride(dir, () =>
-      call(`bench swe-bench --file "${benchFile}" --name local-swe --json`),
+      call(`bench swe-bench --file "${benchFile}" --name local-swe --json`, {} as never),
     )
     expect(imported.type).toBe('text')
     if (imported.type !== 'text') throw new Error('expected text')
@@ -379,7 +379,7 @@ describe('agent feature commands', () => {
     expect(parsed.suite.cases[0].prompt).toContain('Fix the parser')
     expect(existsSync(join(dir, '.ur', 'evals', 'local-swe.json'))).toBe(true)
 
-    const validation = await runWithCwdOverride(dir, () => call('validate local-swe --json'))
+    const validation = await runWithCwdOverride(dir, () => call('validate local-swe --json', {} as never))
     if (validation.type !== 'text') throw new Error('expected text')
     expect(JSON.parse(validation.value).valid).toBe(true)
   })
@@ -400,21 +400,21 @@ describe('agent feature commands', () => {
     const claims = await import('../src/commands/claim-ledger/claim-ledger.js')
     const browser = await import('../src/commands/browser-qa/browser-qa.js')
 
-    await runWithCwdOverride(dir, () => semantic.call('build --json'))
+    await runWithCwdOverride(dir, () => semantic.call('build --json', {} as never))
     const search = await runWithCwdOverride(dir, () =>
-      semantic.call('search release checks --json'),
+      semantic.call('search release checks --json', {} as never),
     )
     if (search.type !== 'text') throw new Error('expected text')
     expect(JSON.parse(search.value).results).toHaveLength(1)
 
     await runWithCwdOverride(dir, () =>
-      claims.call('add --claim "Release checks exist" --source file:README.md --json'),
+      claims.call('add --claim "Release checks exist" --source file:README.md --json', {} as never),
     )
-    const valid = await runWithCwdOverride(dir, () => claims.call('validate --json'))
+    const valid = await runWithCwdOverride(dir, () => claims.call('validate --json', {} as never))
     if (valid.type !== 'text') throw new Error('expected text')
     expect(JSON.parse(valid.value).valid).toBe(true)
 
-    const qa = await runWithCwdOverride(dir, () => browser.call('validate --json'))
+    const qa = await runWithCwdOverride(dir, () => browser.call('validate --json', {} as never))
     if (qa.type !== 'text') throw new Error('expected text')
     expect(JSON.parse(qa.value).results[0].errors).toEqual([])
   })

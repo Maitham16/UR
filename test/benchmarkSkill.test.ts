@@ -13,7 +13,7 @@ describe('/benchmark bundled skill', () => {
     expect(skill.aliases).toContain('bench')
     expect(skill.userInvocable).toBe(true)
 
-    const prompt = await skill.getPromptForCommand('parser throughput', {} as never)
+    const prompt = await (skill as Extract<typeof skill, { type: 'prompt' }>).getPromptForCommand('parser throughput', {} as never)
     const text = prompt[0]!.type === 'text' ? prompt[0]!.text : ''
     expect(text).toContain('worktree')
     expect(text).toContain('results')

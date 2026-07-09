@@ -48,9 +48,7 @@ describe('TestRunnerTool', () => {
         setResponseLength: () => {},
         updateFileHistoryState: () => {},
         updateAttributionState: () => {},
-      },
-      async () => ({ behavior: 'allow' as const, updatedInput: { command: 'echo ok' } }),
-      { role: 'assistant', content: [] } as never,
+      } as never,
     )
     const data = result.data as { success: boolean; command: string; stdout: string }
     expect(data.success).toBe(true)

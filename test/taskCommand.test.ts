@@ -18,7 +18,7 @@ describe('ur task command', () => {
       const { call } = await import('../src/commands/task/task.js')
 
       const started = await runWithCwdOverride(dir, () =>
-        call('start fix-auth --worktree --json'),
+        call('start fix-auth --worktree --json', {} as never),
       )
       if (started.type !== 'text') throw new Error('expected text')
       const task = JSON.parse(started.value)
@@ -27,14 +27,14 @@ describe('ur task command', () => {
       expect(task.worktree.enabled).toBe(true)
 
       const run = await runWithCwdOverride(dir, () =>
-        call(`run ${task.id} --dry-run --json`),
+        call(`run ${task.id} --dry-run --json`, {} as never),
       )
       if (run.type !== 'text') throw new Error('expected text')
       const startedTask = JSON.parse(run.value)
       expect(startedTask.task.id).toBe(task.id)
       expect(startedTask.command.join(' ')).toContain(`bg worker ${task.id}`)
 
-      const listed = await runWithCwdOverride(dir, () => call('list --json'))
+      const listed = await runWithCwdOverride(dir, () => call('list --json', {} as never))
       if (listed.type !== 'text') throw new Error('expected text')
       const tasks = JSON.parse(listed.value).tasks
       expect(tasks).toHaveLength(1)

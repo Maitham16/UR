@@ -24,7 +24,7 @@ async function withAcpServer(
   ) => Promise<void>,
   dryRun = false,
 ): Promise<void> {
-  const fetchImpl: typeof fetch = async (input, init) => {
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' || input instanceof URL
       ? input
       : input.url
@@ -35,7 +35,7 @@ async function withAcpServer(
       cwd: dir,
       dryRun,
     })
-  }
+  }) as unknown as typeof fetch
   const client = new AcpClient({ baseUrl: 'http://127.0.0.1', token, fetch: fetchImpl })
   try {
     await fn(0, client, fetchImpl)

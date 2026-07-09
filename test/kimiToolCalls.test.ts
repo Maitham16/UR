@@ -276,7 +276,7 @@ test('remote transport synthesizes bare Bash Read and TaskUpdate JSON into tool 
     type: 'text',
     text: 'Verify files.\n',
   })
-  expect(message.message.content.slice(1).map(block => block.name)).toEqual([
+  expect(message.message.content.slice(1).map(block => (block as { name?: string }).name)).toEqual([
     'Bash',
     'Read',
     'TaskUpdate',

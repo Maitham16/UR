@@ -69,7 +69,11 @@ export function notifyTasksUpdated(): void {
 export const TASK_STATUSES = ['pending', 'in_progress', 'completed'] as const
 
 export const TaskStatusSchema = lazySchema(() =>
-  z.enum(['pending', 'in_progress', 'completed']),
+  // 'failed' and 'skipped' are produced by crew/workflow runs and rendered
+  // by TaskListV2 (✘ / ⚠); the enum previously omitted them so any consumer
+  // typed against Task['status'] couldn't reference states that actually
+  // occur in task files.
+  z.enum(['pending', 'in_progress', 'completed', 'failed', 'skipped']),
 )
 export type TaskStatus = z.infer<ReturnType<typeof TaskStatusSchema>>
 

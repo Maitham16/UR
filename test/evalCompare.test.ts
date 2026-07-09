@@ -58,7 +58,7 @@ describe('eval compare', () => {
     expect(report.byLabel.dry1.passed).toBe(2)
     expect(report.byLabel.dry2.passed).toBe(2)
     expect(report.rows[0].caseId).toBe('a')
-    expect((report.rows[0] as { dry1: { passed: boolean } }).dry1.passed).toBe(true)
+    expect((report.rows[0] as unknown as { dry1: { passed: boolean } }).dry1.passed).toBe(true)
   })
 
   test('eval command supports compare pool codex claude syntax', async () => {
@@ -67,7 +67,7 @@ describe('eval compare', () => {
       saveSuite(dir, starterSuite())
       const { call } = await import('../src/commands/eval/eval.js')
       const result = await runWithCwdOverride(dir, () =>
-        call('compare starter-compare pool codex claude --dry-run'),
+        call('compare starter-compare pool codex claude --dry-run', {} as never),
       )
       expect(result.type).toBe('text')
       if (result.type !== 'text') throw new Error('expected text')

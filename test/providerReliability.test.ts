@@ -175,7 +175,7 @@ describe('provider timeout, retry, and base URL reliability', () => {
         return new Response('temporarily unavailable', { status: 503 })
       }
       return textResponse()
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     const client = await createOpenAICompatibleClient({
       baseUrl: 'http://localhost:1234',
@@ -201,7 +201,7 @@ describe('provider timeout, retry, and base URL reliability', () => {
     globalThis.fetch = (async () => {
       calls++
       return new Response('invalid api key', { status: 401 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     const client = await createOpenAICompatibleClient({
       baseUrl: 'http://localhost:1234/v1',

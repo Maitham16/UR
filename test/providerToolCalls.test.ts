@@ -108,7 +108,7 @@ describe('provider tool-call request and response mapping', () => {
       tool_choice: toolChoice,
     })
 
-    const [, body] = post.mock.calls[0]
+    const [, body] = post.mock.calls[0] as [string, Record<string, any>]
     assertOpenAIToolPayload(body)
     assertToolUseResponse(res)
   })
@@ -161,7 +161,7 @@ describe('provider tool-call request and response mapping', () => {
       tool_choice: toolChoice,
     })
 
-    const [, body] = post.mock.calls[0]
+    const [, body] = post.mock.calls[0] as [string, Record<string, any>]
     expect(body.messages[0]).toEqual({ role: 'system', content: 'be precise' })
     expect(body.messages[1]).toEqual({ role: 'user', content: 'update the file' })
     assertOpenAIToolPayload(body)
@@ -199,7 +199,7 @@ describe('provider tool-call request and response mapping', () => {
       tool_choice: toolChoice,
     })
 
-    const [, body] = post.mock.calls[0]
+    const [, body] = post.mock.calls[0] as [string, Record<string, any>]
     expect(body.tools).toEqual(sampleTools)
     expect(body.tool_choice).toEqual(toolChoice)
     expect(res.stop_reason).toBe('tool_use')
@@ -246,7 +246,7 @@ describe('provider tool-call request and response mapping', () => {
       tool_choice: toolChoice,
     })
 
-    const [, body] = post.mock.calls[0]
+    const [, body] = post.mock.calls[0] as [string, Record<string, any>]
     expect(body.tools).toEqual([
       {
         functionDeclarations: [

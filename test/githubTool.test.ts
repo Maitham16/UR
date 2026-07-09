@@ -26,7 +26,7 @@ function makeContext() {
     setResponseLength: () => {},
     updateFileHistoryState: () => {},
     updateAttributionState: () => {},
-  }
+  } as never
 }
 
 describe('GitHubTool', () => {

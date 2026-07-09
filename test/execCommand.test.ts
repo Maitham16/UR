@@ -61,7 +61,7 @@ describe('ur exec command', () => {
     const originalIsTTY = process.stdin.isTTY
     process.stdin.isTTY = true
     try {
-      const result = await call('')
+      const result = await call('', {} as never)
       expect(result.type).toBe('text')
       if (result.type === 'text') {
         expect(result.value).toContain('Usage:')
@@ -75,7 +75,7 @@ describe('ur exec command', () => {
     const dir = tempDir('ur-exec-')
     try {
       const result = await runWithCwdOverride(dir, () =>
-        call('"add tests" "fix bug" --concurrency 2 --dry-run --json'),
+        call('"add tests" "fix bug" --concurrency 2 --dry-run --json', {} as never),
       )
       expect(result.type).toBe('text')
       if (result.type !== 'text') throw new Error('expected text')

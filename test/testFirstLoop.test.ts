@@ -147,7 +147,7 @@ describe('test-first execution loop', () => {
     try {
       writeNodeProject(dir)
       const { call } = await import('../src/commands/test-first/test-first.js')
-      const result = await runWithCwdOverride(dir, () => call('detect'))
+      const result = await runWithCwdOverride(dir, () => call('detect', {} as never))
       expect(result.type).toBe('text')
       if (result.type !== 'text') throw new Error('expected text')
       expect(result.value).toContain('compile: bun run typecheck')
@@ -163,7 +163,7 @@ describe('test-first execution loop', () => {
       writeNodeProject(dir)
       const { call } = await import('../src/commands/test-first/test-first.js')
       const result = await runWithCwdOverride(dir, () =>
-        call('--max-attempts 1 --dry-run'),
+        call('--max-attempts 1 --dry-run', {} as never),
       )
       expect(result.type).toBe('text')
       if (result.type !== 'text') throw new Error('expected text')

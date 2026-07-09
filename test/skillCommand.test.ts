@@ -8,11 +8,11 @@ import { runWithCwdOverride } from '../src/utils/cwd.ts'
 test('ur skill init scaffolds expected files', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'ur-skill-cmd-'))
   const name = `my-skill-${Date.now()}`
-  const result = await runWithCwdOverride(tmp, () => call(`init ${name}`))
+  const result = await runWithCwdOverride(tmp, () => call(`init ${name}`, {} as never))
   expect(result.type).toBe('text')
-  expect(result.value).toContain(`Initialized skill "${name}"`)
-  expect(result.value).toContain('skill.yaml')
-  expect(result.value).toContain(join(tmp, '.ur', 'skills', name))
+  expect((result as Extract<typeof result, { type: 'text' }>).value).toContain(`Initialized skill "${name}"`)
+  expect((result as Extract<typeof result, { type: 'text' }>).value).toContain('skill.yaml')
+  expect((result as Extract<typeof result, { type: 'text' }>).value).toContain(join(tmp, '.ur', 'skills', name))
   rmSync(tmp, { recursive: true, force: true })
 })
 
@@ -24,10 +24,10 @@ test('ur skill list returns executable skills', async () => {
     join(skillDir, 'skill.yaml'),
     'name: audit\ndescription: Audit code\nsteps:\n  - id: a\n    name: A\n    agent: worker\n    prompt: a\n',
   )
-  const result = await runWithCwdOverride(tmp, () => call(`list`))
+  const result = await runWithCwdOverride(tmp, () => call(`list`, {} as never))
   expect(result.type).toBe('text')
-  expect(result.value).toContain('Executable skills:')
-  expect(result.value).toContain('audit')
+  expect((result as Extract<typeof result, { type: 'text' }>).value).toContain('Executable skills:')
+  expect((result as Extract<typeof result, { type: 'text' }>).value).toContain('audit')
   rmSync(tmp, { recursive: true, force: true })
 })
 
@@ -47,10 +47,10 @@ test('ur skill show prints compiled workflow with executable assets and args', a
   writeFileSync(join(skillDir, 'checklists', 'review.md'), '- verify\n')
 
   const result = await runWithCwdOverride(tmp, () =>
-    call(`show demo src/auth.ts --json`),
+    call(`show demo src/auth.ts --json`, {} as never),
   )
   expect(result.type).toBe('text')
-  const parsed = JSON.parse(result.value)
+  const parsed = JSON.parse((result as Extract<typeof result, { type: 'text' }>).value)
   expect(parsed.skill).toBe('demo')
   expect(parsed.files.scripts).toContain('run.sh')
   expect(parsed.files.templates).toContain('template.txt')

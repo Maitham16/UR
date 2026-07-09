@@ -12,7 +12,7 @@ describe('ur worktree command', () => {
   test('call returns usage for unknown action', async () => {
     const dir = tempDir('ur-worktree-')
     try {
-      const result = await call('unknown')
+      const result = await call('unknown', {} as never)
       expect(result.type).toBe('text')
       if (result.type === 'text') {
         expect(result.value).toContain('Usage:')
@@ -25,7 +25,7 @@ describe('ur worktree command', () => {
   test('list returns no active worktrees in empty dir', async () => {
     const dir = tempDir('ur-worktree-')
     try {
-      const result = await call('list')
+      const result = await call('list', {} as never)
       expect(result.type).toBe('text')
       if (result.type === 'text') {
         expect(result.value).toContain('No active agent worktrees')
@@ -38,7 +38,7 @@ describe('ur worktree command', () => {
   test('clean reports nothing to clean when no tasks exist', async () => {
     const dir = tempDir('ur-worktree-')
     try {
-      const result = await call('clean --dry-run')
+      const result = await call('clean --dry-run', {} as never)
       expect(result.type).toBe('text')
       if (result.type === 'text') {
         expect(result.value).toContain('No completed/failed/canceled worktrees')

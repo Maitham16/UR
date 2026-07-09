@@ -105,7 +105,7 @@ describe('provider multimodal request mapping', () => {
       max_tokens: 16,
     })
 
-    const [, body] = post.mock.calls[0]
+    const [, body] = post.mock.calls[0] as [string, Record<string, any>]
     expect(body.messages[0]).toEqual({ role: 'user', content: 'hello\nworld' })
   })
 
@@ -126,7 +126,7 @@ describe('provider multimodal request mapping', () => {
       max_tokens: 16,
     })
 
-    const [, body] = post.mock.calls[0]
+    const [, body] = post.mock.calls[0] as [string, Record<string, any>]
     expectOpenAIImagePart(body.messages[0].content)
   })
 
@@ -245,7 +245,7 @@ describe('provider multimodal request mapping', () => {
       max_tokens: 16,
     })
 
-    const [, body] = post.mock.calls[0]
+    const [, body] = post.mock.calls[0] as [string, Record<string, any>]
     expectOpenAIImagePart(body.messages[0].content)
   })
 
@@ -272,7 +272,7 @@ describe('provider multimodal request mapping', () => {
       max_tokens: 16,
     })
 
-    const [, body] = post.mock.calls[0]
+    const [, body] = post.mock.calls[0] as [string, Record<string, any>]
     expect(body.messages[0].content).toEqual([
       { type: 'text', text: 'describe this image' },
       imageBlock,
@@ -327,7 +327,7 @@ describe('provider multimodal request mapping', () => {
       max_tokens: 16,
     })
 
-    const [, body] = post.mock.calls[0]
+    const [, body] = post.mock.calls[0] as [string, Record<string, any>]
     expect(body.messages[1].content[0]).toEqual({
       type: 'tool_result',
       tool_use_id: 'toolu_1',
@@ -363,7 +363,7 @@ describe('provider multimodal request mapping', () => {
       max_tokens: 16,
     })
 
-    const [, body] = post.mock.calls[0]
+    const [, body] = post.mock.calls[0] as [string, Record<string, any>]
     expect(body.contents[0].parts).toEqual([
       { text: 'describe this image' },
       {

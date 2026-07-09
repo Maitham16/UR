@@ -12,7 +12,7 @@ describe('/refactor bundled skill', () => {
     expect(skill.name).toBe('refactor')
     expect(skill.userInvocable).toBe(true)
 
-    const prompt = await skill.getPromptForCommand('extract validation helpers', {} as never)
+    const prompt = await (skill as Extract<typeof skill, { type: 'prompt' }>).getPromptForCommand('extract validation helpers', {} as never)
     const text = prompt[0]!.type === 'text' ? prompt[0]!.text : ''
     expect(text).toContain('worktree')
     expect(text).toContain('commit')

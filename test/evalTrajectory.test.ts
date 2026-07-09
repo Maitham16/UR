@@ -93,6 +93,7 @@ test('buildDashboardHtml is self-contained and escapes content', () => {
       passed: 1,
       failed: 0,
       passRate: 1,
+      totalDurationMs: 0,
       byCategory: { coding: { passed: 1, total: 1 } },
       cases: [
         {

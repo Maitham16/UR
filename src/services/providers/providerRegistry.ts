@@ -178,7 +178,10 @@ export type CommandResult = {
 export type ProviderDoctorAdapters = {
   which?: (command: string) => Promise<string | null>
   run?: (file: string, args: string[]) => Promise<CommandResult>
-  fetch?: typeof fetch
+  /** Minimal fetch-like signature: `typeof fetch` would also demand the
+   *  `preconnect` static (undici), which test stubs can't provide and the
+   *  doctor never calls. */
+  fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   env?: Record<string, string | undefined>
 }
 

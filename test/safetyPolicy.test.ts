@@ -267,7 +267,7 @@ describe('project safety policy', () => {
       )
 
       expect(result.behavior).toBe('ask')
-      expect(result.message ?? '').not.toContain('Blocked by project safety policy')
+      expect(('message' in result ? result.message : '')).not.toContain('Blocked by project safety policy')
     } finally {
       rmSync(dir, { recursive: true, force: true })
       resetSettingsCache()
@@ -302,7 +302,7 @@ describe('project safety policy', () => {
       )
 
       expect(result.behavior).toBe('ask')
-      expect(result.message ?? '').not.toContain('Blocked by project safety policy')
+      expect(('message' in result ? result.message : '')).not.toContain('Blocked by project safety policy')
     } finally {
       rmSync(dir, { recursive: true, force: true })
       resetSettingsCache()
@@ -417,7 +417,7 @@ describe('project safety policy', () => {
     try {
       const { call } = await import('../src/commands/safety/safety.js')
       const result = await runWithCwdOverride(dir, () =>
-        call('check --command "rm -rf build"'),
+        call('check --command "rm -rf build"', {} as never),
       )
       expect(result.type).toBe('text')
       if (result.type !== 'text') throw new Error('expected text')

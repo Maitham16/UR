@@ -93,7 +93,7 @@ describe('provider real streaming', () => {
     }).withResponse()
     const events = await collect(data)
 
-    const [, body, config] = post.mock.calls[0]
+    const [, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
     expect(body.stream).toBe(true)
     expect(config.responseType).toBe('stream')
     expect(textDeltas(events)).toEqual(['Hel', 'lo'])
@@ -112,7 +112,7 @@ describe('provider real streaming', () => {
         'data: {"id":"local_1","model":"local-model","choices":[{"delta":{},"index":0,"finish_reason":"stop"}]}\n\n',
         'data: [DONE]\n\n',
       ])
-    }) as typeof fetch
+    }) as unknown as typeof fetch
     try {
       const client = await createOpenAICompatibleClient({
         baseUrl: 'http://localhost:1234/v1',
@@ -145,7 +145,7 @@ describe('provider real streaming', () => {
         'data: {"id":"local_bad_tool","model":"local-model","choices":[{"delta":{},"index":0,"finish_reason":"tool_calls"}]}\n\n',
         'data: [DONE]\n\n',
       ])
-    }) as typeof fetch
+    }) as unknown as typeof fetch
     try {
       const client = await createOpenAICompatibleClient({
         baseUrl: 'http://localhost:1234/v1',
@@ -190,7 +190,7 @@ describe('provider real streaming', () => {
     }).withResponse()
     const events = await collect(data)
 
-    const [, body, config] = post.mock.calls[0]
+    const [, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
     expect(body.stream).toBe(true)
     expect(config.responseType).toBe('stream')
     expect(events.find(event => event.type === 'content_block_start')?.content_block)
@@ -240,7 +240,7 @@ describe('provider real streaming', () => {
     }).withResponse()
     const events = await collect(data)
 
-    const [, body, config] = post.mock.calls[0]
+    const [, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
     expect(body.stream).toBe(true)
     expect(config.responseType).toBe('stream')
     expect(textDeltas(events)).toEqual(['Hi', ' there'])
@@ -274,7 +274,7 @@ describe('provider real streaming', () => {
     }).withResponse()
     const events = await collect(data)
 
-    const [url, body, config] = post.mock.calls[0]
+    const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
     expect(url).toContain(':streamGenerateContent?alt=sse')
     expect(body).not.toHaveProperty('stream')
     expect(config.responseType).toBe('stream')

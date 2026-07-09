@@ -96,7 +96,7 @@ describe('reliable repo editing', () => {
     const { call } = await import('../src/commands/repo-edit/repo-edit.js')
 
     const result = await runWithCwdOverride(dir, () =>
-      call('preview rename total --to amount'),
+      call('preview rename total --to amount', {} as never),
     )
 
     expect(result.type).toBe('text')

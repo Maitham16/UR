@@ -86,12 +86,12 @@ describe('collaboration patterns', () => {
   test('pattern command lists and runs', async () => {
     const dir = tempDir('ur-pattern-cmd-')
     const { call } = await import('../src/commands/pattern/pattern.js')
-    const list = await runWithCwdOverride(dir, () => call('list'))
+    const list = await runWithCwdOverride(dir, () => call('list', {} as never))
     if (list.type !== 'text') throw new Error('expected text')
     expect(list.value).toContain('PEER')
 
     const run = await runWithCwdOverride(dir, () =>
-      call('run peer "add a rate limiter" --json'),
+      call('run peer "add a rate limiter" --json', {} as never),
     )
     if (run.type !== 'text') throw new Error('expected text')
     expect(JSON.parse(run.value).steps).toHaveLength(4)

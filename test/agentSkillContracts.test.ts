@@ -33,8 +33,8 @@ describe('worktree-first agent skill contracts', () => {
 
     for (const skill of skills) {
       expect(skill.userInvocable).toBe(true)
-      expect(skill.allowedTools).toContain('Agent')
-      const prompt = await skill.getPromptForCommand('contract smoke', {} as never)
+      expect((skill as Extract<typeof skill, { type: 'prompt' }>).allowedTools).toContain('Agent')
+      const prompt = await (skill as Extract<typeof skill, { type: 'prompt' }>).getPromptForCommand('contract smoke', {} as never)
       const text = prompt[0]?.type === 'text' ? prompt[0].text : ''
       expect(text).toContain('isolated worktree')
       expect(text).toContain('branch')
