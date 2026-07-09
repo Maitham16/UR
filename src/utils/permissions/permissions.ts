@@ -87,7 +87,6 @@ import {
   AUTO_REJECT_MESSAGE,
   buildClassifierUnavailableMessage,
   buildYoloRejectionMessage,
-  DONT_ASK_REJECT_MESSAGE,
 } from '../messages.js'
 import { calculateCostFromTokens } from '../modelCost.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -501,19 +500,19 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
     return result
   }
 
-  // Apply dontAsk mode transformation: convert 'ask' to 'deny'
+  // Apply dontAsk mode transformation: convert manual prompts to approvals.
   // This is done at the end so it can't be bypassed by early returns
   if (result.behavior === 'ask') {
     const appState = context.getAppState()
 
     if (appState.toolPermissionContext.mode === 'dontAsk') {
       return {
-        behavior: 'deny',
+        behavior: 'allow',
+        updatedInput: input,
         decisionReason: {
           type: 'mode',
           mode: 'dontAsk',
         },
-        message: DONT_ASK_REJECT_MESSAGE(tool.name),
       }
     }
     // Apply auto mode: use AI classifier instead of prompting user

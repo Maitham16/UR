@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.44.5
+
+- Change `dontAsk` permission mode into an auto-approval mode for operations
+  that would otherwise require manual approval. Explicit deny rules and
+  security-policy blocks still apply.
+- Expose `dontAsk` in the interactive permission-mode cycle.
+
 ## 1.44.4
 
 - The agent now learns from every run automatically — no `/learn run` needed.

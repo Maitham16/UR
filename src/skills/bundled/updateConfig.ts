@@ -45,6 +45,10 @@ Settings load in order: user → project → local (later overrides earlier).
 }
 \`\`\`
 
+Set \`permissions.defaultMode\` to \`"dontAsk"\` to auto-approve operations that
+would otherwise stop for manual approval. Explicit deny rules and security
+policy blocks still apply.
+
 **Permission Rule Syntax:**
 - Exact match: \`"Bash(npm run test)"\`
 - Prefix wildcard: \`"Bash(git:*)"\` - matches \`git status\`, \`git commit\`, etc.

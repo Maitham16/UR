@@ -72,7 +72,7 @@ const PERMISSION_MODE_CONFIG: Partial<
   },
   dontAsk: {
     title: "Don't Ask",
-    shortTitle: 'DontAsk',
+    shortTitle: "Don't Ask",
     symbol: '⏵⏵',
     color: 'error',
     external: 'dontAsk',
