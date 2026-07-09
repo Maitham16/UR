@@ -17,6 +17,7 @@ import {
   type HeadlessRunner,
 } from './headlessAgent.js'
 import { splitCommand, summarizeFailure, type CommandResult } from './ciLoop.js'
+import { recordOutcome } from './learning.js'
 import { getSessionId } from '../../bootstrap/state.js'
 import {
   appendRunAction,
@@ -214,6 +215,20 @@ export async function runTestFirstLoop(
 
   const finish = (result: TestFirstLoopResult): TestFirstLoopResult => {
     writeRunReport(cwd, runId, formatTestFirstResult(result, false))
+    // Automatic learning: only terminal verdicts teach anything — planned /
+    // not-configured / dry runs carry no signal about task difficulty.
+    if (
+      !options.dryRun &&
+      (result.status === 'passed' || result.status === 'exhausted')
+    ) {
+      recordOutcome(cwd, {
+        id: `tf-${runId}`,
+        task: stack.commands.join(' && ') || 'test-first loop',
+        model: null,
+        pass: result.status === 'passed',
+        detail: `test-first ${result.status}`,
+      })
+    }
     return result
   }
 

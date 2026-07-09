@@ -236,6 +236,52 @@ export function saveStats(cwd: string, stats: LearnStats): void {
   writeFileSync(statsPath(cwd), `${JSON.stringify(stats, null, 2)}\n`)
 }
 
+/**
+ * Fire-and-forget: fold one run outcome into the on-disk stats. Called
+ * automatically when ci-loop / arena / escalation / test-first runs finish,
+ * so the agent learns from every run without anyone invoking `/learn run`.
+ * Pure JSON fold — no model calls, no tokens. Errors are swallowed because
+ * learning must never break the run that produced the outcome; the folded
+ * store is idempotent (outcome keys dedupe), so double-recording is safe.
+ */
+export function recordOutcome(
+  cwd: string,
+  input: {
+    id: string
+    task: string
+    model: string | null
+    pass: boolean
+    detail?: string
+  },
+): void {
+  try {
+    saveStats(cwd, foldOutcomes(loadStats(cwd), [outcomeFromRun(input)]))
+  } catch {
+    // best-effort: a broken learning store must not fail the run
+  }
+}
+
+/**
+ * Evidence-based model preference for a task: the model with the best
+ * learned success rate for the task's category, but only when the evidence
+ * is solid (>= minSamples runs) and the track record is good (>= minRate).
+ * Returns null when evidence is thin so callers keep their existing
+ * heuristics — routing quality can only improve, never silently degrade.
+ */
+export function learnedModelForTask(
+  stats: LearnStats,
+  task: string,
+  options: { minSamples?: number; minRate?: number } = {},
+): string | null {
+  const best = bestModelForCategory(
+    stats,
+    categoryFromText(task),
+    options.minSamples ?? 3,
+  )
+  if (!best) return null
+  return best.rate >= (options.minRate ?? 0.6) ? best.model : null
+}
+
 export type ReflectInput = {
   cwd: string
   failures: string[]

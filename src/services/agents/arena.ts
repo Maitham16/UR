@@ -23,6 +23,7 @@ import {
   makeDryHeadlessRunner,
   type HeadlessRunner,
 } from './headlessAgent.js'
+import { recordOutcome } from './learning.js'
 
 export type Candidate = {
   id: string
@@ -228,6 +229,24 @@ export async function runArena(task: string, options: RunArenaOptions): Promise<
   if (!options.keep && !options.dryRun && !options.runner) {
     for (const candidate of candidates) {
       if (candidate.worktree) await removeWorktree(cwd, candidate.worktree)
+    }
+  }
+
+  // Automatic learning: a tournament is a strong routing signal. The winner's
+  // model gets a pass for this category; explicit judged failures get a fail.
+  // Candidates that merely lost to a better diff are not counted as failures.
+  if (!options.dryRun) {
+    for (const candidate of candidates) {
+      const isWinner = winner?.id === candidate.id
+      const judgedFail = candidate.isError || candidate.verdict === 'FAIL'
+      if (!isWinner && !judgedFail) continue
+      recordOutcome(cwd, {
+        id: `arena-${runId}-${candidate.id}`,
+        task,
+        model: candidate.model ?? null,
+        pass: isWinner && !judgedFail,
+        detail: `arena ${isWinner ? 'winner' : 'failed candidate'}: ${task.slice(0, 80)}`,
+      })
     }
   }
 

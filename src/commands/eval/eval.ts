@@ -331,7 +331,7 @@ export const call: LocalCommandCall = async (args: string) => {
     const strategy = (optionValue(tokens, '--strategy') ?? 'auto') as import('../../services/agents/modelRouter.js').RouteStrategy
     const { models } = await listModelCapabilities()
     const pool = loadModelPool(cwd)
-    const resolved = resolveModelForTask(task, strategy, pool, models)
+    const resolved = resolveModelForTask(task, strategy, pool, models, { cwd })
     const result = {
       task,
       strategy,

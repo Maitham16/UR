@@ -18,6 +18,10 @@ import {
   pickSmallFastModel,
 } from '../../utils/model/ollamaRouter.js'
 import { type IntentCategory, routeIntent } from './intentRouter.js'
+import {
+  learnedModelForTask,
+  loadStats as loadLearnStats,
+} from './learning.js'
 
 export type ModelNeed = 'vision' | 'code' | 'long-context' | 'embeddings'
 
@@ -240,7 +244,7 @@ export function resolveModelForTask(
   strategy: RouteStrategy,
   pool: ModelPool,
   localModels: ModelCapability[],
-  options: { localOnly?: boolean } = {},
+  options: { localOnly?: boolean; cwd?: string } = {},
 ): string | undefined {
   const localOnly = options.localOnly
   if (strategy === 'default') return filterLocalOnlyNames(pool.default, localOnly)?.[0]
@@ -258,6 +262,25 @@ export function resolveModelForTask(
   }
   if (strategy === 'strong') {
     return pickBestCoderModel(localNames, undefined) ?? strongPool?.[0] ?? defaultPool?.[0]
+  }
+  // Learned routing (auto only — explicit cheap/strong are user choices):
+  // prefer the model with the best recorded success rate for this task's
+  // category, but only with solid evidence (>= 3 runs, >= 60% pass) and only
+  // if that model is currently selectable. When history proves a cheaper
+  // model handles this category, auto stops paying for the strong tier —
+  // that is the token saving. Thin/absent evidence falls through to the
+  // existing heuristics, so routing can never get worse than before.
+  if (options.cwd) {
+    const learned = learnedModelForTask(loadLearnStats(options.cwd), task)
+    if (
+      learned &&
+      (localNames.includes(learned) ||
+        cheapPool?.includes(learned) ||
+        strongPool?.includes(learned) ||
+        defaultPool?.includes(learned))
+    ) {
+      return learned
+    }
   }
   return shouldUseStrongModel(task) === false
     ? resolveModelForTask(task, 'cheap', pool, localModels, options)

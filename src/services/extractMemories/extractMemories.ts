@@ -43,6 +43,7 @@ import type {
 import { createAbortController } from '../../utils/abortController.js'
 import { count, uniq } from '../../utils/array.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { getInitialSettings } from '../../utils/settings/settings.js'
 import {
   createCacheSafeParams,
   runForkedAgent,
@@ -368,14 +369,21 @@ export function initExtractMemories(): void {
     const canUseTool = createAutoMemCanUseTool(memoryDir)
     const cacheSafeParams = createCacheSafeParams(context)
 
-    // Only run extraction every N eligible turns (tengu_bramble_lintel, default 1).
+    // Only run extraction every N eligible turns. The local setting
+    // autoMemoryExtractionInterval wins when set (the extraction is a forked
+    // agent call on the session model, so this is the user's token/compute
+    // dial); otherwise the remote flag (tengu_bramble_lintel, default 1).
     // Trailing extractions (from stashed contexts) skip this check since they
     // process already-committed work that should not be throttled.
     if (!isTrailingRun) {
       turnsSinceLastExtraction++
+      const configuredInterval =
+        getInitialSettings().autoMemoryExtractionInterval
       if (
         turnsSinceLastExtraction <
-        (getFeatureValue_CACHED_MAY_BE_STALE('tengu_bramble_lintel', null) ?? 1)
+        (configuredInterval ??
+          getFeatureValue_CACHED_MAY_BE_STALE('tengu_bramble_lintel', null) ??
+          1)
       ) {
         return
       }

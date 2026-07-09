@@ -20,6 +20,7 @@ import {
   type HeadlessRunner,
 } from './headlessAgent.js'
 import { routeIntent } from './intentRouter.js'
+import { recordOutcome } from './learning.js'
 
 export type Tier = 'fast' | 'oracle'
 
@@ -264,6 +265,25 @@ export async function runWithEscalation(
   }
 
   const final = attempts[attempts.length - 1]
+
+  // Automatic learning: every attempt teaches which tier this category of
+  // task really needs. The recorded pass/fail per model feeds difficultyBias
+  // (already consumed by planEscalation callers) and learnedModelForTask,
+  // so future runs start on the right tier without burning a failed
+  // fast-tier round — that is where the token savings come from.
+  if (!options.dryRun) {
+    const escRunId = Date.now().toString(36)
+    for (const attempt of attempts) {
+      recordOutcome(options.cwd, {
+        id: `esc-${escRunId}-${attempt.tier}`,
+        task,
+        model: attempt.model,
+        pass: attempt.verdict === 'PASS' && !attempt.isError,
+        detail: `escalation ${attempt.tier} ${attempt.verdict ?? 'no-verdict'}`,
+      })
+    }
+  }
+
   return {
     task: task.trim(),
     plan,

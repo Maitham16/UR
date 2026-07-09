@@ -29,6 +29,7 @@ import {
 import { getSessionId } from '../../bootstrap/state.js'
 import { type ExecTargetConfig, wrapCommand } from './execTarget.js'
 import { recordFailure, recordResolution } from './failureMemory.js'
+import { recordOutcome } from './learning.js'
 
 export type CommandResult = { code: number; stdout: string; stderr: string }
 export type CommandExec = (file: string, args: string[], cwd: string) => Promise<CommandResult>
@@ -236,6 +237,18 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
   const finish = async (result: CiLoopResult): Promise<CiLoopResult> => {
     await captureCurrentDiff(cwd, runId)
     writeRunReport(cwd, runId, formatCiLoopResult(result, false))
+    // Automatic learning: every real run teaches the router/escalator how
+    // reliable this category of work is. Dry runs are excluded — their
+    // synthetic 'failed' status would poison the stats.
+    if (!options.dryRun) {
+      recordOutcome(cwd, {
+        id: `ci-${runId}`,
+        task: command,
+        model: null,
+        pass: result.status === 'passed',
+        detail: `ci-loop ${result.status}: ${command}`,
+      })
+    }
     return result
   }
 

@@ -1002,6 +1002,14 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Custom directory path for auto-memory storage. Supports ~/ prefix for home directory expansion. Ignored if set in projectSettings (checked-in .ur/settings.json) for security. When unset, defaults to ~/.ur/projects/<sanitized-cwd>/memory/.',
         ),
+      autoMemoryExtractionInterval: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe(
+          'Run the auto-memory extraction agent only every N eligible turns (default 1 = every turn). The extraction is a forked agent call on the session model, so raising this trades memory freshness for lower token/compute usage.',
+        ),
       verifier: z
         .object({
           askBeforeGates: z

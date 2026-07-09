@@ -349,6 +349,7 @@ async function resolveRouteStrategyModel(task: BackgroundTask): Promise<string |
   const { models } = await listModelCapabilities()
   return resolveModelForTask(task.task, strategy, loadModelPool(task.cwd), models, {
     localOnly: task.offline ?? false,
+    cwd: task.cwd,
   })
 }
 

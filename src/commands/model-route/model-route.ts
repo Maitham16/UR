@@ -47,7 +47,7 @@ export const call: LocalCommandCall = async (args: string) => {
   const pool = loadModelPool(getCwd())
   const effectivePool = filterModelPoolForLocalOnly(pool, localOnly)
   const result = recommendModel(task, models, { localOnly })
-  const resolved = resolveModelForTask(task, strategy, effectivePool, models, { localOnly })
+  const resolved = resolveModelForTask(task, strategy, effectivePool, models, { localOnly, cwd: getCwd() })
   if (json) {
     return {
       type: 'text',
