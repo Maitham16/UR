@@ -1,158 +1,75 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { render } from 'ink-testing-library'
-import React from 'react'
-import { TaskListV2 } from '../src/components/TaskListV2.js'
-import { AppStateProvider } from '../src/state/AppState.js'
-import { Task } from '../src/utils/tasks.js'
-import { stripAnsi } from '../src/utils/format.js'
+import { describe, expect, it } from 'bun:test'
+import figures from 'figures'
+import { byIdAsc, getTaskIcon } from '../src/components/TaskListV2.js'
+import type { Task } from '../src/utils/tasks.js'
 
-// Mock the useTerminalSize hook
-mock.module('../src/hooks/useTerminalSize.js', () => ({
-  useTerminalSize: () => ({ rows: 24, columns: 80 }),
-}))
+// Tests the pure display logic of the pinned task panel. An earlier version
+// of this file rendered the component with ink-testing-library (not a
+// dependency — the repo ships a vendored Ink fork) and used bun's global
+// mock.module() on src/utils/tasks.js and src/state/AppState.js, which
+// replaced those modules for EVERY test file in the process and broke
+// unrelated suites (BashTool validateInput, repoEdit organize-imports).
+// Component-level render coverage needs a harness for the vendored Ink;
+// until then this covers the exported logic without polluting the runner.
 
-// Mock the useAppState hook
-mock.module('../src/state/AppState.js', () => ({
-  useAppState: (selector) => {
-    if (selector.toString().includes('tasks')) {
-      return {}
-    }
-    if (selector.toString().includes('showTeammateMessagePreview')) {
-      return false
-    }
-    if (selector.toString().includes('teamContext')) {
-      return null
-    }
-    return undefined
-  },
-  useSetAppState: () => () => {},
-}))
+function makeTask(overrides: Partial<Task> & { id: string }): Task {
+  return {
+    subject: `Task ${overrides.id}`,
+    description: '',
+    status: 'pending',
+    blocks: [],
+    blockedBy: [],
+    ...overrides,
+  } as Task
+}
 
-// Mock the isTodoV2Enabled function
-mock.module('../src/utils/tasks.js', () => ({
-  isTodoV2Enabled: () => true,
-}))
+describe('TaskListV2 display logic', () => {
+  describe('byIdAsc', () => {
+    it('sorts numeric ids numerically, not lexicographically', () => {
+      const tasks = [makeTask({ id: '10' }), makeTask({ id: '2' }), makeTask({ id: '1' })]
+      expect(tasks.sort(byIdAsc).map(t => t.id)).toEqual(['1', '2', '10'])
+    })
 
-describe('TaskListV2', () => {
-  let tasks: Task[]
-
-  beforeEach(() => {
-    tasks = [
-      {
-        id: '1',
-        subject: 'Test task 1',
-        description: 'Description 1',
-        status: 'pending',
-        blocks: [],
-        blockedBy: [],
-      },
-      {
-        id: '2',
-        subject: 'Test task 2',
-        description: 'Description 2',
-        status: 'in_progress',
-        blocks: [],
-        blockedBy: [],
-      },
-      {
-        id: '3',
-        subject: 'Test task 3',
-        description: 'Description 3',
-        status: 'completed',
-        blocks: [],
-        blockedBy: [],
-      },
-    ]
+    it('falls back to locale comparison for non-numeric ids', () => {
+      const tasks = [makeTask({ id: 'b' }), makeTask({ id: 'a' })]
+      expect(tasks.sort(byIdAsc).map(t => t.id)).toEqual(['a', 'b'])
+    })
   })
 
-  afterEach(() => {
-    mock.restore()
-  })
+  describe('getTaskIcon', () => {
+    it('marks completed tasks with a success tick', () => {
+      expect(getTaskIcon('completed')).toEqual({
+        icon: figures.tick,
+        color: 'success',
+      })
+    })
 
-  it('should render all tasks with correct status indicators', () => {
-    const { lastFrame } = render(
-      <AppStateProvider>
-        <TaskListV2 tasks={tasks} />
-      </AppStateProvider>
-    )
+    it('marks in-progress tasks with a filled square in the accent color', () => {
+      expect(getTaskIcon('in_progress')).toEqual({
+        icon: figures.squareSmallFilled,
+        color: 'ur',
+      })
+    })
 
-    const output = stripAnsi(lastFrame() || '')
+    it('marks pending tasks with an empty square and no color', () => {
+      expect(getTaskIcon('pending')).toEqual({
+        icon: figures.squareSmall,
+        color: undefined,
+      })
+    })
 
-    // Check that pending task is shown with square icon
-    expect(output).toContain('□')
-    expect(output).toContain('Test task 1')
+    it('marks failed tasks with an error cross', () => {
+      expect(getTaskIcon('failed')).toEqual({
+        icon: figures.cross,
+        color: 'error',
+      })
+    })
 
-    // Check that in_progress task is shown with filled square icon
-    expect(output).toContain('■')
-    expect(output).toContain('Test task 2')
-
-    // Check that completed task is shown with checkmark icon
-    expect(output).toContain('✓')
-    expect(output).toContain('Test task 3')
-  })
-
-  it('should show completed tasks as checked', () => {
-    const completedTasks = tasks.map(task => ({
-      ...task,
-      status: 'completed' as const,
-    }))
-
-    const { lastFrame } = render(
-      <AppStateProvider>
-        <TaskListV2 tasks={completedTasks} />
-      </AppStateProvider>
-    )
-
-    const output = stripAnsi(lastFrame() || '')
-
-    // All tasks should show checkmark icon
-    expect(output).toMatch(/✓.*Test task 1/)
-    expect(output).toMatch(/✓.*Test task 2/)
-    expect(output).toMatch(/✓.*Test task 3/)
-  })
-
-  it('should not show duplicate separators or stale blocks', () => {
-    const { lastFrame, rerender } = render(
-      <AppStateProvider>
-        <TaskListV2 tasks={tasks} />
-      </AppStateProvider>
-    )
-
-    const firstOutput = stripAnsi(lastFrame() || '')
-
-    // Update tasks to simulate progress
-    const updatedTasks = tasks.map(task => ({
-      ...task,
-      status: task.id === '1' ? 'in_progress' : task.status,
-    }))
-
-    rerender(
-      <AppStateProvider>
-        <TaskListV2 tasks={updatedTasks} />
-      </AppStateProvider>
-    )
-
-    const secondOutput = stripAnsi(lastFrame() || '')
-
-    // Count occurrences of separators
-    const firstSeparatorCount = (firstOutput.match(/─/g) || []).length
-    const secondSeparatorCount = (secondOutput.match(/─/g) || []).length
-
-    // Should not have duplicate separators
-    expect(secondSeparatorCount).toBeLessThanOrEqual(firstSeparatorCount + 2) // Allow for minor changes
-
-    // Should not show stale status for updated task
-    expect(secondOutput).toContain('■ Test task 1') // Should now be in progress
-  })
-
-  it('should handle empty task list', () => {
-    const { lastFrame } = render(
-      <AppStateProvider>
-        <TaskListV2 tasks={[]} />
-      </AppStateProvider>
-    )
-
-    const output = lastFrame()
-    expect(output).toBeNull()
+    it('marks skipped tasks with a warning sign', () => {
+      expect(getTaskIcon('skipped')).toEqual({
+        icon: figures.warning,
+        color: 'warning',
+      })
+    })
   })
 })

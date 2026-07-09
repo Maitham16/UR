@@ -1,100 +1,128 @@
-import { describe, it, expect } from 'bun:test'
-import { getTaskStatusIcon, getTaskStatusColor, isTerminalStatus } from '../src/components/tasks/taskStatusUtils.js'
-import { TaskStatus } from '../src/utils/tasks.js'
+import { describe, expect, it } from 'bun:test'
+import figures from 'figures'
+import {
+  getTaskStatusColor,
+  getTaskStatusIcon,
+  isTerminalStatus,
+} from '../src/components/tasks/taskStatusUtils.js'
+
+// getTaskStatusIcon/getTaskStatusColor take the background-task TaskStatus
+// union from src/Task.ts ('pending' | 'running' | 'completed' | 'failed' |
+// 'killed') and return a plain figures glyph string / theme color name.
+// (An earlier version of this file asserted a {icon} object shape and an
+// 'in_progress' status that never existed — it tested an imagined API.)
 
 describe('taskStatusUtils', () => {
   describe('isTerminalStatus', () => {
-    it('should return true for completed status', () => {
+    it('returns true for completed status', () => {
       expect(isTerminalStatus('completed')).toBe(true)
     })
 
-    it('should return true for failed status', () => {
+    it('returns true for failed status', () => {
       expect(isTerminalStatus('failed')).toBe(true)
     })
 
-    it('should return true for killed status', () => {
+    it('returns true for killed status', () => {
       expect(isTerminalStatus('killed')).toBe(true)
     })
 
-    it('should return false for non-terminal statuses', () => {
+    it('returns false for non-terminal statuses', () => {
       expect(isTerminalStatus('pending')).toBe(false)
-      expect(isTerminalStatus('in_progress')).toBe(false)
+      expect(isTerminalStatus('running')).toBe(false)
     })
   })
 
   describe('getTaskStatusIcon', () => {
-    it('should return tick for completed status', () => {
-      expect(getTaskStatusIcon('completed').icon).toBe('✓')
+    it('returns tick for completed status', () => {
+      expect(getTaskStatusIcon('completed')).toBe(figures.tick)
     })
 
-    it('should return squareSmallFilled for in_progress status', () => {
-      expect(getTaskStatusIcon('in_progress').icon).toBe('■')
+    it('returns play for running status', () => {
+      expect(getTaskStatusIcon('running')).toBe(figures.play)
     })
 
-    it('should return squareSmall for pending status', () => {
-      expect(getTaskStatusIcon('pending').icon).toBe('□')
+    it('returns bullet for pending status', () => {
+      expect(getTaskStatusIcon('pending')).toBe(figures.bullet)
     })
 
-    it('should return cross for failed status', () => {
-      expect(getTaskStatusIcon('failed').icon).toBe('✗')
+    it('returns cross for failed status', () => {
+      expect(getTaskStatusIcon('failed')).toBe(figures.cross)
     })
 
-    it('should return cross for killed status', () => {
-      expect(getTaskStatusIcon('killed').icon).toBe('✗')
+    it('returns cross for killed status', () => {
+      expect(getTaskStatusIcon('killed')).toBe(figures.cross)
     })
 
-    it('should return questionMarkPrefix when awaitingApproval is true', () => {
-      expect(getTaskStatusIcon('pending', { awaitingApproval: true }).icon).toBe('?')
+    it('returns questionMarkPrefix when awaitingApproval is true', () => {
+      expect(getTaskStatusIcon('running', { awaitingApproval: true })).toBe(
+        figures.questionMarkPrefix,
+      )
     })
 
-    it('should return warning when shutdownRequested is true', () => {
-      expect(getTaskStatusIcon('pending', { shutdownRequested: true }).icon).toBe('!')
+    it('returns warning when shutdownRequested is true', () => {
+      expect(getTaskStatusIcon('running', { shutdownRequested: true })).toBe(
+        figures.warning,
+      )
     })
 
-    it('should return cross when hasError is true', () => {
-      expect(getTaskStatusIcon('pending', { hasError: true }).icon).toBe('✗')
+    it('returns cross when hasError is true', () => {
+      expect(getTaskStatusIcon('running', { hasError: true })).toBe(
+        figures.cross,
+      )
     })
 
-    it('should return ellipsis when isIdle is true and status is running', () => {
-      expect(getTaskStatusIcon('running', { isIdle: true }).icon).toBe('…')
+    it('returns ellipsis when isIdle is true and status is running', () => {
+      expect(getTaskStatusIcon('running', { isIdle: true })).toBe(
+        figures.ellipsis,
+      )
+    })
+
+    it('prioritizes hasError over other state flags', () => {
+      expect(
+        getTaskStatusIcon('running', {
+          hasError: true,
+          awaitingApproval: true,
+          shutdownRequested: true,
+        }),
+      ).toBe(figures.cross)
     })
   })
 
   describe('getTaskStatusColor', () => {
-    it('should return success for completed status', () => {
+    it('returns success for completed status', () => {
       expect(getTaskStatusColor('completed')).toBe('success')
     })
 
-    it('should return error for failed status', () => {
+    it('returns error for failed status', () => {
       expect(getTaskStatusColor('failed')).toBe('error')
     })
 
-    it('should return warning for killed status', () => {
+    it('returns warning for killed status', () => {
       expect(getTaskStatusColor('killed')).toBe('warning')
     })
 
-    it('should return background for pending status', () => {
+    it('returns background for pending and running statuses', () => {
       expect(getTaskStatusColor('pending')).toBe('background')
+      expect(getTaskStatusColor('running')).toBe('background')
     })
 
-    it('should return ur for in_progress status', () => {
-      expect(getTaskStatusColor('in_progress')).toBe('background') // Note: This might be different in actual implementation
+    it('returns error when hasError is true', () => {
+      expect(getTaskStatusColor('completed', { hasError: true })).toBe('error')
     })
 
-    it('should return error when hasError is true', () => {
-      expect(getTaskStatusColor('pending', { hasError: true })).toBe('error')
+    it('returns warning when awaitingApproval or shutdownRequested', () => {
+      expect(getTaskStatusColor('running', { awaitingApproval: true })).toBe(
+        'warning',
+      )
+      expect(getTaskStatusColor('running', { shutdownRequested: true })).toBe(
+        'warning',
+      )
     })
 
-    it('should return warning when awaitingApproval is true', () => {
-      expect(getTaskStatusColor('pending', { awaitingApproval: true })).toBe('warning')
-    })
-
-    it('should return warning when shutdownRequested is true', () => {
-      expect(getTaskStatusColor('pending', { shutdownRequested: true })).toBe('warning')
-    })
-
-    it('should return background when isIdle is true', () => {
-      expect(getTaskStatusColor('running', { isIdle: true })).toBe('background')
+    it('returns background when isIdle is true', () => {
+      expect(getTaskStatusColor('completed', { isIdle: true })).toBe(
+        'background',
+      )
     })
   })
 })

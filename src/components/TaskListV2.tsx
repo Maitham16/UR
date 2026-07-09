@@ -20,7 +20,8 @@ type Props = {
   isStandalone?: boolean;
 };
 const RECENT_COMPLETED_TTL_MS = 30_000;
-function byIdAsc(a: Task, b: Task): number {
+// Exported for tests (test/taskListV2.test.tsx).
+export function byIdAsc(a: Task, b: Task): number {
   const aNum = parseInt(a.id, 10);
   const bNum = parseInt(b.id, 10);
   if (!isNaN(aNum) && !isNaN(bNum)) {
@@ -218,7 +219,8 @@ type TaskItemProps = {
   ownerActive: boolean;
   columns: number;
 };
-function getTaskIcon(status: Task['status']): {
+// Exported for tests (test/taskListV2.test.tsx).
+export function getTaskIcon(status: Task['status']): {
   icon: string;
   color: keyof Theme | undefined;
 } {
