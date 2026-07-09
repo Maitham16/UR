@@ -63,6 +63,13 @@ const PERMISSION_MODE_CONFIG: Partial<
     color: 'autoAccept',
     external: 'acceptEdits',
   },
+  autoApprove: {
+    title: 'Auto Approval',
+    shortTitle: 'Auto Approve',
+    symbol: '⏵⏵',
+    color: 'warning',
+    external: 'autoApprove',
+  },
   bypassPermissions: {
     title: 'Bypass Permissions',
     shortTitle: 'Bypass',
@@ -72,10 +79,10 @@ const PERMISSION_MODE_CONFIG: Partial<
   },
   dontAsk: {
     title: "Don't Ask",
-    shortTitle: "Don't Ask",
+    shortTitle: 'DontAsk',
     symbol: '⏵⏵',
     color: 'error',
-    external: 'dontAsk',
+    external: 'default',
   },
   ...(feature('TRANSCRIPT_CLASSIFIER')
     ? {
@@ -97,11 +104,7 @@ const PERMISSION_MODE_CONFIG: Partial<
 export function isExternalPermissionMode(
   mode: PermissionMode,
 ): mode is ExternalPermissionMode {
-  // External users can't have auto, so always true for them
-  if (process.env.USER_TYPE !== 'ant') {
-    return true
-  }
-  return mode !== 'auto' && mode !== 'bubble'
+  return (EXTERNAL_PERMISSION_MODES as readonly string[]).includes(mode)
 }
 
 function getModeConfig(mode: PermissionMode): PermissionModeConfig {

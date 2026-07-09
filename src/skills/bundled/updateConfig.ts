@@ -39,15 +39,14 @@ Settings load in order: user → project → local (later overrides earlier).
     "allow": ["Bash(npm:*)", "Edit(.ur)", "Read"],
     "deny": ["Bash(rm -rf:*)"],
     "ask": ["Write(/etc/*)"],
-    "defaultMode": "default" | "plan" | "acceptEdits" | "dontAsk",
+    "defaultMode": "default" | "plan" | "acceptEdits" | "autoApprove",
     "additionalDirectories": ["/extra/dir"]
   }
 }
 \`\`\`
 
-Set \`permissions.defaultMode\` to \`"dontAsk"\` to auto-approve operations that
-would otherwise stop for manual approval. Explicit deny rules and security
-policy blocks still apply.
+Set \`permissions.defaultMode\` to \`"autoApprove"\` to auto-approve operations
+that would otherwise stop for permission approval. User-input dialogs still ask.
 
 **Permission Rule Syntax:**
 - Exact match: \`"Bash(npm run test)"\`

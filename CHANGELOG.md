@@ -1,11 +1,19 @@
 # Changelog
 
+## 1.44.7
+
+- Add `autoApprove` permission mode for command/tool approval prompts. It
+  auto-approves operations that would otherwise require permission approval,
+  while preserving user-input dialogs and explicit denials.
+- Hide the legacy non-interactive denial mode from user-facing mode selectors.
+
+## 1.44.6
+
+- Internal permission-mode iteration superseded by `1.44.7`.
+
 ## 1.44.5
 
-- Change `dontAsk` permission mode into an auto-approval mode for operations
-  that would otherwise require manual approval. Explicit deny rules and
-  security-policy blocks still apply.
-- Expose `dontAsk` in the interactive permission-mode cycle.
+- Internal permission-mode iteration superseded by `1.44.6`.
 
 ## 1.44.4
 

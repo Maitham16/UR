@@ -160,8 +160,8 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     type: 'string',
     description: 'Default permission mode for tool usage',
     options: feature('TRANSCRIPT_CLASSIFIER')
-      ? ['default', 'plan', 'acceptEdits', 'dontAsk', 'auto']
-      : ['default', 'plan', 'acceptEdits', 'dontAsk'],
+      ? ['default', 'plan', 'acceptEdits', 'autoApprove', 'auto']
+      : ['default', 'plan', 'acceptEdits', 'autoApprove'],
   },
   language: {
     source: 'settings',

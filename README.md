@@ -622,6 +622,8 @@ the permission boundary matters.
 - Sensitive tool actions go through permission checks by default.
 - `--allowed-tools` and `--disallowed-tools` can scope tool access for
   automation.
+- `permissions.defaultMode: "autoApprove"` auto-approves operations that would
+  otherwise pause for permission approval, while user-input dialogs still ask.
 - `--dangerously-skip-permissions` should only be used inside disposable
   sandboxes.
 - The verifier checks for false completion claims, repeated tool-call loops,

@@ -51,7 +51,7 @@ Edit interactively with `/config`, by natural language with `/update-config`
     "deny":  ["Bash(rm -rf:*)", "mcp__untrusted-server"],
     "ask":   ["Bash(git push:*)"],
     "additionalDirectories": ["../lib"],
-    "defaultMode": "acceptEdits"        // permission mode
+    "defaultMode": "acceptEdits"        // default | plan | acceptEdits | autoApprove
   },
   "sandbox": { /* SandboxSettingsSchema — OS sandbox for shell commands */ },
   "autoMode": { "allow": [], "soft_deny": [], "deny": [] },
@@ -64,6 +64,13 @@ Edit interactively with `/config`, by natural language with `/update-config`
 ```
 Rule syntax: `ToolName` (blanket) or `ToolName(specifier)` — e.g. `Bash(npm run *)`,
 `Edit(src/**)`, `mcp__server__tool`. Managed via `/permissions` UI as well.
+
+Permission modes:
+- `default`: normal permission checks; operations that need review ask first.
+- `plan`: planning-only mode until the user approves execution.
+- `acceptEdits`: auto-approve safe in-workspace file edits and safe commands.
+- `autoApprove`: auto-approve command/tool permission approvals, while
+  user-input dialogs still ask and explicit denials remain enforced.
 
 ### Hooks
 ```jsonc

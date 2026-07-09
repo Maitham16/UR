@@ -10,7 +10,9 @@ Every tool call is checked (doc 04 §Permission model):
 - Rules: `allow` / `ask` / `deny` lists in settings `permissions`, `--allowedTools` /
   `--disallowedTools`, or the `/permissions` UI. Syntax `Tool` or `Tool(specifier)`
   (`Bash(git:*)`, `Edit(src/**)`, `mcp__server__tool`).
-- Modes: `permissions.defaultMode` / `--permission-mode` (e.g. `plan`, accept-edits).
+- Modes: `permissions.defaultMode` / `--permission-mode`:
+  `default`, `plan`, `acceptEdits`, `autoApprove`. `autoApprove` skips
+  command/tool approval prompts while preserving user-input dialogs.
 - Bypass: `--dangerously-skip-permissions` (or `--allow-dangerously-skip-permissions` to
   make it opt-in at runtime); org policy can forbid it (`policyLimits`).
 - Auto-mode: `autoMode.allow / soft_deny / deny` + optional LLM classifier

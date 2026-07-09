@@ -87,6 +87,7 @@ import {
   AUTO_REJECT_MESSAGE,
   buildClassifierUnavailableMessage,
   buildYoloRejectionMessage,
+  DONT_ASK_REJECT_MESSAGE,
 } from '../messages.js'
 import { calculateCostFromTokens } from '../modelCost.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -500,18 +501,34 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
     return result
   }
 
-  // Apply dontAsk mode transformation: convert manual prompts to approvals.
+  // Apply dontAsk mode transformation: convert manual prompts to denials.
   // This is done at the end so it can't be bypassed by early returns
   if (result.behavior === 'ask') {
     const appState = context.getAppState()
 
     if (appState.toolPermissionContext.mode === 'dontAsk') {
       return {
+        behavior: 'deny',
+        decisionReason: {
+          type: 'mode',
+          mode: 'dontAsk',
+        },
+        message: DONT_ASK_REJECT_MESSAGE(tool.name),
+      }
+    }
+
+    // Auto Approval mode skips permission approval dialogs, but preserves tools
+    // that are meant to ask the user for information or choices.
+    if (appState.toolPermissionContext.mode === 'autoApprove') {
+      if (tool.requiresUserInteraction?.()) {
+        return result
+      }
+      return {
         behavior: 'allow',
         updatedInput: input,
         decisionReason: {
           type: 'mode',
-          mode: 'dontAsk',
+          mode: 'autoApprove',
         },
       }
     }

@@ -15,9 +15,9 @@ import type { ContentBlockParam } from '@urhq-ai/sdk/resources/messages.mjs'
 
 export const EXTERNAL_PERMISSION_MODES = [
   'acceptEdits',
+  'autoApprove',
   'bypassPermissions',
   'default',
-  'dontAsk',
   'plan',
 ] as const
 
@@ -25,7 +25,11 @@ export type ExternalPermissionMode = (typeof EXTERNAL_PERMISSION_MODES)[number]
 
 // Exhaustive mode union for typechecking. The user-addressable runtime set
 // is INTERNAL_PERMISSION_MODES below.
-export type InternalPermissionMode = ExternalPermissionMode | 'auto' | 'bubble'
+export type InternalPermissionMode =
+  | ExternalPermissionMode
+  | 'auto'
+  | 'bubble'
+  | 'dontAsk'
 export type PermissionMode = InternalPermissionMode
 
 // Runtime validation set: modes that are user-addressable (settings.json

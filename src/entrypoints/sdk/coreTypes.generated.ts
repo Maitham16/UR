@@ -41,9 +41,9 @@ export type ThinkingConfig = ThinkingAdaptive | ThinkingEnabled | ThinkingDisabl
 export type PermissionMode =
   | 'default'
   | 'acceptEdits'
+  | 'autoApprove'
   | 'bypassPermissions'
   | 'plan'
-  | 'dontAsk'
 
 export type HookEventName = string
 export type HookEvent = HookEventName
