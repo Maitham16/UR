@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.44.10
+
+- Render `AskUserQuestion` permission requests inside a `PermissionDialog` so
+  multiple-choice options appear as a bordered dialog box rather than a plain
+  list.
+- Add `/undo` local command to restore the last-edited file from its pre-edit
+  checkpoint.
+- Add shell quote-safety gate to `BashTool.validateInput`: reject commands with
+  unbalanced quotes before execution and return a model-actionable diagnostic.
+- Add four built-in output styles: `Concise`, `JSON-strict`, `Debug-verbose`,
+  `Release-notes`.
+
 ## 1.44.9
 
 - Fix recurring "String to replace not found in file" Edit errors by adding

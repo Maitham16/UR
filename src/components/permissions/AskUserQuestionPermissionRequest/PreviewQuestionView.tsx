@@ -11,7 +11,6 @@ import { toIDEDisplayName } from '../../../utils/ide.js';
 import { editPromptInEditor } from '../../../utils/promptEditor.js';
 import { Divider } from '../../design-system/Divider.js';
 import TextInput from '../../TextInput.js';
-import { PermissionRequestTitle } from '../PermissionRequestTitle.js';
 import { PreviewBox } from './PreviewBox.js';
 import { QuestionNavigationBar } from './QuestionNavigationBar.js';
 import type { QuestionState } from './use-multiple-choice-state.js';
@@ -255,10 +254,8 @@ export function PreviewQuestionView({
     return minContentHeight ? Math.max(1, minContentHeight - PREVIEW_OVERHEAD) : undefined;
   }, [minContentHeight]);
   return <Box flexDirection="column" marginTop={1} tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
-      <Divider color="inactive" />
       <Box flexDirection="column" paddingTop={0}>
         <QuestionNavigationBar questions={questions} currentQuestionIndex={currentQuestionIndex} answers={answers} hideSubmitTab={hideSubmitTab} />
-        <PermissionRequestTitle title={question.question} color={'text'} />
 
         <Box flexDirection="column" minHeight={minContentHeight}>
           {/* Side-by-side layout: options on left, preview on right */}
