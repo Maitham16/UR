@@ -21,6 +21,23 @@ function tempDir(prefix: string): string {
 // and the auto routing strategy consumes the evidence.
 
 describe('recordOutcome', () => {
+  test('can be disabled explicitly', () => {
+    const dir = tempDir('ur-learn-disabled-')
+    const previous = process.env.UR_CODE_DISABLE_AUTO_LEARNING
+    process.env.UR_CODE_DISABLE_AUTO_LEARNING = '1'
+    try {
+      recordOutcome(dir, { id: 'r1', task: 'fix failing unit tests', model: 'small-coder', pass: true })
+      expect(loadStats(dir).seen).toHaveLength(0)
+    } finally {
+      if (previous === undefined) {
+        delete process.env.UR_CODE_DISABLE_AUTO_LEARNING
+      } else {
+        process.env.UR_CODE_DISABLE_AUTO_LEARNING = previous
+      }
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test('persists outcomes to the store and stays idempotent', () => {
     const dir = tempDir('ur-learn-auto-')
     try {

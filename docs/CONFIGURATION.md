@@ -270,6 +270,15 @@ Recommended Git behavior:
 - Do not commit generated `.ur/index/`, `.ur/memory/`, `.ur/cache/`, `.ur/tmp/`, or `.ur/logs/`.
 - Do not commit `UR.local.md`.
 
+Memory and learning defaults:
+
+- Auto-memory is enabled by default. Disable with `autoMemoryEnabled: false`,
+  `UR_CODE_DISABLE_AUTO_MEMORY=1`, or `--bare`.
+- Automatic learning is enabled by default. Disable with
+  `automaticLearningEnabled: false` or `UR_CODE_DISABLE_AUTO_LEARNING=1`.
+- Automatic learning folds local outcome stats only; it does not call a model
+  unless you explicitly run `/learn run --reflect`.
+
 ## Verifier
 
 UR runs a lightweight verifier in the agent loop (L1) to catch false "task

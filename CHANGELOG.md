@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.44.8
+
+- Keep auto-memory and automatic learning on by default with explicit opt-outs.
+  Automatic learning can now be disabled with `automaticLearningEnabled: false`
+  or `UR_CODE_DISABLE_AUTO_LEARNING=1`.
+- Make `/remember <text>` promote explicit notes into recallable auto-memory
+  topic files when auto-memory is enabled.
+- Reduce recall token load by prefiltering memory candidates before the
+  selector model and surfacing fewer, smaller high-confidence memories.
+
 ## 1.44.7
 
 - Add `autoApprove` permission mode for command/tool approval prompts. It

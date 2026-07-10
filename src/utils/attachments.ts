@@ -266,18 +266,18 @@ export const AUTO_MODE_ATTACHMENT_CONFIG = {
   FULL_REMINDER_EVERY_N_ATTACHMENTS: 5,
 } as const
 
-const MAX_MEMORY_LINES = 200
+const MAX_MEMORY_LINES = 120
 // Line cap alone doesn't bound size (200 × 500-char lines = 100KB).  The
 // surfacer injects up to 5 files per turn via <system-reminder>, bypassing
 // the per-message tool-result budget, so a tight per-file byte cap keeps
-// aggregate injection bounded (5 × 4KB = 20KB/turn).  Enforced via
+// aggregate injection bounded (3 × 2KB = 6KB/turn).  Enforced via
 // readFileInRange's truncateOnByteLimit option.  Truncation means the
 // most-relevant memory still surfaces: the frontmatter + opening context
 // is usually what matters.
-const MAX_MEMORY_BYTES = 4096
+const MAX_MEMORY_BYTES = 2048
 
 export const RELEVANT_MEMORIES_CONFIG = {
-  // Per-turn cap (5 × 4KB = 20KB) bounds a single injection, but over a
+  // Per-turn cap (3 × 2KB = 6KB) bounds a single injection, but over a
   // long session the selector keeps surfacing distinct files — ~26K tokens/
   // session observed in prod.  Cap the cumulative bytes: once hit, stop
   // prefetching entirely.  Budget is ~3 full injections; after that the
@@ -285,7 +285,7 @@ export const RELEVANT_MEMORIES_CONFIG = {
   // (rather than tracking in toolUseContext) means compact naturally
   // resets the counter — old attachments are gone from context, so
   // re-surfacing is valid.
-  MAX_SESSION_BYTES: 60 * 1024,
+  MAX_SESSION_BYTES: 24 * 1024,
 } as const
 
 export const VERIFY_PLAN_REMINDER_CONFIG = {
@@ -2236,7 +2236,7 @@ async function getRelevantMemoryAttachments(
   const selected = allResults
     .flat()
     .filter(m => !readFileState.has(m.path) && !alreadySurfaced.has(m.path))
-    .slice(0, 5)
+    .slice(0, 3)
 
   const memories = await readMemoriesForSurfacing(selected, signal)
 

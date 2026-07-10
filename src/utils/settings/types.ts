@@ -1010,6 +1010,12 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Run the auto-memory extraction agent only every N eligible turns (default 1 = every turn). The extraction is a forked agent call on the session model, so raising this trades memory freshness for lower token/compute usage.',
         ),
+      automaticLearningEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'Enable automatic learning from completed ci-loop, arena, escalation, and test-first outcomes. Default: true. The automatic path is a local JSON fold and uses no model calls.',
+        ),
       verifier: z
         .object({
           askBeforeGates: z

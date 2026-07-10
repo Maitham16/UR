@@ -17,11 +17,75 @@ export type RelevantMemory = {
 
 const SELECT_MEMORIES_SYSTEM_PROMPT = `You are selecting memories that will be useful to UR as it processes a user's query. You will be given the user's query and a list of available memory files with their filenames and descriptions.
 
-Return a list of filenames for the memories that will clearly be useful to UR as it processes the user's query (up to 5). Only include memories that you are certain will be helpful based on their name and description.
+Return a list of filenames for the memories that will clearly be useful to UR as it processes the user's query (up to 3). Only include memories that you are certain will be helpful based on their name and description.
 - If you are unsure if a memory will be useful in processing the user's query, then do not include it in your list. Be selective and discerning.
 - If there are no memories in the list that would clearly be useful, feel free to return an empty list.
 - If a list of recently-used tools is provided, do not select memories that are usage reference or API documentation for those tools (UR is already exercising them). DO still select memories containing warnings, gotchas, or known issues about those tools — active use is exactly when those matter.
 `
+
+const MAX_SELECTOR_CANDIDATES = 40
+
+const STOP_WORDS = new Set([
+  'a',
+  'about',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'but',
+  'by',
+  'can',
+  'do',
+  'for',
+  'from',
+  'how',
+  'i',
+  'in',
+  'is',
+  'it',
+  'me',
+  'my',
+  'of',
+  'on',
+  'or',
+  'our',
+  'please',
+  'should',
+  'that',
+  'the',
+  'this',
+  'to',
+  'use',
+  'we',
+  'what',
+  'when',
+  'with',
+  'you',
+])
+
+function tokenizeForMemoryRecall(text: string): Set<string> {
+  const terms = new Set<string>()
+  for (const raw of text.toLowerCase().match(/[a-z0-9][a-z0-9._/-]{2,}/g) ?? []) {
+    const term = raw.replace(/^[/._-]+|[/._-]+$/g, '')
+    if (term.length >= 3 && !STOP_WORDS.has(term)) {
+      terms.add(term)
+    }
+  }
+  return terms
+}
+
+function scoreMemoryForQuery(queryTerms: Set<string>, memory: MemoryHeader): number {
+  const haystack = `${memory.filename} ${memory.description ?? ''} ${memory.type ?? ''}`.toLowerCase()
+  let score = 0
+  for (const term of queryTerms) {
+    if (haystack.includes(term)) {
+      score += memory.filename.toLowerCase().includes(term) ? 3 : 1
+    }
+  }
+  return score
+}
 
 /**
  * Find memory files relevant to a query by scanning memory file headers
@@ -50,13 +114,29 @@ export async function findRelevantMemories(
     return []
   }
 
+  const queryTerms = tokenizeForMemoryRecall(query)
+  if (queryTerms.size === 0) {
+    return []
+  }
+
+  const candidates = memories
+    .map(memory => ({ memory, score: scoreMemoryForQuery(queryTerms, memory) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score || b.memory.mtimeMs - a.memory.mtimeMs)
+    .slice(0, MAX_SELECTOR_CANDIDATES)
+    .map(({ memory }) => memory)
+
+  if (candidates.length === 0) {
+    return []
+  }
+
   const selectedFilenames = await selectRelevantMemories(
     query,
-    memories,
+    candidates,
     signal,
     recentTools,
   )
-  const byFilename = new Map(memories.map(m => [m.filename, m]))
+  const byFilename = new Map(candidates.map(m => [m.filename, m]))
   const selected = selectedFilenames
     .map(filename => byFilename.get(filename))
     .filter((m): m is MemoryHeader => m !== undefined)
@@ -71,7 +151,7 @@ export async function findRelevantMemories(
     logMemoryRecallShape(memories, selected)
   }
 
-  return selected.map(m => ({ path: m.filePath, mtimeMs: m.mtimeMs }))
+  return selected.slice(0, 3).map(m => ({ path: m.filePath, mtimeMs: m.mtimeMs }))
 }
 
 async function selectRelevantMemories(

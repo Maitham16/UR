@@ -14,7 +14,9 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { isEnvTruthy } from '../../utils/envUtils.js'
 import { safeParseJSON } from '../../utils/json.js'
+import { getInitialSettings } from '../../utils/settings/settings.js'
 import type { Artifact } from './artifacts.js'
 import { listArtifacts } from './artifacts.js'
 import {
@@ -236,6 +238,13 @@ export function saveStats(cwd: string, stats: LearnStats): void {
   writeFileSync(statsPath(cwd), `${JSON.stringify(stats, null, 2)}\n`)
 }
 
+export function isAutomaticLearningEnabled(): boolean {
+  if (isEnvTruthy(process.env.UR_CODE_DISABLE_AUTO_LEARNING)) {
+    return false
+  }
+  return getInitialSettings().automaticLearningEnabled !== false
+}
+
 /**
  * Fire-and-forget: fold one run outcome into the on-disk stats. Called
  * automatically when ci-loop / arena / escalation / test-first runs finish,
@@ -254,6 +263,9 @@ export function recordOutcome(
     detail?: string
   },
 ): void {
+  if (!isAutomaticLearningEnabled()) {
+    return
+  }
   try {
     saveStats(cwd, foldOutcomes(loadStats(cwd), [outcomeFromRun(input)]))
   } catch {

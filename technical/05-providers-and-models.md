@@ -99,6 +99,8 @@ LLM reflection pass:
 /learn stats            # view what the agent has learned
 /learn run --reflect    # optional: distill failures into lessons (uses a model)
 ```
+Disable automatic learning with `automaticLearningEnabled: false` or
+`UR_CODE_DISABLE_AUTO_LEARNING=1`.
 
 ## Session behavior knobs
 

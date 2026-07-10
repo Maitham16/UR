@@ -16,9 +16,15 @@ Source of truth: `src/memdir/`, `src/services/{SessionMemory,extractMemories,com
 ### Auto-memory (memdir)
 - On by default; disable via `UR_CODE_DISABLE_AUTO_MEMORY=1`, `--bare`, or
   `autoMemoryEnabled: false` (project-level opt-out supported).
+- Recall is token-bounded: only a few high-confidence topic memories are
+  surfaced for a turn, and each is truncated before injection. This is meant
+  to reduce repeated explanation/context, not add a large memory dump.
 - One fact per file with frontmatter (`name`, `description`, `type: user|feedback|project|reference`);
   `MEMORY.md` is the index loaded into context.
 - `/memory` opens memory files for editing; `#` prefix in the prompt writes a quick note.
+- `/remember <text>` writes the legacy project note and also promotes the note
+  into auto-memory when auto-memory is enabled, so future turns can recall it
+  through the bounded relevance path.
 
 ### Explicit memory commands
 ```
@@ -30,6 +36,15 @@ Source of truth: `src/memdir/`, `src/services/{SessionMemory,extractMemories,com
 ```
 The bundled `/remember` skill (no args) reviews auto-memory and proposes promotions to
 UR.md / UR.local.md and detects stale/duplicate/conflicting entries.
+
+### Automatic learning
+- On by default; disable via `UR_CODE_DISABLE_AUTO_LEARNING=1` or
+  `automaticLearningEnabled: false`.
+- ci-loop, arena, escalation, and test-first outcomes are folded into
+  `.ur/learning/stats.json` as local JSON. This automatic path uses no model
+  calls and no prompt tokens.
+- Learned success rates bias auto model routing and escalation only when there
+  is enough evidence; otherwise static routing is unchanged.
 
 ### Semantic memory index
 ```

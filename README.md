@@ -638,6 +638,10 @@ the permission boundary matters.
   rules.
 - `ur context-pack scan` writes a repo architecture manifest from package
   scripts, instruction files, `.ur/verify.json`, and safety config.
+- Auto-memory and automatic learning are enabled by default. Auto-memory can be
+  disabled with `autoMemoryEnabled: false`; automatic learning can be disabled
+  with `automaticLearningEnabled: false`. The automatic learning path writes
+  local JSON stats only and uses no model tokens.
 - The deep verification subagent is available through `/verify` and can be
   auto-enabled with `UR_VERIFIER_AUTO_SUBAGENT=1`.
 - UR enforces permission and sandbox policy before running UR Bash/File
