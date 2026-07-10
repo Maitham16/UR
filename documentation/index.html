@@ -44,7 +44,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.45.3</p>
+          <p class="eyebrow">Version 1.45.4</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -90,6 +90,10 @@
             <span><code>ur test-first</code> detects compile/test/lint commands, stores failure traces, and installs edit-time verifier gates.</span>
           </article>
           <article>
+            <strong>Deterministic commands</strong>
+            <span>The external runtime exposes 150 commands and 217 unique slash tokens; registry tests reject ambiguous names, broken loaders, and undocumented visible commands.</span>
+          </article>
+          <article>
             <strong>Safety and context</strong>
             <span><code>ur safety</code> evaluates command risk. <code>ur context-pack</code> writes architecture context and task memory.</span>
           </article>
@@ -122,13 +126,13 @@ ur --model qwen3-coder:480b-cloud</code></pre>
           <article class="step">
             <span>3</span>
             <h3>Run once in scripts</h3>
-            <pre><code>ur -p "Summarize this repository"
-ur -p --output-format json "Review the current diff"</code></pre>
+            <pre><code>ur -p --model qwen3-coder:480b-cloud "Summarize this repository"
+ur -p --model qwen3-coder:480b-cloud --output-format json "Review the current diff"</code></pre>
           </article>
         </div>
         <div class="callout">
           <strong>Runtime requirement</strong>
-          <p>UR expects Bun. For local-first work, run a local Ollama app/server at <code>http://localhost:11434/api</code>. Set <code>OLLAMA_MODEL</code> or <code>UR_MODEL</code> to force a model route.</p>
+          <p>UR expects Bun. On the first interactive run in a workspace, choose a provider and model; UR validates and saves the pair locally before starting the session. Fresh print-mode workspaces require <code>--model</code> or another explicit model source.</p>
         </div>
       </section>
 
@@ -159,7 +163,7 @@ ur config set provider.fallback ollama</code></pre>
           </article>
           <article>
             <h3>Status bar and updates</h3>
-            <pre><code>Ollama | llama3 | ask | main | update 1.37.3 available</code></pre>
+            <pre><code>Ollama | llama3 | ask | main | update 1.45.4 available</code></pre>
             <p>The interactive status bar shows only important runtime state: provider, model, mode, branch, active tasks, checks status when known, and update availability. It is hidden in CI, dumb terminals, and print mode.</p>
           </article>
         </div>
@@ -396,13 +400,14 @@ ur arena "fix the parser" --agents 3 --apply</code></pre>
           <article>
             <h3>Repair failing CI in a bounded loop</h3>
             <ol>
-              <li>Run the build or test command.</li>
-              <li>Summarize the failure and launch a fix attempt.</li>
+              <li>Run the build or test command in the printed working directory.</li>
+              <li>Preserve the assertion and stack context, then launch a fix attempt only for an actionable failure.</li>
               <li>Rerun until the command passes or the retry budget is exhausted.</li>
             </ol>
-            <pre><code>ur ci-loop --command "bun test" --dry-run
-ur ci-loop --command "bun test" --max-attempts 3
-ur ci-loop --from-log failure.log --dry-run</code></pre>
+            <p>A <code>No tests found</code> result stops after the first attempt and points to <code>--cwd</code>; it does not invoke a fix agent.</p>
+            <pre><code>ur ci-loop --command "bun test" --cwd . --dry-run
+ur ci-loop --command "bun test" --cwd ./packages/app --max-attempts 3
+ur ci-loop --from-log failure.log --cwd . --dry-run</code></pre>
           </article>
 
           <article>
@@ -453,7 +458,7 @@ ur artifacts approve 1</code></pre>
             <pre><code>OLLAMA_MODEL=qwen3-coder:480b-cloud ur
 UR_MODEL=qwen3-coder:480b-cloud ur
 ur --model qwen2.5-coder:latest</code></pre>
-            <p><code>OLLAMA_MODEL</code> wins over <code>UR_MODEL</code>. Without either, UR routes from local Ollama model inventory.</p>
+            <p><code>OLLAMA_MODEL</code> wins over <code>UR_MODEL</code>. Without an explicit or workspace model, interactive startup opens the provider/model picker and fresh print mode exits before model execution.</p>
           </article>
           <article>
             <h3>Permissions</h3>
@@ -554,6 +559,12 @@ ur agent-inspect --file session.jsonl
 ur artifacts list
 ur eval report starter
 ur claim-ledger validate</code></pre>
+          </article>
+          <article>
+            <h3>CI loop reports no tests</h3>
+            <p>Use the working directory printed in the result. The loop stops after one attempt because changing code cannot repair a test-discovery cwd error.</p>
+            <pre><code>ur ci-loop --command "bun test" --cwd . --max-attempts 3
+ur ci-loop --command "bun test" --cwd ./packages/app --max-attempts 3</code></pre>
           </article>
           <article>
             <h3>New agent-platform command is missing</h3>

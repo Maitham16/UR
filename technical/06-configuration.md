@@ -19,6 +19,13 @@ Schema URL for editors: `https://json.schemastore.org/ur-settings.json`.
 Edit interactively with `/config`, by natural language with `/update-config`
 (bundled skill), or directly in the JSON files.
 
+Model selection has one intentional exception to ordinary merged precedence:
+a user-global model alone does not initialize a fresh workspace. Interactive
+startup requires a provider/model choice and writes it to
+`.ur/settings.local.json`; fresh headless startup requires `--model`, a model
+environment variable, or project/flag/managed configuration. Resumed sessions
+restore their session model without showing the picker.
+
 ## settings.json keys (from `SettingsSchema`, `src/utils/settings/types.ts`)
 
 ### Model & provider

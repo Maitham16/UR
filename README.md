@@ -214,16 +214,19 @@ Development build detected. To update, pull latest source or install from npm.
 Choose a model or Ollama host:
 
 ```sh
+ur                              # first run opens provider/model selection
 ur --model qwen2.5-coder:7b
 ur --ollama-host http://192.168.1.50:11434
 ur --discover-ollama
 ```
 
-For Ollama sessions, model selection precedence is `OLLAMA_MODEL`, then
-`UR_MODEL`, then the model router over the configured Ollama host. Once a
-provider/model pair is selected with `/model` or `ur config set`, runtime
-requests use that provider backend; they do not fall back to Ollama unless
-`ollama` is the selected provider.
+A fresh workspace never silently inherits a user-global or built-in model.
+Interactive `ur` requires a provider/model choice and stores it in the
+gitignored `.ur/settings.local.json`. Fresh print-mode runs require an explicit
+`--model`, `OLLAMA_MODEL`, `UR_MODEL`, workspace setting, or managed setting.
+For Ollama sessions, explicit environment precedence is `OLLAMA_MODEL`, then
+`UR_MODEL`. Once selected, runtime requests use that provider backend; they do
+not fall back to Ollama unless `ollama` is the selected provider.
 
 ### Legal Provider Auth
 

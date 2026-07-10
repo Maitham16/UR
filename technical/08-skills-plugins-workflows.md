@@ -23,7 +23,10 @@ plus `!`-prefixed inline shell execution for trusted (non-MCP) skills.
 # → .ur/skills/release-notes/SKILL.md, then invoke with:
 /release-notes v2.1
 ```
-`/skills` lists them; the model can also self-invoke via the `Skill` tool.
+`/skills` opens the prompt-skill browser; the model can also self-invoke prompt
+skills through the `Skill` tool. `/skill` is intentionally separate and runs
+the executable `skill.yaml` workflows below. Neither slash token aliases the
+other.
 `/skillify` (bundled) converts the current session's workflow into a skill.
 
 ### 2. Executable skills (skill.yaml) — skills as workflows
@@ -53,6 +56,11 @@ referenced via `${UR_SKILL_DIR}`.
 ```
 /skill list · /skill show deploy-checklist · /skill run deploy-checklist · /skill init <name>
 ```
+
+All skill, plugin, workflow, and built-in invocation tokens pass through the
+same registry normalizer. Earlier sources retain priority, duplicate canonical
+tokens are omitted, and a later command loses only aliases already claimed by
+another command.
 
 ## Workflows (`/workflow`, aliases `/wf`, `/workflows`)
 

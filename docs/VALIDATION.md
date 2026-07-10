@@ -19,10 +19,28 @@ You need:
 
 ```sh
 ur --version
-# expected: the version from package.json, e.g. "1.35.1 (UR-Nexus)"
+# expected for this release: "1.45.4 (UR-Nexus)"
 ```
 
-## 0.1 Permission safety and context pack (1.19.0)
+## 0.1 First-workspace model selection (1.45.4)
+
+In a new temporary directory, run `ur`. Expected: before the REPL appears, UR
+opens the provider-first picker. After selecting a connected provider and one
+of its models, `.ur/settings.local.json` contains both `provider.active` and
+the selected model. A second `ur` run in the same directory reuses that local
+pair without showing the startup picker.
+
+Before making the interactive choice, the equivalent headless command must
+exit non-zero without contacting a model:
+
+```sh
+ur -p "say hi"
+```
+
+Expected: `No model has been selected for this workspace`. Supplying
+`--model <model>`, `OLLAMA_MODEL`, or `UR_MODEL` bypasses the gate for that run.
+
+## 0.2 Permission safety and context pack (1.19.0)
 
 In a project checkout:
 
@@ -47,7 +65,7 @@ Expected:
 - `remember` appends task memory entries under `.ur/context/task-memory.jsonl`.
 - `compress` writes `.ur/context/compressed.md`.
 
-## 0.2 Test-first execution loop (1.18.0)
+## 0.3 Test-first execution loop (1.18.0)
 
 In a project checkout:
 
@@ -74,7 +92,7 @@ ur test-first --max-attempts 1
 Expected: a non-zero command creates a log under
 `.ur/test-first/traces/`, and the command reports `exhausted`, not `passed`.
 
-## 0.3 Reliable repo editing (1.17.0)
+## 0.4 Reliable repo editing (1.17.0)
 
 In a disposable checkout:
 
@@ -92,7 +110,7 @@ Expected:
 - If the check command exits non-zero, every touched file is restored and the
   JSON result reports `"rolledBack": true`.
 
-## 0.4 Network Ollama discovery (1.16.0)
+## 0.5 Network Ollama discovery (1.16.0)
 
 With at least one other Ollama server reachable on your LAN:
 
@@ -292,6 +310,9 @@ ur artifacts capture-tests --command "bun test"
 ```
 
 Expected: no `unknown option` or `too many arguments` parser errors.
+The CI-loop result should include the resolved working directory. If that
+directory has no matching tests, the run should stop after its first attempt
+with `--cwd` guidance and must not launch a fix agent.
 
 ## What to do if any step fails
 

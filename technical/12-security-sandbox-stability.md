@@ -90,8 +90,9 @@ containment, findings/reports):
 `/security-review` also exists as a bundled worktree skill that fixes low-risk
 findings locally. Security labs accept only known templates and refuse symlinked
 lab roots; approved security fixes canonicalize the target, write atomically,
-and roll back if verification fails. The skill never publishes a PR without a
-separate explicit request.
+and roll back if verification fails. The skill runs focused checks, asks before
+the final full verification suite, and never commits, pushes, or opens a PR
+without a separate explicit request.
 
 ## Devcontainer execution target (`/devcontainer`, alias `/exec-target`)
 

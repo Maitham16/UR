@@ -77,6 +77,15 @@ incompatible saved model instead of silently carrying it across providers. The
 saved provider/model pair controls the runtime backend for the next agent
 request; Ollama is only used when `ollama` is the selected provider.
 
+The same provider-first picker is mandatory on the first interactive run in a
+workspace with no model in `.ur/settings.json` or `.ur/settings.local.json`.
+The result is validated and written to the gitignored local settings file.
+User-global and built-in model defaults do not silently select a model for a
+new folder. `--model`, `OLLAMA_MODEL`, `UR_MODEL`, agent configuration,
+`--settings`, managed settings, and resumed sessions are deliberate selections
+and therefore do not open the startup picker. Fresh `-p` runs without one of
+those inputs fail with an actionable message before making a model request.
+
 Use this to inspect the active runtime path:
 
 ```sh
@@ -127,8 +136,8 @@ UR_MODEL=qwen2.5-coder:7b
 ```
 
 `OLLAMA_MODEL` selects the model name and takes precedence over `UR_MODEL` only
-for Ollama runtime sessions. If neither is set, UR lets its Ollama router choose
-from the model list advertised by the configured Ollama app.
+for Ollama runtime sessions. If neither is set and the workspace has no saved
+model, interactive startup asks and headless startup requires `--model`.
 
 ### Discovering LAN Ollama servers
 

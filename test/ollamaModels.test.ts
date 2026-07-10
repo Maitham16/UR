@@ -14,6 +14,7 @@ import {
   parseOllamaModelNames,
 } from '../src/utils/model/ollamaModels.js'
 import type { ModelOption } from '../src/utils/model/modelOptions.js'
+import { getDefaultOllamaModel } from '../src/utils/model/model.js'
 
 test('parseOllamaModelNames returns sorted unique model names', () => {
   expect(
@@ -28,6 +29,24 @@ test('parseOllamaModelNames returns sorted unique model names', () => {
       ],
     }),
   ).toEqual(['llama3.2:latest', 'mistral:7b', 'qwen2.5-coder:latest'])
+})
+
+test('Ollama model environment precedence is consistent without the launcher', () => {
+  const originalOllamaModel = process.env.OLLAMA_MODEL
+  const originalUrModel = process.env.UR_MODEL
+  try {
+    process.env.UR_MODEL = 'ur-model'
+    delete process.env.OLLAMA_MODEL
+    expect(getDefaultOllamaModel()).toBe('ur-model')
+
+    process.env.OLLAMA_MODEL = 'ollama-model'
+    expect(getDefaultOllamaModel()).toBe('ollama-model')
+  } finally {
+    if (originalOllamaModel === undefined) delete process.env.OLLAMA_MODEL
+    else process.env.OLLAMA_MODEL = originalOllamaModel
+    if (originalUrModel === undefined) delete process.env.UR_MODEL
+    else process.env.UR_MODEL = originalUrModel
+  }
 })
 
 test('getOllamaBaseUrl returns the local endpoint by default', () => {

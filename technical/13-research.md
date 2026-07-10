@@ -56,7 +56,12 @@ what to install.
 
 ## Research-oriented bundled skills
 
-- `/paper-implementation <paper/url>` — implement an algorithm from a paper in an
-  isolated worktree with tests and notes, then a PR.
-- `/latex-paper` — scaffold/compile a LaTeX paper with a build script.
-- `/benchmark` — add/run benchmarks and optionally commit results.
+- `/paper-implementation <paper/url>` (`/implement-paper`) — implement an
+  algorithm from a paper in an isolated worktree with tests and notes.
+- `/latex-paper` (`/latex`) — scaffold/compile a LaTeX paper with a build
+  script in an isolated worktree.
+- `/benchmark` — add/run benchmarks and record results in an isolated worktree.
+
+These skills keep changes local, ask before the final full verification or
+benchmark sequence, and do not commit, push, or open a PR unless the user makes
+a separate explicit request.

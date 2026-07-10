@@ -56,6 +56,11 @@ context.
 
 The GitHub install path uses the bundled launcher in `dist/cli.js`, so `bun run bundle` must be run before packaging or pushing a release. `bun run release:check` verifies that `package.json`, `bunfig.toml`, the bundle, docs, and `node ./bin/ur.js --version` agree. The GitHub workflow keeps production bundle, release, package, and global-install checks behind the Bun test step; do not publish, tag, or push release artifacts until that workflow is green.
 
+For a patch release, keep the version synchronized in `package.json`,
+`bunfig.toml`, the VS Code extension manifest, the JetBrains Gradle build,
+`documentation/index.html`, `technical/README.md`, and `CHANGELOG.md`. Rebuild
+`dist/cli.js` after changing the version.
+
 ## Build
 
 ```sh
@@ -73,12 +78,18 @@ only the root README. Check:
 - `CHANGELOG.md`
 - `docs/`
 - `documentation/`
+- `technical/`
 - `examples/`
 - extension and plugin README files when the feature affects them
 
 For top-level commands, also update the static documentation site command data
 in `documentation/app.js` and any relevant tutorial section in
 `documentation/index.html`.
+
+For slash-command changes, update `technical/03-slash-commands.md` and run
+`bun test test/commandRegistryIntegrity.test.ts`. That test verifies unique
+canonical names and aliases, non-empty descriptions, loadable implementations,
+and coverage of every visible shipped command in the technical reference.
 
 For command surfaces that write `.ur/` state, update configuration and
 validation docs with the generated files and cleanup expectations.

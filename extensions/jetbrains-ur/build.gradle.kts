@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "dev.urnexus"
-version = "1.45.3"
+version = "1.45.4"
 
 repositories {
     mavenCentral()

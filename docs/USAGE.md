@@ -8,6 +8,13 @@ UR is a terminal agent. Running `ur` opens an interactive session in the current
 ur
 ```
 
+On the first interactive run in a folder without a workspace model, UR opens
+the provider-first model picker before the REPL. A validated choice is saved to
+`.ur/settings.local.json` and reused in that workspace. A global user model is
+not silently copied into new folders. Shared `.ur/settings.json`, managed,
+`--settings`, agent, CLI, environment, and resumed-session choices remain
+explicit inputs and skip this one-time picker.
+
 Use interactive mode for iterative coding, debugging, research, and repository exploration. The session can read project instructions, use tools, call slash commands, and keep resumable conversation history.
 
 Useful options:
@@ -29,8 +36,12 @@ UR also accepts custom "Other" answers when the dialog includes one.
 Print mode is useful for scripts and shell pipelines:
 
 ```sh
-ur -p "write a changelog entry for the current diff"
+ur -p --model qwen2.5-coder:7b "write a changelog entry for the current diff"
 ```
+
+In a fresh workspace without a configured model, print mode exits before any
+model request and tells the caller to pass `--model <model>` or run interactive
+setup. This keeps automation deterministic instead of selecting a default.
 
 Output formats:
 
@@ -57,8 +68,9 @@ in this order:
 1. `OLLAMA_MODEL`
 2. `UR_MODEL`
 
-If neither variable is set and `ollama` is the selected provider, UR lets its
-Ollama router choose from the models exposed by your local Ollama app.
+If neither variable is set, a fresh workspace requires an interactive choice.
+After the provider/model pair has been stored locally, that exact pair is used
+for subsequent sessions.
 
 You can also choose the model for a single session:
 
@@ -241,7 +253,9 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur escalate ...` to plan, run, or ask an oracle model for hard tasks
 - `ur arena ...` to run multiple agents on the same task and select a winner
 - `ur test-first ...` to detect compile/test/lint commands, store failure traces, and install after-edit gates
-- `ur ci-loop ...` to run tests, repair failures, and rerun with a bounded loop
+- `ur ci-loop ...` to run tests in an explicit working directory, repair real
+  failures, and rerun with a bounded loop. A "No tests found" result stops
+  after one attempt and reports how to correct `--cwd`.
 - `ur artifacts ...` to capture reviewable diffs, test runs, notes, and feedback
 - `ur ide diff ...` to capture editor-readable inline diff bundles
 - `ur acp ...` to start/stop/status the Agent Communication Protocol server for IDE extensions
@@ -334,7 +348,7 @@ ur context-pack remember --accepted "Use p-map for concurrency" --scope project
 ur context-pack compress
 ur acp serve --port 8123
 ur exec "add tests for the parser" --concurrency 4 --json
-ur ci-loop --command "bun test" --dry-run
+ur ci-loop --command "bun test" --cwd . --dry-run
 ur artifacts capture-diff
 ur bg run "fix the flaky parser test" --worktree --dry-run
 ur worktree list

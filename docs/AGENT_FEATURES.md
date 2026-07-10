@@ -81,6 +81,24 @@ The optional `provider.fallback` value is used only to print an explicit
 recovery recommendation in provider diagnostics. It never silently or
 automatically changes the active provider.
 
+## v1.45.4 Additions
+
+- Fresh workspaces require a provider/model choice before their first
+  interactive session and persist the validated pair locally.
+- Fresh headless workspaces fail before model execution unless a model is
+  supplied explicitly or by workspace/managed configuration.
+- Resume, initialization-only, and explicit model paths remain uninterrupted;
+  AutoApprove behavior is unchanged.
+
+## v1.45.3 Additions
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Deterministic slash registry | `src/commands.ts`, `test/commandRegistryIntegrity.test.ts` | Resolves bundled, plugin, project, workflow, and built-in commands by explicit source priority; rejects duplicate canonical tokens, removes only conflicting aliases, validates every lazy loader, and keeps the technical command catalog complete. |
+| Unified sandbox command | `/sandbox [status\|check\|init\|eval\|exclude]` | One interactive slash command now owns both the settings UI and text subcommands; the shell-facing `ur sandbox` implementation is shared rather than separately registered. |
+| Actionable CI cwd handling | `ur ci-loop --cwd <path>` | Reports the absolute execution directory, retains assertion and stack context, and stops "No tests found" after one attempt without wasting a fix-agent run. |
+| Explicit worktree completion | `/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`, `/batch` | Keeps changes local, asks before the final full suite, and never commits, pushes, or opens a PR unless separately requested. |
+
 ## v1.25.x Additions
 
 | Addition | Surface | What it adds |
@@ -286,7 +304,7 @@ ur escalate plan "debug the race condition in the scheduler"
 ur escalate run "refactor the cache layer" --force-oracle
 ur escalate oracle "is this lock-free queue correct?"
 ur arena "implement the rate limiter" --agents 3 --apply
-ur ci-loop --command "bun test" --max-attempts 3
+ur ci-loop --command "bun test" --cwd . --max-attempts 3
 ur artifacts capture-diff
 ur artifacts capture-tests --command "bun test"
 ur artifacts approve 1

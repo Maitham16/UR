@@ -246,9 +246,10 @@ Registered in `src/skills/bundled/` at startup:
 | Skill | What it does | Example |
 |---|---|---|
 | `/batch` | Research + plan a large change, then execute across 5–30 parallel local worktrees; asks before final integration tests and does not publish | `/batch migrate all API handlers to zod validation` |
-| `/debug` / `/debug-v2` | Reproduce, root-cause, and fix a bug in an isolated worktree; ask before the full suite and keep publishing explicit | `/debug-v2 login 500s when password has emoji` |
+| `/debug` | Enable/read the current session debug log and diagnose runtime issues | `/debug provider request stalled` |
+| `/debug-v2` (`/debug2`, `/bugfix`) | Reproduce, root-cause, and fix a bug in an isolated worktree; ask before the full suite and keep publishing explicit | `/debug-v2 login 500s when password has emoji` |
 | `/refactor` | Safe, test-backed refactor in a worktree; ask before the full suite and keep publishing explicit | `/refactor extract retry logic into a helper` |
-| `/benchmark` | Add/run benchmarks in a worktree; optionally commit results | `/benchmark the JSON parser hot path` |
+| `/benchmark` (`/bench`, `/perf`) | Add/run benchmarks in a worktree; ask before the full sequence and keep publishing explicit | `/benchmark the JSON parser hot path` |
 | `/dockerize` | Add Dockerfile, compose, health checks, and .dockerignore in a worktree; keep publishing explicit | `/dockerize` |
 | `/security-review` | Audit code in a worktree, fix low-risk issues, and report findings without publishing | `/security-review` |
 | `/latex-paper` (`/latex`) | Generate/compile a LaTeX paper with a build script; ask before final verification and keep publishing explicit | `/latex-paper systems paper skeleton` |

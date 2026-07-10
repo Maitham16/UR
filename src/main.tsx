@@ -147,6 +147,7 @@ import {
   updateSettingsForSource,
 } from './utils/settings/settings.js';
 import { getActiveProviderSettings } from './services/providers/providerRegistry.js';
+import { shouldRequireStartupModelSelection } from './services/providers/startupModelSelection.js';
 import { resetSettingsCache } from './utils/settings/settingsCache.js';
 import type { ValidationError } from './utils/settings/validation.js';
 import { DEFAULT_TASKS_MODE_TASK_LIST_ID, TASK_STATUSES } from './utils/tasks.js';
@@ -206,6 +207,7 @@ import { createRemoteSessionConfig } from './remote/RemoteSessionManager.js';
 import { createDirectConnectSession, DirectConnectError } from './server/createDirectConnectSession.js';
 import { initializeLspServerManager } from './services/lsp/manager.js';
 import { shouldEnablePromptSuggestion } from './services/PromptSuggestion/promptSuggestion.js';
+import { ProviderFirstModelPicker } from './components/ProviderFirstModelPicker.js';
 import { type AppState, getDefaultAppState, IDLE_SPECULATION_STATE } from './state/AppStateStore.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
 import { createStore } from './state/store.js';
@@ -2145,41 +2147,56 @@ async function run(): Promise<CommanderCommand> {
     }
     setMainLoopModelOverride(effectiveModel);
 
+    const requiresStartupModelSelection = shouldRequireStartupModelSelection({
+      explicitModels: [
+        options.model,
+        process.env.URHQ_MODEL,
+        process.env.OLLAMA_MODEL,
+        process.env.UR_MODEL,
+        mainThreadAgentDefinition?.model === 'inherit'
+          ? undefined
+          : mainThreadAgentDefinition?.model,
+      ],
+      workspaceSettings: [
+        getSettingsForSource('projectSettings'),
+        getSettingsForSource('localSettings'),
+        getSettingsForSource('flagSettings'),
+        getSettingsForSource('policySettings'),
+      ],
+      isResume: Boolean(
+        options.continue ||
+          options.resume ||
+          options.fromPr ||
+          teleport ||
+          remote !== null,
+      ),
+      skipsModelExecution: initOnly,
+    });
+
+    if (requiresStartupModelSelection && isNonInteractiveSession) {
+      process.stderr.write(
+        chalk.red(
+          'Error: No model has been selected for this workspace. Run `ur` interactively to choose a provider and model, or pass `--model <model>` for this run.\n',
+        ),
+      );
+      process.exit(1);
+    }
+
     // Warm the installed-model list so adaptive routing can pick the best
     // coder/fast model before the initial model is resolved.
-    if (getAPIProvider() === 'ollama' && !getUserSpecifiedModelSetting()) {
+    if (
+      !requiresStartupModelSelection &&
+      getAPIProvider() === 'ollama' &&
+      !getUserSpecifiedModelSetting()
+    ) {
       await listOllamaModelNames(AbortSignal.timeout(750)).catch(() => {});
     }
 
-    // Compute resolved model for hooks (use user-specified model at launch)
-    setInitialMainLoopModel(getUserSpecifiedModelSetting() || null);
-    const initialMainLoopModel = getInitialMainLoopModel();
-    const resolvedInitialModel = parseUserSpecifiedModel(initialMainLoopModel ?? getDefaultMainLoopModel());
-    await refreshOllamaModelMetadata(resolvedInitialModel, {
-      timeoutMs: 750
-    });
+    // The model is finalized after interactive setup so a fresh workspace can
+    // make an explicit provider/model choice before any model-dependent work.
+    let initialMainLoopModel = getInitialMainLoopModel();
+    let resolvedInitialModel: ReturnType<typeof parseUserSpecifiedModel> | undefined;
     let advisorModel: string | undefined;
-    if (isAdvisorEnabled()) {
-      const advisorOption = canUserConfigureAdvisor() ? (options as {
-        advisor?: string;
-      }).advisor : undefined;
-      if (advisorOption) {
-        logForDebugging(`[AdvisorTool] --advisor ${advisorOption}`);
-        if (!modelSupportsAdvisor(resolvedInitialModel)) {
-          process.stderr.write(chalk.red(`Error: The model "${resolvedInitialModel}" does not support the advisor tool.\n`));
-          process.exit(1);
-        }
-        const normalizedAdvisorModel = normalizeModelStringForAPI(parseUserSpecifiedModel(advisorOption));
-        if (!isValidAdvisorModel(normalizedAdvisorModel)) {
-          process.stderr.write(chalk.red(`Error: The model "${advisorOption}" cannot be used as an advisor.\n`));
-          process.exit(1);
-        }
-      }
-      advisorModel = canUserConfigureAdvisor() ? advisorOption ?? getInitialAdvisorSetting() : advisorOption;
-      if (advisorModel) {
-        logForDebugging(`[AdvisorTool] Advisor model: ${advisorModel}`);
-      }
-    }
 
     // For tmux teammates with --agent-type, append the custom agent's prompt
     if (isAgentSwarmsEnabled() && storedTeammateOpts?.agentId && storedTeammateOpts?.agentName && storedTeammateOpts?.teamName && storedTeammateOpts?.agentType) {
@@ -2401,6 +2418,65 @@ async function run(): Promise<CommanderCommand> {
           settingsErrors: nonMcpErrors,
           onExit: () => gracefulShutdownSync(1)
         });
+      }
+    }
+
+    if (requiresStartupModelSelection) {
+      const selectedModel = await showSetupDialog<string>(root, done => (
+        <ProviderFirstModelPicker
+          initial={null}
+          headerText="Choose a provider and model for this workspace. The validated choice is saved locally before the first session starts."
+          onSelect={model => {
+            if (model) done(model);
+          }}
+        />
+      ));
+      effectiveModel = selectedModel;
+      setMainLoopModelOverride(selectedModel);
+    }
+
+    // From this point onward every model-executing path has either an
+    // explicit choice, a workspace/policy choice, or a restored session.
+    setInitialMainLoopModel(getUserSpecifiedModelSetting() || null);
+    initialMainLoopModel = getInitialMainLoopModel();
+    resolvedInitialModel = parseUserSpecifiedModel(
+      initialMainLoopModel ?? getDefaultMainLoopModel(),
+    );
+    await refreshOllamaModelMetadata(resolvedInitialModel, {
+      timeoutMs: 750,
+    });
+
+    if (isAdvisorEnabled()) {
+      const advisorOption = canUserConfigureAdvisor()
+        ? (options as { advisor?: string }).advisor
+        : undefined;
+      if (advisorOption) {
+        logForDebugging(`[AdvisorTool] --advisor ${advisorOption}`);
+        if (!modelSupportsAdvisor(resolvedInitialModel)) {
+          process.stderr.write(
+            chalk.red(
+              `Error: The model "${resolvedInitialModel}" does not support the advisor tool.\n`,
+            ),
+          );
+          process.exit(1);
+        }
+        const normalizedAdvisorModel = normalizeModelStringForAPI(
+          parseUserSpecifiedModel(advisorOption),
+        );
+        if (!isValidAdvisorModel(normalizedAdvisorModel)) {
+          process.stderr.write(
+            chalk.red(
+              `Error: The model "${advisorOption}" cannot be used as an advisor.\n`,
+            ),
+          );
+          process.exit(1);
+        }
+      }
+      advisorModel = canUserConfigureAdvisor()
+        ? advisorOption ?? getInitialAdvisorSetting()
+        : advisorOption;
+      if (advisorModel) {
+        logForDebugging(`[AdvisorTool] Advisor model: ${advisorModel}`);
       }
     }
 

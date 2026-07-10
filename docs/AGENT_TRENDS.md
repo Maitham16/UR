@@ -48,7 +48,7 @@ ur context-pack remember --decision "Use manifest commands first"
 ur context-pack compress
 ur acp serve --port 8123
 ur exec "add tests for the parser" --concurrency 4 --json
-ur ci-loop --command "bun test" --dry-run
+ur ci-loop --command "bun test" --cwd . --dry-run
 ur artifacts capture-diff
 ur artifacts capture-tests --command "bun test"
 ur claim-ledger validate
@@ -87,7 +87,7 @@ Inside an interactive session:
 | Spec-driven development | Covered | `ur spec` scaffolds requirements/design/tasks under `.ur/specs/`, tracks phase/approvals, and runs the Spec Kit / Kiro task list one task at a time | Add bidirectional sync with an external `specs/` directory |
 | Capability-aware model escalation | Covered | `ur escalate` selects fast/oracle tiers from `model-doctor`, runs routine work fast, and auto-escalates hard/failed work to the strong local model | Learn per-model success rates to tune the difficulty threshold |
 | Best-of-N agent judging | Covered | `ur arena` runs N agents per task in isolated worktrees and judges diffs with the self-review gate; winner is selectable/appliable | Add an optional model judge alongside the deterministic scorer |
-| Self-healing CI | Covered | `ur ci-loop` runs a command, summarizes failures, invokes a fix agent, and re-runs with bounded retries; commits/pushes are self-review gated | Wire to `ur trigger` so a failed CI webhook auto-launches the loop |
+| Self-healing CI | Covered | `ur ci-loop` reports its resolved cwd, preserves assertion/stack context, stops no-test configuration failures before invoking a fixer, and re-runs real failures with bounded retries; commits/pushes require explicit flags and are self-review gated | Wire to `ur trigger` so a failed CI webhook can explicitly launch the loop |
 | Verifiable artifacts | Covered | `ur artifacts` records plans/diffs/test-runs with approve/reject/feedback under `.ur/artifacts/`; comments steer active background agents through stream-json inbox injection | Attach browser-QA screenshots and link artifacts to claim-ledger entries |
 | Native IDE review | Covered | `ur ide diff` writes `.ur/ide/diffs/` bundles and `extensions/vscode-ur-inline-diffs/` provides a VS Code tree/webview/comment surface | Add JetBrains packaging if demand appears |
 | ACP / IDE agent server | Covered | `ur acp serve|stop|status` exposes an HTTP+JSON-RPC agent server so VS Code/Cursor/Zed extensions can list tools, call tools, and submit tasks | Ship reference editor extensions |
@@ -105,7 +105,7 @@ ur spec run demo --all --dry-run
 ur arena "implement a debounce helper" --agents 2 --dry-run
 ur escalate run "refactor the cache layer" --force-oracle --dry-run
 ur test-first --dry-run
-ur ci-loop --command "bun test" --dry-run
+ur ci-loop --command "bun test" --cwd . --dry-run
 ur artifacts capture-tests --command "bun test"
 ```
 

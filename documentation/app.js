@@ -2,7 +2,7 @@ const featureGroups = [
   {
     title: 'Core agent runtime',
     tags: ['interactive', 'headless', 'models'],
-    text: 'Interactive terminal sessions, one-shot print mode, JSON and stream-json output, resumable conversations, custom agents, model routing, local runtimes, and legal provider adapters.',
+    text: 'Interactive terminal sessions with first-workspace provider/model selection, deterministic one-shot print mode, JSON and stream-json output, resumable conversations, custom agents, model routing, local runtimes, and legal provider adapters.',
     commands: ['ur', 'ur -p', 'ur --resume', 'ur --continue', 'ur --model <model>', 'ur provider'],
   },
   {
@@ -72,15 +72,15 @@ const commands = [
     name: 'ur',
     category: 'Core',
     aliases: [],
-    summary: 'Start an interactive UR-Nexus session in the current workspace.',
+    summary: 'Start an interactive session; a fresh workspace must choose and locally persist a validated provider/model pair first.',
     examples: ['ur', 'ur --model qwen3-coder:480b-cloud', 'ur --continue', 'ur --resume'],
   },
   {
     name: 'ur -p',
     category: 'Core',
     aliases: ['--print'],
-    summary: 'Run one prompt headlessly and exit. This is the base mode for scripts, CI, evals, triggers, SDK calls, and A2A tasks.',
-    examples: ['ur -p "Summarize this repository"', 'ur -p --output-format json "Review the current diff"', 'ur -p --json-schema \'{"type":"object"}\' "Return structured output"'],
+    summary: 'Run one prompt headlessly and exit. Fresh workspaces require an explicit or workspace-configured model instead of loading a default.',
+    examples: ['ur -p --model qwen3-coder:480b-cloud "Summarize this repository"', 'ur -p --model qwen3-coder:480b-cloud --output-format json "Review the current diff"', 'ur -p --model qwen3-coder:480b-cloud --json-schema \'{"type":"object"}\' "Return structured output"'],
   },
   {
     name: 'acp',
@@ -191,8 +191,8 @@ const commands = [
     name: 'ci-loop',
     category: 'Automation',
     aliases: ['heal'],
-    summary: 'Run a build or test command, summarize failures, invoke a fix agent, and rerun with a bounded retry budget.',
-    examples: ['ur ci-loop --command "bun test" --dry-run', 'ur ci-loop --command "bun test" --max-attempts 3', 'ur ci-loop --from-log failure.log --dry-run', 'ur ci-loop --command "bun test" --commit'],
+    summary: 'Run a build or test command in an explicit working directory, preserve useful failure context, and rerun real failures with a bounded fix budget. No-test configuration failures stop immediately.',
+    examples: ['ur ci-loop --command "bun test" --cwd . --dry-run', 'ur ci-loop --command "bun test" --cwd ./packages/app --max-attempts 3', 'ur ci-loop --from-log failure.log --cwd . --dry-run', 'ur ci-loop --command "bun test" --cwd . --json'],
   },
   {
     name: 'context-pack',
@@ -263,13 +263,6 @@ const commands = [
     aliases: ['goals'],
     summary: 'Track persistent long-horizon objectives with notes, linked workflows, and resumable execution.',
     examples: ['ur goal add release-docs --objective "Ship professional docs" --workflow docs', 'ur goal note release-docs --note "Command reference drafted"', 'ur goal resume release-docs --dry-run', 'ur goal done release-docs'],
-  },
-  {
-    name: 'update',
-    category: 'Ops',
-    aliases: ['upgrade'],
-    summary: 'Check npm for UR-Nexus updates.',
-    examples: ['ur update', 'ur upgrade'],
   },
   {
     name: 'connect',
@@ -433,6 +426,41 @@ const commands = [
     examples: ['ur trigger parse --file payload.json --source github', 'ur trigger run --file payload.json --keyword /ur --dry-run', 'ur trigger run --file slack.json --max-turns 8'],
   },
   {
+    name: 'audit',
+    category: 'Verification',
+    aliases: [],
+    summary: 'Export the hash-chained project audit trail or verify it for tampering.',
+    examples: ['ur audit export --format jsonl', 'ur audit export --format csv --out audit.csv', 'ur audit verify'],
+  },
+  {
+    name: 'cloud',
+    category: 'Agent Platform',
+    aliases: [],
+    summary: 'Run detached best-of-N tasks, inspect their results, and explicitly apply a selected winner.',
+    examples: ['ur cloud run "speed up parser" --attempts 3', 'ur cloud list', 'ur cloud show <id>', 'ur cloud apply <id>'],
+  },
+  {
+    name: 'recipe',
+    category: 'Automation',
+    aliases: ['recipes'],
+    summary: 'Create and run structured-output playbooks whose child result must satisfy the recipe schema.',
+    examples: ['ur recipe init triage', 'ur recipe list', 'ur recipe run triage "login returns 500"'],
+  },
+  {
+    name: 'thread',
+    category: 'Sessions',
+    aliases: ['threads'],
+    summary: 'Share a session transcript through the local artifacts server or list shared threads.',
+    examples: ['ur thread share', 'ur thread list', 'ur thread share <session-id>'],
+  },
+  {
+    name: 'wiki',
+    category: 'Knowledge',
+    aliases: ['repo-wiki'],
+    summary: 'Generate a living repository wiki and map, inspect status, or install its maintenance hook.',
+    examples: ['ur wiki generate', 'ur wiki map', 'ur wiki status', 'ur wiki install-hook'],
+  },
+  {
     name: 'update',
     category: 'Ops',
     aliases: ['upgrade'],
@@ -472,7 +500,7 @@ const slashGroups = [
   {
     title: 'Agent skills',
     items: ['/debug-v2', '/refactor', '/paper-implementation', '/benchmark', '/security-review', '/dockerize', '/latex-paper', '/simplify', '/debug'],
-    text: 'Bundled slash skills that dispatch focused agent work in isolated git worktrees with clean commits and PR output.',
+    text: 'Bundled slash skills that dispatch focused work in isolated git worktrees, keep changes local, ask before the final full suite, and publish only after a separate explicit request.',
   },
   {
     title: 'Memory and evidence',
@@ -486,8 +514,8 @@ const slashGroups = [
   },
   {
     title: 'Models, tools, and interop',
-    items: ['/model', '/model-doctor', '/model-route', '/escalate', '/mcp', '/plugin', '/skills', '/sdk', '/a2a-card'],
-    text: 'Pick models, inspect capabilities, escalate to oracle models, manage MCP/plugin extensions, and expose interop surfaces.',
+    items: ['/model', '/model-doctor', '/model-route', '/escalate', '/mcp', '/plugin', '/skills', '/skill', '/sdk', '/a2a-card'],
+    text: 'Pick models, inspect capabilities, manage MCP/plugin extensions, browse prompt skills with /skills, run executable workflows with /skill, and expose interop surfaces.',
   },
   {
     title: 'Security operations',
@@ -502,7 +530,7 @@ const slashGroups = [
   {
     title: 'Preferences and environment',
     items: ['/config', '/permissions', '/sandbox', '/mode', '/theme', '/vim', '/terminal-setup', '/usage', '/ide'],
-    text: 'Configure permissions, sandboxing, UI preferences, IDE integration, and runtime environment details.',
+    text: 'Configure permissions and UI preferences; /sandbox combines its interactive settings with status, check, init, eval, and exclude operations.',
   },
 ];
 
@@ -662,8 +690,8 @@ const examples = [
   },
   {
     title: 'Self-healing CI',
-    text: 'Run a test command, summarize failures, attempt a bounded fix loop, and rerun.',
-    code: 'ur ci-loop --command "bun test" --dry-run\nur ci-loop --command "bun test" --max-attempts 3',
+    text: 'Run in an explicit cwd, preserve useful assertion and stack context, and attempt a bounded fix loop only for actionable failures.',
+    code: 'ur ci-loop --command "bun test" --cwd . --dry-run\nur ci-loop --command "bun test" --cwd ./packages/app --max-attempts 3',
   },
   {
     title: 'Test-first command evidence',

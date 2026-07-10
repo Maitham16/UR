@@ -52,12 +52,14 @@ bin/ur.js  →  dist/cli.js (bundled from src/entrypoints/cli.tsx)
 | `prompt` | Expands to text that is sent to the model (skills, `/commit`, `/review`, …) |
 | `local` | Runs TypeScript locally and prints text output (`/cost`, `/eval`, `/bg`, …) |
 | `local-jsx` | Renders an interactive Ink dialog (`/config`, `/model`, `/agents`, …) |
-| `text` | Static text response |
 
-Commands come from six sources merged in `src/commands.ts:getCommands()` (priority order):
+Commands come from seven static sources merged in `src/commands.ts:getCommands()` (priority order):
 bundled skills → built-in plugin skills → skill-dir commands (`.ur/skills`, `~/.ur/skills`) →
 workflow commands → plugin commands → plugin skills → built-ins. Availability is filtered per
-auth state (`availability: 'ur-ai' | 'console'`) and per command `isEnabled()`.
+auth state (`availability: 'ur-ai' | 'console'`) and per command `isEnabled()`. Dynamic skills
+are inserted before built-ins. `normalizeCommandTokens()` then makes lookup deterministic:
+the first source to claim a canonical or user-facing token wins, later canonical collisions
+are omitted, and only conflicting aliases are removed from otherwise distinct commands.
 
 ## Background task types (`src/tasks/types.ts`)
 

@@ -48,14 +48,21 @@ ur --ollama-host http://gpu-box:11434    # remote Ollama server
 ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
 ```
 
+- `startupModelSelection.ts` distinguishes deliberate model sources from
+  silent defaults. With no project/local/flag/managed, CLI/environment, agent,
+  or restored-session model, interactive startup requires
+  `ProviderFirstModelPicker`; headless startup exits before model execution.
+- The startup picker validates the provider/model pair through the provider
+  registry and persists it to `.ur/settings.local.json`. User-global model
+  settings are intentionally insufficient for a new workspace.
 - `settings.json → model`, `provider.active`, `provider.availableModels`,
   `provider.modelOverrides` persist choices per scope.
 - `src/utils/model/aliases.ts` maps friendly aliases; `validateModel.ts` checks against the
   provider's discovered list; `ollamaTuning.ts` adjusts context/params for local models.
 - Deprecation warnings and 1M-context upgrade checks live in `deprecation.ts` /
   `check1mAccess.ts`.
-- The default Ollama model is local (`qwen2.5-coder:7b`), not a cloud-tagged
-  route. Configured Ollama base URLs are honored consistently.
+- Ollama remains the default provider endpoint, but no model is silently chosen
+  for a fresh workspace. Configured Ollama base URLs are honored consistently.
 - OpenAI-compatible endpoints use a dedicated credential key so an OpenAI API
   key is never forwarded to an arbitrary compatible base URL. Provider switches
   clear stale endpoint/command overrides.

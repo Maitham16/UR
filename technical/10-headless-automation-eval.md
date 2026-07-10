@@ -51,7 +51,10 @@ command evidence (`src/services/agents/ciLoop.ts`):
 /ci-loop --dry-run --json
 ```
 Flags `--allow-generated`, `--allow-delete` widen what the fixer may touch.
-The result always prints the actual working directory. A "No tests found"
+`--commit` and `--push` are explicit opt-ins; the default run publishes
+nothing. The result always prints the actual working directory. Failure
+summaries retain nearby assertion and stack context while excluding passing
+test names that merely contain words such as "failed". A "No tests found"
 failure stops after the first attempt without starting a fix agent; run from
 the test root or pass `--cwd <path>`.
 Runs inside `/devcontainer` target when configured (doc 12).

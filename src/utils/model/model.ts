@@ -59,8 +59,9 @@ export function __resetOllamaRouteMemoForTests(): void {
 }
 
 export function getDefaultOllamaModel(): ModelName {
-  if (process.env.OLLAMA_MODEL) {
-    return process.env.OLLAMA_MODEL
+  const explicitModel = process.env.OLLAMA_MODEL || process.env.UR_MODEL
+  if (explicitModel) {
+    return explicitModel
   }
   if (isOllamaAutoRouteEnabled()) {
     if (memoizedRoutedDefaultModel) return memoizedRoutedDefaultModel

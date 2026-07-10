@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.45.4
+
+- Added mandatory provider-first model selection for the first interactive run
+  in every workspace that has no project-local model. The validated provider
+  and model pair is saved to `.ur/settings.local.json` before the REPL starts.
+- Prevented user-global and built-in defaults from silently choosing a model
+  for a fresh folder. Explicit CLI/environment, shared project, flag, managed,
+  agent, and restored-session model choices continue without interruption.
+- Made fresh headless workspaces fail before model execution with actionable
+  guidance to run the picker or pass `--model <model>`; initialization-only and
+  resume flows remain non-blocking. AutoApprove behavior is unchanged.
+
 ## 1.45.3
 
 - Made slash-command resolution deterministic across bundled skills, plugins,
@@ -15,6 +27,10 @@
   guidance instead of invoking a fix agent repeatedly.
 - Serialized concurrent artifact-viewer startup so simultaneous callers share
   one server and one reported URL.
+- Synchronized the user guides, static documentation site, and technical
+  specifications with the final command counts, source-priority rules,
+  `/skill` versus `/skills`, merged `/sandbox`, CI cwd behavior, and explicit
+  worktree publishing contract.
 
 ## 1.45.2
 
