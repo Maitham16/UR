@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.44.9
+
+- Fix recurring "String to replace not found in file" Edit errors by adding
+  whitespace-tolerant matching (trailing whitespace, tab/space indentation).
+- Fix AskUserQuestion "questions type expected as array" validation errors by
+  parsing stringified `questions`/`options` from small local models.
+
 ## 1.44.8
 
 - Keep auto-memory and automatic learning on by default with explicit opt-outs.

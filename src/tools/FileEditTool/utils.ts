@@ -64,8 +64,67 @@ export function stripTrailingWhitespace(str: string): string {
 }
 
 /**
+ * Normalizes a line for fuzzy matching: strips trailing whitespace and
+ * converts tabs to a canonical 4-space width so tab/space indentation
+ * differences don't block matching.
+ */
+function normalizeLineForMatch(line: string): string {
+  return line.replaceAll('\t', '    ').replace(/\s+$/, '')
+}
+
+/**
+ * Line-by-line fallback that tolerates trailing-whitespace and tab/space
+ * differences. Returns the actual string from the file (with original
+ * whitespace) so that String.replace can still find and replace it.
+ */
+function findActualStringWhitespaceTolerant(
+  fileContent: string,
+  searchString: string,
+): string | null {
+  const searchLines = searchString.split('\n')
+  const fileLines = fileContent.split('\n')
+  const normalizedSearchLines = searchLines.map(normalizeLineForMatch)
+
+  if (
+    normalizedSearchLines.length === 0 ||
+    normalizedSearchLines.length > fileLines.length
+  ) {
+    return null
+  }
+
+  // Quick filter: only check positions where the first normalized line matches.
+  const firstSearchLine = normalizedSearchLines[0]!
+  const candidateStarts: number[] = []
+  for (let i = 0; i <= fileLines.length - normalizedSearchLines.length; i++) {
+    if (normalizeLineForMatch(fileLines[i]!) === firstSearchLine) {
+      candidateStarts.push(i)
+    }
+  }
+
+  for (const start of candidateStarts) {
+    let match = true
+    for (let j = 0; j < normalizedSearchLines.length; j++) {
+      if (
+        normalizeLineForMatch(fileLines[start + j]!) !==
+        normalizedSearchLines[j]
+      ) {
+        match = false
+        break
+      }
+    }
+    if (match) {
+      return fileLines
+        .slice(start, start + normalizedSearchLines.length)
+        .join('\n')
+    }
+  }
+
+  return null
+}
+
+/**
  * Finds the actual string in the file content that matches the search string,
- * accounting for quote normalization
+ * accounting for quote normalization and whitespace differences.
  * @param fileContent The file content to search in
  * @param searchString The string to search for
  * @returns The actual string found in the file, or null if not found
@@ -89,7 +148,9 @@ export function findActualString(
     return fileContent.substring(searchIndex, searchIndex + searchString.length)
   }
 
-  return null
+  // Try whitespace-tolerant line-by-line matching (trailing whitespace,
+  // tab/space indentation differences)
+  return findActualStringWhitespaceTolerant(fileContent, searchString)
 }
 
 /**

@@ -5,6 +5,7 @@ import { getAllowedChannels, getQuestionPreviewFormat } from 'src/bootstrap/stat
 import { MessageResponse } from 'src/components/MessageResponse.js';
 import { BLACK_CIRCLE } from 'src/constants/figures.js';
 import { getModeColor } from 'src/utils/permissions/PermissionMode.js';
+import { parseToolInputJsonLenient } from 'src/utils/json.js';
 import { z } from 'zod/v4';
 import { Box, Text } from '../../ink.js';
 import type { Tool } from '../../Tool.js';
@@ -75,6 +76,17 @@ function normalizeAskUserQuestionInput(value: unknown): unknown {
       metadata: input.metadata
     } : {})
   };
+  // Models (especially small local ones) sometimes send `questions` or
+  // `options` as a JSON string instead of an actual array. Parse it before
+  // the array checks so zod sees the real structure.
+  if (typeof input.questions === 'string') {
+    const parsed = parseToolInputJsonLenient(input.questions);
+    if (Array.isArray(parsed)) input.questions = parsed;
+  }
+  if (typeof input.options === 'string') {
+    const parsed = parseToolInputJsonLenient(input.options);
+    if (Array.isArray(parsed)) input.options = parsed;
+  }
   if (Array.isArray(input.questions)) {
     return {
       questions: input.questions.map(normalizeQuestionInput),

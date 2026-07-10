@@ -364,6 +364,38 @@ export async function runLearn(options: LearnOptions): Promise<LearnResult> {
   return { stats, newOutcomes: fresh.length, newLessons }
 }
 
+/**
+ * Auto-skillify: categories the agent has repeatedly succeeded at are
+ * candidates for a reusable skill (the CODESKILL "self-evolving skills"
+ * pattern). Pure suggestion — creation stays a human decision via
+ * /create-skill or /skillify. A category qualifies with >= minPasses passes
+ * at >= minRate and no existing skill whose name mentions the category.
+ */
+export function suggestSkillCandidates(
+  stats: LearnStats,
+  existingSkillNames: string[] = [],
+  options: { minPasses?: number; minRate?: number } = {},
+): Array<{ category: string; passes: number; rate: number; hint: string }> {
+  const minPasses = options.minPasses ?? 5
+  const minRate = options.minRate ?? 0.7
+  const existing = existingSkillNames.map(n => n.toLowerCase())
+  const out: Array<{ category: string; passes: number; rate: number; hint: string }> = []
+  for (const [category, t] of Object.entries(stats.categories)) {
+    const total = t.pass + t.fail
+    if (t.pass < minPasses || total === 0) continue
+    const r = t.pass / total
+    if (r < minRate) continue
+    if (existing.some(name => name.includes(category.toLowerCase()))) continue
+    out.push({
+      category,
+      passes: t.pass,
+      rate: r,
+      hint: `You have ${t.pass} successful ${category} runs (${Math.round(r * 100)}%). Distill the repeatable steps into a skill: /create-skill ${category}-playbook or /skillify after the next ${category} run.`,
+    })
+  }
+  return out.sort((a, b) => b.passes - a.passes)
+}
+
 export function formatStats(stats: LearnStats, json: boolean): string {
   if (json) return JSON.stringify(stats, null, 2)
   const fmt = (t: Tally) => {
@@ -386,6 +418,11 @@ export function formatStats(stats: LearnStats, json: boolean): string {
   if (stats.lessons.length) {
     lines.push('Lessons:')
     for (const lesson of stats.lessons.slice(-10)) lines.push(`  - ${lesson}`)
+  }
+  const skillIdeas = suggestSkillCandidates(stats)
+  if (skillIdeas.length) {
+    lines.push('', 'Skill candidates (auto-skillify):')
+    for (const idea of skillIdeas.slice(0, 5)) lines.push(`  - ${idea.hint}`)
   }
   if (cats.length === 0 && models.length === 0) {
     lines.push('No outcomes yet. Capture work with `ur artifacts`, then run `ur learn`.')

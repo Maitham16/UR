@@ -1110,7 +1110,9 @@ export const SettingsSchema = lazySchema(() =>
       disableAutoMode: z
         .enum(['disable'])
         .optional()
-        .describe('Disable auto mode'),
+        .describe(
+          'DEPRECATED duplicate of permissions.disableAutoMode — both are honored for back-compat, but set the nested one. This top-level key will be removed in a future major.',
+        ),
       sshConfigs: z
         .array(
           z.object({
