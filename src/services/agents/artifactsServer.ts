@@ -272,6 +272,8 @@ export async function handleArtifactsPost(
 }
 
 let active: { server: Server; port: number } | null = null
+type ArtifactsServerStart = { port: number; url: string; alreadyRunning: boolean }
+let starting: Promise<ArtifactsServerStart> | null = null
 
 export function activeArtifactsServer(): { port: number; url: string } | null {
   return active ? { port: active.port, url: `http://127.0.0.1:${active.port}` } : null
@@ -281,11 +283,15 @@ export function startArtifactsServer(
   cwd: string,
   port = 4180,
   exec?: CommandExec,
-): Promise<{ port: number; url: string; alreadyRunning: boolean }> {
+): Promise<ArtifactsServerStart> {
   if (active) {
     return Promise.resolve({ port: active.port, url: `http://127.0.0.1:${active.port}`, alreadyRunning: true })
   }
-  return new Promise((resolvePromise, reject) => {
+  if (starting) {
+    return starting.then(result => ({ ...result, alreadyRunning: true }))
+  }
+
+  const operation = new Promise<ArtifactsServerStart>((resolvePromise, reject) => {
     const server = createServer((req, res) => {
       const respond = (r: HttpPayload) => {
         res.writeHead(r.status, { 'content-type': `${r.type}; charset=utf-8` })
@@ -304,12 +310,31 @@ export function startArtifactsServer(
       const address = server.address()
       const boundPort = typeof address === 'object' && address ? address.port : port
       active = { server, port: boundPort }
-      resolvePromise({ port: boundPort, url: `http://127.0.0.1:${boundPort}`, alreadyRunning: false })
+      server.once('close', () => {
+        if (active?.server === server) active = null
+      })
+      resolvePromise({
+        port: boundPort,
+        url: `http://127.0.0.1:${boundPort}`,
+        alreadyRunning: false,
+      })
     })
   })
+  starting = operation
+  return operation.then(
+    result => {
+      if (starting === operation) starting = null
+      return result
+    },
+    error => {
+      if (starting === operation) starting = null
+      throw error
+    },
+  )
 }
 
 export async function stopArtifactsServer(): Promise<boolean> {
+  if (starting) await starting.catch(() => undefined)
   if (!active) return false
   const { server } = active
   active = null

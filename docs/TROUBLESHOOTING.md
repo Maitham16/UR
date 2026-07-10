@@ -186,6 +186,13 @@ ur ci-loop --command "bun test" --max-attempts 3
 ur test-first detect
 ```
 
+If the runner says "No tests found", check the working directory printed by
+the result and run from the test root or pass it explicitly:
+
+```sh
+ur ci-loop --command "bun test" --cwd ./packages/app --max-attempts 3
+```
+
 ## Integrations
 
 ### Plugin fails to load

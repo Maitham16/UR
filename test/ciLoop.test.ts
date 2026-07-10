@@ -7,6 +7,7 @@ import {
   AGENT_CONSTITUTION,
   buildFixPrompt,
   detectDeletionIntent,
+  explainNonFixableCiFailure,
   parseGitStatusChanges,
   detectPublicApiChanges,
   runCiLoop,
@@ -38,9 +39,50 @@ describe('ciLoop', () => {
   })
 
   test('summarizeFailure surfaces error lines', () => {
-    const log = ['compiling...', 'ok module a', 'Error: expected 2 to equal 3', 'at foo.ts:10'].join('\n')
+    const log = [
+      '(pass) records cannot-fix after failed retries',
+      'running assertions...',
+      'Expected: 3',
+      'Received: 2',
+      'at foo.ts:10',
+      '(fail) adds two values',
+      '1 tests failed',
+    ].join('\n')
     const summary = summarizeFailure(log)
-    expect(summary).toContain('Error: expected 2 to equal 3')
+    expect(summary).toContain('Expected: 3')
+    expect(summary).toContain('Received: 2')
+    expect(summary).toContain('at foo.ts:10')
+    expect(summary).not.toContain('(pass) records cannot-fix')
+  })
+
+  test('no-tests failures stop immediately and report the actual working directory', async () => {
+    await withTempDir(async tmp => {
+      let fixes = 0
+      const exec: CommandExec = async () => ({
+        code: 1,
+        stdout: '',
+        stderr: 'No tests found! Tests need ".test" in the filename',
+      })
+      const runner: HeadlessRunner = async () => {
+        fixes++
+        return { output: 'should not run', verdict: 'FAIL', isError: false }
+      }
+      const result = await runCiLoop({
+        cwd: tmp,
+        command: 'bun test',
+        maxAttempts: 3,
+        exec,
+        runner,
+      })
+
+      expect(result.status).toBe('cannot-fix')
+      expect(result.cwd).toBe(tmp)
+      expect(result.attempts).toHaveLength(1)
+      expect(result.cannotFixReason).toContain(tmp)
+      expect(result.cannotFixReason).toContain('--cwd <path>')
+      expect(fixes).toBe(0)
+      expect(explainNonFixableCiFailure('bun test', 'ordinary assertion failure', tmp)).toBeUndefined()
+    })
   })
 
   test('parseGitStatusChanges detects actual deleted files from porcelain status', () => {

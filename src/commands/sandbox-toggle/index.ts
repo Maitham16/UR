@@ -35,7 +35,8 @@ const command = {
 
     return `${icon} ${statusText} (⏎ to configure)`
   },
-  argumentHint: 'exclude "command pattern"',
+  argumentHint:
+    'status|check|init|eval <command>|exclude "command pattern" [--json]',
   get isHidden() {
     return (
       !SandboxManager.isSupportedPlatform() ||

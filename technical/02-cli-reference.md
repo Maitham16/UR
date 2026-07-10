@@ -104,7 +104,7 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | `ur eval [action]` | Eval harness (init/run/report/compare/leaderboard/bench) | `ur eval run smoke --json` |
 | `ur arena [task...]` | N agents compete on one task, judge picks winner | `ur arena "speed up parser" --agents 3` |
 | `ur crew [action] [name]` | Lead + workers over a shared task board | `ur crew create fixers --goal "eliminate flaky tests"` |
-| `ur ci-loop` | Run build/test, auto-fix until green | `ur ci-loop --command "npm test" --max-attempts 3` |
+| `ur ci-loop` | Run build/test in an explicit working directory, auto-fix until green | `ur ci-loop --command "npm test" --cwd ./packages/app --max-attempts 3` |
 | `ur escalate [action] [task...]` | Fast model with auto-escalation to an oracle model | `ur escalate run "hard proof" --oracle gpt-5.5` |
 | `ur route [task...]` | Classify task → recommend subagent/pattern | `ur route "debug flaky test"` |
 | `ur spec / goal / workflow / pattern / skill …` | Spec-driven dev, goals, workflows, patterns, skills (see docs 08–10) | `ur spec init checkout --goal "one-click checkout"` |

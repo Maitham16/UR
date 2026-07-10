@@ -47,7 +47,6 @@ import tasks from './commands/tasks/index.js'
 import teleport from './commands/teleport/index.js'
 // agents-platform is an internal-only command and is not shipped in external builds.
 const agentsPlatform = null
-import securityReview from './commands/security-review.js'
 import security from './commands/security/index.js'
 import scopeCmd from './commands/scope/index.js'
 import threatModel from './commands/threat-model/index.js'
@@ -98,7 +97,6 @@ import arena from './commands/arena/index.js'
 import ciLoop from './commands/ci-loop/index.js'
 import testFirst from './commands/test-first/index.js'
 import safety from './commands/safety/index.js'
-import sandbox from './commands/sandbox/index.js'
 import contextPack from './commands/context-pack/index.js'
 import artifacts from './commands/artifacts/index.js'
 import trigger from './commands/trigger/index.js'
@@ -399,7 +397,6 @@ const COMMANDS = memoize((): Command[] => [
   ultrareview,
   rewind,
   undo,
-  securityReview,
   security,
   scopeCmd,
   threatModel,
@@ -450,7 +447,6 @@ const COMMANDS = memoize((): Command[] => [
   ciLoop,
   testFirst,
   safety,
-  sandbox,
   task,
   contextPack,
   artifacts,
@@ -648,6 +644,44 @@ const loadAllCommands = memoize(async (cwd: string): Promise<Command[]> => {
 })
 
 /**
+ * Makes command lookup deterministic across bundled skills, plugins, project
+ * skills, workflows, and built-ins. Earlier sources keep precedence: a later
+ * command with a claimed canonical token is omitted, while only conflicting
+ * aliases are removed from an otherwise unique command.
+ */
+export function normalizeCommandTokens(
+  commands: readonly Command[],
+): Command[] {
+  const claimedTokens = new Set<string>()
+  const normalized: Command[] = []
+
+  for (const command of commands) {
+    const canonicalTokens = [...new Set([command.name, getCommandName(command)])]
+    const conflict = canonicalTokens.find(token => claimedTokens.has(token))
+    if (conflict) {
+      logForDebugging(
+        `Skipping duplicate command /${command.name}; token /${conflict} is already registered`,
+      )
+      continue
+    }
+
+    const aliases = [...new Set(command.aliases ?? [])].filter(
+      alias => !canonicalTokens.includes(alias) && !claimedTokens.has(alias),
+    )
+    const normalizedCommand: Command =
+      aliases.length === (command.aliases?.length ?? 0)
+        ? command
+        : { ...command, aliases: aliases.length > 0 ? aliases : undefined }
+
+    for (const token of canonicalTokens) claimedTokens.add(token)
+    for (const alias of aliases) claimedTokens.add(alias)
+    normalized.push(normalizedCommand)
+  }
+
+  return normalized
+}
+
+/**
  * Returns commands available to the current user. The expensive loading is
  * memoized, but availability and isEnabled checks run fresh every call so
  * auth changes (e.g. /login) take effect immediately.
@@ -663,9 +697,7 @@ export async function getCommands(cwd: string): Promise<Command[]> {
     _ => meetsAvailabilityRequirement(_) && isCommandEnabled(_),
   )
 
-  if (dynamicSkills.length === 0) {
-    return baseCommands
-  }
+  if (dynamicSkills.length === 0) return normalizeCommandTokens(baseCommands)
 
   // Dedupe dynamic skills - only add if not already present
   const baseCommandNames = new Set(baseCommands.map(c => c.name))
@@ -676,23 +708,22 @@ export async function getCommands(cwd: string): Promise<Command[]> {
       isCommandEnabled(s),
   )
 
-  if (uniqueDynamicSkills.length === 0) {
-    return baseCommands
-  }
+  if (uniqueDynamicSkills.length === 0)
+    return normalizeCommandTokens(baseCommands)
 
   // Insert dynamic skills after plugin skills but before built-in commands
   const builtInNames = new Set(COMMANDS().map(c => c.name))
   const insertIndex = baseCommands.findIndex(c => builtInNames.has(c.name))
 
   if (insertIndex === -1) {
-    return [...baseCommands, ...uniqueDynamicSkills]
+    return normalizeCommandTokens([...baseCommands, ...uniqueDynamicSkills])
   }
 
-  return [
+  return normalizeCommandTokens([
     ...baseCommands.slice(0, insertIndex),
     ...uniqueDynamicSkills,
     ...baseCommands.slice(insertIndex),
-  ]
+  ])
 }
 
 /**

@@ -36,7 +36,7 @@ Return a concise summary: branch name, implementation approach, verification evi
 export function registerPaperImplementationSkill(): void {
   registerBundledSkill({
     name: 'paper-implementation',
-    aliases: ['paper', 'implement-paper'],
+    aliases: ['implement-paper'],
     description:
       'Implement an algorithm or system from a paper/URL in an isolated worktree with tests and notes.',
     allowedTools: [AGENT_TOOL_NAME, 'Read', 'Grep', 'Glob', 'Edit', 'Bash', 'TestRunner', 'WebFetch', 'AskUserQuestion'],

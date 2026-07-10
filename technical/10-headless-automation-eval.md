@@ -45,11 +45,15 @@ Run a command, let the agent fix failures, rerun until green — or prove cannot
 command evidence (`src/services/agents/ciLoop.ts`):
 ```
 /ci-loop --command "bun test" --max-attempts 3
+/ci-loop --command "bun test" --cwd ./packages/app
 /ci-loop --command "npm run build" --commit --push
 /ci-loop --from-log ci-output.log        # start from an existing failure log
 /ci-loop --dry-run --json
 ```
 Flags `--allow-generated`, `--allow-delete` widen what the fixer may touch.
+The result always prints the actual working directory. A "No tests found"
+failure stops after the first attempt without starting a fix agent; run from
+the test root or pass `--cwd <path>`.
 Runs inside `/devcontainer` target when configured (doc 12).
 
 ## Test-first loop (`/test-first`, aliases `/quality-loop`, `/tf-loop`)

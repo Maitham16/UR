@@ -46,7 +46,7 @@ Return a concise summary: branch name, findings, fixes, deferred issues, and ver
 export function registerSecurityReviewSkill(): void {
   registerBundledSkill({
     name: 'security-review',
-    aliases: ['security', 'audit'],
+    aliases: ['secure-review', 'sec-review'],
     description:
       'Audit code for security issues in an isolated worktree, fix low-risk issues, and report findings.',
     allowedTools: [AGENT_TOOL_NAME, 'Read', 'Grep', 'Glob', 'Edit', 'Bash', 'TestRunner', 'AskUserQuestion'],

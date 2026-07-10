@@ -1,12 +1,14 @@
 # 03 — Slash Command Reference
 
-Source of truth: `src/commands.ts` (registry) and each `src/commands/<name>/index.ts`.
+Source of truth: `src/commands.ts` (registry) and each command definition.
 Every command below exists in the registry; descriptions and argument hints are taken from
 the command definitions in code. Aliases are shown in parentheses. Commands of type `local`
 are also runnable from the shell as `ur <command>` when wired in `src/main.tsx` (see doc 02).
+Registry integrity tests require unique invocation tokens, non-empty descriptions, valid
+names/aliases, loadable implementations, and coverage in this document.
 
 Command types: **prompt** = expands to model input · **local** = runs locally, prints text ·
-**jsx** = interactive Ink dialog · **text** = static text.
+**jsx** = interactive Ink dialog.
 
 ---
 
@@ -60,7 +62,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/local-first` (`/offline-readiness`, `/local`) | local | Report readiness for no-cloud/offline/lab environments | `/local-first --json` |
 | `/effort [low\|medium\|high\|max\|auto]` | jsx | Set model effort level | `/effort high` |
 | `/fast [on\|off]` | jsx | Toggle fast mode | `/fast on` |
-| `/advisor [<model>\|off]` | text | Configure a second "advisor" model that critiques the main model | `/advisor gpt-5.5` |
+| `/advisor [<model>\|off]` | local | Configure a second "advisor" model that critiques the main model | `/advisor gpt-5.5` |
 | `/escalate plan\|run\|oracle\|policy "<task>"` | local | Run on a fast model, auto-escalate hard steps to an oracle model | `/escalate run "prove this lock-free queue is correct" --oracle gpt-5.5` |
 | `/route <task>` (`/intent`) | local | Classify a task → recommend subagent + collaboration pattern | `/route "find why login 500s"` |
 | `/login` / `/logout` | jsx | UR account sign-in/out (hidden for 3P-service users) | `/login` |
@@ -103,7 +105,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/cloud run\|list\|show\|apply` | local | Detached best-of-N tasks: race N isolated agents, browse results, apply the winner | `/cloud run "speed up parser" --attempts 3` |
 | `/recipe init\|list\|run` (`/recipes`) | local | Structured-output playbooks: child session must return schema-valid JSON (one repair round) | `/recipe run triage "login 500s"` |
 | `/exec [prompts...]` | local | Non-interactive prompt runs with concurrency (`--file`, `--worktree`, `--max-turns`) | `/exec "fix lint errors" "update snapshots" --concurrency 2` |
-| `/ci-loop` (`/heal`) | local | Run build/test command, fix failures, rerun until green or prove cannot-fix | `/ci-loop --command "bun test" --max-attempts 3 --commit` |
+| `/ci-loop` (`/heal`) | local | Run build/test command in an explicit cwd, fix failures, rerun until green or prove cannot-fix | `/ci-loop --command "bun test" --cwd ./packages/app --max-attempts 3` |
 | `/test-first [run\|detect\|install]` (`/quality-loop`, `/tf-loop`) | local | Detect stack, run compile/test/lint loops, install edit-time verify gates | `/test-first run --max-attempts 3` |
 | `/eval init\|run\|report\|compare\|route\|builtin\|leaderboard\|bench` (`/evals`) | local | Public eval harness incl. benchmark adapters | `/eval run my-suite --model llama3.3 --repeat 3 --format html` |
 | `/sdk info\|init` (`/embed`) | local | Show headless/programmatic usage; scaffold TS/Python SDK examples | `/sdk init` |
@@ -119,7 +121,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/ultrareview` | prompt | Deep multi-pass review | `/ultrareview` |
 | `/verify` | prompt | Spawn the verification subagent on current state | `/verify` |
 | `/diff` | jsx | View uncommitted changes and per-turn diffs | `/diff` |
-| `/pr-comments` | text | Fetch comments from a GitHub PR | `/pr-comments` |
+| `/pr-comments` | prompt | Fetch comments from a GitHub PR | `/pr-comments` |
 | `/repo-edit index\|search\|rename\|move\|organize-imports\|unused\|callers` (`/reliable-edit`) | local | Indexed search, compiler-API rename, patch previews, rollback-safe apply | `/repo-edit rename getUser --to fetchUser --check "bun test"` |
 | `/code-index build\|watch\|search\|status\|repo` (`/codeindex`) | local | Local semantic code index (embeddings via Ollama) | `/code-index search "retry with backoff"` |
 | `/guardrails list\|init\|validate\|check` (`/guardrail`) | local | Declarative I/O guardrails: regex/contains/PII/LLM rules with tripwires | `/guardrails check "email me at x@y.z" --phase output` |
@@ -137,7 +139,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | Command | Type | What it does | Example |
 |---|---|---|---|
 | `/security scan\|code\|secrets\|threat-model\|vuln\|scope\|status\|rules\|report` | local | Umbrella security toolkit | `/security secrets` |
-| `/security-review` | text | Security review of pending branch changes | `/security-review` |
+| `/security-review` (`/secure-review`, `/sec-review`) | prompt | Audit code in an isolated worktree, fix low-risk issues, and report findings without publishing | `/security-review` |
 | `/scope` | local | Define/approve an authorized security test scope | `/scope set local` |
 | `/threat-model` | local | STRIDE/ATT&CK threat model | `/threat-model` |
 | `/vuln` | local | Dependency vulnerability audit (OSV) | `/vuln` |
@@ -148,8 +150,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/kali` | local | Detect installed Kali/security tools (read-only) | `/kali` |
 | `/lab` | local | Create a safe local security lab | `/lab` |
 | `/safety status\|init\|check` (`/safety-policy`) | local | Project shell-safety policy (`.ur/safety-policy.json`); evaluate risky commands | `/safety check --command "rm -rf build"` |
-| `/sandbox status\|check\|init\|eval` | local | Inspect sandbox/permission architecture, approval levels | `/sandbox eval "curl https://example.com"` |
-| `/sandbox exclude "pattern"` | jsx | Exclude a command pattern from sandboxing | `/sandbox exclude "docker *"` |
+| `/sandbox [status\|check\|init\|eval\|exclude]` | jsx | Interactive sandbox settings plus text status, dependency, policy, approval-level, and exclusion actions | `/sandbox eval "curl https://example.com"` |
 | `/permissions` (`/allowed-tools`) | jsx | Manage allow/deny tool permission rules | `/permissions` |
 | `/privacy-settings` | jsx | View/update privacy settings | `/privacy-settings` |
 
@@ -177,6 +178,8 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | Command | Type | What it does | Example |
 |---|---|---|---|
 | `/mcp [enable\|disable [server]]` | jsx | Manage MCP servers interactively | `/mcp` |
+| `/plugin` (`/plugins`, `/marketplace`) | jsx | Manage installed and marketplace plugins | `/plugin` |
+| `/reload-plugins` | local | Activate pending plugin changes in the current session | `/reload-plugins` |
 | `/ide open\|status\|doctor\|config <editor>\|diff …` | jsx | IDE integrations, inline diff bundles | `/ide status` |
 | `/acp serve\|stdio\|stop\|status` | local | Agent Communication Protocol server for IDE extensions | `/acp serve --port 9100` |
 | `/a2a-card [base-url]` (`/agent-card`) | local | Print UR Card metadata for A2A discovery | `/a2a-card https://myhost:8765` |
@@ -243,13 +246,13 @@ Registered in `src/skills/bundled/` at startup:
 | Skill | What it does | Example |
 |---|---|---|
 | `/batch` | Research + plan a large change, then execute across 5–30 parallel local worktrees; asks before final integration tests and does not publish | `/batch migrate all API handlers to zod validation` |
-| `/debug` / `/debug-v2` | Reproduce, root-cause, fix a bug in an isolated worktree; PR with regression test | `/debug-v2 login 500s when password has emoji` |
-| `/refactor` | Safe, test-backed refactor in a worktree; PR with clean commits | `/refactor extract retry logic into a helper` |
+| `/debug` / `/debug-v2` | Reproduce, root-cause, and fix a bug in an isolated worktree; ask before the full suite and keep publishing explicit | `/debug-v2 login 500s when password has emoji` |
+| `/refactor` | Safe, test-backed refactor in a worktree; ask before the full suite and keep publishing explicit | `/refactor extract retry logic into a helper` |
 | `/benchmark` | Add/run benchmarks in a worktree; optionally commit results | `/benchmark the JSON parser hot path` |
-| `/dockerize` | Add Dockerfile, compose, health checks, .dockerignore; PR | `/dockerize` |
-| `/security-review` | Audit code in a worktree, fix low-risk issues, PR with findings | `/security-review` |
-| `/latex-paper` | Generate/compile a LaTeX paper with build script; PR | `/latex-paper systems paper skeleton` |
-| `/paper-implementation` | Implement an algorithm/system from a paper or URL, with tests and notes | `/paper-implementation https://arxiv.org/abs/… ` |
+| `/dockerize` | Add Dockerfile, compose, health checks, and .dockerignore in a worktree; keep publishing explicit | `/dockerize` |
+| `/security-review` | Audit code in a worktree, fix low-risk issues, and report findings without publishing | `/security-review` |
+| `/latex-paper` (`/latex`) | Generate/compile a LaTeX paper with a build script; ask before final verification and keep publishing explicit | `/latex-paper systems paper skeleton` |
+| `/paper-implementation` (`/implement-paper`) | Implement an algorithm/system from a paper or URL with tests and notes; keep publishing explicit | `/paper-implementation https://arxiv.org/abs/… ` |
 | `/loop <interval> <prompt>` | Run a prompt/command on a recurring interval (default 10m) | `/loop 5m /ci-loop` |
 | `/remember` | Review auto-memory; promote entries to UR.md/UR.local.md; detect stale/duplicates | `/remember` |
 | `/simplify` | Review changed code for reuse/quality/efficiency, apply fixes | `/simplify` |
@@ -286,3 +289,7 @@ Beyond built-ins, slash commands are loaded from (see doc 08 for formats):
 - **Plugins**: commands and skills contributed by installed plugins (`(plugin-name)` prefix in help)
 - **Workflows**: each workflow in `.ur/workflows/` becomes a command (feature-gated)
 - **MCP prompts**: MCP servers exposing prompts appear as commands (`MCP_SKILLS` gate for model-invocable)
+
+Sources are resolved in the order shown by `src/commands.ts`. The first source
+to claim a canonical token wins; later conflicting commands are omitted and
+only conflicting aliases are removed from otherwise distinct commands.

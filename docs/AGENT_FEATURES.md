@@ -273,7 +273,7 @@ runners, so the core logic is deterministic and unit-tested offline.
 | Spec-driven development | `ur spec init\|generate\|approve\|run\|status` + `.ur/specs/` | requirements -> design -> tasks documents and a phase/approval record; executes the Spec Kit / Kiro `- [ ] T1: ...` task list one task at a time, checking off each PASS |
 | In-loop model escalation | `ur escalate plan\|run\|oracle\|policy` + `.ur/escalation.json` | capability-aware fast/oracle tiers from `model-doctor`; routine work runs fast and auto-escalates hard/failed work to the strong model; `oracle` is a one-shot second opinion |
 | Best-of-N judging | `ur arena "<task>" [--agents N] [--apply]` | runs N agents on one task in isolated worktrees, scores diffs with the self-review gate + verdict/diff heuristics, surfaces (optionally applies) the winner |
-| Self-healing CI loop | `ur ci-loop [--command ...] [--commit] [--push]` | run -> on failure summarize -> fix agent -> re-run, bounded by retries; commits/pushes are self-review gated; `--from-log` seeds the first failure |
+| Self-healing CI loop | `ur ci-loop [--command ...] [--cwd ...] [--commit] [--push]` | run -> on failure summarize -> fix agent -> re-run, bounded by retries; no-test failures stop immediately with cwd guidance; commits/pushes are self-review gated; `--from-log` seeds the first failure |
 | Verifiable artifacts | `ur artifacts add\|capture-diff\|capture-tests\|approve\|reject` + `.ur/artifacts/` | reviewable deliverables with pending/approved/rejected status and threaded feedback; threads into the provenance stack (`claim-ledger`, `trace`, `evidence`) |
 
 ### Commands

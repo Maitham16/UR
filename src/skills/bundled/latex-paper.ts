@@ -42,7 +42,7 @@ Return a concise summary: branch name, files created, and build result.
 export function registerLatexPaperSkill(): void {
   registerBundledSkill({
     name: 'latex-paper',
-    aliases: ['latex', 'paper'],
+    aliases: ['latex'],
     description:
       'Generate or compile a LaTeX paper/report in an isolated worktree with a build script.',
     allowedTools: [AGENT_TOOL_NAME, 'Read', 'Grep', 'Glob', 'Edit', 'Bash', 'AskUserQuestion'],

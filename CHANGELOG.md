@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.45.3
+
+- Made slash-command resolution deterministic across bundled skills, plugins,
+  project skills, workflows, and built-ins. Duplicate canonical tokens are
+  rejected by source priority and conflicting aliases are removed; registry
+  tests now verify every shipped command token, description, and lazy loader.
+- Removed overlapping `/paper`, `/security`, `/audit`, `/skills`, and
+  `/sandbox` registrations. The single `/sandbox` command now provides both
+  interactive settings and `status`, `check`, `init`, `eval`, and `exclude`
+  subcommands.
+- Added `/ci-loop --cwd <path>` and working-directory evidence. Test-runner
+  "No tests found" failures now stop after one attempt with actionable cwd
+  guidance instead of invoking a fix agent repeatedly.
+- Serialized concurrent artifact-viewer startup so simultaneous callers share
+  one server and one reported URL.
+
 ## 1.45.2
 
 Correctness and containment release completing the runtime audit.

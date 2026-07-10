@@ -10,7 +10,7 @@ describe('/security-review bundled skill', () => {
     expect(skills).toHaveLength(1)
     const skill = skills[0]!
     expect(skill.name).toBe('security-review')
-    expect(skill.aliases).toContain('security')
+    expect(skill.aliases).toEqual(['secure-review', 'sec-review'])
     expect(skill.userInvocable).toBe(true)
 
     const prompt = await (skill as Extract<typeof skill, { type: 'prompt' }>).getPromptForCommand('auth and input validation', {} as never)

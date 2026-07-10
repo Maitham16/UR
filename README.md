@@ -362,7 +362,7 @@ as first-class subcommands in the shipped CLI.
 | `ur spec` | Default spec-first workflow: create requirements, design, and task documents under `.ur/specs/`, run the task list, and verify with strict proof gates. |
 | `ur escalate` | Plan or run work with fast and oracle model tiers selected from local model capabilities. |
 | `ur arena` | Run multiple agents on the same task in isolated worktrees and surface the winning diff. |
-| `ur ci-loop` | Run a build or test command, hand failures to a fix agent, and retry with a bounded budget. |
+| `ur ci-loop` | Run a build or test command in an explicit working directory, hand failures to a fix agent, and retry with a bounded budget. |
 | `ur test-first` | Detect the project stack, run compile/test/lint commands, store failure traces, and install edit-time verify gates. |
 | `ur safety` | Inspect or initialize project shell safety policy and evaluate command risk before execution. |
 | `ur sandbox` | Inspect and manage the sandbox/permission architecture: status, dependency check, policy init, and command approval levels. |
@@ -556,7 +556,7 @@ ur context-pack remember --accepted "Use p-map for bounded concurrency" --scope 
 ur context-pack remember --rejected "Switch to esbuild" --alternative-to "Keep bun bundle"
 ur context-pack remember --attempt "Tried Deno runtime" --status superseded
 ur context-pack compress
-ur ci-loop --command "bun test" --max-attempts 3 --dry-run
+ur ci-loop --command "bun test" --cwd . --max-attempts 3 --dry-run
 ur bg run "fix the flaky parser test" --worktree --dry-run
 ur automation create nightly --schedule "0 9 * * 1-5" --prompt "Review open tasks"
 ur repo-edit preview rename oldName --to newName

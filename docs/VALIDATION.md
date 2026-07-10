@@ -287,7 +287,7 @@ ur escalate run "refactor the cache layer" --force-oracle --dry-run
 ur test-first --dry-run
 ur safety check --command "rm -rf build"
 ur context-pack scan
-ur ci-loop --command "bun test" --dry-run
+ur ci-loop --command "bun test" --cwd . --dry-run
 ur artifacts capture-tests --command "bun test"
 ```
 

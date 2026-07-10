@@ -89,10 +89,31 @@ export function splitCommand(command: string): { file: string; args: string[] } 
 /** Pull the most useful slice out of a noisy build log for the fix prompt. */
 export function summarizeFailure(output: string, maxLines = 40): string {
   const lines = output.split('\n')
-  const flagged = lines.filter(line =>
-    /\b(error|fail(ed|ure)?|exception|expected|assert|✗|✖|×|cannot|not found|undefined)\b/i.test(line),
+  const failurePattern =
+    /\b(error|fail(ed|ure)?|exception|expected|assert|✗|✖|×|cannot|not found|undefined)\b/i
+  const passingTestPattern = /^\s*(?:\(pass\)|✓|✔|PASS\b)/i
+  const failureIndexes = lines.flatMap((line, index) =>
+    failurePattern.test(line) && !passingTestPattern.test(line) ? [index] : [],
   )
-  const picked = (flagged.length ? flagged : lines.filter(l => l.trim())).slice(-maxLines)
+
+  const contextIndexes = new Set<number>()
+  for (const index of failureIndexes) {
+    for (
+      let contextIndex = Math.max(0, index - 2);
+      contextIndex <= Math.min(lines.length - 1, index + 5);
+      contextIndex++
+    ) {
+      contextIndexes.add(contextIndex)
+    }
+  }
+
+  const contextual = [...contextIndexes]
+    .sort((left, right) => left - right)
+    .map(index => lines[index]!)
+    .filter(line => line.trim() && !passingTestPattern.test(line))
+  const picked = (contextual.length ? contextual : lines.filter(l => l.trim())).slice(
+    -maxLines,
+  )
   return picked.join('\n').slice(-4000)
 }
 
@@ -124,6 +145,8 @@ export type CiAttempt = {
 
 export type CiLoopResult = {
   command: string
+  /** Absolute directory in which the CI command actually ran. */
+  cwd?: string
   status: 'passed' | 'failed' | 'exhausted' | 'blocked' | 'cannot-fix'
   attempts: CiAttempt[]
   /** When the loop exhausts its budget, this records why the last fix could not resolve the failure. */
@@ -177,6 +200,15 @@ export function parseGitStatusChanges(output: string): GitStatusChange[] {
       }
     })
     .filter((change): change is GitStatusChange => Boolean(change?.path))
+}
+
+export function explainNonFixableCiFailure(
+  command: string,
+  output: string,
+  cwd: string,
+): string | undefined {
+  if (!/\bno tests found!?\b/i.test(output)) return undefined
+  return `No tests were discovered while running "${command}" in "${cwd}". Run /ci-loop from the project or test root, or pass --cwd <path>. No fix agent was started.`
 }
 
 export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
@@ -235,8 +267,9 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
   })
 
   const finish = async (result: CiLoopResult): Promise<CiLoopResult> => {
+    const finalized = { ...result, cwd }
     await captureCurrentDiff(cwd, runId)
-    writeRunReport(cwd, runId, formatCiLoopResult(result, false))
+    writeRunReport(cwd, runId, formatCiLoopResult(finalized, false))
     // Automatic learning: every real run teaches the router/escalator how
     // reliable this category of work is. Dry runs are excluded — their
     // synthetic 'failed' status would poison the stats.
@@ -245,11 +278,11 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
         id: `ci-${runId}`,
         task: command,
         model: null,
-        pass: result.status === 'passed',
-        detail: `ci-loop ${result.status}: ${command}`,
+        pass: finalized.status === 'passed',
+        detail: `ci-loop ${finalized.status}: ${command}`,
       })
     }
-    return result
+    return finalized
   }
 
   if (options.dryRun) {
@@ -264,8 +297,10 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let summary: string
+    let rawFailure: string
     if (attempt === 1 && options.seedError) {
-      summary = summarizeFailure(options.seedError)
+      rawFailure = options.seedError
+      summary = summarizeFailure(rawFailure)
       attempts.push({ attempt, code: 1, passed: false, summary })
       appendRunAction(cwd, runId, {
         kind: 'ci-loop-seeded-failure',
@@ -327,13 +362,33 @@ export async function runCiLoop(options: CiLoopOptions): Promise<CiLoopResult> {
         }
         return finish(withConstitutionWarnings({ command, status: 'passed', attempts }))
       }
-      summary = summarizeFailure(`${run.stdout}\n${run.stderr}`)
+      rawFailure = `${run.stdout}\n${run.stderr}`
+      summary = summarizeFailure(rawFailure)
       attempts.push({ attempt, code: run.code, passed: false, summary })
       recordFailure(cwd, {
         failedCommand: command,
         errorTrace: summary,
       })
       lastFailure = { summary }
+    }
+
+    const nonFixableReason = explainNonFixableCiFailure(
+      command,
+      rawFailure,
+      cwd,
+    )
+    if (nonFixableReason) {
+      addRunArtifact(cwd, runId, {
+        kind: 'ci-cannot-fix',
+        path: 'ci-cannot-fix.md',
+        title: `CI cannot fix: ${command}`,
+      })
+      return finish({
+        command,
+        status: 'cannot-fix',
+        attempts,
+        cannotFixReason: nonFixableReason,
+      })
     }
 
     if (attempt === maxAttempts) break
@@ -544,6 +599,7 @@ export function formatCiLoopResult(result: CiLoopResult, json: boolean): string 
   if (json) return JSON.stringify(result, null, 2)
   const lines = [
     `CI loop: ${result.command}`,
+    ...(result.cwd ? [`Working directory: ${result.cwd}`] : []),
     `Status: ${result.status}`,
   ]
   if (result.cannotFixReason) {

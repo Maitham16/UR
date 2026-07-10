@@ -10,7 +10,7 @@ describe('/paper-implementation bundled skill', () => {
     expect(skills).toHaveLength(1)
     const skill = skills[0]!
     expect(skill.name).toBe('paper-implementation')
-    expect(skill.aliases).toContain('paper')
+    expect(skill.aliases).toEqual(['implement-paper'])
     expect(skill.userInvocable).toBe(true)
 
     const prompt = await (skill as Extract<typeof skill, { type: 'prompt' }>).getPromptForCommand('https://arxiv.org/abs/1234.5678', {} as never)

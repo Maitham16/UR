@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
+import { resolve } from 'node:path'
 import type { LocalCommandCall } from '../../types/command.js'
 import { formatCiLoopResult, runCiLoop } from '../../services/agents/ciLoop.js'
 import {
@@ -23,15 +24,22 @@ export const call: LocalCommandCall = async (args: string) => {
   const allowGenerated = tokens.includes('--allow-generated')
   const allowDeletion = tokens.includes('--allow-delete') || tokens.includes('--allow-deletion')
 
-  let seedError: string | undefined
-  if (fromLog) {
-    if (!existsSync(fromLog)) {
-      return { type: 'text', value: `Log file not found: ${fromLog}` }
-    }
-    seedError = readFileSync(fromLog, 'utf-8')
+  const activeCwd = getCwd()
+  const configuredCwd = option(tokens, '--cwd')
+  const cwd = configuredCwd ? resolve(activeCwd, configuredCwd) : activeCwd
+  if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
+    return { type: 'text', value: `CI loop working directory does not exist or is not a directory: ${cwd}` }
   }
 
-  const cwd = getCwd()
+  let seedError: string | undefined
+  if (fromLog) {
+    const logPath = resolve(cwd, fromLog)
+    if (!existsSync(logPath)) {
+      return { type: 'text', value: `Log file not found: ${logPath}` }
+    }
+    seedError = readFileSync(logPath, 'utf-8')
+  }
+
   // Honor a configured reproducible container target (opt-in; default local).
   const target = resolveExecTarget(cwd)
   const result = await runCiLoop({

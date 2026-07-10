@@ -32,7 +32,7 @@ Every tool call is checked (doc 04 §Permission model):
 /sandbox check           # sandbox deps present?
 /sandbox init            # write sandbox policy
 /sandbox eval "curl https://example.com"   # what approval level would this need?
-/sandbox exclude "docker *"                # jsx toggle: exempt a command pattern
+/sandbox exclude "docker *"                # same command: exempt a command pattern
 ```
 Settings: `sandbox` (SandboxSettingsSchema in `src/entrypoints/sandboxTypes.ts`).
 Configured read/write allow and deny roots are enforced by Seatbelt/bwrap

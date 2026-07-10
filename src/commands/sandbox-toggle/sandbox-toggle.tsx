@@ -3,14 +3,27 @@ import React from 'react';
 import { getCwdState } from '../../bootstrap/state.js';
 import { SandboxSettings } from '../../components/sandbox/SandboxSettings.js';
 import { color } from '../../ink.js';
+import type { LocalJSXCommandContext } from '../../types/command.js';
 import { getPlatform } from '../../utils/platform.js';
 import { addToExcludedCommands, SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
 import { getSettings_DEPRECATED, getSettingsFilePathForSource } from '../../utils/settings/settings.js';
 import type { ThemeName } from '../../utils/theme.js';
-export async function call(onDone: (result?: string) => void, _context: unknown, args?: string): Promise<React.ReactNode | null> {
+import { call as callSandboxCommand } from '../sandbox/sandbox.js';
+export async function call(onDone: (result?: string) => void, context: LocalJSXCommandContext, args?: string): Promise<React.ReactNode | null> {
   const settings = getSettings_DEPRECATED();
   const themeName: ThemeName = settings.theme as ThemeName || 'light';
   const platform = getPlatform();
+  const trimmedArgs = args?.trim() || '';
+  const subcommand = trimmedArgs.split(/\s+/, 1)[0] || '';
+
+  // Text subcommands share the same implementation as `ur sandbox`, so the
+  // slash command and headless CLI cannot drift apart.
+  if (['status', 'st', 'check', 'init', 'eval'].includes(subcommand)) {
+    const result = await callSandboxCommand(trimmedArgs, context);
+    onDone(result.type === 'text' ? result.value : undefined);
+    return null;
+  }
+
   if (!SandboxManager.isSupportedPlatform()) {
     // WSL1 users will see this since isSupportedPlatform returns false for WSL1
     const errorMessage = platform === 'wsl' ? 'Error: Sandboxing requires WSL2. WSL1 is not supported.' : 'Error: Sandboxing is currently only supported on macOS, Linux, and WSL2.';
@@ -36,9 +49,6 @@ export async function call(onDone: (result?: string) => void, _context: unknown,
     return null;
   }
 
-  // Parse the arguments
-  const trimmedArgs = args?.trim() || '';
-
   // If no args, show the interactive menu
   if (!trimmedArgs) {
     return <SandboxSettings onComplete={onDone} depCheck={depCheck} />;
@@ -46,8 +56,6 @@ export async function call(onDone: (result?: string) => void, _context: unknown,
 
   // Handle subcommands
   if (trimmedArgs) {
-    const parts = trimmedArgs.split(' ');
-    const subcommand = parts[0];
     if (subcommand === 'exclude') {
       // Handle exclude subcommand
       const commandPattern = trimmedArgs.slice('exclude '.length).trim();
@@ -71,7 +79,7 @@ export async function call(onDone: (result?: string) => void, _context: unknown,
       return null;
     } else {
       // Unknown subcommand
-      const message = color('error', themeName)(`Error: Unknown subcommand "${subcommand}". Available subcommand: exclude`);
+      const message = color('error', themeName)(`Error: Unknown subcommand "${subcommand}". Available subcommands: status, check, init, eval, exclude`);
       onDone(message);
       return null;
     }
