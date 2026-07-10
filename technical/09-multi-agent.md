@@ -63,6 +63,7 @@ A lead agent decomposes a goal into a task board; worker subagents claim and exe
 /crew plan cleanup --decompose        # lead splits the goal into tasks
 /crew add cleanup --task "delete unused exports in src/utils"
 /crew run cleanup                     # workers claim tasks and run
+/crew run cleanup --dynamic --max-workers 8   # scale workers to the board (governor-capped)
 /crew show cleanup · /crew reset cleanup · /crew delete cleanup
 ```
 

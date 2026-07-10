@@ -97,10 +97,17 @@ All are visible in `/tasks` (alias `/bashes`) and stoppable via the `TaskStop` t
 | `.ur/` (repo) | Project state: `settings.json`, `settings.local.json`, `artifacts/`, `specs/`, `workflows/`, `guardrails/`, `safety-policy.json`, `knowledge/`, `memory/`, `index/`, `tools/`, `devcontainer.json`, `automations/`, `evals/`, `context/`, `runs/`, `actions.jsonl` (stability ledger) |
 | `UR.md` / `UR.local.md` | Project instruction memory (analogue of CLAUDE.md), auto-loaded each session |
 
+## Local web surface
+
+The artifacts server (`/artifacts serve`) hosts everything reviewable on one
+port: `/artifacts`, `/diff`, `/dashboard` (cloud tasks, background agents,
+task board, learning stats), `/threads/<id>` (shared session transcripts via
+`ur thread share`), and `/api/dashboard` for JSON.
+
 ## Native/TS subsystems
 
 - `src/native-ts/yoga-layout`, `color-diff`, `file-index` — vendored native-speed helpers.
 - `src/ssh/` — SSH remote sessions (`ur ssh <host>`).
 - `src/upstreamproxy/` — proxying model traffic through a configured upstream.
-- `src/voice/` — voice input mode (feature-gated `VOICE_MODE`).
+- `src/voice/` — voice input mode (ships enabled as of 1.45; native audio backend optional).
 - `src/buddy/` — companion sprite UI (feature-gated `BUDDY`).

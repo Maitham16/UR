@@ -22,6 +22,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/branch [name]` (`/fork`) | jsx | Branch the conversation at this point | `/branch try-other-approach` |
 | `/rewind` (`/checkpoint`) | local | Restore code and/or conversation to a previous checkpoint | `/rewind` |
 | `/undo` | local | Restore the most recently edited file to its pre-edit (last turn) content; deletes a file the last edit created | `/undo` |
+| `/thread share\|list` (`/threads`) | local | Share a session transcript as a local web page on the artifacts server | `/thread share` |
 | `/export [filename]` | jsx | Export conversation to file or clipboard | `/export session.md` |
 | `/copy` | jsx | Copy the last response to the clipboard | `/copy` |
 | `/btw <question>` | jsx | Quick side question without derailing the main thread | `/btw what does SIGPIPE mean?` |
@@ -42,6 +43,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/memory-retention` (`/retention`) | local | Show/set/prune memory retention policy (`--ttl-days`, `--max-entries`, `--decay-days`) | `/memory-retention set --ttl-days 90` |
 | `/semantic-memory` (`/memory-index`) | local | Build & search the project-local memory embedding index | `/semantic-memory search "auth token rotation"` |
 | `/context-pack` (`/ctx-pack`, `/project-manifest`) | local | Scan repo architecture, remember decisions/constraints, compress project context under `.ur/` | `/context-pack remember --type decision --text "we use fastify"` |
+| `/wiki generate\|map\|install-hook\|status` (`/repo-wiki`) | local | Living repo wiki + prompt-injected repo map; post-merge hook keeps both fresh | `/wiki generate` |
 | `/knowledge` (`/kb`) | local | Curated knowledge base with provenance: add/remove/build/search/list/prune/status (`--embeddings`) | `/knowledge add src/auth/jwt.ts --note "token flow"` then `/knowledge search "refresh token"` |
 | `/add-dir <path>` | jsx | Add another working directory | `/add-dir ../shared-lib` |
 | `/init` | prompt | Analyze the codebase and generate the UR.md project memory file | `/init` |
@@ -98,6 +100,8 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/automation list\|create\|show\|run\|run-due\|enable\|disable\|delete` (`/automations`) | local | Project-local scheduled automations (cron), installable into launchd/systemd/cron | `/automation create nightly --schedule "0 3 * * *" --prompt "run tests and report"` |
 | `/spec init\|generate\|approve\|next\|run\|verify\|…` (`/specs`) | local | Spec-driven development: requirements → design → tasks in `.ur/specs`, executed task-by-task with proof gates | `/spec init checkout --goal "one-click checkout"` |
 | `/trigger parse\|run --file payload.json` (`/mention`) | local | Parse GitHub/Slack webhook payload → optionally launch a headless run | `/trigger run --file payload.json --source github --keyword /ur` |
+| `/cloud run\|list\|show\|apply` | local | Detached best-of-N tasks: race N isolated agents, browse results, apply the winner | `/cloud run "speed up parser" --attempts 3` |
+| `/recipe init\|list\|run` (`/recipes`) | local | Structured-output playbooks: child session must return schema-valid JSON (one repair round) | `/recipe run triage "login 500s"` |
 | `/exec [prompts...]` | local | Non-interactive prompt runs with concurrency (`--file`, `--worktree`, `--max-turns`) | `/exec "fix lint errors" "update snapshots" --concurrency 2` |
 | `/ci-loop` (`/heal`) | local | Run build/test command, fix failures, rerun until green or prove cannot-fix | `/ci-loop --command "bun test" --max-attempts 3 --commit` |
 | `/test-first [run\|detect\|install]` (`/quality-loop`, `/tf-loop`) | local | Detect stack, run compile/test/lint loops, install edit-time verify gates | `/test-first run --max-attempts 3` |
@@ -121,6 +125,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/guardrails list\|init\|validate\|check` (`/guardrail`) | local | Declarative I/O guardrails: regex/contains/PII/LLM rules with tripwires | `/guardrails check "email me at x@y.z" --phase output` |
 | `/claim-ledger add\|list\|validate` (`/claims`) | local | Claim-to-source provenance ledger | `/claim-ledger add --claim "p99 < 200ms" --source bench:latest` |
 | `/artifacts list\|show\|serve\|add\|capture-diff\|capture-tests\|approve\|reject\|feedback\|delete` (`/artifact`) | local | Reviewable deliverables under `.ur/artifacts` with approval flow + local web viewer | `/artifacts capture-diff --title "auth refactor"` then `/artifacts serve --port 7777` |
+| `/audit export\|verify` | local | Hash-chained audit trail (JSONL/CSV) with tamper verification | `/audit export --format csv --out audit.csv` |
 | `/evidence [n]` | local | Stability evidence/action ledger | `/evidence 20` |
 | `/actions [n]` | local | Recent stability action log | `/actions 10` |
 | `/learn run\|stats\|apply` | local | Mine artifacts/CI outcomes into success-rate stats + reflective lessons that tune escalate/arena/model-route | `/learn run --reflect` |
@@ -162,6 +167,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/search <query>` | local | Search workspace files for text | `/search "TODO(auth)"` |
 | `/index` | local | Build a workspace file index (`.ur/index`) | `/index` |
 | `/convert <file> <target>` | local | Convert a file format (dependency-aware) | `/convert report.md pdf` |
+| `/pdf <file> [pages] [task]` | local | Deps-aware PDF text/metadata extraction (pdftotext) | `/pdf spec.pdf 2-7` |
 | `/image <file> [task]` | local | Inspect an image (vision/OCR aware) | `/image screenshot.png "what error is shown?"` |
 | `/video <file\|url> [task]` | local | Inspect video (ffmpeg/yt-dlp aware) | `/video demo.mp4 "summarize"` |
 | `/youtube <url> [task]` | local | Fetch YouTube metadata/transcript | `/youtube https://youtu.be/… "key points"` |

@@ -8,6 +8,7 @@
 
 import { readFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
+import { handleDashboardRequest } from './dashboardRoutes.js'
 import { createRequire } from 'node:module'
 import { escapeXmlAttr as escapeHtml } from '../../utils/xml.js'
 import {
@@ -207,6 +208,10 @@ export async function handleArtifactsRequest(
   exec?: CommandExec,
 ): Promise<HttpPayload> {
   const path = decodeURIComponent(new URL(url, 'http://localhost').pathname).replace(/\/+$/, '') || '/'
+  // Dashboard + shared-thread routes live on the same local server so one
+  // port serves everything reviewable. Checked before the /:id catch-all.
+  const dashboard = await handleDashboardRequest(cwd, path)
+  if (dashboard) return dashboard
   if (path.startsWith('/assets/')) {
     const entry = ASSET_SPECS[path]
     const content = loadAsset(path)

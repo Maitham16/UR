@@ -133,6 +133,10 @@ export const call: LocalCommandCall = async (args: string) => {
     const result = await runCrew(name, {
       cwd,
       workers: workersRaw ? Number(workersRaw) : 1,
+      dynamic: tokens.includes('--dynamic'),
+      maxWorkers: option(tokens, '--max-workers')
+        ? Number(option(tokens, '--max-workers'))
+        : undefined,
       dryRun: tokens.includes('--dry-run'),
       worktrees: tokens.includes('--worktrees'),
       resume: tokens.includes('--resume'),

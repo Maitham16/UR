@@ -84,6 +84,16 @@ Types: `decision | constraint | command | diff | note`.
 | Clear | `/clear` (aliases `/reset`, `/new`) |
 | Read caps | Read tool truncates large files/lines; `/read`, `/analyze`, `/summarize` for deliberate loads |
 
+## Repo wiki & map
+
+```
+/wiki generate       # .ur/wiki/: overview, architecture, dependency map (from DNA + code index)
+/wiki install-hook   # refresh automatically after every merge
+/wiki map            # regenerate .ur/repo-map.md
+```
+When `.ur/repo-map.md` exists and is fresh (<7 days), a byte-capped repo map is
+injected into the system prompt automatically (zero tokens until generated).
+
 ## Project DNA & indexes
 
 ```

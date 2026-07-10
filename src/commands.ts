@@ -77,6 +77,12 @@ import pattern from './commands/pattern/index.js'
 import workflow from './commands/workflow/index.js'
 import skill from './commands/skill/index.js'
 import worktree from './commands/worktree/index.js'
+import audit from './commands/audit/index.js'
+import pdf from './commands/pdf/index.js'
+import recipe from './commands/recipe/index.js'
+import cloud from './commands/cloud/index.js'
+import wiki from './commands/wiki/index.js'
+import thread from './commands/thread/index.js'
 import agentInspect from './commands/agent-inspect/index.js'
 import route from './commands/route/index.js'
 import modelRoute from './commands/model-route/index.js'
@@ -423,6 +429,12 @@ const COMMANDS = memoize((): Command[] => [
   workflow,
   skill,
   worktree,
+  audit,
+  pdf,
+  recipe,
+  cloud,
+  wiki,
+  thread,
   agentInspect,
   route,
   modelRoute,

@@ -36,6 +36,10 @@ execFileSync(
     'bun',
     '--external',
     'sharp',
+    // Optional native audio backend for voice mode — resolved at runtime,
+    // degrades gracefully when not installed.
+    '--external',
+    'audio-capture-napi',
     '--define',
     `MACRO.VERSION="${version}"`,
     '--define',
@@ -50,6 +54,10 @@ execFileSync(
     `MACRO.ISSUES_EXPLAINER="file an issue at ${issues}"`,
     '--define',
     'MACRO.VERSION_CHANGELOG=""',
+    // Shipped feature flags (bun:bundle): voice mode and the computer-use
+    // MCP server are part of the supported surface as of 1.45.
+    '--feature=VOICE_MODE',
+    '--feature=CHICAGO_MCP',
   ],
   { cwd: root, stdio: 'inherit' },
 )

@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.45.0
+
+Top-tier feature release — closes the gaps against 2026's leading agents.
+
+- `ur cloud` — detached best-of-N tasks (the local-first codex-cloud
+  analogue): `run "<task>" --attempts N` races up to 8 isolated worktree
+  agents in the background via the arena judge; `list`/`show <id>` browse
+  results any time; `apply <id>` applies the winning diff. Outcomes feed the
+  automatic learning store.
+- `ur wiki` — living repo wiki (Devin-Wiki analogue): `generate` writes
+  `.ur/wiki/` (overview, architecture by import in-degree, dependency map)
+  from project DNA + the code index; `install-hook` refreshes it after every
+  merge; `map` maintains `.ur/repo-map.md`.
+- Repo map in context (Aider/Cursor pattern): when `.ur/repo-map.md` exists
+  and is fresh (<7 days), a byte-capped orientation map is injected into the
+  system prompt. Zero tokens until you generate one.
+- `ur recipe` — structured-output playbooks (Devin-style): stored prompt +
+  JSON Schema; `run` spawns a child session whose final answer must validate
+  (one automatic repair round with the validation errors).
+- `ur thread share` — share a session transcript as a local web page,
+  served at `/threads/<id>` on the artifacts server. Local-first: nothing
+  leaves the machine unless you expose the port.
+- Web dashboard at `/dashboard` on the artifacts server: cloud tasks,
+  background agents, live task board, and learning stats on one page
+  (`/api/dashboard` for JSON).
+- `ur audit export` — hash-chained audit trail (tool actions + run traces)
+  as JSONL/CSV; `ur audit verify <file>` proves an export wasn't edited or
+  reordered.
+- `/pdf <file> [pages]` — deps-aware PDF ingestion (pdftotext/pdfinfo) with
+  page ranges, mirroring /image.
+- Crew dynamic fan-out: `ur crew run <name> --dynamic [--max-workers N]`
+  scales the worker pool to the task board (tasks appended mid-run are
+  picked up), governed by a hard concurrency cap.
+- Auto-skillify: `/learn stats` now surfaces skill candidates — categories
+  with ≥5 recorded successes and no matching skill get a concrete
+  /create-skill suggestion.
+- Voice mode and the computer-use MCP server (`ur --computer-use-mcp`) now
+  ship in release builds (previously compile-time-disabled). Voice's native
+  audio backend stays optional and degrades gracefully when not installed.
+- JetBrains plugin scaffold under `extensions/jetbrains-ur/` (experimental,
+  thin ACP client mirroring the VS Code extension).
+- Settings: top-level `disableAutoMode` is marked deprecated in favor of
+  `permissions.disableAutoMode` (both still honored).
+
 ## 1.44.10
 
 - Render `AskUserQuestion` permission requests inside a `PermissionDialog` so

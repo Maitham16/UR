@@ -4563,6 +4563,26 @@ async function run(): Promise<CommanderCommand> {
     const args = [action, ...task, opts.agents ? `--agents ${opts.agents}` : undefined, opts.worktree ? '--worktree' : undefined, opts.pr ? '--pr' : undefined, opts.draft ? '--draft' : undefined, opts.base ? `--base ${quoteLocalCommandArg(opts.base)}` : undefined, opts.title ? `--title ${quoteLocalCommandArg(opts.title)}` : undefined, opts.body ? `--body ${quoteLocalCommandArg(opts.body)}` : undefined, opts.push === false ? '--no-push' : undefined, opts.model ? `--model ${quoteLocalCommandArg(opts.model)}` : undefined, opts.route ? `--route ${quoteLocalCommandArg(opts.route)}` : undefined, opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.tail ? `--tail ${opts.tail}` : undefined, opts.dryRun ? '--dry-run' : undefined, opts.offline ? '--offline' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/bg/bg.js'), args);
   });
+  program.command('cloud [action] [rest...]').description('Detached best-of-N tasks: run, list, show, apply').option('--attempts <n>', 'Number of racing agents').option('--model <model>', 'Model override').option('--max-turns <n>', 'Maximum agentic turns').option('--json', 'Output as JSON').action(async (action: string | undefined, rest: string[] = [], opts: { attempts?: string; model?: string; maxTurns?: string; json?: boolean }) => {
+    const args = [action, ...rest.map(quoteLocalCommandArg), opts.attempts ? `--attempts ${opts.attempts}` : undefined, opts.model ? `--model ${quoteLocalCommandArg(opts.model)}` : undefined, opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/cloud/cloud.js'), args);
+  });
+  program.command('wiki [action]').alias('repo-wiki').description('Generate the living repo wiki and repo map').option('--quiet', 'Suppress output (hook use)').option('--json', 'Output as JSON').action(async (action: string | undefined, opts: { quiet?: boolean; json?: boolean }) => {
+    const args = [action, opts.quiet ? '--quiet' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/wiki/wiki.js'), args);
+  });
+  program.command('audit [action] [file]').description('Export or verify the hash-chained audit trail').option('--format <fmt>', 'jsonl or csv').option('--out <file>', 'Write to a file').action(async (action: string | undefined, file: string | undefined, opts: { format?: string; out?: string }) => {
+    const args = [action, file, opts.format ? `--format ${opts.format}` : undefined, opts.out ? `--out ${quoteLocalCommandArg(opts.out)}` : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/audit/audit.js'), args);
+  });
+  program.command('recipe [action] [rest...]').alias('recipes').description('Structured-output playbooks: init, list, run').option('--model <model>', 'Model override').option('--max-turns <n>', 'Maximum agentic turns').option('--dry-run', 'Dry run').option('--json', 'Output as JSON').action(async (action: string | undefined, rest: string[] = [], opts: { model?: string; maxTurns?: string; dryRun?: boolean; json?: boolean }) => {
+    const args = [action, ...rest.map(quoteLocalCommandArg), opts.model ? `--model ${quoteLocalCommandArg(opts.model)}` : undefined, opts.maxTurns ? `--max-turns ${opts.maxTurns}` : undefined, opts.dryRun ? '--dry-run' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/recipe/recipe.js'), args);
+  });
+  program.command('thread [action] [id]').alias('threads').description('Share session threads as local web pages').option('--json', 'Output as JSON').action(async (action: string | undefined, id: string | undefined, opts: { json?: boolean }) => {
+    const args = [action, id, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/thread/thread.js'), args);
+  });
   program.command('worktree [action] [id]').alias('worktrees').description('List, inspect, and clean up UR agent worktrees').option('--dry-run', 'Show what would be cleaned without removing anything').option('--json', 'Output as JSON').action(async (action: string | undefined, id: string | undefined, opts: {
     dryRun?: boolean;
     json?: boolean;

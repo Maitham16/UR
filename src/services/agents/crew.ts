@@ -305,6 +305,13 @@ export type RunCrewOptions = {
   onEvent?: (event: CrewEvent) => void
   /** Injectable runner override (tests). When set, worktrees are ignored. */
   runnerFor?: (workerCwd: string) => StepRunner
+  /**
+   * Dynamic fan-out: keep spawning workers while unclaimed tasks remain
+   * (tasks may be appended to the board mid-run), governed by maxWorkers.
+   */
+  dynamic?: boolean
+  /** Resource governor for dynamic mode (default 8, hard cap 32). */
+  maxWorkers?: number
 }
 
 export type CrewEvent =
@@ -372,11 +379,39 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
     return count
   }
 
-  const workerIds = Array.from({ length: workerCount }, (_, i) => `w${i + 1}`)
-  await Promise.all(workerIds.map(worker))
+  let spawned = 0
+  if (options.dynamic) {
+    // Dynamic fan-out (Claude Code "Dynamic Workflows" pattern): scale the
+    // worker pool to the board instead of a fixed count. New tasks appended
+    // mid-run (ur crew add) get picked up as long as any worker is alive;
+    // when all workers drain and todos remain (appended after drain), a new
+    // wave spawns. The governor caps concurrency so a runaway decomposition
+    // cannot fork-bomb the machine.
+    const governor = Math.min(32, Math.max(1, options.maxWorkers ?? 8))
+    const active = new Set<Promise<number>>()
+    const todoCount = (): number => {
+      const spec = loadCrew(cwd, name)
+      return spec ? spec.tasks.filter(t => t.status === 'todo').length : 0
+    }
+    for (;;) {
+      while (active.size < governor && todoCount() > active.size) {
+        spawned += 1
+        const id = `w${spawned}`
+        const p = worker(id).finally(() => active.delete(p))
+        active.add(p)
+      }
+      if (active.size === 0) break
+      await Promise.race(active)
+      if (active.size === 0 && todoCount() === 0) break
+    }
+  } else {
+    spawned = workerCount
+    const workerIds = Array.from({ length: workerCount }, (_, i) => `w${i + 1}`)
+    await Promise.all(workerIds.map(worker))
+  }
 
   const finalSpec = loadCrew(cwd, name) ?? baseSpec
-  return { name, workers: workerCount, progress: crewProgress(finalSpec), handled }
+  return { name, workers: spawned, progress: crewProgress(finalSpec), handled }
 }
 
 export function formatCrewList(crews: CrewSpec[], json: boolean): string {
