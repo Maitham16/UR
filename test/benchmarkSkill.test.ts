@@ -3,7 +3,7 @@ import { clearBundledSkills, getBundledSkills } from '../src/skills/bundledSkill
 import { registerBenchmarkSkill } from '../src/skills/bundled/benchmark.js'
 
 describe('/benchmark bundled skill', () => {
-  test('registers and prompt mentions worktree + results + PR', async () => {
+  test('registers and prompt mentions worktree + results with explicit publishing', async () => {
     clearBundledSkills()
     registerBenchmarkSkill()
     const skills = getBundledSkills()
@@ -17,7 +17,8 @@ describe('/benchmark bundled skill', () => {
     const text = prompt[0]!.type === 'text' ? prompt[0]!.text : ''
     expect(text).toContain('worktree')
     expect(text).toContain('results')
-    expect(text).toContain('PR')
+    expect(text).toContain('AskUserQuestion')
+    expect(text).toContain('Do not commit, push, or open a PR')
     expect(text).toContain('parser throughput')
   })
 })

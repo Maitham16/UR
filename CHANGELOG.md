@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.45.2
+
+Correctness and containment release completing the runtime audit.
+
+- Made sandbox, security-scope, WebFetch, API, browser, database, test-runner,
+  GitHub mutation, lifecycle-hook, and file-edit boundaries fail closed. URL
+  validation now covers DNS resolution and every redirect; browser navigation
+  uses a persistent Playwright session with guarded subrequests.
+- Completed provider request mapping and error handling across OpenAI,
+  Anthropic, Gemini, OpenRouter, Ollama, and OpenAI-compatible runtimes. Generic
+  compatible endpoints use their own credential key, offline mode blocks cloud
+  dispatch, retry zero is honored, and local Ollama is the default route.
+- Made AST/LSP workspace edits transactional and containment-safe, including
+  symlink rejection, stale-edit preconditions, atomic writes, new-file rollback,
+  and TypeScript-language-service import organization.
+- Hardened SSE/WebSocket replay, transcript write serialization, direct-connect
+  cancellation, arena isolation/judging, thread sharing, and same-timestamp file
+  replacement detection. Session/diff/lab/security-fix paths reject traversal
+  and symlink escapes.
+- Fixed VS Code multi-root selection, stale turn callbacks, and diff manifest
+  validation. Replaced the JetBrains plugin's nonexistent `/v1/prompt` call
+  with project-scoped JSON-RPC sessions over `/acp`; the plugin builds against
+  IntelliJ IDEA 2024.2.
+- Enabled transcript deep search instead of the compiled-off path. Worktree
+  skills now keep changes local, ask before the final full verification suite,
+  and never commit, push, or open a PR unless explicitly requested. The
+  `autoApprove` permission mode is unchanged.
+- Removed an internal SDK barrel's throw-only runtime exports; the supported
+  programmatic contract remains `ur -p` stream-json. Provider fallback is now
+  documented and reported accurately as explicit recovery guidance, never an
+  automatic cross-provider switch.
+
 ## 1.45.1
 
 Completes the three partially-delivered 1.45.0 items to 100%.

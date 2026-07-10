@@ -3,7 +3,7 @@ import { registerBundledSkill } from '../bundledSkills.js'
 
 const PAPER_IMPLEMENTATION_PROMPT = `# Paper Implementation Skill
 
-Implement an algorithm, system, or model from a paper or URL in an isolated worktree. Add tests, a short write-up, and open a PR.
+Implement an algorithm, system, or model from a paper or URL in an isolated worktree. Add tests and a short write-up.
 
 ## Setup
 
@@ -21,17 +21,16 @@ Implement an algorithm, system, or model from a paper or URL in an isolated work
 ## Verification
 
 1. Run the new tests.
-2. Run the project's typecheck, lint, or build command if applicable.
-3. Commit the implementation, tests, and notes with clean messages.
+2. Run the closest typecheck, lint, or build command if applicable.
+3. Keep the implementation, tests, and notes local in the worktree.
 
-## PR Output
+## Finish
 
-1. Push the branch to origin.
-2. Open a PR with:
-   - Title: "feat(scope): implement <paper short name>"
-   - Body: paper link, summary, implementation approach, test results, and the location of the write-up.
+1. Use AskUserQuestion to ask whether the user wants the full project verification suite run.
+2. Run it only if approved; otherwise report the focused evidence.
+3. Do not commit, push, or open a PR unless separately requested.
 
-Return a concise summary: branch name, commits, PR URL, and the diff summary.
+Return a concise summary: branch name, implementation approach, verification evidence, and diff summary.
 `
 
 export function registerPaperImplementationSkill(): void {
@@ -39,8 +38,8 @@ export function registerPaperImplementationSkill(): void {
     name: 'paper-implementation',
     aliases: ['paper', 'implement-paper'],
     description:
-      'Implement an algorithm or system from a paper/URL in an isolated worktree with tests, notes, and a PR.',
-    allowedTools: [AGENT_TOOL_NAME, 'Read', 'Grep', 'Glob', 'Edit', 'Bash', 'TestRunner', 'WebFetch'],
+      'Implement an algorithm or system from a paper/URL in an isolated worktree with tests and notes.',
+    allowedTools: [AGENT_TOOL_NAME, 'Read', 'Grep', 'Glob', 'Edit', 'Bash', 'TestRunner', 'WebFetch', 'AskUserQuestion'],
     argumentHint: '[paper URL or description]',
     userInvocable: true,
     async getPromptForCommand(args) {

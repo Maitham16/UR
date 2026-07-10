@@ -214,7 +214,7 @@ Development build detected. To update, pull latest source or install from npm.
 Choose a model or Ollama host:
 
 ```sh
-ur --model qwen3-coder:480b-cloud
+ur --model qwen2.5-coder:7b
 ur --ollama-host http://192.168.1.50:11434
 ur --discover-ollama
 ```
@@ -252,11 +252,15 @@ ur config set provider openai-api
 ur config set provider anthropic-api
 ur config set provider gemini-api
 ur config set provider openrouter
-ur config set model qwen3-coder:480b-cloud
-ur provider select-model ollama qwen3-coder:480b-cloud --json
+ur config set model qwen2.5-coder:7b
+ur provider select-model ollama qwen2.5-coder:7b --json
 ur config set base_url http://localhost:11434
 ur config set provider.fallback ollama
 ```
+
+`provider.fallback` records a recovery provider for `ur provider doctor`
+guidance. UR never switches providers automatically: inspect the failure and
+select the recovery provider explicitly with `ur config set provider <id>`.
 
 Provider config accepts canonical IDs and common aliases. Examples:
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
@@ -469,9 +473,10 @@ ur ide config vscode        # VS Code / Cursor / Windsurf setup
 
 VS Code, Cursor, and Windsurf connect through the UR Inline Diffs extension;
 Zed and ACP-capable Neovim clients connect through the stdio Agent Client
-Protocol. **JetBrains is not implemented in this repository** — no plugin
-ships from here; only detection code for a future one exists. Start an ACP
-surface with:
+Protocol. The experimental bundled JetBrains plugin under
+`extensions/jetbrains-ur` uses project-scoped JSON-RPC sessions over the
+loopback HTTP ACP endpoint and is installable from its Gradle `buildPlugin`
+zip. Start an ACP surface with:
 
 ```sh
 ur acp stdio                        # stdio ACP agent for editors (Zed, Neovim)
@@ -482,7 +487,9 @@ ur acp status
 See the [IDE Guide](docs/IDE.md) and [ACP Guide](docs/ACP.md) for per-editor
 setup, supported features, and limitations.
 
-New slash skills run agentic work in isolated git worktrees with clean commits and PR output:
+New slash skills run agentic work in isolated git worktrees and leave changes
+local for review. They ask before the final full verification suite and do not
+commit, push, or create PRs unless explicitly requested:
 `/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`.
 Install matching agent templates with `ur agent-templates install`.
 

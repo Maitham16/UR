@@ -24,6 +24,18 @@ Sessions can be named at start (`ur -n "spike"`) or renamed later (`/rename`), a
 (`/tag experiments`) for search. `terminalTitleFromRename` mirrors the name into the
 terminal title.
 
+Transcript appends use a single-flight per-file drain. Concurrent appends are
+batched without overlapping writes; a disk failure rejects the affected batch
+and is surfaced by `flush()` instead of dropping entries or hanging waiters.
+Session IDs used in transcript paths reject separators/traversal.
+
+Remote SSE resumes from a strict contiguous sequence checkpoint and advances
+only after validated delivery. Malformed, mismatched, gapped, or incomplete
+frames reconnect without acknowledging lost data. WebSocket reconnects replay
+unacknowledged meaningful frames on both Bun and Node runtimes. Intentional
+direct-connect shutdown does not terminate the CLI, and canceling clears remote
+permission prompts.
+
 ## Checkpoints & rewind
 
 File history snapshots are taken as the agent edits (`src/utils/fileHistory.ts`).

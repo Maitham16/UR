@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 
 const WARN = "// LOCAL SECURITY LAB — intentionally vulnerable. Do NOT deploy or expose to any network.\n";
 
@@ -8,9 +8,20 @@ export interface LabResult {
   warning: string;
 }
 
+export type LabKind = "web-vuln" | "api-vuln" | "linux-audit" | "pcap";
+
+const LAB_KINDS = new Set<LabKind>(["web-vuln", "api-vuln", "linux-audit", "pcap"]);
+
 /** Create a safe, local-only, intentionally-vulnerable learning lab. */
 export function createLab(kind: string, baseDir: string): LabResult {
-  const dir = join(baseDir, "labs", kind);
+  if (!LAB_KINDS.has(kind as LabKind)) throw new Error(`unknown lab kind: ${kind}`);
+  const root = fs.realpathSync(baseDir);
+  const labsDir = resolve(root, "labs");
+  if (fs.existsSync(labsDir) && fs.lstatSync(labsDir).isSymbolicLink()) {
+    throw new Error("refusing to create a lab through a symbolic link");
+  }
+  const dir = resolve(labsDir, kind);
+  if (!dir.startsWith(`${root}${sep}`)) throw new Error("lab path escapes the workspace");
   fs.mkdirSync(dir, { recursive: true });
   const created: string[] = [];
   const write = (name: string, content: string) => {
@@ -43,7 +54,7 @@ export function createLab(kind: string, baseDir: string): LabResult {
       write("README.md", "# PCAP lab\nMock cleartext-credential traffic for detection practice. Local only.");
       break;
     default:
-      write("README.md", WARN + `# ${kind} lab\nLocal-only learning lab.`);
+      throw new Error(`unknown lab kind: ${kind}`);
   }
 
   return { created, warning: "Lab created locally and is intentionally insecure — never expose it to a network." };

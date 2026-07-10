@@ -48,7 +48,8 @@ results, verdicts, tools, tokens) from the session or a transcript file.
 
 Detached local agents managed by `src/services/agents/backgroundRunner.ts`:
 ```
-/bg run "upgrade eslint to v9" --worktree --pr    # isolated worktree, auto-PR when done
+/bg run "upgrade eslint to v9" --worktree         # isolated local worktree
+/bg run "upgrade eslint to v9" --worktree --pr    # explicit opt-in PR creation
 /bg fanout "fix all TODO(sec) comments" --agents 4
 /bg list · /bg status <id> · /bg logs <id> · /bg attach <id> · /bg kill <id>
 ```
@@ -69,8 +70,10 @@ A lead agent decomposes a goal into a task board; worker subagents claim and exe
 
 ## Arena (`/arena`) — best-of-N with a judge
 
-N agents attempt the same task in isolated worktrees, a judge model compares the diffs,
-and the winner can be applied (`src/services/agents/arena.ts`):
+N agents attempt the same task in isolated worktrees, a deterministic judge compares the
+diffs, and a passing winner can be applied (`src/services/agents/arena.ts`). Worktree
+creation failure fails that candidate; it never falls back to concurrent writes in cwd.
+Only non-error `PASS` candidates with a non-empty, non-blocking diff can win:
 ```
 /arena "make the image pipeline 2x faster" --agents 3 --max-turns 30
 /arena "…" --apply          # apply the winning diff
@@ -88,6 +91,12 @@ ur -w feature-x             # session in a fresh git worktree (+ --tmux for pane
 ```
 `EnterWorktree` / `ExitWorktree` tools let the model move itself into isolation mid-turn
 (worktree mode). Worktree settings: `worktree.symlinkDirectories`, `worktree.sparsePaths`.
+
+Bundled worktree skills (`/debug-v2`, `/refactor`, `/security-review`,
+`/dockerize`, `/paper-implementation`, `/latex-paper`, `/benchmark`, `/batch`)
+leave changes local. They run focused checks while working, ask before the final
+full verification suite, and never commit, push, or open a PR unless the user
+separately requests publishing. `agentSkillRunner.createPr` defaults to false.
 
 ## Teams / swarm mode (feature-gated)
 

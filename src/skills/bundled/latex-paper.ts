@@ -3,7 +3,7 @@ import { registerBundledSkill } from '../bundledSkills.js'
 
 const LATEX_PAPER_PROMPT = `# LaTeX Paper Skill
 
-Generate or compile a LaTeX paper/report in an isolated worktree. Keep the source clean, add a build script, and open a PR.
+Generate or compile a LaTeX paper/report in an isolated worktree. Keep the source clean and add a build script.
 
 ## Setup
 
@@ -27,17 +27,16 @@ Generate or compile a LaTeX paper/report in an isolated worktree. Keep the sourc
 ## Verification
 
 1. Run the build command and ensure a PDF is produced.
-2. Commit the source, build script, and any generated assets that should be tracked (do not commit build artifacts that are gitignored).
+2. Keep the source, build script, and generated assets local (do not add ignored build artifacts).
 3. If compilation errors occur, fix them and rerun.
 
-## PR Output
+## Finish
 
-1. Push the branch.
-2. Open a PR with:
-   - Title: "docs(scope): add LaTeX paper/report on X"
-   - Body: topic, build command, and location of source/PDF.
+1. Use AskUserQuestion to ask whether the user wants a clean full rebuild as final verification.
+2. Run it only if approved and report the exact build result.
+3. Do not commit, push, or open a PR unless separately requested.
 
-Return a concise summary: branch name, commits, PR URL, and build result.
+Return a concise summary: branch name, files created, and build result.
 `
 
 export function registerLatexPaperSkill(): void {
@@ -45,8 +44,8 @@ export function registerLatexPaperSkill(): void {
     name: 'latex-paper',
     aliases: ['latex', 'paper'],
     description:
-      'Generate or compile a LaTeX paper/report in an isolated worktree with a build script and open a PR.',
-    allowedTools: [AGENT_TOOL_NAME, 'Read', 'Grep', 'Glob', 'Edit', 'Bash'],
+      'Generate or compile a LaTeX paper/report in an isolated worktree with a build script.',
+    allowedTools: [AGENT_TOOL_NAME, 'Read', 'Grep', 'Glob', 'Edit', 'Bash', 'AskUserQuestion'],
     argumentHint: '[paper topic or outline]',
     userInvocable: true,
     async getPromptForCommand(args) {

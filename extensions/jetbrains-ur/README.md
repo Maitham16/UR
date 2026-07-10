@@ -5,10 +5,11 @@ Connects JetBrains IDEs to a running UR-Nexus agent over the local ACP server
 
 ## What it wires up
 
-- A tool window ("UR Agent") that connects to the ACP endpoint and streams
-  session events.
+- A tool window ("UR Agent") that checks the loopback ACP endpoint without
+  blocking the IDE event thread.
 - An action (Tools → UR: Send Selection) that posts the current selection as
-  a prompt to the active UR session.
+  a prompt to a project-scoped JSON-RPC session at `/acp`. The current server
+  returns a completed synchronous task result; token streaming is not claimed.
 
 ## Build
 

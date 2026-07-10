@@ -255,6 +255,10 @@ export class WebSocketTransport implements Transport {
     if (upgradeResponse?.headers?.['x-last-request-id']) {
       const serverLastId = upgradeResponse.headers['x-last-request-id']
       this.replayBufferedMessages(serverLastId)
+    } else if (this.messageBuffer.length() > 0) {
+      // Match the Bun path: absence of an acknowledgement is not evidence
+      // that buffered frames were received.
+      this.replayBufferedMessages('')
     }
   }
 
@@ -427,7 +431,7 @@ export class WebSocketTransport implements Transport {
     let headersRefreshed = false
     if (closeCode === 4003 && this.refreshHeaders) {
       const freshHeaders = this.refreshHeaders()
-      if (freshHeaders.Authorization !== this.headers.Authorization) {
+      if (jsonStringify(freshHeaders) !== jsonStringify(this.headers)) {
         Object.assign(this.headers, freshHeaders)
         headersRefreshed = true
         logForDebugging(
@@ -569,6 +573,7 @@ export class WebSocketTransport implements Transport {
 
     this.state = 'closing'
     this.doDisconnect()
+    this.state = 'closed'
   }
 
   private replayBufferedMessages(lastId: string): void {
@@ -658,15 +663,17 @@ export class WebSocketTransport implements Transport {
   }
 
   async write(message: StdoutMessage): Promise<void> {
-    if ('uuid' in message && typeof message.uuid === 'string') {
+    if (message.type !== 'keep_alive') {
       this.messageBuffer.add(message)
+    }
+    if ('uuid' in message && typeof message.uuid === 'string') {
       this.lastSentId = message.uuid
     }
 
     const line = jsonStringify(message) + '\n'
 
     if (this.state !== 'connected') {
-      // Message buffered for replay when connected (if it has a UUID)
+      // Meaningful frames are buffered for replay when connected.
       return
     }
 
@@ -677,7 +684,9 @@ export class WebSocketTransport implements Transport {
       `WebSocketTransport: Sending message type=${message.type}${sessionLabel}${detailLabel}`,
     )
 
-    this.sendLine(line)
+    if (!this.sendLine(line)) {
+      throw new Error('WebSocket frame was buffered because the connection dropped during send')
+    }
   }
 
   private getControlMessageDetailLabel(message: StdoutMessage): string {

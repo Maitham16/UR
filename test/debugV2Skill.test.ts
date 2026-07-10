@@ -8,7 +8,7 @@ import {
 import { registerDebugV2Skill } from '../src/skills/bundled/debug-v2.js'
 
 describe('/debug-v2 bundled skill', () => {
-  test('registers with required fields and prompt mentions worktree + PR', async () => {
+  test('registers with required fields and asks before final verification without auto-PR', async () => {
     clearBundledSkills()
     registerDebugV2Skill()
     const skills = getBundledSkills()
@@ -25,7 +25,8 @@ describe('/debug-v2 bundled skill', () => {
     const text = prompt[0]!.type === 'text' ? prompt[0]!.text : ''
     expect(text).toContain('worktree')
     expect(text).toContain('branch')
-    expect(text).toContain('PR')
+    expect(text).toContain('AskUserQuestion')
+    expect(text).toContain('Do not commit, push, or open a PR')
     expect(text).toContain('parser crashes on empty input')
   })
 })

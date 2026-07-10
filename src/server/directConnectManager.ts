@@ -40,6 +40,7 @@ function isStdoutMessage(value: unknown): value is StdoutMessage {
 
 export class DirectConnectSessionManager {
   private ws: WebSocket | null = null
+  private intentionallyClosed = false
   private config: DirectConnectConfig
   private callbacks: DirectConnectCallbacks
 
@@ -49,14 +50,21 @@ export class DirectConnectSessionManager {
   }
 
   connect(): void {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return
+    this.intentionallyClosed = false
     const headers: Record<string, string> = {}
     if (this.config.authToken) {
       headers['authorization'] = `Bearer ${this.config.authToken}`
     }
     // Bun's WebSocket supports headers option but the DOM typings don't
-    this.ws = new WebSocket(this.config.wsUrl, {
-      headers,
-    } as unknown as string[])
+    try {
+      this.ws = new WebSocket(this.config.wsUrl, {
+        headers,
+      } as unknown as string[])
+    } catch (error) {
+      this.callbacks.onError?.(error instanceof Error ? error : new Error(String(error)))
+      return
+    }
 
     this.ws.addEventListener('open', () => {
       this.callbacks.onConnected?.()
@@ -115,7 +123,8 @@ export class DirectConnectSessionManager {
     })
 
     this.ws.addEventListener('close', () => {
-      this.callbacks.onDisconnected?.()
+      this.ws = null
+      if (!this.intentionallyClosed) this.callbacks.onDisconnected?.()
     })
 
     this.ws.addEventListener('error', () => {
@@ -138,8 +147,13 @@ export class DirectConnectSessionManager {
       parent_tool_use_id: null,
       session_id: '',
     })
-    this.ws.send(message)
-    return true
+    try {
+      this.ws.send(message)
+      return true
+    } catch (error) {
+      this.callbacks.onError?.(error instanceof Error ? error : new Error(String(error)))
+      return false
+    }
   }
 
   respondToPermissionRequest(
@@ -203,6 +217,7 @@ export class DirectConnectSessionManager {
 
   disconnect(): void {
     if (this.ws) {
+      this.intentionallyClosed = true
       this.ws.close()
       this.ws = null
     }

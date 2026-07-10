@@ -10,10 +10,11 @@ import type { NotebookCell, NotebookContent } from '../../types/notebook.js'
 import { getCwd } from '../../utils/cwd.js'
 import { isENOENT } from '../../utils/errors.js'
 import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
+import { fileStateMatchesContent } from '../../utils/fileStateCache.js'
 import { readFileSyncWithMetadata } from '../../utils/fileRead.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { lazySchema } from '../../utils/lazySchema.js'
-import { parseCellId } from '../../utils/notebook.js'
+import { parseCellId, readNotebook } from '../../utils/notebook.js'
 import { checkWritePermissionForTool } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
@@ -227,7 +228,11 @@ export const NotebookEditTool = buildTool({
         errorCode: 9,
       }
     }
-    if (getFileModificationTime(fullPath) > readTimestamp.timestamp) {
+    const currentCells = jsonStringify(await readNotebook(fullPath))
+    if (
+      getFileModificationTime(fullPath) > readTimestamp.timestamp ||
+      !fileStateMatchesContent(currentCells, readTimestamp)
+    ) {
       return {
         result: false,
         message:

@@ -28,7 +28,9 @@ describe('BrowserTool', () => {
       process.env.UR_BROWSER_TOOL = '1'
       // BrowserTool's concrete call(input) ignores context/permissions args.
       const result = await BrowserTool.call(
-        { url: 'https://example.com', action: 'fetch' } as never,
+        // Use a public literal address so this mocked-fetch test never depends
+        // on external DNS availability.
+        { url: 'https://1.1.1.1', action: 'fetch' } as never,
       )
       const data = result.data as { success: boolean; text: string }
       expect(data.success).toBe(true)

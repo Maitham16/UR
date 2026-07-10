@@ -29,9 +29,15 @@ import type { Finding, Intensity, SecurityMode, TargetType } from "./types.ts";
 const SKIP = new Set(["node_modules", ".git", "dist", "coverage", ".309"]);
 
 function resolveInside(cwd: string, p: string): string | null {
-  const root = path.resolve(cwd);
+  const root = fs.realpathSync(cwd);
   const r = path.resolve(root, p);
-  return r === root || r.startsWith(root + path.sep) ? r : null;
+  if (!(r === root || r.startsWith(root + path.sep))) return null;
+  try {
+    const real = fs.realpathSync(r);
+    return real === root || real.startsWith(root + path.sep) ? real : null;
+  } catch {
+    return null;
+  }
 }
 
 function collect(target: string, exts: RegExp): string[] {

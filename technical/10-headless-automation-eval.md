@@ -22,7 +22,7 @@ Multiple prompts, optional concurrency and worktree isolation
 (`src/commands/exec/index.ts`):
 ```
 ur exec "fix lint errors" "update snapshots" --concurrency 2
-ur exec --file prompts.jsonl --max-turns 20 --model qwen3-coder:480b-cloud \
+ur exec --file prompts.jsonl --max-turns 20 --model qwen2.5-coder:7b \
         --output-dir ./runs --worktree --json
 ur exec "risky idea" --dry-run
 ```
@@ -33,9 +33,11 @@ ur exec "risky idea" --dry-run
 /sdk info      # show headless patterns (spawn `ur -p`, stream-json protocol, MCP serve)
 /sdk init      # scaffold TypeScript + Python SDK example projects
 ```
-The agent-SDK types are in `src/entrypoints/agentSdkTypes.ts` (SDKMessage, permission
-modes, hook events); `ur mcp serve` exposes UR as an MCP server so other agents/apps can
-drive it; `ur server` exposes an HTTP session API (see doc 02).
+`src/entrypoints/agentSdkTypes.ts` is an internal type barrel used by the CLI;
+it is not a runtime npm SDK. The supported embedding contract is the generated
+subprocess example from `/sdk init` using `ur -p` plus stream-json. `ur mcp
+serve` exposes UR as an MCP server so other agents/apps can drive it; `ur
+server` exposes an HTTP session API (see doc 02).
 
 ## CI loop (`/ci-loop`, alias `/heal`)
 

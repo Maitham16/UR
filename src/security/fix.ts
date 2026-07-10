@@ -24,26 +24,47 @@ export interface FixOptions {
  */
 export async function applyFix(opts: FixOptions): Promise<FixResult> {
   if (!opts.approved) return { applied: false, reason: "approval required before modifying files" };
-  const root = path.resolve(opts.cwd);
-  const target = path.resolve(root, opts.file);
-  if (!(target === root || target.startsWith(root + path.sep))) return { applied: false, reason: "path escapes the workspace" };
+  const root = await fsp.realpath(opts.cwd);
+  const requestedTarget = path.resolve(root, opts.file);
+  if (!(requestedTarget === root || requestedTarget.startsWith(root + path.sep))) return { applied: false, reason: "path escapes the workspace" };
 
   let before: string;
+  let target: string;
+  let mode: number;
   try {
+    target = await fsp.realpath(requestedTarget);
+    if (!(target.startsWith(root + path.sep))) return { applied: false, reason: "path escapes the workspace through a symbolic link" };
+    const stat = await fsp.stat(target);
+    if (!stat.isFile()) return { applied: false, reason: "target is not a regular file" };
+    mode = stat.mode;
     before = await fsp.readFile(target, "utf8");
   } catch (e) {
     return { applied: false, reason: `cannot read file: ${(e as Error).message}` };
   }
   if (!before.includes(opts.find)) return { applied: false, reason: "target text not found (precondition failed)" };
 
-  await fsp.writeFile(target, before.replace(opts.find, opts.replace), "utf8");
+  const replacement = before.replace(opts.find, opts.replace);
+  const writeAtomically = async (content: string): Promise<void> => {
+    const temp = path.join(path.dirname(target), `.${path.basename(target)}.ur-fix-${process.pid}-${Date.now()}`);
+    try {
+      await fsp.writeFile(temp, content, { encoding: "utf8", flag: "wx", mode });
+      await fsp.rename(temp, target);
+    } finally {
+      await fsp.rm(temp, { force: true });
+    }
+  };
+  await writeAtomically(replacement);
 
   if (opts.verify) {
-    const passed = await opts.verify();
-    if (!passed) {
-      await fsp.writeFile(target, before, "utf8");
-      return { applied: false, reverted: true, reason: "verification failed — change rolled back" };
+    try {
+      const passed = await opts.verify();
+      if (passed) return { applied: true };
+    } catch (error) {
+      await writeAtomically(before);
+      return { applied: false, reverted: true, reason: `verification failed and change was rolled back: ${(error as Error).message}` };
     }
+    await writeAtomically(before);
+    return { applied: false, reverted: true, reason: "verification failed — change rolled back" };
   }
   return { applied: true };
 }

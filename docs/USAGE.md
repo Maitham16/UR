@@ -13,7 +13,7 @@ Use interactive mode for iterative coding, debugging, research, and repository e
 Useful options:
 
 ```sh
-ur --model qwen3-coder:480b-cloud
+ur --model qwen2.5-coder:7b
 ur --add-dir ../other-project
 ur --permission-mode ask
 ur --continue
@@ -63,7 +63,7 @@ Ollama router choose from the models exposed by your local Ollama app.
 You can also choose the model for a single session:
 
 ```sh
-ur --model qwen3-coder:480b-cloud
+ur --model qwen2.5-coder:7b
 ur --model qwen2.5-coder:latest
 ```
 
@@ -107,6 +107,10 @@ ur config set model <model>
 ur config set base_url <url>
 ur config set provider.fallback ollama
 ```
+
+`provider.fallback` only controls the recovery suggestion printed by provider
+diagnostics. UR does not switch or retry across providers automatically; use
+`ur config set provider <id>` after reviewing the failure.
 
 In the interactive app, `/model` chooses a provider first and then a model from
 that provider only. The saved pair controls the runtime backend for the next

@@ -71,11 +71,15 @@ ur auth gemini
 ur auth antigravity
 ur config set provider ollama
 ur config set provider openai-compatible
-ur config set model qwen3-coder:480b-cloud
+ur config set model qwen2.5-coder:7b
 ur config set base_url http://localhost:11434/v1
 ur config set provider.fallback ollama
 ur upgrade
 ```
+
+The optional `provider.fallback` value is used only to print an explicit
+recovery recommendation in provider diagnostics. It never silently or
+automatically changes the active provider.
 
 ## v1.25.x Additions
 
@@ -135,8 +139,8 @@ components instead of one giant prompt.
 
 | Addition | Surface | What it adds |
 | --- | --- | --- |
-| Agent skill runner | `src/services/agents/agentSkillRunner.ts` | Reusable wrapper around `startBackgroundTask({ worktree: true, pr: true })` that polls to completion and returns a PR-style summary. |
-| Worktree slash skills | `/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper` | Bundled slash skills that expand into prompts for isolated worktree work with clean commits and PR output. |
+| Agent skill runner | `src/services/agents/agentSkillRunner.ts` | Reusable isolated-worktree wrapper that polls to completion; PR creation is available only with explicit `createPr: true`. |
+| Worktree slash skills | `/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`, `/batch` | Bundled slash skills keep changes local, run focused checks, ask before the final full suite, and never publish automatically. |
 | Agent templates | `ur agent-templates install` | Adds `debug-v2`, `refactor`, `paper-implementation`, `benchmark`, `security-review`, `dockerize`, and `latex-paper` reusable agent templates under `.ur/agents/`. |
 | Worktree command | `ur worktree list\|status\|clean` | Inspect and clean up UR agent worktrees created by `ur bg` or slash skills. |
 

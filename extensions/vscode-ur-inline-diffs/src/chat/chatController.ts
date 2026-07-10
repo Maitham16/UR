@@ -37,6 +37,7 @@ type PendingPermission = {
   resolve: (decision: PermissionDecision) => void
   toolName: string
   input: Record<string, unknown>
+  turnId: number
 }
 
 export class ChatController implements vscode.Disposable {
@@ -48,6 +49,7 @@ export class ChatController implements vscode.Disposable {
   private attachments: ContextAttachment[] = []
   private status: 'idle' | 'running' | 'canceled' | 'error' = 'idle'
   private turnHandle: UrTurnHandle | undefined
+  private activeTurnId = 0
   private readonly pendingPermissions = new Map<string, PendingPermission>()
 
   // --- commands ---
@@ -56,6 +58,9 @@ export class ChatController implements vscode.Disposable {
     const root = this.requireWorkspaceRoot()
     if (!root) return
     this.turnHandle?.cancel()
+    this.activeTurnId++
+    this.turnHandle = undefined
+    this.denyAllPending('A new chat was started.')
     this.record = createSession(root)
     this.attachments = []
     this.status = 'idle'
@@ -191,6 +196,10 @@ export class ChatController implements vscode.Disposable {
       vscode.window.showWarningMessage(reason)
       return
     }
+    if (this.record && snapshot.workspaceRoot !== this.record.session.workspaceRoot) {
+      vscode.window.showWarningMessage('The active file belongs to a different workspace folder. Start a new chat for that folder.')
+      return
+    }
     const attachment: ContextAttachment =
       kind === 'file' ? { kind: 'file', file: snapshot.activeFile! } : { kind: 'selection', selection: snapshot.selection! }
     this.attachments.push(attachment)
@@ -213,7 +222,7 @@ export class ChatController implements vscode.Disposable {
   /** The single pathway every turn goes through — manual sends and editor
    * actions alike. */
   private async dispatchTurn(promptText: string): Promise<void> {
-    const root = this.requireWorkspaceRoot()
+    const root = this.record?.session.workspaceRoot ?? this.requireWorkspaceRoot()
     if (!root) return
     if (this.status === 'running') {
       vscode.window.showWarningMessage('UR is already running a request. Cancel it first or wait for it to finish.')
@@ -239,19 +248,26 @@ export class ChatController implements vscode.Disposable {
     this.panel?.post({ type: 'statusChanged', status: this.status })
 
     const resumeSessionId = this.record.session.cliSessionId
+    const turnId = ++this.activeTurnId
+    let exitedSynchronously = false
 
-    this.turnHandle = runUrTurn(
+    const handle = runUrTurn(
       { cwd: root, prompt: promptText, resumeSessionId },
       {
-        onMessage: message => this.handleStreamMessage(root, sessionId, message),
-        onControlRequest: request => this.handlePermissionRequest(request),
-        onExit: result => this.handleTurnExit(root, result),
+        onMessage: message => this.handleStreamMessage(root, sessionId, turnId, message),
+        onControlRequest: request => this.handlePermissionRequest(turnId, request),
+        onExit: result => {
+          exitedSynchronously = true
+          this.handleTurnExit(root, sessionId, turnId, result)
+        },
       },
       { executable: resolveUrCommand({ cwd: root, config: readUrCommandConfig() }) },
     )
+    this.turnHandle = exitedSynchronously ? undefined : handle
   }
 
-  private handleStreamMessage(root: string, sessionId: string, message: StdoutMessage): void {
+  private handleStreamMessage(root: string, sessionId: string, turnId: number, message: StdoutMessage): void {
+    if (turnId !== this.activeTurnId) return
     if (message.type === 'system' && message.subtype === 'init' && typeof message.session_id === 'string') {
       if (this.record && this.record.session.id === sessionId && !this.record.session.cliSessionId) {
         setCliSessionId(root, sessionId, message.session_id)
@@ -295,25 +311,29 @@ export class ChatController implements vscode.Disposable {
     this.appendChatMessage(root, this.record.session.id, 'status', [{ type: 'text', text }])
   }
 
-  private handlePermissionRequest(request: ControlRequestEnvelope): Promise<PermissionDecision> {
+  private handlePermissionRequest(turnId: number, request: ControlRequestEnvelope): Promise<PermissionDecision> {
+    if (turnId !== this.activeTurnId) {
+      return Promise.resolve({ behavior: 'deny', message: 'This chat turn is no longer active.' })
+    }
     return new Promise(resolve => {
       const toolName = request.request.tool_name ?? 'tool'
       const input = request.request.input ?? {}
-      this.pendingPermissions.set(request.request_id, { resolve, toolName, input })
+      this.pendingPermissions.set(request.request_id, { resolve, toolName, input, turnId })
       this.panel?.post({ type: 'permissionRequest', requestId: request.request_id, toolName, input })
     })
   }
 
-  private handleTurnExit(root: string, result: UrTurnResult): void {
+  private handleTurnExit(root: string, sessionId: string, turnId: number, result: UrTurnResult): void {
+    if (turnId !== this.activeTurnId) return
     this.turnHandle = undefined
     this.denyAllPending('The chat turn ended before this request was answered.')
     if (result.canceled) {
       this.status = 'canceled'
-      this.appendStatusText(root, 'Canceled.')
+      this.appendChatMessage(root, sessionId, 'status', [{ type: 'text', text: 'Canceled.' }])
     } else if (!result.ok) {
       this.status = 'error'
       const message = result.error ?? 'UR failed to complete this turn.'
-      this.appendStatusText(root, `Error: ${message}`)
+      this.appendChatMessage(root, sessionId, 'status', [{ type: 'text', text: `Error: ${message}` }])
       this.panel?.post({ type: 'errorBanner', message })
     } else {
       this.status = 'idle'
@@ -324,7 +344,7 @@ export class ChatController implements vscode.Disposable {
 
   private resolvePermission(requestId: string, decision: 'allow' | 'deny'): void {
     const pending = this.pendingPermissions.get(requestId)
-    if (!pending) return
+    if (!pending || pending.turnId !== this.activeTurnId) return
     this.pendingPermissions.delete(requestId)
     pending.resolve(
       decision === 'allow'
@@ -332,7 +352,7 @@ export class ChatController implements vscode.Disposable {
         : { behavior: 'deny', message: 'User denied this tool call from the UR Chat panel.' },
     )
     this.panel?.post({ type: 'permissionResolved', requestId })
-    const root = workspaceRoot()
+    const root = this.record?.session.workspaceRoot
     if (root) this.appendStatusText(root, `${decision === 'allow' ? 'Allowed' : 'Denied'} ${pending.toolName}.`)
   }
 

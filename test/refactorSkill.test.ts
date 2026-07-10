@@ -3,7 +3,7 @@ import { clearBundledSkills, getBundledSkills } from '../src/skills/bundledSkill
 import { registerRefactorSkill } from '../src/skills/bundled/refactor.js'
 
 describe('/refactor bundled skill', () => {
-  test('registers and prompt mentions worktree + clean commits + PR', async () => {
+  test('registers and prompt keeps final verification and publishing explicit', async () => {
     clearBundledSkills()
     registerRefactorSkill()
     const skills = getBundledSkills()
@@ -15,8 +15,8 @@ describe('/refactor bundled skill', () => {
     const prompt = await (skill as Extract<typeof skill, { type: 'prompt' }>).getPromptForCommand('extract validation helpers', {} as never)
     const text = prompt[0]!.type === 'text' ? prompt[0]!.text : ''
     expect(text).toContain('worktree')
-    expect(text).toContain('commit')
-    expect(text).toContain('PR')
+    expect(text).toContain('AskUserQuestion')
+    expect(text).toContain('Do not commit, push, or open a PR')
     expect(text).toContain('extract validation helpers')
   })
 })

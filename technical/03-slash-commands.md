@@ -52,7 +52,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 
 | Command | Type | What it does | Example |
 |---|---|---|---|
-| `/model [model]` | jsx | Pick the session model | `/model qwen3-coder:480b-cloud` |
+| `/model [model]` | jsx | Pick the session model | `/model qwen2.5-coder:7b` |
 | `/provider [provider]` | jsx | Pick/inspect the model provider | `/provider ollama` |
 | `/connect [status\|provider\|logout p]` | local | Connect a provider account or store an API key | `/connect openrouter --key sk-or-…` |
 | `/model-doctor [model]` (`/model-capabilities`) | local | Probe local Ollama models for agent capabilities (tool calls, context, speed) | `/model-doctor llama3.3` |
@@ -82,7 +82,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/agent-templates [list\|install]` | local | Install reusable project agent templates | `/agent-templates install reviewer` |
 | `/agent-features [init]` (`/agent-roadmap`) | local | Show/initialize agent feature expansion scaffolds | `/agent-features --json` |
 | `/agent-trends` (`/trends`) | local | UR coverage of current agent-tech trends | `/agent-trends` |
-| `/bg run\|fanout\|list\|status\|logs\|attach\|kill` (`/background-agent`) | local | Detached local background agents, optional worktrees + auto-PR | `/bg run "upgrade eslint to v9" --worktree --pr` |
+| `/bg run\|fanout\|list\|status\|logs\|attach\|kill` (`/background-agent`) | local | Detached local background agents; worktrees and PR creation are separate explicit options | `/bg run "upgrade eslint to v9" --worktree --pr` |
 | `/crew create\|plan\|add\|run\|…` (`/crews`) | local | Lead agent splits a goal into a shared task board; workers claim and run tasks | `/crew create cleanup --goal "remove dead code" --workers 3 --worktrees` |
 | `/arena "<task>"` (`/best-of`) | local | N agents attempt the same task in isolated worktrees; judge picks (optionally applies) the winner | `/arena "optimize image pipeline" --agents 3 --apply` |
 | `/pattern [list\|show\|run\|install]` (`/patterns`) | local | Multi-agent collaboration patterns: PEER, DOE, concurrent, handoff, debate, parallel | `/pattern run debate "should we adopt tRPC?" --execute` |
@@ -242,7 +242,7 @@ Registered in `src/skills/bundled/` at startup:
 
 | Skill | What it does | Example |
 |---|---|---|
-| `/batch` | Research + plan a large change, then execute across 5–30 parallel worktree agents, each opening a PR | `/batch migrate all API handlers to zod validation` |
+| `/batch` | Research + plan a large change, then execute across 5–30 parallel local worktrees; asks before final integration tests and does not publish | `/batch migrate all API handlers to zod validation` |
 | `/debug` / `/debug-v2` | Reproduce, root-cause, fix a bug in an isolated worktree; PR with regression test | `/debug-v2 login 500s when password has emoji` |
 | `/refactor` | Safe, test-backed refactor in a worktree; PR with clean commits | `/refactor extract retry logic into a helper` |
 | `/benchmark` | Add/run benchmarks in a worktree; optionally commit results | `/benchmark the JSON parser hot path` |

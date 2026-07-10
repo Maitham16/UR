@@ -10,7 +10,7 @@ Source of truth: `src/services/providers/providerRegistry.ts`, `src/utils/model/
 | `ollama` | Ollama | local runtime | none (localhost:11434) | **default local backend** |
 | `llama.cpp` | llama.cpp | local/server | OpenAI-compatible endpoint (localhost:8080/v1) | enabled |
 | `vllm` | vLLM | server | OpenAI-compatible endpoint (localhost:8000/v1) | enabled |
-| `openai-compatible` | OpenAI-compatible | server/api | any base URL + optional key | enabled |
+| `openai-compatible` | OpenAI-compatible | server/api | any base URL + optional `OPENAI_COMPATIBLE_API_KEY` | enabled |
 | `openai-api` | OpenAI API | api | `OPENAI_API_KEY` | enabled |
 | `anthropic-api` | Claude API | api | `ANTHROPIC_API_KEY` | enabled |
 | `gemini-api` | Gemini API | api | `GEMINI_API_KEY` | enabled |
@@ -42,7 +42,7 @@ ur provider doctor ollama            # diagnose connectivity
 
 ```
 /model                    # interactive model picker for current provider
-/model qwen3-coder:480b-cloud
+/model qwen2.5-coder:7b
 ur --model llama3.3       # per-session
 ur --ollama-host http://gpu-box:11434    # remote Ollama server
 ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
@@ -54,6 +54,15 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   provider's discovered list; `ollamaTuning.ts` adjusts context/params for local models.
 - Deprecation warnings and 1M-context upgrade checks live in `deprecation.ts` /
   `check1mAccess.ts`.
+- The default Ollama model is local (`qwen2.5-coder:7b`), not a cloud-tagged
+  route. Configured Ollama base URLs are honored consistently.
+- OpenAI-compatible endpoints use a dedicated credential key so an OpenAI API
+  key is never forwarded to an arbitrary compatible base URL. Provider switches
+  clear stale endpoint/command overrides.
+- Request adapters preserve system prompts, tools, images, stops, sampling,
+  reasoning, metadata, and structured-output settings supported by each
+  provider. Provider error payloads, empty responses, and truncated streams fail
+  instead of becoming synthetic empty successes.
 
 ## Capability-aware routing
 
@@ -116,6 +125,8 @@ Disable automatic learning with `automaticLearningEnabled: false` or
 ## Offline / local-first
 
 - `ur --offline` or `offline` setting: no cloud APIs, telemetry, auto-update, remote control.
+- Offline dispatch permits only loopback local/server endpoints; cloud,
+  subscription, remote Ollama, and remote compatible endpoints are blocked.
 - `/local-first` reports readiness for no-cloud/private/lab/edge deployment: which features
   degrade, which local deps (Ollama, ripgrep, playwright, ffmpeg…) are present.
 - `--bare` forces the minimal local pipeline (`UR_CODE_SIMPLE=1`) and always uses Ollama.

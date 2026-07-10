@@ -101,7 +101,7 @@ describe('documentation coverage', () => {
     expect(readme).toContain('packaged as a local VSIX')
   })
 
-  test('IDE docs describe the professional integration, not just inline diffs, and never claim JetBrains is implemented', () => {
+  test('IDE docs describe the professional integration and the bounded JetBrains implementation', () => {
     const ide = readFileSync(join(process.cwd(), 'docs', 'IDE.md'), 'utf8')
     const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8')
     const extensionReadme = readFileSync(
@@ -118,10 +118,12 @@ describe('documentation coverage', () => {
     expect(ide).toContain('.ur/ide/chat/')
     expect(ide).toContain('stream-json')
 
-    // JetBrains must never be claimed as implemented in this repo.
-    expect(ide).toContain('JetBrains is not implemented')
-    expect(readme).toContain('JetBrains is not implemented')
-    expect(ide).not.toContain('Install the UR JetBrains plugin')
+    // The bundled JetBrains client is real but remains explicitly experimental
+    // and non-streaming until a streaming ACP transport is implemented.
+    expect(ide).toContain('JetBrains integration is experimental and non-streaming')
+    expect(ide).toContain('session/prompt')
+    expect(readme).toContain('experimental bundled JetBrains plugin')
+    expect(ide).not.toContain('marketplace publishing is available')
 
     // Agent Options must stay explicitly non-authoritative.
     expect(ide).toContain('not live market research')

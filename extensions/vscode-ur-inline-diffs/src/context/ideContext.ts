@@ -87,9 +87,13 @@ function languageIdToFence(languageId: string): string {
 
 export function captureEditorSnapshot(): EditorSnapshot {
   const vscode = require('vscode') as typeof VscodeNamespace
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
   const editor = vscode.window.activeTextEditor
-  if (!editor) return { workspaceRoot }
+  if (!editor) return { workspaceRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath }
+
+  // In a multi-root workspace, attachments belong to the folder containing
+  // the active document. External files intentionally have no workspace root
+  // so path.relative() can never manufacture an escaping "../" attachment.
+  const workspaceRoot = vscode.workspace.getWorkspaceFolder(editor.document.uri)?.uri.fsPath
 
   const absolutePath = editor.document.uri.fsPath
   const relativePath = workspaceRoot ? path.relative(workspaceRoot, absolutePath) : absolutePath

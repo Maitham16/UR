@@ -142,6 +142,33 @@ export type StreamClientEvent = {
   created_at: string
 }
 
+/** Parse and validate the only event variant accepted by worker streams. */
+export function parseStreamClientEvent(eventType: string, data: string): StreamClientEvent {
+  if (eventType !== 'client_event') {
+    throw new Error(`Unexpected SSE event type '${eventType}' on worker stream`)
+  }
+  let value: unknown
+  try {
+    value = jsonParse(data)
+  } catch (error) {
+    throw new Error(`Failed to parse client_event data: ${errorMessage(error)}`)
+  }
+  if (!value || typeof value !== 'object') throw new Error('Invalid client_event payload')
+  const event = value as Partial<StreamClientEvent>
+  if (
+    typeof event.event_id !== 'string' || !event.event_id ||
+    !Number.isInteger(event.sequence_num) || (event.sequence_num ?? 0) <= 0 ||
+    typeof event.event_type !== 'string' ||
+    typeof event.source !== 'string' ||
+    typeof event.created_at !== 'string' ||
+    !event.payload || typeof event.payload !== 'object' ||
+    typeof event.payload.type !== 'string'
+  ) {
+    throw new Error('Invalid client_event payload shape')
+  }
+  return event as StreamClientEvent
+}
+
 // ---------------------------------------------------------------------------
 // SSETransport
 // ---------------------------------------------------------------------------
@@ -172,7 +199,7 @@ export class SSETransport implements Transport {
   // SSE connection state
   private abortController: AbortController | null = null
   private lastSequenceNum = 0
-  private seenSequenceNums = new Set<number>()
+  private authFailures = 0
 
   // Reconnection state
   private reconnectAttempts = 0
@@ -268,17 +295,20 @@ export class SSETransport implements Transport {
     logForDebugging(`SSETransport: Opening ${sseUrl.href}`)
     logForDiagnosticsNoPII('info', 'cli_sse_connect_opening')
 
-    this.abortController = new AbortController()
+    const controller = new AbortController()
+    this.abortController = controller
 
     try {
       // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
       const response = await fetch(sseUrl.href, {
         headers,
-        signal: this.abortController.signal,
+        signal: controller.signal,
       })
 
       if (!response.ok) {
-        const isPermanent = PERMANENT_HTTP_CODES.has(response.status)
+        const isAuthFailure = response.status === 401 || response.status === 403
+        const canRefreshAuth = isAuthFailure && this.refreshHeaders && this.authFailures < 3
+        const isPermanent = PERMANENT_HTTP_CODES.has(response.status) && !canRefreshAuth
         logForDebugging(
           `SSETransport: HTTP ${response.status}${isPermanent ? ' (permanent)' : ''}`,
           { level: 'error' },
@@ -286,6 +316,13 @@ export class SSETransport implements Transport {
         logForDiagnosticsNoPII('error', 'cli_sse_connect_http_error', {
           status: response.status,
         })
+
+        if (canRefreshAuth) {
+          this.authFailures++
+          Object.assign(this.headers, this.refreshHeaders!())
+          this.handleConnectionError()
+          return
+        }
 
         if (isPermanent) {
           this.state = 'closed'
@@ -311,6 +348,7 @@ export class SSETransport implements Transport {
       })
 
       this.state = 'connected'
+      this.authFailures = 0
       this.reconnectAttempts = 0
       this.reconnectStartTime = null
       this.resetLivenessTimer()
@@ -318,8 +356,8 @@ export class SSETransport implements Transport {
       // Read the SSE stream
       await this.readStream(response.body)
     } catch (error) {
-      if (this.abortController?.signal.aborted) {
-        // Intentional close
+      if (controller.signal.aborted) {
+        // close() or handleConnectionError() already owns state transition.
         return
       }
 
@@ -354,48 +392,35 @@ export class SSETransport implements Transport {
           // Any frame (including keepalive comments) proves the connection is alive
           this.resetLivenessTimer()
 
-          if (frame.id) {
-            const seqNum = parseInt(frame.id, 10)
-            if (!isNaN(seqNum)) {
-              if (this.seenSequenceNums.has(seqNum)) {
-                logForDebugging(
-                  `SSETransport: DUPLICATE frame seq=${seqNum} (lastSequenceNum=${this.lastSequenceNum}, seenCount=${this.seenSequenceNums.size})`,
-                  { level: 'warn' },
-                )
-                logForDiagnosticsNoPII('warn', 'cli_sse_duplicate_sequence')
-              } else {
-                this.seenSequenceNums.add(seqNum)
-                // Prevent unbounded growth: once we have many entries, prune
-                // old sequence numbers that are well below the high-water mark.
-                // Only sequence numbers near lastSequenceNum matter for dedup.
-                if (this.seenSequenceNums.size > 1000) {
-                  const threshold = this.lastSequenceNum - 200
-                  for (const s of this.seenSequenceNums) {
-                    if (s < threshold) {
-                      this.seenSequenceNums.delete(s)
-                    }
-                  }
-                }
-              }
-              if (seqNum > this.lastSequenceNum) {
-                this.lastSequenceNum = seqNum
-              }
-            }
-          }
-
           if (frame.event && frame.data) {
-            this.handleSSEFrame(frame.event, frame.data)
+            const event = parseStreamClientEvent(frame.event, frame.data)
+            const frameSequence = frame.id ? Number(frame.id) : event.sequence_num
+            if (!Number.isInteger(frameSequence) || frameSequence <= 0) {
+              throw new Error(`Invalid SSE sequence: ${frame.id ?? event.sequence_num}`)
+            }
+            if (frame.id && frameSequence !== event.sequence_num) {
+              throw new Error(
+                `SSE sequence mismatch: frame id ${frame.id}, payload ${event.sequence_num}`,
+              )
+            }
+            if (frameSequence <= this.lastSequenceNum) {
+              logForDiagnosticsNoPII('warn', 'cli_sse_duplicate_sequence')
+              continue
+            }
+            if (frameSequence !== this.lastSequenceNum + 1) {
+              throw new Error(
+                `SSE sequence gap: expected ${this.lastSequenceNum + 1}, received ${frameSequence}`,
+              )
+            }
+            this.deliverSSEEvent(event)
+            this.lastSequenceNum = frameSequence
           } else if (frame.data) {
-            // data: without event: — server is emitting the old envelope format
-            // or a bug. Log so incidents show as a signal instead of silent drops.
-            logForDebugging(
-              'SSETransport: Frame has data: but no event: field — dropped',
-              { level: 'warn' },
-            )
-            logForDiagnosticsNoPII('warn', 'cli_sse_frame_missing_event_field')
+            throw new Error('SSE frame has data but no event field')
           }
         }
       }
+      buffer += decoder.decode()
+      if (buffer.trim()) throw new Error('SSE stream ended with an incomplete frame')
     } catch (error) {
       if (this.abortController?.signal.aborted) return
       logForDebugging(
@@ -422,44 +447,14 @@ export class SSETransport implements Transport {
    * any other event type indicates a server-side change that CC doesn't yet
    * understand. Log a diagnostic so we notice in telemetry.
    */
-  private handleSSEFrame(eventType: string, data: string): void {
-    if (eventType !== 'client_event') {
-      logForDebugging(
-        `SSETransport: Unexpected SSE event type '${eventType}' on worker stream`,
-        { level: 'warn' },
-      )
-      logForDiagnosticsNoPII('warn', 'cli_sse_unexpected_event_type', {
-        event_type: eventType,
-      })
-      return
-    }
-
-    let ev: StreamClientEvent
-    try {
-      ev = jsonParse(data) as StreamClientEvent
-    } catch (error) {
-      logForDebugging(
-        `SSETransport: Failed to parse client_event data: ${errorMessage(error)}`,
-        { level: 'error' },
-      )
-      return
-    }
-
+  private deliverSSEEvent(ev: StreamClientEvent): void {
     const payload = ev.payload
-    if (payload && typeof payload === 'object' && 'type' in payload) {
-      const sessionLabel = this.sessionId ? ` session=${this.sessionId}` : ''
-      logForDebugging(
-        `SSETransport: Event seq=${ev.sequence_num} event_id=${ev.event_id} event_type=${ev.event_type} payload_type=${String(payload.type)}${sessionLabel}`,
-      )
-      logForDiagnosticsNoPII('info', 'cli_sse_message_received')
-      // Pass the unwrapped payload as newline-delimited JSON,
-      // matching the format that StructuredIO/WebSocketTransport consumers expect
-      this.onData?.(jsonStringify(payload) + '\n')
-    } else {
-      logForDebugging(
-        `SSETransport: Ignoring client_event with no type in payload: event_id=${ev.event_id}`,
-      )
-    }
+    const sessionLabel = this.sessionId ? ` session=${this.sessionId}` : ''
+    logForDebugging(
+      `SSETransport: Event seq=${ev.sequence_num} event_id=${ev.event_id} event_type=${ev.event_type} payload_type=${String(payload.type)}${sessionLabel}`,
+    )
+    logForDiagnosticsNoPII('info', 'cli_sse_message_received')
+    this.onData?.(jsonStringify(payload) + '\n')
 
     this.onEventCallback?.(ev)
   }
@@ -570,25 +565,30 @@ export class SSETransport implements Transport {
   // -----------------------------------------------------------------------
 
   async write(message: StdoutMessage): Promise<void> {
-    const authHeaders = this.getAuthHeaders()
-    if (Object.keys(authHeaders).length === 0) {
-      logForDebugging('SSETransport: No session token available for POST')
-      logForDiagnosticsNoPII('warn', 'cli_sse_post_no_token')
-      return
-    }
-
-    const headers: Record<string, string> = {
-      ...authHeaders,
-      'Content-Type': 'application/json',
-      'urhq-version': '2023-06-01',
-      'User-Agent': getURCodeUserAgent(),
-    }
-
     logForDebugging(
       `SSETransport: POST body keys=${Object.keys(message as Record<string, unknown>).join(',')}`,
     )
 
+    let lastError: unknown
     for (let attempt = 1; attempt <= POST_MAX_RETRIES; attempt++) {
+      const authHeaders = { ...this.headers, ...this.getAuthHeaders() }
+      if (authHeaders.Cookie) delete authHeaders.Authorization
+      if (!authHeaders.Authorization && !authHeaders.Cookie) {
+        this.refreshHeaders && Object.assign(this.headers, this.refreshHeaders())
+        const refreshed = { ...this.headers, ...this.getAuthHeaders() }
+        if (!refreshed.Authorization && !refreshed.Cookie) {
+          throw new Error('SSE transport cannot POST without a session token')
+        }
+      }
+      const headers: Record<string, string> = {
+        ...this.headers,
+        ...this.getAuthHeaders(),
+        'Content-Type': 'application/json',
+        'urhq-version': '2023-06-01',
+        'User-Agent': getURCodeUserAgent(),
+      }
+      if (headers.Cookie) delete headers.Authorization
+
       try {
         const response = await axios.post(this.postUrl, message, {
           headers,
@@ -609,13 +609,22 @@ export class SSETransport implements Transport {
           response.status < 500 &&
           response.status !== 429
         ) {
+          if ((response.status === 401 || response.status === 403) && this.refreshHeaders) {
+            Object.assign(this.headers, this.refreshHeaders())
+            lastError = new Error(`SSE POST authentication failed with HTTP ${response.status}`)
+            continue
+          }
           logForDebugging(
             `SSETransport: POST returned ${response.status} (client error), not retrying`,
           )
           logForDiagnosticsNoPII('warn', 'cli_sse_post_client_error', {
             status: response.status,
           })
-          return
+          const permanent = new Error(`SSE POST failed with HTTP ${response.status}`) as Error & {
+            permanent?: boolean
+          }
+          permanent.permanent = true
+          throw permanent
         }
 
         // 429 or 5xx - retry
@@ -627,6 +636,8 @@ export class SSETransport implements Transport {
           attempt,
         })
       } catch (error) {
+        if ((error as { permanent?: boolean }).permanent) throw error
+        lastError = error
         const axiosError = error as AxiosError
         logForDebugging(
           `SSETransport: POST error: ${axiosError.message}, attempt ${attempt}/${POST_MAX_RETRIES}`,
@@ -641,7 +652,7 @@ export class SSETransport implements Transport {
           `SSETransport: POST failed after ${POST_MAX_RETRIES} attempts, continuing`,
         )
         logForDiagnosticsNoPII('warn', 'cli_sse_post_retries_exhausted')
-        return
+        throw lastError ?? new Error(`SSE POST failed after ${POST_MAX_RETRIES} attempts`)
       }
 
       const delayMs = Math.min(
@@ -650,6 +661,7 @@ export class SSETransport implements Transport {
       )
       await sleep(delayMs)
     }
+    throw lastError ?? new Error('SSE POST failed')
   }
 
   // -----------------------------------------------------------------------
@@ -686,6 +698,7 @@ export class SSETransport implements Transport {
     this.state = 'closing'
     this.abortController?.abort()
     this.abortController = null
+    this.state = 'closed'
   }
 }
 

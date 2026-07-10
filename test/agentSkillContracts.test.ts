@@ -4,6 +4,7 @@ import {
   getBundledSkills,
 } from '../src/skills/bundledSkills.js'
 import { registerBenchmarkSkill } from '../src/skills/bundled/benchmark.js'
+import { registerBatchSkill } from '../src/skills/bundled/batch.js'
 import { registerDebugV2Skill } from '../src/skills/bundled/debug-v2.js'
 import { registerDockerizeSkill } from '../src/skills/bundled/dockerize.js'
 import { registerLatexPaperSkill } from '../src/skills/bundled/latex-paper.js'
@@ -12,6 +13,7 @@ import { registerRefactorSkill } from '../src/skills/bundled/refactor.js'
 import { registerSecurityReviewSkill } from '../src/skills/bundled/security-review.js'
 
 const WORKTREE_AGENT_SKILLS = [
+  { name: 'batch', register: registerBatchSkill },
   { name: 'debug-v2', register: registerDebugV2Skill },
   { name: 'refactor', register: registerRefactorSkill },
   { name: 'paper-implementation', register: registerPaperImplementationSkill },
@@ -22,7 +24,7 @@ const WORKTREE_AGENT_SKILLS = [
 ]
 
 describe('worktree-first agent skill contracts', () => {
-  test('all required skills are user-invocable and require isolated PR-style work', async () => {
+  test('all required skills are user-invocable, isolated, and keep publishing explicit', async () => {
     clearBundledSkills()
     for (const skill of WORKTREE_AGENT_SKILLS) skill.register()
 
@@ -38,8 +40,8 @@ describe('worktree-first agent skill contracts', () => {
       const text = prompt[0]?.type === 'text' ? prompt[0].text : ''
       expect(text).toContain('isolated worktree')
       expect(text).toContain('branch')
-      expect(text).toContain('PR')
-      expect(text.toLowerCase()).toContain('commit')
+      expect(text).toContain('AskUserQuestion')
+      expect(text).toMatch(/Do not commit, push, or open a PR/i)
       expect(text).toContain('contract smoke')
     }
   })

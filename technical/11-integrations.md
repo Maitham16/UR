@@ -1,7 +1,7 @@
 # 11 — Integrations
 
 Source of truth: `src/services/mcp/`, `src/services/agents/{acpServer,a2aServer}.ts`,
-`extensions/vscode-ur-inline-diffs/`, `src/utils/urInChrome/`, `src/bridge/`,
+`extensions/{vscode-ur-inline-diffs,jetbrains-ur}/`, `src/utils/urInChrome/`, `src/bridge/`,
 `src/commands/{mcp,ide,acp,a2a-card,chrome,browser,install-github-app,install-slack-app,bridge,desktop,voice}`.
 
 ## MCP (Model Context Protocol) — UR as a client
@@ -46,6 +46,9 @@ ur mcp reset-project-choices        # re-prompt for .mcp.json approvals
 - `--ide` flag auto-connects at startup when exactly one IDE is detected.
 - VS Code extension shipped in `extensions/vscode-ur-inline-diffs/` (inline diffs, actions
   tree, background actions bridge over the ur CLI).
+- Experimental JetBrains plugin shipped in `extensions/jetbrains-ur/`. It uses
+  the loopback HTTP ACP `/acp` JSON-RPC methods (`initialize`, `session/new`,
+  `session/prompt`) and keeps HTTP work off the IDE event thread.
 - ACP stdio mode (`ur acp stdio`) is the transport used by editor plugins;
   LSP-powered diagnostics come from `src/services/lsp/`.
 

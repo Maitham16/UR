@@ -4,8 +4,7 @@ UR's professional IDE integration is the **UR Inline Diffs** VS Code extension,
 bundled in this repository (`extensions/vscode-ur-inline-diffs`). It gives VS
 Code, Cursor, and Windsurf a chat panel, inline diff review, an actions panel,
 an agent status card, a searchable command palette, and an agent options
-panel — all driven by the same `ur` CLI you already use from a terminal, with
-no separate server process and no new network surface.
+panel — all driven by the same `ur` CLI you already use from a terminal.
 
 Other editors connect through different mechanisms, chosen per editor and
 stated honestly — nothing here claims support that does not exist:
@@ -19,12 +18,12 @@ stated honestly — nothing here claims support that does not exist:
   Neovim clients. This remains a separate transport from the VS Code
   extension's chat bridge below; the two are independent and neither depends
   on the other.
-- **Manual** — no auto-config; install a plugin and connect via `/ide`.
-  **JetBrains is not implemented in this repository.** UR can detect whether
-  a plugin named `ur-jetbrains-plugin` is installed
-  (`src/utils/jetbrains.ts`), but this repo does not build, ship, or publish
-  that plugin. Nothing in this document should be read as "install our
-  JetBrains plugin today" — there isn't one yet.
+- **JetBrains plugin** — the experimental bundled plugin under
+  `extensions/jetbrains-ur` connects to `ur acp serve` on loopback. It uses
+  JSON-RPC `initialize`, `session/new`, and `session/prompt` calls at `/acp`,
+  preserves a project-scoped session, and performs network work off the IDE UI
+  thread. It is installable from its `buildPlugin` zip; marketplace publishing
+  is not claimed.
 
 ## Supported targets
 
@@ -34,7 +33,7 @@ stated honestly — nothing here claims support that does not exist:
 | Cursor | UR Inline Diffs extension (VS Code fork) | `.vscode/settings.json` | Same extension as VS Code. |
 | Windsurf | UR Inline Diffs extension (VS Code fork) | `.vscode/settings.json` | Same extension as VS Code. |
 | Zed | stdio ACP | `.zed/settings.json` | Real Agent Client Protocol over stdio. |
-| JetBrains | not implemented | none | Detection code exists; no plugin ships from this repo. Use the CLI directly in the meantime. |
+| JetBrains | bundled experimental plugin + HTTP ACP | manual zip install | Project-scoped JSON-RPC session and Send Selection action; synchronous ACP task result, not token streaming. |
 | Neovim | stdio ACP | snippet | Requires a third-party ACP client plugin. |
 | Generic ACP | stdio ACP / HTTP | snippet | `ur acp stdio` (native ACP) or `ur acp serve` (HTTP JSON-RPC; not a streaming transport — see Known limitations). |
 
@@ -128,7 +127,9 @@ rather than leaving it hanging.
 `.ur/ide/chat/` in the workspace (a manifest plus one file per session).
 **UR: Open Chat** can resume a previous session — using the CLI's own
 `--resume` — or start a new one; sessions survive closing and reopening VS
-Code.
+Code. In multi-root workspaces the chat binds to the folder containing the
+active editor, and stale callbacks from a canceled turn cannot mutate a newer
+chat.
 
 **File and selection context.** **UR: Add Current File to Chat** and
 **UR: Add Selection to Chat** attach the active file or selection as explicit
@@ -200,8 +201,9 @@ success it did not observe.
 
 ## Known limitations
 
-- **JetBrains is not implemented.** No JetBrains plugin ships from this
-  repository; see "Supported targets" above.
+- **JetBrains integration is experimental and non-streaming.** It uses the
+  loopback HTTP ACP server and returns the completed synchronous task output;
+  it does not yet render token or tool-call streams.
 - **The lockfile/MCP IDE bridge is Phase 2 and not part of this MVP.** The
   CLI already implements the *client* half of a lockfile-discovered MCP
   connection to a running IDE (`src/utils/ide.ts`), used by the terminal

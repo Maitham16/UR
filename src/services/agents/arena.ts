@@ -9,6 +9,7 @@
  * offline. This is UR's local-first take on Cursor's parallel-agent judging.
  */
 
+import { randomUUID } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -29,6 +30,7 @@ export type Candidate = {
   id: string
   model?: string
   worktree?: string
+  branch?: string
   diff: string
   output: string
   verdict: string | null
@@ -111,8 +113,10 @@ export type Judgement = {
 
 export function judge(candidates: Candidate[]): Judgement {
   const ranked = candidates.map(scoreCandidate).sort((a, b) => b.score - a.score)
-  const winner = ranked.find(c => !c.isError && c.changedLines > 0) ?? ranked[0] ?? null
-  return { ranked, winner: winner ?? null }
+  const winner = ranked.find(
+    c => !c.isError && c.verdict === 'PASS' && c.changedLines > 0 && c.blocking === 0,
+  ) ?? null
+  return { ranked, winner }
 }
 
 export type RunArenaOptions = {
@@ -149,14 +153,14 @@ async function git(cwd: string, args: string[]): Promise<{ stdout: string; code:
   })
 }
 
-async function ensureWorktree(cwd: string, runId: string, id: string): Promise<string | null> {
+async function ensureWorktree(cwd: string, runId: string, id: string): Promise<{ path: string; branch: string } | null> {
   const root = join(cwd, '.ur', 'arena', '.worktrees')
   const path = join(root, `${runId}-${id}`)
   const branch = `ur/arena/${runId}/${id}`
-  if (existsSync(path)) return path
+  if (existsSync(path)) return null
   mkdirSync(root, { recursive: true })
   const result = await git(cwd, ['worktree', 'add', '-b', branch, path])
-  return result.code === 0 ? path : null
+  return result.code === 0 ? { path, branch } : null
 }
 
 async function captureDiff(worktree: string): Promise<string> {
@@ -165,16 +169,22 @@ async function captureDiff(worktree: string): Promise<string> {
   return diff.code === 0 ? diff.stdout : ''
 }
 
-async function removeWorktree(cwd: string, worktree: string): Promise<void> {
+async function removeWorktree(cwd: string, worktree: string, branch: string): Promise<void> {
   await git(cwd, ['worktree', 'remove', '--force', worktree])
+  await git(cwd, ['branch', '-D', branch])
+  await git(cwd, ['worktree', 'prune'])
 }
 
 export async function runArena(task: string, options: RunArenaOptions): Promise<ArenaResult> {
   const cwd = options.cwd
-  const agents = Math.max(2, options.agents ?? 3)
+  const requestedAgents = options.agents ?? 3
+  if (!Number.isInteger(requestedAgents) || requestedAgents < 2 || requestedAgents > 8) {
+    throw new Error('Arena agents must be an integer between 2 and 8.')
+  }
+  const agents = requestedAgents
   const runner =
     options.runner ?? (options.dryRun ? makeDryHeadlessRunner() : defaultHeadlessRunner())
-  const runId = Date.now().toString(36)
+  const runId = `${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
   const prompt = `${task}\n\nImplement this fully and correctly. Make focused changes. End your reply with VERDICT: PASS or VERDICT: FAIL.`
 
   const ids = Array.from({ length: agents }, (_, i) => `c${i + 1}`)
@@ -183,21 +193,35 @@ export async function runArena(task: string, options: RunArenaOptions): Promise<
       const model = options.models?.[index]
       options.onEvent?.({ kind: 'start', id, model })
       let worktree: string | undefined
+      let branch: string | undefined
       let workCwd = cwd
       if (!options.dryRun && !options.runner) {
         const wt = await ensureWorktree(cwd, runId, id)
-        if (wt) {
-          worktree = wt
-          workCwd = wt
+        if (!wt) {
+          const output = `Failed to create an isolated worktree for ${id}; candidate was not run.`
+          options.onEvent?.({ kind: 'done', id, verdict: 'FAIL', isError: true })
+          return { id, model, diff: '', output, verdict: 'FAIL', isError: true }
+        }
+        worktree = wt.path
+        branch = wt.branch
+        workCwd = wt.path
+      }
+      let out: Awaited<ReturnType<HeadlessRunner>>
+      try {
+        out = await runner({
+          cwd: workCwd,
+          prompt,
+          model,
+          maxTurns: options.maxTurns,
+          skipPermissions: options.skipPermissions,
+        })
+      } catch (error) {
+        out = {
+          output: error instanceof Error ? error.message : String(error),
+          verdict: 'FAIL',
+          isError: true,
         }
       }
-      const out = await runner({
-        cwd: workCwd,
-        prompt,
-        model,
-        maxTurns: options.maxTurns,
-        skipPermissions: options.skipPermissions,
-      })
       const diff =
         worktree && !options.dryRun ? await captureDiff(worktree) : ''
       options.onEvent?.({ kind: 'done', id, verdict: out.verdict ?? null, isError: !!out.isError })
@@ -205,6 +229,7 @@ export async function runArena(task: string, options: RunArenaOptions): Promise<
         id,
         model,
         worktree,
+        branch,
         diff,
         output: out.output,
         verdict: out.verdict ?? null,
@@ -228,7 +253,9 @@ export async function runArena(task: string, options: RunArenaOptions): Promise<
 
   if (!options.keep && !options.dryRun && !options.runner) {
     for (const candidate of candidates) {
-      if (candidate.worktree) await removeWorktree(cwd, candidate.worktree)
+      if (candidate.worktree && candidate.branch) {
+        await removeWorktree(cwd, candidate.worktree, candidate.branch)
+      }
     }
   }
 

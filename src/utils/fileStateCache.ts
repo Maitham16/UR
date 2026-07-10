@@ -14,6 +14,18 @@ export type FileState = {
   isPartialView?: boolean
 }
 
+/** Compare normalized on-disk text with the exact full or ranged snapshot read by the model. */
+export function fileStateMatchesContent(content: string, state: FileState): boolean {
+  if (state.isPartialView) return false
+  if (state.offset === undefined && state.limit === undefined) {
+    return content === state.content
+  }
+  const start = Math.max(0, (state.offset ?? 1) - 1)
+  const lines = content.split('\n')
+  const selected = lines.slice(start, state.limit === undefined ? undefined : start + state.limit).join('\n')
+  return selected === state.content
+}
+
 // Default max entries for read file state caches
 export const READ_FILE_STATE_CACHE_SIZE = 100
 

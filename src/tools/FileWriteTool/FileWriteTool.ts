@@ -20,6 +20,7 @@ import { countLinesChanged, getPatchForDisplay } from '../../utils/diff.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { isENOENT } from '../../utils/errors.js'
 import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
+import { fileStateMatchesContent } from '../../utils/fileStateCache.js'
 import {
   fileHistoryEnabled,
   fileHistoryTrackEdit,
@@ -279,18 +280,12 @@ export const FileWriteTool = buildTool({
     if (meta !== null) {
       const lastWriteTime = getFileModificationTime(fullFilePath)
       const lastRead = readFileState.get(fullFilePath)
-      if (!lastRead || lastWriteTime > lastRead.timestamp) {
-        // Timestamp indicates modification, but on Windows timestamps can change
-        // without content changes (cloud sync, antivirus, etc.). For full reads,
-        // compare content as a fallback to avoid false positives.
-        const isFullRead =
-          lastRead &&
-          lastRead.offset === undefined &&
-          lastRead.limit === undefined
-        // meta.content is CRLF-normalized — matches readFileState's normalized form.
-        if (!isFullRead || meta.content !== lastRead.content) {
-          throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
-        }
+      if (
+        !lastRead ||
+        lastWriteTime > lastRead.timestamp ||
+        !fileStateMatchesContent(meta.content, lastRead)
+      ) {
+        throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
       }
     }
 

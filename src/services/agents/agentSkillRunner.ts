@@ -31,6 +31,8 @@ export type AgentSkillOptions = {
   bin?: { file: string; baseArgs: string[] }
   pollMs?: number
   timeoutMs?: number
+  /** Publishing is opt-in; worktree skills never create a PR by default. */
+  createPr?: boolean
 }
 
 function nowMs(): number {
@@ -85,9 +87,9 @@ function extractPrUrl(stdout: string): string | undefined {
 }
 
 /**
- * Run an agent skill in an isolated worktree with PR-style output.
+ * Run an agent skill in an isolated worktree with an optional PR handoff.
  *
- * This is a synchronous wrapper around `startBackgroundTask({ worktree: true, pr: true })`.
+ * PR creation is enabled only when the caller explicitly sets `createPr: true`.
  * It starts the background task, polls the manifest until completion, and returns a summary
  * with branch name, commits, PR URL (if created), diff summary, and any error.
  */
@@ -106,6 +108,7 @@ export async function runAgentSkill(options: AgentSkillOptions): Promise<AgentSk
     bin,
     pollMs = 2000,
     timeoutMs = 30 * 60 * 1000,
+    createPr = false,
   } = options
 
   const title = prTitle ?? `UR agent skill: ${skill}`
@@ -117,7 +120,7 @@ export async function runAgentSkill(options: AgentSkillOptions): Promise<AgentSk
     cwd,
     task: prompt,
     worktree: true,
-    pr: true,
+    pr: createPr,
     title,
     body,
     base,
@@ -203,12 +206,12 @@ export async function runAgentSkill(options: AgentSkillOptions): Promise<AgentSk
  * Useful for dry-run previews and CLI output formatting.
  */
 export function previewAgentSkill(options: AgentSkillOptions): { id: string; command: string[]; branch: string } {
-  const { cwd, skill, prompt, prTitle, prBody, base, draft, model, maxTurns, bin } = options
+  const { cwd, skill, prompt, prTitle, prBody, base, draft, model, maxTurns, bin, createPr = false } = options
   const task = createBackgroundTask({
     cwd,
     task: prompt,
     worktree: true,
-    pr: true,
+    pr: createPr,
     title: prTitle ?? `UR agent skill: ${skill}`,
     body: prBody ?? `This change was produced by the /${skill} agent skill running in an isolated UR worktree.`,
     base,

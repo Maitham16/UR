@@ -24,7 +24,7 @@ Edit interactively with `/config`, by natural language with `/update-config`
 ### Model & provider
 ```jsonc
 {
-  "model": "qwen3-coder:480b-cloud",
+  "model": "qwen2.5-coder:7b",
   "provider": {
     "active": "ollama",
     "model": "…", "baseUrl": "…", "timeoutMs": 30000,

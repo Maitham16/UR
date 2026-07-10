@@ -3,7 +3,7 @@ import { clearBundledSkills, getBundledSkills } from '../src/skills/bundledSkill
 import { registerPaperImplementationSkill } from '../src/skills/bundled/paper-implementation.js'
 
 describe('/paper-implementation bundled skill', () => {
-  test('registers and prompt mentions worktree + tests + PR', async () => {
+  test('registers and prompt mentions worktree + tests with explicit publishing', async () => {
     clearBundledSkills()
     registerPaperImplementationSkill()
     const skills = getBundledSkills()
@@ -17,7 +17,8 @@ describe('/paper-implementation bundled skill', () => {
     const text = prompt[0]!.type === 'text' ? prompt[0]!.text : ''
     expect(text).toContain('worktree')
     expect(text).toContain('tests')
-    expect(text).toContain('PR')
+    expect(text).toContain('AskUserQuestion')
+    expect(text).toContain('Do not commit, push, or open a PR')
     expect(text).toContain('https://arxiv.org/abs/1234.5678')
   })
 })

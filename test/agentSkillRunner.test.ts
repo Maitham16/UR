@@ -60,7 +60,7 @@ describe('agentSkillRunner', () => {
       expect(manifestTask).toBeTruthy()
       expect(manifestTask?.status).toMatch(/queued|running|failed|canceled/)
       expect(manifestTask?.worktree?.enabled).toBe(true)
-      expect(manifestTask?.pr?.enabled).toBe(true)
+      expect(manifestTask?.pr).toBeUndefined()
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -83,7 +83,7 @@ describe('agentSkillRunner', () => {
     }
   })
 
-  test('each agent skill task receives a distinct worktree branch and PR contract', async () => {
+  test('each agent skill task receives a distinct worktree without automatic PR publishing', async () => {
     const dir = tempDir('ur-nexus-skill-isolation-')
     try {
       const first = await runAgentSkill({
@@ -109,10 +109,20 @@ describe('agentSkillRunner', () => {
       const secondTask = getBackgroundTask(dir, second.taskId)
       expect(firstTask?.worktree?.enabled).toBe(true)
       expect(secondTask?.worktree?.enabled).toBe(true)
-      expect(firstTask?.pr?.enabled).toBe(true)
-      expect(secondTask?.pr?.enabled).toBe(true)
+      expect(firstTask?.pr).toBeUndefined()
+      expect(secondTask?.pr).toBeUndefined()
       expect(firstTask?.worktree?.path).toContain('.ur/worktrees/')
       expect(secondTask?.worktree?.path).toContain('.ur/worktrees/')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('PR creation remains available only through an explicit createPr option', () => {
+    const dir = tempDir('ur-nexus-skill-pr-')
+    try {
+      const preview = previewAgentSkill({ cwd: dir, skill: 'debug', prompt: 'fix', createPr: true })
+      expect(getBackgroundTask(dir, preview.id)?.pr?.enabled).toBe(true)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

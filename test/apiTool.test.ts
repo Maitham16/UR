@@ -62,7 +62,9 @@ describe('ApiTool', () => {
       })) as unknown as typeof fetch
     try {
       const result = await ApiTool.call(
-        { url: 'https://example.com/api', method: 'GET' } as never,
+        // Use a public literal address so this mocked-fetch test never depends
+        // on external DNS availability.
+        { url: 'https://1.1.1.1/api', method: 'GET' } as never,
       )
       const data = result.data as { status: number; body: { hello: string } }
       expect(data.status).toBe(200)

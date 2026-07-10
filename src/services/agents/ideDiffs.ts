@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { safeParseJSON } from '../../utils/json.js'
 
@@ -35,6 +35,8 @@ export type IdeDiffBundle = {
 
 type Manifest = { version: 1; diffs: IdeDiffBundle[] }
 
+const DIFF_ID_PATTERN = /^diff-[1-9][0-9]*$/u
+
 export function ideDir(cwd: string): string {
   return join(cwd, '.ur', 'ide')
 }
@@ -55,6 +57,22 @@ function manifestPath(cwd: string): string {
   return join(ideDiffsDir(cwd), 'manifest.json')
 }
 
+function bundleArtifactPath(cwd: string, bundle: IdeDiffBundle, kind: 'patch' | 'metadata'): string | null {
+  if (!DIFF_ID_PATTERN.test(bundle.id)) return null
+  const relative = kind === 'patch' ? bundle.patchFile : bundle.metadataFile
+  const expected = kind === 'patch' ? `patches/${bundle.id}.patch` : `metadata/${bundle.id}.json`
+  if (relative.replaceAll('\\', '/') !== expected) return null
+  const root = resolve(ideDiffsDir(cwd))
+  const target = resolve(root, relative)
+  return target.startsWith(`${root}${sep}`) ? target : null
+}
+
+function isValidBundle(cwd: string, value: unknown): value is IdeDiffBundle {
+  if (!value || typeof value !== 'object') return false
+  const bundle = value as IdeDiffBundle
+  return Boolean(bundleArtifactPath(cwd, bundle, 'patch') && bundleArtifactPath(cwd, bundle, 'metadata'))
+}
+
 function now(): string {
   return new Date().toISOString()
 }
@@ -69,7 +87,7 @@ function loadManifest(cwd: string): Manifest {
   if (!existsSync(path)) return { version: 1, diffs: [] }
   const parsed = safeParseJSON(readFileSync(path, 'utf-8'), false)
   return parsed && typeof parsed === 'object' && Array.isArray((parsed as Manifest).diffs)
-    ? (parsed as Manifest)
+    ? { version: 1, diffs: (parsed as Manifest).diffs.filter(bundle => isValidBundle(cwd, bundle)) }
     : { version: 1, diffs: [] }
 }
 
@@ -191,7 +209,8 @@ export function getIdeDiffBundle(cwd: string, id: string): IdeDiffBundle | null 
 export function readIdeDiffPatch(cwd: string, id: string): string | null {
   const bundle = getIdeDiffBundle(cwd, id)
   if (!bundle) return null
-  const path = join(ideDiffsDir(cwd), bundle.patchFile)
+  const path = bundleArtifactPath(cwd, bundle, 'patch')
+  if (!path) return null
   return existsSync(path) ? readFileSync(path, 'utf-8') : null
 }
 
@@ -202,7 +221,9 @@ function mutate(cwd: string, id: string, fn: (bundle: IdeDiffBundle) => void): I
   fn(bundle)
   bundle.updatedAt = now()
   ensureDirs(cwd)
-  writeFileSync(join(ideDiffsDir(cwd), bundle.metadataFile), `${JSON.stringify(bundle, null, 2)}\n`)
+  const metadataPath = bundleArtifactPath(cwd, bundle, 'metadata')
+  if (!metadataPath) return null
+  writeFileSync(metadataPath, `${JSON.stringify(bundle, null, 2)}\n`)
   saveManifest(cwd, manifest)
   return bundle
 }
@@ -237,8 +258,11 @@ export function deleteIdeDiffBundle(cwd: string, id: string): boolean {
   const manifest = loadManifest(cwd)
   const bundle = manifest.diffs.find(diff => diff.id === id)
   if (!bundle) return false
-  rmSync(join(ideDiffsDir(cwd), bundle.patchFile), { force: true })
-  rmSync(join(ideDiffsDir(cwd), bundle.metadataFile), { force: true })
+  const patchPath = bundleArtifactPath(cwd, bundle, 'patch')
+  const metadataPath = bundleArtifactPath(cwd, bundle, 'metadata')
+  if (!patchPath || !metadataPath) return false
+  rmSync(patchPath, { force: true })
+  rmSync(metadataPath, { force: true })
   manifest.diffs = manifest.diffs.filter(diff => diff.id !== id)
   saveManifest(cwd, manifest)
   return true

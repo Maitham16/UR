@@ -26,6 +26,7 @@ import {
   suggestPathUnderCwd,
   writeTextContent,
 } from '../../utils/file.js'
+import { fileStateMatchesContent } from '../../utils/fileStateCache.js'
 import {
   fileHistoryEnabled,
   fileHistoryTrackEdit,
@@ -294,23 +295,16 @@ export const FileEditTool = buildTool({
     // Check if file exists and get its last modified time
     if (readTimestamp) {
       const lastWriteTime = getFileModificationTime(fullFilePath)
-      if (lastWriteTime > readTimestamp.timestamp) {
-        // Timestamp indicates modification, but on Windows timestamps can change
-        // without content changes (cloud sync, antivirus, etc.). For full reads,
-        // compare content as a fallback to avoid false positives.
-        const isFullRead =
-          readTimestamp.offset === undefined &&
-          readTimestamp.limit === undefined
-        if (isFullRead && fileContent === readTimestamp.content) {
-          // Content unchanged, safe to proceed
-        } else {
-          return {
-            result: false,
-            behavior: 'ask',
-            message:
-              'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
-            errorCode: 7,
-          }
+      if (
+        lastWriteTime > readTimestamp.timestamp ||
+        !fileStateMatchesContent(fileContent, readTimestamp)
+      ) {
+        return {
+          result: false,
+          behavior: 'ask',
+          message:
+            'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+          errorCode: 7,
         }
       }
     }
@@ -457,19 +451,12 @@ export const FileEditTool = buildTool({
     if (fileExists) {
       const lastWriteTime = getFileModificationTime(absoluteFilePath)
       const lastRead = readFileState.get(absoluteFilePath)
-      if (!lastRead || lastWriteTime > lastRead.timestamp) {
-        // Timestamp indicates modification, but on Windows timestamps can change
-        // without content changes (cloud sync, antivirus, etc.). For full reads,
-        // compare content as a fallback to avoid false positives.
-        const isFullRead =
-          lastRead &&
-          lastRead.offset === undefined &&
-          lastRead.limit === undefined
-        const contentUnchanged =
-          isFullRead && originalFileContents === lastRead.content
-        if (!contentUnchanged) {
-          throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
-        }
+      if (
+        !lastRead ||
+        lastWriteTime > lastRead.timestamp ||
+        !fileStateMatchesContent(originalFileContents, lastRead)
+      ) {
+        throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
       }
     }
 

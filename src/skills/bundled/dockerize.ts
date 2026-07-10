@@ -3,7 +3,7 @@ import { registerBundledSkill } from '../bundledSkills.js'
 
 const DOCKERIZE_PROMPT = `# Dockerize Skill
 
-Add production-ready Docker support to the project in an isolated worktree. Include a Dockerfile, compose file, health checks, and .dockerignore, then open a PR.
+Add production-ready Docker support to the project in an isolated worktree. Include a Dockerfile, compose file, health checks, and .dockerignore.
 
 ## Setup
 
@@ -22,16 +22,15 @@ Add production-ready Docker support to the project in an isolated worktree. Incl
 1. Build the image: <code>docker build -t <project> .</code>
 2. Run the container and confirm it starts (or use <code>docker compose up --build</code> if compose is available).
 3. Check that the health check responds correctly.
-4. Commit all new files with clean messages.
+4. Keep all changes local in the worktree.
 
-## PR Output
+## Finish
 
-1. Push the branch.
-2. Open a PR with:
-   - Title: "chore(scope): add Docker support"
-   - Body: what was containerized, build/run commands, health check, and any caveats.
+1. Use AskUserQuestion to ask whether the user wants the full Docker verification sequence run.
+2. Run it only if approved; otherwise report the checks already completed.
+3. Do not commit, push, or open a PR unless separately requested.
 
-Return a concise summary: branch name, commits, PR URL, and created files.
+Return a concise summary: branch name, created files, verification evidence, and caveats.
 `
 
 export function registerDockerizeSkill(): void {
@@ -39,8 +38,8 @@ export function registerDockerizeSkill(): void {
     name: 'dockerize',
     aliases: ['docker'],
     description:
-      'Add Dockerfile, compose file, health checks, and .dockerignore in an isolated worktree, then open a PR.',
-    allowedTools: [AGENT_TOOL_NAME, 'Read', 'Grep', 'Glob', 'Edit', 'Bash', 'Docker'],
+      'Add Dockerfile, compose file, health checks, and .dockerignore in an isolated worktree.',
+    allowedTools: [AGENT_TOOL_NAME, 'Read', 'Grep', 'Glob', 'Edit', 'Bash', 'Docker', 'AskUserQuestion'],
     argumentHint: '[optional runtime or service description]',
     userInvocable: true,
     async getPromptForCommand(args) {

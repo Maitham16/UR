@@ -36,6 +36,7 @@ multimodal input, external CLI boundary, and sandbox scope:
 | Claude API | API | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:anthropic` | `ANTHROPIC_API_KEY` |
 | Gemini API | API | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:gemini` | `GEMINI_API_KEY` |
 | OpenRouter | API/router | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:openrouter` | `OPENROUTER_API_KEY` |
+| OpenAI-compatible | server/API | UR-native | no | yes | yes | endpoint-dependent | UR Bash/File sandbox | `openai-compatible` | optional `OPENAI_COMPATIBLE_API_KEY`; never reuses `OPENAI_API_KEY` |
 | Ollama | local | UR-native | no | yes | yes | yes* | UR Bash/File sandbox | `ollama` | localhost Ollama runtime |
 | LM Studio | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:lmstudio` | local OpenAI-compatible server |
 | llama.cpp | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:llama.cpp` | local OpenAI-compatible server |
@@ -105,6 +106,10 @@ ur provider select-model <provider> <model> --json
 ur config set base_url <url>
 ur config set provider.fallback ollama
 ```
+
+The fallback setting is a recovery hint for `ur provider doctor`; it does not
+route a failed request to another provider. Review the failure and use
+`ur config set provider <id>` to switch explicitly.
 
 ## Provider-scoped model selection
 
@@ -185,7 +190,7 @@ After selecting a model, the confirmation shows:
 
 → Step 2: Select model
   llama3 · discovered from Ollama · live
-  qwen3-coder:480b-cloud · discovered from Ollama · live
+  qwen2.5-coder:7b · discovered from Ollama · live
   
 → Select: llama3
 
@@ -401,6 +406,7 @@ API providers require explicit user selection and environment keys:
 
 ```sh
 OPENAI_API_KEY=...
+OPENAI_COMPATIBLE_API_KEY=...
 ANTHROPIC_API_KEY=...
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
@@ -413,6 +419,10 @@ ur config set provider openai-compatible
 ur config set base_url http://localhost:1234/v1
 ur config set model local-model-name
 ```
+
+`OPENAI_COMPATIBLE_API_KEY` is intentionally separate from
+`OPENAI_API_KEY`; selecting an arbitrary compatible base URL never forwards
+the OpenAI credential to that host.
 
 Local/server providers use their normal endpoints:
 

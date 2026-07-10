@@ -3,7 +3,7 @@ import { clearBundledSkills, getBundledSkills } from '../src/skills/bundledSkill
 import { registerDockerizeSkill } from '../src/skills/bundled/dockerize.js'
 
 describe('/dockerize bundled skill', () => {
-  test('registers and prompt mentions worktree + Dockerfile + PR', async () => {
+  test('registers and prompt mentions worktree + Dockerfile with explicit publishing', async () => {
     clearBundledSkills()
     registerDockerizeSkill()
     const skills = getBundledSkills()
@@ -17,7 +17,8 @@ describe('/dockerize bundled skill', () => {
     const text = prompt[0]!.type === 'text' ? prompt[0]!.text : ''
     expect(text).toContain('worktree')
     expect(text).toContain('Dockerfile')
-    expect(text).toContain('PR')
+    expect(text).toContain('AskUserQuestion')
+    expect(text).toContain('Do not commit, push, or open a PR')
     expect(text).toContain('Node.js API service')
   })
 })

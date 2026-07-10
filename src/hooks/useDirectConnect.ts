@@ -18,7 +18,6 @@ import { findToolByName } from '../Tool.js'
 import type { Message as MessageType } from '../types/message.js'
 import type { PermissionAskDecision } from '../types/permissions.js'
 import { logForDebugging } from '../utils/debug.js'
-import { gracefulShutdown } from '../utils/gracefulShutdown.js'
 import type { RemoteMessageContent } from '../utils/teleport/api.js'
 
 type UseDirectConnectResult = {
@@ -48,6 +47,7 @@ export function useDirectConnect({
   const managerRef = useRef<DirectConnectSessionManager | null>(null)
   const hasReceivedInitRef = useRef(false)
   const isConnectedRef = useRef(false)
+  const pendingPermissionIdsRef = useRef(new Map<string, string>())
 
   // Keep a ref to tools so the WebSocket callback doesn't go stale
   const toolsRef = useRef(tools)
@@ -89,6 +89,15 @@ export function useDirectConnect({
           `[useDirectConnect] Permission request for tool: ${request.tool_name}`,
         )
 
+        if (pendingPermissionIdsRef.current.has(request.tool_use_id)) {
+          manager.respondToPermissionRequest(requestId, {
+            behavior: 'deny',
+            message: 'A permission request for this tool call is already pending.',
+          })
+          return
+        }
+        pendingPermissionIdsRef.current.set(request.tool_use_id, requestId)
+
         const tool =
           findToolByName(toolsRef.current, request.tool_name) ??
           createToolStub(request.tool_name)
@@ -125,6 +134,7 @@ export function useDirectConnect({
               message: 'User aborted',
             }
             manager.respondToPermissionRequest(requestId, response)
+            pendingPermissionIdsRef.current.delete(request.tool_use_id)
             setToolUseConfirmQueue(queue =>
               queue.filter(item => item.toolUseID !== request.tool_use_id),
             )
@@ -135,6 +145,7 @@ export function useDirectConnect({
               updatedInput,
             }
             manager.respondToPermissionRequest(requestId, response)
+            pendingPermissionIdsRef.current.delete(request.tool_use_id)
             setToolUseConfirmQueue(queue =>
               queue.filter(item => item.toolUseID !== request.tool_use_id),
             )
@@ -146,6 +157,7 @@ export function useDirectConnect({
               message: feedback ?? 'User denied permission',
             }
             manager.respondToPermissionRequest(requestId, response)
+            pendingPermissionIdsRef.current.delete(request.tool_use_id)
             setToolUseConfirmQueue(queue =>
               queue.filter(item => item.toolUseID !== request.tool_use_id),
             )
@@ -174,8 +186,9 @@ export function useDirectConnect({
           process.stderr.write('\nServer disconnected.\n')
         }
         isConnectedRef.current = false
-        void gracefulShutdown(1)
         setIsLoading(false)
+        setToolUseConfirmQueue([])
+        pendingPermissionIdsRef.current.clear()
       },
       onError: error => {
         logForDebugging(`[useDirectConnect] Error: ${error.message}`)
@@ -188,6 +201,8 @@ export function useDirectConnect({
     return () => {
       logForDebugging('[useDirectConnect] Cleanup - disconnecting')
       manager.disconnect()
+      setToolUseConfirmQueue([])
+      pendingPermissionIdsRef.current.clear()
       managerRef.current = null
     }
   }, [config, setMessages, setIsLoading, setToolUseConfirmQueue])
@@ -201,7 +216,9 @@ export function useDirectConnect({
 
       setIsLoading(true)
 
-      return manager.sendMessage(content)
+      const sent = manager.sendMessage(content)
+      if (!sent) setIsLoading(false)
+      return sent
     },
     [setIsLoading],
   )
@@ -211,14 +228,26 @@ export function useDirectConnect({
     // Send interrupt signal to the server
     managerRef.current?.sendInterrupt()
 
+    for (const [toolUseId, requestId] of pendingPermissionIdsRef.current) {
+      managerRef.current?.respondToPermissionRequest(requestId, {
+        behavior: 'deny',
+        message: 'User canceled the current request.',
+      })
+      pendingPermissionIdsRef.current.delete(toolUseId)
+    }
+    setToolUseConfirmQueue([])
+
     setIsLoading(false)
-  }, [setIsLoading])
+  }, [setIsLoading, setToolUseConfirmQueue])
 
   const disconnect = useCallback(() => {
     managerRef.current?.disconnect()
     managerRef.current = null
     isConnectedRef.current = false
-  }, [])
+    setToolUseConfirmQueue([])
+    pendingPermissionIdsRef.current.clear()
+    setIsLoading(false)
+  }, [setIsLoading, setToolUseConfirmQueue])
 
   // Same stability concern as useRemoteSession — memoize so consumers
   // that depend on the result object don't see a fresh reference per render.

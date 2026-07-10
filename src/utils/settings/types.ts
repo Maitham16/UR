@@ -425,7 +425,7 @@ export const SettingsSchema = lazySchema(() =>
           fallback: z
             .union([z.enum(PROVIDER_SETTING_IDS), z.literal('disabled')])
             .optional()
-            .describe('Optional fallback provider; UR asks before using it'),
+            .describe('Optional recovery provider shown by provider diagnostics; switching is always explicit'),
           preferences: z
             .record(z.string(), NonSecretPreferenceSchema)
             .optional()

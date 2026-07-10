@@ -1363,7 +1363,7 @@ function fallbackResult(
   return {
     enabled: true,
     provider: settings.fallback,
-    message: `Fallback is configured as ${settings.fallback}, but UR-Nexus will ask before using it.`,
+    message: `Recovery provider ${settings.fallback} is configured. UR-Nexus will not switch automatically; review the failure, then select it explicitly with: ur config set provider ${settings.fallback}`,
   }
 }
 

@@ -57,7 +57,15 @@ test('judge ranks the clean candidate first and skips empty diffs', () => {
   expect(ranked[0].id).toBe('a')
 })
 
-test('runArena runs N agents and selects the PASS candidate', async () => {
+test('judge fails closed when every changed candidate failed review', () => {
+  const { winner } = judge([
+    { id: 'failed', diff: cleanDiff, output: '', verdict: 'FAIL', isError: false },
+    { id: 'blocked', diff: secretDiff, output: '', verdict: 'PASS', isError: false },
+  ])
+  expect(winner).toBeNull()
+})
+
+test('runArena does not select a winner when injected runners produce no diff', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'ur-arena-'))
   let n = 0
   const verdicts = ['PASS', 'FAIL', 'FAIL']
@@ -72,6 +80,6 @@ test('runArena runs N agents and selects the PASS candidate', async () => {
   })
   expect(result.candidates.length).toBe(3)
   expect(result.candidates.filter(c => c.verdict === 'PASS').length).toBe(1)
-  expect(result.winner?.verdict).toBe('PASS')
+  expect(result.winner).toBeNull()
   rmSync(tmp, { recursive: true, force: true })
 })

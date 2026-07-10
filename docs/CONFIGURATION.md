@@ -58,6 +58,10 @@ ur provider select-model <provider> <model> --json
 ur config set base_url <url>
 ```
 
+`provider.fallback` is diagnostic recovery metadata, not automatic routing.
+When the active provider fails, `ur provider doctor` shows the configured
+recovery command; changing providers remains an explicit user action.
+
 Provider values accept canonical IDs and common aliases. Examples:
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
 `lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, and the subscription CLI
@@ -88,6 +92,7 @@ it in the environment when you explicitly choose API mode:
 
 ```sh
 OPENAI_API_KEY=...
+OPENAI_COMPATIBLE_API_KEY=...
 ANTHROPIC_API_KEY=...
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
@@ -117,8 +122,8 @@ ur --settings '{"ollama":{"host":"http://192.168.1.50:11434"}}'
 Model selection environment variables still work the same way:
 
 ```sh
-OLLAMA_MODEL=qwen3-coder:480b-cloud
-UR_MODEL=qwen3-coder:480b-cloud
+OLLAMA_MODEL=qwen2.5-coder:7b
+UR_MODEL=qwen2.5-coder:7b
 ```
 
 `OLLAMA_MODEL` selects the model name and takes precedence over `UR_MODEL` only

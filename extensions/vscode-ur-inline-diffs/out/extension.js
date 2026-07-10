@@ -62,7 +62,8 @@ var fs = __toESM(require("node:fs"));
 var path = __toESM(require("node:path"));
 var vscode2 = __toESM(require("vscode"));
 function workspaceRoot() {
-  return vscode2.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const activeUri = vscode2.window.activeTextEditor?.document.uri;
+  return (activeUri ? vscode2.workspace.getWorkspaceFolder(activeUri) : void 0)?.uri.fsPath ?? vscode2.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 function diffsRoot(root) {
   return path.join(root, ".ur", "ide", "diffs");
@@ -71,10 +72,34 @@ function manifestPath(root) {
   return path.join(diffsRoot(root), "manifest.json");
 }
 function patchPath(root, bundle) {
-  return path.join(diffsRoot(root), bundle.patchFile);
+  return artifactPath(root, bundle, "patch");
 }
 function metadataPath(root, bundle) {
-  return path.join(diffsRoot(root), bundle.metadataFile);
+  return artifactPath(root, bundle, "metadata");
+}
+var DIFF_ID_PATTERN = /^diff-[1-9][0-9]*$/u;
+function artifactPath(root, bundle, kind) {
+  if (!DIFF_ID_PATTERN.test(bundle.id)) throw new Error(`Invalid UR diff id: ${bundle.id}`);
+  const relative2 = kind === "patch" ? bundle.patchFile : bundle.metadataFile;
+  const expected = kind === "patch" ? `patches/${bundle.id}.patch` : `metadata/${bundle.id}.json`;
+  if (relative2.replaceAll("\\", "/") !== expected) {
+    throw new Error(`Invalid UR diff ${kind} path for ${bundle.id}`);
+  }
+  const rootPath = path.resolve(diffsRoot(root));
+  const target = path.resolve(rootPath, relative2);
+  if (!target.startsWith(`${rootPath}${path.sep}`)) throw new Error(`UR diff ${kind} path escapes the diff store`);
+  return target;
+}
+function isValidBundle(value) {
+  if (!value || typeof value !== "object") return false;
+  const bundle = value;
+  try {
+    patchPath(".", bundle);
+    metadataPath(".", bundle);
+    return true;
+  } catch {
+    return false;
+  }
 }
 function readJson(file, fallback) {
   try {
@@ -90,10 +115,11 @@ function writeJson(file, value) {
 }
 function loadManifest(root) {
   const manifest = readJson(manifestPath(root), { version: 1, diffs: [] });
-  return Array.isArray(manifest.diffs) ? manifest : { version: 1, diffs: [] };
+  return Array.isArray(manifest.diffs) ? { version: 1, diffs: manifest.diffs.filter(isValidBundle) } : { version: 1, diffs: [] };
 }
 function loadBundleMetadata(root, bundle) {
-  return readJson(metadataPath(root, bundle), bundle);
+  const metadata = readJson(metadataPath(root, bundle), bundle);
+  return isValidBundle(metadata) && metadata.id === bundle.id ? metadata : bundle;
 }
 function readPatch(root, bundle) {
   const file = patchPath(root, bundle);
@@ -720,9 +746,9 @@ function languageIdToFence(languageId) {
 }
 function captureEditorSnapshot() {
   const vscode18 = require("vscode");
-  const workspaceRoot2 = vscode18.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const editor = vscode18.window.activeTextEditor;
-  if (!editor) return { workspaceRoot: workspaceRoot2 };
+  if (!editor) return { workspaceRoot: vscode18.workspace.workspaceFolders?.[0]?.uri.fsPath };
+  const workspaceRoot2 = vscode18.workspace.getWorkspaceFolder(editor.document.uri)?.uri.fsPath;
   const absolutePath = editor.document.uri.fsPath;
   const relativePath = workspaceRoot2 ? path2.relative(workspaceRoot2, absolutePath) : absolutePath;
   const activeFile = { path: relativePath, languageId: editor.document.languageId };
@@ -1294,12 +1320,16 @@ var ChatController = class {
   attachments = [];
   status = "idle";
   turnHandle;
+  activeTurnId = 0;
   pendingPermissions = /* @__PURE__ */ new Map();
   // --- commands ---
   async newChat() {
     const root = this.requireWorkspaceRoot();
     if (!root) return;
     this.turnHandle?.cancel();
+    this.activeTurnId++;
+    this.turnHandle = void 0;
+    this.denyAllPending("A new chat was started.");
     this.record = createSession(root);
     this.attachments = [];
     this.status = "idle";
@@ -1418,6 +1448,10 @@ var ChatController = class {
       vscode6.window.showWarningMessage(reason);
       return;
     }
+    if (this.record && snapshot.workspaceRoot !== this.record.session.workspaceRoot) {
+      vscode6.window.showWarningMessage("The active file belongs to a different workspace folder. Start a new chat for that folder.");
+      return;
+    }
     const attachment = kind === "file" ? { kind: "file", file: snapshot.activeFile } : { kind: "selection", selection: snapshot.selection };
     this.attachments.push(attachment);
     this.ensurePanel();
@@ -1437,7 +1471,7 @@ var ChatController = class {
   /** The single pathway every turn goes through — manual sends and editor
    * actions alike. */
   async dispatchTurn(promptText) {
-    const root = this.requireWorkspaceRoot();
+    const root = this.record?.session.workspaceRoot ?? this.requireWorkspaceRoot();
     if (!root) return;
     if (this.status === "running") {
       vscode6.window.showWarningMessage("UR is already running a request. Cancel it first or wait for it to finish.");
@@ -1460,17 +1494,24 @@ var ChatController = class {
     this._onDidChangeState.fire();
     this.panel?.post({ type: "statusChanged", status: this.status });
     const resumeSessionId = this.record.session.cliSessionId;
-    this.turnHandle = runUrTurn(
+    const turnId = ++this.activeTurnId;
+    let exitedSynchronously = false;
+    const handle = runUrTurn(
       { cwd: root, prompt: promptText, resumeSessionId },
       {
-        onMessage: (message) => this.handleStreamMessage(root, sessionId, message),
-        onControlRequest: (request) => this.handlePermissionRequest(request),
-        onExit: (result) => this.handleTurnExit(root, result)
+        onMessage: (message) => this.handleStreamMessage(root, sessionId, turnId, message),
+        onControlRequest: (request) => this.handlePermissionRequest(turnId, request),
+        onExit: (result) => {
+          exitedSynchronously = true;
+          this.handleTurnExit(root, sessionId, turnId, result);
+        }
       },
       { executable: resolveUrCommand({ cwd: root, config: readUrCommandConfig() }) }
     );
+    this.turnHandle = exitedSynchronously ? void 0 : handle;
   }
-  handleStreamMessage(root, sessionId, message) {
+  handleStreamMessage(root, sessionId, turnId, message) {
+    if (turnId !== this.activeTurnId) return;
     if (message.type === "system" && message.subtype === "init" && typeof message.session_id === "string") {
       if (this.record && this.record.session.id === sessionId && !this.record.session.cliSessionId) {
         setCliSessionId(root, sessionId, message.session_id);
@@ -1508,24 +1549,28 @@ var ChatController = class {
     if (!this.record) return;
     this.appendChatMessage(root, this.record.session.id, "status", [{ type: "text", text }]);
   }
-  handlePermissionRequest(request) {
-    return new Promise((resolve2) => {
+  handlePermissionRequest(turnId, request) {
+    if (turnId !== this.activeTurnId) {
+      return Promise.resolve({ behavior: "deny", message: "This chat turn is no longer active." });
+    }
+    return new Promise((resolve3) => {
       const toolName = request.request.tool_name ?? "tool";
       const input = request.request.input ?? {};
-      this.pendingPermissions.set(request.request_id, { resolve: resolve2, toolName, input });
+      this.pendingPermissions.set(request.request_id, { resolve: resolve3, toolName, input, turnId });
       this.panel?.post({ type: "permissionRequest", requestId: request.request_id, toolName, input });
     });
   }
-  handleTurnExit(root, result) {
+  handleTurnExit(root, sessionId, turnId, result) {
+    if (turnId !== this.activeTurnId) return;
     this.turnHandle = void 0;
     this.denyAllPending("The chat turn ended before this request was answered.");
     if (result.canceled) {
       this.status = "canceled";
-      this.appendStatusText(root, "Canceled.");
+      this.appendChatMessage(root, sessionId, "status", [{ type: "text", text: "Canceled." }]);
     } else if (!result.ok) {
       this.status = "error";
       const message = result.error ?? "UR failed to complete this turn.";
-      this.appendStatusText(root, `Error: ${message}`);
+      this.appendChatMessage(root, sessionId, "status", [{ type: "text", text: `Error: ${message}` }]);
       this.panel?.post({ type: "errorBanner", message });
     } else {
       this.status = "idle";
@@ -1535,13 +1580,13 @@ var ChatController = class {
   }
   resolvePermission(requestId, decision) {
     const pending = this.pendingPermissions.get(requestId);
-    if (!pending) return;
+    if (!pending || pending.turnId !== this.activeTurnId) return;
     this.pendingPermissions.delete(requestId);
     pending.resolve(
       decision === "allow" ? { behavior: "allow", updatedInput: pending.input } : { behavior: "deny", message: "User denied this tool call from the UR Chat panel." }
     );
     this.panel?.post({ type: "permissionResolved", requestId });
-    const root = workspaceRoot();
+    const root = this.record?.session.workspaceRoot;
     if (root) this.appendStatusText(root, `${decision === "allow" ? "Allowed" : "Denied"} ${pending.toolName}.`);
   }
   denyAllPending(reason) {

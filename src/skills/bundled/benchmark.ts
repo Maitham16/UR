@@ -20,17 +20,16 @@ Add or run benchmarks for a specific component in an isolated worktree. Collect 
 
 1. Write or run the benchmark. Keep it deterministic where possible and document stochastic variance.
 2. Run it several times and record the results.
-3. If a change was required to add the benchmark, commit it with "bench(scope): add benchmark for X".
+3. Keep any benchmark changes local in the worktree.
 4. If results should persist, save them in a consistent format (e.g., JSON, markdown table).
 
 ## Finish
 
-1. Push the branch only if code or saved results were committed.
-2. Open a PR with:
-   - Title: "bench(scope): <short description>"
-   - Body: what was benchmarked, command, results, and interpretation.
+1. Use AskUserQuestion to ask whether the user wants the full benchmark and verification sequence rerun.
+2. Run it only if approved; otherwise report the measurements already collected.
+3. Do not commit, push, or open a PR unless separately requested.
 
-Return a concise summary: branch name, commits, PR URL (if any), and the results.
+Return a concise summary: branch name, benchmark command, results, and interpretation.
 `
 
 export function registerBenchmarkSkill(): void {
@@ -39,7 +38,7 @@ export function registerBenchmarkSkill(): void {
     aliases: ['bench', 'perf'],
     description:
       'Add or run benchmarks in an isolated worktree and optionally commit the benchmark code and results.',
-    allowedTools: [AGENT_TOOL_NAME, 'Read', 'Grep', 'Glob', 'Edit', 'Bash', 'TestRunner'],
+    allowedTools: [AGENT_TOOL_NAME, 'Read', 'Grep', 'Glob', 'Edit', 'Bash', 'TestRunner', 'AskUserQuestion'],
     argumentHint: '[component or benchmark goal]',
     userInvocable: true,
     async getPromptForCommand(args) {

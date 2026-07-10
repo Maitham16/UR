@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { LocalCommandCall, LocalCommandResult } from '../../types/command.js'
 import {
@@ -23,8 +23,10 @@ import {
  */
 
 function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
+
+const SESSION_ID_PATTERN = /^[a-zA-Z0-9-]{1,128}$/u
 
 function textOfMessage(m: Record<string, unknown>): string | null {
   const msg = m.message as { role?: string; content?: unknown } | undefined
@@ -71,7 +73,10 @@ export const call: LocalCommandCall = async (args: string): Promise<LocalCommand
 
   if (action === 'share') {
     const sessionId = tokens[1]
-    const transcriptPath = sessionId
+    if (sessionId && !SESSION_ID_PATTERN.test(sessionId)) {
+      return { type: 'text', value: 'Invalid session id.' }
+    }
+    let transcriptPath = sessionId
       ? getTranscriptPathForSession(sessionId)
       : getTranscriptPath()
     if (!existsSync(transcriptPath)) {
@@ -86,6 +91,9 @@ export const call: LocalCommandCall = async (args: string): Promise<LocalCommand
       if (sessionId) {
         return { type: 'text', value: `No transcript for session ${sessionId} (${transcriptPath}).` }
       }
+      transcriptPath = candidates
+        .map(name => join(dir, name))
+        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0]!
     }
     const id = sessionId ?? `latest-${Date.now().toString(36)}`
     const lines = readFileSync(transcriptPath, 'utf-8').split('\n').filter(Boolean)

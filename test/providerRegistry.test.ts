@@ -489,7 +489,7 @@ describe('provider registry legal access paths', () => {
     expect(result.failureReason).toBe('API key missing')
   })
 
-  test('reports fallback disabled and enabled without silently switching', async () => {
+  test('reports recovery provider guidance without claiming an automatic switch', async () => {
     const disabled = await doctorProvider('codex-cli', {
       adapters: adapters({ missing: ['codex'] }),
       settings: { provider: { active: 'codex-cli', fallback: 'disabled' } },
@@ -501,7 +501,8 @@ describe('provider registry legal access paths', () => {
 
     expect(disabled.fallback?.enabled).toBe(false)
     expect(enabled.fallback?.enabled).toBe(true)
-    expect(enabled.fallback?.message).toContain('will ask before using it')
+    expect(enabled.fallback?.message).toContain('will not switch automatically')
+    expect(enabled.fallback?.message).toContain('ur config set provider ollama')
   })
 
   test('generic subscription provider is visible but unavailable without fake models', async () => {

@@ -35,6 +35,11 @@ Every tool call is checked (doc 04 §Permission model):
 /sandbox exclude "docker *"                # jsx toggle: exempt a command pattern
 ```
 Settings: `sandbox` (SandboxSettingsSchema in `src/entrypoints/sandboxTypes.ts`).
+Configured read/write allow and deny roots are enforced by Seatbelt/bwrap
+profiles. Paths are canonicalized through existing parents. Selective domain
+policies fail closed to blocked network access when the compatibility runtime
+cannot enforce domain-level filtering; bare-repository cleanup removes only a
+signature-verified repository created during the command.
 
 ## Project safety policy (`/safety`)
 
@@ -82,8 +87,11 @@ containment, findings/reports):
 /lab                      # spin up a safe local practice lab
 /security-review          # review pending branch changes for vulnerabilities
 ```
-`/security-review` also exists as a bundled worktree skill that fixes low-risk findings
-and opens a PR.
+`/security-review` also exists as a bundled worktree skill that fixes low-risk
+findings locally. Security labs accept only known templates and refuse symlinked
+lab roots; approved security fixes canonicalize the target, write atomically,
+and roll back if verification fails. The skill never publishes a PR without a
+separate explicit request.
 
 ## Devcontainer execution target (`/devcontainer`, alias `/exec-target`)
 

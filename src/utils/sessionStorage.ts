@@ -205,6 +205,9 @@ export function getTranscriptPath(): string {
 }
 
 export function getTranscriptPathForSession(sessionId: string): string {
+  if (!/^[a-zA-Z0-9-]{1,128}$/u.test(sessionId)) {
+    throw new Error('Invalid session id')
+  }
   // When asking for the CURRENT session's transcript, honor sessionProjectDir
   // the same way getTranscriptPath() does. Without this, hooks get a
   // transcript_path computed from originalCwd while the actual file was
@@ -604,7 +607,7 @@ class Project {
   }
 
   private enqueueWrite(filePath: string, entry: Entry): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
+    const write = new Promise<void>((resolve, reject) => {
       let queue = this.writeQueues.get(filePath)
       if (!queue) {
         queue = []
@@ -613,6 +616,12 @@ class Project {
       queue.push({ entry, resolve, reject })
       this.scheduleDrain()
     })
+    // Callers enqueue from synchronous transcript paths and intentionally do
+    // not await. Attach a handler here so disk failures are surfaced without
+    // becoming process-level unhandled rejections; flush() still rejects via
+    // the active drain for callers that need durability confirmation.
+    void write.catch(error => logError(error))
+    return write
   }
 
   private scheduleDrain(): void {
@@ -684,7 +693,7 @@ class Project {
           for (const item of pending) item.resolve()
         }
       } catch (error) {
-        for (const item of pending) item.reject(error)
+        for (const item of batch) item.reject(error)
         throw error
       }
     }

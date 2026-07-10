@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "dev.urnexus"
-version = "1.45.1"
+version = "1.45.2"
 
 repositories {
     mavenCentral()
@@ -15,6 +15,7 @@ repositories {
 }
 
 dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     intellijPlatform {
         intellijIdeaCommunity("2024.2.3")
     }

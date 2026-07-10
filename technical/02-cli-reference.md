@@ -21,7 +21,7 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | `--replay-user-messages` | Echo stdin user messages back on stdout (stream-json in/out) | — |
 | `--bare` | Minimal mode: no hooks/LSP/plugins/auto-memory/UR.md; local Ollama only; sets `UR_CODE_SIMPLE=1` | `ur --bare` |
 | `--offline` | Local-first: no cloud APIs, telemetry, auto-update, remote control | `ur --offline` |
-| `--model <model>` | Session model (e.g. an Ollama tag) | `ur --model qwen3-coder:480b-cloud` |
+| `--model <model>` | Session model (e.g. an Ollama tag) | `ur --model qwen2.5-coder:7b` |
 | `--fallback-model <model>` | Auto-fallback when primary is overloaded (with `-p`) | — |
 | `--agent <agent>` | Run as a named agent config | `ur --agent reviewer` |
 | `--agents <json>` | Define custom agents inline (JSON) | — |

@@ -3,7 +3,7 @@ import { clearBundledSkills, getBundledSkills } from '../src/skills/bundledSkill
 import { registerLatexPaperSkill } from '../src/skills/bundled/latex-paper.js'
 
 describe('/latex-paper bundled skill', () => {
-  test('registers and prompt mentions worktree + build + PR', async () => {
+  test('registers and prompt mentions worktree + build with explicit publishing', async () => {
     clearBundledSkills()
     registerLatexPaperSkill()
     const skills = getBundledSkills()
@@ -17,7 +17,8 @@ describe('/latex-paper bundled skill', () => {
     const text = prompt[0]!.type === 'text' ? prompt[0]!.text : ''
     expect(text).toContain('worktree')
     expect(text).toContain('build')
-    expect(text).toContain('PR')
+    expect(text).toContain('AskUserQuestion')
+    expect(text).toContain('Do not commit, push, or open a PR')
     expect(text).toContain('survey of local-first agents')
   })
 })
