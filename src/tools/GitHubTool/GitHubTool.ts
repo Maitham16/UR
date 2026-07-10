@@ -127,7 +127,7 @@ export const GitHubTool = buildTool({
     return outputSchema()
   },
   isConcurrencySafe() {
-    return true
+    return false
   },
   isReadOnly(input) {
     return ['pr_list', 'pr_view', 'issue_list', 'repo_view', 'search_code'].includes(input.action)
@@ -139,7 +139,32 @@ export const GitHubTool = buildTool({
     return `${input.action} ${input.repo || ''}`
   },
   async checkPermissions(input) {
+    if (input.action === 'pr_create' || input.action === 'issue_create') {
+      return {
+        behavior: 'ask',
+        updatedInput: input,
+        message: `UR wants to create a GitHub ${input.action === 'pr_create' ? 'pull request' : 'issue'}`,
+        suggestions: [],
+      }
+    }
     return { behavior: 'allow', updatedInput: input }
+  },
+  async validateInput(input) {
+    if (input.action === 'pr_create' && (!input.title?.trim() || !input.body?.trim())) {
+      return {
+        result: false,
+        message: 'pr_create requires non-empty title and body so gh never opens an interactive prompt.',
+        errorCode: 1,
+      }
+    }
+    if (input.action === 'issue_create' && (!input.title?.trim() || !input.body?.trim())) {
+      return {
+        result: false,
+        message: 'issue_create requires non-empty title and body so gh never opens an interactive prompt.',
+        errorCode: 1,
+      }
+    }
+    return { result: true }
   },
   renderToolUseMessage() {
     return null

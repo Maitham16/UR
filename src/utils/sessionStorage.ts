@@ -560,7 +560,7 @@ class Project {
   // callers of enqueueWrite can optionally await their specific write.
   private writeQueues = new Map<
     string,
-    Array<{ entry: Entry; resolve: () => void }>
+    Array<{ entry: Entry; resolve: () => void; reject: (error: unknown) => void }>
   >()
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private activeDrain: Promise<void> | null = null
@@ -604,31 +604,40 @@ class Project {
   }
 
   private enqueueWrite(filePath: string, entry: Entry): Promise<void> {
-    return new Promise<void>(resolve => {
+    return new Promise<void>((resolve, reject) => {
       let queue = this.writeQueues.get(filePath)
       if (!queue) {
         queue = []
         this.writeQueues.set(filePath, queue)
       }
-      queue.push({ entry, resolve })
+      queue.push({ entry, resolve, reject })
       this.scheduleDrain()
     })
   }
 
   private scheduleDrain(): void {
-    if (this.flushTimer) {
+    if (this.flushTimer || this.activeDrain) {
       return
     }
-    this.flushTimer = setTimeout(async () => {
+    this.flushTimer = setTimeout(() => {
       this.flushTimer = null
-      this.activeDrain = this.drainWriteQueue()
-      await this.activeDrain
-      this.activeDrain = null
-      // If more items arrived during drain, schedule again
-      if (this.writeQueues.size > 0) {
-        this.scheduleDrain()
-      }
+      void this.startDrain().catch(error => {
+        logForDebugging(`Transcript write drain failed: ${error instanceof Error ? error.message : String(error)}`, {
+          level: 'error',
+        })
+      })
     }, this.FLUSH_INTERVAL_MS)
+  }
+
+  private startDrain(): Promise<void> {
+    if (this.activeDrain) return this.activeDrain
+    const drain = this.drainWriteQueue()
+    const tracked = drain.finally(() => {
+      if (this.activeDrain === tracked) this.activeDrain = null
+      if (this.writeQueues.size > 0) this.scheduleDrain()
+    })
+    this.activeDrain = tracked
+    return tracked
   }
 
   private async appendToFile(filePath: string, data: string): Promise<void> {
@@ -650,30 +659,33 @@ class Project {
       const batch = queue.splice(0)
 
       let content = ''
-      const resolvers: Array<() => void> = []
+      const pending: Array<{
+        resolve: () => void
+        reject: (error: unknown) => void
+      }> = []
 
-      for (const { entry, resolve } of batch) {
-        const line = jsonStringify(entry) + '\n'
+      try {
+        for (const { entry, resolve, reject } of batch) {
+          const line = jsonStringify(entry) + '\n'
 
-        if (content.length + line.length >= this.MAX_CHUNK_BYTES) {
-          // Flush chunk and resolve its entries before starting a new one
-          await this.appendToFile(filePath, content)
-          for (const r of resolvers) {
-            r()
+          if (content.length + line.length >= this.MAX_CHUNK_BYTES && content.length > 0) {
+            await this.appendToFile(filePath, content)
+            for (const item of pending) item.resolve()
+            pending.length = 0
+            content = ''
           }
-          resolvers.length = 0
-          content = ''
+
+          content += line
+          pending.push({ resolve, reject })
         }
 
-        content += line
-        resolvers.push(resolve)
-      }
-
-      if (content.length > 0) {
-        await this.appendToFile(filePath, content)
-        for (const r of resolvers) {
-          r()
+        if (content.length > 0) {
+          await this.appendToFile(filePath, content)
+          for (const item of pending) item.resolve()
         }
+      } catch (error) {
+        for (const item of pending) item.reject(error)
+        throw error
       }
     }
 
@@ -844,12 +856,9 @@ class Project {
       clearTimeout(this.flushTimer)
       this.flushTimer = null
     }
-    // Wait for any in-flight drain to finish
-    if (this.activeDrain) {
-      await this.activeDrain
+    while (this.activeDrain || this.writeQueues.size > 0) {
+      await (this.activeDrain ?? this.startDrain())
     }
-    // Drain anything remaining in the queues
-    await this.drainWriteQueue()
 
     // Wait for non-queue tracked operations (e.g. removeMessageByUuid)
     if (this.pendingWriteCount === 0) {

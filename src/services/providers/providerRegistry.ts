@@ -438,7 +438,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     authMode: 'api',
     legalPath: 'user-selected OpenAI-compatible base URL with API key only when required by that endpoint',
     accessPathLabel: 'OpenAI-compatible endpoint',
-    envKey: 'OPENAI_API_KEY',
+    envKey: 'OPENAI_COMPATIBLE_API_KEY',
     endpointKind: 'openai-compatible',
   },
   ollama: {
@@ -868,7 +868,11 @@ export function setSafeProviderConfig(
       }
       const currentSettings = getInitialSettings()
       const currentModel = getActiveProviderSettings(currentSettings).model
-      const nextProviderSettings: ProviderSettings = { active: provider }
+      const nextProviderSettings: ProviderSettings = {
+        active: provider,
+        baseUrl: undefined,
+        commandPath: undefined,
+      }
       let invalidated = false
       if (currentModel) {
         const validation = validateProviderModelPair(provider, currentModel)
@@ -1028,12 +1032,24 @@ function endpointUrl(baseUrl: string, kind: 'ollama' | 'openai-compatible'): str
  * also try `/v1/models` so discovery still finds models.
  */
 function openAiCompatibleModelUrls(baseUrl: string): string[] {
-  const trimmed = baseUrl.replace(/\/+$/, '')
-  const urls = [`${trimmed}/models`]
-  if (!/\/(v\d+|api)(\/|$)/i.test(trimmed)) {
-    urls.push(`${trimmed}/v1/models`)
+  const url = new URL(normalizeBaseUrl(baseUrl))
+  url.hash = ''
+  url.search = ''
+  let path = url.pathname.replace(/\/+$/, '')
+  path = path.replace(/\/chat\/completions$/i, '')
+  if (/\/models$/i.test(path)) {
+    url.pathname = path
+    return [url.toString().replace(/\/$/, '')]
   }
-  return urls
+  if (/\/v\d+(?:beta)?$/i.test(path) || /\/api\/v\d+$/i.test(path)) {
+    url.pathname = `${path}/models`
+    return [url.toString().replace(/\/$/, '')]
+  }
+  const rootPath = path
+  url.pathname = `${rootPath}/v1/models`
+  const versioned = url.toString().replace(/\/$/, '')
+  url.pathname = `${rootPath}/models`
+  return [versioned, url.toString().replace(/\/$/, '')]
 }
 
 function isLocalBaseUrl(value: string): boolean {
@@ -1065,10 +1081,17 @@ async function checkEndpoint(
     definition.endpointKind === 'ollama'
       ? [endpointUrl(baseUrl, 'ollama')]
       : openAiCompatibleModelUrls(baseUrl)
-  const headers =
-    definition.accessType === 'api' && (adapters.env ?? process.env)[definition.envKey ?? '']
-      ? { Authorization: `Bearer ${(adapters.env ?? process.env)[definition.envKey ?? '']}` }
-      : undefined
+  const env = adapters.env ?? process.env
+  let apiKey = definition.envKey ? env[definition.envKey] : undefined
+  if (!apiKey && definition.credentialType === 'openai-compatible-endpoint') {
+    try {
+      const credentials = await import('./providerCredentials.js')
+      apiKey = credentials.getProviderApiKey(definition.id, { env })
+    } catch {
+      // Endpoint may not require authentication.
+    }
+  }
+  const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined
   const fetchImpl = adapters.fetch ?? fetch
   let reachableUrl: string | undefined
   let modelsUrl: string | undefined
@@ -1933,10 +1956,16 @@ async function discoverLiveModelsForProvider(
   }
   const env = options.adapters?.env ?? process.env
   const fetchImpl = options.adapters?.fetch ?? fetch
-  const headers =
-    definition.accessType === 'api' && definition.envKey && env[definition.envKey]
-      ? { Authorization: `Bearer ${env[definition.envKey]}` }
-      : undefined
+  let apiKey = definition.envKey ? env[definition.envKey] : undefined
+  if (!apiKey) {
+    try {
+      const credentials = await import('./providerCredentials.js')
+      apiKey = credentials.getProviderApiKey(provider, { env })
+    } catch {
+      // Endpoint may not require authentication.
+    }
+  }
+  const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined
 
   if (definition.endpointKind === 'ollama') {
     const url = endpointUrl(baseUrl, 'ollama')
@@ -1982,26 +2011,41 @@ async function discoverLiveModelsForProvider(
 function apiModelsRequest(
   provider: ProviderId,
   apiKey: string,
+  settings: SettingsJson,
 ): { url: string; headers: Record<string, string> } {
+  const configured = getActiveProviderSettings(settings)
+  const configuredBase = configured.active === provider ? configured.baseUrl : undefined
+  const modelsUrl = (baseUrl: string, version: string): string => {
+    const url = new URL(normalizeBaseUrl(baseUrl))
+    url.hash = ''
+    url.search = ''
+    let path = url.pathname.replace(/\/+$/, '')
+    path = path.replace(/\/(chat\/completions|messages|models)$/i, '')
+    if (!/\/v\d+(?:beta)?$/i.test(path) && !/\/api\/v\d+$/i.test(path)) {
+      path = `${path}/${version}`
+    }
+    url.pathname = `${path}/models`
+    return url.toString().replace(/\/$/, '')
+  }
   switch (provider) {
     case 'anthropic-api':
       return {
-        url: 'https://api.anthropic.com/v1/models',
+        url: modelsUrl(configuredBase ?? 'https://api.anthropic.com/v1', 'v1'),
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       }
     case 'gemini-api':
       return {
-        url: 'https://generativelanguage.googleapis.com/v1beta/models',
+        url: modelsUrl(configuredBase ?? 'https://generativelanguage.googleapis.com/v1beta', 'v1beta'),
         headers: { 'x-goog-api-key': apiKey },
       }
     case 'openrouter':
       return {
-        url: 'https://openrouter.ai/api/v1/models',
+        url: modelsUrl(configuredBase ?? 'https://openrouter.ai/api/v1', 'v1'),
         headers: { Authorization: `Bearer ${apiKey}` },
       }
     default:
       return {
-        url: 'https://api.openai.com/v1/models',
+        url: modelsUrl(configuredBase ?? 'https://api.openai.com/v1', 'v1'),
         headers: { Authorization: `Bearer ${apiKey}` },
       }
   }
@@ -2047,7 +2091,11 @@ async function discoverApiProviderModels(
   if (!apiKey) {
     throw new Error(`Not connected: run \`ur connect ${provider}\` to add an API key.`)
   }
-  const { url, headers } = apiModelsRequest(provider, apiKey)
+  const { url, headers } = apiModelsRequest(
+    provider,
+    apiKey,
+    options.settings ?? getInitialSettings(),
+  )
   const response = await (options.adapters?.fetch ?? fetch)(url, {
     method: 'GET',
     signal: options.signal,

@@ -86,7 +86,7 @@ export function getProviderRequestTimeoutMs(override?: unknown): number {
 }
 
 export function normalizeProviderMaxRetries(value: unknown): number {
-  const parsed = parsePositiveInteger(value)
+  const parsed = parseNonNegativeInteger(value)
   if (parsed === undefined) return DEFAULT_PROVIDER_MAX_RETRIES
   return Math.max(0, parsed)
 }

@@ -84,6 +84,7 @@ type OllamaStreamReadResult = Awaited<
 type RequestOptions = {
   signal?: AbortSignal
   timeout?: number
+  timeoutMs?: number
 }
 
 type OllamaStopReason = 'end_turn' | 'max_tokens' | 'tool_use'
@@ -302,8 +303,8 @@ export function getOllamaRequestTimeoutMs(
   options?: RequestOptions,
   env: Record<string, string | undefined> = process.env,
 ): number {
-  if (options?.timeout !== undefined) {
-    return options.timeout
+  if (options?.timeoutMs !== undefined || options?.timeout !== undefined) {
+    return options.timeoutMs ?? options.timeout ?? DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS
   }
 
   const override = parseInt(env.API_TIMEOUT_MS || '', 10)
@@ -1127,10 +1128,24 @@ function ollamaResponseToURHQMessage(
     parseBareJsonToolCalls: true,
   })
   const text = kimi.text
+  const structuredKeys = new Set(
+    structured
+      .filter(call => call.function?.name)
+      .map(call =>
+        `${reconcileToolName(call.function!.name!, availableToolNames)}\0${toolArgsKey(
+          parseToolInput(call.function?.arguments ?? {}),
+        )}`,
+      ),
+  )
+  const textToolCalls = kimi.toolCalls.filter(call =>
+    !structuredKeys.has(
+      `${reconcileToolName(call.name, availableToolNames)}\0${toolArgsKey(call.input ?? {})}`,
+    ),
+  )
   // When clarifying questions arrived as plain prose instead of an
   // AskUserQuestion call, synthesize the tool call so the picker renders.
   const clarifyCall =
-    structured.length === 0 && kimi.toolCalls.length === 0
+    structured.length === 0 && textToolCalls.length === 0
       ? parseClarifyingQuestions(text, { availableToolNames })
       : null
   if (thinking) {
@@ -1140,7 +1155,7 @@ function ollamaResponseToURHQMessage(
       signature: '',
     } as BetaContentBlock)
   }
-  if (text || (!structured.length && !kimi.toolCalls.length)) {
+  if (text || (!structured.length && !textToolCalls.length)) {
     content.push({ type: 'text', text } as BetaContentBlock)
   }
   for (const call of structured) {
@@ -1155,7 +1170,7 @@ function ollamaResponseToURHQMessage(
       input: parseToolInput(call.function?.arguments ?? {}),
     } as BetaContentBlock)
   }
-  for (const tc of kimi.toolCalls) {
+  for (const tc of textToolCalls) {
     content.push({
       type: 'tool_use',
       id: tc.id,
@@ -1179,7 +1194,7 @@ function ollamaResponseToURHQMessage(
     model: response.model ?? params.model,
     content,
     stop_reason:
-      kimi.toolCalls.length > 0 || clarifyCall
+      textToolCalls.length > 0 || clarifyCall
         ? 'tool_use'
         : getStopReason(response, structured),
     stop_sequence: null,

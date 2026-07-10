@@ -15,6 +15,7 @@ import {
 } from './UI.js'
 import {
   applyPromptToMarkdown,
+  assertPublicUrl,
   type FetchedContent,
   getURLMarkdownContent,
   isPreapprovedUrl,
@@ -194,11 +195,11 @@ ${DESCRIPTION}`
   async validateInput(input) {
     const { url } = input
     try {
-      new URL(url)
-    } catch {
+      await assertPublicUrl(url)
+    } catch (error) {
       return {
         result: false,
-        message: `Error: Invalid URL "${url}". The URL provided could not be parsed.`,
+        message: error instanceof Error ? error.message : `Error: Invalid URL "${url}".`,
         meta: { reason: 'invalid_url' },
         errorCode: 1,
       }

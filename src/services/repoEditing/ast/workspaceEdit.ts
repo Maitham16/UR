@@ -7,14 +7,32 @@
  * snapshots.
  */
 
-import { dirname, join } from 'node:path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  rmdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { createTwoFilesPatch } from 'diff'
 import type { TextEdit, WorkspaceEdit } from './types.js'
 
 export type ApplyWorkspaceEditResult = {
   writtenFiles: string[]
-  snapshots: Map<string, string>
+  snapshots: Map<string, FileSnapshot>
+}
+
+export type FileSnapshot = {
+  content: string
+  existed: boolean
+  mode?: number
 }
 
 export class OverlappingEditError extends Error {
@@ -49,30 +67,102 @@ function normalizeFileEdits(file: string, edits: TextEdit[]): TextEdit[] {
 function applyFileEdits(content: string, edits: TextEdit[]): string {
   let result = content
   for (const edit of edits) {
+    if (
+      !Number.isInteger(edit.start) ||
+      !Number.isInteger(edit.end) ||
+      edit.start < 0 ||
+      edit.end < edit.start ||
+      edit.end > content.length
+    ) {
+      throw new Error(`Invalid edit range ${edit.start}:${edit.end} for ${edit.file}`)
+    }
+    if (edit.oldText !== undefined && content.slice(edit.start, edit.end) !== edit.oldText) {
+      throw new Error(`Stale edit rejected for ${edit.file} at ${edit.start}:${edit.end}`)
+    }
     result = `${result.slice(0, edit.start)}${edit.newText}${result.slice(edit.end)}`
   }
   return result
+}
+
+function realpathForMissing(path: string): string {
+  const suffix: string[] = []
+  let cursor = path
+  while (!existsSync(cursor)) {
+    const parent = dirname(cursor)
+    if (parent === cursor) return path
+    suffix.unshift(cursor.slice(parent.length + (parent.endsWith(sep) ? 0 : 1)))
+    cursor = parent
+  }
+  return resolve(realpathSync(cursor), ...suffix)
+}
+
+function isWithin(root: string, path: string): boolean {
+  const rel = relative(root, path)
+  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
+}
+
+export function resolveWorkspaceFile(root: string, file: string): string {
+  if (!file || file.includes('\0')) throw new Error('Workspace edit path is empty or invalid')
+  const realRoot = realpathSync(root)
+  const candidate = isAbsolute(file) ? resolve(file) : resolve(realRoot, file)
+  if (!isWithin(realRoot, candidate)) {
+    throw new Error(`Path escapes repository root: ${file}`)
+  }
+  const canonical = existsSync(candidate) ? realpathSync(candidate) : realpathForMissing(candidate)
+  if (!isWithin(realRoot, canonical)) {
+    throw new Error(`Path resolves outside repository root: ${file}`)
+  }
+  return canonical
+}
+
+export function workspaceRelativePath(root: string, file: string): string {
+  return relative(realpathSync(root), resolveWorkspaceFile(root, file)).split(sep).join('/')
+}
+
+function atomicWrite(path: string, content: string, mode?: number): void {
+  mkdirSync(dirname(path), { recursive: true })
+  const temp = resolve(dirname(path), `.${randomUUID()}.ur-repo-edit.tmp`)
+  try {
+    writeFileSync(temp, content, { flag: 'wx', ...(mode !== undefined ? { mode } : {}) })
+    renameSync(temp, path)
+    if (mode !== undefined) chmodSync(path, mode)
+  } finally {
+    rmSync(temp, { force: true })
+  }
 }
 
 export function applyWorkspaceEdit(
   root: string,
   edit: WorkspaceEdit,
 ): ApplyWorkspaceEditResult {
-  const snapshots = new Map<string, string>()
+  const snapshots = new Map<string, FileSnapshot>()
   const writtenFiles: string[] = []
-  const byFile = groupByFile(edit.edits)
+  const normalizedEdits = edit.edits.map(item => ({
+    ...item,
+    file: workspaceRelativePath(root, item.file),
+  }))
+  const byFile = groupByFile(normalizedEdits)
+  const prepared: Array<{ file: string; abs: string; newContent: string; mode?: number }> = []
 
   for (const [file, rawEdits] of byFile) {
     const edits = normalizeFileEdits(file, rawEdits)
-    const abs = join(root, file)
-    const oldContent = existsSync(abs) ? readFileSync(abs, 'utf-8') : ''
+    const abs = resolveWorkspaceFile(root, file)
+    const existed = existsSync(abs)
+    const oldContent = existed ? readFileSync(abs, 'utf-8') : ''
+    const mode = existed ? statSync(abs).mode : undefined
     const newContent = applyFileEdits(oldContent, edits)
-    snapshots.set(file, oldContent)
-    if (!existsSync(abs)) {
-      mkdirSync(dirname(abs), { recursive: true })
+    snapshots.set(file, { content: oldContent, existed, mode })
+    prepared.push({ file, abs, newContent, mode })
+  }
+
+  try {
+    for (const file of prepared) {
+      atomicWrite(file.abs, file.newContent, file.mode)
+      writtenFiles.push(file.file)
     }
-    writeFileSync(abs, newContent)
-    writtenFiles.push(file)
+  } catch (error) {
+    rollbackWorkspaceEdit(root, snapshots)
+    throw error
   }
 
   return { writtenFiles, snapshots }
@@ -80,10 +170,25 @@ export function applyWorkspaceEdit(
 
 export function rollbackWorkspaceEdit(
   root: string,
-  snapshots: Map<string, string>,
+  snapshots: Map<string, FileSnapshot>,
 ): void {
-  for (const [file, content] of snapshots) {
-    writeFileSync(join(root, file), content)
+  const realRoot = realpathSync(root)
+  for (const [file, snapshot] of snapshots) {
+    const abs = resolveWorkspaceFile(realRoot, file)
+    if (snapshot.existed) {
+      atomicWrite(abs, snapshot.content, snapshot.mode)
+      continue
+    }
+    rmSync(abs, { force: true, recursive: true })
+    let parent = dirname(abs)
+    while (parent !== realRoot && isWithin(realRoot, parent)) {
+      try {
+        rmdirSync(parent)
+      } catch {
+        break
+      }
+      parent = dirname(parent)
+    }
   }
 }
 
@@ -91,8 +196,9 @@ export function formatWorkspaceEditAsPatch(root: string, edit: WorkspaceEdit): s
   const byFile = groupByFile(edit.edits)
   const pieces: string[] = []
   for (const [file] of byFile) {
-    const abs = join(root, file)
-    const oldContent = readFileSync(abs, 'utf-8')
+    const safeFile = workspaceRelativePath(root, file)
+    const abs = resolveWorkspaceFile(root, safeFile)
+    const oldContent = existsSync(abs) ? readFileSync(abs, 'utf-8') : ''
     const sorted = [...(byFile.get(file) ?? [])].sort((a, b) => b.start - a.start)
     const newContent = applyFileEdits(oldContent, sorted)
     pieces.push(
@@ -167,11 +273,11 @@ function uriToAbsolutePath(root: string, uri: string): string {
   } catch {
     // keep raw URI
   }
-  return path.startsWith('/') ? path : join(root, path)
+  return resolveWorkspaceFile(root, path)
 }
 
 function absoluteToRelative(root: string, abs: string): string {
-  return abs.replace(root, '').replace(/^\//, '')
+  return workspaceRelativePath(root, abs)
 }
 
 function lspTextEditToEdit(

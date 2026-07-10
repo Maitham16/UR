@@ -1597,7 +1597,7 @@ function hasHookForEvent(
   if (snap && snap.length > 0) return true
   const reg = getRegisteredHooks()?.[hookEvent]
   if (reg && reg.length > 0) return true
-  if (appState?.sessionHooks.get(sessionId)?.hooks[hookEvent]) return true
+  if (appState?.sessionHooks?.get(sessionId)?.hooks[hookEvent]) return true
   return false
 }
 

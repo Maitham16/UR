@@ -29,7 +29,7 @@ export type TreeSitterAdapter = {
   isIdentifier(node: TsNode): boolean
 }
 
-let nativeParser: ((file: string, content: string) => TsNode) | undefined
+const nativeParsers = new Map<string, ((file: string, content: string) => TsNode) | null>()
 
 function tryLoadNativeParser(language: string): ((file: string, content: string) => TsNode) | undefined {
   try {
@@ -44,20 +44,10 @@ function tryLoadNativeParser(language: string): ((file: string, content: string)
 }
 
 function loadNativeParser(language: string): ((file: string, content: string) => TsNode) | undefined {
-  if (!nativeParser) {
-    nativeParser = tryLoadNativeParser(language)
+  if (!nativeParsers.has(language)) {
+    nativeParsers.set(language, tryLoadNativeParser(language) ?? null)
   }
-  return nativeParser
-}
-
-function pureTsParse(file: string, content: string): TsNode {
-  return {
-    type: 'program',
-    start: 0,
-    end: content.length,
-    text: content,
-    children: [],
-  }
+  return nativeParsers.get(language) ?? undefined
 }
 
 function getAdapter(language: string): TreeSitterAdapter {
@@ -70,12 +60,9 @@ function getAdapter(language: string): TreeSitterAdapter {
       isIdentifier: node => node.type === 'identifier',
     }
   }
-  return {
-    parse: pureTsParse,
-    isComment: () => false,
-    isString: () => false,
-    isIdentifier: () => false,
-  }
+  throw new Error(
+    `Tree-sitter rename is unavailable for ${language}; configure a working LSP server or install the matching @tree-sitter/${language} parser.`,
+  )
 }
 
 function collectIdentifiers(root: TsNode, name: string, adapter: TreeSitterAdapter): TsNode[] {

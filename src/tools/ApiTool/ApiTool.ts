@@ -1,6 +1,7 @@
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { isPreapprovedHost } from '../WebFetchTool/preapproved.js'
+import { assertPublicUrl } from '../WebFetchTool/utils.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 
@@ -53,6 +54,20 @@ function extractPath(obj: unknown, path: string): unknown {
   return current
 }
 
+const SENSITIVE_HEADER = /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key)$/i
+const SENSITIVE_QUERY_KEY = /(^|[_-])(api[_-]?key|access[_-]?token|auth|authorization|secret|signature|sig)($|[_-])/i
+const MAX_RESPONSE_BYTES = 10 * 1024 * 1024
+
+export function containsSensitiveRequestData(input: z.infer<InputSchema>): boolean {
+  if (Object.keys(input.headers ?? {}).some(name => SENSITIVE_HEADER.test(name))) return true
+  try {
+    const url = new URL(input.url)
+    return [...url.searchParams.keys()].some(key => SENSITIVE_QUERY_KEY.test(key))
+  } catch {
+    return true
+  }
+}
+
 export const ApiTool = buildTool({
   name: API_TOOL_NAME,
   searchHint: 'make REST API calls',
@@ -93,7 +108,11 @@ export const ApiTool = buildTool({
   async checkPermissions(input): Promise<PermissionDecision> {
     try {
       const parsedUrl = new URL(input.url)
-      if (isPreapprovedHost(parsedUrl.hostname, parsedUrl.pathname) && input.method === 'GET') {
+      if (
+        isPreapprovedHost(parsedUrl.hostname, parsedUrl.pathname) &&
+        input.method === 'GET' &&
+        !containsSensitiveRequestData(input)
+      ) {
         return {
           behavior: 'allow',
           updatedInput: input,
@@ -112,24 +131,53 @@ export const ApiTool = buildTool({
   renderToolUseMessage() {
     return null
   },
-  async call(input) {
+  async validateInput(input) {
+    if (input.method === 'GET' && input.body !== undefined) {
+      return { result: false, message: 'GET requests cannot include a request body.', errorCode: 1 }
+    }
+    try {
+      await assertPublicUrl(input.url)
+      return { result: true }
+    } catch (error) {
+      return {
+        result: false,
+        message: error instanceof Error ? error.message : String(error),
+        errorCode: 2,
+      }
+    }
+  },
+  async call(input, context = undefined) {
     const start = performance.now()
+    await assertPublicUrl(input.url)
     const body = getBody(input)
     const headers: Record<string, string> = {
       ...(body ? { 'content-type': 'application/json' } : {}),
       ...(input.headers || {}),
     }
 
+    const timeoutSignal = AbortSignal.timeout((input.timeout ?? 30) * 1000)
+    const signal = context?.abortController?.signal
+      ? AbortSignal.any([context.abortController.signal, timeoutSignal])
+      : timeoutSignal
     const response = await fetch(input.url, {
       method: input.method,
       headers,
       body,
-      signal: AbortSignal.timeout((input.timeout ?? 30) * 1000),
+      redirect: 'manual',
+      signal,
     })
 
     const contentType = response.headers.get('content-type') || ''
+    const declaredLength = Number(response.headers.get('content-length') || '0')
+    if (declaredLength > MAX_RESPONSE_BYTES) {
+      throw new Error(`API response exceeds the ${MAX_RESPONSE_BYTES}-byte limit`)
+    }
     let responseBody: unknown
-    const text = await response.text()
+    const bytes = await response.arrayBuffer()
+    if (bytes.byteLength > MAX_RESPONSE_BYTES) {
+      throw new Error(`API response exceeds the ${MAX_RESPONSE_BYTES}-byte limit`)
+    }
+    const text = new TextDecoder().decode(bytes)
     if (contentType.includes('application/json')) {
       try {
         responseBody = JSON.parse(text)

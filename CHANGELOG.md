@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.45.1
+
+Completes the three partially-delivered 1.45.0 items to 100%.
+
+- Semantic code search is now zero-config: the CodeSearch tool auto-enables
+  the moment a built index exists (`ur code-index build`) — no `UR_CODE_INDEX`
+  env var needed. The env var remains an override in both directions
+  (`UR_CODE_INDEX=off` disables even with an index present).
+- JetBrains plugin now actually builds: migrated to the IntelliJ Platform
+  Gradle Plugin 2.x (the 1.x plugin is incompatible with Gradle 9) and
+  compiled against IntelliJ IDEA Community 2024.2, producing a distributable
+  zip via `gradle buildPlugin`.
+- Deprecated top-level `disableAutoMode` now emits a one-time warning at
+  load pointing to `permissions.disableAutoMode` (both keys still honored;
+  removal reserved for the next major).
+
 ## 1.45.0
 
 Top-tier feature release — closes the gaps against 2026's leading agents.

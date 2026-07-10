@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { createLSPServerManager, type LSPServerManager } from '../../lsp/LSPServerManager.js'
 import type { WorkspaceEdit } from './types.js'
-import { workspaceEditFromLsp } from './workspaceEdit.js'
+import { resolveWorkspaceFile, workspaceEditFromLsp } from './workspaceEdit.js'
 
 let manager: LSPServerManager | undefined
 
@@ -38,7 +38,7 @@ export async function lspRename(
   newName: string,
 ): Promise<WorkspaceEdit | null> {
   const mgr = await getManager()
-  const abs = file.startsWith('/') ? file : `${root}/${file}`
+  const abs = resolveWorkspaceFile(root, file)
   const content = readFileSync(abs, 'utf-8')
   await mgr.openFile(abs, content)
 

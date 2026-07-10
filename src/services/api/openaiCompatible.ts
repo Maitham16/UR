@@ -138,7 +138,7 @@ export async function createOpenAICompatibleClient(
         },
         async countTokens(params: any) {
           return {
-            input_tokens: Math.ceil(JSON.stringify(params.messages ?? []).length / 4),
+            input_tokens: estimateProviderInputTokens(params),
           }
         },
       },
@@ -146,19 +146,63 @@ export async function createOpenAICompatibleClient(
   } as URHQClient
 }
 
-export function toOpenAICompatibleRequest(params: any): any {
+export function toOpenAICompatibleRequest(
+  params: any,
+  providerName = 'openai-compatible',
+): any {
   const tools = toOpenAITools(params.tools)
+  const responseFormat = toOpenAIResponseFormat(params.output_config?.format)
+  const reasoningEffort = toOpenAIReasoningEffort(params)
   return {
     model: params.model,
-    messages: toOpenAIMessages(params),
+    messages: toOpenAIMessages(params, providerName),
     max_tokens: params.max_tokens,
     ...(params.temperature !== undefined && { temperature: params.temperature }),
+    ...(params.top_p !== undefined && { top_p: params.top_p }),
+    ...(params.stop_sequences?.length > 0 && { stop: params.stop_sequences }),
+    ...(params.metadata !== undefined && { metadata: params.metadata }),
+    ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
+    ...(responseFormat && { response_format: responseFormat }),
     stream: Boolean(params.stream),
+    ...(params.stream ? { stream_options: { include_usage: true } } : {}),
     ...(tools.length > 0 ? { tools } : {}),
     ...(params.tool_choice !== undefined
       ? { tool_choice: mapOpenAIToolChoice(params.tool_choice) }
       : {}),
   }
+}
+
+function toOpenAIResponseFormat(format: any): any | undefined {
+  if (format?.type !== 'json_schema' || !format.schema) return undefined
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: typeof format.name === 'string' && format.name ? format.name : 'ur_response',
+      schema: format.schema,
+      strict: format.strict !== false,
+    },
+  }
+}
+
+function toOpenAIReasoningEffort(params: any): 'low' | 'medium' | 'high' | undefined {
+  const requested = params.output_config?.effort
+  if (requested === 'low' || requested === 'medium' || requested === 'high') return requested
+  if (requested === 'max') return 'high'
+  if (params.thinking?.type === 'adaptive') return 'medium'
+  if (params.thinking?.type !== 'enabled') return undefined
+  const budget = Number(params.thinking.budget_tokens ?? 0)
+  if (budget > 0 && budget <= 4_000) return 'low'
+  if (budget >= 16_000) return 'high'
+  return 'medium'
+}
+
+export function estimateProviderInputTokens(params: any): number {
+  const serialized = JSON.stringify({
+    system: params.system ?? null,
+    messages: params.messages ?? [],
+    tools: params.tools ?? [],
+  })
+  return Math.max(1, Math.ceil(serialized.length / 4))
 }
 
 export function toOpenAIMessages(params: any, providerName = 'openai-compatible'): any[] {
@@ -337,7 +381,16 @@ export function parseOpenAICompatibleResponse(
   fallbackModel: string,
   providerName = 'openai-compatible',
 ): any {
+  if (data?.error) {
+    throw new ProviderResponseParseError(
+      `${providerName} returned an error payload: ${typeof data.error?.message === 'string' ? data.error.message : JSON.stringify(data.error)}`,
+      { data },
+    )
+  }
   const choice = data.choices?.[0]
+  if (!choice) {
+    throw new ProviderResponseParseError(`${providerName} response did not include a choice`, { data })
+  }
   const content = parseOpenAIMessageContent(
     choice?.message,
     choice?.text,

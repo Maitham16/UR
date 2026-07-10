@@ -15,3 +15,9 @@ Thumbs.db
 .npm/
 .pnpm-store/
 .yarn/
+# JetBrains plugin build output (gradle) — source ships, artifacts do not
+extensions/jetbrains-ur/build/
+extensions/jetbrains-ur/.gradle/
+extensions/jetbrains-ur/.intellijPlatform/
+extensions/jetbrains-ur/build/**
+*.zip

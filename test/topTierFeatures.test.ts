@@ -14,6 +14,7 @@ import {
   listCloudTasks,
 } from '../src/services/agents/cloudTasks.js'
 import { runCrew, createCrew } from '../src/services/agents/crew.js'
+import { isCodeIndexEnabled } from '../src/utils/codeIndex/index.js'
 import { handleDashboardRequest } from '../src/services/agents/dashboardRoutes.js'
 import { emptyStats, foldOutcomes, suggestSkillCandidates } from '../src/services/agents/learning.js'
 import {
@@ -205,6 +206,29 @@ describe('dashboard routes', () => {
       expect(api?.type).toBe('application/json')
       expect(await handleDashboardRequest(dir, '/artifacts')).toBeNull()
     } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('code index auto-enable (zero-config semantic search)', () => {
+  test('enables automatically when a built index exists in cwd', () => {
+    const dir = tempDir('ur-cidx-')
+    const prev = process.cwd()
+    try {
+      process.chdir(dir)
+      expect(isCodeIndexEnabled({})).toBe(false)
+      mkdirSync(join(dir, '.ur', 'code-index'), { recursive: true })
+      writeFileSync(join(dir, '.ur', 'code-index', 'index.json'), '{"version":1}')
+      process.chdir(prev)
+      process.chdir(dir) // bust the per-cwd cache window via fresh chdir
+      expect(isCodeIndexEnabled({})).toBe(true)
+      // Explicit off overrides index presence
+      expect(isCodeIndexEnabled({ UR_CODE_INDEX: 'off' })).toBe(false)
+      // Explicit on works without any index
+      expect(isCodeIndexEnabled({ UR_CODE_INDEX: '1' })).toBe(true)
+    } finally {
+      process.chdir(prev)
       rmSync(dir, { recursive: true, force: true })
     }
   })

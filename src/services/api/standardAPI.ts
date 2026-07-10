@@ -9,12 +9,11 @@ import { getProviderFamily } from '../providers/providerRegistry.js'
 import {
   assertNoImageBlocks,
   contentToText,
-  mapOpenAIToolChoice,
   normalizeImageBlockSource,
   parseOpenAICompatibleResponse,
+  estimateProviderInputTokens,
   systemToText,
-  toOpenAIMessages,
-  toOpenAITools,
+  toOpenAICompatibleRequest,
 } from './openaiCompatible.js'
 import {
   ProviderCapabilityError,
@@ -199,18 +198,7 @@ function buildAuthHeaders(
 function buildAPIRequest(family: string, params: any): any {
   switch (family) {
     case 'openai': {
-      const tools = toOpenAITools(params.tools)
-      return {
-        model: params.model,
-        messages: toOpenAIMessages(params, 'openai'),
-        max_tokens: params.max_tokens,
-        ...(params.temperature !== undefined && { temperature: params.temperature }),
-        stream: Boolean(params.stream),
-        ...(tools.length > 0 ? { tools } : {}),
-        ...(params.tool_choice !== undefined
-          ? { tool_choice: mapOpenAIToolChoice(params.tool_choice) }
-          : {}),
-      }
+      return toOpenAICompatibleRequest(params, 'openai')
     }
     case 'anthropic': {
       const tools = toAnthropicTools(params.tools)
@@ -220,6 +208,11 @@ function buildAPIRequest(family: string, params: any): any {
         messages: toAnthropicMessages(params.messages),
         max_tokens: params.max_tokens ?? 4096,
         ...(params.temperature !== undefined && { temperature: params.temperature }),
+        ...(params.top_p !== undefined && { top_p: params.top_p }),
+        ...(params.stop_sequences?.length > 0 && { stop_sequences: params.stop_sequences }),
+        ...(params.thinking !== undefined && { thinking: params.thinking }),
+        ...(params.metadata !== undefined && { metadata: params.metadata }),
+        ...(params.output_config !== undefined && { output_config: params.output_config }),
         stream: Boolean(params.stream),
         ...(tools.length > 0 ? { tools } : {}),
         ...(params.tool_choice !== undefined ? { tool_choice: params.tool_choice } : {}),
@@ -239,6 +232,17 @@ function buildAPIRequest(family: string, params: any): any {
         generationConfig: {
           ...(params.max_tokens && { maxOutputTokens: params.max_tokens }),
           ...(params.temperature !== undefined && { temperature: params.temperature }),
+          ...(params.top_p !== undefined && { topP: params.top_p }),
+          ...(params.stop_sequences?.length > 0 && { stopSequences: params.stop_sequences }),
+          ...(params.output_config?.format?.type === 'json_schema' && {
+            responseMimeType: 'application/json',
+            responseSchema: params.output_config.format.schema,
+          }),
+          ...(params.thinking?.type !== undefined && {
+            thinkingConfig: params.thinking.type === 'enabled'
+              ? { thinkingBudget: params.thinking.budget_tokens }
+              : { includeThoughts: params.thinking.type !== 'disabled' },
+          }),
         },
       }
     }
@@ -248,10 +252,19 @@ function buildAPIRequest(family: string, params: any): any {
 }
 
 function parseAPIResponse(family: string, data: any, fallbackModel: string): any {
+  if (data?.error) {
+    throw new ProviderResponseParseError(
+      `${family} returned an error payload: ${typeof data.error?.message === 'string' ? data.error.message : JSON.stringify(data.error)}`,
+      { data },
+    )
+  }
   switch (family) {
     case 'openai':
       return parseOpenAICompatibleResponse(data, fallbackModel, 'openai')
     case 'anthropic': {
+      if (!Array.isArray(data.content)) {
+        throw new ProviderResponseParseError('anthropic response did not include content', { data })
+      }
       const anthropicContent = parseAnthropicContent(data.content)
       if (data.stop_reason === 'tool_use' && !hasToolUse(anthropicContent)) {
         throw new ProviderResponseParseError(
@@ -276,6 +289,9 @@ function parseAPIResponse(family: string, data: any, fallbackModel: string): any
       }
     }
     case 'google': {
+      if (!data.candidates?.[0]) {
+        throw new ProviderResponseParseError('gemini response did not include a candidate', { data })
+      }
       const parts = data.candidates?.[0]?.content?.parts ?? []
       const content = parseGeminiParts(parts)
       if (
@@ -673,5 +689,5 @@ function sanitizeJsonSchema(schema: unknown): Record<string, unknown> {
 }
 
 function estimateTokenCount(params: any): number {
-  return Math.ceil(JSON.stringify(params.messages ?? []).length / 4)
+  return estimateProviderInputTokens(params)
 }

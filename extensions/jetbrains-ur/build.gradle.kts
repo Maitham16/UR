@@ -1,24 +1,33 @@
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "1.9.24"
-    id("org.jetbrains.intellij") version "1.17.3"
+    id("org.jetbrains.kotlin.jvm") version "2.0.21"
+    id("org.jetbrains.intellij.platform") version "2.7.2"
 }
 
 group = "dev.urnexus"
-version = "1.45.0"
+version = "1.45.1"
 
-repositories { mavenCentral() }
-
-intellij {
-    version.set("2024.1")
-    type.set("IC")
+repositories {
+    mavenCentral()
+    intellijPlatform {
+        defaultRepositories()
+    }
 }
 
-tasks {
-    withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        kotlinOptions.jvmTarget = "17"
+dependencies {
+    intellijPlatform {
+        intellijIdeaCommunity("2024.2.3")
     }
-    patchPluginXml {
-        sinceBuild.set("241")
+}
+
+intellijPlatform {
+    pluginConfiguration {
+        ideaVersion {
+            sinceBuild.set("242")
+        }
     }
+}
+
+kotlin {
+    jvmToolchain(17)
 }

@@ -113,8 +113,19 @@ function networkBlocked(config?: Partial<SandboxRuntimeConfig>): boolean {
   return (
     envNetworkBlocked() ||
     network?.blockAll === true ||
-    network?.deniedDomains?.includes('*') === true
+    network?.deniedDomains?.includes('*') === true ||
+    (network?.allowedDomains?.length ?? 0) > 0 ||
+    (network?.deniedDomains?.length ?? 0) > 0
   )
+}
+
+function mergedConfig(config?: Partial<SandboxRuntimeConfig>): SandboxRuntimeConfig {
+  return {
+    ...currentConfig,
+    ...config,
+    network: { ...currentConfig.network, ...config?.network },
+    filesystem: { ...currentConfig.filesystem, ...config?.filesystem },
+  }
 }
 
 export class SandboxViolationStore {
@@ -212,19 +223,27 @@ export class SandboxManager {
     _abortSignal?: unknown,
   ): string {
     const root = process.cwd()
-    const denyNetwork = networkBlocked(customConfig)
+    const config = mergedConfig(customConfig)
+    const denyNetwork = networkBlocked(config)
+    const profileOptions = {
+      denyNetwork,
+      allowRead: config.filesystem?.allowRead,
+      denyRead: config.filesystem?.denyRead,
+      allowWrite: config.filesystem?.allowWrite,
+      denyWrite: config.filesystem?.denyWrite,
+    }
     const shell = binShell || '/bin/bash'
     const platform = getPlatform()
 
     if (platform === 'macos' && existsSync(MACOS_SANDBOX_EXEC)) {
-      const profile = buildSeatbeltProfile(root, { denyNetwork })
+      const profile = buildSeatbeltProfile(root, profileOptions)
       return `${MACOS_SANDBOX_EXEC} -p ${posixQuote(profile)} ${shell} -c ${posixQuote(command)}`
     }
 
     if (platform === 'linux' || platform === 'wsl') {
       const bwrap = bwrapPath()
       if (bwrap) {
-        const argv = buildBwrapArgv(root, { denyNetwork })
+        const argv = buildBwrapArgv(root, profileOptions)
           .map(posixQuote)
           .join(' ')
         return `${posixQuote(bwrap)} ${argv} ${shell} -c ${posixQuote(command)}`

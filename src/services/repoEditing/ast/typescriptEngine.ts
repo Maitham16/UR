@@ -7,6 +7,7 @@
  */
 
 import { dirname, join, relative } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
 import ts from 'typescript'
 import type {
   CallersOptions,
@@ -18,6 +19,7 @@ import type {
   UnusedOptions,
   WorkspaceEdit,
 } from './types.js'
+import { resolveWorkspaceFile, workspaceRelativePath } from './workspaceEdit.js'
 
 export type TypeScriptEngineContext = {
   program: ts.Program
@@ -132,6 +134,19 @@ function dedupeEdits(edits: TextEdit[]): TextEdit[] {
   })
 }
 
+function addOldText(root: string, edits: TextEdit[]): TextEdit[] {
+  const contentByFile = new Map<string, string>()
+  return edits.map(edit => {
+    let content = contentByFile.get(edit.file)
+    if (content === undefined) {
+      const abs = resolveWorkspaceFile(root, edit.file)
+      content = existsSync(abs) ? readFileSync(abs, 'utf-8') : ''
+      contentByFile.set(edit.file, content)
+    }
+    return { ...edit, oldText: content.slice(edit.start, edit.end) }
+  })
+}
+
 export function tsRenameSymbol(
   ctx: TypeScriptEngineContext,
   options: Pick<RenameOptions, 'root' | 'from' | 'to' | 'file' | 'line' | 'column'>,
@@ -179,7 +194,7 @@ export function tsRenameSymbol(
     })
   }
 
-  return { edits: dedupeEdits(edits) }
+  return { edits: addOldText(root, dedupeEdits(edits)) }
 }
 
 export function tsRenameSymbolAtPosition(
@@ -244,7 +259,7 @@ export function tsMoveFunction(
   edits.push({ file: sourceFileRel, start: removeStart, end: removeEnd, newText: '' })
   edits.push(...updateImportsForMovedSymbol(ctx, root, sourceFileRel, targetRel, symbolName))
 
-  return { edits: dedupeEdits(edits) }
+  return { edits: addOldText(root, dedupeEdits(edits)) }
 }
 
 function updateImportsForMovedSymbol(
@@ -346,36 +361,62 @@ function removalRangeForNamedImport(
 }
 
 export function tsOrganizeImports(
-  _ctx: TypeScriptEngineContext,
+  ctx: TypeScriptEngineContext,
   options: OrganizeImportsOptions,
 ): WorkspaceEdit {
   const { file: maybeFile, root } = options
-  const files = maybeFile ? [maybeFile] : []
+  const files = maybeFile
+    ? [workspaceRelativePath(root, maybeFile)]
+    : allSourceFiles(ctx, root).flatMap(sourceFile => {
+        try {
+          return [workspaceRelativePath(root, sourceFile.fileName)]
+        } catch {
+          return []
+        }
+      })
   const edits: TextEdit[] = []
+  const compilerOptions = ctx.program.getCompilerOptions()
+  const service = ts.createLanguageService({
+    getCompilationSettings: () => compilerOptions,
+    getScriptFileNames: () => [...ctx.program.getRootFileNames()],
+    getScriptVersion: () => '0',
+    getScriptSnapshot: fileName => {
+      const text = ts.sys.readFile(fileName)
+      return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text)
+    },
+    getCurrentDirectory: () => root,
+    getDefaultLibFileName: options => ts.getDefaultLibFilePath(options),
+    fileExists: ts.sys.fileExists,
+    readFile: ts.sys.readFile,
+    readDirectory: ts.sys.readDirectory,
+    directoryExists: ts.sys.directoryExists,
+    getDirectories: ts.sys.getDirectories,
+  })
   for (const file of files) {
-    const abs = join(root, file)
-    const sf = _ctx.program.getSourceFile(abs)
-    if (!sf) continue
-    const importNodes: ts.ImportDeclaration[] = []
-    ts.forEachChild(sf, function visit(node: ts.Node): void {
-      if (ts.isImportDeclaration(node)) importNodes.push(node)
-      ts.forEachChild(node, visit)
-    })
-    if (importNodes.length === 0) continue
-    // Sort imports lexicographically by module specifier text.
-    importNodes.sort((a, b) => {
-      const aSpec = a.moduleSpecifier.getText(sf)
-      const bSpec = b.moduleSpecifier.getText(sf)
-      return aSpec.localeCompare(bSpec)
-    })
-    const first = importNodes[0]!
-    const last = importNodes[importNodes.length - 1]!
-    const start = first.getStart(sf)
-    const end = last.getEnd()
-    const sortedText = importNodes.map(i => i.getText(sf)).join('\n') + '\n'
-    edits.push({ file, start, end, newText: sortedText })
+    const abs = resolveWorkspaceFile(root, file)
+    const content = readFileSync(abs, 'utf-8')
+    const changes = service.organizeImports(
+      { type: 'file', fileName: abs, mode: ts.OrganizeImportsMode.SortAndCombine },
+      {},
+      { organizeImportsIgnoreCase: 'auto' },
+    )
+    for (const change of changes) {
+      const safeFile = workspaceRelativePath(root, change.fileName)
+      for (const textChange of change.textChanges) {
+        const start = textChange.span.start
+        const end = start + textChange.span.length
+        edits.push({
+          file: safeFile,
+          start,
+          end,
+          newText: textChange.newText,
+          oldText: safeFile === file ? content.slice(start, end) : undefined,
+        })
+      }
+    }
   }
-  return { edits: dedupeEdits(edits) }
+  service.dispose()
+  return { edits: addOldText(root, dedupeEdits(edits)) }
 }
 
 export function tsFindUnused(

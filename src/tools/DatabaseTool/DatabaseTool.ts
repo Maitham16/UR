@@ -31,14 +31,24 @@ type OutputSchema = ReturnType<typeof outputSchema>
 
 export type Output = z.infer<OutputSchema>
 
-const WRITE_KEYWORDS = new Set(['insert', 'update', 'delete', 'drop', 'create', 'alter', 'truncate', 'replace'])
+const WRITE_KEYWORDS = /\b(insert|update|delete|drop|create|alter|truncate|replace|attach|detach|vacuum|reindex|grant|revoke|merge|call|copy)\b/i
+const WRITE_PRAGMAS = /\b(journal_mode|locking_mode|wal_checkpoint|optimize|user_version|application_id|schema_version)\b/i
 
-function isReadOnlySql(query: string): boolean {
-  const normalized = query.toLowerCase()
-  for (const keyword of WRITE_KEYWORDS) {
-    if (normalized.includes(keyword)) return false
-  }
-  return true
+export function isReadOnlySql(query: string): boolean {
+  const normalized = query
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .trim()
+  if (!normalized || WRITE_KEYWORDS.test(normalized)) return false
+  const statements = normalized.split(';').map(s => s.trim()).filter(Boolean)
+  return statements.every(statement => {
+    if (/^(select|values|show|describe|desc|explain)\b/i.test(statement)) return true
+    if (/^with\b/i.test(statement)) return !WRITE_KEYWORDS.test(statement)
+    if (/^pragma\b/i.test(statement)) {
+      return !/=/.test(statement) && !WRITE_PRAGMAS.test(statement)
+    }
+    return false
+  })
 }
 
 function parseRows(text: string): Record<string, unknown>[] {
@@ -51,8 +61,9 @@ function parseRows(text: string): Record<string, unknown>[] {
   }
 }
 
-async function runSqlite(database: string, query: string): Promise<Output> {
-  const result = await execFileNoThrow('sqlite3', [database, query, '-json'], { timeout: 60_000 })
+async function runSqlite(database: string, query: string, readonly: boolean): Promise<Output> {
+  const args = [...(readonly ? ['-readonly'] : []), '-json', database, query]
+  const result = await execFileNoThrow('sqlite3', args, { timeout: 60_000 })
   return {
     success: result.code === 0,
     rows: result.code === 0 ? parseRows(result.stdout) : undefined,
@@ -62,8 +73,9 @@ async function runSqlite(database: string, query: string): Promise<Output> {
   }
 }
 
-async function runPostgres(database: string, query: string): Promise<Output> {
-  const result = await execFileNoThrow('psql', [database, '-c', query, '--no-psqlrc', '-t', '-A'], {
+async function runPostgres(database: string, query: string, readonly: boolean): Promise<Output> {
+  const sql = readonly ? `BEGIN READ ONLY; ${query}; COMMIT;` : query
+  const result = await execFileNoThrow('psql', [database, '--no-psqlrc', '--set', 'ON_ERROR_STOP=1', '-t', '-A', '-c', sql], {
     timeout: 60_000,
   })
   return {
@@ -74,8 +86,9 @@ async function runPostgres(database: string, query: string): Promise<Output> {
   }
 }
 
-async function runMysql(database: string, query: string): Promise<Output> {
-  const result = await execFileNoThrow('mysql', [database, '-e', query, '--batch', '--raw', '--skip-column-names'], {
+async function runMysql(database: string, query: string, readonly: boolean): Promise<Output> {
+  const sql = readonly ? `START TRANSACTION READ ONLY; ${query}; COMMIT;` : query
+  const result = await execFileNoThrow('mysql', [database, '-e', sql, '--batch', '--raw', '--skip-column-names'], {
     timeout: 60_000,
   })
   return {
@@ -86,8 +99,8 @@ async function runMysql(database: string, query: string): Promise<Output> {
   }
 }
 
-async function runDuckdb(database: string, query: string): Promise<Output> {
-  const result = await execFileNoThrow('duckdb', [database, '-c', `.mode json\n${query}`], {
+async function runDuckdb(database: string, query: string, readonly: boolean): Promise<Output> {
+  const result = await execFileNoThrow('duckdb', [...(readonly ? ['-readonly'] : []), database, '-c', `.mode json\n${query}`], {
     timeout: 60_000,
   })
   return {
@@ -105,13 +118,13 @@ async function dispatch(input: z.infer<InputSchema>): Promise<Output> {
   }
   switch (input.connection) {
     case 'sqlite':
-      return runSqlite(input.database, input.query)
+      return runSqlite(input.database, input.query, input.readonly)
     case 'postgres':
-      return runPostgres(input.database, input.query)
+      return runPostgres(input.database, input.query, input.readonly)
     case 'mysql':
-      return runMysql(input.database, input.query)
+      return runMysql(input.database, input.query, input.readonly)
     case 'duckdb':
-      return runDuckdb(input.database, input.query)
+      return runDuckdb(input.database, input.query, input.readonly)
     default:
       return { success: false, error: `unsupported connection: ${input.connection}` }
   }

@@ -474,6 +474,15 @@ export const PowerShellTool = buildTool({
     );
 
     try {
+      if (/\bgit\b.*\bcommit\b/.test(input.command)) {
+        const commitBlocked = await executeBeforeCommitHooks(input.command, toolUseContext, {
+          toolUseID,
+          signal: abortController.signal,
+        });
+        if (commitBlocked.blocked) {
+          throw new Error('git commit blocked by BeforeCommit hook');
+        }
+      }
       const commandGenerator = runPowerShellCommand({
         input,
         abortController,
@@ -539,20 +548,6 @@ export const PowerShellTool = buildTool({
           signal: abortController.signal,
         },
       );
-
-      if (result.code === 0 && /\bgit\b.*\bcommit\b/.test(input.command)) {
-        const commitBlocked = await executeBeforeCommitHooks(
-          input.command,
-          toolUseContext,
-          {
-            toolUseID,
-            signal: abortController.signal,
-          },
-        );
-        if (commitBlocked.blocked) {
-          throw new Error('git commit blocked by BeforeCommit hook');
-        }
-      }
 
       // Distinguish user-driven interrupt (new message submitted) from other
       // interrupted states. Only user-interrupt should suppress ShellError —

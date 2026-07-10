@@ -136,6 +136,7 @@ async function* streamOpenAIEvents(
   let activeTextIndex: number | null = null
   let sawBlock = false
   let sawToolUse = false
+  let sawDone = false
   let finishReason: string | undefined
   let usage = EMPTY_USAGE
   const toolStates = new Map<number, {
@@ -225,8 +226,12 @@ async function* streamOpenAIEvents(
   }
 
   for await (const payload of readSSEData(body, options.signal)) {
-    if (payload === '[DONE]') break
+    if (payload === '[DONE]') {
+      sawDone = true
+      break
+    }
     const chunk = parseJSONPayload(payload, `${providerName} SSE chunk`)
+    throwProviderPayloadError(chunk, providerName)
     if (chunk?.usage) {
       usage = usageFromOpenAI(chunk.usage)
     }
@@ -309,12 +314,13 @@ async function* streamOpenAIEvents(
     )
   }
   if (!sawBlock) {
-    yield {
-      type: 'content_block_start',
-      index: blockIndex,
-      content_block: { type: 'text', text: '' },
-    }
-    yield { type: 'content_block_stop', index: blockIndex }
+    throw new ProviderResponseParseError(`${providerName} stream completed without content`, {
+      finishReason,
+      sawDone,
+    })
+  }
+  if (!sawDone && finishReason === undefined) {
+    throw new ProviderResponseParseError(`${providerName} stream ended before a terminal event`)
   }
   yield {
     type: 'message_delta',
@@ -339,6 +345,7 @@ async function* streamAnthropicEvents(
     if (payload === '[DONE]') break
     const event = parseJSONPayload(payload, `${providerName} SSE event`)
     if (!event || event.type === 'ping') continue
+    throwProviderPayloadError(event, providerName)
     if (!sawMessageStart && event.type !== 'message_start') {
       sawMessageStart = true
       yield messageStartEvent(
@@ -378,19 +385,10 @@ async function* streamAnthropicEvents(
   }
 
   if (!sawMessageStart) {
-    yield messageStartEvent(
-      options.requestId ?? `${providerName}-${randomUUID()}`,
-      options.model ?? 'unknown',
-      EMPTY_USAGE,
-    )
+    throw new ProviderResponseParseError(`${providerName} stream completed without message_start`)
   }
   if (!sawMessageStop) {
-    yield {
-      type: 'message_delta',
-      delta: { stop_reason: 'end_turn', stop_sequence: null },
-      usage: EMPTY_USAGE,
-    }
-    yield { type: 'message_stop' }
+    throw new ProviderResponseParseError(`${providerName} stream ended before message_stop`)
   }
 }
 
@@ -439,6 +437,7 @@ async function* streamGeminiEvents(
       if (chunk?.usageMetadata) {
         usage = usageFromGemini(chunk.usageMetadata)
       }
+      throwProviderPayloadError(chunk, providerName)
       for (const candidate of chunk?.candidates ?? []) {
         for (const part of candidate?.content?.parts ?? []) {
           if (typeof part?.text === 'string' && part.text.length > 0) {
@@ -498,12 +497,12 @@ async function* streamGeminiEvents(
     )
   }
   if (!sawBlock) {
-    yield {
-      type: 'content_block_start',
-      index: blockIndex,
-      content_block: { type: 'text', text: '' },
-    }
-    yield { type: 'content_block_stop', index: blockIndex }
+    throw new ProviderResponseParseError(`${providerName} stream completed without content`, {
+      finishReason,
+    })
+  }
+  if (finishReason === undefined) {
+    throw new ProviderResponseParseError(`${providerName} stream ended before a terminal event`)
   }
   yield {
     type: 'message_delta',
@@ -617,6 +616,22 @@ function parseJSONPayload(payload: string, label: string): any {
       cause: error,
     })
   }
+}
+
+function throwProviderPayloadError(payload: any, providerName: string): void {
+  const error = payload?.error ?? (payload?.type === 'error' ? payload : undefined)
+  if (!error) return
+  const detail =
+    typeof error === 'string'
+      ? error
+      : typeof error?.message === 'string'
+        ? error.message
+        : typeof error?.error?.message === 'string'
+          ? error.error.message
+          : JSON.stringify(error)
+  throw new ProviderResponseParseError(`${providerName} stream returned an error: ${detail}`, {
+    payload,
+  })
 }
 
 function decodeChunk(chunk: unknown, decoder: TextDecoder): string {

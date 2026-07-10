@@ -1,4 +1,6 @@
-import axios, { type AxiosResponse } from 'axios'
+import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'
+import { lookup } from 'node:dns/promises'
+import { isIP } from 'node:net'
 import { LRUCache } from 'lru-cache'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -44,6 +46,13 @@ class EgressBlockedError extends Error {
       }),
     )
     this.name = 'EgressBlockedError'
+  }
+}
+
+export class UnsafeUrlError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'UnsafeUrlError'
   }
 }
 
@@ -170,7 +179,9 @@ export function validateURL(url: string): boolean {
     return false
   }
 
-  // We don't need to check protocol here, as we'll upgrade http to https when making the request
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false
+  }
 
   // As long as we aren't supporting aiming to cookies or internal domains,
   // we should block URLs with usernames/passwords too, even though these
@@ -183,11 +194,110 @@ export function validateURL(url: string): boolean {
   // by checking that the hostname is publicly resolvable
   const hostname = parsed.hostname
   const parts = hostname.split('.')
-  if (parts.length < 2) {
+  if (parts.length < 2 && isIP(hostname) === 0) {
     return false
   }
 
-  return true
+  return !isPrivateAddress(hostname)
+}
+
+function isPrivateIpv4(address: string): boolean {
+  const octets = address.split('.').map(Number)
+  if (octets.length !== 4 || octets.some(value => !Number.isInteger(value) || value < 0 || value > 255)) {
+    return true
+  }
+  const [a = 0, b = 0, c = 0] = octets
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 0 && c === 0) ||
+    (a === 192 && b === 0 && c === 2) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113) ||
+    a >= 224
+  )
+}
+
+export function isPrivateAddress(address: string): boolean {
+  const normalized = address.toLowerCase().replace(/^\[|\]$/g, '')
+  if (isIP(normalized) === 4) return isPrivateIpv4(normalized)
+  if (isIP(normalized) !== 6) return false
+
+  const mappedIpv4 = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1]
+  if (mappedIpv4) return isPrivateIpv4(mappedIpv4)
+  return (
+    normalized === '::' ||
+    normalized === '::1' ||
+    /^f[cd]/.test(normalized) ||
+    /^fe[89ab]/.test(normalized) ||
+    normalized.startsWith('ff') ||
+    normalized.startsWith('2001:db8:')
+  )
+}
+
+type PublicAddress = { address: string; family: 4 | 6 }
+
+export async function assertPublicUrl(url: string): Promise<PublicAddress[]> {
+  if (!validateURL(url)) throw new UnsafeUrlError(`URL is not a valid public HTTP(S) URL: ${url}`)
+  const parsed = new URL(url)
+  const hostname = parsed.hostname.toLowerCase()
+  if (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname.endsWith('.local') ||
+    hostname.endsWith('.internal') ||
+    hostname.endsWith('.lan')
+  ) {
+    throw new UnsafeUrlError(`Refusing to access local hostname: ${hostname}`)
+  }
+
+  if (isIP(hostname)) {
+    if (isPrivateAddress(hostname)) throw new UnsafeUrlError(`Refusing to access private address: ${hostname}`)
+    return [{ address: hostname, family: isIP(hostname) as 4 | 6 }]
+  }
+
+  let addresses: PublicAddress[]
+  try {
+    addresses = (await lookup(hostname, { all: true, verbatim: true })).map(entry => ({
+      address: entry.address,
+      family: entry.family as 4 | 6,
+    }))
+  } catch (error) {
+    throw new UnsafeUrlError(`Unable to resolve public hostname ${hostname}: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  if (addresses.length === 0 || addresses.some(entry => isPrivateAddress(entry.address))) {
+    throw new UnsafeUrlError(`Refusing hostname ${hostname} because it resolves to a private or reserved address`)
+  }
+  return addresses
+}
+
+function pinnedLookup(hostname: string, addresses: PublicAddress[]) {
+  let cursor = 0
+  return (requestedHostname, options, callback) => {
+    if (requestedHostname.toLowerCase() !== hostname.toLowerCase()) {
+      callback(new UnsafeUrlError(`Unexpected DNS lookup for ${requestedHostname}`), '', 0)
+      return
+    }
+    if (options.all) {
+      callback(null, addresses)
+      return
+    }
+    const matching = options.family
+      ? addresses.filter(entry => entry.family === options.family)
+      : addresses
+    const address = matching[cursor++ % matching.length]
+    if (!address) {
+      callback(new UnsafeUrlError(`No validated address for ${hostname} and family ${options.family || 'any'}`), '', 0)
+      return
+    }
+    callback(null, address.address, address.family)
+  }
 }
 
 type DomainCheckResult =
@@ -198,8 +308,20 @@ type DomainCheckResult =
 export async function checkDomainBlocklist(
   domain: string,
 ): Promise<DomainCheckResult> {
-  DOMAIN_CHECK_CACHE.set(domain, true)
-  return { status: 'allowed' }
+  if (DOMAIN_CHECK_CACHE.has(domain)) return { status: 'allowed' }
+  try {
+    await assertPublicUrl(`https://${domain}`)
+    DOMAIN_CHECK_CACHE.set(domain, true)
+    return { status: 'allowed' }
+  } catch (error) {
+    if (error instanceof UnsafeUrlError && /private|local|reserved/.test(error.message)) {
+      return { status: 'blocked' }
+    }
+    return {
+      status: 'check_failed',
+      error: error instanceof Error ? error : new Error(String(error)),
+    }
+  }
 }
 
 /**
@@ -269,12 +391,16 @@ export async function getWithPermittedRedirects(
     throw new Error(`Too many redirects (exceeded ${MAX_REDIRECTS})`)
   }
   try {
+    const parsed = new URL(url)
+    const addresses = await assertPublicUrl(url)
     return await axios.get(url, {
       signal,
       timeout: FETCH_TIMEOUT_MS,
       maxRedirects: 0,
       responseType: 'arraybuffer',
       maxContentLength: MAX_HTTP_CONTENT_LENGTH,
+      maxBodyLength: MAX_HTTP_CONTENT_LENGTH,
+      lookup: pinnedLookup(parsed.hostname, addresses) as NonNullable<AxiosRequestConfig['lookup']>,
       headers: {
         Accept: 'text/markdown, text/html, */*',
         'User-Agent': getWebFetchUserAgent(),

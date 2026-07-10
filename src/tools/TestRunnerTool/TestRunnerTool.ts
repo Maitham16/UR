@@ -2,8 +2,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '../../Tool.js'
-import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
+import { getCwd } from '../../utils/cwd.js'
 import { lazySchema } from '../../utils/lazySchema.js'
+import { BashTool } from '../BashTool/BashTool.js'
 
 const TEST_RUNNER_TOOL_NAME = 'TestRunner'
 
@@ -59,21 +60,6 @@ function buildCommand(input: z.infer<InputSchema>, cwd: string): string {
   return 'bun test'
 }
 
-async function runTest(command: string, timeout: number): Promise<Output> {
-  const [file, ...args] = command.split(/\s+/).filter(Boolean)
-  const result = await execFileNoThrow(file || 'bun', args.length > 0 ? args : ['test'], {
-    timeout: timeout * 1000,
-    preserveOutputOnError: true,
-  })
-  return {
-    success: result.code === 0,
-    command,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    error: result.code !== 0 ? result.error || result.stderr : undefined,
-  }
-}
-
 export const TestRunnerTool = buildTool({
   name: TEST_RUNNER_TOOL_NAME,
   searchHint: 'run project test suite',
@@ -98,26 +84,52 @@ export const TestRunnerTool = buildTool({
     return false
   },
   isReadOnly() {
+    return false
+  },
+  isDestructive() {
     return true
   },
   toAutoClassifierInput(input) {
     return input.command || 'auto-detected tests'
   },
   async checkPermissions(input) {
+    const command = buildCommand(input, getCwd())
     return {
-      behavior: 'allow',
+      behavior: 'ask',
       updatedInput: input,
-      decisionReason: { type: 'other', reason: 'Test commands are read-only' },
+      message: `UR wants to run the project test command: ${command}`,
+      decisionReason: { type: 'other', reason: 'Test commands execute project-defined code' },
+      suggestions: [],
     }
   },
   renderToolUseMessage() {
     return null
   },
-  async call(input, context) {
-    const cwd = context.options.commands?.[0]?.name ? process.cwd() : process.cwd()
-    const command = buildCommand(input, cwd)
-    const result = await runTest(command, input.timeout ?? 120)
-    return { data: result }
+  async call(input, context, canUseTool = undefined, parentMessage = undefined) {
+    const command = buildCommand(input, getCwd())
+    const bashResult = await BashTool.call(
+      {
+        command,
+        description: 'Run project tests',
+        timeout: (input.timeout ?? 120) * 1000,
+      },
+      context,
+      canUseTool,
+      parentMessage,
+    )
+    const data = bashResult.data
+    const stdout = typeof data?.stdout === 'string' ? data.stdout : ''
+    const stderr = typeof data?.stderr === 'string' ? data.stderr : ''
+    const interrupted = data?.interrupted === true
+    return {
+      data: {
+        success: !interrupted,
+        command,
+        stdout,
+        stderr,
+        error: interrupted ? 'Test command was interrupted' : undefined,
+      },
+    }
   },
   mapToolResultToToolResultBlockParam(content, toolUseID) {
     return {

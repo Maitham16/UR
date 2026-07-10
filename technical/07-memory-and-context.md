@@ -99,7 +99,7 @@ injected into the system prompt automatically (zero tokens until generated).
 ```
 /dna              # detect language, package manager, build/test/lint → .ur/dna
 /index            # build workspace file index (.ur/index)
-/code-index build # semantic embeddings index (needs UR_CODE_INDEX=1)
+/code-index build # semantic embeddings index — CodeSearch auto-enables once built
 /code-index watch # keep it fresh
 /code-index search "debounce input"
 ```

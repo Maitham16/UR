@@ -8,6 +8,7 @@
  */
 
 import { exec } from 'node:child_process'
+import { existsSync, realpathSync } from 'node:fs'
 import { promisify } from 'node:util'
 import type {
   ApplyResult,
@@ -21,7 +22,7 @@ import type {
   WorkspaceEdit,
 } from './types.js'
 import { collectDiagnostics, diagnosticsDiff, emptySnapshot } from './diagnostics.js'
-import { fallbackToTreeSitter, languageFromPath, resolveEngine } from './engineRouter.js'
+import { languageFromPath, resolveEngine } from './engineRouter.js'
 import { lspRename, shutdownLspManager } from './lspEditEngine.js'
 import {
   loadProgram,
@@ -33,9 +34,46 @@ import {
   tsRenameSymbolAtPosition,
 } from './typescriptEngine.js'
 import { treeSitterRename } from './treeSitterEngine.js'
-import { applyWorkspaceEdit, formatWorkspaceEditAsPatch, rollbackWorkspaceEdit } from './workspaceEdit.js'
+import {
+  applyWorkspaceEdit,
+  formatWorkspaceEditAsPatch,
+  resolveWorkspaceFile,
+  rollbackWorkspaceEdit,
+  workspaceRelativePath,
+} from './workspaceEdit.js'
 
 const execAsync = promisify(exec)
+
+function normalizeRoot(root: string): string {
+  return realpathSync(root)
+}
+
+function normalizeExistingFile(root: string, file: string | undefined): string | undefined {
+  if (!file) return undefined
+  const abs = resolveWorkspaceFile(root, file)
+  if (!existsSync(abs)) throw new Error(`Repository file not found: ${file}`)
+  return workspaceRelativePath(root, abs)
+}
+
+function normalizeRenameOptions(options: RenameOptions): RenameOptions {
+  const root = normalizeRoot(options.root)
+  return { ...options, root, file: normalizeExistingFile(root, options.file) }
+}
+
+function normalizeMoveOptions(options: MoveOptions): MoveOptions {
+  const root = normalizeRoot(options.root)
+  return {
+    ...options,
+    root,
+    file: normalizeExistingFile(root, options.file),
+    targetFile: workspaceRelativePath(root, options.targetFile),
+  }
+}
+
+function normalizeOrganizeOptions(options: OrganizeImportsOptions): OrganizeImportsOptions {
+  const root = normalizeRoot(options.root)
+  return { ...options, root, file: normalizeExistingFile(root, options.file) }
+}
 
 async function runCheck(
   command: string,
@@ -129,6 +167,7 @@ async function computeRenameEdit(options: RenameOptions, attempt = 0): Promise<W
 }
 
 export async function planRenameAst(options: RenameOptions): Promise<EditPlan> {
+  options = normalizeRenameOptions(options)
   const files = options.file ? [options.file] : await listRepoCodeFiles(options.root)
   const edit = await computeRenameEdit(options)
   const diagnosticsBefore = options.skipDiagnostics
@@ -138,6 +177,7 @@ export async function planRenameAst(options: RenameOptions): Promise<EditPlan> {
 }
 
 export async function applyRenameAst(options: RenameOptions): Promise<ApplyResult> {
+  options = normalizeRenameOptions(options)
   const plan = await planRenameAst(options)
 
   let applyResult: ReturnType<typeof applyWorkspaceEdit> | undefined
@@ -192,6 +232,7 @@ export async function applyRenameAst(options: RenameOptions): Promise<ApplyResul
 }
 
 export async function planMoveAst(options: MoveOptions): Promise<EditPlan> {
+  options = normalizeMoveOptions(options)
   const repoFiles = await listRepoCodeFiles(options.root)
   const files = [
     ...new Set([
@@ -214,6 +255,7 @@ export async function planMoveAst(options: MoveOptions): Promise<EditPlan> {
 }
 
 export async function applyMoveAst(options: MoveOptions): Promise<ApplyResult> {
+  options = normalizeMoveOptions(options)
   const plan = await planMoveAst(options)
   let applyResult: ReturnType<typeof applyWorkspaceEdit> | undefined
   try {
@@ -263,6 +305,7 @@ export async function applyMoveAst(options: MoveOptions): Promise<ApplyResult> {
 }
 
 export async function planOrganizeImportsAst(options: OrganizeImportsOptions): Promise<EditPlan> {
+  options = normalizeOrganizeOptions(options)
   const files = options.file ? [options.file] : await listRepoCodeFiles(options.root).then(f => f.filter(p => /\.(ts|tsx|js|jsx)$/i.test(p)))
   const ctx = loadProgram(options.root, files)
   const edit = tsOrganizeImports(ctx, options)
@@ -273,6 +316,7 @@ export async function planOrganizeImportsAst(options: OrganizeImportsOptions): P
 }
 
 export async function applyOrganizeImportsAst(options: OrganizeImportsOptions): Promise<ApplyResult> {
+  options = normalizeOrganizeOptions(options)
   const plan = await planOrganizeImportsAst(options)
   let applyResult: ReturnType<typeof applyWorkspaceEdit> | undefined
   try {
@@ -322,6 +366,8 @@ export async function applyOrganizeImportsAst(options: OrganizeImportsOptions): 
 }
 
 export async function findUnusedAst(options: UnusedOptions): Promise<EditPlan> {
+  const root = normalizeRoot(options.root)
+  options = { ...options, root, file: normalizeExistingFile(root, options.file) }
   const files = options.file ? [options.file] : await listRepoCodeFiles(options.root).then(f => f.filter(p => /\.(ts|tsx|js|jsx)$/i.test(p)))
   const ctx = loadProgram(options.root, files)
   const refs = tsFindUnused(ctx, options)
@@ -330,6 +376,8 @@ export async function findUnusedAst(options: UnusedOptions): Promise<EditPlan> {
 }
 
 export async function findCallersAst(options: CallersOptions): Promise<EditPlan> {
+  const root = normalizeRoot(options.root)
+  options = { ...options, root, file: normalizeExistingFile(root, options.file) }
   const files = options.file ? [options.file] : await listRepoCodeFiles(options.root).then(f => f.filter(p => /\.(ts|tsx|js|jsx)$/i.test(p)))
   const ctx = loadProgram(options.root, files)
   const refs = tsFindCallers(ctx, options)

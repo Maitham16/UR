@@ -40,6 +40,9 @@ execFileSync(
     // degrades gracefully when not installed.
     '--external',
     'audio-capture-napi',
+    // Optional browser automation backend — lazy-loaded by BrowserTool.
+    '--external',
+    'playwright-core',
     '--define',
     `MACRO.VERSION="${version}"`,
     '--define',

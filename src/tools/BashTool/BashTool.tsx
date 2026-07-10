@@ -715,6 +715,16 @@ export const BashTool = buildTool({
         },
       );
 
+      if (/\bgit\b.*\bcommit\b/.test(input.command)) {
+        const commitBlocked = await executeBeforeCommitHooks(input.command, toolUseContext, {
+          toolUseID,
+          signal: abortController.signal,
+        });
+        if (commitBlocked.blocked) {
+          throw new Error('git commit blocked by BeforeCommit hook');
+        }
+      }
+
       // Use the new async generator version of runShellCommand
       const commandGenerator = runShellCommand({
         input,
@@ -769,21 +779,6 @@ export const BashTool = buildTool({
           signal: abortController.signal,
         },
       );
-
-      // Lifecycle hook: before git commit completes
-      if (result.code === 0 && /\bgit\b.*\bcommit\b/.test(input.command)) {
-        const commitBlocked = await executeBeforeCommitHooks(
-          input.command,
-          toolUseContext,
-          {
-            toolUseID,
-            signal: abortController.signal,
-          },
-        );
-        if (commitBlocked.blocked) {
-          throw new Error('git commit blocked by BeforeCommit hook');
-        }
-      }
 
       const isInterrupt = result.interrupted && abortController.signal.reason === 'interrupt';
 

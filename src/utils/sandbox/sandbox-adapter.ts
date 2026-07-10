@@ -18,7 +18,7 @@ import {
   SandboxRuntimeConfigSchema,
   SandboxViolationStore,
 } from './sandboxRuntimeCompat.js'
-import { rmSync, statSync } from 'fs'
+import { existsSync, rmSync, statSync } from 'fs'
 import { readFile } from 'fs/promises'
 import { memoize } from 'lodash-es'
 import { join, resolve, sep } from 'path'
@@ -256,24 +256,15 @@ export function convertToSandboxRuntimeConfig(
   // HEAD + objects/ + refs/. An attacker planting these (plus a config with
   // core.fsmonitor) escapes the sandbox when UR's unsandboxed git runs.
   //
-  // Unconditionally denying these paths makes sandbox-runtime mount
-  // /dev/null at non-existent ones, which (a) leaves a 0-byte HEAD stub on
-  // the host and (b) breaks `git log HEAD` inside bwrap ("ambiguous argument").
-  // So: if a file exists, denyWrite (ro-bind in place, no stub). If not, scrub
-  // it post-command in scrubBareGitRepoFiles() — planted files are gone before
-  // unsandboxed git runs; inside the command, git is itself sandboxed.
-  bareGitRepoScrubPaths.length = 0
+  // Existing paths are made read-only by the OS profile. On Linux, bwrap
+  // cannot mask a path that does not exist without creating a mount point,
+  // so cleanup additionally removes a complete bare-repository signature
+  // only when the sandboxed command created it.
   const bareGitRepoFiles = ['HEAD', 'objects', 'refs', 'hooks', 'config']
   for (const dir of cwd === originalCwd ? [originalCwd] : [originalCwd, cwd]) {
     for (const gitFile of bareGitRepoFiles) {
       const p = resolve(dir, gitFile)
-      try {
-        // eslint-disable-next-line custom-rules/no-sync-fs -- refreshConfig() must be sync
-        statSync(p)
-        denyWrite.push(p)
-      } catch {
-        bareGitRepoScrubPaths.push(p)
-      }
+      denyWrite.push(p)
     }
   }
 
@@ -390,9 +381,23 @@ let settingsSubscriptionCleanup: (() => void) | undefined
 // undefined = not yet resolved; null = not a worktree or detection failed.
 let worktreeMainRepoPath: string | null | undefined
 
-// Bare-repo files at cwd that didn't exist at config time and should be
-// scrubbed if they appear after a sandboxed command. See urhqs/ur#29316.
-const bareGitRepoScrubPaths: string[] = []
+type BareGitBaseline = { dir: string; existing: Set<string> }
+const bareGitBaselines: BareGitBaseline[][] = []
+
+function captureBareGitBaseline(): void {
+  const cwd = getCwdState()
+  const dirs = cwd === getOriginalCwd() ? [cwd] : [getOriginalCwd(), cwd]
+  bareGitBaselines.push(
+    dirs.map(dir => ({
+      dir,
+      existing: new Set(
+        ['HEAD', 'objects', 'refs', 'hooks', 'config'].filter(name =>
+          existsSync(resolve(dir, name)),
+        ),
+      ),
+    })),
+  )
+}
 
 /**
  * Delete bare-repo files planted at cwd during a sandboxed command, before
@@ -400,13 +405,24 @@ const bareGitRepoScrubPaths: string[] = []
  * bareGitRepoFiles. urhqs/ur#29316.
  */
 function scrubBareGitRepoFiles(): void {
-  for (const p of bareGitRepoScrubPaths) {
+  const baselines = bareGitBaselines.shift()
+  if (!baselines) return
+  for (const { dir, existing } of baselines) {
     try {
-      // eslint-disable-next-line custom-rules/no-sync-fs -- cleanupAfterCommand must be sync (Shell.ts:367)
-      rmSync(p, { recursive: true })
-      logForDebugging(`[Sandbox] scrubbed planted bare-repo file: ${p}`)
+      const hasSignature =
+        statSync(resolve(dir, 'HEAD')).isFile() &&
+        statSync(resolve(dir, 'objects')).isDirectory() &&
+        statSync(resolve(dir, 'refs')).isDirectory()
+      if (!hasSignature) continue
+
+      for (const name of ['HEAD', 'objects', 'refs', 'hooks', 'config']) {
+        if (existing.has(name)) continue
+        const path = resolve(dir, name)
+        rmSync(path, { recursive: true, force: true })
+        logForDebugging(`[Sandbox] scrubbed planted bare-repo path: ${path}`)
+      }
     } catch {
-      // ENOENT is the expected common case — nothing was planted
+      // A partial signature is the expected common case.
     }
   }
 }
@@ -723,6 +739,7 @@ async function wrapWithSandbox(
     }
   }
 
+  captureBareGitBaseline()
   return BaseSandboxManager.wrapWithSandbox(
     command,
     binShell,
@@ -817,7 +834,7 @@ async function reset(): Promise<void> {
   settingsSubscriptionCleanup?.()
   settingsSubscriptionCleanup = undefined
   worktreeMainRepoPath = undefined
-  bareGitRepoScrubPaths.length = 0
+  bareGitBaselines.length = 0
 
   // Clear memoized caches
   checkDependencies.cache.clear?.()

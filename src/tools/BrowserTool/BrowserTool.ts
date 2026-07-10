@@ -1,14 +1,22 @@
 import { z } from 'zod/v4'
+import { existsSync } from 'node:fs'
+import { delimiter, join } from 'node:path'
+// Type-only import (erased at compile). playwright-core is optional at
+// runtime: loading it eagerly would crash the whole CLI at startup for
+// users without it and force the bundler to inline playwright.
+import type { Browser, BrowserContext, Page } from 'playwright-core'
+
+type ChromiumLauncher = (typeof import('playwright-core'))['chromium']
 import { buildTool, type ToolDef } from '../../Tool.js'
-import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
+import { assertPublicUrl } from '../WebFetchTool/utils.js'
 
 const BROWSER_TOOL_NAME = 'Browser'
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
-    url: z.string().url().describe('The URL to navigate to or fetch'),
+    url: z.string().url().optional().describe('The URL to navigate to or fetch (required except for close)'),
     action: z
       .enum(['goto', 'click', 'type', 'screenshot', 'evaluate', 'close', 'fetch'])
       .default('fetch')
@@ -40,43 +48,150 @@ function isEnabled(): boolean {
 }
 
 async function runFetch(input: z.infer<InputSchema>): Promise<Output> {
-  const response = await fetch(input.url, { signal: AbortSignal.timeout(30_000) })
-  const text = await response.text()
+  if (!input.url) return { success: false, error: 'url is required for fetch' }
+  await assertPublicUrl(input.url)
+  const response = await fetch(input.url, {
+    redirect: 'manual',
+    signal: AbortSignal.timeout(30_000),
+  })
+  const redirectUrl = response.headers.get('location')
+  if (response.status >= 300 && response.status < 400 && redirectUrl) {
+    return {
+      success: false,
+      url: input.url,
+      error: `Redirect requires a new approved request: ${new URL(redirectUrl, input.url).toString()}`,
+    }
+  }
+  const bytes = await response.arrayBuffer()
+  if (bytes.byteLength > 10 * 1024 * 1024) {
+    return { success: false, url: input.url, error: 'Browser fetch response exceeds the 10 MiB limit' }
+  }
+  const text = new TextDecoder().decode(bytes)
   return {
-    success: response.ok,
+    success: response.status >= 200 && response.status < 300,
     url: input.url,
     text: text.slice(0, 50_000),
-    error: response.ok ? undefined : `HTTP ${response.status}`,
+    error: response.status >= 200 && response.status < 300 ? undefined : `HTTP ${response.status}`,
   }
 }
 
-async function runPlaywright(input: z.infer<InputSchema>): Promise<Output> {
-  const script = `
-    const { chromium } = require('playwright-core');
-    (async () => {
-      const browser = await chromium.launch();
-      const page = await browser.newPage();
-      await page.goto(${JSON.stringify(input.url)});
-      const title = await page.title();
-      let result = null;
-      let screenshot = null;
-      ${input.action === 'click' && input.selector ? `await page.click(${JSON.stringify(input.selector)});` : ''}
-      ${input.action === 'type' && input.selector && input.text ? `await page.fill(${JSON.stringify(input.selector)}, ${JSON.stringify(input.text)});` : ''}
-      ${input.action === 'evaluate' && input.expression ? `result = await page.evaluate(() => { return ${input.expression}; });` : ''}
-      ${input.action === 'screenshot' ? `screenshot = (await page.screenshot({ encoding: 'base64', type: 'png' })).toString();` : ''}
-      const text = await page.evaluate(() => document.body?.innerText || '');
-      await browser.close();
-      console.log(JSON.stringify({ success: true, title, text: text.slice(0, 50000), result, screenshot }));
-    })().catch(e => { console.log(JSON.stringify({ success: false, error: e.message })); process.exit(1); });
-  `
-  const result = await execFileNoThrow('node', ['-e', script], { timeout: 120_000 })
+type BrowserSession = { browser: Browser; context: BrowserContext; page: Page }
+let activeSession: BrowserSession | undefined
+let sessionPromise: Promise<BrowserSession> | undefined
+
+let playwrightModule: typeof import('playwright-core') | null = null
+
+/** Lazy, optional playwright loader — interactive actions need it; fetch does not. */
+async function loadChromium(): Promise<ChromiumLauncher> {
   try {
-    return JSON.parse(result.stdout) as Output
+    playwrightModule ??= await import('playwright-core')
   } catch {
-    return {
-      success: false,
-      error: result.error || result.stderr || 'browser script failed',
+    throw new Error(
+      'Interactive browser actions need playwright-core (npm i -g playwright-core, or use action: "fetch" / the /chrome integration).',
+    )
+  }
+  return playwrightModule.chromium
+}
+
+function findBrowserExecutable(chromium: ChromiumLauncher): string | undefined {
+  const configured = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+  if (configured && existsSync(configured)) return configured
+  const candidates = [
+    chromium.executablePath(),
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+  ]
+  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+    for (const binary of ['google-chrome', 'chromium', 'chromium-browser', 'msedge']) {
+      candidates.push(join(dir, binary))
     }
+  }
+  return candidates.find(candidate => candidate && existsSync(candidate))
+}
+
+async function createSession(): Promise<BrowserSession> {
+  const chromium = await loadChromium()
+  const executablePath = findBrowserExecutable(chromium)
+  const browser = await chromium.launch({
+    headless: true,
+    ...(executablePath ? { executablePath } : {}),
+  })
+  const context = await browser.newContext({ serviceWorkers: 'block' })
+  const page = await context.newPage()
+  await page.route('**/*', async route => {
+    const url = route.request().url()
+    if (/^(about:|blob:|data:)/.test(url)) {
+      await route.continue()
+      return
+    }
+    try {
+      await assertPublicUrl(url)
+      await route.continue()
+    } catch {
+      await route.abort('blockedbyclient')
+    }
+  })
+  const session = { browser, context, page }
+  browser.once('disconnected', () => {
+    if (activeSession?.browser === browser) activeSession = undefined
+  })
+  activeSession = session
+  return session
+}
+
+async function getSession(): Promise<BrowserSession> {
+  if (activeSession?.browser.isConnected()) return activeSession
+  sessionPromise ??= createSession().finally(() => {
+    sessionPromise = undefined
+  })
+  return sessionPromise
+}
+
+async function closeSession(): Promise<Output> {
+  const session = activeSession
+  activeSession = undefined
+  if (session) await session.browser.close()
+  return { success: true }
+}
+
+async function runPlaywright(input: z.infer<InputSchema>): Promise<Output> {
+  if (input.action === 'close') return closeSession()
+  if (!input.url) return { success: false, error: `url is required for ${input.action}` }
+
+  await assertPublicUrl(input.url)
+  const { page } = await getSession()
+  if (input.action === 'goto' || page.url() === 'about:blank') {
+    await page.goto(input.url, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+  }
+
+  let result: unknown
+  let screenshot: string | undefined
+  if (input.action === 'click') {
+    if (!input.selector) return { success: false, error: 'selector is required for click' }
+    await page.click(input.selector)
+  } else if (input.action === 'type') {
+    if (!input.selector || input.text === undefined) {
+      return { success: false, error: 'selector and text are required for type' }
+    }
+    await page.fill(input.selector, input.text)
+  } else if (input.action === 'evaluate') {
+    if (!input.expression) return { success: false, error: 'expression is required for evaluate' }
+    result = await page.evaluate(input.expression)
+  } else if (input.action === 'screenshot') {
+    screenshot = (await page.screenshot({ type: 'png' })).toString('base64')
+  }
+
+  return {
+    success: true,
+    url: page.url(),
+    title: await page.title(),
+    text: (await page.locator('body').innerText().catch(() => '')).slice(0, 50_000),
+    result,
+    screenshot,
   }
 }
 
@@ -114,7 +229,7 @@ export const BrowserTool = buildTool({
     return outputSchema()
   },
   isConcurrencySafe() {
-    return true
+    return false
   },
   isReadOnly(input) {
     return ['fetch', 'goto', 'evaluate', 'screenshot'].includes(input.action)
@@ -123,7 +238,7 @@ export const BrowserTool = buildTool({
     return ['click', 'type'].includes(input.action)
   },
   toAutoClassifierInput(input) {
-    return `${input.action} ${input.url}`
+    return `${input.action} ${input.url ?? ''}`
   },
   async checkPermissions(input) {
     return {
@@ -134,6 +249,15 @@ export const BrowserTool = buildTool({
   },
   renderToolUseMessage() {
     return null
+  },
+  async validateInput(input) {
+    if (input.action !== 'close' && !input.url) {
+      return { result: false, message: `url is required for ${input.action}`, errorCode: 1 }
+    }
+    if (input.expression && input.expression.length > 10_000) {
+      return { result: false, message: 'expression exceeds the 10,000-character limit', errorCode: 2 }
+    }
+    return { result: true }
   },
   async call(input) {
     const result = await dispatch(input)

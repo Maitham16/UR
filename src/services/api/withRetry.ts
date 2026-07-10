@@ -46,6 +46,7 @@ import {
 import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
 import type { ProviderMessageClient } from './providerClient.js'
+import { isRetryableProviderError } from './providerHttp.js'
 
 const abortError = () => new APIUserAbortError()
 
@@ -378,7 +379,8 @@ export async function* withRetry<T>(
         !handledCloudAuthError &&
         !(
           error instanceof APIConnectionError ||
-          (error instanceof APIError && shouldRetry(error))
+          (error instanceof APIError && shouldRetry(error)) ||
+          isRetryableProviderError(error)
         )
       ) {
         throw new CannotRetryError(error, retryContext)

@@ -1265,14 +1265,24 @@ export function shouldDisableBypassPermissions(): Promise<boolean> {
   return checkSecurityRestrictionGate('tengu_disable_bypass_permissions_mode')
 }
 
+let warnedDeprecatedDisableAutoMode = false
+
 function isAutoModeDisabledBySettings(): boolean {
   const settings = getSettings_DEPRECATED() || {}
-  return (
+  const topLevel =
     (settings as { disableAutoMode?: 'disable' }).disableAutoMode ===
-      'disable' ||
+    'disable'
+  const nested =
     (settings.permissions as { disableAutoMode?: 'disable' } | undefined)
       ?.disableAutoMode === 'disable'
-  )
+  if (topLevel && !nested && !warnedDeprecatedDisableAutoMode) {
+    warnedDeprecatedDisableAutoMode = true
+    logForDebugging(
+      'DEPRECATED: top-level "disableAutoMode" in settings.json — move it under "permissions.disableAutoMode". The top-level key still works but will be removed in the next major.',
+      { level: 'warn' },
+    )
+  }
+  return topLevel || nested
 }
 
 /**

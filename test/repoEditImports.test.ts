@@ -30,7 +30,10 @@ describe('AST-aware organize imports', () => {
     })
 
     const plan = await planOrganizeImportsAst({ root: dir, file: 'src/app.ts' })
-    expect(plan.edits.edits.length).toBe(1)
+    // The TS language service may express one logical reorder as several
+    // text changes (replace line 1 + delete line 2); assert the outcome
+    // below, not the implementation's edit count.
+    expect(plan.edits.edits.length).toBeGreaterThanOrEqual(1)
     await applyOrganizeImportsAst({ root: dir, file: 'src/app.ts' })
     const content = readFileSync(join(dir, 'src/app.ts'), 'utf-8')
     const importBlock = content.split('\n').slice(0, 2).join('\n')

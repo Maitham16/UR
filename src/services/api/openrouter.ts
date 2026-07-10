@@ -5,10 +5,9 @@
 
 import { randomUUID } from 'crypto'
 import {
-  mapOpenAIToolChoice,
+  estimateProviderInputTokens,
   parseOpenAICompatibleResponse,
-  toOpenAIMessages,
-  toOpenAITools,
+  toOpenAICompatibleRequest,
 } from './openaiCompatible.js'
 import {
   createOpenAISSEMessageStream,
@@ -32,20 +31,9 @@ export async function createOpenRouterClient(
 
   async function doRequest(params: any, requestOptions?: any) {
     const clientRequestId = params?.headers?.['x-client-request-id']
-    const tools = toOpenAITools(params.tools)
-
     const response = await axiosPostWithProviderReliability<any>(
       `${OPENROUTER_BASE}/chat/completions`,
-      {
-        model: params.model,
-        messages: toOpenAIMessages(params, 'openrouter'),
-        max_tokens: params.max_tokens,
-        stream: Boolean(params.stream),
-        ...(tools.length > 0 ? { tools } : {}),
-        ...(params.tool_choice !== undefined
-          ? { tool_choice: mapOpenAIToolChoice(params.tool_choice) }
-          : {}),
-      },
+      toOpenAICompatibleRequest(params, 'openrouter'),
       {
         headers: {
           'Content-Type': 'application/json',
@@ -76,22 +64,12 @@ export async function createOpenRouterClient(
 
   async function doStream(params: any, requestOptions?: any, controller?: AbortController) {
     const clientRequestId = params?.headers?.['x-client-request-id']
-    const tools = toOpenAITools(params.tools)
     const streamController = controller ?? new AbortController()
     const signal = mergeAbortSignals([requestOptions?.signal, streamController.signal])
 
     const response = await axiosPostWithProviderReliability<any>(
       `${OPENROUTER_BASE}/chat/completions`,
-      {
-        model: params.model,
-        messages: toOpenAIMessages(params, 'openrouter'),
-        max_tokens: params.max_tokens,
-        stream: true,
-        ...(tools.length > 0 ? { tools } : {}),
-        ...(params.tool_choice !== undefined
-          ? { tool_choice: mapOpenAIToolChoice(params.tool_choice) }
-          : {}),
-      },
+      toOpenAICompatibleRequest({ ...params, stream: true }, 'openrouter'),
       {
         headers: {
           'Content-Type': 'application/json',
@@ -165,6 +143,5 @@ export async function createOpenRouterClient(
 }
 
 function estimateTokenCount(params: any): number {
-  const text = JSON.stringify(params.messages ?? [])
-  return Math.ceil(text.length / 4)
+  return estimateProviderInputTokens(params)
 }

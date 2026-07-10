@@ -46,7 +46,7 @@ import {
 export type ModelShortName = string
 export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
-const DEFAULT_OLLAMA_MODEL = 'qwen3-coder:480b-cloud'
+const DEFAULT_OLLAMA_MODEL = 'qwen2.5-coder:7b'
 
 // Adaptive routing picks are memoized so the session model stays stable once
 // the installed-model list has been discovered.
