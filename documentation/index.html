@@ -44,7 +44,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.45.5</p>
+          <p class="eyebrow">Version 1.45.6</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -163,7 +163,7 @@ ur config set provider.fallback ollama</code></pre>
           </article>
           <article>
             <h3>Status bar and updates</h3>
-            <pre><code>Ollama | llama3 | ask | main | update 1.45.5 available</code></pre>
+            <pre><code>Ollama | llama3 | ask | main | update 1.45.6 available</code></pre>
             <p>The interactive status bar shows only important runtime state: provider, model, mode, branch, active tasks, checks status when known, and update availability. It is hidden in CI, dumb terminals, and print mode.</p>
           </article>
           <article>
@@ -487,7 +487,7 @@ UR_VERIFIER_MODE=loose
 UR_VERIFIER_MODE=off
 UR_VERIFIER_AUTO_SUBAGENT=1</code></pre>
             <p>L1 gates catch false done claims, immediate-action promises that end without their tool call, and loops. <code>/verify</code> manually runs deeper verification.</p>
-            <p>Interactive users can set <code>"verifier": { "askBeforeGates": true }</code> in <code>.ur/settings.json</code> (or via <code>ur config set verifier.askBeforeGates true</code>) to have UR ask before running project test/typecheck/lint gates after a task, instead of running them automatically. Default is <code>false</code> (auto-run gates).</p>
+            <p>Interactive users can set <code>"verifier": { "askBeforeGates": true }</code> in <code>.ur/settings.json</code> (or via <code>ur config set verifier.askBeforeGates true</code>) to have UR ask once per user turn before running project test/typecheck/lint gates after a task, instead of running them automatically. Default is <code>false</code> (auto-run gates).</p>
           </article>
           <article>
             <h3>MCP and plugins</h3>

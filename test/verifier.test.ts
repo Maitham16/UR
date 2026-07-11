@@ -13,6 +13,7 @@ import {
 import { Verifier } from '../src/services/verifier'
 
 const TURN = '00000000-0000-0000-0000-000000000001'
+const NEXT_TURN = '00000000-0000-0000-0000-000000000002'
 
 function fakeToolUse(name: string, input: any, id = 'tu_1') {
   return { type: 'tool_use', id, name, input } as any
@@ -370,6 +371,47 @@ describe('Verifier integration', () => {
       )
       const r = await v.checkTurn(TURN, 'I created the file.', true)
       expect(r.ok).toBe(true)
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('asks for project-gate approval only once per user turn', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
+    try {
+      await mkdir(join(cwd, '.ur'), { recursive: true })
+      await writeFile(
+        join(cwd, '.ur', 'verify.json'),
+        JSON.stringify({ afterEdit: ['bun test'] }),
+      )
+      const v = new Verifier({ cwd, askBeforeGates: true })
+      v.beginTurn(TURN)
+      v.recordToolCall(
+        TURN,
+        fakeToolUse('Write', { file_path: join(cwd, 'a.ts') }),
+        true,
+      )
+
+      const first = await v.checkTurn(TURN, 'Implementation ready.', true)
+      expect(first.ok).toBe(false)
+      if (first.ok === false) expect(first.reminder).toContain('AskUserQuestion')
+
+      const repeated = await v.checkTurn(TURN, 'Waiting for your decision.', false)
+      expect(repeated.ok).toBe(true)
+
+      v.endTurn(TURN)
+      v.beginTurn(NEXT_TURN)
+      v.recordToolCall(
+        NEXT_TURN,
+        fakeToolUse('Write', { file_path: join(cwd, 'b.ts') }, 'tu_2'),
+        true,
+      )
+      const nextTask = await v.checkTurn(
+        NEXT_TURN,
+        'The next implementation is ready.',
+        true,
+      )
+      expect(nextTask.ok).toBe(false)
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }

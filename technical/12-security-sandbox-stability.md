@@ -124,6 +124,8 @@ successful Bash call. The detector examines only the final visible clause and
 excludes conditional plans, limiting false positives. Rejections use the
 existing three-injection ceiling, so an uncooperative model cannot loop
 indefinitely. This gate does not change permission or AutoApprove behavior.
+Project-gate approval requests are tracked per user-turn UUID and emitted once;
+the marker is cleared with the rest of the verifier turn state.
 
 ## Provenance & claims (`/claim-ledger`, `/cite`)
 

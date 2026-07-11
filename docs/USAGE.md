@@ -106,6 +106,10 @@ directly instead of being replayed through the non-streaming fallback. Local
 Ollama models keep the five-minute default. Set `API_TIMEOUT_MS` to explicitly
 override either default for the current process.
 
+When project verification requires approval, UR asks once per user turn. The
+same pending compile/test/lint gate is not presented again after the user has
+answered; a later user task can request its own approval normally.
+
 UR-Nexus also has explicit provider commands for legal access paths:
 
 ```sh

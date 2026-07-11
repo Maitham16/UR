@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.45.5 (UR-Nexus)"
+# expected for this release: "1.45.6 (UR-Nexus)"
 ```
 
 ## 0.1 First-workspace model selection (1.45.4)
@@ -53,6 +53,13 @@ fallback-suppression cases pass. A model ending in `:cloud` defaults to 120
 seconds for response headers and streaming; a local model retains 300 seconds.
 `API_TIMEOUT_MS` wins over both. When a cloud stream reaches its deliberate
 deadline, the request fails once instead of starting a non-streaming replay.
+
+### 0.1.2 Single project-gate approval (1.45.6)
+
+With `verifier.askBeforeGates` enabled, complete a task that edits a source
+file. Expected: UR asks once whether to run the detected compile/test/lint
+commands. After answering, the same approval question is not shown again. A
+separate user task that edits files may ask once for its own verification.
 
 ## 0.2 Permission safety and context pack (1.19.0)
 

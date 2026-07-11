@@ -1,6 +1,6 @@
 {
   "name": "ur-agent",
-  "version": "1.45.5",
+  "version": "1.45.6",
   "description": "UR-Nexus — autonomous engineering workflow engine (plan, execute, test, verify, document, benchmark, reproduce)",
   "type": "module",
   "packageManager": "bun@1.3.14",

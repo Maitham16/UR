@@ -69,6 +69,8 @@ export type VerifierOptions = {
    * value; otherwise 'strict'.
    */
   mode?: VerifierMode
+  /** Test-only/runtime override for project-gate approval behavior. */
+  askBeforeGates?: boolean
 }
 
 export type CheckResult = { ok: true } | { ok: false; reminder: string }
@@ -89,11 +91,13 @@ export class Verifier {
   private pluginValidatorsPromise: Promise<PluginValidator[]>
   private rejectionsByTurn = new Map<string, number>()
   private nudgedTurns = new Set<string>()
+  private gateApprovalRequestedTurns = new Set<string>()
   private userTaskHintByTurn = new Map<string, string>()
   private maxRejections: number
   private cwd: string
   private enableSubagentNudge: boolean
   private mode: VerifierMode
+  private askBeforeGatesOverride: boolean | undefined
 
   constructor(options: VerifierOptions) {
     this.cwd = options.cwd
@@ -102,6 +106,7 @@ export class Verifier {
     this.configPromise = loadVerifyConfig(options.cwd)
     this.pluginValidatorsPromise = loadPluginValidators()
     this.mode = resolveMode(options.mode)
+    this.askBeforeGatesOverride = options.askBeforeGates
     // L2 is opt-in: the deep verification subagent only auto-spawns when the
     // user explicitly enables it via UR_VERIFIER_AUTO_SUBAGENT. By default the
     // verifier runs L1 gates only ("try the implementation") and the user
@@ -119,6 +124,7 @@ export class Verifier {
     this.loops.reset()
     this.rejectionsByTurn.delete(turnId)
     this.nudgedTurns.delete(turnId)
+    this.gateApprovalRequestedTurns.delete(turnId)
     if (userTaskHint) this.userTaskHintByTurn.set(turnId, userTaskHint)
   }
 
@@ -195,10 +201,10 @@ export class Verifier {
         autoDetected = true
       }
       if (commands && commands.length > 0) {
-        if (
-          !askBeforeGatesEnabled() &&
-          getIsNonInteractiveSession()
-        ) {
+        const shouldAskBeforeGates =
+          this.askBeforeGatesOverride ??
+          (askBeforeGatesEnabled() || !getIsNonInteractiveSession())
+        if (!shouldAskBeforeGates) {
           const result = await runGateCommands(
             commands,
             this.cwd,
@@ -209,7 +215,8 @@ export class Verifier {
             const failed = result as Extract<typeof result, { ok: false }>
             return { ok: false, reminder: failed.reminder }
           }
-        } else {
+        } else if (!this.gateApprovalRequestedTurns.has(turnId)) {
+          this.gateApprovalRequestedTurns.add(turnId)
           this.bumpRejection(turnId)
           return {
             ok: false,
@@ -280,6 +287,7 @@ export class Verifier {
     this.ledger.forget(turnId)
     this.rejectionsByTurn.delete(turnId)
     this.nudgedTurns.delete(turnId)
+    this.gateApprovalRequestedTurns.delete(turnId)
     this.userTaskHintByTurn.delete(turnId)
   }
 

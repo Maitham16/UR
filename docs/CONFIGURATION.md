@@ -311,7 +311,7 @@ Behaviour is controlled by environment variables:
 ```sh
 # Overall mode (default: strict) — controls the L1 gates
 UR_VERIFIER_MODE=strict   # all L1 gates on: done-claim, loops, empty turn,
-                          # project gates
+                          # project gates; approval is requested once per user turn
 UR_VERIFIER_MODE=loose    # only empty-turn check + loop detector
 UR_VERIFIER_MODE=off      # disable verifier entirely
 

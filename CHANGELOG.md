@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.45.6
+
+- Deduplicated project verification approval so compile/test/lint commands are
+  offered at most once per user turn. The approval marker is cleared for the
+  next user task, preserving one explicit decision per task.
+- Kept AutoApprove behavior, test execution policy, and explicit publishing
+  boundaries unchanged. Added regression coverage and synchronized user,
+  technical, static-site, npm, IDE, and bundled release metadata.
+
 ## 1.45.5
 
 - Bounded Ollama Cloud response-header and streaming phases to 120 seconds by

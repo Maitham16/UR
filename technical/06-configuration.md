@@ -146,7 +146,7 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
   "autoMemoryEnabled": true, "autoMemoryDirectory": "…",
   "autoMemoryExtractionInterval": 1,   // run extraction every N turns (token dial)
   "automaticLearningEnabled": true,    // local outcome stats, no model calls
-  "verifier": { "askBeforeGates": true },
+  "verifier": { "askBeforeGates": true }, // one approval request per user turn
   "autoDreamEnabled": false,
   "plansDirectory": "…"
 }
