@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.45.4 (UR-Nexus)"
+# expected for this release: "1.45.5 (UR-Nexus)"
 ```
 
 ## 0.1 First-workspace model selection (1.45.4)
@@ -39,6 +39,20 @@ ur -p "say hi"
 
 Expected: `No model has been selected for this workspace`. Supplying
 `--model <model>`, `OLLAMA_MODEL`, or `UR_MODEL` bypasses the gate for that run.
+
+### 0.1.1 Ollama Cloud latency containment (1.45.5)
+
+Run the deterministic regression coverage:
+
+```sh
+bun test test/ollamaTimeout.test.ts
+```
+
+Expected: the cloud-model timeout, override-precedence, stream-deadline, and
+fallback-suppression cases pass. A model ending in `:cloud` defaults to 120
+seconds for response headers and streaming; a local model retains 300 seconds.
+`API_TIMEOUT_MS` wins over both. When a cloud stream reaches its deliberate
+deadline, the request fails once instead of starting a non-streaming replay.
 
 ## 0.2 Permission safety and context pack (1.19.0)
 
@@ -185,6 +199,11 @@ Expected:
   UR_VERIFIER_MODE=off ur     # gates off, false claim accepted
   UR_VERIFIER_MODE=strict ur  # default, false claim rejected
   ```
+
+Also prompt the model to end with `Let me create index.html now.` while
+forbidding tool calls. Strict mode must inject a correction and continue rather
+than accepting the promise as completion. Conditional text such as `If you
+approve, I'll create it` must not trigger this gate.
 
 ## 3. L1 loop detector fires
 

@@ -4,6 +4,11 @@ import {
   createOllamaURHQClient,
   getOllamaRequestTimeoutMs,
 } from '../src/services/api/ollama.js'
+import {
+  getNonstreamingFallbackTimeoutMs,
+  isOllamaCloudRuntime,
+  shouldSkipOllamaNonStreamingFallback,
+} from '../src/services/api/ur.js'
 
 test('getOllamaRequestTimeoutMs defaults to five minutes for local Ollama', () => {
   expect(getOllamaRequestTimeoutMs(undefined, {})).toBe(300_000)
@@ -28,6 +33,77 @@ test('getOllamaRequestTimeoutMs uses shorter default for remote sessions', () =>
   expect(getOllamaRequestTimeoutMs(undefined, { UR_CODE_REMOTE: '1' })).toBe(
     120_000,
   )
+})
+
+test('getOllamaRequestTimeoutMs uses shorter default for Ollama cloud models', () => {
+  expect(
+    getOllamaRequestTimeoutMs(undefined, {}, 'kimi-k2.7-code:cloud'),
+  ).toBe(120_000)
+})
+
+test('getOllamaRequestTimeoutMs keeps the local-model default', () => {
+  expect(getOllamaRequestTimeoutMs(undefined, {}, 'qwen3:latest')).toBe(300_000)
+})
+
+test('timeout overrides still win for Ollama cloud models', () => {
+  expect(
+    getOllamaRequestTimeoutMs(
+      { timeoutMs: 12_345 },
+      { API_TIMEOUT_MS: '45000' },
+      'glm-5.2:cloud',
+    ),
+  ).toBe(12_345)
+  expect(
+    getOllamaRequestTimeoutMs(
+      undefined,
+      { API_TIMEOUT_MS: '45000' },
+      'glm-5.2:cloud',
+    ),
+  ).toBe(45_000)
+})
+
+test('Ollama cloud non-streaming fallback uses the same bounded timeout', () => {
+  expect(
+    getNonstreamingFallbackTimeoutMs(
+      'kimi-k2.7-code:cloud',
+      {},
+      'ollama',
+    ),
+  ).toBe(120_000)
+  expect(
+    getNonstreamingFallbackTimeoutMs('qwen3:latest', {}, 'ollama'),
+  ).toBe(300_000)
+  expect(
+    getNonstreamingFallbackTimeoutMs(
+      'kimi-k2.7-code:cloud',
+      { API_TIMEOUT_MS: '45000' },
+      'ollama',
+    ),
+  ).toBe(45_000)
+})
+
+test('only Ollama cloud models suppress fallback after their stream deadline', () => {
+  const timeout = new APIConnectionTimeoutError({
+    message: 'Ollama stream timed out',
+  })
+  expect(isOllamaCloudRuntime('glm-5.2:cloud', 'ollama')).toBe(true)
+  expect(
+    shouldSkipOllamaNonStreamingFallback(
+      timeout,
+      'glm-5.2:cloud',
+      'ollama',
+    ),
+  ).toBe(true)
+  expect(
+    shouldSkipOllamaNonStreamingFallback(timeout, 'qwen3:latest', 'ollama'),
+  ).toBe(false)
+  expect(
+    shouldSkipOllamaNonStreamingFallback(
+      new Error('different streaming failure'),
+      'glm-5.2:cloud',
+      'ollama',
+    ),
+  ).toBe(false)
 })
 
 test('Ollama chat requests enable thinking when the model advertises it', async () => {

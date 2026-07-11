@@ -9,6 +9,15 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.45.5 Additions
+
+- Ollama Cloud requests have bounded response-header and streaming phases and
+  do not amplify a deliberate stream timeout through fallback retries. Local
+  model timing and explicit timeout overrides are unchanged.
+- The verifier now recognizes terminal promises such as "Let me create it
+  now" or "I will run the tests now" and requires the corresponding successful
+  mutation or Bash call before the turn may complete.
+
 ## Commands
 
 ```sh

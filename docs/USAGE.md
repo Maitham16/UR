@@ -100,6 +100,12 @@ use `ollama.host` in settings if you want plain `ur` to default to a LAN host.
 Models exposed by the chosen Ollama app are valid, including local models and
 Ollama Cloud-backed models.
 
+Ollama Cloud models use a 120-second default bound for both response-header
+waiting and stream consumption. A deliberate stream deadline is returned
+directly instead of being replayed through the non-streaming fallback. Local
+Ollama models keep the five-minute default. Set `API_TIMEOUT_MS` to explicitly
+override either default for the current process.
+
 UR-Nexus also has explicit provider commands for legal access paths:
 
 ```sh

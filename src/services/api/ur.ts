@@ -823,17 +823,42 @@ function shouldDeferLspTool(tool: Tool): boolean {
  * Reads API_TIMEOUT_MS when set so slow backends and the streaming path
  * share the same ceiling.
  *
- * Remote sessions default to 120s to stay under CCR's container idle-kill
- * (~5min) so a hung fallback to a wedged backend surfaces a clean
- * APIConnectionTimeoutError instead of stalling past SIGKILL.
+ * Remote sessions and Ollama Cloud models default to 120s. Remote sessions
+ * stay under CCR's container idle-kill (~5min), while cloud-tagged Ollama
+ * models use the same ceiling as their streaming path.
  *
  * Otherwise defaults to 300s — long enough for slow backends without
  * approaching the API's 10-minute non-streaming boundary.
  */
-function getNonstreamingFallbackTimeoutMs(): number {
-  const override = parseInt(process.env.API_TIMEOUT_MS || '', 10)
+export function isOllamaCloudRuntime(
+  model: string,
+  provider: string = getAPIProvider(),
+): boolean {
+  return provider === 'ollama' && model.trim().toLowerCase().endsWith(':cloud')
+}
+
+export function getNonstreamingFallbackTimeoutMs(
+  model: string,
+  env: Record<string, string | undefined> = process.env,
+  provider: string = getAPIProvider(),
+): number {
+  const override = parseInt(env.API_TIMEOUT_MS || '', 10)
   if (override) return override
-  return isEnvTruthy(process.env.UR_CODE_REMOTE) ? 120_000 : 300_000
+  return isEnvTruthy(env.UR_CODE_REMOTE) || isOllamaCloudRuntime(model, provider)
+    ? 120_000
+    : 300_000
+}
+
+export function shouldSkipOllamaNonStreamingFallback(
+  error: unknown,
+  model: string,
+  provider: string = getAPIProvider(),
+): boolean {
+  return (
+    isOllamaCloudRuntime(model, provider) &&
+    error instanceof APIConnectionTimeoutError &&
+    error.message === 'Ollama stream timed out'
+  )
 }
 
 /**
@@ -865,7 +890,7 @@ export async function* executeNonStreamingRequest(
    */
   originatingRequestId?: string | null,
 ): AsyncGenerator<SystemAPIErrorMessage, BetaMessage> {
-  const fallbackTimeoutMs = getNonstreamingFallbackTimeoutMs()
+  const fallbackTimeoutMs = getNonstreamingFallbackTimeoutMs(clientOptions.model)
   const generator = withRetry(
     () =>
       getURHQClient({
@@ -921,6 +946,7 @@ export async function* executeNonStreamingRequest(
       }
     },
     {
+      ...(isOllamaCloudRuntime(retryOptions.model) ? { maxRetries: 0 } : {}),
       model: retryOptions.model,
       fallbackModel: retryOptions.fallbackModel,
       thinkingConfig: retryOptions.thinkingConfig,
@@ -1845,6 +1871,7 @@ async function* queryModel(
         return result.data
       },
       {
+        ...(isOllamaCloudRuntime(options.model) ? { maxRetries: 0 } : {}),
         model: options.model,
         fallbackModel: options.fallbackModel,
         thinkingConfig,
@@ -2469,6 +2496,13 @@ async function* queryModel(
           // Throw a more specific error for timeout
           throw new APIConnectionTimeoutError({ message: 'Request timed out' })
         }
+      }
+
+      // A deliberate Ollama Cloud stream deadline is already the final
+      // latency bound. Retrying the same request in non-streaming mode used to
+      // add a five-minute timeout (and the shared retry loop) after it fired.
+      if (shouldSkipOllamaNonStreamingFallback(streamingError, options.model)) {
+        throw streamingError
       }
 
       // When the flag is enabled, skip the non-streaming fallback and let the

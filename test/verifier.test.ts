@@ -82,6 +82,28 @@ describe('detectDoneClaim', () => {
     expect(detectDoneClaim('Here is what I found in the repo.')).toBeNull()
     expect(detectDoneClaim('')).toBeNull()
   })
+
+  test('matches an immediate file action promised at the end of a turn', () => {
+    expect(detectDoneClaim('I have the details. Let me create it now.')).toBe(
+      'write_intent',
+    )
+    expect(detectDoneClaim("Not yet. I'll fix the file now.")).toBe(
+      'write_intent',
+    )
+    expect(detectDoneClaim('Writing it now.')).toBe('write_intent')
+  })
+
+  test('matches an immediate command promised at the end of a turn', () => {
+    expect(detectDoneClaim('The implementation is ready. I will run the tests now.')).toBe(
+      'run_intent',
+    )
+  })
+
+  test('does not treat conditional or instructional prose as immediate intent', () => {
+    expect(detectDoneClaim("If you approve, I'll create the file.")).toBeNull()
+    expect(detectDoneClaim('You can create the file with Write.')).toBeNull()
+    expect(detectDoneClaim("I'll create it after you provide the path.")).toBeNull()
+  })
 })
 
 describe('evaluateDoneGate', () => {
@@ -101,6 +123,14 @@ describe('evaluateDoneGate', () => {
     expect(evaluateDoneGate('generic_done', true, false).ok).toBe(true)
     expect(evaluateDoneGate('generic_done', false, true).ok).toBe(true)
     expect(evaluateDoneGate('generic_done', false, false).ok).toBe(false)
+  })
+  test('write_intent requires a mutating effect', () => {
+    expect(evaluateDoneGate('write_intent', false, false).ok).toBe(false)
+    expect(evaluateDoneGate('write_intent', true, false).ok).toBe(true)
+  })
+  test('run_intent requires a successful Bash call', () => {
+    expect(evaluateDoneGate('run_intent', false, false).ok).toBe(false)
+    expect(evaluateDoneGate('run_intent', false, true).ok).toBe(true)
   })
 })
 
@@ -254,6 +284,19 @@ describe('Verifier integration', () => {
       const r = await v.checkTurn(TURN, 'I created the file.', false)
       expect(r.ok).toBe(false)
       if (r.ok === false) expect(r.reminder).toContain('Write')
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('rejects when the agent promises to write but ends without a tool call', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
+    try {
+      const v = new Verifier({ cwd })
+      v.beginTurn(TURN)
+      const r = await v.checkTurn(TURN, 'Let me create index.html now.', false)
+      expect(r.ok).toBe(false)
+      if (r.ok === false) expect(r.reminder).toContain('actual tool call')
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.45.5
+
+- Bounded Ollama Cloud response-header and streaming phases to 120 seconds by
+  default while preserving the five-minute allowance for local Ollama models.
+  `API_TIMEOUT_MS` and per-request timeouts still take precedence.
+- Stopped deliberate Ollama Cloud stream deadlines from triggering the shared
+  non-streaming fallback and retry chain. Other providers and local Ollama
+  retain their existing fallback and retry behavior.
+- Extended the deterministic verifier to reject turns that end by promising an
+  immediate file change or command but emit no successful matching tool call.
+  Conditional plans and instructional prose remain unaffected.
+- Added focused timeout, retry-containment, intent-detection, and verifier
+  integration coverage; synchronized npm, IDE extension, static-site, user,
+  validation, and technical release metadata.
+
 ## 1.45.4
 
 - Added mandatory provider-first model selection for the first interactive run

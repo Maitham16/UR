@@ -431,6 +431,13 @@ Local/server providers use their normal endpoints:
 - llama.cpp server mode: `http://localhost:8080/v1`
 - vLLM server mode: `http://localhost:8000/v1`
 
+Ollama models whose names end in `:cloud` use a 120-second default for the
+response-header phase and a 120-second total stream deadline. UR does not
+automatically replay a cloud request after that stream deadline, preventing a
+bounded failure from expanding into the shared non-streaming fallback and
+retry chain. Local Ollama models retain the five-minute default. A positive
+`API_TIMEOUT_MS` or explicit request timeout overrides these defaults.
+
 ## Optional Live Provider Smoke
 
 `bun run provider:smoke` runs optional live checks only for providers with the

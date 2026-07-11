@@ -636,8 +636,9 @@ the permission boundary matters.
   otherwise pause for permission approval, while user-input dialogs still ask.
 - `--dangerously-skip-permissions` should only be used inside disposable
   sandboxes.
-- The verifier checks for false completion claims, repeated tool-call loops,
-  empty assistant turns, and project gates.
+- The verifier checks for false completion claims, immediate-action promises
+  that end without the matching tool call, repeated tool-call loops, empty
+  assistant turns, and project gates.
 - Project gates can be configured in `.ur/verify.json`.
 - `ur test-first install` writes detected compile/test/lint commands into
   `.ur/verify.json` so mutating turns have command evidence before completion.

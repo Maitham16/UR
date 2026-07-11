@@ -27,7 +27,46 @@ export type ClaimKind =
   | 'edit_claim'
   | 'delete_claim'
   | 'run_claim'
+  | 'write_intent'
+  | 'run_intent'
   | 'generic_done'
+
+const WRITE_INTENT_VERBS =
+  '(?:create|write|edit|update|change|modify|patch|fix|remove|delete|rewrite|implement)'
+const RUN_INTENT_VERBS = '(?:run|execute|test|build)'
+const WRITE_INTENT_GERUNDS =
+  '(?:creating|writing|editing|updating|changing|modifying|patching|fixing|removing|deleting|rewriting|implementing)'
+
+function detectImmediateIntent(text: string): ClaimKind | null {
+  // Only inspect the final visible clause. This catches turns that end with
+  // "Let me create it now" without treating an earlier plan as a promise that
+  // a tool call must immediately follow.
+  const tail = text.trim().slice(-600)
+  const clauses = tail
+    .split(/(?:\n+|(?<=[.!?])\s+)/)
+    .map(clause => clause.trim())
+    .filter(Boolean)
+  const clause = clauses.at(-1) ?? ''
+  if (
+    !clause ||
+    /^(?:if|when|once|after|before)\b/i.test(clause) ||
+    /\b(?:if|when|once|after|unless|until)\b.+$/i.test(clause)
+  ) {
+    return null
+  }
+
+  const lead = "(?:now[, :]*)?(?:let me|i(?:'ll| will| am going to|'m going to))"
+  if (new RegExp(`\\b${lead}\\s+(?:now\\s+)?${WRITE_INTENT_VERBS}\\b`, 'i').test(clause)) {
+    return 'write_intent'
+  }
+  if (new RegExp(`\\b${lead}\\s+(?:now\\s+)?${RUN_INTENT_VERBS}\\b`, 'i').test(clause)) {
+    return 'run_intent'
+  }
+  if (new RegExp(`^${WRITE_INTENT_GERUNDS}\\b.*\\bnow[.!]?$`, 'i').test(clause)) {
+    return 'write_intent'
+  }
+  return null
+}
 
 /**
  * Inspect assistant text for a completion claim. Returns the kind of claim
@@ -66,7 +105,7 @@ export function detectDoneClaim(text: string): ClaimKind | null {
   for (const pattern of DONE_PATTERNS) {
     if (pattern.test(text)) return 'generic_done'
   }
-  return null
+  return detectImmediateIntent(text)
 }
 
 export type DoneGateResult =
@@ -96,6 +135,16 @@ export function evaluateDoneGate(
         'You claimed to have created, edited, or deleted files this turn but no Write / Edit / NotebookEdit / Bash tool call returned successfully. Make the actual tool call now, or correct the statement before continuing.',
     }
   }
+  if (claim === 'write_intent') {
+    if (hasMutatingEffect) return { ok: true }
+    return {
+      ok: false,
+      claim,
+      reason: 'promised file action ended without a mutating tool call',
+      reminder:
+        'You ended by saying you were about to create, edit, or fix files, but no Write / Edit / NotebookEdit / Bash tool call returned successfully. Make the actual tool call now, or explain why you cannot continue.',
+    }
+  }
   if (claim === 'run_claim') {
     if (ranBash) return { ok: true }
     return {
@@ -104,6 +153,16 @@ export function evaluateDoneGate(
       reason: 'no successful Bash call recorded',
       reminder:
         'You claimed to have run a command this turn but no Bash tool call returned successfully. Run the command now or correct the statement.',
+    }
+  }
+  if (claim === 'run_intent') {
+    if (ranBash) return { ok: true }
+    return {
+      ok: false,
+      claim,
+      reason: 'promised command ended without a successful Bash call',
+      reminder:
+        'You ended by saying you were about to run a command, but no Bash tool call returned successfully. Run the command now, or explain why you cannot continue.',
     }
   }
   // generic_done: only flag if the turn was completely effect-free

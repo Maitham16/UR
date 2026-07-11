@@ -117,6 +117,14 @@ append-only ledger (`.ur/actions.jsonl`):
 /actions 10               # recent stability actions
 ```
 
+The strict L1 verifier also validates terminal action intent. A final clause
+such as `Let me create it now` requires a successful Write/Edit/NotebookEdit or
+Bash mutation in the current user turn; `I will run the tests now` requires a
+successful Bash call. The detector examines only the final visible clause and
+excludes conditional plans, limiting false positives. Rejections use the
+existing three-injection ceiling, so an uncooperative model cannot loop
+indefinitely. This gate does not change permission or AutoApprove behavior.
+
 ## Provenance & claims (`/claim-ledger`, `/cite`)
 
 `/claim-ledger add --claim "p99 < 200ms" --source bench:latest` records

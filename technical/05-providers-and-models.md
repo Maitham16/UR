@@ -70,6 +70,16 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   reasoning, metadata, and structured-output settings supported by each
   provider. Provider error payloads, empty responses, and truncated streams fail
   instead of becoming synthetic empty successes.
+- `ollama.ts` selects timeouts from explicit request options, then
+  `API_TIMEOUT_MS`, then runtime defaults. `:cloud` models and remote sessions
+  use 120 seconds; local models use 300 seconds. The same model-aware value is
+  applied while waiting for `/api/chat` response headers and as the absolute
+  deadline in `readOllamaChunks`.
+- `ur.ts` identifies an Ollama Cloud runtime from both the selected provider and
+  the `:cloud` suffix. It disables shared automatic request retries for that
+  route, applies the same 120-second bound to any permitted non-streaming
+  fallback, and skips fallback entirely when the Ollama stream deadline itself
+  caused the failure. Explicit `API_TIMEOUT_MS` remains authoritative.
 
 ## Capability-aware routing
 
