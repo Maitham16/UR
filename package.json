@@ -159,7 +159,7 @@
     "vscode-jsonrpc": "^8.2.1",
     "vscode-languageserver-protocol": "^3.18.2",
     "vscode-languageserver-types": "^3.18.0",
-    "wrap-ansi": "^9.0.2",
+    "wrap-ansi": "^10.0.0",
     "ws": "^8.21.1",
     "xss": "^1.0.15",
     "yaml": "^2.9.0",
