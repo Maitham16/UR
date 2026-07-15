@@ -125,7 +125,7 @@
     "cli-boxes": "^3.0.0",
     "code-excerpt": "^4.0.0",
     "color-diff-napi": "^0.0.1",
-    "commander": "^13.1.0",
+    "commander": "^15.0.0",
     "diff": "^8.0.4",
     "emoji-regex": "^10.6.0",
     "env-paths": "^3.0.0",
