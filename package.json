@@ -123,7 +123,7 @@
     "commander": "^13.1.0",
     "diff": "^8.0.4",
     "emoji-regex": "^10.6.0",
-    "env-paths": "^3.0.0",
+    "env-paths": "^4.0.0",
     "execa": "^9.6.1",
     "fflate": "^0.8.3",
     "figures": "^6.1.0",
