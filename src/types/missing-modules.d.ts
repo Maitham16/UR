@@ -52,22 +52,12 @@ declare module '@opentelemetry/exporter-logs-otlp-grpc' {
   export = value
 }
 
-declare module '@opentelemetry/exporter-logs-otlp-http' {
-  const value: any
-  export = value
-}
-
 declare module '@opentelemetry/exporter-logs-otlp-proto' {
   const value: any
   export = value
 }
 
 declare module '@opentelemetry/exporter-metrics-otlp-grpc' {
-  const value: any
-  export = value
-}
-
-declare module '@opentelemetry/exporter-metrics-otlp-http' {
   const value: any
   export = value
 }
@@ -83,11 +73,6 @@ declare module '@opentelemetry/exporter-prometheus' {
 }
 
 declare module '@opentelemetry/exporter-trace-otlp-grpc' {
-  const value: any
-  export = value
-}
-
-declare module '@opentelemetry/exporter-trace-otlp-http' {
   const value: any
   export = value
 }

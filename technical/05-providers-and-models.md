@@ -70,6 +70,13 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   reasoning, metadata, and structured-output settings supported by each
   provider. Provider error payloads, empty responses, and truncated streams fail
   instead of becoming synthetic empty successes.
+- OpenAI API keeps Chat Completions as the default. Setting
+  `provider.openaiTransport` through
+  `ur config set openai_transport responses` selects the native Responses
+  adapter with `store=false` by default, semantic SSE, background
+  retrieve/poll/cancel, WebSocket continuation, compaction, deferred tool
+  search, and bounded private cursor state. Compacted context persistence
+  requires a 32-byte `UR_OPENAI_RESPONSES_STATE_KEY`.
 - `ollama.ts` selects timeouts from explicit request options, then
   `API_TIMEOUT_MS`, then runtime defaults. `:cloud` models and remote sessions
   use 120 seconds; local models use 300 seconds. The same model-aware value is

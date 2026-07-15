@@ -78,6 +78,7 @@
     "src/types/fileSuggestion.ts",
     "src/types/ids.ts",
     "src/types/logs.ts",
+    "src/types/macro.d.ts",
     "src/types/message.ts",
     "src/types/messageQueueTypes.ts",
     "src/types/notebook.ts",

@@ -1,6 +1,7 @@
 import { realpath } from 'fs/promises'
 import ignore from 'ignore'
 import memoize from 'lodash-es/memoize.js'
+import { homedir } from 'os'
 import {
   basename,
   dirname,
@@ -49,6 +50,7 @@ import { isPathGitignored } from '../utils/git/gitignore.js'
 import { logError } from '../utils/log.js'
 import {
   extractDescriptionFromMarkdown,
+  getCrossClientSkillDirsUpToHome,
   getProjectDirsUpToHome,
   loadMarkdownFilesForSubdir,
   type MarkdownFile,
@@ -63,6 +65,13 @@ import { isRestrictedToPluginOnly } from '../utils/settings/pluginOnlyPolicy.js'
 import { HooksSchema, type HooksSettings } from '../utils/settings/types.js'
 import { createSignal } from '../utils/signal.js'
 import { registerMCPSkillBuilders } from './mcpSkillBuilders.js'
+import {
+  assertSkillIntegrity,
+  inspectSkillProvenance,
+  shouldEnforceStrictSkillSpec,
+  shouldRequireTrustedSkillSignature,
+  type SkillProvenance,
+} from './skillProvenance.js'
 
 export type LoadedFrom =
   | 'commands_DEPRECATED'
@@ -126,6 +135,23 @@ async function getFileIdentity(filePath: string): Promise<string | null> {
 type SkillWithPath = {
   skill: Command
   filePath: string
+}
+
+function orderProjectSkillDirs(
+  nativeDirs: readonly string[],
+  crossClientDirs: readonly string[],
+): string[] {
+  return [
+    ...nativeDirs.map(dir => ({ dir, kind: 0 })),
+    ...crossClientDirs.map(dir => ({ dir, kind: 1 })),
+  ]
+    .sort(
+      (a, b) =>
+        b.dir.split(pathSep).length - a.dir.split(pathSep).length ||
+        a.kind - b.kind ||
+        a.dir.localeCompare(b.dir),
+    )
+    .map(entry => entry.dir)
 }
 
 /**
@@ -235,7 +261,11 @@ export function parseSkillFrontmatterFields(
 
   return {
     displayName:
-      frontmatter.name != null ? String(frontmatter.name) : undefined,
+      frontmatter['display-name'] != null
+        ? String(frontmatter['display-name'])
+        : frontmatter.name != null
+          ? String(frontmatter.name)
+          : undefined,
     description,
     hasUserSpecifiedDescription: validatedDescription !== null,
     allowedTools: parseSlashCommandToolsFromFrontmatter(
@@ -289,6 +319,7 @@ export function createSkillCommand({
   paths,
   effort,
   shell,
+  provenance,
 }: {
   skillName: string
   displayName: string | undefined
@@ -312,6 +343,7 @@ export function createSkillCommand({
   paths: string[] | undefined
   effort: EffortValue | undefined
   shell: FrontmatterShell | undefined
+  provenance?: SkillProvenance
 }): Command {
   return {
     type: 'prompt',
@@ -323,6 +355,7 @@ export function createSkillCommand({
     argNames: argumentNames.length > 0 ? argumentNames : undefined,
     whenToUse,
     version,
+    provenance,
     model,
     disableModelInvocation,
     userInvocable,
@@ -341,6 +374,7 @@ export function createSkillCommand({
     hooks,
     skillRoot: baseDir,
     async getPromptForCommand(args, toolUseContext) {
+      if (provenance) assertSkillIntegrity(provenance)
       let finalContent = baseDir
         ? `Base directory for this skill: ${baseDir}\n\n${markdownContent}`
         : markdownContent
@@ -455,6 +489,48 @@ async function loadSkillsFromSkillsDir(
           skillName,
         )
         const paths = parseSkillPaths(frontmatter)
+        const provenanceLoadedFrom: LoadedFrom =
+          source === 'policySettings' ? 'managed' : 'skills'
+        let provenance: SkillProvenance | undefined
+        try {
+          provenance = inspectSkillProvenance({
+            skillDir: skillDirPath,
+            rawSkill: content,
+            source,
+            loadedFrom: provenanceLoadedFrom,
+          })
+        } catch (error) {
+          logForDebugging(
+            `[skills] provenance inspection failed for ${skillFilePath}: ${error}`,
+            { level: 'warn' },
+          )
+          if (
+            shouldEnforceStrictSkillSpec() ||
+            shouldRequireTrustedSkillSignature()
+          ) {
+            return null
+          }
+        }
+        if (provenance && !provenance.validation.valid) {
+          logForDebugging(
+            `[skills] agentskills.io validation failed for ${skillFilePath}: ${provenance.validation.diagnostics
+              .filter(item => item.severity === 'error')
+              .map(item => `${item.code}: ${item.message}`)
+              .join('; ')}`,
+            { level: 'warn' },
+          )
+          if (shouldEnforceStrictSkillSpec()) return null
+        }
+        if (
+          shouldRequireTrustedSkillSignature() &&
+          provenance?.signature.status !== 'verified'
+        ) {
+          logForDebugging(
+            `[skills] rejected unsigned or untrusted skill ${skillFilePath}`,
+            { level: 'warn' },
+          )
+          return null
+        }
 
         return {
           skill: createSkillCommand({
@@ -463,8 +539,9 @@ async function loadSkillsFromSkillsDir(
             markdownContent,
             source,
             baseDir: skillDirPath,
-            loadedFrom: 'skills',
+            loadedFrom: provenanceLoadedFrom,
             paths,
+            provenance,
           }),
           filePath: skillFilePath,
         }
@@ -637,11 +714,15 @@ async function loadSkillsFromCommandsDir(
 export const getSkillDirCommands = memoize(
   async (cwd: string): Promise<Command[]> => {
     const userSkillsDir = join(getURConfigHomeDir(), 'skills')
+    const userCrossClientSkillsDir = join(homedir(), '.agents', 'skills')
     const managedSkillsDir = join(getManagedFilePath(), '.ur', 'skills')
-    const projectSkillsDirs = getProjectDirsUpToHome('skills', cwd)
+    const projectSkillsDirs = orderProjectSkillDirs(
+      getProjectDirsUpToHome('skills', cwd),
+      getCrossClientSkillDirsUpToHome(cwd),
+    )
 
     logForDebugging(
-      `Loading skills from: managed=${managedSkillsDir}, user=${userSkillsDir}, project=[${projectSkillsDirs.join(', ')}]`,
+      `Loading skills from: managed=${managedSkillsDir}, user=[${userSkillsDir}, ${userCrossClientSkillsDir}], project=[${projectSkillsDirs.join(', ')}]`,
     )
 
     // Load from additional directories (--add-dir)
@@ -662,12 +743,16 @@ export const getSkillDirCommands = memoize(
         return []
       }
       const additionalSkillsNested = await Promise.all(
-        additionalDirs.map(dir =>
+        additionalDirs.flatMap(dir => [
           loadSkillsFromSkillsDir(
             join(dir, '.ur', 'skills'),
             'projectSettings',
           ),
-        ),
+          loadSkillsFromSkillsDir(
+            join(dir, '.agents', 'skills'),
+            'projectSettings',
+          ),
+        ]),
       )
       // No dedup needed — explicit dirs, user controls uniqueness.
       return additionalSkillsNested.flat().map(s => s.skill)
@@ -677,17 +762,15 @@ export const getSkillDirCommands = memoize(
     // (all independent — different directories, no shared state)
     const [
       managedSkills,
-      userSkills,
       projectSkillsNested,
       additionalSkillsNested,
+      userSkills,
+      userCrossClientSkills,
       legacyCommands,
     ] = await Promise.all([
       isEnvTruthy(process.env.UR_CODE_DISABLE_POLICY_SKILLS)
         ? Promise.resolve([])
         : loadSkillsFromSkillsDir(managedSkillsDir, 'policySettings'),
-      isSettingSourceEnabled('userSettings') && !skillsLocked
-        ? loadSkillsFromSkillsDir(userSkillsDir, 'userSettings')
-        : Promise.resolve([]),
       projectSettingsEnabled
         ? Promise.all(
             projectSkillsDirs.map(dir =>
@@ -697,12 +780,25 @@ export const getSkillDirCommands = memoize(
         : Promise.resolve([]),
       projectSettingsEnabled
         ? Promise.all(
-            additionalDirs.map(dir =>
+            additionalDirs.flatMap(dir => [
               loadSkillsFromSkillsDir(
                 join(dir, '.ur', 'skills'),
                 'projectSettings',
               ),
-            ),
+              loadSkillsFromSkillsDir(
+                join(dir, '.agents', 'skills'),
+                'projectSettings',
+              ),
+            ]),
+          )
+        : Promise.resolve([]),
+      isSettingSourceEnabled('userSettings') && !skillsLocked
+        ? loadSkillsFromSkillsDir(userSkillsDir, 'userSettings')
+        : Promise.resolve([]),
+      isSettingSourceEnabled('userSettings') && !skillsLocked
+        ? loadSkillsFromSkillsDir(
+            userCrossClientSkillsDir,
+            'userSettings',
           )
         : Promise.resolve([]),
       // Legacy commands-as-skills goes through markdownConfigLoader with
@@ -715,9 +811,10 @@ export const getSkillDirCommands = memoize(
     // Flatten and combine all skills
     const allSkillsWithPaths = [
       ...managedSkills,
-      ...userSkills,
       ...projectSkillsNested.flat(),
       ...additionalSkillsNested.flat(),
+      ...userSkills,
+      ...userCrossClientSkills,
       ...legacyCommands,
     ]
 
@@ -785,7 +882,9 @@ export const getSkillDirCommands = memoize(
 
     // Store conditional skills for later activation when matching files are touched
     for (const skill of newConditionalSkills) {
-      conditionalSkills.set(skill.name, skill)
+      if (!conditionalSkills.has(skill.name)) {
+        conditionalSkills.set(skill.name, skill)
+      }
     }
 
     if (newConditionalSkills.length > 0) {
@@ -795,7 +894,7 @@ export const getSkillDirCommands = memoize(
     }
 
     logForDebugging(
-      `Loaded ${deduplicatedSkills.length} unique skills (${unconditionalSkills.length} unconditional, ${newConditionalSkills.length} conditional, managed: ${managedSkills.length}, user: ${userSkills.length}, project: ${projectSkillsNested.flat().length}, additional: ${additionalSkillsNested.flat().length}, legacy commands: ${legacyCommands.length})`,
+      `Loaded ${deduplicatedSkills.length} unique skills (${unconditionalSkills.length} unconditional, ${newConditionalSkills.length} conditional, managed: ${managedSkills.length}, user native: ${userSkills.length}, user cross-client: ${userCrossClientSkills.length}, project: ${projectSkillsNested.flat().length}, additional: ${additionalSkillsNested.flat().length}, legacy commands: ${legacyCommands.length})`,
     )
 
     return unconditionalSkills
@@ -873,30 +972,33 @@ export async function discoverSkillDirsForPaths(
     // CWD-level skills are already loaded at startup, so we only discover nested ones
     // Use prefix+separator check to avoid matching /project-backup when cwd is /project
     while (currentDir.startsWith(resolvedCwd + pathSep)) {
-      const skillDir = join(currentDir, '.ur', 'skills')
-
-      // Skip if we've already checked this path (hit or miss) — avoids
-      // repeating the same failed stat on every Read/Write/Edit call when
-      // the directory doesn't exist (the common case).
-      if (!dynamicSkillDirs.has(skillDir)) {
-        dynamicSkillDirs.add(skillDir)
-        try {
-          await fs.stat(skillDir)
-          // Skills dir exists. Before loading, check if the containing dir
-          // is gitignored — blocks e.g. node_modules/pkg/.ur/skills from
-          // loading silently. `git check-ignore` handles nested .gitignore,
-          // .git/info/exclude, and global gitignore. Fails open outside a
-          // git repo (exit 128 → false); the invocation-time trust dialog
-          // is the actual security boundary.
-          if (await isPathGitignored(currentDir, resolvedCwd)) {
-            logForDebugging(
-              `[skills] Skipped gitignored skills dir: ${skillDir}`,
-            )
-            continue
+      for (const skillDir of [
+        join(currentDir, '.ur', 'skills'),
+        join(currentDir, '.agents', 'skills'),
+      ]) {
+        // Skip if we've already checked this path (hit or miss) — avoids
+        // repeating the same failed stat on every Read/Write/Edit call when
+        // the directory doesn't exist (the common case).
+        if (!dynamicSkillDirs.has(skillDir)) {
+          dynamicSkillDirs.add(skillDir)
+          try {
+            await fs.stat(skillDir)
+            // Skills dir exists. Before loading, check if the containing dir
+            // is gitignored — blocks e.g. node_modules/pkg/.ur/skills from
+            // loading silently. `git check-ignore` handles nested .gitignore,
+            // .git/info/exclude, and global gitignore. Fails open outside a
+            // git repo (exit 128 → false); the invocation-time trust dialog
+            // is the actual security boundary.
+            if (await isPathGitignored(currentDir, resolvedCwd)) {
+              logForDebugging(
+                `[skills] Skipped gitignored skills dir: ${skillDir}`,
+              )
+              continue
+            }
+            newDirs.push(skillDir)
+          } catch {
+            // Directory doesn't exist — already recorded above, continue
           }
-          newDirs.push(skillDir)
-        } catch {
-          // Directory doesn't exist — already recorded above, continue
         }
       }
 
@@ -908,9 +1010,13 @@ export async function discoverSkillDirsForPaths(
   }
 
   // Sort by path depth (deepest first) so skills closer to the file take precedence
-  return newDirs.sort(
-    (a, b) => b.split(pathSep).length - a.split(pathSep).length,
-  )
+  return newDirs.sort((a, b) => {
+    const depth = b.split(pathSep).length - a.split(pathSep).length
+    if (depth !== 0) return depth
+    const aNative = basename(dirname(a)) === '.ur' ? 0 : 1
+    const bNative = basename(dirname(b)) === '.ur' ? 0 : 1
+    return aNative - bNative || a.localeCompare(b)
+  })
 }
 
 /**

@@ -242,14 +242,17 @@ export function convertToSandboxRuntimeConfig(
     denyWrite.push(resolve(cwd, '.ur', 'settings.local.json'))
   }
 
-  // Block writes to .ur/skills in both original and current working directories.
+  // Block writes to native and cross-client skill roots in both original and
+  // current working directories.
   // The sandbox-runtime's getDangerousDirectories() protects .ur/commands and
   // .ur/agents but not .ur/skills. Skills have the same privilege level
   // (auto-discovered, auto-loaded, full UR capabilities) so they need the
   // same OS-level sandbox protection.
   denyWrite.push(resolve(originalCwd, '.ur', 'skills'))
+  denyWrite.push(resolve(originalCwd, '.agents', 'skills'))
   if (cwd !== originalCwd) {
     denyWrite.push(resolve(cwd, '.ur', 'skills'))
+    denyWrite.push(resolve(cwd, '.agents', 'skills'))
   }
 
   // SECURITY: Git's is_git_directory() treats cwd as a bare repo if it has

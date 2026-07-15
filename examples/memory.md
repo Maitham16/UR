@@ -9,7 +9,10 @@
   `.ur/context/architecture.md` from package scripts, instruction files,
   `.ur/verify.json`, and safety config.
 - `ur context-pack remember --decision|--constraint|--command|--diff|--note`
-  appends durable task memory to `.ur/context/task-memory.jsonl`; `compress`
-  writes `.ur/context/compressed.md`.
+  appends provenance-rich, hash-chained task memory to
+  `.ur/context/task-memory.jsonl`; `ur context-pack memory verify|quarantine`
+  checks or repairs a corrupt tail, `memory rollback --to <entry-id>` preserves
+  a private backup before truncation, and `compress` writes
+  `.ur/context/compressed.md`.
 - `/ur-init` scaffolds the `.ur/` asset folder (docs, superpowers, brainstorming,
   memory, prompts).

@@ -1,17 +1,23 @@
 /**
- * Session Tracing for UR using OpenTelemetry (BETA)
+ * Session tracing for UR using OpenTelemetry GenAI semantic conventions.
  *
  * This module provides a high-level API for creating and managing spans
  * to trace UR workflows. Each user interaction creates a root
  * interaction span, which contains operation spans (LLM requests, tool calls, etc.).
  *
- * Requirements:
- * - Enhanced telemetry is enabled via feature('ENHANCED_TELEMETRY_BETA')
- * - Configure OTEL_TRACES_EXPORTER (console, otlp, etc.)
+ * Export is opt-in through standard OTEL_*_EXPORTER variables. Content is
+ * excluded unless OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT is true.
  */
 
 import { feature } from 'bun:bundle'
-import { context as otelContext, type Span, trace } from '@opentelemetry/api'
+import {
+  context as otelContext,
+  type Attributes,
+  type Span,
+  SpanKind,
+  SpanStatusCode,
+  trace,
+} from '@opentelemetry/api'
 import { AsyncLocalStorage } from 'async_hooks'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import type { AssistantMessage, UserMessage } from '../../types/message.js'
@@ -27,6 +33,18 @@ import {
   type LLMRequestNewContext,
   truncateContent,
 } from './betaSessionTracing.js'
+import {
+  classifyGenAiError,
+  genAiAgentAttributes,
+  genAiInferenceAttributes,
+  genAiToolAttributes,
+  recordGenAiAgentDuration,
+  recordGenAiClientMetrics,
+  recordGenAiToolDuration,
+  shouldCaptureGenAiContent,
+  truncateGenAiContent,
+} from './genAiSemantics.js'
+import { isTelemetryEnabled } from './instrumentation.js'
 import {
   endInteractionPerfettoSpan,
   endLLMRequestPerfettoSpan,
@@ -57,7 +75,7 @@ type SpanType =
 interface SpanContext {
   span: Span
   startTime: number
-  attributes: Record<string, string | number | boolean>
+  attributes: Attributes
   ended?: boolean
   perfettoSpanId?: string
 }
@@ -74,13 +92,22 @@ const activeSpans = new Map<string, WeakRef<SpanContext>>()
 // the corresponding end* function retrieves it.
 const strongSpans = new Map<string, SpanContext>()
 let interactionSequence = 0
+let localSpanSequence = 0
 let _cleanupIntervalStarted = false
 
 const SPAN_TTL_MS = 30 * 60 * 1000 // 30 minutes
 
 function getSpanId(span: Span): string {
-  return span.spanContext().spanId || ''
+  const spanId = span.spanContext().spanId
+  if (spanId && !/^0+$/.test(spanId)) return spanId
+  const existing = localSpanIds.get(span)
+  if (existing) return existing
+  const local = `local-${++localSpanSequence}`
+  localSpanIds.set(span, local)
+  return local
 }
+
+const localSpanIds = new WeakMap<Span, string>()
 
 /**
  * Lazily start a background interval that evicts orphaned spans from activeSpans.
@@ -146,20 +173,24 @@ export function isEnhancedTelemetryEnabled(): boolean {
  * Check if any tracing is enabled (either standard enhanced telemetry OR beta tracing)
  */
 function isAnyTracingEnabled(): boolean {
-  return isEnhancedTelemetryEnabled() || isBetaTracingEnabled()
+  return (
+    isTelemetryEnabled() ||
+    isEnhancedTelemetryEnabled() ||
+    isBetaTracingEnabled()
+  )
 }
 
 function getTracer() {
-  return trace.getTracer('com.urhq.ur.tracing', '1.0.0')
+  return trace.getTracer('ur-agent.gen_ai', MACRO.VERSION)
 }
 
 function createSpanAttributes(
   spanType: SpanType,
-  customAttributes: Record<string, string | number | boolean> = {},
-): Record<string, string | number | boolean> {
+  customAttributes: Attributes = {},
+): Attributes {
   const baseAttributes = getTelemetryAttributes()
 
-  const attributes: Record<string, string | number | boolean> = {
+  const attributes: Attributes = {
     ...baseAttributes,
     'span.type': spanType,
     ...customAttributes,
@@ -200,21 +231,22 @@ export function startInteractionSpan(userPrompt: string): Span {
   }
 
   const tracer = getTracer()
-  const isUserPromptLoggingEnabled = isEnvTruthy(
-    process.env.OTEL_LOG_USER_PROMPTS,
-  )
-  const promptToLog = isUserPromptLoggingEnabled ? userPrompt : '<REDACTED>'
+  const captureContent = shouldCaptureGenAiContent()
 
   interactionSequence++
 
   const attributes = createSpanAttributes('interaction', {
-    user_prompt: promptToLog,
+    ...genAiAgentAttributes(),
+    ...(captureContent
+      ? { user_prompt: truncateGenAiContent(userPrompt) }
+      : {}),
     user_prompt_length: userPrompt.length,
     'interaction.sequence': interactionSequence,
   })
 
-  const span = tracer.startSpan('ur.interaction', {
+  const span = tracer.startSpan('invoke_agent UR-Nexus', {
     attributes,
+    kind: SpanKind.INTERNAL,
   })
 
   // Add experimental attributes (new_context)
@@ -264,6 +296,7 @@ export function endInteractionSpan(): void {
   spanContext.span.setAttributes({
     'interaction.duration_ms': duration,
   })
+  recordGenAiAgentDuration(duration)
 
   spanContext.span.end()
   spanContext.ended = true
@@ -306,8 +339,13 @@ export function startLLMRequestSpan(
 
   const tracer = getTracer()
   const parentSpanCtx = interactionContext.getStore()
+  const providerAddress = process.env.UR_OTEL_GENAI_SERVER_ADDRESS
 
   const attributes = createSpanAttributes('llm_request', {
+    ...genAiInferenceAttributes(model, {
+      stream: true,
+      serverAddress: providerAddress,
+    }),
     model: model,
     'llm_request.context': parentSpanCtx ? 'interaction' : 'standalone',
     speed: fastMode ? 'fast' : 'normal',
@@ -316,7 +354,11 @@ export function startLLMRequestSpan(
   const ctx = parentSpanCtx
     ? trace.setSpan(otelContext.active(), parentSpanCtx.span)
     : otelContext.active()
-  const span = tracer.startSpan('ur.llm_request', { attributes }, ctx)
+  const span = tracer.startSpan(
+    `chat ${model}`,
+    { attributes, kind: SpanKind.CLIENT },
+    ctx,
+  )
 
   // Add query_source (agent name) if provided
   if (newContext?.querySource) {
@@ -325,6 +367,26 @@ export function startLLMRequestSpan(
 
   // Add experimental attributes (system prompt, new_context)
   addBetaLLMRequestAttributes(span, newContext, messagesForAPI)
+  if (shouldCaptureGenAiContent()) {
+    if (messagesForAPI && messagesForAPI.length > 0) {
+      span.setAttribute(
+        'gen_ai.input.messages',
+        truncateGenAiContent(JSON.stringify(messagesForAPI)),
+      )
+    }
+    if (newContext?.systemPrompt) {
+      span.setAttribute(
+        'gen_ai.system_instructions',
+        truncateGenAiContent(newContext.systemPrompt),
+      )
+    }
+    if (newContext?.tools) {
+      span.setAttribute(
+        'gen_ai.tool.definitions',
+        truncateGenAiContent(newContext.tools),
+      )
+    }
+  }
 
   const spanId = getSpanId(span)
   const spanContextObj: SpanContext = {
@@ -362,6 +424,8 @@ export function endLLMRequestSpan(
     error?: string
     attempt?: number
     modelResponse?: string
+    responseId?: string
+    finishReason?: string
     /** Text output from the model (non-thinking content) */
     modelOutput?: string
     /** Thinking/reasoning output from the model */
@@ -429,33 +493,106 @@ export function endLLMRequestSpan(
   const endAttributes: Record<string, string | number | boolean> = {
     duration_ms: duration,
   }
+  const errorType = classifyGenAiError({
+    statusCode: metadata?.statusCode,
+    error: metadata?.error,
+  })
 
   if (metadata) {
-    if (metadata.inputTokens !== undefined)
+    if (metadata.inputTokens !== undefined) {
       endAttributes['input_tokens'] = metadata.inputTokens
-    if (metadata.outputTokens !== undefined)
+      endAttributes['gen_ai.usage.input_tokens'] = metadata.inputTokens
+    }
+    if (metadata.outputTokens !== undefined) {
       endAttributes['output_tokens'] = metadata.outputTokens
-    if (metadata.cacheReadTokens !== undefined)
+      endAttributes['gen_ai.usage.output_tokens'] = metadata.outputTokens
+    }
+    if (metadata.cacheReadTokens !== undefined) {
       endAttributes['cache_read_tokens'] = metadata.cacheReadTokens
-    if (metadata.cacheCreationTokens !== undefined)
+      endAttributes['gen_ai.usage.cache_read.input_tokens'] =
+        metadata.cacheReadTokens
+    }
+    if (metadata.cacheCreationTokens !== undefined) {
       endAttributes['cache_creation_tokens'] = metadata.cacheCreationTokens
+      endAttributes['gen_ai.usage.cache_creation.input_tokens'] =
+        metadata.cacheCreationTokens
+    }
     if (metadata.success !== undefined)
       endAttributes['success'] = metadata.success
     if (metadata.statusCode !== undefined)
       endAttributes['status_code'] = metadata.statusCode
-    if (metadata.error !== undefined) endAttributes['error'] = metadata.error
     if (metadata.attempt !== undefined)
       endAttributes['attempt'] = metadata.attempt
     if (metadata.hasToolCall !== undefined)
       endAttributes['response.has_tool_call'] = metadata.hasToolCall
-    if (metadata.ttftMs !== undefined)
+    if (
+      metadata.ttftMs !== undefined &&
+      Number.isFinite(metadata.ttftMs) &&
+      metadata.ttftMs > 0
+    ) {
       endAttributes['ttft_ms'] = metadata.ttftMs
+      endAttributes['gen_ai.response.time_to_first_chunk'] =
+        metadata.ttftMs / 1000
+    }
+    if (metadata.modelResponse) {
+      endAttributes['gen_ai.response.model'] = metadata.modelResponse
+    }
+    if (metadata.responseId) {
+      endAttributes['gen_ai.response.id'] = metadata.responseId
+    }
+    if (errorType) endAttributes['error.type'] = errorType
 
     // Add experimental response attributes (model_output, thinking_output)
     addBetaLLMResponseAttributes(endAttributes, metadata)
   }
 
   llmSpanContext.span.setAttributes(endAttributes)
+  if (metadata?.finishReason) {
+    llmSpanContext.span.setAttribute('gen_ai.response.finish_reasons', [
+      metadata.finishReason,
+    ])
+  }
+  if (shouldCaptureGenAiContent() && metadata?.modelOutput) {
+    llmSpanContext.span.setAttribute(
+      'gen_ai.output.messages',
+      truncateGenAiContent(
+        JSON.stringify([
+          {
+            role: 'assistant',
+            parts: [{ type: 'text', content: metadata.modelOutput }],
+            ...(metadata.finishReason
+              ? { finish_reason: metadata.finishReason }
+              : {}),
+          },
+        ]),
+      ),
+    )
+  }
+  if (metadata?.success === false || errorType) {
+    llmSpanContext.span.setStatus({ code: SpanStatusCode.ERROR })
+  } else if (metadata?.success === true) {
+    llmSpanContext.span.setStatus({ code: SpanStatusCode.OK })
+  }
+
+  const requestModel = String(
+    llmSpanContext.attributes['gen_ai.request.model'] ??
+      llmSpanContext.attributes['model'] ??
+      'unknown',
+  )
+  const provider = String(
+    llmSpanContext.attributes['gen_ai.provider.name'] ?? 'ur',
+  )
+  recordGenAiClientMetrics({
+    model: requestModel,
+    provider,
+    durationMs: duration,
+    inputTokens: metadata?.inputTokens,
+    outputTokens: metadata?.outputTokens,
+    responseModel: metadata?.modelResponse,
+    errorType,
+    stream: llmSpanContext.attributes['gen_ai.request.stream'] === true,
+    timeToFirstChunkMs: metadata?.ttftMs,
+  })
   llmSpanContext.span.end()
 
   const spanId = getSpanId(llmSpanContext.span)
@@ -495,18 +632,29 @@ export function startToolSpan(
   const parentSpanCtx = interactionContext.getStore()
 
   const attributes = createSpanAttributes('tool', {
+    ...genAiToolAttributes(toolName),
     tool_name: toolName,
-    ...toolAttributes,
+    ...(shouldCaptureGenAiContent() ? toolAttributes : {}),
   })
 
   const ctx = parentSpanCtx
     ? trace.setSpan(otelContext.active(), parentSpanCtx.span)
     : otelContext.active()
-  const span = tracer.startSpan('ur.tool', { attributes }, ctx)
+  const span = tracer.startSpan(
+    `execute_tool ${toolName}`,
+    { attributes, kind: SpanKind.INTERNAL },
+    ctx,
+  )
 
   // Add experimental tool input attributes
   if (toolInput) {
     addBetaToolInputAttributes(span, toolName, toolInput)
+    if (shouldCaptureGenAiContent()) {
+      span.setAttribute(
+        'gen_ai.tool.call.arguments',
+        truncateGenAiContent(toolInput),
+      )
+    }
   }
 
   const spanId = getSpanId(span)
@@ -677,7 +825,16 @@ export function endToolExecutionSpan(metadata?: {
 
   if (metadata) {
     if (metadata.success !== undefined) attributes['success'] = metadata.success
-    if (metadata.error !== undefined) attributes['error'] = metadata.error
+    const errorType = classifyGenAiError({ error: metadata.error })
+    if (errorType) {
+      attributes['error.type'] = errorType
+      executionSpanContext.span.setStatus({ code: SpanStatusCode.ERROR })
+      const parent = toolContext.getStore()
+      parent?.span.setAttribute('error.type', errorType)
+      if (parent) parent.attributes['error.type'] = errorType
+    } else if (metadata.success === true) {
+      executionSpanContext.span.setStatus({ code: SpanStatusCode.OK })
+    }
   }
 
   executionSpanContext.span.setAttributes(attributes)
@@ -719,8 +876,12 @@ export function endToolSpan(toolResult?: string, resultTokens?: number): void {
 
   // Add experimental tool result attributes (new_context)
   if (toolResult) {
-    const toolName = toolSpanContext.attributes['tool_name'] || 'unknown'
+    const toolName = String(toolSpanContext.attributes['tool_name'] || 'unknown')
     addBetaToolResultAttributes(endAttributes, toolName, toolResult)
+    if (shouldCaptureGenAiContent()) {
+      endAttributes['gen_ai.tool.call.result'] =
+        truncateGenAiContent(toolResult)
+    }
   }
 
   if (resultTokens !== undefined) {
@@ -728,6 +889,21 @@ export function endToolSpan(toolResult?: string, resultTokens?: number): void {
   }
 
   toolSpanContext.span.setAttributes(endAttributes)
+  const toolName = String(
+    toolSpanContext.attributes['gen_ai.tool.name'] ??
+      toolSpanContext.attributes['tool_name'] ??
+      'unknown',
+  )
+  const errorType =
+    typeof toolSpanContext.attributes['error.type'] === 'string'
+      ? toolSpanContext.attributes['error.type']
+      : undefined
+  if (errorType) {
+    toolSpanContext.span.setStatus({ code: SpanStatusCode.ERROR })
+  } else {
+    toolSpanContext.span.setStatus({ code: SpanStatusCode.OK })
+  }
+  recordGenAiToolDuration(toolName, duration, errorType)
   toolSpanContext.span.end()
 
   const spanId = getSpanId(toolSpanContext.span)
@@ -736,7 +912,10 @@ export function endToolSpan(toolResult?: string, resultTokens?: number): void {
 }
 
 function isToolContentLoggingEnabled(): boolean {
-  return isEnvTruthy(process.env.OTEL_LOG_TOOL_CONTENT)
+  return (
+    shouldCaptureGenAiContent() ||
+    isEnvTruthy(process.env.OTEL_LOG_TOOL_CONTENT)
+  )
 }
 
 /**
@@ -804,7 +983,11 @@ export async function executeInSpan<T>(
   const ctx = parentSpanCtx
     ? trace.setSpan(otelContext.active(), parentSpanCtx.span)
     : otelContext.active()
-  const span = tracer.startSpan(spanName, { attributes: finalAttributes }, ctx)
+  const span = tracer.startSpan(
+    spanName,
+    { attributes: finalAttributes, kind: SpanKind.INTERNAL },
+    ctx,
+  )
 
   const spanId = getSpanId(span)
   const spanContextObj: SpanContext = {
@@ -817,14 +1000,22 @@ export async function executeInSpan<T>(
 
   try {
     const result = await fn(span)
+    span.setStatus({ code: SpanStatusCode.OK })
     span.end()
     activeSpans.delete(spanId)
     strongSpans.delete(spanId)
     return result
   } catch (error) {
-    if (error instanceof Error) {
+    if (error instanceof Error && shouldCaptureGenAiContent()) {
       span.recordException(error)
     }
+    span.setAttribute(
+      'error.type',
+      classifyGenAiError({
+        error: error instanceof Error ? error.message : String(error),
+      }) ?? '_OTHER',
+    )
+    span.setStatus({ code: SpanStatusCode.ERROR })
     span.end()
     activeSpans.delete(spanId)
     strongSpans.delete(spanId)

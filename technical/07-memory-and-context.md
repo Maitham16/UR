@@ -67,10 +67,17 @@ Repo-architecture summary + task memory + compressed project context in `.ur/con
 ```
 /context-pack scan
 /context-pack remember --type decision --text "we chose fastify over express"
+/context-pack memory verify
+/context-pack memory quarantine
+/context-pack memory rollback --to <entry-id>
 /context-pack compress
 /context-pack status
 ```
-Types: `decision | constraint | command | diff | note`.
+Types: `decision | constraint | command | diff | note | architecture |
+preference | attempt | accepted | rejected`. New entries contain UUIDs,
+source provenance, content digests, and a SHA-256 previous-entry chain. Appends
+are locked, private, no-follow, and fsynced; reads fail closed. Quarantine and
+rollback preserve a private copy of the full original before replacement.
 
 ## Context window management
 

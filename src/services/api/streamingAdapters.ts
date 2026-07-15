@@ -19,6 +19,7 @@ type StreamOptions = {
   model?: string
   requestId?: string
   providerName?: string
+  onEvent?: (event: any) => void
 }
 
 const EMPTY_USAGE: Usage = {
@@ -66,6 +67,29 @@ export function createOpenAISSEMessageStream(body: unknown, options: StreamOptio
     controller,
     async *[Symbol.asyncIterator]() {
       yield* streamOpenAIEvents(body, { ...options, controller, signal })
+    },
+  }
+}
+
+/**
+ * Convert OpenAI Responses API semantic SSE events into the Anthropic-shaped
+ * stream contract consumed by the rest of UR. Raw events remain available via
+ * `onEvent`, which is also used to durably checkpoint background-stream cursors.
+ */
+export function createOpenAIResponsesSSEMessageStream(
+  body: unknown,
+  options: StreamOptions = {},
+) {
+  const controller = options.controller ?? new AbortController()
+  const signal = mergeAbortSignals([controller.signal, options.signal])
+  return {
+    controller,
+    async *[Symbol.asyncIterator]() {
+      yield* streamOpenAIResponsesEvents(body, {
+        ...options,
+        controller,
+        signal,
+      })
     },
   }
 }
@@ -332,6 +356,236 @@ async function* streamOpenAIEvents(
       stop_reason: mapOpenAIStreamStopReason(finishReason, sawToolUse),
       stop_sequence: null,
     },
+    usage,
+  }
+  yield { type: 'message_stop' }
+}
+
+async function* streamOpenAIResponsesEvents(
+  body: unknown,
+  options: StreamOptions,
+): AsyncGenerator<any> {
+  const providerName = options.providerName ?? 'openai-responses'
+  let responseId = options.requestId ?? `${providerName}-${randomUUID()}`
+  let model = options.model ?? 'unknown'
+  let started = false
+  let terminal = false
+  let sawToolUse = false
+  let usage = EMPTY_USAGE
+  let blockIndex = 0
+  let stopReason = 'end_turn'
+  const blocks = new Map<string, {
+    index: number
+    kind: 'text' | 'thinking' | 'tool_use'
+    emitted: string
+    stopped: boolean
+  }>()
+
+  const ensureMessageStart = function* () {
+    if (started) return
+    started = true
+    yield messageStartEvent(responseId, model, EMPTY_USAGE)
+  }
+
+  const ensureBlock = function* (
+    key: string,
+    kind: 'text' | 'thinking' | 'tool_use',
+    item?: any,
+  ) {
+    let state = blocks.get(key)
+    if (state) return state
+    for (const event of ensureMessageStart()) yield event
+    state = { index: blockIndex++, kind, emitted: '', stopped: false }
+    blocks.set(key, state)
+    if (kind === 'tool_use') {
+      sawToolUse = true
+      yield {
+        type: 'content_block_start',
+        index: state.index,
+        content_block: {
+          type: 'tool_use',
+          id: item?.call_id ?? item?.id ?? `toolu_${randomUUID().replace(/-/g, '')}`,
+          name: item?.name ?? 'unknown_tool',
+          input: {},
+          ...(item?.namespace ? { namespace: item.namespace } : {}),
+        },
+      }
+    } else if (kind === 'thinking') {
+      yield {
+        type: 'content_block_start',
+        index: state.index,
+        content_block: { type: 'thinking', thinking: '' },
+      }
+    } else {
+      yield {
+        type: 'content_block_start',
+        index: state.index,
+        content_block: { type: 'text', text: '' },
+      }
+    }
+    return state
+  }
+
+  const stopBlock = function* (key: string) {
+    const state = blocks.get(key)
+    if (!state || state.stopped) return
+    state.stopped = true
+    yield { type: 'content_block_stop', index: state.index }
+  }
+
+  const emitText = function* (
+    key: string,
+    text: string,
+    kind: 'text' | 'thinking',
+  ) {
+    if (!text) return
+    let state = blocks.get(key)
+    if (!state) {
+      for (const event of ensureBlock(key, kind)) yield event
+      state = blocks.get(key)!
+    }
+    state.emitted += text
+    yield {
+      type: 'content_block_delta',
+      index: state.index,
+      delta: kind === 'thinking'
+        ? { type: 'thinking_delta', thinking: text }
+        : { type: 'text_delta', text },
+    }
+  }
+
+  for await (const payload of readSSEData(body, options.signal)) {
+    if (payload === '[DONE]') break
+    const event = parseJSONPayload(payload, `${providerName} SSE event`)
+    options.onEvent?.(event)
+    throwProviderPayloadError(event, providerName)
+    if (event?.response?.id) responseId = event.response.id
+    if (event?.response?.model) model = event.response.model
+    if (event?.response?.usage) usage = usageFromOpenAIResponses(event.response.usage)
+
+    const outputIndex = Number.isInteger(event?.output_index) ? event.output_index : 0
+    const contentIndex = Number.isInteger(event?.content_index) ? event.content_index : 0
+    const textKey = `text:${outputIndex}:${contentIndex}`
+    const thinkingKey = `thinking:${outputIndex}:${contentIndex}`
+    const toolKey = `tool:${outputIndex}`
+
+    switch (event?.type) {
+      case 'response.created':
+      case 'response.queued':
+      case 'response.in_progress':
+        for (const output of ensureMessageStart()) yield output
+        break
+      case 'response.output_text.delta':
+      case 'response.refusal.delta':
+        for (const output of emitText(
+          textKey,
+          String(event.delta ?? ''),
+          'text',
+        )) yield output
+        break
+      case 'response.output_text.done':
+      case 'response.refusal.done': {
+        const finalText = String(event.text ?? event.refusal ?? '')
+        if (!blocks.get(textKey)?.emitted && finalText) {
+          for (const output of emitText(textKey, finalText, 'text')) yield output
+        }
+        for (const output of stopBlock(textKey)) yield output
+        break
+      }
+      case 'response.reasoning_summary_text.delta':
+      case 'response.reasoning_text.delta':
+        for (const output of emitText(
+          thinkingKey,
+          String(event.delta ?? ''),
+          'thinking',
+        )) yield output
+        break
+      case 'response.reasoning_summary_text.done':
+      case 'response.reasoning_text.done': {
+        const finalThinking = String(event.text ?? '')
+        if (!blocks.get(thinkingKey)?.emitted && finalThinking) {
+          for (const output of emitText(thinkingKey, finalThinking, 'thinking')) yield output
+        }
+        for (const output of stopBlock(thinkingKey)) yield output
+        break
+      }
+      case 'response.output_item.added':
+        if (event.item?.type === 'function_call') {
+          for (const output of ensureBlock(toolKey, 'tool_use', event.item)) yield output
+        }
+        break
+      case 'response.function_call_arguments.delta': {
+        let state = blocks.get(toolKey)
+        if (!state) {
+          for (const output of ensureBlock(toolKey, 'tool_use', event.item)) yield output
+          state = blocks.get(toolKey)!
+        }
+        const delta = String(event.delta ?? '')
+        state.emitted += delta
+        if (delta) {
+          yield {
+            type: 'content_block_delta',
+            index: state.index,
+            delta: { type: 'input_json_delta', partial_json: delta },
+          }
+        }
+        break
+      }
+      case 'response.output_item.done':
+        if (event.item?.type === 'function_call') {
+          let state = blocks.get(toolKey)
+          if (!state) {
+            for (const output of ensureBlock(toolKey, 'tool_use', event.item)) yield output
+            state = blocks.get(toolKey)!
+          }
+          const args = String(event.item.arguments ?? '')
+          if (!state.emitted && args) {
+            state.emitted = args
+            yield {
+              type: 'content_block_delta',
+              index: state.index,
+              delta: { type: 'input_json_delta', partial_json: args },
+            }
+          }
+          for (const output of stopBlock(toolKey)) yield output
+        }
+        break
+      case 'response.completed':
+      case 'response.incomplete':
+      case 'response.failed':
+      case 'response.cancelled': {
+        if (event.type === 'response.failed') {
+          const detail = event.response?.error?.message ?? 'response failed'
+          throw new ProviderResponseParseError(`${providerName} failed: ${detail}`, { event })
+        }
+        terminal = true
+        const reason = event.response?.incomplete_details?.reason
+        stopReason = sawToolUse
+          ? 'tool_use'
+          : reason === 'max_output_tokens'
+            ? 'max_tokens'
+            : 'end_turn'
+        break
+      }
+      default:
+        break
+    }
+    if (terminal) break
+  }
+
+  if (!terminal) {
+    throw new ProviderResponseParseError(`${providerName} stream ended before a terminal event`)
+  }
+  for (const output of ensureMessageStart()) yield output
+  if (blocks.size === 0) {
+    for (const output of ensureBlock('text:0:0', 'text')) yield output
+  }
+  for (const [key] of blocks) {
+    for (const output of stopBlock(key)) yield output
+  }
+  yield {
+    type: 'message_delta',
+    delta: { stop_reason: stopReason, stop_sequence: null },
     usage,
   }
   yield { type: 'message_stop' }
@@ -759,6 +1013,17 @@ function usageFromOpenAI(usage: any): Usage {
   return normalizeUsage({
     input_tokens: usage?.prompt_tokens ?? 0,
     output_tokens: usage?.completion_tokens ?? 0,
+  })
+}
+
+function usageFromOpenAIResponses(usage: any): Usage {
+  return normalizeUsage({
+    input_tokens: usage?.input_tokens ?? 0,
+    output_tokens: usage?.output_tokens ?? 0,
+    cache_creation_input_tokens:
+      usage?.input_tokens_details?.cache_write_tokens ?? 0,
+    cache_read_input_tokens:
+      usage?.input_tokens_details?.cached_tokens ?? 0,
   })
 }
 

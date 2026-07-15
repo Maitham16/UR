@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -9,7 +9,13 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { AgentCard, JSONRPCResponse, Message, Task } from '@a2a-js/sdk'
+import type {
+  AgentCard,
+  Artifact,
+  JSONRPCResponse,
+  Message,
+  Task,
+} from '@a2a-js/sdk'
 import {
   A2AError,
   DefaultRequestHandler,
@@ -61,6 +67,23 @@ export type A2AProtocolInspection = {
   method?: string
   prompt?: string
   skill: string
+}
+
+export type A2AProtocolTaskListParams = {
+  contextId?: string
+  status?: Task['status']['state']
+  pageSize: number
+  pageToken?: string
+  historyLength?: number
+  statusTimestampAfter?: string
+  includeArtifacts: boolean
+}
+
+export type A2AProtocolTaskList = {
+  tasks: Task[]
+  nextPageToken: string
+  pageSize: number
+  totalSize: number
 }
 
 function protocolManifestPath(cwd: string): string {
@@ -213,6 +236,144 @@ class PersistentA2ATaskStore implements TaskStore {
     }
     saveProtocolTaskManifest(this.#cwd, this.#tasks.values())
   }
+
+  async listVisible(
+    params: A2AProtocolTaskListParams,
+    context?: ServerCallContext,
+  ): Promise<A2AProtocolTaskList> {
+    const owner = ownerFromContext(context)
+    const identity = identityFromContext(context)
+    const filterKey = createHash('sha256')
+      .update(
+        JSON.stringify({
+          owner,
+          contextId: params.contextId ?? null,
+          status: params.status ?? null,
+          historyLength: params.historyLength ?? null,
+          statusTimestampAfter: params.statusTimestampAfter ?? null,
+          includeArtifacts: params.includeArtifacts,
+        }),
+      )
+      .digest('base64url')
+
+    const visible = [...this.#tasks.values()]
+      .filter(entry => {
+        if (
+          entry.owner !== owner ||
+          !identityAllowsSkill(identity, entry.skill)
+        ) {
+          return false
+        }
+        if (params.contextId && entry.task.contextId !== params.contextId) {
+          return false
+        }
+        if (params.status && entry.task.status.state !== params.status) {
+          return false
+        }
+        if (params.statusTimestampAfter) {
+          const timestamp = entry.task.status.timestamp
+          if (
+            !timestamp ||
+            Date.parse(timestamp) < Date.parse(params.statusTimestampAfter)
+          ) {
+            return false
+          }
+        }
+        return true
+      })
+      .sort(
+        (a, b) =>
+          String(b.task.status.timestamp).localeCompare(
+            String(a.task.status.timestamp),
+          ) || a.task.id.localeCompare(b.task.id),
+      )
+
+    let start = 0
+    if (params.pageToken) {
+      let parsed: unknown
+      try {
+        if (
+          params.pageToken.length > 4_096 ||
+          !/^[0-9A-Za-z_-]+$/u.test(params.pageToken)
+        ) {
+          throw new Error('invalid token encoding')
+        }
+        parsed = JSON.parse(
+          Buffer.from(params.pageToken, 'base64url').toString('utf8'),
+        )
+      } catch {
+        throw A2AError.invalidParams('invalid ListTasks pageToken')
+      }
+      const cursor = parsed as {
+        version?: unknown
+        filter?: unknown
+        timestamp?: unknown
+        taskId?: unknown
+      }
+      if (
+        !cursor ||
+        cursor.version !== 1 ||
+        cursor.filter !== filterKey ||
+        typeof cursor.timestamp !== 'string' ||
+        typeof cursor.taskId !== 'string'
+      ) {
+        throw A2AError.invalidParams('invalid ListTasks pageToken')
+      }
+      const cursorTimestamp = cursor.timestamp
+      const cursorTaskId = cursor.taskId
+      const exact = visible.findIndex(
+        entry =>
+          String(entry.task.status.timestamp) === cursorTimestamp &&
+          entry.task.id === cursorTaskId,
+      )
+      if (exact >= 0) {
+        start = exact + 1
+      } else {
+        start = visible.findIndex(
+          entry =>
+            String(entry.task.status.timestamp).localeCompare(cursorTimestamp) <
+              0 ||
+            (String(entry.task.status.timestamp) === cursorTimestamp &&
+              entry.task.id.localeCompare(cursorTaskId) > 0),
+        )
+        if (start < 0) start = visible.length
+      }
+    }
+
+    const selected = visible.slice(start, start + params.pageSize)
+    const tasks = selected.map(entry => {
+      const task = cloneTask(entry.task)
+      if (!params.includeArtifacts) delete task.artifacts
+      if (params.historyLength === 0) {
+        delete task.history
+      } else if (
+        params.historyLength !== undefined &&
+        task.history &&
+        task.history.length > params.historyLength
+      ) {
+        task.history = task.history.slice(-params.historyLength)
+      }
+      return task
+    })
+    const last = selected.at(-1)
+    const hasMore = start + selected.length < visible.length
+    return {
+      tasks,
+      nextPageToken:
+        hasMore && last
+          ? Buffer.from(
+              JSON.stringify({
+                version: 1,
+                filter: filterKey,
+                timestamp: String(last.task.status.timestamp),
+                taskId: last.task.id,
+              }),
+            ).toString('base64url')
+          : '',
+      pageSize: params.pageSize,
+      totalSize: visible.length,
+    }
+  }
 }
 
 function headlessCommand(): string[] {
@@ -311,6 +472,79 @@ function outputText(stdout: string, stderr: string, code: number): string {
   return output || (code === 0 ? 'UR completed the task.' : 'UR task failed.')
 }
 
+type A2AConformanceScenario =
+  | 'artifact-text'
+  | 'artifact-file'
+  | 'artifact-file-url'
+  | 'artifact-data'
+  | 'message-response'
+  | 'input-required'
+
+function conformanceScenario(messageId: string): A2AConformanceScenario | undefined {
+  if (process.env.UR_A2A_CONFORMANCE_MODE !== 'true') return undefined
+  for (const scenario of [
+    'artifact-file-url',
+    'artifact-text',
+    'artifact-file',
+    'artifact-data',
+    'message-response',
+    'input-required',
+  ] as const) {
+    if (messageId.startsWith(`tck-${scenario}-`)) return scenario
+  }
+  return undefined
+}
+
+function conformanceArtifact(
+  scenario: Exclude<A2AConformanceScenario, 'message-response' | 'input-required'>,
+): Artifact {
+  const artifactId = randomUUID()
+  switch (scenario) {
+    case 'artifact-text':
+      return {
+        artifactId,
+        name: 'TCK text artifact',
+        parts: [{ kind: 'text', text: 'Generated text content' }],
+      }
+    case 'artifact-file':
+      return {
+        artifactId,
+        name: 'TCK file artifact',
+        parts: [
+          {
+            kind: 'file',
+            file: {
+              bytes: Buffer.from('Generated file content').toString('base64'),
+              name: 'output.txt',
+              mimeType: 'text/plain',
+            },
+          },
+        ],
+      }
+    case 'artifact-file-url':
+      return {
+        artifactId,
+        name: 'TCK file URL artifact',
+        parts: [
+          {
+            kind: 'file',
+            file: {
+              uri: 'https://example.com/output.txt',
+              name: 'output.txt',
+              mimeType: 'text/plain',
+            },
+          },
+        ],
+      }
+    case 'artifact-data':
+      return {
+        artifactId,
+        name: 'TCK data artifact',
+        parts: [{ kind: 'data', data: { key: 'value', count: 42 } }],
+      }
+  }
+}
+
 class UrA2AExecutor implements AgentExecutor {
   readonly #options: A2AProtocolRuntimeOptions
   readonly #controllers = new Map<string, AbortController>()
@@ -326,6 +560,53 @@ class UrA2AExecutor implements AgentExecutor {
     eventBus: ExecutionEventBus,
   ): Promise<void> {
     const { taskId, contextId, userMessage } = requestContext
+    const scenario = conformanceScenario(userMessage.messageId)
+    if (scenario === 'message-response') {
+      eventBus.publish({
+        kind: 'message',
+        role: 'agent',
+        messageId: randomUUID(),
+        contextId,
+        parts: [{ kind: 'text', text: 'Direct message response' }],
+      })
+      eventBus.finished()
+      return
+    }
+    if (scenario === 'input-required') {
+      const status = {
+        state: 'input-required' as const,
+        timestamp: new Date().toISOString(),
+        message: {
+          kind: 'message' as const,
+          role: 'agent' as const,
+          messageId: randomUUID(),
+          taskId,
+          contextId,
+          parts: [
+            {
+              kind: 'text' as const,
+              text: 'Additional input is required to continue.',
+            },
+          ],
+        },
+      }
+      eventBus.publish({
+        kind: 'task',
+        id: taskId,
+        contextId,
+        status,
+        history: [userMessage],
+      })
+      eventBus.publish({
+        kind: 'status-update',
+        taskId,
+        contextId,
+        final: true,
+        status,
+      })
+      eventBus.finished()
+      return
+    }
     const owner = requestContext.context?.user?.userName || 'local'
     const maxActive = readPositiveInteger(
       process.env.UR_A2A_MAX_ACTIVE_TASKS,
@@ -420,6 +701,32 @@ class UrA2AExecutor implements AgentExecutor {
             })
       if (controller.signal.aborted) return
 
+      const artifactScenario = scenario
+      eventBus.publish({
+        kind: 'artifact-update',
+        taskId,
+        contextId,
+        append: false,
+        lastChunk: true,
+        artifact: artifactScenario
+          ? conformanceArtifact(artifactScenario)
+          : {
+              artifactId: randomUUID(),
+              name: 'UR result',
+              description: 'Final output produced by UR for this task.',
+              parts: [
+                {
+                  kind: 'text',
+                  text: outputText(
+                    result.stdout,
+                    result.stderr,
+                    result.code,
+                  ),
+                },
+              ],
+            },
+      })
+
       const state = result.code === 0 ? 'completed' : 'failed'
       eventBus.publish({
         kind: 'status-update',
@@ -482,11 +789,13 @@ function isAsyncIterable(
 
 export class A2AProtocolRuntime {
   readonly #transport: JsonRpcTransportHandler
+  readonly #store: PersistentA2ATaskStore
 
   constructor(options: A2AProtocolRuntimeOptions) {
+    this.#store = new PersistentA2ATaskStore(options.cwd)
     const requestHandler = new DefaultRequestHandler(
       options.card,
-      new PersistentA2ATaskStore(options.cwd),
+      this.#store,
       new UrA2AExecutor(options),
     )
     this.#transport = new JsonRpcTransportHandler(requestHandler)
@@ -511,5 +820,15 @@ export class A2AProtocolRuntime {
       }
     }
     return result
+  }
+
+  async listTasks(
+    params: A2AProtocolTaskListParams,
+    identity: A2AProtocolIdentity,
+  ): Promise<A2AProtocolTaskList> {
+    return this.#store.listVisible(
+      params,
+      new ServerCallContext(undefined, identity),
+    )
   }
 }

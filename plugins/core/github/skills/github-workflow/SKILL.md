@@ -1,5 +1,6 @@
 ---
-name: GitHub Workflow
+name: github-workflow
+display-name: GitHub Workflow
 description: Reference for operating GitHub safely from an agent — the official MCP server toolsets, gh CLI cheatsheet, token scopes, pull-request etiquette, and guardrails. Use when reviewing or creating PRs, triaging issues, or inspecting CI on GitHub.
 version: 0.1.0
 ---

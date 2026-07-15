@@ -9,6 +9,44 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.47.0 Additions
+
+- `ur ag-ui serve` adds a secure AG-UI HTTP/SSE boundary for user-facing
+  applications. Official schemas and encoding, truthful capability discovery,
+  full text/tool/state lifecycle events, cancellation, exact CORS, bearer
+  protection, redacted errors, and independent resource bounds are covered by
+  provider-free regression tests.
+- A2A now runs v0.3 and v1 side by side. Strict v1 JSON-RPC and HTTP+JSON
+  bindings add version negotiation, tenant isolation, durable tasks and
+  artifacts, pagination, continuation, references, and cancellation without
+  removing the stable v0.3 SDK path.
+- ACP stdio now implements durable list/load/delete/resume/close, bounded exact
+  history replay, modes, configuration options, and available commands in
+  addition to streaming prompts, permission requests, MCP servers, and roots.
+- `ur mcp serve-http` exposes the opt-in stateless MCP 2026 compatibility
+  surface with Tasks and a self-contained Apps resource. It is loopback-only
+  without authentication and enforces request metadata, capability negotiation,
+  owner isolation, limits, private persistence, and corrupt-state quarantine.
+- OpenAI users can opt into the Responses transport with
+  `ur config set openai_transport responses`. Chat Completions remains the
+  default; Responses defaults to `store=false` and supports streaming,
+  background polling/cancellation, WebSocket continuation, compaction, and
+  deferred tool search through tested provider adapters.
+- OpenTelemetry export is explicit per signal. GenAI inference, agent,
+  workflow, tool, memory, duration, token, cache, response,
+  time-to-first-chunk, inter-output-chunk latency, and error fields follow
+  current semantic conventions, while prompts and tool/memory content stay
+  redacted unless the operator
+  separately opts in.
+- Agent Skills receive strict open-spec validation and deterministic provenance.
+  `ur skill verify|sign|keygen` supports Ed25519 integrity manifests and trusted
+  keys; loaded skills are re-hashed immediately before execution. Native
+  `.ur/skills/` and standard cross-client `.agents/skills/` project/user roots
+  use explicit, deterministic precedence.
+- Project task memory now has per-entry provenance, UUIDs, SHA-256 content
+  digests, an append-only hash chain, cross-process locks, private atomic writes,
+  and `ur context-pack memory verify|quarantine|rollback` recovery commands.
+
 ## v1.46.0 Additions
 
 - Native ACP v1 stdio support now uses the official SDK and includes durable
@@ -59,6 +97,7 @@ ur automation run nightly --dry-run
 ur automation run-due
 ur model-doctor
 ur a2a serve --dry-run
+ur ag-ui serve --help
 ur bg run "fix the flaky parser test" --worktree --dry-run
 ur test-first detect
 ur test-first --dry-run
@@ -217,8 +256,8 @@ while keeping them project-local and manifest-backed:
 | --- | --- | --- |
 | Agent | `ur`, `ur agents`, `ur crew`, `ur bg`, `ur agent-templates` | `.ur/agents/`, `AGENTS.md`, `UR.md` |
 | Rules | `ur context-pack scan`, `ur safety`, `/guardrails`, `/hooks` | `AGENTS.md`, `UR.md`, `.cursor/rules/*.mdc`, `.cursorrules`, `.ur/safety-policy.json`, `.ur/guardrails.json`, `.ur/hooks.json` |
-| MCP | `ur mcp`, built-in MCP server mode, MCP tools/resources | `.mcp.json`, `.ur/mcp/`, plugin manifests |
-| Skills | `/skills`, `/create-skill`, bundled skills, plugin skills | `.ur/skills/`, user skills, plugin skill folders |
+| MCP | `ur mcp`, stdio mode, opt-in MCP 2026 HTTP Tasks/Apps, tools/resources | `.mcp.json`, `.ur/mcp/`, plugin manifests |
+| Skills | `/skills`, `/create-skill`, `ur skill verify\|sign\|keygen`, bundled/plugin skills | `.ur/skills/`, `.agents/skills/`, user skills, plugin skill folders, trusted key store |
 | CLI | `ur --help`, `ur -p`, `ur exec`, `ur acp`, workflow subcommands | `package.json` scripts, `.ur/project-manifest.json`, `.ur/verify.json` |
 | Models | `/model`, `ur model-doctor`, model router, Ollama discovery | Ollama endpoint, settings, `OLLAMA_MODEL`, model metadata cache |
 
@@ -258,7 +297,7 @@ and route model work through the local Ollama-backed UR runtime.
 | Auto compaction and memory retention | `compaction.autoThreshold`, `ur memory retention` | Configurable context compaction threshold plus TTL/max/decay pruning for `.ur/memory/*.jsonl` |
 | Code-index auto-reindex | `codeIndex.autoReindex`, `ur code-index watch` | File watcher that rebuilds the local semantic code index after source changes |
 | Live artifact steering | `ur artifacts comment <id> --feedback ... --task <bg_id>` | Artifact feedback is queued into the linked background task inbox and injected into active stream-json background agents as `priority: "now"` turns |
-| Opt-in A2A + compatibility server | `ur a2a serve`, `/a2a/jsonrpc`, `/a2a/tasks` | Official-SDK A2A v0.3 JSON-RPC task lifecycle plus clearly separate token/delegation-protected UR background-task compatibility routes |
+| Opt-in A2A + compatibility server | `ur a2a serve`, `/a2a/jsonrpc`, `/a2a/v1/*`, `/a2a/tasks` | Negotiated v1 JSON-RPC/HTTP+JSON and stable-SDK v0.3, plus clearly separate protected UR background-task compatibility routes |
 | IDE inline diff bundles | `ur ide diff capture|list|show|comment|schema`, `extensions/vscode-ur-inline-diffs/` | Editor-readable `.ur/ide/diffs/` manifest, metadata, patch files, comments, plus a native VS Code tree/webview review extension |
 | Benchmark adapters | `ur eval bench swe-bench|terminal-bench|aider-polyglot` | Imports local benchmark JSON/JSONL exports into UR eval suites without external downloads |
 
@@ -271,12 +310,12 @@ and route model work through the local Ollama-backed UR runtime.
 | Model capability report | `ur model-doctor` | Local Ollama model inventory with context length, advertised capabilities, and likely vision/code readiness |
 | Reusable agent templates | `ur agent-templates install` | Project agents for review, tests, browser QA, docs research, security, release notes, PR fixes, and memory curation |
 | GitHub agent runner | `.github/workflows/ur.yml` scaffold | Opt-in CI entry point for manual prompts or `/ur` issue comments |
-| A2A interoperability | `ur a2a serve` | Accurate Agent Card, stable A2A v0.3 JSON-RPC binding, and separate UR compatibility task API; A2A v1 waits for the official stable JS SDK |
+| A2A interoperability | `ur a2a serve` | Version-negotiated strict v1 JSON-RPC/HTTP+JSON plus stable-SDK v0.3, durable tenant-isolated protocol state, and a separate UR compatibility API |
 | Semantic memory index | `ur semantic-memory build|search` | Local memory index over durable memory, docs, README, and UR instructions |
 | Claim provenance ledger | `ur claim-ledger add|list|validate` | Maps generated claims to web, file, MCP, tool, or user sources |
 | Browser replay evals | `ur browser-qa list|validate|run` | Validates replay fixtures and performs lightweight target smoke checks |
 | Permission and safety policy | `ur safety status|init|check` | Project-aware shell safety checks for destructive operations, sandbox recommendations, permission classes, and secret exfiltration denial |
-| Project context pack | `ur context-pack scan|remember|compress` | Architecture manifest, durable task memory, and compressed context summaries based on manifests and instructions |
+| Project context pack | `ur context-pack scan|remember|memory|compress` | Architecture manifest, provenance/hash-chained task memory with verify/quarantine/rollback, and compressed context summaries |
 
 ## Design Notes
 

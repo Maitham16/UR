@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.46.0 (UR-Nexus)"
+# expected for this release: "1.47.0 (UR-Nexus)"
 ```
 
 ## 0.1 First-workspace model selection (1.45.4)
@@ -84,6 +84,8 @@ Expected:
 - `context-pack scan` writes `.ur/project-manifest.json` and
   `.ur/context/architecture.md`.
 - `remember` appends task memory entries under `.ur/context/task-memory.jsonl`.
+- `ur context-pack memory verify` reports a valid integrity chain. Tamper tests
+  must use a disposable copy; quarantine and rollback preserve private backups.
 - `compress` writes `.ur/context/compressed.md`.
 
 ## 0.3 Test-first execution loop (1.18.0)
@@ -147,6 +149,34 @@ Without a LAN host, you can still verify host configuration:
 ```sh
 ur --ollama-host http://localhost:11434 -p "say hi"
 ur --settings '{"ollama":{"host":"http://localhost:11434"}}' -p "say hi"
+```
+
+## 0.6 v1.47 protocol, provenance, and telemetry gates
+
+These deterministic tests use local fixtures, fake transports, and mock
+exporters. They do not require a paid provider account or make paid model calls:
+
+```sh
+bun test test/acpStdio.test.ts test/a2aV1.test.ts test/mcp2026.test.ts
+bun test test/openaiResponses.test.ts test/genAiTelemetry.test.ts
+bun test test/agUi.test.ts test/skillCommand.test.ts
+bun test test/skillProvenance.test.ts test/taskMemoryIntegrity.test.ts
+```
+
+Expected: ACP lifecycle/replay, A2A dual-stack isolation, MCP Tasks/Apps,
+Responses HTTP/SSE/WebSocket/background behavior, OpenTelemetry redaction,
+AG-UI lifecycle/security, `.agents/skills/` precedence, Ed25519 skill trust,
+and task-memory quarantine/rollback all pass. Then run:
+
+```sh
+bun run typecheck
+bun run lint
+bun test
+bun run build
+bun run secrets:scan
+bun run dependencies:audit
+bun run release:check
+bun run package:check
 ```
 
 ## 1. Marketplace tree resolves

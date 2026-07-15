@@ -71,6 +71,52 @@ export async function mcpServeHandler({
   }
 }
 
+export async function mcpServeHttpHandler({
+  host,
+  port,
+  allowOrigin,
+  debug,
+  verbose
+}: {
+  host?: string;
+  port?: string;
+  allowOrigin?: string[];
+  debug?: boolean;
+  verbose?: boolean;
+}): Promise<void> {
+  const providedCwd = cwd();
+  logEvent('tengu_mcp_http_start', {});
+  try {
+    await stat(providedCwd);
+  } catch (error) {
+    if (isFsInaccessible(error)) {
+      cliError(`Error: Directory ${providedCwd} does not exist`);
+    }
+    throw error;
+  }
+  try {
+    const parsedPort = Number(port ?? '8976');
+    const {
+      setup
+    } = await import('../../setup.js');
+    await setup(providedCwd, 'default', false, false, undefined, false);
+    const {
+      serveMcp2026
+    } = await import('../../entrypoints/mcp2026.js');
+    await serveMcp2026({
+      cwd: providedCwd,
+      host: host ?? '127.0.0.1',
+      port: parsedPort,
+      token: process.env.UR_MCP_HTTP_TOKEN,
+      allowedOrigins: allowOrigin,
+      debug: debug ?? false,
+      verbose: verbose ?? false
+    });
+  } catch (error) {
+    cliError(`Error: Failed to start MCP 2026 HTTP server: ${error}`);
+  }
+}
+
 // mcp remove (lines 4545–4635)
 export async function mcpRemoveHandler(name: string, options: {
   scope?: string;

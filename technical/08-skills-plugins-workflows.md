@@ -8,12 +8,18 @@ Source of truth: `src/skills/`, `src/utils/plugins/`, `src/plugins/`,
 Two skill formats coexist:
 
 ### 1. Prompt skills (SKILL.md)
-Directory format `skill-name/SKILL.md` with YAML frontmatter (`description`,
-`argumentHint`, `allowed-tools`, …). Loaded from:
+Directory format `skill-name/SKILL.md` with Agent Skills-compatible YAML
+frontmatter (`name`, `description`, optional `license`, `compatibility`,
+`metadata`, `allowed-tools`). Loaded from:
 - project: `.ur/skills/<name>/SKILL.md`
 - user: `~/.ur/skills/<name>/SKILL.md`
+- cross-client project/user: `.agents/skills/<name>/SKILL.md` and
+  `~/.agents/skills/<name>/SKILL.md`
 - plugins and MCP servers (MCP skills never execute inline `!command` shell blocks — untrusted)
 - bundled skills compiled into the binary (`src/skills/bundled/`, list in doc 03 §13)
+
+Resolution is deterministic: nearer project roots beat parent roots, project
+beats user, and native `.ur` beats cross-client `.agents` at the same scope.
 
 Body supports `${UR_SKILL_DIR}` (skill directory path) and `${UR_SESSION_ID}` substitution,
 plus `!`-prefixed inline shell execution for trusted (non-MCP) skills.
@@ -28,6 +34,22 @@ skills through the `Skill` tool. `/skill` is intentionally separate and runs
 the executable `skill.yaml` workflows below. Neither slash token aliases the
 other.
 `/skillify` (bundled) converts the current session's workflow into a skill.
+
+Every file skill receives deterministic content-tree and permission digests.
+UR validates names, directory identity, field types/lengths, and metadata;
+signed skills cannot contain symlinks. Trust commands:
+
+```
+ur skill verify <name-or-directory> [--require-trusted] [--json]
+ur skill keygen <key-id> [--out <private-key.pem>]
+ur skill sign <name-or-directory> --key <private-key.pem> --key-id <key-id>
+```
+
+Ed25519 manifests embed the public key and signed digests. Trusted keys live in
+a private configurable store. `UR_SKILLS_STRICT_SPEC=true` rejects invalid
+skills; `UR_SKILLS_REQUIRE_TRUSTED_SIGNATURE=true` requires trust at load and
+invocation. UR re-hashes every loaded file skill immediately before executing
+it to detect changes after discovery.
 
 ### 2. Executable skills (skill.yaml) — skills as workflows
 `.ur/skills/<name>/skill.yaml` (`src/skills/skillSpec.ts`) compiles into a `WorkflowSpec`:

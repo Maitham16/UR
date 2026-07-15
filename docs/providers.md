@@ -105,11 +105,21 @@ ur config set model <model>
 ur provider select-model <provider> <model> --json
 ur config set base_url <url>
 ur config set provider.fallback ollama
+ur config set openai_transport responses
+ur config set responses.store false
+ur config set responses.compact_threshold 20000
+ur config set responses.tool_search hosted
 ```
 
 The fallback setting is a recovery hint for `ur provider doctor`; it does not
 route a failed request to another provider. Review the failure and use
 `ur config set provider <id>` to switch explicitly.
+
+OpenAI API uses Chat Completions by default. `openai_transport responses` is an
+explicit opt-in to the native Responses adapter; it defaults to `store=false`
+and supports semantic streaming, background polling/cancellation, WebSocket
+continuation, server compaction, and deferred tool search. It does not change
+OpenAI-compatible, OpenRouter, local, or subscription-CLI providers.
 
 ## Provider-scoped model selection
 
@@ -120,7 +130,7 @@ UR-Nexus shows providers first, then only models available for the selected prov
 When you select a UR-native provider and model, every agent request is routed
 through that provider's backend:
 
-- **API providers** make direct HTTP calls in each provider's native wire format: Anthropic uses `x-api-key` + `anthropic-version` against `/v1/messages`; OpenAI uses `Authorization: Bearer` against `/v1/chat/completions`; Gemini uses `x-goog-api-key` against `…:generateContent`; OpenRouter uses its OpenAI-compatible chat endpoint.
+- **API providers** make direct HTTP calls in each provider's native wire format: Anthropic uses `x-api-key` + `anthropic-version` against `/v1/messages`; OpenAI uses `Authorization: Bearer` against `/v1/chat/completions` by default or `/v1/responses` when explicitly selected; Gemini uses `x-goog-api-key` against `…:generateContent`; OpenRouter uses its OpenAI-compatible chat endpoint.
 - **Local/server providers** connect to the configured local or OpenAI-compatible endpoint (`/v1/chat/completions` for LM Studio, llama.cpp and vLLM; the native tags/chat API for Ollama)
 - **Subscription CLI providers** (Codex CLI, Claude Code, Gemini CLI,
   Antigravity) dispatch the turn through the vendor's official CLI using your

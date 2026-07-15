@@ -1,5 +1,6 @@
 ---
-name: Miro Workflow
+name: miro-workflow
+display-name: Miro Workflow
 description: Reference for operating Miro from an agent — the official MCP server and its OAuth/team scoping, the tool groups (context, diagrams, docs, items), the REST API v2 fallback and token scopes, board structure conventions, and guardrails. Use when creating boards, diagrams, sticky notes, or summarizing a board.
 version: 0.1.0
 ---

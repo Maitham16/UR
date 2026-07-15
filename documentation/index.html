@@ -44,7 +44,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.46.0</p>
+          <p class="eyebrow">Version 1.47.0</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -71,7 +71,7 @@
           </article>
           <article>
             <strong>Agent platform</strong>
-            <span>Workflows, patterns, crews, goals, evals, memory, knowledge, A2A, provenance, and templates are first-class commands.</span>
+            <span>Workflows, patterns, crews, goals, evals, memory, knowledge, ACP, A2A, AG-UI, provenance, and templates are first-class commands.</span>
           </article>
           <article>
             <strong>Plugin marketplace</strong>
@@ -158,12 +158,14 @@ ur provider doctor agy</code></pre>
 ur config set provider openai-api
 ur config set base_url http://localhost:11434/v1
 ur config set model qwen3-coder:480b-cloud
-ur config set provider.fallback ollama</code></pre>
-            <p>API providers require explicit selection and read keys from a key stored via <code>ur connect</code> (OS keychain) or from environment variables. Local providers include Ollama, LM Studio, llama.cpp, and vLLM.</p>
+ur config set provider.fallback ollama
+ur config set openai_transport responses
+ur config set responses.store false</code></pre>
+            <p>API providers require explicit selection and read keys from a key stored via <code>ur connect</code> (OS keychain) or from environment variables. OpenAI Responses is opt-in and privacy-first; Chat Completions remains the default. Local providers include Ollama, LM Studio, llama.cpp, and vLLM.</p>
           </article>
           <article>
             <h3>Status bar and updates</h3>
-            <pre><code>Ollama | llama3 | ask | main | update 1.46.0 available</code></pre>
+            <pre><code>Ollama | llama3 | ask | main | update 1.47.0 available</code></pre>
             <p>The interactive status bar shows only important runtime state: provider, model, mode, branch, active tasks, checks status when known, and update availability. It is hidden in CI, dumb terminals, and print mode.</p>
           </article>
           <article>
@@ -298,13 +300,14 @@ ur test-first install</code></pre>
 ur safety check --command "rm -rf build"
 ur context-pack scan
 ur context-pack remember --decision "Use manifest commands first"
+ur context-pack memory verify
 ur context-pack compress</code></pre>
           </article>
 
           <article>
             <h3>Start the ACP server and run a prompt pool</h3>
             <ol>
-              <li>Start the Agent Communication Protocol server for IDE extensions.</li>
+              <li>Start the Agent Client Protocol server for IDE extensions.</li>
               <li>Run one or more prompts in non-interactive mode with concurrency.</li>
               <li>Capture per-prompt outputs to a directory.</li>
             </ol>
@@ -312,6 +315,18 @@ ur context-pack compress</code></pre>
 ur acp status --json
 ur exec "add tests for the parser" --concurrency 4 --json
 ur exec --file prompts.jsonl --output-dir ./outputs --dry-run</code></pre>
+          </article>
+
+          <article>
+            <h3>Connect a user-facing app with AG-UI</h3>
+            <ol>
+              <li>Start the official-schema HTTP/SSE adapter on loopback.</li>
+              <li>Inspect its truthful capability document.</li>
+              <li>For browser or network use, require a bearer token and exact allowed origin.</li>
+            </ol>
+            <pre><code>ur ag-ui serve
+curl http://127.0.0.1:8977/ag-ui/capabilities
+UR_AG_UI_TOKEN="$TOKEN" ur ag-ui serve --host 0.0.0.0 --allow-origin https://app.example</code></pre>
           </article>
 
           <article>
@@ -477,8 +492,9 @@ ur safety check --command "rm -rf build"</code></pre>
             <h3>Project context</h3>
             <pre><code>ur context-pack scan
 ur context-pack remember --constraint "Run command evidence before success claims"
+ur context-pack memory verify
 ur context-pack compress</code></pre>
-            <p>Context packs summarize architecture from manifests and preserve task decisions, constraints, commands, and diffs under <code>.ur/context</code>.</p>
+            <p>Context packs summarize architecture and preserve provenance-rich, hash-chained task memory under <code>.ur/context</code>, with verification, quarantine, and rollback recovery.</p>
           </article>
           <article>
             <h3>Verifier</h3>
@@ -493,9 +509,12 @@ UR_VERIFIER_AUTO_SUBAGENT=1</code></pre>
             <h3>MCP and plugins</h3>
             <pre><code>ur mcp list
 ur mcp add-json local-tools '{"command":"node","args":["server.js"]}'
+ur mcp serve-http --port 8976
+ur skill verify &lt;name-or-directory&gt;
+ur ag-ui serve --help
 ur plugin list
 ur plugin install &lt;plugin&gt;</code></pre>
-            <p>MCP servers and marketplace plugins expand tools, executable skills, templates, validators, language adapters, and review workflows. Treat them as trusted code.</p>
+            <p>The opt-in stateless MCP HTTP adapter exposes negotiated Tasks and Apps. Portable skills load from native and cross-client roots with strict validation and Ed25519 provenance. AG-UI provides a bounded, opt-in frontend stream. Treat MCP servers and plugins as trusted code.</p>
           </article>
           <article>
             <h3>IDE inline diffs</h3>

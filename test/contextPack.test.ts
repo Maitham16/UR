@@ -114,4 +114,29 @@ describe('project context pack', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  test('context-pack verifies and rolls back protected memory without exposing content', async () => {
+    const dir = tempDir('ur-context-memory-command-')
+    try {
+      const first = appendTaskMemory(dir, 'decision', 'private first decision')
+      appendTaskMemory(dir, 'decision', 'private second decision')
+      const { call } = await import('../src/commands/context-pack/context-pack.js')
+      const verified = await runWithCwdOverride(dir, () =>
+        call('memory verify --json', {} as never),
+      )
+      if (verified.type !== 'text') throw new Error('expected text')
+      const report = JSON.parse(verified.value)
+      expect(report.valid).toBe(true)
+      expect(report.entryCount).toBe(2)
+      expect(verified.value).not.toContain('private first decision')
+
+      const rollback = await runWithCwdOverride(dir, () =>
+        call(`memory rollback --to ${first.id} --json`, {} as never),
+      )
+      if (rollback.type !== 'text') throw new Error('expected text')
+      expect(JSON.parse(rollback.value).removedEntries).toBe(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

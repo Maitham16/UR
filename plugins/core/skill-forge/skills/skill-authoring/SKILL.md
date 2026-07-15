@@ -1,5 +1,6 @@
 ---
-name: Skill Authoring
+name: skill-authoring
+display-name: Skill Authoring
 description: Conventions for writing a high-quality UR skill — frontmatter fields, trigger design, step structure with success criteria, tool scoping, and storage locations. Use when authoring, generating, or refining a SKILL.md.
 when_to_use: Use when creating or improving a skill — e.g. "make a skill that…", "turn this into a skill", "forge a skill", or editing a SKILL.md.
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash(mkdir:*), AskUserQuestion

@@ -176,11 +176,15 @@ export async function configSetHandler(
     key !== 'provider' &&
     key !== 'provider.fallback' &&
     key !== 'provider.command_path' &&
+    key !== 'openai_transport' &&
+    key !== 'responses.store' &&
+    key !== 'responses.compact_threshold' &&
+    key !== 'responses.tool_search' &&
     key !== 'model' &&
     key !== 'base_url'
   ) {
     writeError(
-      `Unsupported config key "${key}". Supported: provider, provider.fallback, provider.command_path, model, base_url`,
+      `Unsupported config key "${key}". Supported: provider, provider.fallback, provider.command_path, openai_transport, responses.store, responses.compact_threshold, responses.tool_search, model, base_url`,
     )
     process.exit(1)
   }

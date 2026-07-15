@@ -33,6 +33,7 @@ describe('agent trend coverage', () => {
     expect(ids).toContain('mcp-async-apps')
     expect(ids).toContain('a2a')
     expect(ids).toContain('acp')
+    expect(ids).toContain('ag-ui')
     expect(ids).toContain('durable-workflows')
     expect(ids).toContain('multi-agent')
     expect(ids).toContain('memory')
@@ -57,7 +58,10 @@ describe('agent trend coverage', () => {
     expect(text).toContain('UR Trend Coverage')
     expect(text).toContain('[covered] Provider-flexible, local-first model runtime')
     expect(text).toContain('[covered] MCP tool ecosystem')
-    expect(text).toContain('[partial] A2A / Agent Card interoperability')
+    expect(text).toContain('[covered] A2A / Agent Card interoperability')
+    expect(text).toContain(
+      '[covered] AG-UI agent-to-frontend interoperability',
+    )
     expect(text).toContain('References:')
     expect(text).toContain('Priority Roadmap')
     expect(text).toContain('Research snapshot: 2026-07-15')

@@ -3,6 +3,7 @@ import type { UUID } from 'crypto'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import type { CompactionResult } from '../services/compact/compact.js'
 import type { ScopedMcpServerConfig } from '../services/mcp/types.js'
+import type { SkillProvenance } from '../skills/skillProvenance.js'
 import type { ToolUseContext } from '../Tool.js'
 import type { EffortValue } from '../utils/effort.js'
 import type { IDEExtensionInstallationStatus, IdeType } from '../utils/ide.js'
@@ -184,6 +185,8 @@ export type CommandBase = {
   argumentHint?: string // Hint text for command arguments (displayed in gray after command)
   whenToUse?: string // From the "Skill" spec. Detailed usage scenarios for when to use this command
   version?: string // Version of the command/skill
+  /** Immutable load-time digest, spec validation, permissions, and signature result. */
+  provenance?: SkillProvenance
   disableModelInvocation?: boolean // Whether to disable this command from being invoked by models
   userInvocable?: boolean // Whether users can invoke this skill by typing /skill-name
   loadedFrom?:

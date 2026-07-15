@@ -5,14 +5,17 @@ surfaces:
 
 | Surface | Path | Contract |
 | --- | --- | --- |
-| Agent Card | `/.well-known/agent-card.json` | Public discovery metadata that exactly describes the running server |
-| A2A JSON-RPC | `/a2a/jsonrpc` | A2A protocol v0.3, implemented with the official stable JavaScript SDK |
+| Agent Card | `/.well-known/agent-card.json` | Strict v1 card by default; send `A2A-Version: 0.3` for the separate v0.3 card |
+| A2A v1 JSON-RPC | `/` or `/a2a/v1/jsonrpc` | ProtoJSON, PascalCase lifecycle methods, `A2A-Version: 1.0` |
+| A2A v1 HTTP+JSON | `/message:send`, `/tasks`, or `/a2a/v1/...` | Versioned REST lifecycle with pagination, artifacts, references, and cancellation |
+| A2A v0.3 JSON-RPC | `/a2a/jsonrpc` | Stable v0.3 binding implemented with the official JavaScript SDK |
 | UR compatibility API | `/a2a/tasks` and `/a2a/tasks/:id` | UR-specific REST-style background-task controls; not an A2A REST binding |
 
-The A2A specification itself is at v1. UR does not claim v1 conformance yet:
-the official JavaScript SDK's v1 support is prerelease, while its current
-stable line implements v0.3. UR will migrate and run the official conformance
-suite when a stable JavaScript v1 path is available.
+The two protocol versions deliberately use separate schemas and handlers. The
+stable SDK remains pinned for v0.3; UR's dependency-free v1 compatibility layer
+translates strict v1 messages and tasks onto the same bounded durable execution
+engine. It is covered by UR tests and the official A2A TCK, but does not claim
+certification by the prerelease JavaScript SDK.
 
 ## Start the server
 
@@ -49,11 +52,42 @@ Inspect the live card:
 curl -s http://127.0.0.1:8765/.well-known/agent-card.json
 ```
 
-The card advertises protocol `0.3.0`, `JSONRPC`, `/a2a/jsonrpc`, unary task
-execution, the installed UR version, skills, and only the authentication
-schemes actually configured for that server.
+Without a version header, discovery returns the v1 ProtoJSON card with
+`supportedInterfaces` for JSON-RPC, HTTP+JSON, and the legacy v0.3 binding. Use
+`A2A-Version: 0.3` to retrieve the standalone v0.3 SDK card. Both cards report
+the installed UR version, skills, implemented capabilities, and only the
+authentication schemes configured for that server; responses include
+`Vary: A2A-Version`.
 
-Send a blocking message:
+Send a blocking v1 message over JSON-RPC:
+
+```sh
+curl -s http://127.0.0.1:8765/a2a/v1/jsonrpc \
+  -H 'content-type: application/json' \
+  -H 'A2A-Version: 1.0' \
+  -H "authorization: Bearer $UR_A2A_TOKEN" \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":"request-v1",
+    "method":"SendMessage",
+    "params":{
+      "configuration":{"blocking":true},
+      "message":{
+        "messageId":"message-v1",
+        "role":"ROLE_USER",
+        "parts":[{"text":"Review the current diff."}]
+      }
+    }
+  }'
+```
+
+The v1 HTTP+JSON binding accepts `application/a2a+json` and exposes
+`message:send`, task list/get/cancel, continuation, and artifact/reference
+operations at the advertised transport root or under `/a2a/v1`. List cursors
+are opaque and filter-bound. An optional tenant segment, for example
+`/a2a/v1/acme/tasks`, requires a matching `tenant:acme` delegation scope.
+
+Send a blocking v0.3 message:
 
 ```sh
 curl -s http://127.0.0.1:8765/a2a/jsonrpc \
@@ -78,10 +112,10 @@ curl -s http://127.0.0.1:8765/a2a/jsonrpc \
 ```
 
 Set `configuration.blocking` to `false` to receive a working task promptly,
-then call `tasks/get`; use `tasks/cancel` for a nonterminal task. The stable
+then call `tasks/get`; use `tasks/cancel` for a nonterminal task. The v0.3
 binding supports `message/send`, `tasks/get`, and `tasks/cancel`. Streaming,
 resubscription, push notifications, and authenticated extended cards are not
-advertised and return protocol errors if requested.
+advertised by either card and return protocol errors if requested.
 
 `params.metadata.skill` selects an advertised skill; the default is
 `coding-agent`. Requests with an unknown skill are rejected before execution.
@@ -134,10 +168,13 @@ The server bounds work with these environment variables:
 - `UR_A2A_MAX_ACTIVE_TASKS_PER_OWNER`
 - `UR_A2A_TASK_TIMEOUT_MS`
 
-Protocol task state is persisted with owner and skill metadata in
-`.ur/a2a/protocol-tasks.json` using owner-only file permissions. UR
-compatibility task state remains under the same `.ur/a2a/` directory and links
-to `.ur/background/` output files.
+Protocol task state and v1 artifacts are persisted with owner, tenant, skill,
+and version metadata under `.ur/a2a/` using owner-only permissions and atomic
+writes. Retrieval, continuation, reference lookup, listing, and cancellation
+all re-check the caller boundary. UR compatibility task state remains under the
+same directory and links to `.ur/background/` output files.
 
 References: [A2A v1 specification](https://a2a-protocol.org/latest/specification/),
-[official JavaScript SDK](https://github.com/a2aproject/a2a-js).
+[A2A v1 announcement](https://a2a-protocol.org/latest/announcing-1.0/),
+[official JavaScript SDK](https://github.com/a2aproject/a2a-js), and
+[official TCK](https://github.com/a2aproject/a2a-tck).

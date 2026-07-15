@@ -19,6 +19,11 @@ import {
   initializeResearchTrace,
   writeRunReport,
 } from './runArtifacts.js'
+import {
+  classifyGenAiError,
+  endGenAiWorkflowSpan,
+  startGenAiWorkflowSpan,
+} from '../../utils/telemetry/genAiSemantics.js'
 
 export type RunWorkflowOptions = {
   cwd: string
@@ -48,7 +53,7 @@ export function deriveLoop(spec: WorkflowSpec): ExecLoop | null {
   }
 }
 
-export async function runWorkflowSpec(
+async function runWorkflowSpecUntraced(
   spec: WorkflowSpec,
   options: RunWorkflowOptions,
 ): Promise<ExecResult> {
@@ -111,6 +116,40 @@ export async function runWorkflowSpec(
   })
   writeRunReport(options.cwd, runId, formatWorkflowTraceReport(result))
   return result
+}
+
+export async function runWorkflowSpec(
+  spec: WorkflowSpec,
+  options: RunWorkflowOptions,
+): Promise<ExecResult> {
+  let span: ReturnType<typeof startGenAiWorkflowSpan> | undefined
+  try {
+    span = startGenAiWorkflowSpan(spec.name)
+  } catch {
+    // Observability is optional and cannot prevent a workflow from running.
+  }
+
+  try {
+    const result = await runWorkflowSpecUntraced(spec, options)
+    if (span) {
+      endGenAiWorkflowSpan(span, {
+        ...(result.status === 'completed'
+          ? {}
+          : { errorType: `workflow_${result.status.replaceAll('-', '_')}` }),
+      })
+    }
+    return result
+  } catch (error) {
+    if (span) {
+      endGenAiWorkflowSpan(span, {
+        errorType:
+          classifyGenAiError({
+            error: error instanceof Error ? error.message : String(error),
+          }) ?? '_OTHER',
+      })
+    }
+    throw error
+  }
 }
 
 function formatWorkflowTraceReport(result: ExecResult): string {

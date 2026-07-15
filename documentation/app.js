@@ -49,9 +49,9 @@ const featureGroups = [
   },
   {
     title: 'Interoperability',
-    tags: ['MCP', 'plugins', 'A2A', 'SDK'],
-    text: 'MCP servers, plugin marketplaces for skills, templates, validators, language adapters, A2A Agent Card and task server, delegation tokens, and a TypeScript SDK wrapper around headless UR.',
-    commands: ['ur mcp', 'ur plugin', 'ur a2a', 'ur sdk'],
+    tags: ['MCP', 'plugins', 'A2A', 'AG-UI', 'SDK'],
+    text: 'MCP servers, plugin marketplaces, native and cross-client Agent Skills, ACP editor transport, A2A Agent Card/task bindings, a secure AG-UI frontend stream, delegation tokens, and a TypeScript SDK wrapper around headless UR.',
+    commands: ['ur mcp', 'ur plugin', 'ur acp', 'ur a2a', 'ur ag-ui', 'ur sdk'],
   },
   {
     title: 'Providers and auth',
@@ -86,15 +86,22 @@ const commands = [
     name: 'acp',
     category: 'Interop',
     aliases: [],
-    summary: 'Agent Communication Protocol server for IDE extensions: serve, stop, and status.',
-    examples: ['ur acp serve --port 8123', 'ur acp status --json', 'ur acp stop'],
+    summary: 'Run official-SDK ACP v1 over stdio, or manage the distinct UR HTTP JSON-RPC API used by bundled IDE integrations.',
+    examples: ['ur acp stdio', 'ur acp serve --port 8123', 'ur acp status --json'],
   },
   {
     name: 'a2a',
     category: 'Interop',
     aliases: [],
-    summary: 'A2A interoperability utilities: Agent Card, local task server, and delegation tokens.',
+    summary: 'Run negotiated strict A2A v1 JSON-RPC/HTTP+JSON beside the stable-SDK v0.3 binding, or inspect cards and delegation tokens.',
     examples: ['ur a2a card', 'ur a2a serve --dry-run', 'ur a2a token mint --secret "$UR_A2A_DELEGATION_SECRET" --scope coding,review'],
+  },
+  {
+    name: 'ag-ui',
+    category: 'Interop',
+    aliases: [],
+    summary: 'Start the secure AG-UI HTTP/SSE adapter for user-facing applications with official events and truthful capability discovery.',
+    examples: ['ur ag-ui serve', 'ur ag-ui serve --allow-origin https://app.example', 'UR_AG_UI_TOKEN="$TOKEN" ur ag-ui serve --host 0.0.0.0'],
   },
   {
     name: 'bg',
@@ -717,6 +724,11 @@ const examples = [
     title: 'A2A local task server',
     text: 'Expose Agent Card discovery and token-gated task execution.',
     code: 'ur a2a card\nur a2a serve --host 127.0.0.1 --port 8765 --dry-run',
+  },
+  {
+    title: 'AG-UI frontend stream',
+    text: 'Expose the official-schema SSE adapter on loopback, or require a bearer token and exact browser origin for network use.',
+    code: 'ur ag-ui serve\nUR_AG_UI_TOKEN="$TOKEN" ur ag-ui serve --host 0.0.0.0 --allow-origin https://app.example',
   },
   {
     title: 'Delegated A2A token',

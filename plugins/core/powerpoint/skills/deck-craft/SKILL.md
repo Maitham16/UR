@@ -1,5 +1,6 @@
 ---
-name: Deck Craft (PowerPoint)
+name: deck-craft
+display-name: Deck Craft (PowerPoint)
 description: Conventions for professional PowerPoint decks — layouts over text boxes, one idea per slide, sparse text with detail in notes, visual hierarchy, charts, templates, and accessibility. Use when building, converting, reviewing, or theming .pptx files.
 version: 0.1.0
 ---

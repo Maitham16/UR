@@ -7,10 +7,13 @@ import {
   compressProjectMemory,
   compressedContextPath,
   contextStatus,
+  quarantineInvalidTaskMemory,
+  rollbackTaskMemory,
   TASK_MEMORY_KINDS,
   type TaskMemoryKind,
   projectManifestPath,
   writeProjectContextManifest,
+  verifyTaskMemory,
 } from '../../services/context/projectContextManifest.js'
 
 const MEMORY_KINDS: TaskMemoryKind[] = [...TASK_MEMORY_KINDS]
@@ -25,6 +28,9 @@ function usage(): string {
     '  ur context-pack remember --rejected "Switch to esbuild" --alternative-to "Keep bun bundle"',
     '  ur context-pack remember --attempt "Tried Deno runtime" --status superseded',
     '  ur context-pack compress [--json]',
+    '  ur context-pack memory verify [--json]',
+    '  ur context-pack memory quarantine [--json]',
+    '  ur context-pack memory rollback --to <entry-id> [--json]',
     '  ur context-pack status',
   ].join('\n')
 }
@@ -45,6 +51,7 @@ function positionals(tokens: string[]): string[] {
     '--supersedes',
     '--scope',
     '--source',
+    '--to',
   ])
   const values: string[] = []
   for (let i = 0; i < tokens.length; i++) {
@@ -113,6 +120,7 @@ export const call: LocalCommandCall = async (args: string) => {
   const tokens = parseArguments(args)
   const json = tokens.includes('--json')
   const action = positionals(tokens)[0] ?? 'scan'
+  const subaction = positionals(tokens)[1]
   const cwd = getCwd()
 
   if (action === 'scan') {
@@ -162,6 +170,73 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'status') {
     return { type: 'text', value: contextStatus(cwd) }
+  }
+
+  if (action === 'memory' && subaction === 'verify') {
+    const verification = verifyTaskMemory(cwd)
+    const report = {
+      valid: verification.valid,
+      path: verification.path,
+      entryCount: verification.entries.length,
+      legacyEntries: verification.legacyEntries,
+      verifiedEntries: verification.verifiedEntries,
+      headDigest: verification.headDigest,
+      fileDigest: verification.fileDigest,
+      issues: verification.issues,
+    }
+    return {
+      type: 'text',
+      value: json
+        ? JSON.stringify(report, null, 2)
+        : [
+            `Task memory: ${verification.valid ? 'valid' : 'invalid'}`,
+            `Entries: ${verification.entries.length} (${verification.verifiedEntries} integrity-protected, ${verification.legacyEntries} legacy)`,
+            `Head: sha256:${verification.headDigest}`,
+            ...verification.issues.map(
+              issue =>
+                `${issue.severity.toUpperCase()} ${issue.code}${issue.line ? ` line ${issue.line}` : ''}: ${issue.message}`,
+            ),
+            `VERDICT: ${verification.valid ? 'PASS' : 'FAIL'}`,
+          ].join('\n'),
+    }
+  }
+
+  if (action === 'memory' && subaction === 'quarantine') {
+    try {
+      const result = quarantineInvalidTaskMemory(cwd)
+      return {
+        type: 'text',
+        value: json
+          ? JSON.stringify(result, null, 2)
+          : result.changed
+            ? `Quarantined invalid task memory to ${result.quarantinePath}. Retained ${result.retainedEntries} entries and removed ${result.removedLines} invalid lines.`
+            : `Task memory is valid; no quarantine was needed (${result.retainedEntries} entries).`,
+      }
+    } catch (error) {
+      return {
+        type: 'text',
+        value: `Task memory quarantine failed: ${error instanceof Error ? error.message : error}`,
+      }
+    }
+  }
+
+  if (action === 'memory' && subaction === 'rollback') {
+    const targetId = option(tokens, '--to')
+    if (!targetId) return { type: 'text', value: usage() }
+    try {
+      const result = rollbackTaskMemory(cwd, targetId)
+      return {
+        type: 'text',
+        value: json
+          ? JSON.stringify(result, null, 2)
+          : `Rolled task memory back to ${targetId}. Retained ${result.retainedEntries} entries, removed ${result.removedEntries}, and preserved the original at ${result.backupPath}.`,
+      }
+    } catch (error) {
+      return {
+        type: 'text',
+        value: `Task memory rollback failed: ${error instanceof Error ? error.message : error}`,
+      }
+    }
   }
 
   return { type: 'text', value: usage() }

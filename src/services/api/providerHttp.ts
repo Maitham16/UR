@@ -233,14 +233,16 @@ export async function fetchWithProviderReliability(
     maxRetries?: number
     timeoutMs?: number
     signal?: AbortSignal
+    fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
     failureMessage: (response: Response, body: string) => string
   },
 ): Promise<Response> {
   const timeoutMs = getProviderRequestTimeoutMs(options.timeoutMs)
+  const fetchImpl = options.fetch ?? fetch
   return withProviderRetry(async () => {
     const timeout = createTimeoutSignal(options.signal, timeoutMs)
     try {
-      const response = await fetch(input, {
+      const response = await fetchImpl(input, {
         ...init,
         signal: timeout.signal,
       })

@@ -925,4 +925,37 @@ describe('provider-scoped model listing', () => {
       resetSettingsCache()
     }
   })
+
+  test('OpenAI Responses transport settings are explicit, validated, and privacy-first', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ur-provider-responses-config-'))
+    try {
+      resetStateForTests()
+      setOriginalCwd(dir)
+      setCwdState(dir)
+      resetSettingsCache()
+
+      expect(setSafeProviderConfig('openai_transport', 'responses').ok).toBe(true)
+      expect(setSafeProviderConfig('responses.store', 'false').ok).toBe(true)
+      expect(setSafeProviderConfig('responses.compact_threshold', '20000').ok).toBe(true)
+      expect(setSafeProviderConfig('responses.tool_search', 'hosted').ok).toBe(true)
+      expect(setSafeProviderConfig('responses.store', 'yes').ok).toBe(false)
+      expect(setSafeProviderConfig('responses.compact_threshold', '999').ok).toBe(false)
+
+      const saved = JSON.parse(
+        readFileSync(join(dir, '.ur', 'settings.local.json'), 'utf8'),
+      )
+      expect(saved.provider).toMatchObject({
+        openaiTransport: 'responses',
+        responses: {
+          store: false,
+          compactThreshold: 20_000,
+          toolSearch: 'hosted',
+        },
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      resetStateForTests()
+      resetSettingsCache()
+    }
+  })
 })

@@ -1,6 +1,6 @@
 # 11 — Integrations
 
-Source of truth: `src/services/mcp/`, `src/services/agents/{acpStdio,acpServer,a2aProtocol,a2aServer}.ts`,
+Source of truth: `src/services/mcp/`, `src/services/agents/{acpStdio,acpServer,a2aProtocol,a2aServer,agUi}.ts`,
 `extensions/{vscode-ur-inline-diffs,jetbrains-ur}/`, `src/utils/urInChrome/`, `src/bridge/`,
 `src/commands/{mcp,ide,acp,a2a-card,chrome,browser,install-github-app,install-slack-app,bridge,desktop,voice}`.
 
@@ -37,9 +37,11 @@ ur mcp reset-project-choices        # re-prompt for .mcp.json approvals
 | Surface | Start | Protocol |
 |---|---|---|
 | MCP server | `ur mcp serve` | exposes UR tools over MCP (stdio) |
-| ACP stdio agent | `ur acp stdio` | Stable Agent Client Protocol v1 via the official TypeScript SDK (`acpStdio.ts`) |
+| MCP 2026 HTTP | `UR_MCP_HTTP_TOKEN=… ur mcp serve-http` | opt-in stateless `/mcp` adapter with negotiated Tasks and Apps |
+| ACP stdio agent | `ur acp stdio` | Stable ACP v1 via the official SDK: durable list/load/delete/resume/close, exact replay, modes, config, commands, permissions, MCP, streaming |
 | UR HTTP agent API | `UR_ACP_TOKEN=… ur acp serve`; `/acp` | UR-specific HTTP JSON-RPC for scripts, tools/tasks, and the experimental JetBrains plugin; not an ACP binding |
-| A2A server | `UR_A2A_TOKEN=… ur a2a serve --port 8765` | Official-SDK A2A v0.3 JSON-RPC at `/a2a/jsonrpc`, accurate well-known Agent Card, plus separate UR compatibility routes under `/a2a/tasks` |
+| A2A server | `UR_A2A_TOKEN=… ur a2a serve --port 8765` | negotiated strict v1 JSON-RPC/HTTP+JSON, stable-SDK v0.3 at `/a2a/jsonrpc`, and separate UR compatibility routes under `/a2a/tasks` |
+| AG-UI adapter | `UR_AG_UI_TOKEN=… ur ag-ui serve --host 0.0.0.0` | official-schema HTTP/SSE at `/ag-ui` with truthful discovery at `/ag-ui/capabilities` |
 | HTTP session server | `ur server --port … --auth-token …` | direct-connect sessions (`src/server/`), unix-socket option, idle timeouts, max sessions |
 | Remote control bridge | `ur remote-control` (`rc`) or `/remote-control` | pairs this machine with mobile/web clients (`src/bridge/`); org policy `allow_remote_control` gates it |
 
@@ -51,9 +53,21 @@ Operators can tune those bounds with `UR_MCP_MAX_CALLS_PER_MINUTE`,
 `UR_MCP_MAX_CONCURRENT_CALLS`, `UR_MCP_TOOL_TIMEOUT_MS`,
 `UR_MCP_MAX_INPUT_CHARS`, and `UR_MCP_MAX_OUTPUT_CHARS`.
 
+`ur mcp serve-http` requires matching protocol/method/name request metadata,
+uses the real UR MCP registry, and applies bearer auth, exact CORS origins,
+owner-isolated durable tasks, rate/concurrency/runtime limits, private atomic
+persistence, and corrupt-state quarantine. Its limits use `UR_MCP_HTTP_*`.
+
+`ur ag-ui serve` binds to loopback by default and requires `UR_AG_UI_TOKEN`
+off-loopback. Browser origins are exact allow-list entries. Adapter runs are
+isolated and non-persistent, disconnects cancel execution, approval-requiring
+operations fail closed, and request/rate/concurrency/runtime/output limits use
+`UR_AG_UI_*`. See `docs/AG_UI.md` for the complete supported contract.
+
 The UR HTTP API and A2A surfaces apply request, prompt, task, output, and tool
 limits through the `UR_ACP_*` and `UR_A2A_*` environment variables. Delegated
-A2A protocol and compatibility tasks are isolated by token subject and skill;
+A2A protocol and compatibility tasks are isolated by token subject, tenant,
+and skill;
 bypassing permissions on the compatibility route also requires the static
 operator token or the explicit `permissions:bypass` scope. The official A2A
 runner uses fail-closed `dontAsk` permissions because the network binding has

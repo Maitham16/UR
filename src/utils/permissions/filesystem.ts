@@ -77,6 +77,7 @@ export const DANGEROUS_DIRECTORIES = [
   '.vscode',
   '.idea',
   '.ur',
+  '.agents',
 ] as const
 
 /**
@@ -93,7 +94,7 @@ export function normalizeCaseForComparison(path: string): string {
 }
 
 /**
- * If filePath is inside a .ur/skills/{name}/ directory (project or global),
+ * If filePath is inside a native or cross-client skills/{name}/ directory,
  * return the skill name and a session-allow pattern scoped to just that skill.
  * Used to offer a narrower "allow edits to this skill only" option in the
  * permission dialog and SDK suggestions, so iterating on one skill doesn't
@@ -113,6 +114,14 @@ export function getURSkillScope(
     {
       dir: expandPath(join(homedir(), '.ur', 'skills')),
       prefix: '~/.ur/skills/',
+    },
+    {
+      dir: expandPath(join(getOriginalCwd(), '.agents', 'skills')),
+      prefix: '/.agents/skills/',
+    },
+    {
+      dir: expandPath(join(homedir(), '.agents', 'skills')),
+      prefix: '~/.agents/skills/',
     },
   ]
 
@@ -234,11 +243,17 @@ function isURConfigFilePath(filePath: string): boolean {
   const commandsDir = join(getOriginalCwd(), '.ur', 'commands')
   const agentsDir = join(getOriginalCwd(), '.ur', 'agents')
   const skillsDir = join(getOriginalCwd(), '.ur', 'skills')
+  const crossClientSkillsDir = join(
+    getOriginalCwd(),
+    '.agents',
+    'skills',
+  )
 
   return (
     pathInWorkingPath(filePath, commandsDir) ||
     pathInWorkingPath(filePath, agentsDir) ||
-    pathInWorkingPath(filePath, skillsDir)
+    pathInWorkingPath(filePath, skillsDir) ||
+    pathInWorkingPath(filePath, crossClientSkillsDir)
   )
 }
 
@@ -1272,7 +1287,8 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
     'allow',
   )
   if (urFolderAllowRule) {
-    // Check if this rule is scoped under .ur/ (project or global).
+    // Check if this rule is scoped under a native .ur/ skill root or the
+    // standard cross-client .agents/skills root (project or global).
     // Accepts both the broad patterns ('/.ur/**', '~/.ur/**') and
     // narrowed ones like '/.ur/skills/my-skill/**' so users can grant
     // session access to a single skill without also exposing settings.json
@@ -1285,7 +1301,9 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
       (ruleContent.startsWith(UR_FOLDER_PERMISSION_PATTERN.slice(0, -2)) ||
         ruleContent.startsWith(
           GLOBAL_UR_FOLDER_PERMISSION_PATTERN.slice(0, -2),
-        )) &&
+        ) ||
+        ruleContent.startsWith('/.agents/skills/') ||
+        ruleContent.startsWith('~/.agents/skills/')) &&
       !ruleContent.includes('..') &&
       ruleContent.endsWith('/**')
     ) {
@@ -1305,7 +1323,7 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
   // permission to edit protected files
   const safetyCheck = checkPathSafetyForAutoEdit(path, pathsToCheck)
   if (!safetyCheck.safe) {
-    // SDK suggestion: if under .ur/skills/{name}/, emit the narrowed
+    // SDK suggestion: if under a native or cross-client skill root, emit the narrowed
     // session-scoped addRules that step 1.6 will honor on the next call.
     // Everything else (.ur/settings.json, .git/, .vscode/, .idea/) falls
     // back to generateSuggestions — its setMode suggestion doesn't bypass

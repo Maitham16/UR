@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -40,7 +40,17 @@ import {
   inspectA2AProtocolRequest,
   type A2AProtocolIdentity,
 } from './a2aProtocol.js'
-import { buildA2AAgentCard } from './trends.js'
+import {
+  A2A_V1_CONTENT_TYPE,
+  A2A_V1_PROTOCOL_VERSION,
+  A2AV1Error,
+  A2AV1ProtocolRuntime,
+  a2aV1HttpError,
+  a2aV1VersionError,
+  inspectA2AV1Request,
+  validateA2AV1Tenant,
+} from './a2aV1.js'
+import { buildA2AAgentCard, buildA2AV1AgentCard } from './trends.js'
 
 export type ServeOptions = {
   host: string
@@ -146,6 +156,51 @@ function protocolJsonResponse(
   })
 }
 
+function a2aV1Response(
+  status: number,
+  body: unknown,
+  options: {
+    contentType?: string
+    headers?: Record<string, string>
+  } = {},
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'cache-control': 'no-store',
+      'content-type': options.contentType ?? 'application/json',
+      'a2a-version': A2A_V1_PROTOCOL_VERSION,
+      'x-content-type-options': 'nosniff',
+      ...options.headers,
+    },
+  })
+}
+
+function a2aV1RestResponse(status: number, body: unknown): Response {
+  return a2aV1Response(status, body)
+}
+
+function agentCardResponse(
+  card: unknown,
+  version: '0.3' | '1.0',
+  request?: Request,
+): Response {
+  const payload = JSON.stringify(card, null, 2)
+  const etag = `"${createHash('sha256').update(payload).digest('base64url')}"`
+  const notModified = request?.headers.get('if-none-match') === etag
+  return new Response(notModified ? null : payload, {
+    status: notModified ? 304 : 200,
+    headers: {
+      'cache-control': 'public, max-age=300',
+      'content-type': 'application/json',
+      'a2a-version': version,
+      etag,
+      vary: 'A2A-Version',
+      'x-content-type-options': 'nosniff',
+    },
+  })
+}
+
 function bearerValue(request: Request): string | null {
   const header = request.headers.get('authorization')
   if (!header) return null
@@ -210,24 +265,39 @@ function serverAgentCard(options: ServeOptions, baseUrl: string) {
   })
 }
 
+function serverV1AgentCard(options: ServeOptions, baseUrl: string) {
+  return buildA2AV1AgentCard({
+    baseUrl,
+    staticBearer: Boolean(options.token),
+    delegationBearer: Boolean(options.delegationSecret),
+  })
+}
+
 const protocolRuntimeCache = new WeakMap<
   ServeOptions,
-  { baseUrl: string; runtime: A2AProtocolRuntime }
+  {
+    baseUrl: string
+    runtime: A2AProtocolRuntime
+    v1: A2AV1ProtocolRuntime
+  }
 >()
 
-function protocolRuntime(
+function protocolRuntimes(
   options: ServeOptions,
   baseUrl: string,
-): A2AProtocolRuntime {
+): { runtime: A2AProtocolRuntime; v1: A2AV1ProtocolRuntime } {
   const cached = protocolRuntimeCache.get(options)
-  if (cached?.baseUrl === baseUrl) return cached.runtime
+  if (cached?.baseUrl === baseUrl) {
+    return { runtime: cached.runtime, v1: cached.v1 }
+  }
   const runtime = new A2AProtocolRuntime({
     cwd: options.cwd,
     card: serverAgentCard(options, baseUrl),
     dryRun: options.dryRun,
   })
-  protocolRuntimeCache.set(options, { baseUrl, runtime })
-  return runtime
+  const v1 = new A2AV1ProtocolRuntime(runtime)
+  protocolRuntimeCache.set(options, { baseUrl, runtime, v1 })
+  return { runtime, v1 }
 }
 
 function protocolIdentity(
@@ -407,7 +477,7 @@ async function handleA2AProtocolRequest(
   }
 
   try {
-    const response = await protocolRuntime(options, baseUrl).handle(
+    const response = await protocolRuntimes(options, baseUrl).runtime.handle(
       payload,
       protocolIdentity(
         auth,
@@ -417,6 +487,592 @@ async function handleA2AProtocolRequest(
     return protocolJsonResponse(200, response)
   } finally {
     releaseSubmission?.()
+  }
+}
+
+function v1JsonRpcError(
+  id: string | number | null,
+  error: A2AV1Error,
+): {
+  jsonrpc: '2.0'
+  id: string | number | null
+  error: { code: number; message: string }
+} {
+  return {
+    jsonrpc: '2.0',
+    id,
+    error: { code: error.code, message: error.message },
+  }
+}
+
+function v1JsonRpcFailure(
+  status: number,
+  id: string | number | null,
+  error: A2AV1Error,
+  headers?: Record<string, string>,
+): Response {
+  return a2aV1Response(status, v1JsonRpcError(id, error), { headers })
+}
+
+function v1RestFailure(error: unknown): Response {
+  const mapped = a2aV1HttpError(error)
+  return a2aV1RestResponse(mapped.status, mapped.body)
+}
+
+function v1RestAuthFailure(
+  status: 401 | 403,
+  message: string,
+): Response {
+  return a2aV1Response(
+    status,
+    {
+      error: {
+        code: status,
+        status: status === 401 ? 'UNAUTHENTICATED' : 'PERMISSION_DENIED',
+        message,
+        details: [],
+      },
+    },
+    {
+      contentType: 'application/json',
+      ...(status === 401
+        ? { headers: { 'www-authenticate': 'Bearer' } }
+        : {}),
+    },
+  )
+}
+
+async function readA2AV1Json(
+  request: Request,
+  allowEmpty = false,
+): Promise<unknown> {
+  let requestText: string
+  try {
+    requestText = await readRequestTextBounded(
+      request,
+      readPositiveInteger(
+        process.env.UR_A2A_MAX_REQUEST_BYTES,
+        256_000,
+        2_000_000,
+      ),
+    )
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      throw new A2AV1Error(-32600, 'Request body is too large')
+    }
+    if (error instanceof InvalidRequestBodyEncodingError) {
+      throw new A2AV1Error(-32700, error.message)
+    }
+    throw error
+  }
+  if (allowEmpty && !requestText.trim()) return {}
+  try {
+    return JSON.parse(requestText)
+  } catch {
+    throw new A2AV1Error(-32700, 'Parse error')
+  }
+}
+
+function a2aV1ContentType(request: Request): string {
+  return (
+    request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() ??
+    ''
+  )
+}
+
+function tenantScopeAllows(auth: AuthResult, tenant: string): boolean {
+  if (!tenant || auth.kind !== 'delegation') return true
+  const scopes = auth.claims?.scope ?? []
+  return (
+    scopes.includes('*') ||
+    scopes.includes('tenant:*') ||
+    scopes.includes(`tenant:${tenant}`)
+  )
+}
+
+function knownA2ASkill(
+  options: ServeOptions,
+  baseUrl: string,
+  skill: string,
+): boolean {
+  return serverAgentCard(options, baseUrl).skills.some(
+    candidate => candidate.id === skill,
+  )
+}
+
+function validateA2AV1Submission(
+  inspection: ReturnType<typeof inspectA2AV1Request>,
+): void {
+  if (!inspection.prompt?.trim()) {
+    throw new A2AV1Error(
+      -32602,
+      'A2A messages must contain at least one non-empty text or data part',
+    )
+  }
+  const maxPromptChars = readPositiveInteger(
+    process.env.UR_A2A_MAX_PROMPT_CHARS,
+    64_000,
+    1_000_000,
+  )
+  if (
+    inspection.prompt.length > maxPromptChars ||
+    inspection.prompt.includes('\0')
+  ) {
+    throw new A2AV1Error(-32602, 'Prompt is too large or invalid')
+  }
+  if (
+    !inspection.skill ||
+    inspection.skill.length > 128 ||
+    inspection.skill.includes('\0')
+  ) {
+    throw new A2AV1Error(-32602, 'Invalid skill id')
+  }
+}
+
+function validateA2AV1MediaTypes(
+  payload: unknown,
+  options: ServeOptions,
+  baseUrl: string,
+): void {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return
+  const root = payload as Record<string, unknown>
+  const candidate =
+    root.params && typeof root.params === 'object' && !Array.isArray(root.params)
+      ? (root.params as Record<string, unknown>)
+      : root
+  const message = candidate.message
+  if (!message || typeof message !== 'object' || Array.isArray(message)) return
+  const parts = (message as Record<string, unknown>).parts
+  if (!Array.isArray(parts)) return
+  const supported = new Set(
+    serverV1AgentCard(options, baseUrl).defaultInputModes.map(value =>
+      value.split(';', 1)[0]!.trim().toLowerCase(),
+    ),
+  )
+  for (const part of parts) {
+    if (!part || typeof part !== 'object' || Array.isArray(part)) continue
+    const mediaType = (part as Record<string, unknown>).mediaType
+    if (typeof mediaType !== 'string' || !mediaType.trim()) continue
+    const essence = mediaType.split(';', 1)[0]!.trim().toLowerCase()
+    if (!supported.has(essence)) {
+      throw new A2AV1Error(
+        -32005,
+        `Media type '${mediaType}' is not supported by this agent`,
+      )
+    }
+  }
+}
+
+function validateA2AV1Version(request: Request): string | null {
+  const requested = request.headers.get('a2a-version')?.trim() ?? '0.3'
+  return requested === A2A_V1_PROTOCOL_VERSION ? null : requested
+}
+
+async function handleA2AV1JsonRpcRequest(
+  request: Request,
+  options: ServeOptions,
+  baseUrl: string,
+): Promise<Response> {
+  const preliminaryAuth = authorizeRequest(request, options)
+  if (!preliminaryAuth.ok) {
+    return v1JsonRpcFailure(
+      401,
+      null,
+      new A2AV1Error(-32000, 'Unauthorized'),
+      { 'www-authenticate': 'Bearer' },
+    )
+  }
+
+  const unsupportedVersion = validateA2AV1Version(request)
+  if (unsupportedVersion !== null) {
+    return a2aV1Response(400, a2aV1VersionError(null, unsupportedVersion))
+  }
+  if (a2aV1ContentType(request) !== 'application/json') {
+    return v1JsonRpcFailure(
+      415,
+      null,
+      new A2AV1Error(
+        -32005,
+        'JSON-RPC requests require Content-Type application/json',
+      ),
+    )
+  }
+
+  let payload: unknown
+  try {
+    payload = await readA2AV1Json(request)
+  } catch (error) {
+    const mapped =
+      error instanceof A2AV1Error
+        ? error
+        : new A2AV1Error(-32603, 'Failed to read request')
+    return v1JsonRpcFailure(
+      mapped.code === -32600 && mapped.message.includes('too large') ? 413 : 200,
+      null,
+      mapped,
+    )
+  }
+
+  let inspection: ReturnType<typeof inspectA2AV1Request>
+  try {
+    inspection = inspectA2AV1Request(payload)
+  } catch (error) {
+    const response = await protocolRuntimes(options, baseUrl).v1.handleJsonRpc(
+      payload,
+      protocolIdentity(preliminaryAuth),
+    )
+    return a2aV1Response(200, response)
+  }
+
+  let auth = preliminaryAuth
+  let releaseSubmission: (() => void) | undefined
+  if (inspection.method === 'SendMessage') {
+    try {
+      validateA2AV1MediaTypes(payload, options, baseUrl)
+      validateA2AV1Submission(inspection)
+    } catch (error) {
+      return v1JsonRpcFailure(
+        200,
+        inspection.id,
+        error instanceof A2AV1Error
+          ? error
+          : new A2AV1Error(-32602, 'Invalid message'),
+      )
+    }
+    if (!knownA2ASkill(options, baseUrl, inspection.skill)) {
+      return v1JsonRpcFailure(
+        200,
+        inspection.id,
+        new A2AV1Error(-32602, `Unknown skill: ${inspection.skill}`),
+      )
+    }
+    auth = authorizeRequest(request, options, inspection.skill)
+    if (!auth.ok) {
+      return v1JsonRpcFailure(
+        403,
+        inspection.id,
+        new A2AV1Error(-32000, 'Insufficient delegation scope'),
+      )
+    }
+    try {
+      releaseSubmission = a2aSubmissionLimiter.acquire()
+    } catch (error) {
+      if (error instanceof RollingRateLimitError) {
+        return v1JsonRpcFailure(
+          429,
+          inspection.id,
+          new A2AV1Error(-32000, error.message),
+          { 'retry-after': '60' },
+        )
+      }
+      throw error
+    }
+  }
+  if (!tenantScopeAllows(auth, inspection.tenant)) {
+    releaseSubmission?.()
+    return v1JsonRpcFailure(
+      403,
+      inspection.id,
+      new A2AV1Error(
+        -32000,
+        `Delegation token is not authorized for tenant '${inspection.tenant}'`,
+      ),
+    )
+  }
+
+  try {
+    const response = await protocolRuntimes(options, baseUrl).v1.handleJsonRpc(
+      payload,
+      protocolIdentity(
+        auth,
+        inspection.method === 'SendMessage' ? inspection.skill : undefined,
+      ),
+    )
+    return a2aV1Response(200, response)
+  } finally {
+    releaseSubmission?.()
+  }
+}
+
+type A2AV1RestRoute =
+  | {
+      operation: 'send' | 'stream' | 'list' | 'extended-card'
+      tenant: string
+    }
+  | {
+      operation: 'get' | 'cancel' | 'subscribe' | 'push'
+      tenant: string
+      id: string
+    }
+
+function decodeA2AV1PathSegment(value: string, label: string): string {
+  try {
+    const decoded = decodeURIComponent(value)
+    if (!decoded || decoded.includes('/') || decoded.includes('\0')) {
+      throw new Error('unsafe path segment')
+    }
+    return decoded
+  } catch {
+    throw new A2AV1Error(-32602, `Invalid ${label} path segment`)
+  }
+}
+
+function parseA2AV1RestRoute(pathname: string): A2AV1RestRoute | null {
+  const prefix = pathname.startsWith('/a2a/v1/')
+    ? '/a2a/v1/'
+    : pathname.startsWith('/')
+      ? '/'
+      : ''
+  if (!prefix) return null
+  const segments = pathname
+    .slice(prefix.length)
+    .split('/')
+    .filter(Boolean)
+  if (segments.length === 0 || segments.length > 5) return null
+
+  let tenant = ''
+  if (
+    segments[0] !== 'message:send' &&
+    segments[0] !== 'message:stream' &&
+    segments[0] !== 'tasks' &&
+    segments[0] !== 'extendedAgentCard'
+  ) {
+    tenant = validateA2AV1Tenant(
+      decodeA2AV1PathSegment(segments.shift() as string, 'tenant'),
+    )
+  }
+  if (segments.length === 1 && segments[0] === 'message:send') {
+    return { operation: 'send', tenant }
+  }
+  if (segments.length === 1 && segments[0] === 'message:stream') {
+    return { operation: 'stream', tenant }
+  }
+  if (segments.length === 1 && segments[0] === 'tasks') {
+    return { operation: 'list', tenant }
+  }
+  if (segments.length === 1 && segments[0] === 'extendedAgentCard') {
+    return { operation: 'extended-card', tenant }
+  }
+  if (
+    segments.length >= 3 &&
+    segments[0] === 'tasks' &&
+    segments[2] === 'pushNotificationConfigs'
+  ) {
+    return {
+      operation: 'push',
+      tenant,
+      id: decodeA2AV1PathSegment(segments[1] as string, 'task id'),
+    }
+  }
+  if (segments.length !== 2 || segments[0] !== 'tasks') return null
+  const taskSegment = segments[1] as string
+  const suffix = taskSegment.endsWith(':cancel')
+    ? ':cancel'
+    : taskSegment.endsWith(':subscribe')
+      ? ':subscribe'
+      : ''
+  const encodedId = suffix ? taskSegment.slice(0, -suffix.length) : taskSegment
+  const id = decodeA2AV1PathSegment(encodedId, 'task id')
+  return {
+    operation:
+      suffix === ':cancel'
+        ? 'cancel'
+        : suffix === ':subscribe'
+          ? 'subscribe'
+          : 'get',
+    tenant,
+    id,
+  }
+}
+
+function queryBoolean(url: URL, name: string): boolean | undefined {
+  const value = url.searchParams.get(name)
+  if (value === null || value === '') return undefined
+  if (value === 'true') return true
+  if (value === 'false') return false
+  throw new A2AV1Error(-32602, `${name} must be true or false`)
+}
+
+function v1ListParams(url: URL, tenant: string): Record<string, unknown> {
+  const params: Record<string, unknown> = { tenant }
+  for (const name of [
+    'contextId',
+    'status',
+    'pageSize',
+    'pageToken',
+    'historyLength',
+    'statusTimestampAfter',
+  ]) {
+    const value = url.searchParams.get(name)
+    if (value !== null && value !== '') params[name] = value
+  }
+  const includeArtifacts = queryBoolean(url, 'includeArtifacts')
+  if (includeArtifacts !== undefined) params.includeArtifacts = includeArtifacts
+  return params
+}
+
+async function handleA2AV1RestRequest(
+  request: Request,
+  options: ServeOptions,
+  baseUrl: string,
+  url: URL,
+  route: A2AV1RestRoute,
+): Promise<Response> {
+  const preliminaryAuth = authorizeRequest(request, options)
+  if (!preliminaryAuth.ok) return v1RestAuthFailure(401, 'Unauthorized')
+
+  const unsupportedVersion = validateA2AV1Version(request)
+  if (unsupportedVersion !== null) {
+    return v1RestFailure(
+      new A2AV1Error(
+        -32009,
+        `The requested A2A protocol version '${unsupportedVersion}' is not supported. Supported versions: ${A2A_V1_PROTOCOL_VERSION}`,
+      ),
+    )
+  }
+  if (!tenantScopeAllows(preliminaryAuth, route.tenant)) {
+    return v1RestAuthFailure(
+      403,
+      `Delegation token is not authorized for tenant '${route.tenant}'`,
+    )
+  }
+
+  if (route.operation === 'push') {
+    return v1RestFailure(
+      new A2AV1Error(
+        -32003,
+        'Push notifications are not supported by this agent',
+      ),
+    )
+  }
+  if (route.operation === 'extended-card') {
+    return v1RestFailure(
+      new A2AV1Error(-32007, 'Extended Agent Card is not configured'),
+    )
+  }
+
+  const expectedMethod =
+    route.operation === 'get' || route.operation === 'list' ? 'GET' : 'POST'
+  if (request.method !== expectedMethod) {
+    return a2aV1Response(
+      405,
+      a2aV1HttpError(
+        new A2AV1Error(-32600, `${expectedMethod} required`),
+      ).body,
+      {
+        contentType: 'application/json',
+        headers: { allow: expectedMethod },
+      },
+    )
+  }
+  if (route.operation === 'stream' || route.operation === 'subscribe') {
+    return v1RestFailure(
+      new A2AV1Error(-32004, 'Streaming is not enabled by this agent'),
+    )
+  }
+
+  let body: Record<string, unknown> = {}
+  if (request.method === 'POST') {
+    const contentType = a2aV1ContentType(request)
+    if (
+      contentType !== 'application/json' &&
+      contentType !== A2A_V1_CONTENT_TYPE
+    ) {
+      return v1RestFailure(
+        new A2AV1Error(
+          -32005,
+          `Content-Type must be application/json or ${A2A_V1_CONTENT_TYPE}`,
+        ),
+      )
+    }
+    try {
+      const parsed = await readA2AV1Json(
+        request,
+        route.operation === 'cancel',
+      )
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new A2AV1Error(-32602, 'Request body must be an object')
+      }
+      body = parsed as Record<string, unknown>
+    } catch (error) {
+      return v1RestFailure(error)
+    }
+  }
+
+  const runtime = protocolRuntimes(options, baseUrl).v1
+  try {
+    switch (route.operation) {
+      case 'send': {
+        const inspection = inspectA2AV1Request(body, route.tenant)
+        validateA2AV1MediaTypes(body, options, baseUrl)
+        validateA2AV1Submission(inspection)
+        if (!knownA2ASkill(options, baseUrl, inspection.skill)) {
+          throw new A2AV1Error(-32602, `Unknown skill: ${inspection.skill}`)
+        }
+        const auth = authorizeRequest(request, options, inspection.skill)
+        if (!auth.ok) {
+          return v1RestAuthFailure(403, 'Insufficient delegation scope')
+        }
+        let releaseSubmission: (() => void) | undefined
+        try {
+          releaseSubmission = a2aSubmissionLimiter.acquire()
+          const result = await runtime.sendMessage(
+            body,
+            protocolIdentity(auth, inspection.skill),
+            route.tenant,
+          )
+          return a2aV1RestResponse(200, result)
+        } catch (error) {
+          if (error instanceof RollingRateLimitError) {
+            const mapped = a2aV1HttpError(
+              new A2AV1Error(-32000, error.message),
+            )
+            return a2aV1Response(429, mapped.body, {
+              contentType: 'application/json',
+              headers: { 'retry-after': '60' },
+            })
+          }
+          throw error
+        } finally {
+          releaseSubmission?.()
+        }
+      }
+      case 'list':
+        return a2aV1RestResponse(
+          200,
+          await runtime.listTasks(
+            v1ListParams(url, route.tenant),
+            protocolIdentity(preliminaryAuth),
+            route.tenant,
+          ),
+        )
+      case 'get':
+        return a2aV1RestResponse(
+          200,
+          await runtime.getTask(
+            {
+              id: route.id,
+              tenant: route.tenant,
+              ...(url.searchParams.has('historyLength')
+                ? { historyLength: url.searchParams.get('historyLength') }
+                : {}),
+            },
+            protocolIdentity(preliminaryAuth),
+            route.tenant,
+          ),
+        )
+      case 'cancel':
+        return a2aV1RestResponse(
+          200,
+          await runtime.cancelTask(
+            { ...body, id: route.id, tenant: route.tenant },
+            protocolIdentity(preliminaryAuth),
+            route.tenant,
+          ),
+        )
+    }
+  } catch (error) {
+    return v1RestFailure(error)
   }
 }
 
@@ -1003,7 +1659,80 @@ export async function handleA2ARequest(
     (url.pathname === '/.well-known/agent-card.json' ||
       url.pathname === '/agent-card.json')
   ) {
-    return jsonResponse(200, serverAgentCard(options, baseUrl))
+    const requestedVersion = request.headers.get('a2a-version')?.trim()
+    if (!requestedVersion || requestedVersion === A2A_V1_PROTOCOL_VERSION) {
+      return agentCardResponse(
+        serverV1AgentCard(options, baseUrl),
+        A2A_V1_PROTOCOL_VERSION,
+        request,
+      )
+    }
+    if (
+      requestedVersion === '0.3' ||
+      requestedVersion === '0.3.0'
+    ) {
+      return agentCardResponse(
+        serverAgentCard(options, baseUrl),
+        '0.3',
+        request,
+      )
+    }
+    return v1RestFailure(
+      new A2AV1Error(
+        -32009,
+        `The requested A2A protocol version '${requestedVersion}' is not supported. Supported versions: 0.3, ${A2A_V1_PROTOCOL_VERSION}`,
+      ),
+    )
+  }
+  if (url.pathname === '/a2a/v1/jsonrpc') {
+    if (request.method !== 'POST') {
+      return v1JsonRpcFailure(
+        405,
+        null,
+        new A2AV1Error(-32600, 'POST required'),
+        { allow: 'POST' },
+      )
+    }
+    return handleA2AV1JsonRpcRequest(request, options, baseUrl)
+  }
+  // The v1 AgentInterface URL is a transport root. The official bindings
+  // resolve JSON-RPC at POST / and REST operations beneath that root. Keep
+  // the namespaced /a2a/v1 aliases above for explicit deployments.
+  if (url.pathname === '/' && request.method === 'POST') {
+    return handleA2AV1JsonRpcRequest(request, options, baseUrl)
+  }
+  if (url.pathname.startsWith('/a2a/v1/')) {
+    let route: A2AV1RestRoute | null
+    try {
+      route = parseA2AV1RestRoute(url.pathname)
+    } catch (error) {
+      return v1RestFailure(error)
+    }
+    if (route) {
+      return handleA2AV1RestRequest(request, options, baseUrl, url, route)
+    }
+  }
+  const rootSegments = url.pathname.split('/').filter(Boolean)
+  const rootOperation =
+    rootSegments[0] === 'message:send' ||
+    rootSegments[0] === 'message:stream' ||
+    rootSegments[0] === 'extendedAgentCard' ||
+    rootSegments[0] === 'tasks' ||
+    (rootSegments[0] !== 'a2a' &&
+      (rootSegments[1] === 'message:send' ||
+        rootSegments[1] === 'message:stream' ||
+        rootSegments[1] === 'extendedAgentCard' ||
+        rootSegments[1] === 'tasks'))
+  if (rootOperation) {
+    let route: A2AV1RestRoute | null
+    try {
+      route = parseA2AV1RestRoute(url.pathname)
+    } catch (error) {
+      return v1RestFailure(error)
+    }
+    if (route) {
+      return handleA2AV1RestRequest(request, options, baseUrl, url, route)
+    }
   }
   if (url.pathname === '/a2a/jsonrpc') {
     if (request.method !== 'POST') {

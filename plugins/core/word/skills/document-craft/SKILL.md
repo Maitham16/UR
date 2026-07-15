@@ -1,5 +1,6 @@
 ---
-name: Document Craft (Word)
+name: document-craft
+display-name: Document Craft (Word)
 description: Conventions for producing professional Microsoft Word documents — styles over manual formatting, heading hierarchy, tables of contents, templates, track changes, tables, and accessibility. Use when creating, converting, reviewing, or editing .docx files.
 version: 0.1.0
 ---

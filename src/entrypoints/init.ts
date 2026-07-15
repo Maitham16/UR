@@ -299,9 +299,8 @@ async function doInitializeTelemetry(): Promise<void> {
 }
 
 async function setMeterState(): Promise<void> {
-  // Telemetry is disabled in external builds; no-op.
-  // The instrumentation module still exposes initializeTelemetry so callers
-  // compile, but it always returns null.
+  // Loaded only after workspace trust. The SDK remains disabled unless an
+  // operator explicitly configures a supported OTEL_*_EXPORTER.
   const { initializeTelemetry } = await import(
     '../utils/telemetry/instrumentation.js'
   )

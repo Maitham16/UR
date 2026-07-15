@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.47.0
+
+- Added a secure, opt-in AG-UI HTTP/SSE adapter with official schema/encoder
+  integration, truthful capability discovery, ordered text/tool/state events,
+  cancellation, exact CORS, bearer protection for network exposure, resource
+  limits, redacted errors, and explicit rejection of unsupported capabilities.
+- Added a dual-stack A2A server: the stable v0.3 SDK binding remains available,
+  while strict v1 ProtoJSON JSON-RPC and HTTP+JSON routes provide versioned
+  discovery, pagination, artifacts, cancellation, tenant isolation, durable
+  state, and compatibility coverage against the official A2A TCK.
+- Completed the ACP v1 stdio lifecycle with private durable history,
+  `session/list`, `session/load`, `session/delete`, bounded ordered replay,
+  session modes, configuration options, available-command updates, and
+  cancellation-safe concurrent transport behavior.
+- Added an opt-in MCP 2026-07-28 stateless HTTP adapter with strict request
+  metadata, negotiated Tasks and Apps extensions, owner-isolated durable tasks,
+  schema-referenced extension headers, cache/TTL discovery metadata, CORS,
+  bearer authentication, rate/concurrency limits, and corruption quarantine.
+- Added an opt-in OpenAI Responses transport while retaining Chat Completions
+  as the default. It supports multimodal/tool translation, structured output,
+  semantic SSE streaming, background create/poll/resume/cancel, WebSocket
+  continuation, server compaction, deferred tool search, and privacy-first
+  `store: false` state handling. No paid API calls are required by its tests.
+- Added explicit OpenTelemetry OTLP/console exporters and current GenAI
+  inference, agent, workflow, tool, memory, token, cache, latency,
+  time-to-first-chunk, inter-output-chunk latency, and error semantics. Export
+  and message-content capture remain disabled by default.
+- Added strict Agent Skills validation, deterministic permission/tree digests,
+  Ed25519 signing and trusted-key verification, invocation-time integrity
+  rechecks, `ur skill verify|sign|keygen` commands, and deterministic discovery
+  from the cross-client `.agents/skills/` project/user locations.
+- Upgraded project task memory to a tamper-evident provenance chain with atomic
+  private writes, cross-process locking, legacy anchoring, fail-closed reads,
+  verification, quarantine, and rollback commands.
+- Hardened all new durable stores with bounded input/state, symlink rejection,
+  private permissions, atomic replacement, corruption handling, and focused
+  concurrency/adversarial tests.
+
 ## 1.46.0
 
 - Added a stable, official-SDK ACP v1 stdio agent with resumable sessions,

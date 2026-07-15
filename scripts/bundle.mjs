@@ -72,7 +72,12 @@ let dist = readFileSync(distPath, 'utf8')
 // template literal containing a literal tab. That is semantically correct but
 // creates trailing whitespace in the committed bundle. Normalize only this
 // exact generated literal so release diffs remain whitespace-clean.
-const normalizedDist = dist.replaceAll('` \t\n`', '" \\t\\n"')
+const normalizedDist = dist
+  .replaceAll('` \t\n`', '" \\t\\n"')
+  // OpenTelemetry's conflict-recipe diagnostic contains spaces followed by a
+  // literal tab inside a multiline template. Preserve the list indentation
+  // while avoiding mixed-indent whitespace in the committed generated file.
+  .replaceAll('\n    \t- OR -', '\n\t- OR -')
 if (normalizedDist !== dist) {
   writeFileSync(distPath, normalizedDist, 'utf8')
   dist = normalizedDist

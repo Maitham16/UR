@@ -107,6 +107,28 @@ GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
 ```
 
+### OpenAI Responses transport
+
+OpenAI uses Chat Completions unless the Responses transport is selected
+explicitly:
+
+```sh
+ur config set openai_transport responses
+ur config set responses.store false
+ur config set responses.compact_threshold 20000
+ur config set responses.tool_search hosted
+```
+
+Supported safe settings are `chat-completions|responses`, boolean
+`responses.store`, an integer compaction threshold of at least 1,000 tokens,
+and `off|hosted` tool search. Responses defaults to `store=false`, no server
+compaction, and no deferred tool search. Background and WebSocket state is kept
+under `.ur/openai-responses/` with private atomic writes; identifiers, status,
+model, mode, and cursors are the only plaintext durable fields. To retain an
+opaque compacted window, set `UR_OPENAI_RESPONSES_STATE_KEY` to exactly 32
+bytes encoded as 64 hexadecimal characters or base64. Without that key UR
+refuses to persist compacted context.
+
 ### Reconfiguring the Ollama host
 
 The endpoint can be changed from UR in three ways, in order of precedence:
@@ -415,6 +437,9 @@ ur context-pack remember --decision "Use package scripts before ad hoc commands"
 ur context-pack remember --constraint "Do not expose secret values"
 ur context-pack remember --command "bun run typecheck"
 ur context-pack remember --diff "Safety policy wired into Bash permission checks"
+ur context-pack memory verify
+ur context-pack memory quarantine
+ur context-pack memory rollback --to <entry-id>
 ur context-pack compress
 ```
 
@@ -425,8 +450,10 @@ Generated files:
   `.ur/safety-policy.json`, MCP config, editor settings, workflow files, and
   other manifests.
 - `.ur/context/architecture.md` — human-readable architecture summary.
-- `.ur/context/task-memory.jsonl` — decisions, constraints, commands, diffs,
-  and notes.
+- `.ur/context/task-memory.jsonl` — private, append-only decisions,
+  constraints, commands, diffs, and notes with explicit provenance, UUIDs, and
+  a SHA-256 content/hash chain. Legacy entries are anchored when the chain
+  starts rather than silently rewritten.
 - `.ur/context/compressed.md` — compressed task context summary.
 
 Two related slash commands:
@@ -448,6 +475,7 @@ ur mcp get <name>
 ur mcp add-json <name> '<json>'
 ur mcp remove <name>
 ur mcp serve
+UR_MCP_HTTP_TOKEN='<secret>' ur mcp serve-http --port 8976
 ```
 
 MCP servers may execute code or access external services. Only enable servers you trust, and keep credentials out of committed config.
@@ -458,6 +486,15 @@ that would require an approval prompt is rejected. Resource limits can be
 adjusted with `UR_MCP_MAX_CALLS_PER_MINUTE`,
 `UR_MCP_MAX_CONCURRENT_CALLS`, `UR_MCP_TOOL_TIMEOUT_MS`,
 `UR_MCP_MAX_INPUT_CHARS`, and `UR_MCP_MAX_OUTPUT_CHARS`.
+
+`serve-http` is a separate, opt-in MCP 2026-07-28 compatibility surface at
+`POST /mcp`. It is stateless at the transport layer and exposes capability-
+negotiated Tasks and a self-contained overview App backed by UR's real MCP
+tool registry. Every call must supply matching protocol/method/name metadata.
+Off-loopback binds require `UR_MCP_HTTP_TOKEN`; browser clients also require an
+exact `--allow-origin`. HTTP request, rate, concurrency, task-retention, and
+runtime limits use the `UR_MCP_HTTP_*` prefix. Durable task state is private,
+owner-isolated, bounded, atomic, and quarantined if corrupt.
 
 ## Background Agents
 
@@ -476,17 +513,27 @@ For native editor integration, `ur acp stdio` implements stable Agent Client
 Protocol v1 through the official SDK. Its resource controls use the
 `UR_ACP_STDIO_*` prefix. It supports client-provided MCP stdio/HTTP/SSE
 servers, additional workspace roots, native permission requests, cancellation,
-and persistent `session/resume`; see the [ACP Guide](ACP.md).
+and persistent list/load/delete/resume/close with exact history replay, modes,
+config options, and available commands; see the [ACP Guide](ACP.md).
 
 `ur acp serve` is a separate UR HTTP JSON-RPC API. Set `UR_ACP_TOKEN` instead
 of putting its bearer token in argv. Request, task, and tool limits use the
 `UR_ACP_*` prefix.
 
-`ur a2a serve` exposes the stable official-SDK A2A v0.3 JSON-RPC binding and a
-separate UR compatibility task API. Use `UR_A2A_TOKEN` for a static operator
-token or `UR_A2A_DELEGATION_SECRET` for issuer-minted scoped tokens. Limits use
-the `UR_A2A_*` prefix. See the [A2A Guide](A2A.md) for endpoints, proxy setup,
-scope isolation, and the A2A v1 migration status.
+`ur a2a serve` exposes strict v1 JSON-RPC and HTTP+JSON bindings alongside the
+stable official-SDK v0.3 JSON-RPC binding and a separate UR compatibility task
+API. Use `UR_A2A_TOKEN` for a static operator token or
+`UR_A2A_DELEGATION_SECRET` for issuer-minted skill/tenant-scoped tokens. Limits
+use the `UR_A2A_*` prefix. See the [A2A Guide](A2A.md) for endpoints, protocol
+negotiation, proxy setup, and isolation.
+
+`ur ag-ui serve` exposes an opt-in AG-UI HTTP/SSE adapter at `POST /ag-ui`,
+with capability discovery at `GET /ag-ui/capabilities`. It binds to loopback by
+default; off-loopback binds require `UR_AG_UI_TOKEN`, and browser clients must
+be listed with exact `--allow-origin` values. Request, rate, concurrency,
+runtime, and output controls use the `UR_AG_UI_*` prefix. Unsupported client
+tools, multimodal/encrypted input, interrupts, and unimplemented transports are
+rejected rather than silently ignored. See the [AG-UI Guide](AG_UI.md).
 
 ## Plugins and Skills
 
@@ -499,7 +546,43 @@ ur plugin update <plugin>
 ur plugin disable <plugin>
 ```
 
-Skills can be stored in `.ur/skills/` for project-specific workflows or in `~/.ur/skills/` for personal workflows.
+Skills can be stored in `.ur/skills/` for project-specific workflows or in
+`~/.ur/skills/` for personal workflows. UR also discovers the cross-client
+`.agents/skills/` and `~/.agents/skills/` locations from the Agent Skills
+integration guide. At an equal scope, native `.ur` skills win; project skills
+win over user skills, and nearer project roots win over parent roots.
+
+Portable `SKILL.md` directories are validated against the Agent Skills
+frontmatter contract and receive deterministic content and permission digests.
+Inspect and sign them with:
+
+```sh
+ur skill verify <name-or-directory> [--require-trusted] [--json]
+ur skill keygen <key-id> [--out <private-key.pem>]
+ur skill sign <name-or-directory> --key <private-key.pem> --key-id <key-id>
+```
+
+Set `UR_SKILLS_STRICT_SPEC=true` to reject spec-invalid file skills and
+`UR_SKILLS_REQUIRE_TRUSTED_SIGNATURE=true` to require a verified key at load
+and invocation. `UR_SKILL_TRUSTED_KEYS_FILE` can override the private trusted
+key store (normally under the UR config directory). Signed skills cannot
+contain symlinks and are re-hashed immediately before every invocation.
+
+## OpenTelemetry
+
+No telemetry exporter is enabled by default. Configure each signal with the
+standard `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, and
+`OTEL_LOGS_EXPORTER` variables; supported values are `otlp`, `console`, or
+`none`. OTLP uses HTTP/protobuf and the standard
+`OTEL_EXPORTER_OTLP[_<SIGNAL>]_ENDPOINT` variables. UR validates endpoints,
+protocols, and export intervals before registering providers.
+
+GenAI spans and metrics cover inference, agent/workflow invocation, tools, memory,
+duration, token/cache usage, response identity, finish reason, time to first
+chunk, and bounded error type. Content is excluded unless
+`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`; use
+`UR_OTEL_GENAI_PROVIDER` only when a gateway hides the provider identity.
+`OTEL_SDK_DISABLED=true` disables the SDK globally.
 
 ## Secrets
 

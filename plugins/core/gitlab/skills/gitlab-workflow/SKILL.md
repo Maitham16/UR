@@ -1,5 +1,6 @@
 ---
-name: GitLab Workflow
+name: gitlab-workflow
+display-name: GitLab Workflow
 description: Reference for operating GitLab from an agent — the official MCP server transport and prerequisites, glab CLI cheatsheet, token scopes, merge-request etiquette, pipeline triage, and guardrails. Use when reviewing or creating MRs, triaging issues, or inspecting CI/CD on GitLab.
 version: 0.1.0
 ---

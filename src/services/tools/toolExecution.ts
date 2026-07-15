@@ -105,6 +105,7 @@ import {
   startToolExecutionSpan,
   startToolSpan,
 } from '../../utils/telemetry/sessionTracing.js'
+import { shouldCaptureGenAiContent } from '../../utils/telemetry/genAiSemantics.js'
 import {
   formatError,
   formatZodValidationError,
@@ -953,7 +954,9 @@ async function checkPermissionsAndCallTool(
   startToolSpan(
     tool.name,
     toolAttributes,
-    isBetaTracingEnabled() ? jsonStringify(processedInput) : undefined,
+    isBetaTracingEnabled() || shouldCaptureGenAiContent()
+      ? jsonStringify(processedInput)
+      : undefined,
   )
   startToolBlockedOnUserSpan()
 

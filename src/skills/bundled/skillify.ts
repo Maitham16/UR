@@ -68,6 +68,7 @@ You will use the AskUserQuestion to understand what the user wants to automate. 
 - Ask where the skill should be saved. Suggest a default based on context (repo-specific workflows → repo, cross-repo personal workflows → user). Options:
   - **This repo** (\`.ur/skills/<name>/SKILL.md\`) — for workflows specific to this project
   - **Personal** (\`~/.ur/skills/<name>/SKILL.md\`) — follows you across all repos
+  - **Cross-client** (\`.agents/skills/<name>/SKILL.md\` or \`~/.agents/skills/<name>/SKILL.md\`) — portable discovery by clients that implement the Agent Skills integration guide
 
 **Round 3: Breaking down each step**
 For each major step, if it's not glaringly obvious, ask:

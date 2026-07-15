@@ -426,6 +426,29 @@ export const SettingsSchema = lazySchema(() =>
             .union([z.enum(PROVIDER_SETTING_IDS), z.literal('disabled')])
             .optional()
             .describe('Optional recovery provider shown by provider diagnostics; switching is always explicit'),
+          openaiTransport: z
+            .enum(['chat-completions', 'responses'])
+            .optional()
+            .describe('OpenAI API transport. Defaults to chat-completions; Responses is explicit opt-in.'),
+          responses: z
+            .object({
+              store: z
+                .boolean()
+                .optional()
+                .describe('Allow OpenAI to store Responses API objects. Defaults to false.'),
+              compactThreshold: z
+                .number()
+                .int()
+                .min(1000)
+                .optional()
+                .describe('Token threshold for server-side Responses compaction.'),
+              toolSearch: z
+                .enum(['off', 'hosted'])
+                .optional()
+                .describe('Deferred Responses API tool search mode. Defaults to off.'),
+            })
+            .optional()
+            .describe('Privacy-conscious OpenAI Responses API options.'),
           preferences: z
             .record(z.string(), NonSecretPreferenceSchema)
             .optional()

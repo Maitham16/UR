@@ -286,7 +286,8 @@ Compiled in only when the corresponding `feature(...)` flag is on:
 ## 16. Custom command sources
 
 Beyond built-ins, slash commands are loaded from (see doc 08 for formats):
-- **Skills**: `.ur/skills/<name>/SKILL.md` (project) and `~/.ur/skills/` (user)
+- **Skills**: native `.ur/skills/<name>/SKILL.md` / `~/.ur/skills/` and
+  cross-client `.agents/skills/<name>/SKILL.md` / `~/.agents/skills/`
 - **Plugins**: commands and skills contributed by installed plugins (`(plugin-name)` prefix in help)
 - **Workflows**: each workflow in `.ur/workflows/` becomes a command (feature-gated)
 - **MCP prompts**: MCP servers exposing prompts appear as commands (`MCP_SKILLS` gate for model-invocable)

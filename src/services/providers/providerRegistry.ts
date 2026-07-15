@@ -82,6 +82,12 @@ export type ProviderSettings = {
   baseUrl?: string
   commandPath?: string
   fallback?: ProviderId | 'disabled'
+  openaiTransport?: 'chat-completions' | 'responses'
+  responses?: {
+    store?: boolean
+    compactThreshold?: number
+    toolSearch?: 'off' | 'hosted'
+  }
 }
 
 export type ProviderDefinition = {
@@ -831,6 +837,10 @@ export function setSafeProviderConfig(
     | 'provider'
     | 'provider.fallback'
     | 'provider.command_path'
+    | 'openai_transport'
+    | 'responses.store'
+    | 'responses.compact_threshold'
+    | 'responses.tool_search'
     | 'model'
     | 'base_url',
   value: string,
@@ -906,6 +916,39 @@ export function setSafeProviderConfig(
       settings = { provider: { fallback } } as SettingsJson
     } else if (key === 'provider.command_path') {
       settings = { provider: { commandPath: trimmed } } as SettingsJson
+    } else if (key === 'openai_transport') {
+      if (trimmed !== 'chat-completions' && trimmed !== 'responses') {
+        return {
+          ok: false,
+          message: 'openai_transport must be chat-completions or responses.',
+        }
+      }
+      settings = { provider: { openaiTransport: trimmed } } as SettingsJson
+    } else if (key === 'responses.store') {
+      if (trimmed !== 'true' && trimmed !== 'false') {
+        return { ok: false, message: 'responses.store must be true or false.' }
+      }
+      settings = { provider: { responses: { store: trimmed === 'true' } } } as SettingsJson
+    } else if (key === 'responses.compact_threshold') {
+      if (!/^\d+$/u.test(trimmed)) {
+        return {
+          ok: false,
+          message: 'responses.compact_threshold must be an integer of at least 1000.',
+        }
+      }
+      const compactThreshold = Number(trimmed)
+      if (!Number.isSafeInteger(compactThreshold) || compactThreshold < 1_000) {
+        return {
+          ok: false,
+          message: 'responses.compact_threshold must be an integer of at least 1000.',
+        }
+      }
+      settings = { provider: { responses: { compactThreshold } } } as SettingsJson
+    } else if (key === 'responses.tool_search') {
+      if (trimmed !== 'off' && trimmed !== 'hosted') {
+        return { ok: false, message: 'responses.tool_search must be off or hosted.' }
+      }
+      settings = { provider: { responses: { toolSearch: trimmed } } } as SettingsJson
     } else if (key === 'model') {
       // Validate model against current provider
       const currentSettings = getInitialSettings()

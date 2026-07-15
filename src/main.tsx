@@ -542,8 +542,13 @@ function initializeEntrypoint(isNonInteractive: boolean): void {
 
   // Check for MCP serve command (handle flags before mcp serve, e.g., --debug mcp serve)
   const mcpIndex = cliArgs.indexOf('mcp');
-  if (mcpIndex !== -1 && cliArgs[mcpIndex + 1] === 'serve') {
+  if (mcpIndex !== -1 && ['serve', 'serve-http'].includes(cliArgs[mcpIndex + 1] ?? '')) {
     process.env.UR_CODE_ENTRYPOINT = 'mcp';
+    return;
+  }
+  const agUiIndex = cliArgs.indexOf('ag-ui');
+  if (agUiIndex !== -1 && cliArgs[agUiIndex + 1] === 'serve') {
+    process.env.UR_CODE_ENTRYPOINT = 'ag-ui';
     return;
   }
   if (isEnvTruthy(process.env.UR_CODE_ACTION)) {
@@ -4035,6 +4040,31 @@ async function run(): Promise<CommanderCommand> {
     return program;
   }
 
+  // ur ag-ui
+
+  const agUi = program.command('ag-ui').description('Expose UR to user-facing applications through the AG-UI event protocol').configureHelp(createSortedHelpConfig()).enablePositionalOptions();
+  agUi.command('serve').description('Start the secure AG-UI streaming HTTP adapter').option('--host <host>', 'Host interface to bind', '127.0.0.1').option('--port <port>', 'TCP port to bind', '8977').option('--allow-origin <origins...>', 'Exact browser origins allowed by CORS').addOption(new Option('--permission-mode <mode>', 'UR permission mode for adapter runs').choices(['default', 'acceptEdits', 'plan']).default('default')).action(async ({
+    host,
+    port,
+    allowOrigin,
+    permissionMode
+  }: {
+    host?: string;
+    port?: string;
+    allowOrigin?: string[];
+    permissionMode?: 'default' | 'acceptEdits' | 'plan';
+  }) => {
+    const {
+      agUiServeHandler
+    } = await import('./cli/handlers/agUi.js');
+    await agUiServeHandler({
+      host,
+      port,
+      allowOrigin,
+      permissionMode
+    });
+  });
+
   // ur mcp
 
   const mcp = program.command('mcp').description('Configure and manage MCP servers').configureHelp(createSortedHelpConfig()).enablePositionalOptions();
@@ -4049,6 +4079,30 @@ async function run(): Promise<CommanderCommand> {
       mcpServeHandler
     } = await import('./cli/handlers/mcp.js');
     await mcpServeHandler({
+      debug,
+      verbose
+    });
+  });
+  mcp.command('serve-http').description('Start the opt-in stateless MCP 2026 HTTP server with Tasks and Apps').option('--host <host>', 'Host interface to bind', '127.0.0.1').option('--port <port>', 'TCP port to bind', '8976').option('--allow-origin <origins...>', 'Exact browser origins allowed by CORS').option('-d, --debug', 'Enable debug mode', () => true).option('--verbose', 'Override verbose mode setting from config', () => true).action(async ({
+    host,
+    port,
+    allowOrigin,
+    debug,
+    verbose
+  }: {
+    host?: string;
+    port?: string;
+    allowOrigin?: string[];
+    debug?: boolean;
+    verbose?: boolean;
+  }) => {
+    const {
+      mcpServeHttpHandler
+    } = await import('./cli/handlers/mcp.js');
+    await mcpServeHttpHandler({
+      host,
+      port,
+      allowOrigin,
       debug,
       verbose
     });
@@ -5057,7 +5111,7 @@ async function run(): Promise<CommanderCommand> {
     }, !opts.compact));
     process.exit(0);
   });
-  a2a.command('serve').description('Start the opt-in A2A v0.3 JSON-RPC and UR compatibility server').option('--host <host>', 'Host to bind', '127.0.0.1').option('--port <port>', 'Port to bind', '8765').option('--public-base-url <url>', 'External HTTP(S) base URL advertised by the Agent Card').option('--token <token>', 'Static bearer token (prefer UR_A2A_TOKEN; argv may be visible)').option('--delegation-secret <secret>', 'HMAC verification secret (prefer UR_A2A_DELEGATION_SECRET; argv may be visible)').option('--audience <id>', 'Agent id that delegation tokens must target', 'ur-nexus').option('--dry-run', 'Return spawned UR command without executing prompts').action(async (opts: {
+  a2a.command('serve').description('Start negotiated A2A v1 JSON-RPC/HTTP+JSON, stable v0.3 JSON-RPC, and UR compatibility routes').option('--host <host>', 'Host to bind', '127.0.0.1').option('--port <port>', 'Port to bind', '8765').option('--public-base-url <url>', 'External HTTP(S) base URL advertised by the Agent Card').option('--token <token>', 'Static bearer token (prefer UR_A2A_TOKEN; argv may be visible)').option('--delegation-secret <secret>', 'HMAC verification secret (prefer UR_A2A_DELEGATION_SECRET; argv may be visible)').option('--audience <id>', 'Agent id that delegation tokens must target', 'ur-nexus').option('--dry-run', 'Return spawned UR command without executing prompts').action(async (opts: {
     host?: string;
     port?: string;
     publicBaseUrl?: string;

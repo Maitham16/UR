@@ -374,6 +374,30 @@ async function createAPIClient(
     }) as ProviderMessageClient
   }
 
+  if (
+    providerId === 'openai-api' &&
+    providerSettings.active === providerId &&
+    providerSettings.openaiTransport === 'responses'
+  ) {
+    const {
+      createOpenAIResponsesClient,
+    } = await import('./openaiResponses.js')
+    const {
+      OpenAIResponsesStateStore,
+    } = await import('./openaiResponsesState.js')
+    return await createOpenAIResponsesClient({
+      apiKey: apiKey!,
+      baseUrl: providerSettings.baseUrl ?? provider.defaultBaseUrl,
+      maxRetries: options.maxRetries ?? 3,
+      model: options.model,
+      store: providerSettings.responses?.store ?? false,
+      compactThreshold: providerSettings.responses?.compactThreshold,
+      toolSearch: providerSettings.responses?.toolSearch ?? 'off',
+      fetch: options.fetchOverride,
+      stateStore: new OpenAIResponsesStateStore(),
+    }) as ProviderMessageClient
+  }
+
   const { createStandardAPIClient } = await import('./standardAPI.js')
   return await createStandardAPIClient({
     providerId,

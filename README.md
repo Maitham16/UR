@@ -265,6 +265,24 @@ ur config set provider.fallback ollama
 guidance. UR never switches providers automatically: inspect the failure and
 select the recovery provider explicitly with `ur config set provider <id>`.
 
+OpenAI API traffic uses Chat Completions by default. The Responses transport is
+an explicit, provider-scoped opt-in with privacy-conscious defaults:
+
+```sh
+ur config set provider openai-api
+ur config set openai_transport responses
+ur config set responses.store false
+ur config set responses.compact_threshold 20000
+ur config set responses.tool_search hosted
+```
+
+The Responses adapter supports semantic SSE streaming, background
+create/retrieve/poll/cancel, WebSocket continuation, server compaction, and
+deferred tool discovery. `store` defaults to `false`; the durable local cursor
+store records identifiers and status only. Compacted context is persisted only
+when `UR_OPENAI_RESPONSES_STATE_KEY` contains a 32-byte encryption key. Return
+to the default with `ur config set openai_transport chat-completions`.
+
 Provider config accepts canonical IDs and common aliases. Examples:
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
 `lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, and the subscription CLIs
@@ -329,8 +347,9 @@ identity line in the system prompt reflects it too:
 
 - **API** providers call each service in its native wire format — Anthropic
   `x-api-key` + `anthropic-version` on `/v1/messages`, OpenAI `Bearer` on
-  `/v1/chat/completions`, Gemini `x-goog-api-key` on `:generateContent`,
-  OpenRouter on its OpenAI-compatible chat endpoint.
+  `/v1/chat/completions` by default or `/v1/responses` when explicitly
+  selected, Gemini `x-goog-api-key` on `:generateContent`, and OpenRouter on its
+  OpenAI-compatible chat endpoint.
 - **Local/server** providers call the configured endpoint (`/v1/chat/completions`
   for LM Studio/llama.cpp/vLLM; the native API for Ollama).
 - **Subscription CLIs** (Codex, Claude Code, Gemini, Antigravity) are external
@@ -369,7 +388,7 @@ as first-class subcommands in the shipped CLI.
 | `ur test-first` | Detect the project stack, run compile/test/lint commands, store failure traces, and install edit-time verify gates. |
 | `ur safety` | Inspect or initialize project shell safety policy and evaluate command risk before execution. |
 | `ur sandbox` | Inspect and manage the sandbox/permission architecture: status, dependency check, policy init, and command approval levels. |
-| `ur context-pack` | Write project architecture context, task memory, and compressed context under `.ur/`. Supports memory kinds `decision`, `constraint`, `command`, `diff`, `note`, `architecture`, `preference`, `attempt`, `accepted`, and `rejected`. |
+| `ur context-pack` | Write project architecture context, tamper-evident task memory, and compressed context under `.ur/`; verify, quarantine, or roll back the memory chain. |
 | `/hooks` | Inspect lifecycle hooks (`BeforeEdit`, `AfterEdit`, `BeforeCommand`, `AfterCommand`, `BeforeCommit`, `OnFailure`) configured via settings files. |
 | `ur bg` | Run and manage detached local background agents with optional worktrees and PR creation. |
 | `ur worktree` | List, inspect, and clean up UR agent worktrees. |
@@ -402,14 +421,16 @@ as first-class subcommands in the shipped CLI.
 | `ur auth gemini` | Use the official Gemini CLI login flow where supported. |
 | `ur auth antigravity` | Use the official Antigravity CLI login flow where supported. |
 | `ur config set` | Persist safe non-secret provider settings such as provider, model, base URL, command path, and fallback. |
-| `ur mcp` | Configure MCP servers or expose fail-closed, schema-validated built-in tools over stdio. |
+| `ur mcp` | Configure MCP servers, expose fail-closed built-in tools over stdio, or run the opt-in stateless MCP 2026 HTTP adapter with Tasks and Apps. |
+| `ur skill` | Initialize, run, strictly verify, Ed25519-sign, and create trusted signing keys for portable skills. |
+| `ur ag-ui serve` | Start the secure AG-UI HTTP/SSE adapter for user-facing applications with truthful capability discovery. |
 | `ur plugin` | Install, update, enable, disable, and validate UR plugins that can add MCP tools, skills, templates, validators, language adapters, LSP servers, agents, hooks, output styles, and commands. |
 | `ur role-mode` | Install built-in Architect, Code, Debug, and Ask role modes. |
 | `ur acp` | Run official-SDK ACP v1 over stdio, or manage the separate UR HTTP JSON-RPC server. |
 | `ur exec` | Run one or more prompts in non-interactive mode with optional concurrency. |
 | `ur ide diff` | Capture editor-readable inline diff bundles. |
-| `ur a2a card` | Print an A2A Agent Card preview. |
-| `ur a2a serve` | Start the opt-in official-SDK A2A v0.3 JSON-RPC binding and UR compatibility task API. |
+| `ur a2a card` | Print the v0.3 Agent Card preview; the live server negotiates a separate strict v1 card. |
+| `ur a2a serve` | Start opt-in A2A v0.3 plus v1 JSON-RPC/HTTP+JSON bindings and the separate UR compatibility task API. |
 | `ur sdk` | Show programmatic headless usage and scaffold SDK examples. |
 | `ur trigger` | Parse a GitHub/Slack webhook payload and optionally launch a headless UR run. |
 | `ur agent-templates` | List or install reusable project agent templates. |
@@ -558,6 +579,9 @@ ur context-pack remember --preference "Use bun test over jest"
 ur context-pack remember --accepted "Use p-map for bounded concurrency" --scope project
 ur context-pack remember --rejected "Switch to esbuild" --alternative-to "Keep bun bundle"
 ur context-pack remember --attempt "Tried Deno runtime" --status superseded
+ur context-pack memory verify
+ur context-pack memory quarantine
+ur context-pack memory rollback --to <entry-id>
 ur context-pack compress
 ur ci-loop --command "bun test" --cwd . --max-attempts 3 --dry-run
 ur bg run "fix the flaky parser test" --worktree --dry-run
@@ -569,6 +593,10 @@ ur code-index repo build
 ur code-index repo search "rate limiter"
 ur skill init security-review
 ur skill run security-review "src/auth.ts"
+ur skill verify security-review --require-trusted
+ur skill keygen release --out ~/.ur/keys/release.pem
+ur skill sign security-review --key ~/.ur/keys/release.pem --key-id release
+UR_MCP_HTTP_TOKEN='<secret>' ur mcp serve-http --port 8976
 ur artifacts capture-tests --command "bun test"
 ur artifacts serve --port 4180
 ur agent-task pr --create --dry-run
@@ -585,14 +613,18 @@ UR reads repository instructions and local runtime state from project files:
 
 - `AGENTS.md` and `UR.md` provide shared project instructions.
 - `UR.local.md` is for private local instructions.
-- `.ur/skills/` stores project skills.
+- `.ur/skills/` stores native project skills; `.agents/skills/` is the
+  cross-client Agent Skills location. User equivalents live under `~/.ur/skills/`
+  and `~/.agents/skills/`, with deterministic project/native precedence.
 - `.ur/agents/` stores custom agents and role modes.
 - `.ur/safety-policy.json` configures project shell safety rules for read,
   write, execute, and network command classes.
 - `.ur/project-manifest.json` and `.ur/context/` hold architecture summaries,
   task memory, compressed context, and project memory including architecture
-  decisions, preferred commands, failed attempts, accepted patterns, and rejected
-  approaches.
+  decisions, preferred commands, failed attempts, accepted patterns, and
+  rejected approaches. Task-memory v2 entries include provenance and an
+  integrity chain; corrupt tails can be quarantined without discarding the
+  verified prefix.
 - `.ur/specs/`, `.ur/artifacts/`, `.ur/automations/`, `.ur/test-first/`,
   `.ur/memory/`, and `.ur/index/` hold workflow state, review artifacts,
   scheduled jobs, failure traces, memory, and indexes.
@@ -623,6 +655,26 @@ settings, generated indexes, memory, logs, and secrets out of Git.
 - `plugins/core/` contains first-party marketplace plugins.
 - `plugins/community/` stages contributed plugins.
 - `plugins/examples/` contains plugin templates users can copy.
+
+## OpenTelemetry
+
+Telemetry export is off unless an operator explicitly configures a signal:
+
+```sh
+OTEL_TRACES_EXPORTER=otlp \
+OTEL_METRICS_EXPORTER=otlp \
+OTEL_LOGS_EXPORTER=otlp \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
+ur
+```
+
+UR emits bounded OpenTelemetry GenAI inference, agent, workflow, tool, and
+memory spans plus duration, token, streaming time-to-first-chunk, and
+inter-output-chunk latency metrics. Raw prompts, system instructions, tool
+arguments/results, and memory records are omitted by default; set
+`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` only inside an
+appropriately secured telemetry environment. `OTEL_SDK_DISABLED=true` is the
+global kill switch.
 
 ## Safety Model
 
@@ -747,6 +799,7 @@ release until that GitHub run is green.
 - [IDE Guide](docs/IDE.md)
 - [ACP Guide](docs/ACP.md)
 - [A2A Guide](docs/A2A.md)
+- [AG-UI Guide](docs/AG_UI.md)
 - [Plugin Guide](docs/plugins.md)
 - [Validation Runbook](docs/VALIDATION.md)
 - [Release Runbook](RELEASE.md)

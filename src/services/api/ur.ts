@@ -232,6 +232,10 @@ import {
 } from '../../utils/sessionActivity.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import {
+  recordGenAiOutputChunkMetric,
+  shouldCaptureGenAiContent,
+} from '../../utils/telemetry/genAiSemantics.js'
+import {
   isBetaTracingEnabled,
   type LLMRequestNewContext,
   startLLMRequestSpan,
@@ -1518,7 +1522,8 @@ async function* queryModel(
     })
   }
 
-  const newContext: LLMRequestNewContext | undefined = isBetaTracingEnabled()
+  const newContext: LLMRequestNewContext | undefined =
+    isBetaTracingEnabled() || shouldCaptureGenAiContent()
     ? {
         systemPrompt: systemPrompt.join('\n\n'),
         querySource: options.querySource,
@@ -1968,6 +1973,7 @@ async function* queryModel(
     try {
       // stream in and accumulate state
       let isFirstChunk = true
+      let previousOutputChunkAt: number | undefined
       let lastEventTime: number | null = null // Set after first chunk to avoid measuring TTFB as a stall
       const STALL_THRESHOLD_MS = 30_000 // 30 seconds
       let totalStallTime = 0
@@ -1976,6 +1982,15 @@ async function* queryModel(
       for await (const _part of stream) {
         const part = _part as any
         resetStreamIdleTimer()
+        const outputChunkAt = performance.now()
+        if (previousOutputChunkAt !== undefined) {
+          recordGenAiOutputChunkMetric({
+            model: options.model,
+            responseModel: partialMessage?.model,
+            durationMs: outputChunkAt - previousOutputChunkAt,
+          })
+        }
+        previousOutputChunkAt = outputChunkAt
         const now = Date.now()
 
         // Detect and log streaming stalls (only after first event to avoid counting TTFB)

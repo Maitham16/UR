@@ -37,6 +37,12 @@ restore their session model without showing the picker.
     "model": "…", "baseUrl": "…", "timeoutMs": 30000,
     "commandPath": "…",            // external CLI path for cli-login providers
     "fallback": "…",
+    "openaiTransport": "responses", // chat-completions (default) | responses
+    "responses": {
+      "store": false,
+      "compactThreshold": 20000,
+      "toolSearch": "hosted"        // off (default) | hosted
+    },
     "preferences": {},
     "availableModels": [], "modelOverrides": {}
   },
@@ -226,6 +232,20 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 | `UR_CODE_SESSION_ACCESS_TOKEN` | Remote session token |
 | `URHQ_DEFAULT_MODELO_MODEL` / `URHQ_DEFAULT_MODELS_MODEL` / `URHQ_DEFAULT_MODELH_MODEL` | Default model tiers (opus/sonnet/haiku-class) |
 | `MCP_CLIENT_SECRET` | OAuth client secret for `ur mcp add` |
+| `UR_OPENAI_RESPONSES_STATE_KEY` | 32-byte hex/base64 key required to persist encrypted compacted Responses context |
+
+### Protocol, skill, and telemetry controls
+| Variable | Effect |
+|---|---|
+| `UR_MCP_HTTP_TOKEN` / `UR_MCP_HTTP_*` | Authenticate and bound the opt-in stateless MCP 2026 Tasks/Apps server |
+| `UR_A2A_TOKEN` / `UR_A2A_DELEGATION_SECRET` / `UR_A2A_*` | Authenticate, scope, and bound A2A v0.3/v1 serving |
+| `UR_ACP_STDIO_*` | Bound ACP durable sessions, prompts, output, and runtime |
+| `UR_SKILLS_STRICT_SPEC=true` | Reject file skills that violate the Agent Skills specification |
+| `UR_SKILLS_REQUIRE_TRUSTED_SIGNATURE=true` | Require a trusted Ed25519 skill signature at load and invocation |
+| `UR_SKILL_TRUSTED_KEYS_FILE` | Override the private trusted skill-key store |
+| `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` / `OTEL_LOGS_EXPORTER` | Explicitly enable `otlp` or `console`; unset/`none` is off |
+| `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` | Opt into bounded prompt/tool/memory content attributes (off by default) |
+| `OTEL_SDK_DISABLED=true` | Disable all OpenTelemetry SDK export |
 
 ### Internal / build
 `USER_TYPE=ant` (internal commands/tools), `IS_DEMO`, `NODE_OPTIONS`,

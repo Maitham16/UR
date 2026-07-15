@@ -10,9 +10,13 @@
 import * as acp from '@agentclientprotocol/sdk'
 import { spawn } from 'node:child_process'
 import {
+  appendFileSync,
+  chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -35,11 +39,68 @@ const MAX_MCP_SERVERS = 32
 const MAX_MCP_ARGUMENTS = 256
 const MAX_MCP_ENVIRONMENT_VARIABLES = 256
 const MAX_MCP_HEADERS = 256
+const ACP_SESSION_PAGE_SIZE = 50
+const MAX_SESSION_METADATA_BYTES = 32 * 1024
+const MAX_SESSION_HISTORY_BYTES = 64 * 1024 * 1024
+const MAX_SESSION_HISTORY_EVENTS = 100_000
+const MAX_SESSION_HISTORY_EVENT_BYTES = 1024 * 1024
+const MAX_SESSION_LIST_SCAN_FILES = 10_000
 
-type PromptPermissionRequest = Omit<
-  acp.RequestPermissionRequest,
-  'sessionId'
->
+const ACP_SESSION_MODES = [
+  {
+    id: 'default',
+    name: 'Default',
+    description: 'Ask before operations that are not already permitted.',
+  },
+  {
+    id: 'acceptEdits',
+    name: 'Accept edits',
+    description:
+      'Allow ordinary workspace edits while retaining command safeguards.',
+  },
+  {
+    id: 'plan',
+    name: 'Plan',
+    description: 'Analyze and plan without making implementation changes.',
+  },
+] as const satisfies readonly acp.SessionMode[]
+
+type AcpSessionModeId = (typeof ACP_SESSION_MODES)[number]['id']
+
+const ACP_AVAILABLE_COMMANDS = [
+  {
+    name: 'help',
+    description: 'Show help and available UR commands.',
+  },
+  {
+    name: 'review',
+    description: 'Review a pull request locally.',
+    input: { hint: '[pull request number]' },
+  },
+  {
+    name: 'compact',
+    description: 'Compact conversation history into a retained summary.',
+    input: { hint: '[optional summarization instructions]' },
+  },
+  {
+    name: 'context',
+    description: 'Show current context-window usage.',
+  },
+  {
+    name: 'memory',
+    description: 'Inspect or edit UR memory files.',
+  },
+  {
+    name: 'skills',
+    description: 'List available agent skills.',
+  },
+  {
+    name: 'doctor',
+    description: 'Diagnose the UR installation and settings.',
+  },
+] as const satisfies readonly acp.AvailableCommand[]
+
+type PromptPermissionRequest = Omit<acp.RequestPermissionRequest, 'sessionId'>
 
 type UrPermissionControlRequest = {
   toolName: string
@@ -69,6 +130,7 @@ export type AcpPromptRunner = (
     resumeSessionId?: string
     additionalDirectories: string[]
     mcpServers: acp.McpServer[]
+    mode: AcpSessionModeId
     onChunk: (text: string) => void | Promise<void>
     onToolUpdate: (update: acp.SessionUpdate) => void | Promise<void>
     requestPermission: (
@@ -81,6 +143,12 @@ type SessionState = {
   cwd: string
   additionalDirectories: string[]
   mcpServers: acp.McpServer[]
+  mode: AcpSessionModeId
+  streamToolUpdates: boolean
+  history: acp.SessionUpdate[]
+  title?: string
+  createdAt: string
+  updatedAt: string
   controller?: AbortController
   activePrompt?: Promise<{
     stopReason: acp.StopReason
@@ -89,12 +157,30 @@ type SessionState = {
   cliSessionId?: string
 }
 
-type PersistedAcpSession = {
+type PersistedAcpSessionV1 = {
   version: 1
   sessionId: string
   cwd: string
   cliSessionId?: string
   updatedAt: string
+}
+
+type PersistedAcpSession = {
+  version: 2
+  sessionId: string
+  cwd: string
+  additionalDirectories: string[]
+  cliSessionId?: string
+  mode: AcpSessionModeId
+  streamToolUpdates: boolean
+  title?: string
+  createdAt: string
+  updatedAt: string
+}
+
+type PersistedAcpHistoryEvent = {
+  version: 1
+  update: acp.SessionUpdate
 }
 
 function invalidParams(message: string): never {
@@ -143,7 +229,9 @@ function validateMcpName(name: unknown): string {
     name.length > 128 ||
     name.includes('\0')
   ) {
-    invalidParams('MCP server names must be non-empty strings of at most 128 characters')
+    invalidParams(
+      'MCP server names must be non-empty strings of at most 128 characters',
+    )
   }
   return name.trim()
 }
@@ -166,7 +254,9 @@ function validateMcpServers(
 
     if ('command' in server) {
       if (!Array.isArray(server.args) || !Array.isArray(server.env)) {
-        invalidParams(`MCP stdio server ${name} must provide args and env arrays`)
+        invalidParams(
+          `MCP stdio server ${name} must provide args and env arrays`,
+        )
       }
       if (
         typeof server.command !== 'string' ||
@@ -174,14 +264,16 @@ function validateMcpServers(
         server.command.length > 4_096 ||
         server.command.includes('\0')
       ) {
-        invalidParams(`MCP stdio command must be an absolute executable path: ${name}`)
+        invalidParams(
+          `MCP stdio command must be an absolute executable path: ${name}`,
+        )
       }
       if (server.args.length > MAX_MCP_ARGUMENTS) {
         invalidParams(`MCP server ${name} has too many arguments`)
       }
       if (
         server.args.some(
-          arg =>
+          (arg) =>
             typeof arg !== 'string' ||
             arg.length > 16_384 ||
             arg.includes('\0'),
@@ -206,7 +298,9 @@ function validateMcpServers(
           variable.value.length > 1_000_000 ||
           variable.value.includes('\0')
         ) {
-          invalidParams(`MCP server ${name} has an invalid environment variable`)
+          invalidParams(
+            `MCP server ${name} has an invalid environment variable`,
+          )
         }
         if (environmentNames.has(variable.name)) {
           invalidParams(
@@ -285,7 +379,7 @@ function childMcpConfig(servers: readonly acp.McpServer[]): {
         command: server.command,
         args: server.args,
         env: Object.fromEntries(
-          server.env.map(variable => [variable.name, variable.value]),
+          server.env.map((variable) => [variable.name, variable.value]),
         ),
       }
     } else if (server.type === 'http' || server.type === 'sse') {
@@ -293,7 +387,7 @@ function childMcpConfig(servers: readonly acp.McpServer[]): {
         type: server.type,
         url: server.url,
         headers: Object.fromEntries(
-          server.headers.map(header => [header.name, header.value]),
+          server.headers.map((header) => [header.name, header.value]),
         ),
       }
     }
@@ -301,9 +395,10 @@ function childMcpConfig(servers: readonly acp.McpServer[]): {
   return { mcpServers: result }
 }
 
-function createTemporaryMcpConfig(
-  servers: readonly acp.McpServer[],
-): { path?: string; cleanup: () => void } {
+function createTemporaryMcpConfig(servers: readonly acp.McpServer[]): {
+  path?: string
+  cleanup: () => void
+} {
   if (servers.length === 0) return { cleanup: () => {} }
   const directory = mkdtempSync(join(tmpdir(), 'ur-acp-mcp-'))
   const path = join(directory, 'mcp.json')
@@ -318,32 +413,143 @@ function createTemporaryMcpConfig(
   }
 }
 
+const ACP_SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
+
 function persistedSessionPath(sessionId: string, storeRoot: string): string {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(sessionId)) {
+  if (!ACP_SESSION_ID_RE.test(sessionId)) {
     invalidParams('sessionId must be a UUID issued by UR')
   }
-  return join(
-    storeRoot,
-    'acp',
-    'sessions',
-    `${sessionId}.json`,
+  return join(storeRoot, 'acp', 'sessions', `${sessionId}.json`)
+}
+
+function persistedSessionHistoryPath(
+  sessionId: string,
+  storeRoot: string,
+): string {
+  if (!ACP_SESSION_ID_RE.test(sessionId)) {
+    invalidParams('sessionId must be a UUID issued by UR')
+  }
+  return join(storeRoot, 'acp', 'history', `${sessionId}.jsonl`)
+}
+
+function isAcpSessionMode(value: unknown): value is AcpSessionModeId {
+  return ACP_SESSION_MODES.some((mode) => mode.id === value)
+}
+
+function isIsoTimestamp(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length >= 20 &&
+    value.length <= 40 &&
+    Number.isFinite(Date.parse(value))
+  )
+}
+
+function normalizePersistedSession(
+  parsed: unknown,
+  expectedSessionId: string,
+): PersistedAcpSession {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('metadata is not an object')
+  }
+  const candidate = parsed as Partial<
+    PersistedAcpSession | PersistedAcpSessionV1
+  >
+  if (
+    candidate.sessionId !== expectedSessionId ||
+    typeof candidate.cwd !== 'string' ||
+    !isAbsolute(candidate.cwd) ||
+    candidate.cwd.includes('\0') ||
+    candidate.cwd.length > 4_096 ||
+    !isIsoTimestamp(candidate.updatedAt) ||
+    (candidate.cliSessionId !== undefined &&
+      (typeof candidate.cliSessionId !== 'string' ||
+        !/^[0-9A-Za-z_-]{1,256}$/u.test(candidate.cliSessionId)))
+  ) {
+    throw new Error('metadata identity is invalid')
+  }
+
+  if (candidate.version === 1) {
+    return {
+      version: 2,
+      sessionId: expectedSessionId,
+      cwd: candidate.cwd,
+      additionalDirectories: [],
+      ...(candidate.cliSessionId
+        ? { cliSessionId: candidate.cliSessionId }
+        : {}),
+      mode: 'default',
+      streamToolUpdates: true,
+      createdAt: candidate.updatedAt,
+      updatedAt: candidate.updatedAt,
+    }
+  }
+
+  const current = candidate as Partial<PersistedAcpSession>
+  if (
+    current.version !== 2 ||
+    !Array.isArray(current.additionalDirectories) ||
+    current.additionalDirectories.length > MAX_ADDITIONAL_DIRECTORIES ||
+    current.additionalDirectories.some(
+      (directory) =>
+        typeof directory !== 'string' ||
+        !isAbsolute(directory) ||
+        directory.includes('\0') ||
+        directory.length > 4_096,
+    ) ||
+    !isAcpSessionMode(current.mode) ||
+    typeof current.streamToolUpdates !== 'boolean' ||
+    !isIsoTimestamp(current.createdAt) ||
+    (current.title !== undefined &&
+      (typeof current.title !== 'string' ||
+        !current.title.trim() ||
+        current.title.length > 512 ||
+        current.title.includes('\0')))
+  ) {
+    throw new Error('metadata fields are invalid')
+  }
+  return current as PersistedAcpSession
+}
+
+function readPersistedSessionFile(
+  sessionId: string,
+  storeRoot: string,
+): PersistedAcpSession {
+  const path = persistedSessionPath(sessionId, storeRoot)
+  const file = lstatSync(path)
+  if (!file.isFile() || file.isSymbolicLink()) {
+    throw new Error('metadata path is not a regular file')
+  }
+  const size = file.size
+  if (size <= 0 || size > MAX_SESSION_METADATA_BYTES) {
+    throw new Error('metadata size is invalid')
+  }
+  return normalizePersistedSession(
+    JSON.parse(readFileSync(path, 'utf8')) as unknown,
+    sessionId,
   )
 }
 
 function persistAcpSession(
   sessionId: string,
-  state: Pick<SessionState, 'cwd' | 'cliSessionId'>,
+  state: SessionState,
   storeRoot: string,
 ): void {
   const path = persistedSessionPath(sessionId, storeRoot)
   const directory = join(storeRoot, 'acp', 'sessions')
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   const record: PersistedAcpSession = {
-    version: 1,
+    version: 2,
     sessionId,
     cwd: state.cwd,
+    additionalDirectories: state.additionalDirectories,
     ...(state.cliSessionId ? { cliSessionId: state.cliSessionId } : {}),
-    updatedAt: new Date().toISOString(),
+    mode: state.mode,
+    streamToolUpdates: state.streamToolUpdates,
+    ...(state.title ? { title: state.title } : {}),
+    createdAt: state.createdAt,
+    updatedAt: state.updatedAt,
   }
   const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`
   try {
@@ -353,6 +559,7 @@ function persistAcpSession(
       mode: 0o600,
     })
     renameSync(temporary, path)
+    chmodSync(path, 0o600)
   } finally {
     rmSync(temporary, { force: true })
   }
@@ -364,31 +571,129 @@ function loadPersistedAcpSession(
   storeRoot: string,
 ): PersistedAcpSession {
   const path = persistedSessionPath(sessionId, storeRoot)
-  let metadataSize: number
+  if (!existsSync(path)) invalidParams(`unknown session: ${sessionId}`)
+  let record: PersistedAcpSession
   try {
-    metadataSize = statSync(path).size
-  } catch {
-    invalidParams(`unknown session: ${sessionId}`)
-  }
-  if (metadataSize > 16_384) invalidParams(`unknown session: ${sessionId}`)
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(readFileSync(path, 'utf8'))
+    record = readPersistedSessionFile(sessionId, storeRoot)
   } catch {
     invalidParams(`session metadata is unreadable: ${sessionId}`)
   }
-  const record = parsed as Partial<PersistedAcpSession>
-  if (
-    record.version !== 1 ||
-    record.sessionId !== sessionId ||
-    record.cwd !== cwd ||
-    (record.cliSessionId !== undefined &&
-      (typeof record.cliSessionId !== 'string' ||
-        !/^[0-9A-Za-z_-]{1,256}$/u.test(record.cliSessionId)))
-  ) {
-    invalidParams(`session metadata does not match the requested session and cwd`)
+  if (record.cwd !== cwd) {
+    invalidParams(
+      `session metadata does not match the requested session and cwd`,
+    )
   }
-  return record as PersistedAcpSession
+  return record
+}
+
+const ACP_SESSION_UPDATE_KINDS = new Set([
+  'user_message_chunk',
+  'agent_message_chunk',
+  'agent_thought_chunk',
+  'tool_call',
+  'tool_call_update',
+  'plan',
+  'plan_update',
+  'plan_removed',
+  'session_info_update',
+  'usage_update',
+])
+
+function parsePersistedHistoryUpdate(value: unknown): acp.SessionUpdate {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('history update is not an object')
+  }
+  const update = value as { sessionUpdate?: unknown }
+  if (
+    typeof update.sessionUpdate !== 'string' ||
+    !ACP_SESSION_UPDATE_KINDS.has(update.sessionUpdate)
+  ) {
+    throw new Error('history update kind is invalid')
+  }
+  return value as acp.SessionUpdate
+}
+
+function loadPersistedAcpHistory(
+  sessionId: string,
+  storeRoot: string,
+): acp.SessionUpdate[] {
+  const path = persistedSessionHistoryPath(sessionId, storeRoot)
+  if (!existsSync(path)) return []
+  let size: number
+  try {
+    const file = lstatSync(path)
+    if (!file.isFile() || file.isSymbolicLink()) {
+      invalidParams(`session history is unreadable: ${sessionId}`)
+    }
+    size = file.size
+  } catch {
+    invalidParams(`session history is unreadable: ${sessionId}`)
+  }
+  if (size > MAX_SESSION_HISTORY_BYTES) {
+    invalidParams(`session history exceeds the supported size: ${sessionId}`)
+  }
+  const lines = readFileSync(path, 'utf8').split('\n').filter(Boolean)
+  if (lines.length > MAX_SESSION_HISTORY_EVENTS) {
+    invalidParams(`session history has too many events: ${sessionId}`)
+  }
+  try {
+    return lines.map((line) => {
+      if (line.length > MAX_SESSION_HISTORY_EVENT_BYTES) {
+        throw new Error('history event is too large')
+      }
+      const event = JSON.parse(line) as Partial<PersistedAcpHistoryEvent>
+      if (event.version !== 1)
+        throw new Error('history event version is invalid')
+      return parsePersistedHistoryUpdate(event.update)
+    })
+  } catch {
+    invalidParams(`session history is unreadable: ${sessionId}`)
+  }
+}
+
+function appendPersistedAcpHistory(
+  sessionId: string,
+  update: acp.SessionUpdate,
+  storeRoot: string,
+): void {
+  const path = persistedSessionHistoryPath(sessionId, storeRoot)
+  const directory = join(storeRoot, 'acp', 'history')
+  const line = `${JSON.stringify({
+    version: 1,
+    update,
+  } satisfies PersistedAcpHistoryEvent)}\n`
+  if (line.length > MAX_SESSION_HISTORY_EVENT_BYTES) {
+    throw new acp.RequestError(
+      -32000,
+      'ACP session history event is too large to persist',
+    )
+  }
+  let currentSize = 0
+  try {
+    const file = lstatSync(path)
+    if (!file.isFile() || file.isSymbolicLink()) {
+      throw new acp.RequestError(
+        -32000,
+        'ACP session history path is not a regular file',
+      )
+    }
+    currentSize = file.size
+  } catch {
+    if (existsSync(path))
+      throw new acp.RequestError(
+        -32000,
+        'ACP session history path is not a regular file',
+      )
+  }
+  if (currentSize + Buffer.byteLength(line) > MAX_SESSION_HISTORY_BYTES) {
+    throw new acp.RequestError(
+      -32000,
+      `ACP session history reached the ${MAX_SESSION_HISTORY_BYTES}-byte safety limit`,
+    )
+  }
+  mkdirSync(directory, { recursive: true, mode: 0o700 })
+  appendFileSync(path, line, { encoding: 'utf8', mode: 0o600 })
+  chmodSync(path, 0o600)
 }
 
 function toolKind(name: string): acp.ToolKind {
@@ -419,7 +724,11 @@ function parsePermissionControlRequest(
 ): UrPermissionControlRequest | undefined {
   if (!message || typeof message !== 'object') return undefined
   const outer = message as { type?: unknown; request?: unknown }
-  if (outer.type !== 'control_request' || !outer.request || typeof outer.request !== 'object') {
+  if (
+    outer.type !== 'control_request' ||
+    !outer.request ||
+    typeof outer.request !== 'object'
+  ) {
     return undefined
   }
   const request = outer.request as Record<string, unknown>
@@ -450,8 +759,11 @@ function parsePermissionControlRequest(
     return undefined
   }
   if (serializedInput.length > 256_000) return undefined
-  const titleCandidate = [request.title, request.display_name, request.description]
-    .find(value => typeof value === 'string' && value.trim())
+  const titleCandidate = [
+    request.title,
+    request.display_name,
+    request.description,
+  ].find((value) => typeof value === 'string' && value.trim())
   return {
     toolName,
     toolUseId,
@@ -581,7 +893,7 @@ function extractPromptText(prompt: unknown): string {
   if (typeof prompt === 'string') return prompt
   if (!Array.isArray(prompt)) return ''
   return prompt
-    .map(block => {
+    .map((block) => {
       if (typeof block === 'string') return block
       if (!block || typeof block !== 'object') return ''
       const value = block as {
@@ -596,10 +908,7 @@ function extractPromptText(prompt: unknown): string {
       // Resource links are part of ACP's baseline prompt contract. Preserve
       // the reference as explicit model context instead of silently dropping
       // a content block the client is entitled to send.
-      if (
-        value.type === 'resource_link' &&
-        typeof value.uri === 'string'
-      ) {
+      if (value.type === 'resource_link' && typeof value.uri === 'string') {
         const label = value.name?.trim() || value.uri
         return `[Referenced resource: ${label}]\n${value.uri}`
       }
@@ -665,6 +974,8 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
     '--include-partial-messages',
     '--permission-prompt-tool',
     'stdio',
+    '--permission-mode',
+    ctx.mode,
   ]
   if (ctx.resumeSessionId) {
     args.push('--resume', ctx.resumeSessionId)
@@ -705,7 +1016,9 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
       let resumeSessionId = ctx.resumeSessionId
       let killTimer: ReturnType<typeof setTimeout> | undefined
 
-      const queueNotification = (operation: () => void | Promise<void>): void => {
+      const queueNotification = (
+        operation: () => void | Promise<void>,
+      ): void => {
         notificationQueue = notificationQueue.then(operation)
         void notificationQueue.catch(() => {})
       }
@@ -773,7 +1086,7 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
             },
           })
         })()
-        void task.catch(error => {
+        void task.catch((error) => {
           sendControlError(
             requestId,
             `ACP permission bridge failed closed: ${
@@ -898,13 +1211,15 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
       child.stdout.on('data', consumeStdout)
       child.stderr.on('data', (chunk: Buffer) => {
         if (stderr.length < MAX_STDERR_CHARS) {
-          stderr += chunk.toString('utf8').slice(0, MAX_STDERR_CHARS - stderr.length)
+          stderr += chunk
+            .toString('utf8')
+            .slice(0, MAX_STDERR_CHARS - stderr.length)
         }
       })
-      child.stdin.on('error', error => {
+      child.stdin.on('error', (error) => {
         if (!ctx.signal.aborted) rejectOnce(error)
       })
-      child.on('error', error => rejectOnce(error))
+      child.on('error', (error) => rejectOnce(error))
       child.on('close', (code, signal) => {
         if (settled) return
         const remainder = stdoutBuffer + decoder.end()
@@ -938,9 +1253,10 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
             }
             resolve({ stopReason: 'end_turn', resumeSessionId })
           },
-          error => rejectOnce(
-            error instanceof Error ? error : new Error(String(error)),
-          ),
+          (error) =>
+            rejectOnce(
+              error instanceof Error ? error : new Error(String(error)),
+            ),
         )
       })
 
@@ -963,7 +1279,10 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
 
 function validateSessionCwd(cwd: string): string {
   if (!isAbsolute(cwd)) {
-    throw acp.RequestError.invalidParams(undefined, 'cwd must be an absolute path')
+    throw acp.RequestError.invalidParams(
+      undefined,
+      'cwd must be an absolute path',
+    )
   }
   if (!isExistingDirectory(cwd)) {
     throw acp.RequestError.invalidParams(
@@ -985,16 +1304,126 @@ function createRuntime(deps: {
   const runPrompt = deps.runPrompt ?? defaultPromptRunner
   const shouldPersistSessions = deps.persistSessions !== false
   const sessionStoreRoot = deps.sessionStoreRoot ?? getURConfigHomeDir()
-  const maxSessions = deps.maxSessions ?? readPositiveInteger(
-    process.env.UR_ACP_STDIO_MAX_SESSIONS,
-    100,
-    1_000,
-  )
+  const maxSessions =
+    deps.maxSessions ??
+    readPositiveInteger(process.env.UR_ACP_STDIO_MAX_SESSIONS, 100, 1_000)
   const maxPromptChars = readPositiveInteger(
     process.env.UR_ACP_STDIO_MAX_PROMPT_CHARS,
     128_000,
     2_000_000,
   )
+
+  type UpdateClient = {
+    onUpdate: (update: acp.SessionUpdate) => void | Promise<void>
+  }
+
+  type PromptClient = UpdateClient & {
+    requestPermission: (
+      request: acp.RequestPermissionRequest,
+      signal: AbortSignal,
+    ) => Promise<acp.RequestPermissionResponse>
+  }
+
+  const modeState = (session: SessionState): acp.SessionModeState => ({
+    currentModeId: session.mode,
+    availableModes: ACP_SESSION_MODES.map((mode) => ({ ...mode })),
+  })
+
+  const configOptions = (session: SessionState): acp.SessionConfigOption[] => [
+    {
+      type: 'select',
+      id: 'tool_updates',
+      name: 'Tool updates',
+      description:
+        'Choose whether ACP receives all tool progress or permission prompts only.',
+      category: '_ur',
+      currentValue: session.streamToolUpdates ? 'stream' : 'permissions_only',
+      options: [
+        {
+          value: 'stream',
+          name: 'Stream all',
+          description: 'Report tool starts, progress, and completion.',
+        },
+        {
+          value: 'permissions_only',
+          name: 'Permissions only',
+          description: 'Suppress non-essential tool progress notifications.',
+        },
+      ],
+    },
+  ]
+
+  const availableCommandsUpdate = (): acp.SessionUpdate => ({
+    sessionUpdate: 'available_commands_update',
+    availableCommands: ACP_AVAILABLE_COMMANDS.map((command) => ({
+      ...command,
+    })),
+  })
+
+  const touch = (sessionId: string, session: SessionState): void => {
+    session.updatedAt = new Date().toISOString()
+    if (shouldPersistSessions) {
+      persistAcpSession(sessionId, session, sessionStoreRoot)
+    }
+  }
+
+  const recordHistory = (
+    sessionId: string,
+    session: SessionState,
+    update: acp.SessionUpdate,
+  ): void => {
+    if (session.history.length >= MAX_SESSION_HISTORY_EVENTS) {
+      throw new acp.RequestError(
+        -32000,
+        `ACP session history reached the ${MAX_SESSION_HISTORY_EVENTS}-event safety limit`,
+      )
+    }
+    if (shouldPersistSessions) {
+      appendPersistedAcpHistory(sessionId, update, sessionStoreRoot)
+    }
+    session.history.push(update)
+  }
+
+  const stateFromPersisted = (
+    persisted: PersistedAcpSession,
+    mcpServers: acp.McpServer[],
+    additionalDirectories: string[],
+  ): SessionState => ({
+    cwd: persisted.cwd,
+    mcpServers,
+    additionalDirectories,
+    mode: persisted.mode,
+    streamToolUpdates: persisted.streamToolUpdates,
+    history: loadPersistedAcpHistory(persisted.sessionId, sessionStoreRoot),
+    ...(persisted.title ? { title: persisted.title } : {}),
+    createdAt: persisted.createdAt,
+    updatedAt: persisted.updatedAt,
+    ...(persisted.cliSessionId ? { cliSessionId: persisted.cliSessionId } : {}),
+  })
+
+  const sessionInfo = (
+    sessionId: string,
+    session: SessionState,
+  ): acp.SessionInfo => ({
+    sessionId,
+    cwd: session.cwd,
+    additionalDirectories: [...session.additionalDirectories],
+    ...(session.title ? { title: session.title } : {}),
+    updatedAt: session.updatedAt,
+  })
+
+  const persistedSessionInfo = (
+    session: PersistedAcpSession,
+  ): acp.SessionInfo => ({
+    sessionId: session.sessionId,
+    cwd: session.cwd,
+    additionalDirectories: [...session.additionalDirectories],
+    ...(session.title ? { title: session.title } : {}),
+    updatedAt: session.updatedAt,
+  })
+
+  const announce = (client: UpdateClient): void | Promise<void> =>
+    client.onUpdate(availableCommandsUpdate())
 
   const assertCapacity = (): void => {
     if (sessions.size >= maxSessions) {
@@ -1009,21 +1438,31 @@ function createRuntime(deps: {
     cwd = deps.cwd,
     mcpServers: readonly acp.McpServer[] = [],
     additionalDirectories: readonly string[] = [],
-  ): { sessionId: string } => {
+  ): acp.NewSessionResponse => {
     assertCapacity()
     const sessionId = randomUUID()
+    const now = new Date().toISOString()
     const state: SessionState = {
       cwd: validateSessionCwd(cwd),
       mcpServers: validateMcpServers(mcpServers),
       additionalDirectories: validateAdditionalDirectories(
         additionalDirectories,
       ),
+      mode: 'default',
+      streamToolUpdates: true,
+      history: [],
+      createdAt: now,
+      updatedAt: now,
     }
     if (shouldPersistSessions) {
       persistAcpSession(sessionId, state, sessionStoreRoot)
     }
     sessions.set(sessionId, state)
-    return { sessionId }
+    return {
+      sessionId,
+      modes: modeState(state),
+      configOptions: configOptions(state),
+    }
   }
 
   const resumeSession = (
@@ -1031,7 +1470,7 @@ function createRuntime(deps: {
     cwd: string,
     mcpServers: readonly acp.McpServer[] = [],
     additionalDirectories: readonly string[] = [],
-  ): Record<string, never> => {
+  ): acp.ResumeSessionResponse => {
     const validatedCwd = validateSessionCwd(cwd)
     const validatedMcpServers = validateMcpServers(mcpServers)
     const validatedAdditionalDirectories = validateAdditionalDirectories(
@@ -1050,7 +1489,11 @@ function createRuntime(deps: {
       }
       active.mcpServers = validatedMcpServers
       active.additionalDirectories = validatedAdditionalDirectories
-      return {}
+      touch(sessionId, active)
+      return {
+        modes: modeState(active),
+        configOptions: configOptions(active),
+      }
     }
 
     assertCapacity()
@@ -1060,27 +1503,80 @@ function createRuntime(deps: {
       validatedCwd,
       sessionStoreRoot,
     )
-    sessions.set(sessionId, {
-      cwd: validatedCwd,
-      mcpServers: validatedMcpServers,
-      additionalDirectories: validatedAdditionalDirectories,
-      ...(persisted.cliSessionId
-        ? { cliSessionId: persisted.cliSessionId }
-        : {}),
+    const state = stateFromPersisted(
+      persisted,
+      validatedMcpServers,
+      validatedAdditionalDirectories,
+    )
+    sessions.set(sessionId, state)
+    touch(sessionId, state)
+    return {
+      modes: modeState(state),
+      configOptions: configOptions(state),
+    }
+  }
+
+  const loadSession = async (
+    sessionId: string,
+    cwd: string,
+    mcpServers: readonly acp.McpServer[] = [],
+    additionalDirectories: readonly string[] = [],
+    client: UpdateClient,
+  ): Promise<acp.LoadSessionResponse> => {
+    const validatedCwd = validateSessionCwd(cwd)
+    const validatedMcpServers = validateMcpServers(mcpServers)
+    const validatedAdditionalDirectories = validateAdditionalDirectories(
+      additionalDirectories,
+    )
+    let session = sessions.get(sessionId)
+    if (session) {
+      if (session.cwd !== validatedCwd) {
+        invalidParams('session/load cwd must match the original session cwd')
+      }
+      if (session.activePrompt) {
+        throw new acp.RequestError(
+          -32000,
+          `session ${sessionId} already has an active prompt`,
+        )
+      }
+      session.mcpServers = validatedMcpServers
+      session.additionalDirectories = validatedAdditionalDirectories
+    } else {
+      assertCapacity()
+      if (!shouldPersistSessions) invalidParams(`unknown session: ${sessionId}`)
+      const persisted = loadPersistedAcpSession(
+        sessionId,
+        validatedCwd,
+        sessionStoreRoot,
+      )
+      session = stateFromPersisted(
+        persisted,
+        validatedMcpServers,
+        validatedAdditionalDirectories,
+      )
+      sessions.set(sessionId, session)
+    }
+
+    touch(sessionId, session)
+    for (const update of session.history) {
+      await client.onUpdate(update)
+    }
+    await announce(client)
+    await client.onUpdate({
+      sessionUpdate: 'session_info_update',
+      ...(session.title ? { title: session.title } : {}),
+      updatedAt: session.updatedAt,
     })
-    return {}
+    return {
+      modes: modeState(session),
+      configOptions: configOptions(session),
+    }
   }
 
   const prompt = async (
     sessionId: string,
     content: unknown,
-    client: {
-      onUpdate: (update: acp.SessionUpdate) => void | Promise<void>
-      requestPermission: (
-        request: acp.RequestPermissionRequest,
-        signal: AbortSignal,
-      ) => Promise<acp.RequestPermissionResponse>
-    },
+    client: PromptClient,
   ): Promise<{ stopReason: acp.StopReason }> => {
     const session = sessions.get(sessionId)
     if (!session) {
@@ -1097,7 +1593,10 @@ function createRuntime(deps: {
     }
     const text = extractPromptText(content)
     if (!text.trim()) {
-      throw acp.RequestError.invalidParams(undefined, 'prompt contains no supported text')
+      throw acp.RequestError.invalidParams(
+        undefined,
+        'prompt contains no supported text',
+      )
     }
     if (text.length > maxPromptChars || text.includes('\0')) {
       throw acp.RequestError.invalidParams(
@@ -1108,34 +1607,68 @@ function createRuntime(deps: {
 
     const controller = new AbortController()
     session.controller = controller
-    const activePrompt = runPrompt(text, {
-      sessionId,
-      cwd: session.cwd,
-      signal: controller.signal,
-      resumeSessionId: session.cliSessionId,
-      additionalDirectories: session.additionalDirectories,
-      mcpServers: session.mcpServers,
-      onChunk: text =>
-        client.onUpdate({
-          sessionUpdate: 'agent_message_chunk',
-          content: { type: 'text', text },
-        }),
-      onToolUpdate: client.onUpdate,
-      requestPermission: request =>
-        client.requestPermission(
-          { sessionId, ...request },
-          controller.signal,
-        ),
-    })
+    const activePrompt = (async () => {
+      if (!session.title) {
+        const normalized = text.replace(/\s+/gu, ' ').trim()
+        session.title =
+          normalized.length <= 80 ? normalized : `${normalized.slice(0, 79)}…`
+      }
+      session.updatedAt = new Date().toISOString()
+      if (shouldPersistSessions) {
+        persistAcpSession(sessionId, session, sessionStoreRoot)
+      }
+      recordHistory(sessionId, session, {
+        sessionUpdate: 'user_message_chunk',
+        messageId: randomUUID(),
+        content: { type: 'text', text },
+      })
+      await client.onUpdate({
+        sessionUpdate: 'session_info_update',
+        title: session.title,
+        updatedAt: session.updatedAt,
+      })
+
+      const agentMessageId = randomUUID()
+      const emitAndRecord = async (
+        update: acp.SessionUpdate,
+      ): Promise<void> => {
+        recordHistory(sessionId, session, update)
+        await client.onUpdate(update)
+      }
+      return runPrompt(text, {
+        sessionId,
+        cwd: session.cwd,
+        signal: controller.signal,
+        resumeSessionId: session.cliSessionId,
+        additionalDirectories: session.additionalDirectories,
+        mcpServers: session.mcpServers,
+        mode: session.mode,
+        onChunk: (chunk) =>
+          emitAndRecord({
+            sessionUpdate: 'agent_message_chunk',
+            messageId: agentMessageId,
+            content: { type: 'text', text: chunk },
+          }),
+        onToolUpdate: async (update) => {
+          recordHistory(sessionId, session, update)
+          if (session.streamToolUpdates) {
+            await client.onUpdate(update)
+          }
+        },
+        requestPermission: (request) =>
+          client.requestPermission(
+            { sessionId, ...request },
+            controller.signal,
+          ),
+      })
+    })()
     session.activePrompt = activePrompt
     try {
       const result = await activePrompt
       if (result.resumeSessionId) {
         session.cliSessionId = result.resumeSessionId
-        if (shouldPersistSessions) {
-          persistAcpSession(sessionId, session, sessionStoreRoot)
-        }
       }
+      touch(sessionId, session)
       return {
         stopReason: controller.signal.aborted ? 'cancelled' : result.stopReason,
       }
@@ -1151,33 +1684,229 @@ function createRuntime(deps: {
     sessions.get(sessionId)?.controller?.abort()
   }
 
+  const waitForPromptToStop = async (session: SessionState): Promise<void> => {
+    session.controller?.abort()
+    const activePrompt = session.activePrompt
+    if (!activePrompt) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        activePrompt.catch(() => undefined),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, 5_000)
+          timer.unref?.()
+        }),
+      ])
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
+
   const close = async (sessionId: string): Promise<Record<string, never>> => {
     const session = sessions.get(sessionId)
     if (!session) invalidParams(`unknown session: ${sessionId}`)
-    session.controller?.abort()
-    const activePrompt = session.activePrompt
-    if (activePrompt) {
-      let timer: ReturnType<typeof setTimeout> | undefined
-      try {
-        await Promise.race([
-          activePrompt.catch(() => undefined),
-          new Promise<void>(resolve => {
-            timer = setTimeout(resolve, 5_000)
-            timer.unref?.()
-          }),
-        ])
-      } finally {
-        if (timer) clearTimeout(timer)
-      }
-    }
+    await waitForPromptToStop(session)
     sessions.delete(sessionId)
     return {}
   }
 
+  const listSessions = (
+    cwd?: string | null,
+    cursor?: string | null,
+  ): acp.ListSessionsResponse => {
+    if (
+      cwd !== undefined &&
+      cwd !== null &&
+      (!isAbsolute(cwd) || cwd.includes('\0') || cwd.length > 4_096)
+    ) {
+      invalidParams('session/list cwd must be an absolute path')
+    }
+
+    const byId = new Map<string, acp.SessionInfo>()
+    if (shouldPersistSessions) {
+      const directory = join(sessionStoreRoot, 'acp', 'sessions')
+      if (existsSync(directory)) {
+        const entries = readdirSync(directory, { withFileTypes: true })
+        if (entries.length > MAX_SESSION_LIST_SCAN_FILES) {
+          throw new acp.RequestError(
+            -32000,
+            `ACP session store exceeds the ${MAX_SESSION_LIST_SCAN_FILES}-file discovery limit`,
+          )
+        }
+        for (const entry of entries) {
+          if (!entry.isFile() || !entry.name.endsWith('.json')) continue
+          const sessionId = entry.name.slice(0, -'.json'.length)
+          if (!ACP_SESSION_ID_RE.test(sessionId)) continue
+          try {
+            const persisted = readPersistedSessionFile(
+              sessionId,
+              sessionStoreRoot,
+            )
+            byId.set(sessionId, persistedSessionInfo(persisted))
+          } catch {
+            // Corrupt entries are not exposed through discovery. Loading the
+            // specific ID still returns a precise protocol error.
+          }
+        }
+      }
+    }
+    for (const [sessionId, session] of sessions) {
+      byId.set(sessionId, sessionInfo(sessionId, session))
+    }
+
+    const filtered = [...byId.values()]
+      .filter((session) => !cwd || session.cwd === cwd)
+      .sort(
+        (a, b) =>
+          String(b.updatedAt).localeCompare(String(a.updatedAt)) ||
+          a.sessionId.localeCompare(b.sessionId),
+      )
+
+    let start = 0
+    if (cursor) {
+      if (cursor.length > 2_048 || !/^[0-9A-Za-z_-]+$/u.test(cursor)) {
+        invalidParams('session/list cursor is invalid')
+      }
+      let decoded: unknown
+      try {
+        decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'))
+      } catch {
+        invalidParams('session/list cursor is invalid')
+      }
+      const value = decoded as {
+        version?: unknown
+        cwd?: unknown
+        updatedAt?: unknown
+        sessionId?: unknown
+      }
+      if (
+        !value ||
+        value.version !== 1 ||
+        value.cwd !== (cwd ?? null) ||
+        !isIsoTimestamp(value.updatedAt) ||
+        typeof value.sessionId !== 'string' ||
+        !ACP_SESSION_ID_RE.test(value.sessionId)
+      ) {
+        invalidParams('session/list cursor is invalid')
+      }
+      const exact = filtered.findIndex(
+        (session) =>
+          session.updatedAt === value.updatedAt &&
+          session.sessionId === value.sessionId,
+      )
+      if (exact >= 0) {
+        start = exact + 1
+      } else {
+        start = filtered.findIndex(
+          (session) =>
+            String(session.updatedAt).localeCompare(value.updatedAt as string) <
+              0 ||
+            (session.updatedAt === value.updatedAt &&
+              session.sessionId.localeCompare(value.sessionId as string) > 0),
+        )
+        if (start < 0) start = filtered.length
+      }
+    }
+
+    const page = filtered.slice(start, start + ACP_SESSION_PAGE_SIZE)
+    const hasMore = start + page.length < filtered.length
+    const last = page.at(-1)
+    return {
+      sessions: page,
+      ...(hasMore && last
+        ? {
+            nextCursor: Buffer.from(
+              JSON.stringify({
+                version: 1,
+                cwd: cwd ?? null,
+                updatedAt: last.updatedAt,
+                sessionId: last.sessionId,
+              }),
+            ).toString('base64url'),
+          }
+        : {}),
+    }
+  }
+
+  const deleteSession = async (
+    sessionId: string,
+  ): Promise<Record<string, never>> => {
+    const metadataPath = persistedSessionPath(sessionId, sessionStoreRoot)
+    const historyPath = persistedSessionHistoryPath(sessionId, sessionStoreRoot)
+    const active = sessions.get(sessionId)
+    const persisted = shouldPersistSessions && existsSync(metadataPath)
+    if (!active && !persisted) invalidParams(`unknown session: ${sessionId}`)
+    if (active) {
+      await waitForPromptToStop(active)
+      sessions.delete(sessionId)
+    }
+    if (shouldPersistSessions) {
+      rmSync(metadataPath, { force: true })
+      rmSync(historyPath, { force: true })
+    }
+    return {}
+  }
+
+  const setMode = async (
+    sessionId: string,
+    modeId: string,
+    client: UpdateClient,
+  ): Promise<Record<string, never>> => {
+    const session = sessions.get(sessionId)
+    if (!session) invalidParams(`unknown session: ${sessionId}`)
+    if (!isAcpSessionMode(modeId)) {
+      invalidParams(`unsupported ACP session mode: ${modeId}`)
+    }
+    if (session.activePrompt) {
+      throw new acp.RequestError(
+        -32000,
+        'session mode cannot change while a prompt is active',
+      )
+    }
+    session.mode = modeId
+    touch(sessionId, session)
+    await client.onUpdate({
+      sessionUpdate: 'current_mode_update',
+      currentModeId: modeId,
+    })
+    return {}
+  }
+
+  const setConfigOption = async (
+    request: acp.SetSessionConfigOptionRequest,
+    client: UpdateClient,
+  ): Promise<acp.SetSessionConfigOptionResponse> => {
+    const session = sessions.get(request.sessionId)
+    if (!session) invalidParams(`unknown session: ${request.sessionId}`)
+    if (request.configId !== 'tool_updates') {
+      invalidParams(`unknown ACP session config option: ${request.configId}`)
+    }
+    if (
+      typeof request.value !== 'string' ||
+      (request.value !== 'stream' && request.value !== 'permissions_only')
+    ) {
+      invalidParams('tool_updates must be stream or permissions_only')
+    }
+    session.streamToolUpdates = request.value === 'stream'
+    touch(request.sessionId, session)
+    const options = configOptions(session)
+    await client.onUpdate({
+      sessionUpdate: 'config_option_update',
+      configOptions: options,
+    })
+    return { configOptions: options }
+  }
+
   return {
     sessions,
+    announce,
     newSession,
+    loadSession,
+    listSessions,
+    deleteSession,
     resumeSession,
+    setMode,
+    setConfigOption,
     prompt,
     cancel,
     close,
@@ -1196,7 +1925,7 @@ export function createAcpStdioApp(deps: {
     .onRequest('initialize', () => ({
       protocolVersion: acp.PROTOCOL_VERSION,
       agentCapabilities: {
-        loadSession: false,
+        loadSession: true,
         mcpCapabilities: {
           http: true,
           sse: true,
@@ -1207,6 +1936,8 @@ export function createAcpStdioApp(deps: {
           embeddedContext: false,
         },
         sessionCapabilities: {
+          list: {},
+          delete: {},
           additionalDirectories: {},
           resume: {},
           close: {},
@@ -1216,44 +1947,95 @@ export function createAcpStdioApp(deps: {
       agentInfo: { name: 'UR-Nexus', version: MACRO.VERSION },
     }))
     .onRequest('authenticate', () => ({}))
-    .onRequest('session/new', context =>
-      runtime.newSession(
+    .onRequest('session/new', async (context) => {
+      const result = runtime.newSession(
         context.params.cwd,
         context.params.mcpServers,
         context.params.additionalDirectories,
-      ),
-    )
-    .onRequest('session/resume', context =>
-      runtime.resumeSession(
+      )
+      await runtime.announce({
+        onUpdate: (update) =>
+          context.client.notify(acp.methods.client.session.update, {
+            sessionId: result.sessionId,
+            update,
+          }),
+      })
+      return result
+    })
+    .onRequest('session/load', (context) =>
+      runtime.loadSession(
         context.params.sessionId,
         context.params.cwd,
         context.params.mcpServers,
         context.params.additionalDirectories,
-      ),
-    )
-    .onRequest('session/close', context =>
-      runtime.close(context.params.sessionId),
-    )
-    .onRequest('session/prompt', context =>
-      runtime.prompt(
-        context.params.sessionId,
-        context.params.prompt,
         {
-          onUpdate: update =>
+          onUpdate: (update) =>
             context.client.notify(acp.methods.client.session.update, {
               sessionId: context.params.sessionId,
               update,
             }),
-          requestPermission: (params, signal) =>
-            context.client.request(
-              acp.methods.client.session.requestPermission,
-              params,
-              { cancellationSignal: signal },
-            ),
         },
       ),
     )
-    .onNotification('session/cancel', context => {
+    .onRequest('session/list', (context) =>
+      runtime.listSessions(context.params.cwd, context.params.cursor),
+    )
+    .onRequest('session/delete', (context) =>
+      runtime.deleteSession(context.params.sessionId),
+    )
+    .onRequest('session/resume', async (context) => {
+      const result = runtime.resumeSession(
+        context.params.sessionId,
+        context.params.cwd,
+        context.params.mcpServers,
+        context.params.additionalDirectories,
+      )
+      await runtime.announce({
+        onUpdate: (update) =>
+          context.client.notify(acp.methods.client.session.update, {
+            sessionId: context.params.sessionId,
+            update,
+          }),
+      })
+      return result
+    })
+    .onRequest('session/close', (context) =>
+      runtime.close(context.params.sessionId),
+    )
+    .onRequest('session/set_mode', (context) =>
+      runtime.setMode(context.params.sessionId, context.params.modeId, {
+        onUpdate: (update) =>
+          context.client.notify(acp.methods.client.session.update, {
+            sessionId: context.params.sessionId,
+            update,
+          }),
+      }),
+    )
+    .onRequest('session/set_config_option', (context) =>
+      runtime.setConfigOption(context.params, {
+        onUpdate: (update) =>
+          context.client.notify(acp.methods.client.session.update, {
+            sessionId: context.params.sessionId,
+            update,
+          }),
+      }),
+    )
+    .onRequest('session/prompt', (context) =>
+      runtime.prompt(context.params.sessionId, context.params.prompt, {
+        onUpdate: (update) =>
+          context.client.notify(acp.methods.client.session.update, {
+            sessionId: context.params.sessionId,
+            update,
+          }),
+        requestPermission: (params, signal) =>
+          context.client.request(
+            acp.methods.client.session.requestPermission,
+            params,
+            { cancellationSignal: signal },
+          ),
+      }),
+    )
+    .onNotification('session/cancel', (context) => {
       runtime.cancel(context.params.sessionId)
     })
 
@@ -1281,10 +2063,7 @@ export function createAcpStdioAgent(deps: {
   const respond = (id: AcpStdioMessage['id'], result: unknown): void => {
     if (id !== undefined) deps.write({ jsonrpc: '2.0', id, result })
   }
-  const respondError = (
-    id: AcpStdioMessage['id'],
-    error: unknown,
-  ): void => {
+  const respondError = (id: AcpStdioMessage['id'], error: unknown): void => {
     if (id === undefined) return
     const requestError = error instanceof acp.RequestError ? error : undefined
     deps.write({
@@ -1293,7 +2072,9 @@ export function createAcpStdioAgent(deps: {
       error: {
         code: requestError?.code ?? -32603,
         message: error instanceof Error ? error.message : String(error),
-        ...(requestError?.data !== undefined ? { data: requestError.data } : {}),
+        ...(requestError?.data !== undefined
+          ? { data: requestError.data }
+          : {}),
       },
     })
   }
@@ -1307,7 +2088,7 @@ export function createAcpStdioAgent(deps: {
           respond(id, {
             protocolVersion: acp.PROTOCOL_VERSION,
             agentCapabilities: {
-              loadSession: false,
+              loadSession: true,
               mcpCapabilities: {
                 http: true,
                 sse: true,
@@ -1318,6 +2099,8 @@ export function createAcpStdioAgent(deps: {
                 embeddedContext: false,
               },
               sessionCapabilities: {
+                list: {},
+                delete: {},
                 additionalDirectories: {},
                 resume: {},
                 close: {},
@@ -1330,35 +2113,92 @@ export function createAcpStdioAgent(deps: {
         case 'authenticate':
           respond(id, {})
           return
-        case 'session/new':
+        case 'session/new': {
+          const result = runtime.newSession(
+            typeof params?.cwd === 'string' ? params.cwd : deps.cwd,
+            Array.isArray(params?.mcpServers)
+              ? (params.mcpServers as acp.McpServer[])
+              : [],
+            Array.isArray(params?.additionalDirectories)
+              ? (params.additionalDirectories as string[])
+              : [],
+          )
+          respond(id, result)
+          await runtime.announce({
+            onUpdate: (update) =>
+              deps.write({
+                jsonrpc: '2.0',
+                method: 'session/update',
+                params: { sessionId: result.sessionId, update },
+              }),
+          })
+          return
+        }
+        case 'session/load': {
+          const sessionId =
+            typeof params?.sessionId === 'string' ? params.sessionId : ''
+          const result = await runtime.loadSession(
+            sessionId,
+            typeof params?.cwd === 'string' ? params.cwd : deps.cwd,
+            Array.isArray(params?.mcpServers)
+              ? (params.mcpServers as acp.McpServer[])
+              : [],
+            Array.isArray(params?.additionalDirectories)
+              ? (params.additionalDirectories as string[])
+              : [],
+            {
+              onUpdate: (update) =>
+                deps.write({
+                  jsonrpc: '2.0',
+                  method: 'session/update',
+                  params: { sessionId, update },
+                }),
+            },
+          )
+          respond(id, result)
+          return
+        }
+        case 'session/list':
           respond(
             id,
-            runtime.newSession(
-              typeof params?.cwd === 'string' ? params.cwd : deps.cwd,
-              Array.isArray(params?.mcpServers)
-                ? (params.mcpServers as acp.McpServer[])
-                : [],
-              Array.isArray(params?.additionalDirectories)
-                ? (params.additionalDirectories as string[])
-                : [],
+            runtime.listSessions(
+              typeof params?.cwd === 'string' ? params.cwd : undefined,
+              typeof params?.cursor === 'string' ? params.cursor : undefined,
             ),
           )
           return
-        case 'session/resume':
+        case 'session/delete':
           respond(
             id,
-            runtime.resumeSession(
+            await runtime.deleteSession(
               typeof params?.sessionId === 'string' ? params.sessionId : '',
-              typeof params?.cwd === 'string' ? params.cwd : deps.cwd,
-              Array.isArray(params?.mcpServers)
-                ? (params.mcpServers as acp.McpServer[])
-                : [],
-              Array.isArray(params?.additionalDirectories)
-                ? (params.additionalDirectories as string[])
-                : [],
             ),
           )
           return
+        case 'session/resume': {
+          const sessionId =
+            typeof params?.sessionId === 'string' ? params.sessionId : ''
+          const result = runtime.resumeSession(
+            sessionId,
+            typeof params?.cwd === 'string' ? params.cwd : deps.cwd,
+            Array.isArray(params?.mcpServers)
+              ? (params.mcpServers as acp.McpServer[])
+              : [],
+            Array.isArray(params?.additionalDirectories)
+              ? (params.additionalDirectories as string[])
+              : [],
+          )
+          respond(id, result)
+          await runtime.announce({
+            onUpdate: (update) =>
+              deps.write({
+                jsonrpc: '2.0',
+                method: 'session/update',
+                params: { sessionId, update },
+              }),
+          })
+          return
+        }
         case 'session/close':
           respond(
             id,
@@ -1367,26 +2207,58 @@ export function createAcpStdioAgent(deps: {
             ),
           )
           return
-        case 'session/prompt': {
-          const sessionId = typeof params?.sessionId === 'string' ? params.sessionId : ''
-          const result = await runtime.prompt(
-            sessionId,
-            params?.prompt,
-            {
-              onUpdate: update =>
+        case 'session/set_mode': {
+          const sessionId =
+            typeof params?.sessionId === 'string' ? params.sessionId : ''
+          respond(
+            id,
+            await runtime.setMode(
+              sessionId,
+              typeof params?.modeId === 'string' ? params.modeId : '',
+              {
+                onUpdate: (update) =>
+                  deps.write({
+                    jsonrpc: '2.0',
+                    method: 'session/update',
+                    params: { sessionId, update },
+                  }),
+              },
+            ),
+          )
+          return
+        }
+        case 'session/set_config_option': {
+          const request = params as unknown as acp.SetSessionConfigOptionRequest
+          respond(
+            id,
+            await runtime.setConfigOption(request, {
+              onUpdate: (update) =>
                 deps.write({
                   jsonrpc: '2.0',
                   method: 'session/update',
-                  params: {
-                    sessionId,
-                    update,
-                  },
+                  params: { sessionId: request.sessionId, update },
                 }),
-              requestPermission: (request, _signal) =>
-                deps.requestPermission?.(request) ??
-                Promise.resolve({ outcome: { outcome: 'cancelled' } }),
-            },
+            }),
           )
+          return
+        }
+        case 'session/prompt': {
+          const sessionId =
+            typeof params?.sessionId === 'string' ? params.sessionId : ''
+          const result = await runtime.prompt(sessionId, params?.prompt, {
+            onUpdate: (update) =>
+              deps.write({
+                jsonrpc: '2.0',
+                method: 'session/update',
+                params: {
+                  sessionId,
+                  update,
+                },
+              }),
+            requestPermission: (request, _signal) =>
+              deps.requestPermission?.(request) ??
+              Promise.resolve({ outcome: { outcome: 'cancelled' } }),
+          })
           respond(id, result)
           return
         }
@@ -1408,11 +2280,11 @@ export function createAcpStdioAgent(deps: {
   return { handle, sessions: runtime.sessions }
 }
 
-export async function startAcpStdioAgent(options: { cwd: string }): Promise<void> {
+export async function startAcpStdioAgent(options: {
+  cwd: string
+}): Promise<void> {
   const { app } = createAcpStdioApp(options)
-  const output = Writable.toWeb(
-    process.stdout,
-  ) as WritableStream<Uint8Array>
+  const output = Writable.toWeb(process.stdout) as WritableStream<Uint8Array>
   const input = Readable.toWeb(
     process.stdin,
   ) as unknown as ReadableStream<Uint8Array>

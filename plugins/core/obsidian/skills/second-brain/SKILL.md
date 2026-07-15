@@ -1,5 +1,6 @@
 ---
-name: Second Brain (Obsidian)
+name: second-brain
+display-name: Second Brain (Obsidian)
 description: Conventions for building and maintaining a durable Obsidian knowledge base — atomic and evergreen notes, Zettelkasten linking, PARA structure, Maps of Content, frontmatter, and daily notes. Use when creating, organizing, linking, or searching notes in an Obsidian vault.
 version: 0.1.0
 ---

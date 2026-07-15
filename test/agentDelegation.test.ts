@@ -230,7 +230,9 @@ describe('a2a task server lifecycle', () => {
     }
     const baseUrl = 'http://127.0.0.1:8765'
     const cardResponse = await handleA2ARequest(
-      request('/.well-known/agent-card.json'),
+      request('/.well-known/agent-card.json', {
+        headers: { 'a2a-version': '0.3' },
+      }),
       options,
       baseUrl,
     )

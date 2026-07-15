@@ -27,8 +27,13 @@ Methods:
 | `initialize` | client → agent | `{ protocolVersion, agentCapabilities, authMethods }` |
 | `authenticate` | client → agent | `{}` (no auth required for local stdio) |
 | `session/new` | client → agent | `{ sessionId }` |
-| `session/resume` | client → agent | restores a persisted session without replaying history |
+| `session/list` | client → agent | returns a 50-item page and opaque, filter-bound cursor |
+| `session/load` | client → agent | restores a session and replays its exact ordered updates |
+| `session/delete` | client → agent | deletes private metadata and history after stopping active work |
+| `session/resume` | client → agent | restores identity without replaying history |
 | `session/close` | client → agent | cancels active work and releases the in-process session |
+| `session/set_mode` | client → agent | selects `default`, `acceptEdits`, or `plan` |
+| `session/set_config_option` | client → agent | selects full tool updates or permission-only updates |
 | `session/prompt` | client → agent | `{ stopReason }`, with streaming `session/update` notifications |
 | `session/cancel` | client → agent (notification) | aborts the in-flight prompt |
 | `session/request_permission` | agent → client | asks the user to allow or reject a tool call |
@@ -44,19 +49,21 @@ During `session/prompt` the agent emits `session/update` notifications:
 
 `session/prompt` resolves with `{ "stopReason": "end_turn" }` (or `"cancelled"`
 if a `session/cancel` arrived). Repeated prompts resume the underlying UR CLI
-conversation for that ACP session. Stable `session/resume` reconnects after an
-agent restart without replaying history; UR stores only the ACP-to-CLI session
-identity and working directory in mode-`0600` metadata under
-`~/.ur/acp/sessions/`. MCP credentials are never written there. Configure the
-agent with `ur ide config zed`.
+conversation for that ACP session. `session/resume` reconnects after an agent
+restart without replay; `session/load` emits the bounded, exact stored update
+sequence before current session information and available commands. UR stores
+the ACP-to-CLI identity, working directory, modes/options, and append-only
+history in private metadata under `~/.ur/acp/sessions/`. Writes are locked,
+atomic, bounded, migration-aware, and fail closed on malformed state. MCP
+credentials are never persisted there. Configure the agent with
+`ur ide config zed`.
 
 The stdio surface advertises text and resource-link prompt support, additional
-workspace directories, MCP stdio/HTTP/SSE transports, and stable resume/close
-capabilities. Client-provided MCP configuration is validated, written to a
-mode-`0600` temporary file instead of argv, and removed after each turn. Image,
-audio, embedded-context, and `session/load` capabilities are not advertised;
-`session/load` requires full history replay, while `session/resume` deliberately
-does not replay it.
+workspace directories, MCP stdio/HTTP/SSE transports, load/list/delete,
+resume/close, modes, configuration options, and available commands.
+Client-provided MCP configuration is validated, written to a mode-`0600`
+temporary file instead of argv, and removed after each turn. Image, audio, and
+embedded-context capabilities are not advertised.
 
 Tool calls that require approval are bridged to the client's native ACP
 permission UI with allow-once, reject, and (when UR supplies a durable rule)
@@ -64,7 +71,8 @@ always-allow choices. Cancellation and client errors fail closed. The prompt is
 sent over stdin rather than argv. Session count, prompt size, output size, and
 runtime are bounded by `UR_ACP_STDIO_MAX_SESSIONS`,
 `UR_ACP_STDIO_MAX_PROMPT_CHARS`, `UR_ACP_STDIO_MAX_OUTPUT_CHARS`, and
-`UR_ACP_STDIO_PROMPT_TIMEOUT_MS`.
+`UR_ACP_STDIO_PROMPT_TIMEOUT_MS`. History additionally enforces per-event,
+event-count, total-byte, and discovery-scan limits.
 
 ## HTTP JSON-RPC server
 

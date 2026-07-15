@@ -128,11 +128,22 @@ ur config set provider openai-compatible
 ur config set model <model>
 ur config set base_url <url>
 ur config set provider.fallback ollama
+ur config set openai_transport responses
+ur config set responses.store false
+ur config set responses.compact_threshold 20000
+ur config set responses.tool_search hosted
 ```
 
 `provider.fallback` only controls the recovery suggestion printed by provider
 diagnostics. UR does not switch or retry across providers automatically; use
 `ur config set provider <id>` after reviewing the failure.
+
+The OpenAI API continues to use Chat Completions by default. Selecting
+`openai_transport responses` opts into Responses semantic streaming,
+background/poll/cancel support, WebSocket continuation, server compaction, and
+deferred tool search. Remote storage is off by default. Local state contains
+only bounded identifiers/status/cursors unless a 32-byte
+`UR_OPENAI_RESPONSES_STATE_KEY` is supplied for AES-256-GCM compacted context.
 
 In the interactive app, `/model` chooses a provider first and then a model from
 that provider only. The saved pair controls the runtime backend for the next
@@ -210,8 +221,16 @@ ur context-pack remember --preference "Use bun test over jest"
 ur context-pack remember --accepted "Use p-map for bounded concurrency" --scope project
 ur context-pack remember --rejected "Switch to esbuild" --alternative-to "Keep bun bundle"
 ur context-pack remember --attempt "Tried Deno runtime" --status superseded
+ur context-pack memory verify
+ur context-pack memory quarantine
+ur context-pack memory rollback --to <entry-id>
 ur context-pack compress
 ```
+
+New entries carry explicit source provenance and form a SHA-256 hash chain.
+Reads fail closed on malformed or tampered state. `quarantine` preserves the
+complete original privately and restores the verified prefix; `rollback`
+preserves a backup before truncating to the requested entry.
 
 ## Lifecycle hooks
 
@@ -244,7 +263,10 @@ UR includes slash commands and CLI subcommands for common workflows:
 
 - `/help` or `ur --help` for command discovery
 - `ur connect ...` to connect provider accounts (subscription login or stored API key)
-- `ur mcp ...` to configure MCP servers
+- `ur mcp ...` to configure MCP servers, run the stdio server, or start the
+  opt-in stateless MCP 2026 Tasks/Apps adapter with `ur mcp serve-http`
+- `ur ag-ui serve` to expose the secure AG-UI HTTP/SSE adapter to an explicitly
+  allowed user-facing application
 - `ur plugin ...` to manage plugins and marketplaces. Marketplace plugins can
   add MCP tools, commands, executable skills, templates, validators, language
   adapters, LSP servers, agents, hooks, and output styles.
@@ -257,7 +279,8 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur context-pack ...` to summarize architecture and persist project memory (decisions, constraints, commands, diffs, architecture, preferences, attempts, accepted, rejected)
 - `ur code-index watch` to keep the local semantic code index fresh
 - `ur code-index repo build` to build a richer semantic repo index (files, symbols, calls, tests, docs, configs)
-- `ur skill init ...` and `ur skill run ...` for executable skill workflows
+- `ur skill init|run ...` for executable skill workflows, plus
+  `ur skill verify|sign|keygen` for strict provenance and Ed25519 trust
 - `ur memory retention ...` to prune project-local memory by TTL, max entries, and decay
 - `ur spec ...` to scaffold requirements, design, and tasks, run a spec task list, and verify with strict proof gates
 - `ur escalate ...` to plan, run, or ask an oracle model for hard tasks
@@ -268,7 +291,9 @@ UR includes slash commands and CLI subcommands for common workflows:
   after one attempt and reports how to correct `--cwd`.
 - `ur artifacts ...` to capture reviewable diffs, test runs, notes, and feedback
 - `ur ide diff ...` to capture editor-readable inline diff bundles
-- `ur acp stdio` for the official-SDK Agent Client Protocol v1 editor transport, and `ur acp serve|stop|status` for the separate UR HTTP JSON-RPC API
+- `ur acp stdio` for the official-SDK ACP v1 editor transport with durable
+  list/load/delete/resume, modes, config options, and commands; and
+  `ur acp serve|stop|status` for the separate UR HTTP JSON-RPC API
 - `ur exec ...` to run prompts in non-interactive mode with optional concurrency
 - `ur eval run ...` to run a suite, grade results, and capture execution metrics
 - `ur eval report ...` to show a saved report or write a single-suite dashboard
@@ -292,7 +317,9 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur trigger ...` to parse GitHub/Slack webhook payloads and optionally launch a headless run
 - `ur agent-templates ...`, `ur agent-task ...`, `ur agent-inspect`, `ur agent-features`, and `ur agent-trends` for agent template, PR handoff, timeline, and coverage utilities
 - `ur role-mode ...` to install built-in Architect, Code, Debug, and Ask role modes
-- `ur a2a ...` for Agent Card metadata, issuer-signed delegation tokens, the stable A2A v0.3 JSON-RPC binding, and UR compatibility task routes
+- `ur a2a ...` for negotiated v1 JSON-RPC/HTTP+JSON, the stable v0.3 SDK
+  binding, scoped delegation tokens, durable protocol state, and separate UR
+  compatibility task routes
 - `ur sdk ...` to scaffold TS/Python headless SDK examples
 - `ur doctor` to inspect CLI health
 - `ur update` or `ur upgrade` to check for updates
@@ -347,6 +374,7 @@ ur test-first detect
 ur test-first --dry-run
 ur skill init security-review
 ur skill run security-review "src/auth.ts"
+ur skill verify security-review --require-trusted
 ur code-index repo build
 ur code-index repo search "rate limiter"
 ur test-first install
@@ -355,7 +383,9 @@ ur safety check --command "rm -rf build"
 ur context-pack scan
 ur context-pack remember --constraint "Run command evidence before claiming success"
 ur context-pack remember --accepted "Use p-map for concurrency" --scope project
+ur context-pack memory verify
 ur context-pack compress
+UR_MCP_HTTP_TOKEN='<secret>' ur mcp serve-http --port 8976
 ur acp serve --port 8123
 ur exec "add tests for the parser" --concurrency 4 --json
 ur ci-loop --command "bun test" --cwd . --dry-run

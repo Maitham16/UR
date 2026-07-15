@@ -1,4 +1,5 @@
 import chokidar, { type FSWatcher } from 'chokidar'
+import { homedir } from 'node:os'
 import * as platformPath from 'path'
 import { getAdditionalDirectoriesForAgentMd } from '../../bootstrap/state.js'
 import {
@@ -194,6 +195,19 @@ async function getWatchablePaths(): Promise<string[]> {
     }
   }
 
+  // Cross-client user skills directory (~/.agents/skills)
+  const userCrossClientSkillsPath = platformPath.join(
+    homedir(),
+    '.agents',
+    'skills',
+  )
+  try {
+    await fs.stat(userCrossClientSkillsPath)
+    paths.push(userCrossClientSkillsPath)
+  } catch {
+    // Path doesn't exist, skip it
+  }
+
   // Project skills directory (.ur/skills)
   const projectSkillsPath = getSkillsPath('projectSettings', 'skills')
   if (projectSkillsPath) {
@@ -205,6 +219,18 @@ async function getWatchablePaths(): Promise<string[]> {
     } catch {
       // Path doesn't exist, skip it
     }
+  }
+
+  // Cross-client project skills directory (.agents/skills)
+  const projectCrossClientSkillsPath = platformPath.resolve(
+    '.agents',
+    'skills',
+  )
+  try {
+    await fs.stat(projectCrossClientSkillsPath)
+    paths.push(projectCrossClientSkillsPath)
+  } catch {
+    // Path doesn't exist, skip it
   }
 
   // Project commands directory (.ur/commands)
@@ -222,12 +248,16 @@ async function getWatchablePaths(): Promise<string[]> {
 
   // Additional directories (--add-dir) skills
   for (const dir of getAdditionalDirectoriesForAgentMd()) {
-    const additionalSkillsPath = platformPath.join(dir, '.ur', 'skills')
-    try {
-      await fs.stat(additionalSkillsPath)
-      paths.push(additionalSkillsPath)
-    } catch {
-      // Path doesn't exist, skip it
+    for (const additionalSkillsPath of [
+      platformPath.join(dir, '.ur', 'skills'),
+      platformPath.join(dir, '.agents', 'skills'),
+    ]) {
+      try {
+        await fs.stat(additionalSkillsPath)
+        paths.push(additionalSkillsPath)
+      } catch {
+        // Path doesn't exist, skip it
+      }
     }
   }
 

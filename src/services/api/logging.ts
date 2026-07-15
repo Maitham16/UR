@@ -23,6 +23,7 @@ import { getAPIProviderForStatsig } from 'src/utils/model/providers.js'
 import type { PermissionMode } from 'src/utils/permissions/PermissionMode.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import { logOTelEvent } from 'src/utils/telemetry/events.js'
+import { shouldCaptureGenAiContent } from 'src/utils/telemetry/genAiSemantics.js'
 import {
   endLLMRequestSpan,
   isBetaTracingEnabled,
@@ -731,7 +732,7 @@ export function logAPISuccessAndDuration({
   let thinkingOutput: string | undefined
   let hasToolCall: boolean | undefined
 
-  if (isBetaTracingEnabled() && newMessages) {
+  if ((isBetaTracingEnabled() || shouldCaptureGenAiContent()) && newMessages) {
     // Model output - visible to all users
     modelOutput =
       newMessages
@@ -768,6 +769,8 @@ export function logAPISuccessAndDuration({
     cacheReadTokens: usage.cache_read_input_tokens,
     cacheCreationTokens: usage.cache_creation_input_tokens,
     attempt,
+    responseId: requestId ?? undefined,
+    finishReason: stopReason ?? undefined,
     modelOutput,
     thinkingOutput,
     hasToolCall,

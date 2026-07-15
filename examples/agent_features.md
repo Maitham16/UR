@@ -56,6 +56,7 @@ ur safety check --command "rm -rf build"
 ur context-pack scan
 ur context-pack remember --decision "Use package scripts before ad hoc commands"
 ur context-pack remember --constraint "Never expose secret values"
+ur context-pack memory verify
 ur context-pack compress
 ```
 
@@ -90,3 +91,20 @@ Run the opt-in A2A server on loopback:
 ur a2a serve --dry-run
 curl http://127.0.0.1:8765/healthz
 ```
+
+Inspect signed skills and the stateless MCP adapter:
+
+```sh
+ur skill verify <name-or-directory>
+ur mcp serve-http --help
+```
+
+Inspect the provider-free AG-UI surface and cross-client skill discovery:
+
+```sh
+ur ag-ui serve --help
+ur skill verify <name-or-directory>
+```
+
+Portable skills may be placed in `.agents/skills/<name>/SKILL.md`; project
+skills override user skills, and native `.ur/skills/` wins at the same scope.

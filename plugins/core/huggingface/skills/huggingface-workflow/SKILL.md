@@ -1,5 +1,6 @@
 ---
-name: Hugging Face Workflow
+name: huggingface-workflow
+display-name: Hugging Face Workflow
 description: Reference for working the Hugging Face Hub from an agent — the official MCP server and its tools, hf CLI cheatsheet, token scopes, model-selection criteria, dataset due diligence, and licensing pitfalls. Use when searching, vetting, downloading, or comparing models and datasets.
 version: 0.1.0
 ---

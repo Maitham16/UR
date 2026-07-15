@@ -1,5 +1,6 @@
 ---
-name: Reproducible Release
+name: reproducible-release
+display-name: Reproducible Release
 description: Use when preparing a UR-style engineering change for release. Enforces spec -> plan -> patch -> test -> verify -> document -> benchmark -> reproduce, with explicit command evidence and rollback notes.
 version: 0.1.0
 ---

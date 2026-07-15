@@ -219,8 +219,8 @@ function resolveStopBoundary(cwd: string): string | null {
 }
 
 /**
- * Traverses from the current directory up to the git root (or home directory if not in a git repo),
- * collecting all .ur directories along the way.
+ * Traverse from the current directory up to the git root (or home directory
+ * outside a repository), collecting one relative directory at each level.
  *
  * Stopping at git root prevents commands/skills from parent directories outside the repository
  * from leaking into projects. For example, if ~/projects/.ur/commands/ exists, it won't
@@ -230,8 +230,8 @@ function resolveStopBoundary(cwd: string): string | null {
  * @param cwd Current working directory to start from
  * @returns Array of directory paths containing .ur/subdir, from most specific (cwd) to least specific
  */
-export function getProjectDirsUpToHome(
-  subdir: URConfigDirectory,
+function getProjectRelativeDirsUpToHome(
+  relativeSegments: readonly string[],
   cwd: string,
 ): string[] {
   const home = resolve(homedir()).normalize('NFC')
@@ -249,16 +249,16 @@ export function getProjectDirsUpToHome(
       break
     }
 
-    const urSubdir = join(current, '.ur', subdir)
-    // Filter to existing dirs. This is a perf filter (avoids spawning
+    const candidate = join(current, ...relativeSegments)
+    // Filter to existing paths. This is a perf filter (avoids spawning
     // ripgrep on non-existent dirs downstream) and the worktree fallback
     // in loadMarkdownFilesForSubdir relies on it. statSync + explicit error
     // handling instead of existsSync — re-throws unexpected errors rather
     // than silently swallowing them. Downstream loadMarkdownFiles handles
     // the TOCTOU window (dir disappearing before read) gracefully.
     try {
-      statSync(urSubdir)
-      dirs.push(urSubdir)
+      statSync(candidate)
+      dirs.push(candidate)
     } catch (e: unknown) {
       if (!isFsInaccessible(e)) throw e
     }
@@ -285,6 +285,22 @@ export function getProjectDirsUpToHome(
   }
 
   return dirs
+}
+
+export function getProjectDirsUpToHome(
+  subdir: URConfigDirectory,
+  cwd: string,
+): string[] {
+  return getProjectRelativeDirsUpToHome(['.ur', subdir], cwd)
+}
+
+/**
+ * Cross-client Agent Skills convention. This intentionally follows the same
+ * repository/home boundary and nearest-first ordering as native .ur assets so
+ * a parent directory outside the current repository cannot inject skills.
+ */
+export function getCrossClientSkillDirsUpToHome(cwd: string): string[] {
+  return getProjectRelativeDirsUpToHome(['.agents', 'skills'], cwd)
 }
 
 /**
