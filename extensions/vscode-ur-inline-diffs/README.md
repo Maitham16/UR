@@ -68,8 +68,12 @@ tasks (`ur bg list`) in one place. Supported actions on a diff bundle:
 - **Reject**, via `ur ide diff reject`;
 - add a comment that writes back through `ur ide diff comment`.
 
-Background task rows in the Actions panel are read-only for now — click one
-to open its log file.
+The Actions title bar can start a background task in an isolated worktree
+(recommended), an offline isolated worktree, or the current workspace. UR
+asks for explicit confirmation, does not enable permission bypass or PR
+publishing, and exposes cancellation only for queued/running rows. Opening a
+row retrieves a bounded log tail through `ur bg logs` instead of trusting a
+manifest-supplied file path.
 
 ## Status and options
 

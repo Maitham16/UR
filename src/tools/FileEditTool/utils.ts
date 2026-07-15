@@ -1,4 +1,8 @@
-import { type Hunk, type PatchOptions, structuredPatch } from 'diff'
+import {
+  structuredPatch,
+  type StructuredPatchHunk as Hunk,
+  type StructuredPatchOptionsAbortable,
+} from 'diff'
 import { logError } from 'src/utils/log.js'
 import { expandPath } from 'src/utils/path.js'
 import { countCharInString } from 'src/utils/stringUtils.js'
@@ -424,7 +428,7 @@ export function getSnippetForTwoFileDiff(
   fileAContents: string,
   fileBContents: string,
 ): string {
-  const patchOptions: PatchOptions & { timeout?: number } = {
+  const patchOptions: StructuredPatchOptionsAbortable = {
     context: 8,
     timeout: DIFF_TIMEOUT_MS,
   }

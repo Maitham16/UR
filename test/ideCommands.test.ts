@@ -42,7 +42,7 @@ describe('IDE config generation', () => {
 
   test('generic-acp documents HTTP is not stdio ACP (no fake claim)', () => {
     const config = generateIdeConfig('generic-acp')
-    expect(config.limitations.join(' ')).toContain('not Zed-style stdio ACP')
+    expect(config.limitations.join(' ')).toContain('not an ACP transport binding')
   })
 
   test('aliases resolve (nvim, intellij, code)', () => {

@@ -181,7 +181,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/plugin` (`/plugins`, `/marketplace`) | jsx | Manage installed and marketplace plugins | `/plugin` |
 | `/reload-plugins` | local | Activate pending plugin changes in the current session | `/reload-plugins` |
 | `/ide open\|status\|doctor\|config <editor>\|diff …` | jsx | IDE integrations, inline diff bundles | `/ide status` |
-| `/acp serve\|stdio\|stop\|status` | local | Agent Communication Protocol server for IDE extensions | `/acp serve --port 9100` |
+| `/acp serve\|stdio\|stop\|status` | local | Agent Client Protocol stdio agent and separate UR HTTP JSON-RPC server | `/acp serve --port 9100` |
 | `/a2a-card [base-url]` (`/agent-card`) | local | Print UR Card metadata for A2A discovery | `/a2a-card https://myhost:8765` |
 | `/chrome` | jsx | UR-in-Chrome (browser extension) settings | `/chrome` |
 | `/browser <url\|task>` | local | Browser pilot (Playwright if installed) | `/browser https://localhost:3000 "click login and screenshot"` |

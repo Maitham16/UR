@@ -15,6 +15,7 @@ bun test
 bun run bundle
 bun run smoke
 bun run secrets:scan
+bun run dependencies:audit
 bun run release:check
 bun run package:check
 npm publish --dry-run
@@ -30,8 +31,11 @@ sandbox posture, and secret exfiltration denial. `ur context-pack scan` records
 the repo architecture and manifest-derived command set; `ur context-pack
 compress` preserves task decisions, constraints, commands, and diffs.
 
-`bun run release:check` is also wired into `prepack`, so stale bundles and
-version drift fail before packaging. The GitHub workflow must keep production
+`bun run dependencies:audit` checks the committed `bun.lock`, including
+development dependencies that are compiled into `dist/cli.js`. `bun run
+release:check` repeats that audit and is also wired into `prepack`, so known
+dependency advisories, stale bundles, and version drift fail before packaging.
+The GitHub workflow must keep production
 bundle, release, package, and global-install checks after the Bun test step;
 do not tag or publish until that workflow is green.
 
@@ -80,7 +84,8 @@ Public feature releases should update the full documentation set:
 - Deep verification through the verification subagent is manual by default and
   can be enabled with `UR_VERIFIER_AUTO_SUBAGENT=1`.
 - Secrets must stay in environment variables, secure storage, or local ignored
-  settings files; tracked files are scanned by `bun run secrets:scan`.
+  settings files; tracked and untracked non-ignored release-candidate files are
+  scanned by `bun run secrets:scan`.
 
 ## Known Limits
 

@@ -402,14 +402,14 @@ as first-class subcommands in the shipped CLI.
 | `ur auth gemini` | Use the official Gemini CLI login flow where supported. |
 | `ur auth antigravity` | Use the official Antigravity CLI login flow where supported. |
 | `ur config set` | Persist safe non-secret provider settings such as provider, model, base URL, command path, and fallback. |
-| `ur mcp` | Configure and manage Model Context Protocol servers. |
+| `ur mcp` | Configure MCP servers or expose fail-closed, schema-validated built-in tools over stdio. |
 | `ur plugin` | Install, update, enable, disable, and validate UR plugins that can add MCP tools, skills, templates, validators, language adapters, LSP servers, agents, hooks, output styles, and commands. |
 | `ur role-mode` | Install built-in Architect, Code, Debug, and Ask role modes. |
-| `ur acp` | Start/stop/status the Agent Communication Protocol server for IDE extensions. |
+| `ur acp` | Run official-SDK ACP v1 over stdio, or manage the separate UR HTTP JSON-RPC server. |
 | `ur exec` | Run one or more prompts in non-interactive mode with optional concurrency. |
 | `ur ide diff` | Capture editor-readable inline diff bundles. |
-| `ur a2a card` | Print UR Card metadata for agent interoperability. |
-| `ur a2a serve` | Start an opt-in local A2A task server with bearer or delegation auth. |
+| `ur a2a card` | Print an A2A Agent Card preview. |
+| `ur a2a serve` | Start the opt-in official-SDK A2A v0.3 JSON-RPC binding and UR compatibility task API. |
 | `ur sdk` | Show programmatic headless usage and scaffold SDK examples. |
 | `ur trigger` | Parse a GitHub/Slack webhook payload and optionally launch a headless UR run. |
 | `ur agent-templates` | List or install reusable project agent templates. |
@@ -468,7 +468,7 @@ contract — see the [IDE Guide](docs/IDE.md) for the full feature list.
 Inspect and configure integration per editor:
 
 ```sh
-ur ide status               # workspace, ACP server, provider/model, sandbox/verifier mode, plugin count
+ur ide status               # workspace, UR HTTP server, provider/model, sandbox/verifier mode, plugin count
 ur ide doctor               # pass/warn/fail checks; reports missing config clearly
 ur ide config zed           # print the .zed/settings.json ACP block
 ur ide config vscode        # VS Code / Cursor / Windsurf setup
@@ -478,7 +478,7 @@ VS Code, Cursor, and Windsurf connect through the UR Inline Diffs extension;
 Zed and ACP-capable Neovim clients connect through the stdio Agent Client
 Protocol. The experimental bundled JetBrains plugin under
 `extensions/jetbrains-ur` uses project-scoped JSON-RPC sessions over the
-loopback HTTP ACP endpoint and is installable from its Gradle `buildPlugin`
+loopback UR HTTP compatibility endpoint and is installable from its Gradle `buildPlugin`
 zip. Start an ACP surface with:
 
 ```sh
@@ -496,7 +496,7 @@ commit, push, or create PRs unless explicitly requested:
 `/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`.
 Install matching agent templates with `ur agent-templates install`.
 
-New built-in tools (exposed through MCP and the ACP server): GitHub, API, Browser, Docker, TestRunner, Database. File-system and terminal tools are already built in (FileRead, FileEdit, FileWrite, Glob, Grep, Bash, PowerShell).
+New built-in tools (exposed through MCP and the UR HTTP compatibility API): GitHub, API, Browser, Docker, TestRunner, Database. File-system and terminal tools are already built in (FileRead, FileEdit, FileWrite, Glob, Grep, Bash, PowerShell).
 
 ### Plugin Marketplace
 
@@ -746,6 +746,7 @@ release until that GitHub run is green.
 - [Development Guide](docs/DEVELOPMENT.md)
 - [IDE Guide](docs/IDE.md)
 - [ACP Guide](docs/ACP.md)
+- [A2A Guide](docs/A2A.md)
 - [Plugin Guide](docs/plugins.md)
 - [Validation Runbook](docs/VALIDATION.md)
 - [Release Runbook](RELEASE.md)

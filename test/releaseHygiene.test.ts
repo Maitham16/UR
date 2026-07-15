@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'bun:test'
-import { existsSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   missingRequiredSourceZipEntries,
@@ -8,6 +17,7 @@ import {
   releasePathViolations,
   requiredPackageFiles,
   requiredSourceZipEntries,
+  sourceArchiveCandidatePaths,
 } from '../scripts/release-hygiene.mjs'
 
 const repoRoot = join(import.meta.dir, '..')
@@ -31,15 +41,30 @@ describe('release hygiene file-list checks', () => {
       'package/tmp/scratch.txt',
       'package/bin/node',
       'package/bin/bun',
+      'package/extensions/jetbrains-ur/.gradle/cache.bin',
+      'package/extensions/jetbrains-ur/.intellijPlatform/sandbox/state.xml',
+      'package/extensions/jetbrains-ur/build/classes/Plugin.class',
+      'package/extensions/jetbrains-ur/.kotlin/cache.bin',
+      'package/.idea/workspace.xml',
+      'package/.vscode/settings.json',
+      'package/.claude/settings.local.json',
+      'package/UR.local.md',
+      'package/.ur/settings.local.json',
+      'package/.ur/context/task-memory.jsonl',
+      'package/.ur/actions.jsonl',
+      'package/.ur/ide/chat/session.json',
     ])
 
-    expect(violations).toHaveLength(16)
+    expect(violations).toHaveLength(28)
     expect(violations.join('\n')).toContain('node_modules')
     expect(violations.join('\n')).toContain('__MACOSX')
     expect(violations.join('\n')).toContain('.env.local')
     expect(violations.join('\n')).toContain('dist/.cache')
     expect(violations.join('\n')).toContain('debug-output.json')
     expect(violations.join('\n')).toContain('runtime binary')
+    expect(violations.join('\n')).toContain('.intellijPlatform')
+    expect(violations.join('\n')).toContain('.claude/settings.local.json')
+    expect(violations.join('\n')).toContain('.ur/settings.local.json')
   })
 
   test('strict-core files all exist on disk', () => {
@@ -91,5 +116,30 @@ describe('release hygiene file-list checks', () => {
   test('source zip checks report missing source entries', () => {
     expect(missingRequiredSourceZipEntries(['package.json'])).toContain('src/')
     expect(missingRequiredSourceZipEntries(['package.json'])).toContain('bun.lock')
+  })
+
+  test('source archive candidates include untracked inputs but honor Git ignores', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ur-release-hygiene-'))
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: root })
+      writeFileSync(join(root, '.gitignore'), 'build/\n.env\n')
+      writeFileSync(join(root, 'tracked.ts'), 'export const tracked = true\n')
+      writeFileSync(join(root, 'removed.ts'), 'export const removed = true\n')
+      execFileSync('git', ['add', '.gitignore', 'tracked.ts', 'removed.ts'], { cwd: root })
+      rmSync(join(root, 'removed.ts'))
+      writeFileSync(join(root, 'new-source.ts'), 'export const added = true\n')
+      writeFileSync(join(root, '.env'), 'SECRET=not-for-release\n')
+      mkdirSync(join(root, 'build'))
+      writeFileSync(join(root, 'build', 'generated.js'), 'generated\n')
+
+      const candidates = sourceArchiveCandidatePaths(root)
+      expect(candidates).toContain('tracked.ts')
+      expect(candidates).toContain('new-source.ts')
+      expect(candidates).not.toContain('removed.ts')
+      expect(candidates).not.toContain('.env')
+      expect(candidates).not.toContain('build/generated.js')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

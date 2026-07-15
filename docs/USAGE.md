@@ -268,7 +268,7 @@ UR includes slash commands and CLI subcommands for common workflows:
   after one attempt and reports how to correct `--cwd`.
 - `ur artifacts ...` to capture reviewable diffs, test runs, notes, and feedback
 - `ur ide diff ...` to capture editor-readable inline diff bundles
-- `ur acp ...` to start/stop/status the Agent Communication Protocol server for IDE extensions
+- `ur acp stdio` for the official-SDK Agent Client Protocol v1 editor transport, and `ur acp serve|stop|status` for the separate UR HTTP JSON-RPC API
 - `ur exec ...` to run prompts in non-interactive mode with optional concurrency
 - `ur eval run ...` to run a suite, grade results, and capture execution metrics
 - `ur eval report ...` to show a saved report or write a single-suite dashboard
@@ -292,7 +292,7 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur trigger ...` to parse GitHub/Slack webhook payloads and optionally launch a headless run
 - `ur agent-templates ...`, `ur agent-task ...`, `ur agent-inspect`, `ur agent-features`, and `ur agent-trends` for agent template, PR handoff, timeline, and coverage utilities
 - `ur role-mode ...` to install built-in Architect, Code, Debug, and Ask role modes
-- `ur a2a ...` for Agent Card metadata, delegation tokens, and the opt-in A2A task server
+- `ur a2a ...` for Agent Card metadata, issuer-signed delegation tokens, the stable A2A v0.3 JSON-RPC binding, and UR compatibility task routes
 - `ur sdk ...` to scaffold TS/Python headless SDK examples
 - `ur doctor` to inspect CLI health
 - `ur update` or `ur upgrade` to check for updates

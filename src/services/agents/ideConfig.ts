@@ -110,7 +110,7 @@ export function generateIdeConfig(
         ],
         files: [{ path: '.zed/settings.json', language: 'json', content: zedSettings(command) }],
         limitations: [
-          'Streaming is emitted as agent_message_chunk updates; token-level streaming depends on the active provider.',
+          'Streaming is emitted as agent_message_chunk updates; chunk granularity depends on the active provider.',
         ],
       }
     case 'neovim':
@@ -134,9 +134,9 @@ export function generateIdeConfig(
         target,
         label: meta.label,
         kind: meta.kind,
-        summary: 'Any ACP-compatible client can launch UR as a stdio agent, or use the HTTP JSON-RPC server.',
+        summary: 'Any ACP-compatible client can launch UR as a stdio agent; UR also exposes a separate HTTP JSON-RPC compatibility API.',
         steps: [
-          `Stdio ACP agent: run \`${command} acp stdio\` and speak JSON-RPC (initialize, session/new, session/prompt, session/cancel).`,
+          `Stdio ACP agent: run \`${command} acp stdio\` and speak stable ACP v1 (initialize, session/new, session/resume, session/prompt, session/cancel, session/close, and native permission requests).`,
           `HTTP JSON-RPC: run \`${command} acp serve --host 127.0.0.1 --port 8123\` and POST to /acp.`,
         ],
         files: [
@@ -151,7 +151,7 @@ export function generateIdeConfig(
           },
         ],
         limitations: [
-          'The HTTP server is JSON-RPC over HTTP, not Zed-style stdio ACP; use the stdio agent for native ACP editors.',
+          'The HTTP server is a UR-specific JSON-RPC API, not an ACP transport binding; use the stdio agent for native ACP clients.',
         ],
       }
     case 'jetbrains':
@@ -239,7 +239,7 @@ export function formatIdeStatus(status: IdeStatus, json = false): string {
       : 'none detected'
   const lines = [
     `Workspace: ${status.workspaceRoot}`,
-    `ACP server: ${status.acp.running ? `running on ${status.acp.host}:${status.acp.port}` : 'not running'}`,
+    `UR HTTP server: ${status.acp.running ? `running on ${status.acp.host}:${status.acp.port}` : 'not running'}`,
     `Provider: ${status.provider.label} (${status.provider.authLabel})`,
     `Model: ${status.provider.model ?? '(none selected)'}`,
     `Runtime backend: ${status.provider.runtimeBackend}`,
@@ -265,8 +265,8 @@ export function ideDoctorChecks(status: IdeStatus): IdeDoctorCheck[] {
   )
   checks.push(
     status.acp.running
-      ? { name: 'acp', status: 'pass', message: `ACP server running on ${status.acp.host}:${status.acp.port}` }
-      : { name: 'acp', status: 'warn', message: 'ACP server not running. Start it with: ur acp serve (HTTP) or ur acp stdio (ACP editors).' },
+      ? { name: 'acp', status: 'pass', message: `UR HTTP server running on ${status.acp.host}:${status.acp.port}` }
+      : { name: 'acp', status: 'warn', message: 'UR HTTP server not running. Start it with: ur acp serve. ACP-capable editors can instead launch: ur acp stdio.' },
   )
   checks.push(
     status.provider.ready

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react/compiler-runtime";
 import chalk from 'chalk';
 import * as React from 'react';
@@ -16,7 +15,7 @@ import { MODEL_ALIASES } from '../../utils/model/aliases.js';
 import { checkmodelO1mAccess, checkmodelS1mAccess } from '../../utils/model/check1mAccess.js';
 import { getDefaultMainLoopModelSetting, ismodelO1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
-import { getActiveProviderSettings, setProviderModel, validateProviderModelPair } from '../../services/providers/providerRegistry.js';
+import { getActiveProviderSettings, type ProviderId, setProviderModel, validateProviderModelPair } from '../../services/providers/providerRegistry.js';
 import { getInitialSettings, updateSettingsForSource } from '../../utils/settings/settings.js';
 function ModelPickerWrapper(t0) {
   const $ = _c(17);
@@ -196,7 +195,7 @@ function SetModelAndClose({
       setModel(model, currentProvider);
       return;
     }
-    function setModel(modelValue: string | null, provider?: string): void {
+    function setModel(modelValue: string | null, provider?: ProviderId): void {
       setAppState(prev => ({
         ...prev,
         mainLoopModel: modelValue,

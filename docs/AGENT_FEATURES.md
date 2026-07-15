@@ -9,6 +9,24 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.46.0 Additions
+
+- Native ACP v1 stdio support now uses the official SDK and includes durable
+  sessions, resume/close, MCP server configuration, additional roots,
+  permission requests, cancellation, and streaming updates. The separate HTTP
+  automation API is documented as UR JSON-RPC rather than mislabelled ACP.
+- A2A interoperability now uses the official stable JavaScript SDK for the
+  advertised v0.3 JSON-RPC binding, with authenticated discovery, scoped
+  delegation, durable tasks, cancellation, and bounded request execution.
+- The VS Code Actions view can safely start, inspect, and cancel background
+  tasks, including isolated worktree execution. The JetBrains client now
+  propagates cancellation, rejects overlapping prompts, and closes sessions.
+- Background-task state uses locked, atomic, private manifest writes with
+  corruption detection, structural limits, and symlink-safe artifact paths.
+- Provider protocol handling, MCP validation, CI supply-chain controls, release
+  version checks, and secret-input paths received additional compatibility and
+  security coverage.
+
 ## v1.45.6 Additions
 
 - Project verification approval is deduplicated per user turn. The agent asks
@@ -181,7 +199,7 @@ components instead of one giant prompt.
 
 | Addition | Surface | What it adds |
 | --- | --- | --- |
-| ACP server for IDE extensions | `ur acp serve\|stop\|status` | HTTP+JSON-RPC Agent Communication Protocol server that exposes tool listing, tool calls, task submission, and status for VS Code/Cursor/Zed-like editors. |
+| ACP and IDE transports | `ur acp stdio`; `ur acp serve\|stop\|status` | Official-SDK ACP v1 stdio agent for native ACP editors, plus a distinct UR HTTP JSON-RPC API for tools, tasks, scripts, and the experimental JetBrains plugin. |
 | Non-interactive pool execution | `ur exec [prompts...]` | Run one or more prompts headlessly with optional concurrency, worktrees, output capture, and dry-run. |
 | GitHub tool | `GitHub` | PR/issue/repo operations via the `gh` CLI. |
 | API tool | `Api` | REST HTTP calls with JSON/text output. |
@@ -240,7 +258,7 @@ and route model work through the local Ollama-backed UR runtime.
 | Auto compaction and memory retention | `compaction.autoThreshold`, `ur memory retention` | Configurable context compaction threshold plus TTL/max/decay pruning for `.ur/memory/*.jsonl` |
 | Code-index auto-reindex | `codeIndex.autoReindex`, `ur code-index watch` | File watcher that rebuilds the local semantic code index after source changes |
 | Live artifact steering | `ur artifacts comment <id> --feedback ... --task <bg_id>` | Artifact feedback is queued into the linked background task inbox and injected into active stream-json background agents as `priority: "now"` turns |
-| Full opt-in A2A task server | `ur a2a serve`, `/a2a/tasks` lifecycle routes | Token/delegation-protected task submission, status, output, and cancel routes backed by local background tasks |
+| Opt-in A2A + compatibility server | `ur a2a serve`, `/a2a/jsonrpc`, `/a2a/tasks` | Official-SDK A2A v0.3 JSON-RPC task lifecycle plus clearly separate token/delegation-protected UR background-task compatibility routes |
 | IDE inline diff bundles | `ur ide diff capture|list|show|comment|schema`, `extensions/vscode-ur-inline-diffs/` | Editor-readable `.ur/ide/diffs/` manifest, metadata, patch files, comments, plus a native VS Code tree/webview review extension |
 | Benchmark adapters | `ur eval bench swe-bench|terminal-bench|aider-polyglot` | Imports local benchmark JSON/JSONL exports into UR eval suites without external downloads |
 
@@ -253,7 +271,7 @@ and route model work through the local Ollama-backed UR runtime.
 | Model capability report | `ur model-doctor` | Local Ollama model inventory with context length, advertised capabilities, and likely vision/code readiness |
 | Reusable agent templates | `ur agent-templates install` | Project agents for review, tests, browser QA, docs research, security, release notes, PR fixes, and memory curation |
 | GitHub agent runner | `.github/workflows/ur.yml` scaffold | Opt-in CI entry point for manual prompts or `/ur` issue comments |
-| A2A adapter handoff | `ur a2a serve` | Loopback Agent Card and token-gated task execution endpoint |
+| A2A interoperability | `ur a2a serve` | Accurate Agent Card, stable A2A v0.3 JSON-RPC binding, and separate UR compatibility task API; A2A v1 waits for the official stable JS SDK |
 | Semantic memory index | `ur semantic-memory build|search` | Local memory index over durable memory, docs, README, and UR instructions |
 | Claim provenance ledger | `ur claim-ledger add|list|validate` | Maps generated claims to web, file, MCP, tool, or user sources |
 | Browser replay evals | `ur browser-qa list|validate|run` | Validates replay fixtures and performs lightweight target smoke checks |
@@ -268,7 +286,7 @@ tasks, custom agents, memory files, browser workflows, evidence commands, A2A
 Agent Card export, and local Ollama routing; these surfaces make those
 capabilities easier to discover and reuse.
 
-Network-facing behavior, such as a full A2A task server or a GitHub bot that can
+Network-facing behavior, such as the opt-in A2A server or a GitHub bot that can
 push code, should remain explicitly opt-in because it changes the trust and
 permission boundary.
 

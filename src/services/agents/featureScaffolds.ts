@@ -96,11 +96,11 @@ export const AGENT_FEATURES: AgentFeature[] = [
   },
   {
     id: 'a2a-adapter',
-    name: 'A2A adapter handoff',
+    name: 'A2A interoperability server',
     status: 'command',
     command: 'ur a2a serve',
     summary:
-      'Runs an opt-in loopback A2A task server with Agent Card discovery and token-gated task execution.',
+      'Runs an opt-in official-SDK A2A v0.3 JSON-RPC binding plus UR compatibility task routes with accurate Agent Card discovery.',
     scaffold: '.ur/a2a/README.md',
   },
   {
@@ -611,12 +611,14 @@ Specs are data only. They do not grant extra permissions by themselves.
     path: 'a2a/README.md',
     content: `# A2A Adapter Notes
 
-UR currently exports Agent Card discovery metadata with \`ur a2a card\` and
-\`/a2a-card\`.
+UR exports Agent Card discovery metadata with \`ur a2a card\` and
+\`/a2a-card\`. The opt-in server implements stable A2A v0.3 JSON-RPC through
+the official JavaScript SDK at \`/a2a/jsonrpc\`; its \`/a2a/tasks\` routes are
+a separate UR compatibility API, not an A2A REST binding.
 
 Keep remote task execution as an opt-in sidecar service. The sidecar should:
 
-- expose the Agent Card at \`/.well-known/agent-card.json\`
+- keep the Agent Card at \`/.well-known/agent-card.json\` aligned with the implemented transport and configured auth
 - accept only explicit task requests from trusted clients
 - preserve UR's local permission checks
 - write task state through the same task files used by \`ur agent-task\`

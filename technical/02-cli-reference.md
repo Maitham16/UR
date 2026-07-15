@@ -115,7 +115,8 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | `ur a2a serve` | Agent-to-Agent HTTP server | `ur a2a serve --port 8765 --token secret` |
 | `ur a2a card` | Print the A2A agent card | `ur a2a card --a2a-base-url https://host` |
 | `ur a2a token mint / verify <token>` | Mint/verify A2A tokens | — |
-| `ur acp serve / stdio / stop / status` | ACP server for IDE extensions | `ur acp serve --port 9100` |
+| `ur acp stdio` | Native Agent Client Protocol v1 transport for compatible editors | `ur acp stdio` |
+| `ur acp serve / stop / status` | UR HTTP compatibility API used by the bundled IDE extensions | `ur acp serve --port 9100` |
 | `ur server` | Direct-connect HTTP session server (`--port`, `--host`, `--auth-token`, `--unix`, `--workspace`, `--idle-timeout`, `--max-sessions`, `--permission-mode`) | `ur server --port 8080 --auth-token t0k3n` |
 | `ur ssh <host> [dir]` | Run UR against a remote host over SSH | `ur ssh devbox ~/repo` |
 | `ur open <cc-url>` | Open a deep link | — |

@@ -1,3 +1,5 @@
+import type { AgentCard as ProtocolAgentCard } from '@a2a-js/sdk'
+
 type TrendStatus = 'covered' | 'partial' | 'adapter-ready'
 
 type TrendCoverage = {
@@ -12,6 +14,7 @@ type TrendCoverage = {
 
 type AgentTrendReport = {
   generatedAt: string
+  researchSnapshotDate: string
   urVersion: string
   coverage: TrendCoverage[]
   a2aAgentCard: A2AAgentCard
@@ -20,65 +23,34 @@ type AgentTrendReport = {
 
 type A2AAgentCardOptions = {
   baseUrl?: string
+  staticBearer?: boolean
+  delegationBearer?: boolean
 }
 
-export type A2AAgentCard = {
-  protocolVersion: string
-  name: string
-  description: string
-  url: string
-  version: string
-  documentationUrl: string
-  capabilities: {
-    streaming: boolean
-    pushNotifications: boolean
-    stateTransitionHistory: boolean
-  }
-  securitySchemes: {
-    bearer: { type: string; scheme: string; description: string }
-    delegation: {
-      type: string
-      scheme: string
-      bearerFormat: string
-      description: string
-    }
-  }
-  security: Array<Record<string, string[]>>
-  defaultInputModes: string[]
-  defaultOutputModes: string[]
-  skills: Array<{
-    id: string
-    name: string
-    description: string
-    tags: string[]
-    examples: string[]
-    inputModes: string[]
-    outputModes: string[]
-  }>
-  provider: {
-    organization: string
-    url: string
-  }
-}
+export type A2AAgentCard = ProtocolAgentCard
 
 const urVersion = MACRO.VERSION
+const researchSnapshotDate = '2026-07-15'
 
 const coverage: TrendCoverage[] = [
   {
     id: 'local-runtime',
-    name: 'Local-first model runtime',
+    name: 'Provider-flexible, local-first model runtime',
     status: 'covered',
     summary:
-      'UR routes all model traffic through the local Ollama app, so local models and Ollama Cloud-backed models exposed by that app share one local endpoint and permission boundary.',
+      'UR can stay fully local through Ollama, call supported API providers directly, or delegate to authenticated subscription CLIs. Provider changes are explicit and never happen through a silent fallback.',
     evidence: [
-      'fixed local Ollama endpoint',
-      'OLLAMA_MODEL and UR_MODEL selection',
-      'auto-routing over models advertised by the local Ollama app',
-      'ur model-doctor (capability report) + ur model-route "<task>" (capability-aware per-task model pick)',
+      'ur provider list|status|doctor and ur connect',
+      'Ollama, OpenAI, Anthropic, Gemini, OpenRouter, and OpenAI-compatible adapters',
+      'Codex CLI, Claude Code, Gemini CLI, and Antigravity subscription adapters',
+      'ur model-doctor and ur model-route "<task>" for local capability reporting',
     ],
-    references: ['https://docs.ollama.com/'],
+    references: [
+      'https://docs.ollama.com/',
+      'https://developers.openai.com/api/docs/guides/responses-vs-chat-completions',
+    ],
     professionalNextStep:
-      'Let UR auto-apply the model-route recommendation per subagent step instead of only reporting it.',
+      'Normalize capability discovery across providers, then choose a compatible provider/model per subagent step only when the user opts into automatic routing.',
   },
   {
     id: 'mcp',
@@ -93,22 +65,62 @@ const coverage: TrendCoverage[] = [
     ],
     references: ['https://modelcontextprotocol.io/docs/getting-started/intro'],
     professionalNextStep:
-      'Keep server trust UX, registry metadata, and MCP security guidance current as the MCP spec evolves.',
+      'Keep the production v1 SDK pinned while preparing a compatibility branch for the stateless core and extension model in the 2026-07-28 specification.',
+  },
+  {
+    id: 'mcp-async-apps',
+    name: 'MCP Tasks and MCP Apps',
+    status: 'adapter-ready',
+    summary:
+      'UR has a durable background-task engine and MCP resources, but it does not advertise the experimental MCP Tasks lifecycle or render MCP Apps. The 2026-07-28 release candidate moves Tasks into an extension and makes Apps a first-class extension.',
+    evidence: [
+      'ur bg provides durable, cancellable local work that could back an MCP Tasks adapter',
+      'MCP task capabilities are not advertised',
+      'MCP Apps UI resources are not rendered or exposed as a client capability',
+    ],
+    references: [
+      'https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/',
+      'https://modelcontextprotocol.io/extensions/tasks/overview',
+    ],
+    professionalNextStep:
+      'Prototype Tasks and Apps behind negotiated capability flags, then ship only after the final specification and production TypeScript SDK support are available.',
   },
   {
     id: 'a2a',
     name: 'A2A / Agent Card interoperability',
-    status: 'adapter-ready',
+    status: 'partial',
     summary:
-      'UR now exports Agent Card metadata for discovery, while full remote A2A task serving remains an adapter layer rather than a CLI-core behavior.',
+      'UR exposes an official-SDK-backed A2A v0.3 JSON-RPC binding and Agent Card plus a separate UR task-lifecycle compatibility API. The A2A v1 protocol is stable, while the official JavaScript SDK exposes v1 only on its prerelease channel.',
     evidence: [
       'ur a2a card',
       '/a2a-card',
-      'Agent Card describes UR skills, modes, and local-first operating boundary',
+      'ur a2a serve: /.well-known/agent-card.json + /a2a/jsonrpc',
+      'Agent Card accurately describes the implemented JSON-RPC transport and configured authentication',
     ],
-    references: ['https://a2a-protocol.org/latest/specification/'],
+    references: [
+      'https://a2a-protocol.org/latest/specification/',
+      'https://github.com/a2aproject/a2a-js',
+    ],
     professionalNextStep:
-      'Add a separate opt-in A2A task server when UR should accept remote agent-to-agent task execution.',
+      'Add a version-negotiated v1 binding, signed Agent Card verification, and official TCK coverage when the JavaScript SDK ships stable v1 support; keep v0.3 during migration.',
+  },
+  {
+    id: 'acp',
+    name: 'ACP editor interoperability',
+    status: 'partial',
+    summary:
+      'UR implements native ACP v1 over stdio with the official SDK, durable new/resume/close sessions, MCP server configuration, additional roots, permissions, streaming, and cancellation. It deliberately does not advertise full-history load, list, delete, config options, or slash commands.',
+    evidence: [
+      'ur acp stdio',
+      'session/new, session/resume, session/close, session/prompt, and session/cancel',
+      'capability declarations match only implemented behavior',
+    ],
+    references: [
+      'https://agentclientprotocol.com/protocol/v1/schema',
+      'https://github.com/agentclientprotocol/typescript-sdk',
+    ],
+    professionalNextStep:
+      'Implement paginated session/list and session/delete first; add session/load only with exact, ordered history replay and truthful capability negotiation.',
   },
   {
     id: 'durable-workflows',
@@ -151,7 +163,7 @@ const coverage: TrendCoverage[] = [
     name: 'Long-term memory',
     status: 'partial',
     summary:
-      'UR has file-backed memory, research notes, team memory, forget controls, consolidation prompts, and a curated knowledge base with source-level provenance and retention; dense vector retrieval is still lexical rather than embedding-based.',
+      'UR has file-backed memory, research notes, team memory, forget controls, consolidation prompts, lexical fallback, and optional local dense retrieval for both curated knowledge and code. Integrity policy and quarantine for poisoned durable memories remain incomplete.',
     evidence: [
       '/remember, /forget, /memory',
       'ur knowledge build --embeddings (dense retrieval) + lexical fallback, provenance, retention',
@@ -160,9 +172,28 @@ const coverage: TrendCoverage[] = [
     references: [
       'https://docs.langchain.com/oss/python/langgraph/overview',
       'https://docs.langchain.com/oss/python/langgraph/memory',
+      'https://owasp.org/www-project-agent-memory-guard/',
     ],
     professionalNextStep:
-      'Add optional local embedding indexes with scope, retention, and deletion guarantees.',
+      'Add per-scope deletion guarantees plus provenance, integrity baselines, quarantine, and rollback for memory writes influenced by untrusted content.',
+  },
+  {
+    id: 'agent-skills',
+    name: 'Portable Agent Skills',
+    status: 'partial',
+    summary:
+      'UR loads project, user, plugin, remote, and bundled SKILL.md directories and can create or execute reusable skills. Strict open-spec validation, provenance policy, dependency review, and lifecycle signing are not yet one end-to-end trust system.',
+    evidence: [
+      '.ur/skills/<name>/SKILL.md and ~/.ur/skills/<name>/SKILL.md',
+      '/skills, /create-skill, /skillify, and the Skill tool',
+      'skill-scoped file permissions and restricted MCP skill execution',
+    ],
+    references: [
+      'https://openagentskills.dev/docs/specification',
+      'https://docs.github.com/en/copilot/concepts/agents/about-agent-skills',
+    ],
+    professionalNextStep:
+      'Add a strict compatibility validator and a signed provenance/permission manifest before enabling one-command installation from community skill registries.',
   },
   {
     id: 'browser-computer-use',
@@ -202,7 +233,7 @@ const coverage: TrendCoverage[] = [
     name: 'Evals, tracing, and observability',
     status: 'partial',
     summary:
-      'UR has verifier gates, project gates, /trace, a per-subagent run inspector, OpenTelemetry plumbing, release checks, and now a replayable eval harness with deterministic grading; published benchmark numbers and dashboards are the remaining layer.',
+      'UR has verifier gates, project gates, /trace, a per-subagent run inspector, OpenTelemetry plumbing, release checks, and a replayable eval harness with deterministic grading. Trace-level policy graders and published regression series are not yet release gates.',
     evidence: [
       'UR_VERIFIER_MODE and .ur/verify.json',
       'ur eval run (replayable, gradeable cases by category: coding/research/browser/mcp/memory)',
@@ -210,11 +241,29 @@ const coverage: TrendCoverage[] = [
       'OpenTelemetry tracing utilities',
     ],
     references: [
-      'https://openai.github.io/openai-agents-python/tracing/',
-      'https://openai.github.io/openai-agents-python/guardrails/',
+      'https://developers.openai.com/api/docs/guides/agent-evals',
+      'https://developers.openai.com/api/docs/guides/evals',
     ],
     professionalNextStep:
-      'Run the eval harness in CI and track pass-rate per category over time as a published number.',
+      'Grade complete trajectories for tool choice, handoffs, instruction compliance, and safety; run the eval set in CI and publish versioned category scores.',
+  },
+  {
+    id: 'genai-telemetry',
+    name: 'Standard GenAI telemetry',
+    status: 'partial',
+    summary:
+      'UR emits internal interaction, model, tool, agent, hook, and Perfetto traces, but its public spans do not yet implement the current OpenTelemetry GenAI agent, workflow, tool, retrieval, and token semantic conventions end to end.',
+    evidence: [
+      'src/utils/telemetry/sessionTracing.ts',
+      'src/utils/telemetry/perfettoTracing.ts',
+      'content capture is configurable and redacted when disabled',
+    ],
+    references: [
+      'https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/',
+      'https://opentelemetry.io/docs/specs/semconv/general/events/',
+    ],
+    professionalNextStep:
+      'Dual-emit standard GenAI spans and lifecycle events behind an opt-in, with prompt, tool-argument, retrieval-query, and result content redacted by default.',
   },
   {
     id: 'test-first-execution',
@@ -248,7 +297,7 @@ const coverage: TrendCoverage[] = [
       'secret-file and secret-like environment exfiltration deny rules',
     ],
     references: [
-      'https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices',
+      'https://modelcontextprotocol.io/specification/2025-11-25/basic/security_best_practices',
       'https://openai.github.io/openai-agents-python/guardrails/',
     ],
     professionalNextStep:
@@ -278,37 +327,37 @@ const coverage: TrendCoverage[] = [
     name: 'Agent security and prompt-injection resistance',
     status: 'covered',
     summary:
-      'UR has permission modes, read-only validation, shell security checks, MCP trust guidance, secret scanning, and explicit untrusted-web-content guidance.',
+      'UR has permission modes, read-only validation, shell security checks, MCP trust guidance, secret scanning, and explicit untrusted-web-content guidance. Durable-memory poisoning and hostile skill supply chains need their own regression corpus.',
     evidence: [
       'permission allow/ask/deny rules',
       'Bash and PowerShell static safety validation',
       'WebSearch/WebFetch prompts treat external content as untrusted evidence',
     ],
     references: [
-      'https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices',
-      'https://openai.github.io/openai-agents-python/guardrails/',
+      'https://modelcontextprotocol.io/specification/2025-11-25/basic/security_best_practices',
+      'https://cheatsheetseries.owasp.org/cheatsheets/AI_Agent_Security_Cheat_Sheet.html',
     ],
     professionalNextStep:
-      'Continuously test web/MCP prompt-injection cases in the release suite.',
+      'Continuously test web, MCP, repository, skill, and memory injection plus confused-deputy and tool-abuse cases in the release suite.',
   },
   {
     id: 'identity-auth',
     name: 'Agent identity and delegated authorization',
     status: 'adapter-ready',
     summary:
-      'UR has OAuth, XAA, MCP auth helpers, permissions, local trust boundaries, and now signed, attenuated, expiring delegation tokens for the A2A adapter — scoped to specific skills and bound to a single audience — so a holder can hand onward a strictly narrower capability without UR becoming an identity provider.',
+      'UR has OAuth, XAA, MCP auth helpers, permissions, local trust boundaries, and signed, expiring delegation tokens for the A2A adapter. Tokens are scoped to specific skills and bound to a single audience; narrower child tokens can only be minted by the trusted issuer that holds the HMAC secret.',
     evidence: [
-      'ur a2a token mint|verify (HMAC-signed, scope + audience + expiry, attenuation)',
+      'ur a2a token mint|verify (HMAC-signed, scope + audience + expiry, issuer-side narrowing)',
       'A2A server accepts static bearer or delegation tokens and enforces per-skill scope',
       'Agent Card advertises bearer + delegation securitySchemes',
       'MCP OAuth and XAA helpers; tool permission allow/ask/deny rules',
     ],
     references: [
-      'https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization',
+      'https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization',
       'https://a2a-protocol.org/latest/specification/',
     ],
     professionalNextStep:
-      'Federate delegation with a portable cross-agent identity only when UR exposes a network-facing A2A adapter beyond loopback.',
+      'Evaluate portable cross-agent identity only for deliberate non-loopback A2A deployments; keep local HMAC delegation simple and auditable.',
   },
   {
     id: 'multimodal',
@@ -323,6 +372,26 @@ const coverage: TrendCoverage[] = [
     ],
     professionalNextStep:
       'Auto-pull or warn when a multimodal task has no capable local model, using the model-route gap signal.',
+  },
+  {
+    id: 'provider-native-runtime',
+    name: 'Provider-native durable inference',
+    status: 'partial',
+    summary:
+      'UR can run its own durable background processes and compact local conversation state, but direct OpenAI traffic still uses Chat Completions. It does not yet expose Responses background polling/webhooks, WebSocket continuation, server compaction, or deferred tool search through the provider-neutral runtime.',
+    evidence: [
+      'ur bg supplies process-level durability independent of any model provider',
+      'OpenAI-compatible transport targets /v1/chat/completions',
+      'UR has local compaction and lazy Skill loading, but no Responses protocol adapter',
+    ],
+    references: [
+      'https://developers.openai.com/api/docs/guides/background',
+      'https://developers.openai.com/api/docs/guides/websocket-mode',
+      'https://developers.openai.com/api/docs/guides/compaction',
+      'https://developers.openai.com/api/docs/guides/tools-tool-search',
+    ],
+    professionalNextStep:
+      'Add an opt-in, capability-driven Responses adapter with store=false by default, bounded polling/webhook verification, cancellation, opaque compaction preservation, and a tested Chat Completions fallback.',
   },
   {
     id: 'scheduling',
@@ -359,7 +428,7 @@ const coverage: TrendCoverage[] = [
     name: 'Programmatic SDK',
     status: 'covered',
     summary:
-      'A dependency-free TypeScript SDK (ur-agent/sdk: query, queryJSON, UrClient) plus a Python wrapper drive headless `ur -p`, inheriting the CLI permission model, MCP config, and local Ollama routing. The in-process counterpart to the loopback A2A server.',
+      'A dependency-free TypeScript SDK (ur-agent/sdk: query, queryJSON, UrClient) plus a Python wrapper drive headless `ur -p`, inheriting the selected provider, CLI permission model, and MCP configuration. It is the in-process counterpart to the loopback A2A server.',
     evidence: [
       'src/sdk/index.ts (query / queryJSON / UrClient)',
       'ur sdk init (scaffolds runnable TS + Python examples)',
@@ -372,14 +441,14 @@ const coverage: TrendCoverage[] = [
 ]
 
 const priorityRoadmap = [
-  'Unify views: stream live executor and crew worker events into the agent-inspect timeline so the live board and post-hoc inspector are one surface.',
-  'Auto-apply model-route: pick the best local model per subagent step automatically, not just on demand.',
-  'Reference webhook receiver for ur trigger run with an actor allow-list, closing the inbound-trigger loop end to end.',
-  'Embedding cache and scope: persist knowledge embeddings with per-scope deletion guarantees and incremental rebuilds.',
+  'A2A v1 dual stack: add version negotiation, signed Agent Card verification, multi-tenancy boundaries, and the official TCK after the JavaScript SDK v1 line is stable.',
+  'ACP lifecycle completeness: paginated session/list and session/delete first, then exact-history session/load and truthful config/slash-command capabilities.',
+  'MCP 2026 readiness: test a stateless-core compatibility branch and capability-gated Tasks/Apps extensions without shipping against the release candidate.',
+  'Provider-native durable inference: add a privacy-aware Responses adapter for background/WebSocket execution, server compaction, and deferred tool discovery while retaining provider neutrality.',
+  'Security integrity: provenance, quarantine, rollback, and adversarial regression tests for durable memories and installable skills.',
+  'Standard observability and eval gates: OpenTelemetry GenAI semantics, trajectory graders, CI trend history, and published category scores.',
   'Claim provenance: map final-answer claims to WebSearch/WebFetch/MCP source URLs and show them in trace/evidence output.',
-  'Published eval scores: run the eval harness in CI and track pass-rate per category over time.',
   'Windows OS-sandbox parity for the agent shell (macOS Seatbelt and Linux bubblewrap already ship).',
-  'Federate delegation with portable cross-agent identity only if UR exposes a network-facing A2A adapter beyond loopback.',
 ]
 
 function normalizeBaseUrl(baseUrl: string | undefined): string | undefined {
@@ -399,38 +468,51 @@ export function buildA2AAgentCard(
   options: A2AAgentCardOptions = {},
 ): A2AAgentCard {
   const baseUrl = normalizeBaseUrl(options.baseUrl)
-  const url = baseUrl ? `${baseUrl}/a2a` : 'local-cli://ur'
+  const url = baseUrl ? `${baseUrl}/a2a/jsonrpc` : 'local-cli://ur'
+  const securitySchemes: NonNullable<A2AAgentCard['securitySchemes']> = {}
+  const security: NonNullable<A2AAgentCard['security']> = []
+
+  if (options.staticBearer) {
+    securitySchemes.bearer = {
+      type: 'http',
+      scheme: 'bearer',
+      description:
+        'Static shared-secret bearer token configured for this A2A server.',
+    }
+    security.push({ bearer: [] })
+  }
+  if (options.delegationBearer) {
+    securitySchemes.delegation = {
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'UR-Delegation',
+      description:
+        'Issuer-minted HMAC delegation token scoped to specific skills, bound to this agent, and time-limited.',
+    }
+    security.push({ delegation: [] })
+  }
 
   return {
     protocolVersion: '0.3.0',
     name: 'UR',
     description:
-      'Local-first terminal coding agent powered through the local Ollama app, with MCP tools, custom agents, browser workflows, memory, verifier gates, and permission controls.',
+      'Provider-flexible, local-first terminal coding agent with MCP tools, custom agents, browser workflows, memory, verifier gates, and permission controls.',
     url,
+    preferredTransport: 'JSONRPC',
+    additionalInterfaces: [{ url, transport: 'JSONRPC' }],
     version: urVersion,
     documentationUrl:
       'https://github.com/Maitham16/UR/blob/master/docs/AGENT_TRENDS.md',
     capabilities: {
-      streaming: true,
+      // The opt-in HTTP adapter currently returns unary task lifecycle
+      // responses. Do not advertise streaming until an A2A streaming binding
+      // is actually implemented.
+      streaming: false,
       pushNotifications: false,
       stateTransitionHistory: true,
     },
-    securitySchemes: {
-      bearer: {
-        type: 'http',
-        scheme: 'bearer',
-        description:
-          'Static shared-secret bearer token for task execution (ur a2a serve --token).',
-      },
-      delegation: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'UR-Delegation',
-        description:
-          'Attenuated delegation token: scoped to specific skills, bound to this agent (aud), and time-limited. Mint with `ur a2a token mint` and verify with `ur a2a token verify`.',
-      },
-    },
-    security: [{ bearer: [] }, { delegation: [] }],
+    ...(Object.keys(securitySchemes).length > 0 ? { securitySchemes } : {}),
+    ...(security.length > 0 ? { security } : {}),
     defaultInputModes: ['text/plain', 'text/markdown', 'application/json'],
     defaultOutputModes: ['text/plain', 'text/markdown', 'application/json'],
     provider: {
@@ -499,6 +581,7 @@ export function buildAgentTrendReport(
 ): AgentTrendReport {
   return {
     generatedAt: new Date().toISOString(),
+    researchSnapshotDate,
     urVersion,
     coverage,
     a2aAgentCard: buildA2AAgentCard(options),
@@ -513,6 +596,7 @@ export function formatAgentTrendReport(
     `UR Trend Coverage`,
     `Version: ${report.urVersion}`,
     `Generated: ${report.generatedAt}`,
+    `Research snapshot: ${report.researchSnapshotDate}`,
     '',
     'Status: covered = shipped, partial = useful base exists, adapter-ready = discovery metadata exists and full runtime adapter is separate.',
     '',

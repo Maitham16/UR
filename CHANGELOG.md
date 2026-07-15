@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.46.0
+
+- Added a stable, official-SDK ACP v1 stdio agent with resumable sessions,
+  client MCP transports and additional roots, streamed updates, native
+  permission requests, cancellation, and private persisted session identity.
+- Added an official-SDK A2A v0.3 JSON-RPC binding and hardened the separate UR
+  HTTP compatibility APIs with scoped authorization, strict media/schema
+  validation, bounded requests/responses/state, durable task identity, and
+  fail-closed permission handling.
+- Hardened OpenAI, Anthropic, and Gemini provider wire behavior, including
+  strict tool schemas, exact tool-call identity, Gemini thought signatures,
+  request correlation, bounded stdin secrets, and protocol regression tests.
+- Completed background-task management in the VS Code Actions panel and made
+  JetBrains prompt cancellation reach the running server task. Modernized and
+  verified both IDE extension builds against their supported platforms;
+  JetBrains bytecode no longer emits compatibility bridges to internal APIs.
+- Made background manifests cross-process safe, atomic, private, bounded, and
+  traversal-resistant; added bounded CLI/log handling and explicit isolated or
+  offline task-launch choices without implicit publishing or permission bypass.
+- Updated dependencies and supply-chain automation, pinned CI actions, added
+  multi-ecosystem Dependabot coverage, synchronized every release surface, and
+  expanded release, packaging, security, protocol, and integration checks.
+- Made source archives Git-ignore-aware, private-state-safe, and replacement-
+  safe; provider smoke tests now isolate their JSON reports instead of
+  rewriting the tracked diagnostic snapshot, and secret scanning covers new
+  non-ignored release files before they are committed.
+- Re-audited the agent roadmap against primary sources after the version bump;
+  corrected stale provider and dense-memory claims and recorded dated gaps for
+  A2A v1, ACP lifecycle methods, MCP Tasks/Apps, provider-native durable
+  inference, Agent Skills governance, GenAI telemetry, and memory integrity.
+
 ## 1.45.6
 
 - Deduplicated project verification approval so compile/test/lint commands are

@@ -2,7 +2,7 @@
   "name": "ur-inline-diffs",
   "displayName": "UR Inline Diffs",
   "description": "Review, apply, and reject UR inline diff bundles from .ur/ide/diffs inside VS Code.",
-  "version": "1.45.6",
+  "version": "1.46.0",
   "publisher": "ur-nexus",
   "engines": {
     "vscode": "^1.92.0"
@@ -40,6 +40,8 @@
     "onCommand:urInlineDiffs.runSpec",
     "onCommand:urInlineDiffs.runWorkflow",
     "onCommand:urActions.refresh",
+    "onCommand:urActions.runBackground",
+    "onCommand:urActions.cancelBackground",
     "onCommand:urActions.openBackgroundLog"
   ],
   "main": "./out/extension.js",
@@ -220,8 +222,19 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "urActions.runBackground",
+        "title": "UR: Start Background Task",
+        "icon": "$(play)"
+      },
+      {
+        "command": "urActions.cancelBackground",
+        "title": "UR: Cancel Background Task",
+        "icon": "$(stop-circle)"
+      },
+      {
         "command": "urActions.openBackgroundLog",
-        "title": "UR: Open Background Task Log"
+        "title": "UR: Open Background Task Log",
+        "icon": "$(output)"
       }
     ],
     "viewsWelcome": [
@@ -235,7 +248,7 @@
       },
       {
         "view": "urActions",
-        "contents": "Background tasks and diff actions will appear here.\n[Refresh](command:urActions.refresh)  [Search Actions](command:urInlineDiffs.searchActions)"
+        "contents": "Background tasks and diff actions will appear here.\n[Start Task](command:urActions.runBackground)  [Refresh](command:urActions.refresh)  [Search Actions](command:urInlineDiffs.searchActions)"
       }
     ],
     "menus": {
@@ -281,14 +294,19 @@
           "group": "navigation"
         },
         {
+          "command": "urActions.runBackground",
+          "when": "view == urActions",
+          "group": "navigation@1"
+        },
+        {
           "command": "urActions.refresh",
           "when": "view == urActions",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "urInlineDiffs.agentStatus",
           "when": "view == urActions",
-          "group": "navigation"
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -311,6 +329,16 @@
           "command": "urInlineDiffs.comment",
           "when": "(view == urInlineDiffs || view == urActions) && viewItem == diff",
           "group": "2_review"
+        },
+        {
+          "command": "urActions.openBackgroundLog",
+          "when": "view == urActions && (viewItem == backgroundTask || viewItem == backgroundTaskActive)",
+          "group": "inline"
+        },
+        {
+          "command": "urActions.cancelBackground",
+          "when": "view == urActions && viewItem == backgroundTaskActive",
+          "group": "1_actions"
         }
       ],
       "editor/context": [

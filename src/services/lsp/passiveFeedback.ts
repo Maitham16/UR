@@ -60,36 +60,28 @@ export function formatDiagnosticsForAttachment(
     uri = params.uri
   }
 
-  const diagnostics = params.diagnostics.map(
-    (diag: {
-      message: string
-      severity?: number
-      range: {
-        start: { line: number; character: number }
-        end: { line: number; character: number }
-      }
-      source?: string
-      code?: string | number
-    }) => ({
-      message: diag.message,
-      severity: mapLSPSeverity(diag.severity),
-      range: {
-        start: {
-          line: diag.range.start.line,
-          character: diag.range.start.character,
-        },
-        end: {
-          line: diag.range.end.line,
-          character: diag.range.end.character,
-        },
+  const diagnostics = params.diagnostics.map(diag => ({
+    // LSP 3.18 permits MarkupContent here. Preserve its human-readable
+    // value while keeping DiagnosticFile's display-safe string contract.
+    message:
+      typeof diag.message === 'string' ? diag.message : diag.message.value,
+    severity: mapLSPSeverity(diag.severity),
+    range: {
+      start: {
+        line: diag.range.start.line,
+        character: diag.range.start.character,
       },
-      source: diag.source,
-      code:
-        diag.code !== undefined && diag.code !== null
-          ? String(diag.code)
-          : undefined,
-    }),
-  )
+      end: {
+        line: diag.range.end.line,
+        character: diag.range.end.character,
+      },
+    },
+    source: diag.source,
+    code:
+      diag.code !== undefined && diag.code !== null
+        ? String(diag.code)
+        : undefined,
+  }))
 
   return [
     {

@@ -98,3 +98,5 @@ Thumbs.db
 # JetBrains plugin build output (gradle)
 extensions/jetbrains-ur/.gradle/
 extensions/jetbrains-ur/build/
+extensions/jetbrains-ur/.kotlin/
+extensions/jetbrains-ur/.intellijPlatform/

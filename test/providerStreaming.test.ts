@@ -223,7 +223,7 @@ describe('provider real streaming', () => {
         'data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":4}}\n\n',
         'data: {"type":"message_stop"}\n\n',
       ]),
-      headers: { 'x-request-id': 'req-anthropic' },
+      headers: { 'request-id': 'req-anthropic' },
     })
     const client = await createStandardAPIClient({
       providerId: 'anthropic-api',
@@ -231,7 +231,7 @@ describe('provider real streaming', () => {
       maxRetries: 1,
     })
 
-    const { data } = await client.beta.messages.create({
+    const { data, request_id } = await client.beta.messages.create({
       model: 'claude-sonnet-5',
       messages: userMessages(),
       max_tokens: 32,
@@ -239,6 +239,7 @@ describe('provider real streaming', () => {
       tools: sampleTools,
     }).withResponse()
     const events = await collect(data)
+    expect(request_id).toBe('req-anthropic')
 
     const [, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
     expect(body.stream).toBe(true)
@@ -255,7 +256,7 @@ describe('provider real streaming', () => {
       data: sse([
         'data: {"candidates":[{"content":{"parts":[{"text":"Ge"}]}}]}\n\n',
         'data: {"candidates":[{"content":{"parts":[{"text":"mini"}]}}]}\n\n',
-        'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"Edit","args":{"file_path":"src/app.ts","content":"updated"}}}]},"finishReason":"FUNCTION_CALL"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":2}}\n\n',
+        'data: {"candidates":[{"content":{"parts":[{"functionCall":{"id":"gemini-call-stream-1","name":"Edit","args":{"file_path":"src/app.ts","content":"updated"}},"thoughtSignature":"opaque-stream-signature"}]},"finishReason":"FUNCTION_CALL"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":2}}\n\n',
       ]),
       headers: { 'x-request-id': 'req-gemini' },
     })
@@ -280,9 +281,47 @@ describe('provider real streaming', () => {
     expect(config.responseType).toBe('stream')
     expect(textDeltas(events)).toEqual(['Ge', 'mini'])
     expect(events.find(event => event.type === 'content_block_start' && event.content_block?.type === 'tool_use')?.content_block)
-      .toMatchObject({ type: 'tool_use', name: 'Edit' })
+      .toMatchObject({
+        type: 'tool_use',
+        id: 'gemini-call-stream-1',
+        name: 'Edit',
+        gemini_thought_signature: 'opaque-stream-signature',
+      })
     expect(events.find(event => event.type === 'message_delta')?.delta.stop_reason)
       .toBe('tool_use')
     expect(events.at(-1).type).toBe('message_stop')
+  })
+
+  test('standard Gemini preserves a signature delivered on an empty streamed text part', async () => {
+    const post = spyOn(axios, 'post').mockResolvedValue({
+      data: sse([
+        'data: {"candidates":[{"content":{"parts":[{"text":"answer"}]}}]}\n\n',
+        'data: {"candidates":[{"content":{"parts":[{"text":"","thoughtSignature":"opaque-final-signature"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}\n\n',
+      ]),
+      headers: { 'x-request-id': 'req-gemini-empty-signature' },
+    })
+    const client = await createStandardAPIClient({
+      providerId: 'gemini-api',
+      apiKey: 'gm-key',
+      maxRetries: 1,
+    })
+
+    const { data } = await client.beta.messages.create({
+      model: 'gemini-3.5-flash',
+      messages: userMessages(),
+      max_tokens: 32,
+      stream: true,
+    }).withResponse()
+    const events = await collect(data)
+
+    expect(textDeltas(events)).toEqual(['answer'])
+    expect(events.find(event =>
+      event.type === 'content_block_start' &&
+      event.content_block?.gemini_thought_signature === 'opaque-final-signature'
+    )?.content_block).toEqual({
+      type: 'text',
+      text: '',
+      gemini_thought_signature: 'opaque-final-signature',
+    })
   })
 })

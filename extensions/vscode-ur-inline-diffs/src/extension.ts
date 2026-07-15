@@ -1,5 +1,9 @@
 import * as vscode from 'vscode'
-import { openBackgroundLog } from './actions/actions.js'
+import {
+  cancelBackgroundTask,
+  openBackgroundLog,
+  startBackgroundTask,
+} from './actions/actions.js'
 import { ActionsTreeProvider } from './actions/actionsTreeProvider.js'
 import { ChatController } from './chat/chatController.js'
 import { ChatTreeProvider } from './chat/chatTreeProvider.js'
@@ -79,6 +83,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('urInlineDiffs.runSpec', () => runSpecAction(chat)),
     vscode.commands.registerCommand('urInlineDiffs.runWorkflow', () => runWorkflowAction(chat)),
     vscode.commands.registerCommand('urActions.refresh', () => actionsTreeProvider.refresh()),
+    vscode.commands.registerCommand('urActions.runBackground', () => startBackgroundTask(actionsTreeProvider)),
+    vscode.commands.registerCommand('urActions.cancelBackground', item => cancelBackgroundTask(item, actionsTreeProvider)),
     vscode.commands.registerCommand('urActions.openBackgroundLog', item => openBackgroundLog(item)),
   )
 }

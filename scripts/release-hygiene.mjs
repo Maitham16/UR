@@ -34,6 +34,24 @@ const forbiddenRules = [
     test: path => /(^|\/)node_modules(\/|$)/.test(path),
   },
   {
+    label: 'build-tool state directory',
+    test: path => /(^|\/)(?:\.gradle|\.intellijPlatform|\.kotlin)(\/|$)/.test(path),
+  },
+  {
+    label: 'generated build directory',
+    test: path => /(^|\/)build(\/|$)/.test(path),
+  },
+  {
+    label: 'local IDE state',
+    test: path =>
+      /(^|\/)(?:\.idea|\.vscode)(\/|$)/.test(path) ||
+      /(^|\/)\.claude\/settings\.local\.json$/.test(path),
+  },
+  {
+    label: 'local project override',
+    test: path => /(^|\/)UR\.local\.md$/.test(path),
+  },
+  {
     label: 'OS metadata',
     test: path =>
       path.endsWith('/.DS_Store') ||
@@ -89,7 +107,9 @@ const forbiddenRules = [
   {
     label: 'local UR analysis/output directory',
     test: path =>
-      /(^|\/)(\.ur-analysis|\.ur\/(?:cache|tmp|logs|background|runs|worktrees))(\/|$)/.test(path),
+      /(^|\/)(\.ur-analysis|\.ur\/(?:cache|tmp|logs|background|runs|worktrees|context|plans|index|memory|brainstorming|agent-memory-local|ide))(\/|$)/.test(path) ||
+      /(^|\/)\.ur\/semantic-memory\/index(\/|$)/.test(path) ||
+      /(^|\/)\.ur\/(?:settings\.local\.json|[^/]+\.local\.json|scheduled_tasks\.json|actions[^/]*\.jsonl)$/.test(path),
   },
   {
     label: 'nested release archive',
@@ -156,12 +176,20 @@ export function tarballPaths(tarball) {
   return output.split('\n').map(path => path.trim()).filter(Boolean)
 }
 
-function gitTrackedPaths(root) {
-  const output = execFileSync('git', ['ls-files', '-z'], { cwd: root })
+function gitArchivePaths(root) {
+  // Include both committed files and new release inputs while honoring the
+  // repository's ignore policy. This avoids leaking local state and ensures a
+  // pre-commit release archive still contains newly added implementation files.
+  const output = execFileSync(
+    'git',
+    ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+    { cwd: root },
+  )
   return output
     .toString('utf8')
     .split('\0')
     .filter(Boolean)
+    .filter(path => existsSync(join(root, path)))
 }
 
 function walkSourcePaths(root) {
@@ -201,7 +229,7 @@ function walkSourcePaths(root) {
 export function sourceArchiveCandidatePaths(root) {
   if (existsSync(join(root, '.git'))) {
     try {
-      return gitTrackedPaths(root)
+      return gitArchivePaths(root)
     } catch {
       return walkSourcePaths(root)
     }

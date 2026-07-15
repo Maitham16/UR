@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle';
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
@@ -55,6 +54,8 @@ async function main(): Promise<void> {
       host: valueAfter('--host', '127.0.0.1')!,
       port: Number(valueAfter('--port', '8765')),
       token: valueAfter('--token'),
+      delegationSecret: valueAfter('--delegation-secret'),
+      audience: valueAfter('--audience', 'ur-nexus'),
       dryRun: args.includes('--dry-run'),
       cwd: process.cwd()
     });

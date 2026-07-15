@@ -69,6 +69,30 @@ if (bunfig.includes(oldLowerRepo) || bunfig.includes(oldMapekRepo)) {
   fail('bunfig.toml still references an old repository')
 }
 
+const vscodePackage = JSON.parse(
+  read('extensions/vscode-ur-inline-diffs/package.json'),
+)
+const vscodeLock = JSON.parse(
+  read('extensions/vscode-ur-inline-diffs/package-lock.json'),
+)
+const vscodeLockRoot = vscodeLock.packages?.['']
+if (vscodePackage.version !== version) {
+  fail(`VS Code extension version must be ${version}`)
+}
+if (vscodeLock.version !== version || vscodeLockRoot?.version !== version) {
+  fail(`VS Code package-lock root versions must both be ${version}`)
+}
+
+const jetbrainsBuild = read('extensions/jetbrains-ur/build.gradle.kts')
+if (!jetbrainsBuild.includes(`version = "${version}"`)) {
+  fail(`JetBrains extension version must be ${version}`)
+}
+
+const documentationIndex = read('documentation/index.html')
+if (!documentationIndex.includes(`Version ${version}`)) {
+  fail(`documentation/index.html version eyebrow must be ${version}`)
+}
+
 const distPath = join(root, 'dist', 'cli.js')
 if (!existsSync(distPath)) {
   fail('dist/cli.js is missing; run bun run bundle')
@@ -127,6 +151,21 @@ try {
   }
 } catch (error) {
   fail(`node ./bin/ur.js --version failed: ${error instanceof Error ? error.message : String(error)}`)
+}
+
+if (failures.length === 0) {
+  try {
+    execFileSync('bun', ['audit'], {
+      cwd: root,
+      stdio: 'inherit',
+    })
+  } catch (error) {
+    fail(
+      `dependency audit failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    )
+  }
 }
 
 if (failures.length === 0) {

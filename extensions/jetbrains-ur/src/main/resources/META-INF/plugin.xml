@@ -2,7 +2,7 @@
   <id>dev.urnexus.jetbrains</id>
   <name>UR Agent</name>
   <vendor url="https://github.com/Maitham16/UR">UR-Nexus</vendor>
-  <description>Connects JetBrains IDEs to a local UR-Nexus agent over ACP (ur acp serve).</description>
+  <description>Connects JetBrains IDEs to a local UR-Nexus agent over its loopback HTTP JSON-RPC API (ur acp serve).</description>
   <depends>com.intellij.modules.platform</depends>
   <extensions defaultExtensionNs="com.intellij">
     <toolWindow id="UR Agent" anchor="right"

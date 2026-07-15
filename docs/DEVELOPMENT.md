@@ -35,6 +35,7 @@ bun run dev
 ```sh
 bun run typecheck
 bun run lint
+bun run dependencies:audit
 bun test
 bun run build
 bun run smoke

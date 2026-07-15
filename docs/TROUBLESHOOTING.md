@@ -208,12 +208,14 @@ ur plugin list
 
 ### ACP / editor connection issues
 
-- Likely cause: the ACP server is not running, or the editor config block is
-  missing.
-- Fix: check status, regenerate the editor config, and run the IDE doctor.
+- Likely cause: the native stdio command/config is wrong, or the optional UR
+  HTTP server used by JetBrains is not running.
+- Fix: verify the stdio command is registered, check HTTP status when relevant,
+  regenerate the editor config, and run the IDE doctor.
 
 ```sh
 ur acp status
+ur acp stdio --help
 ur ide doctor
 ur ide config zed    # or vscode, cursor, windsurf, jetbrains, neovim
 ```

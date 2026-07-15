@@ -23,7 +23,7 @@ scan_pattern() {
   local pattern="$1"
 
   if [[ -e .git ]] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    git grep -nIE -e "$pattern" -- . ':!bun.lock' ':!scripts/secret-scan.sh' ':!test/**'
+    git grep --untracked -nIE -e "$pattern" -- . ':!bun.lock' ':!scripts/secret-scan.sh' ':!test/**'
     return $?
   fi
 
@@ -70,7 +70,7 @@ if [[ "$failed" -ne 0 ]]; then
 fi
 
 if [[ -e .git ]] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "No common secret patterns found in tracked files."
+  echo "No common secret patterns found in tracked or untracked release-candidate files."
 else
   echo "No common secret patterns found in source files."
 fi

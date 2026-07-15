@@ -7,6 +7,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -16,12 +17,14 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-/** Project-scoped JSON-RPC client for UR's HTTP ACP endpoint. */
+/** Project-scoped JSON-RPC client for UR's HTTP compatibility endpoint. */
 @Service(Service.Level.PROJECT)
 class UrAcpClient(private val project: Project) {
     private val baseUrl = "http://127.0.0.1:9100"
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
     private val ids = AtomicLong()
+    private val promptInFlight = AtomicBoolean(false)
+    private val sessionLock = Any()
     private val json = Json { ignoreUnknownKeys = true }
     @Volatile private var initialized = false
     @Volatile private var sessionId: String? = null
@@ -32,32 +35,56 @@ class UrAcpClient(private val project: Project) {
         http.send(req, HttpResponse.BodyHandlers.ofString()).statusCode() == 200
     } catch (_: Exception) { false }
 
-    @Synchronized
     fun sendPrompt(prompt: String): String {
         require(prompt.isNotBlank()) { "Prompt cannot be empty." }
-        ensureSession()
-        val result = rpc("session/prompt", buildJsonObject {
-            put("sessionId", JsonPrimitive(sessionId!!))
-            put("prompt", JsonPrimitive(prompt))
-            put("mode", JsonPrimitive("sync"))
-        }).jsonObject
-        val task = result["task"]?.jsonObject ?: error("ACP response did not include a task.")
-        val status = task["status"]?.jsonPrimitive?.content ?: "unknown"
-        val output = task["result"]?.jsonObject?.get("stdout")?.jsonPrimitive?.content
-        val failure = task["result"]?.jsonObject?.get("stderr")?.jsonPrimitive?.content
-        return output?.takeIf { it.isNotBlank() }
-            ?: failure?.takeIf { it.isNotBlank() }
-            ?: "UR task $status (${task["id"]?.jsonPrimitive?.content ?: "unknown id"})"
+        require(prompt.length <= 64_000 && !prompt.contains('\u0000')) {
+            "Prompt must contain at most 64,000 characters and no NUL bytes."
+        }
+        check(promptInFlight.compareAndSet(false, true)) {
+            "A UR prompt is already running for this project."
+        }
+        try {
+            val active = ensureSession()
+            val result = rpc(
+                "session/prompt",
+                buildJsonObject {
+                    put("sessionId", JsonPrimitive(active))
+                    put("prompt", JsonPrimitive(prompt))
+                    put("mode", JsonPrimitive("sync"))
+                },
+                Duration.ofMinutes(121),
+            ).jsonObject
+            val task = result["task"]?.jsonObject ?: error("ACP response did not include a task.")
+            val status = task["status"]?.jsonPrimitive?.content ?: "unknown"
+            val output = task["result"]?.jsonObject?.get("stdout")?.jsonPrimitive?.content
+            val failure = task["result"]?.jsonObject?.get("stderr")?.jsonPrimitive?.content
+            return output?.takeIf { it.isNotBlank() }
+                ?: failure?.takeIf { it.isNotBlank() }
+                ?: "UR task $status (${task["id"]?.jsonPrimitive?.content ?: "unknown id"})"
+        } finally {
+            promptInFlight.set(false)
+        }
     }
 
-    @Synchronized
+    fun cancelPrompt(): Boolean {
+        val active = sessionId ?: return false
+        val result = rpc("session/cancel", buildJsonObject {
+            put("sessionId", JsonPrimitive(active))
+        }).jsonObject
+        return result["canceled"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+    }
+
     fun closeSession() {
         val active = sessionId ?: return
-        try { rpc("session/cancel", buildJsonObject { put("sessionId", JsonPrimitive(active)) }) }
-        finally { sessionId = null }
+        try { rpc("session/close", buildJsonObject { put("sessionId", JsonPrimitive(active)) }) }
+        finally {
+            synchronized(sessionLock) {
+                if (sessionId == active) sessionId = null
+            }
+        }
     }
 
-    private fun ensureSession() {
+    private fun ensureSession(): String = synchronized(sessionLock) {
         if (!initialized) {
             rpc("initialize")
             initialized = true
@@ -69,9 +96,14 @@ class UrAcpClient(private val project: Project) {
             sessionId = rpc("session/new", params).jsonObject["sessionId"]?.jsonPrimitive?.content
                 ?: error("ACP session/new response did not include sessionId.")
         }
+        sessionId!!
     }
 
-    private fun rpc(method: String, params: JsonObject? = null): JsonElement {
+    private fun rpc(
+        method: String,
+        params: JsonObject? = null,
+        timeout: Duration = Duration.ofSeconds(30),
+    ): JsonElement {
         val requestId = ids.incrementAndGet()
         val body = buildJsonObject {
             put("jsonrpc", JsonPrimitive("2.0"))
@@ -80,7 +112,7 @@ class UrAcpClient(private val project: Project) {
             if (params != null) put("params", params)
         }
         val request = HttpRequest.newBuilder(URI.create("$baseUrl/acp"))
-            .timeout(Duration.ofMinutes(31))
+            .timeout(timeout)
             .header("content-type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
             .build()

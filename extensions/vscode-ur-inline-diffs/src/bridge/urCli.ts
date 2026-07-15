@@ -16,15 +16,40 @@ export interface UrCliResult {
 
 export interface UrCliOptions {
   cwd: string
+  timeoutMs?: number
+  maxBufferBytes?: number
+}
+
+function boundedExecutionOptions(options: UrCliOptions): {
+  cwd: string
+  shell: false
+  timeout: number
+  maxBuffer: number
+  windowsHide: true
+} {
+  const timeout = Number.isSafeInteger(options.timeoutMs) && (options.timeoutMs ?? 0) > 0
+    ? Math.min(options.timeoutMs!, 10 * 60_000)
+    : 120_000
+  const maxBuffer = Number.isSafeInteger(options.maxBufferBytes) && (options.maxBufferBytes ?? 0) > 0
+    ? Math.min(options.maxBufferBytes!, 16 * 1024 * 1024)
+    : 4 * 1024 * 1024
+  return {
+    cwd: options.cwd,
+    shell: false,
+    timeout,
+    maxBuffer,
+    windowsHide: true,
+  }
 }
 
 export async function runUrCli(args: string[], options: UrCliOptions): Promise<UrCliResult> {
   const executable = resolveUrCommand({ cwd: options.cwd, config: readUrCommandConfig() })
   try {
-    const { stdout, stderr } = await execFileAsync(executable.command, [...executable.args, ...args], {
-      cwd: options.cwd,
-      shell: false,
-    })
+    const { stdout, stderr } = await execFileAsync(
+      executable.command,
+      [...executable.args, ...args],
+      boundedExecutionOptions(options),
+    )
     return { stdout, stderr }
   } catch (error) {
     throw new Error(formatUrCliError(args, error, executable, options.cwd))
@@ -46,10 +71,11 @@ export interface UrCliCaptureResult extends UrCliResult {
 export async function runUrCliCapture(args: string[], options: UrCliOptions): Promise<UrCliCaptureResult> {
   const executable = resolveUrCommand({ cwd: options.cwd, config: readUrCommandConfig() })
   try {
-    const { stdout, stderr } = await execFileAsync(executable.command, [...executable.args, ...args], {
-      cwd: options.cwd,
-      shell: false,
-    })
+    const { stdout, stderr } = await execFileAsync(
+      executable.command,
+      [...executable.args, ...args],
+      boundedExecutionOptions(options),
+    )
     return { stdout, stderr, exitCode: 0 }
   } catch (error) {
     if (isCapturedNonZeroExit(error)) {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AcpClient } from '../src/services/agents/acpClient.js'
@@ -44,7 +44,7 @@ async function withAcpServer(
   }
 }
 
-describe('ACP server', () => {
+describe('UR HTTP agent server', () => {
   test('healthz returns ok', async () => {
     const dir = tempDir('ur-acp-')
     try {
@@ -72,6 +72,54 @@ describe('ACP server', () => {
     }
   }, ACP_TEST_TIMEOUT_MS)
 
+  test('enforces HTTP and JSON-RPC request contracts', async () => {
+    const dir = tempDir('ur-acp-')
+    try {
+      await withAcpServer(dir, undefined, async (_port, client, fetchImpl) => {
+        const wrongMethod = await fetchImpl('http://127.0.0.1/acp')
+        expect(wrongMethod.status).toBe(405)
+        expect(wrongMethod.headers.get('allow')).toBe('POST')
+
+        const wrongMediaType = await fetchImpl('http://127.0.0.1/acp', {
+          method: 'POST',
+          headers: { 'content-type': 'text/plain' },
+          body: '{}',
+        })
+        expect(wrongMediaType.status).toBe(415)
+
+        const notification = await fetchImpl('http://127.0.0.1/acp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ jsonrpc: '2.0', method: 'initialize' }),
+        })
+        expect(notification.status).toBe(204)
+        expect(await notification.text()).toBe('')
+
+        const invalidEnvelope = await fetchImpl('http://127.0.0.1/acp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ id: 1, method: 'initialize' }),
+        })
+        expect(invalidEnvelope.status).toBe(400)
+        expect((await invalidEnvelope.json()).error.code).toBe(-32600)
+
+        const oversized = await fetchImpl('http://127.0.0.1/acp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: 'x'.repeat(256_001),
+        })
+        expect(oversized.status).toBe(413)
+        expect((await oversized.json()).error.code).toBe(-32600)
+
+        await expect(client.call('unknown' as never)).rejects.toThrow(
+          'ACP error -32601',
+        )
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, ACP_TEST_TIMEOUT_MS)
+
   test('tools/list returns built-in tools', async () => {
     const dir = tempDir('ur-acp-')
     try {
@@ -80,6 +128,27 @@ describe('ACP server', () => {
         expect(names).toContain('Bash')
         expect(names).toContain('Read')
         expect(names).toContain('Glob')
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, ACP_TEST_TIMEOUT_MS)
+
+  test('validates tool schemas and fails closed when approval is unavailable', async () => {
+    const dir = tempDir('ur-acp-')
+    const target = join(dir, 'must-not-exist.txt')
+    try {
+      await withAcpServer(dir, undefined, async (_port, client) => {
+        await expect(
+          client.callTool('Write', { file_path: target }),
+        ).rejects.toThrow('ACP error')
+        await expect(
+          client.callTool('Write', {
+            file_path: target,
+            content: 'blocked',
+          }),
+        ).rejects.toThrow(/permission|approval|rejected/i)
+        expect(existsSync(target)).toBe(false)
       })
     } finally {
       rmSync(dir, { recursive: true, force: true })

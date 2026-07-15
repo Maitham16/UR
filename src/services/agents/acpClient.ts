@@ -50,7 +50,7 @@ export class AcpClient {
     try {
       parsed = JSON.parse(text) as AcpResponse
     } catch {
-      throw new Error(`ACP server returned non-JSON: ${text.slice(0, 200)}`)
+      throw new Error(`UR HTTP agent server returned non-JSON: ${text.slice(0, 200)}`)
     }
 
     if (parsed.error) {
@@ -79,6 +79,19 @@ export class AcpClient {
 
   async callTool(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
     return this.call('tools/call', { name, arguments: args })
+  }
+
+  async cancelSession(sessionId: string): Promise<{ canceled: boolean }> {
+    return (await this.call('session/cancel', { sessionId })) as {
+      canceled: boolean
+    }
+  }
+
+  async closeSession(sessionId: string): Promise<{ closed: boolean; canceled: boolean }> {
+    return (await this.call('session/close', { sessionId })) as {
+      closed: boolean
+      canceled: boolean
+    }
   }
 
   async sendTask(

@@ -1,6 +1,6 @@
 # 11 — Integrations
 
-Source of truth: `src/services/mcp/`, `src/services/agents/{acpServer,a2aServer}.ts`,
+Source of truth: `src/services/mcp/`, `src/services/agents/{acpStdio,acpServer,a2aProtocol,a2aServer}.ts`,
 `extensions/{vscode-ur-inline-diffs,jetbrains-ur}/`, `src/utils/urInChrome/`, `src/bridge/`,
 `src/commands/{mcp,ide,acp,a2a-card,chrome,browser,install-github-app,install-slack-app,bridge,desktop,voice}`.
 
@@ -22,6 +22,9 @@ ur mcp reset-project-choices        # re-prompt for .mcp.json approvals
 ```
 - OAuth-protected servers: `src/services/mcp/auth.ts` + `McpAuthTool`; `--client-secret`
   or `MCP_CLIENT_SECRET` for the client secret; XAA IdP settings (`xaaIdp`).
+  For non-interactive XAA login, pipe the token to
+  `ur mcp xaa login --id-token-stdin`; the bounded stdin path avoids exposing
+  the token through shell history or process arguments.
 - Tools appear as `mcp__<server>__<tool>`; resources via `ListMcpResourcesTool` /
   `ReadMcpResourceTool`; prompts become slash commands; MCP skills gate `MCP_SKILLS`.
 - Permission control: `allowedMcpServers` / `deniedMcpServers` settings,
@@ -34,10 +37,29 @@ ur mcp reset-project-choices        # re-prompt for .mcp.json approvals
 | Surface | Start | Protocol |
 |---|---|---|
 | MCP server | `ur mcp serve` | exposes UR tools over MCP (stdio) |
-| ACP server | `ur acp serve` / `stdio` / `stop` / `status`; `/acp` | Agent Communication Protocol for IDE extensions (`acpServer.ts`, `--host --port --token`) |
-| A2A server | `ur a2a serve --port 8765 --token …` | Agent-to-Agent HTTP; `ur a2a card` / `/a2a-card` prints the discovery Agent Card; `ur a2a token mint/verify` |
+| ACP stdio agent | `ur acp stdio` | Stable Agent Client Protocol v1 via the official TypeScript SDK (`acpStdio.ts`) |
+| UR HTTP agent API | `UR_ACP_TOKEN=… ur acp serve`; `/acp` | UR-specific HTTP JSON-RPC for scripts, tools/tasks, and the experimental JetBrains plugin; not an ACP binding |
+| A2A server | `UR_A2A_TOKEN=… ur a2a serve --port 8765` | Official-SDK A2A v0.3 JSON-RPC at `/a2a/jsonrpc`, accurate well-known Agent Card, plus separate UR compatibility routes under `/a2a/tasks` |
 | HTTP session server | `ur server --port … --auth-token …` | direct-connect sessions (`src/server/`), unix-socket option, idle timeouts, max sessions |
 | Remote control bridge | `ur remote-control` (`rc`) or `/remote-control` | pairs this machine with mobile/web clients (`src/bridge/`); org policy `allow_remote_control` gates it |
+
+`ur mcp serve` exposes built-in tools only. Every call is schema-validated,
+rechecked by the normal permission engine, and executed without an interactive
+approval channel; operations that need approval therefore fail closed. The
+stdio adapter bounds calls, concurrency, runtime, and protocol payload sizes.
+Operators can tune those bounds with `UR_MCP_MAX_CALLS_PER_MINUTE`,
+`UR_MCP_MAX_CONCURRENT_CALLS`, `UR_MCP_TOOL_TIMEOUT_MS`,
+`UR_MCP_MAX_INPUT_CHARS`, and `UR_MCP_MAX_OUTPUT_CHARS`.
+
+The UR HTTP API and A2A surfaces apply request, prompt, task, output, and tool
+limits through the `UR_ACP_*` and `UR_A2A_*` environment variables. Delegated
+A2A protocol and compatibility tasks are isolated by token subject and skill;
+bypassing permissions on the compatibility route also requires the static
+operator token or the explicit `permissions:bypass` scope. The official A2A
+runner uses fail-closed `dontAsk` permissions because the network binding has
+no interactive approval channel. The stdio ACP runner instead bridges UR tool
+decisions to the client's native `session/request_permission` UI and fails
+closed on cancellation or client errors.
 
 ## IDE integration
 
@@ -47,7 +69,7 @@ ur mcp reset-project-choices        # re-prompt for .mcp.json approvals
 - VS Code extension shipped in `extensions/vscode-ur-inline-diffs/` (inline diffs, actions
   tree, background actions bridge over the ur CLI).
 - Experimental JetBrains plugin shipped in `extensions/jetbrains-ur/`. It uses
-  the loopback HTTP ACP `/acp` JSON-RPC methods (`initialize`, `session/new`,
+  the loopback UR HTTP `/acp` JSON-RPC methods (`initialize`, `session/new`,
   `session/prompt`) and keeps HTTP work off the IDE event thread.
 - ACP stdio mode (`ur acp stdio`) is the transport used by editor plugins;
   LSP-powered diagnostics come from `src/services/lsp/`.

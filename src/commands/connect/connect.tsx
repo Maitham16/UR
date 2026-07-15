@@ -16,6 +16,7 @@ import {
   formatConnectionLine,
   getProviderConnection,
 } from '../../services/providers/providerConnection.js'
+import { readSecretFromStdin } from '../../utils/readSecretFromStdin.js'
 
 function option(tokens: string[], name: string): string | undefined {
   const index = tokens.indexOf(name)
@@ -35,13 +36,6 @@ function positionals(tokens: string[]): string[] {
     values.push(token)
   }
   return values
-}
-
-async function readStdinKey(): Promise<string> {
-  if (process.stdin.isTTY) return ''
-  const chunks: Buffer[] = []
-  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk))
-  return Buffer.concat(chunks).toString('utf8').trim()
 }
 
 function usage(): string {
@@ -69,7 +63,16 @@ async function connectProvider(provider: ProviderId, keyFlag?: string): Promise<
   }
 
   if (def.envKey) {
-    const key = keyFlag ?? (await readStdinKey())
+    let key = keyFlag
+    if (key === undefined) {
+      try {
+        key = await readSecretFromStdin({ label: 'API key' })
+      } catch (error) {
+        return error instanceof Error
+          ? `Could not read API key: ${error.message}`
+          : 'Could not read API key from stdin.'
+      }
+    }
     if (!key) {
       return [
         `${def.displayName} connects with an API key.`,

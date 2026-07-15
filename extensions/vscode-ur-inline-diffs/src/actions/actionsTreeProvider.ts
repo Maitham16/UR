@@ -30,7 +30,9 @@ export class BackgroundTaskItem extends vscode.TreeItem {
   constructor(task: BackgroundTaskSummary) {
     super(task.task, vscode.TreeItemCollapsibleState.None)
     this.task = task
-    this.contextValue = 'backgroundTask'
+    this.contextValue = task.status === 'queued' || task.status === 'running'
+      ? 'backgroundTaskActive'
+      : 'backgroundTask'
     this.description = task.status
     this.iconPath = backgroundStatusIcon(task.status)
     this.tooltip = `${task.id} — ${task.status}${task.logFile ? `\n${task.logFile}` : ''}`
@@ -70,6 +72,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
 
   private diffs: ReturnType<typeof loadManifest>['diffs'] = []
   private backgroundTasks: BackgroundTaskSummary[] = []
+  private backgroundError: string | undefined
   private loaded = false
 
   refresh(): void {
@@ -89,18 +92,34 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
 
     if (!this.loaded) {
       this.diffs = loadManifest(root).diffs
-      this.backgroundTasks = await loadBackgroundTasks(root)
+      try {
+        this.backgroundTasks = await loadBackgroundTasks(root)
+        this.backgroundError = undefined
+      } catch (error) {
+        this.backgroundTasks = []
+        this.backgroundError = error instanceof Error ? error.message : String(error)
+      }
       this.loaded = true
     }
 
     if (!element) {
-      if (this.diffs.length === 0 && this.backgroundTasks.length === 0) {
+      if (
+        this.diffs.length === 0 &&
+        this.backgroundTasks.length === 0 &&
+        !this.backgroundError
+      ) {
         return []
       }
-      return [
+      const sections: ActionsNode[] = [
         new SectionItem('diffs', 'Diff Bundles', this.diffs.length),
         new SectionItem('background', 'Background Tasks', this.backgroundTasks.length),
       ]
+      if (this.backgroundError) {
+        sections.push(
+          new InfoItem('Could not load background tasks', this.backgroundError, 'warning'),
+        )
+      }
+      return sections
     }
 
     if (element instanceof SectionItem && element.kind === 'diffs') {

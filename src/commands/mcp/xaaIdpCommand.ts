@@ -19,6 +19,7 @@ import {
   saveIdpIdTokenFromJwt,
 } from '../../services/mcp/xaaIdpLogin.js'
 import { errorMessage } from '../../utils/errors.js'
+import { readSecretFromStdin } from '../../utils/readSecretFromStdin.js'
 import { updateSettingsForSource } from '../../utils/settings/settings.js'
 
 export function registerMcpXaaIdpCommand(mcp: Command): void {
@@ -151,20 +152,22 @@ export function registerMcpXaaIdpCommand(mcp: Command): void {
     .command('login')
     .description(
       'Cache an IdP id_token so XAA-enabled MCP servers authenticate ' +
-        'silently. Default: run the OIDC browser login. With --id-token: ' +
-        'write a pre-obtained JWT directly (used by conformance/e2e tests ' +
+        'silently. Default: run the OIDC browser login. With --id-token-stdin: ' +
+        'read a pre-obtained JWT without exposing it in process arguments. ' +
+        '--id-token remains available for conformance/e2e tests ' +
         'where the mock IdP does not serve /authorize).',
     )
     .option(
       '--force',
       'Ignore any cached id_token and re-login (useful after IdP-side revocation)',
     )
-    // TODO(paulc): read the JWT from stdin instead of argv to keep it out of
-    // shell history. Fine for conformance (docker exec uses argv directly,
-    // no shell parser), but a real user would want `echo $TOKEN | ... --stdin`.
+    .option(
+      '--id-token-stdin',
+      'Read a pre-obtained id_token from stdin (recommended for non-interactive login)',
+    )
     .option(
       '--id-token <jwt>',
-      'Write this pre-obtained id_token directly to cache, skipping the OIDC browser login',
+      'Compatibility-only: pass an id_token in argv (may be visible in shell history/process lists)',
     )
     .action(async options => {
       const idp = getXaaIdpSettings()
@@ -174,11 +177,31 @@ export function registerMcpXaaIdpCommand(mcp: Command): void {
         )
       }
 
+      if (options.idToken && options.idTokenStdin) {
+        return cliError(
+          'Error: --id-token and --id-token-stdin are mutually exclusive.',
+        )
+      }
+
+      let injectedToken = options.idToken
+      if (options.idTokenStdin) {
+        try {
+          injectedToken = await readSecretFromStdin({ label: 'id_token' })
+        } catch (error) {
+          return cliError(`Error: ${errorMessage(error)}`)
+        }
+        if (!injectedToken) {
+          return cliError(
+            'Error: --id-token-stdin requires a non-empty token on stdin.',
+          )
+        }
+      }
+
       // Direct-inject path: skip cache check, skip OIDC. Writing IS the
       // operation. Issuer comes from settings (single source of truth), not
       // a separate flag — one less thing to desync.
-      if (options.idToken) {
-        const expiresAt = saveIdpIdTokenFromJwt(idp.issuer, options.idToken)
+      if (injectedToken) {
+        const expiresAt = saveIdpIdTokenFromJwt(idp.issuer, injectedToken)
         return cliOk(
           `id_token cached for ${idp.issuer} (expires ${new Date(expiresAt).toISOString()})`,
         )

@@ -92,7 +92,7 @@ describe('delegation tokens', () => {
   })
 })
 
-describe('delegation attenuation', () => {
+describe('issuer-side delegation narrowing', () => {
   test('narrows scope and never outlives the parent', () => {
     const parentToken = mintDelegationToken(SECRET, {
       subject: 'root',
@@ -188,12 +188,224 @@ describe('a2a server authorization', () => {
 
 describe('a2a task server lifecycle', () => {
   const cwd = (): string => mkdtempSync(join(tmpdir(), 'ur-a2a-'))
-  const request = (path: string, init?: RequestInit): Request =>
-    new Request(`http://127.0.0.1:8765${path}`, init)
+  const request = (path: string, init?: RequestInit): Request => {
+    const headers = new Headers(init?.headers)
+    if (init?.body != null && !headers.has('content-type')) {
+      headers.set('content-type', 'application/json')
+    }
+    return new Request(`http://127.0.0.1:8765${path}`, {
+      ...init,
+      headers,
+    })
+  }
 
   async function json(response: Response): Promise<any> {
     return await response.json()
   }
+
+  const protocolMessage = (id: string, prompt: string, skill = 'coding-agent') => ({
+    jsonrpc: '2.0',
+    id,
+    method: 'message/send',
+    params: {
+      configuration: { blocking: true },
+      metadata: { skill },
+      message: {
+        kind: 'message',
+        messageId: `message-${id}`,
+        role: 'user',
+        parts: [{ kind: 'text', text: prompt }],
+      },
+    },
+  })
+
+  test('serves an accurate Agent Card and official-SDK A2A v0.3 JSON-RPC lifecycle', async () => {
+    const dir = cwd()
+    const options = {
+      host: '127.0.0.1',
+      port: 8765,
+      cwd: dir,
+      dryRun: true,
+      token: 'server-token',
+    }
+    const baseUrl = 'http://127.0.0.1:8765'
+    const cardResponse = await handleA2ARequest(
+      request('/.well-known/agent-card.json'),
+      options,
+      baseUrl,
+    )
+    const card = await json(cardResponse)
+    expect(card.protocolVersion).toBe('0.3.0')
+    expect(card.url).toBe(`${baseUrl}/a2a/jsonrpc`)
+    expect(card.preferredTransport).toBe('JSONRPC')
+    expect(card.security).toEqual([{ bearer: [] }])
+    expect(card.securitySchemes.delegation).toBeUndefined()
+
+    const send = await handleA2ARequest(
+      request('/a2a/jsonrpc', {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer server-token',
+          'a2a-version': '0.3',
+        },
+        body: JSON.stringify(protocolMessage('send-1', 'review this patch')),
+      }),
+      options,
+      baseUrl,
+    )
+    expect(send.status).toBe(200)
+    expect(send.headers.get('a2a-version')).toBe('0.3')
+    const sent = await json(send)
+    expect(sent.error).toBeUndefined()
+    expect(sent.result.kind).toBe('task')
+    expect(sent.result.status.state).toBe('completed')
+    expect(sent.result.status.message.parts[0].text).toContain('"dryRun":true')
+
+    const get = await handleA2ARequest(
+      request('/a2a/jsonrpc', {
+        method: 'POST',
+        headers: { authorization: 'Bearer server-token' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'get-1',
+          method: 'tasks/get',
+          params: { id: sent.result.id, historyLength: 10 },
+        }),
+      }),
+      options,
+      baseUrl,
+    )
+    const fetched = await json(get)
+    expect(fetched.result.id).toBe(sent.result.id)
+    expect(fetched.result.history.length).toBeGreaterThan(0)
+  })
+
+  test('enforces the A2A JSON-RPC HTTP binding', async () => {
+    const dir = cwd()
+    const options = {
+      host: '127.0.0.1',
+      port: 8765,
+      cwd: dir,
+      dryRun: true,
+    }
+    const baseUrl = 'http://127.0.0.1:8765'
+
+    const wrongMethod = await handleA2ARequest(
+      request('/a2a/jsonrpc'),
+      options,
+      baseUrl,
+    )
+    expect(wrongMethod.status).toBe(405)
+    expect(wrongMethod.headers.get('allow')).toBe('POST')
+
+    const wrongMediaType = await handleA2ARequest(
+      request('/a2a/jsonrpc', {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+        body: JSON.stringify(protocolMessage('bad-media', 'review this')),
+      }),
+      options,
+      baseUrl,
+    )
+    expect(wrongMediaType.status).toBe(415)
+    expect((await json(wrongMediaType)).error.code).toBe(-32600)
+  })
+
+  test('accepts advertised structured JSON input as an A2A data part', async () => {
+    const dir = cwd()
+    const response = await handleA2ARequest(
+      request('/a2a/jsonrpc', {
+        method: 'POST',
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'data-part',
+          method: 'message/send',
+          params: {
+            configuration: { blocking: true },
+            message: {
+              kind: 'message',
+              messageId: 'data-message',
+              role: 'user',
+              parts: [{ kind: 'data', data: { task: 'review', strict: true } }],
+            },
+          },
+        }),
+      }),
+      { host: '127.0.0.1', port: 8765, cwd: dir, dryRun: true },
+      'http://127.0.0.1:8765',
+    )
+    expect(response.status).toBe(200)
+    expect((await json(response)).result.status.state).toBe('completed')
+  })
+
+  test('isolates A2A protocol tasks by delegation subject', async () => {
+    const dir = cwd()
+    const tokenFor = (subject: string) =>
+      mintDelegationToken(SECRET, {
+        subject,
+        audience: 'ur-nexus',
+        scope: ['coding-agent'],
+      })
+    const alice = tokenFor('protocol-alice')
+    const bob = tokenFor('protocol-bob')
+    const aliceWrongScope = mintDelegationToken(SECRET, {
+      subject: 'protocol-alice',
+      audience: 'ur-nexus',
+      scope: ['research-agent'],
+    })
+    const options = {
+      host: '127.0.0.1',
+      port: 8765,
+      cwd: dir,
+      dryRun: true,
+      delegationSecret: SECRET,
+      audience: 'ur-nexus',
+    }
+    const baseUrl = 'http://127.0.0.1:8765'
+    const send = await handleA2ARequest(
+      request('/a2a/jsonrpc', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${alice}` },
+        body: JSON.stringify(protocolMessage('alice-send', 'private task')),
+      }),
+      options,
+      baseUrl,
+    )
+    const sent = await json(send)
+
+    const crossSubjectGet = await handleA2ARequest(
+      request('/a2a/jsonrpc', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${bob}` },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'bob-get',
+          method: 'tasks/get',
+          params: { id: sent.result.id },
+        }),
+      }),
+      options,
+      baseUrl,
+    )
+    const denied = await json(crossSubjectGet)
+    expect(denied.error.code).toBe(-32001)
+
+    const crossScopeGet = await handleA2ARequest(
+      request('/a2a/jsonrpc', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${aliceWrongScope}` },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'alice-wrong-scope-get',
+          method: 'tasks/get',
+          params: { id: sent.result.id },
+        }),
+      }),
+      options,
+      baseUrl,
+    )
+    expect((await json(crossScopeGet)).error.code).toBe(-32001)
+  })
 
   test('submits an async task and exposes status, output metadata, and cancellation', async () => {
     const dir = cwd()
@@ -280,5 +492,158 @@ describe('a2a task server lifecycle', () => {
     const body = await json(response)
     expect(body.command).toContain('-p')
     expect(body.task.mode).toBe('sync')
+  })
+
+  test('validates compatibility media types and task options', async () => {
+    const dir = cwd()
+    const options = {
+      host: '127.0.0.1',
+      port: 8765,
+      cwd: dir,
+      dryRun: true,
+      token: 'operator-token',
+    }
+    const wrongMediaType = await handleA2ARequest(
+      request('/a2a/tasks', {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+        body: JSON.stringify({ prompt: 'review this' }),
+      }),
+      options,
+      'http://127.0.0.1:8765',
+    )
+    expect(wrongMediaType.status).toBe(401)
+
+    const invalidOption = await handleA2ARequest(
+      request('/a2a/tasks', {
+        method: 'POST',
+        headers: { authorization: 'Bearer operator-token' },
+        body: JSON.stringify({ prompt: 'review this', mode: 'sometimes' }),
+      }),
+      options,
+      'http://127.0.0.1:8765',
+    )
+    expect(invalidOption.status).toBe(400)
+
+    const authorizedWrongMediaType = await handleA2ARequest(
+      request('/a2a/tasks', {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer operator-token',
+          'content-type': 'text/plain',
+        },
+        body: JSON.stringify({ prompt: 'review this' }),
+      }),
+      options,
+      'http://127.0.0.1:8765',
+    )
+    expect(authorizedWrongMediaType.status).toBe(415)
+
+    const privilegedSync = await handleA2ARequest(
+      request('/a2a/tasks', {
+        method: 'POST',
+        headers: { authorization: 'Bearer operator-token' },
+        body: JSON.stringify({
+          prompt: 'review this',
+          mode: 'sync',
+          skipPermissions: true,
+        }),
+      }),
+      options,
+      'http://127.0.0.1:8765',
+    )
+    expect((await json(privilegedSync)).command).toContain(
+      '--dangerously-skip-permissions',
+    )
+  })
+
+  test('fails closed for omitted delegation scope and permission bypass', async () => {
+    const dir = cwd()
+    const researchOnly = mintDelegationToken(SECRET, {
+      subject: 'research-peer',
+      audience: 'ur-nexus',
+      scope: ['research-agent'],
+    })
+    const options = {
+      host: '127.0.0.1',
+      port: 8765,
+      cwd: dir,
+      dryRun: true,
+      delegationSecret: SECRET,
+      audience: 'ur-nexus',
+    }
+
+    const missingSkill = await handleA2ARequest(
+      request('/a2a/tasks', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${researchOnly}` },
+        body: JSON.stringify({ prompt: 'run arbitrary code' }),
+      }),
+      options,
+      'http://127.0.0.1:8765',
+    )
+    expect(missingSkill.status).toBe(401)
+
+    const localBypass = await handleA2ARequest(
+      request('/a2a/tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: 'run without checks',
+          skipPermissions: true,
+        }),
+      }),
+      { ...options, delegationSecret: undefined },
+      'http://127.0.0.1:8765',
+    )
+    expect(localBypass.status).toBe(403)
+  })
+
+  test('isolates delegated task records by token subject and skill', async () => {
+    const dir = cwd()
+    const tokenFor = (subject: string) =>
+      mintDelegationToken(SECRET, {
+        subject,
+        audience: 'ur-nexus',
+        scope: ['coding-agent'],
+      })
+    const alice = tokenFor('alice')
+    const bob = tokenFor('bob')
+    const options = {
+      host: '127.0.0.1',
+      port: 8765,
+      cwd: dir,
+      dryRun: true,
+      delegationSecret: SECRET,
+      audience: 'ur-nexus',
+    }
+
+    const submit = await handleA2ARequest(
+      request('/a2a/tasks', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${alice}` },
+        body: JSON.stringify({ prompt: 'review the patch' }),
+      }),
+      options,
+      'http://127.0.0.1:8765',
+    )
+    expect(submit.status).toBe(200)
+
+    const aliceList = await handleA2ARequest(
+      request('/a2a/tasks', {
+        headers: { authorization: `Bearer ${alice}` },
+      }),
+      options,
+      'http://127.0.0.1:8765',
+    )
+    expect((await json(aliceList)).tasks).toHaveLength(1)
+
+    const bobList = await handleA2ARequest(
+      request('/a2a/tasks', {
+        headers: { authorization: `Bearer ${bob}` },
+      }),
+      options,
+      'http://127.0.0.1:8765',
+    )
+    expect((await json(bobList)).tasks).toHaveLength(0)
   })
 })

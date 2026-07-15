@@ -36,6 +36,8 @@ const PR3_COMMANDS = [
   'urInlineDiffs.runSpec',
   'urInlineDiffs.runWorkflow',
   'urActions.refresh',
+  'urActions.runBackground',
+  'urActions.cancelBackground',
   'urActions.openBackgroundLog',
 ]
 
@@ -164,6 +166,18 @@ describe('extension manifest', () => {
     const refreshEntry = titleMenus.find(m => m.command === 'urActions.refresh')
     expect(refreshEntry).toBeDefined()
     expect(refreshEntry?.when).toContain('urActions')
+  })
+
+  test('background task launch and cancellation are wired to the actions view', () => {
+    const titleMenus = extensionManifest.contributes.menus['view/title'] as Array<{ command: string; when: string }>
+    expect(titleMenus.find(entry => entry.command === 'urActions.runBackground')?.when).toBe('view == urActions')
+
+    const itemMenus = extensionManifest.contributes.menus['view/item/context'] as Array<{ command: string; when: string }>
+    const cancel = itemMenus.find(entry => entry.command === 'urActions.cancelBackground')
+    expect(cancel?.when).toContain('viewItem == backgroundTaskActive')
+    const logs = itemMenus.find(entry => entry.command === 'urActions.openBackgroundLog')
+    expect(logs?.when).toContain('backgroundTaskActive')
+    expect(logs?.when).toContain('backgroundTask')
   })
 
   test('the Chat view has title actions for New Chat, Open Chat, and Search Actions', () => {

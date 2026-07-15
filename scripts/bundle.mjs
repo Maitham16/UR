@@ -4,7 +4,7 @@
 // emit a stale version. After building, verify the version actually landed so a
 // stale bundle can never be committed silently.
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -65,7 +65,19 @@ execFileSync(
   { cwd: root, stdio: 'inherit' },
 )
 
-const dist = readFileSync(join(root, 'dist', 'cli.js'), 'utf8')
+const distPath = join(root, 'dist', 'cli.js')
+let dist = readFileSync(distPath, 'utf8')
+
+// Bun renders shell-quote's escaped IFS literal (`' \t\n'`) as a multiline
+// template literal containing a literal tab. That is semantically correct but
+// creates trailing whitespace in the committed bundle. Normalize only this
+// exact generated literal so release diffs remain whitespace-clean.
+const normalizedDist = dist.replaceAll('` \t\n`', '" \\t\\n"')
+if (normalizedDist !== dist) {
+  writeFileSync(distPath, normalizedDist, 'utf8')
+  dist = normalizedDist
+}
+
 const hits = dist.split(version).length - 1
 if (hits === 0) {
   console.error(

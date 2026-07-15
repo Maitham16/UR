@@ -29,6 +29,11 @@ import {
   createOpenAISSEMessageStream,
   mergeAbortSignals,
 } from './streamingAdapters.js'
+import {
+  GEMINI_THOUGHT_SIGNATURE,
+  getGeminiThoughtSignature,
+  getStoredGeminiThoughtSignature,
+} from './geminiWire.js'
 
 const ANTHROPIC_VERSION = '2023-06-01'
 
@@ -92,7 +97,7 @@ export async function createStandardAPIClient(options: {
         signal,
       },
     )
-    const requestId = response.headers?.['x-request-id'] ?? `${family}-${randomUUID()}`
+    const requestId = providerRequestId(family, response.headers) ?? `${family}-${randomUUID()}`
     const streamOptions = {
       controller: streamController,
       signal,
@@ -131,7 +136,7 @@ export async function createStandardAPIClient(options: {
         withResponse: () => ({
           data,
           response,
-          request_id: data.id ?? response.headers?.['x-request-id'] ?? randomUUID(),
+          request_id: providerRequestId(family, response.headers) ?? data.id ?? randomUUID(),
         }),
       }))
     },
@@ -249,6 +254,18 @@ function buildAPIRequest(family: string, params: any): any {
     default:
       return params
   }
+}
+
+function providerRequestId(family: string, headers: any): string | undefined {
+  const preferred = family === 'anthropic' ? 'request-id' : 'x-request-id'
+  const fallback = preferred === 'request-id' ? 'x-request-id' : 'request-id'
+  const value = headers?.get?.(preferred) ?? headers?.[preferred]
+  const fallbackValue = headers?.get?.(fallback) ?? headers?.[fallback]
+  return typeof value === 'string' && value.length > 0
+    ? value
+    : typeof fallbackValue === 'string' && fallbackValue.length > 0
+      ? fallbackValue
+      : undefined
 }
 
 function parseAPIResponse(family: string, data: any, fallbackModel: string): any {
@@ -535,30 +552,45 @@ function parseAnthropicContent(content: any): any[] {
 function parseGeminiParts(parts: any): any[] {
   if (!Array.isArray(parts)) return [{ type: 'text', text: '' }]
   const content: any[] = []
-  const text = parts.map((part: any) => part?.text ?? '').join('')
-  if (text.length > 0) {
-    content.push({ type: 'text', text })
-  }
   for (const [index, part] of parts.entries()) {
-    if (part?.functionCall === undefined) continue
-    const call = part.functionCall
-    if (typeof call?.name !== 'string' || call.name.length === 0) {
-      throw new ProviderResponseParseError(
-        `gemini candidates[0].content.parts[${index}].functionCall.name is required`,
-        { functionCall: call },
-      )
+    const thoughtSignature = getGeminiThoughtSignature(part)
+    if (part?.functionCall !== undefined) {
+      const call = part.functionCall
+      if (typeof call?.name !== 'string' || call.name.length === 0) {
+        throw new ProviderResponseParseError(
+          `gemini candidates[0].content.parts[${index}].functionCall.name is required`,
+          { functionCall: call },
+        )
+      }
+      content.push({
+        type: 'tool_use',
+        id: typeof call.id === 'string' && call.id.length > 0
+          ? call.id
+          : `gemini_tool_${randomUUID()}`,
+        name: call.name,
+        input: parseGeminiFunctionArgs(
+          call.args,
+          `gemini candidates[0].content.parts[${index}].functionCall.args`,
+        ),
+        ...(thoughtSignature && {
+          [GEMINI_THOUGHT_SIGNATURE]: thoughtSignature,
+        }),
+      })
+      continue
     }
-    content.push({
-      type: 'tool_use',
-      id: typeof call.id === 'string' && call.id.length > 0
-        ? call.id
-        : `gemini_tool_${randomUUID()}`,
-      name: call.name,
-      input: parseGeminiFunctionArgs(
-        call.args,
-        `gemini candidates[0].content.parts[${index}].functionCall.args`,
-      ),
-    })
+
+    if (typeof part?.text !== 'string') continue
+    const block = part.thought === true
+      ? { type: 'thinking', thinking: part.text }
+      : { type: 'text', text: part.text }
+    if (part.text.length > 0 || thoughtSignature) {
+      content.push({
+        ...block,
+        ...(thoughtSignature && {
+          [GEMINI_THOUGHT_SIGNATURE]: thoughtSignature,
+        }),
+      })
+    }
   }
   return content.length > 0 ? content : [{ type: 'text', text: '' }]
 }
@@ -598,7 +630,25 @@ function contentToGeminiParts(content: any, toolNamesById: Map<string, string>):
     }
     switch (block?.type) {
       case 'text':
-        pendingTextParts.push(block.text ?? '')
+        if (getStoredGeminiThoughtSignature(block)) {
+          flushTextPart()
+          parts.push({
+            text: block.text ?? '',
+            thoughtSignature: getStoredGeminiThoughtSignature(block),
+          })
+        } else {
+          pendingTextParts.push(block.text ?? '')
+        }
+        break
+      case 'thinking':
+        flushTextPart()
+        parts.push({
+          text: block.thinking ?? '',
+          thought: true,
+          ...(getStoredGeminiThoughtSignature(block) && {
+            thoughtSignature: getStoredGeminiThoughtSignature(block),
+          }),
+        })
         break
       case 'image':
         flushTextPart()
@@ -610,7 +660,13 @@ function contentToGeminiParts(content: any, toolNamesById: Map<string, string>):
           functionCall: {
             name: block.name,
             args: block.input ?? {},
+            ...(typeof block.id === 'string' && block.id.length > 0 && {
+              id: block.id,
+            }),
           },
+          ...(getStoredGeminiThoughtSignature(block) && {
+            thoughtSignature: getStoredGeminiThoughtSignature(block),
+          }),
         })
         break
       case 'tool_result':
@@ -624,6 +680,8 @@ function contentToGeminiParts(content: any, toolNamesById: Map<string, string>):
           functionResponse: {
             name: toolNamesById.get(block.tool_use_id) ?? block.tool_use_id,
             response: { result: contentToText(block.content) },
+            ...(typeof block.tool_use_id === 'string' &&
+              block.tool_use_id.length > 0 && { id: block.tool_use_id }),
           },
         })
         break

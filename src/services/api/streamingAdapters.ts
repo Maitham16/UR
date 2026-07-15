@@ -1,5 +1,9 @@
 import { randomUUID } from 'crypto'
 import { ProviderResponseParseError } from './providerClient.js'
+import {
+  GEMINI_THOUGHT_SIGNATURE,
+  getGeminiThoughtSignature,
+} from './geminiWire.js'
 export { getProviderRequestTimeoutMs } from './providerHttp.js'
 
 type Usage = {
@@ -405,6 +409,7 @@ async function* streamGeminiEvents(
 
   let blockIndex = 0
   let activeTextIndex: number | null = null
+  let activeThinkingIndex: number | null = null
   let sawBlock = false
   let sawToolUse = false
   let finishReason: string | undefined
@@ -417,8 +422,16 @@ async function* streamGeminiEvents(
     }
   }
 
+  const stopThinking = function* () {
+    if (activeThinkingIndex !== null) {
+      yield { type: 'content_block_stop', index: activeThinkingIndex }
+      activeThinkingIndex = null
+    }
+  }
+
   const ensureText = function* () {
     if (activeTextIndex === null) {
+      for (const event of stopThinking()) yield event
       activeTextIndex = blockIndex++
       sawBlock = true
       yield {
@@ -427,6 +440,56 @@ async function* streamGeminiEvents(
         content_block: { type: 'text', text: '' },
       }
     }
+  }
+
+  const ensureThinking = function* () {
+    if (activeThinkingIndex === null) {
+      for (const event of stopText()) yield event
+      activeThinkingIndex = blockIndex++
+      sawBlock = true
+      yield {
+        type: 'content_block_start',
+        index: activeThinkingIndex,
+        content_block: { type: 'thinking', thinking: '', signature: '' },
+      }
+    }
+  }
+
+  const emitSignedTextPart = function* (
+    part: any,
+    thoughtSignature: string,
+  ) {
+    for (const event of stopText()) yield event
+    for (const event of stopThinking()) yield event
+    const currentIndex = blockIndex++
+    const isThought = part.thought === true
+    sawBlock = true
+    yield {
+      type: 'content_block_start',
+      index: currentIndex,
+      content_block: isThought
+        ? {
+          type: 'thinking',
+          thinking: '',
+          signature: '',
+          [GEMINI_THOUGHT_SIGNATURE]: thoughtSignature,
+        }
+        : {
+          type: 'text',
+          text: '',
+          [GEMINI_THOUGHT_SIGNATURE]: thoughtSignature,
+        },
+    }
+    if (part.text.length > 0) {
+      yield {
+        type: 'content_block_delta',
+        index: currentIndex,
+        delta: isThought
+          ? { type: 'thinking_delta', thinking: part.text }
+          : { type: 'text_delta', text: part.text },
+      }
+    }
+    yield { type: 'content_block_stop', index: currentIndex }
   }
 
   for await (const payload of readSSEData(body, options.signal)) {
@@ -440,16 +503,29 @@ async function* streamGeminiEvents(
       throwProviderPayloadError(chunk, providerName)
       for (const candidate of chunk?.candidates ?? []) {
         for (const part of candidate?.content?.parts ?? []) {
-          if (typeof part?.text === 'string' && part.text.length > 0) {
-            for (const event of ensureText()) yield event
-            yield {
-              type: 'content_block_delta',
-              index: activeTextIndex,
-              delta: { type: 'text_delta', text: part.text },
+          const thoughtSignature = getGeminiThoughtSignature(part)
+          if (typeof part?.text === 'string' && thoughtSignature) {
+            for (const event of emitSignedTextPart(part, thoughtSignature)) yield event
+          } else if (typeof part?.text === 'string' && part.text.length > 0) {
+            if (part.thought === true) {
+              for (const event of ensureThinking()) yield event
+              yield {
+                type: 'content_block_delta',
+                index: activeThinkingIndex,
+                delta: { type: 'thinking_delta', thinking: part.text },
+              }
+            } else {
+              for (const event of ensureText()) yield event
+              yield {
+                type: 'content_block_delta',
+                index: activeTextIndex,
+                delta: { type: 'text_delta', text: part.text },
+              }
             }
           }
           if (part?.functionCall !== undefined) {
             for (const event of stopText()) yield event
+            for (const event of stopThinking()) yield event
             const call = part.functionCall
             if (typeof call?.name !== 'string' || call.name.length === 0) {
               throw new ProviderResponseParseError(
@@ -470,6 +546,9 @@ async function* streamGeminiEvents(
                   : `gemini_tool_${randomUUID().replace(/-/g, '')}`,
                 name: call.name,
                 input: {},
+                ...(thoughtSignature && {
+                  [GEMINI_THOUGHT_SIGNATURE]: thoughtSignature,
+                }),
               },
             }
             const inputJson = stringifyToolInput(call.args ?? {})
@@ -491,6 +570,7 @@ async function* streamGeminiEvents(
   }
 
   for (const event of stopText()) yield event
+  for (const event of stopThinking()) yield event
   if (finishReason === 'FUNCTION_CALL' && !sawToolUse) {
     throw new ProviderResponseParseError(
       'gemini stream finished with FUNCTION_CALL but did not include a functionCall part',

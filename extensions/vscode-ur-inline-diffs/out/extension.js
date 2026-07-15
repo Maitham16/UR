@@ -37,33 +37,15 @@ module.exports = __toCommonJS(extension_exports);
 var vscode17 = __toESM(require("vscode"));
 
 // src/actions/actions.ts
-var vscode = __toESM(require("vscode"));
-async function openBackgroundLog(item) {
-  const logFile = item?.task.logFile;
-  if (!logFile) {
-    vscode.window.showWarningMessage("No log file for this background task.");
-    return;
-  }
-  try {
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(logFile));
-    await vscode.window.showTextDocument(doc, { preview: true });
-  } catch (error) {
-    vscode.window.showErrorMessage(
-      `Could not open background task log: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-}
-
-// src/actions/actionsTreeProvider.ts
-var vscode4 = __toESM(require("vscode"));
+var vscode2 = __toESM(require("vscode"));
 
 // src/diffs/store.ts
 var fs = __toESM(require("node:fs"));
 var path = __toESM(require("node:path"));
-var vscode2 = __toESM(require("vscode"));
+var vscode = __toESM(require("vscode"));
 function workspaceRoot() {
-  const activeUri = vscode2.window.activeTextEditor?.document.uri;
-  return (activeUri ? vscode2.workspace.getWorkspaceFolder(activeUri) : void 0)?.uri.fsPath ?? vscode2.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const activeUri = vscode.window.activeTextEditor?.document.uri;
+  return (activeUri ? vscode.workspace.getWorkspaceFolder(activeUri) : void 0)?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 function diffsRoot(root) {
   return path.join(root, ".ur", "ide", "diffs");
@@ -131,6 +113,320 @@ function writeManifest(root, manifest) {
 function writeBundleMetadata(root, bundle) {
   writeJson(metadataPath(root, bundle), bundle);
 }
+
+// src/bridge/urCli.ts
+var import_node_child_process2 = require("node:child_process");
+var import_node_util = require("node:util");
+
+// src/bridge/urCommand.ts
+var import_node_child_process = require("node:child_process");
+var import_node_fs = require("node:fs");
+var import_node_path = require("node:path");
+function resolveUrCommand(options) {
+  const config = options.config ?? {};
+  const configuredPath = config.executablePath?.trim();
+  const configuredArgs = normalizeExecutableArgs(config.executableArgs);
+  if (configuredPath) {
+    return command(configuredPath, configuredArgs, "configured");
+  }
+  const pathExists = options.pathExists ?? import_node_fs.existsSync;
+  const bunCommand = options.bunCommand ?? "bun";
+  const nodeCommand = options.nodeCommand ?? "node";
+  const distEntrypoint = (0, import_node_path.join)(options.cwd, "dist", "cli.js");
+  if (pathExists(distEntrypoint) && (options.bunAvailable ?? isBunAvailable)(bunCommand)) {
+    return command(bunCommand, [distEntrypoint], "workspace-dist");
+  }
+  const launcherEntrypoint = (0, import_node_path.join)(options.cwd, "bin", "ur.js");
+  if (pathExists(launcherEntrypoint)) {
+    return command(nodeCommand, [launcherEntrypoint], "workspace-launcher");
+  }
+  return command("ur", [], "path");
+}
+function formatResolvedUrCommand(resolved) {
+  return [resolved.command, ...resolved.args].join(" ");
+}
+function command(commandName, args, source) {
+  const resolved = { command: commandName, args, source, display: "" };
+  return { ...resolved, display: formatResolvedUrCommand(resolved) };
+}
+function normalizeExecutableArgs(args) {
+  return Array.isArray(args) ? args.filter((arg) => typeof arg === "string" && arg.length > 0) : [];
+}
+function isBunAvailable(commandName) {
+  const result = (0, import_node_child_process.spawnSync)(commandName, ["--version"], { stdio: "ignore" });
+  return !result.error && result.status === 0;
+}
+
+// src/bridge/urCli.ts
+var execFileAsync = (0, import_node_util.promisify)(import_node_child_process2.execFile);
+function boundedExecutionOptions(options) {
+  const timeout = Number.isSafeInteger(options.timeoutMs) && (options.timeoutMs ?? 0) > 0 ? Math.min(options.timeoutMs, 10 * 6e4) : 12e4;
+  const maxBuffer = Number.isSafeInteger(options.maxBufferBytes) && (options.maxBufferBytes ?? 0) > 0 ? Math.min(options.maxBufferBytes, 16 * 1024 * 1024) : 4 * 1024 * 1024;
+  return {
+    cwd: options.cwd,
+    shell: false,
+    timeout,
+    maxBuffer,
+    windowsHide: true
+  };
+}
+async function runUrCli(args, options) {
+  const executable = resolveUrCommand({ cwd: options.cwd, config: readUrCommandConfig() });
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      executable.command,
+      [...executable.args, ...args],
+      boundedExecutionOptions(options)
+    );
+    return { stdout, stderr };
+  } catch (error) {
+    throw new Error(formatUrCliError(args, error, executable, options.cwd));
+  }
+}
+async function runUrCliCapture(args, options) {
+  const executable = resolveUrCommand({ cwd: options.cwd, config: readUrCommandConfig() });
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      executable.command,
+      [...executable.args, ...args],
+      boundedExecutionOptions(options)
+    );
+    return { stdout, stderr, exitCode: 0 };
+  } catch (error) {
+    if (isCapturedNonZeroExit(error)) {
+      return { stdout: error.stdout, stderr: error.stderr, exitCode: error.code };
+    }
+    throw new Error(formatUrCliError(args, error, executable, options.cwd));
+  }
+}
+function readUrCommandConfig() {
+  try {
+    const vscode18 = require("vscode");
+    const config = vscode18.workspace.getConfiguration("ur");
+    const executablePath = config.get("executablePath")?.trim();
+    const executableArgs = config.get("executableArgs") ?? [];
+    return {
+      executablePath: executablePath || void 0,
+      executableArgs: executableArgs.filter((arg) => typeof arg === "string" && arg.length > 0)
+    };
+  } catch {
+    return {};
+  }
+}
+function formatUrCliError(args, error, executable, cwd) {
+  const stderr = hasStderr(error) ? error.stderr.trim() : "";
+  const detail = stderr || (error instanceof Error ? error.message : String(error));
+  return [
+    `Failed to run UR command.`,
+    `Executable: ${executable.display}`,
+    `cwd: ${cwd}`,
+    `Args: ${args.join(" ")}`,
+    `Error: ${detail}`,
+    `Hint: Set ur.executablePath in VS Code settings if the extension is using the wrong UR binary.`
+  ].join("\n");
+}
+function hasStderr(error) {
+  return typeof error === "object" && error !== null && "stderr" in error && typeof error.stderr === "string";
+}
+function isCapturedNonZeroExit(error) {
+  return typeof error === "object" && error !== null && typeof error.code === "number" && typeof error.stdout === "string";
+}
+
+// src/actions/background.ts
+var VALID_STATUSES = ["queued", "running", "completed", "failed", "canceled"];
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+function tryParseBackgroundListJson(raw) {
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isRecord(data) || !Array.isArray(data.tasks)) return null;
+  const summaries = [];
+  for (const entry of data.tasks) {
+    if (!isRecord(entry)) continue;
+    if (typeof entry.id !== "string" || typeof entry.task !== "string") continue;
+    if (!VALID_STATUSES.includes(entry.status)) continue;
+    const status = entry.status;
+    summaries.push({
+      id: entry.id,
+      task: entry.task,
+      status,
+      logFile: typeof entry.logFile === "string" ? entry.logFile : ""
+    });
+  }
+  return summaries;
+}
+function buildBackgroundRunArgs(task, options) {
+  const normalized = task.trim();
+  if (!normalized || normalized.length > 64e3 || normalized.includes("\0")) {
+    throw new Error("Background task must contain 1 to 64,000 characters and no NUL bytes.");
+  }
+  return [
+    "bg",
+    "run",
+    normalized,
+    ...options.worktree ? ["--worktree"] : [],
+    ...options.offline ? ["--offline"] : [],
+    "--json"
+  ];
+}
+function buildBackgroundCancelArgs(id) {
+  if (!id || id.length > 256 || id.includes("\0")) {
+    throw new Error("Background task id is invalid.");
+  }
+  return ["bg", "kill", id];
+}
+async function loadBackgroundTasks(cwd) {
+  const { stdout, stderr, exitCode } = await runUrCliCapture(
+    ["bg", "list", "--json"],
+    { cwd }
+  );
+  if (exitCode !== 0) {
+    throw new Error(stderr.trim() || `ur bg list exited with status ${exitCode}`);
+  }
+  const tasks = tryParseBackgroundListJson(stdout);
+  if (!tasks) throw new Error("ur bg list returned invalid JSON");
+  return tasks;
+}
+
+// src/actions/actions.ts
+var LAUNCH_CHOICES = [
+  {
+    label: "$(git-branch) Isolated worktree",
+    description: "Recommended",
+    detail: "Keep the agent away from uncommitted changes in the active checkout.",
+    worktree: true,
+    offline: false
+  },
+  {
+    label: "$(device-desktop) Offline isolated worktree",
+    description: "Local models only",
+    detail: "Use an isolated worktree and disable cloud API dispatch.",
+    worktree: true,
+    offline: true
+  },
+  {
+    label: "$(folder-active) Current workspace",
+    description: "Edits the active checkout",
+    detail: "Run directly in this workspace without worktree isolation.",
+    worktree: false,
+    offline: false
+  }
+];
+async function startBackgroundTask(view) {
+  const root = workspaceRoot();
+  if (!root) {
+    await vscode2.window.showWarningMessage("Open a workspace folder before starting a UR task.");
+    return;
+  }
+  const task = await vscode2.window.showInputBox({
+    title: "Start UR Background Task",
+    prompt: "Describe the outcome the background agent should deliver.",
+    placeHolder: "For example: add regression tests for the authentication flow",
+    ignoreFocusOut: true,
+    validateInput: (value) => {
+      const length = value.trim().length;
+      if (length === 0) return "Enter a task.";
+      if (length > 64e3) return "Task descriptions are limited to 64,000 characters.";
+      if (value.includes("\0")) return "Task descriptions cannot contain NUL bytes.";
+      return void 0;
+    }
+  });
+  if (task === void 0) return;
+  const choice = await vscode2.window.showQuickPick(LAUNCH_CHOICES, {
+    title: "Choose background task isolation",
+    placeHolder: "Isolated worktree (recommended)",
+    ignoreFocusOut: true
+  });
+  if (!choice) return;
+  const confirmation = await vscode2.window.showWarningMessage(
+    `Start this UR background task${choice.worktree ? " in an isolated worktree" : " in the current workspace"}?`,
+    {
+      modal: true,
+      detail: "The task may edit files and use the configured model provider. It will not push or open a pull request."
+    },
+    "Start Task"
+  );
+  if (confirmation !== "Start Task") return;
+  try {
+    const result = await vscode2.window.withProgress(
+      {
+        location: vscode2.ProgressLocation.Notification,
+        title: "Starting UR background task\u2026",
+        cancellable: false
+      },
+      () => runUrCli(buildBackgroundRunArgs(task, choice), { cwd: root })
+    );
+    let id;
+    try {
+      const parsed = JSON.parse(result.stdout);
+      if (typeof parsed.task?.id === "string") id = parsed.task.id;
+    } catch {
+    }
+    await vscode2.window.showInformationMessage(
+      id ? `Started UR background task ${id}.` : "Started UR background task."
+    );
+    view.refresh();
+  } catch (error) {
+    await vscode2.window.showErrorMessage(
+      `Could not start UR background task: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+async function cancelBackgroundTask(item, view) {
+  if (!item || item.task.status !== "queued" && item.task.status !== "running") {
+    await vscode2.window.showWarningMessage("Select a queued or running UR background task to cancel.");
+    return;
+  }
+  const confirmation = await vscode2.window.showWarningMessage(
+    `Cancel background task ${item.task.id}?`,
+    { modal: true, detail: item.task.task },
+    "Cancel Task"
+  );
+  if (confirmation !== "Cancel Task") return;
+  const root = workspaceRoot();
+  if (!root) return;
+  try {
+    await runUrCli(buildBackgroundCancelArgs(item.task.id), { cwd: root });
+    await vscode2.window.showInformationMessage(`Canceled UR background task ${item.task.id}.`);
+    view.refresh();
+  } catch (error) {
+    await vscode2.window.showErrorMessage(
+      `Could not cancel UR background task: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+async function openBackgroundLog(item) {
+  if (!item) {
+    await vscode2.window.showWarningMessage("Select a UR background task first.");
+    return;
+  }
+  const root = workspaceRoot();
+  if (!root) return;
+  try {
+    const { stdout } = await runUrCli(
+      ["bg", "logs", item.task.id, "--tail", "2000"],
+      { cwd: root }
+    );
+    const doc = await vscode2.workspace.openTextDocument({
+      language: "log",
+      content: stdout || `No log output is available for ${item.task.id}.
+`
+    });
+    await vscode2.window.showTextDocument(doc, { preview: true });
+  } catch (error) {
+    await vscode2.window.showErrorMessage(
+      `Could not open background task log: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+// src/actions/actionsTreeProvider.ts
+var vscode4 = __toESM(require("vscode"));
 
 // src/diffs/treeProvider.ts
 var vscode3 = __toESM(require("vscode"));
@@ -246,147 +542,6 @@ var DiffTreeProvider = class {
   }
 };
 
-// src/bridge/urCli.ts
-var import_node_child_process2 = require("node:child_process");
-var import_node_util = require("node:util");
-
-// src/bridge/urCommand.ts
-var import_node_child_process = require("node:child_process");
-var import_node_fs = require("node:fs");
-var import_node_path = require("node:path");
-function resolveUrCommand(options) {
-  const config = options.config ?? {};
-  const configuredPath = config.executablePath?.trim();
-  const configuredArgs = normalizeExecutableArgs(config.executableArgs);
-  if (configuredPath) {
-    return command(configuredPath, configuredArgs, "configured");
-  }
-  const pathExists = options.pathExists ?? import_node_fs.existsSync;
-  const bunCommand = options.bunCommand ?? "bun";
-  const nodeCommand = options.nodeCommand ?? "node";
-  const distEntrypoint = (0, import_node_path.join)(options.cwd, "dist", "cli.js");
-  if (pathExists(distEntrypoint) && (options.bunAvailable ?? isBunAvailable)(bunCommand)) {
-    return command(bunCommand, [distEntrypoint], "workspace-dist");
-  }
-  const launcherEntrypoint = (0, import_node_path.join)(options.cwd, "bin", "ur.js");
-  if (pathExists(launcherEntrypoint)) {
-    return command(nodeCommand, [launcherEntrypoint], "workspace-launcher");
-  }
-  return command("ur", [], "path");
-}
-function formatResolvedUrCommand(resolved) {
-  return [resolved.command, ...resolved.args].join(" ");
-}
-function command(commandName, args, source) {
-  const resolved = { command: commandName, args, source, display: "" };
-  return { ...resolved, display: formatResolvedUrCommand(resolved) };
-}
-function normalizeExecutableArgs(args) {
-  return Array.isArray(args) ? args.filter((arg) => typeof arg === "string" && arg.length > 0) : [];
-}
-function isBunAvailable(commandName) {
-  const result = (0, import_node_child_process.spawnSync)(commandName, ["--version"], { stdio: "ignore" });
-  return !result.error && result.status === 0;
-}
-
-// src/bridge/urCli.ts
-var execFileAsync = (0, import_node_util.promisify)(import_node_child_process2.execFile);
-async function runUrCli(args, options) {
-  const executable = resolveUrCommand({ cwd: options.cwd, config: readUrCommandConfig() });
-  try {
-    const { stdout, stderr } = await execFileAsync(executable.command, [...executable.args, ...args], {
-      cwd: options.cwd,
-      shell: false
-    });
-    return { stdout, stderr };
-  } catch (error) {
-    throw new Error(formatUrCliError(args, error, executable, options.cwd));
-  }
-}
-async function runUrCliCapture(args, options) {
-  const executable = resolveUrCommand({ cwd: options.cwd, config: readUrCommandConfig() });
-  try {
-    const { stdout, stderr } = await execFileAsync(executable.command, [...executable.args, ...args], {
-      cwd: options.cwd,
-      shell: false
-    });
-    return { stdout, stderr, exitCode: 0 };
-  } catch (error) {
-    if (isCapturedNonZeroExit(error)) {
-      return { stdout: error.stdout, stderr: error.stderr, exitCode: error.code };
-    }
-    throw new Error(formatUrCliError(args, error, executable, options.cwd));
-  }
-}
-function readUrCommandConfig() {
-  try {
-    const vscode18 = require("vscode");
-    const config = vscode18.workspace.getConfiguration("ur");
-    const executablePath = config.get("executablePath")?.trim();
-    const executableArgs = config.get("executableArgs") ?? [];
-    return {
-      executablePath: executablePath || void 0,
-      executableArgs: executableArgs.filter((arg) => typeof arg === "string" && arg.length > 0)
-    };
-  } catch {
-    return {};
-  }
-}
-function formatUrCliError(args, error, executable, cwd) {
-  const stderr = hasStderr(error) ? error.stderr.trim() : "";
-  const detail = stderr || (error instanceof Error ? error.message : String(error));
-  return [
-    `Failed to run UR command.`,
-    `Executable: ${executable.display}`,
-    `cwd: ${cwd}`,
-    `Args: ${args.join(" ")}`,
-    `Error: ${detail}`,
-    `Hint: Set ur.executablePath in VS Code settings if the extension is using the wrong UR binary.`
-  ].join("\n");
-}
-function hasStderr(error) {
-  return typeof error === "object" && error !== null && "stderr" in error && typeof error.stderr === "string";
-}
-function isCapturedNonZeroExit(error) {
-  return typeof error === "object" && error !== null && typeof error.code === "number" && typeof error.stdout === "string";
-}
-
-// src/actions/background.ts
-var VALID_STATUSES = ["queued", "running", "completed", "failed", "canceled"];
-function isRecord(value) {
-  return typeof value === "object" && value !== null;
-}
-function parseBackgroundListJson(raw) {
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-  if (!isRecord(data) || !Array.isArray(data.tasks)) return [];
-  const summaries = [];
-  for (const entry of data.tasks) {
-    if (!isRecord(entry)) continue;
-    if (typeof entry.id !== "string" || typeof entry.task !== "string") continue;
-    const status = VALID_STATUSES.includes(entry.status) ? entry.status : "queued";
-    summaries.push({
-      id: entry.id,
-      task: entry.task,
-      status,
-      logFile: typeof entry.logFile === "string" ? entry.logFile : ""
-    });
-  }
-  return summaries;
-}
-async function loadBackgroundTasks(cwd) {
-  try {
-    const { stdout } = await runUrCliCapture(["bg", "list", "--json"], { cwd });
-    return parseBackgroundListJson(stdout);
-  } catch {
-    return [];
-  }
-}
-
 // src/actions/actionsTreeProvider.ts
 function backgroundStatusIcon(status) {
   switch (status) {
@@ -407,7 +562,7 @@ var BackgroundTaskItem = class extends vscode4.TreeItem {
   constructor(task) {
     super(task.task, vscode4.TreeItemCollapsibleState.None);
     this.task = task;
-    this.contextValue = "backgroundTask";
+    this.contextValue = task.status === "queued" || task.status === "running" ? "backgroundTaskActive" : "backgroundTask";
     this.description = task.status;
     this.iconPath = backgroundStatusIcon(task.status);
     this.tooltip = `${task.id} \u2014 ${task.status}${task.logFile ? `
@@ -440,6 +595,7 @@ var ActionsTreeProvider = class {
   onDidChangeTreeData = this._onDidChangeTreeData.event;
   diffs = [];
   backgroundTasks = [];
+  backgroundError;
   loaded = false;
   refresh() {
     this.loaded = false;
@@ -455,17 +611,29 @@ var ActionsTreeProvider = class {
     }
     if (!this.loaded) {
       this.diffs = loadManifest(root).diffs;
-      this.backgroundTasks = await loadBackgroundTasks(root);
+      try {
+        this.backgroundTasks = await loadBackgroundTasks(root);
+        this.backgroundError = void 0;
+      } catch (error) {
+        this.backgroundTasks = [];
+        this.backgroundError = error instanceof Error ? error.message : String(error);
+      }
       this.loaded = true;
     }
     if (!element) {
-      if (this.diffs.length === 0 && this.backgroundTasks.length === 0) {
+      if (this.diffs.length === 0 && this.backgroundTasks.length === 0 && !this.backgroundError) {
         return [];
       }
-      return [
+      const sections = [
         new SectionItem("diffs", "Diff Bundles", this.diffs.length),
         new SectionItem("background", "Background Tasks", this.backgroundTasks.length)
       ];
+      if (this.backgroundError) {
+        sections.push(
+          new InfoItem2("Could not load background tasks", this.backgroundError, "warning")
+        );
+      }
+      return sections;
     }
     if (element instanceof SectionItem && element.kind === "diffs") {
       if (this.diffs.length === 0) {
@@ -2398,6 +2566,7 @@ var ACTION_REGISTRY = [
   { id: "openArtifacts", label: "Open Artifacts", commandId: "urInlineDiffs.openArtifacts", description: "Reveal the .ur workspace directory" },
   { id: "runSpec", label: "Run Spec", commandId: "urInlineDiffs.runSpec", description: "Ask UR to list and run specs (ur spec)" },
   { id: "runWorkflow", label: "Run Workflow", commandId: "urInlineDiffs.runWorkflow", description: "Ask UR to list and run workflows (ur workflow)" },
+  { id: "startBackgroundTask", label: "Start Background Task", commandId: "urActions.runBackground", description: "Launch an isolated or workspace-scoped UR background agent" },
   { id: "refreshActions", label: "Refresh IDE Actions", commandId: "urActions.refresh", description: "Refresh the UR actions panel" }
 ];
 
@@ -2552,7 +2721,7 @@ function renderStatusHtml(status) {
   ${boundary}
   ${row("Sandbox mode", knownText2(status.sandboxMode))}
   ${row("Verifier mode", knownText2(status.verifierMode))}
-  ${row("ACP server", acp)}
+  ${row("UR HTTP server", acp)}
   ${row("Plugins loaded", String(status.pluginCount))}
   <section>
     <h2>Warnings</h2>
@@ -2704,6 +2873,8 @@ function activate(context) {
     vscode17.commands.registerCommand("urInlineDiffs.runSpec", () => runSpecAction(chat)),
     vscode17.commands.registerCommand("urInlineDiffs.runWorkflow", () => runWorkflowAction(chat)),
     vscode17.commands.registerCommand("urActions.refresh", () => actionsTreeProvider.refresh()),
+    vscode17.commands.registerCommand("urActions.runBackground", () => startBackgroundTask(actionsTreeProvider)),
+    vscode17.commands.registerCommand("urActions.cancelBackground", (item) => cancelBackgroundTask(item, actionsTreeProvider)),
     vscode17.commands.registerCommand("urActions.openBackgroundLog", (item) => openBackgroundLog(item))
   );
 }

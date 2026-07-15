@@ -61,7 +61,7 @@ function renderStatusHtml(status: AgentStatus): string {
   ${boundary}
   ${row('Sandbox mode', knownText(status.sandboxMode))}
   ${row('Verifier mode', knownText(status.verifierMode))}
-  ${row('ACP server', acp)}
+  ${row('UR HTTP server', acp)}
   ${row('Plugins loaded', String(status.pluginCount))}
   <section>
     <h2>Warnings</h2>

@@ -465,4 +465,8 @@ Common knobs:
 PROVIDER_SMOKE_TIMEOUT_MS=30000
 PROVIDER_SMOKE_MAX_RETRIES=0
 PROVIDER_SMOKE_TOOL_CALLS=1
+PROVIDER_SMOKE_OUTPUT=/tmp/ur-provider-smoke.json # --json only
 ```
+
+Without `PROVIDER_SMOKE_OUTPUT`, `--json` also writes the latest report to
+`diagnostics/provider-smoke/latest.json`.

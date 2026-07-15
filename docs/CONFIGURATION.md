@@ -447,9 +447,46 @@ ur mcp list
 ur mcp get <name>
 ur mcp add-json <name> '<json>'
 ur mcp remove <name>
+ur mcp serve
 ```
 
 MCP servers may execute code or access external services. Only enable servers you trust, and keep credentials out of committed config.
+
+When UR itself runs as an MCP server, tool requests are non-interactive:
+schema validation and normal permission checks still run, and any operation
+that would require an approval prompt is rejected. Resource limits can be
+adjusted with `UR_MCP_MAX_CALLS_PER_MINUTE`,
+`UR_MCP_MAX_CONCURRENT_CALLS`, `UR_MCP_TOOL_TIMEOUT_MS`,
+`UR_MCP_MAX_INPUT_CHARS`, and `UR_MCP_MAX_OUTPUT_CHARS`.
+
+## Background Agents
+
+Detached `ur bg` task state is stored under `.ur/background/`. Manifest updates
+use a cross-process lock and atomic mode-`0600` replacement; task logs, outputs,
+and steering inboxes are created mode `0600` under mode-`0700` directories.
+The loader rejects corrupt, oversized, or structurally invalid manifests rather
+than silently replacing them. `UR_BACKGROUND_MAX_MANIFEST_BYTES` controls the
+manifest byte ceiling (16 MiB by default, capped at 64 MiB), and
+`UR_BACKGROUND_MAX_TASKS` controls the retained task ceiling (5,000 by default,
+capped at 20,000).
+
+## Agent Servers
+
+For native editor integration, `ur acp stdio` implements stable Agent Client
+Protocol v1 through the official SDK. Its resource controls use the
+`UR_ACP_STDIO_*` prefix. It supports client-provided MCP stdio/HTTP/SSE
+servers, additional workspace roots, native permission requests, cancellation,
+and persistent `session/resume`; see the [ACP Guide](ACP.md).
+
+`ur acp serve` is a separate UR HTTP JSON-RPC API. Set `UR_ACP_TOKEN` instead
+of putting its bearer token in argv. Request, task, and tool limits use the
+`UR_ACP_*` prefix.
+
+`ur a2a serve` exposes the stable official-SDK A2A v0.3 JSON-RPC binding and a
+separate UR compatibility task API. Use `UR_A2A_TOKEN` for a static operator
+token or `UR_A2A_DELEGATION_SECRET` for issuer-minted scoped tokens. Limits use
+the `UR_A2A_*` prefix. See the [A2A Guide](A2A.md) for endpoints, proxy setup,
+scope isolation, and the A2A v1 migration status.
 
 ## Plugins and Skills
 

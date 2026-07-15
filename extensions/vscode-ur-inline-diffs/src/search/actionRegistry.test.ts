@@ -18,6 +18,7 @@ const EXPECTED_LABELS = [
   'Open Artifacts',
   'Run Spec',
   'Run Workflow',
+  'Start Background Task',
   'Refresh IDE Actions',
 ]
 

@@ -3,6 +3,7 @@ export type AcpMethod =
   | 'session/new'
   | 'session/prompt'
   | 'session/cancel'
+  | 'session/close'
   | 'tools/list'
   | 'tools/call'
   | 'tasks/send'

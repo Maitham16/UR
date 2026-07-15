@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { randomUUID, type UUID } from 'crypto'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
@@ -37,9 +36,10 @@ type TranscriptEntry = TranscriptMessage & {
  * otherwise flow into the saved title and break the resume hint.
  */
 export function deriveFirstPrompt(
-  firstUserMessage: Extract<SerializedMessage, { type: 'user' }> | undefined,
+  firstUserMessage: SerializedMessage | undefined,
 ): string {
-  const content = firstUserMessage?.message?.content
+  if (firstUserMessage?.type !== 'user') return 'Branched conversation'
+  const content = firstUserMessage.message?.content
   if (!content) return 'Branched conversation'
   const raw =
     typeof content === 'string'
@@ -104,10 +104,10 @@ async function createFork(customTitle?: string): Promise<{
   // sessionId must be rewritten since loadTranscriptFile keys lookup by the
   // session's messages' sessionId.
   const contentReplacementRecords = entries
-    .filter(
-      (entry): entry is ContentReplacementEntry =>
-        entry.type === 'content-replacement' &&
-        entry.sessionId === originalSessionId,
+    .filter((entry): entry is ContentReplacementEntry =>
+      'type' in entry &&
+      entry.type === 'content-replacement' &&
+      entry.sessionId === originalSessionId,
     )
     .flatMap(entry => entry.replacements)
 
@@ -129,7 +129,7 @@ async function createFork(customTitle?: string): Promise<{
       isSidechain: false,
       forkedFrom: {
         sessionId: originalSessionId,
-        messageUuid: entry.uuid,
+        messageUuid: entry.uuid as UUID,
       },
     }
 
@@ -142,7 +142,7 @@ async function createFork(customTitle?: string): Promise<{
     serializedMessages.push(serialized)
     lines.push(jsonStringify(forkedEntry))
     if (entry.type !== 'progress') {
-      parentUuid = entry.uuid
+      parentUuid = entry.uuid as UUID
     }
   }
 

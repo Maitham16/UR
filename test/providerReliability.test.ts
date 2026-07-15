@@ -86,6 +86,27 @@ describe('provider timeout, retry, and base URL reliability', () => {
     expect(getProviderRequestTimeoutMs()).toBe(DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS)
   })
 
+  test('non-streaming responses prefer the provider request ID header', async () => {
+    const post = spyOn(axios, 'post').mockResolvedValue({
+      data: openAITextResponse,
+      headers: { 'x-request-id': 'req-openai-nonstream' },
+    })
+    const client = await createStandardAPIClient({
+      providerId: 'openai-api',
+      apiKey: 'sk-openai',
+      maxRetries: 0,
+    })
+
+    const response = await client.beta.messages.create({
+      model: 'gpt-5.5',
+      messages: userMessages(),
+      max_tokens: 16,
+    })
+
+    expect(response.withResponse().request_id).toBe('req-openai-nonstream')
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+
   test('provider timeout can be overridden per request', async () => {
     const post = spyOn(axios, 'post').mockResolvedValue({
       data: openAITextResponse,

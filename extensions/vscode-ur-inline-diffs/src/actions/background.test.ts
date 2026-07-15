@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { parseBackgroundListJson } from './background.js'
+import {
+  buildBackgroundCancelArgs,
+  buildBackgroundRunArgs,
+  parseBackgroundListJson,
+} from './background.js'
 
 describe('parseBackgroundListJson', () => {
   test('parses a well-formed task list', () => {
@@ -34,8 +38,36 @@ describe('parseBackgroundListJson', () => {
     expect(tasks[0]?.id).toBe('bg-2')
   })
 
-  test('unrecognized status falls back to queued rather than an invented value', () => {
+  test('entries with unrecognized status are skipped instead of fabricated', () => {
     const raw = JSON.stringify({ tasks: [{ id: 'bg-1', task: 'x', status: 'zzz', logFile: '' }] })
-    expect(parseBackgroundListJson(raw)[0]?.status).toBe('queued')
+    expect(parseBackgroundListJson(raw)).toEqual([])
+  })
+})
+
+describe('background task argv builders', () => {
+  test('keeps the task as one argv value and applies explicit isolation flags', () => {
+    expect(buildBackgroundRunArgs('  fix auth; echo unsafe  ', {
+      worktree: true,
+      offline: true,
+    })).toEqual([
+      'bg',
+      'run',
+      'fix auth; echo unsafe',
+      '--worktree',
+      '--offline',
+      '--json',
+    ])
+  })
+
+  test('rejects empty, oversized, and NUL-bearing tasks and ids', () => {
+    expect(() => buildBackgroundRunArgs(' ', { worktree: true, offline: false })).toThrow()
+    expect(() => buildBackgroundRunArgs('x'.repeat(64_001), { worktree: true, offline: false })).toThrow()
+    expect(() => buildBackgroundRunArgs('bad\0task', { worktree: true, offline: false })).toThrow()
+    expect(() => buildBackgroundCancelArgs('')).toThrow()
+    expect(() => buildBackgroundCancelArgs('bad\0id')).toThrow()
+  })
+
+  test('builds a shell-free cancellation argv', () => {
+    expect(buildBackgroundCancelArgs('bg_123')).toEqual(['bg', 'kill', 'bg_123'])
   })
 })

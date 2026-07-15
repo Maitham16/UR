@@ -37,6 +37,8 @@ function usage(): string {
     '  ur acp stdio            Run a stdio ACP agent for editors (Zed, ACP Neovim)',
     '  ur acp stop',
     '  ur acp status [--json]',
+    '',
+    'Set UR_ACP_TOKEN instead of --token to keep the secret out of process arguments.',
   ].join('\n')
 }
 
@@ -46,11 +48,14 @@ export const call: LocalCommandCall = async (args: string) => {
   const action = positionals(tokens)[0] ?? 'status'
   const host = option(tokens, '--host') ?? '127.0.0.1'
   const port = Number(option(tokens, '--port') ?? '8123')
-  const token = option(tokens, '--token')
+  const token = option(tokens, '--token') ?? process.env.UR_ACP_TOKEN
   const dryRun = tokens.includes('--dry-run')
   const debug = tokens.includes('--debug')
 
   if (action === 'serve' || action === 'start') {
+    if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+      return { type: 'text', value: 'Port must be an integer between 1 and 65535' }
+    }
     await serveAcp({ host, port, token, cwd: process.cwd(), dryRun, debug })
     return { type: 'text', value: '' }
   }
@@ -63,7 +68,7 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'stop') {
     await stopAcpServer()
-    return { type: 'text', value: json ? JSON.stringify({ stopped: true }) : 'ACP server stopped' }
+    return { type: 'text', value: json ? JSON.stringify({ stopped: true }) : 'UR HTTP agent server stopped' }
   }
 
   if (action === 'status') {
@@ -71,7 +76,7 @@ export const call: LocalCommandCall = async (args: string) => {
     const result = { running: runningPort !== null, port: runningPort }
     return {
       type: 'text',
-      value: json ? JSON.stringify(result, null, 2) : `ACP server: ${result.running ? `running on port ${result.port}` : 'not running'}`,
+      value: json ? JSON.stringify(result, null, 2) : `UR HTTP agent server: ${result.running ? `running on port ${result.port}` : 'not running'}`,
     }
   }
 

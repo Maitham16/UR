@@ -1,4 +1,9 @@
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
+import {
+  createHash,
+  createHmac,
+  randomUUID,
+  timingSafeEqual,
+} from 'node:crypto'
 
 /**
  * A2A delegation (capability) tokens.
@@ -6,11 +11,10 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
  * A minimal, dependency-free capability token for agent-to-agent delegation:
  * an HMAC-signed payload that is scoped to specific skills, bound to one
  * audience (the agent it is for), and time-limited. Unlike a static shared
- * secret, a delegation token can be attenuated — a holder can mint a strictly
- * narrower child token (subset of scopes, no later expiry) to hand onward.
- * This is the local-first building block for "agent identity & delegated
- * authorization" without turning UR into an identity provider: keys and
- * verification stay on the machine that runs the A2A adapter.
+ * secret, an issuer can mint short-lived tokens with narrow scopes. The
+ * `attenuateDelegationToken` helper is deliberately issuer-side: HMAC tokens
+ * cannot be safely re-signed by an untrusted holder without also giving that
+ * holder the root secret and the ability to mint broader tokens.
  *
  * Format: `base64url(JSON claims) + "." + base64url(HMAC-SHA256(payload))`.
  */
@@ -48,16 +52,30 @@ function sign(secret: string, payload: string): string {
   return createHmac('sha256', secret).update(payload).digest('base64url')
 }
 
-function constantTimeEqual(a: string, b: string): boolean {
-  const left = Buffer.from(a)
-  const right = Buffer.from(b)
-  if (left.length !== right.length) return false
+export function constantTimeStringEqual(a: string, b: string): boolean {
+  // Hash first so timingSafeEqual always receives fixed-size inputs. This is
+  // also safe for variable-length static bearer tokens; an early length check
+  // would otherwise make comparisons observably different.
+  const left = createHash('sha256').update(a, 'utf8').digest()
+  const right = createHash('sha256').update(b, 'utf8').digest()
   return timingSafeEqual(left, right)
 }
 
 export function normalizeScope(scope?: string[]): string[] {
   if (!scope || scope.length === 0) return ['*']
-  return scope.includes('*') ? ['*'] : [...new Set(scope)]
+  if (scope.length > 64) throw new Error('delegation scope has too many entries')
+  const normalized = scope.map(value => {
+    if (
+      typeof value !== 'string' ||
+      !value.trim() ||
+      value.length > 128 ||
+      value.includes('\0')
+    ) {
+      throw new Error('delegation scopes must be non-empty strings up to 128 characters')
+    }
+    return value.trim()
+  })
+  return normalized.includes('*') ? ['*'] : [...new Set(normalized)]
 }
 
 /** True when `scope` authorizes a given skill id. */
@@ -82,18 +100,57 @@ export type MintOptions = {
   jti?: string
 }
 
+const MAX_TOKEN_CHARS = 16 * 1024
+const MAX_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60
+const MAX_CLOCK_SKEW_SECONDS = 60
+
+function validClaimString(value: unknown, maxLength = 256): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= maxLength &&
+    !value.includes('\0')
+  )
+}
+
 export function mintDelegationToken(secret: string, options: MintOptions): string {
   if (!secret) throw new Error('a delegation secret is required')
+  if (!validClaimString(options.subject)) {
+    throw new Error('delegation subject must be 1-256 characters without NUL bytes')
+  }
+  if (!validClaimString(options.audience)) {
+    throw new Error('delegation audience must be 1-256 characters without NUL bytes')
+  }
   const issued = options.now ?? nowSeconds()
   const ttl = options.ttlSeconds ?? 3600
+  if (!Number.isSafeInteger(issued) || issued < 0) {
+    throw new Error('delegation issued-at time must be a non-negative integer')
+  }
+  if (
+    !Number.isFinite(ttl) ||
+    ttl <= 0 ||
+    ttl > MAX_TOKEN_LIFETIME_SECONDS
+  ) {
+    throw new Error(
+      `delegation lifetime must be between 1 and ${MAX_TOKEN_LIFETIME_SECONDS} seconds`,
+    )
+  }
+  const expires = issued + Math.max(1, Math.floor(ttl))
+  if (!Number.isSafeInteger(expires)) {
+    throw new Error('delegation expiry exceeds the safe integer range')
+  }
+  const jti = options.jti ?? randomUUID()
+  if (!validClaimString(jti)) {
+    throw new Error('delegation token id must be 1-256 characters without NUL bytes')
+  }
   const claims: DelegationClaims = {
     v: 1,
     sub: options.subject,
     aud: options.audience,
     scope: normalizeScope(options.scope),
     iat: issued,
-    exp: issued + Math.max(1, Math.floor(ttl)),
-    jti: options.jti ?? randomUUID(),
+    exp: expires,
+    jti,
   }
   const payload = encodeJson(claims)
   return `${payload}.${sign(secret, payload)}`
@@ -120,12 +177,15 @@ export function verifyDelegationToken(
   token: string,
   options: VerifyOptions = {},
 ): VerifyResult {
+  if (!secret || !token || token.length > MAX_TOKEN_CHARS) {
+    return { valid: false, reason: 'malformed token' }
+  }
   const parts = token.split('.')
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
     return { valid: false, reason: 'malformed token' }
   }
   const [payload, signature] = parts
-  if (!constantTimeEqual(signature, sign(secret, payload))) {
+  if (!constantTimeStringEqual(signature, sign(secret, payload))) {
     return { valid: false, reason: 'bad signature' }
   }
   let claims: DelegationClaims
@@ -134,10 +194,33 @@ export function verifyDelegationToken(
   } catch {
     return { valid: false, reason: 'unparseable payload' }
   }
-  if (!claims || claims.v !== 1 || !Array.isArray(claims.scope)) {
-    return { valid: false, reason: 'unsupported token version' }
+  if (
+    !claims ||
+    typeof claims !== 'object' ||
+    claims.v !== 1 ||
+    !validClaimString(claims.sub) ||
+    !validClaimString(claims.aud) ||
+    !validClaimString(claims.jti) ||
+    !Array.isArray(claims.scope) ||
+    claims.scope.length === 0 ||
+    claims.scope.length > 64 ||
+    !claims.scope.every(scope => validClaimString(scope, 128)) ||
+    (claims.scope.includes('*') && claims.scope.length !== 1) ||
+    !Number.isSafeInteger(claims.iat) ||
+    claims.iat < 0 ||
+    !Number.isSafeInteger(claims.exp) ||
+    claims.exp <= claims.iat ||
+    claims.exp - claims.iat > MAX_TOKEN_LIFETIME_SECONDS
+  ) {
+    return { valid: false, reason: 'invalid token claims' }
   }
   const now = options.now ?? nowSeconds()
+  if (!Number.isSafeInteger(now) || now < 0) {
+    return { valid: false, reason: 'invalid verification clock' }
+  }
+  if (claims.iat > now + MAX_CLOCK_SKEW_SECONDS) {
+    return { valid: false, reason: 'token issued in the future', claims }
+  }
   if (typeof claims.exp !== 'number' || now >= claims.exp) {
     return { valid: false, reason: 'token expired', claims }
   }
@@ -173,7 +256,10 @@ export type AttenuateOptions = {
 
 export type AttenuateResult = { token?: string; error?: string }
 
-/** Derive a strictly narrower child token from a parent's claims. */
+/**
+ * Issuer-side helper for deriving a no-broader token from verified parent
+ * claims. This requires the root signing secret; it is not holder attenuation.
+ */
 export function attenuateDelegationToken(
   secret: string,
   parent: DelegationClaims,

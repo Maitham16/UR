@@ -13,8 +13,8 @@ stated honestly — nothing here claims support that does not exist:
   below. Ships to VS Code, Cursor, and Windsurf (one extension; Cursor and
   Windsurf are VS Code forks). This is the integration everything else on
   this page is compared against.
-- **Stdio ACP** (`ur acp stdio`) — the real, spec-compliant
-  [Agent Client Protocol](ACP.md) over stdio, used by Zed and ACP-capable
+- **Stdio ACP** (`ur acp stdio`) — stable ACP v1 over stdio, backed by the
+  official TypeScript SDK and used by Zed and ACP-capable
   Neovim clients. This remains a separate transport from the VS Code
   extension's chat bridge below; the two are independent and neither depends
   on the other.
@@ -33,14 +33,14 @@ stated honestly — nothing here claims support that does not exist:
 | Cursor | UR Inline Diffs extension (VS Code fork) | `.vscode/settings.json` | Same extension as VS Code. |
 | Windsurf | UR Inline Diffs extension (VS Code fork) | `.vscode/settings.json` | Same extension as VS Code. |
 | Zed | stdio ACP | `.zed/settings.json` | Real Agent Client Protocol over stdio. |
-| JetBrains | bundled experimental plugin + HTTP ACP | manual zip install | Project-scoped JSON-RPC session and Send Selection action; synchronous ACP task result, not token streaming. |
+| JetBrains | bundled experimental plugin + UR HTTP JSON-RPC | manual zip install | Project-scoped JSON-RPC session and Send Selection action; synchronous task result, not streaming. |
 | Neovim | stdio ACP | snippet | Requires a third-party ACP client plugin. |
-| Generic ACP | stdio ACP / HTTP | snippet | `ur acp stdio` (native ACP) or `ur acp serve` (HTTP JSON-RPC; not a streaming transport — see Known limitations). |
+| Generic ACP | stdio ACP | snippet | `ur acp stdio` is the native ACP transport. `ur acp serve` is a separate UR-specific HTTP API. |
 
 ## Commands
 
 ```sh
-ur ide status               # workspace, ACP server, provider/model, sandbox/verifier mode, plugin count, warnings
+ur ide status               # workspace, UR HTTP server, provider/model, sandbox/verifier mode, plugin count, warnings
 ur ide doctor                # pass/warn/fail checks; reports missing config clearly
 ur ide config <editor>       # print setup + config snippet for the chosen editor
 ur ide open                  # open the current project/worktree in a detected IDE
@@ -52,7 +52,7 @@ ur ide diff approve|reject <id>
 `ur ide config` targets: `vscode`, `cursor`, `windsurf`, `zed`, `jetbrains`,
 `neovim`, `generic-acp` (aliases like `nvim`, `intellij`, `code` also resolve).
 
-`ur ide status` reports the active workspace, whether the ACP server is
+`ur ide status` reports the active workspace, whether the UR HTTP compatibility server is
 running and on which port, the active provider/model and runtime backend,
 sandbox mode, verifier mode, the number of loaded plugins, and any warnings.
 Add `--json` for machine-readable output — this is the same JSON surface the
@@ -150,9 +150,12 @@ tasks (`ur bg list --json`) together in one place, with its own refresh
 button and a clear empty state when there is nothing captured yet. Diff rows
 support the same Open/Apply/Reject/Comment actions as the Inline Diffs view
 (routed through the CLI, as described above). Background task rows are
-read-only in this release — click one to open its log file; starting or
-canceling a task from the panel is not implemented yet, use
-`ur bg run|kill` from a terminal.
+actionable: **Start Background Task** offers isolated-worktree (recommended),
+offline isolated-worktree, and current-workspace modes, confirms before
+launch, and never enables permission bypass or PR publishing. Active tasks
+can be canceled from their context menu. Opening a task retrieves the latest
+2,000 log lines through `ur bg logs`, so the extension never trusts an
+arbitrary manifest path as a file to open.
 
 ### Agent status card
 
@@ -170,7 +173,8 @@ CLI does not report renders as the literal word **unknown** — never a guess.
 action the extension exposes: New Chat, Open Chat, Explain Selection, Fix
 Selection, Generate Tests, Review Current Diff, Run Verifier, Provider
 Status, Agent Status, Agent Options, Open Settings, Open Docs, Open
-Artifacts, Run Spec, Run Workflow, and Refresh IDE Actions.
+Artifacts, Run Spec, Run Workflow, Start Background Task, and Refresh IDE
+Actions.
 
 ### Agent options panel
 
@@ -202,8 +206,9 @@ success it did not observe.
 ## Known limitations
 
 - **JetBrains integration is experimental and non-streaming.** It uses the
-  loopback HTTP ACP server and returns the completed synchronous task output;
-  it does not yet render token or tool-call streams.
+  loopback UR HTTP JSON-RPC server and returns the completed synchronous task output;
+  it does not yet render token or tool-call streams. Canceling the IDE progress
+  action does propagate to the active server-side session.
 - **The lockfile/MCP IDE bridge is Phase 2 and not part of this MVP.** The
   CLI already implements the *client* half of a lockfile-discovered MCP
   connection to a running IDE (`src/utils/ide.ts`), used by the terminal
@@ -211,20 +216,18 @@ success it did not observe.
   terminal-hosted `ur` session. The VS Code extension's chat panel does not
   use this bridge — it talks to UR entirely through the `stream-json`
   subprocess contract described above.
-- **The ACP HTTP server (`ur acp serve`) is not the VS Code chat streaming
-  transport.** It is a separate, non-streaming JSON-RPC endpoint intended for
+- **The UR HTTP server (`ur acp serve`) is neither an ACP binding nor the VS
+  Code chat streaming transport.** It is a separate, non-streaming JSON-RPC endpoint intended for
   scripts and other clients; the VS Code extension does not route chat
   through it, and `ur acp stdio` (used by Zed and ACP Neovim clients) is
   unaffected by any of the VS Code work described here.
-- **Background task actions are read-only** in the Actions panel — no start
-  or cancel from the panel yet.
 - **Run Spec / Run Workflow** open chat with a prompt asking UR to list and
   run the relevant items, rather than shelling out directly — `ur spec` and
   `ur workflow` are full agentic commands, not one-shot JSON lookups.
 
 ## Troubleshooting
 
-- **`ur ide status` shows "ACP server: not running":** start it with
+- **`ur ide status` shows "UR HTTP server: not running":** start it with
   `ur acp serve` (HTTP) or `ur acp stdio` (for ACP editors).
 - **No IDE detected:** ensure the editor is running with the UR extension/plugin
   installed, or generate config with `ur ide config <editor>`.

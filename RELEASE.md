@@ -11,11 +11,13 @@ Release target:
 Run from the repository root:
 
 ```bash
-bun install
+bun ci
+bun run dependencies:audit
 bun test
 bun run typecheck
 bun run lint
 bun run build
+bun run release:check
 node ./bin/ur.js --version
 node ./bin/ur.js --help
 node ./bin/ur.js upgrade
@@ -28,7 +30,7 @@ before release:
 
 ```bash
 bun run release:create-source-zip
-bun run release:check-source-zip -- artifacts/source/ur-agent-$(node -p "require('./package.json').version")-source.zip
+bun run release:check-source-zip -- artifacts/source/ur-nexus-$(node -p "require('./package.json').version")-source.zip
 ```
 
 The source zip must contain source inputs such as `package.json`, `bun.lock`,
@@ -52,14 +54,15 @@ rg -n "Version [0-9]|expected: [0-9]|UR-Nexus v[0-9]" README.md docs documentati
 bun test test/docsCoverage.test.ts test/docsCommands.test.ts
 ```
 
-Version bump checklist (all three must move together):
+Version bump checklist (all versioned release surfaces must move together):
 
 1. `package.json` `version`
 2. `bunfig.toml` `MACRO.VERSION`
 3. `documentation/index.html` version eyebrow
-4. `extensions/vscode-ur-inline-diffs/package.json` `version` (the VSIX test
-   requires it to match the root package version)
-5. Add a `CHANGELOG.md` entry, then run `bun run build` so `dist/cli.js`
+4. `extensions/vscode-ur-inline-diffs/package.json` and its lockfile version
+   fields (the VSIX test requires them to match the root package version)
+5. `extensions/jetbrains-ur/build.gradle.kts` `version`
+6. Add a `CHANGELOG.md` entry, then run `bun run build` so `dist/cli.js`
    embeds the new version (`bun run release:check` verifies all of this).
 
 If `npm whoami` fails, run:

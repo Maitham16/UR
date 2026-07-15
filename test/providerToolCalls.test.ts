@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 import axios from 'axios'
-import { createOpenAICompatibleClient } from '../src/services/api/openaiCompatible.js'
+import {
+  createOpenAICompatibleClient,
+  toOpenAITools,
+} from '../src/services/api/openaiCompatible.js'
 import { createOpenRouterClient } from '../src/services/api/openrouter.js'
 import { createStandardAPIClient } from '../src/services/api/standardAPI.js'
 
@@ -16,6 +19,7 @@ const sampleTools = [
       },
       required: ['file_path', 'content'],
     },
+    strict: true,
   },
 ]
 
@@ -63,6 +67,7 @@ function assertOpenAIToolPayload(body: any) {
       name: 'Edit',
       description: 'Modify a file',
       parameters: sampleTools[0].input_schema,
+      strict: true,
     },
   })
   expect(body.tool_choice).toEqual({
@@ -111,6 +116,40 @@ describe('provider tool-call request and response mapping', () => {
     const [, body] = post.mock.calls[0] as [string, Record<string, any>]
     assertOpenAIToolPayload(body)
     assertToolUseResponse(res)
+  })
+
+  test('OpenAI function-shaped tools retain an explicit strict contract', () => {
+    expect(toOpenAITools([
+      {
+        type: 'function',
+        function: {
+          name: 'Inspect',
+          description: 'Inspect a path',
+          parameters: {
+            type: 'object',
+            properties: { path: { type: 'string' } },
+            required: ['path'],
+            additionalProperties: false,
+          },
+          strict: true,
+        },
+      },
+    ])).toEqual([
+      {
+        type: 'function',
+        function: {
+          name: 'Inspect',
+          description: 'Inspect a path',
+          parameters: {
+            type: 'object',
+            properties: { path: { type: 'string' } },
+            required: ['path'],
+            additionalProperties: false,
+          },
+          strict: true,
+        },
+      },
+    ])
   })
 
   test('openai-compatible preserves tools/tool_choice and parses tool_calls', async () => {
@@ -200,7 +239,13 @@ describe('provider tool-call request and response mapping', () => {
     })
 
     const [, body] = post.mock.calls[0] as [string, Record<string, any>]
-    expect(body.tools).toEqual(sampleTools)
+    expect(body.tools).toEqual([
+      {
+        name: 'Edit',
+        description: 'Modify a file',
+        input_schema: sampleTools[0].input_schema,
+      },
+    ])
     expect(body.tool_choice).toEqual(toolChoice)
     expect(res.stop_reason).toBe('tool_use')
     expect(res.content[0]).toEqual({
@@ -211,8 +256,9 @@ describe('provider tool-call request and response mapping', () => {
     })
   })
 
-  test('standard Gemini maps tools to functionDeclarations and parses functionCall parts', async () => {
-    const post = spyOn(axios, 'post').mockResolvedValue({
+  test('standard Gemini round-trips function IDs and thought signatures', async () => {
+    const post = spyOn(axios, 'post')
+      .mockResolvedValueOnce({
       data: {
         candidates: [
           {
@@ -220,9 +266,11 @@ describe('provider tool-call request and response mapping', () => {
               parts: [
                 {
                   functionCall: {
+                    id: 'gemini-call-1',
                     name: 'Edit',
                     args: { file_path: 'src/app.ts', content: 'updated' },
                   },
+                  thoughtSignature: 'opaque-gemini-signature',
                 },
               ],
             },
@@ -233,6 +281,18 @@ describe('provider tool-call request and response mapping', () => {
       },
       headers: {},
     })
+      .mockResolvedValueOnce({
+        data: {
+          candidates: [
+            {
+              content: { parts: [{ text: 'Done' }] },
+              finishReason: 'STOP',
+            },
+          ],
+          usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 1 },
+        },
+        headers: {},
+      })
     const client = await createStandardAPIClient({
       providerId: 'gemini-api',
       apiKey: 'gm-key',
@@ -265,13 +325,60 @@ describe('provider tool-call request and response mapping', () => {
       },
     })
     expect(res.stop_reason).toBe('tool_use')
-    expect(res.content[0]).toMatchObject({
+    expect(res.content[0]).toEqual({
       type: 'tool_use',
+      id: 'gemini-call-1',
       name: 'Edit',
       input: { file_path: 'src/app.ts', content: 'updated' },
+      gemini_thought_signature: 'opaque-gemini-signature',
     })
-    expect(typeof res.content[0].id).toBe('string')
-    expect(res.content[0].id.length).toBeGreaterThan(0)
+
+    await client.beta.messages.create({
+      model: 'gemini-3.5-flash',
+      messages: [
+        ...userMessages(),
+        { role: 'assistant', content: res.content },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'gemini-call-1',
+              content: 'file updated',
+            },
+          ],
+        },
+      ],
+      max_tokens: 32,
+      tools: sampleTools,
+    })
+
+    const [, followUpBody] = post.mock.calls[1] as [string, Record<string, any>]
+    expect(followUpBody.contents[1]).toEqual({
+      role: 'model',
+      parts: [
+        {
+          functionCall: {
+            id: 'gemini-call-1',
+            name: 'Edit',
+            args: { file_path: 'src/app.ts', content: 'updated' },
+          },
+          thoughtSignature: 'opaque-gemini-signature',
+        },
+      ],
+    })
+    expect(followUpBody.contents[2]).toEqual({
+      role: 'user',
+      parts: [
+        {
+          functionResponse: {
+            id: 'gemini-call-1',
+            name: 'Edit',
+            response: { result: 'file updated' },
+          },
+        },
+      ],
+    })
   })
 
   test('OpenAI-family adapters fail explicitly on malformed tool_calls', async () => {

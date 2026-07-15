@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { _c } from 'react/compiler-runtime'
 import chalk from 'chalk'
 import * as React from 'react'
@@ -7,7 +6,12 @@ import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js'
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js'
 import { useAppState, useSetAppState } from '../../state/AppState.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
-import { getProviderRuntimeInfo } from '../../services/providers/providerRegistry.js'
+import type { LocalJSXCommandOnDone } from '../../types/command.js'
+import {
+  getProviderRuntimeInfo,
+  resolveProviderId,
+  type ProviderSettings,
+} from '../../services/providers/providerRegistry.js'
 import { useSettings } from '../../hooks/useSettings.js'
 
 function ApplyProviderAndClose({
@@ -15,9 +19,9 @@ function ApplyProviderAndClose({
   message,
   onDone,
 }: {
-  provider: { active?: string; model?: string; baseUrl?: string; commandPath?: string; fallback?: string }
+  provider: ProviderSettings
   message: string
-  onDone: (result?: string, options?: { display?: 'system' | 'normal' }) => void
+  onDone: LocalJSXCommandOnDone
 }): React.ReactNode {
   const setAppState = useSetAppState()
 
@@ -38,10 +42,7 @@ function ApplyProviderAndClose({
 function ProviderPickerWrapper({
   onDone,
 }: {
-  onDone: (
-    result?: string,
-    options?: { display?: 'system' | 'normal' },
-  ) => void
+  onDone: LocalJSXCommandOnDone
 }): React.ReactNode {
   const settings = useSettings()
   const providerRuntime = getProviderRuntimeInfo(settings)
@@ -58,14 +59,26 @@ function ProviderPickerWrapper({
   }
 
   function handleSelect(provider: string): void {
+    const resolvedProvider = resolveProviderId(provider)
+    if (!resolvedProvider) {
+      onDone(`Unknown provider "${provider}".`, { display: 'system' })
+      return
+    }
+    if (resolvedProvider === 'subscription') {
+      onDone(
+        'Choose a concrete subscription provider (Codex CLI, Claude Code, Gemini CLI, or Antigravity).',
+        { display: 'system' },
+      )
+      return
+    }
     logEvent('tengu_provider_command_menu', {
-      action: provider as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      action: resolvedProvider as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       from_provider: providerRuntime.provider as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      to_provider: provider as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      to_provider: resolvedProvider as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
 
     const newProviderRuntime = getProviderRuntimeInfo({
-      provider: { active: provider },
+      provider: { active: resolvedProvider },
     })
 
     let message = `Set provider to ${chalk.bold(newProviderRuntime.providerLabel)}`
@@ -148,7 +161,6 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
     })
     // Direct provider setting via command args
     const {
-      resolveProviderId,
       setSafeProviderConfig,
       validateProviderModelCompatibility,
       getActiveProviderSettings,

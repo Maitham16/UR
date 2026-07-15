@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createOpenAICompatibleClient } from '../src/services/api/openaiCompatible.js'
 import { createOpenRouterClient } from '../src/services/api/openrouter.js'
@@ -13,6 +13,9 @@ const jsonOutput = args.includes('--json')
 const timeoutMs = positiveInt(process.env.PROVIDER_SMOKE_TIMEOUT_MS) ?? 30_000
 const maxRetries = positiveInt(process.env.PROVIDER_SMOKE_MAX_RETRIES) ?? 0
 const runToolCalls = truthy(process.env.PROVIDER_SMOKE_TOOL_CALLS)
+const reportOutput = process.env.PROVIDER_SMOKE_OUTPUT
+  ? resolve(process.cwd(), process.env.PROVIDER_SMOKE_OUTPUT)
+  : join(root, 'diagnostics', 'provider-smoke', 'latest.json')
 
 const providers = [
   {
@@ -294,11 +297,10 @@ async function main() {
   }
 
   if (jsonOutput) {
-    const output = join(root, 'diagnostics', 'provider-smoke', 'latest.json')
-    mkdirSync(dirname(output), { recursive: true })
-    writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`)
+    mkdirSync(dirname(reportOutput), { recursive: true })
+    writeFileSync(reportOutput, `${JSON.stringify(report, null, 2)}\n`)
     console.log(JSON.stringify(report, null, 2))
-    console.error(`Wrote provider smoke JSON: ${output}`)
+    console.error(`Wrote provider smoke JSON: ${reportOutput}`)
   } else {
     for (const provider of providersReport) {
       const detail = provider.skipReason ? ` - ${provider.skipReason}` : ''

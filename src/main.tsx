@@ -4562,6 +4562,13 @@ async function run(): Promise<CommanderCommand> {
     process.exit(0);
   });
   const quoteLocalCommandArg = (value: string) => JSON.stringify(value);
+  const parseServerPort = (raw: string | undefined, fallback: number): number => {
+    const port = Number(raw ?? fallback);
+    if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+      throw new InvalidArgumentError('Port must be an integer between 1 and 65535');
+    }
+    return port;
+  };
   const runLocalTextCommand = async (load: () => Promise<LocalCommandModule>, args: string) => {
     const {
       call
@@ -5036,8 +5043,8 @@ async function run(): Promise<CommanderCommand> {
     const args = [action, name, opts.force ? '--force' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/role-mode/role-mode.js'), args);
   });
-  const a2a = program.command('a2a').description('A2A interoperability utilities').configureHelp(createSortedHelpConfig());
-  a2a.command('card').description('Print UR Card metadata for A2A discovery').option('--base-url <url>', 'Base URL to use for the Agent Card endpoint').option('--compact', 'Output compact JSON').action(async (opts: {
+  const a2a = program.command('a2a').description('A2A interoperability utilities (stable v0.3 binding)').configureHelp(createSortedHelpConfig());
+  a2a.command('card').description('Print an A2A Agent Card preview').option('--base-url <url>', 'Base URL to use for the Agent Card endpoint').option('--compact', 'Output compact JSON').action(async (opts: {
     baseUrl?: string;
     compact?: boolean;
   }) => {
@@ -5050,9 +5057,10 @@ async function run(): Promise<CommanderCommand> {
     }, !opts.compact));
     process.exit(0);
   });
-  a2a.command('serve').description('Start an opt-in local A2A task server').option('--host <host>', 'Host to bind', '127.0.0.1').option('--port <port>', 'Port to bind', '8765').option('--token <token>', 'Static bearer token required for task execution').option('--delegation-secret <secret>', 'HMAC secret that verifies attenuated delegation tokens').option('--audience <id>', 'Agent id that delegation tokens must target', 'ur-nexus').option('--dry-run', 'Return spawned UR command without executing prompts').action(async (opts: {
+  a2a.command('serve').description('Start the opt-in A2A v0.3 JSON-RPC and UR compatibility server').option('--host <host>', 'Host to bind', '127.0.0.1').option('--port <port>', 'Port to bind', '8765').option('--public-base-url <url>', 'External HTTP(S) base URL advertised by the Agent Card').option('--token <token>', 'Static bearer token (prefer UR_A2A_TOKEN; argv may be visible)').option('--delegation-secret <secret>', 'HMAC verification secret (prefer UR_A2A_DELEGATION_SECRET; argv may be visible)').option('--audience <id>', 'Agent id that delegation tokens must target', 'ur-nexus').option('--dry-run', 'Return spawned UR command without executing prompts').action(async (opts: {
     host?: string;
     port?: string;
+    publicBaseUrl?: string;
     token?: string;
     delegationSecret?: string;
     audience?: string;
@@ -5063,16 +5071,17 @@ async function run(): Promise<CommanderCommand> {
     } = await import('./services/agents/a2aServer.js');
     await serveA2A({
       host: opts.host ?? '127.0.0.1',
-      port: Number(opts.port ?? '8765'),
-      token: opts.token,
-      delegationSecret: opts.delegationSecret,
+      port: parseServerPort(opts.port, 8765),
+      publicBaseUrl: opts.publicBaseUrl,
+      token: opts.token ?? process.env.UR_A2A_TOKEN,
+      delegationSecret: opts.delegationSecret ?? process.env.UR_A2A_DELEGATION_SECRET,
       audience: opts.audience ?? 'ur-nexus',
       dryRun: opts.dryRun,
       cwd: process.cwd()
     });
   });
-  const a2aToken = a2a.command('token').description('Mint and verify attenuated A2A delegation tokens').configureHelp(createSortedHelpConfig());
-  a2aToken.command('mint').description('Mint an attenuated, expiring, scoped delegation token').option('--secret <secret>', 'HMAC signing secret (or set UR_A2A_DELEGATION_SECRET)').option('--sub <subject>', 'Delegator identity', 'ur-cli').option('--aud <audience>', 'Target agent id', 'ur-nexus').option('--scope <csv>', 'Comma-separated skill ids, or * for all', '*').option('--ttl <seconds>', 'Lifetime in seconds', '3600').option('--json', 'Output as JSON').action(async (opts: {
+  const a2aToken = a2a.command('token').description('Mint and verify issuer-signed A2A delegation tokens').configureHelp(createSortedHelpConfig());
+  a2aToken.command('mint').description('Mint an expiring, audience-bound, scoped delegation token').option('--secret <secret>', 'HMAC signing secret (prefer UR_A2A_DELEGATION_SECRET; argv may be visible)').option('--sub <subject>', 'Delegator identity', 'ur-cli').option('--aud <audience>', 'Target agent id', 'ur-nexus').option('--scope <csv>', 'Comma-separated skill ids, or * for all', '*').option('--ttl <seconds>', 'Lifetime in seconds', '3600').option('--json', 'Output as JSON').action(async (opts: {
     secret?: string;
     sub?: string;
     aud?: string;
@@ -5091,17 +5100,21 @@ async function run(): Promise<CommanderCommand> {
     }
     const scope = (opts.scope ?? '*').split(',').map(part => part.trim()).filter(Boolean);
     const ttlSeconds = Number(opts.ttl ?? '3600');
+    if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > 2592000) {
+      throw new InvalidArgumentError('TTL must be an integer between 1 and 2592000 seconds');
+    }
     const token = mintDelegationToken(secret, {
       subject: opts.sub ?? 'ur-cli',
       audience: opts.aud ?? 'ur-nexus',
       scope,
-      ttlSeconds: Number.isFinite(ttlSeconds) && ttlSeconds > 0 ? ttlSeconds : 3600
+      ttlSeconds
     });
     // biome-ignore lint/suspicious/noConsole:: CLI command output
     console.log(opts.json ? JSON.stringify({ token }, null, 2) : token);
     process.exit(0);
   });
-  a2aToken.command('verify <token>').description('Verify a delegation token and print its claims').option('--secret <secret>', 'HMAC signing secret (or set UR_A2A_DELEGATION_SECRET)').option('--aud <audience>', 'Required audience').option('--scope <skill>', 'Required skill scope').option('--json', 'Output as JSON').action(async (token: string, opts: {
+  a2aToken.command('verify [token]').description('Verify a delegation token and print its claims').option('--token-stdin', 'Read the token from stdin (or set UR_A2A_DELEGATION_TOKEN)').option('--secret <secret>', 'HMAC signing secret (prefer UR_A2A_DELEGATION_SECRET; argv may be visible)').option('--aud <audience>', 'Required audience').option('--scope <skill>', 'Required skill scope').option('--json', 'Output as JSON').action(async (token: string | undefined, opts: {
+    tokenStdin?: boolean;
     secret?: string;
     aud?: string;
     scope?: string;
@@ -5111,13 +5124,24 @@ async function run(): Promise<CommanderCommand> {
       verifyDelegationToken,
       describeClaims
     } = await import('./services/agents/delegation.js');
+    if (token && opts.tokenStdin) {
+      throw new InvalidArgumentError('Pass the token either as an argument or with --token-stdin, not both');
+    }
+    let verificationToken = token ?? process.env.UR_A2A_DELEGATION_TOKEN;
+    if (opts.tokenStdin) {
+      const { readSecretFromStdin } = await import('./utils/readSecretFromStdin.js');
+      verificationToken = await readSecretFromStdin({ label: 'delegation token', maxBytes: 16 * 1024 });
+    }
+    if (!verificationToken) {
+      throw new InvalidArgumentError('A token is required: pass it, use --token-stdin, or set UR_A2A_DELEGATION_TOKEN');
+    }
     const secret = opts.secret ?? process.env.UR_A2A_DELEGATION_SECRET;
     if (!secret) {
       // biome-ignore lint/suspicious/noConsole:: CLI command output
       console.error('A signing secret is required: pass --secret or set UR_A2A_DELEGATION_SECRET');
       process.exit(1);
     }
-    const result = verifyDelegationToken(secret, token, {
+    const result = verifyDelegationToken(secret, verificationToken, {
       audience: opts.aud,
       requiredScope: opts.scope
     });
@@ -5133,30 +5157,36 @@ async function run(): Promise<CommanderCommand> {
     }
     process.exit(result.valid ? 0 : 1);
   });
-  const acp = program.command('acp').description('Agent Communication Protocol server for IDE extensions').configureHelp(createSortedHelpConfig());
-  acp.command('serve').description('Start an opt-in local ACP server').option('--host <host>', 'Host to bind', '127.0.0.1').option('--port <port>', 'Port to bind', '8123').option('--token <token>', 'Static bearer token required for requests').option('--dry-run', 'Return server options without starting').action(async (opts: {
+  const acp = program.command('acp').description('Agent Client Protocol and HTTP compatibility utilities').configureHelp(createSortedHelpConfig());
+  acp.command('serve').description('Start the opt-in HTTP JSON-RPC compatibility server').option('--host <host>', 'Host to bind', '127.0.0.1').option('--port <port>', 'Port to bind', '8123').option('--token <token>', 'Static bearer token (prefer UR_ACP_TOKEN; argv may be visible)').option('--debug', 'Log JSON-RPC method names and outcomes to stderr').option('--dry-run', 'Return server options without starting').action(async (opts: {
     host?: string;
     port?: string;
     token?: string;
+    debug?: boolean;
     dryRun?: boolean;
   }) => {
     const { serveAcp } = await import('./services/agents/acpServer.js');
     await serveAcp({
       host: opts.host ?? '127.0.0.1',
-      port: Number(opts.port ?? '8123'),
-      token: opts.token,
+      port: parseServerPort(opts.port, 8123),
+      token: opts.token ?? process.env.UR_ACP_TOKEN,
+      debug: opts.debug,
       dryRun: opts.dryRun,
       cwd: process.cwd()
     });
   });
-  acp.command('stop').description('Stop the running ACP server').action(async () => {
+  acp.command('stdio').description('Run the official-SDK-backed ACP v1 stdio agent for editors').action(async () => {
+    const { startAcpStdioAgent } = await import('./services/agents/acpStdio.js');
+    await startAcpStdioAgent({ cwd: process.cwd() });
+  });
+  acp.command('stop').description('Stop the running UR HTTP agent server').action(async () => {
     const { stopAcpServer } = await import('./services/agents/acpServer.js');
     await stopAcpServer();
     // biome-ignore lint/suspicious/noConsole:: CLI command output
-    console.log('ACP server stopped');
+    console.log('UR HTTP agent server stopped');
     process.exit(0);
   });
-  acp.command('status').description('Show ACP server status').option('--json', 'Output as JSON').action(async (opts: {
+  acp.command('status').description('Show UR HTTP agent server status').option('--json', 'Output as JSON').action(async (opts: {
     json?: boolean;
   }) => {
     const { getAcpServerPort } = await import('./services/agents/acpServer.js');
@@ -5167,7 +5197,7 @@ async function run(): Promise<CommanderCommand> {
       console.log(JSON.stringify(result, null, 2));
     } else {
       // biome-ignore lint/suspicious/noConsole:: CLI command output
-      console.log(`ACP server: ${result.running ? `running on port ${result.port}` : 'not running'}`);
+      console.log(`UR HTTP agent server: ${result.running ? `running on port ${result.port}` : 'not running'}`);
     }
     process.exit(0);
   });

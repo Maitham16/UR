@@ -2,13 +2,19 @@ import { spawn } from 'node:child_process'
 import {
   closeSync,
   existsSync,
+  fsyncSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
+  readSync,
+  realpathSync,
+  renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { findCanonicalGitRoot, findGitRoot, gitExe } from '../../utils/git.js'
@@ -17,6 +23,7 @@ import { listModelCapabilities } from '../../commands/model-doctor/model-doctor.
 import { resolveModelForTask } from './modelRouter.js'
 import { loadModelPool } from './modelPool.js'
 import { appendCommandLog } from './commandLog.js'
+import { lockSync } from '../../utils/lockfile.js'
 import {
   appendRunAction,
   initializeResearchTrace,
@@ -143,24 +150,239 @@ function worktreesDir(cwd: string): string {
 }
 
 function ensureDirs(cwd: string): void {
-  mkdirSync(backgroundDir(cwd), { recursive: true })
-  mkdirSync(logsDir(cwd), { recursive: true })
-  mkdirSync(outputsDir(cwd), { recursive: true })
-  mkdirSync(inboxDir(cwd), { recursive: true })
+  mkdirSync(backgroundDir(cwd), { recursive: true, mode: 0o700 })
+  mkdirSync(logsDir(cwd), { recursive: true, mode: 0o700 })
+  mkdirSync(outputsDir(cwd), { recursive: true, mode: 0o700 })
+  mkdirSync(inboxDir(cwd), { recursive: true, mode: 0o700 })
+}
+
+function backgroundLimit(
+  value: string | undefined,
+  fallback: number,
+  maximum: number,
+): number {
+  if (!value || !/^\d+$/u.test(value.trim())) return fallback
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? Math.min(parsed, maximum)
+    : fallback
+}
+
+function manifestLockPath(cwd: string): string {
+  return join(backgroundDir(cwd), '.tasks.lock')
+}
+
+const manifestLockWaitArray = new Int32Array(new SharedArrayBuffer(4))
+
+function acquireManifestLock(path: string): () => void {
+  const attempts = 21
+  let lastError: unknown
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return lockSync(path, {
+        realpath: false,
+        stale: 30_000,
+      })
+    } catch (error) {
+      lastError = error
+      if ((error as NodeJS.ErrnoException).code !== 'ELOCKED' || attempt === attempts - 1) {
+        throw error
+      }
+      // The surrounding background-runner API is intentionally synchronous.
+      // proper-lockfile's sync adapter forbids its async retry option, so use
+      // a short bounded wait before retrying cross-process contention.
+      Atomics.wait(manifestLockWaitArray, 0, 0, Math.min(100, 10 + attempt * 5))
+    }
+  }
+  throw lastError
+}
+
+function withManifestLock<T>(cwd: string, operation: (root: string) => T): T {
+  const root = projectRoot(cwd)
+  ensureDirs(root)
+  const path = manifestLockPath(root)
+  try {
+    const fd = openSync(path, 'wx', 0o600)
+    closeSync(fd)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+  }
+  const release = acquireManifestLock(path)
+  try {
+    return operation(root)
+  } finally {
+    release()
+  }
+}
+
+function pathIsWithin(root: string, candidate: string): boolean {
+  const pathFromRoot = relative(root, candidate)
+  return (
+    pathFromRoot === '' ||
+    (pathFromRoot !== '..' &&
+      !pathFromRoot.startsWith(`..${sep}`) &&
+      !isAbsolute(pathFromRoot))
+  )
+}
+
+function isSafeTaskId(id: unknown): id is string {
+  return (
+    typeof id === 'string' &&
+    id.length > 0 &&
+    id.length <= 128 &&
+    /^[a-zA-Z0-9_-]+$/u.test(id)
+  )
+}
+
+const BACKGROUND_STATUSES = new Set<BackgroundTaskStatus>([
+  'queued',
+  'running',
+  'completed',
+  'failed',
+  'canceled',
+])
+
+function normalizeManifestTask(root: string, value: unknown): BackgroundTask | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const task = value as Partial<BackgroundTask>
+  if (
+    !isSafeTaskId(task.id) ||
+    typeof task.task !== 'string' ||
+    task.task.length === 0 ||
+    task.task.length > 64_000 ||
+    typeof task.status !== 'string' ||
+    !BACKGROUND_STATUSES.has(task.status as BackgroundTaskStatus) ||
+    typeof task.createdAt !== 'string' ||
+    typeof task.updatedAt !== 'string'
+  ) {
+    return null
+  }
+
+  const safeWorktreesRoot = resolve(worktreesDir(root))
+  const requestedWorktreePath = typeof task.worktree?.path === 'string'
+    ? resolve(task.worktree.path)
+    : join(safeWorktreesRoot, task.id)
+  const worktreePath = pathIsWithin(safeWorktreesRoot, requestedWorktreePath)
+    ? requestedWorktreePath
+    : join(safeWorktreesRoot, task.id)
+  const requestedRunCwd = typeof task.runCwd === 'string'
+    ? resolve(task.runCwd)
+    : root
+  const runCwd = task.worktree?.enabled && pathIsWithin(safeWorktreesRoot, requestedRunCwd)
+    ? requestedRunCwd
+    : root
+  const worktree = task.worktree?.enabled
+    ? {
+        ...task.worktree,
+        path: worktreePath,
+      }
+    : task.worktree
+
+  return {
+    ...(task as BackgroundTask),
+    id: task.id,
+    task: task.task,
+    status: task.status as BackgroundTaskStatus,
+    cwd: root,
+    runCwd,
+    logFile: join(logsDir(root), `${task.id}.log`),
+    outputFile: join(outputsDir(root), `${task.id}.json`),
+    inboxFile: join(inboxDir(root), `${task.id}.jsonl`),
+    worktree,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+  }
 }
 
 function loadManifest(cwd: string): Manifest {
-  const path = manifestPath(cwd)
+  const root = projectRoot(cwd)
+  const path = manifestPath(root)
   if (!existsSync(path)) return { version: 1, tasks: [] }
-  const parsed = safeParseJSON(readFileSync(path, 'utf-8'), false)
-  return parsed && typeof parsed === 'object' && Array.isArray((parsed as Manifest).tasks)
-    ? (parsed as Manifest)
-    : { version: 1, tasks: [] }
+  const maxBytes = backgroundLimit(
+    process.env.UR_BACKGROUND_MAX_MANIFEST_BYTES,
+    16 * 1024 * 1024,
+    64 * 1024 * 1024,
+  )
+  const fd = openSync(path, 'r')
+  let text: string
+  try {
+    const buffer = Buffer.allocUnsafe(maxBytes + 1)
+    let bytesRead = 0
+    while (bytesRead < buffer.length) {
+      const count = readSync(
+        fd,
+        buffer,
+        bytesRead,
+        buffer.length - bytesRead,
+        bytesRead,
+      )
+      if (count === 0) break
+      bytesRead += count
+    }
+    if (bytesRead > maxBytes) {
+      throw new Error(`Background task manifest exceeds ${maxBytes} bytes: ${path}`)
+    }
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(
+        buffer.subarray(0, bytesRead),
+      )
+    } catch {
+      throw new Error(`Background task manifest is not valid UTF-8: ${path}`)
+    }
+  } finally {
+    closeSync(fd)
+  }
+  const parsed = safeParseJSON(text, false)
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    (parsed as { version?: unknown }).version !== 1 ||
+    !Array.isArray((parsed as Manifest).tasks)
+  ) {
+    throw new Error(`Background task manifest is invalid: ${path}`)
+  }
+  const rawTasks = (parsed as Manifest).tasks
+  const maxTasks = backgroundLimit(
+    process.env.UR_BACKGROUND_MAX_TASKS,
+    5_000,
+    20_000,
+  )
+  if (rawTasks.length > maxTasks) {
+    throw new Error(`Background task manifest exceeds ${maxTasks} tasks: ${path}`)
+  }
+  const tasks = rawTasks.map(task => normalizeManifestTask(root, task))
+  if (tasks.some(task => task === null)) {
+    throw new Error(`Background task manifest contains an invalid task: ${path}`)
+  }
+  return { version: 1, tasks: tasks as BackgroundTask[] }
 }
 
 function saveManifest(cwd: string, manifest: Manifest): void {
-  ensureDirs(cwd)
-  writeFileSync(manifestPath(cwd), `${JSON.stringify(manifest, null, 2)}\n`)
+  const root = projectRoot(cwd)
+  ensureDirs(root)
+  const path = manifestPath(root)
+  const tempPath = `${path}.${process.pid}.${randomUUID()}.tmp`
+  const content = `${JSON.stringify(manifest, null, 2)}\n`
+  const maxBytes = backgroundLimit(
+    process.env.UR_BACKGROUND_MAX_MANIFEST_BYTES,
+    16 * 1024 * 1024,
+    64 * 1024 * 1024,
+  )
+  if (Buffer.byteLength(content, 'utf8') > maxBytes) {
+    throw new Error(`Background task manifest would exceed ${maxBytes} bytes`)
+  }
+  let fd: number | undefined
+  try {
+    fd = openSync(tempPath, 'wx', 0o600)
+    writeFileSync(fd, content, 'utf8')
+    fsyncSync(fd)
+    closeSync(fd)
+    fd = undefined
+    renameSync(tempPath, path)
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+    rmSync(tempPath, { force: true })
+  }
 }
 
 function updateTask(
@@ -168,13 +390,16 @@ function updateTask(
   id: string,
   fn: (task: BackgroundTask) => void,
 ): BackgroundTask | null {
-  const manifest = loadManifest(cwd)
-  const task = manifest.tasks.find(t => t.id === id)
-  if (!task) return null
-  fn(task)
-  task.updatedAt = now()
-  saveManifest(cwd, manifest)
-  return task
+  if (!isSafeTaskId(id)) return null
+  return withManifestLock(cwd, root => {
+    const manifest = loadManifest(root)
+    const task = manifest.tasks.find(t => t.id === id)
+    if (!task) return null
+    fn(task)
+    task.updatedAt = now()
+    saveManifest(root, manifest)
+    return task
+  })
 }
 
 function makeId(): string {
@@ -216,12 +441,44 @@ export function getBackgroundTask(cwd: string, id: string): BackgroundTask | nul
   return loadManifest(cwd).tasks.find(t => t.id === id) ?? null
 }
 
-export function readBackgroundLog(cwd: string, id: string, tailLines?: number): string | null {
+export function readBackgroundLog(
+  cwd: string,
+  id: string,
+  tailLines?: number,
+  maxBytes?: number,
+): string | null {
   const task = getBackgroundTask(cwd, id)
   if (!task || !existsSync(task.logFile)) return null
-  const text = readFileSync(task.logFile, 'utf-8')
+  let text: string
+  const size = statSync(task.logFile).size
+  if (
+    typeof maxBytes === 'number' &&
+    Number.isSafeInteger(maxBytes) &&
+    maxBytes > 0 &&
+    size > maxBytes
+  ) {
+    const fd = openSync(task.logFile, 'r')
+    try {
+      const buffer = Buffer.allocUnsafe(maxBytes)
+      const bytesRead = readSync(fd, buffer, 0, maxBytes, size - maxBytes)
+      text = buffer.subarray(0, bytesRead).toString('utf8')
+      // The byte window can begin in the middle of a UTF-8 sequence or log
+      // line. Drop the leading fragment so network responses contain complete
+      // records and never need to load the entire log into memory.
+      const firstNewline = text.indexOf('\n')
+      if (firstNewline !== -1) text = text.slice(firstNewline + 1)
+    } finally {
+      closeSync(fd)
+    }
+  } else {
+    text = readFileSync(task.logFile, 'utf-8')
+  }
   if (!tailLines || tailLines <= 0) return text
-  return text.split('\n').slice(-tailLines).join('\n')
+  const hadTrailingNewline = text.endsWith('\n')
+  const lines = text.split('\n')
+  if (hadTrailingNewline) lines.pop()
+  const tail = lines.slice(-tailLines).join('\n')
+  return hadTrailingNewline && tail ? `${tail}\n` : tail
 }
 
 export function appendBackgroundFeedback(
@@ -239,11 +496,14 @@ export function appendBackgroundFeedback(
     artifactId: source?.artifactId,
     text,
   }
-  writeFileSync(task.inboxFile, `${JSON.stringify(entry)}\n`, { flag: 'a' })
+  writeFileSync(task.inboxFile, `${JSON.stringify(entry)}\n`, {
+    flag: 'a',
+    mode: 0o600,
+  })
   writeFileSync(
     task.logFile,
     `[${at}] steering feedback${source?.artifactId ? ` from artifact ${source.artifactId}` : ''}: ${text}\n`,
-    { flag: 'a' },
+    { flag: 'a', mode: 0o600 },
   )
   return updateTask(cwd, id, t => {
     t.updatedAt = at
@@ -295,9 +555,21 @@ export function createBackgroundTask(
     createdAt,
     updatedAt: createdAt,
   }
-  const manifest = loadManifest(root)
-  manifest.tasks.push(task)
-  saveManifest(root, manifest)
+  withManifestLock(root, lockedRoot => {
+    const manifest = loadManifest(lockedRoot)
+    const maxTasks = backgroundLimit(
+      process.env.UR_BACKGROUND_MAX_TASKS,
+      5_000,
+      20_000,
+    )
+    if (manifest.tasks.length >= maxTasks) {
+      throw new Error(
+        `Background task limit reached (${maxTasks}); archive the existing .ur/background data before starting more tasks.`,
+      )
+    }
+    manifest.tasks.push(task)
+    saveManifest(lockedRoot, manifest)
+  })
   initializeResearchTrace(root, id, {
     kind: 'background-task',
     status: 'planned',
@@ -358,8 +630,8 @@ async function spawnBackgroundWorker(
   bin?: { file: string; baseArgs: string[] },
 ): Promise<string[]> {
   const { entry, command } = buildWorkerCommand(task, bin)
-  const out = openSync(task.logFile, 'a')
-  const err = openSync(task.logFile, 'a')
+  const out = openSync(task.logFile, 'a', 0o600)
+  const err = openSync(task.logFile, 'a', 0o600)
   try {
     const env = await resolveTaskEnv(task)
     const child = spawn(entry.file, command, {
@@ -464,14 +736,31 @@ async function git(
 
 async function setupWorktree(task: BackgroundTask): Promise<string> {
   if (!task.worktree?.enabled) return task.cwd
-  const path = resolve(task.worktree.path ?? join(worktreesDir(task.cwd), task.id))
+  const root = resolve(worktreesDir(task.cwd))
+  const path = resolve(task.worktree.path ?? join(root, task.id))
   const branch = task.worktree.branch ?? `ur/bg-${task.id}`
-  mkdirSync(worktreesDir(task.cwd), { recursive: true })
+  mkdirSync(root, { recursive: true, mode: 0o700 })
+  if (!pathIsWithin(root, path)) {
+    throw new Error(`Refusing background worktree path outside ${root}`)
+  }
+  if (existsSync(path)) {
+    const canonicalRoot = realpathSync(root)
+    const canonicalPath = realpathSync(path)
+    if (
+      lstatSync(path).isSymbolicLink() ||
+      !pathIsWithin(canonicalRoot, canonicalPath)
+    ) {
+      throw new Error(`Refusing unsafe background worktree path: ${path}`)
+    }
+  }
   if (!existsSync(path)) {
     const result = await git(task.cwd, ['worktree', 'add', '-b', branch, path, 'HEAD'], 120_000)
     if (result.code !== 0) {
       throw new Error(result.stderr || result.error || `git worktree add failed for ${path}`)
     }
+  }
+  if (!pathIsWithin(realpathSync(root), realpathSync(path))) {
+    throw new Error(`Background worktree resolved outside ${root}`)
   }
   updateTask(task.cwd, task.id, t => {
     t.runCwd = path
@@ -568,8 +857,8 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
     : process.env
 
   return await new Promise(resolve => {
-    const outputFd = openSync(task.outputFile, 'a')
-    const logFd = openSync(task.logFile, 'a')
+    const outputFd = openSync(task.outputFile, 'a', 0o600)
+    const logFd = openSync(task.logFile, 'a', 0o600)
     let inboxOffset = existsSync(task.inboxFile) ? statSync(task.inboxFile).size : 0
     let sawResult = false
     let closedInput = false
@@ -595,6 +884,7 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
       child.stdin.write(streamUserMessage(text, 'now'))
       writeFileSync(task.logFile, `[${now()}] injected live steering into agent stdin\n`, {
         flag: 'a',
+        mode: 0o600,
       })
       sawResult = false
     }
@@ -650,7 +940,10 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
     }
 
     child.on('error', error => {
-      writeFileSync(task.logFile, `\n[agent spawn error] ${error.message}\n`, { flag: 'a' })
+      writeFileSync(task.logFile, `\n[agent spawn error] ${error.message}\n`, {
+        flag: 'a',
+        mode: 0o600,
+      })
       cleanup()
       appendCommandLog(task.cwd, task.id, {
         command: formatCommand([entry.file, ...args]),
@@ -732,7 +1025,10 @@ export async function createPullRequest(task: BackgroundTask, cwd: string): Prom
 export async function runBackgroundWorker(cwd: string, id: string): Promise<BackgroundTask> {
   const task = getBackgroundTask(cwd, id)
   if (!task) throw new Error(`Background task not found: ${id}`)
-  writeFileSync(task.logFile, `[${now()}] worker started for ${id}\n`, { flag: 'a' })
+  writeFileSync(task.logFile, `[${now()}] worker started for ${id}\n`, {
+    flag: 'a',
+    mode: 0o600,
+  })
   updateTask(task.cwd, task.id, t => {
     t.status = 'running'
     t.workerPid = process.pid
@@ -741,7 +1037,10 @@ export async function runBackgroundWorker(cwd: string, id: string): Promise<Back
 
   try {
     const runCwd = await setupWorktree(task)
-    writeFileSync(task.logFile, `[${now()}] running in ${runCwd}\n`, { flag: 'a' })
+    writeFileSync(task.logFile, `[${now()}] running in ${runCwd}\n`, {
+      flag: 'a',
+      mode: 0o600,
+    })
     appendRunAction(task.cwd, task.id, {
       kind: 'background-worker-start',
       title: task.task,
@@ -758,7 +1057,10 @@ export async function runBackgroundWorker(cwd: string, id: string): Promise<Back
       t.completedAt = now()
       if (pr) t.pr = pr
     })
-    writeFileSync(task.logFile, `[${now()}] worker finished with exit ${exitCode}\n`, { flag: 'a' })
+    writeFileSync(task.logFile, `[${now()}] worker finished with exit ${exitCode}\n`, {
+      flag: 'a',
+      mode: 0o600,
+    })
     await captureBackgroundDiff(runCwd, task.cwd, task.id)
     writeRunReport(task.cwd, task.id, formatBackgroundTask(completed ?? task))
     return completed ?? task
@@ -769,7 +1071,10 @@ export async function runBackgroundWorker(cwd: string, id: string): Promise<Back
       t.error = message
       t.completedAt = now()
     })
-    writeFileSync(task.logFile, `[${now()}] worker failed: ${message}\n`, { flag: 'a' })
+    writeFileSync(task.logFile, `[${now()}] worker failed: ${message}\n`, {
+      flag: 'a',
+      mode: 0o600,
+    })
     appendRunAction(task.cwd, task.id, {
       kind: 'background-worker-failed',
       title: task.task,

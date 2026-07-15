@@ -19,5 +19,6 @@ Thumbs.db
 extensions/jetbrains-ur/build/
 extensions/jetbrains-ur/.gradle/
 extensions/jetbrains-ur/.intellijPlatform/
+extensions/jetbrains-ur/.kotlin/
 extensions/jetbrains-ur/build/**
 *.zip

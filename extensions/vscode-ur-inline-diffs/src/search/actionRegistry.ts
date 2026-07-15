@@ -26,5 +26,6 @@ export const ACTION_REGISTRY: ActionEntry[] = [
   { id: 'openArtifacts', label: 'Open Artifacts', commandId: 'urInlineDiffs.openArtifacts', description: 'Reveal the .ur workspace directory' },
   { id: 'runSpec', label: 'Run Spec', commandId: 'urInlineDiffs.runSpec', description: 'Ask UR to list and run specs (ur spec)' },
   { id: 'runWorkflow', label: 'Run Workflow', commandId: 'urInlineDiffs.runWorkflow', description: 'Ask UR to list and run workflows (ur workflow)' },
+  { id: 'startBackgroundTask', label: 'Start Background Task', commandId: 'urActions.runBackground', description: 'Launch an isolated or workspace-scoped UR background agent' },
   { id: 'refreshActions', label: 'Refresh IDE Actions', commandId: 'urActions.refresh', description: 'Refresh the UR actions panel' },
 ]

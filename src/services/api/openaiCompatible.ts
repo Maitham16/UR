@@ -455,6 +455,7 @@ function toOpenAITool(tool: any): any | null {
           description: tool.function.description,
         }),
         parameters: sanitizeJsonSchema(tool.function.parameters),
+        ...(tool.function.strict === true && { strict: true }),
       },
     }
   }
@@ -467,6 +468,7 @@ function toOpenAITool(tool: any): any | null {
       name: tool.name,
       ...(tool.description !== undefined && { description: tool.description }),
       parameters: sanitizeJsonSchema(tool.input_schema),
+      ...(tool.strict === true && { strict: true }),
     },
   }
 }
