@@ -7,6 +7,7 @@
 
 import axios from 'axios'
 import { randomUUID } from 'crypto'
+import { constants as fsConstants } from 'fs'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { count } from '../../utils/array.js'
@@ -72,6 +73,121 @@ export type DownloadResult = {
 const MAX_RETRIES = 3
 const BASE_DELAY_MS = 500
 const MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024 // 500MB
+const API_RESOURCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
+
+function encodeFileId(fileId: string): string {
+  if (!API_RESOURCE_ID_PATTERN.test(fileId)) {
+    throw new Error(
+      'Invalid file ID: expected a URL-safe identifier containing only letters, numbers, underscores, or hyphens',
+    )
+  }
+  return encodeURIComponent(fileId)
+}
+
+function isPathWithin(basePath: string, candidatePath: string): boolean {
+  const relativePath = path.relative(basePath, candidatePath)
+  return (
+    relativePath === '' ||
+    (relativePath !== '..' &&
+      !relativePath.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relativePath))
+  )
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === code
+  )
+}
+
+async function ensureRealDirectory(directoryPath: string): Promise<void> {
+  let stats
+  try {
+    stats = await fs.lstat(directoryPath)
+  } catch (error) {
+    if (!hasErrorCode(error, 'ENOENT')) {
+      throw error
+    }
+    try {
+      await fs.mkdir(directoryPath, { mode: 0o700 })
+    } catch (mkdirError) {
+      // Another process may have created the component after lstat().
+      if (!hasErrorCode(mkdirError, 'EEXIST')) {
+        throw mkdirError
+      }
+    }
+    stats = await fs.lstat(directoryPath)
+  }
+
+  if (stats.isSymbolicLink()) {
+    throw new Error(`Refusing to use symlinked download directory: ${directoryPath}`)
+  }
+  if (!stats.isDirectory()) {
+    throw new Error(`Download path component is not a directory: ${directoryPath}`)
+  }
+}
+
+async function writeDownloadedFileSafely(
+  basePath: string,
+  fullPath: string,
+  content: Buffer,
+): Promise<void> {
+  const resolvedBase = path.resolve(basePath)
+  const parentDir = path.dirname(fullPath)
+  if (!isPathWithin(resolvedBase, parentDir)) {
+    throw new Error('Refusing to write a downloaded file outside the workspace')
+  }
+
+  const relativeParent = path.relative(resolvedBase, parentDir)
+  let currentPath = resolvedBase
+  for (const component of relativeParent.split(path.sep).filter(Boolean)) {
+    currentPath = path.join(currentPath, component)
+    await ensureRealDirectory(currentPath)
+  }
+
+  const [realBase, realParent] = await Promise.all([
+    fs.realpath(resolvedBase),
+    fs.realpath(parentDir),
+  ])
+  if (!isPathWithin(realBase, realParent)) {
+    throw new Error('Refusing to write through a directory outside the workspace')
+  }
+
+  try {
+    const destinationStats = await fs.lstat(fullPath)
+    if (destinationStats.isSymbolicLink()) {
+      throw new Error(`Refusing to overwrite symlinked download destination: ${fullPath}`)
+    }
+    if (!destinationStats.isFile()) {
+      throw new Error(`Download destination is not a regular file: ${fullPath}`)
+    }
+  } catch (error) {
+    if (!hasErrorCode(error, 'ENOENT')) {
+      throw error
+    }
+  }
+
+  // O_NOFOLLOW closes the race between lstat() and open() for the final path
+  // on POSIX. Windows does not support the flag, but the explicit lstat check
+  // above still rejects pre-existing symlink destinations there.
+  const noFollowFlag = process.platform === 'win32' ? 0 : fsConstants.O_NOFOLLOW
+  const file = await fs.open(
+    fullPath,
+    fsConstants.O_WRONLY |
+      fsConstants.O_CREAT |
+      fsConstants.O_TRUNC |
+      noFollowFlag,
+    0o600,
+  )
+  try {
+    await file.writeFile(content)
+  } finally {
+    await file.close()
+  }
+}
 
 /**
  * Result type for retry operations - signals whether to continue retrying
@@ -126,7 +242,8 @@ export async function downloadFile(
   config: FilesApiConfig,
 ): Promise<Buffer> {
   const baseUrl = config.baseUrl || getDefaultApiBaseUrl()
-  const url = `${baseUrl}/v1/files/${fileId}/content`
+  const encodedFileId = encodeFileId(fileId)
+  const url = `${baseUrl.replace(/\/+$/, '')}/v1/files/${encodedFileId}/content`
 
   const headers = {
     Authorization: `Bearer ${config.oauthToken}`,
@@ -181,24 +298,43 @@ export function buildDownloadPath(
   sessionId: string,
   relativePath: string,
 ): string | null {
+  if (!API_RESOURCE_ID_PATTERN.test(sessionId)) {
+    logDebugError('Invalid session ID for file download')
+    return null
+  }
+  if (!relativePath || relativePath.includes('\0')) {
+    logDebugError('Invalid empty file path')
+    return null
+  }
+
+  const uploadsBase = path.resolve(basePath, sessionId, 'uploads')
   const normalized = path.normalize(relativePath)
-  if (normalized.startsWith('..')) {
+
+  let cleanPath = normalized
+  if (path.isAbsolute(normalized)) {
+    if (isPathWithin(uploadsBase, normalized)) {
+      // Preserve support for callers that pass the already-expanded path.
+      cleanPath = path.relative(uploadsBase, normalized)
+    } else {
+      // Sandbox-gateway historically sends paths rooted at /uploads/.
+      const rootUploadsBase = path.join(path.parse(normalized).root, 'uploads')
+      if (!isPathWithin(rootUploadsBase, normalized)) {
+        logDebugError(`Invalid absolute file path: ${relativePath}`)
+        return null
+      }
+      cleanPath = path.relative(rootUploadsBase, normalized)
+    }
+  }
+
+  const fullPath = path.resolve(uploadsBase, cleanPath)
+  if (fullPath === uploadsBase || !isPathWithin(uploadsBase, fullPath)) {
     logDebugError(
-      `Invalid file path: ${relativePath}. Path must not traverse above workspace`,
+      `Invalid file path: ${relativePath}. Path must stay within the session uploads directory`,
     )
     return null
   }
 
-  const uploadsBase = path.join(basePath, sessionId, 'uploads')
-  const redundantPrefixes = [
-    path.join(basePath, sessionId, 'uploads') + path.sep,
-    path.sep + 'uploads' + path.sep,
-  ]
-  const matchedPrefix = redundantPrefixes.find(p => normalized.startsWith(p))
-  const cleanPath = matchedPrefix
-    ? normalized.slice(matchedPrefix.length)
-    : normalized
-  return path.join(uploadsBase, cleanPath)
+  return fullPath
 }
 
 /**
@@ -228,12 +364,7 @@ export async function downloadAndSaveFile(
     // Download the file content
     const content = await downloadFile(fileId, config)
 
-    // Ensure the parent directory exists
-    const parentDir = path.dirname(fullPath)
-    await fs.mkdir(parentDir, { recursive: true })
-
-    // Write the file
-    await fs.writeFile(fullPath, content)
+    await writeDownloadedFileSafely(getCwd(), fullPath, content)
 
     logDebug(`Saved file ${fileId} to ${fullPath} (${content.length} bytes)`)
 
@@ -274,6 +405,10 @@ async function parallelWithLimit<T, R>(
   fn: (item: T, index: number) => Promise<R>,
   concurrency: number,
 ): Promise<R[]> {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new RangeError('Concurrency must be a positive integer')
+  }
+
   const results: R[] = new Array(items.length)
   let currentIndex = 0
 

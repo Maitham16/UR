@@ -117,13 +117,14 @@ export type DoneGateResult =
  *
  * @param claim what the assistant text claims
  * @param hasMutatingEffect true if the ledger recorded any successful
- *   Write/Edit/Bash/NotebookEdit this turn
- * @param ranBash true if a successful Bash call was recorded this turn
+ *   Write/Edit/Bash/PowerShell/NotebookEdit this turn
+ * @param ranShell true if a successful Bash or PowerShell call was recorded
+ *   this turn
  */
 export function evaluateDoneGate(
   claim: ClaimKind,
   hasMutatingEffect: boolean,
-  ranBash: boolean,
+  ranShell: boolean,
 ): DoneGateResult {
   if (claim === 'write_claim' || claim === 'edit_claim' || claim === 'delete_claim') {
     if (hasMutatingEffect) return { ok: true }
@@ -132,7 +133,7 @@ export function evaluateDoneGate(
       claim,
       reason: 'no file-mutating tool call recorded',
       reminder:
-        'You claimed to have created, edited, or deleted files this turn but no Write / Edit / NotebookEdit / Bash tool call returned successfully. Make the actual tool call now, or correct the statement before continuing.',
+        'You claimed to have created, edited, or deleted files this turn but no Write / Edit / NotebookEdit / Bash / PowerShell tool call returned successfully. Make the actual tool call now, or correct the statement before continuing.',
     }
   }
   if (claim === 'write_intent') {
@@ -142,36 +143,36 @@ export function evaluateDoneGate(
       claim,
       reason: 'promised file action ended without a mutating tool call',
       reminder:
-        'You ended by saying you were about to create, edit, or fix files, but no Write / Edit / NotebookEdit / Bash tool call returned successfully. Make the actual tool call now, or explain why you cannot continue.',
+        'You ended by saying you were about to create, edit, or fix files, but no Write / Edit / NotebookEdit / Bash / PowerShell tool call returned successfully. Make the actual tool call now, or explain why you cannot continue.',
     }
   }
   if (claim === 'run_claim') {
-    if (ranBash) return { ok: true }
+    if (ranShell) return { ok: true }
     return {
       ok: false,
       claim,
-      reason: 'no successful Bash call recorded',
+      reason: 'no successful shell command recorded',
       reminder:
-        'You claimed to have run a command this turn but no Bash tool call returned successfully. Run the command now or correct the statement.',
+        'You claimed to have run a command this turn but no Bash or PowerShell tool call returned successfully. Run the command now or correct the statement.',
     }
   }
   if (claim === 'run_intent') {
-    if (ranBash) return { ok: true }
+    if (ranShell) return { ok: true }
     return {
       ok: false,
       claim,
-      reason: 'promised command ended without a successful Bash call',
+      reason: 'promised command ended without a successful shell call',
       reminder:
-        'You ended by saying you were about to run a command, but no Bash tool call returned successfully. Run the command now, or explain why you cannot continue.',
+        'You ended by saying you were about to run a command, but no Bash or PowerShell tool call returned successfully. Run the command now, or explain why you cannot continue.',
     }
   }
   // generic_done: only flag if the turn was completely effect-free
-  if (hasMutatingEffect || ranBash) return { ok: true }
+  if (hasMutatingEffect || ranShell) return { ok: true }
   return {
     ok: false,
     claim,
     reason: 'no side-effecting tool call this turn',
     reminder:
-      'You declared the task complete but this turn made no Write / Edit / Bash / NotebookEdit tool call. If the task required no edits, say so explicitly. Otherwise, make the tool call now.',
+      'You declared the task complete but this turn made no Write / Edit / Bash / PowerShell / NotebookEdit tool call. If the task required no edits, say so explicitly. Otherwise, make the tool call now.',
   }
 }

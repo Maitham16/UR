@@ -93,6 +93,7 @@ export async function createOpenAICompatibleClient(
         maxRetries,
         timeoutMs: requestOptions?.timeoutMs,
         signal,
+        streaming: true,
         failureMessage: (response, body) =>
           `OpenAI-compatible streaming request failed for ${endpoint} (${response.status}): ${body || response.statusText}`,
       },

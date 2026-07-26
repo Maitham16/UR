@@ -13,6 +13,8 @@ import { createStandardAPIClient } from '../src/services/api/standardAPI.js'
 import {
   DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
   ProviderHTTPError,
+  ProviderTimeoutError,
+  fetchWithProviderReliability,
   getProviderRequestTimeoutMs,
   isRetryableProviderError,
   normalizeOpenAICompatibleBaseUrl,
@@ -129,6 +131,30 @@ describe('provider timeout, retry, and base URL reliability', () => {
 
     const [, , config] = post.mock.calls[0]
     expect(config.timeout).toBe(45_000)
+  })
+
+  test('provider timeout remains active until a non-streaming body completes', async () => {
+    const response = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"partial":'))
+        },
+      }),
+      { status: 200 },
+    )
+
+    await expect(
+      fetchWithProviderReliability(
+        'https://provider.example.test/v1/messages',
+        { method: 'POST' },
+        {
+          fetch: async () => response,
+          maxRetries: 0,
+          timeoutMs: 5,
+          failureMessage: () => 'provider request failed',
+        },
+      ),
+    ).rejects.toBeInstanceOf(ProviderTimeoutError)
   })
 
   test('provider timeout can be overridden by environment variables', () => {

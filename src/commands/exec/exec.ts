@@ -3,6 +3,8 @@ import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { getCwd } from '../../utils/cwd.js'
 import type {
   BackgroundTask,
+  FanoutBackgroundOptions,
+  StartBackgroundTaskOptions,
   StartBackgroundTaskResult,
 } from '../../services/agents/backgroundRunner.js'
 import {
@@ -129,6 +131,19 @@ type RunExecPoolOptions = {
   streamTaskBoard?: boolean
   writeTaskBoard?: (text: string) => void
   legacyRunner?: (prompts: string[], opts: RunExecPoolOptions) => Promise<ExecPoolResult[]>
+  backgroundRunner?: {
+    startBackgroundTask: (
+      options: StartBackgroundTaskOptions,
+    ) => Promise<StartBackgroundTaskResult>
+    fanoutBackgroundTasks: (
+      options: FanoutBackgroundOptions,
+    ) => Promise<StartBackgroundTaskResult[]>
+  }
+}
+
+export function normalizeExecConcurrency(value: number): number {
+  if (!Number.isFinite(value)) return 1
+  return Math.max(1, Math.min(32, Math.floor(value)))
 }
 
 export async function readPrompts(tokens: string[]): Promise<string[]> {
@@ -600,8 +615,16 @@ export async function runExecPool(
   prompts: string[],
   opts: RunExecPoolOptions,
 ): Promise<ExecPoolResult[]> {
-  const planning = resolvePromptPlanningConfig(opts.planning)
-  if (opts.dryRun) {
+  if (prompts.length === 0) {
+    return []
+  }
+
+  const normalizedOpts = {
+    ...opts,
+    concurrency: normalizeExecConcurrency(opts.concurrency),
+  }
+  const planning = resolvePromptPlanningConfig(normalizedOpts.planning)
+  if (normalizedOpts.dryRun) {
     return prompts.map((prompt, index) => ({
       task: {
         id: `dry-run-${index}`,
@@ -615,47 +638,76 @@ export async function runExecPool(
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
-      command: execCommandForPrompt(prompt, opts),
+      command: execCommandForPrompt(prompt, normalizedOpts),
       dryRun: true,
       ...planPrompt(prompt, planning),
     }))
   }
 
   if (planning.taskPlanning) {
-    return await runPromptPlans(prompts, { ...opts, planning })
+    return await runPromptPlans(prompts, { ...normalizedOpts, planning })
   }
 
-  if (opts.legacyRunner) {
-    return await opts.legacyRunner(prompts, opts)
+  if (normalizedOpts.legacyRunner) {
+    return await normalizedOpts.legacyRunner(prompts, normalizedOpts)
   }
 
-  const {
-    fanoutBackgroundTasks,
-    startBackgroundTask,
-  } = await import('../../services/agents/backgroundRunner.js')
+  const backgroundRunner =
+    normalizedOpts.backgroundRunner ??
+    (await import('../../services/agents/backgroundRunner.js'))
+  const { fanoutBackgroundTasks, startBackgroundTask } = backgroundRunner
 
-  if (opts.concurrency === 1 && prompts.length === 1) {
-    const command = execCommandForPrompt(prompts[0]!, opts)
+  if (normalizedOpts.concurrency === 1 && prompts.length === 1) {
+    const command = execCommandForPrompt(prompts[0]!, normalizedOpts)
     return [
       await startBackgroundTask({
-        cwd: opts.cwd,
+        cwd: normalizedOpts.cwd,
         task: prompts[0]!,
-        worktree: opts.worktree,
-        model: opts.model,
-        maxTurns: opts.maxTurns,
+        worktree: normalizedOpts.worktree,
+        model: normalizedOpts.model,
+        maxTurns: normalizedOpts.maxTurns,
         bin: { file: command[0]!, baseArgs: command.slice(1, -1) },
       }),
     ]
   }
 
-  return await fanoutBackgroundTasks({
-    cwd: opts.cwd,
-    task: prompts[0]!,
-    agents: Math.min(prompts.length, opts.concurrency),
-    worktree: opts.worktree,
-    model: opts.model,
-    maxTurns: opts.maxTurns,
-  })
+  // Preserve the existing single-prompt fanout path. Multi-prompt input is
+  // different: every line is an independent task and must be started exactly
+  // once rather than cloning prompts[0] and dropping the rest.
+  if (prompts.length === 1) {
+    return await fanoutBackgroundTasks({
+      cwd: normalizedOpts.cwd,
+      task: prompts[0]!,
+      agents: 1,
+      worktree: normalizedOpts.worktree,
+      model: normalizedOpts.model,
+      maxTurns: normalizedOpts.maxTurns,
+    })
+  }
+
+  const results: ExecPoolResult[] = new Array(prompts.length)
+  let nextIndex = 0
+  const workers = Array.from(
+    {
+      length: Math.min(normalizedOpts.concurrency, prompts.length),
+    },
+    async () => {
+      for (;;) {
+        const index = nextIndex
+        nextIndex += 1
+        if (index >= prompts.length) return
+        results[index] = await startBackgroundTask({
+          cwd: normalizedOpts.cwd,
+          task: prompts[index]!,
+          worktree: normalizedOpts.worktree,
+          model: normalizedOpts.model,
+          maxTurns: normalizedOpts.maxTurns,
+        })
+      }
+    },
+  )
+  await Promise.all(workers)
+  return results
 }
 
 function writeOutputFile(outputDir: string, prompt: string, content: string): void {
@@ -671,7 +723,9 @@ function writeOutputFile(outputDir: string, prompt: string, content: string): vo
 export const call: LocalCommandCall = async (args: string) => {
   const tokens = parseArguments(args)
   const json = tokens.includes('--json')
-  const concurrency = Math.max(1, Math.min(32, Number(option(tokens, '--concurrency') ?? '1')))
+  const concurrency = normalizeExecConcurrency(
+    Number(option(tokens, '--concurrency') ?? '1'),
+  )
   const maxTurns = option(tokens, '--max-turns') ? Number(option(tokens, '--max-turns')) : undefined
   const model = option(tokens, '--model')
   const outputDir = option(tokens, '--output-dir')

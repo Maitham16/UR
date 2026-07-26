@@ -226,6 +226,35 @@ function createTimeoutSignal(
   }
 }
 
+async function waitForResponseBody(
+  response: Response,
+  signal: AbortSignal,
+): Promise<void> {
+  const body = response.clone().body
+  if (!body) return
+
+  const reader = body.getReader()
+  const onAbort = () => {
+    void reader.cancel(signal.reason).catch(() => {})
+  }
+  signal.addEventListener('abort', onAbort, { once: true })
+  try {
+    while (true) {
+      if (signal.aborted) {
+        throw signal.reason ?? new Error('aborted')
+      }
+      const { done } = await reader.read()
+      if (done) break
+    }
+    if (signal.aborted) {
+      throw signal.reason ?? new Error('aborted')
+    }
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+    reader.releaseLock()
+  }
+}
+
 export async function fetchWithProviderReliability(
   input: RequestInfo | URL,
   init: RequestInit,
@@ -233,6 +262,8 @@ export async function fetchWithProviderReliability(
     maxRetries?: number
     timeoutMs?: number
     signal?: AbortSignal
+    /** Keep the response body open for SSE/streaming consumers. */
+    streaming?: boolean
     fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
     failureMessage: (response: Response, body: string) => string
   },
@@ -253,6 +284,12 @@ export async function fetchWithProviderReliability(
           body,
           headers: response.headers,
         })
+      }
+      if (!options.streaming) {
+        // fetch() resolves as soon as headers arrive. Drain a clone before
+        // releasing the timeout so a stalled JSON body cannot hang forever;
+        // the original response remains readable by the caller.
+        await waitForResponseBody(response, timeout.signal)
       }
       return response
     } catch (error) {

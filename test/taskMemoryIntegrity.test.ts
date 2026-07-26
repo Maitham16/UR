@@ -137,4 +137,32 @@ describe('tamper-evident task memory', () => {
     expect(() => appendTaskMemory(cwd, 'note', 'unsafe')).toThrow('symlink')
     expect(readFileSync(outside, 'utf8')).toBe('do-not-touch\n')
   })
+
+  test('rejects invalid metadata before it can corrupt the integrity chain', () => {
+    const cwd = temporaryDirectory()
+    const first = appendTaskMemory(cwd, 'decision', 'valid entry')
+
+    expect(() =>
+      appendTaskMemory(cwd, 'decision', 'invalid status', {
+        status: 'invalid' as never,
+      }),
+    ).toThrow('metadata')
+    expect(() =>
+      appendTaskMemory(cwd, 'decision', 'missing superseded entry', {
+        supersedesId: 'missing',
+      }),
+    ).toThrow('earlier entry')
+    expect(() =>
+      appendTaskMemory(cwd, 'decision', 'missing provenance parent', {
+        provenance: {
+          sourceKind: 'agent',
+          parentIds: ['missing'],
+        },
+      }),
+    ).toThrow('missing parent')
+
+    const verification = verifyTaskMemory(cwd)
+    expect(verification.valid).toBe(true)
+    expect(verification.entries.map(entry => entry.id)).toEqual([first.id])
+  })
 })

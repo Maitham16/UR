@@ -16,6 +16,8 @@ type MessageUpdate = {
   newContext?: ToolUseContext
 }
 
+type RunToolUse = typeof runToolUse
+
 type ToolStatus = 'queued' | 'executing' | 'completed' | 'yielded'
 
 // Default cap on concurrently-executing read-safe tools. Matches the
@@ -59,6 +61,7 @@ export class StreamingToolExecutor {
     private readonly toolDefinitions: Tools,
     private readonly canUseTool: CanUseToolFn,
     toolUseContext: ToolUseContext,
+    private readonly runToolUseFn: RunToolUse = runToolUse,
   ) {
     this.toolUseContext = toolUseContext
     this.siblingAbortController = createChildAbortController(
@@ -69,10 +72,44 @@ export class StreamingToolExecutor {
   /**
    * Discards all pending and in-progress tools. Called when streaming fallback
    * occurs and results from the failed attempt should be abandoned.
-   * Queued tools won't start, and in-progress tools will receive synthetic errors.
+   * Queued tools won't start, and in-progress tools are aborted.
    */
   discard(): void {
+    if (this.discarded) {
+      return
+    }
+
     this.discarded = true
+
+    // Abort the executor-owned controller rather than the query controller:
+    // fallback should stop abandoned tools without ending the replacement
+    // attempt. Per-tool child controllers inherit this abort.
+    if (!this.siblingAbortController.signal.aborted) {
+      this.siblingAbortController.abort('streaming_fallback')
+    }
+
+    for (const tool of this.tools) {
+      tool.pendingProgress.length = 0
+
+      // Queued tools were never registered as in progress and must never start.
+      if (tool.status === 'queued') {
+        tool.status = 'yielded'
+        continue
+      }
+
+      // Completed and executing results are intentionally not yielded after a
+      // fallback, so clear their UI bookkeeping here instead.
+      if (tool.status !== 'yielded') {
+        markToolUseAsComplete(this.toolUseContext, tool.id)
+      }
+    }
+
+    this.toolUseContext.setHasInterruptibleToolInProgress?.(false)
+
+    // A caller may already be blocked in getRemainingResults(). Wake it so the
+    // discarded attempt can settle even if a tool ignores its abort signal.
+    this.progressAvailableResolve?.()
+    this.progressAvailableResolve = undefined
   }
 
   /**
@@ -143,7 +180,7 @@ export class StreamingToolExecutor {
     const envCap = Number(process.env.UR_MAX_CONCURRENT_TOOLS)
     const cap =
       Number.isFinite(envCap) && envCap >= 1
-        ? Math.min(envCap, 32)
+        ? Math.min(Math.floor(envCap), 32)
         : MAX_CONCURRENT_TOOLS
     return executingTools.length < cap
   }
@@ -152,7 +189,14 @@ export class StreamingToolExecutor {
    * Process the queue, starting tools when concurrency conditions allow
    */
   private async processQueue(): Promise<void> {
+    if (this.discarded) {
+      return
+    }
+
     for (const tool of this.tools) {
+      if (this.discarded) {
+        return
+      }
       if (tool.status !== 'queued') continue
 
       if (this.canExecuteTool(tool.isConcurrencySafe)) {
@@ -331,7 +375,7 @@ export class StreamingToolExecutor {
         { once: true },
       )
 
-      const generator = runToolUse(
+      const generator = this.runToolUseFn(
         tool.block,
         tool.assistantMessage,
         this.canUseTool,
@@ -469,8 +513,12 @@ export class StreamingToolExecutor {
       return
     }
 
-    while (this.hasUnfinishedTools()) {
+    while (!this.discarded && this.hasUnfinishedTools()) {
       await this.processQueue()
+
+      if (this.discarded) {
+        return
+      }
 
       for (const result of this.getCompletedResults()) {
         yield result

@@ -5,15 +5,40 @@ import { join } from 'node:path'
 import {
   call,
   changedFilesSinceBefore,
+  normalizeExecConcurrency,
   readPrompts,
   runExecPool,
 } from '../src/commands/exec/exec.js'
 import { runWithCwdOverride } from '../src/utils/cwd.js'
+import type { StartBackgroundTaskResult } from '../src/services/agents/backgroundRunner.js'
 import type { TaskExecutionEvent } from '../src/services/promptPlanning/index.js'
 
 function tempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
+
+function legacyResult(cwd: string, task: string): StartBackgroundTaskResult {
+  return {
+    task: {
+      id: `legacy-${task}`,
+      task,
+      status: 'queued',
+      cwd,
+      runCwd: cwd,
+      logFile: '',
+      outputFile: '',
+      inboxFile: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    command: ['ur', '-p', task],
+    dryRun: false,
+  }
+}
+
+type TestBackgroundRunner = NonNullable<
+  Parameters<typeof runExecPool>[1]['backgroundRunner']
+>
 
 describe('ur exec command', () => {
   test('changed file evidence excludes old dirty files when task changes nothing', () => {
@@ -163,6 +188,118 @@ describe('ur exec command', () => {
       expect(planned).toBe(false)
       expect(results[0]!.plan).toBeUndefined()
       expect(results[0]!.task.id).toBe('legacy-0')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('legacy multi-prompt execution starts each prompt exactly once', async () => {
+    const dir = tempDir('ur-exec-legacy-multi-')
+    try {
+      const started: string[] = []
+      let active = 0
+      let maxActive = 0
+      const results = await runExecPool(['first', 'second', 'third'], {
+        cwd: dir,
+        concurrency: 2,
+        planning: { taskPlanning: false },
+        backgroundRunner: {
+          startBackgroundTask: async options => {
+            started.push(options.task)
+            active += 1
+            maxActive = Math.max(maxActive, active)
+            await Bun.sleep(1)
+            active -= 1
+            return legacyResult(dir, options.task)
+          },
+          fanoutBackgroundTasks: async () => {
+            throw new Error('multi-prompt execution must not use fanout')
+          },
+        },
+      })
+
+      expect(results.map(result => result.task.task)).toEqual([
+        'first',
+        'second',
+        'third',
+      ])
+      expect(started.sort()).toEqual(['first', 'second', 'third'])
+      expect(maxActive).toBe(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('legacy single-prompt execution preserves direct and fanout paths', async () => {
+    const dir = tempDir('ur-exec-legacy-single-')
+    try {
+      const directBins: Array<{ file: string; baseArgs: string[] } | undefined> =
+        []
+      const fanoutCalls: Array<{ task: string; agents: number }> = []
+      const backgroundRunner = {
+        startBackgroundTask: async (
+          options: Parameters<TestBackgroundRunner['startBackgroundTask']>[0],
+        ) => {
+          directBins.push(options.bin)
+          return legacyResult(dir, options.task)
+        },
+        fanoutBackgroundTasks: async (
+          options: Parameters<TestBackgroundRunner['fanoutBackgroundTasks']>[0],
+        ) => {
+          fanoutCalls.push({ task: options.task, agents: options.agents })
+          return [legacyResult(dir, options.task)]
+        },
+      }
+
+      await runExecPool(['only'], {
+        cwd: dir,
+        concurrency: 1,
+        planning: { taskPlanning: false },
+        backgroundRunner,
+      })
+      await runExecPool(['only'], {
+        cwd: dir,
+        concurrency: 4,
+        planning: { taskPlanning: false },
+        backgroundRunner,
+      })
+
+      expect(directBins).toHaveLength(1)
+      expect(directBins[0]?.baseArgs).toContain('-p')
+      expect(fanoutCalls).toEqual([{ task: 'only', agents: 1 }])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('invalid concurrency falls back to one worker', async () => {
+    const dir = tempDir('ur-exec-invalid-concurrency-')
+    try {
+      let active = 0
+      let maxActive = 0
+      const results = await runExecPool(['one', 'two'], {
+        cwd: dir,
+        concurrency: Number.NaN,
+        planning: { taskPlanning: false },
+        backgroundRunner: {
+          startBackgroundTask: async options => {
+            active += 1
+            maxActive = Math.max(maxActive, active)
+            await Bun.sleep(1)
+            active -= 1
+            return legacyResult(dir, options.task)
+          },
+          fanoutBackgroundTasks: async () => {
+            throw new Error('multi-prompt execution must not use fanout')
+          },
+        },
+      })
+
+      expect(normalizeExecConcurrency(Number.NaN)).toBe(1)
+      expect(normalizeExecConcurrency(-5)).toBe(1)
+      expect(normalizeExecConcurrency(99)).toBe(32)
+      expect(results).toHaveLength(2)
+      expect(maxActive).toBe(1)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

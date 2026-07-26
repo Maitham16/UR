@@ -311,6 +311,21 @@ const TASK_MEMORY_STORE_ID = 'ur-project-task-memory'
 const TASK_MEMORY_GENESIS = createHash('sha256')
   .update('ur-task-memory-genesis-v2')
   .digest('hex')
+const TASK_MEMORY_STATUSES = new Set([
+  'proposed',
+  'accepted',
+  'rejected',
+  'superseded',
+])
+const TASK_MEMORY_SCOPES = new Set(['project', 'team', 'personal'])
+const TASK_MEMORY_SOURCE_KINDS = new Set([
+  'agent',
+  'user',
+  'tool',
+  'import',
+  'system',
+  'unknown',
+])
 const MAX_TASK_MEMORY_BYTES = 64 * 1024 * 1024
 const MAX_TASK_MEMORY_ENTRY_BYTES = 1024 * 1024
 const TASK_MEMORY_LOCK_STALE_MS = 30_000
@@ -336,6 +351,40 @@ function stableJson(value: unknown): string {
 function taskMemoryEntryDigest(entry: TaskMemoryEntry): string {
   const { contentDigest: _contentDigest, ...signed } = entry
   return hash(`ur-task-memory-entry-v2\n${stableJson(signed)}\n`)
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === 'string'
+}
+
+function hasValidTaskMemoryMetadata(entry: TaskMemoryEntry): boolean {
+  return (
+    (entry.status === undefined || TASK_MEMORY_STATUSES.has(entry.status)) &&
+    (entry.scope === undefined || TASK_MEMORY_SCOPES.has(entry.scope)) &&
+    isOptionalString(entry.rationale) &&
+    isOptionalString(entry.alternativeTo) &&
+    isOptionalString(entry.supersedesId) &&
+    isOptionalString(entry.source)
+  )
+}
+
+function hasValidTaskMemoryProvenance(
+  provenance: TaskMemoryProvenance | undefined,
+  seenIds: ReadonlySet<string>,
+): boolean {
+  return Boolean(
+    provenance &&
+      TASK_MEMORY_SOURCE_KINDS.has(provenance.sourceKind) &&
+      isOptionalString(provenance.sourceRef) &&
+      isOptionalString(provenance.actor) &&
+      (provenance.sourceDigest === undefined ||
+        /^[a-f0-9]{64}$/.test(provenance.sourceDigest)) &&
+      (provenance.parentIds === undefined ||
+        (Array.isArray(provenance.parentIds) &&
+          provenance.parentIds.every(
+            id => typeof id === 'string' && seenIds.has(id),
+          ))),
+  )
 }
 
 function ensureTaskMemoryDirectory(cwd: string): void {
@@ -443,6 +492,16 @@ function validateTaskMemoryEntry(
       },
     }
   }
+  if (!hasValidTaskMemoryMetadata(entry)) {
+    return {
+      issue: {
+        severity: 'error',
+        code: 'entry.metadata',
+        line,
+        message: 'entry contains invalid status, scope, or string metadata',
+      },
+    }
+  }
   return { entry }
 }
 
@@ -536,25 +595,11 @@ export function verifyTaskMemory(cwd: string): TaskMemoryVerification {
         )
       } else {
         verifiedFormatStarted = true
-        const sourceKinds = new Set([
-          'agent',
-          'user',
-          'tool',
-          'import',
-          'system',
-          'unknown',
-        ])
         if (
           !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
             entry.id,
           ) ||
-          !entry.provenance ||
-          !sourceKinds.has(entry.provenance.sourceKind) ||
-          (entry.provenance.sourceDigest !== undefined &&
-            !/^[a-f0-9]{64}$/.test(entry.provenance.sourceDigest)) ||
-          (entry.provenance.parentIds !== undefined &&
-            (!Array.isArray(entry.provenance.parentIds) ||
-              entry.provenance.parentIds.some(id => !seenIds.has(id))))
+          !hasValidTaskMemoryProvenance(entry.provenance, seenIds)
         ) {
           issues.push({
             severity: 'error',
@@ -642,7 +687,20 @@ function durableAppend(path: string, body: string): void {
     0o600,
   )
   try {
-    writeSync(descriptor, body, undefined, 'utf8')
+    const bytes = Buffer.from(body, 'utf8')
+    let offset = 0
+    while (offset < bytes.length) {
+      const written = writeSync(
+        descriptor,
+        bytes,
+        offset,
+        bytes.length - offset,
+      )
+      if (written <= 0) {
+        throw new Error('Failed to append the complete task memory entry')
+      }
+      offset += written
+    }
     fsyncSync(descriptor)
   } finally {
     closeSync(descriptor)
@@ -671,10 +729,33 @@ export function appendTaskMemory(
     if (Buffer.byteLength(text) > MAX_TASK_MEMORY_ENTRY_BYTES) {
       throw new Error('Task memory text exceeds the 1 MiB safety limit')
     }
+    const metadata = {
+      status: meta?.status,
+      rationale: meta?.rationale,
+      alternativeTo: meta?.alternativeTo,
+      supersedesId: meta?.supersedesId,
+      scope: meta?.scope,
+      source: meta?.source,
+    } satisfies Pick<
+      TaskMemoryEntry,
+      | 'status'
+      | 'rationale'
+      | 'alternativeTo'
+      | 'supersedesId'
+      | 'scope'
+      | 'source'
+    >
+    if (!hasValidTaskMemoryMetadata(metadata as TaskMemoryEntry)) {
+      throw new Error('Task memory metadata contains an invalid status, scope, or value')
+    }
     const release = acquireTaskMemoryLock(cwd)
     try {
       const verification = verifyTaskMemory(cwd)
       if (!verification.valid) throw new TaskMemoryIntegrityError(verification)
+      const seenIds = new Set(verification.entries.map(entry => entry.id))
+      if (meta?.supersedesId && !seenIds.has(meta.supersedesId)) {
+        throw new Error('Task memory supersedesId must reference an earlier entry')
+      }
       const at = new Date().toISOString()
       const provenance: TaskMemoryProvenance = {
         sourceKind:
@@ -684,11 +765,10 @@ export function appendTaskMemory(
         actor: meta?.provenance?.actor,
         parentIds: meta?.provenance?.parentIds,
       }
-      if (
-        provenance.sourceDigest !== undefined &&
-        !/^[a-f0-9]{64}$/.test(provenance.sourceDigest)
-      ) {
-        throw new Error('Task memory provenance sourceDigest must be SHA-256 hex')
+      if (!hasValidTaskMemoryProvenance(provenance, seenIds)) {
+        throw new Error(
+          'Task memory provenance is invalid or references a missing parent entry',
+        )
       }
       const entry: TaskMemoryEntry = {
         schemaVersion: TASK_MEMORY_SCHEMA_VERSION,
@@ -696,12 +776,7 @@ export function appendTaskMemory(
         at,
         kind,
         text,
-        status: meta?.status,
-        rationale: meta?.rationale,
-        alternativeTo: meta?.alternativeTo,
-        supersedesId: meta?.supersedesId,
-        scope: meta?.scope,
-        source: meta?.source,
+        ...metadata,
         provenance,
         previousDigest: verification.headDigest,
       }

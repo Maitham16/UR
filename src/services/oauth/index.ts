@@ -24,6 +24,7 @@ export class OAuthService {
   private port: number | null = null
   private manualAuthCodeResolver: ((authorizationCode: string) => void) | null =
     null
+  private expectedState: string | null = null
 
   constructor() {
     this.codeVerifier = crypto.generateCodeVerifier()
@@ -54,6 +55,7 @@ export class OAuthService {
     // Generate PKCE values and state
     const codeChallenge = crypto.generateCodeChallenge(this.codeVerifier)
     const state = crypto.generateState()
+    this.expectedState = state
 
     // Build auth URLs for both automatic and manual flows
     const opts = {
@@ -66,24 +68,39 @@ export class OAuthService {
       loginHint: options?.loginHint,
       loginMethod: options?.loginMethod,
     }
-    const manualFlowUrl = client.buildAuthUrl({ ...opts, isManual: true })
-    const automaticFlowUrl = client.buildAuthUrl({ ...opts, isManual: false })
+    let manualFlowUrl: string
+    let automaticFlowUrl: string
+    try {
+      manualFlowUrl = client.buildAuthUrl({ ...opts, isManual: true })
+      automaticFlowUrl = client.buildAuthUrl({ ...opts, isManual: false })
+    } catch (error) {
+      this.authCodeListener.close()
+      this.expectedState = null
+      throw error
+    }
 
     // Wait for either automatic or manual auth code
-    const authorizationCode = await this.waitForAuthorizationCode(
-      state,
-      async () => {
-        if (options?.skipBrowserOpen) {
-          // Hand both URLs to the caller. The automatic one still works
-          // if the caller opens it on the same host (localhost listener
-          // is running); the manual one works from anywhere.
-          await authURLHandler(manualFlowUrl, automaticFlowUrl)
-        } else {
-          await authURLHandler(manualFlowUrl) // Show manual option to user
-          await openBrowser(automaticFlowUrl) // Try automatic flow
-        }
-      },
-    )
+    let authorizationCode: string
+    try {
+      authorizationCode = await this.waitForAuthorizationCode(
+        state,
+        async () => {
+          if (options?.skipBrowserOpen) {
+            // Hand both URLs to the caller. The automatic one still works
+            // if the caller opens it on the same host (localhost listener
+            // is running); the manual one works from anywhere.
+            await authURLHandler(manualFlowUrl, automaticFlowUrl)
+          } else {
+            await authURLHandler(manualFlowUrl) // Show manual option to user
+            await openBrowser(automaticFlowUrl) // Try automatic flow
+          }
+        },
+      )
+    } catch (error) {
+      this.authCodeListener?.close()
+      this.expectedState = null
+      throw error
+    }
 
     // Check if the automatic flow is still active (has a pending response)
     const isAutomaticFlow = this.authCodeListener?.hasPendingResponse() ?? false
@@ -128,6 +145,7 @@ export class OAuthService {
     } finally {
       // Always cleanup
       this.authCodeListener?.close()
+      this.expectedState = null
     }
   }
 
@@ -159,6 +177,9 @@ export class OAuthService {
     state: string
   }): void {
     if (this.manualAuthCodeResolver) {
+      if (!this.expectedState || params.state !== this.expectedState) {
+        throw new Error('Invalid OAuth state parameter')
+      }
       this.manualAuthCodeResolver(params.authorizationCode)
       this.manualAuthCodeResolver = null
       // Close the auth code listener since manual input was used
@@ -194,5 +215,6 @@ export class OAuthService {
   cleanup(): void {
     this.authCodeListener?.close()
     this.manualAuthCodeResolver = null
+    this.expectedState = null
   }
 }

@@ -17,7 +17,9 @@ function getOauthConfigType(): OauthConfigType {
 }
 
 export function fileSuffixForOauthConfig(): string {
-  return ''
+  return getOauthConfigType() === 'local'
+    ? getLocalOauthConfig().OAUTH_FILE_SUFFIX
+    : ''
 }
 
 export const UR_AI_INFERENCE_SCOPE = 'user:inference' as const
@@ -140,6 +142,10 @@ export function getOauthConfig(): {
   MCP_PROXY_URL: string
   MCP_PROXY_PATH: string
 } {
+  if (getOauthConfigType() === 'local') {
+    return getLocalOauthConfig()
+  }
+
   // OAuth is not used for local Ollama-only execution. All URLs are left
   // empty so the type surface is complete but no network calls are made.
   return {

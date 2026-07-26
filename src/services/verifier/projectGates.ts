@@ -82,13 +82,13 @@ export async function loadVerifyConfig(
  * Decide which command list (if any) to run.
  *
  * - modifiedFiles non-empty → run `afterEdit`, after ignorePatterns filter.
- * - ranBash and modifiedFiles empty → run `afterBash`.
+ * - ranShell and modifiedFiles empty → run legacy `afterBash`.
  * - otherwise → return null (nothing to run).
  */
 export function pickCommands(
   config: VerifyConfig,
   modifiedFiles: string[],
-  ranBash: boolean,
+  ranShell: boolean,
   cwd?: string,
 ): string[] | null {
   const filteredEdits = filterIgnored(modifiedFiles, config.ignorePatterns, cwd)
@@ -100,7 +100,7 @@ export function pickCommands(
     return config.afterEdit
   }
   if (
-    ranBash &&
+    ranShell &&
     filteredEdits.length === 0 &&
     config.afterBash &&
     config.afterBash.length > 0

@@ -1105,10 +1105,15 @@ export async function saveApiKey(apiKey: string): Promise<void> {
       // Process monitors only see "security -i", not the password
       const command = `add-generic-password -U -a "${username}" -s "${storageServiceName}" -X "${hexValue}"\n`
 
-      await execa('security', ['-i'], {
+      const result = await execa('security', ['-i'], {
         input: command,
         reject: false,
       })
+      if (result.exitCode !== 0) {
+        throw new Error(
+          `macOS keychain write failed with exit code ${result.exitCode ?? 'unknown'}`,
+        )
+      }
 
       logEvent('tengu_api_key_saved_to_keychain', {})
       savedToKeychain = true

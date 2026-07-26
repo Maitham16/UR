@@ -2,6 +2,8 @@ import {
   DEFAULT_PROMPT_PLANNING_CONFIG,
   resolvePromptPlanningConfig,
 } from './config.js'
+import { realpathSync } from 'node:fs'
+import { basename, dirname, resolve } from 'node:path'
 import {
   captureWorkspaceFileState,
   diffWorkspaceFileState,
@@ -40,8 +42,37 @@ function cloneTasks(tasks: NexusTask[]): NexusTask[] {
   }))
 }
 
-function lockKeys(task: NexusTask): string[] {
-  return [...new Set([...task.input.requiredFiles, ...task.input.targetFiles])]
+function canonicalLockKey(cwd: string, value: string): string {
+  const absolute = resolve(cwd, value)
+  try {
+    return realpathSync.native(absolute)
+  } catch {
+    // The target may not exist yet. Canonicalize its deepest existing parent
+    // so aliases such as `file`, `./file`, and `linked-dir/file` share a lock.
+    const suffix: string[] = []
+    let current = absolute
+    for (;;) {
+      const parent = dirname(current)
+      if (parent === current) return absolute
+      suffix.unshift(basename(current))
+      current = parent
+      try {
+        return resolve(realpathSync.native(current), ...suffix)
+      } catch {
+        // Keep walking toward an existing ancestor.
+      }
+    }
+  }
+}
+
+function lockKeys(task: NexusTask, cwd: string): string[] {
+  return [
+    ...new Set(
+      [...task.input.requiredFiles, ...task.input.targetFiles].map(value =>
+        canonicalLockKey(cwd, value),
+      ),
+    ),
+  ]
 }
 
 function dependenciesFinished(task: NexusTask, tasksById: Map<string, NexusTask>): boolean {
@@ -63,16 +94,28 @@ function dependenciesFailed(task: NexusTask, tasksById: Map<string, NexusTask>):
   })
 }
 
-function isLocked(task: NexusTask, activeLocks: Set<string>): boolean {
-  return lockKeys(task).some(key => activeLocks.has(key))
+function isLocked(
+  task: NexusTask,
+  activeLocks: Set<string>,
+  cwd: string,
+): boolean {
+  return lockKeys(task, cwd).some(key => activeLocks.has(key))
 }
 
-function acquireLocks(task: NexusTask, activeLocks: Set<string>): void {
-  for (const key of lockKeys(task)) activeLocks.add(key)
+function acquireLocks(
+  task: NexusTask,
+  activeLocks: Set<string>,
+  cwd: string,
+): void {
+  for (const key of lockKeys(task, cwd)) activeLocks.add(key)
 }
 
-function releaseLocks(task: NexusTask, activeLocks: Set<string>): void {
-  for (const key of lockKeys(task)) activeLocks.delete(key)
+function releaseLocks(
+  task: NexusTask,
+  activeLocks: Set<string>,
+  cwd: string,
+): void {
+  for (const key of lockKeys(task, cwd)) activeLocks.delete(key)
 }
 
 function summary(
@@ -246,12 +289,12 @@ function runnablePlanningTasks(tasks: NexusTask[]): NexusTask[] {
   )
 }
 
-function independentWidth(tasks: NexusTask[]): number {
+function independentWidth(tasks: NexusTask[], cwd: string): number {
   const selectedLocks = new Set<string>()
   let width = 0
   for (const task of runnablePlanningTasks(tasks)) {
     if (task.dependencies.length > 0) continue
-    const keys = lockKeys(task)
+    const keys = lockKeys(task, cwd)
     if (keys.length > 0 && keys.some(key => selectedLocks.has(key))) continue
     for (const key of keys) selectedLocks.add(key)
     width += 1
@@ -262,12 +305,13 @@ function independentWidth(tasks: NexusTask[]): number {
 function usefulAgentCount(
   tasks: NexusTask[],
   config: { parallelAgents: boolean; maxAgents: number },
+  cwd: string,
 ): number {
   if (!config.parallelAgents) return 1
   const runnable = runnablePlanningTasks(tasks)
   if (runnable.length <= 1) return 1
 
-  const width = Math.max(1, independentWidth(tasks))
+  const width = Math.max(1, independentWidth(tasks, cwd))
   if (runnable.length <= 4) {
     return Math.max(1, Math.min(config.maxAgents, 3, width))
   }
@@ -390,7 +434,7 @@ export async function runPromptPlan(
   const maxAgents = usefulAgentCount(tasks, {
     parallelAgents: config.parallelAgents,
     maxAgents: maxAgentsAllowed,
-  })
+  }, options.cwd)
   let maxAgentsUsed = 0
 
   emitBoard(options, tasks, maxAgentsAllowed)
@@ -411,13 +455,13 @@ export async function runPromptPlan(
       task =>
         task.status === 'ready' &&
         running.size < maxAgents &&
-        !isLocked(task, activeLocks),
+        !isLocked(task, activeLocks, options.cwd),
     )
 
     for (const task of ready) {
       if (running.size >= maxAgents) break
-      if (isLocked(task, activeLocks)) continue
-      acquireLocks(task, activeLocks)
+      if (isLocked(task, activeLocks, options.cwd)) continue
+      acquireLocks(task, activeLocks, options.cwd)
       const promise = runOneTask(
         task,
         tasks,
@@ -426,7 +470,7 @@ export async function runPromptPlan(
         lastStatuses,
         maxAgentsAllowed,
       ).finally(() => {
-        releaseLocks(task, activeLocks)
+        releaseLocks(task, activeLocks, options.cwd)
         running.delete(promise)
       })
       running.add(promise)

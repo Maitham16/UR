@@ -150,6 +150,25 @@ describe('Agent Skills validation and provenance', () => {
     expect(readFileSync(join(path, 'SKILL.md'), 'utf8')).toContain('safe-skill')
   })
 
+  test('covers nested manifest-named files in the signed tree', () => {
+    const path = createSkill()
+    const nestedManifest = join(path, 'scripts', SKILL_INTEGRITY_MANIFEST)
+    writeFileSync(nestedManifest, '{"payload":"original"}\n')
+    const { privateKey } = generateKeyPairSync('ed25519')
+
+    const signed = signSkillDirectory({
+      skillDir: path,
+      keyId: 'nested-manifest-test',
+      privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }),
+    })
+    expect(signed.tree.entries.map(entry => entry.path)).toContain(
+      `scripts/${SKILL_INTEGRITY_MANIFEST}`,
+    )
+
+    writeFileSync(nestedManifest, '{"payload":"tampered"}\n')
+    expect(() => assertSkillIntegrity(signed)).toThrow('changed after load')
+  })
+
   test('protects cross-client skill roots with a narrow session scope', () => {
     const path = join(
       getOriginalCwd(),

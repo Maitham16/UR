@@ -736,6 +736,9 @@ export class OpenAIResponsesHTTPTransport {
         maxRetries: this.#maxRetries,
         timeoutMs: options.timeoutMs,
         signal: options.signal,
+        streaming:
+          body?.stream === true ||
+          new URL(url).searchParams.get('stream') === 'true',
         failureMessage: (response, responseBody) =>
           `OpenAI Responses request failed (${response.status}): ${responseBody || response.statusText}`,
       },

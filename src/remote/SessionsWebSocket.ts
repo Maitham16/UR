@@ -18,6 +18,32 @@ import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
 const RECONNECT_DELAY_MS = 2000
 const MAX_RECONNECT_ATTEMPTS = 5
 const PING_INTERVAL_MS = 30000
+const MAX_QUEUED_CONTROL_RESPONSES = 100
+export const MAX_QUEUED_CONTROL_RESPONSE_BYTES = 8 * 1024 * 1024
+
+export function buildSessionsWebSocketUrl(
+  baseUrl: string,
+  sessionId: string,
+  orgUuid: string,
+): string {
+  const url = new URL(baseUrl)
+  if (url.protocol === 'http:') {
+    url.protocol = 'ws:'
+  } else if (url.protocol === 'https:') {
+    url.protocol = 'wss:'
+  } else if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
+    throw new Error(
+      `[SessionsWebSocket] Unsupported API URL protocol: ${url.protocol}`,
+    )
+  }
+
+  const basePath = url.pathname.replace(/\/+$/, '')
+  url.pathname = `${basePath}/v1/sessions/ws/${encodeURIComponent(sessionId)}/subscribe`
+  url.search = ''
+  url.hash = ''
+  url.searchParams.set('organization_uuid', orgUuid)
+  return url.toString()
+}
 
 /**
  * Maximum retries for 4001 (session not found). During compaction the
@@ -65,6 +91,16 @@ export type SessionsWebSocketCallbacks = {
   onReconnecting?: () => void
 }
 
+export type SessionsWebSocketOptions = {
+  /** Test hook for deterministic reconnect scheduling. */
+  scheduleReconnect?: (
+    callback: () => void,
+    delayMs: number,
+  ) => NodeJS.Timeout
+  /** Paired with scheduleReconnect when a scheduled retry is cancelled. */
+  clearReconnect?: (timer: NodeJS.Timeout) => void
+}
+
 // Common interface between globalThis.WebSocket and ws.WebSocket
 type WebSocketLike = {
   close(): void
@@ -87,27 +123,61 @@ export class SessionsWebSocket {
   private sessionNotFoundRetries = 0
   private pingInterval: NodeJS.Timeout | null = null
   private reconnectTimer: NodeJS.Timeout | null = null
+  private queuedControlResponses = new Map<
+    string,
+    { payload: string; bytes: number }
+  >()
+  private queuedControlResponseBytes = 0
 
   constructor(
     private readonly sessionId: string,
     private readonly orgUuid: string,
     private readonly getAccessToken: () => string,
     private readonly callbacks: SessionsWebSocketCallbacks,
+    private readonly options: SessionsWebSocketOptions = {},
   ) {}
 
   /**
    * Connect to the sessions WebSocket endpoint
    */
   async connect(): Promise<void> {
-    if (this.state === 'connecting') {
-      logForDebugging('[SessionsWebSocket] Already connecting')
+    if (this.state !== 'closed') {
+      logForDebugging(
+        `[SessionsWebSocket] Already ${this.state}, skipping duplicate connect`,
+      )
       return
     }
 
     this.state = 'connecting'
 
-    const baseUrl = getOauthConfig().BASE_API_URL.replace('https://', 'wss://')
-    const url = `${baseUrl}/v1/sessions/ws/${this.sessionId}/subscribe?organization_uuid=${this.orgUuid}`
+    try {
+      await this.openConnection()
+    } catch (error) {
+      const connectionError =
+        error instanceof Error ? error : new Error(errorMessage(error))
+      logError(
+        new Error(
+          `[SessionsWebSocket] Connection setup failed: ${connectionError.message}`,
+        ),
+      )
+      this.callbacks.onError?.(connectionError)
+
+      const failedSocket = this.ws
+      this.handleClose(1006, failedSocket ?? undefined)
+      try {
+        failedSocket?.close()
+      } catch {
+        // The constructor or listener setup may have left a partial socket.
+      }
+    }
+  }
+
+  private async openConnection(): Promise<void> {
+    const url = buildSessionsWebSocketUrl(
+      getOauthConfig().BASE_API_URL,
+      this.sessionId,
+      this.orgUuid,
+    )
 
     logForDebugging(`[SessionsWebSocket] Connecting to ${url}`)
 
@@ -128,16 +198,7 @@ export class SessionsWebSocket {
       } as unknown as string[])
       this.ws = ws
 
-      ws.addEventListener('open', () => {
-        logForDebugging(
-          '[SessionsWebSocket] Connection opened, authenticated via headers',
-        )
-        this.state = 'connected'
-        this.reconnectAttempts = 0
-        this.sessionNotFoundRetries = 0
-        this.startPingInterval()
-        this.callbacks.onConnected?.()
-      })
+      ws.addEventListener('open', () => this.handleOpen(ws))
 
       ws.addEventListener('message', (event: MessageEvent) => {
         const data =
@@ -156,7 +217,7 @@ export class SessionsWebSocket {
         logForDebugging(
           `[SessionsWebSocket] Closed: code=${event.code} reason=${event.reason}`,
         )
-        this.handleClose(event.code)
+        this.handleClose(event.code, ws)
       })
 
       ws.addEventListener('pong', () => {
@@ -164,6 +225,8 @@ export class SessionsWebSocket {
       })
     } else {
       const { default: WS } = await import('ws')
+      if (this.state !== 'connecting') return
+
       const ws = new WS(url, {
         headers,
         agent: getWebSocketProxyAgent(url),
@@ -171,17 +234,7 @@ export class SessionsWebSocket {
       })
       this.ws = ws
 
-      ws.on('open', () => {
-        logForDebugging(
-          '[SessionsWebSocket] Connection opened, authenticated via headers',
-        )
-        // Auth is handled via headers, so we're immediately connected
-        this.state = 'connected'
-        this.reconnectAttempts = 0
-        this.sessionNotFoundRetries = 0
-        this.startPingInterval()
-        this.callbacks.onConnected?.()
-      })
+      ws.on('open', () => this.handleOpen(ws))
 
       ws.on('message', (data: Buffer) => {
         this.handleMessage(data.toString())
@@ -196,13 +249,45 @@ export class SessionsWebSocket {
         logForDebugging(
           `[SessionsWebSocket] Closed: code=${code} reason=${reason.toString()}`,
         )
-        this.handleClose(code)
+        this.handleClose(code, ws)
       })
 
       ws.on('pong', () => {
         logForDebugging('[SessionsWebSocket] Pong received')
       })
     }
+  }
+
+  private handleOpen(ws: WebSocketLike): void {
+    if (this.ws !== ws || this.state !== 'connecting') {
+      ws.close()
+      return
+    }
+
+    logForDebugging(
+      '[SessionsWebSocket] Connection opened, authenticated via headers',
+    )
+    this.state = 'connected'
+    this.reconnectAttempts = 0
+    this.sessionNotFoundRetries = 0
+    this.startPingInterval()
+
+    if (!this.flushQueuedControlResponses()) {
+      const error = new Error(
+        '[SessionsWebSocket] Failed to flush queued control responses',
+      )
+      logError(error)
+      this.callbacks.onError?.(error)
+      this.handleClose(1006, ws)
+      try {
+        ws.close()
+      } catch {
+        // handleClose already scheduled a retry.
+      }
+      return
+    }
+
+    this.callbacks.onConnected?.()
   }
 
   /**
@@ -232,7 +317,14 @@ export class SessionsWebSocket {
   /**
    * Handle WebSocket close
    */
-  private handleClose(closeCode: number): void {
+  private handleClose(
+    closeCode: number,
+    source?: WebSocketLike,
+  ): void {
+    if (source && this.ws !== source) {
+      return
+    }
+
     this.stopPingInterval()
 
     if (this.state === 'closed') {
@@ -249,6 +341,7 @@ export class SessionsWebSocket {
       logForDebugging(
         `[SessionsWebSocket] Permanent close code ${closeCode}, not reconnecting`,
       )
+      this.discardQueuedControlResponses('permanent close')
       this.callbacks.onClose?.()
       return
     }
@@ -262,6 +355,7 @@ export class SessionsWebSocket {
         logForDebugging(
           `[SessionsWebSocket] 4001 retry budget exhausted (${MAX_SESSION_NOT_FOUND_RETRIES}), not reconnecting`,
         )
+        this.discardQueuedControlResponses('session-not-found retry exhaustion')
         this.callbacks.onClose?.()
         return
       }
@@ -272,9 +366,11 @@ export class SessionsWebSocket {
       return
     }
 
-    // Attempt reconnection if we were connected
+    // Retry both dropped established sockets and handshakes that closed before
+    // reaching OPEN. The latter is the normal shape of ECONNREFUSED/DNS/TLS
+    // failures and must not leave the initial connection permanently dead.
     if (
-      previousState === 'connected' &&
+      (previousState === 'connecting' || previousState === 'connected') &&
       this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS
     ) {
       this.reconnectAttempts++
@@ -284,19 +380,25 @@ export class SessionsWebSocket {
       )
     } else {
       logForDebugging('[SessionsWebSocket] Not reconnecting')
+      this.discardQueuedControlResponses('reconnect retry exhaustion')
       this.callbacks.onClose?.()
     }
   }
 
   private scheduleReconnect(delay: number, label: string): void {
-    this.callbacks.onReconnecting?.()
+    if (this.reconnectTimer) {
+      logForDebugging('[SessionsWebSocket] Reconnect already scheduled')
+      return
+    }
     logForDebugging(
       `[SessionsWebSocket] Scheduling reconnect (${label}) in ${delay}ms`,
     )
-    this.reconnectTimer = setTimeout(() => {
+    const schedule = this.options.scheduleReconnect ?? setTimeout
+    this.reconnectTimer = schedule(() => {
       this.reconnectTimer = null
       void this.connect()
     }, delay)
+    this.callbacks.onReconnecting?.()
   }
 
   private startPingInterval(): void {
@@ -323,17 +425,125 @@ export class SessionsWebSocket {
     }
   }
 
+  private controlResponseKey(response: SDKControlResponse): string {
+    if (typeof response.request_id === 'string') {
+      return response.request_id
+    }
+    if (
+      typeof response.response === 'object' &&
+      response.response !== null &&
+      'request_id' in response.response &&
+      typeof response.response.request_id === 'string'
+    ) {
+      return response.response.request_id
+    }
+    return randomUUID()
+  }
+
+  private enqueueControlResponse(key: string, payload: string): boolean {
+    const payloadBytes = Buffer.byteLength(payload, 'utf8')
+    const previousBytes = this.queuedControlResponses.get(key)?.bytes ?? 0
+    const nextTotalBytes =
+      this.queuedControlResponseBytes - previousBytes + payloadBytes
+    if (
+      !this.queuedControlResponses.has(key) &&
+      this.queuedControlResponses.size >= MAX_QUEUED_CONTROL_RESPONSES
+    ) {
+      logError(
+        new Error(
+          `[SessionsWebSocket] Control response queue is full (${MAX_QUEUED_CONTROL_RESPONSES})`,
+        ),
+      )
+      return false
+    }
+    if (nextTotalBytes > MAX_QUEUED_CONTROL_RESPONSE_BYTES) {
+      logError(
+        new Error(
+          `[SessionsWebSocket] Control response queue exceeds ${MAX_QUEUED_CONTROL_RESPONSE_BYTES} bytes`,
+        ),
+      )
+      return false
+    }
+
+    this.queuedControlResponses.set(key, { payload, bytes: payloadBytes })
+    this.queuedControlResponseBytes = nextTotalBytes
+    logForDebugging(
+      `[SessionsWebSocket] Queued control response for reconnect (${this.queuedControlResponses.size} pending, ${this.queuedControlResponseBytes} bytes)`,
+    )
+    return true
+  }
+
+  private discardQueuedControlResponses(reason: string): void {
+    if (this.queuedControlResponses.size === 0) return
+    logForDebugging(
+      `[SessionsWebSocket] Discarding ${this.queuedControlResponses.size} queued control response(s): ${reason}`,
+    )
+    this.queuedControlResponses.clear()
+    this.queuedControlResponseBytes = 0
+  }
+
+  private flushQueuedControlResponses(): boolean {
+    if (!this.ws || this.state !== 'connected') return false
+
+    for (const [key, queued] of this.queuedControlResponses) {
+      try {
+        this.ws.send(queued.payload)
+        this.queuedControlResponses.delete(key)
+        this.queuedControlResponseBytes -= queued.bytes
+      } catch (error) {
+        logError(
+          new Error(
+            `[SessionsWebSocket] Queued control response send failed: ${errorMessage(error)}`,
+          ),
+        )
+        return false
+      }
+    }
+    this.queuedControlResponseBytes = 0
+    return true
+  }
+
   /**
    * Send a control response back to the session
    */
-  sendControlResponse(response: SDKControlResponse): void {
-    if (!this.ws || this.state !== 'connected') {
-      logError(new Error('[SessionsWebSocket] Cannot send: not connected'))
-      return
+  sendControlResponse(response: SDKControlResponse): boolean {
+    const payload = jsonStringify(response)
+    const key = this.controlResponseKey(response)
+
+    if (this.ws && this.state === 'connected') {
+      try {
+        logForDebugging('[SessionsWebSocket] Sending control response')
+        this.ws.send(payload)
+        return true
+      } catch (error) {
+        logError(
+          new Error(
+            `[SessionsWebSocket] Control response send failed: ${errorMessage(error)}`,
+          ),
+        )
+        if (!this.enqueueControlResponse(key, payload)) return false
+
+        const failedSocket = this.ws
+        this.handleClose(1006, failedSocket)
+        try {
+          failedSocket.close()
+        } catch {
+          // handleClose already scheduled a retry.
+        }
+        return true
+      }
     }
 
-    logForDebugging('[SessionsWebSocket] Sending control response')
-    this.ws.send(jsonStringify(response))
+    if (this.state === 'connecting' || this.reconnectTimer) {
+      return this.enqueueControlResponse(key, payload)
+    }
+
+    logError(
+      new Error(
+        '[SessionsWebSocket] Cannot send control response: connection is closed',
+      ),
+    )
+    return false
   }
 
   /**
@@ -369,11 +579,16 @@ export class SessionsWebSocket {
    */
   close(): void {
     logForDebugging('[SessionsWebSocket] Closing connection')
+    this.closeConnection(true)
+  }
+
+  private closeConnection(discardQueuedResponses: boolean): void {
     this.state = 'closed'
     this.stopPingInterval()
 
     if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer)
+      const clear = this.options.clearReconnect ?? clearTimeout
+      clear(this.reconnectTimer)
       this.reconnectTimer = null
     }
 
@@ -385,6 +600,10 @@ export class SessionsWebSocket {
       this.ws.close()
       this.ws = null
     }
+
+    if (discardQueuedResponses) {
+      this.discardQueuedControlResponses('explicit close')
+    }
   }
 
   /**
@@ -395,9 +614,10 @@ export class SessionsWebSocket {
     logForDebugging('[SessionsWebSocket] Force reconnecting')
     this.reconnectAttempts = 0
     this.sessionNotFoundRetries = 0
-    this.close()
+    this.closeConnection(false)
     // Small delay before reconnecting (stored in reconnectTimer so it can be cancelled)
-    this.reconnectTimer = setTimeout(() => {
+    const schedule = this.options.scheduleReconnect ?? setTimeout
+    this.reconnectTimer = schedule(() => {
       this.reconnectTimer = null
       void this.connect()
     }, 500)

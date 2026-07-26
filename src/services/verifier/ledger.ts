@@ -3,7 +3,7 @@
 // Source of truth for "what side effects did the agent produce on this turn?"
 // Records only effects whose tool result was successful (no is_error flag).
 // Read by:
-// - done-claim gate (was a Write/Edit/Bash actually called this turn?)
+// - done-claim gate (was a Write/Edit/Bash/PowerShell actually called this turn?)
 // - project gates (did this turn modify files? if so, run afterEdit commands)
 // - loop detector (have we just retried an identical call?)
 //
@@ -16,7 +16,7 @@ export type ToolEffect = {
   toolName: string
   /** Tool use id from the assistant message. */
   toolUseId: string
-  /** Best-effort: file path for Write/Edit, command for Bash, undefined otherwise. */
+  /** Best-effort: file path for Write/Edit, shell command, undefined otherwise. */
   target?: string
   /** True if the tool result was not is_error. */
   succeeded: boolean
@@ -64,7 +64,7 @@ export class ToolEffectLedger {
 
   /**
    * Did this turn produce any successful side effect? "Side effect" means a
-   * mutating tool — Write/Edit/Bash/NotebookEdit. Read-only tools (Read,
+   * mutating tool — Write/Edit/Bash/PowerShell/NotebookEdit. Read-only tools (Read,
    * Grep, Glob, etc.) do not count.
    */
   hasMutatingEffect(turnId: string): boolean {
@@ -93,6 +93,16 @@ export class ToolEffectLedger {
     const t = this.turns.get(turnId)
     if (!t) return false
     return t.effects.some(e => e.toolName === 'Bash' && e.succeeded)
+  }
+
+  /** Did the agent run any supported shell command this turn? */
+  ranShell(turnId: string): boolean {
+    const t = this.turns.get(turnId)
+    if (!t) return false
+    return t.effects.some(
+      e =>
+        (e.toolName === 'Bash' || e.toolName === 'PowerShell') && e.succeeded,
+    )
   }
 
   /** Drop turn state once it's no longer needed (e.g. session compaction). */

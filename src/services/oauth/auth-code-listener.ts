@@ -127,8 +127,15 @@ export class AuthCodeListener {
     this.localServer.on('request', this.handleRedirect.bind(this))
     this.localServer.on('error', this.handleError.bind(this))
 
-    // Server is already listening, so we can call onReady immediately
-    void onReady()
+    // Server is already listening, so we can call onReady immediately. A
+    // browser/UI launch failure must reject the waiting flow instead of
+    // becoming an unhandled rejection that leaves it parked forever.
+    void onReady().catch(error => {
+      const readyError =
+        error instanceof Error ? error : new Error(String(error))
+      this.close()
+      this.reject(readyError)
+    })
   }
 
   private handleRedirect(req: IncomingMessage, res: ServerResponse): void {
@@ -157,14 +164,12 @@ export class AuthCodeListener {
     if (!authCode) {
       res.writeHead(400)
       res.end('Authorization code not found')
-      this.reject(new Error('No authorization code received'))
       return
     }
 
     if (state !== this.expectedState) {
       res.writeHead(400)
       res.end('Invalid state parameter')
-      this.reject(new Error('Invalid state parameter'))
       return
     }
 

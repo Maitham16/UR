@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  lstatSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -322,6 +329,40 @@ describe('prompt planning', () => {
     }
   })
 
+  test('path aliases and symlinked parents share the same task lock', async () => {
+    const dir = tempDir('ur-nexus-lock-alias-')
+    try {
+      writeFileSync(join(dir, 'shared.txt'), 'initial\n')
+      symlinkSync(dir, join(dir, 'alias'), 'dir')
+      const tasks = [
+        task('t1', 'Edit shared file'),
+        task('t2', 'Edit shared file through a relative alias'),
+        task('t3', 'Edit shared file through a symlink'),
+      ]
+      tasks[0]!.input.targetFiles = ['shared.txt']
+      tasks[1]!.input.targetFiles = ['./shared.txt']
+      tasks[2]!.input.targetFiles = ['alias/shared.txt']
+
+      let active = 0
+      let maxActive = 0
+      await runPromptPlan(planWithTasks(tasks), {
+        cwd: dir,
+        config: { maxAgents: 3 },
+        executeTask: async () => {
+          active += 1
+          maxActive = Math.max(maxActive, active)
+          await new Promise(resolve => setTimeout(resolve, 10))
+          active -= 1
+          return { ok: true, output: 'done', commandsRun: ['true'] }
+        },
+      })
+
+      expect(maxActive).toBe(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test('task board renders statuses, agents, and progress', () => {
     const board = renderTaskBoard(
       planWithTasks([
@@ -365,6 +406,24 @@ describe('prompt planning', () => {
     try {
       const before = captureWorkspaceFileState(dir)
       writeFileSync(join(dir, 'actual.txt'), 'changed\n')
+      const after = captureWorkspaceFileState(dir)
+      expect(diffWorkspaceFileState(before, after)).toEqual(['actual.txt'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('file evidence detects same-size rewrites with a restored mtime', () => {
+    const dir = tempDir('ur-nexus-evidence-restored-mtime-')
+    try {
+      const file = join(dir, 'actual.txt')
+      writeFileSync(file, 'before\n')
+      const original = lstatSync(file)
+      const before = captureWorkspaceFileState(dir)
+
+      writeFileSync(file, 'after!\n')
+      utimesSync(file, original.atime, original.mtime)
+
       const after = captureWorkspaceFileState(dir)
       expect(diffWorkspaceFileState(before, after)).toEqual(['actual.txt'])
     } finally {

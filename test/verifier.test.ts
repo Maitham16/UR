@@ -58,6 +58,23 @@ describe('ToolEffectLedger', () => {
     led.record(TURN, fakeToolUse('Bash', { command: 'ls' }, 'tu_2'), true)
     expect(led.ranBash(TURN)).toBe(true)
   })
+
+  test('ranShell detects successful Bash and PowerShell calls', () => {
+    const led = new ToolEffectLedger()
+    led.record(
+      TURN,
+      fakeToolUse('PowerShell', { command: 'Get-ChildItem' }),
+      false,
+    )
+    expect(led.ranShell(TURN)).toBe(false)
+    led.record(
+      TURN,
+      fakeToolUse('PowerShell', { command: 'Get-ChildItem' }, 'tu_2'),
+      true,
+    )
+    expect(led.ranShell(TURN)).toBe(true)
+    expect(led.ranBash(TURN)).toBe(false)
+  })
 })
 
 describe('detectDoneClaim', () => {
@@ -116,7 +133,7 @@ describe('evaluateDoneGate', () => {
     expect(r.ok).toBe(false)
     if (r.ok === false) expect(r.reminder).toContain('Write')
   })
-  test('run_claim requires a Bash success', () => {
+  test('run_claim requires a successful shell call', () => {
     expect(evaluateDoneGate('run_claim', false, false).ok).toBe(false)
     expect(evaluateDoneGate('run_claim', false, true).ok).toBe(true)
   })
@@ -129,7 +146,7 @@ describe('evaluateDoneGate', () => {
     expect(evaluateDoneGate('write_intent', false, false).ok).toBe(false)
     expect(evaluateDoneGate('write_intent', true, false).ok).toBe(true)
   })
-  test('run_intent requires a successful Bash call', () => {
+  test('run_intent requires a successful shell call', () => {
     expect(evaluateDoneGate('run_intent', false, false).ok).toBe(false)
     expect(evaluateDoneGate('run_intent', false, true).ok).toBe(true)
   })
@@ -272,6 +289,43 @@ describe('Verifier integration', () => {
       v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/x' }), true)
       const r = await v.checkTurn(TURN, 'I created the file.', true)
       expect(r.ok).toBe(true)
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('PowerShell success satisfies a command run claim', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
+    try {
+      const v = new Verifier({ cwd })
+      v.beginTurn(TURN)
+      v.recordToolCall(
+        TURN,
+        fakeToolUse('PowerShell', { command: 'Invoke-Pester' }),
+        true,
+      )
+      const result = await v.checkTurn(TURN, 'I ran the tests.', true)
+      expect(result.ok).toBe(true)
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('failed PowerShell does not satisfy a command run claim', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
+    try {
+      const v = new Verifier({ cwd })
+      v.beginTurn(TURN)
+      v.recordToolCall(
+        TURN,
+        fakeToolUse('PowerShell', { command: 'Invoke-Pester' }),
+        false,
+      )
+      const result = await v.checkTurn(TURN, 'I ran the tests.', true)
+      expect(result.ok).toBe(false)
+      if (result.ok === false) {
+        expect(result.reminder).toContain('PowerShell')
+      }
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }

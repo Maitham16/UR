@@ -175,7 +175,7 @@ export class Verifier {
         const gate = evaluateDoneGate(
           claim,
           this.ledger.hasMutatingEffect(turnId),
-          this.ledger.ranBash(turnId),
+          this.ledger.ranShell(turnId),
         )
         if (!gate.ok) {
           this.bumpRejection(turnId)
@@ -189,9 +189,9 @@ export class Verifier {
     if (this.mode === 'strict') {
       const config = await this.configPromise
       const modifiedFiles = this.ledger.modifiedFiles(turnId)
-      const ranBash = this.ledger.ranBash(turnId)
+      const ranShell = this.ledger.ranShell(turnId)
       let commands = config
-        ? pickCommands(config, modifiedFiles, ranBash, this.cwd)
+        ? pickCommands(config, modifiedFiles, ranShell, this.cwd)
         : null
       let timeoutMs = config?.timeoutMs
       let autoDetected = false
@@ -230,7 +230,7 @@ export class Verifier {
       const validatorCommands = pickPluginValidators(
         pluginValidators,
         modifiedFiles,
-        ranBash,
+        ranShell,
       )
       for (const { command, timeoutMs: validatorTimeoutMs } of validatorCommands) {
         const result = await runGateCommands(
@@ -272,7 +272,7 @@ export class Verifier {
     if (!this.ledger.hasMutatingEffect(turnId)) return null
     const nudge = buildSubagentNudge({
       modifiedFiles: this.ledger.modifiedFiles(turnId),
-      ranBash: this.ledger.ranBash(turnId),
+      ranShell: this.ledger.ranShell(turnId),
       userTaskHint: this.userTaskHintByTurn.get(turnId),
     })
     return nudge
@@ -342,11 +342,11 @@ function buildAskBeforeGatesReminder(
 function pickPluginValidators(
   validators: PluginValidator[],
   modifiedFiles: string[],
-  ranBash: boolean,
+  ranShell: boolean,
 ): PluginValidator[] {
   return validators.filter(v => {
     if (v.when === 'always') return true
-    if (v.when === 'afterBash') return ranBash
+    if (v.when === 'afterBash') return ranShell
     // Default afterEdit
     if (modifiedFiles.length === 0) return false
     if (!v.patterns || v.patterns.length === 0) return true

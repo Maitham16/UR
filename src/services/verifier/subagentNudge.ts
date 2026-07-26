@@ -28,7 +28,7 @@ export type SubagentNudge = {
  */
 export function buildSubagentNudge(args: {
   modifiedFiles: string[]
-  ranBash: boolean
+  ranShell: boolean
   userTaskHint: string | undefined
 }): SubagentNudge {
   const fileList = args.modifiedFiles.slice(0, 20).map(f => `  - ${f}`).join('\n')
@@ -39,8 +39,8 @@ export function buildSubagentNudge(args: {
   const filesBlock = args.modifiedFiles.length > 0
     ? `Files changed this turn:\n${fileList}${moreFiles}`
     : 'No file edits this turn.'
-  const bashBlock = args.ranBash
-    ? 'Bash commands were executed this turn.'
+  const shellBlock = args.ranShell
+    ? 'Shell commands were executed this turn.'
     : ''
   const hint = args.userTaskHint
     ? `\nOriginal user request (verbatim, first 400 chars):\n${args.userTaskHint.slice(0, 400)}`
@@ -56,7 +56,7 @@ export function buildSubagentNudge(args: {
     `1. The original user request below.\n` +
     `2. The list of files changed below.\n` +
     `3. A 1-2 sentence summary of the approach you took.\n\n` +
-    `${filesBlock}\n${bashBlock}${hint}\n\n` +
+    `${filesBlock}\n${shellBlock}${hint}\n\n` +
     `Do not declare the task complete in this turn. Spawn the verifier ` +
     `subagent first, read its VERDICT line, and only then write your final ` +
     `response. If the verifier returns FAIL, fix the issue and re-verify ` +

@@ -1,6 +1,9 @@
 import axios from 'axios'
 import { getOauthConfig } from 'src/constants/oauth.js'
-import { getOrganizationUUID } from 'src/services/oauth/client.js'
+import {
+  getOrganizationUUID,
+  isOAuthTokenExpired,
+} from 'src/services/oauth/client.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../../services/analytics/growthbook.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
@@ -20,11 +23,29 @@ import { fetchEnvironments } from '../../teleport/environments.js'
  * Extracted from getTeleportErrors() in TeleportError.tsx
  * @returns true if login is required, false otherwise
  */
-export async function checkNeedsURAiLogin(): Promise<boolean> {
-  if (!isURAISubscriber()) {
-    return false
-  }
-  return checkAndRefreshOAuthTokenIfNeeded()
+export async function checkNeedsURAiLogin(
+  dependencies: {
+    isSubscriber: () => boolean
+    refreshTokenIfNeeded: () => Promise<boolean>
+    getTokens: () => ReturnType<typeof getURAIOAuthTokens>
+  } = {
+    isSubscriber: isURAISubscriber,
+    refreshTokenIfNeeded: checkAndRefreshOAuthTokenIfNeeded,
+    getTokens: getURAIOAuthTokens,
+  },
+): Promise<boolean> {
+  if (!dependencies.isSubscriber()) return true
+
+  // The refresh helper returns whether it performed a refresh, not whether a
+  // login is required. Always re-read the resulting auth state instead of
+  // treating a successful refresh as a login failure.
+  await dependencies.refreshTokenIfNeeded()
+  const tokens = dependencies.getTokens()
+  return (
+    !dependencies.isSubscriber() ||
+    !tokens?.accessToken ||
+    isOAuthTokenExpired(tokens.expiresAt ?? null)
+  )
 }
 
 /**

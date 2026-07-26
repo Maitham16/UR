@@ -331,9 +331,23 @@ export function getPathsForPermissionCheck(inputPath: string): string[] {
         // `./evil.txt -> ~/.ssh/authorized_keys2` (dangling file symlink)
         // would allow writes that escape the working directory.
         if (currentPath === path) {
-          const resolved = resolveDeepestExistingAncestorSync(fsImpl, path)
-          if (resolved !== undefined) {
+          // A dangling link can point through another symlink:
+          //   evil -> alias/new.txt, alias -> /outside
+          // Resolve repeatedly so permission checks include both the immediate
+          // target and the final destination (/outside/new.txt). A single pass
+          // only returns alias/new.txt because that leaf does not exist yet.
+          let unresolvedTarget = path
+          for (let targetDepth = 0; targetDepth < maxDepth; targetDepth++) {
+            const resolved = resolveDeepestExistingAncestorSync(
+              fsImpl,
+              unresolvedTarget,
+            )
+            if (resolved === undefined || visited.has(resolved)) {
+              break
+            }
             pathSet.add(resolved)
+            visited.add(resolved)
+            unresolvedTarget = resolved
           }
         }
         break
@@ -381,6 +395,22 @@ export function getPathsForPermissionCheck(inputPath: string): string[] {
   return Array.from(pathSet)
 }
 
+async function isExistingDirectory(path: string): Promise<boolean> {
+  try {
+    return (await statPromise(path)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function isExistingDirectorySync(path: string): boolean {
+  try {
+    return fs.statSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
+
 export const NodeFsOperations: FsOperations = {
   cwd() {
     return process.cwd()
@@ -418,8 +448,14 @@ export const NodeFsOperations: FsOperations = {
       // Bun/Windows: recursive:true throws EEXIST on directories with the
       // FILE_ATTRIBUTE_READONLY bit set (Group Policy, OneDrive, desktop.ini).
       // Bun's directoryExistsAt misclassifies DIRECTORY+READONLY as not-a-dir
-      // (bun-internal src/sys.zig existsAtType). The dir exists; ignore.
-      if (getErrnoCode(e) !== 'EEXIST') throw e
+      // (bun-internal src/sys.zig existsAtType). Ignore only after confirming
+      // the target is a directory; EEXIST for a regular file must still fail.
+      if (
+        getErrnoCode(e) !== 'EEXIST' ||
+        !(await isExistingDirectory(dirPath))
+      ) {
+        throw e
+      }
     }
   },
 
@@ -460,7 +496,7 @@ export const NodeFsOperations: FsOperations = {
       const bytesRead = fs.readSync(fd, buffer, 0, options.length, 0)
       return { buffer, bytesRead }
     } finally {
-      if (fd) fs.closeSync(fd)
+      if (fd !== undefined) fs.closeSync(fd)
     }
   },
 
@@ -538,8 +574,14 @@ export const NodeFsOperations: FsOperations = {
       // Bun/Windows: recursive:true throws EEXIST on directories with the
       // FILE_ATTRIBUTE_READONLY bit set (Group Policy, OneDrive, desktop.ini).
       // Bun's directoryExistsAt misclassifies DIRECTORY+READONLY as not-a-dir
-      // (bun-internal src/sys.zig existsAtType). The dir exists; ignore.
-      if (getErrnoCode(e) !== 'EEXIST') throw e
+      // (bun-internal src/sys.zig existsAtType). Ignore only after confirming
+      // the target is a directory; EEXIST for a regular file must still fail.
+      if (
+        getErrnoCode(e) !== 'EEXIST' ||
+        !isExistingDirectorySync(dirPath)
+      ) {
+        throw e
+      }
     }
   },
 

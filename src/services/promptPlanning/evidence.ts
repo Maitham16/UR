@@ -25,12 +25,14 @@ function shouldSkipDir(name: string): boolean {
 
 function fingerprint(path: string): string | null {
   try {
-    const stat = lstatSync(path)
+    const stat = lstatSync(path, { bigint: true })
     if (stat.isSymbolicLink()) {
       return `link:${readlinkSync(path)}`
     }
     if (!stat.isFile()) return null
-    return `${stat.size}:${Math.round(stat.mtimeMs)}:${stat.mode}`
+    // Nanosecond mtime avoids missing rapid same-size rewrites. ctime also
+    // detects a rewrite whose mtime was deliberately restored afterward.
+    return `${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}:${stat.mode}:${stat.ino}`
   } catch {
     return null
   }

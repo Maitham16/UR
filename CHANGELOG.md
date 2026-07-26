@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.47.1
+
+- Hardened file downloads, filesystem permission checks, and signed skill
+  trees against traversal and chained-symlink escapes.
+- Fixed task-memory integrity validation, prompt-plan file locking and change
+  evidence, multi-prompt legacy execution, tool cancellation, and invalid
+  concurrency handling.
+- Made OAuth callbacks, remote session WebSockets, relay buffering, provider
+  body timeouts, and macOS keychain fallback behavior fail safely and recover
+  from transient errors.
+- Updated vulnerable transitive dependencies and added focused regression
+  coverage for each corrected path.
+
 ## 1.47.0
 
 - Added a secure, opt-in AG-UI HTTP/SSE adapter with official schema/encoder

@@ -50,6 +50,17 @@ type WebSocketLike = Pick<
 // design for it so git-push doesn't need a relay rewrite.
 const MAX_CHUNK_BYTES = 512 * 1024
 
+// Loopback clients are still untrusted. Bound both stages that accumulate
+// bytes before the WebSocket is ready so a local process cannot grow the
+// relay heap without limit.
+export const MAX_CONNECT_HEADER_BYTES = 8 * 1024
+export const MAX_PENDING_BYTES = 8 * 1024 * 1024
+
+// WHATWG and ws use the same readyState values. Keep these local instead of
+// reading WebSocket.OPEN: Node 18 has no global WebSocket implementation.
+const WS_CONNECTING = 0
+const WS_OPEN = 1
+
 // Sidecar idle timeout is 50s; ping well inside that.
 const PING_INTERVAL_MS = 30_000
 
@@ -116,6 +127,7 @@ type ConnState = {
   // data callback can fire again while the WS handshake is still in flight.
   // Both cases would silently drop bytes without this buffer.
   pending: Buffer[]
+  pendingBytes: number
   wsOpen: boolean
   // Set once the server's 200 Connection Established has been forwarded and
   // the tunnel is carrying TLS. After that, writing a plaintext 502 would
@@ -141,6 +153,7 @@ function newConnState(): ConnState {
   return {
     connectBuf: Buffer.alloc(0),
     pending: [],
+    pendingBytes: 0,
     wsOpen: false,
     established: false,
     closed: false,
@@ -300,18 +313,25 @@ function handleData(
   authHeader: string,
   wsAuthHeader: string,
 ): void {
+  if (st.closed) return
+
   // Phase 1: accumulate until we've seen the full CONNECT request
   // (terminated by CRLF CRLF). curl/gh send this in one packet, but
   // don't assume that.
   if (!st.ws) {
     st.connectBuf = Buffer.concat([st.connectBuf, data])
     const headerEnd = st.connectBuf.indexOf('\r\n\r\n')
+    const headerBytes =
+      headerEnd === -1 ? st.connectBuf.length : headerEnd + 4
+    if (headerBytes > MAX_CONNECT_HEADER_BYTES) {
+      closeClientWithResponse(
+        sock,
+        st,
+        'HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n',
+      )
+      return
+    }
     if (headerEnd === -1) {
-      // Guard against a client that never sends CRLFCRLF.
-      if (st.connectBuf.length > 8192) {
-        sock.write('HTTP/1.1 400 Bad Request\r\n\r\n')
-        sock.end()
-      }
       return
     }
     const reqHead = st.connectBuf.subarray(0, headerEnd).toString('utf8')
@@ -326,7 +346,7 @@ function handleData(
     // openTunnel can flush them once the WS is open.
     const trailing = st.connectBuf.subarray(headerEnd + 4)
     if (trailing.length > 0) {
-      st.pending.push(Buffer.from(trailing))
+      if (!bufferPending(sock, st, trailing)) return
     }
     st.connectBuf = Buffer.alloc(0)
     openTunnel(sock, st, firstLine, wsUrl, authHeader, wsAuthHeader)
@@ -335,10 +355,41 @@ function handleData(
   // Phase 2: WS exists. If it isn't OPEN yet, buffer; ws.onopen will
   // flush. Once open, pump client bytes to WS in chunks.
   if (!st.wsOpen) {
-    st.pending.push(Buffer.from(data))
+    bufferPending(sock, st, data)
     return
   }
   forwardToWs(st.ws, data)
+}
+
+function bufferPending(
+  sock: ClientSocket,
+  st: ConnState,
+  data: Uint8Array,
+): boolean {
+  if (data.length === 0) return true
+  if (data.length > MAX_PENDING_BYTES - st.pendingBytes) {
+    closeClientWithResponse(
+      sock,
+      st,
+      'HTTP/1.1 413 Payload Too Large\r\nConnection: close\r\n\r\n',
+    )
+    return false
+  }
+  st.pending.push(Buffer.from(data))
+  st.pendingBytes += data.length
+  return true
+}
+
+function closeClientWithResponse(
+  sock: ClientSocket,
+  st: ConnState,
+  response: string,
+): void {
+  if (st.closed) return
+  st.closed = true
+  sock.write(response)
+  sock.end()
+  cleanupConn(st)
 }
 
 function openTunnel(
@@ -376,6 +427,10 @@ function openTunnel(
   st.ws = ws
 
   ws.onopen = () => {
+    if (st.closed) {
+      cleanupConn(st)
+      return
+    }
     // First chunk carries the CONNECT line plus Proxy-Authorization so the
     // server can auth the tunnel and know the target host:port. Server
     // responds with its own "HTTP/1.1 200" over the tunnel; we just pipe it.
@@ -386,10 +441,12 @@ function openTunnel(
     // trailing bytes from the CONNECT packet and any data() callbacks that
     // fired before onopen.
     st.wsOpen = true
-    for (const buf of st.pending) {
+    const pending = st.pending
+    st.pending = []
+    st.pendingBytes = 0
+    for (const buf of pending) {
       forwardToWs(ws, buf)
     }
-    st.pending = []
     // Not all WS implementations expose ping(); empty chunk works as an
     // application-level keepalive the server can ignore.
     st.pinger = setInterval(sendKeepalive, PING_INTERVAL_MS, ws)
@@ -428,13 +485,13 @@ function openTunnel(
 }
 
 function sendKeepalive(ws: WebSocketLike): void {
-  if (ws.readyState === WebSocket.OPEN) {
+  if (ws.readyState === WS_OPEN) {
     ws.send(encodeChunk(new Uint8Array(0)))
   }
 }
 
 function forwardToWs(ws: WebSocketLike, data: Buffer): void {
-  if (ws.readyState !== WebSocket.OPEN) return
+  if (ws.readyState !== WS_OPEN) return
   for (let off = 0; off < data.length; off += MAX_CHUNK_BYTES) {
     const slice = data.subarray(off, off + MAX_CHUNK_BYTES)
     ws.send(encodeChunk(slice))
@@ -443,8 +500,12 @@ function forwardToWs(ws: WebSocketLike, data: Buffer): void {
 
 function cleanupConn(st: ConnState | undefined): void {
   if (!st) return
+  st.closed = true
   if (st.pinger) clearInterval(st.pinger)
-  if (st.ws && st.ws.readyState <= WebSocket.OPEN) {
+  if (
+    st.ws &&
+    (st.ws.readyState === WS_CONNECTING || st.ws.readyState === WS_OPEN)
+  ) {
     try {
       st.ws.close()
     } catch {
@@ -452,4 +513,16 @@ function cleanupConn(st: ConnState | undefined): void {
     }
   }
   st.ws = undefined
+  st.connectBuf = Buffer.alloc(0)
+  st.pending = []
+  st.pendingBytes = 0
+}
+
+/** Internal relay primitives exposed only for deterministic regression tests. */
+export const _relayInternalsForTests = {
+  newConnState,
+  handleData,
+  sendKeepalive,
+  forwardToWs,
+  cleanupConn,
 }

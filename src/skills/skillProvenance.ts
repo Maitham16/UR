@@ -336,7 +336,10 @@ export function computeSkillTree(skillDir: string): SkillTreeDigest {
       a.name.localeCompare(b.name),
     )
     for (const child of children) {
-      if (child.name === SKILL_INTEGRITY_MANIFEST) continue
+      // Only the root signature manifest is excluded from its own digest.
+      // A nested file with the same basename is ordinary skill content and
+      // must remain covered by the integrity tree.
+      if (dir === root && child.name === SKILL_INTEGRITY_MANIFEST) continue
       if (child.isDirectory() && EXCLUDED_DIRECTORIES.has(child.name)) continue
       const path = join(dir, child.name)
       const relativePath = normalizedPath(root, path)
