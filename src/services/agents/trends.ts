@@ -1,4 +1,9 @@
 import type { AgentCard as ProtocolAgentCard } from '@a2a-js/sdk'
+import {
+  type A2AAgentCardSignature,
+  type A2ACardSigningKey,
+  signAgentCard,
+} from './a2aCardSignature.js'
 
 type TrendStatus = 'covered' | 'partial' | 'adapter-ready'
 
@@ -25,6 +30,12 @@ type A2AAgentCardOptions = {
   baseUrl?: string
   staticBearer?: boolean
   delegationBearer?: boolean
+  /**
+   * Ed25519 key used to sign the v1 card. Omitted leaves `signatures` empty:
+   * signing is opt-in so existing deployments keep serving byte-identical
+   * cards until an operator provisions a key.
+   */
+  signingKey?: A2ACardSigningKey
 }
 
 export type A2AAgentCard = ProtocolAgentCard
@@ -74,7 +85,7 @@ export type A2AV1AgentCard = {
     outputModes: string[]
     securityRequirements: A2AV1SecurityRequirement[]
   }>
-  signatures: []
+  signatures: A2AAgentCardSignature[]
 }
 
 const urVersion = MACRO.VERSION
@@ -689,7 +700,7 @@ export function buildA2AV1AgentCard(
   }
 
   const legacy = buildA2AAgentCard(options)
-  return {
+  const card: A2AV1AgentCard = {
     name: legacy.name,
     description: legacy.description,
     supportedInterfaces: [
@@ -742,6 +753,9 @@ export function buildA2AV1AgentCard(
     })),
     signatures: [],
   }
+
+  if (!options.signingKey) return card
+  return { ...card, signatures: [signAgentCard(card, options.signingKey)] }
 }
 
 export function buildAgentTrendReport(

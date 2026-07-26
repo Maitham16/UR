@@ -9,6 +9,19 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.49.0 Additions
+
+- Signed A2A Agent Cards. An Agent Card is discovery metadata served over plain
+  HTTP, so a client cannot otherwise distinguish a genuine card from one
+  rewritten in transit — the endpoints, skills, and auth schemes it advertises
+  are all taken on trust. UR can now sign the v1 card with an Ed25519 key,
+  producing an RFC 7515 detached JWS over the card's RFC 8785 canonical form,
+  which a client verifies before trusting anything the card claims. Multiple
+  keys can sign one card independently, and verification refuses a
+  caller-supplied `alg` so a signature cannot be stripped by substituting
+  `none`. Signing is opt-in: without a provisioned key the card is served
+  unsigned and unchanged.
+
 ## v1.48.0 Additions
 
 - `ur cloud --runner managed` persists remote environment/session lifecycle,

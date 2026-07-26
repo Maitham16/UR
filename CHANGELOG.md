@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.49.0
+
+- Added cryptographically signed A2A Agent Cards: RFC 7515 detached JWS over
+  the RFC 8785 canonical form of the card, using Ed25519 (`alg: "EdDSA"`).
+  Verification recomputes the payload with `signatures` excluded, so a card can
+  carry several independent signatures, and rejects algorithm substitution
+  rather than honoring a caller-supplied `alg`. Signing is opt-in through the
+  card builder's `signingKey`, so deployments without a provisioned key
+  continue serving byte-identical unsigned cards. Replaces the previous
+  `signatures: []` placeholder, which was typed so that it could never hold a
+  signature.
+- Fixed `release:check` failing on a clean tree: `release-hygiene.mjs` forbids
+  `.claude/settings.local.json` in release archives, but the ignore policy did
+  not exclude it, so the untracked file entered the source archive candidate
+  through `git ls-files --others`.
+
 ## 1.48.0
 
 - Added managed cloud fan-out with durable, idempotent steering, owner-scoped

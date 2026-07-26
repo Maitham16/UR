@@ -99,6 +99,8 @@ Thumbs.db
 *.swo
 .vscode/
 .idea/
+# Agent CLI local permission state; release-hygiene.mjs forbids it in archives
+.claude/settings.local.json
 
 # Package manager caches
 .npm/
