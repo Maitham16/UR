@@ -24,11 +24,21 @@ function runCli(
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  return {
-    code: result.exitCode,
-    stdout: result.stdout.toString(),
-    stderr: result.stderr.toString(),
+  const stdout = result.stdout.toString()
+  const stderr = result.stderr.toString()
+  // Bun reports exitCode null when the child died from a signal. Returning it
+  // as-is made every such death surface as `Received: null` against whichever
+  // exit code the test expected, hiding both the signal and the command. A
+  // signal kill is never the clean non-zero exit these tests assert on — under
+  // a full-suite run it is usually the OOM killer — so fail loudly and name it
+  // rather than letting `not.toBe(0)` pass a crash.
+  if (result.exitCode === null) {
+    throw new Error(
+      `ur ${args.join(' ')} was killed by ${result.signalCode ?? 'an unknown signal'} ` +
+        `instead of exiting. stdout:\n${stdout}\nstderr:\n${stderr}`,
+    )
   }
+  return { code: result.exitCode, stdout, stderr }
 }
 
 test('CLI adapters preserve prompts and never promote embedded control flags', () => {
