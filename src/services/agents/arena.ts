@@ -20,7 +20,7 @@ import { reviewDiff, type ReviewFinding } from '../../commands/agent-task/selfRe
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import {
   isSecretLikeSubprocessEnvName,
-  strictSubprocessEnv,
+  strictGitSubprocessEnv,
 } from '../../utils/subprocessEnv.js'
 import {
   defaultHeadlessRunner,
@@ -528,7 +528,7 @@ async function git(cwd: string, args: string[]): Promise<GitResult> {
     cwd,
     timeout: 60_000,
     preserveOutputOnError: true,
-    env: strictSubprocessEnv(),
+    env: strictGitSubprocessEnv(),
     extendEnv: false,
     maxBuffer: 2 * 1024 * 1024,
     },
@@ -549,6 +549,17 @@ export async function createArenaWorktree(
   const path = join(root, id)
   if (existsSync(path)) return null
   mkdirSync(root, { recursive: true })
+  const filters = await git(cwd, [
+    'config',
+    '--get-regexp',
+    '^filter\\..*\\.(clean|process)$',
+  ])
+  if (
+    (filters.code === 0 && filters.stdout.trim()) ||
+    (filters.code !== 0 && filters.code !== 1)
+  ) {
+    return null
+  }
   const result = await git(cwd, [
     'worktree',
     'add',

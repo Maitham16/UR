@@ -19,7 +19,10 @@ import {
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
-import { strictSubprocessEnv } from '../../utils/subprocessEnv.js'
+import {
+  strictGitSubprocessEnv,
+  strictSubprocessEnv,
+} from '../../utils/subprocessEnv.js'
 import { findCanonicalGitRoot, findGitRoot, gitExe } from '../../utils/git.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { listModelCapabilities } from '../../commands/model-doctor/model-doctor.js'
@@ -904,7 +907,7 @@ async function git(
     cwd,
     timeout,
     preserveOutputOnError: true,
-    env: strictSubprocessEnv(),
+    env: strictGitSubprocessEnv(),
     extendEnv: false,
   })
 }
@@ -938,6 +941,19 @@ async function setupWorktree(task: BackgroundTask): Promise<string> {
       /[\0\r\n]/u.test(requestedBase)
     ) {
       throw new Error('Invalid background PR base ref.')
+    }
+    const filters = await git(
+      task.cwd,
+      ['config', '--get-regexp', '^filter\\..*\\.(clean|process)$'],
+      60_000,
+    )
+    if (filters.code === 0 && filters.stdout.trim()) {
+      throw new Error(
+        'Background worktrees refuse repositories with local Git clean/process filters.',
+      )
+    }
+    if (filters.code !== 0 && filters.code !== 1) {
+      throw new Error('Could not inspect Git filters before worktree creation.')
     }
     const resolvedBase = await git(
       task.cwd,
@@ -1297,7 +1313,7 @@ async function runCancelableBackgroundCommand(
   args: string[],
   cwd: string,
   timeout: number,
-  options: { audit?: false } = {},
+  options: { audit?: false; isolateGitConfig?: boolean } = {},
 ): Promise<{ stdout: string; stderr: string; code: number; error?: string }> {
   assertBackgroundTaskNotCanceled(task)
   const controller = new AbortController()
@@ -1309,22 +1325,27 @@ async function runCancelableBackgroundCommand(
   try {
     const allowPlatformAuth =
       file === 'gh' || file.endsWith('/gh') || file.endsWith('\\gh.exe')
+    const isGit =
+      file === gitExe() ||
+      file.endsWith('/git') ||
+      file.endsWith('\\git.exe')
+    const allowedSecrets = allowPlatformAuth
+      ? [
+          'GH_TOKEN',
+          'GITHUB_TOKEN',
+          'GH_ENTERPRISE_TOKEN',
+          'GITHUB_ENTERPRISE_TOKEN',
+        ]
+      : []
     const result = await execFileNoThrowWithCwd(file, args, {
       cwd,
       timeout,
       preserveOutputOnError: true,
       abortSignal: controller.signal,
-      env: strictSubprocessEnv(
-        process.env,
-        allowPlatformAuth
-          ? [
-              'GH_TOKEN',
-              'GITHUB_TOKEN',
-              'GH_ENTERPRISE_TOKEN',
-              'GITHUB_ENTERPRISE_TOKEN',
-            ]
-          : [],
-      ),
+      env:
+        isGit && options.isolateGitConfig !== false
+          ? strictGitSubprocessEnv(process.env, allowedSecrets)
+          : strictSubprocessEnv(process.env, allowedSecrets),
       extendEnv: false,
       audit: options.audit,
     })
@@ -1546,6 +1567,7 @@ export async function commitIfNeeded(task: BackgroundTask, cwd: string): Promise
     [...SAFE_GIT_CONFIG_ARGS, 'commit', '--no-verify', '-m', title],
     cwd,
     120_000,
+    { isolateGitConfig: false },
   )
   if (commit.code !== 0) {
     throw new Error(commit.stderr || commit.error || 'git commit failed')
@@ -1582,6 +1604,7 @@ export async function createPullRequest(task: BackgroundTask, cwd: string): Prom
       ],
       cwd,
       5 * 60_000,
+      { isolateGitConfig: false },
     )
     if (push.code !== 0) {
       return {

@@ -328,3 +328,24 @@ test('arena diff capture never executes textconv helpers', async () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('arena rejects repository-local clean filters before staging', async () => {
+  const repo = mkdtempSync(join(tmpdir(), 'ur-arena-clean-filter-'))
+  try {
+    git(repo, ['init'])
+    git(repo, ['config', 'user.email', 'test@example.com'])
+    git(repo, ['config', 'user.name', 'Test'])
+    writeFileSync(join(repo, 'file.txt'), 'base\n')
+    git(repo, ['add', 'file.txt'])
+    git(repo, ['commit', '-m', 'base'])
+    git(repo, ['config', 'filter.untrusted.clean', 'false'])
+    writeFileSync(join(repo, '.gitattributes'), '* filter=untrusted\n')
+    writeFileSync(join(repo, 'file.txt'), 'changed\n')
+
+    const captured = await captureArenaDiff(repo)
+    expect(captured.diff).toBe('')
+    expect(captured.violation).toContain('clean/process filters')
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
+})

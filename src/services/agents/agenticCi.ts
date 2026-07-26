@@ -14,6 +14,7 @@ import { reviewDiff } from '../../commands/agent-task/selfReview.js'
 import { isGeneratedFile } from '../../utils/generatedFiles.js'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { safeParseJSON } from '../../utils/json.js'
+import { isolateGitSubprocessEnv } from '../../utils/subprocessEnv.js'
 import {
   guardrailFindings,
   loadGuardrails,
@@ -587,7 +588,7 @@ export function buildAgenticCiVerificationEnvironment(
   env.TEMP = isolatedHome
   env.UR_CODE_SUBPROCESS_ENV_SCRUB = '1'
   env.UR_AGENTIC_CI_VERIFY = '1'
-  return env
+  return isolateGitSubprocessEnv(env)
 }
 
 function sensitiveValues(source: NodeJS.ProcessEnv): string[] {
@@ -979,6 +980,24 @@ export async function runAgenticCi(
     writeAgenticCiResult(dry)
     rmSync(verificationHome, { recursive: true, force: true })
     return dry
+  }
+
+  const sourceFilters = await exec(
+    'git',
+    ['config', '--get-regexp', '^filter\\..*\\.(clean|process)$'],
+    cwd,
+    30_000,
+    verificationEnv,
+  )
+  if (sourceFilters.code === 0 && sourceFilters.stdout.trim()) {
+    rmSync(verificationHome, { recursive: true, force: true })
+    throw new Error(
+      'Agentic CI refuses repositories with local Git clean/process filters.',
+    )
+  }
+  if (sourceFilters.code !== 0 && sourceFilters.code !== 1) {
+    rmSync(verificationHome, { recursive: true, force: true })
+    throw new Error('Agentic CI could not inspect repository Git filters.')
   }
 
   const worktreeRoot = join(cwd, '.ur', 'agentic-ci', '.worktrees')

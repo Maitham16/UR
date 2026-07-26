@@ -183,6 +183,33 @@ describe('multi-repository workspace coordinator', () => {
     }
   })
 
+  test('refuses repository-local clean filters before worktree checkout', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ur-workspace-filter-'))
+    try {
+      const app = repository(root, 'app')
+      git(app, 'config', 'filter.untrusted.clean', 'false')
+      createWorkspace(root, 'filtered')
+      await addWorkspaceRepository(root, 'filtered', { id: 'app', path: app })
+      addWorkspaceTask(root, 'filtered', {
+        id: 'work',
+        repository: 'app',
+        prompt: 'Make a change.',
+        dependsOn: [],
+      })
+      await expect(
+        runWorkspace(root, 'filtered', {
+          runner: async () => ({
+            output: 'unexpected',
+            verdict: 'PASS',
+            isError: false,
+          }),
+        }),
+      ).rejects.toThrow('local Git clean/process filters')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test('dry-run repository and task additions do not mutate the workspace', async () => {
     const root = mkdtempSync(join(tmpdir(), 'ur-workspace-dry-run-'))
     try {

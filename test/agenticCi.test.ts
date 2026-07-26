@@ -24,7 +24,10 @@ import {
   WORKFLOW_CONTENT,
 } from '../src/constants/github-app.ts'
 import { execFileNoThrowWithCwd } from '../src/utils/execFileNoThrow.ts'
-import { subprocessEnv } from '../src/utils/subprocessEnv.ts'
+import {
+  strictGitSubprocessEnv,
+  subprocessEnv,
+} from '../src/utils/subprocessEnv.ts'
 
 async function git(cwd: string, args: string[]): Promise<void> {
   const result = await execFileNoThrowWithCwd('git', args, {
@@ -196,6 +199,61 @@ test('verification environment is an isolated allow-list with no auth or config'
   expect(env.AWS_CONFIG_FILE).toBeUndefined()
   expect(env.NODE_OPTIONS).toBeUndefined()
   expect(env.HTTPS_PROXY).toBeUndefined()
+  expect(env.GIT_CONFIG_NOSYSTEM).toBe('1')
+  expect(env.GIT_CONFIG_COUNT).toBe('0')
+  expect(env.GIT_ATTR_NOSYSTEM).toBe('1')
+})
+
+test('Git subprocess environment ignores ambient config and command injection', () => {
+  const env = strictGitSubprocessEnv({
+    PATH: '/bin',
+    HOME: '/home/test',
+    GIT_CONFIG_GLOBAL: '/tmp/attacker.gitconfig',
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'filter.leak.clean',
+    GIT_CONFIG_VALUE_0: '/tmp/exfiltrate',
+    GIT_EXTERNAL_DIFF: '/tmp/exfiltrate',
+    GIT_SSH_COMMAND: '/tmp/exfiltrate',
+    GITHUB_TOKEN: 'platform-secret',
+  })
+  expect(env.HOME).toBe('/home/test')
+  expect(env.GIT_CONFIG_GLOBAL).not.toBe('/tmp/attacker.gitconfig')
+  expect(env.GIT_CONFIG_NOSYSTEM).toBe('1')
+  expect(env.GIT_CONFIG_COUNT).toBe('0')
+  expect(env.GIT_CONFIG_KEY_0).toBeUndefined()
+  expect(env.GIT_CONFIG_VALUE_0).toBeUndefined()
+  expect(env.GIT_EXTERNAL_DIFF).toBeUndefined()
+  expect(env.GIT_SSH_COMMAND).toBeUndefined()
+  expect(env.GITHUB_TOKEN).toBeUndefined()
+})
+
+test('Agentic CI rejects repository-local clean filters before checkout', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'ur-agentic-ci-local-filter-'))
+  let runnerCalled = false
+  try {
+    await git(cwd, ['init'])
+    await git(cwd, ['config', 'user.email', 'test@example.com'])
+    await git(cwd, ['config', 'user.name', 'Test'])
+    writeFileSync(join(cwd, 'README.md'), 'base\n')
+    await git(cwd, ['add', 'README.md'])
+    await git(cwd, ['commit', '-m', 'base'])
+    await git(cwd, ['config', 'filter.untrusted.clean', 'false'])
+
+    await expect(
+      runAgenticCi({
+        cwd,
+        spec: defaultAgenticCiSpec(),
+        runner: async () => {
+          runnerCalled = true
+          return { output: 'unexpected', verdict: 'PASS', isError: false }
+        },
+      }),
+    ).rejects.toThrow('local Git clean/process filters')
+    expect(runnerCalled).toBe(false)
+    expect(existsSync(join(cwd, '.ur', 'agentic-ci', '.worktrees'))).toBe(false)
+  } finally {
+    rmSync(cwd, { recursive: true, force: true })
+  }
 })
 
 test('subprocess scrub removes secret-like base and override variables', () => {
@@ -390,7 +448,8 @@ test('provider credentials reach only the agent, never git or verification', asy
             '-e',
             [
               'const names = Object.keys(process.env);',
-              "const forbidden = names.filter(name => /(?:TOKEN|SECRET|PASSWORD|API_KEY|AUTH|CONFIG|NODE_OPTIONS|PROXY)/i.test(name));",
+              "const safeGitConfig = new Set(['GIT_CONFIG_NOSYSTEM','GIT_CONFIG_GLOBAL','GIT_CONFIG_COUNT']);",
+              "const forbidden = names.filter(name => !safeGitConfig.has(name) && /(?:TOKEN|SECRET|PASSWORD|API_KEY|AUTH|CONFIG|NODE_OPTIONS|PROXY)/i.test(name));",
               "if (forbidden.length) { console.error(forbidden.join(',')); process.exit(1) }",
             ].join(''),
           ],

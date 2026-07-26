@@ -88,6 +88,41 @@ export function strictSubprocessEnv(
 }
 
 /**
+ * Remove ambient Git configuration and command injection from an already
+ * scrubbed environment.
+ *
+ * Candidate repositories can control .gitattributes. If Git inherits a
+ * user/system clean, process, or diff driver, an otherwise local `git add` or
+ * checkout can execute that driver. Repository-local configuration remains
+ * visible so callers can inspect and reject it, while ambient configuration is
+ * disabled for the sensitive Git invocation itself.
+ */
+export function isolateGitSubprocessEnv(
+  base: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  const env = { ...base }
+  for (const name of Object.keys(env)) {
+    if (name.startsWith('GIT_')) delete env[name]
+  }
+  env.GIT_CONFIG_NOSYSTEM = '1'
+  env.GIT_CONFIG_GLOBAL = process.platform === 'win32' ? 'NUL' : '/dev/null'
+  env.GIT_CONFIG_COUNT = '0'
+  env.GIT_ATTR_NOSYSTEM = '1'
+  env.GIT_TERMINAL_PROMPT = '0'
+  return env
+}
+
+/** Build a credential-scrubbed environment for untrusted local Git plumbing. */
+export function strictGitSubprocessEnv(
+  base: NodeJS.ProcessEnv = process.env,
+  allowedSecretNames: readonly string[] = [],
+): NodeJS.ProcessEnv {
+  return isolateGitSubprocessEnv(
+    strictSubprocessEnv(base, allowedSecretNames),
+  )
+}
+
+/**
  * Returns a copy of process.env with sensitive secrets stripped, for use when
  * spawning subprocesses (Bash tool, shell snapshot, MCP stdio servers, LSP
  * servers, shell hooks).

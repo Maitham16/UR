@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { safeParseJSON } from '../../utils/json.js'
 import {
+  isolateGitSubprocessEnv,
   isSecretLikeSubprocessEnvName,
   strictSubprocessEnv,
 } from '../../utils/subprocessEnv.js'
@@ -246,14 +247,16 @@ function defaultCommandRunner(
   args: string[],
   cwd: string,
 ): Promise<CommandResult> {
-  const env = Object.fromEntries(
+  const scrubbedEnv = Object.fromEntries(
     Object.entries(process.env).filter(
       ([name]) =>
         !isSecretLikeSubprocessEnvName(name) &&
         !['SSH_AUTH_SOCK', 'GITHUB_TOKEN', 'GH_TOKEN'].includes(name),
     ),
   )
-  env.UR_CODE_SUBPROCESS_ENV_SCRUB = '1'
+  scrubbedEnv.UR_CODE_SUBPROCESS_ENV_SCRUB = '1'
+  const env =
+    file === 'git' ? isolateGitSubprocessEnv(scrubbedEnv) : scrubbedEnv
   return execFileNoThrowWithCwd(file, args, {
     cwd,
     preserveOutputOnError: true,
@@ -787,6 +790,19 @@ async function prepareRepositoryState(
     )
     const shouldPrepare = !options.dryRun && options.prepareWorktrees !== false
     if (shouldPrepare) {
+      const filters = await git(
+        details.root,
+        ['config', '--get-regexp', '^filter\\..*\\.(clean|process)$'],
+        options.commandRunner,
+      )
+      if (filters.code === 0 && filters.stdout.trim()) {
+        throw new Error(
+          `Repository ${repo.id} has local Git clean/process filters; refusing isolated checkout`,
+        )
+      }
+      if (filters.code !== 0 && filters.code !== 1) {
+        throw new Error(`Could not inspect ${repo.id} Git filters`)
+      }
       ensurePrivateDirectory(workspaceDir(cwd), dirname(worktree))
       const created = await git(
         details.root,

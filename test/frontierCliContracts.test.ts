@@ -35,7 +35,10 @@ test('CLI adapters preserve prompts and never promote embedded control flags', (
       '--dry-run',
       '--json',
     ])
-    expect(background.code).toBe(0)
+    expect(
+      background.code,
+      `${background.stdout}\n${background.stderr}`,
+    ).toBe(0)
     const payload = JSON.parse(background.stdout)
     expect(payload.task.task).toBe(
       'fix the --pr and --skip-permissions output',
@@ -75,7 +78,10 @@ test('frontier CLI automation errors are nonzero and offline mode is idempotent'
       ['bg', 'run', 'offline task', '--offline', '--dry-run', '--json'],
       { ...process.env, UR_OFFLINE: '1' },
     )
-    expect(offline.code).toBe(0)
+    expect(
+      offline.code,
+      `${offline.stdout}\n${offline.stderr}`,
+    ).toBe(0)
     expect(JSON.parse(offline.stdout).task.task).toBe('offline task')
     expect(runCli(cwd, ['eval', 'init']).code).toBe(0)
     const unknownCategory = runCli(cwd, [
@@ -165,7 +171,7 @@ test('eval route preserves option-like task text', () => {
       ],
       { ...process.env, UR_OFFLINE: '1' },
     )
-    expect(result.code).toBe(0)
+    expect(result.code, `${result.stdout}\n${result.stderr}`).toBe(0)
     expect(JSON.parse(result.stdout).task).toBe('fix the --strategy parser')
   } finally {
     rmSync(cwd, { recursive: true, force: true })
