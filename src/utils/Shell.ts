@@ -323,8 +323,7 @@ export async function exec(
 
   try {
     const childProcess = spawn(spawnBinary, shellArgs, {
-      env: {
-        ...subprocessEnv(),
+      env: subprocessEnv({
         SHELL: shellType === 'bash' ? binShell : undefined,
         GIT_EDITOR: 'true',
         URCODE: '1',
@@ -334,7 +333,7 @@ export async function exec(
               UR_CODE_SESSION_ID: getSessionId(),
             }
           : {}),
-      },
+      }),
       cwd,
       stdio: usePipeMode
         ? ['pipe', 'pipe', 'pipe']

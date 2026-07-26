@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.48.0
+
+- Added managed cloud fan-out with durable, idempotent steering, owner-scoped
+  mobile/A2A control, explicit PASS plus safe-branch selection, and
+  cancellation-safe task transitions.
+- Added evidence-backed learned playbooks, citation-validated shared memory,
+  durable hash-chained side chats, and isolated multi-repository coordination
+  with dependency-aware execution and review-only PR/rollback plans.
+- Added hardened Agentic CI, trajectory-aware evaluation gates, Electron
+  desktop QA with privacy-safe evidence, and verified deterministic/model/
+  hybrid best-of-N arenas whose checks are cryptographically bound to the
+  candidate patch.
+- Hardened agent subprocess credentials, artifact storage and delivery,
+  concurrent state updates, verifier mutation detection, signed-URL memory
+  redaction, terminal cancellation races, and CI-facing failure exit codes.
+- Expanded user, configuration, validation, static-site, and technical
+  documentation plus adversarial regression coverage for the new workflows.
+
 ## 1.47.1
 
 - Hardened file downloads, filesystem permission checks, and signed skill

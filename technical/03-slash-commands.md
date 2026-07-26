@@ -84,7 +84,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/agent-templates [list\|install]` | local | Install reusable project agent templates | `/agent-templates install reviewer` |
 | `/agent-features [init]` (`/agent-roadmap`) | local | Show/initialize agent feature expansion scaffolds | `/agent-features --json` |
 | `/agent-trends` (`/trends`) | local | UR coverage of current agent-tech trends | `/agent-trends` |
-| `/bg run\|fanout\|list\|status\|logs\|attach\|kill` (`/background-agent`) | local | Detached local background agents; worktrees and PR creation are separate explicit options | `/bg run "upgrade eslint to v9" --worktree --pr` |
+| `/bg run\|fanout\|list\|status\|logs\|attach\|steer\|kill` (`/background-agent`) | local | Detached local background agents with bounded live steering; PR creation requires an isolated worktree | `/bg steer bg_123 --message "run the parser tests"` |
 | `/crew create\|plan\|add\|run\|…` (`/crews`) | local | Lead agent splits a goal into a shared task board; workers claim and run tasks | `/crew create cleanup --goal "remove dead code" --workers 3 --worktrees` |
 | `/arena "<task>"` (`/best-of`) | local | N agents attempt the same task in isolated worktrees; judge picks (optionally applies) the winner | `/arena "optimize image pipeline" --agents 3 --apply` |
 | `/pattern [list\|show\|run\|install]` (`/patterns`) | local | Multi-agent collaboration patterns: PEER, DOE, concurrent, handoff, debate, parallel | `/pattern run debate "should we adopt tRPC?" --execute` |
@@ -99,15 +99,16 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | Command | Type | What it does | Example |
 |---|---|---|---|
 | `/workflow init\|list\|show\|validate\|graph\|plan\|run\|next\|done\|reset` (`/wf`) | local | Declarative agent workflows (steps with dependencies) | `/workflow run release --resume` |
+| `/agent-ci init\|validate\|workflow\|run` | local | Policy-gated agents in isolated CI worktrees with bounded patch artifacts | `/agent-ci init` |
 | `/automation list\|create\|show\|run\|run-due\|enable\|disable\|delete` (`/automations`) | local | Project-local scheduled automations (cron), installable into launchd/systemd/cron | `/automation create nightly --schedule "0 3 * * *" --prompt "run tests and report"` |
 | `/spec init\|generate\|approve\|next\|run\|verify\|…` (`/specs`) | local | Spec-driven development: requirements → design → tasks in `.ur/specs`, executed task-by-task with proof gates | `/spec init checkout --goal "one-click checkout"` |
 | `/trigger parse\|run --file payload.json` (`/mention`) | local | Parse GitHub/Slack webhook payload → optionally launch a headless run | `/trigger run --file payload.json --source github --keyword /ur` |
-| `/cloud run\|list\|show\|apply` | local | Detached best-of-N tasks: race N isolated agents, browse results, apply the winner | `/cloud run "speed up parser" --attempts 3` |
+| `/cloud run\|list\|sync\|environments\|show\|logs\|steer\|cancel\|apply` | local | Detached tasks: verified local best-of-N, or managed candidates selected only from PASS results with safe review branches | `/cloud run "speed up parser" --attempts 3` |
 | `/recipe init\|list\|run` (`/recipes`) | local | Structured-output playbooks: child session must return schema-valid JSON (one repair round) | `/recipe run triage "login 500s"` |
 | `/exec [prompts...]` | local | Non-interactive prompt runs with concurrency (`--file`, `--worktree`, `--max-turns`) | `/exec "fix lint errors" "update snapshots" --concurrency 2` |
 | `/ci-loop` (`/heal`) | local | Run build/test command in an explicit cwd, fix failures, rerun until green or prove cannot-fix | `/ci-loop --command "bun test" --cwd ./packages/app --max-attempts 3` |
 | `/test-first [run\|detect\|install]` (`/quality-loop`, `/tf-loop`) | local | Detect stack, run compile/test/lint loops, install edit-time verify gates | `/test-first run --max-attempts 3` |
-| `/eval init\|run\|report\|compare\|route\|builtin\|leaderboard\|bench` (`/evals`) | local | Public eval harness incl. benchmark adapters | `/eval run my-suite --model llama3.3 --repeat 3 --format html` |
+| `/eval init\|list\|validate\|run\|report\|compare\|route\|gate\|dashboard\|runs\|builtin\|leaderboard\|bench` (`/evals`) | local | Isolated evals, trajectory grading, reliability reports, benchmark adapters, and CI gates | `/eval run my-suite --model llama3.3 --repeat 3` |
 | `/sdk info\|init` (`/embed`) | local | Show headless/programmatic usage; scaffold TS/Python SDK examples | `/sdk init` |
 | `/toolsmith <name> <python\|bash\|node\|go\|rust>` | local | Scaffold a local helper tool under `.ur/tools`, run via UR with approval | `/toolsmith csv-differ python` |
 | `/skill list\|show\|run\|init` | local | Executable skill workflows | `/skill run deploy-checklist` |
@@ -130,7 +131,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/audit export\|verify` | local | Hash-chained audit trail (JSONL/CSV) with tamper verification | `/audit export --format csv --out audit.csv` |
 | `/evidence [n]` | local | Stability evidence/action ledger | `/evidence 20` |
 | `/actions [n]` | local | Recent stability action log | `/actions 10` |
-| `/learn run\|stats\|apply` | local | Mine artifacts/CI outcomes into success-rate stats + reflective lessons that tune escalate/arena/model-route | `/learn run --reflect` |
+| `/learn run\|stats\|apply\|playbooks …` | local | Mine proof-backed outcomes, review learned playbook candidates, and run only explicitly approved workflows | `/learn playbooks mine --min-runs 3` |
 | `/commit` | prompt (internal) | Create a git commit | `/commit` |
 | `/commit-push-pr` | prompt (internal) | Commit, push, open PR | `/commit-push-pr` |
 
@@ -186,6 +187,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/chrome` | jsx | UR-in-Chrome (browser extension) settings | `/chrome` |
 | `/browser <url\|task>` | local | Browser pilot (Playwright if installed) | `/browser https://localhost:3000 "click login and screenshot"` |
 | `/browser-qa list\|validate\|run` | local | Browser QA replay fixtures | `/browser-qa run login-flow` |
+| `/desktop-qa init\|list\|validate\|run\|schema\|doctor` (`/qa-desktop`) | local | Bounded Electron fixtures with teardown, masked screenshots, and raw recordings only when selector masking is off | `/desktop-qa run smoke.json` |
 | `/install-github-app` | jsx | Set up UR GitHub Actions for a repo | `/install-github-app` |
 | `/install-slack-app` | local | Install the UR Slack app | `/install-slack-app` |
 | `/remote-control [name]` (`/rc`) | jsx | Connect terminal for remote-control (mobile/web) sessions | `/remote-control` |
@@ -199,7 +201,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | Command | Type | What it does | Example |
 |---|---|---|---|
 | `/project` | local | Project summary (workspace + DNA) | `/project` |
-| `/workspace` | local | Workspace path, git, project DNA | `/workspace` |
+| `/workspace init\|add\|task\|show\|validate\|run\|status\|verify\|pr-plan\|rollback-plan` | local | Coordinate dependency-aware tasks across isolated worktrees in multiple repositories | `/workspace run release --max-concurrency 4` |
 | `/dna` | local | Detect language/package-manager/build/test/lint, save to `.ur` | `/dna` |
 | `/os` | local | OS, shell, runtime, detected tools | `/os` |
 | `/env` | internal | Environment dump (internal builds) | — |

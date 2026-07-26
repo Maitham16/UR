@@ -4,9 +4,9 @@ const btw = {
   type: 'local-jsx',
   name: 'btw',
   description:
-    'Ask a quick side question without interrupting the main conversation',
+    'Create or continue a durable side chat without interrupting the main conversation',
   immediate: true,
-  argumentHint: '<question>',
+  argumentHint: '<question> | continue/list/show/rename/close',
   load: () => import('./btw.js'),
 } satisfies Command
 

@@ -6,7 +6,7 @@
  * locally from /assets, with an escaped <pre> fallback if assets are missing.
  */
 
-import { readFileSync } from 'node:fs'
+import { createReadStream, readFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { handleDashboardRequest } from './dashboardRoutes.js'
 import { createRequire } from 'node:module'
@@ -16,7 +16,9 @@ import {
   getArtifact,
   getWorkingDiff,
   listArtifacts,
+  openArtifactAttachment,
   readArtifactBody,
+  safeArtifactMimeType,
   type Artifact,
   type CommandExec,
 } from './artifacts.js'
@@ -40,6 +42,24 @@ const ASSET_SPECS: Record<string, { spec: string; type: string }> = {
 }
 
 const assetCache = new Map<string, string | null>()
+const SAFE_INLINE_ATTACHMENT_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'video/webm',
+  'video/mp4',
+])
+
+function attachmentDelivery(mimeType: string): {
+  type: string
+  disposition: 'inline' | 'attachment'
+} {
+  const safe = safeArtifactMimeType(mimeType)
+  return SAFE_INLINE_ATTACHMENT_TYPES.has(safe)
+    ? { type: safe, disposition: 'inline' }
+    : { type: 'application/octet-stream', disposition: 'attachment' }
+}
 
 function loadAsset(path: string): string | null {
   if (assetCache.has(path)) return assetCache.get(path) ?? null
@@ -77,6 +97,9 @@ function page(title: string, body: string, head = ''): string {
   .btn { display: inline-block; padding: .35rem .9rem; border: 1px solid #8886; border-radius: 6px; background: #8881; cursor: pointer; font-size: .9rem; color: inherit; }
   .btn:hover { background: #8882; }
   .toolbar { margin: .8rem 0; display: flex; gap: .5rem; align-items: center; }
+  .attachments { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .8rem; }
+  .attachment { border: 1px solid #8884; border-radius: 6px; padding: .7rem; overflow: hidden; }
+  .attachment img, .attachment video { display: block; width: 100%; max-height: 520px; object-fit: contain; background: #111; }
 </style>
 </head>
 <body>${body}</body>
@@ -150,6 +173,17 @@ export function renderArtifactPage(artifact: Artifact, body: string | null): str
     .map(f => `<div class="feedback"><span class="meta">${escapeHtml(f.at)}</span><br>${escapeHtml(f.text)}</div>`)
     .join('\n')
   const diffView = body !== null && isDiffArtifact(artifact)
+  const attachments = (artifact.attachments ?? [])
+    .map((attachment, index) => {
+      const href = `/artifacts/${encodeURIComponent(artifact.id)}/attachments/${index}`
+      const preview = attachment.mimeType.startsWith('image/')
+        ? `<a href="${href}"><img loading="lazy" src="${href}" alt="${escapeHtml(attachment.role)}"></a>`
+        : attachment.mimeType.startsWith('video/')
+          ? `<video controls preload="metadata" src="${href}"></video>`
+          : ''
+      return `<div class="attachment">${preview}<p><a href="${href}">${escapeHtml(attachment.role)}</a></p><p class="meta">${escapeHtml(attachment.mimeType)} · ${attachment.sizeBytes} bytes · sha256 ${escapeHtml(attachment.sha256.slice(0, 12))}…</p></div>`
+    })
+    .join('\n')
   const parts = [
     `<p><a href="/">&larr; all artifacts</a></p>`,
     `<h1>Artifact ${escapeHtml(artifact.id)} <span class="meta">[${escapeHtml(artifact.kind)}]</span> ${badge(artifact.status)}</h1>`,
@@ -162,6 +196,7 @@ export function renderArtifactPage(artifact: Artifact, body: string | null): str
       ? `<p class="meta">claims: ${artifact.links.claims.map(escapeHtml).join(', ')}</p>`
       : '',
     feedback ? `<h2>Feedback</h2>${feedback}` : '',
+    attachments ? `<h2>Attachments</h2><div class="attachments">${attachments}</div>` : '',
     body !== null
       ? `<h2>Content</h2>${diffView ? renderDiffBlock(body) : `<pre>${escapeHtml(body)}</pre>`}`
       : '',
@@ -200,7 +235,13 @@ function notFound(id: string): string {
   return page('Artifact not found', `<h1>Artifact not found: ${escapeHtml(id)}</h1><p><a href="/">&larr; all artifacts</a></p>`)
 }
 
-type HttpPayload = { status: number; type: string; body: string }
+type HttpPayload = {
+  status: number
+  type: string
+  body: string
+  file?: { cwd: string; path: string }
+  headers?: Record<string, string>
+}
 
 export async function handleArtifactsRequest(
   cwd: string,
@@ -240,10 +281,40 @@ export async function handleArtifactsRequest(
   }
   match = path.match(/^\/artifacts\/([^/]+)\/raw$/)
   if (match) {
-    const body = readArtifactBody(cwd, match[1]!)
-    return body !== null
-      ? { status: 200, type: 'text/plain', body }
+    const artifact = getArtifact(cwd, match[1]!)
+    return artifact?.file
+      ? {
+          status: 200,
+          type: 'text/plain',
+          body: '',
+          file: { cwd, path: artifact.file },
+          headers: {
+            'cache-control': 'private, no-store',
+            'content-disposition': `attachment; filename="${encodeURIComponent(artifact.file.split('/').at(-1) ?? 'artifact')}"`,
+            'content-security-policy': "default-src 'none'; sandbox",
+          },
+        }
       : { status: 404, type: 'text/plain', body: `Artifact body not found: ${match[1]}` }
+  }
+  match = path.match(/^\/artifacts\/([^/]+)\/attachments\/(\d+)$/)
+  if (match) {
+    const artifact = getArtifact(cwd, match[1]!)
+    const attachment = artifact?.attachments?.[Number(match[2])]
+    if (attachment) {
+      const delivery = attachmentDelivery(attachment.mimeType)
+      return {
+          status: 200,
+          type: delivery.type,
+          body: '',
+          file: { cwd, path: attachment.path },
+          headers: {
+            'cache-control': 'private, no-store',
+            'content-disposition': `${delivery.disposition}; filename="${encodeURIComponent(attachment.path.split('/').at(-1) ?? 'attachment')}"`,
+            'content-security-policy': "default-src 'none'; sandbox",
+          },
+        }
+    }
+    return { status: 404, type: 'text/plain', body: 'Artifact attachment not found' }
   }
   match = path.match(/^\/(?:artifacts\/)?([^/]+)$/)
   if (match) {
@@ -294,8 +365,42 @@ export function startArtifactsServer(
   const operation = new Promise<ArtifactsServerStart>((resolvePromise, reject) => {
     const server = createServer((req, res) => {
       const respond = (r: HttpPayload) => {
-        res.writeHead(r.status, { 'content-type': `${r.type}; charset=utf-8` })
-        res.end(r.body)
+        const textual =
+          r.type.startsWith('text/') ||
+          r.type === 'application/json' ||
+          r.type === 'application/javascript'
+        const opened = r.file
+          ? openArtifactAttachment(r.file.cwd, r.file.path)
+          : null
+        if (r.file && !opened) {
+          res.writeHead(404, {
+            'content-type': 'text/plain; charset=utf-8',
+            'x-content-type-options': 'nosniff',
+          })
+          res.end('Artifact attachment not found')
+          return
+        }
+        res.writeHead(r.status, {
+          'content-type': textual ? `${r.type}; charset=utf-8` : r.type,
+          'x-content-type-options': 'nosniff',
+          ...(r.type === 'text/html'
+            ? {
+                'content-security-policy':
+                  "default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
+              }
+            : {}),
+          ...r.headers,
+        })
+        if (r.file && opened) {
+          const stream = createReadStream(opened.path, {
+            fd: opened.fd,
+            autoClose: true,
+          })
+          stream.once('error', () => res.destroy())
+          stream.pipe(res)
+        } else {
+          res.end(r.body)
+        }
       }
       const handler =
         req.method === 'GET'

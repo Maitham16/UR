@@ -62,6 +62,7 @@ UR.local.md
 .ur/*.local.json
 .ur/index/
 .ur/memory/
+.ur/learning/playbooks.json
 .ur/semantic-memory/index/
 .ur/brainstorming/
 .ur/agent-memory-local/
@@ -72,6 +73,18 @@ UR.local.md
 .ur/logs/
 .ur/background/
 .ur/worktrees/
+.ur/arena/
+.ur/cloud/
+.ur/agentic-ci/runs/
+.ur/agentic-ci/.worktrees/
+.ur/desktop-qa/runs/
+.ur/evals/.worktrees/
+.ur/evals/.runs/
+.ur/evals/.results/
+.ur/evals/.dashboards/
+.ur/learning/disabled/
+.ur/workspaces/.state/
+.ur/workspaces/.worktrees/
 .ur/ide/
 .ur/runs/
 .ur-analysis/

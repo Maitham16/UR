@@ -974,7 +974,7 @@ async function execCommandHook(
       )
     }
     child = spawn(pwshPath, buildPowerShellArgs(finalCommand), {
-      env: envVars,
+      env: subprocessEnv(envVars),
       cwd: safeCwd,
       // Prevent visible console window on Windows (no-op on other platforms)
       windowsHide: true,
@@ -984,7 +984,7 @@ async function execCommandHook(
     // On other platforms, shell: true uses /bin/sh.
     const shell = isWindows ? findGitBashPath() : true
     child = spawn(finalCommand, [], {
-      env: envVars,
+      env: subprocessEnv(envVars),
       cwd: safeCwd,
       shell,
       // Prevent visible console window on Windows (no-op on other platforms)

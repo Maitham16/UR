@@ -79,4 +79,23 @@ describe('eval compare', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  test('compare forwards category selections', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ur-eval-compare-category-'))
+    try {
+      saveSuite(dir, starterSuite())
+      const { call } = await import('../src/commands/eval/eval.js')
+      const filtered = await runWithCwdOverride(dir, () =>
+        call(
+          'compare starter-compare alpha beta --category coding --dry-run --json',
+          {} as never,
+        ),
+      )
+      expect(filtered.type).toBe('text')
+      if (filtered.type !== 'text') throw new Error('expected text')
+      expect(JSON.parse(filtered.value).totalCases).toBe(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

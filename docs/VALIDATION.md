@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.47.1 (UR-Nexus)"
+# expected for this release: "1.48.0 (UR-Nexus)"
 ```
 
 ## 0.1 First-workspace model selection (1.45.4)
@@ -177,6 +177,67 @@ bun run secrets:scan
 bun run dependencies:audit
 bun run release:check
 bun run package:check
+```
+
+## 0.7 Frontier agent workflow gates
+
+These deterministic suites use temporary repositories, fake managed-cloud
+clients, injected runners, and mock desktop drivers. They make no paid model
+calls:
+
+```sh
+bun test test/cloudDesktopQa.test.ts
+bun test test/learnedPlaybooks.test.ts test/memoryCitations.test.ts
+bun test test/agenticCi.test.ts test/trajectoryCapture.test.ts
+bun test test/sideChats.test.ts test/workspaceCoordinator.test.ts
+bun test test/arenaModelJudge.test.ts
+```
+
+Expected coverage:
+
+- Managed cloud fan-out selects only completed candidates with explicit
+  `PASS` and safe non-empty review branches. Ordering is deterministic and
+  never fetches or merges a branch. Cancellation remains terminal even when a
+  remote session finishes starting concurrently.
+- Cloud, local-background, and owner-scoped A2A steering reject terminal or
+  foreign tasks, bound message/receipt storage, and deduplicate request IDs
+  before delivery.
+- Learned playbooks require proof-backed safe evidence and explicit approval.
+  Rejection is terminal; disable verifies the promoted workflow, moves it to
+  the private disabled archive, and prevents execution.
+- Cited memory revalidates file excerpts and run artifacts by digest, excludes
+  stale/missing entries by default, and leaves user/web sources explicitly
+  unverifiable without reopening them.
+- Agentic CI treats event text as data, uses a read-only pinned workflow,
+  isolates credentials, checks deletion/rename-source and path policy using
+  exact NUL-delimited Git metadata, and emits only a bounded hash-addressed
+  patch plus its manifest. A passing verification command that changes staged,
+  unstaged, untracked, or index-visible state must block and emit no patch.
+- Trajectory capture retains control-flow metadata only. Requested trajectory
+  or report metrics fail closed when absent or below the configured gate.
+- Desktop QA tears down on every path, masks configured screenshot selectors,
+  and refuses raw video or trace recording whenever selector redaction is
+  configured. Artifact evidence rejects symlink sources and normalizes unsafe
+  MIME declarations to a safe type; downloads use a bounded store path,
+  no-store/sandbox headers, a small safe inline allow-list, and octet-stream
+  fallback.
+- Side chats survive reload, validate their hash chain, stay tool-free and
+  bounded, and reject continuation after close.
+- Workspace coordination validates remote identity and the dependency DAG,
+  permits independent repositories to run concurrently, serializes one writer
+  per repository, refuses changed-spec resume, and produces PR/rollback plans
+  without executing them.
+- Arena model/hybrid judging sees only bounded, redacted, anonymous eligible
+  candidates; an oversized full diff is excluded rather than partially judged,
+  invalid decisions yield no winner, and apply requires the original clean
+  base.
+
+Check the public documentation surfaces after any contract change:
+
+```sh
+bun test test/docsCommands.test.ts test/docsCoverage.test.ts
+node --check documentation/app.js
+bun run lint
 ```
 
 ## 1. Marketplace tree resolves

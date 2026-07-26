@@ -31,6 +31,7 @@
         <a href="#architecture">Architecture</a>
         <a href="#mental-model">Mental Model</a>
         <a href="#features">Feature Map</a>
+        <a href="#frontier">Frontier Agent Workflows</a>
         <a href="#tutorials">Tutorials</a>
         <a href="#commands">Command Reference</a>
         <a href="#slash">Slash Commands</a>
@@ -44,7 +45,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.47.1</p>
+          <p class="eyebrow">Version 1.48.0</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -165,7 +166,7 @@ ur config set responses.store false</code></pre>
           </article>
           <article>
             <h3>Status bar and updates</h3>
-            <pre><code>Ollama | llama3 | ask | main | update 1.47.1 available</code></pre>
+            <pre><code>Ollama | llama3 | ask | main | update 1.48.0 available</code></pre>
             <p>The interactive status bar shows only important runtime state: provider, model, mode, branch, active tasks, checks status when known, and update availability. It is hidden in CI, dumb terminals, and print mode.</p>
           </article>
           <article>
@@ -227,6 +228,61 @@ ur config set responses.store false</code></pre>
           <p>Each group below links the major UR surfaces to when you should use them.</p>
         </div>
         <div id="featureGrid" class="feature-grid"></div>
+      </section>
+
+      <section id="frontier" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Production Agent Operations</p>
+          <h2>Ten frontier workflows with explicit trust boundaries</h2>
+          <p>These surfaces keep untrusted task text separate from policy, make publication explicit, and fail closed when evidence is incomplete or changes during verification.</p>
+        </div>
+        <div class="concept-grid">
+          <article>
+            <h3>1. Managed cloud fan-out</h3>
+            <p><code>ur cloud run --runner managed</code> starts isolated candidates. Selection requires a completed session, explicit <code>PASS</code>, and a safe non-empty review branch; ordering is deterministic, not comparative judging. UR never fetches or merges that branch. Cancellation also closes sessions that finish starting concurrently.</p>
+          </article>
+          <article>
+            <h3>2. Idempotent live steering</h3>
+            <p><code>ur cloud steer</code> and <code>ur bg steer</code> accept bounded messages only for active work. Request IDs are reserved before delivery, digest-bound, and deduplicated across concurrent retries. A2A steering additionally enforces authenticated task ownership.</p>
+          </article>
+          <article>
+            <h3>3. Learned playbooks</h3>
+            <p><code>ur learn playbooks</code> mines repeated proof-backed safe runs into candidates. Execution requires explicit approval. Rejection is terminal; disable verifies the promoted workflow and moves it into a private disabled archive so it can no longer run.</p>
+          </article>
+          <article>
+            <h3>4. Cited task memory</h3>
+            <p><code>ur context-pack remember</code> can cite bounded project-file excerpts and run artifacts by SHA-256. Stale, missing, rejected, and superseded entries are excluded by default. User and web sources stay explicitly unverifiable until reopened; memory search performs no network request.</p>
+          </article>
+          <article>
+            <h3>5. Patch-only Agentic CI</h3>
+            <p><code>ur agent-ci</code> runs from a trusted base in a detached worktree with read-only GitHub permissions and isolated check credentials. Exact NUL-delimited path metadata enforces rename-source, deletion, allow, and deny policy. Pre/post check state digests bind verification to the post-check patch; any staged, unstaged, untracked, or index-visibility mutation suppresses output.</p>
+          </article>
+          <article>
+            <h3>6. Trajectory-aware eval gates</h3>
+            <p><code>ur eval gate</code> can require pass, trajectory, test, cost, duration, and baseline-regression thresholds. Captures retain control-flow metadata only—never prompts, paths, tool inputs, tool outputs, or assistant text—and a requested missing metric fails closed.</p>
+          </article>
+          <article>
+            <h3>7. Electron desktop QA</h3>
+            <p><code>ur desktop-qa</code> runs bounded fixtures with guaranteed teardown and masked screenshots. Raw video or trace is refused whenever selector redaction is configured. Evidence is copied into bounded non-symlink attachments; downloads use private/no-store headers, sandbox CSP, a safe inline allow-list, and octet-stream fallback.</p>
+          </article>
+          <article>
+            <h3>8. Durable side chats</h3>
+            <p><code>/btw</code> creates a private hash-chained side conversation that survives restarts while the main task continues. Every request is a cancellable one-turn, tool-free fork; chat count, turns, content, and storage are bounded, and closed chats reject continuation.</p>
+          </article>
+          <article>
+            <h3>9. Multi-repository coordination</h3>
+            <p><code>ur workspace</code> pins canonical repository/remote identities and executes a dependency DAG in isolated worktrees. Independent repositories may run concurrently, but each repository has one serialized writer. Changed specifications cannot resume, and PR/rollback commands print plans only.</p>
+          </article>
+          <article>
+            <h3>10. Verified model arena</h3>
+            <p><code>ur arena --judge model|hybrid</code> exposes only bounded, redacted, anonymous eligible candidates to a one-turn tool-free judge. Candidates need <code>PASS</code>, a non-empty safe patch, and successful checks. Oversized full diffs are excluded rather than truncated into eligibility; malformed decisions yield no winner.</p>
+          </article>
+        </div>
+        <pre><code>ur cloud run "repair the parser" --runner managed --environment &lt;id&gt; --attempts 3
+ur agent-ci validate default
+ur eval gate starter --min-pass-rate 1 --min-trajectory-score 0.9
+ur desktop-qa validate .ur/desktop-qa/fixtures/smoke.json
+ur arena "repair the cache race" --agents 3 --judge hybrid --verify "bun test"</code></pre>
       </section>
 
       <section id="tutorials" class="section">

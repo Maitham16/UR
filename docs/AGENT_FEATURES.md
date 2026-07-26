@@ -9,6 +9,52 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.48.0 Additions
+
+- `ur cloud --runner managed` persists remote environment/session lifecycle,
+  cursor reconciliation, bounded output, explicit remote branches, cancellation,
+  and idempotent steering. Only PASS results with safe review branches are
+  eligible; all eligible results receive deterministic ranks rather than an
+  unverified comparative-quality score. Cancellation wins over a concurrent
+  session start. The authenticated A2A compatibility task API exposes the same
+  owner-isolated steering boundary for mobile clients.
+- `ur learn playbooks` mines repeated proof-backed run shapes behind a Wilson
+  confidence floor, rejects unsafe/secret-like traces, and requires explicit
+  approval before materializing a normal validated workflow. Disabling verifies
+  that workflow and moves it to the private disabled archive.
+- Project task memory accepts content-digested file and run citations plus
+  explicit user/web citations. Resolution revalidates freshness and excludes
+  rejected, superseded, stale, or missing evidence by default.
+- `ur agent-ci` runs untrusted event tasks in detached worktrees with actor
+  policy, read-only GitHub permissions, scrubbed code subprocesses, bounded
+  redacted output, exact NUL-delimited path policy, pre/post verification-state
+  binding, and a post-check hash-addressed patch for a separate publish decision.
+- Eval cases capture redacted control-flow trajectories and grade tool choice,
+  order, success, repetition, failures, permission denials, and turns. `ur eval
+  gate` makes those scores and outcome/cost/duration regressions enforceable.
+- `ur desktop-qa` drives bounded Electron fixtures and attaches teardown-safe,
+  masked screenshots, hashes, diagnostics, and reports to the artifact review
+  surface. Raw video/trace evidence is available only without selector
+  redaction; incompatible fixtures fail validation. Attachment sources reject
+  symlinks and unsafe MIME types download as sandboxed octet streams.
+- `/btw` is now a durable, private, hash-chained side chat with
+  create/continue/list/show/rename/close lifecycle and cancellation, while every
+  fork remains one-turn and tool-free.
+- `ur workspace` enrolls canonical repository identities, validates a
+  dependency DAG, serializes writers per repository, uses isolated worktrees,
+  resumes private state, runs repository gates, and emits PR/rollback plans
+  without executing them.
+- `ur arena` now has deterministic, model, and hybrid judges. Only
+  proof-backed, verification-passing, safety-eligible candidates reach the
+  strict anonymous judge schema; oversized full diffs are excluded rather than
+  partially judged, and apply requires the original clean base.
+- Background, managed-cloud, A2A/mobile, artifacts, evals, and the standard CLI
+  share bounded/idempotent control, nonzero CI failure semantics, private state,
+  and reviewable evidence.
+
+See [Frontier Agent Workflows](FRONTIER_AGENT_FEATURES.md) for commands and
+trust boundaries.
+
 ## v1.47.0 Additions
 
 - `ur ag-ui serve` adds a secure AG-UI HTTP/SSE boundary for user-facing

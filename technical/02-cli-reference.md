@@ -1,7 +1,7 @@
 # 02 — CLI Reference (`ur` binary)
 
 Source of truth: `src/entrypoints/cli.tsx` (fast paths), `src/main.tsx` (commander program),
-`src/cli/bg.ts` (background sessions).
+`src/commands/bg/bg.ts` (background sessions).
 
 Start interactive: `ur` — starts the Ink REPL in the current directory.
 One-shot headless: `ur -p "prompt"` — prints the response and exits.
@@ -98,19 +98,24 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | Command | Purpose | Example |
 |---|---|---|
 | `ur exec [prompts...]` | Non-interactive runs with concurrency (also `/exec`) | `ur exec "fix lint" "run tests" --concurrency 2` |
-| `ur bg [action] [task...]` | Detached background agents (run/fanout/list/status/logs/attach/kill) | `ur bg run "migrate configs" --worktree --pr` |
+| `ur bg [action] [task...]` | Detached background agents (run/fanout/list/status/logs/steer/attach/kill) | `ur bg steer <id> --message "run the regression"` |
+| `ur cloud [action]` | Verified local best-of-N or managed candidates with safe-branch eligibility, sync, logs, steering, and cancellation | `ur cloud run "fix parser" --runner managed --attempts 3` |
+| `ur agent-ci [action] [name]` | Policy-gated isolated CI agent and pinned GitHub workflow | `ur agent-ci init default` |
+| `ur workspace [action]` | Dependency-aware multi-repository worktrees and explicit PR/rollback plans | `ur workspace validate checkout` |
 | `ur task create <subject>` / `list` / `get <id>` / `update <id>` | Work-item registry | `ur task create "Add rate limiter"` |
 | `ur worktree [action] [id]` | List/inspect/clean agent worktrees | `ur worktree clean` |
 | `ur automation [action] [name]` | Cron-style project automations (`--schedule`, `--prompt`, `run-due`, `install` launchd/systemd/cron) | `ur automation create nightly --schedule "0 3 * * *" --prompt "run tests"` |
-| `ur eval [action]` | Eval harness (init/run/report/compare/leaderboard/bench) | `ur eval run smoke --json` |
-| `ur arena [task...]` | N agents compete on one task, judge picks winner | `ur arena "speed up parser" --agents 3` |
+| `ur eval [action]` | Isolated evals with redacted trajectory grading and CI gates | `ur eval gate smoke --min-pass-rate 1` |
+| `ur arena [task...]` | Verified best-of-N with deterministic/model/hybrid judging | `ur arena "speed up parser" --agents 3 --judge hybrid --verify "bun test"` |
+| `ur desktop-qa [action]` | Bounded Electron fixtures with masked screenshots and privacy-compatible optional video/trace evidence | `ur desktop-qa run .ur/desktop-qa/fixtures/smoke.json` |
+| `ur learn playbooks [action]` | Mine, approve, run, reject, or disable evidence-backed workflows | `ur learn playbooks mine --min-runs 3` |
 | `ur crew [action] [name]` | Lead + workers over a shared task board | `ur crew create fixers --goal "eliminate flaky tests"` |
 | `ur ci-loop` | Run build/test in an explicit working directory, auto-fix until green | `ur ci-loop --command "npm test" --cwd ./packages/app --max-attempts 3` |
 | `ur escalate [action] [task...]` | Fast model with auto-escalation to an oracle model | `ur escalate run "hard proof" --oracle gpt-5.5` |
 | `ur route [task...]` | Classify task → recommend subagent/pattern | `ur route "debug flaky test"` |
 | `ur spec / goal / workflow / pattern / skill …` | Spec-driven dev, goals, workflows, patterns, skills (see docs 08–10) | `ur spec init checkout --goal "one-click checkout"` |
 | `ur skill verify / sign / keygen` | Validate provenance, Ed25519-sign a skill, or create a trusted signing key | `ur skill verify release-notes --require-trusted` |
-| `ur context-pack memory verify / quarantine / rollback` | Audit or recover the tamper-evident project memory chain | `ur context-pack memory verify --json` |
+| `ur context-pack memory verify / revalidate / search / quarantine / rollback` | Audit, resolve citations, or recover the tamper-evident project memory chain | `ur context-pack memory revalidate --json` |
 
 ### Servers & integration endpoints
 | Command | Purpose | Example |

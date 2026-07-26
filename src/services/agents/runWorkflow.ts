@@ -93,6 +93,7 @@ async function runWorkflowSpecUntraced(
   const result = await executeWorkflow(spec, {
     runStep,
     loop,
+    stopOnError: true,
     resumeCompleted,
     maxConcurrency: options.maxConcurrency,
     onEvent: event => {

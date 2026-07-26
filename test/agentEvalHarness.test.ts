@@ -92,7 +92,7 @@ describe('eval runner and report', () => {
     expect(report.total).toBe(3)
     expect(report.passed).toBe(2)
     expect(report.failed).toBe(1)
-    expect(report.passRate).toBe(0.67)
+    expect(report.passRate).toBe(2 / 3)
     expect(report.byCategory.coding).toEqual({ passed: 1, total: 2 })
     expect(report.byCategory.research).toEqual({ passed: 1, total: 1 })
   })

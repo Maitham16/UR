@@ -437,7 +437,10 @@ ur context-pack remember --decision "Use package scripts before ad hoc commands"
 ur context-pack remember --constraint "Do not expose secret values"
 ur context-pack remember --command "bun run typecheck"
 ur context-pack remember --diff "Safety policy wired into Bash permission checks"
+ur context-pack remember --decision "Keep streaming" --cite-file src/parser.ts --lines 20:48
 ur context-pack memory verify
+ur context-pack memory revalidate
+ur context-pack memory search --query "streaming"
 ur context-pack memory quarantine
 ur context-pack memory rollback --to <entry-id>
 ur context-pack compress
@@ -451,8 +454,10 @@ Generated files:
   other manifests.
 - `.ur/context/architecture.md` — human-readable architecture summary.
 - `.ur/context/task-memory.jsonl` — private, append-only decisions,
-  constraints, commands, diffs, and notes with explicit provenance, UUIDs, and
-  a SHA-256 content/hash chain. Legacy entries are anchored when the chain
+  constraints, commands, diffs, and notes with explicit provenance, optional
+  file/run/user/web citations, UUIDs, and a SHA-256 content/hash chain. File
+  and run citations are digest-revalidated; stale and superseded entries are
+  excluded from normal resolution. Legacy entries are anchored when the chain
   starts rather than silently rewritten.
 - `.ur/context/compressed.md` — compressed task context summary.
 

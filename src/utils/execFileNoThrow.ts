@@ -19,6 +19,8 @@ type ExecFileOptions = {
   // getCwd() -> PersistentShell -> logEvent() -> execFileNoThrow
   useCwd?: boolean
   env?: NodeJS.ProcessEnv
+  /** When false, do not merge process.env into the explicit env object. */
+  extendEnv?: boolean
   stdin?: 'ignore' | 'inherit' | 'pipe'
   input?: string
   audit?: CommandAuditOptions | false
@@ -49,6 +51,7 @@ export function execFileNoThrow(
     preserveOutputOnError: options.preserveOutputOnError,
     cwd: options.useCwd ? getCwd() : undefined,
     env: options.env,
+    extendEnv: options.extendEnv,
     stdin: options.stdin,
     input: options.input,
     audit: options.audit,
@@ -62,6 +65,8 @@ type ExecFileWithCwdOptions = {
   maxBuffer?: number
   cwd?: string
   env?: NodeJS.ProcessEnv
+  /** Execa defaults to merging process.env; security-sensitive callers opt out. */
+  extendEnv?: boolean
   shell?: boolean | string | undefined
   stdin?: 'ignore' | 'inherit' | 'pipe'
   input?: string
@@ -108,6 +113,7 @@ export function execFileNoThrowWithCwd(
     preserveOutputOnError: finalPreserveOutput = true,
     cwd: finalCwd,
     env: finalEnv,
+    extendEnv: finalExtendEnv = true,
     maxBuffer,
     shell,
     stdin: finalStdin,
@@ -130,10 +136,11 @@ export function execFileNoThrowWithCwd(
     // Use execa for cross-platform .bat/.cmd compatibility on Windows
     execa(file, args, {
       maxBuffer,
-      signal: abortSignal,
+      cancelSignal: abortSignal,
       timeout: finalTimeout,
       cwd: finalCwd,
       env: finalEnv,
+      extendEnv: finalExtendEnv,
       shell,
       stdin: finalStdin,
       input: finalInput,

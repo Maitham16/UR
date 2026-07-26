@@ -6,22 +6,37 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { safeParseJSON } from '../../utils/json.js'
+import { ensurePrivateDirectory } from '../../utils/privateState.js'
+import {
+  isSecretLikeSubprocessEnvName,
+  strictSubprocessEnv,
+} from '../../utils/subprocessEnv.js'
+import { redactAgenticCiText } from './agenticCi.js'
 import { addRunArtifact } from './runArtifacts.js'
 import { parseHeadlessOutput } from './cliStepRunner.js'
 import type { Verdict } from './executor.js'
 import {
-  resetCostState,
-  getTotalCostUSD,
-  getTotalInputTokens,
-  getTotalOutputTokens,
-  getTotalAPIDuration,
+  type EvalTrajectory,
+  type TrajectoryExpectation,
+  gradeCapturedTrajectory,
+  parseStreamJsonTrajectory,
+} from './trajectory.js'
+import {
   getModelUsage,
-  getTotalLinesAdded,
-  getTotalLinesRemoved,
 } from '../../bootstrap/state.js'
+
+const SAFE_EVAL_GIT_ARGS = [
+  '-c',
+  'core.hooksPath=/dev/null',
+  '-c',
+  'core.fsmonitor=false',
+  '-c',
+  'diff.external=',
+] as const
 
 /**
  * Public agent eval harness.
@@ -52,6 +67,8 @@ export type EvalExpectation = {
   toolOrder?: string[]
   /** Trajectory: at most this many tool calls (penalizes wandering). */
   maxSteps?: number
+  /** Structured trajectory assertions (additive to the legacy fields above). */
+  trajectory?: TrajectoryExpectation
   /** LLM-as-judge rubric; graded by an injected judge runner (reference-free). */
   judge?: string
   /** Optional command to run after the agent output to verify a patch/test fix. */
@@ -139,6 +156,8 @@ export type EvalCaseResult = {
   checks: CheckResult[]
   outputPreview: string
   metrics?: EvalRunMetrics
+  trajectory?: EvalTrajectory
+  trajectoryScore?: number
 }
 
 export type EvalReport = {
@@ -162,13 +181,88 @@ export type EvalReport = {
   testsPassed?: number
   testsFailed?: number
   testPassRate?: number
+  /** Mean normalized score of cases that declared trajectory expectations. */
+  trajectoryScore?: number
   cases: EvalCaseResult[]
+}
+
+export type EvalGateThresholds = {
+  minPassRate?: number
+  minTrajectoryScore?: number
+  minTestPassRate?: number
+  maxCostUSD?: number
+  maxDurationMs?: number
+  /** Maximum allowed pass-rate drop versus a saved baseline. */
+  maxPassRateRegression?: number
+}
+
+export type EvalGateResult = {
+  passed: boolean
+  checks: CheckResult[]
+}
+
+/** Pure CI gate over a persisted report; invalid/missing metrics fail closed. */
+export function evaluateEvalGate(
+  report: EvalReport,
+  thresholds: EvalGateThresholds,
+  baseline?: EvalReport,
+): EvalGateResult {
+  const checks: CheckResult[] = []
+  const minimum = (
+    name: string,
+    actual: number | undefined,
+    expected: number | undefined,
+  ): void => {
+    if (expected === undefined) return
+    checks.push({
+      name,
+      passed: actual !== undefined && actual >= expected,
+      detail: actual === undefined ? 'metric unavailable' : `${actual} (minimum ${expected})`,
+    })
+  }
+  const maximum = (
+    name: string,
+    actual: number | undefined,
+    expected: number | undefined,
+  ): void => {
+    if (expected === undefined) return
+    checks.push({
+      name,
+      passed: actual !== undefined && actual <= expected,
+      detail: actual === undefined ? 'metric unavailable' : `${actual} (maximum ${expected})`,
+    })
+  }
+  minimum('pass rate', report.passRate, thresholds.minPassRate ?? 1)
+  minimum(
+    'trajectory score',
+    report.trajectoryScore,
+    thresholds.minTrajectoryScore,
+  )
+  minimum('test pass rate', report.testPassRate, thresholds.minTestPassRate)
+  maximum('cost USD', report.totalCostUSD, thresholds.maxCostUSD)
+  maximum('duration ms', report.totalDurationMs, thresholds.maxDurationMs)
+  if (thresholds.maxPassRateRegression !== undefined) {
+    const regression = baseline
+      ? Math.max(0, baseline.passRate - report.passRate)
+      : undefined
+    maximum(
+      'pass-rate regression',
+      regression,
+      thresholds.maxPassRateRegression,
+    )
+  }
+  return { passed: checks.every(check => check.passed), checks }
 }
 
 /** Run one case and return its raw output. Injected so grading stays offline. */
 export type EvalRunner = (
   evalCase: EvalCase,
-) => Promise<{ output: string; isError?: boolean; trajectory?: string[]; metrics?: EvalRunMetrics }>
+) => Promise<{
+  output: string
+  isError?: boolean
+  trajectory?: string[] | EvalTrajectory
+  metrics?: EvalRunMetrics
+}>
 
 /**
  * LLM-as-judge: scores an output against a rubric and returns PASS/FAIL. Injected
@@ -189,6 +283,26 @@ export type EvalValidation = {
 
 const ID_RE = /^[a-z0-9][a-z0-9-_]{0,63}$/i
 const VERDICT_RE = /\bVERDICT:\s*(PASS|FAIL|PARTIAL)\b/i
+const SECRET_RE =
+  /\b(?:sk-[a-zA-Z0-9_-]{12,}|gh[pousr]_[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16}|(?:password|token|secret|api[_-]?key)\s*[:=]\s*\S+)/i
+
+function boundedStringArray(
+  value: unknown,
+  maxItems: number,
+  maxChars: number,
+): value is string[] | undefined {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.length <= maxItems &&
+      value.every(
+        item =>
+          typeof item === 'string' &&
+          item.length > 0 &&
+          item.length <= maxChars,
+      ))
+  )
+}
 
 function hasAnyExpectation(expect: EvalExpectation): boolean {
   return Boolean(
@@ -197,6 +311,10 @@ function hasAnyExpectation(expect: EvalExpectation): boolean {
       expect.regex?.length ||
       expect.verdict ||
       typeof expect.maxOutputChars === 'number' ||
+      expect.toolsUsed?.length ||
+      expect.toolOrder?.length ||
+      typeof expect.maxSteps === 'number' ||
+      Boolean(expect.trajectory) ||
       Boolean(expect.judge?.trim()) ||
       Boolean(expect.testCommand?.trim()),
   )
@@ -208,6 +326,8 @@ export function validateEvalSuite(suite: EvalSuite): EvalValidation {
   if (!suite.name || !suite.name.trim()) errors.push('suite has no name')
   if (!Array.isArray(suite.cases) || suite.cases.length === 0) {
     errors.push('suite has no cases')
+  } else if (suite.cases.length > 1_000) {
+    errors.push('suite has more than 1000 cases')
   }
   const seen = new Set<string>()
   for (const evalCase of suite.cases ?? []) {
@@ -218,20 +338,81 @@ export function validateEvalSuite(suite: EvalSuite): EvalValidation {
     seen.add(evalCase.id)
     if (!evalCase.prompt?.trim()) {
       errors.push(`case "${evalCase.id}" has an empty prompt`)
+    } else if (Buffer.byteLength(evalCase.prompt, 'utf8') > 64 * 1024) {
+      errors.push(`case "${evalCase.id}" prompt exceeds 64 KiB`)
     }
     if (!evalCase.category?.trim()) {
       warnings.push(`case "${evalCase.id}" has no category`)
+    } else if (evalCase.category.length > 128) {
+      errors.push(`case "${evalCase.id}" category exceeds 128 characters`)
     }
     const expect = evalCase.expect ?? {}
     if (!hasAnyExpectation(expect)) {
       warnings.push(`case "${evalCase.id}" has no expectations (it will always pass)`)
     }
     for (const pattern of expect.regex ?? []) {
+      if (pattern.length > 2_048) {
+        errors.push(`case "${evalCase.id}" has a regex longer than 2048 characters`)
+        continue
+      }
       try {
         new RegExp(pattern)
       } catch {
         errors.push(`case "${evalCase.id}" has an invalid regex: ${pattern}`)
       }
+    }
+    for (const [field, values] of [
+      ['contains', expect.contains],
+      ['notContains', expect.notContains],
+      ['regex', expect.regex],
+      ['toolsUsed', expect.toolsUsed],
+      ['toolOrder', expect.toolOrder],
+      ['trajectory.requiredTools', expect.trajectory?.requiredTools],
+      ['trajectory.forbiddenTools', expect.trajectory?.forbiddenTools],
+      ['trajectory.orderedTools', expect.trajectory?.orderedTools],
+      [
+        'trajectory.requireSuccessfulTools',
+        expect.trajectory?.requireSuccessfulTools,
+      ],
+    ] as const) {
+      if (!boundedStringArray(values, 128, 2_048)) {
+        errors.push(`case "${evalCase.id}" has an invalid ${field} list`)
+      }
+    }
+    if (
+      expect.judge !== undefined &&
+      (!expect.judge.trim() || expect.judge.length > 16 * 1024)
+    ) {
+      errors.push(`case "${evalCase.id}" has an invalid judge rubric`)
+    }
+    if (
+      expect.testCommand !== undefined &&
+      (!expect.testCommand.trim() ||
+        expect.testCommand.length > 4_096 ||
+        expect.testCommand.includes('\0') ||
+        SECRET_RE.test(expect.testCommand))
+    ) {
+      errors.push(`case "${evalCase.id}" has an invalid test command`)
+    }
+    const trajectoryNumbers = [
+      expect.maxSteps,
+      expect.trajectory?.minToolCalls,
+      expect.trajectory?.maxToolCalls,
+      expect.trajectory?.maxFailedToolCalls,
+      expect.trajectory?.maxRepeatedToolCalls,
+      expect.trajectory?.maxPermissionDenials,
+      expect.trajectory?.maxTurns,
+    ]
+    if (
+      trajectoryNumbers.some(
+        value =>
+          value !== undefined &&
+          (!Number.isInteger(value) || value < 0),
+      )
+    ) {
+      errors.push(
+        `case "${evalCase.id}" has a negative or non-integer trajectory limit`,
+      )
     }
   }
   return { valid: errors.length === 0, errors, warnings }
@@ -286,49 +467,52 @@ export function gradeOutput(
   return checks
 }
 
-/** Is `needle` an in-order subsequence of `haystack`? */
-function isSubsequence(needle: string[], haystack: string[]): boolean {
-  let i = 0
-  for (const item of haystack) {
-    if (i < needle.length && item === needle[i]) i += 1
+function legacyTrajectory(tools: string[]): EvalTrajectory {
+  return {
+    version: 1,
+    events: tools.map((tool, index) => ({
+      index,
+      kind: 'tool_call' as const,
+      tool,
+    })),
+    tools,
+    toolCalls: tools.length,
+    failedToolCalls: 0,
+    permissionDenials: 0,
+    turns: 0,
+    isError: false,
+    malformedLines: 0,
+    truncated: false,
   }
-  return i === needle.length
 }
 
-/** Pure, deterministic grading of a tool-call trajectory against expectations. */
+function trajectoryGrade(
+  trajectory: string[] | EvalTrajectory | undefined,
+  expect: EvalExpectation,
+): ReturnType<typeof gradeCapturedTrajectory> {
+  const rules: TrajectoryExpectation = {
+    ...expect.trajectory,
+    requiredTools: [
+      ...(expect.toolsUsed ?? []),
+      ...(expect.trajectory?.requiredTools ?? []),
+    ],
+    orderedTools:
+      expect.trajectory?.orderedTools ?? expect.toolOrder,
+    maxToolCalls:
+      expect.trajectory?.maxToolCalls ?? expect.maxSteps,
+  }
+  return gradeCapturedTrajectory(
+    Array.isArray(trajectory) ? legacyTrajectory(trajectory) : trajectory,
+    rules,
+  )
+}
+
+/** Pure, deterministic grading of a redacted tool-call trajectory. */
 export function gradeTrajectory(
-  trajectory: string[] | undefined,
+  trajectory: string[] | EvalTrajectory | undefined,
   expect: EvalExpectation,
 ): CheckResult[] {
-  const checks: CheckResult[] = []
-  const wantsTrajectory =
-    expect.toolsUsed?.length || expect.toolOrder?.length || typeof expect.maxSteps === 'number'
-  if (!wantsTrajectory) return checks
-  if (!trajectory) {
-    checks.push({
-      name: 'trajectory available',
-      passed: false,
-      detail: 'runner did not capture a tool-call trajectory',
-    })
-    return checks
-  }
-  for (const tool of expect.toolsUsed ?? []) {
-    checks.push({ name: `uses ${tool}`, passed: trajectory.includes(tool) })
-  }
-  if (expect.toolOrder?.length) {
-    checks.push({
-      name: `tool order ${expect.toolOrder.join(' → ')}`,
-      passed: isSubsequence(expect.toolOrder, trajectory),
-    })
-  }
-  if (typeof expect.maxSteps === 'number') {
-    checks.push({
-      name: `≤ ${expect.maxSteps} steps`,
-      passed: trajectory.length <= expect.maxSteps,
-      detail: `${trajectory.length} tool calls`,
-    })
-  }
-  return checks
+  return trajectoryGrade(trajectory, expect).checks
 }
 
 function preview(text: string, max = 160): string {
@@ -350,6 +534,13 @@ function buildReport(name: string, cases: EvalCaseResult[]): EvalReport {
   }
   const metrics = cases.map(c => c.metrics)
   const testRuns = metrics.filter(m => m?.testPassed !== undefined)
+  const trajectoryCases = cases.filter(
+    item => typeof item.trajectoryScore === 'number',
+  )
+  const costMetrics = metrics.filter(
+    (item): item is EvalRunMetrics & { costUSD: number } =>
+      typeof item?.costUSD === 'number' && Number.isFinite(item.costUSD),
+  )
   const testsPassed = testRuns.filter(m => m?.testPassed).length
   const testsFailed = testRuns.filter(m => m?.testPassed === false).length
   const editCount = sum(metrics.map(m =>
@@ -362,10 +553,13 @@ function buildReport(name: string, cases: EvalCaseResult[]): EvalReport {
     total: cases.length,
     passed,
     failed: cases.length - passed,
-    passRate: cases.length > 0 ? Number((passed / cases.length).toFixed(2)) : 0,
+    passRate: cases.length > 0 ? passed / cases.length : 0,
     byCategory,
     totalDurationMs: sum(cases.map(c => c.metrics?.durationMs ?? c.durationMs)),
-    totalCostUSD: metrics.length > 0 ? Number(sum(metrics.map(m => m?.costUSD)).toFixed(6)) : undefined,
+    totalCostUSD:
+      cases.length > 0 && costMetrics.length === cases.length
+        ? sum(costMetrics.map(item => item.costUSD))
+        : undefined,
     totalInputTokens: sum(metrics.map(m => m?.inputTokens)) || undefined,
     totalOutputTokens: sum(metrics.map(m => m?.outputTokens)) || undefined,
     totalFilesChanged: sum(metrics.map(m => m?.filesChanged)) || undefined,
@@ -376,7 +570,12 @@ function buildReport(name: string, cases: EvalCaseResult[]): EvalReport {
     totalRollbacks: sum(metrics.map(m => m?.rollbacks)) || undefined,
     testsPassed: testRuns.length > 0 ? testsPassed : undefined,
     testsFailed: testRuns.length > 0 ? testsFailed : undefined,
-    testPassRate: testRuns.length > 0 ? Number((testRuns.filter(m => m?.testPassed).length / testRuns.length).toFixed(2)) : undefined,
+    testPassRate: testRuns.length > 0 ? testRuns.filter(m => m?.testPassed).length / testRuns.length : undefined,
+    trajectoryScore:
+      trajectoryCases.length > 0
+        ? sum(trajectoryCases.map(item => item.trajectoryScore)) /
+          trajectoryCases.length
+        : undefined,
     cases,
   }
 }
@@ -401,7 +600,7 @@ export async function runSuite(
     const started = Date.now()
     let output = ''
     let isError = false
-    let trajectory: string[] | undefined
+    let trajectory: string[] | EvalTrajectory | undefined
     let metrics: EvalRunMetrics | undefined
     try {
       const run = await runner(evalCase)
@@ -414,9 +613,10 @@ export async function runSuite(
       isError = true
     }
     const expect = evalCase.expect ?? {}
+    const trajectoryResult = trajectoryGrade(trajectory, expect)
     const checks = [
       ...gradeOutput(output, expect),
-      ...gradeTrajectory(trajectory, expect),
+      ...trajectoryResult.checks,
     ]
     if (expect.judge && options.judge) {
       const verdict = await options.judge({ evalCase, rubric: expect.judge, output })
@@ -464,6 +664,13 @@ export async function runSuite(
       checks,
       outputPreview: preview(output),
       metrics: normalizedMetrics,
+      trajectory: Array.isArray(trajectory)
+        ? legacyTrajectory(trajectory)
+        : trajectory,
+      trajectoryScore:
+        trajectoryResult.checks.length > 0
+          ? trajectoryResult.score
+          : undefined,
     })
   }
   return buildReport(suite.name, results)
@@ -599,7 +806,7 @@ export async function runSuiteCompare(
       testsFailed: report.testsFailed,
       testPassRate:
         testRuns.length > 0
-          ? Number((testRuns.filter(c => c.metrics?.testPassed).length / testRuns.length).toFixed(2))
+          ? testRuns.filter(c => c.metrics?.testPassed).length / testRuns.length
           : undefined,
     }
   }
@@ -698,7 +905,7 @@ export async function runSuiteReliability(
   }
   const caseResults = [...perCase.values()].map(bucket => ({
     ...bucket,
-    passRate: Number((bucket.passes / trials).toFixed(2)),
+    passRate: bucket.passes / trials,
   }))
   const solvedAll = caseResults.filter(c => c.solvedAll).length
   const meanPassRate =
@@ -710,8 +917,8 @@ export async function runSuiteReliability(
     generatedAt: new Date().toISOString(),
     trials,
     total: caseResults.length,
-    passHatK: caseResults.length > 0 ? Number((solvedAll / caseResults.length).toFixed(2)) : 0,
-    meanPassRate: Number(meanPassRate.toFixed(2)),
+    passHatK: caseResults.length > 0 ? solvedAll / caseResults.length : 0,
+    meanPassRate,
     cases: caseResults,
   }
 }
@@ -722,6 +929,8 @@ export type CliEvalRunnerOptions = {
   skipPermissions?: boolean
   timeoutMs?: number
   model?: string
+  /** Run every case in a fresh detached worktree (default: true). */
+  isolate?: boolean
 }
 
 type ChildMetrics = {
@@ -760,8 +969,21 @@ function deleteChildMetricsFile(path: string): void {
 async function gitDiffStats(cwd: string): Promise<{ filesChanged: number; insertions: number; deletions: number }> {
   const result = await execFileNoThrowWithCwd(
     'git',
-    ['diff', '--stat'],
-    { cwd, timeout: 30_000, preserveOutputOnError: true },
+    [
+      ...SAFE_EVAL_GIT_ARGS,
+      'diff',
+      '--no-ext-diff',
+      '--no-textconv',
+      '--stat',
+      '--',
+    ],
+    {
+      cwd,
+      timeout: 30_000,
+      preserveOutputOnError: true,
+      env: strictSubprocessEnv(),
+      extendEnv: false,
+    },
   )
   if (result.code !== 0 || !result.stdout.trim()) {
     return { filesChanged: 0, insertions: 0, deletions: 0 }
@@ -786,19 +1008,33 @@ async function gitDiffStats(cwd: string): Promise<{ filesChanged: number; insert
   return { filesChanged, insertions, deletions }
 }
 
-async function runTestCommand(
+export async function runEvalTestCommand(
   cwd: string,
   command: string,
 ): Promise<{ testPassed: boolean; testStdout: string; testStderr: string }> {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) =>
+        !isSecretLikeSubprocessEnvName(name) &&
+        !['SSH_AUTH_SOCK', 'GITHUB_TOKEN', 'GH_TOKEN'].includes(name),
+    ),
+  )
+  env.UR_CODE_SUBPROCESS_ENV_SCRUB = '1'
   const result = await execFileNoThrowWithCwd('sh', ['-c', command], {
     cwd,
     timeout: 5 * 60_000,
     preserveOutputOnError: true,
+    env,
+    extendEnv: false,
+    maxBuffer: 1024 * 1024,
+    audit: false,
   })
   return {
     testPassed: result.code === 0,
-    testStdout: result.stdout,
-    testStderr: result.stderr || result.error || '',
+    testStdout: redactAgenticCiText(result.stdout).slice(-32 * 1024),
+    testStderr: redactAgenticCiText(
+      result.stderr || result.error || '',
+    ).slice(-32 * 1024),
   }
 }
 
@@ -843,14 +1079,101 @@ function firstModelName(modelUsage: { [modelName: string]: { inputTokens: number
   return names.length > 0 ? names[0] : undefined
 }
 
+export async function createEvalWorktree(
+  cwd: string,
+  caseId: string,
+): Promise<{ cwd: string; cleanup: () => Promise<void> }> {
+  const gitEnv = strictSubprocessEnv()
+  const base = await execFileNoThrowWithCwd('git', [
+    ...SAFE_EVAL_GIT_ARGS,
+    'rev-parse',
+    'HEAD',
+  ], {
+    cwd,
+    timeout: 30_000,
+    preserveOutputOnError: true,
+    env: gitEnv,
+    extendEnv: false,
+  })
+  if (base.code !== 0 || !/^[0-9a-f]{40,64}$/i.test(base.stdout.trim())) {
+    throw new Error('isolated eval cases require a git repository with a valid HEAD')
+  }
+  const safeId = caseId.replace(/[^a-z0-9_-]/gi, '-').slice(0, 40)
+  const root = join(cwd, '.ur', 'evals', '.worktrees')
+  const path = join(root, `${safeId}-${randomUUID().slice(0, 8)}`)
+  ensurePrivateDirectory(join(cwd, '.ur'), root)
+  const created = await execFileNoThrowWithCwd(
+    'git',
+    [
+      ...SAFE_EVAL_GIT_ARGS,
+      'worktree',
+      'add',
+      '--detach',
+      path,
+      base.stdout.trim(),
+    ],
+    {
+      cwd,
+      timeout: 60_000,
+      preserveOutputOnError: true,
+      env: gitEnv,
+      extendEnv: false,
+    },
+  )
+  if (created.code !== 0) {
+    throw new Error(
+      `failed to create isolated eval worktree: ${created.stderr || created.error}`,
+    )
+  }
+  return {
+    cwd: path,
+    cleanup: async () => {
+      await execFileNoThrowWithCwd(
+        'git',
+        [...SAFE_EVAL_GIT_ARGS, 'worktree', 'remove', '--force', path],
+        {
+          cwd,
+          timeout: 60_000,
+          preserveOutputOnError: true,
+          env: gitEnv,
+          extendEnv: false,
+        },
+      )
+      await execFileNoThrowWithCwd('git', [
+        ...SAFE_EVAL_GIT_ARGS,
+        'worktree',
+        'prune',
+      ], {
+        cwd,
+        timeout: 30_000,
+        preserveOutputOnError: true,
+        env: gitEnv,
+        extendEnv: false,
+      })
+      rmSync(path, { recursive: true, force: true })
+    },
+  }
+}
+
 /** Production runner: each case spawns a headless `ur -p` and is graded. */
 export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
   return async (evalCase: EvalCase) => {
+    const isolated =
+      options.isolate === false
+        ? null
+        : await createEvalWorktree(options.cwd, evalCase.id)
+    const caseCwd = isolated?.cwd ?? options.cwd
+    try {
     const started = Date.now()
-    resetCostState()
     const file = process.execPath
     const baseArgs = [process.argv[1] ?? '']
-    const args = [...baseArgs, '-p', '--output-format', 'json']
+    const args = [
+      ...baseArgs,
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+    ]
     if (options.maxTurns && options.maxTurns > 0) {
       args.push('--max-turns', String(options.maxTurns))
     }
@@ -863,47 +1186,57 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
     const childEnv: Record<string, string | undefined> = {
       ...process.env,
       UR_EVAL_METRICS_FILE: childMetricsPath,
+      UR_CODE_SUBPROCESS_ENV_SCRUB: '1',
     }
     if (options.model) {
       childEnv.UR_MODEL = options.model
       childEnv.OLLAMA_MODEL = options.model
     }
     const result = await execFileNoThrowWithCwd(file, args, {
-      cwd: options.cwd,
+      cwd: caseCwd,
       timeout: options.timeoutMs ?? 30 * 60 * 1000,
       preserveOutputOnError: true,
       env: childEnv,
+      maxBuffer: 10 * 1024 * 1024,
+      audit: false,
     })
+    const captured = parseStreamJsonTrajectory(result.stdout)
     const output =
-      parseHeadlessOutput(result.stdout) || result.stderr || result.error || ''
+      captured.output ||
+      (captured.trajectory.malformedLines > 0
+        ? parseHeadlessOutput(result.stdout)
+        : '') ||
+      result.stderr ||
+      result.error ||
+      ''
 
     const childMetrics = readChildMetricsFile(childMetricsPath)
     deleteChildMetricsFile(childMetricsPath)
 
-    const diffStats = await gitDiffStats(options.cwd)
+    const diffStats = await gitDiffStats(caseCwd)
     let testResult:
       | { testPassed: boolean; testStdout: string; testStderr: string; testCommand: string }
       | undefined
     if (evalCase.expect.testCommand) {
-      const ran = await runTestCommand(options.cwd, evalCase.expect.testCommand)
+      const ran = await runEvalTestCommand(caseCwd, evalCase.expect.testCommand)
       testResult = { ...ran, testCommand: evalCase.expect.testCommand }
     }
 
     const modelUsage = getModelUsage()
     const metrics: EvalRunMetrics = {
       durationMs: Date.now() - started,
-      costUSD: childMetrics?.costUSD ?? getTotalCostUSD(),
-      inputTokens: childMetrics?.inputTokens ?? getTotalInputTokens(),
-      outputTokens: childMetrics?.outputTokens ?? getTotalOutputTokens(),
+      costUSD: childMetrics?.costUSD,
+      inputTokens: childMetrics?.inputTokens,
+      outputTokens: childMetrics?.outputTokens,
       model: options.model ?? childMetrics?.model ?? firstModelName(modelUsage),
       filesChanged: diffStats.filesChanged,
       editCount:
         diffStats.insertions +
         diffStats.deletions +
-        (childMetrics?.linesAdded ?? getTotalLinesAdded()) +
-        (childMetrics?.linesRemoved ?? getTotalLinesRemoved()),
-      insertions: diffStats.insertions + (childMetrics?.linesAdded ?? getTotalLinesAdded()),
-      deletions: diffStats.deletions + (childMetrics?.linesRemoved ?? getTotalLinesRemoved()),
+        (childMetrics?.linesAdded ?? 0) +
+        (childMetrics?.linesRemoved ?? 0),
+      insertions: diffStats.insertions + (childMetrics?.linesAdded ?? 0),
+      deletions: diffStats.deletions + (childMetrics?.linesRemoved ?? 0),
       testPassed: testResult?.testPassed,
       testsPassed: testResult ? (testResult.testPassed ? 1 : 0) : undefined,
       testsFailed: testResult ? (testResult.testPassed ? 0 : 1) : undefined,
@@ -919,7 +1252,15 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
       rollbacks: countRollbacks(output),
     }
 
-    return { output, isError: result.code !== 0, metrics }
+    return {
+      output,
+      isError: result.code !== 0 || captured.trajectory.isError,
+      trajectory: captured.trajectory,
+      metrics,
+    }
+    } finally {
+      await isolated?.cleanup()
+    }
   }
 }
 
@@ -938,18 +1279,46 @@ export function makeCliJudgeRunner(options: CliEvalRunnerOptions): JudgeRunner {
     const baseArgs = [process.argv[1] ?? '']
     const prompt =
       `You are grading an AI agent's answer against a rubric. Be strict.\n\n` +
-      `Task: ${evalCase.prompt}\n\nRubric: ${rubric}\n\nAnswer:\n${output.slice(0, 4000)}\n\n` +
+      `Task: ${redactAgenticCiText(evalCase.prompt).slice(0, 64 * 1024)}\n\n` +
+      `Rubric: ${redactAgenticCiText(rubric).slice(0, 16 * 1024)}\n\n` +
+      `Answer:\n${redactAgenticCiText(output).slice(0, 4_000)}\n\n` +
       `Reply with exactly one line: "VERDICT: PASS" or "VERDICT: FAIL", then a brief reason.`
-    const args = [...baseArgs, '-p', '--output-format', 'json', prompt]
+    const args = [
+      ...baseArgs,
+      '-p',
+      '--output-format',
+      'json',
+      '--max-turns',
+      '1',
+      '--tools',
+      '',
+      '--no-session-persistence',
+      prompt,
+    ]
     const result = await execFileNoThrowWithCwd(file, args, {
       cwd: options.cwd,
       timeout: options.timeoutMs ?? 10 * 60 * 1000,
       preserveOutputOnError: true,
+      maxBuffer: 1024 * 1024,
+      audit: false,
+      env: {
+        ...process.env,
+        UR_CODE_SUBPROCESS_ENV_SCRUB: '1',
+        ...(options.model
+          ? {
+            UR_MODEL: options.model,
+            OLLAMA_MODEL: options.model,
+            }
+          : {}),
+      },
     })
     const text = parseHeadlessOutput(result.stdout) || result.stderr || ''
     const match = /\bVERDICT:\s*(PASS|FAIL|PARTIAL)\b/i.exec(text)
     const got = match ? match[1].toUpperCase() : null
-    return { pass: got === 'PASS', detail: preview(text, 120) }
+    return {
+      pass: got === 'PASS',
+      detail: preview(redactAgenticCiText(text), 120),
+    }
   }
 }
 
@@ -984,6 +1353,7 @@ export function buildDashboardHtml(
     const cards = [
       ['Pass rate', `${Math.round(report.passRate * 100)}%`],
       ['Test pass rate', report.testPassRate !== undefined ? `${Math.round(report.testPassRate * 100)}%` : '—'],
+      ['Trajectory score', report.trajectoryScore !== undefined ? `${Math.round(report.trajectoryScore * 100)}%` : '—'],
       ['Cost', fmtUsd(report.totalCostUSD)],
       ['Tokens', `${num(report.totalInputTokens)} / ${num(report.totalOutputTokens)}`],
       ['Files changed', num(report.totalFilesChanged)],
@@ -1658,6 +2028,9 @@ export function formatEvalReport(report: EvalReport, json: boolean): string {
     `Pass rate: ${report.passed}/${report.total} (${pct}%)`,
     report.testPassRate !== undefined
       ? `Test pass rate: ${Math.round(report.testPassRate * 100)}%`
+      : null,
+    report.trajectoryScore !== undefined
+      ? `Trajectory score: ${Math.round(report.trajectoryScore * 100)}%`
       : null,
     report.totalCostUSD !== undefined ? `Cost: $${report.totalCostUSD.toFixed(6)}` : null,
     report.totalInputTokens !== undefined || report.totalOutputTokens !== undefined

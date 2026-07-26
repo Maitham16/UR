@@ -949,10 +949,7 @@ export const connectToServer = memoize(
         transport = new StdioClientTransport({
           command: finalCommand,
           args: finalArgs,
-          env: {
-            ...subprocessEnv(),
-            ...serverRef.env,
-          } as Record<string, string>,
+          env: subprocessEnv(serverRef.env) as Record<string, string>,
           stderr: 'pipe', // prevents error output from the MCP server from printing to the UI
         })
       } else {

@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -58,7 +58,7 @@ test('handleArtifactsRequest renders list, detail, raw, json, and 404', async ()
 
     const raw = await handleArtifactsRequest(tmp, '/artifacts/1/raw')
     expect(raw.status).toBe(200)
-    expect(raw.body).toContain('step 1 & 2')
+    expect(raw.file?.path).toBe('files/1/my-plan.md')
 
     const json = await handleArtifactsRequest(tmp, '/api/artifacts/1')
     expect(json.status).toBe(200)
@@ -161,6 +161,30 @@ test('POST /api/capture-diff records a diff artifact', async () => {
     expect(JSON.parse(empty.body).error).toContain('No working-tree changes')
 
     expect((await handleArtifactsPost(tmp, '/api/nope')).status).toBe(404)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
+test('executable attachment types are forced to sandboxed downloads', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'ur-art-untrusted-html-'))
+  try {
+    const html = join(tmp, 'report.html')
+    writeFileSync(html, '<script>fetch("/api/artifacts")</script>')
+    const artifact = recordArtifact(tmp, {
+      kind: 'note',
+      title: 'untrusted report',
+      file: html,
+    })
+    const response = await handleArtifactsRequest(
+      tmp,
+      `/artifacts/${artifact.id}/attachments/0`,
+    )
+    expect(response.type).toBe('application/octet-stream')
+    expect(response.headers?.['content-disposition']).toStartWith('attachment;')
+    expect(response.headers?.['content-security-policy']).toBe(
+      "default-src 'none'; sandbox",
+    )
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }

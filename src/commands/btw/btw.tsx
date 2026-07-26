@@ -1,242 +1,337 @@
-import { c as _c } from "react/compiler-runtime";
-import * as React from 'react';
-import { useEffect, useRef, useState } from 'react';
-import { useInterval } from 'usehooks-ts';
-import type { CommandResultDisplay } from '../../commands.js';
-import { Markdown } from '../../components/Markdown.js';
-import { SpinnerGlyph } from '../../components/Spinner/SpinnerGlyph.js';
-import { DOWN_ARROW, UP_ARROW } from '../../constants/figures.js';
-import { getSystemPrompt } from '../../constants/prompts.js';
-import { useModalOrTerminalSize } from '../../context/modalContext.js';
-import { getSystemContext, getUserContext } from '../../context.js';
-import { useTerminalSize } from '../../hooks/useTerminalSize.js';
-import ScrollBox, { type ScrollBoxHandle } from '../../ink/components/ScrollBox.js';
-import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
-import { Box, Text } from '../../ink.js';
-import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import type { Message } from '../../types/message.js';
-import { createAbortController } from '../../utils/abortController.js';
-import { saveGlobalConfig } from '../../utils/config.js';
-import { errorMessage } from '../../utils/errors.js';
-import { type CacheSafeParams, getLastCacheSafeParams } from '../../utils/forkedAgent.js';
-import { getMessagesAfterCompactBoundary } from '../../utils/messages.js';
-import type { ProcessUserInputContext } from '../../utils/processUserInput/processUserInput.js';
-import { runSideQuestion } from '../../utils/sideQuestion.js';
-import { asSystemPrompt } from '../../utils/systemPromptType.js';
+import * as React from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useInterval } from 'usehooks-ts'
+import type { CommandResultDisplay } from '../../commands.js'
+import { Markdown } from '../../components/Markdown.js'
+import { SpinnerGlyph } from '../../components/Spinner/SpinnerGlyph.js'
+import { DOWN_ARROW, UP_ARROW } from '../../constants/figures.js'
+import { getSystemPrompt } from '../../constants/prompts.js'
+import { useModalOrTerminalSize } from '../../context/modalContext.js'
+import { getSystemContext, getUserContext } from '../../context.js'
+import { useTerminalSize } from '../../hooks/useTerminalSize.js'
+import ScrollBox, {
+  type ScrollBoxHandle,
+} from '../../ink/components/ScrollBox.js'
+import { Box, Text } from '../../ink.js'
+import type { LocalJSXCommandOnDone } from '../../types/command.js'
+import type { Message } from '../../types/message.js'
+import { getSessionId } from '../../bootstrap/state.js'
+import { createAbortController } from '../../utils/abortController.js'
+import { parseArguments } from '../../utils/argumentSubstitution.js'
+import { saveGlobalConfig } from '../../utils/config.js'
+import { errorMessage } from '../../utils/errors.js'
+import {
+  type CacheSafeParams,
+  getLastCacheSafeParams,
+} from '../../utils/forkedAgent.js'
+import { getMessagesAfterCompactBoundary } from '../../utils/messages.js'
+import type { ProcessUserInputContext } from '../../utils/processUserInput/processUserInput.js'
+import { runSideQuestion } from '../../utils/sideQuestion.js'
+import { asSystemPrompt } from '../../utils/systemPromptType.js'
+import {
+  appendSideChatExchange,
+  assertSideChatExchangeCapacity,
+  closeSideChat,
+  createSideChat,
+  getSideChat,
+  listSideChats,
+  renameSideChat,
+  type SideChat,
+} from '../../services/sideChats/sideChatStore.js'
+
 type BtwComponentProps = {
-  question: string;
-  context: ProcessUserInputContext;
-  onDone: (result?: string, options?: {
-    display?: CommandResultDisplay;
-  }) => void;
-};
-const CHROME_ROWS = 5;
-const OUTER_CHROME_ROWS = 6;
-const SCROLL_LINES = 3;
-function BtwSideQuestion(t0) {
-  const $ = _c(25);
-  const {
-    question,
-    context,
-    onDone
-  } = t0;
-  const [response, setResponse] = useState(null);
-  const [error, setError] = useState(null);
-  const [frame, setFrame] = useState(0);
-  const scrollRef = useRef(null);
-  const {
-    rows
-  } = useModalOrTerminalSize(useTerminalSize());
-  let t1;
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = () => setFrame(_temp);
-    $[0] = t1;
-  } else {
-    t1 = $[0];
-  }
-  useInterval(t1, response || error ? null : 80);
-  let t2;
-  if ($[1] !== onDone) {
-    t2 = function handleKeyDown(e) {
-      if (e.key === "escape" || e.key === "return" || e.key === " " || e.ctrl && (e.key === "c" || e.key === "d")) {
-        e.preventDefault();
-        onDone(undefined, {
-          display: "skip"
-        });
-        return;
-      }
-      if (e.key === "up" || e.ctrl && e.key === "p") {
-        e.preventDefault();
-        scrollRef.current?.scrollBy(-SCROLL_LINES);
-      }
-      if (e.key === "down" || e.ctrl && e.key === "n") {
-        e.preventDefault();
-        scrollRef.current?.scrollBy(SCROLL_LINES);
-      }
-    };
-    $[1] = onDone;
-    $[2] = t2;
-  } else {
-    t2 = $[2];
-  }
-  const handleKeyDown = t2;
-  let t3;
-  let t4;
-  if ($[3] !== context || $[4] !== question) {
-    t3 = () => {
-      const abortController = createAbortController();
-      const fetchResponse = async function fetchResponse() {
-        ;
-        try {
-          const cacheSafeParams = await buildCacheSafeParams(context);
-          const result = await runSideQuestion({
-            question,
-            cacheSafeParams
-          });
-          if (!abortController.signal.aborted) {
-            if (result.response) {
-              setResponse(result.response);
-            } else {
-              setError("No response received");
-            }
-          }
-        } catch (t5) {
-          const err = t5;
-          if (!abortController.signal.aborted) {
-            setError(errorMessage(err) || "Failed to get response");
-          }
-        }
-      };
-      fetchResponse();
-      return () => {
-        abortController.abort();
-      };
-    };
-    t4 = [question, context];
-    $[3] = context;
-    $[4] = question;
-    $[5] = t3;
-    $[6] = t4;
-  } else {
-    t3 = $[5];
-    t4 = $[6];
-  }
-  useEffect(t3, t4);
-  const maxContentHeight = Math.max(5, rows - CHROME_ROWS - OUTER_CHROME_ROWS);
-  let t5;
-  if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text color="warning" bold={true}>/btw{" "}</Text>;
-    $[7] = t5;
-  } else {
-    t5 = $[7];
-  }
-  let t6;
-  if ($[8] !== question) {
-    t6 = <Box>{t5}<Text dimColor={true}>{question}</Text></Box>;
-    $[8] = question;
-    $[9] = t6;
-  } else {
-    t6 = $[9];
-  }
-  let t7;
-  if ($[10] !== error || $[11] !== frame || $[12] !== response) {
-    t7 = <ScrollBox ref={scrollRef} flexDirection="column" flexGrow={1}>{error ? <Text color="error">{error}</Text> : response ? <Markdown>{response}</Markdown> : <Box><SpinnerGlyph frame={frame} messageColor="warning" /><Text color="warning">Answering...</Text></Box>}</ScrollBox>;
-    $[10] = error;
-    $[11] = frame;
-    $[12] = response;
-    $[13] = t7;
-  } else {
-    t7 = $[13];
-  }
-  let t8;
-  if ($[14] !== maxContentHeight || $[15] !== t7) {
-    t8 = <Box marginTop={1} marginLeft={2} maxHeight={maxContentHeight}>{t7}</Box>;
-    $[14] = maxContentHeight;
-    $[15] = t7;
-    $[16] = t8;
-  } else {
-    t8 = $[16];
-  }
-  let t9;
-  if ($[17] !== error || $[18] !== response) {
-    t9 = (response || error) && <Box marginTop={1}><Text dimColor={true}>{UP_ARROW}/{DOWN_ARROW} to scroll · Space, Enter, or Escape to dismiss</Text></Box>;
-    $[17] = error;
-    $[18] = response;
-    $[19] = t9;
-  } else {
-    t9 = $[19];
-  }
-  let t10;
-  if ($[20] !== handleKeyDown || $[21] !== t6 || $[22] !== t8 || $[23] !== t9) {
-    t10 = <Box flexDirection="column" paddingLeft={2} marginTop={1} tabIndex={0} autoFocus={true} onKeyDown={handleKeyDown}>{t6}{t8}{t9}</Box>;
-    $[20] = handleKeyDown;
-    $[21] = t6;
-    $[22] = t8;
-    $[23] = t9;
-    $[24] = t10;
-  } else {
-    t10 = $[24];
-  }
-  return t10;
+  chatId: string
+  question: string
+  context: ProcessUserInputContext
+  onDone: (
+    result?: string,
+    options?: { display?: CommandResultDisplay },
+  ) => void
 }
 
-/**
- * Build CacheSafeParams for the side question fork.
- *
- * The preferred source is getLastCacheSafeParams — the exact
- * systemPrompt/userContext/systemContext bytes the main thread sent on its
- * last request (captured in stopHooks). Reusing them guarantees a byte-
- * identical prefix and thus a prompt cache hit. We pair these with the
- * current toolUseContext (for thinkingConfig/tools) and current messages
- * (for up-to-date context).
- *
- * Fallback (first turn before stop hooks fire, or prompt-suggestion
- * disabled): rebuild from scratch. This may miss the cache if the main loop
- * applied buildEffectiveSystemPrompt extras (--agent, --system-prompt,
- * --append-system-prompt, coordinator mode).
- */
-function _temp(f) {
-  return f + 1;
-}
-function stripInProgressAssistantMessage(messages: Message[]): Message[] {
-  const last = messages.at(-1);
-  if (last?.type === 'assistant' && last.message.stop_reason === null) {
-    return messages.slice(0, -1);
+const CHROME_ROWS = 5
+const OUTER_CHROME_ROWS = 6
+const SCROLL_LINES = 3
+
+function BtwSideQuestion({
+  chatId,
+  question,
+  context,
+  onDone,
+}: BtwComponentProps): React.ReactNode {
+  const [response, setResponse] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [frame, setFrame] = useState(0)
+  const scrollRef = useRef<ScrollBoxHandle>(null)
+  const startedRef = useRef(false)
+  const { rows } = useModalOrTerminalSize(useTerminalSize())
+
+  useInterval(() => setFrame(value => value + 1), response || error ? null : 80)
+
+  useEffect(() => {
+    if (startedRef.current) return
+    startedRef.current = true
+    const abortController = createAbortController()
+    void (async () => {
+      try {
+        const existing = getSideChat(chatId)
+        assertSideChatExchangeCapacity(chatId)
+        const history = existing.turns.map(turn => ({
+          role: turn.role,
+          content: turn.content,
+        }))
+        const cacheSafeParams = await buildCacheSafeParams(context)
+        const result = await runSideQuestion({
+          question,
+          cacheSafeParams,
+          history,
+          abortController,
+        })
+        if (abortController.signal.aborted) return
+        if (!result.response) {
+          setError('No response received')
+          return
+        }
+        appendSideChatExchange(chatId, question, result.response, {
+          usage: result.usage,
+        })
+        setResponse(result.response)
+      } catch (caught) {
+        if (!abortController.signal.aborted) {
+          setError(errorMessage(caught) || 'Failed to get response')
+        }
+      }
+    })()
+    return () => abortController.abort()
+  }, [chatId, context, question])
+
+  const handleKeyDown = (event: {
+    key: string
+    ctrl: boolean
+    preventDefault(): void
+  }) => {
+    if (
+      event.key === 'escape' ||
+      event.key === 'return' ||
+      event.key === ' ' ||
+      (event.ctrl && (event.key === 'c' || event.key === 'd'))
+    ) {
+      event.preventDefault()
+      onDone(undefined, { display: 'skip' })
+      return
+    }
+    if (event.key === 'up' || (event.ctrl && event.key === 'p')) {
+      event.preventDefault()
+      scrollRef.current?.scrollBy(-SCROLL_LINES)
+    }
+    if (event.key === 'down' || (event.ctrl && event.key === 'n')) {
+      event.preventDefault()
+      scrollRef.current?.scrollBy(SCROLL_LINES)
+    }
   }
-  return messages;
+
+  const maxContentHeight = Math.max(
+    5,
+    rows - CHROME_ROWS - OUTER_CHROME_ROWS,
+  )
+  return (
+    <Box
+      flexDirection="column"
+      paddingLeft={2}
+      marginTop={1}
+      tabIndex={0}
+      autoFocus
+      onKeyDown={handleKeyDown}
+    >
+      <Box>
+        <Text color="warning" bold>
+          /btw{' '}
+        </Text>
+        <Text dimColor>{question}</Text>
+      </Box>
+      <Box marginTop={1} marginLeft={2} maxHeight={maxContentHeight}>
+        <ScrollBox ref={scrollRef} flexDirection="column" flexGrow={1}>
+          {error ? (
+            <Text color="error">{error}</Text>
+          ) : response ? (
+            <Markdown>{response}</Markdown>
+          ) : (
+            <Box>
+              <SpinnerGlyph frame={frame} messageColor="warning" />
+              <Text color="warning">Answering…</Text>
+            </Box>
+          )}
+        </ScrollBox>
+      </Box>
+      {(response || error) && (
+        <Box marginTop={1}>
+          <Text dimColor>
+            Saved as {chatId.slice(0, 8)} · {UP_ARROW}/{DOWN_ARROW} to scroll ·
+            Space, Enter, or Escape to dismiss
+          </Text>
+        </Box>
+      )}
+    </Box>
+  )
 }
-async function buildCacheSafeParams(context: ProcessUserInputContext): Promise<CacheSafeParams> {
-  const forkContextMessages = getMessagesAfterCompactBoundary(stripInProgressAssistantMessage(context.messages));
-  const saved = getLastCacheSafeParams();
+
+function stripInProgressAssistantMessage(messages: Message[]): Message[] {
+  const last = messages.at(-1)
+  if (last?.type === 'assistant' && last.message.stop_reason === null) {
+    return messages.slice(0, -1)
+  }
+  return messages
+}
+
+async function buildCacheSafeParams(
+  context: ProcessUserInputContext,
+): Promise<CacheSafeParams> {
+  const forkContextMessages = getMessagesAfterCompactBoundary(
+    stripInProgressAssistantMessage(context.messages),
+  )
+  const saved = getLastCacheSafeParams()
   if (saved) {
     return {
       systemPrompt: saved.systemPrompt,
       userContext: saved.userContext,
       systemContext: saved.systemContext,
       toolUseContext: context,
-      forkContextMessages
-    };
+      forkContextMessages,
+    }
   }
-  const [rawSystemPrompt, userContext, systemContext] = await Promise.all([getSystemPrompt(context.options.tools, context.options.mainLoopModel, [], context.options.mcpClients), getUserContext(), getSystemContext()]);
+  const [rawSystemPrompt, userContext, systemContext] = await Promise.all([
+    getSystemPrompt(
+      context.options.tools,
+      context.options.mainLoopModel,
+      [],
+      context.options.mcpClients,
+    ),
+    getUserContext(),
+    getSystemContext(),
+  ])
   return {
     systemPrompt: asSystemPrompt(rawSystemPrompt),
     userContext,
     systemContext,
     toolUseContext: context,
-    forkContextMessages
-  };
-}
-export async function call(onDone: LocalJSXCommandOnDone, context: ProcessUserInputContext, args: string): Promise<React.ReactNode> {
-  const question = args?.trim();
-  if (!question) {
-    onDone('Usage: /btw <your question>', {
-      display: 'system'
-    });
-    return null;
+    forkContextMessages,
   }
-  saveGlobalConfig(current => ({
-    ...current,
-    btwUseCount: current.btwUseCount + 1
-  }));
-  return <BtwSideQuestion question={question} context={context} onDone={onDone} />;
+}
+
+function usage(): string {
+  return [
+    'Usage:',
+    '  /btw <question>',
+    '  /btw continue <chat-id> <question>',
+    '  /btw list',
+    '  /btw show <chat-id>',
+    '  /btw rename <chat-id> <title>',
+    '  /btw close <chat-id>',
+  ].join('\n')
+}
+
+function formatSideChat(chat: SideChat): string {
+  const lines = [
+    `${chat.title} (${chat.id})`,
+    `Status: ${chat.status} · Turns: ${chat.turnCount}`,
+    '',
+  ]
+  let bytes = Buffer.byteLength(lines.join('\n'))
+  for (const turn of chat.turns) {
+    const line = `${turn.role === 'user' ? 'You' : 'Assistant'}: ${turn.content}`
+    if (bytes + Buffer.byteLength(line) > 64 * 1024) {
+      lines.push('… transcript truncated')
+      break
+    }
+    lines.push(line, '')
+    bytes += Buffer.byteLength(`${line}\n`)
+  }
+  return lines.join('\n').trim()
+}
+
+export async function call(
+  onDone: LocalJSXCommandOnDone,
+  context: ProcessUserInputContext,
+  args: string,
+): Promise<React.ReactNode> {
+  const tokens = parseArguments(args ?? '')
+  if (tokens.length === 0) {
+    onDone(usage(), { display: 'system' })
+    return null
+  }
+
+  try {
+    const action = tokens[0]!.toLowerCase()
+    if (action === 'list') {
+      const chats = listSideChats()
+      onDone(
+        chats.length
+          ? chats
+              .map(
+                chat =>
+                  `${chat.id}  ${chat.status.padEnd(6)}  ${chat.turnCount} turns  ${chat.title}`,
+              )
+              .join('\n')
+          : 'No side chats yet.',
+        { display: 'system' },
+      )
+      return null
+    }
+    if (action === 'show') {
+      if (!tokens[1]) throw new Error(usage())
+      onDone(formatSideChat(getSideChat(tokens[1])), { display: 'system' })
+      return null
+    }
+    if (action === 'rename') {
+      if (!tokens[1] || tokens.length < 3) throw new Error(usage())
+      const chat = renameSideChat(tokens[1], tokens.slice(2).join(' '))
+      onDone(`Renamed side chat ${chat.id} to “${chat.title}”.`, {
+        display: 'system',
+      })
+      return null
+    }
+    if (action === 'close') {
+      if (!tokens[1]) throw new Error(usage())
+      const chat = closeSideChat(tokens[1])
+      onDone(`Closed side chat ${chat.id}.`, { display: 'system' })
+      return null
+    }
+
+    let chatId: string
+    let question: string
+    if (action === 'continue') {
+      if (!tokens[1] || tokens.length < 3) throw new Error(usage())
+      const chat = getSideChat(tokens[1])
+      if (chat.status !== 'open') throw new Error('Side chat is closed')
+      chatId = chat.id
+      question = tokens.slice(2).join(' ')
+    } else {
+      question = tokens.join(' ')
+      const parentMessageId = context.messages.at(-1)?.uuid
+      const chat = createSideChat({
+        title: question,
+        parentSessionId: getSessionId(),
+        parentMessageId,
+      })
+      chatId = chat.id
+    }
+
+    saveGlobalConfig(current => ({
+      ...current,
+      btwUseCount: current.btwUseCount + 1,
+    }))
+    return (
+      <BtwSideQuestion
+        chatId={chatId}
+        question={question}
+        context={context}
+        onDone={onDone}
+      />
+    )
+  } catch (caught) {
+    onDone(errorMessage(caught) || 'Side-chat command failed', {
+      display: 'system',
+    })
+    return null
+  }
 }

@@ -1,50 +1,16 @@
+import { compileAgenticCiWorkflow } from '../services/agents/agenticCi.js'
+
 export const PR_TITLE = 'Add UR GitHub Workflow'
 
 export const GITHUB_ACTION_SETUP_DOCS_URL =
   'https://github.com/Maitham16/UR'
 
-export const WORKFLOW_CONTENT = `name: UR
+const urVersion =
+  typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.48.0'
 
-on:
-  issue_comment:
-    types: [created]
-  pull_request_review_comment:
-    types: [created]
-  issues:
-    types: [opened, assigned]
-  pull_request_review:
-    types: [submitted]
-
-jobs:
-  ur:
-    if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@ur')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@ur')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@ur')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@ur') || contains(github.event.issue.title, '@ur')))
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-      issues: read
-      id-token: write
-      actions: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Run UR
-        id: ur
-        uses: Maitham16/UR@v1
-        with:
-          ur_api_key: \${{ secrets.UR_API_KEY }}
-
-          additional_permissions: |
-            actions: read
-
-`
+export const WORKFLOW_CONTENT = compileAgenticCiWorkflow('default', {
+  packageVersion: urVersion,
+})
 
 export const PR_BODY = `## Installing UR GitHub App
 
@@ -62,32 +28,29 @@ This PR adds a GitHub Actions workflow that enables UR integration in our reposi
 
 ### How it works
 
-Once this PR is merged, we'll be able to interact with UR by mentioning @ur in a pull request or issue comment.
+Once this PR is merged, trusted collaborators can interact with UR by using \`/ur\` in an issue or pull-request comment.
 Once the workflow is triggered, UR will analyze the comment and surrounding context, and execute on the request in a GitHub action.
 
 ### Important Notes
 
 - **This workflow won't take effect until this PR is merged**
-- **@ur mentions won't work until after the merge is complete**
-- The workflow runs automatically whenever UR is mentioned in PR or issue comments
-- UR gets access to the entire PR or issue context including files, diffs, and previous comments
+- The workflow runs for manual dispatches and trusted issue comments containing \`/ur\`
+- Event text is passed as data, never interpolated into shell source
 
 ### Security
 
 - The API key is securely stored as a GitHub Actions secret
-- Only users with write access to the repository can trigger the workflow
+- Only owners, members, and collaborators can trigger comment runs
 - All UR runs are stored in the GitHub Actions run history
-- UR's default tools are limited to reading/writing files and interacting with our repo by creating comments, branches, and commits.
-- We can add more allowed tools by adding them to the workflow file like:
-
-\`\`\`
-allowed_tools: Bash(npm install),Bash(npm run build),Bash(npm run lint),Bash(npm run test)
-\`\`\`
+- The agent receives read-only GitHub permissions, runs in a detached worktree,
+  and emits a bounded hash-addressed patch artifact for trusted review
 
 There's more information in the [UR repository](https://github.com/Maitham16/UR).
 
-After merging this PR, let's try mentioning @ur in a comment on any PR to get started!`
+After merging this PR, try \`/ur investigate this\` in a comment to get started.`
 
+// Keep the opt-in PR review plugin workflow distinct from Agentic CI. It has a
+// different trigger and action contract and must not create a second /ur job.
 export const CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT = `name: UR Review
 
 on:

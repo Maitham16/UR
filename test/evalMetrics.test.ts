@@ -1,18 +1,112 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  writeFileSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   type EvalRunner,
   type EvalSuite,
+  createEvalWorktree,
+  evaluateEvalGate,
+  runEvalTestCommand,
   runSuite,
 } from '../src/services/agents/evals.js'
+
+test('eval gates use full-precision pass rates', async () => {
+  const cases: EvalSuite['cases'] = Array.from(
+    { length: 300 },
+    (_, index) => ({
+      id: `case-${index}`,
+      category: 'coding',
+      prompt: 'p',
+      expect: { contains: ['ok'] },
+    }),
+  )
+  const report = await runSuite(
+    { version: 1, name: 'precision', cases },
+    async evalCase => ({
+      output: evalCase.id === 'case-299' ? 'failed' : 'ok',
+    }),
+  )
+  expect(report.passRate).toBe(299 / 300)
+  expect(evaluateEvalGate(report, {}).passed).toBe(false)
+})
 
 function tempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
+function git(cwd: string, ...args: string[]): void {
+  const result = Bun.spawnSync(['git', ...args], {
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  if (result.exitCode !== 0) throw new Error(result.stderr.toString())
+}
+
 describe('eval child metrics', () => {
+  test('verification commands cannot inherit ambient secrets', async () => {
+    const cwd = tempDir('ur-eval-env-')
+    const key = 'UR_EVAL_TEST_TOKEN'
+    const previous = process.env[key]
+    process.env[key] = 'must-not-reach-eval'
+    try {
+      const result = await runEvalTestCommand(
+        cwd,
+        `test -z "\${${key}:-}"`,
+      )
+      expect(result.testPassed).toBe(true)
+    } finally {
+      if (previous === undefined) delete process.env[key]
+      else process.env[key] = previous
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('eval worktree hooks cannot inherit ambient credentials', async () => {
+    if (process.platform === 'win32') return
+    const root = tempDir('ur-eval-hook-')
+    const repo = join(root, 'repo')
+    const ran = join(root, 'hook-ran')
+    const leaked = join(root, 'hook-leaked')
+    const key = 'UR_EVAL_HOOK_TOKEN'
+    const previous = process.env[key]
+    let isolated: Awaited<ReturnType<typeof createEvalWorktree>> | undefined
+    try {
+      mkdirSync(repo)
+      git(repo, 'init')
+      git(repo, 'config', 'user.email', 'test@example.com')
+      git(repo, 'config', 'user.name', 'Test')
+      writeFileSync(join(repo, 'file.txt'), 'base\n')
+      git(repo, 'add', 'file.txt')
+      git(repo, 'commit', '-m', 'base')
+      const hook = join(repo, '.git', 'hooks', 'post-checkout')
+      writeFileSync(
+        hook,
+        `#!/bin/sh\nprintf ran > ${JSON.stringify(ran)}\nif [ -n "\${${key}:-}" ]; then printf leaked > ${JSON.stringify(leaked)}; fi\n`,
+      )
+      chmodSync(hook, 0o700)
+      process.env[key] = 'must-not-reach-hook'
+
+      isolated = await createEvalWorktree(repo, 'hook-case')
+      expect(existsSync(ran)).toBe(false)
+      expect(existsSync(leaked)).toBe(false)
+    } finally {
+      await isolated?.cleanup()
+      if (previous === undefined) delete process.env[key]
+      else process.env[key] = previous
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test('runner metrics are attached to each case result', async () => {
     const suite: EvalSuite = {
       version: 1,

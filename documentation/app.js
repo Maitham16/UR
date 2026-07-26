@@ -14,13 +14,19 @@ const featureGroups = [
   {
     title: 'Agent platform',
     tags: ['spec', 'workflow', 'pattern', 'crew', 'goal', 'worktree'],
-    text: 'Spec-driven development, durable workflows, collaboration patterns, parallel crews, long-horizon goals, live execution boards, and resumable checkpoint state.',
-    commands: ['ur spec', 'ur workflow', 'ur pattern', 'ur crew', 'ur goal', 'ur worktree'],
+    text: 'Spec-driven development, durable workflows, collaboration patterns, parallel crews, long-horizon goals, live execution boards, multi-repository coordination, and resumable checkpoint state.',
+    commands: ['ur spec', 'ur workflow', 'ur pattern', 'ur crew', 'ur goal', 'ur worktree', 'ur workspace'],
+  },
+  {
+    title: 'Frontier agent operations',
+    tags: ['managed', 'steering', 'playbooks', 'Agentic CI', 'trajectory', 'desktop QA'],
+    text: 'Managed PASS-and-safe-branch fan-out, idempotent live steering, approval-gated learned playbooks, citation-validated memory, patch-only Agentic CI, privacy-minimized trajectory gates, redaction-safe Electron QA, durable tool-free side chats, dependency-aware workspace coordination, and verified anonymous model judging.',
+    commands: ['ur cloud', 'ur bg steer', 'ur learn playbooks', 'ur context-pack memory', 'ur agent-ci', 'ur eval gate', 'ur desktop-qa', '/btw', 'ur workspace', 'ur arena --judge hybrid'],
   },
   {
     title: 'Judging, escalation, and repair',
     tags: ['oracle', 'arena', 'CI', 'artifacts'],
-    text: 'Capability-aware fast/oracle model routing, best-of-N agent judging, test-first execution loops, self-healing CI loops, and reviewable artifacts for diffs, test runs, plans, and feedback.',
+    text: 'Capability-aware fast/oracle routing, proof-gated best-of-N judging, test-first and self-healing CI loops, patch-only Agentic CI, and reviewable artifacts for diffs, test runs, plans, attachments, and feedback.',
     commands: ['ur escalate', 'ur arena', 'ur test-first', 'ur ci-loop', 'ur artifacts', 'ur bg'],
   },
   {
@@ -38,14 +44,14 @@ const featureGroups = [
   {
     title: 'Knowledge and memory',
     tags: ['retrieval', 'provenance', 'citations'],
-    text: 'Durable memory, semantic memory, curated knowledge sources, lexical or embedding retrieval, citations, claim ledgers, and research graph primitives.',
-    commands: ['ur knowledge', 'ur semantic-memory', 'ur context-pack remember', 'ur claim-ledger'],
+    text: 'Durable memory, semantic memory, curated knowledge sources, lexical or embedding retrieval, digest-validated file/run citations, explicitly unverifiable user/web citations, claim ledgers, and research graph primitives.',
+    commands: ['ur knowledge', 'ur semantic-memory', 'ur context-pack remember --cite-file', 'ur context-pack memory revalidate', 'ur claim-ledger'],
   },
   {
     title: 'Evaluation and verification',
-    tags: ['evals', 'review', 'QA'],
-    text: 'Replayable eval suites, self-review PR gate, browser QA fixtures, verifier reminders, test-first traces, trace inspection, reviewable artifacts, and subagent timelines.',
-    commands: ['ur eval', 'ur test-first', 'ur agent-task', 'ur browser-qa', 'ur artifacts', '/verify', '/trace'],
+    tags: ['evals', 'trajectory', 'review', 'desktop QA'],
+    text: 'Isolated replayable evals with fail-closed trajectory gates, self-review and patch-state binding, browser/Electron QA fixtures, verifier reminders, trace inspection, safe attachment delivery, and subagent timelines.',
+    commands: ['ur eval gate', 'ur agent-ci', 'ur desktop-qa', 'ur test-first', 'ur agent-task', 'ur browser-qa', 'ur artifacts', '/verify', '/trace'],
   },
   {
     title: 'Interoperability',
@@ -107,8 +113,8 @@ const commands = [
     name: 'bg',
     category: 'Agent Platform',
     aliases: ['background-agent'],
-    summary: 'Run and manage detached local background agents with optional worktrees and PR creation.',
-    examples: ['ur bg run "fix the flaky parser test" --worktree', 'ur bg list --json', 'ur bg status <id> --json'],
+    summary: 'Run and manage detached local background agents with optional worktrees, cancellation, and bounded idempotent live steering.',
+    examples: ['ur bg run "fix the flaky parser test" --worktree', 'ur bg steer <id> --message "cover timeouts" --request-id timeout-1', 'ur bg status <id> --json', 'ur bg kill <id>'],
   },
   {
     name: 'worktree',
@@ -163,8 +169,8 @@ const commands = [
     name: 'arena',
     category: 'Agent Platform',
     aliases: ['best-of'],
-    summary: 'Run multiple agents on the same task in isolated worktrees, score their diffs, and optionally apply the winning patch.',
-    examples: ['ur arena "implement a debounce helper" --agents 2 --dry-run', 'ur arena "implement the rate limiter" --agents 3', 'ur arena "fix the parser" --agents 3 --apply'],
+    summary: 'Run isolated candidates, admit only PASS + safe + verified bounded patches, and judge them deterministically or through a strict anonymous model/hybrid decision.',
+    examples: ['ur arena "implement a debounce helper" --agents 2 --dry-run', 'ur arena "implement the rate limiter" --agents 3 --judge hybrid --verify "bun test"', 'ur arena "fix the parser" --agents 3 --apply'],
   },
   {
     name: 'artifacts',
@@ -205,8 +211,8 @@ const commands = [
     name: 'context-pack',
     category: 'Knowledge',
     aliases: ['project-manifest', 'ctx-pack'],
-    summary: 'Summarize repository architecture from manifests and instructions, record task memory, and compress old context under `.ur/context`.',
-    examples: ['ur context-pack scan', 'ur context-pack remember --decision "Use package scripts first"', 'ur context-pack remember --command "bun run typecheck"', 'ur context-pack compress'],
+    summary: 'Summarize repository architecture and maintain source-labelled task memory with digest-validated file/run citations and explicit user/web provenance.',
+    examples: ['ur context-pack scan', 'ur context-pack remember --decision "Keep streaming" --cite-file src/parser.ts --lines 20:48', 'ur context-pack memory revalidate', 'ur context-pack memory search --query "streaming"', 'ur context-pack compress'],
   },
   {
     name: 'config',
@@ -261,8 +267,8 @@ const commands = [
     name: 'eval',
     category: 'Verification',
     aliases: ['evals'],
-    summary: 'Create, validate, run, and report public agent eval suites with deterministic grading plus execution metrics and a local HTML dashboard.',
-    examples: ['ur eval init', 'ur eval list', 'ur eval validate starter', 'ur eval run starter --dry-run', 'ur eval run starter --metrics --json', 'ur eval report starter --dashboard', 'ur eval dashboard'],
+    summary: 'Run isolated agent evals, grade privacy-minimized control-flow trajectories, and enforce fail-closed pass, trajectory, test, cost, duration, or regression gates.',
+    examples: ['ur eval init', 'ur eval validate starter', 'ur eval run starter --metrics --json', 'ur eval gate starter --min-pass-rate 1 --min-trajectory-score 0.9', 'ur eval report starter --dashboard'],
   },
   {
     name: 'goal',
@@ -443,8 +449,8 @@ const commands = [
     name: 'cloud',
     category: 'Agent Platform',
     aliases: [],
-    summary: 'Run detached best-of-N tasks, inspect their results, and explicitly apply a selected winner.',
-    examples: ['ur cloud run "speed up parser" --attempts 3', 'ur cloud list', 'ur cloud show <id>', 'ur cloud apply <id>'],
+    summary: 'Run local best-of-N or managed fan-out. Managed selection requires explicit PASS plus a safe review branch, supports cancellation/steering, and never fetches or merges.',
+    examples: ['ur cloud run "speed up parser" --runner managed --environment <id> --attempts 3', 'ur cloud sync', 'ur cloud steer <id> --message "preserve the API" --request-id review-1', 'ur cloud cancel <id>'],
   },
   {
     name: 'recipe',
@@ -497,12 +503,12 @@ const slashGroups = [
   {
     title: 'Project intelligence',
     items: ['/dna', '/project', '/context-pack', '/workspace', '/read', '/search', '/index', '/analyze', '/summarize'],
-    text: 'Understand the workspace, build indexes, and read or summarize project files.',
+    text: 'Understand one repository or coordinate a dependency-aware, one-writer-per-repository workspace; build indexes and read or summarize project files.',
   },
   {
     title: 'Agents and orchestration',
-    items: ['/agents', '/agent-templates', '/spec', '/workflow', '/pattern', '/crew', '/goal', '/arena', '/route', '/role-mode', '/bg'],
-    text: 'Manage agents, install role modes, run specs and workflows, and coordinate multi-agent work.',
+    items: ['/agents', '/agent-templates', '/spec', '/workflow', '/pattern', '/crew', '/goal', '/arena', '/route', '/role-mode', '/bg', '/btw'],
+    text: 'Manage agents, run specs/workflows and verified arenas, steer background work, and keep durable tool-free side chats alongside the main task.',
   },
   {
     title: 'Agent skills',
@@ -511,13 +517,13 @@ const slashGroups = [
   },
   {
     title: 'Memory and evidence',
-    items: ['/memory', '/remember', '/forget', '/knowledge', '/semantic-memory', '/claim-ledger', '/evidence', '/graph'],
-    text: 'Persist useful facts, search memory and knowledge, and keep claim provenance.',
+    items: ['/memory', '/remember', '/forget', '/context-pack', '/knowledge', '/semantic-memory', '/claim-ledger', '/evidence', '/graph'],
+    text: 'Persist useful facts, validate cited project memory, search knowledge, and keep claim provenance.',
   },
   {
     title: 'Automation and evals',
-    items: ['/automation', '/trigger', '/ci-loop', '/eval', '/browser-qa', '/actions', '/stability'],
-    text: 'Run recurring prompts, webhook-triggered runs, self-healing CI loops, browser smoke checks, evals, and stability diagnostics.',
+    items: ['/automation', '/trigger', '/ci-loop', '/agent-ci', '/eval', '/browser-qa', '/desktop-qa', '/actions', '/stability'],
+    text: 'Run recurring prompts, patch-only Agentic CI, self-healing loops, browser/Electron QA, trajectory-gated evals, and stability diagnostics.',
   },
   {
     title: 'Models, tools, and interop',
@@ -624,8 +630,33 @@ const projectFiles = [
   },
   {
     title: '.ur/context/',
-    text: 'Architecture summaries, task memory JSONL, and compressed context for decisions, constraints, commands, diffs, and notes.',
-    example: 'ur context-pack compress',
+    text: 'Architecture summaries, citation-validated task memory JSONL, and compressed context for decisions, constraints, commands, diffs, and notes.',
+    example: 'ur context-pack memory revalidate',
+  },
+  {
+    title: '.ur/cloud/',
+    text: 'Private bounded manifests, steering receipts, cursors, and redacted logs for local or managed fan-out.',
+    example: 'ur cloud sync',
+  },
+  {
+    title: '.ur/learning/',
+    text: 'Proof-backed playbook candidates plus the private archive created when an unchanged approved workflow is disabled.',
+    example: 'ur learn playbooks list',
+  },
+  {
+    title: '.ur/agentic-ci/',
+    text: 'Agentic CI policies, isolated temporary worktree state, and hash-addressed patch-only run manifests.',
+    example: 'ur agent-ci validate default',
+  },
+  {
+    title: '.ur/desktop-qa/',
+    text: 'Electron QA fixtures and bounded run evidence; selector-redacted fixtures cannot enable raw trace or video.',
+    example: 'ur desktop-qa validate .ur/desktop-qa/fixtures/smoke.json',
+  },
+  {
+    title: '.ur/workspaces/',
+    text: 'Pinned multi-repository specifications and durable dependency-aware run state.',
+    example: 'ur workspace validate checkout',
   },
   {
     title: '.ur/repo-edit/',
@@ -682,8 +713,48 @@ const examples = [
   },
   {
     title: 'Best-of-N agent run',
-    text: 'Let isolated agents attempt the same task and surface the strongest diff.',
-    code: 'ur arena "implement a debounce helper" --agents 2 --dry-run\nur arena "fix the parser" --agents 3 --apply',
+    text: 'Admit only PASS + safe + verified bounded patches, then use deterministic or strict anonymous model judging.',
+    code: 'ur arena "implement a debounce helper" --agents 2 --dry-run\nur arena "fix the parser" --agents 3 --judge hybrid --verify "bun test"\nur arena "fix the parser" --agents 3 --apply',
+  },
+  {
+    title: 'Managed fan-out and steering',
+    text: 'Launch isolated managed candidates, steer active sessions idempotently, and review only explicit PASS candidates with safe branches.',
+    code: 'ur cloud environments\nur cloud run "repair the parser" --runner managed --environment <id> --attempts 3\nur cloud steer <task-id> --message "preserve the API" --request-id review-1\nur cloud sync\nur cloud show <task-id>',
+  },
+  {
+    title: 'Approval-gated learned playbook',
+    text: 'Mine verified repetitions, inspect the candidate, explicitly promote it, and archive it safely when disabled.',
+    code: 'ur learn playbooks mine --min-runs 3\nur learn playbooks show <id>\nur learn playbooks approve <id> --name parser-repair\nur learn playbooks run <id>\nur learn playbooks disable <id>',
+  },
+  {
+    title: 'Cited project memory',
+    text: 'Bind durable decisions to a file excerpt or run artifact and revalidate before reuse.',
+    code: 'ur context-pack remember --decision "Keep streaming" --cite-file src/parser.ts --lines 20:48\nur context-pack memory revalidate\nur context-pack memory search --query "streaming"',
+  },
+  {
+    title: 'Patch-only Agentic CI',
+    text: 'Generate the pinned read-only workflow and emit a post-check, state-bound patch artifact for separate review.',
+    code: 'ur agent-ci init default\nur agent-ci validate default\nur agent-ci workflow default --force\nur agent-ci run default --event "$GITHUB_EVENT_PATH" --event-name "$GITHUB_EVENT_NAME" --output-dir "$RUNNER_TEMP/ur-agentic-ci"',
+  },
+  {
+    title: 'Trajectory-gated eval',
+    text: 'Run cases in isolated worktrees and fail CI when outcome or control-flow evidence misses a declared threshold.',
+    code: 'ur eval run starter\nur eval gate starter --min-pass-rate 1 --min-trajectory-score 0.9 --min-test-pass-rate 1',
+  },
+  {
+    title: 'Redaction-safe Electron QA',
+    text: 'Validate bounded fixtures before launch. Selector masks require raw video and trace to remain disabled.',
+    code: 'ur desktop-qa init\nur desktop-qa validate .ur/desktop-qa/fixtures/smoke.json\nur desktop-qa doctor\nur desktop-qa run .ur/desktop-qa/fixtures/smoke.json',
+  },
+  {
+    title: 'Durable side chat',
+    text: 'Ask a tool-free one-turn question without blocking the main task, then continue or close its private hash-chained history.',
+    code: '/btw Why does this parser use a sentinel?\n/btw continue <chat-id> What invariant does it protect?\n/btw show <chat-id>\n/btw close <chat-id>',
+  },
+  {
+    title: 'Dependency-aware repository workspace',
+    text: 'Pin repository identities, serialize each repository writer, verify every branch, and print non-executing handoff plans.',
+    code: 'ur workspace init checkout\nur workspace add checkout api ../api --base main --verify "bun test"\nur workspace task checkout api-contract --repo api --prompt "add the response field"\nur workspace validate checkout\nur workspace run checkout --max-concurrency 4\nur workspace verify checkout\nur workspace pr-plan checkout',
   },
   {
     title: 'Reliable repo rename',

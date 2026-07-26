@@ -221,16 +221,22 @@ ur context-pack remember --preference "Use bun test over jest"
 ur context-pack remember --accepted "Use p-map for bounded concurrency" --scope project
 ur context-pack remember --rejected "Switch to esbuild" --alternative-to "Keep bun bundle"
 ur context-pack remember --attempt "Tried Deno runtime" --status superseded
+ur context-pack remember --decision "Keep streaming" --cite-file src/parser.ts --lines 20:48
 ur context-pack memory verify
+ur context-pack memory revalidate
+ur context-pack memory search --query "streaming"
 ur context-pack memory quarantine
 ur context-pack memory rollback --to <entry-id>
 ur context-pack compress
 ```
 
-New entries carry explicit source provenance and form a SHA-256 hash chain.
-Reads fail closed on malformed or tampered state. `quarantine` preserves the
-complete original privately and restores the verified prefix; `rollback`
-preserves a backup before truncating to the requested entry.
+New entries carry explicit source provenance, optional file/run/user/web
+citations, and form a SHA-256 hash chain. File and run citations are rechecked
+against captured content digests; stale and superseded memory is excluded from
+normal resolution. Reads fail closed on malformed or tampered state.
+`quarantine` preserves the complete original privately and restores the
+verified prefix; `rollback` preserves a backup before truncating to the
+requested entry.
 
 ## Lifecycle hooks
 
@@ -273,7 +279,16 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur agents` to list configured agents
 - `ur agent-trends` to inspect coverage for current agent technology trends
 - `ur a2a card` to print UR's Agent Card metadata for A2A discovery
-- `ur bg ...` to run detached local background agents with optional worktrees and PRs
+- `ur bg ...` to run and idempotently steer detached local background agents
+  with optional worktrees and PRs
+- `ur cloud ...` to run, synchronize, steer, and cancel local or managed
+  best-of-N workers; managed selection requires explicit `PASS` plus a safe
+  review branch and never fetches or merges it
+- `ur agent-ci ...` to generate and run a policy-gated isolated CI agent that
+  emits only a post-check, state-bound patch and manifest
+- `ur workspace ...` to coordinate dependency-aware changes across repositories
+- `ur learn playbooks ...` to mine and explicitly approve reusable workflows
+- `/btw ...` to create or continue private durable tool-free side chats
 - `ur repo-edit ...` to index the repo, plan AST-aware renames, preview patches, and apply with rollback
 - `ur safety ...` to inspect project shell safety policy and preview command risk
 - `ur context-pack ...` to summarize architecture and persist project memory (decisions, constraints, commands, diffs, architecture, preferences, attempts, accepted, rejected)
@@ -284,18 +299,24 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur memory retention ...` to prune project-local memory by TTL, max entries, and decay
 - `ur spec ...` to scaffold requirements, design, and tasks, run a spec task list, and verify with strict proof gates
 - `ur escalate ...` to plan, run, or ask an oracle model for hard tasks
-- `ur arena ...` to run multiple agents on the same task and select a winner
+- `ur arena ...` to verify multiple isolated candidates and select a winner
+  with deterministic, model, or hybrid judging; oversized full diffs are
+  excluded from model judging
 - `ur test-first ...` to detect compile/test/lint commands, store failure traces, and install after-edit gates
 - `ur ci-loop ...` to run tests in an explicit working directory, repair real
   failures, and rerun with a bounded loop. A "No tests found" result stops
   after one attempt and reports how to correct `--cwd`.
-- `ur artifacts ...` to capture reviewable diffs, test runs, notes, and feedback
+- `ur artifacts ...` to capture reviewable diffs, test runs, notes, feedback,
+  and bounded non-symlink attachments with safe download headers/MIME fallback
 - `ur ide diff ...` to capture editor-readable inline diff bundles
 - `ur acp stdio` for the official-SDK ACP v1 editor transport with durable
   list/load/delete/resume, modes, config options, and commands; and
   `ur acp serve|stop|status` for the separate UR HTTP JSON-RPC API
 - `ur exec ...` to run prompts in non-interactive mode with optional concurrency
-- `ur eval run ...` to run a suite, grade results, and capture execution metrics
+- `ur eval run ...` to run isolated cases, grade redacted tool trajectories,
+  and capture execution metrics
+- `ur eval gate ...` to enforce pass, trajectory, test, cost, duration, and
+  regression thresholds
 - `ur eval report ...` to show a saved report or write a single-suite dashboard
 - `ur eval dashboard` to generate the local HTML dashboard across all reports
 - `ur eval bench ...` to import local SWE-bench, Terminal-Bench, or Aider Polyglot exports
@@ -314,6 +335,8 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur model-doctor` and `ur model-route ...` to inspect local Ollama models and pick one by capability fit
 - `ur local-first` to report readiness for offline/no-cloud environments
 - `ur browser-qa ...` to validate and smoke-run browser QA replay fixtures
+- `ur desktop-qa ...` to run Electron fixtures with hashed masked screenshots;
+  raw video/trace requires selector redaction to be disabled
 - `ur trigger ...` to parse GitHub/Slack webhook payloads and optionally launch a headless run
 - `ur agent-templates ...`, `ur agent-task ...`, `ur agent-inspect`, `ur agent-features`, and `ur agent-trends` for agent template, PR handoff, timeline, and coverage utilities
 - `ur role-mode ...` to install built-in Architect, Code, Debug, and Ask role modes
@@ -329,6 +352,10 @@ Interactive sessions also check the published package version and show
 Source checkouts print
 `Development build detected. To update, pull latest source or install from npm.`
 instead of attempting to mutate the checkout.
+
+See [Frontier Agent Workflows](FRONTIER_AGENT_FEATURES.md) for the complete
+managed-worker, steering, learned-playbook, cited-memory, Agentic CI,
+trajectory, desktop-QA, side-chat, multi-repository, and arena trust model.
 
 ## Status bar
 
@@ -368,7 +395,9 @@ ur spec init demo --goal "1. add a utils.add function 2. add a test"
 ur spec run demo --all --dry-run
 ur spec run demo --all --kernel
 ur spec verify demo --kernel
-ur arena "implement a debounce helper" --agents 2 --dry-run
+ur arena "implement a debounce helper" --agents 3 --judge hybrid --verify "bun test"
+ur agent-ci init default
+ur cloud run "fix the parser race" --runner managed --attempts 3
 ur escalate run "refactor the cache layer" --force-oracle --dry-run
 ur test-first detect
 ur test-first --dry-run
@@ -383,7 +412,9 @@ ur safety check --command "rm -rf build"
 ur context-pack scan
 ur context-pack remember --constraint "Run command evidence before claiming success"
 ur context-pack remember --accepted "Use p-map for concurrency" --scope project
+ur context-pack remember --decision "Keep streaming" --cite-file src/parser.ts --lines 20:48
 ur context-pack memory verify
+ur context-pack memory revalidate
 ur context-pack compress
 UR_MCP_HTTP_TOKEN='<secret>' ur mcp serve-http --port 8976
 ur acp serve --port 8123
@@ -391,6 +422,9 @@ ur exec "add tests for the parser" --concurrency 4 --json
 ur ci-loop --command "bun test" --cwd . --dry-run
 ur artifacts capture-diff
 ur bg run "fix the flaky parser test" --worktree --dry-run
+ur learn playbooks mine --min-runs 3
+ur workspace init checkout
+ur desktop-qa validate .ur/desktop-qa/fixtures/smoke.json
 ur worktree list
 ur worktree clean --dry-run
 ur repo-edit index
@@ -401,6 +435,7 @@ ur ide diff capture --title "Working tree review"
 ur eval bench list
 ur eval run starter --dry-run --json
 ur eval run starter --metrics --json
+ur eval gate starter --min-pass-rate 1 --min-trajectory-score 0.9
 ur eval report starter --dashboard
 ur eval dashboard
 ur crew create parser-crew --goal "fix the flaky parser test" --decompose --dry-run

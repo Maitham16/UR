@@ -8,9 +8,9 @@ import { isEnvTruthy } from './envUtils.js'
  * The parent ur process keeps these vars (needed for API calls, lazy
  * credential reads). Only child processes (bash, shell snapshot, MCP stdio, LSP, hooks) are scrubbed.
  *
- * GITHUB_TOKEN / GH_TOKEN are intentionally NOT scrubbed — wrapper scripts
- * (gh.sh) need them to call the GitHub API. That token is job-scoped and
- * expires when the workflow ends.
+ * In scrub mode all secret-like variables are removed, including GitHub
+ * tokens. Agentic CI is an artifact producer and does not permit a nested
+ * process to publish or call privileged platform APIs.
  */
 const GHA_SUBPROCESS_SCRUB = [
   // UR auth — ur re-reads these per-request, subprocesses don't need them
@@ -29,6 +29,7 @@ const GHA_SUBPROCESS_SCRUB = [
 
   // Cloud provider creds — same pattern (lazy SDK reads)
   'AWS_SECRET_ACCESS_KEY',
+  'AWS_ACCESS_KEY_ID',
   'AWS_SESSION_TOKEN',
   'AWS_BEARER_TOKEN_BEDROCK',
   'GOOGLE_APPLICATION_CREDENTIALS',
@@ -51,6 +52,40 @@ const GHA_SUBPROCESS_SCRUB = [
   'DEFAULT_WORKFLOW_TOKEN',
   'SSH_SIGNING_KEY',
 ] as const
+
+const SECRET_LIKE_ENV_RE =
+  /(?:^|_)(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIALS?|AUTH)(?:_|$)/i
+
+/** Exported for security regression tests and embedders using the same policy. */
+export function isSecretLikeSubprocessEnvName(name: string): boolean {
+  return (
+    SECRET_LIKE_ENV_RE.test(name) ||
+    GHA_SUBPROCESS_SCRUB.includes(
+      name as (typeof GHA_SUBPROCESS_SCRUB)[number],
+    ) ||
+    GHA_SUBPROCESS_SCRUB.some(key => name === `INPUT_${key}`)
+  )
+}
+
+/**
+ * Build an environment for repository-controlled commands. Unlike
+ * `subprocessEnv`, this is unconditional: callers use it at trust boundaries
+ * where hooks and test scripts must never inherit ambient credentials.
+ */
+export function strictSubprocessEnv(
+  base: NodeJS.ProcessEnv = process.env,
+  allowedSecretNames: readonly string[] = [],
+): NodeJS.ProcessEnv {
+  const allowed = new Set(allowedSecretNames)
+  const env: NodeJS.ProcessEnv = {}
+  for (const [name, value] of Object.entries(base)) {
+    if (allowed.has(name) || !isSecretLikeSubprocessEnvName(name)) {
+      env[name] = value
+    }
+  }
+  env.UR_CODE_SUBPROCESS_ENV_SCRUB = '1'
+  return env
+}
 
 /**
  * Returns a copy of process.env with sensitive secrets stripped, for use when
@@ -76,7 +111,9 @@ export function registerUpstreamProxyEnvFn(
   _getUpstreamProxyEnv = fn
 }
 
-export function subprocessEnv(): NodeJS.ProcessEnv {
+export function subprocessEnv(
+  overrides: NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv {
   // CCR upstreamproxy: inject HTTPS_PROXY + CA bundle vars so curl/gh/python
   // in agent subprocesses route through the local relay. Returns {} when the
   // proxy is disabled or not registered (non-CCR), so this is a no-op outside
@@ -84,16 +121,14 @@ export function subprocessEnv(): NodeJS.ProcessEnv {
   const proxyEnv = _getUpstreamProxyEnv?.() ?? {}
 
   if (!isEnvTruthy(process.env.UR_CODE_SUBPROCESS_ENV_SCRUB)) {
-    return Object.keys(proxyEnv).length > 0
-      ? { ...process.env, ...proxyEnv }
+    return Object.keys(proxyEnv).length > 0 ||
+      Object.keys(overrides).length > 0
+      ? { ...process.env, ...proxyEnv, ...overrides }
       : process.env
   }
-  const env = { ...process.env, ...proxyEnv }
-  for (const k of GHA_SUBPROCESS_SCRUB) {
-    delete env[k]
-    // GitHub Actions auto-creates INPUT_<NAME> for `with:` inputs, duplicating
-    // secrets like INPUT_URHQ_API_KEY. No-op for vars that aren't action inputs.
-    delete env[`INPUT_${k}`]
+  const env = { ...process.env, ...proxyEnv, ...overrides }
+  for (const key of Object.keys(env)) {
+    if (isSecretLikeSubprocessEnvName(key)) delete env[key]
   }
   return env
 }

@@ -79,7 +79,7 @@ function decisionReasonToString(
     case 'subcommandResults':
       return `Subcommand Results: ${Array.from(decisionReason.reasons.entries())
         .map(([key, value]) => `${key}: ${permissionResultToLog(value)}`)
-        .join(', \n')}`
+        .join(',\n')}`
     case 'permissionPromptTool':
       return `Permission Tool: ${decisionReason.permissionPromptToolName}, Result: ${jsonStringify(decisionReason.toolResult)}`
     case 'hook':

@@ -42,16 +42,16 @@ handing work off to other tools or agents when needed.
   `ur auth claude`, `ur auth gemini`, `ur auth antigravity`, and safe
   `ur config set ...` commands to select official subscription, API, or local
   providers without storing secrets in UR settings.
-- **Agent workflows.** Use `ur spec`, `ur arena`, `ur test-first`,
-  `ur ci-loop`, `ur bg`, `ur workflow`, `ur crew`, and `ur automation` for
-  structured work beyond a single chat turn.
+- **Agent workflows.** Use `ur spec`, `ur arena`, `ur agent-ci`, `ur cloud`,
+  `ur workspace`, `ur test-first`, `ur ci-loop`, `ur bg`, `ur workflow`,
+  `ur crew`, and `ur automation` for structured work beyond a single chat turn.
 - **Reliable repo editing.** Use `ur repo-edit` for indexed search,
   AST-aware rename plans, patch previews, and rollback-safe multi-file apply.
 - **Permission and context control.** Use `ur safety` and `ur context-pack` to
   inspect command risk, initialize project safety policy, summarize repository
   architecture, and preserve task decisions, constraints, commands, diffs,
   architecture decisions, preferred commands, failed attempts, accepted patterns,
-  and rejected approaches.
+  rejected approaches, and citation freshness.
 - **Lifecycle hooks.** Configure `BeforeEdit`, `AfterEdit`, `BeforeCommand`,
   `AfterCommand`, `BeforeCommit`, and `OnFailure` hooks in `.ur/hooks.json` or
   `UR.md` to run custom commands when the agent edits files, runs shell commands,
@@ -383,14 +383,19 @@ as first-class subcommands in the shipped CLI.
 | `ur -p` | Run a non-interactive prompt with text, JSON, or stream-JSON output. |
 | `ur spec` | Default spec-first workflow: create requirements, design, and task documents under `.ur/specs/`, run the task list, and verify with strict proof gates. |
 | `ur escalate` | Plan or run work with fast and oracle model tiers selected from local model capabilities. |
-| `ur arena` | Run multiple agents on the same task in isolated worktrees and surface the winning diff. |
+| `ur arena` | Run verified best-of-N candidates in isolated worktrees with deterministic, model, or hybrid judging. |
+| `ur agent-ci` | Run a policy-gated agent in an isolated CI worktree and emit bounded, hash-addressed review artifacts. |
 | `ur ci-loop` | Run a build or test command in an explicit working directory, hand failures to a fix agent, and retry with a bounded budget. |
 | `ur test-first` | Detect the project stack, run compile/test/lint commands, store failure traces, and install edit-time verify gates. |
 | `ur safety` | Inspect or initialize project shell safety policy and evaluate command risk before execution. |
 | `ur sandbox` | Inspect and manage the sandbox/permission architecture: status, dependency check, policy init, and command approval levels. |
-| `ur context-pack` | Write project architecture context, tamper-evident task memory, and compressed context under `.ur/`; verify, quarantine, or roll back the memory chain. |
+| `ur context-pack` | Write project architecture context and citation-validated, tamper-evident task memory; search, revalidate, quarantine, or roll back the chain. |
 | `/hooks` | Inspect lifecycle hooks (`BeforeEdit`, `AfterEdit`, `BeforeCommand`, `AfterCommand`, `BeforeCommit`, `OnFailure`) configured via settings files. |
-| `ur bg` | Run and manage detached local background agents with optional worktrees and PR creation. |
+| `ur bg` | Run, inspect, cancel, and idempotently steer detached local background agents with optional worktrees and PR creation. |
+| `ur cloud` | Run verified local best-of-N workers or managed candidates with lifecycle reconciliation, safe-branch eligibility, steering, and cancellation. |
+| `ur workspace` | Coordinate dependency-aware tasks across isolated worktrees in multiple repositories and generate explicit PR/rollback plans. |
+| `ur learn playbooks` | Mine verified outcomes into candidates, explicitly approve them as workflows, and run or disable them. |
+| `/btw` | Create, continue, inspect, rename, or close a private durable tool-free side chat while the main task continues. |
 | `ur worktree` | List, inspect, and clean up UR agent worktrees. |
 | `ur task` | Start, run, and hand off worktree-per-task sessions with optional PR creation. |
 | `ur automation` | Store and run project-local scheduled automation specs under `.ur/automations/`. |
@@ -406,7 +411,9 @@ as first-class subcommands in the shipped CLI.
 | `ur artifacts` | Capture diffs, test runs, notes, and review feedback under `.ur/artifacts/`; `serve` opens a local web page per artifact ID. |
 | `ur claim-ledger` | Map generated claims to file, web, MCP, tool, or user sources. |
 | `ur browser-qa` | Validate and smoke-run browser QA replay fixtures. |
-| `ur eval run` | Run an eval suite and grade outputs; optionally capture cost/tokens/files/test metrics. |
+| `ur desktop-qa` | Validate and run bounded Electron QA fixtures with teardown, masked screenshots, and optional raw video/trace only when selector redaction is disabled. |
+| `ur eval run` | Run isolated eval cases and grade outputs plus redacted tool trajectories; optionally capture cost/tokens/files/test metrics. |
+| `ur eval gate` | Enforce pass-rate, trajectory, test, cost, duration, and baseline-regression thresholds in CI. |
 | `ur eval report` | Show a saved eval report; `--dashboard` writes a single-suite HTML timeline. |
 | `ur eval dashboard` | Generate the local-first HTML dashboard across all saved reports. |
 | `ur eval bench` | Import local SWE-bench, Terminal-Bench, or Aider Polyglot exports. |
@@ -566,7 +573,11 @@ ur crew create parser-crew --goal "fix the flaky parser test" --decompose --dry-
 ur crew plan parser-crew --goal "fix the flaky parser test" --decompose
 ur crew run parser-crew --workers 3 --decompose --dry-run
 ur pattern parallel "refactor login without changing behavior" --execute --dry-run
-ur arena "implement a debounce helper" --agents 2 --dry-run
+ur arena "implement a debounce helper" --agents 3 --judge hybrid --verify "bun test"
+ur agent-ci init default
+ur agent-ci validate default
+ur cloud run "fix the parser race" --runner managed --attempts 3
+ur cloud steer <task-id> --message "preserve the public API" --request-id review-1
 ur escalate run "refactor the cache layer" --force-oracle --dry-run
 ur test-first detect
 ur test-first --dry-run
@@ -579,12 +590,18 @@ ur context-pack remember --preference "Use bun test over jest"
 ur context-pack remember --accepted "Use p-map for bounded concurrency" --scope project
 ur context-pack remember --rejected "Switch to esbuild" --alternative-to "Keep bun bundle"
 ur context-pack remember --attempt "Tried Deno runtime" --status superseded
+ur context-pack remember --decision "Keep streaming" --cite-file src/parser.ts --lines 20:48
+ur context-pack memory revalidate
+ur context-pack memory search --query "streaming"
 ur context-pack memory verify
 ur context-pack memory quarantine
 ur context-pack memory rollback --to <entry-id>
 ur context-pack compress
 ur ci-loop --command "bun test" --cwd . --max-attempts 3 --dry-run
 ur bg run "fix the flaky parser test" --worktree --dry-run
+ur learn playbooks mine --min-runs 3
+ur workspace init checkout
+ur desktop-qa validate .ur/desktop-qa/fixtures/smoke.json
 ur automation create nightly --schedule "0 9 * * 1-5" --prompt "Review open tasks"
 ur repo-edit preview rename oldName --to newName
 ur repo-edit apply rename oldName --to newName --check "bun test"
@@ -603,6 +620,7 @@ ur agent-task pr --create --dry-run
 ur acp serve --port 8123
 ur exec "add tests for the parser" --concurrency 4 --json
 ur eval run starter --metrics --json
+ur eval gate starter --min-pass-rate 1 --min-trajectory-score 0.9
 ur eval report starter --dashboard
 ur eval dashboard
 ```
@@ -622,12 +640,13 @@ UR reads repository instructions and local runtime state from project files:
 - `.ur/project-manifest.json` and `.ur/context/` hold architecture summaries,
   task memory, compressed context, and project memory including architecture
   decisions, preferred commands, failed attempts, accepted patterns, and
-  rejected approaches. Task-memory v2 entries include provenance and an
-  integrity chain; corrupt tails can be quarantined without discarding the
-  verified prefix.
+  rejected approaches. Task-memory v2 entries include provenance, source
+  citations, freshness validation, and an integrity chain; corrupt tails can
+  be quarantined without discarding the verified prefix.
 - `.ur/specs/`, `.ur/artifacts/`, `.ur/automations/`, `.ur/test-first/`,
-  `.ur/memory/`, and `.ur/index/` hold workflow state, review artifacts,
-  scheduled jobs, failure traces, memory, and indexes.
+  `.ur/memory/`, `.ur/index/`, `.ur/agentic-ci/`, `.ur/workspaces/`, and
+  `.ur/desktop-qa/` hold workflow state, review artifacts, scheduled jobs,
+  failure traces, memory, indexes, isolated automation state, and QA evidence.
 
 Commit only shared project assets that are safe for teammates. Keep local
 settings, generated indexes, memory, logs, and secrets out of Git.
@@ -719,8 +738,9 @@ the permission boundary matters.
   [Provider Guide](docs/providers.md).
 - MCP servers can access external services; only enable servers you trust.
 
-See [Configuration](docs/CONFIGURATION.md), [Validation](docs/VALIDATION.md),
-and [Quality Notes](QUALITY.md) for operational guidance.
+See [Frontier Agent Workflows](docs/FRONTIER_AGENT_FEATURES.md),
+[Configuration](docs/CONFIGURATION.md), [Validation](docs/VALIDATION.md), and
+[Quality Notes](QUALITY.md) for operational guidance.
 
 ## Troubleshooting
 

@@ -32,6 +32,11 @@ import type { Verdict } from './executor.js'
 import { loadVerifyConfig, runGateCommands } from '../verifier/projectGates.js'
 import type { SpecMeta, SpecTask } from './spec.js'
 import { enforceNoPassWithoutProof } from './verificationProofs.js'
+import { readTaskMemory } from '../context/projectContextManifest.js'
+import {
+  formatResolvedMemory,
+  resolveTaskMemoryEntries,
+} from '../context/memoryCitations.js'
 
 export type KernelRole =
   | 'planner'
@@ -153,7 +158,19 @@ function defaultMemory(cwd: string): MemoryManager {
     loadMemorySnippet: (scope, agentType) => {
       const base = scope === 'project' ? join(cwd, '.ur', 'memory') : join(cwd, '.ur', 'memory')
       const path = join(base, `${agentType}.md`)
-      return existsSync(path) ? readFileSync(path, 'utf-8') : null
+      const legacy = existsSync(path) ? readFileSync(path, 'utf-8') : ''
+      if (scope !== 'project') return legacy || null
+      try {
+        const cited = resolveTaskMemoryEntries(cwd, readTaskMemory(cwd), {
+          maxEntries: 8,
+        })
+        const shared =
+          cited.length > 0 ? formatResolvedMemory(cited, 8 * 1024).trim() : ''
+        return [legacy.trim(), shared].filter(Boolean).join('\n\n') || null
+      } catch {
+        // An invalid shared-memory chain is fail-closed and never enters prompts.
+        return legacy || null
+      }
     },
   }
 }

@@ -25,6 +25,12 @@ import {
   endGenAiMemorySpan,
   startGenAiMemorySpan,
 } from '../../utils/telemetry/genAiSemantics.js'
+import {
+  formatResolvedMemoryItem,
+  hasValidMemoryCitations,
+  resolveTaskMemoryEntries,
+  type MemoryCitation,
+} from './memoryCitations.js'
 
 export const TASK_MEMORY_KINDS = [
   'decision',
@@ -52,6 +58,7 @@ export type TaskMemoryEntry = {
   supersedesId?: string
   scope?: 'project' | 'team' | 'personal'
   source?: string
+  citations?: MemoryCitation[]
   provenance?: TaskMemoryProvenance
   previousDigest?: string
   contentDigest?: string
@@ -364,7 +371,8 @@ function hasValidTaskMemoryMetadata(entry: TaskMemoryEntry): boolean {
     isOptionalString(entry.rationale) &&
     isOptionalString(entry.alternativeTo) &&
     isOptionalString(entry.supersedesId) &&
-    isOptionalString(entry.source)
+    isOptionalString(entry.source) &&
+    hasValidMemoryCitations(entry.citations)
   )
 }
 
@@ -736,6 +744,7 @@ export function appendTaskMemory(
       supersedesId: meta?.supersedesId,
       scope: meta?.scope,
       source: meta?.source,
+      citations: meta?.citations,
     } satisfies Pick<
       TaskMemoryEntry,
       | 'status'
@@ -744,6 +753,7 @@ export function appendTaskMemory(
       | 'supersedesId'
       | 'scope'
       | 'source'
+      | 'citations'
     >
     if (!hasValidTaskMemoryMetadata(metadata as TaskMemoryEntry)) {
       throw new Error('Task memory metadata contains an invalid status, scope, or value')
@@ -948,7 +958,9 @@ export function readProjectMemoryByKind(
 }
 
 export function compressTaskMemory(cwd: string): string {
-  const entries = readTaskMemory(cwd)
+  const entries = resolveTaskMemoryEntries(cwd, readTaskMemory(cwd), {
+    maxEntries: 100,
+  }).map(value => value.entry)
   const allKinds = TASK_MEMORY_KINDS
   const byKind = new Map<TaskMemoryKind, TaskMemoryEntry[]>()
   for (const kind of allKinds) {
@@ -993,16 +1005,17 @@ export function getProjectMemorySummary(
   cwd: string,
   maxPerKind = 10,
 ): string {
-  const entries = readTaskMemory(cwd)
+  const resolved = resolveTaskMemoryEntries(cwd, readTaskMemory(cwd), {
+    maxEntries: Math.max(1, maxPerKind) * TASK_MEMORY_KINDS.length,
+  })
   const lines = ['# Project Memory Summary', '']
   for (const kind of TASK_MEMORY_KINDS) {
-    const group = entries.filter(e => e.kind === kind).slice(-maxPerKind)
+    const group = resolved
+      .filter(item => item.entry.kind === kind)
+      .slice(0, Math.max(0, maxPerKind))
     if (group.length === 0) continue
     lines.push(`## ${kind[0]!.toUpperCase()}${kind.slice(1)}s`)
-    for (const entry of group) {
-      lines.push(`- ${entry.text}`)
-    }
-    lines.push('')
+    lines.push(...group.map(formatResolvedMemoryItem), '')
   }
   return lines.join('\n').trim()
 }

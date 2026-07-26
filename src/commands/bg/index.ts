@@ -7,7 +7,7 @@ const bg = {
   description:
     'Run and manage detached local UR background agents with optional worktrees and PR creation',
   argumentHint:
-    'run|fanout|list|status|logs|attach|kill|worker "<task>" [--worktree] [--pr] [--agents N] [--json]',
+    'run|fanout|list|status|logs|attach|steer|kill|worker "<task>" [--message TEXT] [--request-id ID] [--worktree] [--pr] [--agents N] [--json]',
   supportsNonInteractive: true,
   load: () => import('./bg.js'),
 } satisfies Command

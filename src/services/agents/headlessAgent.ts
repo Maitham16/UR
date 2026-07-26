@@ -19,6 +19,12 @@ export type HeadlessRunOptions = {
   maxTurns?: number
   timeoutMs?: number
   skipPermissions?: boolean
+  /** Explicit child environment. Used by isolated CI to strip platform tokens. */
+  env?: NodeJS.ProcessEnv
+  /** Explicit tool set; an empty array disables all tools. */
+  tools?: string[]
+  /** Prevent durable chat/session files for ephemeral judge/eval calls. */
+  noSessionPersistence?: boolean
   bin?: { file: string; baseArgs: string[] }
 }
 
@@ -35,17 +41,34 @@ export function defaultHeadlessRunner(): HeadlessRunner {
     if (options.skipPermissions) {
       args.push('--dangerously-skip-permissions')
     }
+    if (options.tools) {
+      args.push('--tools', options.tools.join(','))
+    }
+    if (options.noSessionPersistence) {
+      args.push('--no-session-persistence')
+    }
     args.push(options.prompt)
 
-    const env = options.model
-      ? { ...process.env, UR_MODEL: options.model, OLLAMA_MODEL: options.model }
-      : undefined
+    const env =
+      options.env || options.model
+        ? {
+            ...(options.env ?? process.env),
+            ...(options.model
+              ? {
+                  UR_MODEL: options.model,
+                  OLLAMA_MODEL: options.model,
+                }
+              : {}),
+          }
+        : undefined
 
     const result = await execFileNoThrowWithCwd(file, args, {
       cwd: options.cwd,
       timeout: options.timeoutMs ?? 30 * 60 * 1000,
       env,
+      extendEnv: options.env ? false : true,
       preserveOutputOnError: true,
+      maxBuffer: 10 * 1024 * 1024,
     })
     const output =
       parseHeadlessOutput(result.stdout) || result.stderr || result.error || ''

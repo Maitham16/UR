@@ -60,6 +60,7 @@ import stability from './commands/stability/index.js'
 import evidence from './commands/evidence/index.js'
 import actions from './commands/actions/index.js'
 import agentFeatures from './commands/agent-features/index.js'
+import agentCi from './commands/agent-ci/index.js'
 import agentTask from './commands/agent-task/index.js'
 import agentTemplates from './commands/agent-templates/index.js'
 import agentTrends from './commands/agent-trends/index.js'
@@ -92,6 +93,7 @@ import escalate from './commands/escalate/index.js'
 import learn from './commands/learn/index.js'
 import guardrails from './commands/guardrails/index.js'
 import devcontainer from './commands/devcontainer/index.js'
+import desktopQa from './commands/desktop-qa/index.js'
 import arena from './commands/arena/index.js'
 import ciLoop from './commands/ci-loop/index.js'
 import testFirst from './commands/test-first/index.js'
@@ -410,6 +412,7 @@ const COMMANDS = memoize((): Command[] => [
   evidence,
   actions,
   agentFeatures,
+  agentCi,
   agentTask,
   agentTemplates,
   agentTrends,
@@ -442,6 +445,7 @@ const COMMANDS = memoize((): Command[] => [
   learn,
   guardrails,
   devcontainer,
+  desktopQa,
   arena,
   ciLoop,
   testFirst,

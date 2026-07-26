@@ -4,8 +4,9 @@ const learn = {
   type: 'local',
   name: 'learn',
   description:
-    'Continual learning: mine artifacts/CI outcomes into a per-category/per-model success-rate store and reflective lessons that tune escalate, arena, and model-route',
-  argumentHint: 'run|stats|apply [--reflect] [--dry-run] [--json]',
+    'Continual learning: mine outcomes and promote evidence-backed reusable workflow playbooks',
+  argumentHint:
+    'run|stats|apply|playbooks mine|list|show|approve|reject|disable|run [--json]',
   supportsNonInteractive: true,
   load: () => import('./learn.js'),
 } satisfies Command

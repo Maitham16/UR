@@ -7,7 +7,7 @@ const arena = {
   description:
     'Run N agents on the same task in isolated worktrees, judge the diffs, and surface (optionally apply) the winner',
   argumentHint:
-    '"<task>" [--agents N] [--apply] [--keep] [--dry-run] [--max-turns N] [--skip-permissions] [--json]',
+    '"<task>" [--agents N] [--judge deterministic|model|hybrid] [--judge-model M] [--verify "cmd"] [--apply] [--json]',
   supportsNonInteractive: true,
   load: () => import('./arena.js'),
 } satisfies Command

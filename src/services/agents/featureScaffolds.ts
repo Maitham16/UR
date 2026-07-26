@@ -1,6 +1,10 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { loadPluginTemplates } from '../../utils/plugins/loadPluginTemplates.js'
+import {
+  compileAgenticCiWorkflow,
+  defaultAgenticCiSpec,
+} from './agenticCi.js'
 
 export type AgentFeatureId =
   | 'task-pr'
@@ -89,9 +93,9 @@ export const AGENT_FEATURES: AgentFeature[] = [
     id: 'github-action',
     name: 'GitHub agent runner',
     status: 'workflow',
-    command: 'ur agent-features init',
+    command: 'ur agent-ci init',
     summary:
-      'Adds an opt-in workflow that can run UR in GitHub Actions for issue comments or manual dispatch.',
+      'Adds a read-only, actor-gated workflow that runs UR in an isolated worktree and uploads a bounded patch artifact.',
     scaffold: '.github/workflows/ur.yml',
   },
   {
@@ -753,38 +757,14 @@ runner; \`ur trigger\` is the inbound parser that decides what to run.
   {
     path: '.github/workflows/ur.yml',
     root: 'project',
-    content: `name: UR
-
-on:
-  workflow_dispatch:
-    inputs:
-      prompt:
-        description: Prompt for UR
-        required: true
-        type: string
-  issue_comment:
-    types: [created]
-
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
-
-jobs:
-  ur:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.comment.body, '/ur')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - name: Run UR
-        env:
-          UR_MODEL: \${{ vars.UR_MODEL || 'qwen3-coder:480b-cloud' }}
-        run: |
-          PROMPT="\${{ inputs.prompt || github.event.comment.body }}"
-          bun run start -- -p "$PROMPT"
-`,
+    content: compileAgenticCiWorkflow('default', {
+      packageVersion:
+        typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.48.0',
+    }),
+  },
+  {
+    path: 'agentic-ci/default.yaml',
+    content: `${JSON.stringify(defaultAgenticCiSpec(), null, 2)}\n`,
   },
 ]
 

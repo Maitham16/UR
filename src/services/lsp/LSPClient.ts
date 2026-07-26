@@ -97,7 +97,7 @@ export function createLSPClient(
         // 1. Spawn LSP server process
         process = spawn(command, args, {
           stdio: ['pipe', 'pipe', 'pipe'],
-          env: { ...subprocessEnv(), ...options?.env },
+          env: subprocessEnv(options?.env),
           cwd: options?.cwd,
           // Prevent visible console window on Windows (no-op on other platforms)
           windowsHide: true,

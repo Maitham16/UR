@@ -26,6 +26,7 @@ import {
   listBackgroundTasks,
   readBackgroundLog,
   startBackgroundTask,
+  steerBackgroundTask,
   stopBackgroundTask,
   type BackgroundTask,
 } from './backgroundRunner.js'
@@ -1796,6 +1797,78 @@ export async function handleA2ARequest(
         logFile: background?.logFile,
         log,
         result: task.result,
+      })
+    }
+    if (
+      request.method === 'POST' &&
+      (taskPath.subresource === 'messages' ||
+        taskPath.subresource === 'steer')
+    ) {
+      if (!task.backgroundTaskId) {
+        return jsonResponse(409, {
+          error: 'task is not backed by a steerable background run',
+        })
+      }
+      const contentType = request.headers
+        .get('content-type')
+        ?.split(';', 1)[0]
+        ?.trim()
+        .toLowerCase()
+      if (contentType !== 'application/json') {
+        return jsonResponse(415, {
+          error: 'Content-Type must be application/json',
+        })
+      }
+      let requestText: string
+      try {
+        requestText = await readRequestTextBounded(request, 70_000)
+      } catch (error) {
+        if (error instanceof RequestBodyTooLargeError) {
+          return jsonResponse(413, { error: 'request too large' })
+        }
+        if (error instanceof InvalidRequestBodyEncodingError) {
+          return jsonResponse(400, { error: error.message })
+        }
+        throw error
+      }
+      let body: { message?: unknown; requestId?: unknown }
+      try {
+        const parsed = JSON.parse(requestText) as unknown
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return jsonResponse(400, { error: 'invalid request body' })
+        }
+        body = parsed as { message?: unknown; requestId?: unknown }
+      } catch {
+        return jsonResponse(400, { error: 'invalid JSON request body' })
+      }
+      if (typeof body.message !== 'string') {
+        return jsonResponse(400, { error: 'message must be a string' })
+      }
+      if (
+        body.requestId !== undefined &&
+        (typeof body.requestId !== 'string' ||
+          body.requestId.length < 1 ||
+          body.requestId.length > 128 ||
+          !/^[a-zA-Z0-9_-]+$/u.test(body.requestId))
+      ) {
+        return jsonResponse(400, { error: 'requestId is invalid' })
+      }
+      const steered = steerBackgroundTask(
+        options.cwd,
+        task.backgroundTaskId,
+        body.message,
+        {
+          requestId:
+            typeof body.requestId === 'string' ? body.requestId : undefined,
+          actor:
+            auth.kind === 'delegation'
+              ? auth.claims?.sub
+              : auth.kind ?? 'unknown',
+        },
+      )
+      return jsonResponse(steered.accepted ? 202 : 409, {
+        task,
+        steering: steered,
       })
     }
     if (
