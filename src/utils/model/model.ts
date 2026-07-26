@@ -336,9 +336,15 @@ export function getmodelO46PricingSuffix(fastMode: boolean): string {
 export function ismodelO1mMergeEnabled(): boolean {
   if (
     is1mContextDisabled() ||
-    isProSubscriber() ||
     getAPIProvider() !== 'firstParty'
   ) {
+    return false
+  }
+  try {
+    if (isProSubscriber()) return false
+  } catch {
+    // Eligibility checks are used during startup migrations and local CLI
+    // commands. Missing optional auth must fail closed, never abort startup.
     return false
   }
   // Fail closed when a subscriber's subscription type is unknown. The VS Code
@@ -347,7 +353,11 @@ export function ismodelO1mMergeEnabled(): boolean {
   // isProSubscriber() returns false for such users and the merge leaks
   // modelO[1m] into the model dropdown — the API then rejects it with a
   // misleading "rate limit reached" error.
-  if (isURAISubscriber() && getSubscriptionType() === null) {
+  try {
+    if (isURAISubscriber() && getSubscriptionType() === null) {
+      return false
+    }
+  } catch {
     return false
   }
   return true

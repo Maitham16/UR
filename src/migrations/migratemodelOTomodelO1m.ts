@@ -22,7 +22,17 @@ import {
  * Idempotent: only writes if userSettings.model is exactly 'modelO'.
  */
 export function migratemodelOTomodelO1m(): void {
-  if (!ismodelO1mMergeEnabled()) {
+  let eligible = false
+  try {
+    eligible = ismodelO1mMergeEnabled()
+  } catch {
+    // Migrations run before every CLI command on a fresh profile. Auth is
+    // optional for local/offline commands and intentionally unavailable in
+    // many CI environments, so an inconclusive eligibility probe must skip
+    // this preference migration instead of preventing the CLI from starting.
+    return
+  }
+  if (!eligible) {
     return
   }
 

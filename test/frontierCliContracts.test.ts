@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createCloudTask } from '../src/services/agents/cloudTasks.js'
@@ -12,9 +12,15 @@ function runCli(
   args: string[],
   env: NodeJS.ProcessEnv = process.env,
 ): { code: number; stdout: string; stderr: string } {
+  const isolatedHome = join(cwd, '.cli-home')
+  mkdirSync(isolatedHome, { recursive: true })
   const result = Bun.spawnSync(['node', cli, ...args], {
     cwd,
-    env,
+    env: {
+      ...env,
+      HOME: isolatedHome,
+      USERPROFILE: isolatedHome,
+    },
     stdout: 'pipe',
     stderr: 'pipe',
   })
