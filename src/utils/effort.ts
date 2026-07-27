@@ -27,7 +27,12 @@ export function modelSupportsEffort(model: string): boolean {
     return supported3P
   }
   void model
-  return getAPIProvider() === 'firstParty'
+  // Ollama: effort maps onto the wire's `think` parameter. The adapter probes
+  // /api/show and degrades to boolean thinking when the model has no graded
+  // support, so advertising effort here cannot produce an invalid request.
+  // The old gate compared against 'firstParty', which getAPIProvider() never
+  // returns, so --effort was silently ignored everywhere.
+  return getAPIProvider() === 'ollama'
 }
 
 export function modelSupportsMaxEffort(model: string): boolean {

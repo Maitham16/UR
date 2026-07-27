@@ -14,7 +14,7 @@ import {
 } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import { checkmodelO1mAccess, checkmodelS1mAccess } from './check1mAccess.js'
-import { getAPIProvider } from './providers.js'
+import { getAPIProvider, isFirstPartyRuntime } from './providers.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import {
   getCanonicalName,
@@ -66,7 +66,7 @@ export function getDefaultOptionForUser(fastMode = false): ModelOption {
   }
 
   // PAYG
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = !isFirstPartyRuntime()
   return {
     value: null,
     label: 'Default (recommended)',
@@ -75,7 +75,7 @@ export function getDefaultOptionForUser(fastMode = false): ModelOption {
 }
 
 function getCustommodelSOption(): ModelOption | undefined {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = !isFirstPartyRuntime()
   const custommodelSModel = process.env.URHQ_DEFAULT_MODELS_MODEL
   // When a 3P user has a custom modelS model string, show it directly
   if (is3P && custommodelSModel) {
@@ -95,7 +95,7 @@ function getCustommodelSOption(): ModelOption | undefined {
 // @[MODEL LAUNCH]: Update or add model option functions (getmodelSXXOption, getmodelOXXOption, etc.)
 // with the new model's label and description. These appear in the /model picker.
 function getmodelS46Option(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = !isFirstPartyRuntime()
   return {
     value: is3P ? getModelStrings().modelS46 : 'modelS',
     label: 'modelS',
@@ -106,7 +106,7 @@ function getmodelS46Option(): ModelOption {
 }
 
 function getCustommodelOOption(): ModelOption | undefined {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = !isFirstPartyRuntime()
   const custommodelOModel = process.env.URHQ_DEFAULT_MODELO_MODEL
   // When a 3P user has a custom modelO model string, show it directly
   if (is3P && custommodelOModel) {
@@ -132,7 +132,7 @@ function getmodelO41Option(): ModelOption {
 }
 
 function getmodelO46Option(fastMode = false): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = !isFirstPartyRuntime()
   return {
     value: is3P ? getModelStrings().modelO46 : 'modelO',
     label: 'modelO',
@@ -142,7 +142,7 @@ function getmodelO46Option(fastMode = false): ModelOption {
 }
 
 export function getmodelS46_1MOption(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = !isFirstPartyRuntime()
   return {
     value: is3P ? getModelStrings().modelS46 + '[1m]' : 'modelS[1m]',
     label: 'modelS (1M context)',
@@ -153,7 +153,7 @@ export function getmodelS46_1MOption(): ModelOption {
 }
 
 export function getmodelO46_1MOption(fastMode = false): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = !isFirstPartyRuntime()
   return {
     value: is3P ? getModelStrings().modelO46 + '[1m]' : 'modelO[1m]',
     label: 'modelO (1M context)',
@@ -164,7 +164,7 @@ export function getmodelO46_1MOption(fastMode = false): ModelOption {
 }
 
 function getCustommodelHOption(): ModelOption | undefined {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = !isFirstPartyRuntime()
   const custommodelHModel = process.env.URHQ_DEFAULT_MODELH_MODEL
   // When a 3P user has a custom modelH model string, show it directly
   if (is3P && custommodelHModel) {
@@ -180,7 +180,7 @@ function getCustommodelHOption(): ModelOption | undefined {
 }
 
 function getmodelH45Option(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = !isFirstPartyRuntime()
   return {
     value: 'modelH',
     label: 'modelH',
@@ -191,7 +191,7 @@ function getmodelH45Option(): ModelOption {
 }
 
 function getmodelH35Option(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = !isFirstPartyRuntime()
   return {
     value: 'modelH',
     label: 'modelH',
@@ -218,7 +218,7 @@ function getMaxmodelOOption(fastMode = false): ModelOption {
 }
 
 export function getMaxmodelS46_1MOption(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = !isFirstPartyRuntime()
   const billingInfo = isURAISubscriber() ? ' · Billed as extra usage' : ''
   return {
     value: 'modelS[1m]',
@@ -237,7 +237,7 @@ export function getMaxmodelO46_1MOption(fastMode = false): ModelOption {
 }
 
 function getMergedmodelO1MOption(fastMode = false): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = !isFirstPartyRuntime()
   return {
     value: is3P ? getModelStrings().modelO46 + '[1m]' : 'modelO[1m]',
     label: 'modelO (1M context)',
@@ -329,7 +329,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
   }
 
   // PAYG 1P API: Default (modelS) + modelS 1M + modelO 4.6 + modelO 1M + modelH
-  if (getAPIProvider() === 'firstParty') {
+  if (isFirstPartyRuntime()) {
     const payg1POptions = [getDefaultOptionForUser(fastMode)]
     if (checkmodelS1mAccess()) {
       payg1POptions.push(getmodelS46_1MOption())
@@ -488,12 +488,12 @@ export function getModelOptions(fastMode = false): ModelOption[] {
     return filterModelOptionsByAllowlist(options)
   } else if (customModel === 'modelOplan') {
     return filterModelOptionsByAllowlist([...options, getmodelOPlanOption()])
-  } else if (customModel === 'modelO' && getAPIProvider() === 'firstParty') {
+  } else if (customModel === 'modelO' && isFirstPartyRuntime()) {
     return filterModelOptionsByAllowlist([
       ...options,
       getMaxmodelOOption(fastMode),
     ])
-  } else if (customModel === 'modelO[1m]' && getAPIProvider() === 'firstParty') {
+  } else if (customModel === 'modelO[1m]' && isFirstPartyRuntime()) {
     return filterModelOptionsByAllowlist([
       ...options,
       getMergedmodelO1MOption(fastMode),

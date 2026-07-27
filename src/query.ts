@@ -599,7 +599,7 @@ async function* queryLoop(
 
     const assistantMessages: AssistantMessage[] = []
     const toolResults: (UserMessage | AttachmentMessage)[] = []
-    // @see https://docs.ur.com/en/docs/build-with-ur/tool-use
+    // @see https://docs.claude.com/en/docs/build-with-claude/tool-use
     // Note: stop_reason === 'tool_use' is unreliable -- it's not always set correctly.
     // Set during streaming whenever a tool_use block arrives — the sole
     // loop-exit signal. If false after streaming, we're done (modulo stop-hook retry).

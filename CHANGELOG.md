@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.50.6
+
+- Implemented `--effort` on Ollama. The support predicate compared
+  `getAPIProvider()` against `'firstParty'` — a value it can never return — so
+  the advertised flag was silently dropped everywhere. Effort is now advertised
+  on Ollama runtimes and mapped onto the wire's `think` parameter: graded
+  levels for families that accept them (`max` clamps to `high`), otherwise any
+  requested effort enables reasoning. The adapter still probes `/api/show`
+  first, so models without thinking support never receive the parameter.
+- Fixed `/fast` misreporting. The same impossible comparison made fast mode
+  permanently unavailable while blaming "Bedrock, Vertex, or Foundry"
+  regardless of the actual provider. The command is now reachable and reports
+  the honest reason: fast mode is a serving tier of the hosted URHQ service,
+  which this build does not use.
+- Added `isFirstPartyRuntime()` and replaced the misleading dead comparisons in
+  the model-option builders (12 sites) and fast mode with it. Remaining
+  `'firstParty'` comparisons in request shaping (beta headers, caching flags)
+  are correctly dead and were left with their existing semantics.
+- Ungated `/chrome`, `/desktop`, `/install-slack-app`, `/remote-setup`,
+  `/upgrade`, `/usage`, and `/voice`. Their `ur-ai` availability requirement
+  was unsatisfiable: it requires the `subscription` provider, which the
+  provider registry itself blocks as an internal placeholder, so no user could
+  ever see these commands.
+- Removed 18 stub commands from the registry (`autofix-pr`,
+  `backfill-sessions`, `good-ur`, `issue`, `ctx_viz`, `break-cache`,
+  `onboarding`, `share`, `teleport`, `bughunter`, `mock-limits`, `summary`,
+  `reset-limits`, `ant-trace`, `perf-issue`, `env`, `oauth-refresh`,
+  `debug-tool-call`). Each was a one-line disabled placeholder named "stub"
+  with no TypeScript source.
+- Replaced every dead `ur.com`-family URL. `ur.com`, `platform.ur.com`,
+  `docs.ur.com`, and `support.ur.com` have no DNS records; user-facing strings
+  now point at the repository, developer comments at the equivalent live
+  upstream documentation pages, and the nonexistent domain was dropped from the
+  preapproved fetch host list.
+
 ## 1.50.5
 
 - Added `.github/workflows/release.yml`. The repository had only a test

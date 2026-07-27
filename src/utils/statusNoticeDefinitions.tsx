@@ -182,7 +182,7 @@ const jetbrainsPluginNotice: StatusNoticeDefinition = {
         <Text>
           Install the <Text color="ide">{ideName}</Text> plugin from the
           JetBrains Marketplace:{' '}
-          <Text bold>https://docs.ur.com/s/ur-jetbrains</Text>
+          <Text bold>https://github.com/Maitham16/UR/tree/master/extensions/jetbrains-ur</Text>
         </Text>
       </Box>;
   }

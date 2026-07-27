@@ -26,7 +26,7 @@ import {
   type ModelSetting,
   parseUserSpecifiedModel,
 } from './model/model.js'
-import { getAPIProvider } from './model/providers.js'
+import { isFirstPartyRuntime } from './model/providers.js'
 import { isEssentialTrafficOnly } from './privacyLevel.js'
 import {
   getInitialSettings,
@@ -90,7 +90,7 @@ export function getFastModeUnavailableReason(): string | null {
     !isInBundledMode() &&
     getFeatureValue_CACHED_MAY_BE_STALE('tengu_marble_sandcastle', false)
   ) {
-    return 'Fast mode requires the native binary · Install from: https://ur.com/product/ur'
+    return 'Fast mode requires the native binary · Install from: https://github.com/Maitham16/UR/releases'
   }
 
   // Not available in the SDK unless explicitly opted in via --settings.
@@ -109,9 +109,14 @@ export function getFastModeUnavailableReason(): string | null {
     }
   }
 
-  // Only available for 1P (not Bedrock/Vertex/Foundry)
-  if (getAPIProvider() !== 'firstParty') {
-    const reason = 'Fast mode is not available on Bedrock, Vertex, or Foundry'
+  // Fast mode is a serving-tier switch on the hosted URHQ service. This build
+  // talks to local or external providers directly, so there is no fast tier to
+  // switch to. The old check compared getAPIProvider() against 'firstParty' —
+  // a value it never returns — and blamed Bedrock/Vertex/Foundry regardless of
+  // the actual provider.
+  if (!isFirstPartyRuntime()) {
+    const reason =
+      'Fast mode requires the hosted URHQ service, which this build does not use'
     logForDebugging(`Fast mode unavailable: ${reason}`)
     return reason
   }

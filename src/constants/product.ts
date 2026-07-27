@@ -1,4 +1,4 @@
-export const PRODUCT_URL = 'https://ur.com/ur'
+export const PRODUCT_URL = 'https://github.com/Maitham16/UR'
 
 // UR Remote session URLs
 export const UR_AI_BASE_URL = 'https://ur.ai'

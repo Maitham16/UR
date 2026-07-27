@@ -24,7 +24,7 @@ import {
 } from './model/model.js'
 import { getAPIProvider } from './model/providers.js'
 
-// @see https://platform.ur.com/docs/en/about-ur/pricing
+// @see https://claude.com/pricing
 export type ModelCosts = {
   inputTokens: number
   outputTokens: number
@@ -100,7 +100,7 @@ export function getmodelO46CostTier(fastMode: boolean): ModelCosts {
 }
 
 // @[MODEL LAUNCH]: Add a pricing entry for the new model below.
-// Costs from https://platform.ur.com/docs/en/about-ur/pricing
+// Costs from https://claude.com/pricing
 // Web search cost: $10 per 1000 requests = $0.01 per request
 export const MODEL_COSTS: Record<ModelShortName, ModelCosts> = {
   [firstPartyNameToCanonical(UR_3_5_MODELH_CONFIG.firstParty)]:

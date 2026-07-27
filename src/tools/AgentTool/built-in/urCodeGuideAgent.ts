@@ -16,7 +16,7 @@ import type {
 
 const UR_CODE_DOCS_MAP_URL =
   'https://docs.ur.dev/docs/en/ur_docs_map.md'
-const CDP_DOCS_MAP_URL = 'https://platform.ur.com/llms.txt'
+const CDP_DOCS_MAP_URL = 'https://docs.claude.com/llms.txt'
 
 export const UR_CODE_GUIDE_AGENT_TYPE = 'ur-guide'
 

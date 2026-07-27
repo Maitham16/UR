@@ -4,6 +4,8 @@ export default {
   type: 'local-jsx',
   name: 'usage',
   description: 'Show plan usage limits',
-  availability: ['ur-ai'],
+  // Ungated: the 'ur-ai' availability requirement was unsatisfiable — it
+  // needs the 'subscription' provider, which the registry blocks as an
+  // internal placeholder, so no user could ever see this command.
   load: () => import('./usage.js'),
 } satisfies Command

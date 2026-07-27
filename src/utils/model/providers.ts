@@ -42,3 +42,17 @@ export function getAPIProviderForStatsig(): AnalyticsMetadata_I_VERIFIED_THIS_IS
 export function isFirstPartyURHQBaseUrl(): boolean {
   return true
 }
+
+/**
+ * Whether this build runs against the hosted first-party URHQ service.
+ *
+ * It does not: getAPIProvider() maps every provider to 'ollama' or 'foundry'
+ * and can never return 'firstParty'. Sites that used to compare against
+ * 'firstParty' were therefore dead branches with misleading conditions —
+ * several (fast mode, --effort) silently disabled advertised features. Gate
+ * hosted-service-only behavior on this named constant instead, so the intent
+ * is readable and greppable rather than hidden in an impossible comparison.
+ */
+export function isFirstPartyRuntime(): boolean {
+  return false
+}

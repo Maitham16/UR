@@ -1,10 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import addDir from './commands/add-dir/index.js'
-import autofixPr from './commands/autofix-pr/index.js'
-import backfillSessions from './commands/backfill-sessions/index.js'
 import btw from './commands/btw/index.js'
-import goodUR from './commands/good-ur/index.js'
-import issue from './commands/issue/index.js'
 import feedback from './commands/feedback/index.js'
 import clear from './commands/clear/index.js'
 import color from './commands/color/index.js'
@@ -17,7 +13,6 @@ import config from './commands/config/index.js'
 import { context, contextNonInteractive } from './commands/context/index.js'
 import cost from './commands/cost/index.js'
 import diff from './commands/diff/index.js'
-import ctx_viz from './commands/ctx_viz/index.js'
 import doctor from './commands/doctor/index.js'
 import memory from './commands/memory/index.js'
 import help from './commands/help/index.js'
@@ -28,9 +23,7 @@ import keybindings from './commands/keybindings/index.js'
 import login from './commands/login/index.js'
 import logout from './commands/logout/index.js'
 import installSlackApp from './commands/install-slack-app/index.js'
-import breakCache from './commands/break-cache/index.js'
 import mcp from './commands/mcp/index.js'
-import onboarding from './commands/onboarding/index.js'
 import pr_comments from './commands/pr_comments/index.js'
 import releaseNotes from './commands/release-notes/index.js'
 import rename from './commands/rename/index.js'
@@ -38,11 +31,9 @@ import resume from './commands/resume/index.js'
 import createSkill from './commands/create-skill/index.js'
 import review, { ultrareview } from './commands/review.js'
 import session from './commands/session/index.js'
-import share from './commands/share/index.js'
 import skills from './commands/skills/index.js'
 import status from './commands/status/index.js'
 import tasks from './commands/tasks/index.js'
-import teleport from './commands/teleport/index.js'
 // agents-platform is an internal-only command and is not shipped in external builds.
 const agentsPlatform = null
 import security from './commands/security/index.js'
@@ -132,7 +123,6 @@ import toolsmith from './commands/toolsmith/index.js'
 import browser from './commands/browser/index.js'
 import urDoctor from './commands/ur-doctor/index.js'
 import urInit from './commands/ur-init/index.js'
-import bughunter from './commands/bughunter/index.js'
 import terminalSetup from './commands/terminalSetup/index.js'
 import usage from './commands/usage/index.js'
 import theme from './commands/theme/index.js'
@@ -218,16 +208,8 @@ import reloadPlugins from './commands/reload-plugins/index.js'
 import rewind from './commands/rewind/index.js'
 import undo from './commands/undo/index.js'
 import heapDump from './commands/heapdump/index.js'
-import mockLimits from './commands/mock-limits/index.js'
 import bridgeKick from './commands/bridge-kick.js'
 import version from './commands/version.js'
-import summary from './commands/summary/index.js'
-import {
-  resetLimits,
-  resetLimitsNonInteractive,
-} from './commands/reset-limits/index.js'
-import antTrace from './commands/ant-trace/index.js'
-import perfIssue from './commands/perf-issue/index.js'
 import sandboxToggle from './commands/sandbox-toggle/index.js'
 import chrome from './commands/chrome/index.js'
 import advisor from './commands/advisor.js'
@@ -250,7 +232,6 @@ import {
 import memoize from 'lodash-es/memoize.js'
 import { isUsing3PServices, isURAISubscriber } from './utils/auth.js'
 import { isFirstPartyURHQBaseUrl } from './utils/model/providers.js'
-import env from './commands/env/index.js'
 import exit from './commands/exit/index.js'
 import exportCommand from './commands/export/index.js'
 import model from './commands/model/index.js'
@@ -284,8 +265,6 @@ const usageReport: Command = {
     return real.getPromptForCommand(args, context)
   },
 }
-import oauthRefresh from './commands/oauth-refresh/index.js'
-import debugToolCall from './commands/debug-tool-call/index.js'
 import verify from './commands/verify.js'
 import trace from './commands/trace.js'
 import { getSettingSourceName } from './utils/settings/constants.js'
@@ -309,34 +288,15 @@ export { getCommandName, isCommandEnabled } from './types/command.js'
 
 // Commands that get eliminated from the external build
 export const INTERNAL_ONLY_COMMANDS = [
-  backfillSessions,
-  breakCache,
-  bughunter,
   commit,
   commitPushPr,
-  ctx_viz,
-  goodUR,
-  issue,
   initVerifiers,
   ...(forceSnip ? [forceSnip] : []),
-  mockLimits,
   bridgeKick,
   version,
   ...(ultraplan ? [ultraplan] : []),
   ...(subscribePr ? [subscribePr] : []),
-  resetLimits,
-  resetLimitsNonInteractive,
-  onboarding,
-  share,
-  summary,
-  teleport,
-  antTrace,
-  perfIssue,
-  env,
-  oauthRefresh,
-  debugToolCall,
   agentsPlatform,
-  autofixPr,
 ].filter(Boolean)
 
 // Declared as a function so that we don't run this until getCommands is called,
@@ -862,7 +822,6 @@ export const BRIDGE_SAFE_COMMANDS: Set<Command> = new Set(
     compact, // Shrink context — useful mid-session from a phone
     clear, // Wipe transcript
     cost, // Show session cost
-    summary, // Summarize conversation
     releaseNotes, // Show changelog
     files, // List tracked files
   ].filter((c): c is Command => c !== null),
