@@ -1,11 +1,52 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { LocalCommandCall } from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { proposeMemories } from '../../memdir/extractFacts.js'
+import { getAutoMemPath, isAutoMemoryEnabled } from '../../memdir/paths.js'
+import { listMemory } from '../../ur/notes.js'
+import { getCwd } from '../../utils/cwd.js'
 import {
   getTranscriptPath,
   MAX_TRANSCRIPT_READ_BYTES,
 } from '../../utils/sessionStorage.js'
+
+/**
+ * Everything already remembered, so a candidate the user has recorded is never
+ * offered back to them. Covers the three places memory lives: the notes store
+ * `/remember` writes to, the project UR.md files, and the auto-memory dir.
+ * Each source is best-effort — a missing or unreadable one narrows the dedup
+ * rather than failing the command.
+ */
+function existingMemoryLines(cwd: string): string[] {
+  const lines: string[] = []
+  try {
+    lines.push(...listMemory(cwd).map(note => note.text))
+  } catch {
+    /* notes store unreadable; fall through to the file sources */
+  }
+  const files = [join(cwd, 'UR.md'), join(cwd, 'UR.local.md')]
+  if (isAutoMemoryEnabled()) {
+    try {
+      files.push(join(getAutoMemPath(), 'MEMORY.md'))
+    } catch {
+      /* auto-memory path unresolved */
+    }
+  }
+  for (const file of files) {
+    try {
+      if (!existsSync(file)) continue
+      for (const line of readFileSync(file, 'utf8').split('\n')) {
+        // Bullets and prose lines both count; headings and fences do not.
+        const trimmed = line.replace(/^\s*[-*+]\s+/, '').trim()
+        if (trimmed.length >= 12 && !/^[#`]/.test(trimmed)) lines.push(trimmed)
+      }
+    } catch {
+      /* unreadable file narrows dedup rather than failing */
+    }
+  }
+  return lines
+}
 
 function flagValue(tokens: string[], flag: string): string | undefined {
   const index = tokens.indexOf(flag)
@@ -72,9 +113,11 @@ export const call: LocalCommandCall = async (args: string) => {
     }
   }
 
-  // Proposals accumulate across turns, with each round told about the previous
-  // ones so the same fact is not offered twice.
-  const accepted: string[] = []
+  // Seeded with what is already stored, so a fact the user has recorded is
+  // never proposed back. Proposals then accumulate across turns, with each
+  // round told about the previous ones so the same fact is not offered twice.
+  const known = existingMemoryLines(getCwd())
+  const accepted: string[] = [...known]
   const proposals: string[] = []
   for (const message of messages) {
     for (const fact of proposeMemories(message, accepted, minConfidence)) {
