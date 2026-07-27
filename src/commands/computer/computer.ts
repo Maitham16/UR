@@ -2,6 +2,7 @@ import { existsSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { LocalCommandCall } from '../../types/command.js'
+import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
 import {
   buildClickCommand,
@@ -66,7 +67,8 @@ export const call: LocalCommandCall = async (args: string) => {
       value: `Desktop control is not supported on ${process.platform}.`,
     }
   }
-  const tokens = args.trim().split(/\s+/).filter(Boolean)
+  // parseArguments, not split(): shell wiring quotes each argument.
+  const tokens = parseArguments(args)
   const approved = tokens.includes('--yes')
   const rest = tokens.filter(token => token !== '--yes' && token !== '--right')
   const rightClick = tokens.includes('--right')

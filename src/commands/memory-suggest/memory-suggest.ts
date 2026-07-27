@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import type { LocalCommandCall } from '../../types/command.js'
+import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { proposeMemories } from '../../memdir/extractFacts.js'
 import {
   getTranscriptPath,
@@ -50,7 +51,8 @@ function recentUserMessages(path: string, limit: number): string[] {
 }
 
 export const call: LocalCommandCall = async (args: string) => {
-  const tokens = args.trim().split(/\s+/).filter(Boolean)
+  // parseArguments, not split(): shell wiring quotes each argument.
+  const tokens = parseArguments(args)
   const turns = Number.parseInt(flagValue(tokens, '--turns') ?? '30', 10)
   const minConfidence = Number.parseFloat(
     flagValue(tokens, '--min-confidence') ?? '0.75',

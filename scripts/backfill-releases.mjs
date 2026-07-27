@@ -23,7 +23,16 @@ function run(file, args) {
 
 function tryRun(file, args) {
   try {
-    return { ok: true, out: run(file, args) }
+    // stderr is piped, not inherited: `gh release view` writes "release not
+    // found" for every unpublished tag, which is an expected answer here and
+    // would otherwise bury the plan in noise.
+    return {
+      ok: true,
+      out: execFileSync(file, args, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim(),
+    }
   } catch (error) {
     return { ok: false, out: String(error.stderr ?? error.message ?? error) }
   }

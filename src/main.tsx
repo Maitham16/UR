@@ -5096,6 +5096,34 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, opts.file ? `--file ${quoteLocalCommandArg(opts.file)}` : undefined, opts.source ? `--source ${quoteLocalCommandArg(opts.source)}` : undefined, opts.keyword ? `--keyword ${quoteLocalCommandArg(opts.keyword)}` : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.dryRun ? '--dry-run' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/trigger/trigger.js'), args);
   });
+  program.command('speak [text...]').alias('say').description('Read text aloud using the system speech synthesiser').option('--voice <name>', 'Synthesiser voice').option('--rate <wpm>', 'Words per minute').action(async (text: string[] = [], opts: {
+    voice?: string;
+    rate?: string;
+  }) => {
+    const args = [...text.map(quoteLocalCommandArg), opts.voice ? `--voice ${quoteLocalCommandArg(opts.voice)}` : undefined, opts.rate ? `--rate ${quoteLocalCommandArg(opts.rate)}` : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/speak/speak.js'), args);
+  });
+  program.command('computer [action] [rest...]').alias('desktop-control').description('Control the desktop: screenshot, click, or type (state-changing actions need --yes)').option('--yes', 'Confirm a state-changing action').option('--right', 'Use the right mouse button').action(async (action: string | undefined, rest: string[] = [], opts: {
+    yes?: boolean;
+    right?: boolean;
+  }) => {
+    const args = [action ? quoteLocalCommandArg(action) : undefined, ...rest.map(quoteLocalCommandArg), opts.right ? '--right' : undefined, opts.yes ? '--yes' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/computer/computer.js'), args);
+  });
+  program.command('memory-suggest').alias('suggest-memory').description('Propose durable facts from this session that are not already remembered').option('--turns <n>', 'How many recent user messages to scan').option('--min-confidence <value>', 'Confidence floor between 0 and 1').action(async (opts: {
+    turns?: string;
+    minConfidence?: string;
+  }) => {
+    const args = [opts.turns ? `--turns ${quoteLocalCommandArg(opts.turns)}` : undefined, opts.minConfidence ? `--min-confidence ${quoteLocalCommandArg(opts.minConfidence)}` : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/memory-suggest/memory-suggest.js'), args);
+  });
+  program.command('import-session <path>').description('Import a session transcript exported from another machine').action(async (path: string) => {
+    await runLocalTextCommand(() => import('./commands/import-session/import-session.js'), quoteLocalCommandArg(path));
+  });
+  program.command('permission-profile [action] [name]').alias('profile').description('List, switch, or clear the active named permission profile').action(async (action: string | undefined, name: string | undefined) => {
+    const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/permission-profile/permission-profile.js'), args);
+  });
   program.command('sdk [action]').alias('embed').description('Show how to drive UR programmatically (headless) and scaffold TS/Python SDK examples').option('--force', 'Overwrite existing example files on init').option('--json', 'Output as JSON').action(async (action: string | undefined, opts: {
     force?: boolean;
     json?: boolean;

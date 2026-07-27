@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.54.1
+
+- Fixed `/speak`, `/computer`, `/memory-suggest`, `/import-session` and
+  `/permission-profile` being unreachable from the shell. They were registered
+  as slash commands but never wired into the Commander tree in `main.tsx`, so
+  `ur speak "hi"` was parsed as the interactive prompt and failed with "too
+  many arguments". All five now have shell subcommands with their own flags.
+- Fixed argument parsing in the three new commands. The shell wiring quotes
+  every argument, so `split(/\s+/)` yielded `"'100'"` rather than `100` and
+  numeric arguments were rejected. They now use the quote-aware
+  `parseArguments`, matching every other local command.
+- Quieted `scripts/backfill-releases.mjs`: `gh release view` writes "release
+  not found" for each unpublished tag, which is the expected answer during a
+  scan and was burying the plan in twenty lines of noise.
+
 ## 1.54.0
 
 - Wired the 1.53.0 capability libraries into runnable commands. They were

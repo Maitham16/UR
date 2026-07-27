@@ -1,4 +1,5 @@
 import type { LocalCommandCall } from '../../types/command.js'
+import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
 import {
   buildSpeechCommand,
@@ -25,7 +26,8 @@ function flagValue(tokens: string[], flag: string): string | undefined {
 }
 
 export const call: LocalCommandCall = async (args: string) => {
-  const tokens = args.trim().split(/\s+/).filter(Boolean)
+  // parseArguments, not split(): shell wiring quotes each argument.
+  const tokens = parseArguments(args)
   const voice = flagValue(tokens, '--voice')
   const rawRate = flagValue(tokens, '--rate')
   const rate = rawRate ? Number.parseInt(rawRate, 10) : undefined
