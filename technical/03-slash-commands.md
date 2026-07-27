@@ -42,6 +42,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/files` | local | List files currently in context | `/files` |
 | `/memory` | jsx | Edit memory files (UR.md, UR.local.md, auto-memory) | `/memory` |
 | `/remember <text>` | local | Save a fact/preference to memory | `/remember we deploy from the release branch only` |
+| `/memory-suggest` (`/suggest-memory`) | local | Propose durable facts from this session that are not already remembered | `/memory-suggest --turns 50` |
 | `/forget <text>` | local | Remove memory notes matching text | `/forget release branch` |
 | `/memory-retention` (`/retention`) | local | Show/set/prune memory retention policy (`--ttl-days`, `--max-entries`, `--decay-days`) | `/memory-retention set --ttl-days 90` |
 | `/semantic-memory` (`/memory-index`) | local | Build & search the project-local memory embedding index | `/semantic-memory search "auth token rotation"` |
@@ -232,6 +233,8 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/tasks` (`/bashes`) | jsx | List/manage background tasks | `/tasks` |
 | `/think-back` / `/thinkback-play` | jsx/local | Year-in-review animation | `/think-back` |
 | `/voice` | local | Toggle voice mode (feature-gated) | `/voice` |
+| `/speak <text>` (`/say`) | local | Read text aloud with the system speech synthesiser (`--voice`, `--rate`) | `/speak build finished` |
+| `/computer screenshot\|click\|type` (`/desktop-control`) | local | Desktop control; state-changing actions require `--yes` | `/computer screenshot ~/shot.png` |
 | `/heapdump` | local | Dump JS heap to ~/Desktop (debugging) | `/heapdump` |
 | `/trace` | local | Inspect recent turns: roles, tool calls | `/trace` |
 

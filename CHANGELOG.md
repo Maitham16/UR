@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.54.0
+
+- Wired the 1.53.0 capability libraries into runnable commands. They were
+  verified modules but nothing invoked them; these are the execution paths.
+- Added `/speak <text>` (alias `/say`), which drives the platform speech
+  synthesiser with `--voice` and `--rate`. Text is passed on stdin, so it is
+  never shell-parsed, and a missing synthesiser reports an install hint rather
+  than failing the session.
+- Added `/computer screenshot|click|type` (alias `/desktop-control`). Clicks
+  are validated against the real screen geometry and refuse to run when the
+  geometry cannot be read, rather than clicking blind. Every state-changing
+  action requires an explicit `--yes`; without it the command prints what it
+  would do and stops. A macOS screenshot that silently writes nothing reports
+  the Screen Recording permission requirement.
+- Added `/memory-suggest` (alias `/suggest-memory`), which scans recent user
+  messages from the live transcript and proposes durable facts with their
+  type, confidence and originating rule. Proposals are never saved on their
+  own; `/remember` still does the writing.
+
 ## 1.53.0
 
 - Added automatic memory extraction (`src/memdir/extractFacts.ts`). Durable

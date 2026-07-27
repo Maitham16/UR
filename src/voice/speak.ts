@@ -99,9 +99,11 @@ export function buildSpeechCommand(
   }
 }
 
-export type SpeakResult =
-  | { spoken: true }
-  | { spoken: false; reason: string }
+export type SpeakResult = {
+  spoken: boolean
+  /** Present when speech did not happen. */
+  reason?: string
+}
 
 /**
  * Speak a response. Failure is never fatal: a missing synthesiser should
