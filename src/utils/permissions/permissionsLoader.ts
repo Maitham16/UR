@@ -88,7 +88,7 @@ function getSettingsForSourceLenient_FOR_EDITING_ONLY_NOT_FOR_READING(
  * @param source The source of these rules
  * @returns Array of PermissionRule objects
  */
-function settingsJsonToRules(
+export function settingsJsonToRules(
   data: SettingsJson | null,
   source: PermissionRuleSource,
 ): PermissionRule[] {
@@ -102,6 +102,24 @@ function settingsJsonToRules(
     const behaviorArray = permissions[behavior]
     if (behaviorArray) {
       for (const ruleString of behaviorArray) {
+        rules.push({
+          source,
+          ruleBehavior: behavior,
+          ruleValue: permissionRuleValueFromString(ruleString),
+        })
+      }
+    }
+  }
+  // Named profiles: the profile selected by `activeProfile` contributes its
+  // rules on top of the base lists from the same source. Deny still beats
+  // allow downstream, so a profile can only ever narrow or extend — a missing
+  // or misnamed profile contributes nothing rather than failing open.
+  const profile = permissions.activeProfile
+    ? permissions.profiles?.[permissions.activeProfile]
+    : undefined
+  if (profile) {
+    for (const behavior of SUPPORTED_RULE_BEHAVIORS) {
+      for (const ruleString of profile[behavior] ?? []) {
         rules.push({
           source,
           ruleBehavior: behavior,

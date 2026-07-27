@@ -26,6 +26,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/undo` | local | Restore the most recently edited file to its pre-edit (last turn) content; deletes a file the last edit created | `/undo` |
 | `/thread share\|list` (`/threads`) | local | Share a session transcript as a local web page on the artifacts server | `/thread share` |
 | `/export [filename]` | jsx | Export conversation to file or clipboard | `/export session.md` |
+| `/import-session <path>` | local | Import a session transcript exported from another machine so it can be resumed here | `/import-session ~/Downloads/session.jsonl` |
 | `/copy` | jsx | Copy the last response to the clipboard | `/copy` |
 | `/btw <question>` | jsx | Quick side question without derailing the main thread | `/btw what does SIGPIPE mean?` |
 | `/exit` (`/quit`) | jsx | Exit the REPL | `/exit` |

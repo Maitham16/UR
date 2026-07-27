@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.51.0
+
+- Added named permission profiles. `settings.permissions.profiles` holds named
+  rule sets (allow/deny/ask plus a description) and
+  `settings.permissions.activeProfile` selects one; its rules are appended to
+  the base lists from the same settings source. A misnamed profile contributes
+  nothing rather than failing open, and deny still beats allow downstream, so
+  a profile can only narrow or extend.
+- Added `/import-session <path>` for session portability. It validates a
+  transcript exported from another machine line by line — all-or-nothing, so a
+  corrupt file can never half-import — caps size at the resume reader's limit,
+  and lands it under a fresh session id so imports never collide with local
+  history. The result prints the `ur -r <id>` command to resume it.
+- Background agent completion and failure now fire the user's Notification
+  hooks with types `agent_completed` and `agent_failed`, so external tooling
+  (desktop notifiers, pagers, dashboards) can react to background work
+  finishing without polling. The in-app toast behavior is unchanged.
+
 ## 1.50.6
 
 - Implemented `--effort` on Ollama. The support predicate compared

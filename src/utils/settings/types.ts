@@ -64,6 +64,25 @@ export const PermissionsSchema = lazySchema(() =>
         )
         .optional()
         .describe('Default permission mode when UR needs access'),
+      profiles: z
+        .record(
+          z.string(),
+          z.object({
+            allow: z.array(PermissionRuleSchema()).optional(),
+            deny: z.array(PermissionRuleSchema()).optional(),
+            ask: z.array(PermissionRuleSchema()).optional(),
+            description: z.string().optional(),
+          }),
+        )
+        .optional()
+        .describe(
+          'Named permission profiles. Rules from the profile selected by ' +
+            'activeProfile are appended to the base allow/deny/ask lists.',
+        ),
+      activeProfile: z
+        .string()
+        .optional()
+        .describe('Name of the profile in `profiles` to apply, if any'),
       disableBypassPermissionsMode: z
         .enum(['disable'])
         .optional()

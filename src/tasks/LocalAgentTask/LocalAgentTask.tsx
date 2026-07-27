@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { getSdkAgentProgressSummariesEnabled } from '../../bootstrap/state.js';
+import { executeNotificationHooks } from '../../utils/hooks.js';
 import { OUTPUT_FILE_TAG, STATUS_TAG, SUMMARY_TAG, TASK_ID_TAG, TASK_NOTIFICATION_TAG, TOOL_USE_ID_TAG, WORKTREE_BRANCH_TAG, WORKTREE_PATH_TAG, WORKTREE_TAG } from '../../constants/xml.js';
 import { abortSpeculation } from '../../services/PromptSuggestion/speculation.js';
 import type { AppState } from '../../state/AppState.js';
@@ -429,7 +430,14 @@ export function completeAgentTask(result: AgentToolResult, setAppState: SetAppSt
     };
   });
   void evictTaskOutput(taskId);
-  // Note: Notification is sent by AgentTool via enqueueAgentNotification
+  // The UI toast is handled by AgentTool via enqueueAgentNotification; this
+  // additionally fires the user's Notification hooks so external tooling
+  // (desktop notifiers, pagers, dashboards) can react. Match on "agent_completed".
+  void executeNotificationHooks({
+    message: `Agent task ${taskId} completed`,
+    title: 'UR background agent',
+    notificationType: 'agent_completed',
+  })
 }
 
 /**
@@ -453,7 +461,14 @@ export function failAgentTask(taskId: string, error: string, setAppState: SetApp
     };
   });
   void evictTaskOutput(taskId);
-  // Note: Notification is sent by AgentTool via enqueueAgentNotification
+  // The UI toast is handled by AgentTool via enqueueAgentNotification; this
+  // additionally fires the user's Notification hooks so external tooling
+  // (desktop notifiers, pagers, dashboards) can react. Match on "agent_failed".
+  void executeNotificationHooks({
+    message: `Agent task ${taskId} failed: ${error}`,
+    title: 'UR background agent',
+    notificationType: 'agent_failed',
+  })
 }
 
 /**
