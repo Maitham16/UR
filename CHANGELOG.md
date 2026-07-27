@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.50.5
+
+- Added `.github/workflows/release.yml`. The repository had only a test
+  workflow, so tags never became production releases: 18 tags existed with no
+  GitHub Release and no automated publish. Pushing a `v*` tag now runs the full
+  gate (typecheck, lint, tests, build, `release:check`, CLI smoke test),
+  publishes a GitHub Release whose notes are the matching `CHANGELOG.md`
+  section, and pushes the verified tarball to npm.
+- The tag is not trusted on its own. The run fails if it disagrees with
+  `package.json` or if `CHANGELOG.md` has no section for that version, and the
+  artifact published to npm is the same one the gate verified rather than a
+  fresh pack. Publishing is skipped, not failed, when the version is already on
+  npm or when `NPM_TOKEN` is absent.
+
 ## 1.50.4
 
 - Removed the `/install-github-app` command and its GitHub App setup flow,
