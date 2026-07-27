@@ -49,6 +49,31 @@ export const TRUSTED_GITHUB_ASSOCIATIONS = [
 export type TrustedGithubAssociation =
   (typeof TRUSTED_GITHUB_ASSOCIATIONS)[number]
 
+/** Default mention that summons the agent from a GitHub thread. */
+export const AGENTIC_CI_DEFAULT_KEYWORD = '@ur'
+
+/** Legacy slash form, still accepted so existing repos keep working. */
+export const AGENTIC_CI_DEFAULT_ALIASES = ['/ur'] as const
+
+export const AGENTIC_CI_TRIGGER_EVENTS = [
+  'issue_comment',
+  'pull_request_review_comment',
+  'pull_request_review',
+  'issues',
+] as const
+
+export type AgenticCiTriggerEvent =
+  (typeof AGENTIC_CI_TRIGGER_EVENTS)[number]
+
+export const AGENTIC_CI_PUBLISH_MODES = [
+  'artifact',
+  'comment',
+  'pull-request',
+] as const
+
+export type AgenticCiPublishMode =
+  (typeof AGENTIC_CI_PUBLISH_MODES)[number]
+
 export type AgenticCiCommand = {
   name?: string
   file: string
@@ -64,7 +89,11 @@ export type AgenticCiSpec = {
     manual?: boolean
     issueComment?: {
       keyword?: string
+      /** Additional accepted mentions, e.g. the legacy `/ur` form. */
+      aliases?: string[]
       allowedAssociations?: TrustedGithubAssociation[]
+      /** GitHub events that may summon the agent. Defaults to all four. */
+      events?: AgenticCiTriggerEvent[]
     }
   }
   runner?: {
@@ -86,7 +115,12 @@ export type AgenticCiSpec = {
     maxPatchBytes?: number
   }
   publish?: {
-    mode?: 'artifact'
+    /**
+     * `artifact` keeps the original producer-only behaviour. `comment` lets a
+     * separate trusted job echo the result back into the thread.
+     * `pull-request` additionally opens a PR from the emitted patch.
+     */
+    mode?: AgenticCiPublishMode
   }
 }
 
@@ -96,13 +130,27 @@ export type AgenticCiValidation = {
   warnings: string[]
 }
 
+export type AgenticCiEventSource =
+  | 'manual'
+  | 'issue_comment'
+  | 'pull_request_review_comment'
+  | 'pull_request_review'
+  | 'issues'
+  | 'none'
+
 export type AgenticCiEventDecision = {
   accepted: boolean
-  source: 'manual' | 'issue_comment' | 'none'
+  source: AgenticCiEventSource
   reason: string
   actor?: string
   association?: string
   prompt?: string
+  /** Issue or pull-request number the mention came from, when known. */
+  issueNumber?: number
+  /** Comment or review id, so a trusted publisher can thread its reply. */
+  commentId?: number
+  /** True when the mention arrived on a pull request rather than an issue. */
+  isPullRequest?: boolean
 }
 
 export type AgenticCiCheckResult = {
@@ -129,6 +177,15 @@ export type AgenticCiResult = {
   checks: AgenticCiCheckResult[]
   violations: string[]
   manifestPath: string
+  /** Publish contract for the trusted job; never carries a write token. */
+  publish?: {
+    mode: AgenticCiPublishMode
+    source: AgenticCiEventSource
+    actor?: string
+    issueNumber?: number
+    commentId?: number
+    isPullRequest?: boolean
+  }
 }
 
 export type AgenticCiExec = (
@@ -152,6 +209,9 @@ export type RunAgenticCiOptions = {
 
 const NAME_RE = /^[a-z0-9][a-z0-9-_]{0,63}$/i
 const SAFE_PATH_RE = /^[^\0\r\n]{1,512}$/
+// Keywords are interpolated into a GitHub workflow expression, so the charset
+// is restricted to what cannot terminate a quoted expression or a YAML scalar.
+const KEYWORD_RE = /^[A-Za-z0-9@/_+#:.-]{1,64}$/
 const SECRET_NAME_RE =
   /(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL|AUTH)/i
 const CHILD_FORBIDDEN_ENV_RE =
@@ -184,6 +244,77 @@ function isAssociation(value: string): value is TrustedGithubAssociation {
   )
 }
 
+function isTriggerEvent(value: string): value is AgenticCiTriggerEvent {
+  return AGENTIC_CI_TRIGGER_EVENTS.includes(value as AgenticCiTriggerEvent)
+}
+
+/**
+ * Every mention accepted by a spec, keyword first, de-duplicated and ordered
+ * longest-first so `@ur-review` wins over `@ur` when both are configured.
+ */
+export function triggerKeywords(spec: AgenticCiSpec): string[] {
+  const config = spec.trigger?.issueComment
+  const keyword = config?.keyword?.trim() || AGENTIC_CI_DEFAULT_KEYWORD
+  const aliases = config?.aliases ?? [...AGENTIC_CI_DEFAULT_ALIASES]
+  const unique: string[] = []
+  for (const candidate of [keyword, ...aliases]) {
+    const trimmed = candidate?.trim()
+    if (!trimmed) continue
+    if (!unique.some(item => item.toLowerCase() === trimmed.toLowerCase())) {
+      unique.push(trimmed)
+    }
+  }
+  return unique.sort((a, b) => b.length - a.length)
+}
+
+function triggerEvents(spec: AgenticCiSpec): AgenticCiTriggerEvent[] {
+  const configured = spec.trigger?.issueComment?.events
+  return configured?.length
+    ? configured.filter(isTriggerEvent)
+    : [...AGENTIC_CI_TRIGGER_EVENTS]
+}
+
+/**
+ * Locate a mention on a word boundary so `@urgent` never summons `@ur`, and a
+ * mention buried inside a fenced code block or a quoted reply is ignored.
+ */
+export function findTriggerMention(
+  body: string,
+  keywords: string[],
+): { keyword: string; prompt: string } | undefined {
+  const scannable = stripQuotedAndFenced(body)
+  for (const keyword of keywords) {
+    const pattern = new RegExp(
+      `(^|[^\\w@/#-])${escapeRegExp(keyword)}(?![\\w@/-])`,
+      'i',
+    )
+    const match = pattern.exec(scannable)
+    if (!match) continue
+    const start = match.index + (match[1]?.length ?? 0) + keyword.length
+    return { keyword, prompt: scannable.slice(start).trim() }
+  }
+  return undefined
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Drop fenced code and `>` quotations before scanning. Without this a bot that
+ * quotes an earlier comment would re-trigger the agent on every reply.
+ */
+function stripQuotedAndFenced(body: string): string {
+  const withoutFences = body
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/~~~[\s\S]*?~~~/g, ' ')
+    .replace(/`[^`\n]*`/g, ' ')
+  return withoutFences
+    .split('\n')
+    .filter(line => !/^\s*>/.test(line))
+    .join('\n')
+}
+
 export function validateAgenticCiSpec(
   spec: AgenticCiSpec,
 ): AgenticCiValidation {
@@ -212,14 +343,32 @@ export function validateAgenticCiSpec(
     )
   }
   const issue = spec.trigger?.issueComment
-  if (issue?.keyword !== undefined) {
-    if (
-      !issue.keyword.trim() ||
-      issue.keyword.length > 64 ||
-      /[\0\r\n]/.test(issue.keyword)
-    ) {
-      errors.push('trigger.issueComment.keyword is invalid')
+  if (issue?.keyword !== undefined && !KEYWORD_RE.test(issue.keyword)) {
+    errors.push('trigger.issueComment.keyword is invalid')
+  }
+  for (const alias of issue?.aliases ?? []) {
+    if (!KEYWORD_RE.test(alias)) {
+      errors.push(`trigger.issueComment.aliases contains "${alias}"`)
     }
+  }
+  for (const event of issue?.events ?? []) {
+    if (!isTriggerEvent(event)) {
+      errors.push(`trigger.issueComment.events contains "${event}"`)
+    }
+  }
+  const publishMode = spec.publish?.mode
+  if (
+    publishMode !== undefined &&
+    !AGENTIC_CI_PUBLISH_MODES.includes(publishMode)
+  ) {
+    errors.push(
+      `publish.mode must be one of ${AGENTIC_CI_PUBLISH_MODES.join(', ')}`,
+    )
+  }
+  if (publishMode === 'pull-request') {
+    warnings.push(
+      'publish.mode "pull-request" grants the publisher job contents:write',
+    )
   }
   for (const association of issue?.allowedAssociations ?? []) {
     if (!isAssociation(association)) {
@@ -314,6 +463,7 @@ export function parseAgenticCiSpec(text: string): AgenticCiSpec {
   const workspace = (value.workspace ?? {}) as Record<string, unknown>
   const verification = (value.verification ?? {}) as Record<string, unknown>
   const outputs = (value.outputs ?? {}) as Record<string, unknown>
+  const publish = (value.publish ?? {}) as Record<string, unknown>
   const commands = Array.isArray(verification.commands)
     ? verification.commands.map(item => {
         const command =
@@ -342,9 +492,15 @@ export function parseAgenticCiSpec(text: string): AgenticCiSpec {
         ? {
             keyword:
               typeof issue.keyword === 'string' ? issue.keyword : undefined,
+            aliases: Array.isArray(issue.aliases)
+              ? stringArray(issue.aliases)
+              : undefined,
             allowedAssociations: stringArray(
               issue.allowedAssociations,
             ) as TrustedGithubAssociation[],
+            events: Array.isArray(issue.events)
+              ? (stringArray(issue.events) as AgenticCiTriggerEvent[])
+              : undefined,
           }
         : undefined,
     },
@@ -376,7 +532,12 @@ export function parseAgenticCiSpec(text: string): AgenticCiSpec {
           ? outputs.maxPatchBytes
           : undefined,
     },
-    publish: { mode: 'artifact' },
+    publish: {
+      mode:
+        typeof publish.mode === 'string'
+          ? (publish.mode as AgenticCiPublishMode)
+          : 'comment',
+    },
   }
   const validation = validateAgenticCiSpec(spec)
   if (!validation.valid) {
@@ -427,92 +588,199 @@ export function decideAgenticCiEvent(
       prompt,
     }
   }
-  if (eventName === 'issue_comment' || root.comment !== undefined) {
-    const config = spec.trigger?.issueComment
-    if (!config) {
-      return {
-        accepted: false,
-        source: 'issue_comment',
-        reason: 'issue-comment trigger is disabled',
-      }
-    }
-    if (
-      typeof root.action === 'string' &&
-      root.action !== 'created'
-    ) {
-      return {
-        accepted: false,
-        source: 'issue_comment',
-        reason: `unsupported issue_comment action "${root.action}"`,
-      }
-    }
-    const comment = asRecord(root.comment)
-    const actor =
-      typeof asRecord(comment.user).login === 'string'
-        ? String(asRecord(comment.user).login)
-        : undefined
-    const association =
-      typeof comment.author_association === 'string'
-        ? comment.author_association.toUpperCase()
-        : ''
-    const allowed =
-      config.allowedAssociations?.length
-        ? config.allowedAssociations
-        : [...TRUSTED_GITHUB_ASSOCIATIONS]
-    if (!allowed.includes(association as TrustedGithubAssociation)) {
-      return {
-        accepted: false,
-        source: 'issue_comment',
-        reason: `actor association "${association || 'NONE'}" is not allowed`,
-        actor,
-        association,
-      }
-    }
-    const body = boundedPrompt(comment.body)
-    const keyword = config.keyword?.trim() || '/ur'
-    if (!body) {
-      return {
-        accepted: false,
-        source: 'issue_comment',
-        reason: 'comment body is empty or too large',
-        actor,
-        association,
-      }
-    }
-    const index = body.toLowerCase().indexOf(keyword.toLowerCase())
-    if (index < 0) {
-      return {
-        accepted: false,
-        source: 'issue_comment',
-        reason: `comment does not contain "${keyword}"`,
-        actor,
-        association,
-      }
-    }
-    const prompt = boundedPrompt(body.slice(index + keyword.length))
-    if (!prompt) {
-      return {
-        accepted: false,
-        source: 'issue_comment',
-        reason: 'trigger contains no bounded task text',
-        actor,
-        association,
-      }
-    }
+  const mention = normalizeMentionEvent(root, eventName)
+  if (!mention) {
     return {
-      accepted: true,
-      source: 'issue_comment',
-      reason: 'trusted actor used the configured keyword',
+      accepted: false,
+      source: 'none',
+      reason: 'event type is not enabled',
+    }
+  }
+  const { source } = mention
+  const config = spec.trigger?.issueComment
+  if (!config) {
+    return { accepted: false, source, reason: 'mention trigger is disabled' }
+  }
+  if (!triggerEvents(spec).includes(source as AgenticCiTriggerEvent)) {
+    return {
+      accepted: false,
+      source,
+      reason: `event "${source}" is not enabled for this spec`,
+    }
+  }
+  if (mention.action && !mention.acceptedActions.includes(mention.action)) {
+    return {
+      accepted: false,
+      source,
+      reason: `unsupported ${source} action "${mention.action}"`,
+    }
+  }
+  const { actor, association, issueNumber, commentId, isPullRequest } = mention
+  const allowed = config.allowedAssociations?.length
+    ? config.allowedAssociations
+    : [...TRUSTED_GITHUB_ASSOCIATIONS]
+  if (!allowed.includes(association as TrustedGithubAssociation)) {
+    return {
+      accepted: false,
+      source,
+      reason: `actor association "${association || 'NONE'}" is not allowed`,
       actor,
       association,
-      prompt,
+      issueNumber,
+      commentId,
+      isPullRequest,
+    }
+  }
+  const body = boundedPrompt(mention.body)
+  if (!body) {
+    return {
+      accepted: false,
+      source,
+      reason: 'comment body is empty or too large',
+      actor,
+      association,
+      issueNumber,
+      commentId,
+      isPullRequest,
+    }
+  }
+  const keywords = triggerKeywords(spec)
+  const match = findTriggerMention(body, keywords)
+  if (!match) {
+    return {
+      accepted: false,
+      source,
+      reason: `comment does not mention ${keywords.map(k => `"${k}"`).join(' or ')}`,
+      actor,
+      association,
+      issueNumber,
+      commentId,
+      isPullRequest,
+    }
+  }
+  const prompt = boundedPrompt(match.prompt)
+  if (!prompt) {
+    return {
+      accepted: false,
+      source,
+      reason: 'trigger contains no bounded task text',
+      actor,
+      association,
+      issueNumber,
+      commentId,
+      isPullRequest,
     }
   }
   return {
-    accepted: false,
-    source: 'none',
-    reason: 'event type is not enabled',
+    accepted: true,
+    source,
+    reason: `trusted actor mentioned "${match.keyword}"`,
+    actor,
+    association,
+    prompt,
+    issueNumber,
+    commentId,
+    isPullRequest,
   }
+}
+
+type NormalizedMention = {
+  source: Exclude<AgenticCiEventSource, 'manual' | 'none'>
+  acceptedActions: string[]
+  action?: string
+  body: unknown
+  actor?: string
+  association: string
+  issueNumber?: number
+  commentId?: number
+  isPullRequest: boolean
+}
+
+function login(value: unknown): string | undefined {
+  const candidate = asRecord(value).login
+  return typeof candidate === 'string' ? candidate : undefined
+}
+
+function association(value: unknown): string {
+  const candidate = asRecord(value).author_association
+  return typeof candidate === 'string' ? candidate.toUpperCase() : ''
+}
+
+function numeric(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : undefined
+}
+
+/**
+ * Flatten the four GitHub mention payloads into one shape. Each event nests the
+ * author association and body differently, and only `issue_comment` marks a
+ * pull request via `issue.pull_request`.
+ */
+function normalizeMentionEvent(
+  root: Record<string, unknown>,
+  eventName?: string,
+): NormalizedMention | undefined {
+  const action = typeof root.action === 'string' ? root.action : undefined
+  const issue = asRecord(root.issue)
+  const pull = asRecord(root.pull_request)
+  const comment = asRecord(root.comment)
+  const review = asRecord(root.review)
+
+  if (eventName === 'pull_request_review_comment') {
+    return {
+      source: 'pull_request_review_comment',
+      acceptedActions: ['created'],
+      action,
+      body: comment.body,
+      actor: login(comment.user),
+      association: association(comment),
+      issueNumber: numeric(pull.number),
+      commentId: numeric(comment.id),
+      isPullRequest: true,
+    }
+  }
+  if (eventName === 'pull_request_review') {
+    return {
+      source: 'pull_request_review',
+      acceptedActions: ['submitted', 'edited'],
+      action,
+      body: review.body,
+      actor: login(review.user),
+      association: association(review),
+      issueNumber: numeric(pull.number),
+      commentId: numeric(review.id),
+      isPullRequest: true,
+    }
+  }
+  if (eventName === 'issues') {
+    return {
+      source: 'issues',
+      acceptedActions: ['opened', 'edited', 'assigned', 'labeled'],
+      action,
+      body: [issue.title, issue.body]
+        .filter(part => typeof part === 'string')
+        .join('\n\n'),
+      actor: login(issue.user),
+      association: association(issue),
+      issueNumber: numeric(issue.number),
+      isPullRequest: false,
+    }
+  }
+  if (eventName === 'issue_comment' || root.comment !== undefined) {
+    return {
+      source: 'issue_comment',
+      acceptedActions: ['created'],
+      action,
+      body: comment.body,
+      actor: login(comment.user),
+      association: association(comment),
+      issueNumber: numeric(issue.number),
+      commentId: numeric(comment.id),
+      isPullRequest: issue.pull_request !== undefined,
+    }
+  }
+  return undefined
 }
 
 export function loadAgenticCiEventFile(path: string): unknown {
@@ -932,6 +1200,7 @@ export async function runAgenticCi(
     options.event !== undefined
       ? decideAgenticCiEvent(options.spec, options.event, options.eventName)
       : undefined
+  const publishContract = buildPublishContract(options.spec, eventDecision)
   if (eventDecision && !eventDecision.accepted) {
     const blocked: AgenticCiResult = {
       version: 1,
@@ -942,6 +1211,7 @@ export async function runAgenticCi(
       checks: [],
       violations: [eventDecision.reason],
       manifestPath,
+      publish: publishContract,
     }
     writeAgenticCiResult(blocked)
     return blocked
@@ -976,6 +1246,7 @@ export async function runAgenticCi(
       checks: [],
       violations: [],
       manifestPath,
+      publish: publishContract,
     }
     writeAgenticCiResult(dry)
     rmSync(verificationHome, { recursive: true, force: true })
@@ -1277,9 +1548,30 @@ export async function runAgenticCi(
     checks,
     violations,
     manifestPath,
+    publish: publishContract,
   }
   writeAgenticCiResult(result)
   return result
+}
+
+/**
+ * Describe where a trusted publisher should reply. Deliberately carries no
+ * token and no event text beyond identifiers the publisher re-fetches itself.
+ */
+function buildPublishContract(
+  spec: AgenticCiSpec,
+  decision?: AgenticCiEventDecision,
+): AgenticCiResult['publish'] {
+  const mode = spec.publish?.mode ?? 'comment'
+  if (mode === 'artifact') return undefined
+  return {
+    mode,
+    source: decision?.source ?? 'manual',
+    actor: decision?.actor,
+    issueNumber: decision?.issueNumber,
+    commentId: decision?.commentId,
+    isPullRequest: decision?.isPullRequest ?? false,
+  }
 }
 
 export function defaultAgenticCiSpec(name = 'default'): AgenticCiSpec {
@@ -1291,8 +1583,10 @@ export function defaultAgenticCiSpec(name = 'default'): AgenticCiSpec {
     trigger: {
       manual: true,
       issueComment: {
-        keyword: '/ur',
+        keyword: AGENTIC_CI_DEFAULT_KEYWORD,
+        aliases: [...AGENTIC_CI_DEFAULT_ALIASES],
         allowedAssociations: [...TRUSTED_GITHUB_ASSOCIATIONS],
+        events: [...AGENTIC_CI_TRIGGER_EVENTS],
       },
     },
     runner: { maxTurns: 20, timeoutMinutes: 30 },
@@ -1316,7 +1610,7 @@ export function defaultAgenticCiSpec(name = 'default'): AgenticCiSpec {
       maxSummaryChars: AGENTIC_CI_MAX_SUMMARY_CHARS,
       maxPatchBytes: AGENTIC_CI_MAX_PATCH_BYTES,
     },
-    publish: { mode: 'artifact' },
+    publish: { mode: 'comment' },
   }
 }
 
@@ -1378,61 +1672,173 @@ export function compileAgenticCiWorkflow(
   }
   const packageVersion =
     options.packageVersion ??
-    (typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.48.0')
+    (typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.50.0')
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(packageVersion)) {
     throw new Error('invalid ur-agent package version')
   }
+  const issue = spec.trigger?.issueComment
+  const keywords = triggerKeywords(spec)
+  const events = triggerEvents(spec)
+  const publishMode = spec.publish?.mode ?? 'comment'
+  const publishes = publishMode !== 'artifact'
+  const associations = issue?.allowedAssociations?.length
+    ? issue.allowedAssociations
+    : [...TRUSTED_GITHUB_ASSOCIATIONS]
+  const trustedActors = `contains(fromJSON('${JSON.stringify(associations)}'), `
+
+  const quoted = (value: string) => `'${value.replaceAll("'", "''")}'`
+  const mentions = (expression: string) =>
+    keywords.map(word => `contains(${expression}, ${quoted(word)})`).join(' || ')
+
+  // The workflow gate is a cheap prefilter only. `decideAgenticCiEvent` re-checks
+  // the mention on a word boundary, because GitHub expressions have no regex and
+  // `contains` alone would also fire on `@urgent`.
+  const gate = (
+    eventName: string,
+    bodyExpressions: string[],
+    associationExpression: string,
+  ) =>
+    [
+      '(',
+      `  github.event_name == '${eventName}' &&`,
+      `  (${bodyExpressions.map(mentions).join(' || ')}) &&`,
+      `  ${trustedActors}${associationExpression})`,
+      ')',
+    ].join('\n')
+
+  /**
+   * A folded scalar ends at the first line indented less than the block, so
+   * every continuation line has to carry the block indent explicitly.
+   */
+  const foldExpression = (text: string, indent = '      ') =>
+    text
+      .split('\n')
+      .map((line, index) => (index === 0 ? line : `${indent}${line}`))
+      .join('\n')
+
   const conditions: string[] = []
+  const onBlocks: string[] = []
   if (spec.trigger?.manual) {
     conditions.push("github.event_name == 'workflow_dispatch'")
-  }
-  const issue = spec.trigger?.issueComment
-  if (issue) {
-    const keyword = (issue.keyword?.trim() || '/ur').replaceAll("'", "''")
-    const associations =
-      issue.allowedAssociations?.length
-        ? issue.allowedAssociations
-        : [...TRUSTED_GITHUB_ASSOCIATIONS]
-    conditions.push(
+    onBlocks.push(
       [
-        '(',
-        "  github.event_name == 'issue_comment' &&",
-        `  contains(github.event.comment.body, '${keyword}') &&`,
-        `  contains(fromJSON('${JSON.stringify(associations)}'), github.event.comment.author_association)`,
-        ')',
+        '  workflow_dispatch:',
+        '    inputs:',
+        '      prompt:',
+        '        description: Bounded task for the isolated agent',
+        '        required: false',
+        '        type: string',
       ].join('\n'),
     )
   }
-  const jobCondition = conditions.length > 0
-    ? conditions.join(' ||\n      ')
-    : 'false'
-  return `name: UR Agentic CI
+  if (issue) {
+    if (events.includes('issue_comment')) {
+      onBlocks.push('  issue_comment:\n    types: [created]')
+      conditions.push(
+        gate(
+          'issue_comment',
+          ['github.event.comment.body'],
+          'github.event.comment.author_association',
+        ),
+      )
+    }
+    if (events.includes('pull_request_review_comment')) {
+      onBlocks.push('  pull_request_review_comment:\n    types: [created]')
+      conditions.push(
+        gate(
+          'pull_request_review_comment',
+          ['github.event.comment.body'],
+          'github.event.comment.author_association',
+        ),
+      )
+    }
+    if (events.includes('pull_request_review')) {
+      onBlocks.push('  pull_request_review:\n    types: [submitted]')
+      conditions.push(
+        gate(
+          'pull_request_review',
+          ['github.event.review.body'],
+          'github.event.review.author_association',
+        ),
+      )
+    }
+    if (events.includes('issues')) {
+      onBlocks.push('  issues:\n    types: [opened, assigned]')
+      conditions.push(
+        gate(
+          'issues',
+          ['github.event.issue.body', 'github.event.issue.title'],
+          'github.event.issue.author_association',
+        ),
+      )
+    }
+  }
+  const jobCondition =
+    conditions.length > 0
+      ? foldExpression(conditions.join(' ||\n'))
+      : 'false'
+  const artifactName =
+    'ur-agentic-ci-\${{ github.run_id }}-\${{ github.run_attempt }}'
+  const runUrl =
+    '\${{ github.server_url }}/\${{ github.repository }}/actions/runs/\${{ github.run_id }}'
 
-on:
-  workflow_dispatch:
-    inputs:
-      prompt:
-        description: Bounded task for the isolated agent
-        required: false
-        type: string
-  issue_comment:
-    types: [created]
-
-permissions:
-  contents: read
-  issues: read
-  pull-requests: read
-
-concurrency:
-  group: ur-agentic-ci-\${{ github.repository }}-\${{ github.event.issue.number || github.run_id }}
-  cancel-in-progress: false
-
-jobs:
-  agent:
+  const acknowledgeJob = `  acknowledge:
     if: >-
       ${jobCondition}
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      pull-requests: write
+    outputs:
+      issue-number: \${{ steps.track.outputs.issue-number }}
+      comment-id: \${{ steps.track.outputs.comment-id }}
+    steps:
+      - name: React and open a tracking comment
+        id: track
+        env:
+          GH_TOKEN: \${{ github.token }}
+          GH_REPO: \${{ github.repository }}
+          RUN_URL: ${runUrl}
+        run: |
+          set -euo pipefail
+          number="$(jq -r '.issue.number // .pull_request.number // empty' "$GITHUB_EVENT_PATH")"
+          comment="$(jq -r '.comment.id // empty' "$GITHUB_EVENT_PATH")"
+          printf 'issue-number=%s\\n' "$number" >> "$GITHUB_OUTPUT"
+          if [ -z "$number" ]; then
+            printf 'comment-id=\\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$GITHUB_EVENT_NAME" in
+            issue_comment)
+              [ -z "$comment" ] || gh api --silent --method POST \\
+                "repos/$GH_REPO/issues/comments/$comment/reactions" \\
+                -f content=eyes || true ;;
+            pull_request_review_comment)
+              [ -z "$comment" ] || gh api --silent --method POST \\
+                "repos/$GH_REPO/pulls/comments/$comment/reactions" \\
+                -f content=eyes || true ;;
+            issues)
+              gh api --silent --method POST \\
+                "repos/$GH_REPO/issues/$number/reactions" \\
+                -f content=eyes || true ;;
+          esac
+          body="UR is working on this. [Follow the run]($RUN_URL)."
+          id="$(jq -n --arg body "$body" '{body: $body}' \\
+            | gh api "repos/$GH_REPO/issues/$number/comments" --input - --jq '.id')"
+          printf 'comment-id=%s\\n' "$id" >> "$GITHUB_OUTPUT"
+
+`
+
+  const agentJob = `  agent:
+${publishes ? '    needs: acknowledge\n' : ''}    if: >-
+      ${jobCondition}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${spec.runner?.timeoutMinutes ?? 30}
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     steps:
       - name: Checkout trusted base
         uses: actions/checkout@${CHECKOUT_SHA} # v7.0.0
@@ -1462,9 +1868,136 @@ jobs:
         if: always()
         uses: actions/upload-artifact@${UPLOAD_ARTIFACT_SHA} # v4.6.2
         with:
-          name: ur-agentic-ci-\${{ github.run_id }}-\${{ github.run_attempt }}
+          name: ${artifactName}
           path: \${{ runner.temp }}/ur-agentic-ci
           if-no-files-found: error
           retention-days: 7
 `
+
+  const pullRequestSteps = `      - name: Checkout for patch application
+        uses: actions/checkout@${CHECKOUT_SHA} # v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Open a pull request from the verified patch
+        id: pr
+        env:
+          GH_TOKEN: \${{ github.token }}
+          BASE_BRANCH: \${{ github.event.repository.default_branch }}
+          RUN_URL: ${runUrl}
+        run: |
+          set -euo pipefail
+          manifest="$(find "$RUNNER_TEMP/ur-agentic-ci-out" -name manifest.json -print -quit 2>/dev/null || true)"
+          if [ -z "$manifest" ]; then exit 0; fi
+          if [ "$(jq -r '.status' "$manifest")" != "passed" ]; then exit 0; fi
+          relative="$(jq -r '.patch.path // empty' "$manifest")"
+          if [ -z "$relative" ]; then exit 0; fi
+          patch="$(dirname "$manifest")/$relative"
+          run_id="$(jq -r '.runId' "$manifest")"
+          branch="ur/agentic-ci-$run_id"
+          git config user.name 'ur-agent[bot]'
+          git config user.email 'ur-agent[bot]@users.noreply.github.com'
+          git checkout -b "$branch" "$(jq -r '.baseSha' "$manifest")"
+          git apply --index --whitespace=nowarn "$patch"
+          git commit -m "UR: apply verified Agentic CI patch ($run_id)"
+          git push origin "HEAD:$branch"
+          jq -r '.summary' "$manifest" > "$RUNNER_TEMP/ur-pr-body.md"
+          printf '\\nPatch sha256: \`%s\`\\n\\n[Run](%s)\\n' \\
+            "$(jq -r '.patch.sha256' "$manifest")" "$RUN_URL" \\
+            >> "$RUNNER_TEMP/ur-pr-body.md"
+          url="$(gh pr create --base "$BASE_BRANCH" --head "$branch" \\
+            --title "UR: verified patch from run $run_id" \\
+            --body-file "$RUNNER_TEMP/ur-pr-body.md")"
+          printf 'url=%s\\n' "$url" >> "$GITHUB_OUTPUT"
+`
+
+  const publishJob = `  publish:
+    needs: [acknowledge, agent]
+    if: always() && needs.acknowledge.outputs.comment-id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: ${publishMode === 'pull-request' ? 'write' : 'read'}
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Download agent outputs
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ur-agentic-ci-out"
+          gh run download "$GITHUB_RUN_ID" \\
+            --name "${artifactName}" \\
+            --dir "$RUNNER_TEMP/ur-agentic-ci-out" || true
+${publishMode === 'pull-request' ? pullRequestSteps : ''}      - name: Report the result in the thread
+        if: always()
+        env:
+          GH_TOKEN: \${{ github.token }}
+          GH_REPO: \${{ github.repository }}
+          COMMENT_ID: \${{ needs.acknowledge.outputs.comment-id }}
+          AGENT_RESULT: \${{ needs.agent.result }}
+          PR_URL: ${publishMode === 'pull-request' ? '\${{ steps.pr.outputs.url }}' : ''}
+          RUN_URL: ${runUrl}
+        run: |
+          set -euo pipefail
+          manifest="$(find "$RUNNER_TEMP/ur-agentic-ci-out" -name manifest.json -print -quit 2>/dev/null || true)"
+          out="$RUNNER_TEMP/ur-comment.md"
+          if [ -z "$manifest" ]; then
+            {
+              printf '### UR\\n\\n'
+              printf 'The agent job finished as \`%s\` without producing a manifest.\\n\\n' "$AGENT_RESULT"
+              printf '[Inspect the run](%s)\\n' "$RUN_URL"
+            } > "$out"
+          else
+            status="$(jq -r '.status' "$manifest")"
+            case "$status" in
+              passed) icon='PASSED' ;;
+              failed) icon='FAILED' ;;
+              blocked) icon='BLOCKED' ;;
+              *) icon="$status" ;;
+            esac
+            {
+              printf '### UR — %s\\n\\n' "$icon"
+              jq -r '.summary' "$manifest"
+              printf '\\n'
+              if [ "$(jq -r '.checks | length' "$manifest")" -gt 0 ]; then
+                printf '\\n| Check | Exit | Duration |\\n| --- | --- | --- |\\n'
+                jq -r '.checks[] | "| \\(.name) | \`\\(.exitCode)\` | \\(.durationMs)ms |"' "$manifest"
+              fi
+              if [ "$(jq -r '.violations // [] | length' "$manifest")" -gt 0 ]; then
+                printf '\\n**Policy violations**\\n\\n'
+                jq -r '.violations[] | "- \\(.)"' "$manifest"
+              fi
+              relative="$(jq -r '.patch.path // empty' "$manifest")"
+              if [ -n "$relative" ]; then
+                printf '\\n<details><summary>Proposed patch (%s bytes, sha256 %s)</summary>\\n\\n' \\
+                  "$(jq -r '.patch.bytes' "$manifest")" "$(jq -r '.patch.sha256' "$manifest")"
+                printf '\\n\`\`\`diff\\n'
+                head -c 30000 "$(dirname "$manifest")/$relative" | sed 's/^\`\`\`/ \`\`\`/'
+                printf '\\n\`\`\`\\n\\n</details>\\n'
+              fi
+              if [ -n "\${PR_URL:-}" ]; then
+                printf '\\nOpened %s\\n' "$PR_URL"
+              fi
+              printf '\\n[Full run and artifacts](%s)\\n' "$RUN_URL"
+            } > "$out"
+          fi
+          jq -n --rawfile body "$out" '{body: $body}' \\
+            | gh api --silent --method PATCH \\
+              "repos/$GH_REPO/issues/comments/$COMMENT_ID" --input -
+`
+
+  return `name: UR Agentic CI
+
+on:
+${onBlocks.join('\n')}
+
+permissions: {}
+
+concurrency:
+  group: ur-agentic-ci-\${{ github.repository }}-\${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+${publishes ? acknowledgeJob : ''}${agentJob}${publishes ? `\n${publishJob}` : ''}`
 }

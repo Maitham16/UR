@@ -100,10 +100,61 @@ Three tiers:
 
 ## GitHub & Slack
 
-- `/install-github-app` — set up UR GitHub Actions for the repo.
+- `/install-github-app` — set up UR GitHub Actions for the repo, so collaborators
+  can summon the agent with `@ur <task>` from a thread. See below.
 - `GitHub` tool (PRs/issues/search, doc 04); `/pr-comments`, `/review`; `--from-pr` resume.
 - `/install-slack-app` — Slack app install.
 - `/trigger` — consume GitHub/Slack webhook payloads headlessly (doc 10).
+
+### `@ur` from GitHub
+
+`/install-github-app` commits two files and stores the API key as a repository
+secret:
+
+| File | Role |
+|---|---|
+| `.github/workflows/ur.yml` | Compiled by `compileAgenticCiWorkflow` |
+| `.ur/agentic-ci/default.yaml` | Policy spec resolved by `ur agent-ci run` |
+
+Both are required. The workflow shells out to `ur agent-ci run default`, which
+loads the spec from the repository; without the spec every run aborts before the
+agent starts.
+
+**Triggers.** `@ur <task>` in an issue comment, a PR comment, an inline review
+comment, a submitted review, or a new issue's title/body. `/ur` still works. The
+workflow `if:` gate is a coarse `contains()` prefilter — GitHub expressions have
+no regex — and `decideAgenticCiEvent` re-checks the mention on a word boundary,
+after stripping fenced code and `>` quotations. So `@urgent`, `me@ur.example`,
+and a bot quoting an earlier comment do not start a run.
+
+**Job graph.** Three jobs, split so untrusted text and write tokens never meet:
+
+| Job | Permissions | Reads event body? |
+|---|---|---|
+| `acknowledge` | `issues: write` | No — only ids via `jq` |
+| `agent` | all `read` | Yes, from `$GITHUB_EVENT_PATH` |
+| `publish` | `issues: write` (+`contents: write` in `pull-request` mode) | No — only the artifact |
+
+`acknowledge` posts 👀 and a tracking comment; `agent` runs in a detached
+worktree with no write token and uploads a bounded, hash-addressed patch
+artifact; `publish` downloads that artifact and edits the tracking comment with
+the summary, verification table, and diff. Agent-authored text reaches the
+writers only through files read with `jq --rawfile`, never through shell
+interpolation.
+
+**Publish modes** (`publish.mode` in the spec):
+
+- `comment` (default) — reaction, tracking comment, diff rendered inline.
+- `pull-request` — additionally applies the patch and opens a PR. Opt-in; this
+  is the only mode that grants `contents: write`.
+- `artifact` — the original producer-only behaviour, no write-back, single job.
+
+**Composite action.** `action.yml` at the repository root backs
+`uses: Maitham16/UR@v1`, used by `ur-review.yml` and available for hand-written
+workflows. It installs the CLI (defaulting to the version the action was tagged
+from), registers marketplaces and plugins, then runs `ur -p`. The prompt is
+passed through the environment into a single argv element, never into shell
+source. A `v1` tag must exist for the `@v1` ref to resolve.
 
 ## Remote & desktop
 

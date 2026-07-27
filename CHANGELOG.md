@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.50.0
+
+- Completed `/install-github-app` so `@ur <task>` works from GitHub. The
+  mention now triggers on issue comments, pull-request comments, inline review
+  comments, submitted reviews, and new issues; `/ur` remains accepted. Matching
+  is word-bounded and skips fenced code and quoted replies, so `@urgent`,
+  `me@ur.example`, and bots quoting an earlier comment no longer start runs.
+- Fixed the installed workflow being inert: the installer wrote
+  `.github/workflows/ur.yml` but never committed `.ur/agentic-ci/default.yaml`,
+  so every run aborted with "Spec not found" before the agent started. Both
+  files now land in the same pull request.
+- Added a trusted publisher so a mention produces visible feedback: an eyes
+  reaction and a tracking comment that is edited in place with the summary,
+  verification table, and proposed diff. The job that reads untrusted event
+  text still holds no write token — it emits the bounded hash-addressed patch
+  artifact, and a separate write-scoped job consumes only that artifact.
+  Agent-authored text reaches the publisher through `jq --rawfile`, never
+  through shell interpolation.
+- Added opt-in `publish.mode: pull-request`, which applies the verified patch
+  and opens a PR. It is the only mode granting `contents: write`;
+  `publish.mode: artifact` restores the previous producer-only single job.
+- Added the composite action at the repository root, so
+  `uses: Maitham16/UR@v1` resolves. `ur-review.yml` referenced it but no
+  `action.yml` existed, so that workflow failed immediately.
+- Fixed the compiled workflow emitting an invalid folded scalar: continuation
+  lines of the job `if:` expression were indented below the block indent.
+- Fixed the installer's secret rename only rewriting the composite-action input
+  form, which left the Agentic CI workflow pointing at a nonexistent
+  `secrets.UR_API_KEY` whenever a custom secret name was chosen.
+- Restricted trigger keywords to a charset that cannot terminate a GitHub
+  workflow expression.
+
 ## 1.49.0
 
 - Added cryptographically signed A2A Agent Cards: RFC 7515 detached JWS over

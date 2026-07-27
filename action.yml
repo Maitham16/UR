@@ -1,0 +1,142 @@
+name: UR
+description: Run the UR coding agent inside a GitHub Actions workflow.
+author: Maitham Al-rubaye
+
+branding:
+  icon: terminal
+  color: purple
+
+inputs:
+  prompt:
+    description: Task for the agent. Passed as data, never as shell source.
+    required: true
+  ur_api_key:
+    description: URHQ API key. Provide this or ur_oauth_token.
+    required: false
+    default: ''
+  ur_oauth_token:
+    description: URHQ OAuth token. Takes precedence over ur_api_key.
+    required: false
+    default: ''
+  ur_version:
+    description: >-
+      npm version of ur-agent to install. Defaults to the version this action
+      was tagged from, so a pinned action ref pins the CLI too.
+    required: false
+    default: ''
+  plugin_marketplaces:
+    description: Comma-separated marketplace sources to register before running.
+    required: false
+    default: ''
+  plugins:
+    description: Comma-separated plugins to install, as name@marketplace.
+    required: false
+    default: ''
+  model:
+    description: Model override for this run.
+    required: false
+    default: ''
+  max_turns:
+    description: Maximum agentic turns.
+    required: false
+    default: '20'
+  allowed_tools:
+    description: Comma or space separated tool allowlist.
+    required: false
+    default: ''
+  permission_mode:
+    description: Permission mode for the run.
+    required: false
+    default: default
+  working_directory:
+    description: Directory to run in. Defaults to the workspace root.
+    required: false
+    default: ''
+
+outputs:
+  result_file:
+    description: Path to the JSON result emitted by the agent.
+    value: ${{ steps.run.outputs.result-file }}
+  status:
+    description: Either success or failure.
+    value: ${{ steps.run.outputs.status }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.4.0
+      with:
+        node-version: 24
+
+    - name: Install UR CLI
+      shell: bash
+      env:
+        REQUESTED_VERSION: ${{ inputs.ur_version }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        version="$REQUESTED_VERSION"
+        if [ -z "$version" ] && [ -f "$ACTION_PATH/package.json" ]; then
+          version="$(jq -r '.version // empty' "$ACTION_PATH/package.json")"
+        fi
+        if [ -z "$version" ]; then
+          npm install --global --ignore-scripts ur-agent
+        else
+          npm install --global --ignore-scripts "ur-agent@$version"
+        fi
+        ur --version
+
+    - name: Register marketplaces and plugins
+      shell: bash
+      env:
+        MARKETPLACES: ${{ inputs.plugin_marketplaces }}
+        PLUGINS: ${{ inputs.plugins }}
+      run: |
+        set -euo pipefail
+        split() { printf '%s' "$1" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+        if [ -n "$MARKETPLACES" ]; then
+          while IFS= read -r source; do
+            [ -z "$source" ] || ur plugin marketplace add "$source"
+          done <<< "$(split "$MARKETPLACES")"
+        fi
+        if [ -n "$PLUGINS" ]; then
+          while IFS= read -r plugin; do
+            [ -z "$plugin" ] || ur plugin install "$plugin" --scope user
+          done <<< "$(split "$PLUGINS")"
+        fi
+
+    - name: Run UR
+      id: run
+      shell: bash
+      env:
+        URHQ_API_KEY: ${{ inputs.ur_api_key }}
+        UR_CODE_OAUTH_TOKEN: ${{ inputs.ur_oauth_token }}
+        UR_CODE_SUBPROCESS_ENV_SCRUB: '1'
+        UR_PROMPT: ${{ inputs.prompt }}
+        UR_MODEL_OVERRIDE: ${{ inputs.model }}
+        MAX_TURNS: ${{ inputs.max_turns }}
+        ALLOWED_TOOLS: ${{ inputs.allowed_tools }}
+        PERMISSION_MODE: ${{ inputs.permission_mode }}
+        WORKING_DIRECTORY: ${{ inputs.working_directory }}
+      run: |
+        set -euo pipefail
+        if [ -z "${URHQ_API_KEY:-}" ] && [ -z "${UR_CODE_OAUTH_TOKEN:-}" ]; then
+          echo "::error::Provide either ur_api_key or ur_oauth_token." >&2
+          exit 1
+        fi
+        cd "${WORKING_DIRECTORY:-$GITHUB_WORKSPACE}"
+        result="${RUNNER_TEMP}/ur-result.json"
+        args=(-p --output-format json --max-turns "$MAX_TURNS")
+        [ -z "$UR_MODEL_OVERRIDE" ] || args+=(--model "$UR_MODEL_OVERRIDE")
+        [ -z "$ALLOWED_TOOLS" ] || args+=(--allowed-tools "$ALLOWED_TOOLS")
+        [ -z "$PERMISSION_MODE" ] || args+=(--permission-mode "$PERMISSION_MODE")
+        status=success
+        # The prompt stays in argv as a single element; it is never re-parsed.
+        ur "${args[@]}" "$UR_PROMPT" > "$result" || status=failure
+        printf 'result-file=%s\n' "$result" >> "$GITHUB_OUTPUT"
+        printf 'status=%s\n' "$status" >> "$GITHUB_OUTPUT"
+        if [ "$status" = failure ]; then
+          echo "::error::UR run failed. See $result for details." >&2
+          exit 1
+        fi

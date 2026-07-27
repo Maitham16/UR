@@ -4,6 +4,8 @@ import {
 } from 'src/services/analytics/index.js'
 import { saveGlobalConfig } from 'src/utils/config.js'
 import {
+  AGENTIC_CI_SPEC_CONTENT,
+  AGENTIC_CI_SPEC_PATH,
   CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT,
   PR_BODY,
   PR_TITLE,
@@ -40,19 +42,28 @@ async function createWorkflowFile(
     fileSha = checkFileResult.stdout.trim()
   }
 
+  // Two shapes reference the secret: the composite-action input
+  // (`ur_api_key:`) used by ur-review.yml, and the environment variable
+  // (`URHQ_API_KEY:`) the Agentic CI workflow hands to the CLI. Both have to be
+  // rewritten, or a custom secret name silently produces an empty credential.
+  const ACTION_INPUT = /ur_api_key: \$\{\{ secrets\.UR_API_KEY \}\}/g
+  const ENV_VAR = /URHQ_API_KEY: \$\{\{ secrets\.UR_API_KEY \}\}/g
+
   let content = workflowContent
-  // The template defaults to `ur_api_key: ${{ secrets.UR_API_KEY }}`. Swap to
-  // either an OAuth token parameter or a user-named secret when requested.
   if (secretName === 'UR_CODE_OAUTH_TOKEN') {
-    content = workflowContent.replace(
-      /ur_api_key: \$\{\{ secrets\.UR_API_KEY \}\}/g,
-      `ur_oauth_token: \${{ secrets.UR_CODE_OAUTH_TOKEN }}`,
-    )
+    content = content
+      .replace(
+        ACTION_INPUT,
+        `ur_oauth_token: \${{ secrets.UR_CODE_OAUTH_TOKEN }}`,
+      )
+      .replace(
+        ENV_VAR,
+        `UR_CODE_OAUTH_TOKEN: \${{ secrets.UR_CODE_OAUTH_TOKEN }}`,
+      )
   } else if (secretName !== 'UR_API_KEY') {
-    content = workflowContent.replace(
-      /ur_api_key: \$\{\{ secrets\.UR_API_KEY \}\}/g,
-      `ur_api_key: \${{ secrets.${secretName} }}`,
-    )
+    content = content
+      .replace(ACTION_INPUT, `ur_api_key: \${{ secrets.${secretName} }}`)
+      .replace(ENV_VAR, `URHQ_API_KEY: \${{ secrets.${secretName} }}`)
   }
   const base64Content = Buffer.from(content).toString('base64')
 
@@ -226,6 +237,12 @@ export async function setupGitHubActions(
           path: '.github/workflows/ur.yml',
           content: WORKFLOW_CONTENT,
           message: 'UR PR Assistant workflow',
+        })
+        // The workflow is inert without its policy spec; ship them together.
+        workflows.push({
+          path: AGENTIC_CI_SPEC_PATH,
+          content: AGENTIC_CI_SPEC_CONTENT,
+          message: 'UR Agentic CI policy spec',
         })
       }
 
