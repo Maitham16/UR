@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.50.3
+
+- Removed the GitHub App installation step from `/install-github-app`. UR
+  authenticates in CI with the workflow's built-in `GITHUB_TOKEN` and a
+  repository secret, so there is no app to install and no bot identity to
+  authorize. The step was inherited from a flow that had a published app; this
+  fork does not, so it opened the UR source repository and asked the user to
+  install something that does not exist. The flow now goes from repository
+  selection straight to workflow selection.
+- Replaced the "API key is required" dead end with a skip. The key is consumed
+  by the GitHub runner rather than the local session, so the person setting up
+  the repository often does not hold it, and on a local provider there may be
+  no URHQ key at all. Submitting an empty key now commits the workflow and spec
+  and reports the exact `gh secret set` command needed to finish.
+
 ## 1.50.2
 
 - Fixed local-provider sessions showing "Not logged in · Run /login" with no

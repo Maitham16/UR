@@ -6,6 +6,8 @@ export type Workflow = 'ur' | 'ur-review'
 
 export interface State {
   repoName?: string
+  /** Set when the user skipped the key, so the secret still has to be added. */
+  secretPending?: boolean
   apiKeyOrOAuthToken?: string
   secretName?: string
   selectedWorkflows?: Workflow[]

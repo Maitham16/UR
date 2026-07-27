@@ -181,7 +181,7 @@ export function ApiKeyStep(t0) {
   }
   let t14;
   if ($[38] !== t13) {
-    t14 = <Box marginBottom={1}><Text>{t13}Enter a new API key</Text></Box>;
+    t14 = <Box marginBottom={1}><Text>{t13}Enter a new API key <Text dimColor={true}>(or leave empty to skip and add the secret later)</Text></Text></Box>;
     $[38] = t13;
     $[39] = t14;
   } else {

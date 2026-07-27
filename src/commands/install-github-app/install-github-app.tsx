@@ -9,7 +9,6 @@ import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
 import { Box } from '../../ink.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { getURHQApiKey, isURHQAuthEnabled } from '../../utils/auth.js';
-import { openBrowser } from '../../utils/browser.js';
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
 import { getGithubRepo } from '../../utils/git.js';
 import { plural } from '../../utils/stringUtils.js';
@@ -20,7 +19,6 @@ import { ChooseRepoStep } from './ChooseRepoStep.js';
 import { CreatingStep } from './CreatingStep.js';
 import { ErrorStep } from './ErrorStep.js';
 import { ExistingWorkflowStep } from './ExistingWorkflowStep.js';
-import { InstallAppStep } from './InstallAppStep.js';
 import { OAuthFlowStep } from './OAuthFlowStep.js';
 import { SuccessStep } from './SuccessStep.js';
 import { setupGitHubActions } from './setupGitHubActions.js';
@@ -181,9 +179,13 @@ function InstallGitHubApp(props: {
       }
     }
   }, [state.selectedRepoName, state.workflowAction, state.selectedWorkflows, state.useCurrentRepo, state.workflowExists, state.secretExists, state.authType]);
-  async function openGitHubAppInstallation() {
-    const installUrl = 'https://github.com/Maitham16/UR';
-    await openBrowser(installUrl);
+  // UR authenticates in CI with the workflow's built-in GITHUB_TOKEN and a
+  // repository secret, so there is no GitHub App to install and no bot identity
+  // to authorize. The upstream flow had an app-installation step; this fork
+  // never published an app, so that step only opened the UR source repository
+  // and told the user to install something that does not exist.
+  function nextStepAfterRepo(workflowExists: boolean) {
+    return workflowExists ? 'check-existing-workflow' : 'select-workflows';
   }
   async function checkRepositoryPermissions(repoName: string): Promise<{
     hasAccess: boolean;
@@ -273,9 +275,8 @@ function InstallGitHubApp(props: {
       });
       setState(prev_11 => ({
         ...prev_11,
-        step: 'install-app'
+        step: nextStepAfterRepo(prev_11.workflowExists)
       }));
-      setTimeout(openGitHubAppInstallation, 0);
     } else if (state.step === 'choose-repo') {
       let repoName_1 = state.useCurrentRepo ? state.currentRepo : state.selectedRepoName;
       if (!repoName_1.trim()) {
@@ -333,23 +334,7 @@ function InstallGitHubApp(props: {
           ...prev_13,
           selectedRepoName: repoName_1,
           workflowExists,
-          step: 'install-app'
-        }));
-        setTimeout(openGitHubAppInstallation, 0);
-      }
-    } else if (state.step === 'install-app') {
-      logEvent('tengu_install_github_app_step_completed', {
-        step: 'install-app' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      });
-      if (state.workflowExists) {
-        setState(prev_14 => ({
-          ...prev_14,
-          step: 'check-existing-workflow'
-        }));
-      } else {
-        setState(prev_15 => ({
-          ...prev_15,
-          step: 'select-workflows'
+          step: nextStepAfterRepo(workflowExists)
         }));
       }
     } else if (state.step === 'check-existing-workflow') {
@@ -378,14 +363,21 @@ function InstallGitHubApp(props: {
       // If user selected 'existing' option, use the existing API key
       const apiKeyToUse = state.selectedApiKeyOption === 'existing' ? existingApiKey : state.apiKeyOrOAuthToken;
       if (!apiKeyToUse) {
-        logEvent('tengu_install_github_app_error', {
-          reason: 'api_key_missing' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+        // Submitting an empty key is a deliberate skip, not a failure. The
+        // credential belongs to the CI runner rather than this session, so the
+        // person wiring up the repository often does not hold it — and on a
+        // local provider they may have no URHQ key at all. Commit the workflow
+        // and spec now; setupGitHubActions omits the secret when the key is
+        // null, and onDone prints the command to add it later.
+        logEvent('tengu_install_github_app_step_completed', {
+          step: 'api-key' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
         });
         setState(prev_16 => ({
           ...prev_16,
-          step: 'error',
-          error: 'API key is required'
+          apiKeyOrOAuthToken: '',
+          secretPending: true
         }));
+        await runSetupGitHubActions(null, state.secretName);
         return;
       }
 
@@ -531,7 +523,8 @@ function InstallGitHubApp(props: {
     if (state.step === 'success') {
       logEvent('tengu_install_github_app_completed', {});
     }
-    props.onDone(state.step === 'success' ? 'GitHub Actions setup complete!' : state.error ? `Couldn't install GitHub App: ${state.error}\nFor manual setup instructions, see: ${GITHUB_ACTION_SETUP_DOCS_URL}` : `GitHub App installation failed\nFor manual setup instructions, see: ${GITHUB_ACTION_SETUP_DOCS_URL}`);
+    const pendingSecretNotice = state.secretPending ? `\n\nNo API key was stored. The workflow cannot run until the secret exists:\n  gh secret set ${state.secretName} --repo ${state.selectedRepoName}\nThis key is used by the GitHub runner, not by your local session, so it must be one the runner can reach.` : '';
+    props.onDone(state.step === 'success' ? `GitHub Actions setup complete!${pendingSecretNotice}` : state.error ? `Couldn't install GitHub App: ${state.error}\nFor manual setup instructions, see: ${GITHUB_ACTION_SETUP_DOCS_URL}` : `GitHub App installation failed\nFor manual setup instructions, see: ${GITHUB_ACTION_SETUP_DOCS_URL}`);
   }
   switch (state.step) {
     case 'check-gh':
@@ -540,8 +533,6 @@ function InstallGitHubApp(props: {
       return <WarningsStep warnings={state.warnings} onContinue={handleSubmit} />;
     case 'choose-repo':
       return <ChooseRepoStep currentRepo={state.currentRepo} useCurrentRepo={state.useCurrentRepo} repoUrl={state.selectedRepoName} onRepoUrlChange={handleRepoUrlChange} onToggleUseCurrentRepo={handleToggleUseCurrentRepo} onSubmit={handleSubmit} />;
-    case 'install-app':
-      return <InstallAppStep repoUrl={state.selectedRepoName} onSubmit={handleSubmit} />;
     case 'check-existing-workflow':
       return <ExistingWorkflowStep repoName={state.selectedRepoName} onSelectAction={handleWorkflowAction} />;
     case 'check-existing-secret':
