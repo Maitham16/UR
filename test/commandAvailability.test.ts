@@ -1,6 +1,5 @@
 import { expect, test } from 'bun:test'
-import { type Command, meetsAvailabilityRequirement } from '../src/commands.ts'
-import installGitHubApp from '../src/commands/install-github-app/index.ts'
+import { meetsAvailabilityRequirement } from '../src/commands.ts'
 import {
   PROVIDER_IDS,
   getProviderDefinition,
@@ -55,19 +54,6 @@ test('every registry provider has an access classification', () => {
     )
     expect(provider.credentialType).toBeTruthy()
   }
-})
-
-test('/install-github-app is reachable on every provider', () => {
-  // It provisions a workflow and a repository secret rather than consuming
-  // inference, and the key is entered by hand, so gating it behind a
-  // subscription made it unreachable for local-provider users.
-  // Widening to Command also asserts the command still satisfies the
-  // interface after the field was dropped.
-  const command: Command = installGitHubApp
-  expect(command.availability).toBeUndefined()
-  expect(meetsAvailabilityRequirement(command)).toBe(true)
-  expect(installGitHubApp.isEnabled()).toBe(true)
-  expect(command.name).toBe('install-github-app')
 })
 
 test('commands without an availability requirement skip the auth check', () => {

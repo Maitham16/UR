@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.50.4
+
+- Removed the `/install-github-app` command and its GitHub App setup flow,
+  along with the startup tip suggesting `@ur` be tagged from issues and pull
+  requests. The composite action at the repository root is removed with it.
+- The agent is unchanged. `ur agent-ci` and the Agentic CI engine still compile
+  workflows, evaluate triggers, and run isolated verified patches exactly as
+  before; only the interactive installer that wrote those files into a
+  repository is gone.
+
 ## 1.50.3
 
 - Removed the GitHub App installation step from `/install-github-app`. UR

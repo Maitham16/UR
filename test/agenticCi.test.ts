@@ -20,13 +20,6 @@ import {
   runAgenticCi,
   validateAgenticCiSpec,
 } from '../src/services/agents/agenticCi.ts'
-import {
-  AGENTIC_CI_SPEC_CONTENT,
-  AGENTIC_CI_SPEC_PATH,
-  CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT,
-  PR_BODY,
-  WORKFLOW_CONTENT,
-} from '../src/constants/github-app.ts'
 import { execFileNoThrowWithCwd } from '../src/utils/execFileNoThrow.ts'
 import {
   strictGitSubprocessEnv,
@@ -328,16 +321,16 @@ test('keywords that could escape a workflow expression are rejected', () => {
   ).toThrow()
 })
 
-test('the installer ships the spec the workflow needs to resolve', () => {
-  // Without this file `ur agent-ci run` aborts with "Spec not found" on every
-  // single mention, so the workflow is inert unless both land together.
-  expect(AGENTIC_CI_SPEC_PATH).toBe('.ur/agentic-ci/default.yaml')
-  const spec = parseAgenticCiSpec(AGENTIC_CI_SPEC_CONTENT)
-  expect(spec.name).toBe('default')
+test('the default spec is valid and resolves the documented trigger', () => {
+  // `ur agent-ci run` loads this spec from the repository; without a valid one
+  // it aborts with "Spec not found" before the agent starts.
+  const spec = defaultAgenticCiSpec('default')
   expect(spec.trigger?.issueComment?.keyword).toBe('@ur')
   expect(spec.trigger?.issueComment?.aliases).toContain('/ur')
   expect(validateAgenticCiSpec(spec).valid).toBe(true)
-  expect(WORKFLOW_CONTENT).toContain('ur agent-ci run default')
+  expect(
+    compileAgenticCiWorkflow('default', { packageVersion: '1.48.0' }),
+  ).toContain('ur agent-ci run default')
 })
 
 test('compiled workflow honors the validated issue-comment trigger policy', () => {
@@ -361,17 +354,6 @@ test('compiled workflow honors the validated issue-comment trigger policy', () =
     "github.event_name == 'workflow_dispatch' ||",
   )
   expect(workflow).not.toContain('MEMBER')
-})
-
-test('legacy code-review workflow remains distinct from Agentic CI', () => {
-  expect(CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT).not.toBe(WORKFLOW_CONTENT)
-  expect(CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT).toContain('name: UR Review')
-  expect(CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT).toContain('pull_request:')
-  expect(CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT).toContain(
-    "plugins: 'code-review@ur-plugins-official'",
-  )
-  expect(PR_BODY).toContain('@ur')
-  expect(PR_BODY).toContain('/ur')
 })
 
 test('spec parser rejects unrecognized trusted associations', () => {

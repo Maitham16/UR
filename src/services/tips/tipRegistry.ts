@@ -323,13 +323,6 @@ const externalTips: Tip[] = [
     },
   },
   {
-    id: 'install-github-app',
-    content: async () =>
-      'Run /install-github-app to tag @ur right from your Github issues and PRs',
-    cooldownSessions: 10,
-    isRelevant: async () => !getGlobalConfig().githubActionSetupCount,
-  },
-  {
     id: 'install-slack-app',
     content: async () => 'Run /install-slack-app to use UR in Slack',
     cooldownSessions: 10,

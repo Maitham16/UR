@@ -188,7 +188,6 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/browser <url\|task>` | local | Browser pilot (Playwright if installed) | `/browser https://localhost:3000 "click login and screenshot"` |
 | `/browser-qa list\|validate\|run` | local | Browser QA replay fixtures | `/browser-qa run login-flow` |
 | `/desktop-qa init\|list\|validate\|run\|schema\|doctor` (`/qa-desktop`) | local | Bounded Electron fixtures with teardown, masked screenshots, and raw recordings only when selector masking is off | `/desktop-qa run smoke.json` |
-| `/install-github-app` | jsx | Set up UR GitHub Actions for a repo, enabling `@ur <task>` from issues, PR comments, reviews, and new issues (doc 11) | `/install-github-app` |
 | `/install-slack-app` | local | Install the UR Slack app | `/install-slack-app` |
 | `/remote-control [name]` (`/rc`) | jsx | Connect terminal for remote-control (mobile/web) sessions | `/remote-control` |
 | `/remote-env` | jsx | Default remote environment for teleport sessions | `/remote-env` |
