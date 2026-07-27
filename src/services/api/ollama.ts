@@ -153,6 +153,30 @@ export function getEffectiveOllamaBaseUrl(): string {
   return ollamaBaseUrlOverride ?? getOllamaBaseUrl()
 }
 
+/**
+ * Headers for an Ollama request, including bearer auth when a key is present.
+ *
+ * A local daemon needs no credential: it holds the account itself, which is how
+ * `:cloud` model suffixes work locally. A direct connection to Ollama's hosted
+ * API does need one, and without this the request simply 401s — which is why
+ * Ollama Cloud was unreachable from CI, where no signed-in daemon exists.
+ *
+ * The key is read per request rather than cached so a rotated key takes effect
+ * without restarting the session.
+ */
+export function buildOllamaHeaders(
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  const apiKey = env.OLLAMA_API_KEY?.trim()
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`
+  }
+  return headers
+}
+
 function createStreamingRequest(
   params: BetaMessageStreamParams,
   options?: RequestOptions,
@@ -208,9 +232,7 @@ async function fetchOllamaChat(
     )
     const response = await fetch(`${getEffectiveOllamaBaseUrl()}/api/chat`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: buildOllamaHeaders(),
       body: JSON.stringify(toOllamaChatRequest(params, stream, capabilities)),
       signal: controller.signal,
     })
@@ -666,9 +688,7 @@ async function getOllamaModelCapabilities(
   try {
     const response = await fetch(`${getEffectiveOllamaBaseUrl()}/api/show`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: buildOllamaHeaders(),
       body: JSON.stringify({ model: normalizedModel }),
       signal,
     })

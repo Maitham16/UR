@@ -88,7 +88,12 @@ jobs:
           set -euo pipefail
           bun run typecheck
           bun run lint
-          bun test --timeout 120000
+          # By default bun loads every test file into one process; across ~173
+          # files this repo peaks past 3 GB. A runner that OOM-kills that
+          # process leaves the parent waiting on dead children — a silent hang
+          # rather than an honest failure. `--parallel` implies `--isolate`, so
+          # memory is reclaimed per worker and the gate can actually fail.
+          bun test --timeout 120000 --parallel=4
           bun run build
           bun run release:check
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.52.0
+
+- Implemented Ollama Cloud authentication. The Ollama client sent no
+  `Authorization` header at all, so the hosted API was unreachable: local
+  sessions only worked because the signed-in daemon proxies `:cloud` models on
+  the user's behalf, and CI — which has no daemon — could not use Ollama at
+  all. `OLLAMA_API_KEY` is now sent as a bearer token, trimmed so a pasted
+  trailing newline cannot corrupt the header.
+- A configured key with no configured host now resolves to `https://ollama.com`
+  rather than localhost, since a bare key is useless against a local daemon. An
+  explicit `OLLAMA_HOST` still wins, so self-hosted gateways are unaffected.
+- Added `OLLAMA_API_KEY` to the Agentic CI provider-credential allowlist, so it
+  reaches the isolated agent while platform write tokens still do not. Together
+  these make `@ur` runnable in GitHub Actions against Ollama Cloud.
+- Fixed the release gate hanging instead of failing. `bun test` loads all ~173
+  files into one process and peaks past 3 GB; when a runner OOM-kills it the
+  parent waits forever on dead children, which looks like a hang rather than a
+  failure. The gate now runs `--parallel=4`, which implies `--isolate` and
+  reclaims memory per worker. The suite itself was never broken.
+
 ## 1.51.0
 
 - Added named permission profiles. `settings.permissions.profiles` holds named
