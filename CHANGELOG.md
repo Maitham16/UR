@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.50.1
+
+- Fixed an always-true provider test that silently disabled a large part of the
+  command surface. `isUsing3PServices()` was derived from `getAPIProvider()`,
+  a request-shaping enum that never returns `'firstParty'`, so the comparison
+  held for every user. Consequences: `/login` and `/logout` were never
+  registered; every `availability`-gated command failed its check, so
+  `/install-github-app`, `/fast`, `/chrome`, `/desktop`, `/install-slack-app`,
+  `/remote-setup`, `/upgrade`, `/usage`, and `/voice` reported "Unknown skill";
+  `ur auth status` classified every user as `third_party` and always logged in;
+  `is1PApiCustomer()` always returned false, suppressing three tips. Third-party
+  status is now derived from the provider registry — vendor API keys and
+  external CLI logins are third-party, while local, self-hosted, and
+  subscription runtimes are not.
+- Ungated `/install-github-app`. It provisions a workflow and a repository
+  secret rather than consuming inference, and the API key is entered in the
+  flow, so it is now available on every provider including local runtimes.
+
 ## 1.50.0
 
 - Completed `/install-github-app` so `@ur <task>` works from GitHub. The

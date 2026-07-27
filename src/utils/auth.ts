@@ -12,6 +12,10 @@ import {
 import { getModelStrings } from 'src/utils/model/modelStrings.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import {
+  getProviderDefinition,
+  getRuntimeProviderId,
+} from 'src/services/providers/providerRegistry.js'
+import {
   getIsNonInteractiveSession,
   preferThirdPartyAuthentication,
 } from '../bootstrap/state.js'
@@ -112,7 +116,7 @@ export function isURHQAuthEnabled(): boolean {
     return !!process.env.UR_CODE_OAUTH_TOKEN
   }
 
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = isUsing3PServices()
 
   // Check if user has configured an external API key source
   // This allows externally-provided API keys to work (without requiring proxy configuration)
@@ -1585,8 +1589,8 @@ export function is1PApiCustomer(): boolean {
   // 3. AWS Bedrock users
   // 4. Foundry users
 
-  // Exclude Vertex, Bedrock, and Foundry customers
-  if (getAPIProvider() !== 'firstParty') {
+  // Exclude vendor-credentialed customers
+  if (isUsing3PServices()) {
     return false
   }
 
@@ -1719,9 +1723,25 @@ export function getSubscriptionName(): string {
   }
 }
 
-/** Check if using third-party services (Bedrock or Vertex or Foundry) */
+/**
+ * True when inference credentials belong to an external vendor, so UR's own
+ * auth surface (login/logout, key-based entitlements, /feedback) does not apply.
+ *
+ * This must not be derived from `getAPIProvider()`. That enum exists for
+ * first-party request shaping and deliberately never returns `'firstParty'`
+ * — every provider maps to `'ollama'` or `'foundry'` — so the old
+ * `!== 'firstParty'` test was unconditionally true. That silently unregistered
+ * `/login` and `/logout`, made every availability-gated `'console'` command
+ * unreachable, and reported all users as `third_party` in `ur auth status`.
+ *
+ * Vendor-owned: provider API keys, and external CLI bridges that carry their
+ * own logins. Not vendor-owned: UR's subscription login, and local or
+ * self-hosted runtimes, where the user holds the credentials.
+ */
 export function isUsing3PServices(): boolean {
-  return getAPIProvider() !== 'firstParty'
+  const provider = getProviderDefinition(getRuntimeProviderId())
+  if (provider.accessType === 'api') return true
+  return provider.credentialType === 'cli-login'
 }
 
 /**
