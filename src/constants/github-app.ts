@@ -10,7 +10,7 @@ export const GITHUB_ACTION_SETUP_DOCS_URL =
   'https://github.com/Maitham16/UR'
 
 const urVersion =
-  typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.50.1'
+  typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.50.2'
 
 export const WORKFLOW_CONTENT = compileAgenticCiWorkflow('default', {
   packageVersion: urVersion,

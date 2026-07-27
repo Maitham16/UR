@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.50.2
+
+- Fixed local-provider sessions showing "Not logged in · Run /login" with no
+  account to log in to, introduced in 1.50.1. Credential ownership and URHQ
+  auth applicability are separate questions: an Ollama session uses the user's
+  own local runtime, so it is not third-party, but inference never reaches
+  URHQ and no URHQ credential exists to verify. `isURHQAuthEnabled()` now keys
+  off a dedicated `usesURHQSubscriptionAuth()` predicate, so only the
+  subscription provider — where `/login` is actionable — can report a missing
+  key. `/login` and `/logout` stay registered everywhere they are useful.
+- Skipped a keychain and settings read on every session that cannot use URHQ
+  auth, by returning before the external-credential lookup instead of folding
+  the provider test into the final condition.
+
 ## 1.50.1
 
 - Fixed an always-true provider test that silently disabled a large part of the

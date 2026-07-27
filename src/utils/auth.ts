@@ -116,7 +116,14 @@ export function isURHQAuthEnabled(): boolean {
     return !!process.env.UR_CODE_OAUTH_TOKEN
   }
 
-  const is3P = isUsing3PServices()
+  // Not `isUsing3PServices()`. That asks who owns the credentials; this asks
+  // whether URHQ OAuth applies at all. On a local runtime like Ollama the
+  // credentials are the user's own yet inference never reaches URHQ, so
+  // there is nothing to log in to and the session must not be nagged.
+  //
+  // Returning here rather than folding into `shouldDisableAuth` below also
+  // skips a keychain read that could never change the answer.
+  if (!usesURHQSubscriptionAuth()) return false
 
   // Check if user has configured an external API key source
   // This allows externally-provided API keys to work (without requiring proxy configuration)
@@ -135,14 +142,13 @@ export function isURHQAuthEnabled(): boolean {
     apiKeySource === 'URHQ_API_KEY' || apiKeySource === 'apiKeyHelper'
 
   // Disable UR auth if:
-  // 1. Using 3rd party services (Bedrock/Vertex/Foundry)
-  // 2. User has an external API key (regardless of proxy configuration)
-  // 3. User has an external auth token (regardless of proxy configuration)
+  // 1. User has an external API key (regardless of proxy configuration)
+  // 2. User has an external auth token (regardless of proxy configuration)
+  // (providers that do not use URHQ subscription auth already returned above)
   // this may cause issues if users have complex proxy / gateway "client-side creds" auth scenarios,
   // e.g. if they want to set X-Api-Key to a gateway key but use UR OAuth for the Authorization
   // if we get reports of that, we should probably add an env var to force OAuth enablement
   const shouldDisableAuth =
-    is3P ||
     (hasExternalAuthToken && !isManagedOAuthContext()) ||
     (hasExternalApiKey && !isManagedOAuthContext())
 
@@ -1742,6 +1748,22 @@ export function isUsing3PServices(): boolean {
   const provider = getProviderDefinition(getRuntimeProviderId())
   if (provider.accessType === 'api') return true
   return provider.credentialType === 'cli-login'
+}
+
+/**
+ * True only when the selected provider authenticates through URHQ's own
+ * subscription login — the one case where a URHQ credential is required and
+ * `/login` is actionable.
+ *
+ * Distinct from `isUsing3PServices()`: a local runtime is not third-party, but
+ * it still does not use URHQ auth. Conflating the two makes local-provider
+ * sessions report a missing API key and display "Not logged in · Run /login".
+ */
+export function usesURHQSubscriptionAuth(): boolean {
+  return (
+    getProviderDefinition(getRuntimeProviderId()).credentialType ===
+    'subscription-login'
+  )
 }
 
 /**

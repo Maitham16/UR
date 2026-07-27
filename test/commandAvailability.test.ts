@@ -75,3 +75,24 @@ test('commands without an availability requirement skip the auth check', () => {
     meetsAvailabilityRequirement({ name: 'x', description: 'x' } as never),
   ).toBe(true)
 })
+
+test('only URHQ subscription auth prompts for login', () => {
+  // Credential ownership and "does URHQ auth apply" are different questions.
+  // Ollama credentials are the user's own, so it is not third-party, but
+  // inference never reaches URHQ so there is nothing to log in to. Conflating
+  // them showed "Not logged in · Run /login" on every local-provider session.
+  const usesURHQAuth = (id: (typeof PROVIDER_IDS)[number]) =>
+    getProviderDefinition(id).credentialType === 'subscription-login'
+
+  expect(PROVIDER_IDS.filter(usesURHQAuth)).toEqual(['subscription'])
+
+  for (const id of ['ollama', 'lmstudio', 'llama.cpp', 'vllm'] as const) {
+    expect(usesURHQAuth(id)).toBe(false)
+    // Local runtimes are simultaneously not third-party and not URHQ-authed.
+    expect(classify(id)).toBe(false)
+  }
+
+  // External CLI logins are third-party but likewise never URHQ-authed.
+  expect(usesURHQAuth('codex-cli')).toBe(false)
+  expect(classify('codex-cli')).toBe(true)
+})
