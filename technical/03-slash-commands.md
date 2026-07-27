@@ -154,6 +154,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/safety status\|init\|check` (`/safety-policy`) | local | Project shell-safety policy (`.ur/safety-policy.json`); evaluate risky commands | `/safety check --command "rm -rf build"` |
 | `/sandbox [status\|check\|init\|eval\|exclude]` | jsx | Interactive sandbox settings plus text status, dependency, policy, approval-level, and exclusion actions | `/sandbox eval "curl https://example.com"` |
 | `/permissions` (`/allowed-tools`) | jsx | Manage allow/deny tool permission rules | `/permissions` |
+| `/permission-profile [list\|use <name>\|clear]` (`/profile`) | local | List, switch, or clear the active named permission profile | `/permission-profile use reviewing` |
 | `/privacy-settings` | jsx | View/update privacy settings | `/privacy-settings` |
 
 ## 8. Research & analysis

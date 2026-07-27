@@ -127,3 +127,56 @@ test('background agent transitions fire Notification hooks', () => {
   expect(source).toContain("notificationType: 'agent_failed'")
   expect(source).toContain('executeNotificationHooks')
 })
+
+// --- Permission profile switching -----------------------------------------
+
+test('profile switching writes to the source that defines the profile', async () => {
+  const { listProfiles, setActiveProfile, findProfileSource } = await import(
+    '../src/utils/permissions/profiles.ts'
+  )
+  const store: Record<string, SettingsJson | null> = {
+    localSettings: null,
+    projectSettings: {
+      permissions: {
+        profiles: { reviewing: { deny: ['Edit'], description: 'read only' } },
+      },
+    },
+    userSettings: { permissions: { profiles: { trusted: { allow: ['Bash'] } } } },
+  }
+  const read = (source: string) => store[source] ?? null
+  const writes: string[] = []
+  const write = (source: string, settings: SettingsJson) => {
+    writes.push(source)
+    store[source] = settings
+    return { error: null }
+  }
+
+  expect(listProfiles(read as never).map(p => p.name)).toEqual([
+    'reviewing',
+    'trusted',
+  ])
+  expect(findProfileSource('trusted', read as never)).toBe('userSettings')
+
+  // The switch lands beside the definition, not in a shadowing file.
+  const result = setActiveProfile('reviewing', {
+    read: read as never,
+    write: write as never,
+  })
+  expect(result.ok).toBe(true)
+  expect(writes).toEqual(['projectSettings'])
+  expect(store.projectSettings?.permissions?.activeProfile).toBe('reviewing')
+})
+
+test('switching to an unknown profile fails and names the known ones', async () => {
+  const { setActiveProfile } = await import(
+    '../src/utils/permissions/profiles.ts'
+  )
+  const read = () =>
+    ({ permissions: { profiles: { trusted: {} } } }) as SettingsJson
+  const result = setActiveProfile('nope', {
+    read: read as never,
+    write: (() => ({ error: null })) as never,
+  })
+  expect(result.ok).toBe(false)
+  expect(result.error).toContain('trusted')
+})

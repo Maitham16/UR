@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.53.0
+
+- Added automatic memory extraction (`src/memdir/extractFacts.ts`). Durable
+  preferences and project conventions are proposed from user messages, deduped
+  against stored memory by normalized key and containment, and ranked by
+  confidence. Deliberately rule-based: a per-turn model call costs latency on
+  every turn, and a model asked what to remember over-answers. Precision beats
+  recall here because a wrong memory is replayed into every later session.
+  Instructions scoped to the moment ("for now", "just this once") and anything
+  resembling a credential are never captured. Extraction reads user messages
+  only, so the agent cannot teach itself its own guesses.
+- Added spoken output (`src/voice/speak.ts`) for macOS, Linux and Windows.
+  Code blocks, URLs and file paths are replaced before synthesis rather than
+  read character by character, output is capped and cut on a sentence
+  boundary, and the text travels on stdin so it is never shell-parsed. A
+  missing synthesiser degrades to silence instead of interrupting the session.
+- Added desktop-control primitives (`src/utils/computerUse/commands.ts`) for
+  macOS and Linux: screenshot, click, and type. Coordinates are bounds-checked
+  against the real screen, typed text is escaped into an AppleScript literal it
+  cannot break out of, and every state-changing action is marked as requiring
+  approval while reads are not.
+- Added `/permission-profile [list|use <name>|clear]` (alias `/profile`) to
+  switch the active profile from the CLI. The switch is written to whichever
+  settings source defines the profile, so it lands beside its definition rather
+  than creating a shadowing entry elsewhere.
+- Added `scripts/backfill-releases.mjs` to publish GitHub Releases for tags
+  that predate the release workflow. Tags without a matching `CHANGELOG.md`
+  section are skipped rather than given invented notes, existing releases are
+  left alone, and nothing is created without `--apply`.
+
 ## 1.52.0
 
 - Implemented Ollama Cloud authentication. The Ollama client sent no
