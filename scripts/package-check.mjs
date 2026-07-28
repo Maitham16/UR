@@ -112,6 +112,57 @@ function expectStatus(label, result, expectedStatus) {
   }
 }
 
+
+/**
+ * Every runtime dependency range must resolve to a version that exists.
+ *
+ * This gate was missing, and four releases (1.61.2 through 1.64.0) shipped
+ * uninstallable: a version bump rewrote `playwright-core` from `^1.61.1` to a
+ * range matching UR's own version, which npm has never published. The tarball
+ * built, the CLI started, tests passed and the release gate was green — every
+ * check ran against the working tree, and none of them asked the registry
+ * whether the declared dependencies could actually be installed. The failure
+ * only ever appeared on a user's machine.
+ *
+ * `npm view <name>@<range> version` is used rather than a full install: it
+ * asks the registry the exact question that matters and takes seconds, where
+ * installing the tree takes minutes and fails for unrelated network reasons.
+ */
+function checkDependenciesResolve(packedPackage) {
+  const deps = Object.entries(packedPackage.dependencies ?? {})
+  if (deps.length === 0) return
+  const unresolved = []
+  for (const [name, range] of deps) {
+    // A range equal to our own version is the fingerprint of a bump that
+    // matched too much. Flag it even if it happens to resolve.
+    if (range.replace(/^[\^~]/, '') === packedPackage.version) {
+      unresolved.push(
+        `${name}@${range} matches the UR version exactly — almost certainly a bad version bump`,
+      )
+      continue
+    }
+    const result = spawnSync('npm', ['view', `${name}@${range}`, 'version'], {
+      encoding: 'utf8',
+      timeout: 60_000,
+    })
+    if (result.status !== 0 || !result.stdout.trim()) {
+      unresolved.push(
+        `${name}@${range} does not resolve: ${(result.stderr || result.stdout || 'no output').trim().split('\n')[0]}`,
+      )
+    }
+  }
+  if (unresolved.length > 0) {
+    // Return before the success line: fail() accumulates rather than throwing,
+    // so printing unconditionally would report that the ranges resolve in the
+    // same output that says they cannot be installed.
+    fail(
+      `packed dependencies cannot be installed:\n  ${unresolved.join('\n  ')}`,
+    )
+    return
+  }
+  console.log(`Dependency check: ${deps.length} runtime range(s) resolve.`)
+}
+
 function main() {
   const workDir = mkdtempSync(join(tmpdir(), 'ur-nexus-package-check-'))
   try {
@@ -133,6 +184,8 @@ function main() {
     if (packedPackage.devDependencies?.sharp) {
       fail('packed package.json must not declare sharp in devDependencies')
     }
+
+    checkDependenciesResolve(packedPackage)
 
     const version = runPackagedBin(packageRoot, ['--version'])
     expectStatus('packed ur --version', version, 0)

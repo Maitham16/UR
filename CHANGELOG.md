@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.65.0
+
+- The release gate now asks the registry whether the packed dependency ranges
+  can actually be installed. This is the check that was missing when 1.61.2
+  through 1.64.0 shipped uninstallable: the tarball built, the CLI started,
+  every test passed and the gate was green, because all of it ran against the
+  working tree and none of it asked npm whether `playwright-core@^1.64.0`
+  exists. The failure only ever appeared on a user's machine.
+- A dependency range equal to the UR version is rejected outright, resolvable
+  or not. That equality is the fingerprint of a version bump that matched too
+  much, which is exactly how the break happened.
+- Verified by reintroducing the historical break: exit 1 with
+  `playwright-core@^1.64.0 does not resolve: npm error code E404`, and exit 0
+  on a clean tree.
+
 ## 1.64.1
 
 - Fixed `npm install -g ur-agent` failing with
