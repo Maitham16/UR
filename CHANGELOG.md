@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.64.1
+
+- Fixed `npm install -g ur-agent` failing with
+  `No matching version found for playwright-core@^1.64.0`. Releases 1.61.2,
+  1.62.0, 1.63.0 and 1.64.0 were uninstallable: the version bump was a
+  `sed 's/OLD/NEW/g' package.json`, and `playwright-core` happened to sit at
+  `^1.61.1` — the same version UR was on — so the substitution rewrote the
+  dependency too, then cascaded with every later bump to a version that does
+  not exist. The built artifact and every test were fine; only `npm install`
+  failed, on other people's machines.
+- Version bumping is now `scripts/version-bump.mjs`, which edits JSON files as
+  JSON and touches only the top-level `version` key, and uses anchored patterns
+  for text files that cannot match a dependency range.
+- Added `test/dependencyIntegrity.test.ts`: no dependency range may equal the
+  UR version, which is the exact fingerprint of a bump that matched too much.
+  Verified it fails when the historical break is reintroduced.
+
 ## 1.64.0
 
 - Tool-result pruning now announces itself. It changed context silently, so
