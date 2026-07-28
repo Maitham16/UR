@@ -4839,6 +4839,13 @@ async function run(): Promise<CommanderCommand> {
     const cmdArgs = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, ...args.map(quoteLocalCommandArg), opts.dryRun ? '--dry-run' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/skill/skill.js'), cmdArgs);
   });
+  program.command('memory-integrity [action]').alias('mem-verify').description('Verify, baseline, or quarantine the file-backed memory stores').option('--store <store>', 'auto, team, all, or a directory path').option('--json', 'Output as JSON').action(async (action: string | undefined, opts: {
+    store?: string;
+    json?: boolean;
+  }) => {
+    const args = [action ? quoteLocalCommandArg(action) : undefined, opts.store ? `--store ${quoteLocalCommandArg(opts.store)}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/memory-integrity/memory-integrity.js'), args);
+  });
   program.command('sources').description('List untrusted sources this session, or check whether a span came from one').option('--check <span>', 'Check whether a span appears in any fetched source').option('--flagged', 'Only sources that matched an injection signal').option('--json', 'Output as JSON').action(async (opts: {
     check?: string;
     flagged?: boolean;

@@ -97,6 +97,42 @@ jobs:
           bun run build
           bun run release:check
 
+      # Grades every recorded eval trajectory, not just its final answer. The
+      # score is deterministic, so this can gate a release: a run that edited
+      # files without verifying, issued a destructive command, or looped on an
+      # identical failure fails here even when its conclusion was correct.
+      # Skipped rather than failed when no trajectories are recorded, so the
+      # gate never blocks on an empty fixture set.
+      - name: Grade recorded trajectories
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          transcripts=(.ur/eval/trajectories/*.jsonl)
+          if [ ${#transcripts[@]} -eq 0 ]; then
+            echo "No recorded trajectories; nothing to grade."
+            exit 0
+          fi
+          mkdir -p dist-release
+          scores=dist-release/trajectory-scores.json
+          printf '{"version":"%s","graded":[' "${{ steps.resolve.outputs.version }}" > "$scores"
+          first=1
+          status=0
+          for transcript in "${transcripts[@]}"; do
+            echo "::group::$transcript"
+            if ! node ./bin/ur.js grade-trajectory --file "$transcript" --min-score "${UR_TRAJECTORY_MIN_SCORE:-70}"; then
+              status=1
+            fi
+            [ $first -eq 1 ] || printf ',' >> "$scores"
+            first=0
+            printf '{"transcript":"%s","grade":' "$transcript" >> "$scores"
+            node ./bin/ur.js grade-trajectory --file "$transcript" --json >> "$scores"
+            printf '}' >> "$scores"
+            echo "::endgroup::"
+          done
+          printf ']}' >> "$scores"
+          echo "Wrote versioned category scores to $scores"
+          exit $status
+
       - name: Smoke test the built CLI
         run: |
           set -euo pipefail

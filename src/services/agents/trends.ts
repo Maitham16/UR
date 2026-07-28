@@ -245,9 +245,10 @@ const coverage: TrendCoverage[] = [
     name: 'Long-term memory',
     status: 'partial',
     summary:
-      'UR has file-backed memory, research notes, team memory, forget controls, consolidation, retrieval, and a provenance-rich tamper-evident project task-memory chain with quarantine and rollback.',
+      'UR has file-backed memory, research notes, team memory, forget controls, consolidation, retrieval, a tamper-evident project task-memory chain, and a digest manifest over the auto/team memory directories that detects modified, externally deleted, and untracked files with quarantine.',
     evidence: [
       '/remember, /forget, /memory',
+    'ur memory-integrity verify|record|quarantine (digest manifest, non-zero exit on tamper)',
       'ur knowledge build --embeddings (dense retrieval) + lexical fallback, provenance, retention',
       'team memory sync and auto-dream consolidation services',
       'ur context-pack memory verify|quarantine|rollback',
@@ -258,7 +259,7 @@ const coverage: TrendCoverage[] = [
       'https://owasp.org/www-project-agent-memory-guard/',
     ],
     professionalNextStep:
-      'Extend the same integrity and deletion guarantees from project task memory to every legacy, team, and embedding-backed memory store.',
+      'File-backed stores now carry a digest manifest with verify/quarantine and provable deletion. Remaining step is optional: sign the manifest so integrity survives an attacker with write access to the store directory itself.',
   },
   {
     id: 'agent-skills',
@@ -299,20 +300,21 @@ const coverage: TrendCoverage[] = [
   {
     id: 'provenance',
     name: 'Source provenance and citation discipline',
-    status: 'partial',
+    status: 'covered',
     summary:
-      'UR records fetched source URLs and has research citation commands, but claim-level source ledgers are not yet enforced for every generated answer.',
+      'Every untrusted block is recorded as it enters context with its source, digest and injection signals, and any span can be traced back to the source containing it — or reported as grounded in nothing UR fetched.',
     evidence: [
-      'WebFetch tool results include Source URL',
-      '/cite and /graph research workflows',
-      '/trace exposes recent tool calls and results',
+      'ur sources — automatic ledger recorded inside wrapUntrusted, the single choke point every untrusted block passes',
+      'ur sources --check "<span>" traces a claim to its source, or states it was ungrounded',
+      '/claim-ledger for claims asserted by hand',
+      'WebFetch/WebSearch/MCP results carry a nonce-bound source label',
     ],
     references: [
       'https://openai.github.io/openai-agents-python/tracing/',
       'https://modelcontextprotocol.io/docs/getting-started/intro',
     ],
     professionalNextStep:
-      'Add a claim-to-source ledger for web/MCP outputs and expose it through /evidence or /trace.',
+      'Ledger is per-process by design; persisting it would create a second on-disk store of third-party content with its own retention obligations. Revisit only if cross-session provenance is required.',
   },
   {
     id: 'evals-observability',
@@ -452,14 +454,14 @@ const coverage: TrendCoverage[] = [
     name: 'Multimodal workflows',
     status: 'partial',
     summary:
-      'UR includes image, video, YouTube, voice, and browser workflows, but polished real-time multimodal agent UX is still provider/model dependent.',
+      'UR includes image, video, YouTube, voice and browser workflows. Vision capability is tri-state (supported/unsupported/unknown) from one shared resolver, so images are withheld only on a confirmed no and the agent never claims a model is blind when the provider simply did not say.',
     evidence: ['/image', '/video', '/youtube', '/voice', 'examples/images.md', 'ur model-route (routes vision tasks to vision-capable models)'],
     references: [
       'https://platform.openai.com/docs/guides/tools-computer-use',
       'https://docs.ollama.com/',
     ],
     professionalNextStep:
-      'Auto-pull or warn when a multimodal task has no capable local model, using the model-route gap signal.',
+      'Vision capability is resolved once in src/utils/model/visionCapability.ts and shared by the adapter, model-doctor and the router. Remaining step is optional: offer to pull a vision model rather than only reporting the gap.',
   },
   {
     id: 'provider-native-runtime',

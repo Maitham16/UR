@@ -304,3 +304,20 @@ global + command-scoped bindings; see `useGlobalKeybindings.tsx` / `useCommandKe
 `/config`. Built-in styles (`src/constants/outputStyles.ts`) include Explanatory,
 Concise, JSON-strict (every response a parseable JSON object), Debug-verbose
 (hypothesis-driven diagnostics), and Release-notes (changelog tone).
+
+## Settings not covered above
+
+These keys exist in `SettingsSchema` (`src/utils/settings/types.ts`) and were
+previously undocumented — the gap that let several releases ship settings no
+one could discover. `test/settingsDocCoverage.test.ts` now fails if any schema
+key is missing from this file.
+
+| Key | What it does |
+|---|---|
+| `$schema` | JSON Schema URL for editor completion in `settings.json`. Not a UR setting; ignored at runtime. |
+| `worktree.symlinkDirectories` | Directories symlinked from the main repository into each worktree instead of being copied, to avoid disk bloat. Nothing is symlinked unless listed; `node_modules`, `.cache` and `.bin` are the usual candidates. |
+| `worktree.sparsePaths` | Paths to materialize when creating a worktree, via `git sparse-checkout` in cone mode. In a large monorepo only the listed paths are written to disk, which is dramatically faster. |
+| `channelsEnabled` | Teams/Enterprise opt-in for channel notifications from MCP servers that declare the capability. Off unless set. |
+| `allowedChannelPlugins` | Allow-list of `{ marketplace, plugin }` pairs permitted to deliver channel notifications. Used with `channelsEnabled` to bound which plugins can notify. |
+| `urMdExcludes` | Glob patterns or absolute paths of `UR.md` files to skip when loading project memory. Use it to keep vendored or generated `UR.md` files out of context. |
+| `pluginTrustMessage` | Extra text appended to the plugin trust warning shown before installation, for organizations that need to state their own policy at that moment. |

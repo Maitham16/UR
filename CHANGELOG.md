@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.60.0
+
+- Added `ur memory-integrity`, tamper-evidence for the file-backed memory
+  stores. Project task memory was hash-chained and could prove tampering; the
+  auto-memory and team-memory directories had nothing, and their contents are
+  injected straight into context. A chain over append-only lines does not
+  describe a mutable file tree, so this is a digest manifest: it detects files
+  modified, deleted outside UR, and — the case that matters most — dropped in
+  by something else, which is an injection vector with a direct path to the
+  model. `quarantine` moves suspect files aside rather than deleting them, and
+  `verify` exits non-zero so it can gate.
+- Deletion is now provable: removing an entry rewrites the manifest, so a
+  previously-deleted memory that reappears is reported as untracked instead of
+  being quietly reloaded.
+- The release gate now grades recorded eval trajectories and writes versioned
+  per-category scores to `dist-release/trajectory-scores.json`. A run that
+  edited files without verifying, issued a destructive command, or looped on an
+  identical failure fails the gate even when its conclusion was correct.
+- Added `test/settingsDocCoverage.test.ts`: every `SettingsSchema` key must
+  appear in `technical/06-configuration.md`. It found six undocumented settings
+  (`worktree`, `channelsEnabled`, `allowedChannelPlugins`, `urMdExcludes`,
+  `pluginTrustMessage`, `$schema`), now documented. Command coverage was
+  already enforced; settings coverage was not, which is how they slipped.
+- Refreshed `ur agent-trends`, which still listed the claim-to-source ledger,
+  trajectory grading and multimodal capability warnings as future work after
+  they shipped — leaving UR misreporting its own coverage.
+
 ## 1.59.0
 
 - Added `ur sources`, a claim-to-source ledger. `wrapUntrusted` already stamped
