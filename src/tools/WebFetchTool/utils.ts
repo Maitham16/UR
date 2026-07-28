@@ -655,7 +655,19 @@ export async function applyPromptToMarkdown(
   if (content.length > 0) {
     const contentBlock = content[0]
     if ('text' in contentBlock!) {
-      return contentBlock.text
+      const text = contentBlock.text
+      // A failed secondary query returns its error as assistant text. Passing
+      // that back as the fetch result made an API error look like the page:
+      // the evidence ledger recorded "API Error: Provider ollama ..." as the
+      // content of example.com, and a --check against the real page text
+      // correctly found nothing. Fail loudly instead of substituting the
+      // error for the document.
+      if (assistantMessage.isApiErrorMessage || /^API Error:/.test(text)) {
+        throw new Error(
+          `Fetched the page, but summarising it failed: ${text.trim()}`,
+        )
+      }
+      return text
     }
   }
   return 'No response from model'

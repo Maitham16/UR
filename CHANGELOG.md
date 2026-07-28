@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.61.1
+
+- Fixed secondary model queries failing on any Ollama setup whose session model
+  is not `qwen2.5-coder:7b`. `getSmallFastModel()` fell back to the compiled
+  default when auto-routing was off or no model list had been discovered, so a
+  user running `kimi-k2.7-code:cloud` had every WebFetch summarisation and
+  classifier call rejected with "Model qwen2.5-coder:7b is not available for
+  provider ollama". A fallback to a model the user may never have pulled is a
+  guaranteed failure; it now falls back to the session model, which is
+  guaranteed to exist.
+- WebFetch no longer returns a failed summarisation as if it were the page.
+  The error text was passed through as the fetch result, so the evidence ledger
+  recorded "API Error: Provider ollama ..." as the content of example.com and a
+  `--check` against real page text correctly found nothing. It now throws, and
+  the failure is visible as a failed tool call.
+
 ## 1.61.0
 
 - Added `ur selftest`, end-to-end drills for the gap that produced every
