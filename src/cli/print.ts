@@ -4179,8 +4179,16 @@ function runHeadlessStreaming(
  * This function converts the permissionPromptTool into a CanUseToolFn that can be used in ask.tsx
  */
 export function createCanUseToolWithPermissionPrompt(
-  permissionPromptTool: PermissionPromptTool,
+  permissionPromptToolInput: PermissionPromptTool,
 ): CanUseToolFn {
+  // This tool returns a permission decision that is JSON-parsed below, not
+  // prose the model reads. It is UR's control plane, so it is exempt from the
+  // untrusted-content boundary applied to ordinary MCP results — wrapping it
+  // would make every decision fail to parse.
+  const permissionPromptTool = {
+    ...permissionPromptToolInput,
+    trustedControlChannel: true,
+  } as PermissionPromptTool
   const canUseTool: CanUseToolFn = async (
     tool,
     input,

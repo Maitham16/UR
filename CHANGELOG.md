@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.57.4
+
+- Fixed slash command arguments being silently truncated. `parseArguments`
+  kept only the string tokens shell-quote returned, but shell-quote classifies
+  `left?` and `src/*.ts` as globs and `&`, `>`, `(` as operators — so
+  `/btw what is left?` arrived as "what is", and `read src/*.ts` lost the path
+  entirely. These are command arguments, usually plain English, not a shell
+  pipeline; the literal text is now recovered.
+- `/btw` now passes the question through verbatim instead of re-joining
+  tokens, which collapsed runs of whitespace and respaced punctuation even
+  when no token was dropped. Same for the tail of `continue` and `rename`.
+- Memory suggestions now render in the transcript. They were written to
+  `process.stderr`, which under the Ink REPL lands outside the rendered frame
+  and is overwritten on the next repaint, so the feature was effectively
+  invisible. stderr remains the fallback for headless `ur -p`.
+- Extended the untrusted-content boundary to MCP tool results. A GitHub issue
+  body or Jira comment arriving through an MCP server is the same trust class
+  as a web fetch and a higher-volume channel, but only WebFetch and WebSearch
+  were wrapped. Text blocks are wrapped in place so images and array structure
+  survive. The configured permission-prompt tool is exempt via
+  `trustedControlChannel`: its result is JSON-parsed into an allow/deny
+  decision and is UR's control plane, not model-facing context.
+
 ## 1.57.3
 
 - Stopped a false diagnosis on failed tool calls. When a tool call failed

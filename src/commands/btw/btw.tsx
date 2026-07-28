@@ -249,12 +249,27 @@ function formatSideChat(chat: SideChat): string {
   return lines.join('\n').trim()
 }
 
+/**
+ * Everything after the first `count` whitespace-delimited words, preserved
+ * exactly. Used for the free-text tail of `continue <id> …` and `rename <id> …`
+ * so punctuation and spacing survive. Safe because the words being skipped are
+ * subcommand names and chat ids, which never contain quotes or spaces.
+ */
+function dropLeadingWords(raw: string, count: number): string {
+  let rest = raw
+  for (let index = 0; index < count; index++) {
+    rest = rest.replace(/^\s*\S+/, '')
+  }
+  return rest.trim()
+}
+
 export async function call(
   onDone: LocalJSXCommandOnDone,
   context: ProcessUserInputContext,
   args: string,
 ): Promise<React.ReactNode> {
-  const tokens = parseArguments(args ?? '')
+  const raw = (args ?? '').trim()
+  const tokens = parseArguments(raw)
   if (tokens.length === 0) {
     onDone(usage(), { display: 'system' })
     return null
@@ -284,7 +299,7 @@ export async function call(
     }
     if (action === 'rename') {
       if (!tokens[1] || tokens.length < 3) throw new Error(usage())
-      const chat = renameSideChat(tokens[1], tokens.slice(2).join(' '))
+      const chat = renameSideChat(tokens[1], dropLeadingWords(raw, 2))
       onDone(`Renamed side chat ${chat.id} to “${chat.title}”.`, {
         display: 'system',
       })
@@ -304,9 +319,13 @@ export async function call(
       const chat = getSideChat(tokens[1])
       if (chat.status !== 'open') throw new Error('Side chat is closed')
       chatId = chat.id
-      question = tokens.slice(2).join(' ')
+      question = dropLeadingWords(raw, 2)
     } else {
-      question = tokens.join(' ')
+      // Tokenizing and rejoining a free-text question is lossy even when no
+      // token is dropped: it collapses runs of whitespace and respaces
+      // punctuation. Only the subcommand needs tokens; the question is the
+      // user's text, verbatim.
+      question = raw
       const parentMessageId = context.messages.at(-1)?.uuid
       const chat = createSideChat({
         title: question,

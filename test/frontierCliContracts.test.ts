@@ -171,7 +171,12 @@ test('frontier CLI automation errors are nonzero and offline mode is idempotent'
   } finally {
     rmSync(cwd, { recursive: true, force: true })
   }
-}, 20_000)
+  // ~24 real CLI spawns. At 20s that allowed 830ms each, which a cold or
+  // loaded machine exceeds — the suite then reported a timeout that looked
+  // like a product regression and cost real time to disprove. Node startup
+  // dominates here and is environment-bound, so budget generously; the
+  // assertions above are what this test is for.
+}, 90_000)
 
 test('eval route preserves option-like task text', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'ur-frontier-cli-eval-route-'))

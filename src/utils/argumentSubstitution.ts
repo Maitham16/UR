@@ -33,10 +33,27 @@ export function parseArguments(args: string): string[] {
     return args.split(/\s+/).filter(Boolean)
   }
 
-  // Filter to only string tokens (ignore shell operators, etc.)
-  return result.tokens.filter(
-    (token): token is string => typeof token === 'string',
-  )
+  // These are command arguments, often plain English — not a shell pipeline.
+  // shell-quote classifies `left?` and `src/*.ts` as globs and `&`, `>`, `(`
+  // as operators; discarding those silently ate part of the user's text
+  // ("what is left?" arrived as "what is"). Recover the literal instead.
+  return result.tokens
+    .map(token => {
+      if (typeof token === 'string') return token
+      if (!token || typeof token !== 'object') return ''
+      const parsed = token as {
+        op?: string
+        pattern?: string
+        comment?: string
+      }
+      if (parsed.op === 'glob' && typeof parsed.pattern === 'string') {
+        return parsed.pattern
+      }
+      if (typeof parsed.op === 'string') return parsed.op
+      if (typeof parsed.comment === 'string') return `#${parsed.comment}`
+      return ''
+    })
+    .filter(Boolean)
 }
 
 /**

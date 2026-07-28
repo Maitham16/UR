@@ -446,6 +446,14 @@ export type Tool<
    */
   readonly alwaysLoad?: boolean
   /**
+   * When true, this tool's output is UR's own control plane rather than
+   * model-facing context, so it is exempt from the untrusted-content boundary
+   * that wraps ordinary MCP results. Currently only the configured
+   * permission-prompt tool, whose result is JSON-parsed into an allow/deny
+   * decision. Do not set this for anything the model reads.
+   */
+  readonly trustedControlChannel?: boolean
+  /**
    * For MCP tools: the server and tool names as received from the MCP server (unnormalized).
    * Present on all MCP tools regardless of whether `name` is prefixed (mcp__server__tool)
    * or unprefixed (UR_AGENT_SDK_MCP_NO_PREFIX mode).
