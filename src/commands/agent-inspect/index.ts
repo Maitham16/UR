@@ -6,7 +6,7 @@ const agentInspect = {
   aliases: ['inspect-agents'],
   description:
     'Reconstruct a per-subagent timeline (spawns, prompts, results, verdicts, tools, tokens) from this session or a transcript file',
-  argumentHint: '[--file <path>] [--json]',
+  argumentHint: '[--file <path>] [--costs [subagentsDir]] [--json]',
   supportsNonInteractive: true,
   load: () => import('./agent-inspect.js'),
 } satisfies Command

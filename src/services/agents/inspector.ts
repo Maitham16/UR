@@ -1,5 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { safeParseJSON } from '../../utils/json.js'
+import { calculateCostFromTokens } from '../../utils/modelCost.js'
 
 /**
  * Agent-run inspector.
@@ -32,8 +34,18 @@ export type MessageLike = {
   message?: {
     role?: string
     content?: unknown
-    usage?: { input_tokens?: number; output_tokens?: number }
+    usage?: {
+      input_tokens?: number
+      output_tokens?: number
+      cache_read_input_tokens?: number
+      cache_creation_input_tokens?: number
+    }
+    model?: string
   }
+  // Subagent transcripts are written to
+  // {sessionId}/subagents/agent-{agentId}.jsonl, so a run's own turns carry
+  // its id. Without it a fan-out's spend can only be seen as one total.
+  agentId?: string
 }
 
 export type AgentRun = {
@@ -44,6 +56,27 @@ export type AgentRun = {
   resultPreview: string
   status: 'ok' | 'error' | 'pending'
   verdict: 'PASS' | 'FAIL' | 'PARTIAL' | null
+  usage: AgentUsage
+}
+
+export type AgentUsage = {
+  inputTokens: number
+  outputTokens: number
+  cacheReadInputTokens: number
+  cacheCreationInputTokens: number
+  costUSD: number
+  model: string | null
+}
+
+function emptyUsage(): AgentUsage {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadInputTokens: 0,
+    cacheCreationInputTokens: 0,
+    costUSD: 0,
+    model: null,
+  }
 }
 
 export type InspectionSummary = {
@@ -55,6 +88,10 @@ export type InspectionSummary = {
   verdicts: { pass: number; fail: number; partial: number }
   tokens: { input: number; output: number }
   toolUsage: Record<string, number>
+  costUSD: number
+  // Main-thread spend. Reported separately so the per-agent rows always sum
+  // to the total — a breakdown that silently loses cost is worse than none.
+  mainThreadCostUSD: number
 }
 
 export type InspectionReport = {
@@ -95,9 +132,14 @@ export function inspectMessages(messages: MessageLike[]): InspectionReport {
     verdicts: { pass: 0, fail: 0, partial: 0 },
     tokens: { input: 0, output: 0 },
     toolUsage: {},
+    costUSD: 0,
+    mainThreadCostUSD: 0,
   }
   const agents: AgentRun[] = []
   const pendingById = new Map<string, AgentRun>()
+  // A run's own turns appear after the tool_use that spawned it, tagged with
+  // its agentId. Index by id so usage lands on the right row.
+  const byAgentId = new Map<string, AgentRun>()
 
   for (const message of messages) {
     const role = message.message?.role ?? message.type
@@ -106,6 +148,28 @@ export function inspectMessages(messages: MessageLike[]): InspectionReport {
     if (usage) {
       summary.tokens.input += usage.input_tokens ?? 0
       summary.tokens.output += usage.output_tokens ?? 0
+      const tokens = {
+        inputTokens: usage.input_tokens ?? 0,
+        outputTokens: usage.output_tokens ?? 0,
+        cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
+        cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
+      }
+      const model = message.message?.model ?? null
+      // An unknown model prices at 0 rather than throwing: a missing price
+      // must not take down the whole report.
+      const cost = model ? calculateCostFromTokens(model, tokens) : 0
+      summary.costUSD += cost
+      const owner = message.agentId ? byAgentId.get(message.agentId) : undefined
+      if (owner) {
+        owner.usage.inputTokens += tokens.inputTokens
+        owner.usage.outputTokens += tokens.outputTokens
+        owner.usage.cacheReadInputTokens += tokens.cacheReadInputTokens
+        owner.usage.cacheCreationInputTokens += tokens.cacheCreationInputTokens
+        owner.usage.costUSD += cost
+        owner.usage.model ??= model
+      } else {
+        summary.mainThreadCostUSD += cost
+      }
     }
 
     const content = message.message?.content
@@ -136,6 +200,7 @@ export function inspectMessages(messages: MessageLike[]): InspectionReport {
             resultPreview: '',
             status: 'pending',
             verdict: null,
+            usage: emptyUsage(),
           }
           agents.push(run)
           if (raw.id) pendingById.set(raw.id, run)
@@ -216,4 +281,118 @@ export function formatInspection(report: InspectionReport, json: boolean): strin
     if (run.resultPreview) lines.push(`     result: ${run.resultPreview}`)
   }
   return lines.join('\n')
+}
+
+/**
+ * Per-agent spend for one session.
+ *
+ * A subagent's turns are never in the parent transcript — they are written to
+ * `{sessionId}/subagents/agent-{agentId}.jsonl`. stats.ts already reads those
+ * files, but only to fold their tokens into a single total, so a fan-out that
+ * burned most of a session's budget looked identical to one that did not.
+ *
+ * Attribution is by filename rather than by joining turns back to the spawning
+ * `tool_use`: the Agent tool's input carries no agent id, so any such join
+ * would be a guess. Every message in `agent-X.jsonl` belongs to agent X.
+ */
+export type SubagentCost = {
+  agentId: string
+  model: string | null
+  messages: number
+  inputTokens: number
+  outputTokens: number
+  cacheReadInputTokens: number
+  cacheCreationInputTokens: number
+  costUSD: number
+}
+
+export function summarizeSubagentCosts(subagentsDir: string): SubagentCost[] {
+  let entries: string[]
+  try {
+    entries = readdirSync(subagentsDir)
+  } catch {
+    return []
+  }
+  const rows: SubagentCost[] = []
+  for (const entry of entries.sort()) {
+    const matched = /^agent-(.+)\.jsonl$/.exec(entry)
+    if (!matched) continue
+    let messages: MessageLike[]
+    try {
+      messages = loadTranscript(join(subagentsDir, entry))
+    } catch {
+      // One unreadable transcript must not blank the whole report.
+      continue
+    }
+    const row: SubagentCost = {
+      agentId: matched[1]!,
+      model: null,
+      messages: messages.length,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      costUSD: 0,
+    }
+    for (const message of messages) {
+      const usage = message.message?.usage
+      if (!usage) continue
+      const tokens = {
+        inputTokens: usage.input_tokens ?? 0,
+        outputTokens: usage.output_tokens ?? 0,
+        cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
+        cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
+      }
+      row.inputTokens += tokens.inputTokens
+      row.outputTokens += tokens.outputTokens
+      row.cacheReadInputTokens += tokens.cacheReadInputTokens
+      row.cacheCreationInputTokens += tokens.cacheCreationInputTokens
+      const model = message.message?.model ?? null
+      row.model ??= model
+      // An unpriced model contributes 0 rather than throwing: a missing price
+      // must not take down the report.
+      if (model) row.costUSD += calculateCostFromTokens(model, tokens)
+    }
+    rows.push(row)
+  }
+  return rows.sort((a, b) => b.costUSD - a.costUSD)
+}
+
+export function formatSubagentCosts(rows: SubagentCost[], json: boolean): string {
+  if (json) return JSON.stringify({ subagents: rows }, null, 2)
+  if (rows.length === 0) {
+    return 'No subagent transcripts found for this session.'
+  }
+  // calculateUSDCost returns 0 on a local runtime, so on Ollama every row
+  // would price at $0.00. A column of zeroes reads as "this feature is
+  // broken"; tokens are the meaningful unit there, so only show money when
+  // some provider actually billed for it.
+  const billed = rows.some(row => row.costUSD > 0)
+  const width = Math.max(...rows.map(row => row.agentId.length), 5)
+  const lines = ['Per-agent usage', '']
+  for (const row of rows) {
+    const cost = billed ? `  ${formatUSD(row.costUSD).padStart(9)}` : ''
+    lines.push(
+      `  ${row.agentId.padEnd(width)}  ${String(row.inputTokens).padStart(9)} in  ` +
+        `${String(row.outputTokens).padStart(8)} out${cost}  ${row.model ?? 'unknown model'}`,
+    )
+  }
+  const totalIn = rows.reduce((sum, row) => sum + row.inputTokens, 0)
+  const totalOut = rows.reduce((sum, row) => sum + row.outputTokens, 0)
+  const total = rows.reduce((sum, row) => sum + row.costUSD, 0)
+  lines.push(
+    `  ${'-'.repeat(width)}  ${'-'.repeat(12)}  ${'-'.repeat(12)}`,
+    `  ${'total'.padEnd(width)}  ${String(totalIn).padStart(9)} in  ` +
+      `${String(totalOut).padStart(8)} out${billed ? `  ${formatUSD(total).padStart(9)}` : ''}`,
+  )
+  if (!billed) {
+    lines.push('', 'Cost omitted: the active runtime is local and unbilled.')
+  }
+  return lines.join('\n')
+}
+
+function formatUSD(value: number): string {
+  // Sub-cent runs are common with local models; showing $0.00 for everything
+  // would make the breakdown useless.
+  return value > 0 && value < 0.01 ? '<$0.01' : `$${value.toFixed(2)}`
 }

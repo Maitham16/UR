@@ -4839,11 +4839,13 @@ async function run(): Promise<CommanderCommand> {
     const cmdArgs = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, ...args.map(quoteLocalCommandArg), opts.dryRun ? '--dry-run' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/skill/skill.js'), cmdArgs);
   });
-  program.command('agent-inspect').alias('inspect-agents').description('Reconstruct a per-subagent timeline from a session transcript').option('--file <path>', 'Transcript JSONL or JSON file').option('--json', 'Output as JSON').action(async (opts: {
+  program.command('agent-inspect').alias('inspect-agents').description('Reconstruct a per-subagent timeline from a session transcript').option('--file <path>', 'Transcript JSONL or JSON file').option('--costs [dir]', 'Per-agent token/cost breakdown from the session subagents directory').option('--json', 'Output as JSON').action(async (opts: {
     file?: string;
+    costs?: string | boolean;
     json?: boolean;
   }) => {
-    const args = [opts.file ? `--file ${quoteLocalCommandArg(opts.file)}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const costs = opts.costs === true ? '--costs' : typeof opts.costs === 'string' ? `--costs ${quoteLocalCommandArg(opts.costs)}` : undefined;
+    const args = [opts.file ? `--file ${quoteLocalCommandArg(opts.file)}` : undefined, costs, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/agent-inspect/agent-inspect.js'), args);
   });
   program.command('route [task...]').alias('intent').description('Classify a task and recommend the best subagent and collaboration pattern').option('--json', 'Output as JSON').action(async (task: string[] = [], opts: {

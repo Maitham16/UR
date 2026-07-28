@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.58.0
+
+- Added per-agent cost and token attribution: `ur agent-inspect --costs`.
+  `stats.ts` already read every `{sessionId}/subagents/agent-{agentId}.jsonl`
+  transcript, but only to fold those tokens into a single total, so a fan-out
+  that consumed most of a session's budget was indistinguishable from one that
+  did not. Rows are attributed by filename rather than by joining turns back to
+  the spawning `tool_use`, because the Agent tool's input carries no agent id
+  and any such join would be a guess.
+- The breakdown reports tokens and omits the money column on a local runtime.
+  `calculateUSDCost` returns 0 for Ollama, so a cost column would have rendered
+  as a wall of `$0.00` and read as a broken feature; cost appears only when a
+  provider actually billed.
+
 ## 1.57.5
 
 - Fixed the release gate failing on `repoEditImports`. The gate runs

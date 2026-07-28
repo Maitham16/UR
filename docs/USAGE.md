@@ -339,6 +339,14 @@ UR includes slash commands and CLI subcommands for common workflows:
   raw video/trace requires selector redaction to be disabled
 - `ur trigger ...` to parse GitHub/Slack webhook payloads and optionally launch a headless run
 - `ur agent-templates ...`, `ur agent-task ...`, `ur agent-inspect`, `ur agent-features`, and `ur agent-trends` for agent template, PR handoff, timeline, and coverage utilities
+- `ur agent-inspect --costs [subagentsDir]` breaks a fan-out down per agent.
+  Subagent turns are never in the parent transcript — they are written to
+  `{sessionId}/subagents/agent-{agentId}.jsonl` — so without this a fan-out
+  that burned most of the budget looks identical to one that did not.
+  Attribution is by filename, since the Agent tool's input carries no agent id.
+  On a local runtime `calculateUSDCost` returns 0, so tokens are shown and the
+  money column is omitted rather than printing a wall of `$0.00`. Add `--json`
+  for the raw rows.
 - `ur role-mode ...` to install built-in Architect, Code, Debug, and Ask role modes
 - `ur a2a ...` for negotiated v1 JSON-RPC/HTTP+JSON, the stable v0.3 SDK
   binding, scoped delegation tokens, durable protocol state, and separate UR

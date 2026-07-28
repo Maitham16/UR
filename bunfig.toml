@@ -2,7 +2,7 @@
 preload = ["./plugins/bunBundleDev.ts"]
 
 [define]
-"MACRO.VERSION" = '"1.57.5"'
+"MACRO.VERSION" = '"1.58.0"'
 "MACRO.BUILD_TIME" = '""'
 "MACRO.PACKAGE_URL" = '"ur-agent"'
 "MACRO.NATIVE_PACKAGE_URL" = 'undefined'
