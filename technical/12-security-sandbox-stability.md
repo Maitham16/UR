@@ -41,6 +41,39 @@ policies fail closed to blocked network access when the compatibility runtime
 cannot enforce domain-level filtering; bare-repository cleanup removes only a
 signature-verified repository created during the command.
 
+### Deny-default profiles
+
+`buildSeatbeltProfile` emits a deny-default profile — `(deny default)` plus an
+explicit read allowlist — whenever `allowRead` is set, or when `denyByDefault`
+is passed. With neither, it falls back to `(allow default)` with targeted
+denials. That fallback is a blocklist rather than a sandbox: anything the
+denial list fails to anticipate is permitted, which is the shape behind the
+2026 Seatbelt escape write-ups. Prefer `denyByDefault`; it stays opt-in because
+it breaks agents that read outside the standard runtime roots
+(`/System`, `/Library`, `/usr`, `/bin`, `/sbin`), which then need an explicit
+`allowRead`.
+
+## Prompt-injection defenses (`src/security/promptInjection.ts`)
+
+Untrusted text reaches the model from fetched pages, search results, file
+contents and — since `@ur` — GitHub comments written by strangers. This module
+is **detection and framing, not filtering**: no reliable injection classifier
+exists, and one that claims to block attacks invites misplaced trust. The
+durable defenses are privilege separation and human approval, documented above.
+
+| Function | Purpose |
+|---|---|
+| `scanForInjection(text)` | Seven rules: instruction override, role reassignment, exfiltration, tool coercion, forged system turns, secrecy demands, boundary forgery. Returns signals with severity; `suspicious` at ≥ 0.6 |
+| `stripHiddenCharacters(text)` | Removes zero-width and bidirectional controls used to hide payloads from human review |
+| `wrapUntrusted(text, source)` | Wraps content in a boundary tagged with a per-call 128-bit nonce |
+| `makeCanary()` / `canaryLeaked()` | Token placed in privileged context; appearing in output proves a boundary was crossed |
+
+The nonce matters. A fixed `</untrusted-content>` marker is forgeable — text
+containing the closing tag escapes the fence and the remainder is read as
+instruction. Binding the boundary to a random per-call id means breaking out
+requires guessing 128 bits. A block that trips a detector is additionally
+labelled for the model with the rules that fired.
+
 ## Project safety policy (`/safety`)
 
 `.ur/safety-policy.json` classifies risky shell commands for this repo

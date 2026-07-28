@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.56.1
+
+- Documented the 1.52.0–1.56.0 features, which had reached `technical/03` as
+  command rows but nowhere else. Doc 09 now covers the fan-out limits and how
+  to run several workers at once; doc 12 covers the prompt-injection module and
+  deny-default Seatbelt profiles; doc 05 covers Ollama Cloud authentication,
+  base-URL precedence, and the narrowed `APIProvider` with its named
+  predicates; doc 06 covers `agents.maxDepth`/`maxConcurrent`, permission
+  profiles, and the provider environment variables.
+
 ## 1.56.0
 
 - Added a subagent fan-out governor. Agents could spawn agents with no depth or

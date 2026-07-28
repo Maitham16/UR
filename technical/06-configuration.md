@@ -64,7 +64,16 @@ restore their session model without showing the picker.
     "deny":  ["Bash(rm -rf:*)", "mcp__untrusted-server"],
     "ask":   ["Bash(git push:*)"],
     "additionalDirectories": ["../lib"],
-    "defaultMode": "acceptEdits"        // default | plan | acceptEdits | autoApprove
+    "defaultMode": "acceptEdits",       // default | plan | acceptEdits | autoApprove
+    "profiles": {                       // named rule sets, appended when active
+      "reviewing": { "deny": ["Edit", "Write", "Bash"], "description": "read-only" },
+      "trusted":   { "allow": ["Bash(git:*)"] }
+    },
+    "activeProfile": "reviewing"        // switch with /permission-profile use <name>
+  },
+  "agents": {                           // subagent fan-out limits (doc 09)
+    "maxDepth": 3,                      // default 3, hard ceiling 10
+    "maxConcurrent": 20                 // default 20, hard ceiling 100
   },
   "sandbox": { /* SandboxSettingsSchema — OS sandbox for shell commands */ },
   "autoMode": { "allow": [], "soft_deny": [], "deny": [] },
@@ -75,6 +84,16 @@ restore their session model without showing the picker.
   "allowManagedPermissionRulesOnly": false
 }
 ```
+Profiles are appended to the base `allow`/`deny`/`ask` lists from the same
+settings source, so a profile can only narrow or extend — `deny` still beats
+`allow`. A missing or misnamed `activeProfile` contributes nothing rather than
+failing open. `/permission-profile use <name>` writes the switch to whichever
+source defines the profile, so it lands beside its definition.
+
+Fan-out limits clamp rather than disable: out-of-range, negative and
+non-numeric values fall back to the default or the ceiling, so a settings file
+cannot switch the governor off.
+
 Rule syntax: `ToolName` (blanket) or `ToolName(specifier)` — e.g. `Bash(npm run *)`,
 `Edit(src/**)`, `mcp__server__tool`. Managed via `/permissions` UI as well.
 
@@ -194,6 +213,16 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 ```
 
 ## Environment variables (grep of `src/`)
+
+### Providers
+
+| Variable | Effect |
+|---|---|
+| `OLLAMA_API_KEY` | Bearer token for Ollama's hosted API. With no host set, also switches the base URL to `https://ollama.com` — a local daemon needs no key, a direct connection does. Allowlisted through the Agentic CI env scrub |
+| `OLLAMA_HOST` / `OLLAMA_BASE_URL` | Explicit Ollama endpoint; always wins over the key-implied cloud default |
+| `OLLAMA_CONTEXT_TOKENS` | Override the detected context window |
+| `OLLAMA_REQUEST_TIMEOUT_MS` | Per-request timeout |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` | Provider credentials; also allowlisted for Agentic CI |
 
 ### Core behavior
 | Variable | Effect |

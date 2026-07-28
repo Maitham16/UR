@@ -38,6 +38,35 @@ ur provider models openrouter        # list models a provider serves
 ur provider doctor ollama            # diagnose connectivity
 ```
 
+## Ollama Cloud and the deployment enum
+
+**Authentication.** The Ollama client sends `Authorization: Bearer` when
+`OLLAMA_API_KEY` is set, and nothing otherwise. A local daemon needs no
+credential — it holds the account itself, which is how `:cloud` model suffixes
+resolve locally. A direct connection to the hosted API does need one, which is
+why CI (with no signed-in daemon) previously could not use Ollama at all. The
+key is trimmed, so a pasted trailing newline cannot corrupt the header, and
+read per request so a rotated key applies without restarting.
+
+Base-URL precedence: session override → `OLLAMA_HOST` / `OLLAMA_BASE_URL` →
+`ollama.host` setting → `https://ollama.com` when a key is set with no host →
+`http://localhost:11434`. An explicit host always wins, so self-hosted
+gateways that require a key are unaffected.
+
+`OLLAMA_API_KEY` is on the Agentic CI provider-credential allowlist, so it
+reaches the isolated agent while platform write tokens do not.
+
+**`APIProvider` is not the provider registry.** It is a deployment enum for
+request shaping, narrowed to `'foundry' | 'ollama'` — the only values
+`getAPIProvider()` can return. Comparisons against `'firstParty'`, `'bedrock'`
+or `'vertex'` were silently false and disabled advertised features; the
+typechecker now rejects them. Where such a branch is genuinely wanted, use the
+named predicates `isFirstPartyRuntime()`, `isBedrockRuntime()` and
+`isVertexRuntime()` (all currently `false`) so the intent stays greppable.
+`DeploymentKey` widens the type for legacy per-deployment lookup tables in
+`configs.ts`, `deprecation.ts` and `modelStrings.ts`, which carry rows for
+deployments this build cannot select.
+
 ## Model selection
 
 ```

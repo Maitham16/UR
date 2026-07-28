@@ -34,6 +34,50 @@ Read-only agents (Explore/Plan) intentionally omit the UR.md hierarchy from thei
 Inspection: `/agent-inspect` reconstructs a per-subagent timeline (spawns, prompts,
 results, verdicts, tools, tokens) from the session or a transcript file.
 
+## Fan-out limits (`src/tools/AgentTool/fanOutLimits.ts`)
+
+Agents can spawn agents, and `/crew`, `/arena`, `/bg fanout` and `/exec` each
+spawn several at once. Two limits bound the resulting tree; both are checked in
+`runAgent` before any work starts, so a refusal is free.
+
+| Limit | Default | Hard ceiling | Setting |
+|---|---|---|---|
+| Nesting depth | 3 | 10 | `agents.maxDepth` |
+| Concurrent agents | 20 | 100 | `agents.maxConcurrent` |
+
+```json
+{ "agents": { "maxConcurrent": 40, "maxDepth": 4 } }
+```
+
+Out-of-range, negative and non-numeric values clamp rather than disabling the
+governor — a settings file cannot switch it off. Exceeding a limit throws with
+a message naming both the limit and the setting that raises it. The
+concurrency slot is released in `runAgent`'s `finally`, so an aborted or
+crashed agent cannot strand the budget.
+
+Depth is derived from the live registry rather than passed down: a child's
+depth is its parent's plus one, and an agent whose parent is unknown counts as
+a root. Detached background agents are separate processes with their own
+budget.
+
+## Running several workers at once
+
+Four ways to parallelise, differing mainly in whether workers share your
+checkout:
+
+| Command | Shape | Isolation flag |
+|---|---|---|
+| `ur exec "a" "b" --concurrency 3` | different prompts in parallel | `--worktree` |
+| `ur crew run <name> --workers 4` | one goal split across a task board | `--worktrees` |
+| `ur arena "<task>" --agents 3` | same task, N attempts, judge picks | isolated by default |
+| `ur bg fanout "<task>" --agents 4` | detached, survives the session | `--worktree` |
+
+Pass the isolation flag whenever workers might touch the same files. Without
+it every worker edits the same checkout concurrently and they overwrite each
+other. Agents are much heavier than test workers — each is a full model session
+with its own token spend — so 4–6 is usually the practical ceiling on a laptop
+regardless of the configured limit.
+
 ## Task routing
 
 ```
