@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { wrapUntrusted } from '../../security/promptInjection.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js'
@@ -68,10 +69,16 @@ export const MCPTool = buildTool({
     return isOutputLineTruncated(output)
   },
   mapToolResultToToolResultBlockParam(content, toolUseID) {
+    // An MCP server returns third-party text: a GitHub issue body, a Jira
+    // comment, a page an agent scraped. It is the same trust class as a web
+    // fetch and the highest-volume untrusted channel UR has, so it gets the
+    // same nonce-bound boundary. `this.name` is the real tool name — the
+    // server-qualified one set in client.ts, not the placeholder above.
+    const { wrapped } = wrapUntrusted(content, `mcp ${this.name}`)
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content,
+      content: wrapped,
     }
   },
 } satisfies ToolDef<InputSchema, Output>)

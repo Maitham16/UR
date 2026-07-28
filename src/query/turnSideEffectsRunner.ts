@@ -1,5 +1,10 @@
-import type { AssistantMessage, Message } from '../types/message.js'
+import type {
+  AssistantMessage,
+  Message,
+  SystemMessage,
+} from '../types/message.js'
 import { execFileNoThrow } from '../utils/execFileNoThrow.js'
+import { createSystemMessage } from '../utils/messages.js'
 import type { SpeechExec } from '../voice/speak.js'
 import {
   buildMemorySuggestion,
@@ -41,6 +46,7 @@ function textOf(message: { message?: { content?: unknown } }): string {
 export async function runTurnSideEffects(
   messagesForQuery: Message[],
   assistantMessages: AssistantMessage[],
+  appendSystemMessage?: (message: SystemMessage) => void,
 ): Promise<{ spoke: boolean; suggestion: string | null }> {
   const config = resolveTurnSideEffects()
   if (!config.speakResponses && !config.suggestMemories) {
@@ -61,7 +67,18 @@ export async function runTurnSideEffects(
         '../commands/memory-suggest/memoryLines.js'
       )
       suggestion = buildMemorySuggestion(userText, existingMemoryLines(), config)
-      if (suggestion) process.stderr.write(`\n${suggestion}\n`)
+      if (suggestion) {
+        // stderr is not the Ink transcript: under the REPL it lands outside
+        // the rendered frame and is overwritten on the next repaint, so the
+        // suggestion was effectively invisible. appendSystemMessage is the
+        // same channel the neighbouring stop hooks use.
+        if (appendSystemMessage) {
+          appendSystemMessage(createSystemMessage(suggestion, 'info'))
+        } else {
+          // Headless (`ur -p`) has no transcript to append to.
+          process.stderr.write(`\n${suggestion}\n`)
+        }
+      }
     }
   }
   return { spoke, suggestion }

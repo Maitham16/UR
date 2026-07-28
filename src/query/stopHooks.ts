@@ -168,7 +168,11 @@ export async function* handleStopHooks(
   if (!toolUseContext.agentId) {
     try {
       const { runTurnSideEffects } = await import('./turnSideEffectsRunner.js')
-      await runTurnSideEffects(messagesForQuery, assistantMessages)
+      await runTurnSideEffects(
+        messagesForQuery,
+        assistantMessages,
+        toolUseContext.appendSystemMessage,
+      )
     } catch {
       // Never let an optional side effect end a turn.
     }
