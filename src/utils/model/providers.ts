@@ -6,12 +6,22 @@ import {
   type ProviderId,
 } from '../../services/providers/providerRegistry.js'
 
-export type APIProvider =
-  | 'firstParty'
-  | 'bedrock'
-  | 'vertex'
-  | 'foundry'
-  | 'ollama'
+/**
+ * Deployment identity used for request shaping.
+ *
+ * Narrowed to what `getAPIProvider()` can actually return: it maps every
+ * provider to 'ollama' or 'foundry' and never yields 'firstParty', 'bedrock'
+ * or 'vertex'. Comparisons against those were dead branches that silently
+ * disabled advertised features; TypeScript now rejects them.
+ */
+export type APIProvider = 'foundry' | 'ollama'
+
+/**
+ * Keys for legacy per-deployment lookup tables. Those tables are data, not
+ * runtime state — they may still carry entries for deployments this build
+ * cannot select, and deleting the rows would delete real configuration.
+ */
+export type DeploymentKey = APIProvider | 'firstParty' | 'bedrock' | 'vertex'
 
 // Real, resolved provider identity. Prefer these over getAPIProvider() when the
 // behavior must depend on which provider was actually selected.
@@ -54,5 +64,22 @@ export function isFirstPartyURHQBaseUrl(): boolean {
  * is readable and greppable rather than hidden in an impossible comparison.
  */
 export function isFirstPartyRuntime(): boolean {
+  return false
+}
+
+/**
+ * Whether this build runs against AWS Bedrock. It does not: `getAPIProvider()`
+ * cannot return 'bedrock'. Named so Bedrock-only request shaping stays
+ * readable and greppable instead of hiding in an impossible comparison.
+ */
+export function isBedrockRuntime(): boolean {
+  return false
+}
+
+/**
+ * Whether this build runs against Vertex AI. It does not, for the same reason
+ * as `isBedrockRuntime`.
+ */
+export function isVertexRuntime(): boolean {
   return false
 }

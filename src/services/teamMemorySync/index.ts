@@ -47,10 +47,7 @@ import {
 import { logForDebugging } from '../../utils/debug.js'
 import { classifyAxiosError } from '../../utils/errors.js'
 import { getGithubRepo } from '../../utils/git.js'
-import {
-  getAPIProvider,
-  isFirstPartyURHQBaseUrl,
-} from '../../utils/model/providers.js'
+import { getAPIProvider, isFirstPartyRuntime, isFirstPartyURHQBaseUrl } from '../../utils/model/providers.js'
 import { sleep } from '../../utils/sleep.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { getURCodeUserAgent } from '../../utils/userAgent.js'
@@ -149,7 +146,7 @@ function isErrnoException(e: unknown): e is NodeJS.ErrnoException {
  * Check if user is authenticated with first-party OAuth (required for team memory sync).
  */
 function isUsingOAuth(): boolean {
-  if (getAPIProvider() !== 'firstParty' || !isFirstPartyURHQBaseUrl()) {
+  if (!isFirstPartyRuntime() || !isFirstPartyURHQBaseUrl()) {
     return false
   }
   const tokens = getURAIOAuthTokens()

@@ -1,7 +1,7 @@
 import type { ModelName } from './model.js'
-import type { APIProvider } from './providers.js'
+import type { DeploymentKey } from './providers.js'
 
-export type ModelConfig = Record<APIProvider, ModelName>
+export type ModelConfig = Record<DeploymentKey, ModelName>
 const DEFAULT_OLLAMA_MODEL = 'qwen2.5-coder:7b'
 
 // @[MODEL LAUNCH]: Add a new UR_*_CONFIG constant here. Double check the correct model strings

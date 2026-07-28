@@ -10,7 +10,7 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { getModelStrings } from 'src/utils/model/modelStrings.js'
-import { getAPIProvider } from 'src/utils/model/providers.js'
+import { getAPIProvider, isFirstPartyRuntime } from 'src/utils/model/providers.js'
 import {
   getProviderDefinition,
   getRuntimeProviderId,
@@ -1892,7 +1892,7 @@ export type UserAccountInfo = {
 export function getAccountInformation() {
   const apiProvider = getAPIProvider()
   // Only provide account info for first-party UR API
-  if (apiProvider !== 'firstParty') {
+  if (!isFirstPartyRuntime()) {
     return undefined
   }
   const { source: authTokenSource } = getAuthTokenSource()

@@ -23,7 +23,7 @@ import { getModelStrings, resolveOverriddenModel } from './modelStrings.js'
 import { formatModelPricing, getmodelO46CostTier } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
-import { getAPIProvider } from './providers.js'
+import { getAPIProvider, isFirstPartyRuntime } from './providers.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
@@ -167,7 +167,7 @@ export function getDefaultmodelOModel(): ModelName {
   // 3P providers (Bedrock, Vertex, Foundry) — kept as a separate branch
   // even when values match, since 3P availability lags firstParty and
   // these will diverge again at the next model launch.
-  if (getAPIProvider() !== 'firstParty') {
+  if (!isFirstPartyRuntime()) {
     return getModelStrings().modelO46
   }
   return getModelStrings().modelO46
@@ -182,7 +182,7 @@ export function getDefaultmodelSModel(): ModelName {
     return process.env.URHQ_DEFAULT_MODELS_MODEL
   }
   // Default to modelS 4.5 for 3P since they may not have 4.6 yet
-  if (getAPIProvider() !== 'firstParty') {
+  if (!isFirstPartyRuntime()) {
     return getModelStrings().modelS45
   }
   return getModelStrings().modelS46
@@ -327,7 +327,7 @@ export function renderDefaultModelSetting(
 }
 
 export function getmodelO46PricingSuffix(fastMode: boolean): string {
-  if (getAPIProvider() !== 'firstParty') return ''
+  if (!isFirstPartyRuntime()) return ''
   const pricing = formatModelPricing(getmodelO46CostTier(fastMode))
   const fastModeIndicator = fastMode ? ` (${LIGHTNING_BOLT})` : ''
   return ` ·${fastModeIndicator} ${pricing}`
@@ -336,7 +336,7 @@ export function getmodelO46PricingSuffix(fastMode: boolean): string {
 export function ismodelO1mMergeEnabled(): boolean {
   if (
     is1mContextDisabled() ||
-    getAPIProvider() !== 'firstParty'
+    !isFirstPartyRuntime()
   ) {
     return false
   }
@@ -512,7 +512,7 @@ export function parseUserSpecifiedModel(
   // strings pinned them in settings/env/--model/SDK before 4.5 launched.
   // 3P providers may not yet have 4.6 capacity, so pass through unchanged.
   if (
-    getAPIProvider() === 'firstParty' &&
+    isFirstPartyRuntime() &&
     isLegacymodelOFirstParty(modelString) &&
     isLegacyModelRemapEnabled()
   ) {

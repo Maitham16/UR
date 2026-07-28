@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.55.0
+
+- Narrowed `APIProvider` to the two values `getAPIProvider()` can actually
+  return, `'foundry' | 'ollama'`, and let the compiler find every dead branch.
+  It surfaced 66 errors across 25 files; all are now resolved and the
+  typechecker prevents the class of bug from returning. Comparisons against
+  `'firstParty'`, `'bedrock'` and `'vertex'` had been silently false since the
+  provider rewrite, which is what disabled `--effort` and `/fast`.
+- Added `DeploymentKey` for the legacy per-deployment lookup tables in
+  `configs.ts`, `deprecation.ts` and `modelStrings.ts`. Those tables are data
+  rather than runtime state: they legitimately carry rows for deployments this
+  build cannot select, and deleting the rows would have deleted real
+  configuration.
+- Replaced the dead comparisons with the named predicates
+  `isFirstPartyRuntime()`, `isBedrockRuntime()` and `isVertexRuntime()` instead
+  of deleting the branches. Behaviour is identical — all three return false —
+  but the intent is now greppable rather than hidden in an impossible
+  comparison, and re-enabling a deployment is a one-line change.
+- Fixed one such comparison in `toolSearch.ts` that the compiler could not
+  reach because the file carries `@ts-nocheck`. Found by grep after the
+  typechecker was clean; it was the only one.
+- `/memory-suggest` now seeds its dedup set from stored memory — the
+  `/remember` notes store, `UR.md`, `UR.local.md` and the auto-memory
+  entrypoint — so a fact already recorded is no longer proposed back. Each
+  source is best-effort; an unreadable one narrows dedup rather than failing.
+
 ## 1.54.1
 
 - Fixed `/speak`, `/computer`, `/memory-suggest`, `/import-session` and

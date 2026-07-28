@@ -44,10 +44,7 @@ import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
 import { createUserMessage } from './messages.js'
-import {
-  getAPIProvider,
-  isFirstPartyURHQBaseUrl,
-} from './model/providers.js'
+import { getAPIProvider, isFirstPartyRuntime, isFirstPartyURHQBaseUrl } from './model/providers.js'
 import {
   getFileReadIgnorePatterns,
   normalizePatternsToPath,
@@ -196,7 +193,7 @@ export async function toolToAPISchema(
     // input_json_delta events, causing multi-minute hangs on large tool inputs.
     // Gated to the direct local API path.
     if (
-      getAPIProvider() === 'firstParty' &&
+      isFirstPartyRuntime() &&
       isFirstPartyURHQBaseUrl() &&
       (getFeatureValue_CACHED_MAY_BE_STALE('tengu_fgts', false) ||
         isEnvTruthy(process.env.UR_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING))

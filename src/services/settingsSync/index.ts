@@ -29,10 +29,7 @@ import { getMemoryPath } from '../../utils/config.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
 import { classifyAxiosError } from '../../utils/errors.js'
 import { getRepoRemoteHash } from '../../utils/git.js'
-import {
-  getAPIProvider,
-  isFirstPartyURHQBaseUrl,
-} from '../../utils/model/providers.js'
+import { getAPIProvider, isFirstPartyRuntime, isFirstPartyURHQBaseUrl } from '../../utils/model/providers.js'
 import { markInternalWrite } from '../../utils/settings/internalWrites.js'
 import { getSettingsFilePathForSource } from '../../utils/settings/settings.js'
 import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
@@ -210,7 +207,7 @@ async function doDownloadUserSettings(
  * download a no-op there. Upload is independently guarded by getIsInteractive().
  */
 function isUsingOAuth(): boolean {
-  if (getAPIProvider() !== 'firstParty' || !isFirstPartyURHQBaseUrl()) {
+  if (!isFirstPartyRuntime() || !isFirstPartyURHQBaseUrl()) {
     return false
   }
 

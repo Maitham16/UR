@@ -12,7 +12,11 @@ import {
   type CanonicalModelId,
   type ModelKey,
 } from './configs.js'
-import { type APIProvider, getAPIProvider } from './providers.js'
+import {
+  type DeploymentKey,
+  getAPIProvider,
+  isBedrockRuntime,
+} from './providers.js'
 
 /**
  * Maps each model version to its provider-specific model ID string.
@@ -22,7 +26,9 @@ export type ModelStrings = Record<ModelKey, string>
 
 const MODEL_KEYS = Object.keys(ALL_MODEL_CONFIGS) as ModelKey[]
 
-function getBuiltinModelStrings(provider: APIProvider): ModelStrings {
+// Accepts any table key, not just a selectable runtime: the Bedrock path
+// below reads that deployment's row as a fallback.
+function getBuiltinModelStrings(provider: DeploymentKey): ModelStrings {
   const out = {} as ModelStrings
   for (const key of MODEL_KEYS) {
     out[key] = ALL_MODEL_CONFIGS[key][provider]
@@ -120,7 +126,7 @@ function initModelStrings(): void {
     return
   }
   // Initial with default values for non-Bedrock providers
-  if (getAPIProvider() !== 'bedrock') {
+  if (!isBedrockRuntime()) {
     setModelStringsState(getBuiltinModelStrings(getAPIProvider()))
     return
   }
@@ -154,7 +160,7 @@ export async function ensureModelStringsInitialized(): Promise<void> {
   }
 
   // For non-Bedrock, initialize synchronously
-  if (getAPIProvider() !== 'bedrock') {
+  if (!isBedrockRuntime()) {
     setModelStringsState(getBuiltinModelStrings(getAPIProvider()))
     return
   }

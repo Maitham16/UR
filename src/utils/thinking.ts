@@ -5,7 +5,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growt
 import { resolveAntModel } from './model/antModels.js'
 import { getCanonicalName } from './model/model.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
-import { getAPIProvider } from './model/providers.js'
+import { getAPIProvider, isFirstPartyRuntime } from './model/providers.js'
 import { getSettingsWithErrors } from './settings/settings.js'
 
 export type ThinkingConfig =
@@ -105,7 +105,7 @@ export function modelSupportsThinking(model: string): boolean {
       return true
     }
   }
-  if (provider === 'foundry' || provider === 'firstParty') {
+  if (provider === 'foundry' || isFirstPartyRuntime()) {
     return true
   }
   return false
@@ -132,7 +132,7 @@ export function modelSupportsAdaptiveThinking(model: string): boolean {
   // is a proxy). Do not default to true for other 3P as they have different formats
   // for their model strings.
   const provider = getAPIProvider()
-  return provider === 'firstParty' || provider === 'foundry'
+  return isFirstPartyRuntime() || provider === 'foundry'
 }
 
 export function shouldEnableThinkingByDefault(): boolean {

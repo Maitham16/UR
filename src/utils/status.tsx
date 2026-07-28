@@ -11,7 +11,7 @@ import { getDisplayPath } from './file.js';
 import { formatNumber } from './format.js';
 import { getIdeClientName, type IDEExtensionInstallationStatus, isJetBrainsIde, toIDEDisplayName } from './ide.js';
 import { getURAiUserDefaultModelDescription, modelDisplayString } from './model/model.js';
-import { getAPIProvider } from './model/providers.js';
+import { getAPIProvider, isBedrockRuntime, isFirstPartyRuntime, isVertexRuntime } from './model/providers.js';
 import { getMTLSConfig } from './mtls.js';
 import { checkInstall } from './nativeInstaller/index.js';
 import { getProxyUrl } from './proxy.js';
@@ -234,7 +234,7 @@ export function buildAccountProperties(): Property[] {
 export function buildAPIProviderProperties(): Property[] {
   const apiProvider = getAPIProvider();
   const properties: Property[] = [];
-  if (apiProvider !== 'firstParty') {
+  if (!isFirstPartyRuntime()) {
     const providerLabel = {
       bedrock: 'AWS Bedrock',
       vertex: 'Google Vertex AI',
@@ -246,7 +246,7 @@ export function buildAPIProviderProperties(): Property[] {
       value: providerLabel
     });
   }
-  if (apiProvider === 'firstParty') {
+  if (isFirstPartyRuntime()) {
     const urhqBaseUrl = process.env.URHQ_BASE_URL;
     if (urhqBaseUrl) {
       properties.push({
@@ -254,7 +254,7 @@ export function buildAPIProviderProperties(): Property[] {
         value: urhqBaseUrl
       });
     }
-  } else if (apiProvider === 'bedrock') {
+  } else if (isBedrockRuntime()) {
     const bedrockBaseUrl = process.env.BEDROCK_BASE_URL;
     if (bedrockBaseUrl) {
       properties.push({
@@ -271,7 +271,7 @@ export function buildAPIProviderProperties(): Property[] {
         value: 'AWS auth skipped'
       });
     }
-  } else if (apiProvider === 'vertex') {
+  } else if (isVertexRuntime()) {
     const vertexBaseUrl = process.env.VERTEX_BASE_URL;
     if (vertexBaseUrl) {
       properties.push({

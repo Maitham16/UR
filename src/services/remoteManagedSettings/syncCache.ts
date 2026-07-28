@@ -12,10 +12,7 @@ import {
   getURHQApiKeyWithSource,
   getURAIOAuthTokens,
 } from '../../utils/auth.js'
-import {
-  getAPIProvider,
-  isFirstPartyURHQBaseUrl,
-} from '../../utils/model/providers.js'
+import { getAPIProvider, isFirstPartyRuntime, isFirstPartyURHQBaseUrl } from '../../utils/model/providers.js'
 
 import {
   resetSyncCache as resetLeafCache,
@@ -50,7 +47,7 @@ export function isRemoteManagedSettingsEligible(): boolean {
   if (cached !== undefined) return cached
 
   // 3p provider users should not hit the settings endpoint
-  if (getAPIProvider() !== 'firstParty') {
+  if (!isFirstPartyRuntime()) {
     return (cached = setEligibility(false))
   }
 

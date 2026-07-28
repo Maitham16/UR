@@ -32,10 +32,7 @@ import { logForDebugging } from '../../utils/debug.js'
 import { getURConfigHomeDir } from '../../utils/envUtils.js'
 import { classifyAxiosError } from '../../utils/errors.js'
 import { safeParseJSON } from '../../utils/json.js'
-import {
-  getAPIProvider,
-  isFirstPartyURHQBaseUrl,
-} from '../../utils/model/providers.js'
+import { getAPIProvider, isFirstPartyRuntime, isFirstPartyURHQBaseUrl } from '../../utils/model/providers.js'
 import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
 import { sleep } from '../../utils/sleep.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
@@ -166,7 +163,7 @@ function computeChecksum(
  */
 export function isPolicyLimitsEligible(): boolean {
   // 3p provider users should not hit the policy limits endpoint
-  if (getAPIProvider() !== 'firstParty') {
+  if (!isFirstPartyRuntime()) {
     return false
   }
 

@@ -4,7 +4,7 @@ import memoize from 'lodash-es/memoize.js'
 import { getOrCreateUserID } from '../../utils/config.js'
 import { logError } from '../../utils/log.js'
 import { getCanonicalName } from '../../utils/model/model.js'
-import { getAPIProvider } from '../../utils/model/providers.js'
+import { getAPIProvider, isFirstPartyRuntime } from '../../utils/model/providers.js'
 import { MODEL_COSTS } from '../../utils/modelCost.js'
 import { isAnalyticsDisabled } from './config.js'
 import { getEventMetadata } from './metadata.js'
@@ -166,7 +166,7 @@ export async function trackDatadogEvent(
   }
 
   // Don't send events for 3P providers (Bedrock, Vertex, Foundry)
-  if (getAPIProvider() !== 'firstParty') {
+  if (!isFirstPartyRuntime()) {
     return
   }
 

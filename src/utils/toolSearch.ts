@@ -37,6 +37,7 @@ import { logForDebugging } from './debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 import {
   getAPIProvider,
+  isFirstPartyRuntime,
   isFirstPartyURHQBaseUrl,
 } from './model/providers.js'
 import { jsonStringify } from './slowOperations.js'
@@ -285,7 +286,7 @@ export function isToolSearchEnabledOptimistic(): boolean {
 
   // tool_reference is a beta content type that third-party API gateways
   // (URHQ_BASE_URL proxies) typically don't support. When the provider
-  // is 'firstParty' but the base URL points elsewhere, the proxy will reject
+  // is a first-party runtime but the base URL points elsewhere, the proxy will reject
   // tool_reference blocks with a 400. Vertex/Bedrock/Foundry are unaffected —
   // they have their own endpoints and beta headers.
   //
@@ -301,7 +302,7 @@ export function isToolSearchEnabledOptimistic(): boolean {
   // with getToolSearchMode(), which also treats "" as unset.
   if (
     !process.env.ENABLE_TOOL_SEARCH &&
-    getAPIProvider() === 'firstParty' &&
+    isFirstPartyRuntime() &&
     !isFirstPartyURHQBaseUrl()
   ) {
     if (!loggedOptimistic) {
