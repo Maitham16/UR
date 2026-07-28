@@ -68,6 +68,12 @@ durable defenses are privilege separation and human approval, documented above.
 | `wrapUntrusted(text, source)` | Wraps content in a boundary tagged with a per-call 128-bit nonce |
 | `makeCanary()` / `canaryLeaked()` | Token placed in privileged context; appearing in output proves a boundary was crossed |
 
+`wrapUntrusted` is applied in `WebFetchTool` and `WebSearchTool` inside
+`mapToolResultToToolResultBlockParam` — the one function every return path
+passes through, so no fetch route can bypass it. WebSearch's citation reminder
+is appended *outside* the boundary: it is UR's own instruction, and wrapping it
+would label it as untrusted data.
+
 The nonce matters. A fixed `</untrusted-content>` marker is forgeable — text
 containing the closing tag escapes the fence and the remainder is read as
 instruction. Binding the boundary to a random per-call id means breaking out

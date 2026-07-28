@@ -413,6 +413,30 @@ export const SettingsSchema = lazySchema(() =>
       permissions: PermissionsSchema()
         .optional()
         .describe('Tool usage permissions configuration'),
+      voice: z
+        .object({
+          speakResponses: z
+            .boolean()
+            .optional()
+            .describe('Read assistant replies aloud after each turn'),
+          name: z.string().optional().describe('Synthesiser voice name'),
+          rate: z.number().optional().describe('Words per minute'),
+        })
+        .optional()
+        .describe('Spoken output settings'),
+      memory: z
+        .object({
+          suggest: z
+            .boolean()
+            .optional()
+            .describe('Propose durable facts after each turn'),
+          suggestMinConfidence: z
+            .number()
+            .optional()
+            .describe('Confidence floor for proposals (0-1, default 0.75)'),
+        })
+        .optional()
+        .describe('Automatic memory extraction settings'),
       agents: z
         .object({
           maxDepth: z

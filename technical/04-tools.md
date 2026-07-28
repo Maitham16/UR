@@ -28,6 +28,7 @@ users don't call tools directly.
 | Tool | Purpose | Key inputs | Example request |
 |---|---|---|---|
 | `WebFetch` | Fetch a public HTTP(S) URL → markdown → analyze with a small model; DNS and every redirect are checked against private/reserved addresses | `url`, `prompt` | "Summarize this blog post: https://…" |
+| `Computer` | Desktop control: screenshot (read-only), click, type. Clicks bounds-checked against real screen geometry; state-changing actions always ask. macOS/Linux only |
 | `web_search` | Web search | `query` | "Search for the fastify v5 migration guide" |
 | `Api` | Direct public HTTP(S) calls with JSON extraction; private targets, unsafe redirects, oversized responses, GET bodies, and silent sensitive-header sends are rejected/confirmed | `url`, `method`, `headers`, `body`, `timeout` (≤300s), `extract` (dotted path) | "Call GET https://api.github.com/repos/x/y and give me .stargazers_count" |
 | `Browser` | Drive a persistent Playwright browser session: goto/click/type/screenshot/evaluate/fetch; every navigation and subrequest is URL-guarded | `url`, `action`, `selector`, `text`, `expression` | "Open the public staging UI, click Login, screenshot the result" |

@@ -1,6 +1,7 @@
 import type {
   BetaContentBlock,
 } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
+import { wrapUntrusted } from '../../security/promptInjection.js'
 import { getAPIProvider, isFirstPartyRuntime, isVertexRuntime } from 'src/utils/model/providers.js'
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
 import { z } from 'zod/v4'
@@ -475,13 +476,20 @@ export const WebSearchTool = buildTool({
       }
     })
 
-    formattedOutput +=
-      '\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.'
+    // Search results are attacker-influenced: a page can be written to rank for
+    // a query the agent is likely to run. Wrap the results, but keep the
+    // reminder outside the boundary so it is not itself presented as data.
+    const { wrapped } = wrapUntrusted(
+      formattedOutput.trim(),
+      `web-search ${query}`,
+    )
 
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: formattedOutput.trim(),
+      content:
+        `${wrapped}\n\nREMINDER: You MUST include the sources above in your ` +
+        'response to the user using markdown hyperlinks.',
     }
   },
 } satisfies ToolDef<InputSchema, Output, WebSearchProgress>)

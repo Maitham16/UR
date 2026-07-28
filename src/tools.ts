@@ -8,6 +8,7 @@ import { FileReadTool } from './tools/FileReadTool/FileReadTool.js'
 import { FileWriteTool } from './tools/FileWriteTool/FileWriteTool.js'
 import { GlobTool } from './tools/GlobTool/GlobTool.js'
 import { NotebookEditTool } from './tools/NotebookEditTool/NotebookEditTool.js'
+import { ComputerTool } from './tools/ComputerTool/ComputerTool.js'
 import { WebFetchTool } from './tools/WebFetchTool/WebFetchTool.js'
 import { GitHubTool } from './tools/GitHubTool/GitHubTool.js'
 import { ApiTool } from './tools/ApiTool/ApiTool.js'
@@ -215,6 +216,7 @@ export function getAllBaseTools(): Tools {
     FileEditTool,
     FileWriteTool,
     NotebookEditTool,
+    ComputerTool,
     WebFetchTool,
     GitHubTool,
     ApiTool,

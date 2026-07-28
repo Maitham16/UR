@@ -162,6 +162,18 @@ export async function* handleStopHooks(
   // so a subagent's stopHooks releasing it leaves the main thread's cleanup
   // seeing isLockHeldLocally()===false → no exit notification, and unhides
   // mid-turn. Subagents don't start CU sessions so this is a pure skip.
+  // Opt-in turn side effects: speak the reply, propose memories. Main thread
+  // only — a subagent finishing should not narrate or offer to remember. Both
+  // are best-effort and never block or fail the turn.
+  if (!toolUseContext.agentId) {
+    try {
+      const { runTurnSideEffects } = await import('./turnSideEffectsRunner.js')
+      await runTurnSideEffects(messagesForQuery, assistantMessages)
+    } catch {
+      // Never let an optional side effect end a turn.
+    }
+  }
+
   if (feature('CHICAGO_MCP') && !toolUseContext.agentId) {
     try {
       const { cleanupComputerUseAfterTurn } = await import(

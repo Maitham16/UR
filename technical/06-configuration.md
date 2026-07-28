@@ -75,6 +75,14 @@ restore their session model without showing the picker.
     "maxDepth": 3,                      // default 3, hard ceiling 10
     "maxConcurrent": 20                 // default 20, hard ceiling 100
   },
+  "voice": {                            // end-of-turn speech, off by default
+    "speakResponses": false,
+    "name": "Samantha", "rate": 210
+  },
+  "memory": {                           // end-of-turn suggestions, off by default
+    "suggest": false,
+    "suggestMinConfidence": 0.75
+  },
   "sandbox": { /* SandboxSettingsSchema — OS sandbox for shell commands */ },
   "autoMode": { "allow": [], "soft_deny": [], "deny": [] },
   "useAutoModeDuringPlan": false, "disableAutoMode": false,

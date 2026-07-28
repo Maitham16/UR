@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { wrapUntrusted } from '../../security/promptInjection.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import type { PermissionUpdate } from '../../types/permissions.js'
 import { formatFileSize } from '../../utils/format.js'
@@ -302,10 +303,14 @@ To complete your request, I need to fetch content from the redirected URL. Pleas
     }
   },
   mapToolResultToToolResultBlockParam({ result, url }, toolUseID) {
+    // Fetched pages are attacker-controlled. This is the boundary where that
+    // text enters the model's context, so it is wrapped here rather than at
+    // the fetch site: every return path funnels through this one function.
+    const { wrapped } = wrapUntrusted(result, `web-fetch ${url}`)
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: `Source URL: ${url}\n\n${result}`,
+      content: `Source URL: ${url}\n\n${wrapped}`,
     }
   },
 } satisfies ToolDef<InputSchema, Output>)

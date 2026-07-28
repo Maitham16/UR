@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.57.0
+
+- Connected four features that were built, tested and then left unreachable.
+  Each had passing unit tests while contributing nothing to a real session.
+- `wrapUntrusted()` now runs on WebFetch and WebSearch results, at the
+  `mapToolResultToToolResultBlockParam` choke point every return path passes
+  through. Fetched pages and search results reach the model inside a
+  nonce-bound boundary they cannot close, with injection signals labelled. The
+  WebSearch citation reminder deliberately stays outside the boundary: it is
+  UR's own instruction, and wrapping it would present it as untrusted data.
+- Added the `Computer` tool, so desktop control is available to the agent and
+  not only to the human through `/computer`. Screenshots are permitted as
+  read-only; clicks and keystrokes always ask, because the model chooses the
+  coordinates and the user has not seen them. Clicks are bounds-checked against
+  real screen geometry and refused when geometry is unavailable. The UI renders
+  a character count rather than the typed text, so a dictated password is not
+  echoed into the transcript.
+- Added opt-in end-of-turn side effects at the `handleStopHooks` seam:
+  `voice.speakResponses` reads replies aloud, and `memory.suggest` proposes
+  durable facts deduped against stored memory. Both default to off, run on the
+  main thread only so subagents stay silent, and are best-effort — speech is
+  fire-and-forget so a long reply cannot delay the next prompt, and any failure
+  is swallowed rather than ending the turn.
+- Extracted `existingMemoryLines` into `memoryLines.ts`, shared by
+  `/memory-suggest` and the turn hook.
+- Added `test/wiringIntegration.test.ts`, which asserts the connections rather
+  than the modules — the specific failure the unit tests could not catch.
+
 ## 1.56.1
 
 - Documented the 1.52.0–1.56.0 features, which had reached `technical/03` as
