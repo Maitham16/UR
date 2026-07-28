@@ -2,6 +2,13 @@
 
 ## 1.58.0
 
+- Fixed choice menus where all three fields said the same thing. Neither the
+  schema nor the tool prompt stated that `header`, `label` and `description`
+  must carry different information, so the header restated the question and the
+  description paraphrased the label — leaving the one field with room to be
+  informative saying nothing. Each field now has a defined job, and the prompt
+  carries a contrasted bad/good example rather than an abstract instruction.
+
 - Added per-agent cost and token attribution: `ur agent-inspect --costs`.
   `stats.ts` already read every `{sessionId}/subagents/agent-{agentId}.jsonl`
   transcript, but only to fold those tokens into a single total, so a fan-out

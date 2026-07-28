@@ -42,5 +42,23 @@ Usage notes:
 - Use multiSelect: true to allow multiple answers to be selected for a question
 - If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
 
+Writing the three fields — they must each carry DIFFERENT information:
+- \`header\` names the dimension being decided ("Database", "Auth method"). It is not a shortened copy of the question.
+- \`label\` names the choice ("PostgreSQL"). It is not a restatement of the question.
+- \`description\` says what happens if this is picked and what it costs — the trade-off, limitation or consequence the label does not already convey. It is the only field with room to be genuinely informative, so it must not paraphrase the label back to the user.
+
+A description that can be derived from reading the label is wasted space and makes the menu harder to use, not easier. Before writing one, ask: does this tell the user something they could not already see? If not, replace it with the thing that actually distinguishes this option from its neighbours.
+
+Bad — description restates the label:
+  question: "Which database should we use?"
+  header: "Which DB"                       (repeats the question)
+  label: "Use PostgreSQL"  description: "Use PostgreSQL as the database."
+
+Good — each field adds something:
+  question: "Which database should we use?"
+  header: "Database"
+  label: "PostgreSQL"      description: "Relational with strong consistency; needs a running server and a migration step."
+  label: "SQLite"          description: "Zero setup, single file; no concurrent writers, so it will not survive multiple workers."
+
 Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ${EXIT_PLAN_MODE_TOOL_NAME} for plan approval. IMPORTANT: Do not reference "the plan" in your questions (e.g., "Do you have feedback about the plan?", "Does the plan look good?") because the user cannot see the plan in the UI until you call ${EXIT_PLAN_MODE_TOOL_NAME}. If you need plan approval, use ${EXIT_PLAN_MODE_TOOL_NAME} instead.
 `

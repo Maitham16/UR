@@ -102,13 +102,13 @@ function normalizeAskUserQuestionInput(value: unknown): unknown {
   return value;
 }
 const questionOptionSchema = lazySchema(() => z.object({
-  label: z.string().describe('The display text for this option that the user will see and select. Should be concise (1-5 words) and clearly describe the choice.'),
-  description: z.string().describe('Explanation of what this option means or what will happen if chosen. Useful for providing context about trade-offs or implications.'),
+  label: z.string().describe('The choice itself, 1-5 words. Name the option, do not restate the question: for "Which database?" use "PostgreSQL", not "Use PostgreSQL for the database".'),
+  description: z.string().describe('What actually happens if this is chosen, and the cost of choosing it — the information the user needs that the label does not already give them. Must NOT restate the label in a full sentence. Bad: label "PostgreSQL" / description "Use PostgreSQL." Good: label "PostgreSQL" / description "Relational, strong consistency; needs a running server and a migration step." Include the trade-off, limitation, or consequence that makes this choice different from the others.'),
   preview: z.string().optional().describe('Optional preview content rendered when this option is focused. Use for mockups, code snippets, or visual comparisons that help users compare options. See the tool description for the expected content format.')
 }));
 const questionSchema = lazySchema(() => z.object({
   question: z.string().describe('The complete question to ask the user. Should be clear, specific, and end with a question mark. Example: "Which library should we use for date formatting?" If multiSelect is true, phrase it accordingly, e.g. "Which features do you want to enable?"'),
-  header: z.string().describe(`Very short label displayed as a chip/tag (max ${ASK_USER_QUESTION_TOOL_CHIP_WIDTH} chars). Examples: "Auth method", "Library", "Approach".`),
+  header: z.string().describe(`The category being decided, as a chip/tag (max ${ASK_USER_QUESTION_TOOL_CHIP_WIDTH} chars). Name the dimension, not the question: for "Which database should we use?" the header is "Database", not "Which DB". Examples: "Auth method", "Library", "Approach".`),
   options: z.array(questionOptionSchema()).min(2).max(8).describe(`The available choices for this question. Must have 2-8 options. Keep options concise and distinct; there should be no 'Other' option, that will be provided automatically.`),
   multiSelect: z.boolean().default(false).describe('Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.')
 }));
