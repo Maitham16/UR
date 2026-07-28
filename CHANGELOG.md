@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.62.0
+
+- `ur agent-inspect --costs` now labels each row with what the agent was
+  actually doing. A real 62-agent fan-out reported opaque hex ids, so you could
+  see that one agent burned 810k input tokens — 14% of the session — without
+  being able to tell which of your subagents it was. The description already
+  existed in the `agent-{id}.meta.json` sidecar and was simply never read.
+- Agents with missing or malformed metadata still appear, keyed by id.
+  Historical sessions predate the description field, and dropping those rows
+  would lose spend in order to avoid losing a label.
+
 ## 1.61.2
 
 - Fixed `ur agent-inspect --costs` reporting nothing, always. It resolved the

@@ -84,6 +84,8 @@ test('cost is shown when a provider actually billed', () => {
     [
       {
         agentId: 'a1',
+        agentType: null,
+        description: null,
         model: 'm',
         messages: 1,
         inputTokens: 10,
@@ -173,4 +175,39 @@ test('the resolver prefers a session with data over the empty live one', () => {
   )
   expect(source).toContain('hasTranscripts(live)')
   expect(source).toContain('mtimeMs')
+})
+
+test('rows are labelled with what the agent was doing, not just its id', () => {
+  // A real run produced 62 rows of opaque hex. You could see that
+  // a2527983... burned 810k tokens but not which of your subagents it was —
+  // half an attribution. The sidecar meta.json already held the description.
+  const dir = fixture()
+  writeFileSync(
+    join(dir, 'agent-a1b2.meta.json'),
+    JSON.stringify({
+      agentType: 'general-purpose',
+      description: 'Review BashTool directory',
+    }),
+  )
+  const rows = summarizeSubagentCosts(dir)
+  const labelled = rows.find(row => row.agentId === 'a1b2')
+  expect(labelled?.description).toBe('Review BashTool directory')
+  expect(formatSubagentCosts(rows, false)).toContain('Review BashTool directory')
+})
+
+test('an agent with no metadata still appears, keyed by id', () => {
+  // Historical sessions predate the description field; dropping those rows
+  // would lose spend rather than lose a label.
+  const dir = fixture()
+  const rows = summarizeSubagentCosts(dir)
+  expect(rows).toHaveLength(2)
+  expect(rows.every(row => row.description === null)).toBe(true)
+  expect(formatSubagentCosts(rows, false)).toContain('a1b2')
+})
+
+test('malformed metadata degrades to the id rather than throwing', () => {
+  const dir = fixture()
+  writeFileSync(join(dir, 'agent-a1b2.meta.json'), '{ not json')
+  expect(() => summarizeSubagentCosts(dir)).not.toThrow()
+  expect(summarizeSubagentCosts(dir).find(r => r.agentId === 'a1b2')?.description).toBeNull()
 })

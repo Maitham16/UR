@@ -297,6 +297,11 @@ export function formatInspection(report: InspectionReport, json: boolean): strin
  */
 export type SubagentCost = {
   agentId: string
+  /** From the sidecar agent-{id}.meta.json. A bare hex id tells you which
+   * agent was expensive but not what it was doing, which is half an
+   * attribution. */
+  agentType: string | null
+  description: string | null
   model: string | null
   messages: number
   inputTokens: number
@@ -324,8 +329,11 @@ export function summarizeSubagentCosts(subagentsDir: string): SubagentCost[] {
       // One unreadable transcript must not blank the whole report.
       continue
     }
+    const meta = readAgentMetadata(join(subagentsDir, entry))
     const row: SubagentCost = {
       agentId: matched[1]!,
+      agentType: meta.agentType,
+      description: meta.description,
       model: null,
       messages: messages.length,
       inputTokens: 0,
@@ -358,6 +366,35 @@ export function summarizeSubagentCosts(subagentsDir: string): SubagentCost[] {
   return rows.sort((a, b) => b.costUSD - a.costUSD)
 }
 
+/**
+ * The sidecar written next to each transcript. Missing or malformed metadata
+ * degrades to nulls: an unlabelled row is still worth showing, and this runs
+ * over historical sessions whose metadata predates the description field.
+ */
+function readAgentMetadata(transcriptPath: string): {
+  agentType: string | null
+  description: string | null
+} {
+  try {
+    const raw = readFileSync(
+      transcriptPath.replace(/\.jsonl$/, '.meta.json'),
+      'utf8',
+    )
+    const parsed = JSON.parse(raw) as {
+      agentType?: unknown
+      description?: unknown
+    }
+    return {
+      agentType:
+        typeof parsed.agentType === 'string' ? parsed.agentType : null,
+      description:
+        typeof parsed.description === 'string' ? parsed.description : null,
+    }
+  } catch {
+    return { agentType: null, description: null }
+  }
+}
+
 export function formatSubagentCosts(
   rows: SubagentCost[],
   json: boolean,
@@ -376,12 +413,18 @@ export function formatSubagentCosts(
   // broken"; tokens are the meaningful unit there, so only show money when
   // some provider actually billed for it.
   const billed = rows.some(row => row.costUSD > 0)
-  const width = Math.max(...rows.map(row => row.agentId.length), 5)
+  // Prefer the human label; fall back to the id when metadata is absent.
+  const label = (row: SubagentCost) =>
+    row.description || row.agentType || row.agentId
+  const width = Math.min(
+    Math.max(...rows.map(row => label(row).length), 5),
+    44,
+  )
   const lines = ['Per-agent usage', '']
   for (const row of rows) {
     const cost = billed ? `  ${formatUSD(row.costUSD).padStart(9)}` : ''
     lines.push(
-      `  ${row.agentId.padEnd(width)}  ${String(row.inputTokens).padStart(9)} in  ` +
+      `  ${label(row).slice(0, width).padEnd(width)}  ${String(row.inputTokens).padStart(9)} in  ` +
         `${String(row.outputTokens).padStart(8)} out${cost}  ${row.model ?? 'unknown model'}`,
     )
   }
