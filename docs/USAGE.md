@@ -339,6 +339,15 @@ UR includes slash commands and CLI subcommands for common workflows:
   raw video/trace requires selector redaction to be disabled
 - `ur trigger ...` to parse GitHub/Slack webhook payloads and optionally launch a headless run
 - `ur agent-templates ...`, `ur agent-task ...`, `ur agent-inspect`, `ur agent-features`, and `ur agent-trends` for agent template, PR handoff, timeline, and coverage utilities
+- `ur sources` lists every untrusted block that entered the session (web fetches,
+  MCP results) with its source, size, digest and any injection signals.
+  `ur sources --check "<span>"` reports which source contains a span, or states
+  that it was not grounded in anything fetched. The ledger is per-process and
+  in-memory by design.
+- `ur grade-trajectory --file <transcript.jsonl> --min-score 70` grades a run on
+  tool choice, verification, instruction compliance, safety and efficiency, and
+  exits non-zero below the threshold so it can gate CI. Rules are deterministic;
+  no model judges another model.
 - `ur agent-inspect --costs [subagentsDir]` breaks a fan-out down per agent.
   Subagent turns are never in the parent transcript — they are written to
   `{sessionId}/subagents/agent-{agentId}.jsonl` — so without this a fan-out

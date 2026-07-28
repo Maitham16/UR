@@ -4839,6 +4839,22 @@ async function run(): Promise<CommanderCommand> {
     const cmdArgs = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, ...args.map(quoteLocalCommandArg), opts.dryRun ? '--dry-run' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/skill/skill.js'), cmdArgs);
   });
+  program.command('sources').description('List untrusted sources this session, or check whether a span came from one').option('--check <span>', 'Check whether a span appears in any fetched source').option('--flagged', 'Only sources that matched an injection signal').option('--json', 'Output as JSON').action(async (opts: {
+    check?: string;
+    flagged?: boolean;
+    json?: boolean;
+  }) => {
+    const args = [opts.check ? `--check ${quoteLocalCommandArg(opts.check)}` : undefined, opts.flagged ? '--flagged' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/sources/sources.js'), args);
+  });
+  program.command('grade-trajectory').alias('grade').description('Grade a run on how it worked: tool choice, verification, safety, efficiency').option('--file <path>', 'Transcript JSONL or JSON file').option('--min-score <n>', 'Exit non-zero when the grade is below this').option('--json', 'Output as JSON').action(async (opts: {
+    file?: string;
+    minScore?: string;
+    json?: boolean;
+  }) => {
+    const args = [opts.file ? `--file ${quoteLocalCommandArg(opts.file)}` : undefined, opts.minScore ? `--min-score ${quoteLocalCommandArg(opts.minScore)}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/grade-trajectory/grade-trajectory.js'), args);
+  });
   program.command('agent-inspect').alias('inspect-agents').description('Reconstruct a per-subagent timeline from a session transcript').option('--file <path>', 'Transcript JSONL or JSON file').option('--costs [dir]', 'Per-agent token/cost breakdown from the session subagents directory').option('--json', 'Output as JSON').action(async (opts: {
     file?: string;
     costs?: string | boolean;

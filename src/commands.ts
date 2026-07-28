@@ -78,6 +78,8 @@ import cloud from './commands/cloud/index.js'
 import wiki from './commands/wiki/index.js'
 import thread from './commands/thread/index.js'
 import agentInspect from './commands/agent-inspect/index.js'
+import sourcesCommand from './commands/sources/index.js'
+import gradeTrajectoryCommand from './commands/grade-trajectory/index.js'
 import route from './commands/route/index.js'
 import modelRoute from './commands/model-route/index.js'
 import knowledge from './commands/knowledge/index.js'
@@ -399,6 +401,8 @@ const COMMANDS = memoize((): Command[] => [
   wiki,
   thread,
   agentInspect,
+  sourcesCommand,
+  gradeTrajectoryCommand,
   route,
   modelRoute,
   knowledge,

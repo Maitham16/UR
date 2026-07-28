@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.59.0
+
+- Added `ur sources`, a claim-to-source ledger. `wrapUntrusted` already stamped
+  every untrusted block with a nonce and a source label, but discarded both the
+  moment the block reached the model, so there was no way to audit what web or
+  MCP content an answer was built on. Recording happens inside `wrapUntrusted`
+  itself — the single choke point every untrusted block passes through, so the
+  ledger cannot miss one. `--check "<span>"` reports which fetched source
+  contains a span, and says plainly when none does, which is the useful signal:
+  that claim was not grounded in anything UR retrieved. This is the automatic
+  counterpart to the existing `/claim-ledger`, which records claims a human or
+  the agent asserts by hand; `ur sources` records what actually entered context
+  without anyone having to remember to log it.
+- The ledger is in-memory and capped. Persisting it would create a second
+  on-disk store of third-party content — including whatever a prompt-injection
+  attempt put there — with its own retention and deletion obligations.
+- Added `ur grade-trajectory`, which grades a run on how it worked rather than
+  what it concluded: unverified changes, edits to files never read, destructive
+  commands, and loops on identical failures. Every rule is deterministic and
+  read from the transcript; no model grades another model, because a judge that
+  can hallucinate turns a CI gate into a coin flip.
+- `--min-score` sets `process.exitCode`, so the gate genuinely fails a CI step.
+  Returning an `exitCode` field is silently ignored by `runLocalTextCommand`,
+  which exits with `process.exitCode ?? 0` — the first implementation printed
+  FAILED and exited 0.
+
 ## 1.58.1
 
 - Unified vision-capability detection behind
