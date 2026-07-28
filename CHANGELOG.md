@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.65.1
+
+- Fixed `ur selftest run` reporting 0/5 anywhere but the UR repo. The drill
+  runner spawned `./bin/ur.js`, a path relative to the current directory, so
+  every drill failed instantly with an empty detail — which reads as five
+  broken features rather than one broken path. It now re-spawns
+  `process.execPath` with `process.argv[1]`, the exact pair this process was
+  launched with, so it works from any directory and for a global install.
+- Every existing test ran `bun test` from the repo root, where the relative
+  path happens to exist, so all of them stayed green while the command was
+  unusable in practice. Added a test that runs the drills from a temp
+  directory; verified it fails against the old code and passes against the fix.
+
 ## 1.65.0
 
 - The release gate now asks the registry whether the packed dependency ranges

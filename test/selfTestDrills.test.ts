@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { DRILLS } from '../src/services/agents/selfTest.ts'
 
 // Every serious defect this repo shipped recently passed its unit tests: a
@@ -65,4 +68,28 @@ test('pruning has a drill, since no automated check can reach it', () => {
   expect(drill).toBeDefined()
   expect(drill!.kind).toBe('manual')
   expect(drill!.expect).toContain('pruned')
+})
+
+test('drills work from outside the repo, where users actually run them', () => {
+  // runCli resolved './bin/ur.js' against the current directory, so every
+  // drill failed the moment `ur selftest` ran anywhere but the UR repo —
+  // reporting 0/5 with empty details, which looks like five broken features
+  // rather than one broken path. Every existing test ran from the repo root,
+  // where that relative path happens to exist, so all of them stayed green.
+  const elsewhere = mkdtempSync(join(tmpdir(), 'ur-cwd-'))
+  const result = spawnSync(
+    process.execPath,
+    [resolve('./bin/ur.js'), 'selftest', 'run'],
+    { encoding: 'utf8', timeout: 240_000, cwd: elsewhere },
+  )
+  expect(result.stdout).toContain('5/5 passed')
+  expect(result.status).toBe(0)
+}, 300_000)
+
+test('the binary is resolved from the running process, not the cwd', () => {
+  const source = readFileSync('src/services/agents/selfTest.ts', 'utf8')
+  expect(source).toContain('process.execPath')
+  expect(source).toContain('process.argv[1]')
+  // A bare relative path is the defect; it must not be the primary source.
+  expect(source).not.toContain("spawnSync('node', [process.env.UR_BIN")
 })

@@ -143,8 +143,23 @@ export const DRILLS: Drill[] = [
   },
 ]
 
+/**
+ * The binary that is currently executing.
+ *
+ * This was `'./bin/ur.js'`, a path relative to the *current directory*, so
+ * every drill failed the moment `ur selftest` ran anywhere but the UR repo —
+ * which is everywhere a user actually is. It reported 0/5 with empty details,
+ * looking like five broken features rather than one broken path.
+ *
+ * This process was launched as `execPath argv[1] ...`, so re-spawning that
+ * exact pair is valid by construction, global install included.
+ */
+function urBinary(): string {
+  return process.env.UR_BIN ?? process.argv[1] ?? './bin/ur.js'
+}
+
 function runCli(args: string[], cwd?: string) {
-  return spawnSync('node', [process.env.UR_BIN ?? './bin/ur.js', ...args], {
+  return spawnSync(process.execPath, [urBinary(), ...args], {
     encoding: 'utf8',
     timeout: 90_000,
     cwd,
