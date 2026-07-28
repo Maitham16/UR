@@ -43,5 +43,10 @@ describe('AST-aware organize imports', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
-  }, 15_000)
+    // A per-test budget overrides the suite's `--timeout`, so this 15s cap
+    // applied even under the release gate's `--timeout 120000`. Building a
+    // TypeScript program to resolve imports takes ~20s on a 2-core CI runner,
+    // so the gate failed here on timing alone while every assertion passed.
+    // Budget for the slowest machine that runs this, not the fastest.
+  }, 90_000)
 })

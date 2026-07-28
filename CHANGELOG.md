@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.57.5
+
+- Fixed the release gate failing on `repoEditImports`. The gate runs
+  `bun test --timeout 120000`, but a per-test budget silently overrides that
+  global, and this test declared 15s while its body — which builds a
+  TypeScript program to resolve imports — takes about 21s on a 2-core CI
+  runner. Every assertion passed; the release went red on timing alone.
+- Added a guard so this cannot recur: a test now fails if any test file
+  declares a per-test budget below 60s. Both budgets that broke CI (15s and
+  20s) are flagged by it; ordinary call arguments are not.
+
 ## 1.57.4
 
 - Fixed slash command arguments being silently truncated. `parseArguments`
