@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.57.2
+
+- Fixed the Ollama adapter discarding images returned by tools. A tool result
+  containing an image was flattened with `contentBlockToText`, which renders an
+  image block as the literal string `[Image output omitted]` — so a `Computer`
+  screenshot reached the model as that text and nothing else. Image blocks are
+  now extracted from the tool result and sent as `images` on the following user
+  message, which is where Ollama renders them reliably.
+- On a model with no vision capability the placeholder now names the model and
+  points at `/model`, so the agent states the real reason it cannot see instead
+  of inventing one.
+- `Computer(screenshot)` now reports the bytes actually sent rather than the
+  on-disk size, which was misleading after downsampling.
+
 ## 1.57.1
 
 - Fixed the `Computer` tool returning a byte count instead of the screenshot.

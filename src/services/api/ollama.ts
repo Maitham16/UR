@@ -380,7 +380,7 @@ const TEXT_TOOL_CALL_HINT = [
   'Escape newlines inside JSON strings as \\n. Do not wrap the JSON in prose or code fences.',
 ].join('\n')
 
-function toOllamaChatRequest(
+export function toOllamaChatRequest(
   params: BetaMessageStreamParams,
   stream: boolean,
   capabilities: OllamaModelCapabilities | null,
@@ -410,6 +410,7 @@ function toOllamaChatRequest(
       ...messagesToOllama(
         params.messages,
         modelCapabilityEnabled(capabilities, 'vision'),
+        params.model,
       ),
     ].filter(
       message =>
@@ -474,6 +475,7 @@ function systemToText(system: BetaMessageStreamParams['system']): string {
 function messagesToOllama(
   messages: MessageParam[],
   supportsVision: boolean,
+  model = '',
 ): OllamaMessage[] {
   const result: OllamaMessage[] = []
   const toolNamesById = new Map<string, string>()
@@ -526,11 +528,25 @@ function messagesToOllama(
           break
         case 'tool_result': {
           const toolName = toolNamesById.get(block.tool_use_id) ?? block.tool_use_id
+          const split = splitToolResultContent(block.content)
+          // Ollama renders `images` reliably on a user message; support on a
+          // tool message is template-dependent, so the bytes travel separately.
+          const note = describeToolResultImages(
+            split.images.length,
+            toolName,
+            supportsVision,
+            model,
+          )
           toolMessages.push({
             role: 'tool',
-            content: contentBlockToText(block.content),
+            content: [split.text, note].filter(Boolean).join('\n'),
             tool_name: toolName,
           })
+          if (supportsVision) {
+            for (const image of split.images) {
+              images.push(image)
+            }
+          }
           break
         }
         case 'image':
@@ -1402,6 +1418,60 @@ function emptyUsage(): BetaUsage {
       ephemeral_5m_input_tokens: 0,
     },
   } as BetaUsage
+}
+
+// A tool result carrying an image (a screenshot, a rendered chart) used to be
+// flattened to the literal string "[Image output omitted]", so the model was
+// told an image existed and never given it. Pull the bytes out instead.
+function splitToolResultContent(content: unknown): {
+  text: string
+  images: string[]
+} {
+  if (!Array.isArray(content)) {
+    return { text: contentBlockToText(content), images: [] }
+  }
+  const textParts: string[] = []
+  const images: string[] = []
+  for (const block of content) {
+    if (
+      block &&
+      typeof block === 'object' &&
+      'type' in block &&
+      block.type === 'image'
+    ) {
+      const source = (block as { source?: { type?: string; data?: string } })
+        .source
+      if (source?.type === 'base64' && typeof source.data === 'string') {
+        images.push(source.data)
+      } else {
+        textParts.push('[Image omitted: unsupported image source]')
+      }
+      continue
+    }
+    textParts.push(contentBlockToText([block]))
+  }
+  return { text: textParts.filter(Boolean).join('\n'), images }
+}
+
+// Silence is the worst outcome: the model then invents an explanation for the
+// user. Say what happened and what would fix it.
+function describeToolResultImages(
+  count: number,
+  toolName: string,
+  supportsVision: boolean,
+  model: string,
+): string {
+  if (count === 0) return ''
+  const plural = count === 1 ? 'image' : `${count} images`
+  if (supportsVision) {
+    return `[${plural} from ${toolName} attached to the following message]`
+  }
+  const named = model ? `"${model}"` : 'the selected Ollama model'
+  return (
+    `[${plural} from ${toolName} could not be sent: ${named} does not advertise ` +
+    `vision support, so it cannot see images. Tell the user this directly and ` +
+    `suggest switching to a vision model with /model.]`
+  )
 }
 
 function contentBlockToText(content: unknown): string {

@@ -158,7 +158,7 @@ test('a screenshot is returned as an image block, not a byte count', () => {
     {
       action: 'screenshot',
       ok: true,
-      detail: 'Captured 5164460 bytes',
+      detail: 'Captured the screen (184320 bytes sent)',
       screenshotPath: '/tmp/s.png',
       imageBase64: 'iVBORw0KGgo=',
       imageMediaType: 'image/png',

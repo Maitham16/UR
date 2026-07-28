@@ -228,7 +228,9 @@ export const ComputerTool = buildTool({
           data: {
             action: 'screenshot',
             ok: true,
-            detail: `Captured ${bytes} bytes`,
+            // Report what was actually sent, not the on-disk size: a 7 MB
+            // Retina capture ships as a fraction of that after downsampling.
+            detail: `Captured the screen (${resized.buffer.length} bytes sent)`,
             screenshotPath: path,
             imageBase64: resized.buffer.toString('base64'),
             imageMediaType: `image/${resized.mediaType}`,

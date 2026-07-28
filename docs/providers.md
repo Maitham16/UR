@@ -47,7 +47,14 @@ multimodal input, external CLI boundary, and sandbox scope:
 | Antigravity | subscription | subscription-cli | yes | no | no | no† | UR-run tools/output only† | `subscription-cli:antigravity` | official Antigravity CLI login, where supported |
 
 \* Ollama forwards images only to models that advertise vision support;
-unsupported models get a text placeholder instead of the image.
+unsupported models get a text placeholder instead of the image. This applies to
+images returned by tools as well as images you paste: a `Computer` screenshot or
+any other image-bearing tool result is extracted from the tool message and sent
+as `images` on the following user message, because Ollama renders `images`
+reliably there but only template-dependently on a `tool` message. On a text-only
+model the placeholder names the model and points at `/model`, so the agent tells
+you why it cannot see rather than guessing. Check a model with `ur model-doctor`
+or `ollama show <model>`.
 
 † External vendor CLI boundary (see below): UR passes prompt text only to the
 official CLI, so image blocks are not forwarded, and UR-native tool/streaming/
