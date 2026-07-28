@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.57.1
+
+- Fixed the `Computer` tool returning a byte count instead of the screenshot.
+  `mapToolResultToToolResultBlockParam` dropped the captured image, so the
+  model saw only "Captured 5164460 bytes" and had to ask the user where to save
+  the file — defeating the tool's main purpose. Screenshots now come back as an
+  image content block, resized through the same path `FileRead` uses so a
+  Retina capture cannot exceed the request size limit.
+- When encoding fails the file still exists, so the result now reports the path
+  for the model to read rather than reporting nothing usable.
+
 ## 1.57.0
 
 - Connected four features that were built, tested and then left unreachable.

@@ -1,4 +1,4 @@
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod/v4'
@@ -6,6 +6,7 @@ import { buildTool, type ToolDef } from '../../Tool.js'
 import type { PermissionDecision } from '../../types/permissions.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
+import { maybeResizeAndDownsampleImageBuffer } from '../../utils/imageResizer.js'
 import {
   actionRequiresApproval,
   buildClickCommand,
@@ -50,6 +51,9 @@ const outputSchema = lazySchema(() =>
     ok: z.boolean(),
     detail: z.string(),
     screenshotPath: z.string().optional(),
+    /** Base64 PNG, present on a successful screenshot. */
+    imageBase64: z.string().optional(),
+    imageMediaType: z.string().optional(),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -208,13 +212,42 @@ export const ComputerTool = buildTool({
           },
         }
       }
-      return {
-        data: {
-          action: 'screenshot',
-          ok: true,
-          detail: `Captured ${statSync(path).size} bytes`,
-          screenshotPath: path,
-        },
+      // The point of a screenshot is for the model to see it. Returning only a
+      // byte count leaves it blind and it has to ask the user to save the file,
+      // which defeats the tool. Encode it here, resized the same way FileRead
+      // does so a Retina capture does not blow the request size limit.
+      const bytes = statSync(path).size
+      try {
+        const raw = readFileSync(path)
+        const resized = await maybeResizeAndDownsampleImageBuffer(
+          raw,
+          bytes,
+          'png',
+        )
+        return {
+          data: {
+            action: 'screenshot',
+            ok: true,
+            detail: `Captured ${bytes} bytes`,
+            screenshotPath: path,
+            imageBase64: resized.buffer.toString('base64'),
+            imageMediaType: `image/${resized.mediaType}`,
+          },
+        }
+      } catch (error) {
+        // Encoding failed, but the file is on disk: hand back the path so the
+        // model can fall back to reading it rather than reporting nothing.
+        return {
+          data: {
+            action: 'screenshot',
+            ok: true,
+            detail:
+              `Captured ${bytes} bytes to ${path}, but the image could not be ` +
+              `encoded (${error instanceof Error ? error.message : String(error)}). ` +
+              'Read that path to view it.',
+            screenshotPath: path,
+          },
+        }
       }
     }
 
@@ -272,7 +305,25 @@ export const ComputerTool = buildTool({
       },
     }
   },
-  mapToolResultToToolResultBlockParam({ action, ok, detail }, toolUseID) {
+  mapToolResultToToolResultBlockParam(data, toolUseID) {
+    const { action, ok, detail, imageBase64, imageMediaType } = data
+    if (imageBase64 && imageMediaType) {
+      return {
+        tool_use_id: toolUseID,
+        type: 'tool_result',
+        content: [
+          { type: 'text', text: `${action}: ${detail}` },
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              data: imageBase64,
+              media_type: imageMediaType as 'image/png',
+            },
+          },
+        ],
+      }
+    }
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',

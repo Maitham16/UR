@@ -148,3 +148,50 @@ test('turn side effects run on the main thread only', () => {
   const index = source.indexOf('runTurnSideEffects')
   expect(source.slice(index - 400, index)).toContain('!toolUseContext.agentId')
 })
+
+// --- Screenshots must reach the model as an image -------------------------
+
+test('a screenshot is returned as an image block, not a byte count', () => {
+  // Returning only "Captured 5164460 bytes" leaves the model blind: it then
+  // asks the user to save the file, which defeats the tool entirely.
+  const result = ComputerTool.mapToolResultToToolResultBlockParam(
+    {
+      action: 'screenshot',
+      ok: true,
+      detail: 'Captured 5164460 bytes',
+      screenshotPath: '/tmp/s.png',
+      imageBase64: 'iVBORw0KGgo=',
+      imageMediaType: 'image/png',
+    } as never,
+    'tu_1',
+  )
+  expect(Array.isArray(result.content)).toBe(true)
+  const blocks = result.content as Array<{ type: string }>
+  expect(blocks.map(block => block.type)).toEqual(['text', 'image'])
+  expect((blocks[1] as never as { source: { media_type: string } }).source
+    .media_type).toBe('image/png')
+})
+
+test('non-image actions still return plain text', () => {
+  const result = ComputerTool.mapToolResultToToolResultBlockParam(
+    { action: 'click', ok: true, detail: 'Clicked at 10,20' } as never,
+    'tu_2',
+  )
+  expect(typeof result.content).toBe('string')
+  expect(result.content).toContain('Clicked at 10,20')
+})
+
+test('an unencodable capture still hands back the path to read', () => {
+  // Encoding can fail on a huge or exotic capture. The file is on disk, so the
+  // model must be told where, rather than being left with nothing.
+  const result = ComputerTool.mapToolResultToToolResultBlockParam(
+    {
+      action: 'screenshot',
+      ok: true,
+      detail: 'Captured 900 bytes to /tmp/s.png, but the image could not be encoded (boom). Read that path to view it.',
+      screenshotPath: '/tmp/s.png',
+    } as never,
+    'tu_3',
+  )
+  expect(result.content).toContain('/tmp/s.png')
+})
