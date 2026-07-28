@@ -47,7 +47,14 @@ multimodal input, external CLI boundary, and sandbox scope:
 | Antigravity | subscription | subscription-cli | yes | no | no | no† | UR-run tools/output only† | `subscription-cli:antigravity` | official Antigravity CLI login, where supported |
 
 \* Ollama forwards images only to models that advertise vision support;
-unsupported models get a text placeholder instead of the image. This applies to
+a model whose advertised capabilities omit `vision` gets a text placeholder
+instead. A model that advertises nothing at all is treated as *unknown*, not
+unsupported: the image is still sent, and the note says support could not be
+confirmed rather than asserting the model is blind. That distinction matters —
+`/api/show` returns no capabilities for several cloud-suffixed models, and
+reporting that as "no vision support" sends you to change models for no
+reason. Resolution lives in `src/utils/model/visionCapability.ts` and is shared
+by the adapter, `ur model-doctor` and the model router. This applies to
 images returned by tools as well as images you paste: a `Computer` screenshot or
 any other image-bearing tool result is extracted from the tool message and sent
 as `images` on the following user message, because Ollama renders `images`

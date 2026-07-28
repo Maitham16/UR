@@ -70,7 +70,9 @@ test('a text-only model is told why it cannot see, and what to do', () => {
   const tool = request.messages.find(m => m.role === 'tool')
   // Naming the model matters: the user must know which one to change.
   expect(tool?.content).toContain('kimi-k2.7-code:cloud')
-  expect(tool?.content).toContain('does not advertise vision support')
+  // This model advertises capabilities and vision is absent, so the definite
+  // wording is correct here.
+  expect(tool?.content).toContain('cannot see images')
   expect(tool?.content).toContain('/model')
   // The text half of the result must survive regardless.
   expect(tool?.content).toContain('Captured 7035293 bytes')
@@ -125,4 +127,17 @@ test('a string tool result still works', () => {
     null,
   )
   expect(request.messages.find(m => m.role === 'tool')?.content).toBe('done')
+})
+
+test('an unadvertised model is not accused of lacking vision', () => {
+  // Null capabilities used to mean "assume vision" in the adapter and
+  // "no vision support" in the message — the contradiction that produced the
+  // wrong advice for kimi-k2.7-code:cloud. It is now explicitly unknown, so
+  // the image is still sent and the note says support was unconfirmed.
+  const request = requestWithScreenshot(null)
+  const withImages = request.messages.filter(m => (m.images?.length ?? 0) > 0)
+  expect(withImages).toHaveLength(1)
+  const tool = request.messages.find(m => m.role === 'tool')
+  expect(tool?.content).not.toContain('cannot see images')
+  expect(tool?.content).toContain('could not be confirmed')
 })

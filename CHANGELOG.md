@@ -1,6 +1,19 @@
 # Changelog
 
-## 1.58.0
+## 1.58.1
+
+- Unified vision-capability detection behind
+  `src/utils/model/visionCapability.ts`. Three implementations disagreed: the
+  Ollama adapter's `modelCapabilityEnabled` returned `has(x) ?? true`, so a
+  model advertising nothing was assumed capable; `ur model-doctor` matched
+  names privately; the router read a precomputed flag. The binary shape was the
+  defect — absence of evidence was reported as evidence, in opposite directions.
+- Vision support is now tri-state. A capability list is authoritative both ways;
+  a recognised name can confirm support but never rule it out; anything else is
+  `unknown`. Images are withheld only on a confirmed no, so servers without a
+  capabilities endpoint keep working, and the note distinguishes "this model
+  cannot see" from "support could not be confirmed" — advice that had been
+  backwards for models like `kimi-k2.7-code:cloud`.
 
 - Fixed choice menus where all three fields said the same thing. Neither the
   schema nor the tool prompt stated that `header`, `label` and `description`
@@ -8,6 +21,8 @@
   description paraphrased the label — leaving the one field with room to be
   informative saying nothing. Each field now has a defined job, and the prompt
   carries a contrasted bad/good example rather than an abstract instruction.
+
+## 1.58.0
 
 - Added per-agent cost and token attribution: `ur agent-inspect --costs`.
   `stats.ts` already read every `{sessionId}/subagents/agent-{agentId}.jsonl`

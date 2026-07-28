@@ -34,6 +34,12 @@ import {
   type ParsedToolCall,
 } from '../../cli/transports/kimiToolCalls.js'
 import { parseToolInputJsonLenient } from '../../utils/json.js'
+import {
+  describeVisionSupport,
+  resolveVisionSupport,
+  shouldSendImages,
+  type VisionSupport,
+} from '../../utils/model/visionCapability.js'
 import { logForDebugging } from '../../utils/debug.js'
 
 type OllamaMessage = {
@@ -409,7 +415,7 @@ export function toOllamaChatRequest(
       systemMessage,
       ...messagesToOllama(
         params.messages,
-        modelCapabilityEnabled(capabilities, 'vision'),
+        resolveVisionSupport(params.model, capabilities),
         params.model,
       ),
     ].filter(
@@ -474,9 +480,10 @@ function systemToText(system: BetaMessageStreamParams['system']): string {
 
 function messagesToOllama(
   messages: MessageParam[],
-  supportsVision: boolean,
+  visionSupport: VisionSupport,
   model = '',
 ): OllamaMessage[] {
+  const supportsVision = shouldSendImages(visionSupport)
   const result: OllamaMessage[] = []
   const toolNamesById = new Map<string, string>()
 
@@ -534,7 +541,7 @@ function messagesToOllama(
           const note = describeToolResultImages(
             split.images.length,
             toolName,
-            supportsVision,
+            visionSupport,
             model,
           )
           toolMessages.push({
@@ -553,7 +560,10 @@ function messagesToOllama(
           if (supportsVision && block.source.type === 'base64') {
             images.push(block.source.data)
           } else if (!supportsVision) {
-            textParts.push('[Image input omitted: selected Ollama model does not advertise vision support]')
+            textParts.push(
+              describeVisionSupport(visionSupport, model, 1) ??
+                '[Image input omitted]',
+            )
           } else {
             textParts.push('[Image input omitted: unsupported image source]')
           }
@@ -1458,20 +1468,19 @@ function splitToolResultContent(content: unknown): {
 function describeToolResultImages(
   count: number,
   toolName: string,
-  supportsVision: boolean,
+  visionSupport: VisionSupport,
   model: string,
 ): string {
   if (count === 0) return ''
   const plural = count === 1 ? 'image' : `${count} images`
-  if (supportsVision) {
+  if (visionSupport === 'supported') {
     return `[${plural} from ${toolName} attached to the following message]`
   }
-  const named = model ? `"${model}"` : 'the selected Ollama model'
-  return (
-    `[${plural} from ${toolName} could not be sent: ${named} does not advertise ` +
-    `vision support, so it cannot see images. Tell the user this directly and ` +
-    `suggest switching to a vision model with /model.]`
-  )
+  // "does not advertise capabilities" and "advertises capabilities without
+  // vision" call for different advice; conflating them sent the user to
+  // change models when nothing was wrong with the one they had.
+  const detail = describeVisionSupport(visionSupport, model, count)
+  return detail ? `[from ${toolName}] ${detail}` : ''
 }
 
 function contentBlockToText(content: unknown): string {

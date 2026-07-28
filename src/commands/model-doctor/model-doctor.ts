@@ -1,4 +1,5 @@
 import { request as httpRequest } from 'node:http'
+import { resolveVisionSupport } from '../../utils/model/visionCapability.js'
 import { request as httpsRequest } from 'node:https'
 import type { LocalCommandCall } from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
@@ -103,14 +104,15 @@ export function buildOllamaShowRequestBody(name: string): string {
   return JSON.stringify({ model: name })
 }
 
+// Delegates to the shared resolver so the doctor, the router and the Ollama
+// adapter cannot drift apart again. 'unknown' reports as not-confirmed rather
+// than as a definite no.
 function inferVision(name: string, capabilities: string[]): boolean {
-  const lowered = name.toLowerCase()
   return (
-    capabilities.includes('vision') ||
-    lowered.includes('vision') ||
-    lowered.includes('llava') ||
-    lowered.includes('moondream') ||
-    lowered.includes('minicpm-v')
+    resolveVisionSupport(
+      name,
+      capabilities.length > 0 ? new Set(capabilities) : null,
+    ) === 'supported'
   )
 }
 
