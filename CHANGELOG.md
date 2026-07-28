@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.56.0
+
+- Added a subagent fan-out governor. Agents could spawn agents with no depth or
+  concurrency bound, and `/crew`, `/arena`, `/bg fanout` and `/pattern` all
+  spawn several at once, so a single prompt could expand into an unbounded tree
+  until the machine wedged. Spawning is now refused past a nesting depth of 3
+  or 20 concurrent agents, checked before any work starts so a refusal is free.
+  The slot is released in the existing `finally`, so an aborted or crashed
+  agent cannot strand the budget.
+- Limits are configurable through `agents.maxDepth` and `agents.maxConcurrent`,
+  clamped to hard ceilings of 10 and 100. A settings file cannot disable the
+  governor, and out-of-range or non-numeric values clamp rather than switching
+  it off. Refusal messages name the limit that fired and the setting that
+  raises it.
+- Added `src/security/promptInjection.ts`: detection of injection phrasing
+  (instruction override, role reassignment, exfiltration, tool coercion, forged
+  system turns, secrecy demands, boundary forgery), removal of zero-width and
+  bidirectional characters used to hide payloads from human review, a
+  nonce-bound content boundary that untrusted text cannot close because it
+  cannot predict the nonce, and canary tokens that prove whether a boundary was
+  crossed. Framed as detection and privilege separation rather than filtering,
+  because no reliable injection classifier exists.
+- Added `denyByDefault` to the Seatbelt profile builder. Without a read
+  allowlist the profile previously fell back to `(allow default)` plus targeted
+  denials — a blocklist rather than a sandbox, and the shape behind the 2026
+  Seatbelt escape write-ups. Opt-in for back-compatibility, since it can break
+  agents that read outside the standard runtime roots.
+
 ## 1.55.0
 
 - Narrowed `APIProvider` to the two values `getAPIProvider()` can actually

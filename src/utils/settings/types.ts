@@ -413,6 +413,23 @@ export const SettingsSchema = lazySchema(() =>
       permissions: PermissionsSchema()
         .optional()
         .describe('Tool usage permissions configuration'),
+      agents: z
+        .object({
+          maxDepth: z
+            .number()
+            .optional()
+            .describe(
+              'Maximum subagent nesting depth (default 3, hard ceiling 10)',
+            ),
+          maxConcurrent: z
+            .number()
+            .optional()
+            .describe(
+              'Maximum subagents running at once (default 20, hard ceiling 100)',
+            ),
+        })
+        .optional()
+        .describe('Subagent fan-out limits'),
       model: z
         .string()
         .optional()

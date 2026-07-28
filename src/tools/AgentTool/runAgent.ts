@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle'
+import { canSpawnAgent, registerAgent } from './fanOutLimits.js'
+import { resolveFanOutLimits } from './fanOutSettings.js'
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
 import uniqBy from 'lodash-es/uniqBy.js'
@@ -346,6 +348,20 @@ export async function* runAgent({
   )
 
   const agentId = override?.agentId ? override.agentId : createAgentId()
+
+  // Fan-out governor. Checked before any work starts so a refusal is cheap,
+  // and released in the `finally` below so an aborted or crashed agent cannot
+  // leak a concurrency slot.
+  const fanOutParentId = toolUseContext.agentId
+  const fanOutDecision = canSpawnAgent(fanOutParentId, resolveFanOutLimits())
+  if (!fanOutDecision.allowed) {
+    throw new Error(fanOutDecision.reason)
+  }
+  const releaseFanOutSlot = registerAgent(
+    agentId,
+    fanOutParentId,
+    fanOutDecision.depth,
+  )
 
   // Route this agent's transcript into a grouping subdirectory if requested
   // (e.g. workflow subagents write to subagents/workflows/<runId>/).
@@ -816,6 +832,9 @@ export async function* runAgent({
       agentDefinition.callback()
     }
   } finally {
+    // Released first: every later step is best-effort, and a throw there must
+    // not strand the concurrency budget.
+    releaseFanOutSlot()
     // Clean up agent-specific MCP servers (runs on normal completion, abort, or error)
     await mcpCleanup()
     // Clean up agent's session hooks

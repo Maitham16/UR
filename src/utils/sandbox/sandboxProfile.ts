@@ -79,6 +79,19 @@ export type SandboxProfileOptions = {
   denyRead?: string[]
   allowWrite?: string[]
   denyWrite?: string[]
+  /**
+   * Force the deny-default profile even with no read allowlist.
+   *
+   * Without it, a profile with no `allowRead` falls back to `(allow default)`
+   * plus targeted denials. That shape is a blocklist, not a sandbox: anything
+   * the denial list fails to anticipate is permitted, and it is the pattern
+   * behind the 2026 Seatbelt escape write-ups. Deny-default inverts that —
+   * nothing is allowed until it is granted.
+   *
+   * Opt-in because it can break agents that read paths outside the standard
+   * runtime roots; those need an explicit `allowRead`.
+   */
+  denyByDefault?: boolean
 }
 
 /**
@@ -104,7 +117,9 @@ export function buildSeatbeltProfile(
     .join('\n')
 
   const allowRead = normalizedPaths(root, options.allowRead)
-  const restrictReads = allowRead.length > 0
+  // Deny-default applies whenever reads are restricted, or when the caller
+  // asks for it explicitly with no allowlist of its own.
+  const restrictReads = allowRead.length > 0 || options.denyByDefault === true
 
   if (restrictReads) {
     const runtimeReadRoots = normalizedPaths(root, [
@@ -145,6 +160,10 @@ export function buildSeatbeltProfile(
     return lines.join('\n')
   }
 
+  // Permissive fallback: a blocklist rather than a sandbox. Reached only when
+  // neither an allowRead list nor denyByDefault is configured. Prefer
+  // denyByDefault; this branch exists for back-compatibility with profiles
+  // that assume unrestricted reads.
   const lines = [
     '(version 1)',
     '(allow default)',
