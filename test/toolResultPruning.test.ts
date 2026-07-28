@@ -113,3 +113,14 @@ test('the size trigger is actually wired into microcompact', () => {
   // It must run before the external-build early return, or it is dead again.
   expect(index).toBeLessThan(source.indexOf('return { messages }\n}'))
 })
+
+test('a prune is announced, not silent', () => {
+  // An invisible context change cannot be confirmed by the user, nor blamed
+  // when a detail goes missing. Memory suggestions had this exact problem.
+  const source = readFileSync('src/services/compact/microCompact.ts', 'utf8')
+  expect(source).toContain('notice:')
+  expect(source).toContain('Pruned ')
+  const query = readFileSync('src/query.ts', 'utf8')
+  expect(query).toContain('microcompactResult.notice')
+  expect(query).toContain('createSystemMessage(microcompactResult.notice')
+})

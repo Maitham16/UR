@@ -49,3 +49,20 @@ test('each drill covers a feature that shipped broken or is unproven', () => {
     expect(features).toContain(feature)
   }
 })
+
+test('the fan-out drill exercises the path the limit is reachable on', () => {
+  // The original drill asked for 30 agents in one turn. MAX_CONCURRENT_TOOLS
+  // caps a turn at 8, so agents.maxConcurrent (20) never got a chance and the
+  // run reported an unrelated limit — which I then misread as the governor
+  // being unreachable. It is reachable, by nesting.
+  const drill = DRILLS.find(d => d.id === 'fan-out-limit')!
+  expect(drill.action.toUpperCase()).toContain('NESTED')
+  expect(drill.rationale).toContain('MAX_CONCURRENT_TOOLS')
+})
+
+test('pruning has a drill, since no automated check can reach it', () => {
+  const drill = DRILLS.find(d => d.id === 'tool-result-pruning')
+  expect(drill).toBeDefined()
+  expect(drill!.kind).toBe('manual')
+  expect(drill!.expect).toContain('pruned')
+})

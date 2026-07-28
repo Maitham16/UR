@@ -466,6 +466,11 @@ async function* queryLoop(
       querySource,
     )
     messagesForQuery = microcompactResult.messages
+    // Show the prune. An invisible context change is one the user cannot
+    // confirm fired, nor blame when a detail goes missing.
+    if (microcompactResult.notice) {
+      yield createSystemMessage(microcompactResult.notice, 'info')
+    }
     // For cached microcompact (cache editing), defer boundary message until after
     // the API response so we can use actual cache_deleted_input_tokens.
     // Gated behind feature() so the string is eliminated from external builds.

@@ -76,7 +76,14 @@ export const call: LocalCommandCall = async args => {
     report =>
       report.counts.modified > 0 ||
       report.counts.missing > 0 ||
-      report.counts.untracked > 0,
+      report.counts.untracked > 0 ||
+      // A forged manifest updates the digests to match the files it altered,
+      // so every count reads zero — the signature is the only thing that
+      // catches it, and it is the most serious finding of all.
+      report.signature === 'invalid' ||
+      // Signed but uncheckable is not a pass either: nothing can be vouched
+      // for without the key.
+      report.signature === 'unverifiable',
   )
   if (tampered) process.exitCode = 1
   return {

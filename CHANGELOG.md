@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.64.0
+
+- Tool-result pruning now announces itself. It changed context silently, so
+  there was no way to confirm it fired or to attribute a missing detail to it —
+  the same defect memory suggestions had when they went to stderr. A prune now
+  prints what it removed and how many tokens that freed.
+- Corrected the fan-out drill, which tested the wrong limit. Asking for 30
+  subagents in one turn cannot reach `agents.maxConcurrent`, because
+  `MAX_CONCURRENT_TOOLS` caps a single turn at 8 — so the run reported an
+  unrelated cap and I mistook that for the governor being unreachable. It is
+  reachable by nesting: 8 roots, each spawning more, hits 20 and fires naming
+  the setting. The drill now exercises that path.
+- Added a manual drill for tool-result pruning. It only fires inside a live
+  query loop, so no automated drill can reach it.
+- Added opt-in signing of the memory integrity manifest via
+  `UR_MEMORY_INTEGRITY_KEY`. Unsigned, anyone who can write a memory file can
+  rewrite the manifest to match and pass verification; the HMAC raises that to
+  needing the key. Off by default because a key stored beside the data it
+  protects is theatre.
+- `verify` exits non-zero on an invalid signature — the first implementation
+  detected forgery and still exited 0, because a forged manifest updates the
+  digests so every tamper count reads zero. A manifest that is signed but
+  unverifiable also fails, rather than passing on an unperformed check.
+
 ## 1.63.0
 
 - Added size-triggered pruning of superseded tool results

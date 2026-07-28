@@ -345,3 +345,19 @@ the tool call itself remains visible in the transcript.
 This is separate from the time-based trigger (`tengu_slate_heron`), which fires
 only after an hour of idling and is configured through GrowthBook — a service a
 local install never reaches, so it is effectively always off.
+
+## Memory integrity signing (`UR_MEMORY_INTEGRITY_KEY`)
+
+Unsigned, the manifest defends against accident and unaware tampering only:
+anyone who can write a memory file can also rewrite the manifest to match, and
+verification passes. Setting `UR_MEMORY_INTEGRITY_KEY` adds an HMAC over the
+file digests, so a forged manifest is detected even when every digest matches
+the file beside it.
+
+Off by default, deliberately. A key has to live somewhere, and a key stored
+next to the data it protects adds no security — enable this only when the key
+comes from somewhere the memory directory is not (password manager, CI secret).
+
+`ur memory-integrity verify` exits non-zero on an invalid signature, and also
+when a manifest is signed but no key is available: an unverifiable signature is
+not a pass.

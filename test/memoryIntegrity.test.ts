@@ -9,6 +9,9 @@ import {
   readManifest,
   recordManifest,
   verifyMemoryStore,
+  signManifest,
+  checkSignature,
+  digestOf,
 } from '../src/memdir/memoryIntegrity.ts'
 
 // Project task memory was hash-chained and could prove tampering. The
@@ -166,3 +169,86 @@ test('an empty store does not fail the command, only tampering does', () => {
   writeFileSync(join(dir, 'evil.md'), 'x\n')
   expect(run().status).toBe(1)
 }, 90_000)
+
+// --- Signing --------------------------------------------------------------
+
+test('a store is unsigned by default', () => {
+  // A key has to live somewhere, and one sitting next to the data it protects
+  // is theatre. Signing is opt-in via UR_MEMORY_INTEGRITY_KEY.
+  const dir = store()
+  const manifest = recordManifest(dir)
+  expect(manifest.signature).toBeUndefined()
+  expect(verifyMemoryStore(dir).signature).toBe('unsigned')
+  expect(verifyMemoryStore(dir).valid).toBe(true)
+})
+
+test('the signature covers digests, not the timestamp', () => {
+  // updatedAt changes on every re-record; signing it would make the signature
+  // useless for comparison.
+  const files = { 'a.md': { digest: 'abc', bytes: 1 } }
+  const first = signManifest(files, 'k')
+  expect(signManifest(files, 'k')).toBe(first)
+  expect(signManifest(files, 'other-key')).not.toBe(first)
+  expect(signManifest({ 'a.md': { digest: 'zzz', bytes: 1 } }, 'k')).not.toBe(first)
+})
+
+test('a manifest rewritten without the key is detected', () => {
+  // This is the threat signing exists for: anyone who can write a memory file
+  // can also rewrite the manifest to match, and digests alone would pass.
+  const dir = store()
+  const files = { 'a.md': { digest: digestOf('user prefers bun\n'), bytes: 17 } }
+  const signed = {
+    version: 1 as const,
+    updatedAt: new Date().toISOString(),
+    files,
+    signature: signManifest(files, 'real-key'),
+  }
+  expect(checkSignature(signed, { UR_MEMORY_INTEGRITY_KEY: 'real-key' } as never)).toBe('valid')
+  // Attacker edits the file and updates the digest, but cannot sign it.
+  const forged = { ...signed, files: { 'a.md': { digest: 'forged', bytes: 6 } } }
+  expect(checkSignature(forged, { UR_MEMORY_INTEGRITY_KEY: 'real-key' } as never)).toBe('invalid')
+})
+
+test('a signed manifest with no key is unverifiable, not valid', () => {
+  // Reporting it as valid would repeat the empty-store mistake: treating
+  // absence of a check as evidence of integrity.
+  const files = { 'a.md': { digest: 'abc', bytes: 1 } }
+  const signed = {
+    version: 1 as const,
+    updatedAt: '',
+    files,
+    signature: signManifest(files, 'k'),
+  }
+  expect(checkSignature(signed, {} as never)).toBe('unverifiable')
+})
+
+test('a forged manifest fails the command, though every digest matches', () => {
+  // The attacker edits a file AND updates its digest, so modified/missing/
+  // untracked all read zero. The signature is the only thing that catches it,
+  // and the first implementation still exited 0 — a silent pass on the most
+  // serious finding.
+  const dir = store()
+  const run = (env: Record<string, string>) =>
+    spawnSync('node', ['./bin/ur.js', 'memory-integrity', 'verify', '--store', dir], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: { ...process.env, ...env },
+    })
+  spawnSync('node', ['./bin/ur.js', 'memory-integrity', 'record', '--store', dir], {
+    encoding: 'utf8',
+    timeout: 60_000,
+    env: { ...process.env, UR_MEMORY_INTEGRITY_KEY: 'k' },
+  })
+  const manifestPath = join(dir, '.integrity.json')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  writeFileSync(join(dir, 'a.md'), 'injected\n')
+  manifest.files['a.md'].digest = digestOf('injected\n')
+  writeFileSync(manifestPath, JSON.stringify(manifest))
+
+  const forged = run({ UR_MEMORY_INTEGRITY_KEY: 'k' })
+  expect(forged.stdout).toContain('SIGNATURE INVALID')
+  expect(forged.status).toBe(1)
+  // Signed but no key: cannot be checked, so cannot pass.
+  const noKey = run({ UR_MEMORY_INTEGRITY_KEY: '' })
+  expect(noKey.status).toBe(1)
+}, 120_000)

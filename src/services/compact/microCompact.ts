@@ -185,6 +185,9 @@ export type PendingCacheEdits = {
 
 export type MicrocompactResult = {
   messages: Message[]
+  /** Human-readable line describing a prune that just happened, for the
+   * transcript. Absent when nothing was pruned. */
+  notice?: string
   compactionInfo?: {
     pendingCacheEdits?: PendingCacheEdits
   }
@@ -387,6 +390,10 @@ function maybeSizeBasedMicrocompact(
     return null
   }
 
+  // Without a visible line this is an invisible behaviour change: context
+  // quietly shrinks and the user has no way to confirm it fired, or to
+  // attribute a lost detail to it. Memory suggestions had exactly this problem
+  // by going to stderr.
   logEvent('tengu_size_based_microcompact', {
     toolsCleared: cleared.cleared,
     keepRecent: config.keepRecent,
@@ -401,7 +408,13 @@ function maybeSizeBasedMicrocompact(
   if (feature('PROMPT_CACHE_BREAK_DETECTION') && querySource) {
     notifyCacheDeletion(querySource)
   }
-  return { messages: cleared.messages }
+  return {
+    messages: cleared.messages,
+    notice:
+      `Pruned ${cleared.cleared} superseded tool result(s), freeing about ` +
+      `${cleared.tokensSaved.toLocaleString()} tokens. The ${config.keepRecent} most ` +
+      `recent are kept. Disable with context.pruneToolResults.enabled=false.`,
+  }
 }
 
 function maybeTimeBasedMicrocompact(

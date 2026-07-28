@@ -115,11 +115,22 @@ export const DRILLS: Drill[] = [
     feature: 'agent fan-out limits',
     kind: 'manual',
     action:
-      'Start `ur` and ask it to spawn more subagents than agents.maxConcurrent allows (e.g. "review these 30 files, one subagent each")',
+      'In the UR repo, ask for NESTED fan-out: "review every directory in src/tools, and have each reviewer spawn a subagent per file it finds"',
     expect:
-      'the cap is enforced and the refusal names agents.maxConcurrent, so you can act on it',
+      'once ~20 agents are live the cap fires, and the refusal names agents.maxConcurrent so you can raise it',
     rationale:
-      'The limiter has unit tests and has never been exercised live; a governor that never trips in practice is unproven.',
+      'Asking for 30 agents in one turn does NOT test this: MAX_CONCURRENT_TOOLS caps a single turn at 8, so the 20-agent limit is only reachable by nesting. An earlier version of this drill made that mistake and reported the wrong limit firing.',
+  },
+  {
+    id: 'tool-result-pruning',
+    feature: 'context.pruneToolResults',
+    kind: 'manual',
+    action:
+      'Run a long session that reads many large files (e.g. "read every file in src/services/api and summarise each"), then watch for the prune notice and check /context',
+    expect:
+      'a line reporting how many tool results were pruned and roughly how many tokens that freed; context stops climbing where it previously kept filling',
+    rationale:
+      'Pruning only fires inside a live query loop, so no automated drill can reach it. It is on by default and changes context for every session, which makes it the least-verified thing shipped.',
   },
   {
     id: 'btw-full-question',

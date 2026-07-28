@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -56,6 +56,7 @@ export type MemoryIntegrityReport = {
    * "exists but is empty", because a wrong path and an empty store are very
    * different problems and looked identical before. */
   exists: boolean
+  signature: SignatureState
   valid: boolean
   entries: MemoryIntegrityEntry[]
   counts: Record<MemoryIntegrityStatus, number>
@@ -65,9 +66,64 @@ export type MemoryManifest = {
   version: 1
   updatedAt: string
   files: Record<string, { digest: string; bytes: number }>
+  /**
+   * HMAC over the file digests, keyed by a secret held outside the store.
+   *
+   * Without it the manifest defends only against accident and unaware
+   * tampering: anyone who can write a memory file can also rewrite the
+   * manifest to match, and verification passes. The signature raises that bar
+   * to needing the key as well.
+   *
+   * Optional and absent by default. A key has to live somewhere, and a key
+   * sitting next to the data it protects is theatre — so this is only worth
+   * enabling when UR_MEMORY_INTEGRITY_KEY comes from somewhere the memory
+   * directory is not, such as a password manager or CI secret.
+   */
+  signature?: string
 }
 
 const MANIFEST_NAME = '.integrity.json'
+
+/** Key for signing. Absent means signing is off, which is the default. */
+function signingKey(env: NodeJS.ProcessEnv = process.env): string | null {
+  const key = env.UR_MEMORY_INTEGRITY_KEY?.trim()
+  return key ? key : null
+}
+
+/**
+ * Sign the file digests, not the whole manifest: `updatedAt` changes on every
+ * re-record and would make the signature useless for comparison, and signing
+ * the signature field is impossible.
+ */
+export function signManifest(
+  files: MemoryManifest['files'],
+  key: string,
+): string {
+  const canonical = Object.keys(files)
+    .sort()
+    .map(name => `${name}:${files[name]!.digest}`)
+    .join('\n')
+  return createHmac('sha256', key).update(canonical).digest('hex')
+}
+
+export type SignatureState = 'unsigned' | 'valid' | 'invalid' | 'unverifiable'
+
+/**
+ * `unverifiable` is its own state: a signed manifest with no key available
+ * cannot be checked, and reporting that as valid would be the same
+ * absence-as-evidence mistake the empty-store case had.
+ */
+export function checkSignature(
+  manifest: MemoryManifest,
+  env: NodeJS.ProcessEnv = process.env,
+): SignatureState {
+  const key = signingKey(env)
+  if (!manifest.signature) return 'unsigned'
+  if (!key) return 'unverifiable'
+  return signManifest(manifest.files, key) === manifest.signature
+    ? 'valid'
+    : 'invalid'
+}
 /** Only memory content is tracked; the manifest cannot cover itself. */
 const IGNORED = new Set([MANIFEST_NAME])
 
@@ -124,10 +180,12 @@ export function recordManifest(dir: string): MemoryManifest {
       bytes: statSync(full).size,
     }
   }
+  const key = signingKey()
   const manifest: MemoryManifest = {
     version: 1,
     updatedAt: new Date().toISOString(),
     files,
+    ...(key ? { signature: signManifest(files, key) } : {}),
   }
   writeFileSync(manifestPathFor(dir), `${JSON.stringify(manifest, null, 2)}\n`)
   return manifest
@@ -178,13 +236,18 @@ export function verifyMemoryStore(dir: string): MemoryIntegrityReport {
     dir,
     manifestPath: manifestPathFor(dir),
     exists: existsSync(dir),
+    signature: manifest ? checkSignature(manifest) : 'unsigned',
     // No manifest means nothing can be vouched for, even if the directory is
     // empty — "valid" would be a claim we cannot support. An empty store is
     // also not "valid": zero files checked is not evidence of integrity, and
     // saying so would give the same reassurance for a correct empty store, a
     // mistyped path, and a store an attacker just emptied.
+    // A tampered or uncheckable signature is not valid, whatever the digests
+    // say — that is the whole point of signing.
     valid:
       manifest !== null &&
+      checkSignature(manifest) !== 'invalid' &&
+      checkSignature(manifest) !== 'unverifiable' &&
       entries.length > 0 &&
       counts.modified === 0 &&
       counts.untracked === 0 &&
@@ -241,6 +304,21 @@ export function formatMemoryIntegrity(
       `${report.dir}\n` +
       `  no such directory — nothing was checked. If you expected memory here,\n` +
       `  the path is wrong; verifying a path that does not exist proves nothing.`
+    )
+  }
+  if (report.signature === 'invalid') {
+    return (
+      `${report.dir}\n` +
+      `  SIGNATURE INVALID — the manifest does not match its signature.\n` +
+      `  Someone with write access to this directory rewrote the manifest\n` +
+      `  without the key. Treat every file here as untrusted.`
+    )
+  }
+  if (report.signature === 'unverifiable') {
+    return (
+      `${report.dir}\n` +
+      `  signed, but UR_MEMORY_INTEGRITY_KEY is not set, so the signature\n` +
+      `  could not be checked. Nothing here can be vouched for without it.`
     )
   }
   if (report.entries.length === 0) {
