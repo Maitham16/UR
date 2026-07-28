@@ -4839,6 +4839,12 @@ async function run(): Promise<CommanderCommand> {
     const cmdArgs = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, ...args.map(quoteLocalCommandArg), opts.dryRun ? '--dry-run' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/skill/skill.js'), cmdArgs);
   });
+  program.command('selftest [action]').alias('drills').description('End-to-end drills against the shipped binary, plus manual prompts').option('--json', 'Output as JSON').action(async (action: string | undefined, opts: {
+    json?: boolean;
+  }) => {
+    const args = [action ? quoteLocalCommandArg(action) : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/selftest/selftest.js'), args);
+  });
   program.command('memory-integrity [action]').alias('mem-verify').description('Verify, baseline, or quarantine the file-backed memory stores').option('--store <store>', 'auto, team, all, or a directory path').option('--json', 'Output as JSON').action(async (action: string | undefined, opts: {
     store?: string;
     json?: boolean;

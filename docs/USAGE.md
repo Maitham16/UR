@@ -339,6 +339,10 @@ UR includes slash commands and CLI subcommands for common workflows:
   raw video/trace requires selector redaction to be disabled
 - `ur trigger ...` to parse GitHub/Slack webhook payloads and optionally launch a headless run
 - `ur agent-templates ...`, `ur agent-task ...`, `ur agent-inspect`, `ur agent-features`, and `ur agent-trends` for agent template, PR handoff, timeline, and coverage utilities
+- `ur selftest run` spawns the shipped binary against real directories and
+  checks the features end-to-end, then prints the manual drills — the ones
+  needing a live model — as prompts with a concrete expectation each. Run it
+  after upgrading; unit tests passing is not the same as the feature working.
 - `ur sources` lists every untrusted block that entered the session (web fetches,
   MCP results) with its source, size, digest and any injection signals.
   `ur sources --check "<span>"` reports which source contains a span, or states

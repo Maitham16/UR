@@ -80,6 +80,7 @@ import thread from './commands/thread/index.js'
 import agentInspect from './commands/agent-inspect/index.js'
 import sourcesCommand from './commands/sources/index.js'
 import memoryIntegrityCommand from './commands/memory-integrity/index.js'
+import selftestCommand from './commands/selftest/index.js'
 import gradeTrajectoryCommand from './commands/grade-trajectory/index.js'
 import route from './commands/route/index.js'
 import modelRoute from './commands/model-route/index.js'
@@ -404,6 +405,7 @@ const COMMANDS = memoize((): Command[] => [
   agentInspect,
   sourcesCommand,
   memoryIntegrityCommand,
+  selftestCommand,
   gradeTrajectoryCommand,
   route,
   modelRoute,

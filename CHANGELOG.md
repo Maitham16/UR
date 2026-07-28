@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.61.0
+
+- Added `ur selftest`, end-to-end drills for the gap that produced every
+  serious defect in recent releases: a module that is correct while something
+  between it and the user is not — a wire format, a CLI registration, an exit
+  code, a wording choice. The drills deliberately do not import the modules;
+  they spawn the shipped binary against real directories and assert on what a
+  user would see.
+- Five drills run automatically and cover the four defects that reached you:
+  memory integrity reporting an unchecked store as verified, the trajectory
+  gate printing FAILED while exiting 0, `--costs` hiding which directory it
+  searched, and per-agent attribution itself.
+- Drills that need a live model cannot be automated, so they are emitted as
+  prompts with the specific observation that separates working from broken —
+  "it seemed fine" is how the screenshot bug survived its first report.
+- `ur selftest run` exits non-zero on failure, and a test asserts the drills
+  actually fail when pointed at a broken binary. A self-test that cannot fail
+  is decoration.
+
 ## 1.60.1
 
 - `ur memory-integrity verify` no longer reports an empty or missing store as
