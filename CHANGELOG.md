@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.57.3
+
+- Stopped a false diagnosis on failed tool calls. When a tool call failed
+  schema validation, UR appended "this tool's schema was not sent to the API"
+  and told the model to load it via `ToolSearch`. Both claims were wrong on
+  every UR runtime: tool search requires `tool_reference` expansion, which no
+  UR runtime supports, so it is disabled and all schemas are sent. The model
+  acted on the false hint and wasted a turn. The hint now gates on the same
+  condition the request path uses, so a mis-shaped call surfaces only the Zod
+  error, which already names the offending field.
+- Fixed tool search being enabled on LM Studio, vLLM and llama.cpp, where it
+  had only ever been disabled for Ollama. Those runtimes cannot expand
+  `tool_reference` either, so every deferred tool was unreachable: `ToolSearch`
+  answered with reference blocks that resolve to nothing. Support is now
+  derived from the runtime rather than the provider name.
+
 ## 1.57.2
 
 - Fixed the Ollama adapter discarding images returned by tools. A tool result

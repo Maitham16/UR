@@ -118,6 +118,7 @@ import {
   extractDiscoveredToolNames,
   isToolSearchEnabledOptimistic,
   isToolSearchToolAvailable,
+  supportsToolReferenceExpansion,
 } from '../../utils/toolSearch.js'
 import {
   McpAuthError,
@@ -591,20 +592,27 @@ function streamedCheckPermissionsAndCallTool(
 }
 
 /**
- * Appended to Zod errors when a deferred tool wasn't in the discovered-tool
- * set — re-runs the ur.ts schema-filter scan dispatch-time to detect the
- * mismatch. The raw Zod error ("expected array, got string") doesn't tell the
- * model to re-load the tool; this hint does. Null if the schema was sent.
+ * Appended to Zod errors when a deferred tool genuinely wasn't in the
+ * discovered-tool set, telling the model to load it before retrying.
+ *
+ * The gating must match ur.ts's real `useToolSearch` decision. It previously
+ * did not: `isToolSearchEnabledOptimistic` ignores runtime support, so on a
+ * runtime where tool search is off — meaning every schema *was* sent — a
+ * mis-shaped tool call was answered with "this tool's schema was not sent",
+ * which is false, plus advice to call a ToolSearch that isn't in the tool list.
+ * The model believed it and burned a turn. A wrong explanation is worse than
+ * none: the raw Zod error already says which field is wrong.
+ *
+ * Returns null when the schema was sent.
  */
 export function buildSchemaNotSentHint(
   tool: Tool,
   messages: Message[],
   tools: readonly { name: string }[],
 ): string | null {
-  // Optimistic gating — reconstructing ur.ts's full useToolSearch
-  // computation is fragile. These two gates prevent pointing at a ToolSearch
-  // that isn't callable; occasional misfires (modelH, tst-auto below threshold)
-  // cost one extra round-trip on an already-failing path.
+  // Tool search requires tool_reference expansion. Without it ur.ts disables
+  // tool search entirely and sends every schema, so nothing is undiscovered.
+  if (!supportsToolReferenceExpansion()) return null
   if (!isToolSearchEnabledOptimistic()) return null
   if (!isToolSearchToolAvailable(tools)) return null
   if (!isDeferredTool(tool)) return null

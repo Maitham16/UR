@@ -237,7 +237,21 @@ function getUnsupportedToolReferencePatterns(): string[] {
  * @param model The model name to check
  * @returns true if the model supports tool_reference, false otherwise
  */
+/**
+ * Whether the active runtime can expand `tool_reference` blocks into real tool
+ * definitions. That expansion is a URHQ-native beta feature: local runtimes
+ * (Ollama, OpenAI-compatible servers) and vendor CLIs have no equivalent, so a
+ * `tool_reference` reaches them as an opaque `{"type":"tool_reference"}` blob
+ * carrying no schema. Callers must serialize schemas as text instead.
+ */
+export function supportsToolReferenceExpansion(): boolean {
+  return isFirstPartyRuntime()
+}
+
 export function modelSupportsToolReference(model: string): boolean {
+  if (!supportsToolReferenceExpansion()) {
+    return false
+  }
   if (getAPIProvider() === 'ollama') {
     return false
   }

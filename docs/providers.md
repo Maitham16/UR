@@ -60,6 +60,13 @@ or `ollama show <model>`.
 official CLI, so image blocks are not forwarded, and UR-native tool/streaming/
 sandbox guarantees stop at UR-run tools and final UR output.
 
+Tool search (deferred tool loading) is disabled on every provider above. It
+depends on `tool_reference` content blocks being expanded into tool definitions
+by the API, which is a URHQ-native beta feature with no equivalent on a local
+runtime or a vendor CLI. UR therefore sends every tool schema on every request,
+and `ToolSearch` is not offered to the model. Enabling it against a runtime that
+cannot expand references would leave deferred tools permanently unreachable.
+
 Native tools and native streaming mean UR's own request/response loop parses
 tool calls and streams tokens for that provider. Multimodal input means UR
 preserves image content blocks (resized/normalized with `sharp`) into that
