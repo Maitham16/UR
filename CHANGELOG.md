@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.61.2
+
+- Fixed `ur agent-inspect --costs` reporting nothing, always. It resolved the
+  *live* session, but every `ur` invocation mints a new session id, so bare it
+  pointed at a session created milliseconds earlier that had by definition
+  spawned nothing — two consecutive runs in the same directory produced two
+  different empty session ids and no data either time. It now prefers the live
+  session when it has transcripts (the `/agent-inspect` case, inside a session
+  that already fanned out) and otherwise falls back to the most recent session
+  in the project that does.
+- The transcript writer was never at fault: Agent-tool subagents do write
+  `agent-*.jsonl`. Only the reader's choice of session was wrong.
+
 ## 1.61.1
 
 - Fixed secondary model queries failing on any Ollama setup whose session model

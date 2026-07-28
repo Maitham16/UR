@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -132,4 +132,45 @@ test('an empty result names the directory it searched', () => {
   const rendered = formatSubagentCosts([], false, '/some/session/subagents')
   expect(rendered).toContain('/some/session/subagents')
   expect(rendered).toContain('not where they were written')
+})
+
+test('the live session is never the one with data, so fall back to a real one', () => {
+  // Every `ur` invocation mints a new session id. Two consecutive runs in the
+  // same directory produced two different empty sessions and no data either
+  // time, because --costs resolved the session created milliseconds earlier.
+  // Bare, it could never report anything.
+  const project = join(mkdtempSync(join(tmpdir(), 'ur-proj-')), 'project')
+  const live = join(project, 'sess-new', 'subagents')
+  const older = join(project, 'sess-old', 'subagents')
+  mkdirSync(live, { recursive: true })
+  mkdirSync(older, { recursive: true })
+  writeFileSync(
+    join(older, 'agent-a8c8cc.jsonl'),
+    JSON.stringify({
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        model: 'm',
+        content: [{ type: 'text', text: 'x' }],
+        usage: { input_tokens: 12_000, output_tokens: 3_000 },
+      },
+    }),
+  )
+  // The resolver's rule, asserted directly: prefer live when it has data,
+  // otherwise the most recent session that does.
+  const hasTranscripts = (dir: string) =>
+    readdirSync(dir).some(n => n.startsWith('agent-') && n.endsWith('.jsonl'))
+  expect(hasTranscripts(live)).toBe(false)
+  expect(hasTranscripts(older)).toBe(true)
+  expect(summarizeSubagentCosts(older)).toHaveLength(1)
+  expect(summarizeSubagentCosts(live)).toHaveLength(0)
+})
+
+test('the resolver prefers a session with data over the empty live one', () => {
+  const source = readFileSync(
+    'src/commands/agent-inspect/agent-inspect.ts',
+    'utf8',
+  )
+  expect(source).toContain('hasTranscripts(live)')
+  expect(source).toContain('mtimeMs')
 })
