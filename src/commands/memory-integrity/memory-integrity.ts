@@ -68,8 +68,17 @@ export const call: LocalCommandCall = async args => {
   }
 
   const reports = stores.map(dir => verifyMemoryStore(dir))
-  // A verification command that always exits 0 cannot gate anything.
-  if (reports.some(report => !report.valid)) process.exitCode = 1
+  // Exit non-zero on evidence of tampering, not on absence of evidence. An
+  // empty or unbaselined store is not "valid" — zero files checked proves
+  // nothing — but failing the command for it would fire on every fresh
+  // install and train the user to ignore the exit code.
+  const tampered = reports.some(
+    report =>
+      report.counts.modified > 0 ||
+      report.counts.missing > 0 ||
+      report.counts.untracked > 0,
+  )
+  if (tampered) process.exitCode = 1
   return {
     type: 'text',
     value: json

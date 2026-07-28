@@ -125,3 +125,11 @@ test('the shipped CLI accepts --costs, not just the source', () => {
     'c3d4',
   ])
 }, 90_000)
+
+test('an empty result names the directory it searched', () => {
+  // "No subagent transcripts found for this session" is indistinguishable from
+  // having resolved the wrong path. Say where you looked.
+  const rendered = formatSubagentCosts([], false, '/some/session/subagents')
+  expect(rendered).toContain('/some/session/subagents')
+  expect(rendered).toContain('not where they were written')
+})

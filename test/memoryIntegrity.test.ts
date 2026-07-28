@@ -129,3 +129,40 @@ test('the shipped CLI exits non-zero on a tampered store', () => {
   writeFileSync(join(dir, 'evil.md'), 'x\n')
   expect(run('verify').status).toBe(1)
 }, 90_000)
+
+test('an empty store is not reported as verified', () => {
+  // Your run printed "verified — 0 file(s) match the recorded digests" for an
+  // empty directory. That same line would appear for a mistyped path or a
+  // store an attacker had just emptied. Zero files checked is not evidence.
+  const dir = join(mkdtempSync(join(tmpdir(), 'ur-mem-empty-')), 'mem')
+  mkdirSync(dir, { recursive: true })
+  recordManifest(dir)
+  const report = verifyMemoryStore(dir)
+  expect(report.valid).toBe(false)
+  const rendered = formatMemoryIntegrity(report, false)
+  expect(rendered).toContain('empty')
+  expect(rendered).not.toContain('verified —')
+})
+
+test('a nonexistent store says so instead of passing', () => {
+  const report = verifyMemoryStore('/nonexistent/memory/store')
+  expect(report.exists).toBe(false)
+  expect(report.valid).toBe(false)
+  expect(formatMemoryIntegrity(report, false)).toContain('no such directory')
+})
+
+test('an empty store does not fail the command, only tampering does', () => {
+  // Reporting "empty" as not-valid is right; exiting non-zero for it would
+  // fire on every fresh install and train the user to ignore the exit code.
+  const dir = join(mkdtempSync(join(tmpdir(), 'ur-mem-exit-')), 'mem')
+  mkdirSync(dir, { recursive: true })
+  const run = () =>
+    spawnSync('node', ['./bin/ur.js', 'memory-integrity', 'verify', '--store', dir], {
+      encoding: 'utf8',
+      timeout: 60_000,
+    })
+  recordManifest(dir)
+  expect(run().status).toBe(0)
+  writeFileSync(join(dir, 'evil.md'), 'x\n')
+  expect(run().status).toBe(1)
+}, 90_000)

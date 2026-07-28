@@ -52,6 +52,10 @@ export type MemoryIntegrityEntry = {
 export type MemoryIntegrityReport = {
   dir: string
   manifestPath: string
+  /** False when the directory does not exist — reported separately from
+   * "exists but is empty", because a wrong path and an empty store are very
+   * different problems and looked identical before. */
+  exists: boolean
   valid: boolean
   entries: MemoryIntegrityEntry[]
   counts: Record<MemoryIntegrityStatus, number>
@@ -173,9 +177,18 @@ export function verifyMemoryStore(dir: string): MemoryIntegrityReport {
   return {
     dir,
     manifestPath: manifestPathFor(dir),
+    exists: existsSync(dir),
     // No manifest means nothing can be vouched for, even if the directory is
-    // empty — "valid" would be a claim we cannot support.
-    valid: manifest !== null && counts.modified === 0 && counts.untracked === 0 && counts.missing === 0,
+    // empty — "valid" would be a claim we cannot support. An empty store is
+    // also not "valid": zero files checked is not evidence of integrity, and
+    // saying so would give the same reassurance for a correct empty store, a
+    // mistyped path, and a store an attacker just emptied.
+    valid:
+      manifest !== null &&
+      entries.length > 0 &&
+      counts.modified === 0 &&
+      counts.untracked === 0 &&
+      counts.missing === 0,
     entries,
     counts,
   }
@@ -223,8 +236,20 @@ export function formatMemoryIntegrity(
   json: boolean,
 ): string {
   if (json) return JSON.stringify(report, null, 2)
-  if (!existsSync(report.dir)) {
-    return `No memory store at ${report.dir}.`
+  if (!report.exists) {
+    return (
+      `${report.dir}\n` +
+      `  no such directory — nothing was checked. If you expected memory here,\n` +
+      `  the path is wrong; verifying a path that does not exist proves nothing.`
+    )
+  }
+  if (report.entries.length === 0) {
+    return (
+      `${report.dir}\n` +
+      `  empty — no memory files, so nothing was checked.\n` +
+      `  This is not a pass: an empty store and a correctly verified one are\n` +
+      `  different claims, and only the second is evidence of integrity.`
+    )
   }
   const lines = [
     `${report.dir}`,

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.60.1
+
+- `ur memory-integrity verify` no longer reports an empty or missing store as
+  verified. It printed "verified — 0 file(s) match the recorded digests" for an
+  empty directory, and that identical reassurance would have appeared for a
+  mistyped path or a store an attacker had just emptied. Zero files checked is
+  not evidence of integrity, so empty and nonexistent stores now say exactly
+  that and name the path.
+- The exit code tracks tampering rather than validity, so an empty or
+  unbaselined store still exits 0. Failing on it would fire for every fresh
+  install and train the user to ignore the exit code.
+- `ur agent-inspect --costs` names the directory it searched. "No subagent
+  transcripts found for this session" was indistinguishable from having
+  resolved the wrong path.
+
 ## 1.60.0
 
 - Added `ur memory-integrity`, tamper-evidence for the file-backed memory

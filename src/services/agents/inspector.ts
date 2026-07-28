@@ -358,10 +358,18 @@ export function summarizeSubagentCosts(subagentsDir: string): SubagentCost[] {
   return rows.sort((a, b) => b.costUSD - a.costUSD)
 }
 
-export function formatSubagentCosts(rows: SubagentCost[], json: boolean): string {
-  if (json) return JSON.stringify({ subagents: rows }, null, 2)
+export function formatSubagentCosts(
+  rows: SubagentCost[],
+  json: boolean,
+  searchedDir?: string,
+): string {
+  if (json) return JSON.stringify({ subagents: rows, searchedDir }, null, 2)
   if (rows.length === 0) {
-    return 'No subagent transcripts found for this session.'
+    // Naming the directory is the difference between "this session had no
+    // fan-out" and "I resolved the wrong path"; without it both read the same.
+    return searchedDir
+      ? `No subagent transcripts in ${searchedDir}.\nEither this session spawned no subagents, or that is not where they were written.`
+      : 'No subagent transcripts found for this session.'
   }
   // calculateUSDCost returns 0 on a local runtime, so on Ollama every row
   // would price at $0.00. A column of zeroes reads as "this feature is

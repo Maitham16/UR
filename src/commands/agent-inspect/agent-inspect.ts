@@ -31,7 +31,7 @@ export const call: LocalCommandCall = async (args, context) => {
     }
     return {
       type: 'text',
-      value: formatSubagentCosts(summarizeSubagentCosts(dir), json),
+      value: formatSubagentCosts(summarizeSubagentCosts(dir), json, dir),
     }
   }
 
