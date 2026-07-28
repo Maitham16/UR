@@ -321,3 +321,27 @@ key is missing from this file.
 | `allowedChannelPlugins` | Allow-list of `{ marketplace, plugin }` pairs permitted to deliver channel notifications. Used with `channelsEnabled` to bound which plugins can notify. |
 | `urMdExcludes` | Glob patterns or absolute paths of `UR.md` files to skip when loading project memory. Use it to keep vendored or generated `UR.md` files out of context. |
 | `pluginTrustMessage` | Extra text appended to the plugin trust warning shown before installation, for organizations that need to state their own policy at that moment. |
+
+## Tool-result pruning (`context.pruneToolResults`)
+
+Superseded tool results — old file reads, greps, shell output — are cleared
+from context once doing so would free a worthwhile amount, keeping the most
+recent ones untouched.
+
+| Key | Default | What it does |
+|---|---|---|
+| `context.pruneToolResults.enabled` | `true` | Master switch. |
+| `context.pruneToolResults.minTokensFreed` | `20000` | Prune only when it would free at least this many tokens. Clearing invalidates the cached prefix, so a small cleanup costs more in cache misses than it reclaims; short sessions are never touched. |
+| `context.pruneToolResults.keepRecent` | `8` | Protected zone. The most recent N compactable tool results are never cleared, so the model keeps the working set it is reasoning about. Floored at 1. |
+
+Why it is on by default: the alternative when context fills is autocompact,
+which replaces the entire history with a summary. Dropping a superseded file
+read is strictly less destructive than losing the conversation.
+
+Compactable tools are `Read`, shell, `Grep`, `Glob`, `WebSearch`, `WebFetch`,
+`Edit` and `Write`. Cleared results are replaced with a marker, not deleted, so
+the tool call itself remains visible in the transcript.
+
+This is separate from the time-based trigger (`tengu_slate_heron`), which fires
+only after an hour of idling and is configured through GrowthBook — a service a
+local install never reaches, so it is effectively always off.

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.63.0
+
+- Added size-triggered pruning of superseded tool results
+  (`context.pruneToolResults`). UR already had the clearing machinery, but
+  nothing external could reach it: cached microcompact is internal-only and
+  returns unchanged messages in shipped builds, and the time-based trigger
+  needs an hour of idling *and* a GrowthBook flag that a local install never
+  receives. An active session therefore pruned nothing and ran until autocompact
+  replaced the whole history with a summary.
+- Pruning fires only when it would free at least 20k tokens, because clearing
+  invalidates the cached prefix and a small cleanup costs more in cache misses
+  than it reclaims. Short sessions are untouched; a 40-read session frees ~64k.
+- The most recent 8 compactable results are a protected zone and are never
+  cleared, so the model keeps the working set it is reasoning about.
+  `keepRecent` is floored at 1: clearing everything would leave no working
+  context, and `slice(-0)` would paradoxically keep all of it.
+- Configured through settings rather than GrowthBook, so it can actually be
+  turned off or tuned.
+
 ## 1.62.0
 
 - `ur agent-inspect --costs` now labels each row with what the agent was

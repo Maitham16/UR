@@ -1,4 +1,5 @@
 import { feature } from 'bun:bundle'
+import { getToolResultPruningConfig } from './toolResultPruningConfig.js'
 import type { ToolResultBlockParam } from '@urhq-ai/sdk/resources/index.mjs'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { ToolUseContext } from '../../Tool.js'
@@ -239,8 +240,16 @@ export async function microcompactMessages(
     return timeBasedResult
   }
 
+  // Size-triggered pruning. Runs when the time trigger did not fire, which is
+  // the common case in an active session: cached microcompact is internal-only
+  // and time-based needs an hour of idling, so without this an external build
+  // prunes nothing and goes straight to autocompact.
+  const sizeBasedResult = maybeSizeBasedMicrocompact(messages, querySource)
+  if (sizeBasedResult) {
+    return sizeBasedResult
+  }
+
   // Cached microcompact is internal-only and not shipped in external builds.
-  // Time-based microcompact (above) still runs when enabled.
 
   // Legacy microcompact path removed — tengu_cache_plum_violet is always true.
   // For contexts where cached microcompact is not available (external builds,
@@ -303,6 +312,96 @@ export function evaluateTimeBasedTrigger(
     return null
   }
   return { gapMinutes, config }
+}
+
+/**
+ * Clear all but the most recent `keepRecent` compactable tool results.
+ *
+ * Shared by both triggers. Returns the rewritten messages and how many tokens
+ * that freed, or null when there was nothing worth clearing — so a caller can
+ * decide whether the saving justifies invalidating the prompt cache.
+ */
+export function clearOldToolResults(
+  messages: Message[],
+  keepRecent: number,
+): { messages: Message[]; tokensSaved: number; cleared: number } | null {
+  const compactableIds = collectCompactableToolIds(messages)
+  // Floor at 1: slice(-0) returns the full array (paradoxically keeps
+  // everything), and clearing ALL results leaves the model with zero working
+  // context. Neither degenerate is sensible — always keep at least the last.
+  const keep = Math.max(1, keepRecent)
+  const keepSet = new Set(compactableIds.slice(-keep))
+  const clearSet = new Set(compactableIds.filter(id => !keepSet.has(id)))
+  if (clearSet.size === 0) return null
+
+  let tokensSaved = 0
+  const result: Message[] = messages.map(message => {
+    if (message.type !== 'user' || !Array.isArray(message.message.content)) {
+      return message
+    }
+    let touched = false
+    const newContent = message.message.content.map(block => {
+      if (
+        block.type === 'tool_result' &&
+        clearSet.has(block.tool_use_id) &&
+        block.content !== TIME_BASED_MC_CLEARED_MESSAGE
+      ) {
+        tokensSaved += calculateToolResultTokens(block)
+        touched = true
+        return { ...block, content: TIME_BASED_MC_CLEARED_MESSAGE }
+      }
+      return block
+    })
+    if (!touched) return message
+    return { ...message, message: { ...message.message, content: newContent } }
+  })
+
+  if (tokensSaved === 0) return null
+  return { messages: result, tokensSaved, cleared: clearSet.size }
+}
+
+/**
+ * Size-triggered pruning.
+ *
+ * The time-based trigger only fires after an hour idle, and cached
+ * microcompact is not shipped externally — so a long *active* session got no
+ * tool-result pruning at all. Context filled with stale file reads and grep
+ * dumps until autocompact replaced the entire history with a summary, losing
+ * granular context wholesale. Clearing old tool results first is strictly less
+ * destructive: the conversation survives, only superseded outputs go.
+ *
+ * Gated on a minimum saving because clearing invalidates the cached prefix.
+ * Below the threshold the cache cost outweighs the tokens reclaimed, which is
+ * why the field converged on "only prune when it frees a lot at once".
+ */
+function maybeSizeBasedMicrocompact(
+  messages: Message[],
+  querySource: QuerySource | undefined,
+): MicrocompactResult | null {
+  const config = getToolResultPruningConfig()
+  if (!config.enabled || !querySource || !isMainThreadSource(querySource)) {
+    return null
+  }
+  const cleared = clearOldToolResults(messages, config.keepRecent)
+  if (!cleared || cleared.tokensSaved < config.minTokensFreed) {
+    return null
+  }
+
+  logEvent('tengu_size_based_microcompact', {
+    toolsCleared: cleared.cleared,
+    keepRecent: config.keepRecent,
+    minTokensFreed: config.minTokensFreed,
+    tokensSaved: cleared.tokensSaved,
+  })
+  logForDebugging(
+    `[SIZE-BASED MC] cleared ${cleared.cleared} tool results (~${cleared.tokensSaved} tokens >= ${config.minTokensFreed} threshold), kept last ${config.keepRecent}`,
+  )
+  suppressCompactWarning()
+  resetMicrocompactState()
+  if (feature('PROMPT_CACHE_BREAK_DETECTION') && querySource) {
+    notifyCacheDeletion(querySource)
+  }
+  return { messages: cleared.messages }
 }
 
 function maybeTimeBasedMicrocompact(

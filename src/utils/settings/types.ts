@@ -424,6 +424,24 @@ export const SettingsSchema = lazySchema(() =>
         })
         .optional()
         .describe('Spoken output settings'),
+      context: z
+        .object({
+          pruneToolResults: z
+            .object({
+              enabled: z.boolean().optional(),
+              minTokensFreed: z.number().optional(),
+              keepRecent: z.number().optional(),
+            })
+            .optional()
+            .describe(
+              'Size-triggered pruning of superseded tool results (old file reads, greps, shell output). ' +
+                'Prunes only when it would free at least minTokensFreed tokens, keeping the most recent ' +
+                'keepRecent results untouched. Less destructive than letting context fill until autocompact ' +
+                'replaces the whole history with a summary.',
+            ),
+        })
+        .optional()
+        .describe('Context management behaviour.'),
       memory: z
         .object({
           suggest: z
