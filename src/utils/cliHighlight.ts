@@ -7,6 +7,7 @@
 /// <reference lib="dom" />
 
 import { extname } from 'path'
+import { logError } from './log.js'
 
 export type CliHighlight = {
   highlight: typeof import('cli-highlight').highlight
@@ -31,7 +32,13 @@ async function loadCliHighlight(): Promise<CliHighlight | null> {
       highlight: cliHighlight.highlight,
       supportsLanguage: cliHighlight.supportsLanguage,
     }
-  } catch {
+  } catch (error) {
+    // Silent for a long time: cli-highlight was imported but never declared in
+    // package.json, so this threw on every run and every code block rendered
+    // as plain text with no indication why. A degraded render has to say so.
+    logError(
+      `Syntax highlighting is unavailable: ${error instanceof Error ? error.message : String(error)}. Code will render unstyled.`,
+    )
     return null
   }
 }

@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.65.5
+
+- Syntax highlighting works again — in assistant messages, code previews and
+  question dialogs. `cli-highlight` was imported by four rendering surfaces and
+  declared in `package.json` by none of them, so the import threw on every run
+  and every code block rendered as unstyled plain text. Three things had to
+  line up for this to stay invisible for as long as it did: the loader caught
+  the resolution failure and returned `null` with no message, the import is
+  dynamic so the bundler resolved it lazily rather than failing the build, and
+  an ambient `declare module 'cli-highlight' { const value: any }` shim
+  satisfied the typechecker on a package that was not installed. The dependency
+  is declared, the shim is gone (the package ships real types), and a failed
+  load now says so instead of silently degrading.
+- Added `test/declaredDependencies.test.ts`: every external module imported by
+  `src` must be declared, aliased in `tsconfig` paths, or carry an ambient shim.
+  A full scan found no other genuine gap — `@urhq-ai/sdk` is a path alias, and
+  `plist`, `cacache` and `turndown` are deliberate optional degradations.
+- The task-list gate no longer blocks simple one-file requests. Its allowance
+  for short work counted *messages* rather than tool calls, so any conversation
+  at all pushed the count past the threshold and the gate refused the very
+  first `Write` — exactly the case the allowance exists to let through.
+- The status bar showed the persisted `provider.model` rather than the live
+  session model, so `/model` changed what ran without changing what was
+  displayed. The correct value was already in scope and used only as a
+  fallback. The render key had the same omission, so even the right source
+  could leave a stale value on screen after a switch.
 ## 1.65.4
 
 - A tool call that keeps failing identically is now stopped. A 4B model refused

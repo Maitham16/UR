@@ -201,6 +201,9 @@ function StatusLineInner({
   const providerRuntime = getProviderRuntimeInfo(effectiveSettings);
   const providerRuntimeKey = [
     providerRuntime.provider,
+    // Include the live model, or switching with /model leaves the key
+    // unchanged and the bar keeps rendering the previous value.
+    renderModelName(mainLoopModel) ?? '',
     providerRuntime.model ?? '',
     providerRuntime.baseUrl ?? '',
     providerRuntime.fallback ?? '',
@@ -211,7 +214,11 @@ function StatusLineInner({
     version: MACRO.VERSION,
     providerLabel: providerRuntime.providerLabel,
     authMode: providerRuntime.authLabel,
-    model: providerRuntime.model ?? renderModelName(mainLoopModel),
+    // The live session model wins. getProviderRuntimeInfo reports the
+    // *persisted* provider.model, which /model does not write — it sets a
+    // session override that getMainLoopModel resolves. Preferring the setting
+    // showed a stale model in the status bar while requests used the new one.
+    model: renderModelName(mainLoopModel) || providerRuntime.model || '',
     mode: permissionMode,
     branch,
     taskRunningCount,

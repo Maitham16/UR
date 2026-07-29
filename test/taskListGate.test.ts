@@ -106,6 +106,22 @@ test('defaults are on, with room for a trivial request', () => {
   expect(TASK_LIST_GATE_DEFAULTS.freeReads).toBeGreaterThan(0)
 })
 
+test('the allowance counts tool calls, not conversation length', () => {
+  // Shipped counting messages, so any back-and-forth exhausted the allowance
+  // and the gate blocked the first Write of a one-file request — the case the
+  // allowance exists to let through.
+  const source = readFileSync('src/services/tools/toolExecution.ts', 'utf8')
+  const call = source.slice(source.indexOf('checkTaskListGate({'))
+  expect(call.slice(0, 400)).toContain('countToolCalls')
+  expect(call.slice(0, 400)).not.toContain('messages?.length')
+})
+
+test('countToolCalls ignores plain conversation', () => {
+  const source = readFileSync('src/services/tools/toolExecution.ts', 'utf8')
+  const fn = source.slice(source.indexOf('function countToolCalls'))
+  expect(fn.slice(0, 500)).toContain("=== 'tool_use'")
+})
+
 test('an unreadable task directory does not block every tool call', () => {
   // countTasksForGate returns Infinity on failure: a gate that fires because
   // the task store hiccuped would be worse than the problem it solves.

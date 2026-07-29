@@ -92,11 +92,6 @@ declare module 'cacache' {
   export = value
 }
 
-declare module 'cli-highlight' {
-  const value: any
-  export = value
-}
-
 declare module 'fflate' {
   export const unzip: any
   export const unzipSync: any

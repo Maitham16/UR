@@ -134,6 +134,25 @@ import {
  * call because the task directory was briefly unreadable would be worse than
  * the problem it solves, so an unknown count is treated as "a list exists".
  */
+/**
+ * Tool calls already made, which is what the gate's allowance is about.
+ * Message count is not a proxy for it: a long conversation with no tool use
+ * would exhaust the allowance before the agent had done anything.
+ */
+function countToolCalls(messages: unknown): number {
+  if (!Array.isArray(messages)) return 0
+  let count = 0
+  for (const message of messages) {
+    const content = (message as { message?: { content?: unknown } })?.message
+      ?.content
+    if (!Array.isArray(content)) continue
+    for (const block of content) {
+      if ((block as { type?: string })?.type === 'tool_use') count++
+    }
+  }
+  return count
+}
+
 async function countTasksForGate(): Promise<number> {
   try {
     const { getTaskListId, listTasks } = await import('../../utils/tasks.js')
@@ -724,7 +743,10 @@ async function checkPermissionsAndCallTool(
   const gate = checkTaskListGate({
     toolName: tool.name,
     taskCount: await countTasksForGate(),
-    readsSoFar: toolUseContext.messages?.length ?? 0,
+    // Tool calls, not messages. Counting messages meant any conversation at
+    // all pushed this past the threshold, so the allowance for simple
+    // single-step work never applied and the gate fired on the first Write.
+    readsSoFar: countToolCalls(toolUseContext.messages),
     isSubagent: Boolean(toolUseContext.agentId),
   })
   if (!gate.allowed) {
