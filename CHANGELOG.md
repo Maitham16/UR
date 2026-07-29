@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.65.4
+
+- A tool call that keeps failing identically is now stopped. A 4B model refused
+  once by the task-list gate answered by emitting `Write` with no arguments
+  repeatedly, and nothing intervened — the trajectory grader names this pattern
+  but only after a run has ended, so it could grade the wreck and never prevent
+  it. Three identical failures are refused with instructions to change course;
+  six abort the turn, because otherwise a model that ignores the refusal simply
+  loops on the refusal instead.
+- The signature is tool name plus input, so a corrected retry is never
+  penalised — that is precisely the recovery a refusal asks for. Both the
+  task-list gate and input validation feed the counter; the observed loop was
+  rejected by validation every time, so recording only gate refusals would have
+  left the guard counting zero.
+
 ## 1.65.3
 
 - Removed two tips for things that do not exist: `/mobile to use UR from the

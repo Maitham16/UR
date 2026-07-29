@@ -121,6 +121,11 @@ import {
   supportsToolReferenceExpansion,
 } from '../../utils/toolSearch.js'
 import { checkTaskListGate } from './taskListGate.js'
+import {
+  callSignature,
+  checkRepeatedFailure,
+  recordCallFailure,
+} from './repeatedFailureGuard.js'
 
 /**
  * How many tasks exist for this session.
@@ -683,6 +688,36 @@ async function checkPermissionsAndCallTool(
       }
     }
   }
+  // Break a loop before anything else. A model that cannot recover from a
+  // refusal will repeat the same malformed call indefinitely, and every other
+  // check here would keep rejecting it politely forever.
+  const callSig = callSignature(tool.name, input)
+  const repeat = checkRepeatedFailure(callSig)
+  if (repeat.action !== 'allow') {
+    logEvent('tengu_repeated_failure_guard', {
+      toolName: sanitizeToolNameForAnalytics(tool.name),
+      action: repeat.action as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+    })
+    if (repeat.action === 'abort') {
+      throw new Error(`Repeated tool failure: ${repeat.reason}`)
+    }
+    return [
+      {
+        message: createUserMessage({
+          content: [
+            {
+              type: 'tool_result',
+              content: `<tool_use_error>RepeatedFailure: ${repeat.reason}</tool_use_error>`,
+              is_error: true,
+              tool_use_id: toolUseID,
+            },
+          ],
+        }),
+        shouldSkipPermissionCheck: false,
+      },
+    ]
+  }
+
   // Require a plan before anything is changed. Placed beside input validation
   // because that is the one point every tool call passes through; enforcing it
   // in the prompt alone did not hold.
@@ -693,6 +728,9 @@ async function checkPermissionsAndCallTool(
     isSubagent: Boolean(toolUseContext.agentId),
   })
   if (!gate.allowed) {
+    // Counts toward the repeat guard: a model that answers the gate by
+    // re-sending the same call is exactly the loop this protects against.
+    recordCallFailure(callSig)
     logEvent('tengu_task_list_gate_blocked', {
       toolName: sanitizeToolNameForAnalytics(tool.name),
     })
@@ -714,6 +752,9 @@ async function checkPermissionsAndCallTool(
   }
 
   if (!parsedInput.success) {
+    // The loop that prompted this guard was `Write` with no arguments,
+    // rejected here every time. Without recording it, the guard never counts.
+    recordCallFailure(callSig)
     let errorContent = formatZodValidationError(tool.name, parsedInput.error)
 
     const schemaHint = buildSchemaNotSentHint(
