@@ -2,7 +2,10 @@
 // Used by TaskStopTool (LLM-invoked) and SDK stop_task control request.
 
 import type { AppState } from '../state/AppState.js'
-import type { TaskStateBase } from '../Task.js'
+import {
+  isLegacyPersistedTaskType,
+  type TaskStateBase,
+} from '../Task.js'
 import { getTaskByType } from '../tasks.js'
 import { emitTaskTerminatedSdk } from '../utils/sdkEventQueue.js'
 import { isLocalShellTask } from './LocalShellTask/guards.js'
@@ -56,8 +59,11 @@ export async function stopTask(
 
   const taskImpl = getTaskByType(task.type)
   if (!taskImpl) {
+    const detail = isLegacyPersistedTaskType(task.type)
+      ? `Persisted legacy task type ${task.type} has no runtime lifecycle implementation`
+      : `Unsupported task type: ${task.type}`
     throw new StopTaskError(
-      `Unsupported task type: ${task.type}`,
+      detail,
       'unsupported_type',
     )
   }

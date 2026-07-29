@@ -1,7 +1,9 @@
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { splitCommand_DEPRECATED } from '../../utils/bash/commands.js'
+import { tryParseShellCommand } from '../../utils/bash/shellQuote.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
+import { sanitizeExcludedCommandPatterns } from '../../utils/sandbox/excludedCommands.js'
 import {
   BINARY_HIJACK_VARS,
   bashPermissionRule,
@@ -15,65 +17,111 @@ type SandboxInput = {
   dangerouslyDisableSandbox?: boolean
 }
 
-// NOTE: excludedCommands is a user-facing convenience feature, not a security boundary.
-// It is not a security bug to be able to bypass excludedCommands — the sandbox permission
-// system (which prompts users) is the actual security control.
+function hasUnescapedBacktick(command: string): boolean {
+  for (let index = 0; index < command.length; index++) {
+    if (command[index] !== '`') continue
+    let precedingBackslashes = 0
+    for (
+      let backslashIndex = index - 1;
+      backslashIndex >= 0 && command[backslashIndex] === '\\';
+      backslashIndex--
+    ) {
+      precedingBackslashes++
+    }
+    if (precedingBackslashes % 2 === 0) return true
+  }
+  return false
+}
+
+// NOTE: excludedCommands is a user-facing convenience feature, not a permission
+// grant. Permission prompts remain the primary security control, but exclusions
+// still fail safe because they deliberately weaken OS isolation.
 function containsExcludedCommand(command: string): boolean {
-  // Check dynamic config for disabled commands and substrings (only for ants)
+  let disabledCommands: {
+    commands: string[]
+    substrings: string[]
+  } = { commands: [], substrings: [] }
+
+  // Load dynamic exclusions (only for ants). They follow the same all-segment
+  // rule as user settings below.
   if (process.env.USER_TYPE === 'ant') {
-    const disabledCommands = getFeatureValue_CACHED_MAY_BE_STALE<{
+    disabledCommands = getFeatureValue_CACHED_MAY_BE_STALE<{
       commands: string[]
       substrings: string[]
     }>('tengu_sandbox_disabled_commands', { commands: [], substrings: [] })
-
-    // Check if command contains any disabled substrings
-    for (const substring of disabledCommands.substrings) {
-      if (command.includes(substring)) {
-        return true
-      }
-    }
-
-    // Check if command starts with any disabled commands
-    try {
-      const commandParts = splitCommand_DEPRECATED(command)
-      for (const part of commandParts) {
-        const baseCommand = part.trim().split(' ')[0]
-        if (baseCommand && disabledCommands.commands.includes(baseCommand)) {
-          return true
-        }
-      }
-    } catch {
-      // If we can't parse the command (e.g., malformed bash syntax),
-      // treat it as not excluded to allow other validation checks to handle it
-      // This prevents crashes when rendering tool use messages
+    disabledCommands = {
+      commands: sanitizeExcludedCommandPatterns(disabledCommands.commands),
+      substrings: sanitizeExcludedCommandPatterns(disabledCommands.substrings),
     }
   }
 
   // Check user-configured excluded commands from settings
   const settings = getSettings_DEPRECATED()
-  const userExcludedCommands = settings.sandbox?.excludedCommands ?? []
+  const userExcludedCommands = sanitizeExcludedCommandPatterns(
+    settings.sandbox?.excludedCommands ?? [],
+  )
 
-  if (userExcludedCommands.length === 0) {
+  if (
+    userExcludedCommands.length === 0 &&
+    disabledCommands.commands.length === 0 &&
+    disabledCommands.substrings.length === 0
+  ) {
+    return false
+  }
+
+  // Exclusions weaken isolation, so do not apply them to syntax that this
+  // legacy synchronous splitter cannot fully enumerate. In particular,
+  // command/process substitutions execute nested commands that must not hide
+  // behind an excluded outer prefix.
+  const parseResult = tryParseShellCommand(command, key => `$${key}`)
+  if (
+    !parseResult.success ||
+    command.includes('$(') ||
+    command.includes('<(') ||
+    command.includes('>(') ||
+    hasUnescapedBacktick(command)
+  ) {
     return false
   }
 
   // Split compound commands (e.g. "docker ps && curl evil.com") into individual
-  // subcommands and check each one against excluded patterns. This prevents a
-  // compound command from escaping the sandbox just because its first subcommand
-  // matches an excluded pattern.
+  // executable subcommands. A shell call is excluded only when EVERY segment
+  // matches: one allowed segment must never pull unrelated work out of the
+  // sandbox with it.
   let subcommands: string[]
   try {
     subcommands = splitCommand_DEPRECATED(command)
+      .map(subcommand => subcommand.trim())
+      .filter(Boolean)
   } catch {
-    subcommands = [command]
+    // Matching is a sandbox-weakening exception, so parse failures fail safe.
+    return false
   }
+  if (subcommands.length === 0) return false
 
-  for (const subcommand of subcommands) {
-    const trimmed = subcommand.trim()
+  return subcommands.every(subcommand => {
+    const trimmed = subcommand
+    if (
+      disabledCommands.substrings.some(substring =>
+        trimmed.includes(substring),
+      )
+    ) {
+      return true
+    }
+    const baseCommand = trimmed.split(/\s+/, 1)[0]
+    if (
+      baseCommand &&
+      disabledCommands.commands.includes(baseCommand)
+    ) {
+      return true
+    }
+
     // Also try matching with env var prefixes and wrapper commands stripped, so
     // that `FOO=bar bazel ...` and `timeout 30 bazel ...` match `bazel:*`. Not a
-    // security boundary (see NOTE at top); the &&-split above already lets
-    // `export FOO=bar && bazel ...` match. BINARY_HIJACK_VARS kept as a heuristic.
+    // permission boundary (see NOTE at top). A separate
+    // `export FOO=bar && bazel ...` segment remains sandboxed unless the export
+    // segment is independently excluded. BINARY_HIJACK_VARS is retained as a
+    // same-segment heuristic.
     //
     // We iteratively apply both stripping operations until no new candidates are
     // produced (fixed-point), matching the approach in filterRulesByContentsMatchingInput.
@@ -122,9 +170,8 @@ function containsExcludedCommand(command: string): boolean {
         }
       }
     }
-  }
-
-  return false
+    return false
+  })
 }
 
 export function shouldUseSandbox(input: Partial<SandboxInput>): boolean {

@@ -333,7 +333,11 @@ async function* queryLoop(
   // ledger is keyed stably across all loop iterations of one request.
   const verifierActive = !state.toolUseContext.agentId
   const verifier = verifierActive
-    ? new Verifier({ cwd: state.toolUseContext.options.cwd ?? process.cwd() })
+    ? new Verifier({
+        cwd: state.toolUseContext.options.cwd ?? process.cwd(),
+        getLegacyTodos: () =>
+          state.toolUseContext.getAppState().todos[config.sessionId] ?? [],
+      })
     : null
   let verifierTurnId: string | undefined
   if (verifier) {

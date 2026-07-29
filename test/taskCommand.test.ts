@@ -25,6 +25,7 @@ describe('ur task command', () => {
       expect(task.task).toBe('fix-auth')
       expect(task.status).toBe('queued')
       expect(task.worktree.enabled).toBe(true)
+      expect(task.pr).toBeUndefined()
 
       const run = await runWithCwdOverride(dir, () =>
         call(`run ${task.id} --dry-run --json`, {} as never),

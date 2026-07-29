@@ -62,8 +62,8 @@ MCP configuration, and local Ollama routing as the interactive CLI.
 - \`example.ts\` — TypeScript, importing \`ur-agent/sdk\` (\`query\`, \`queryJSON\`, \`UrClient\`).
 - \`example.py\` — Python, no dependencies, shells out to \`ur\`.
 
-For agent-to-agent hand-off over HTTP instead of in-process scripting, use the
-A2A server: \`ur a2a serve\`.
+For agent-to-agent hand-off over HTTP instead of spawning a local subprocess,
+use the A2A server: \`ur a2a serve\`.
 `
 
 function infoText(): string {
@@ -116,5 +116,16 @@ export const call: LocalCommandCall = async (args: string) => {
     }
   }
 
-  return { type: 'text', value: json ? JSON.stringify({ info: infoText() }, null, 2) : infoText() }
+  if (action === 'info' || action === 'status') {
+    return {
+      type: 'text',
+      value: json ? JSON.stringify({ info: infoText() }, null, 2) : infoText(),
+    }
+  }
+
+  return {
+    type: 'text',
+    value: 'Usage: ur sdk info|init [--force] [--json]',
+    exitCode: 2,
+  }
 }

@@ -30,9 +30,16 @@ export const call: LocalCommandCall = async (args: string) => {
   const tokens = parseArguments(args)
   const voice = flagValue(tokens, '--voice')
   const rawRate = flagValue(tokens, '--rate')
-  const rate = rawRate ? Number.parseInt(rawRate, 10) : undefined
-  if (rawRate !== undefined && !Number.isFinite(rate)) {
-    return { type: 'text', value: '--rate expects a number (words per minute)' }
+  const rate = rawRate === undefined ? undefined : Number(rawRate)
+  if (
+    rawRate !== undefined &&
+    (!Number.isSafeInteger(rate) || (rate ?? 0) < 1)
+  ) {
+    return {
+      type: 'text',
+      value: '--rate expects a positive integer (words per minute)',
+      exitCode: 2,
+    }
   }
 
   // Strip flags and their values; everything else is the text to speak.
@@ -48,6 +55,7 @@ export const call: LocalCommandCall = async (args: string) => {
     return {
       type: 'text',
       value: 'Usage: /speak <text> [--voice <name>] [--rate <wpm>]',
+      exitCode: 2,
     }
   }
 
@@ -61,6 +69,10 @@ export const call: LocalCommandCall = async (args: string) => {
         platform === 'darwin' || platform === 'linux' || platform === 'win32'
           ? 'Nothing speakable in that text (code, links and paths are skipped).'
           : `Speech is not supported on ${platform}.`,
+      exitCode:
+        platform === 'darwin' || platform === 'linux' || platform === 'win32'
+          ? 2
+          : 1,
     }
   }
 
@@ -70,7 +82,11 @@ export const call: LocalCommandCall = async (args: string) => {
       platform === 'linux'
         ? '\nInstall a synthesiser, for example: apt install speech-dispatcher'
         : ''
-    return { type: 'text', value: `Could not speak: ${result.reason}${hint}` }
+    return {
+      type: 'text',
+      value: `Could not speak: ${result.reason}${hint}`,
+      exitCode: 1,
+    }
   }
   return {
     type: 'text',

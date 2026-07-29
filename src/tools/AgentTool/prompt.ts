@@ -5,7 +5,6 @@ import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/envUtils.js'
 import { isTeammate } from '../../utils/teammate.js'
 import { isInProcessTeammate } from '../../utils/teammateContext.js'
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js'
-import { FILE_WRITE_TOOL_NAME } from '../FileWriteTool/prompt.js'
 import { GLOB_TOOL_NAME } from '../GlobTool/prompt.js'
 import { SEND_MESSAGE_TOOL_NAME } from '../SendMessageTool/constants.js'
 import { AGENT_TOOL_NAME } from './constants.js'
@@ -153,39 +152,11 @@ ${AGENT_TOOL_NAME}({
 </example>
 `
 
-  const currentExamples = `Example usage:
-
-<example_agent_descriptions>
-"test-runner": use this agent after you are done writing code to run tests
-"greeting-responder": use this agent to respond to user greetings with a friendly joke
-</example_agent_descriptions>
-
-<example>
-user: "Please write a function that checks if a number is prime"
-assistant: I'm going to use the ${FILE_WRITE_TOOL_NAME} tool to write the following code:
-<code>
-function isPrime(n) {
-  if (n <= 1) return false
-  for (let i = 2; i * i <= n; i++) {
-    if (n % i === 0) return false
-  }
-  return true
-}
-</code>
-<commentary>
-Since a significant piece of code was written and the task was completed, now use the test-runner agent to run the tests
-</commentary>
-assistant: Uses the ${AGENT_TOOL_NAME} tool to launch the test-runner agent
-</example>
-
-<example>
-user: "Hello"
-<commentary>
-Since the user is greeting, use the greeting-responder agent to respond with a friendly joke
-</commentary>
-assistant: "I'm going to use the ${AGENT_TOOL_NAME} tool to launch the greeting-responder agent"
-</example>
-`
+  const currentExamples = `Examples:
+- After implementing a substantial change, launch an appropriate test or verification agent through the native structured ${AGENT_TOOL_NAME} interface. Give it the changed paths, the exact checks to run, and the evidence to return.
+- For two independent investigations, emit both ${AGENT_TOOL_NAME} calls in the same assistant turn. Keep dependent work sequential.
+- Handle greetings and other simple conversational requests directly. Do not delegate work that is faster and clearer to answer yourself.
+- Never narrate a tool call as if narration executed it, and never paste code or arguments as a substitute for invoking the tool.`
 
   // When the gate is on, the agent list lives in an agent_listing_delta
   // attachment (see attachments.ts) instead of inline here. This keeps the

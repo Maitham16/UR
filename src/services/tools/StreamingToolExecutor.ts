@@ -123,6 +123,10 @@ export class StreamingToolExecutor {
       this.discard()
       throw new Error(`Duplicate tool_use id received: ${block.id}`)
     }
+    const executionAssistantMessage = this.withObservedBatchToolUses(
+      block,
+      assistantMessage,
+    )
     const toolDefinition = findToolByName(this.toolDefinitions, block.name)
     if (!toolDefinition) {
       // Route unknown tools through runToolUse as well. It owns telemetry and
@@ -131,7 +135,7 @@ export class StreamingToolExecutor {
       this.tools.push({
         id: block.id,
         block,
-        assistantMessage,
+        assistantMessage: executionAssistantMessage,
         status: 'queued',
         isConcurrencySafe: false,
         pendingProgress: [],
@@ -153,13 +157,71 @@ export class StreamingToolExecutor {
     this.tools.push({
       id: block.id,
       block,
-      assistantMessage,
+      assistantMessage: executionAssistantMessage,
       status: 'queued',
       isConcurrencySafe,
       pendingProgress: [],
     })
 
     void this.processQueue()
+  }
+
+  /**
+   * Streaming yields one AssistantMessage per completed content block, even
+   * when several tool_use blocks belong to the same provider message. Runtime
+   * policy needs each call's stable ordinal within that provider message; a
+   * one-block snapshot makes every eager call look like ordinal zero.
+   *
+   * Build an execution-only view containing the same-message tool blocks
+   * observed so far. The original message remains untouched for transcript
+   * serialization and API round-tripping.
+   */
+  private withObservedBatchToolUses(
+    block: ToolUseBlock,
+    assistantMessage: AssistantMessage,
+  ): AssistantMessage {
+    const message = assistantMessage.message
+    if (
+      !message ||
+      typeof message.id !== 'string' ||
+      message.id.length === 0
+    ) {
+      return assistantMessage
+    }
+    const messageId = message.id
+
+    const priorBlocks = this.tools
+      .filter(tool => tool.assistantMessage.message?.id === messageId)
+      .map(tool => tool.block)
+    if (priorBlocks.length === 0) {
+      return assistantMessage
+    }
+
+    const seenToolUseIds = new Set(priorBlocks.map(toolUse => toolUse.id))
+    const combinedContent = [...priorBlocks]
+    for (const contentBlock of message.content) {
+      if (
+        contentBlock.type === 'tool_use' &&
+        seenToolUseIds.has(contentBlock.id)
+      ) {
+        continue
+      }
+      combinedContent.push(contentBlock)
+      if (contentBlock.type === 'tool_use') {
+        seenToolUseIds.add(contentBlock.id)
+      }
+    }
+    if (!seenToolUseIds.has(block.id)) {
+      combinedContent.push(block)
+    }
+
+    return {
+      ...assistantMessage,
+      message: {
+        ...message,
+        content: combinedContent,
+      },
+    }
   }
 
   /**

@@ -123,6 +123,7 @@ import {
 import {
   checkTaskListGate,
   countActionableTasksForGate,
+  countActionableTodosForGate,
 } from './taskListGate.js'
 import {
   callSignature,
@@ -132,13 +133,6 @@ import {
   RepeatedToolFailureAbort,
 } from './repeatedFailureGuard.js'
 
-/**
- * How many tasks exist for this session.
- *
- * Returns a permissive count on any failure. A gate that blocks every tool
- * call because the task directory was briefly unreadable would be worse than
- * the problem it solves, so an unknown count is treated as "a list exists".
- */
 /**
  * Tool calls already made, which is what the gate's allowance is about.
  * Message count is not a proxy for it: a long conversation with no tool use
@@ -199,10 +193,18 @@ export function countToolCallsBeforeCurrent(
   return count
 }
 
-async function countTasksForGate(): Promise<number | null> {
+async function countTasksForGate(
+  toolUseContext: ToolUseContext,
+): Promise<number | null> {
   try {
-    const { getTaskListId, inspectTaskListForGate } =
+    const { getTaskListId, inspectTaskListForGate, isTodoV2Enabled } =
       await import('../../utils/tasks.js')
+    if (!isTodoV2Enabled()) {
+      const todoKey = toolUseContext.agentId ?? getSessionId()
+      return countActionableTodosForGate(
+        toolUseContext.getAppState().todos?.[todoKey],
+      )
+    }
     const inspection = await inspectTaskListForGate(getTaskListId())
     return countActionableTasksForGate(inspection.tasks)
   } catch {
@@ -238,6 +240,36 @@ function repeatedFailureScope(
     `session:${getSessionId()}:agent:${toolUseContext.agentId ?? 'main'}:` +
     `turn:${fallbackTurnId ?? 'untracked'}`
   )
+}
+
+/**
+ * Match the narrow extra-key recovery performed by the execution validator.
+ * Outer preflight exceptions are recorded by runToolUse; using the raw input
+ * there would create a different repeat signature from the cleaned input that
+ * checkPermissionsAndCallTool checks on the next attempt.
+ */
+function repeatSignatureInput(tool: Tool, input: unknown): unknown {
+  const parsedInput = tool.inputSchema.safeParse(input)
+  if (
+    parsedInput.success ||
+    parsedInput.error.issues.length === 0 ||
+    !parsedInput.error.issues.every(
+      issue => issue.code === 'unrecognized_keys',
+    )
+  ) {
+    return input
+  }
+  const { input: cleaned, stripped } = stripUnrecognizedKeys(
+    input,
+    parsedInput.error.issues,
+  )
+  if (
+    stripped.length > 0 &&
+    tool.inputSchema.safeParse(cleaned).success
+  ) {
+    return cleaned
+  }
+  return input
 }
 import {
   McpAuthError,
@@ -641,7 +673,7 @@ export async function* runToolUse(
       recordCallFailure(
         callSignature(
           tool.name,
-          toolInput,
+          repeatSignatureInput(tool, toolInput),
           repeatedFailureScope(toolUseContext, messageId),
         ),
       )
@@ -1018,7 +1050,7 @@ async function checkPermissionsAndCallTool(
   }
   const gate = checkTaskListGate({
     toolName: tool.name,
-    taskCount: await countTasksForGate(),
+    taskCount: await countTasksForGate(toolUseContext),
     // Tool calls, not messages. Counting messages meant any conversation at
     // all pushed this past the threshold, so the allowance for simple
     // single-step work never applied and the gate fired on the first Write.
@@ -1640,7 +1672,7 @@ async function checkPermissionsAndCallTool(
   if (callSig !== initiallyValidatedCallSig || finalIsMutating !== isMutating) {
     const finalGate = checkTaskListGate({
       toolName: tool.name,
-      taskCount: await countTasksForGate(),
+      taskCount: await countTasksForGate(toolUseContext),
       readsSoFar: countToolCallsBeforeCurrent(
         toolUseContext.messages,
         assistantMessage,

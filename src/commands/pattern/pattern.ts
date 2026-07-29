@@ -43,6 +43,7 @@ export const call: LocalCommandCall = async (args: string) => {
     return {
       type: 'text',
       value: `Usage: ur pattern ${command} <${knownIds()}>`,
+      exitCode: 2,
     }
   }
   const pattern = getPattern(id)
@@ -50,6 +51,7 @@ export const call: LocalCommandCall = async (args: string) => {
     return {
       type: 'text',
       value: `Unknown pattern: ${id}\nKnown patterns: ${knownIds()}`,
+      exitCode: 1,
     }
   }
 
@@ -66,6 +68,13 @@ export const call: LocalCommandCall = async (args: string) => {
       workflow.name = `${pattern.id}-run`
       const dryRun = tokens.includes('--dry-run')
       const maxTurnsValue = Number(optionValue(tokens, '--max-turns') ?? '30')
+      if (!Number.isSafeInteger(maxTurnsValue) || maxTurnsValue < 1) {
+        return {
+          type: 'text',
+          value: '--max-turns must be a positive integer.',
+          exitCode: 2,
+        }
+      }
       const parallelAgents = pattern.stages.filter(s => s.parallelizable).length
       const result = await saveAndRunWorkflow(workflow, {
         cwd: getCwd(),
@@ -75,8 +84,7 @@ export const call: LocalCommandCall = async (args: string) => {
         skipPermissions:
           tokens.includes('--skip-permissions') ||
           tokens.includes('--dangerously-skip-permissions'),
-        maxTurns:
-          Number.isFinite(maxTurnsValue) && maxTurnsValue > 0 ? maxTurnsValue : 30,
+        maxTurns: maxTurnsValue,
         maxConcurrency: parallelAgents > 1 ? parallelAgents : undefined,
         loop: pattern.loop
           ? {
@@ -86,9 +94,19 @@ export const call: LocalCommandCall = async (args: string) => {
             }
           : null,
       })
-      if (json) return { type: 'text', value: JSON.stringify(result, null, 2) }
+      if (json) {
+        return {
+          type: 'text',
+          value: JSON.stringify(result, null, 2),
+          ...(result.status === 'completed' ? {} : { exitCode: 1 }),
+        }
+      }
       const header = dryRun ? '(dry run — no model calls)\n\n' : ''
-      return { type: 'text', value: `${header}${formatExecResult(result)}` }
+      return {
+        type: 'text',
+        value: `${header}${formatExecResult(result)}`,
+        ...(result.status === 'completed' ? {} : { exitCode: 1 }),
+      }
     }
 
     const plan = buildExecutionPlan(pattern, task)
@@ -117,5 +135,6 @@ export const call: LocalCommandCall = async (args: string) => {
   return {
     type: 'text',
     value: `Unknown pattern command: ${command}\n\n${formatPatternList(false)}`,
+    exitCode: 2,
   }
 }

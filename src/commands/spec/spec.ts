@@ -64,6 +64,12 @@ function notFound(name: string): string {
   return `Spec not found: ${name}`
 }
 
+function invalidMaxTurns(raw: string | undefined): boolean {
+  if (raw === undefined) return false
+  const value = Number(raw)
+  return !Number.isSafeInteger(value) || value < 1
+}
+
 export const call: LocalCommandCall = async (args: string) => {
   const cwd = getCwd()
   const tokens = parseArguments(args)
@@ -78,7 +84,9 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'init' || action === 'create') {
     const goal = option(tokens, '--goal')
-    if (!name || !goal) return { type: 'text', value: usage() }
+    if (!name || !goal) {
+      return { type: 'text', value: usage(), exitCode: 2 }
+    }
     const meta = createSpec(cwd, name, goal)
     return {
       type: 'text',
@@ -88,12 +96,26 @@ export const call: LocalCommandCall = async (args: string) => {
     }
   }
 
-  if (!name) return { type: 'text', value: usage() }
+  if (!name) return { type: 'text', value: usage(), exitCode: 2 }
 
   if (action === 'show') {
-    const phase = asPhase(positional[2]) ?? 'requirements'
+    const requestedPhase = positional[2]
+    const phase = asPhase(requestedPhase) ?? 'requirements'
+    if (requestedPhase && !asPhase(requestedPhase)) {
+      return {
+        type: 'text',
+        value: `Unknown spec phase: ${requestedPhase}`,
+        exitCode: 2,
+      }
+    }
     const body = readPhase(cwd, name, phase)
-    if (body === null) return { type: 'text', value: `Spec phase not found: ${name}/${phase}` }
+    if (body === null) {
+      return {
+        type: 'text',
+        value: `Spec phase not found: ${name}/${phase}`,
+        exitCode: 1,
+      }
+    }
     return {
       type: 'text',
       value: json ? JSON.stringify({ name, phase, body }, null, 2) : body,
@@ -102,16 +124,30 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'status') {
     const meta = loadSpec(cwd, name)
-    if (!meta) return { type: 'text', value: notFound(name) }
+    if (!meta) {
+      return { type: 'text', value: notFound(name), exitCode: 1 }
+    }
     return { type: 'text', value: formatSpecStatus(cwd, meta, json) }
   }
 
   if (action === 'approve') {
     const meta = loadSpec(cwd, name)
-    if (!meta) return { type: 'text', value: notFound(name) }
-    const phase = asPhase(positional[2]) ?? meta.phase
+    if (!meta) {
+      return { type: 'text', value: notFound(name), exitCode: 1 }
+    }
+    const requestedPhase = positional[2]
+    const phase = asPhase(requestedPhase) ?? meta.phase
+    if (requestedPhase && !asPhase(requestedPhase)) {
+      return {
+        type: 'text',
+        value: `Unknown spec phase: ${requestedPhase}`,
+        exitCode: 2,
+      }
+    }
     const approved = approvePhase(cwd, name, phase)
-    if (!approved) return { type: 'text', value: notFound(name) }
+    if (!approved) {
+      return { type: 'text', value: notFound(name), exitCode: 1 }
+    }
     return {
       type: 'text',
       value: json
@@ -122,9 +158,26 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'generate') {
     const meta = loadSpec(cwd, name)
-    if (!meta) return { type: 'text', value: notFound(name) }
-    const phase = asPhase(positional[2]) ?? meta.phase
+    if (!meta) {
+      return { type: 'text', value: notFound(name), exitCode: 1 }
+    }
+    const requestedPhase = positional[2]
+    const phase = asPhase(requestedPhase) ?? meta.phase
+    if (requestedPhase && !asPhase(requestedPhase)) {
+      return {
+        type: 'text',
+        value: `Unknown spec phase: ${requestedPhase}`,
+        exitCode: 2,
+      }
+    }
     const maxTurnsRaw = option(tokens, '--max-turns')
+    if (invalidMaxTurns(maxTurnsRaw)) {
+      return {
+        type: 'text',
+        value: '--max-turns must be a positive integer.',
+        exitCode: 2,
+      }
+    }
     const body = await generatePhase(cwd, name, phase, {
       dryRun: tokens.includes('--dry-run'),
       maxTurns: maxTurnsRaw ? Number(maxTurnsRaw) : undefined,
@@ -137,7 +190,9 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'next') {
     const meta = loadSpec(cwd, name)
-    if (!meta) return { type: 'text', value: notFound(name) }
+    if (!meta) {
+      return { type: 'text', value: notFound(name), exitCode: 1 }
+    }
     const next = parseTasks(readPhase(cwd, name, 'tasks') ?? '').find(task => !task.done)
     return {
       type: 'text',
@@ -150,7 +205,17 @@ export const call: LocalCommandCall = async (args: string) => {
   }
 
   if (action === 'run') {
+    if (!loadSpec(cwd, name)) {
+      return { type: 'text', value: notFound(name), exitCode: 1 }
+    }
     const maxTurnsRaw = option(tokens, '--max-turns')
+    if (invalidMaxTurns(maxTurnsRaw)) {
+      return {
+        type: 'text',
+        value: '--max-turns must be a positive integer.',
+        exitCode: 2,
+      }
+    }
     const events: string[] = []
     const useKernel = tokens.includes('--kernel')
     try {
@@ -167,7 +232,13 @@ export const call: LocalCommandCall = async (args: string) => {
           events.push(`  ${event.id}: ${event.isError ? 'error' : (event.verdict ?? 'no verdict')}`)
         },
       })
-      if (json) return { type: 'text', value: JSON.stringify(result, null, 2) }
+      if (json) {
+        return {
+          type: 'text',
+          value: JSON.stringify(result, null, 2),
+          ...(result.stoppedOnFailure ? { exitCode: 1 } : {}),
+        }
+      }
       const ran = result.ran.length
         ? result.ran.map(task => `  ${task.id}: ${task.status} - ${task.title}`).join('\n')
         : '  No open tasks.'
@@ -175,16 +246,30 @@ export const call: LocalCommandCall = async (args: string) => {
       return {
         type: 'text',
         value: `Spec ${result.name}: ${result.remaining} task(s) remaining.${result.stoppedOnFailure ? ' Stopped on failure.' : ''}\n\nRan:\n${ran}${trace}`,
+        ...(result.stoppedOnFailure ? { exitCode: 1 } : {}),
       }
     } catch (error) {
-      return { type: 'text', value: error instanceof Error ? error.message : String(error) }
+      return {
+        type: 'text',
+        value: error instanceof Error ? error.message : String(error),
+        exitCode: 1,
+      }
     }
   }
 
   if (action === 'verify') {
     const meta = loadSpec(cwd, name)
-    if (!meta) return { type: 'text', value: notFound(name) }
+    if (!meta) {
+      return { type: 'text', value: notFound(name), exitCode: 1 }
+    }
     const maxTurnsRaw = option(tokens, '--max-turns')
+    if (invalidMaxTurns(maxTurnsRaw)) {
+      return {
+        type: 'text',
+        value: '--max-turns must be a positive integer.',
+        exitCode: 2,
+      }
+    }
     const useKernel = tokens.includes('--kernel')
     try {
       const result = await runSpecVerification(cwd, name, {
@@ -195,7 +280,13 @@ export const call: LocalCommandCall = async (args: string) => {
           ? createAgentKernel({ cwd, dryRun: tokens.includes('--dry-run'), maxTurns: maxTurnsRaw ? Number(maxTurnsRaw) : undefined, skipPermissions: tokens.includes('--skip-permissions') })
           : undefined,
       })
-      if (json) return { type: 'text', value: JSON.stringify(result, null, 2) }
+      if (json) {
+        return {
+          type: 'text',
+          value: JSON.stringify(result, null, 2),
+          ...(result.verdict === 'PASS' ? {} : { exitCode: 1 }),
+        }
+      }
       const gateLines = result.gateResults.length
         ? result.gateResults.map(g => `  ${g.ok ? '✓' : '✗'} ${g.command}`).join('\n')
         : '  (no project gates configured)'
@@ -211,9 +302,14 @@ export const call: LocalCommandCall = async (args: string) => {
           '',
           'Report: .ur/specs/verification.md',
         ].join('\n'),
+        ...(result.verdict === 'PASS' ? {} : { exitCode: 1 }),
       }
     } catch (error) {
-      return { type: 'text', value: error instanceof Error ? error.message : String(error) }
+      return {
+        type: 'text',
+        value: error instanceof Error ? error.message : String(error),
+        exitCode: 1,
+      }
     }
   }
 
@@ -226,8 +322,9 @@ export const call: LocalCommandCall = async (args: string) => {
         : deleted
           ? `Deleted spec ${name}.`
           : notFound(name),
+      ...(deleted ? {} : { exitCode: 1 }),
     }
   }
 
-  return { type: 'text', value: usage() }
+  return { type: 'text', value: usage(), exitCode: 2 }
 }

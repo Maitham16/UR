@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
+import { parse, type ParseError } from 'jsonc-parser'
 import { SettingsSchema } from '../src/utils/settings/types.ts'
 
 // docsCommands.test.ts enforces that every command is documented, but nothing
@@ -31,4 +32,28 @@ test('the schema is actually being read, so the check can fail', () => {
   const keys = settingsKeys()
   expect(keys.length).toBeGreaterThan(50)
   expect(keys).toContain('permissions')
+})
+
+test('every settings JSONC example parses and all shipped keys have valid values', () => {
+  const doc = readFileSync(DOC, 'utf8')
+  const examples = [...doc.matchAll(/```jsonc\n([\s\S]*?)```/g)].map(
+    match => match[1]!,
+  )
+  expect(examples.length).toBeGreaterThan(5)
+
+  for (const [index, source] of examples.entries()) {
+    const errors: ParseError[] = []
+    const value = parse(source, errors, {
+      allowTrailingComma: true,
+      disallowComments: false,
+    })
+    expect(errors, `JSONC example ${index + 1} must parse`).toEqual([])
+    const result = SettingsSchema().safeParse(value)
+    expect(
+      result.success,
+      `JSONC example ${index + 1}: ${
+        result.success ? '' : JSON.stringify(result.error.issues)
+      }`,
+    ).toBe(true)
+  }
 })

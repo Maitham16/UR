@@ -6,6 +6,7 @@ import { color } from '../../ink.js';
 import type { LocalJSXCommandContext } from '../../types/command.js';
 import { getPlatform } from '../../utils/platform.js';
 import { addToExcludedCommands, SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
+import { parseExcludedCommandArgument } from '../../utils/sandbox/excludedCommands.js';
 import { getSettings_DEPRECATED, getSettingsFilePathForSource } from '../../utils/settings/settings.js';
 import type { ThemeName } from '../../utils/theme.js';
 import { call as callSandboxCommand } from '../sandbox/sandbox.js';
@@ -58,23 +59,32 @@ export async function call(onDone: (result?: string) => void, context: LocalJSXC
   if (trimmedArgs) {
     if (subcommand === 'exclude') {
       // Handle exclude subcommand
-      const commandPattern = trimmedArgs.slice('exclude '.length).trim();
-      if (!commandPattern) {
-        const message = color('error', themeName)('Error: Please provide a command pattern to exclude (e.g., /sandbox exclude "npm run test:*")');
+      const commandArgument = trimmedArgs.slice('exclude'.length);
+      let cleanPattern: string;
+      try {
+        cleanPattern = parseExcludedCommandArgument(commandArgument);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        const message = color('error', themeName)(`Error: ${detail}. Example: /sandbox exclude "npm run test:*"`);
         onDone(message);
         return null;
       }
 
-      // Remove quotes if present
-      const cleanPattern = commandPattern.replace(/^["']|["']$/g, '');
-
       // Add to excludedCommands
-      addToExcludedCommands(cleanPattern);
+      let savedPattern: string;
+      try {
+        savedPattern = addToExcludedCommands(cleanPattern);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        const message = color('error', themeName)(`Error: Failed to update excluded commands: ${detail}`);
+        onDone(message);
+        return null;
+      }
 
       // Get the local settings path and make it relative to cwd
       const localSettingsPath = getSettingsFilePathForSource('localSettings');
       const relativePath = localSettingsPath ? relative(getCwdState(), localSettingsPath) : '.ur/settings.local.json';
-      const message = color('success', themeName)(`Added "${cleanPattern}" to excluded commands in ${relativePath}`);
+      const message = color('success', themeName)(`Configured sandbox exclusion "${savedPattern}" in ${relativePath}`);
       onDone(message);
       return null;
     } else {

@@ -55,6 +55,10 @@ import { errorMessage } from '../errors.js'
 import { getURTempDir } from '../permissions/filesystem.js'
 import type { PermissionRuleValue } from '../permissions/PermissionRule.js'
 import { ripgrepCommand } from '../ripgrep.js'
+import {
+  normalizeExcludedCommandPattern,
+  sanitizeExcludedCommandPatterns,
+} from './excludedCommands.js'
 
 // Local copies to avoid circular dependency
 // (permissions.ts imports SandboxManager, bashPermissions.ts imports permissions.ts)
@@ -721,7 +725,9 @@ async function setSandboxSettings(options: {
  */
 function getExcludedCommands(): string[] {
   const settings = getSettings_DEPRECATED()
-  return settings?.sandbox?.excludedCommands ?? []
+  return sanitizeExcludedCommandPatterns(
+    settings?.sandbox?.excludedCommands ?? [],
+  )
 }
 
 /**
@@ -860,8 +866,11 @@ export function addToExcludedCommands(
   }>,
 ): string {
   const existingSettings = getSettingsForSource('localSettings')
-  const existingExcludedCommands =
+  const rawExistingExcludedCommands =
     existingSettings?.sandbox?.excludedCommands || []
+  const existingExcludedCommands = sanitizeExcludedCommandPatterns(
+    rawExistingExcludedCommands,
+  )
 
   // Determine the command pattern to add
   // If there are suggestions with Bash rules, extract the pattern (e.g., "npm run test" from "npm run test:*")
@@ -887,14 +896,28 @@ export function addToExcludedCommands(
     }
   }
 
-  // Add to excludedCommands if not already present
-  if (!existingExcludedCommands.includes(commandPattern)) {
-    updateSettingsForSource('localSettings', {
+  commandPattern = normalizeExcludedCommandPattern(commandPattern)
+  const nextExcludedCommands = existingExcludedCommands.includes(commandPattern)
+    ? existingExcludedCommands
+    : [...existingExcludedCommands, commandPattern]
+  const settingsNeedUpdate =
+    nextExcludedCommands.length !== rawExistingExcludedCommands.length ||
+    nextExcludedCommands.some(
+      (pattern, index) => pattern !== rawExistingExcludedCommands[index],
+    )
+
+  // Persist both the new pattern and cleanup of any legacy empty/duplicate
+  // entries. Never report success if the settings write failed.
+  if (settingsNeedUpdate) {
+    const { error } = updateSettingsForSource('localSettings', {
       sandbox: {
         ...existingSettings?.sandbox,
-        excludedCommands: [...existingExcludedCommands, commandPattern],
+        excludedCommands: nextExcludedCommands,
       },
     })
+    if (error) {
+      throw error
+    }
   }
 
   return commandPattern

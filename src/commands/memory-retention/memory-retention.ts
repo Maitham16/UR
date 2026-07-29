@@ -8,15 +8,25 @@ import {
   saveMemoryRetentionPolicy,
 } from '../../services/agents/memoryRetention.js'
 
+const VALUE_FLAGS = ['--ttl-days', '--max-entries', '--decay-days'] as const
+
 function option(tokens: string[], name: string): number | undefined {
   const index = tokens.indexOf(name)
   if (index === -1) return undefined
   const n = Number(tokens[index + 1])
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined
+  return Number.isSafeInteger(n) && n > 0 ? n : undefined
 }
 
 function positional(tokens: string[]): string {
-  return tokens.find(t => !t.startsWith('--') && !/^\d+$/.test(t)) ?? 'show'
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index]!
+    if ((VALUE_FLAGS as readonly string[]).includes(token)) {
+      index++
+      continue
+    }
+    if (!token.startsWith('--')) return token
+  }
+  return 'show'
 }
 
 function usage(): string {
@@ -34,6 +44,17 @@ export const call: LocalCommandCall = async (args: string) => {
   const tokens = parseArguments(args)
   const json = tokens.includes('--json')
   const action = positional(tokens)
+
+  for (const flag of VALUE_FLAGS) {
+    const index = tokens.indexOf(flag)
+    if (index >= 0 && option(tokens, flag) === undefined) {
+      return {
+        type: 'text',
+        value: `${flag} expects a positive integer.`,
+        exitCode: 2,
+      }
+    }
+  }
 
   if (action === 'show' || action === 'status') {
     return {
@@ -64,5 +85,5 @@ export const call: LocalCommandCall = async (args: string) => {
     }
   }
 
-  return { type: 'text', value: usage() }
+  return { type: 'text', value: usage(), exitCode: 2 }
 }

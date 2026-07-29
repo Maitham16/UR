@@ -278,7 +278,12 @@ export type DaemonOptions = {
   /** Stop after this many ticks (mostly for tests). */
   maxTicks?: number
   dryRun?: boolean
-  onTick?: (info: { tick: number; ran: number; at: string }) => void
+  onTick?: (info: {
+    tick: number
+    ran: number
+    failed: number
+    at: string
+  }) => void
   /** Injectable sleep so tests don't actually wait. */
   sleep?: (ms: number) => Promise<void>
 }
@@ -306,7 +311,16 @@ export async function runDaemon(options: DaemonOptions): Promise<number> {
   while (!stopped) {
     tick += 1
     const results = await runDueAutomations({ dryRun: options.dryRun })
-    options.onTick?.({ tick, ran: results.length, at: new Date().toISOString() })
+    options.onTick?.({
+      tick,
+      ran: results.length,
+      failed: results.filter(
+        result =>
+          result.exitCode !== undefined &&
+          result.exitCode !== 0,
+      ).length,
+      at: new Date().toISOString(),
+    })
     if (options.once) break
     if (options.maxTicks !== undefined && tick >= options.maxTicks) break
     await sleep(intervalSec * 1000)

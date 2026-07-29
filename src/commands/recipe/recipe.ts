@@ -7,6 +7,7 @@ import {
 } from '../../services/agents/headlessAgent.js'
 import { runStructured } from '../../services/agents/structuredRun.js'
 import { getCwd } from '../../utils/cwd.js'
+import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { safeParseJSON } from '../../utils/json.js'
 
 /**
@@ -59,7 +60,7 @@ const STARTER: Recipe = {
 
 export const call: LocalCommandCall = async (args: string): Promise<LocalCommandResult> => {
   const cwd = getCwd()
-  const tokens = (args ?? '').trim().split(/\s+/).filter(Boolean)
+  const tokens = parseArguments(args)
   const action = tokens[0] ?? 'list'
   const json = tokens.includes('--json')
 
@@ -67,7 +68,13 @@ export const call: LocalCommandCall = async (args: string): Promise<LocalCommand
     const name = tokens[1] ?? STARTER.name
     mkdirSync(recipesDir(cwd), { recursive: true })
     const path = join(recipesDir(cwd), `${name}.json`)
-    if (existsSync(path)) return { type: 'text', value: `Recipe exists: ${path}` }
+    if (existsSync(path)) {
+      return {
+        type: 'text',
+        value: `Recipe exists: ${path}`,
+        exitCode: 1,
+      }
+    }
     writeFileSync(path, `${JSON.stringify({ ...STARTER, name }, null, 2)}\n`)
     return {
       type: 'text',
@@ -91,9 +98,22 @@ export const call: LocalCommandCall = async (args: string): Promise<LocalCommand
 
   if (action === 'run') {
     const name = tokens[1]
-    if (!name) return { type: 'text', value: 'Usage: ur recipe run <name> [input...] [--model m] [--max-turns n] [--dry-run] [--json]' }
+    if (!name) {
+      return {
+        type: 'text',
+        value:
+          'Usage: ur recipe run <name> [input...] [--model m] [--max-turns n] [--dry-run] [--json]',
+        exitCode: 2,
+      }
+    }
     const recipe = loadRecipe(cwd, name)
-    if (!recipe) return { type: 'text', value: `Recipe not found or invalid: ${name} (looked in .ur/recipes/${name}.json)` }
+    if (!recipe) {
+      return {
+        type: 'text',
+        value: `Recipe not found or invalid: ${name} (looked in .ur/recipes/${name}.json)`,
+        exitCode: 1,
+      }
+    }
 
     const flagIdx = tokens.findIndex(t => t.startsWith('--'), 2)
     const inputEnd = flagIdx === -1 ? tokens.length : flagIdx
@@ -101,6 +121,15 @@ export const call: LocalCommandCall = async (args: string): Promise<LocalCommand
     const modelIdx = tokens.indexOf('--model')
     const maxTurnsIdx = tokens.indexOf('--max-turns')
     const dryRun = tokens.includes('--dry-run')
+    const maxTurns =
+      maxTurnsIdx !== -1 ? Number(tokens[maxTurnsIdx + 1]) : recipe.maxTurns ?? 15
+    if (!Number.isSafeInteger(maxTurns) || maxTurns < 1) {
+      return {
+        type: 'text',
+        value: '--max-turns must be a positive integer.',
+        exitCode: 2,
+      }
+    }
 
     const runner = dryRun ? makeDryHeadlessRunner() : defaultHeadlessRunner()
     const result = await runStructured(runner, {
@@ -108,8 +137,7 @@ export const call: LocalCommandCall = async (args: string): Promise<LocalCommand
       prompt: recipe.prompt.replace(/\$\{INPUT\}/g, input),
       schema: recipe.schema,
       model: modelIdx !== -1 ? tokens[modelIdx + 1] : recipe.model,
-      maxTurns:
-        maxTurnsIdx !== -1 ? Number(tokens[maxTurnsIdx + 1]) : (recipe.maxTurns ?? 15),
+      maxTurns,
     })
 
     if (json || result.ok) {
@@ -122,13 +150,19 @@ export const call: LocalCommandCall = async (args: string): Promise<LocalCommand
           null,
           2,
         ),
+        ...(result.ok ? {} : { exitCode: 1 }),
       }
     }
     return {
       type: 'text',
       value: `Recipe ${name} FAILED schema validation after ${result.attempts} attempt(s):\n${result.errors.map(e => `  - ${e}`).join('\n')}\n\nRaw output (truncated):\n${result.rawOutput.slice(0, 1500)}`,
+      exitCode: 1,
     }
   }
 
-  return { type: 'text', value: 'Usage: ur recipe init <name> | list | run <name> [input...]' }
+  return {
+    type: 'text',
+    value: 'Usage: ur recipe init <name> | list | run <name> [input...]',
+    exitCode: 2,
+  }
 }

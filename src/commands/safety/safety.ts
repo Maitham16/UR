@@ -61,7 +61,7 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'check') {
     const command = option(tokens, '--command') ?? positionals(tokens).slice(1).join(' ')
-    if (!command) return { type: 'text', value: usage() }
+    if (!command) return { type: 'text', value: usage(), exitCode: 2 }
     return {
       type: 'text',
       value: formatShellSafetyEvaluation(
@@ -97,5 +97,5 @@ export const call: LocalCommandCall = async (args: string) => {
     }
   }
 
-  return { type: 'text', value: usage() }
+  return { type: 'text', value: usage(), exitCode: 2 }
 }

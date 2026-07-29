@@ -69,7 +69,7 @@ export const DRILLS: Drill[] = [
     action: 'ur grade-trajectory on a bad run with --min-score',
     expect: 'prints FAILED and exits 1',
     rationale:
-      'First implementation returned an exitCode field that runLocalTextCommand ignores, so CI passed while printing FAILED.',
+      'The command returns an explicit non-zero result that the script-facing adapter enforces.',
   },
   {
     id: 'agent-inspect-costs-empty',

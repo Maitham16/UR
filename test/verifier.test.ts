@@ -10,7 +10,10 @@ import {
   pickCommands,
   runGateCommands,
 } from '../src/services/verifier/projectGates'
-import { Verifier } from '../src/services/verifier'
+import {
+  actionableLegacyTodos,
+  Verifier,
+} from '../src/services/verifier'
 
 const TURN = '00000000-0000-0000-0000-000000000001'
 const NEXT_TURN = '00000000-0000-0000-0000-000000000002'
@@ -281,6 +284,39 @@ describe('projectGates', () => {
 })
 
 describe('Verifier integration', () => {
+  test('maps unfinished TodoWrite items into the strict completion gate', () => {
+    expect(
+      actionableLegacyTodos([
+        {
+          content: 'Inspect the implementation',
+          activeForm: 'Inspecting the implementation',
+          status: 'completed',
+        },
+        {
+          content: 'Run release checks',
+          activeForm: 'Running release checks',
+          status: 'in_progress',
+        },
+        {
+          content: 'Publish the report',
+          activeForm: 'Publishing the report',
+          status: 'pending',
+        },
+      ]),
+    ).toEqual([
+      {
+        id: '2',
+        subject: 'Run release checks',
+        status: 'in_progress',
+      },
+      {
+        id: '3',
+        subject: 'Publish the report',
+        status: 'pending',
+      },
+    ])
+  })
+
   test('rejects overall completion while actionable tasks remain', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {

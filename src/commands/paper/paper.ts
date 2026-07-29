@@ -3,10 +3,18 @@ import { getCwd } from '../../utils/cwd.js'
 import { addResearch, listResearch } from '../../ur/notes.js'
 export const call: LocalCommandCall = async (args: string) => {
   const text = (args ?? '').trim()
-  if (!text) {
-    const items = listResearch(getCwd(), 'papers')
-    return { type: 'text', value: items.length ? items.map((i) => `- ${i.text}`).join('\n') : 'no papers recorded yet' }
+  try {
+    if (!text) {
+      const items = listResearch(getCwd(), 'papers')
+      return { type: 'text', value: items.length ? items.map((i) => `- ${i.text}`).join('\n') : 'no papers recorded yet' }
+    }
+    addResearch(getCwd(), 'papers', text)
+    return { type: 'text', value: `added to papers: ${text}` }
+  } catch (error) {
+    return {
+      type: 'text',
+      value: `failed to access papers: ${error instanceof Error ? error.message : String(error)}`,
+      exitCode: 1,
+    }
   }
-  addResearch(getCwd(), 'papers', text)
-  return { type: 'text', value: `added to papers: ${text}` }
 }

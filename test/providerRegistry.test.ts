@@ -129,6 +129,29 @@ describe('provider registry legal access paths', () => {
     expect(openai?.safetyBoundaryLabel).not.toContain('External vendor CLI boundary')
   })
 
+  test('UR-native provider adapters never inherit an external CLI boundary', () => {
+    for (const id of [
+      'ollama',
+      'lmstudio',
+      'llama.cpp',
+      'vllm',
+      'openai-compatible',
+      'openai-api',
+      'anthropic-api',
+      'gemini-api',
+      'openrouter',
+    ] as const) {
+      expect(getProviderDefinition(id)).toMatchObject({
+        runtimeKind: 'ur-native',
+        providerKind: 'ur-native',
+        usesExternalCli: false,
+        supportsNativeToolCalls: true,
+        supportsNativeStreaming: true,
+        safetyBoundary: 'ur-native-runtime',
+      })
+    }
+  })
+
   test('provider list exposes subscription CLI capability boundaries when enabled', () => {
     const text = formatProviderList()
     const json = JSON.parse(formatProviderList(true)) as Array<{
@@ -926,7 +949,7 @@ describe('provider-scoped model listing', () => {
     }
   })
 
-  test('OpenAI Responses transport settings are explicit, validated, and privacy-first', () => {
+  test('OpenAI Responses settings reach the runtime client', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ur-provider-responses-config-'))
     try {
       resetStateForTests()
@@ -934,6 +957,13 @@ describe('provider-scoped model listing', () => {
       setCwdState(dir)
       resetSettingsCache()
 
+      updateSettingsForSource('localSettings', {
+        model: 'gpt-5.5',
+        provider: {
+          active: 'openai-api',
+          model: 'gpt-5.5',
+        },
+      } as never)
       expect(setSafeProviderConfig('openai_transport', 'responses').ok).toBe(true)
       expect(setSafeProviderConfig('responses.store', 'false').ok).toBe(true)
       expect(setSafeProviderConfig('responses.compact_threshold', '20000').ok).toBe(true)
@@ -952,6 +982,26 @@ describe('provider-scoped model listing', () => {
           toolSearch: 'hosted',
         },
       })
+
+      resetSettingsCache()
+      expect(getActiveProviderSettings()).toMatchObject({
+        active: 'openai-api',
+        openaiTransport: 'responses',
+        responses: {
+          store: false,
+          compactThreshold: 20_000,
+          toolSearch: 'hosted',
+        },
+      })
+
+      const { createProviderClient } = await import(
+        '../src/services/api/providerClient.js'
+      )
+      const client = await createProviderClient('openai-api', {
+        apiKey: 'test-key',
+        model: 'gpt-5.5',
+      })
+      expect('responses' in client).toBe(true)
     } finally {
       rmSync(dir, { recursive: true, force: true })
       resetStateForTests()

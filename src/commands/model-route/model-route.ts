@@ -35,12 +35,20 @@ export const call: LocalCommandCall = async (args: string) => {
   const tokens = parseArguments(args)
   const json = tokens.includes('--json')
   const strategy = (optionValue(tokens, '--strategy') ?? 'auto') as RouteStrategy
+  if (!['auto', 'cheap', 'strong', 'default'].includes(strategy)) {
+    return {
+      type: 'text',
+      value: '--strategy must be auto, cheap, strong, or default.',
+      exitCode: 2,
+    }
+  }
   const localOnly = tokens.includes('--offline') || isNetworkRestricted()
   const task = taskText(tokens)
   if (!task) {
     return {
       type: 'text',
       value: 'Usage: ur model-route "<task>" [--strategy auto|cheap|strong|default] [--offline] [--json]',
+      exitCode: 2,
     }
   }
   const { models } = await listModelCapabilities()

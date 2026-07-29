@@ -1,4 +1,7 @@
-import type { LocalCommandCall } from '../../types/command.js'
+import type {
+  LocalCommandCall,
+  LocalCommandResult,
+} from '../../types/command.js'
 import { generateKeyPairSync, randomUUID } from 'node:crypto'
 import {
   chmodSync,
@@ -11,7 +14,11 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { runWorkflowSpec } from '../../services/agents/runWorkflow.js'
-import { validateWorkflow } from '../../services/agents/workflows.js'
+import {
+  approveWorkflowStep,
+  resetRunState,
+  validateWorkflow,
+} from '../../services/agents/workflows.js'
 import {
   formatSkillStatus,
   initSkillDir,
@@ -157,12 +164,21 @@ function getSkillRoots(cwd: string): string[] {
   ]
 }
 
-function notFound(name: string, available: string[]): { type: 'text'; value: string } {
+function textResult(
+  value: string,
+  exitCode?: number,
+): LocalCommandResult {
+  return exitCode === undefined
+    ? { type: 'text', value }
+    : { type: 'text', value, exitCode }
+}
+
+function notFound(name: string, available: string[]): LocalCommandResult {
   const hint = available.length > 0 ? `\nAvailable: ${available.join(', ')}` : ''
-  return {
-    type: 'text',
-    value: `Skill not found: ${name}${hint}\nCreate one: ur skill init ${name}`,
-  }
+  return textResult(
+    `Skill not found: ${name}${hint}\nCreate one: ur skill init ${name}`,
+    1,
+  )
 }
 
 async function findSkill(cwd: string, name: string): Promise<SkillDirectoryInfo | null> {
@@ -181,27 +197,28 @@ export const call: LocalCommandCall = async (args: string) => {
   try {
     parsedTokens = parseCommandTokens(tokens)
   } catch (error) {
-    return {
-      type: 'text',
-      value: error instanceof Error ? error.message : String(error),
-    }
+    return textResult(
+      error instanceof Error ? error.message : String(error),
+      2,
+    )
   }
   const { positional, flags, values } = parsedTokens
   const json = flags.has('--json')
   const dryRun = flags.has('--dry-run')
+  const resume = flags.has('--resume')
   const command = positional[0] ?? 'list'
   const name = positional[1]
   const rest = positional.slice(2).join(' ')
 
   if (command === 'keygen') {
     if (!name) {
-      return {
-        type: 'text',
-        value: 'Usage: ur skill keygen <key-id> [--out <private-key.pem>]',
-      }
+      return textResult(
+        'Usage: ur skill keygen <key-id> [--out <private-key.pem>]',
+        2,
+      )
     }
     if (!/^[a-zA-Z0-9._-]{1,128}$/.test(name)) {
-      return { type: 'text', value: 'Invalid key ID.' }
+      return textResult('Invalid key ID.', 2)
     }
     const privatePath = resolve(
       cwd,
@@ -210,10 +227,10 @@ export const call: LocalCommandCall = async (args: string) => {
     )
     const publicPath = `${privatePath}.pub`
     if (existsSync(privatePath) || existsSync(publicPath)) {
-      return {
-        type: 'text',
-        value: `Refusing to overwrite an existing key: ${privatePath}`,
-      }
+      return textResult(
+        `Refusing to overwrite an existing key: ${privatePath}`,
+        1,
+      )
     }
     let createdPrivate = false
     let createdPublic = false
@@ -251,26 +268,25 @@ export const call: LocalCommandCall = async (args: string) => {
     } catch (error) {
       if (createdPublic) unlinkSync(publicPath)
       if (createdPrivate) unlinkSync(privatePath)
-      return {
-        type: 'text',
-        value: `Key generation failed: ${error instanceof Error ? error.message : error}`,
-      }
+      return textResult(
+        `Key generation failed: ${error instanceof Error ? error.message : error}`,
+        1,
+      )
     }
   }
 
   if (command === 'verify' || command === 'sign') {
     if (!name) {
-      return {
-        type: 'text',
-        value:
-          command === 'verify'
-            ? 'Usage: ur skill verify <name-or-directory> [--require-trusted] [--json]'
-            : 'Usage: ur skill sign <name-or-directory> --key <private-key.pem> --key-id <id> [--json]',
-      }
+      return textResult(
+        command === 'verify'
+          ? 'Usage: ur skill verify <name-or-directory> [--require-trusted] [--json]'
+          : 'Usage: ur skill sign <name-or-directory> --key <private-key.pem> --key-id <id> [--json]',
+        2,
+      )
     }
     const skillDir = findAgentSkillDirectory(cwd, name)
     if (!skillDir) {
-      return { type: 'text', value: `Agent Skill directory not found: ${name}` }
+      return textResult(`Agent Skill directory not found: ${name}`, 1)
     }
     try {
       const provenance =
@@ -303,12 +319,13 @@ export const call: LocalCommandCall = async (args: string) => {
         value: json
           ? JSON.stringify({ passed, provenance }, null, 2)
           : `${formatProvenance(provenance)}\nVERDICT: ${passed ? 'PASS' : 'FAIL'}${requiresTrusted ? ' (trusted signature required)' : ''}`,
+        ...(passed ? {} : { exitCode: 1 }),
       }
     } catch (error) {
-      return {
-        type: 'text',
-        value: `${command === 'sign' ? 'Signing' : 'Verification'} failed: ${error instanceof Error ? error.message : error}`,
-      }
+      return textResult(
+        `${command === 'sign' ? 'Signing' : 'Verification'} failed: ${error instanceof Error ? error.message : error}`,
+        1,
+      )
     }
   }
 
@@ -343,7 +360,7 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (command === 'init') {
     if (!name) {
-      return { type: 'text', value: 'Usage: ur skill init <name>' }
+      return textResult('Usage: ur skill init <name>', 2)
     }
     const projectSkills = getProjectDirsUpToHome('skills', cwd)[0] ?? join(cwd, '.ur', 'skills')
     const dir = join(projectSkills, name)
@@ -351,13 +368,15 @@ export const call: LocalCommandCall = async (args: string) => {
     try {
       const exists = await fs.stat(dir).then(() => true).catch(() => false)
       if (exists) {
-        return {
-          type: 'text',
-          value: `Skill directory already exists: ${dir}\nUse --force to overwrite (not yet implemented).`,
-        }
+        return textResult(
+          `Skill directory already exists: ${dir}\nRefusing to overwrite it.`,
+          1,
+        )
       }
     } catch (e) {
-      if (!isFsInaccessible(e)) return { type: 'text', value: `Error checking ${dir}: ${e}` }
+      if (!isFsInaccessible(e)) {
+        return textResult(`Error checking ${dir}: ${e}`, 1)
+      }
     }
     const result = initSkillDir(dir, name)
     return {
@@ -369,7 +388,7 @@ export const call: LocalCommandCall = async (args: string) => {
   }
 
   if (!name) {
-    return { type: 'text', value: `Usage: ur skill ${command} <name> [args]` }
+    return textResult(`Usage: ur skill ${command} <name> [args]`, 2)
   }
 
   const available = listSkillDirs([...getSkillRoots(cwd)].reverse().find(r => loadSkillDir(r, name)?.name === name) ?? join(cwd, '.ur', 'skills'))
@@ -396,6 +415,7 @@ export const call: LocalCommandCall = async (args: string) => {
           null,
           2,
         ),
+        ...(validation.valid ? {} : { exitCode: 1 }),
       }
     }
     return {
@@ -414,7 +434,45 @@ export const call: LocalCommandCall = async (args: string) => {
       ]
         .filter(line => line !== '')
         .join('\n'),
+      ...(validation.valid ? {} : { exitCode: 1 }),
     }
+  }
+
+  if (command === 'approve') {
+    const stepId = positional[2]
+    if (!stepId) {
+      return textResult('Usage: ur skill approve <name> <step-id>', 2)
+    }
+    const workflow = skillToWorkflow(info.spec, '', {
+      skillDir: info.path,
+      instructionText: info.files.instructions,
+    })
+    const step = workflow.steps.find(candidate => candidate.id === stepId)
+    if (!step) {
+      return textResult(`No step "${stepId}" in skill ${name}.`, 1)
+    }
+    if (step.gate !== 'approval') {
+      return textResult(`Step "${stepId}" is not an approval gate.`, 1)
+    }
+    try {
+      const state = approveWorkflowStep(cwd, workflow.name, stepId)
+      return {
+        type: 'text',
+        value: json
+          ? JSON.stringify(state, null, 2)
+          : `Approved ${stepId}. Resume safely with: ur skill run ${name} --resume`,
+      }
+    } catch (error) {
+      return textResult(
+        error instanceof Error ? error.message : String(error),
+        1,
+      )
+    }
+  }
+
+  if (command === 'reset') {
+    resetRunState(cwd, info.spec.name)
+    return { type: 'text', value: `Reset run state for skill ${name}.` }
   }
 
   if (command === 'run') {
@@ -424,28 +482,48 @@ export const call: LocalCommandCall = async (args: string) => {
     })
     const validation = validateWorkflow(workflow)
     if (!validation.valid) {
-      return {
-        type: 'text',
-        value: `Invalid compiled workflow:\n${validation.errors.map(e => `  - ${e}`).join('\n')}`,
-      }
+      return textResult(
+        `Invalid compiled workflow:\n${validation.errors.map(e => `  - ${e}`).join('\n')}`,
+        1,
+      )
     }
     const skipPermissions =
       flags.has('--skip-permissions') ||
       flags.has('--dangerously-skip-permissions')
-    const maxTurnsValue = Number(values.get('--max-turns') ?? '30')
+    const maxTurnsRaw = values.get('--max-turns')
+    const maxTurnsValue = Number(maxTurnsRaw ?? '30')
+    if (
+      maxTurnsRaw !== undefined &&
+      (!Number.isSafeInteger(maxTurnsValue) || maxTurnsValue < 1)
+    ) {
+      return textResult('--max-turns must be a positive integer.', 2)
+    }
     const result = await runWorkflowSpec(workflow, {
       cwd,
       stateName: workflow.name,
       dryRun,
+      resume,
       skipPermissions,
-      maxTurns: Number.isFinite(maxTurnsValue) && maxTurnsValue > 0 ? maxTurnsValue : 30,
+      maxTurns: maxTurnsValue,
     })
+    const exitCode = result.status === 'completed' ? undefined : 1
     if (json) {
-      return { type: 'text', value: JSON.stringify(result, null, 2) }
+      return {
+        type: 'text',
+        value: JSON.stringify(result, null, 2),
+        ...(exitCode === undefined ? {} : { exitCode }),
+      }
     }
     const header = dryRun ? '(dry run — no model calls)\n\n' : ''
-    return { type: 'text', value: `${header}Skill "${name}" finished.\n${JSON.stringify(result, null, 2)}` }
+    const outcome =
+      result.status === 'completed'
+        ? `Skill "${name}" completed.`
+        : `Skill "${name}" stopped with status "${result.status}".`
+    return textResult(
+      `${header}${outcome}\n${JSON.stringify(result, null, 2)}`,
+      exitCode,
+    )
   }
 
-  return { type: 'text', value: `Unknown skill command: ${command}` }
+  return textResult(`Unknown skill command: ${command}`, 2)
 }

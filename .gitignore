@@ -13,6 +13,10 @@ package-lock*.json
 backup/
 dist/*
 !dist/cli.js
+!dist/sdk/
+!dist/sdk/index.js
+!dist/sdk/index.cjs
+!dist/sdk/index.d.ts
 build/
 coverage/
 .nyc_output/

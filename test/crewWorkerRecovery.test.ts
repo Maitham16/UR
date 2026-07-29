@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { call as crewCommand } from '../src/commands/crew/crew.js'
 import {
   claimNextTask,
   createCrew,
@@ -9,9 +10,12 @@ import {
   reopenClaimed,
   runCrew,
   sanitizeCrewName,
+  saveCrew,
+  type CrewAttemptIsolation,
   type CrewEvent,
 } from '../src/services/agents/crew.js'
 import type { DecomposedTask } from '../src/services/agents/decomposer.js'
+import { runWithCwdOverride } from '../src/utils/cwd.js'
 import { lockSync } from '../src/utils/lockfile.js'
 
 function tempCrew(): string {
@@ -32,6 +36,18 @@ function decomposed(
     testsRequired: ['unit test'],
     rollbackPoint: 'HEAD',
   }
+}
+
+function markClaimIsolation(
+  cwd: string,
+  name: string,
+  isolation: CrewAttemptIsolation,
+): void {
+  const spec = loadCrew(cwd, name)
+  const task = spec?.tasks.find(candidate => candidate.status === 'claimed')
+  if (!spec || !task) throw new Error(`No claimed task on crew ${name}`)
+  task.attemptIsolation = isolation
+  saveCrew(cwd, spec)
 }
 
 describe('crew worker scheduling and recovery', () => {
@@ -222,6 +238,46 @@ describe('crew worker scheduling and recovery', () => {
     }
   })
 
+  test('retries every non-PASS verdict within the safe attempt budget, then fails', async () => {
+    const cwd = tempCrew()
+    try {
+      const cases = [
+        { name: 'missing', verdict: null, output: 'Done. VERDICT: PASS' },
+        { name: 'partial', verdict: 'PARTIAL' as const, output: 'some work remains' },
+        { name: 'fail', verdict: 'FAIL' as const, output: 'could not finish' },
+      ]
+
+      for (const candidate of cases) {
+        createCrew(cwd, candidate.name, `${candidate.name} verdict`)
+        let starts = 0
+        const result = await runCrew(candidate.name, {
+          cwd,
+          maxAttempts: 3,
+          retryBackoffMs: 0,
+          retrySafe: true,
+          runnerFor: () => async () => {
+            starts += 1
+            return {
+              output: candidate.output,
+              verdict: candidate.verdict,
+              isError: false,
+            }
+          },
+        })
+
+        expect(starts).toBe(3)
+        expect(result.progress.done).toBe(0)
+        expect(result.progress.failed).toBe(1)
+        expect(result.handled[0]?.attempts).toBe(3)
+        expect(loadCrew(cwd, candidate.name)?.tasks[0]?.lastError).toContain(
+          'exact PASS verdict is required',
+        )
+      }
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
   test('does not replay a failed shared-workspace attempt', async () => {
     const cwd = tempCrew()
     try {
@@ -277,9 +333,11 @@ describe('crew worker scheduling and recovery', () => {
     try {
       createCrew(cwd, 'reopened-limit', 'bounded retry work')
       claimNextTask(cwd, 'reopened-limit', 'old-worker-1')
-      reopenClaimed(cwd, 'reopened-limit')
+      markClaimIsolation(cwd, 'reopened-limit', 'dry-run')
+      reopenClaimed(cwd, 'reopened-limit', 2)
       claimNextTask(cwd, 'reopened-limit', 'old-worker-2')
-      reopenClaimed(cwd, 'reopened-limit')
+      markClaimIsolation(cwd, 'reopened-limit', 'dry-run')
+      reopenClaimed(cwd, 'reopened-limit', 2)
       let starts = 0
       const result = await runCrew('reopened-limit', {
         cwd,
@@ -328,7 +386,7 @@ describe('crew worker scheduling and recovery', () => {
     }
   })
 
-  test('does not automatically reopen an ambiguous task from a crashed run', async () => {
+  test('does not recover a claimed task unless resume was requested', async () => {
     const cwd = tempCrew()
     try {
       createCrew(cwd, 'orphan', 'orphan work')
@@ -343,10 +401,155 @@ describe('crew worker scheduling and recovery', () => {
       })
 
       expect(starts).toBe(0)
+      expect(result.progress.claimed).toBe(1)
+      expect(result.progress.failed).toBe(0)
+      expect(loadCrew(cwd, 'orphan')?.tasks[0]?.status).toBe('claimed')
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('resume refuses ambiguous shared-checkout replay', async () => {
+    const cwd = tempCrew()
+    try {
+      createCrew(cwd, 'orphan', 'orphan work')
+      expect(claimNextTask(cwd, 'orphan', 'dead-worker')).not.toBeNull()
+      let starts = 0
+      const result = await runCrew('orphan', {
+        cwd,
+        resume: true,
+        runnerFor: () => async () => {
+          starts += 1
+          return { output: 'unexpected', verdict: 'PASS' }
+        },
+      })
+
+      expect(starts).toBe(0)
       expect(result.progress.failed).toBe(1)
       expect(loadCrew(cwd, 'orphan')?.tasks[0]?.lastError).toContain(
         'automatic replay was refused',
       )
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('resume reopens an isolated claimed attempt within its budget', async () => {
+    const cwd = tempCrew()
+    try {
+      createCrew(cwd, 'isolated-orphan', 'recover isolated work')
+      claimNextTask(cwd, 'isolated-orphan', 'dead-worker')
+      markClaimIsolation(cwd, 'isolated-orphan', 'dry-run')
+      let starts = 0
+      const result = await runCrew('isolated-orphan', {
+        cwd,
+        resume: true,
+        maxAttempts: 2,
+        runnerFor: () => async () => {
+          starts += 1
+          return { output: 'recovered', verdict: 'PASS' }
+        },
+      })
+
+      expect(starts).toBe(1)
+      expect(result.progress.done).toBe(1)
+      expect(result.handled[0]?.attempts).toBe(2)
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('/crew reset applies the same safe policy instead of blindly reopening shared work', async () => {
+    const cwd = tempCrew()
+    try {
+      createCrew(cwd, 'reset-shared', 'ambiguous work')
+      claimNextTask(cwd, 'reset-shared', 'dead-worker')
+      const response = await runWithCwdOverride(cwd, () =>
+        crewCommand(
+          'reset reset-shared --max-attempts 3 --json',
+          {} as never,
+        ),
+      )
+      if (response.type !== 'text') {
+        throw new Error('Expected /crew reset to return text')
+      }
+      const recovered = JSON.parse(response.value)
+
+      expect(recovered.tasks[0]).toMatchObject({
+        status: 'failed',
+        verdict: 'FAIL',
+      })
+      expect(recovered.tasks[0].lastError).toContain(
+        'automatic replay was refused',
+      )
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('/crew run returns non-zero when the board is incomplete or failed', async () => {
+    const cwd = tempCrew()
+    try {
+      const spec = createCrew(cwd, 'failed-command', 'failing task')
+      spec.tasks[0]!.status = 'failed'
+      spec.tasks[0]!.verdict = 'FAIL'
+      saveCrew(cwd, spec)
+
+      const response = await runWithCwdOverride(cwd, () =>
+        crewCommand('run failed-command --dry-run --json', {} as never),
+      )
+      expect(response.exitCode).toBe(1)
+      if (response.type !== 'text') throw new Error('Expected text response')
+      expect(JSON.parse(response.value).progress.failed).toBe(1)
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('/crew rejects invalid numeric limits and refuses implicit overwrite', async () => {
+    const cwd = tempCrew()
+    try {
+      const invalid = await runWithCwdOverride(cwd, () =>
+        crewCommand('run demo --workers nope', {} as never),
+      )
+      expect(invalid.exitCode).toBe(2)
+
+      createCrew(cwd, 'existing', 'keep this task')
+      const duplicate = await runWithCwdOverride(cwd, () =>
+        crewCommand('create existing --goal "replace it"', {} as never),
+      )
+      expect(duplicate.exitCode).toBe(1)
+      expect(loadCrew(cwd, 'existing')?.goal).toBe('keep this task')
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('dynamic mode exits cleanly when non-resumed claims block remaining work', async () => {
+    const cwd = tempCrew()
+    try {
+      createCrew(cwd, 'claimed-dependency', 'claimed dependency', {
+        decomposed: [
+          decomposed('build', 'build'),
+          decomposed('verify', 'verify', ['build']),
+        ],
+      })
+      claimNextTask(cwd, 'claimed-dependency', 'live-elsewhere')
+
+      const result = await runCrew('claimed-dependency', {
+        cwd,
+        dynamic: true,
+        maxWorkers: 4,
+        runnerFor: () => async () => ({
+          output: 'should not run',
+          verdict: 'PASS',
+        }),
+      })
+
+      expect(result.handled).toHaveLength(0)
+      expect(result.progress.claimed).toBe(1)
+      expect(result.progress.todo).toBe(1)
+      expect(result.workers).toBe(0)
     } finally {
       rmSync(cwd, { recursive: true, force: true })
     }
@@ -395,6 +598,36 @@ describe('crew worker scheduling and recovery', () => {
       expect(result.workers).toBe(1)
     } finally {
       rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('the Commander crew surface forwards every public scheduler option', () => {
+    const source = readFileSync(
+      join(import.meta.dir, '..', 'src', 'main.tsx'),
+      'utf8',
+    )
+    const crewBlock = source.match(
+      /program\.command\('crew \[action\] \[name\]'\)([\s\S]*?)program\.command\('goal /,
+    )?.[1]
+    expect(crewBlock).toBeDefined()
+
+    for (const option of [
+      '--dynamic',
+      '--max-workers <n>',
+      '--max-attempts <n>',
+      '--retry-backoff-ms <n>',
+      '--decompose',
+    ]) {
+      expect(crewBlock).toContain(`.option('${option}'`)
+    }
+    for (const forwarded of [
+      "opts.dynamic ? '--dynamic'",
+      'opts.maxWorkers ? `--max-workers ',
+      'opts.maxAttempts ? `--max-attempts ',
+      'opts.retryBackoffMs ? `--retry-backoff-ms ',
+      "opts.decompose ? '--decompose'",
+    ]) {
+      expect(crewBlock).toContain(forwarded)
     }
   })
 })

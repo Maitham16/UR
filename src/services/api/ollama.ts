@@ -39,6 +39,7 @@ import {
 import { parseToolInputJsonLenient } from '../../utils/json.js'
 import {
   describeVisionSupport,
+  normalizeAdvertisedCapabilities,
   resolveVisionSupport,
   shouldSendImages,
   type VisionSupport,
@@ -803,20 +804,14 @@ async function getOllamaModelCapabilities(
   }
 }
 
-function parseOllamaModelCapabilities(value: unknown): OllamaModelCapabilities | null {
+export function parseOllamaModelCapabilities(
+  value: unknown,
+): OllamaModelCapabilities | null {
   if (!value || typeof value !== 'object' || !('capabilities' in value)) {
     return null
   }
-  const capabilities = (value as { capabilities?: unknown }).capabilities
-  if (!Array.isArray(capabilities)) {
-    return null
-  }
-  return new Set(
-    capabilities.flatMap(capability =>
-      typeof capability === 'string' && capability.trim()
-        ? [capability.trim()]
-        : [],
-    ),
+  return normalizeAdvertisedCapabilities(
+    (value as { capabilities?: unknown }).capabilities,
   )
 }
 

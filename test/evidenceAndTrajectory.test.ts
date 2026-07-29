@@ -178,9 +178,8 @@ test('grading is deterministic — no model is asked to judge', () => {
 })
 
 test('--min-score actually fails the process, not just the text', () => {
-  // Returning an exitCode field is silently ignored by runLocalTextCommand,
-  // which exits with `process.exitCode ?? 0` — so the CI step printed FAILED
-  // and passed. Drive the binary to prove the status.
+  // Drive the shipped adapter to prove that the returned exitCode reaches the
+  // operating system rather than only producing failure-looking text.
   const dir = mkdtempSync(join(tmpdir(), 'ur-traj-'))
   const file = join(dir, 't.jsonl')
   writeFileSync(

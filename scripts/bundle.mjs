@@ -65,6 +65,41 @@ execFileSync(
   { cwd: root, stdio: 'inherit' },
 )
 
+console.log('Bundling the public ur-agent/sdk entrypoint ...')
+execFileSync(
+  'bun',
+  [
+    'build',
+    'src/sdk/index.ts',
+    '--outfile',
+    'dist/sdk/index.js',
+    '--target',
+    'node',
+    '--format',
+    'esm',
+  ],
+  { cwd: root, stdio: 'inherit' },
+)
+execFileSync(
+  'bun',
+  [
+    'build',
+    'src/sdk/index.ts',
+    '--outfile',
+    'dist/sdk/index.cjs',
+    '--target',
+    'node',
+    '--format',
+    'cjs',
+  ],
+  { cwd: root, stdio: 'inherit' },
+)
+execFileSync(
+  'bun',
+  ['run', 'tsc', '--project', 'tsconfig.sdk.json'],
+  { cwd: root, stdio: 'inherit' },
+)
+
 const distPath = join(root, 'dist', 'cli.js')
 let dist = readFileSync(distPath, 'utf8')
 
@@ -90,4 +125,17 @@ if (hits === 0) {
   )
   process.exit(1)
 }
-console.log(`OK: built and verified dist at v${version} (${hits} occurrences).`)
+for (const sdkFile of [
+  'dist/sdk/index.js',
+  'dist/sdk/index.cjs',
+  'dist/sdk/index.d.ts',
+]) {
+  const body = readFileSync(join(root, sdkFile), 'utf8')
+  if (!body.includes('parseResultText') || !body.includes('UrClient')) {
+    console.error(`\nFAILED: ${sdkFile} is not a usable public SDK artifact.`)
+    process.exit(1)
+  }
+}
+console.log(
+  `OK: built and verified CLI + public SDK at v${version} (${hits} version occurrences).`,
+)

@@ -549,10 +549,11 @@ ur plugin disable <plugin>
 manifest and reports its declared components and capability surface, so you can
 review what a plugin touches before enabling it.
 
-The npm package includes `README.md`, `QUALITY.md`, `docs/`, `documentation/`,
-and `plugins/`, so the npm package page and installed artifact both carry the
-marketplace documentation, core plugins, community staging directory, and
-example plugin template. See [Plugin Guide](docs/plugins.md).
+The npm package includes `README.md`, `QUALITY.md`, `docs/`, `technical/`,
+`documentation/`, and `plugins/`, so the npm package page and installed
+artifact carry the audited technical manual, marketplace documentation, core
+plugins, community staging directory, and example plugin template. See
+[Plugin Guide](docs/plugins.md).
 
 UR also documents the core Cursor-style agent primitives as first-class,
 project-backed features: Agent surfaces (`ur`, `ur agents`, `ur crew`, `ur bg`),

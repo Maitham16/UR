@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { z } from 'zod/v4'
 import { StreamingToolExecutor } from '../src/services/tools/StreamingToolExecutor.js'
+import { countToolCallsBeforeCurrent } from '../src/services/tools/toolExecution.js'
 
 function deferred() {
   let resolve!: () => void
@@ -20,6 +21,57 @@ async function withTimeout<T>(promise: Promise<T>): Promise<T> {
 }
 
 describe('StreamingToolExecutor discard', () => {
+  test('preserves tool ordinals across one-block streaming messages', async () => {
+    const observed = new Map<string, number>()
+    const runToolUse = async function* (
+      block: { id: string },
+      assistantMessage: Parameters<typeof countToolCallsBeforeCurrent>[1],
+    ): AsyncGenerator<never, void> {
+      observed.set(
+        block.id,
+        countToolCallsBeforeCurrent([], assistantMessage, block.id),
+      )
+    }
+    const tool = {
+      name: 'ConcurrentRead',
+      inputSchema: z.object({}),
+      isConcurrencySafe: () => true,
+    }
+    const executor = new StreamingToolExecutor(
+      [tool] as never,
+      (() => {}) as never,
+      {
+        abortController: new AbortController(),
+        setInProgressToolUseIDs: () => {},
+      } as never,
+      runToolUse as never,
+    )
+
+    for (let index = 0; index < 4; index++) {
+      const block = {
+        type: 'tool_use' as const,
+        id: `streamed-${index}`,
+        name: tool.name,
+        input: {},
+      }
+      executor.addTool(block, {
+        type: 'assistant',
+        uuid: `assistant-block-${index}`,
+        message: {
+          id: 'one-provider-message',
+          content: [block],
+        },
+      } as never)
+    }
+    await Array.fromAsync(executor.getRemainingResults())
+
+    expect(
+      Array.from({ length: 4 }, (_, index) =>
+        observed.get(`streamed-${index}`),
+      ),
+    ).toEqual([0, 1, 2, 3])
+  })
+
   test('routes unknown tools through the guarded execution path', async () => {
     let calls = 0
     const runToolUse = async function* (): AsyncGenerator<never, void> {

@@ -17,7 +17,6 @@ import { activityManager } from '../utils/activityManager.js';
 import { getSpinnerVerbs } from '../constants/spinnerVerbs.js';
 import { MessageResponse } from './MessageResponse.js';
 import { useTasksV2 } from '../hooks/useTasksV2.js';
-import type { Task } from '../utils/tasks.js';
 import { useAppState } from '../state/AppState.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { stringWidth } from '../ink/stringWidth.js';
@@ -36,6 +35,7 @@ import { getCurrentTurnTokenBudget, getTurnOutputTokens } from '../bootstrap/sta
 import { TeammateSpinnerTree } from './Spinner/TeammateSpinnerTree.js';
 import { useAnimationFrame } from '../ink.js';
 import { getGlobalConfig } from '../utils/config.js';
+import { findCurrentTask, findNextActionableTask } from './Spinner/taskProgress.js';
 export type { SpinnerMode } from './Spinner/index.js';
 const DEFAULT_CHARACTERS = getDefaultCharacters();
 const SPINNER_FRAMES = [...DEFAULT_CHARACTERS, ...[...DEFAULT_CHARACTERS].reverse()];
@@ -160,8 +160,8 @@ function SpinnerWithVerbInner({
   }, [mode]);
 
   // Find the current in-progress task and next pending task
-  const currentTodo = tasksV2?.find(task => task.status !== 'pending' && task.status !== 'completed');
-  const nextTask = findNextPendingTask(tasksV2);
+  const currentTodo = findCurrentTask(tasksV2);
+  const nextTask = findNextActionableTask(tasksV2);
 
   // Use useState with initializer to pick a random verb once on mount
   const [randomVerb] = useState(() => sample(getSpinnerVerbs()));
@@ -292,7 +292,7 @@ function SpinnerWithVerbInner({
               <Text dimColor>{budgetText}</Text>
             </MessageResponse>}
           {(nextTask || effectiveTip) && <MessageResponse>
-              <Text dimColor>
+              <Text dimColor wrap="truncate">
                 {nextTask ? `Next: ${nextTask.subject}` : `Tip: ${effectiveTip}`}
               </Text>
             </MessageResponse>}
@@ -547,15 +547,4 @@ export function Spinner() {
     t2 = $[7];
   }
   return t2;
-}
-function findNextPendingTask(tasks: Task[] | undefined): Task | undefined {
-  if (!tasks) {
-    return undefined;
-  }
-  const pendingTasks = tasks.filter(t => t.status === 'pending');
-  if (pendingTasks.length === 0) {
-    return undefined;
-  }
-  const unresolvedIds = new Set(tasks.filter(t => t.status !== 'completed').map(t => t.id));
-  return pendingTasks.find(t => !t.blockedBy.some(id => unresolvedIds.has(id))) ?? pendingTasks[0];
 }

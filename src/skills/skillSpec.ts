@@ -122,6 +122,21 @@ export function validateSkillSpec(spec: SkillSpec): string[] {
   if (!NAME_RE.test(spec.name)) {
     errors.push(`invalid skill name "${spec.name}"`)
   }
+  if (spec.allowedTools) {
+    if (spec.allowedTools.length === 0) {
+      errors.push('skill allowedTools must not be empty')
+    }
+    const seenTools = new Set<string>()
+    for (const tool of spec.allowedTools) {
+      if (!/^[A-Za-z][A-Za-z0-9_-]*(?:__[A-Za-z0-9_-]+)*$/.test(tool)) {
+        errors.push(`invalid allowed tool "${tool}"`)
+      }
+      if (seenTools.has(tool)) {
+        errors.push(`duplicate allowed tool "${tool}"`)
+      }
+      seenTools.add(tool)
+    }
+  }
   if (spec.steps.length === 0) {
     errors.push('skill has no steps')
   }
@@ -226,6 +241,7 @@ export function skillToWorkflow(
 
   const substitutedSteps: WorkflowStep[] = skill.steps.map(step => ({
     ...step,
+    allowedTools: skill.allowedTools,
     prompt: substituteSkillArgs(`${prefix}${step.prompt}`, args, skill.argumentHint),
   }))
 

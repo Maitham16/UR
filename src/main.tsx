@@ -42,7 +42,7 @@ import type { McpSdkServerConfig, McpServerConfig, ScopedMcpServerConfig } from 
 import { isPolicyAllowed, loadPolicyLimits, refreshPolicyLimits, waitForPolicyLimitsToLoad } from './services/policyLimits/index.js';
 import { loadRemoteManagedSettings, refreshRemoteManagedSettings } from './services/remoteManagedSettings/index.js';
 import type { ToolInputJSONSchema } from './Tool.js';
-import type { LocalCommandModule } from './types/command.js';
+import { localCommandExitCode, type LocalCommandModule } from './types/command.js';
 import { createSyntheticOutputTool, isSyntheticOutputToolEnabled } from './tools/SyntheticOutputTool/SyntheticOutputTool.js';
 import { getTools } from './tools.js';
 import { canUserConfigureAdvisor, getInitialAdvisorSetting, isAdvisorEnabled, isValidAdvisorModel, modelSupportsAdvisor } from './utils/advisor.js';
@@ -4638,7 +4638,11 @@ async function run(): Promise<CommanderCommand> {
       // biome-ignore lint/suspicious/noConsole:: CLI command output
       console.log(result.displayText);
     }
-    process.exit(process.exitCode ?? 0);
+    const fallbackExitCode =
+      typeof process.exitCode === 'number'
+        ? process.exitCode
+        : Number(process.exitCode ?? 0);
+    process.exit(localCommandExitCode(result, fallbackExitCode));
   };
   program.command('agent-features [action]').alias('agent-roadmap').description('Show or initialize UR agent feature expansion scaffolds').option('--json', 'Output as JSON').option('--force', 'Overwrite existing scaffold files').action(async (action: string | undefined, opts: {
     json?: boolean;
@@ -4816,7 +4820,7 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, ...task.map(quoteLocalCommandArg), opts.execute ? '--execute' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.resume ? '--resume' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.save ? '--save' : undefined, opts.force ? '--force' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/pattern/pattern.js'), args);
   });
-  program.command('workflow [action] [name] [stepId]').alias('wf').description('Declarative agent workflows: init, list, show, validate, graph, run, plan, next, done, reset').option('--ascii', 'Render the graph as ASCII instead of Mermaid').option('--force', 'Overwrite on init').option('--dry-run', 'Preview run without calling any model').option('--resume', 'Resume run from the last checkpoint').option('--max-turns <n>', 'Max agentic turns per step when running').option('--concurrency <n>', 'Max independent steps to run in parallel (1 = sequential)').option('--live', 'Stream a live execution board while running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each step (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, stepId: string | undefined, opts: {
+  program.command('workflow [action] [name] [stepId]').alias('wf').description('Declarative agent workflows: init, list, show, validate, graph, run, plan, next, approve, done, reset').option('--ascii', 'Render the graph as ASCII instead of Mermaid').option('--force', 'Overwrite on init').option('--dry-run', 'Preview run without calling any model').option('--resume', 'Resume run from persisted crash-recovery progress').option('--max-turns <n>', 'Max agentic turns per step when running').option('--concurrency <n>', 'Max independent steps to run in parallel (1 = sequential)').option('--live', 'Stream a live execution board while running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each step (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, stepId: string | undefined, opts: {
     ascii?: boolean;
     force?: boolean;
     dryRun?: boolean;
@@ -4830,13 +4834,18 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, stepId ? quoteLocalCommandArg(stepId) : undefined, opts.ascii ? '--ascii' : undefined, opts.force ? '--force' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.resume ? '--resume' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.concurrency ? `--concurrency ${quoteLocalCommandArg(opts.concurrency)}` : undefined, opts.live ? '--live' : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/workflow/workflow.js'), args);
   });
-  program.command('skill [action] [name] [args...]').alias('skills').description('Executable skill workflows: list, show, run, init').option('--dry-run', 'Preview run without calling any model').option('--max-turns <n>', 'Max agentic turns per step when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each step (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, args: string[] = [], opts: {
+  program.command('skill [action] [name] [args...]').alias('skills').description('Executable skill workflows: list, show, run, approve, reset, init, verify, sign, keygen').option('--dry-run', 'Preview run without calling any model').option('--resume', 'Resume from persisted progress or a single-use approval').option('--max-turns <n>', 'Max agentic turns per step when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each step (sandboxes only)').option('--require-trusted', 'Require a valid signature from the trusted key store').option('--key <path>', 'Private Ed25519 key for signing').option('--key-id <id>', 'Trusted key identifier for signing').option('--out <path>', 'Output path for a generated private key').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, args: string[] = [], opts: {
     dryRun?: boolean;
+    resume?: boolean;
     maxTurns?: string;
     skipPermissions?: boolean;
+    requireTrusted?: boolean;
+    key?: string;
+    keyId?: string;
+    out?: string;
     json?: boolean;
   }) => {
-    const cmdArgs = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, ...args.map(quoteLocalCommandArg), opts.dryRun ? '--dry-run' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const cmdArgs = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, ...args.map(quoteLocalCommandArg), opts.dryRun ? '--dry-run' : undefined, opts.resume ? '--resume' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.requireTrusted ? '--require-trusted' : undefined, opts.key ? `--key ${quoteLocalCommandArg(opts.key)}` : undefined, opts.keyId ? `--key-id ${quoteLocalCommandArg(opts.keyId)}` : undefined, opts.out ? `--out ${quoteLocalCommandArg(opts.out)}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/skill/skill.js'), cmdArgs);
   });
   program.command('selftest [action]').alias('drills').description('End-to-end drills against the shipped binary, plus manual prompts').option('--json', 'Output as JSON').action(async (action: string | undefined, opts: {
@@ -4897,11 +4906,16 @@ async function run(): Promise<CommanderCommand> {
     const args = [opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/local-first/local-first.js'), args);
   });
-  program.command('crew [action] [name]').alias('crews').description('Headless agent crew: a lead splits a goal into a shared task board that worker subagents claim and run').option('--goal <goal>', 'Goal text for create').option('--task <task>', 'Subtask text for add').option('--lead <agent>', 'Lead/worker subagent type (default general-purpose)').option('--workers <n>', 'Number of parallel workers for run').option('--worktrees', 'Run each worker in its own git worktree').option('--dry-run', 'Run offline without calling any model').option('--resume', 'Reopen in-progress tasks and continue the board').option('--max-turns <n>', 'Max agentic turns per task when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each worker (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, opts: {
+  program.command('crew [action] [name]').alias('crews').description('Headless agent crew: a lead splits a goal into a shared task board that worker subagents claim and run').option('--goal <goal>', 'Goal text for create').option('--task <task>', 'Subtask text for add').option('--lead <agent>', 'Lead/worker subagent type (default general-purpose)').option('--workers <n>', 'Number of parallel workers for run').option('--dynamic', 'Dynamically scale workers to ready tasks').option('--max-workers <n>', 'Maximum workers in dynamic mode').option('--max-attempts <n>', 'Maximum process starts per task (hard cap 5)').option('--retry-backoff-ms <n>', 'Base exponential retry delay in milliseconds').option('--decompose', 'Use model-assisted task decomposition').option('--worktrees', 'Run each worker in its own git worktree').option('--dry-run', 'Run offline without calling any model').option('--resume', 'Safely recover claimed tasks and continue the board').option('--max-turns <n>', 'Max agentic turns per task when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each worker (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, opts: {
     goal?: string;
     task?: string;
     lead?: string;
     workers?: string;
+    dynamic?: boolean;
+    maxWorkers?: string;
+    maxAttempts?: string;
+    retryBackoffMs?: string;
+    decompose?: boolean;
     worktrees?: boolean;
     dryRun?: boolean;
     resume?: boolean;
@@ -4909,7 +4923,7 @@ async function run(): Promise<CommanderCommand> {
     skipPermissions?: boolean;
     json?: boolean;
   }) => {
-    const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, opts.goal ? `--goal ${quoteLocalCommandArg(opts.goal)}` : undefined, opts.task ? `--task ${quoteLocalCommandArg(opts.task)}` : undefined, opts.lead ? `--lead ${quoteLocalCommandArg(opts.lead)}` : undefined, opts.workers ? `--workers ${quoteLocalCommandArg(opts.workers)}` : undefined, opts.worktrees ? '--worktrees' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.resume ? '--resume' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, opts.goal ? `--goal ${quoteLocalCommandArg(opts.goal)}` : undefined, opts.task ? `--task ${quoteLocalCommandArg(opts.task)}` : undefined, opts.lead ? `--lead ${quoteLocalCommandArg(opts.lead)}` : undefined, opts.workers ? `--workers ${quoteLocalCommandArg(opts.workers)}` : undefined, opts.dynamic ? '--dynamic' : undefined, opts.maxWorkers ? `--max-workers ${quoteLocalCommandArg(opts.maxWorkers)}` : undefined, opts.maxAttempts ? `--max-attempts ${quoteLocalCommandArg(opts.maxAttempts)}` : undefined, opts.retryBackoffMs ? `--retry-backoff-ms ${quoteLocalCommandArg(opts.retryBackoffMs)}` : undefined, opts.decompose ? '--decompose' : undefined, opts.worktrees ? '--worktrees' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.resume ? '--resume' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/crew/crew.js'), args);
   });
   program.command('goal [action] [name]').alias('goals').description('Track long-horizon objectives that persist across sessions and resume their workflow').option('--objective <text>', 'Objective text for add').option('--workflow <name>', 'Workflow that advances this goal').option('--pattern <id>', 'Collaboration pattern associated with this goal').option('--note <text>', 'Progress note text').option('--max-turns <n>', 'Max agentic turns per step when resuming').option('--dry-run', 'Resume offline without calling any model').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, opts: {
@@ -5422,18 +5436,30 @@ async function run(): Promise<CommanderCommand> {
     .option('--file <jsonl>', 'Read prompts from a JSONL file')
     .option('--concurrency <n>', 'Number of parallel agents', '1')
     .option('--max-turns <n>', 'Maximum turns per prompt')
+    .option('--max-agents <n>', 'Maximum planned task agents per prompt')
     .option('--model <model>', 'Ollama model to use')
     .option('--output-dir <dir>', 'Directory to write per-prompt outputs')
     .option('--worktree', 'Run each prompt in its own worktree')
+    .option('--no-task-planning', 'Run each prompt directly without deterministic task decomposition')
+    .option('--no-parallel-agents', 'Serialize planned tasks within each prompt')
+    .option('--no-task-board', 'Do not render the planned task board')
+    .option('--no-strict-verification', 'Warn instead of failing on unsupported execution claims')
+    .option('--quiet', 'Suppress live task-board updates')
     .option('--dry-run', 'Print commands without running')
     .option('--json', 'Output as JSON')
     .action(async (prompts: string[], opts: {
       file?: string;
       concurrency?: string;
       maxTurns?: string;
+      maxAgents?: string;
       model?: string;
       outputDir?: string;
       worktree?: boolean;
+      taskPlanning?: boolean;
+      parallelAgents?: boolean;
+      taskBoard?: boolean;
+      strictVerification?: boolean;
+      quiet?: boolean;
       dryRun?: boolean;
       json?: boolean;
     }) => {
@@ -5442,9 +5468,15 @@ async function run(): Promise<CommanderCommand> {
         opts.file ? `--file ${quoteLocalCommandArg(opts.file)}` : undefined,
         opts.concurrency ? `--concurrency ${quoteLocalCommandArg(opts.concurrency)}` : undefined,
         opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined,
+        opts.maxAgents ? `--max-agents ${quoteLocalCommandArg(opts.maxAgents)}` : undefined,
         opts.model ? `--model ${quoteLocalCommandArg(opts.model)}` : undefined,
         opts.outputDir ? `--output-dir ${quoteLocalCommandArg(opts.outputDir)}` : undefined,
         opts.worktree ? '--worktree' : undefined,
+        opts.taskPlanning === false ? '--no-task-planning' : undefined,
+        opts.parallelAgents === false ? '--no-parallel-agents' : undefined,
+        opts.taskBoard === false ? '--no-task-board' : undefined,
+        opts.strictVerification === false ? '--no-strict-verification' : undefined,
+        opts.quiet ? '--quiet' : undefined,
         opts.dryRun ? '--dry-run' : undefined,
         opts.json ? '--json' : undefined,
       ].filter(Boolean).join(' ');

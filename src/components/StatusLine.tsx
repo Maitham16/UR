@@ -28,7 +28,7 @@ import { createBaseHookInput, executeStatusLineCommand } from '../utils/hooks.js
 import { getLastAssistantMessage } from '../utils/messages.js';
 import { getRuntimeMainLoopModel, type ModelName, renderModelName } from '../utils/model/model.js';
 import { getCurrentSessionTitle } from '../utils/sessionStorage.js';
-import { buildDefaultStatusBar, statusBarShouldDisplay } from '../utils/statusBar.js';
+import { buildDefaultStatusBar, countActiveBackgroundTasks, statusBarShouldDisplay } from '../utils/statusBar.js';
 import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/tokens.js';
 import { getCurrentWorktreeSession } from '../utils/worktree.js';
 import { isVimModeEnabled } from './PromptInput/utils.js';
@@ -235,7 +235,7 @@ function StatusLineInner({
   // and a custom status-line command keeps rendering the previous value.
   const providerRuntimeKey = buildStatusLineRefreshKey(providerRuntime, mainLoopModel);
   const taskValues = Object.values(tasks);
-  const taskRunningCount = taskValues.filter(task => task.status === 'running' || task.status === 'pending').length;
+  const taskRunningCount = countActiveBackgroundTasks(taskValues);
   const defaultStatusLineText = buildDefaultStatusBar({
     version: MACRO.VERSION,
     providerLabel: providerRuntime.providerLabel,
@@ -248,7 +248,9 @@ function StatusLineInner({
     mode: permissionMode,
     branch,
     taskRunningCount,
-    taskTotalCount: taskValues.length,
+    // Deliberately omit a denominator: the task store also contains
+    // foreground work and retained terminal history, so taskValues.length is
+    // not a meaningful "background tasks total".
     latestVersion: autoUpdaterResult?.status === 'success' ? null : autoUpdaterResult?.version,
     isCheckingUpdate: isAutoUpdating
   });

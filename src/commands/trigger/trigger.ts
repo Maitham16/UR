@@ -38,20 +38,42 @@ export const call: LocalCommandCall = async (args: string) => {
   const dryRun = tokens.includes('--dry-run')
   const maxTurnsRaw = option(tokens, '--max-turns')
   const maxTurns = maxTurnsRaw ? Number(maxTurnsRaw) : undefined
+  if (
+    maxTurns !== undefined &&
+    (!Number.isSafeInteger(maxTurns) || maxTurns < 1)
+  ) {
+    return {
+      type: 'text',
+      value: '--max-turns must be a positive integer.',
+      exitCode: 2,
+    }
+  }
 
   if (action !== 'parse' && action !== 'run') {
-    return { type: 'text', value: usage() }
+    return { type: 'text', value: usage(), exitCode: 2 }
   }
   if (!file) {
-    return { type: 'text', value: `Missing --file <payload.json>.\n\n${usage()}` }
+    return {
+      type: 'text',
+      value: `Missing --file <payload.json>.\n\n${usage()}`,
+      exitCode: 2,
+    }
   }
   if (!existsSync(file)) {
-    return { type: 'text', value: `Payload file not found: ${file}` }
+    return {
+      type: 'text',
+      value: `Payload file not found: ${file}`,
+      exitCode: 1,
+    }
   }
 
   const payload = safeParseJSON(readFileSync(file, 'utf-8'), false)
   if (payload === null || typeof payload !== 'object') {
-    return { type: 'text', value: `Payload is not valid JSON: ${file}` }
+    return {
+      type: 'text',
+      value: `Payload is not valid JSON: ${file}`,
+      exitCode: 1,
+    }
   }
 
   const decision = parseTriggerPayload(payload, { source, keyword })
@@ -85,5 +107,6 @@ export const call: LocalCommandCall = async (args: string) => {
     value: json
       ? JSON.stringify({ decision, command, exitCode: result.code, output }, null, 2)
       : `${formatTriggerDecision(decision, command, false)}\n\nExit: ${result.code}\n${output}`,
+    ...(result.code === 0 ? {} : { exitCode: 1 }),
   }
 }

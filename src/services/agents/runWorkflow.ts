@@ -8,10 +8,15 @@ import {
 import { getPattern } from './patterns.js'
 import {
   type WorkflowSpec,
+  consumeWorkflowApproval,
   loadRunState,
-  markStepComplete,
+  markRunCheckpoint,
+  markRunStatus,
+  markStepAwaitingApproval,
+  normalizeWorkflowCompleted,
   resetRunState,
   saveWorkflow,
+  setRunCompleted,
 } from './workflows.js'
 import { getSessionId } from '../../bootstrap/state.js'
 import {
@@ -27,7 +32,7 @@ import {
 
 export type RunWorkflowOptions = {
   cwd: string
-  /** State key for checkpoints (defaults to spec.name). */
+  /** State key for recovery, approvals, and checkpoints (defaults to spec.name). */
   stateName?: string
   dryRun?: boolean
   live?: boolean
@@ -75,12 +80,13 @@ async function runWorkflowSpecUntraced(
     loop,
   })
 
-  let resumeCompleted: string[] = []
-  if (options.resume) {
-    resumeCompleted = loadRunState(options.cwd, stateName)?.completed ?? []
-  } else {
-    resetRunState(options.cwd, stateName)
-  }
+  const state = options.resume
+    ? loadRunState(options.cwd, stateName)
+    : resetRunState(options.cwd, stateName)
+  const resumeCompleted = options.resume
+    ? normalizeWorkflowCompleted(spec, state?.completed ?? [])
+    : []
+  const resumeOutputs = options.resume ? state?.outputs : undefined
 
   const runStep = options.dryRun
     ? makeDryRunner()
@@ -95,8 +101,30 @@ async function runWorkflowSpecUntraced(
     loop,
     stopOnError: true,
     resumeCompleted,
+    resumeOutputs,
     maxConcurrency: options.maxConcurrency,
+    approve: step =>
+      options.resume
+        ? consumeWorkflowApproval(options.cwd, stateName, step.id)
+        : false,
     onEvent: event => {
+      if (
+        event.kind === 'gate' &&
+        event.gate === 'approval' &&
+        event.result === 'hold'
+      ) {
+        markStepAwaitingApproval(options.cwd, stateName, event.id)
+      } else if (event.kind === 'finish') {
+        markRunStatus(
+          options.cwd,
+          stateName,
+          event.status === 'completed'
+            ? 'completed'
+            : event.status === 'held'
+              ? 'held'
+              : 'failed',
+        )
+      }
       options.onEvent?.(event)
       appendRunAction(options.cwd, runId, {
         kind: `workflow-${event.kind}`,
@@ -111,8 +139,11 @@ async function runWorkflowSpecUntraced(
         data: event as unknown as Record<string, unknown>,
       })
     },
-    onCheckpoint: stepId => {
-      markStepComplete(options.cwd, stateName, stepId)
+    onProgress: (_stepId, completed, outputs) => {
+      setRunCompleted(options.cwd, stateName, completed, outputs)
+    },
+    onCheckpoint: (stepId, completed) => {
+      markRunCheckpoint(options.cwd, stateName, stepId, completed)
     },
   })
   writeRunReport(options.cwd, runId, formatWorkflowTraceReport(result))

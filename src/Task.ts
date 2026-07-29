@@ -3,14 +3,54 @@ import type { AppState } from './state/AppState.js'
 import type { AgentId } from './types/ids.js'
 import { getTaskOutputPath } from './utils/task/diskOutput.js'
 
-export type TaskType =
-  | 'local_bash'
-  | 'local_agent'
-  | 'remote_agent'
-  | 'in_process_teammate'
-  | 'local_workflow'
-  | 'monitor_mcp'
-  | 'dream'
+/**
+ * Task types with a real creation path and lifecycle implementation in this
+ * distribution. Keep this list in sync with `getAllTasks()`.
+ */
+export const RUNTIME_TASK_TYPES = [
+  'local_bash',
+  'local_agent',
+  'remote_agent',
+  'in_process_teammate',
+  'dream',
+] as const
+
+export type RuntimeTaskType = (typeof RUNTIME_TASK_TYPES)[number]
+
+/**
+ * Historical task types that may still be present in persisted transcripts or
+ * SDK event logs. The source distribution has no constructor or lifecycle
+ * implementation for these types, so they must never be advertised as active
+ * runtime tasks.
+ */
+export const LEGACY_PERSISTED_TASK_TYPES = [
+  'local_workflow',
+  'monitor_mcp',
+] as const
+
+export type LegacyPersistedTaskType =
+  (typeof LEGACY_PERSISTED_TASK_TYPES)[number]
+
+/**
+ * Broad serialized task discriminator. Runtime dispatch must narrow this with
+ * `isRuntimeTaskType()` before assuming a lifecycle implementation exists.
+ */
+export type TaskType = RuntimeTaskType | LegacyPersistedTaskType
+
+const runtimeTaskTypeSet = new Set<string>(RUNTIME_TASK_TYPES)
+const legacyPersistedTaskTypeSet = new Set<string>(
+  LEGACY_PERSISTED_TASK_TYPES,
+)
+
+export function isRuntimeTaskType(type: string): type is RuntimeTaskType {
+  return runtimeTaskTypeSet.has(type)
+}
+
+export function isLegacyPersistedTaskType(
+  type: string,
+): type is LegacyPersistedTaskType {
+  return legacyPersistedTaskTypeSet.has(type)
+}
 
 export type TaskStatus =
   | 'pending'
@@ -71,31 +111,29 @@ export type LocalShellSpawnInput = {
 // use only setAppState — getAppState/abortController were dead weight.
 export type Task = {
   name: string
-  type: TaskType
+  type: RuntimeTaskType
   kill(taskId: string, setAppState: SetAppState): Promise<void>
 }
 
 // Task ID prefixes
-const TASK_ID_PREFIXES: Record<string, string> = {
+const TASK_ID_PREFIXES: Record<RuntimeTaskType, string> = {
   local_bash: 'b', // Keep as 'b' for backward compatibility
   local_agent: 'a',
   remote_agent: 'r',
   in_process_teammate: 't',
-  local_workflow: 'w',
-  monitor_mcp: 'm',
   dream: 'd',
 }
 
 // Get task ID prefix
-function getTaskIdPrefix(type: TaskType): string {
-  return TASK_ID_PREFIXES[type] ?? 'x'
+function getTaskIdPrefix(type: RuntimeTaskType): string {
+  return TASK_ID_PREFIXES[type]
 }
 
 // Case-insensitive-safe alphabet (digits + lowercase) for task IDs.
 // 36^8 ≈ 2.8 trillion combinations, sufficient to resist brute-force symlink attacks.
 const TASK_ID_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz'
 
-export function generateTaskId(type: TaskType): string {
+export function generateTaskId(type: RuntimeTaskType): string {
   const prefix = getTaskIdPrefix(type)
   const bytes = randomBytes(8)
   let id = prefix
@@ -107,7 +145,7 @@ export function generateTaskId(type: TaskType): string {
 
 export function createTaskStateBase(
   id: string,
-  type: TaskType,
+  type: RuntimeTaskType,
   description: string,
   toolUseId?: string,
 ): TaskStateBase {

@@ -519,7 +519,7 @@ const coverage: TrendCoverage[] = [
     name: 'Programmatic SDK',
     status: 'covered',
     summary:
-      'A dependency-free TypeScript SDK (ur-agent/sdk: query, queryJSON, UrClient) plus a Python wrapper drive headless `ur -p`, inheriting the selected provider, CLI permission model, and MCP configuration. It is the in-process counterpart to the loopback A2A server.',
+      'A dependency-free TypeScript SDK (ur-agent/sdk: query, queryJSON, UrClient) plus a Python wrapper drive headless `ur -p`, inheriting the selected provider, CLI permission model, and MCP configuration. It is the local-subprocess counterpart to the loopback A2A server.',
     evidence: [
       'src/sdk/index.ts (query / queryJSON / UrClient)',
       'ur sdk init (scaffolds runnable TS + Python examples)',
@@ -527,7 +527,7 @@ const coverage: TrendCoverage[] = [
     ],
     references: ['https://openai.github.io/openai-agents-python/'],
     professionalNextStep:
-      'Publish the SDK as a documented subpath export and add a streaming (stream-json) iterator.',
+      'Add a streaming iterator for consumers that need individual stream-json events.',
   },
 ]
 

@@ -61,6 +61,7 @@ import { logForDebugging } from '../utils/debug.js'
 import { loadMemoryPrompt } from '../memdir/memdir.js'
 import { isUndercover } from '../utils/undercover.js'
 import { loadRepoMapForPrompt } from '../services/agents/repoWiki.js'
+import { getWorkingModePrompt } from '../services/agents/workingMode.js'
 import { isMcpInstructionsDeltaEnabled } from '../utils/mcpInstructionsDelta.js'
 
 // Dead code elimination: conditional imports for feature-gated modules
@@ -451,6 +452,7 @@ export async function getSystemPrompt(
     return [
       `You are UR, an AI coding agent.\n\nCWD: ${getCwd()}\nDate: ${getSessionStartDate()}`,
       EXECUTION_CONTRACT_SECTION,
+      getWorkingModePrompt(getCwd()),
       `# Tool discipline
 Use the available Read, Edit, and Bash tools to perform work. Inspect relevant content before editing, prefer the narrowest tool, and treat a tool call as successful only after reading its result.`,
     ]
@@ -479,6 +481,7 @@ ${CYBER_RISK_INSTRUCTION}`,
       getSystemRemindersSection(),
       await loadMemoryPrompt(),
       envInfo,
+      getWorkingModePrompt(cwd),
       getLanguageSection(settings.language),
       // When delta enabled, instructions are announced via persisted
       // mcp_instructions_delta attachments (attachments.ts) instead.
@@ -503,6 +506,7 @@ ${CYBER_RISK_INSTRUCTION}`,
     systemPromptSection('env_info_simple', () =>
       computeSimpleEnvInfo(model, additionalWorkingDirectories),
     ),
+    systemPromptSection('working_mode', () => getWorkingModePrompt(cwd)),
     systemPromptSection('language', () =>
       getLanguageSection(settings.language),
     ),

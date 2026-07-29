@@ -1,14 +1,24 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   call,
   changedFilesSinceBefore,
+  execOutputFileBaseName,
   normalizeExecConcurrency,
   plannedTaskPrompt,
   readPrompts,
   runExecPool,
+  writeExecOutputFile,
 } from '../src/commands/exec/exec.js'
 import { runWithCwdOverride } from '../src/utils/cwd.js'
 import type { StartBackgroundTaskResult } from '../src/services/agents/backgroundRunner.js'
@@ -42,6 +52,30 @@ type TestBackgroundRunner = NonNullable<
 >
 
 describe('ur exec command', () => {
+  test('top-level CLI registers and forwards every planning control', () => {
+    const source = readFileSync(join(process.cwd(), 'src/main.tsx'), 'utf8')
+    for (const flag of [
+      '--max-agents <n>',
+      '--no-task-planning',
+      '--no-parallel-agents',
+      '--no-task-board',
+      '--no-strict-verification',
+      '--quiet',
+    ]) {
+      expect(source).toContain(`.option('${flag}'`)
+    }
+    for (const forwarded of [
+      "opts.maxAgents ? `--max-agents",
+      "opts.taskPlanning === false ? '--no-task-planning'",
+      "opts.parallelAgents === false ? '--no-parallel-agents'",
+      "opts.taskBoard === false ? '--no-task-board'",
+      "opts.strictVerification === false ? '--no-strict-verification'",
+      "opts.quiet ? '--quiet'",
+    ]) {
+      expect(source).toContain(forwarded)
+    }
+  })
+
   test('changed file evidence excludes old dirty files when task changes nothing', () => {
     expect(changedFilesSinceBefore(['old-dirty.ts'], ['old-dirty.ts'])).toEqual([])
     expect(
@@ -122,9 +156,26 @@ describe('ur exec command', () => {
       expect(result.type).toBe('text')
       if (result.type === 'text') {
         expect(result.value).toContain('Usage:')
+        expect(result.exitCode).toBe(2)
       }
     } finally {
       process.stdin.isTTY = originalIsTTY
+    }
+  })
+
+  test('rejects malformed numeric options without mutating process exit state', async () => {
+    const previous = process.exitCode
+    try {
+      process.exitCode = undefined
+      const result = await call('"task" --max-agents nope', {} as never)
+      expect(result.type).toBe('text')
+      expect(result.exitCode).toBe(2)
+      if (result.type === 'text') {
+        expect(result.value).toContain('--max-agents must be a positive integer')
+      }
+      expect(process.exitCode).toBeUndefined()
+    } finally {
+      process.exitCode = previous
     }
   })
 
@@ -475,6 +526,166 @@ describe('ur exec command', () => {
       expect(results[0]!.plannedRun?.finished).toBe(2)
       expect(results[0]!.plannedRun?.maxAgentsUsed).toBe(1)
     } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('mutating tasks from different top-level plans share one write gate', async () => {
+    const dir = tempDir('ur-exec-cross-plan-write-gate-')
+    try {
+      let active = 0
+      let maxActive = 0
+      const results = await runExecPool(
+        ['Implement parser support', 'Update parser documentation'],
+        {
+          cwd: dir,
+          concurrency: 2,
+          planning: { taskPlanning: true, maxAgents: 2 },
+          executePlannedTask: async task => {
+            active += 1
+            maxActive = Math.max(maxActive, active)
+            await Bun.sleep(15)
+            writeFileSync(join(dir, `${task.id}-${task.title.length}.txt`), 'done')
+            active -= 1
+            return { ok: true, output: 'done' }
+          },
+        },
+      )
+
+      expect(results).toHaveLength(2)
+      expect(maxActive).toBe(1)
+      expect(results.every(result => result.task.status === 'completed')).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('read-only tasks from different top-level plans still run in parallel', async () => {
+    const dir = tempDir('ur-exec-cross-plan-read-gate-')
+    try {
+      let active = 0
+      let maxActive = 0
+      await runExecPool(['Inspect parser support', 'Review parser documentation'], {
+        cwd: dir,
+        concurrency: 2,
+        planning: { taskPlanning: true, maxAgents: 2 },
+        executePlannedTask: async () => {
+          active += 1
+          maxActive = Math.max(maxActive, active)
+          await Bun.sleep(15)
+          active -= 1
+          return { ok: true, output: 'done' }
+        },
+      })
+
+      expect(maxActive).toBe(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('dependent planned tasks share one worktree instead of isolated child worktrees', async () => {
+    const dir = tempDir('ur-exec-plan-worktree-')
+    const worktree = join(dir, 'isolated-plan')
+    mkdirSync(worktree)
+    try {
+      const created: string[] = []
+      const order: string[] = []
+      const [result] = await runExecPool(
+        ['1. Implement parser\n2. Then verify parser'],
+        {
+          cwd: dir,
+          concurrency: 1,
+          worktree: true,
+          planning: { taskPlanning: true, maxAgents: 2 },
+          createPlanWorktree: async ({ slug }) => {
+            created.push(slug)
+            return {
+              worktreePath: worktree,
+              worktreeBranch: 'worktree-exec-test',
+            }
+          },
+          executePlannedTask: async task => {
+            order.push(task.id)
+            const artifact = join(worktree, 'parser.txt')
+            if (task.id === 'task-1') {
+              writeFileSync(artifact, 'ready')
+            } else if (!existsSync(artifact)) {
+              return {
+                ok: false,
+                error: 'dependency artifact was isolated in another worktree',
+              }
+            }
+            return {
+              ok: true,
+              output: 'done',
+              changedFiles: task.id === 'task-1' ? ['parser.txt'] : [],
+            }
+          },
+        },
+      )
+
+      expect(created).toHaveLength(1)
+      expect(order).toEqual(['task-1', 'task-2'])
+      expect(result?.plannedRun?.finished).toBe(2)
+      expect(result?.task.runCwd).toBe(worktree)
+      expect(result?.task.worktree?.path).toBe(worktree)
+      expect(result?.executionNote).toContain('does not merge, push, or publish')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('output files use task identity and exclusive suffixes instead of overwriting', () => {
+    const dir = tempDir('ur-exec-output-path-')
+    try {
+      const first = writeExecOutputFile(
+        dir,
+        0,
+        'Fix parser',
+        'plan-same',
+        'first',
+      )
+      const second = writeExecOutputFile(
+        dir,
+        0,
+        'Fix parser',
+        'plan-same',
+        'second',
+      )
+
+      expect(execOutputFileBaseName(0, 'Fix parser', 'plan-same')).toBe(
+        '001-fix-parser-plan-same.txt',
+      )
+      expect(first).not.toBe(second)
+      expect(readdirSync(dir).sort()).toEqual([
+        '001-fix-parser-plan-same-1.txt',
+        '001-fix-parser-plan-same.txt',
+      ])
+      expect(readFileSync(first, 'utf8')).toBe('first')
+      expect(readFileSync(second, 'utf8')).toBe('second')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('planned failure returns a nonzero command result without global mutation', async () => {
+    const dir = tempDir('ur-exec-exit-code-')
+    const previous = process.exitCode
+    try {
+      process.exitCode = undefined
+      const result = await runWithCwdOverride(dir, () =>
+        call(
+          '"Delete /tmp/ur-exec-needs-approval" --no-task-board --json',
+          {} as never,
+        ),
+      )
+
+      expect(result.type).toBe('text')
+      expect(result.exitCode).toBe(1)
+      expect(process.exitCode).toBeUndefined()
+    } finally {
+      process.exitCode = previous
       rmSync(dir, { recursive: true, force: true })
     }
   })

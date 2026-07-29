@@ -4,6 +4,7 @@ import {
   TASK_LIST_GATE_DEFAULTS,
   checkTaskListGate,
   countActionableTasksForGate,
+  countActionableTodosForGate,
   isMutatingTool,
 } from '../src/services/tools/taskListGate.ts'
 import { AgentTool } from '../src/tools/AgentTool/AgentTool.tsx'
@@ -142,6 +143,22 @@ test('terminal and internal tasks do not permanently bypass the gate', () => {
   ).toBe(2)
 })
 
+test('headless TodoWrite plans open the same mutation gate as task-v2 plans', () => {
+  expect(
+    countActionableTodosForGate([
+      { status: 'completed' },
+      { status: 'pending' },
+      { status: 'in_progress' },
+    ]),
+  ).toBe(2)
+  expect(countActionableTodosForGate([])).toBe(0)
+
+  const source = readFileSync('src/services/tools/toolExecution.ts', 'utf8')
+  const counter = source.slice(source.indexOf('async function countTasksForGate'))
+  expect(counter.slice(0, 900)).toContain('isTodoV2Enabled')
+  expect(counter.slice(0, 900)).toContain('countActionableTodosForGate')
+})
+
 test('an unreadable task store fails closed for mutations', () => {
   const decision = checkTaskListGate({
     toolName: 'Write',
@@ -275,7 +292,9 @@ test('an unreadable task directory cannot silently open the mutation gate', () =
     'src/services/tools/toolExecution.ts',
     'utf8',
   )
-  const fn = source.slice(source.indexOf('async function countTasksForGate'))
-  expect(fn.slice(0, 400)).toContain('return null')
-  expect(fn.slice(0, 400)).not.toContain('POSITIVE_INFINITY')
+  const start = source.indexOf('async function countTasksForGate')
+  const end = source.indexOf('\nfunction getStopHookInfo', start)
+  const fn = source.slice(start, end)
+  expect(fn).toContain('catch {\n    return null')
+  expect(fn).not.toContain('POSITIVE_INFINITY')
 })

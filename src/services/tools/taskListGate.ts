@@ -109,6 +109,15 @@ export function countActionableTasksForGate(
   ).length
 }
 
+/** Legacy TodoWrite plans satisfy the same mutation gate in headless mode. */
+export function countActionableTodosForGate(
+  todos: ReadonlyArray<{ status: string }> | null | undefined,
+): number {
+  return (todos ?? []).filter(
+    todo => todo.status === 'pending' || todo.status === 'in_progress',
+  ).length
+}
+
 export type GateDecision =
   | { allowed: true }
   | { allowed: false; reason: string }

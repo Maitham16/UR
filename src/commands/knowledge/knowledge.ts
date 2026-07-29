@@ -46,7 +46,12 @@ export const call: LocalCommandCall = async (args: string) => {
   if (command === 'add') {
     const ref = note ? positional.slice(1).join(' ') : positional[1]
     if (!ref) {
-      return { type: 'text', value: 'Usage: ur knowledge add <file|dir> [--label <l>]  |  ur knowledge add --note "<text>"' }
+      return {
+        type: 'text',
+        value:
+          'Usage: ur knowledge add <file|dir> [--label <l>]  |  ur knowledge add --note "<text>"',
+        exitCode: 2,
+      }
     }
     try {
       const result = addSource(cwd, ref, { label, note })
@@ -58,17 +63,28 @@ export const call: LocalCommandCall = async (args: string) => {
           : `Added ${result.source.kind} source ${result.source.id}. Run: ur knowledge build`,
       }
     } catch (error) {
-      return { type: 'text', value: error instanceof Error ? error.message : String(error) }
+      return {
+        type: 'text',
+        value: error instanceof Error ? error.message : String(error),
+        exitCode: 1,
+      }
     }
   }
 
   if (command === 'remove') {
     const ref = positional[1]
-    if (!ref) return { type: 'text', value: 'Usage: ur knowledge remove <id|ref>' }
+    if (!ref) {
+      return {
+        type: 'text',
+        value: 'Usage: ur knowledge remove <id|ref>',
+        exitCode: 2,
+      }
+    }
     const removed = removeSource(cwd, ref)
     return {
       type: 'text',
       value: removed ? `Removed source ${ref}. Run: ur knowledge build` : `No source matched ${ref}.`,
+      ...(removed ? {} : { exitCode: 1 }),
     }
   }
 
@@ -89,6 +105,7 @@ export const call: LocalCommandCall = async (args: string) => {
       return {
         type: 'text',
         value: `Embedding build failed (${error instanceof Error ? error.message : String(error)}). Run "ur knowledge build" for a lexical index.`,
+        exitCode: 1,
       }
     }
     if (json) {
@@ -109,7 +126,13 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (command === 'search') {
     const query = positional.slice(1).join(' ')
-    if (!query) return { type: 'text', value: 'Usage: ur knowledge search <query>' }
+    if (!query) {
+      return {
+        type: 'text',
+        value: 'Usage: ur knowledge search <query>',
+        exitCode: 2,
+      }
+    }
     const existing = loadIndex(cwd)
     const wantEmbeddings =
       tokens.includes('--embeddings') || existing?.mode === 'embedding'
@@ -120,14 +143,30 @@ export const call: LocalCommandCall = async (args: string) => {
             DEFAULT_EMBED_MODEL,
         )
       : undefined
-    const results = await searchKnowledge(cwd, query, embedder ? { embedder } : {})
-    return { type: 'text', value: formatSearchResults(results, json) }
+    try {
+      const results = await searchKnowledge(
+        cwd,
+        query,
+        embedder ? { embedder } : {},
+      )
+      return { type: 'text', value: formatSearchResults(results, json) }
+    } catch (error) {
+      return {
+        type: 'text',
+        value: `Knowledge search failed: ${error instanceof Error ? error.message : String(error)}`,
+        exitCode: 1,
+      }
+    }
   }
 
   if (command === 'prune') {
     const days = Number(olderThan ?? '30')
     if (!Number.isFinite(days) || days <= 0) {
-      return { type: 'text', value: 'Usage: ur knowledge prune --older-than <days>' }
+      return {
+        type: 'text',
+        value: 'Usage: ur knowledge prune --older-than <days>',
+        exitCode: 2,
+      }
     }
     const result = pruneKnowledge(cwd, { olderThanDays: days })
     if (json) return { type: 'text', value: JSON.stringify(result, null, 2) }
@@ -145,5 +184,6 @@ export const call: LocalCommandCall = async (args: string) => {
   return {
     type: 'text',
     value: 'Usage: ur knowledge add|remove|build|search|list|prune|status [...] [--json]',
+    exitCode: 2,
   }
 }

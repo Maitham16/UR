@@ -18,6 +18,7 @@ import {
   fetchWithProviderReliability,
   normalizeOpenAICompatibleBaseUrl,
 } from './providerHttp.js'
+import { parseToolInputJsonLenient } from '../../utils/json.js'
 
 type URHQClient = {
   beta: { messages: any }
@@ -715,10 +716,16 @@ function parseToolArguments(args: unknown, path: string): unknown {
   try {
     parsed = JSON.parse(args)
   } catch (error) {
-    throw new ProviderResponseParseError(`${path} is not valid JSON`, {
-      args,
-      cause: error,
-    })
+    parsed = parseToolInputJsonLenient(args)
+    if (parsed === null) {
+      throw new ProviderResponseParseError(
+        `${path} is not valid JSON after conservative repair`,
+        {
+          args,
+          cause: error,
+        },
+      )
+    }
   }
   if (!isProviderToolInput(parsed)) {
     throw new ProviderResponseParseError(`${path} must decode to a JSON object`, {

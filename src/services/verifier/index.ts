@@ -49,8 +49,10 @@ import { buildSubagentNudge, type SubagentNudge } from './subagentNudge.js'
 import {
   getTaskListId,
   inspectTaskListForGate,
+  isTodoV2Enabled,
   type Task,
 } from '../../utils/tasks.js'
+import type { TodoList } from '../../utils/todo/types.js'
 
 export type VerifierMode = 'off' | 'loose' | 'strict'
 
@@ -80,6 +82,12 @@ export type VerifierOptions = {
   getActionableTasks?: () => Promise<
     Array<Pick<Task, 'id' | 'subject' | 'status'>>
   >
+  /**
+   * Supplies the in-memory TodoWrite list used by ordinary headless sessions.
+   * The query runtime always supplies this. Standalone verifier consumers that
+   * omit it retain the historical empty-list behavior.
+   */
+  getLegacyTodos?: () => TodoList
 }
 
 export type CheckResult = { ok: true } | { ok: false; reminder: string }
@@ -92,6 +100,22 @@ function resolveMode(opt: VerifierMode | undefined): VerifierMode {
 
 const DEFAULT_MAX_REJECTIONS_PER_TURN = 3
 const AUTO_DETECTED_GATE_TIMEOUT_MS = 600_000
+
+export function actionableLegacyTodos(
+  todos: TodoList,
+): Array<Pick<Task, 'id' | 'subject' | 'status'>> {
+  return todos.flatMap((todo, index) =>
+    todo.status === 'pending' || todo.status === 'in_progress'
+      ? [
+          {
+            id: String(index + 1),
+            subject: todo.content,
+            status: todo.status,
+          },
+        ]
+      : [],
+  )
+}
 
 export class Verifier {
   readonly ledger = new ToolEffectLedger()
@@ -122,6 +146,9 @@ export class Verifier {
     this.getActionableTasks =
       options.getActionableTasks ??
       (async () => {
+        if (!isTodoV2Enabled()) {
+          return actionableLegacyTodos(options.getLegacyTodos?.() ?? [])
+        }
         const { tasks } = await inspectTaskListForGate(getTaskListId())
         return tasks
           .filter(

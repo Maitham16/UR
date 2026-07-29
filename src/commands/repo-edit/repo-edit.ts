@@ -35,8 +35,8 @@ function usage(): string {
     '  ur repo-edit preview rename <from> --to <to> [--json]',
     '  ur repo-edit apply rename <from> --to <to> [--check <cmd>] [--json]',
     '  ur repo-edit rename <from> --to <to> [--file <path>] [--engine ts|lsp|treesitter] [--check <cmd>] [--json]',
-    '  ur repo-edit move <symbol> --to <target-file> --file <source-file> [--check <cmd>] [--json]',
-    '  ur repo-edit organize-imports [--file <path>] [--check <cmd>] [--json]',
+    '  ur repo-edit move <symbol> --to <target-file> --file <source-file> [--apply] [--check <cmd>] [--json]',
+    '  ur repo-edit organize-imports [--file <path>] [--apply] [--check <cmd>] [--json]',
     '  ur repo-edit unused [--file <path>] [--json]',
     '  ur repo-edit callers <symbol> [--file <path>] [--json]',
     '',
@@ -69,23 +69,34 @@ function positionals(tokens: string[]): string[] {
 
 function renameArgs(tokens: string[]): { from: string; to: string } | null {
   const values = positionals(tokens)
-  if (values[1] !== 'rename' || !values[2]) return null
   const to = option(tokens, '--to')
   if (!to) return null
-  return { from: values[2], to }
+  if (values[0] === 'rename' && values[1]) {
+    return { from: values[1], to }
+  }
+  if (
+    (values[0] === 'plan' ||
+      values[0] === 'preview' ||
+      values[0] === 'apply') &&
+    values[1] === 'rename' &&
+    values[2]
+  ) {
+    return { from: values[2], to }
+  }
+  return null
 }
 
 function moveArgs(tokens: string[]): { symbol: string; targetFile: string } | null {
   const values = positionals(tokens)
-  if (values[1] !== 'move' || !values[2]) return null
+  if (values[0] !== 'move' || !values[1]) return null
   const target = option(tokens, '--to')
   if (!target) return null
-  return { symbol: values[2], targetFile: target }
+  return { symbol: values[1], targetFile: target }
 }
 
 function callersArgs(tokens: string[]): string | undefined {
   const values = positionals(tokens)
-  return values[1] === 'callers' ? values[2] : undefined
+  return values[0] === 'callers' ? values[1] : undefined
 }
 
 function parseSymbolLocation(symbol: string): { name: string; line?: number; column?: number } {
@@ -166,7 +177,7 @@ export const call: LocalCommandCall = async (args: string) => {
 
     if (action === 'search') {
       const query = positionals(tokens).slice(1).join(' ')
-      if (!query) return { type: 'text', value: usage() }
+      if (!query) return { type: 'text', value: usage(), exitCode: 2 }
       const hits = searchRepoEditIndex(root, query)
       return {
         type: 'text',
@@ -178,7 +189,7 @@ export const call: LocalCommandCall = async (args: string) => {
 
     if (action === 'rename') {
       const rename = renameArgs(tokens)
-      if (!rename) return { type: 'text', value: usage() }
+      if (!rename) return { type: 'text', value: usage(), exitCode: 2 }
       const file = option(tokens, '--file')
       const location = file ? parseSymbolLocation(rename.from) : { name: rename.from }
       const plan = await planRenameAst({
@@ -195,12 +206,12 @@ export const call: LocalCommandCall = async (args: string) => {
       if (json) {
         return { type: 'text', value: JSON.stringify({ plan }, null, 2) }
       }
-      return { type: 'text', value: formatRenamePlanAst(plan) }
+      return { type: 'text', value: formatRenamePlanAst(plan, root) }
     }
 
     if (action === 'apply') {
       const rename = renameArgs(tokens)
-      if (!rename) return { type: 'text', value: usage() }
+      if (!rename) return { type: 'text', value: usage(), exitCode: 2 }
       const file = option(tokens, '--file')
       const location = file ? parseSymbolLocation(rename.from) : { name: rename.from }
       const result = await applyRenameAst({
@@ -215,16 +226,33 @@ export const call: LocalCommandCall = async (args: string) => {
         skipDiagnostics: tokens.includes('--skip-diagnostics'),
       })
       if (json) {
-        return { type: 'text', value: JSON.stringify(result, null, 2) }
+        return {
+          type: 'text',
+          value: JSON.stringify(result, null, 2),
+          ...(result.ok ? {} : { exitCode: 1 }),
+        }
       }
-      return { type: 'text', value: applyResultToText(result, `rename ${rename.from} -> ${rename.to}`) }
+      return {
+        type: 'text',
+        value: applyResultToText(
+          result,
+          `rename ${rename.from} -> ${rename.to}`,
+        ),
+        ...(result.ok ? {} : { exitCode: 1 }),
+      }
     }
 
     if (action === 'move') {
       const move = moveArgs(tokens)
-      if (!move) return { type: 'text', value: usage() }
+      if (!move) return { type: 'text', value: usage(), exitCode: 2 }
       const file = option(tokens, '--file')
-      if (!file) return { type: 'text', value: 'move requires --file <source-file>' }
+      if (!file) {
+        return {
+          type: 'text',
+          value: 'move requires --file <source-file>',
+          exitCode: 2,
+        }
+      }
       const location = parseSymbolLocation(move.symbol)
       const plan = await planMoveAst({
         root,
@@ -234,8 +262,13 @@ export const call: LocalCommandCall = async (args: string) => {
         checkCommand: option(tokens, '--check'),
         skipDiagnostics: tokens.includes('--skip-diagnostics'),
       })
-      if (tokens.includes('--preview') || (!tokens.includes('--apply') && !json)) {
-        return { type: 'text', value: json ? JSON.stringify({ plan }, null, 2) : formatMovePlanAst(plan) }
+      if (!tokens.includes('--apply')) {
+        return {
+          type: 'text',
+          value: json
+            ? JSON.stringify({ plan }, null, 2)
+            : formatMovePlanAst(plan, root),
+        }
       }
       const result = await applyMoveAst({
         root,
@@ -246,9 +279,20 @@ export const call: LocalCommandCall = async (args: string) => {
         skipDiagnostics: tokens.includes('--skip-diagnostics'),
       })
       if (json) {
-        return { type: 'text', value: JSON.stringify(result, null, 2) }
+        return {
+          type: 'text',
+          value: JSON.stringify(result, null, 2),
+          ...(result.ok ? {} : { exitCode: 1 }),
+        }
       }
-      return { type: 'text', value: applyResultToText(result, `move ${move.symbol} -> ${move.targetFile}`) }
+      return {
+        type: 'text',
+        value: applyResultToText(
+          result,
+          `move ${move.symbol} -> ${move.targetFile}`,
+        ),
+        ...(result.ok ? {} : { exitCode: 1 }),
+      }
     }
 
     if (action === 'organize-imports') {
@@ -259,8 +303,13 @@ export const call: LocalCommandCall = async (args: string) => {
         checkCommand: option(tokens, '--check'),
         skipDiagnostics: tokens.includes('--skip-diagnostics'),
       })
-      if (tokens.includes('--preview') || (!tokens.includes('--apply') && !json)) {
-        return { type: 'text', value: json ? JSON.stringify({ plan }, null, 2) : formatOrganizeImportsPlanAst(plan) }
+      if (!tokens.includes('--apply')) {
+        return {
+          type: 'text',
+          value: json
+            ? JSON.stringify({ plan }, null, 2)
+            : formatOrganizeImportsPlanAst(plan, root),
+        }
       }
       const result = await applyOrganizeImportsAst({
         root,
@@ -269,9 +318,17 @@ export const call: LocalCommandCall = async (args: string) => {
         skipDiagnostics: tokens.includes('--skip-diagnostics'),
       })
       if (json) {
-        return { type: 'text', value: JSON.stringify(result, null, 2) }
+        return {
+          type: 'text',
+          value: JSON.stringify(result, null, 2),
+          ...(result.ok ? {} : { exitCode: 1 }),
+        }
       }
-      return { type: 'text', value: applyResultToText(result, 'organize imports') }
+      return {
+        type: 'text',
+        value: applyResultToText(result, 'organize imports'),
+        ...(result.ok ? {} : { exitCode: 1 }),
+      }
     }
 
     if (action === 'unused') {
@@ -282,7 +339,7 @@ export const call: LocalCommandCall = async (args: string) => {
 
     if (action === 'callers') {
       const symbol = callersArgs(tokens)
-      if (!symbol) return { type: 'text', value: usage() }
+      if (!symbol) return { type: 'text', value: usage(), exitCode: 2 }
       const file = option(tokens, '--file')
       const location = parseSymbolLocation(symbol)
       const plan = await findCallersAst({ root, symbol: location.name, file })
@@ -291,7 +348,7 @@ export const call: LocalCommandCall = async (args: string) => {
 
     if (action === 'plan' || action === 'preview') {
       const rename = renameArgs(tokens)
-      if (!rename) return { type: 'text', value: usage() }
+      if (!rename) return { type: 'text', value: usage(), exitCode: 2 }
       const plan = planRename(root, rename.from, rename.to)
 
       if (action === 'plan') {
@@ -312,8 +369,9 @@ export const call: LocalCommandCall = async (args: string) => {
     return {
       type: 'text',
       value: `repo-edit failed: ${error instanceof Error ? error.message : String(error)}`,
+      exitCode: 1,
     }
   }
 
-  return { type: 'text', value: usage() }
+  return { type: 'text', value: usage(), exitCode: 2 }
 }

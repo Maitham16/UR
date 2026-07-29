@@ -9,10 +9,9 @@ import { useAppState } from '../state/AppState.js';
 import { isInProcessTeammateTask } from '../tasks/InProcessTeammateTask/types.js';
 import { AGENT_COLOR_TO_THEME_COLOR, type AgentColorName } from '../tools/AgentTool/agentColorManager.js';
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
-import { count } from '../utils/array.js';
 import { summarizeRecentActivities } from '../utils/collapseReadSearch.js';
 import { truncateToWidth } from '../utils/format.js';
-import { isTodoV2Enabled, type Task } from '../utils/tasks.js';
+import { compareTaskIds, isTodoV2Enabled, type Task } from '../utils/tasks.js';
 import type { Theme } from '../utils/theme.js';
 import ThemedText from './design-system/ThemedText.js';
 type Props = {
@@ -22,12 +21,31 @@ type Props = {
 const RECENT_COMPLETED_TTL_MS = 30_000;
 // Exported for tests (test/taskListV2.test.tsx).
 export function byIdAsc(a: Task, b: Task): number {
-  const aNum = parseInt(a.id, 10);
-  const bNum = parseInt(b.id, 10);
-  if (!isNaN(aNum) && !isNaN(bNum)) {
-    return aNum - bNum;
+  return compareTaskIds(a.id, b.id);
+}
+export type TaskStatusCounts = Record<Task['status'], number>;
+export function summarizeTaskStatuses(tasks: readonly Task[]): TaskStatusCounts {
+  const counts: TaskStatusCounts = {
+    pending: 0,
+    in_progress: 0,
+    completed: 0,
+    failed: 0,
+    skipped: 0
+  };
+  for (const task of tasks) {
+    counts[task.status] += 1;
   }
-  return a.id.localeCompare(b.id);
+  return counts;
+}
+export function formatTaskStatusSummary(tasks: readonly Task[]): string {
+  const counts = summarizeTaskStatuses(tasks);
+  const parts: string[] = [];
+  if (counts.completed > 0) parts.push(`${counts.completed} done`);
+  if (counts.in_progress > 0) parts.push(`${counts.in_progress} in progress`);
+  if (counts.pending > 0) parts.push(`${counts.pending} pending`);
+  if (counts.failed > 0) parts.push(`${counts.failed} failed`);
+  if (counts.skipped > 0) parts.push(`${counts.skipped} skipped`);
+  return parts.join(', ');
 }
 export function TaskListV2({
   tasks,
@@ -68,22 +86,33 @@ export function TaskListV2({
   // Depend on `tasks` so the timer is only reset when the task list changes,
   // not on every render (which was causing unnecessary work).
   React.useEffect(() => {
-    if (completionTimestampsRef.current.size === 0) {
-      return;
-    }
-    const currentNow = Date.now();
-    let earliestExpiry = Infinity;
-    for (const ts of completionTimestampsRef.current.values()) {
-      const expiry = ts + RECENT_COMPLETED_TTL_MS;
-      if (expiry > currentNow && expiry < earliestExpiry) {
-        earliestExpiry = expiry;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleNextExpiry = (): void => {
+      if (cancelled) return;
+      const currentNow = Date.now();
+      let earliestExpiry = Infinity;
+      for (const ts of completionTimestampsRef.current.values()) {
+        const expiry = ts + RECENT_COMPLETED_TTL_MS;
+        if (expiry > currentNow && expiry < earliestExpiry) {
+          earliestExpiry = expiry;
+        }
       }
-    }
-    if (earliestExpiry === Infinity) {
-      return;
-    }
-    const timer = setTimeout(forceUpdate_0 => forceUpdate_0((n: number) => n + 1), earliestExpiry - currentNow, forceUpdate);
-    return () => clearTimeout(timer);
+      if (earliestExpiry === Infinity) return;
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        forceUpdate((n: number) => n + 1);
+        // A later completion may have a different expiry. Chain the next
+        // timer because the force-update does not change the `tasks`
+        // dependency and therefore does not re-run this effect.
+        scheduleNextExpiry();
+      }, earliestExpiry - currentNow);
+    };
+    scheduleNextExpiry();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [tasks]);
   if (!isTodoV2Enabled()) {
     return null;
@@ -127,11 +156,9 @@ export function TaskListV2({
     }
   }
 
-  // Get task counts for display
-  const completedCount = count(tasks, t_3 => t_3.status === 'completed');
-  const pendingCount = count(tasks, t_4 => t_4.status === 'pending');
-  const inProgressCount = tasks.length - completedCount - pendingCount;
-  // Unresolved tasks (open or in_progress) block dependent tasks
+  // Every state other than completed remains an unresolved dependency. Failed
+  // and skipped prerequisites need explicit recovery rather than silently
+  // allowing their dependents to run.
   const unresolvedTaskIds = new Set(tasks.filter(t_5 => t_5.status !== 'completed').map(t_6 => t_6.id));
 
   // Check if we need to truncate
@@ -152,8 +179,10 @@ export function TaskListV2({
     }
     recentCompleted.sort(byIdAsc);
     olderCompleted.sort(byIdAsc);
-    const inProgress = tasks.filter(t_8 => t_8.status === 'in_progress').sort(byIdAsc);
-    const pending = tasks.filter(t_9 => t_9.status === 'pending').sort((a, b) => {
+    const failed = tasks.filter(t_8 => t_8.status === 'failed').sort(byIdAsc);
+    const skipped = tasks.filter(t_9 => t_9.status === 'skipped').sort(byIdAsc);
+    const inProgress = tasks.filter(t_10 => t_10.status === 'in_progress').sort(byIdAsc);
+    const pending = tasks.filter(t_11 => t_11.status === 'pending').sort((a, b) => {
       const aBlocked = a.blockedBy.some(id_1 => unresolvedTaskIds.has(id_1));
       const bBlocked = b.blockedBy.some(id_2 => unresolvedTaskIds.has(id_2));
       if (aBlocked !== bBlocked) {
@@ -161,7 +190,9 @@ export function TaskListV2({
       }
       return byIdAsc(a, b);
     });
-    const prioritized = [...recentCompleted, ...inProgress, ...pending, ...olderCompleted];
+    // Current work stays first, followed by failures that need attention.
+    // Every terminal state is retained either as a row or in the summary.
+    const prioritized = [...inProgress, ...failed, ...recentCompleted, ...pending, ...skipped, ...olderCompleted];
     visibleTasks = prioritized.slice(0, maxDisplay);
     hiddenTasks = prioritized.slice(maxDisplay);
   } else {
@@ -171,39 +202,19 @@ export function TaskListV2({
   }
   let hiddenSummary = '';
   if (hiddenTasks.length > 0) {
-    const parts: string[] = [];
-    const hiddenPending = count(hiddenTasks, t_10 => t_10.status === 'pending');
-    const hiddenInProgress = count(hiddenTasks, t_11 => t_11.status === 'in_progress');
-    const hiddenCompleted = count(hiddenTasks, t_12 => t_12.status === 'completed');
-    if (hiddenInProgress > 0) {
-      parts.push(`${hiddenInProgress} in progress`);
-    }
-    if (hiddenPending > 0) {
-      parts.push(`${hiddenPending} pending`);
-    }
-    if (hiddenCompleted > 0) {
-      parts.push(`${hiddenCompleted} completed`);
-    }
-    hiddenSummary = ` … +${parts.join(', ')}`;
+    const summary = formatTaskStatusSummary(hiddenTasks);
+    hiddenSummary = ` … ${hiddenTasks.length} more${summary ? `: ${summary}` : ''}`;
   }
   const content = <>
       {visibleTasks.map(task_0 => <TaskItem key={task_0.id} task={task_0} ownerColor={task_0.owner ? teammateColors[task_0.owner] : undefined} openBlockers={task_0.blockedBy.filter(id_3 => unresolvedTaskIds.has(id_3))} activity={task_0.owner ? teammateActivity[task_0.owner] : undefined} ownerActive={task_0.owner ? activeTeammates.has(task_0.owner) : false} columns={columns} />)}
-      {maxDisplay > 0 && hiddenSummary && <Text dimColor>{hiddenSummary}</Text>}
+      {hiddenSummary && <Text dimColor>{hiddenSummary}</Text>}
     </>;
   if (isStandalone) {
     return <Box flexDirection="column" marginTop={1} marginLeft={2}>
         <Box>
           <Text dimColor>
             <Text bold>{tasks.length}</Text>
-            {' tasks ('}
-            <Text bold>{completedCount}</Text>
-            {' done, '}
-            {inProgressCount > 0 && <>
-                <Text bold>{inProgressCount}</Text>
-                {' in progress, '}
-              </>}
-            <Text bold>{pendingCount}</Text>
-            {' open)'}
+            {` tasks (${formatTaskStatusSummary(tasks)})`}
           </Text>
         </Box>
         {content}
@@ -289,7 +300,7 @@ function TaskItem(t0) {
     t2 = $[4];
   }
   const ownerWidth = t2;
-  const maxSubjectWidth = Math.max(15, columns - 15 - ownerWidth);
+  const maxSubjectWidth = Math.max(4, columns - 15 - ownerWidth);
   let t3;
   if ($[5] !== maxSubjectWidth || $[6] !== task.subject) {
     t3 = truncateToWidth(task.subject, maxSubjectWidth);
@@ -300,7 +311,7 @@ function TaskItem(t0) {
     t3 = $[7];
   }
   const displaySubject = t3;
-  const maxActivityWidth = Math.max(15, columns - 15);
+  const maxActivityWidth = Math.max(4, columns - 15);
   let t4;
   if ($[8] !== activity || $[9] !== maxActivityWidth) {
     t4 = activity ? truncateToWidth(activity, maxActivityWidth) : undefined;
@@ -386,5 +397,5 @@ function _temp2(id) {
   return `#${id}`;
 }
 function _temp(a, b) {
-  return parseInt(a, 10) - parseInt(b, 10);
+  return compareTaskIds(a, b);
 }

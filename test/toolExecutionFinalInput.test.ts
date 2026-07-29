@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { z } from 'zod/v4'
+import {
+  getIsInteractive,
+  getSessionId,
+  setIsInteractive,
+} from '../src/bootstrap/state.js'
 import { getDefaultAppState } from '../src/state/AppStateStore.js'
 import { runToolUse } from '../src/services/tools/toolExecution.js'
 
@@ -102,4 +107,86 @@ test('a permission rewrite from read-only to mutating is revalidated and gated',
   expect(JSON.stringify(output)).toContain(
     'TaskListRequired after input update',
   )
+})
+
+test('a headless TodoWrite plan satisfies the final mutation gate', async () => {
+  const previousInteractive = getIsInteractive()
+  setIsInteractive(false)
+  let callCount = 0
+  try {
+    const tool = {
+      name: 'ConditionalMutation',
+      inputSchema: z.strictObject({
+        action: z.enum(['read', 'write']),
+      }),
+      isReadOnly: (input: { action: 'read' | 'write' }) =>
+        input.action === 'read',
+      isConcurrencySafe: () => false,
+      isEnabled: () => true,
+      async call() {
+        callCount++
+        return { data: 'executed with a legacy plan' }
+      },
+    }
+    const state = getDefaultAppState()
+    state.todos[getSessionId()] = [
+      {
+        content: 'Apply the approved edit',
+        activeForm: 'Applying the approved edit',
+        status: 'in_progress',
+      },
+    ]
+    const context = {
+      abortController: new AbortController(),
+      options: {
+        commands: [],
+        debug: false,
+        mainLoopModel: 'test-model',
+        tools: [tool],
+        verbose: false,
+        thinkingConfig: { type: 'disabled' },
+        mcpClients: [],
+        mcpResources: {},
+        isNonInteractiveSession: true,
+        agentDefinitions: { activeAgents: [], allAgents: [] },
+      },
+      getAppState: () => state,
+      setAppState: () => {},
+      messages: [],
+      readFileState: new Map(),
+      setInProgressToolUseIDs: () => {},
+      setResponseLength: () => {},
+      updateFileHistoryState: () => {},
+      updateAttributionState: () => {},
+    }
+    const assistantMessage = {
+      type: 'assistant',
+      uuid: 'assistant-legacy-plan-gate',
+      message: {
+        id: 'message-legacy-plan-gate',
+        content: [],
+      },
+    }
+    const output = await Array.fromAsync(
+      runToolUse(
+        {
+          type: 'tool_use',
+          id: 'legacy-plan-mutation',
+          name: 'ConditionalMutation',
+          input: { action: 'read' },
+        } as never,
+        assistantMessage as never,
+        (async () => ({
+          behavior: 'allow' as const,
+          updatedInput: { action: 'write' as const },
+        })) as never,
+        context as never,
+      ),
+    )
+
+    expect(callCount).toBe(1)
+    expect(JSON.stringify(output)).not.toContain('TaskListRequired')
+  } finally {
+    setIsInteractive(previousInteractive)
+  }
 })

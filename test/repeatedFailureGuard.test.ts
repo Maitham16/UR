@@ -1,5 +1,7 @@
 import { beforeEach, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
+import { z } from 'zod/v4'
+import { getDefaultAppState } from '../src/state/AppStateStore.js'
 import {
   REPEATED_FAILURE_DEFAULTS,
   REPEATED_FAILURE_GUARD_LIMITS,
@@ -329,4 +331,54 @@ test('runToolUse refuses and then aborts a repeated unknown call', async () => {
       runToolUse(toolUse, assistantMessage, (() => {}) as never, context),
     ),
   ).rejects.toBeInstanceOf(RepeatedToolFailureAbort)
+})
+
+test('preflight exceptions use the same signature as extra-key recovery', async () => {
+  const tool = {
+    name: 'StrictPreflightTool',
+    inputSchema: z.strictObject({ value: z.string() }),
+    isReadOnly: () => true,
+    isConcurrencySafe: () => true,
+    isEnabled: () => true,
+    validateInput() {
+      throw new Error('preflight exploded')
+    },
+  }
+  const context = {
+    abortController: new AbortController(),
+    options: { tools: [tool], mcpClients: [] },
+    queryTracking: { chainId: 'preflight-extra-key-loop', depth: 0 },
+    getAppState: () => getDefaultAppState(),
+    setAppState: () => {},
+  } as never
+  const toolUse = {
+    type: 'tool_use',
+    id: 'strict-preflight-use',
+    name: tool.name,
+    input: { value: 'valid', hallucinated: true },
+  } as never
+  const assistantMessage = {
+    type: 'assistant',
+    uuid: 'assistant-preflight-test',
+    message: {
+      id: 'message-preflight-test',
+      content: [toolUse],
+    },
+  } as never
+
+  const outputs: unknown[][] = []
+  for (let attempt = 0; attempt <= REPEATED_FAILURE_DEFAULTS.limit; attempt++) {
+    outputs.push(
+      await Array.fromAsync(
+        runToolUse(
+          toolUse,
+          assistantMessage,
+          (() => {}) as never,
+          context,
+        ),
+      ),
+    )
+  }
+
+  expect(JSON.stringify(outputs.at(-1))).toContain('RepeatedFailure')
 })

@@ -109,6 +109,22 @@ describe('command registry integrity', () => {
           !command.isHidden &&
           (command.loadedFrom === undefined || command.loadedFrom === 'bundled'),
       )
+      const visibleTokens = new Set(
+        shippedVisibleCommands.flatMap(command => [
+          command.userFacingName?.() ?? command.name,
+          ...(command.aliases ?? []),
+        ]),
+      )
+      expect(commands).toHaveLength(168)
+      expect(shippedVisibleCommands).toHaveLength(161)
+      expect(visibleTokens.size).toBe(237)
+
+      const technicalReadme = readFileSync('technical/README.md', 'utf8')
+      expect(technicalReadme).toContain(
+        `${commands.length} bundled registry entries, ` +
+          `${shippedVisibleCommands.length} visible entries, ` +
+          `${visibleTokens.size} visible slash invocation tokens`,
+      )
       for (const command of shippedVisibleCommands) {
         const name = command.userFacingName?.() ?? command.name
         expect(reference).toContain(`/${name}`)

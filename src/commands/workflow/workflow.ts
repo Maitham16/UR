@@ -5,6 +5,7 @@ import {
 } from '../../services/agents/liveBoard.js'
 import { runWorkflowSpec } from '../../services/agents/runWorkflow.js'
 import {
+  approveWorkflowStep,
   type WorkflowSpec,
   buildRunPlan,
   formatRunPlan,
@@ -12,20 +13,66 @@ import {
   listWorkflows,
   loadRunState,
   loadWorkflow,
-  markStepComplete,
+  markRunCheckpoint,
+  markRunStatus,
+  normalizeWorkflowCompleted,
   renderWorkflowAscii,
   renderWorkflowMermaid,
   resetRunState,
   saveWorkflow,
+  setRunCompleted,
   validateWorkflow,
 } from '../../services/agents/workflows.js'
-import type { LocalCommandCall } from '../../types/command.js'
+import type {
+  LocalCommandCall,
+  LocalCommandResult,
+} from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { getCwd } from '../../utils/cwd.js'
 
-function optionValue(tokens: string[], flag: string): string | undefined {
-  const index = tokens.indexOf(flag)
-  return index >= 0 ? tokens[index + 1] : undefined
+const WORKFLOW_VALUE_OPTIONS = new Set(['--max-turns', '--concurrency'])
+const WORKFLOW_FLAGS = new Set([
+  '--ascii',
+  '--force',
+  '--dry-run',
+  '--resume',
+  '--live',
+  '--skip-permissions',
+  '--dangerously-skip-permissions',
+  '--json',
+])
+
+function parseWorkflowTokens(tokens: string[]): {
+  positional: string[]
+  flags: Set<string>
+  values: Map<string, string>
+} {
+  const positional: string[] = []
+  const flags = new Set<string>()
+  const values = new Map<string, string>()
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index]!
+    if (!token.startsWith('--')) {
+      positional.push(token)
+      continue
+    }
+    const equals = token.indexOf('=')
+    const name = equals > 2 ? token.slice(0, equals) : token
+    if (WORKFLOW_VALUE_OPTIONS.has(name)) {
+      const value = equals > 2 ? token.slice(equals + 1) : tokens[index + 1]
+      if (!value || value.startsWith('--')) {
+        throw new Error(`${name} requires a value`)
+      }
+      values.set(name, value)
+      if (equals < 0) index++
+      continue
+    }
+    if (!WORKFLOW_FLAGS.has(name) || equals > 2) {
+      throw new Error(`Unknown workflow option: ${token}`)
+    }
+    flags.add(name)
+  }
+  return { positional, flags, values }
 }
 
 function sampleWorkflow(name: string): WorkflowSpec {
@@ -62,7 +109,11 @@ function sampleWorkflow(name: string): WorkflowSpec {
   }
 }
 
-function notFound(name: string): { type: 'text'; value: string } {
+function notFound(
+  name: string,
+  setFailure: (code?: number) => void,
+): { type: 'text'; value: string } {
+  setFailure()
   const available = listWorkflows(getCwd())
   const hint = available.length > 0 ? `\nAvailable: ${available.join(', ')}` : ''
   return {
@@ -71,13 +122,26 @@ function notFound(name: string): { type: 'text'; value: string } {
   }
 }
 
-export const call: LocalCommandCall = async (args: string) => {
+async function callWorkflow(
+  args: string,
+  setFailure: (code?: number) => void,
+): Promise<LocalCommandResult> {
   const cwd = getCwd()
   const tokens = parseArguments(args)
-  const json = tokens.includes('--json')
-  const ascii = tokens.includes('--ascii')
-  const force = tokens.includes('--force')
-  const positional = tokens.filter(token => !token.startsWith('--'))
+  let parsed: ReturnType<typeof parseWorkflowTokens>
+  try {
+    parsed = parseWorkflowTokens(tokens)
+  } catch (error) {
+    setFailure(2)
+    return {
+      type: 'text',
+      value: error instanceof Error ? error.message : String(error),
+    }
+  }
+  const { positional, flags, values } = parsed
+  const json = flags.has('--json')
+  const ascii = flags.has('--ascii')
+  const force = flags.has('--force')
   const command = positional[0] ?? 'list'
   const name = positional[1]
 
@@ -93,6 +157,7 @@ export const call: LocalCommandCall = async (args: string) => {
   if (command === 'init') {
     const spec = sampleWorkflow(name ?? 'example')
     const result = saveWorkflow(cwd, spec, { force })
+    if (!result.created) setFailure()
     return {
       type: 'text',
       value: result.created
@@ -102,24 +167,29 @@ export const call: LocalCommandCall = async (args: string) => {
   }
 
   if (!name) {
+    setFailure(2)
     return { type: 'text', value: `Usage: ur workflow ${command} <name>` }
   }
   const spec = loadWorkflow(cwd, name)
-  if (!spec) return notFound(name)
+  if (!spec) return notFound(name, setFailure)
 
   if (command === 'validate') {
     const validation = validateWorkflow(spec)
+    if (!validation.valid) setFailure()
     if (json) return { type: 'text', value: JSON.stringify(validation, null, 2) }
     return { type: 'text', value: formatValidation(spec, validation) }
   }
 
   if (command === 'graph') {
+    const validation = validateWorkflow(spec)
+    if (!validation.valid) setFailure()
     const value = ascii ? renderWorkflowAscii(spec) : renderWorkflowMermaid(spec)
     return { type: 'text', value }
   }
 
   if (command === 'show') {
     const validation = validateWorkflow(spec)
+    if (!validation.valid) setFailure()
     if (json) {
       return {
         type: 'text',
@@ -142,12 +212,22 @@ export const call: LocalCommandCall = async (args: string) => {
   }
 
   if (command === 'plan') {
+    const validation = validateWorkflow(spec)
+    if (!validation.valid) {
+      setFailure()
+      return { type: 'text', value: formatValidation(spec, validation) }
+    }
     const plan = buildRunPlan(spec, loadRunState(cwd, name))
     if (json) return { type: 'text', value: JSON.stringify(plan, null, 2) }
     return { type: 'text', value: formatRunPlan(plan) }
   }
 
   if (command === 'next') {
+    const validation = validateWorkflow(spec)
+    if (!validation.valid) {
+      setFailure()
+      return { type: 'text', value: formatValidation(spec, validation) }
+    }
     const plan = buildRunPlan(spec, loadRunState(cwd, name))
     if (!plan.nextStepId) {
       return {
@@ -159,17 +239,33 @@ export const call: LocalCommandCall = async (args: string) => {
       }
     }
     const step = spec.steps.find(s => s.id === plan.nextStepId)
-    if (!step) return { type: 'text', value: `Next step ${plan.nextStepId} missing from spec.` }
+    if (!step) {
+      setFailure()
+      return {
+        type: 'text',
+        value: `Next step ${plan.nextStepId} missing from spec.`,
+      }
+    }
     if (json) return { type: 'text', value: JSON.stringify(step, null, 2) }
+    const followUp =
+      step.gate === 'approval'
+        ? `When the run holds here, approve with: ur workflow approve ${name} ${step.id}`
+        : step.gate === 'verification'
+          ? 'The workflow runner must execute the verifier and receive a standalone VERDICT: PASS.'
+          : `If this step was completed outside the workflow runner, record it with: ur workflow done ${name} ${step.id}`
     return {
       type: 'text',
       value: [
         `Next step: ${step.id} (${step.name})`,
         step.gate ? `Gate: ${step.gate}` : '',
+        `Agent type: ${step.agent}`,
+        `Description: ${step.name}`,
+        'Prompt:',
+        step.prompt,
         '',
-        `Agent({ subagent_type: "${step.agent}", description: ${JSON.stringify(step.name)}, prompt: ${JSON.stringify(step.prompt)} })`,
-        '',
-        `Mark complete: ur workflow done ${name} ${step.id}`,
+        'This is step metadata, not a tool invocation.',
+        `Execute through the checkpointed workflow runner: ur workflow run ${name} --resume`,
+        followUp,
       ]
         .filter(line => line !== '')
         .join('\n'),
@@ -178,14 +274,89 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (command === 'done') {
     const stepId = positional[2]
-    if (!stepId) return { type: 'text', value: `Usage: ur workflow done ${name} <stepId>` }
-    if (!spec.steps.some(s => s.id === stepId)) {
+    if (!stepId) {
+      setFailure(2)
+      return { type: 'text', value: `Usage: ur workflow done ${name} <stepId>` }
+    }
+    const step = spec.steps.find(candidate => candidate.id === stepId)
+    if (!step) {
+      setFailure()
       return { type: 'text', value: `No step "${stepId}" in workflow ${name}.` }
     }
-    markStepComplete(cwd, name, stepId)
+    if (step.gate != null) {
+      setFailure()
+      return {
+        type: 'text',
+        value:
+          step.gate === 'approval'
+            ? `Step "${stepId}" is approval-gated and cannot be bypassed with done. Run the workflow until it holds, then use: ur workflow approve ${name} ${stepId}`
+            : `Step "${stepId}" is verification-gated and cannot be bypassed with done. Run its verifier and require VERDICT: PASS.`,
+      }
+    }
+    const completed = normalizeWorkflowCompleted(
+      spec,
+      loadRunState(cwd, name)?.completed ?? [],
+    )
+    const incompleteDependencies = (step.dependsOn ?? []).filter(
+      dependency => !completed.includes(dependency),
+    )
+    if (incompleteDependencies.length > 0) {
+      setFailure()
+      return {
+        type: 'text',
+        value: `Cannot mark "${stepId}" complete before: ${incompleteDependencies.join(', ')}.`,
+      }
+    }
+    const nextCompleted = [...new Set([...completed, stepId])]
+    setRunCompleted(cwd, name, nextCompleted)
+    if (step.checkpoint) {
+      markRunCheckpoint(cwd, name, stepId, nextCompleted)
+    }
+    if (nextCompleted.length === spec.steps.length) {
+      markRunStatus(cwd, name, 'completed')
+    }
     const plan = buildRunPlan(spec, loadRunState(cwd, name))
     if (json) return { type: 'text', value: JSON.stringify(plan, null, 2) }
     return { type: 'text', value: `Marked ${stepId} complete.\n\n${formatRunPlan(plan)}` }
+  }
+
+  if (command === 'approve') {
+    const stepId = positional[2]
+    if (!stepId) {
+      setFailure(2)
+      return {
+        type: 'text',
+        value: `Usage: ur workflow approve ${name} <stepId>`,
+      }
+    }
+    const step = spec.steps.find(candidate => candidate.id === stepId)
+    if (!step) {
+      setFailure()
+      return { type: 'text', value: `No step "${stepId}" in workflow ${name}.` }
+    }
+    if (step.gate !== 'approval') {
+      setFailure()
+      return {
+        type: 'text',
+        value: `Step "${stepId}" is not an approval gate.`,
+      }
+    }
+    try {
+      const state = approveWorkflowStep(cwd, name, stepId)
+      if (json) {
+        return { type: 'text', value: JSON.stringify(state, null, 2) }
+      }
+      return {
+        type: 'text',
+        value: `Approved ${stepId}. Resume safely with: ur workflow run ${name} --resume`,
+      }
+    } catch (error) {
+      setFailure()
+      return {
+        type: 'text',
+        value: error instanceof Error ? error.message : String(error),
+      }
+    }
   }
 
   if (command === 'reset') {
@@ -196,20 +367,41 @@ export const call: LocalCommandCall = async (args: string) => {
   if (command === 'run') {
     const validation = validateWorkflow(spec)
     if (!validation.valid) {
+      setFailure()
       return { type: 'text', value: formatValidation(spec, validation) }
     }
-    const dryRun = tokens.includes('--dry-run')
-    const resume = tokens.includes('--resume')
+    const dryRun = flags.has('--dry-run')
+    const resume = flags.has('--resume')
     const skipPermissions =
-      tokens.includes('--skip-permissions') ||
-      tokens.includes('--dangerously-skip-permissions')
-    const maxTurnsValue = Number(optionValue(tokens, '--max-turns') ?? '30')
-    const concurrencyValue = Number(optionValue(tokens, '--concurrency') ?? '')
+      flags.has('--skip-permissions') ||
+      flags.has('--dangerously-skip-permissions')
+    const maxTurnsRaw = values.get('--max-turns')
+    const concurrencyRaw = values.get('--concurrency')
+    const maxTurnsValue = Number(maxTurnsRaw ?? '30')
+    const concurrencyValue = Number(concurrencyRaw ?? '')
+    if (
+      maxTurnsRaw !== undefined &&
+      (!Number.isSafeInteger(maxTurnsValue) || maxTurnsValue < 1)
+    ) {
+      setFailure(2)
+      return {
+        type: 'text',
+        value: '--max-turns must be a positive integer.',
+      }
+    }
+    if (
+      concurrencyRaw !== undefined &&
+      (!Number.isSafeInteger(concurrencyValue) || concurrencyValue < 1)
+    ) {
+      setFailure(2)
+      return {
+        type: 'text',
+        value: '--concurrency must be a positive integer.',
+      }
+    }
     const maxConcurrency =
-      Number.isFinite(concurrencyValue) && concurrencyValue >= 1
-        ? Math.floor(concurrencyValue)
-        : undefined
-    const live = tokens.includes('--live') && !json
+      concurrencyRaw === undefined ? undefined : concurrencyValue
+    const live = flags.has('--live') && !json
     const board = live
       ? new LiveExecutionBoard(
           spec.name,
@@ -225,7 +417,7 @@ export const call: LocalCommandCall = async (args: string) => {
       dryRun,
       resume,
       skipPermissions,
-      maxTurns: Number.isFinite(maxTurnsValue) && maxTurnsValue > 0 ? maxTurnsValue : 30,
+      maxTurns: maxTurnsValue,
       maxConcurrency,
       onEvent: board
         ? event => {
@@ -236,11 +428,27 @@ export const call: LocalCommandCall = async (args: string) => {
           }
         : undefined,
     })
+    if (result.status !== 'completed') setFailure()
     if (json) return { type: 'text', value: JSON.stringify(result, null, 2) }
     const header = dryRun ? '(dry run — no model calls)\n\n' : ''
     const liveBoard = board ? `${board.renderBoard()}\n\n` : ''
     return { type: 'text', value: `${header}${liveBoard}${formatExecResult(result)}` }
   }
 
+  setFailure()
   return { type: 'text', value: `Unknown workflow command: ${command}` }
+}
+
+export const call: LocalCommandCall = async (args, context) => {
+  let exitCode = 0
+  const externalSetExitCode = (
+    context as unknown as
+      | { setExitCode?: (code: number) => void }
+      | undefined
+  )?.setExitCode
+  const result = await callWorkflow(args, (code = 1) => {
+    exitCode = code
+    externalSetExitCode?.(code)
+  })
+  return exitCode === 0 ? result : { ...result, exitCode }
 }

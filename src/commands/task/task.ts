@@ -102,25 +102,41 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'start') {
     const name = pos[1]
-    if (!name) return { type: 'text', value: usage() }
+    if (!name) return { type: 'text', value: usage(), exitCode: 2 }
     if (!findGitRoot(cwd)) {
-      return { type: 'text', value: 'task start requires a git repository.' }
+      return {
+        type: 'text',
+        value: 'task start requires a git repository.',
+        exitCode: 1,
+      }
     }
     const base = await resolveBase(cwd, option(tokens, '--base'))
     const worktree = tokens.includes('--worktree')
     const model = option(tokens, '--model')
     const maxTurns = option(tokens, '--max-turns')
+    const parsedMaxTurns = maxTurns === undefined ? undefined : Number(maxTurns)
+    if (
+      parsedMaxTurns !== undefined &&
+      (!Number.isSafeInteger(parsedMaxTurns) || parsedMaxTurns < 1)
+    ) {
+      return {
+        type: 'text',
+        value: '--max-turns must be a positive integer.',
+        exitCode: 2,
+      }
+    }
     const offline = tokens.includes('--offline') || isNetworkRestricted()
     const task = createBackgroundTask({
       cwd,
       task: name,
       worktree,
-      pr: worktree,
+      // Creating an isolated worktree is a local operation. Publishing is a
+      // separate trust boundary and must only happen after the user explicitly
+      // runs `ur task pr <id> --create`.
+      pr: false,
       base,
-      title: `UR task: ${name}`,
-      body: `This change was produced by \`ur task start ${name}\` running in an isolated UR worktree.`,
       model,
-      maxTurns: maxTurns ? parseInt(maxTurns, 10) : undefined,
+      maxTurns: parsedMaxTurns,
       offline,
     })
     return { type: 'text', value: formatTask(task, json) }
@@ -128,16 +144,28 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'run') {
     const id = pos[1]
-    if (!id) return { type: 'text', value: usage() }
+    if (!id) return { type: 'text', value: usage(), exitCode: 2 }
     const existing = getBackgroundTask(cwd, id) ?? listBackgroundTasks(cwd).find(t => t.id.startsWith(id))
-    if (!existing) return { type: 'text', value: `Task ${id} not found.` }
+    if (!existing) {
+      return {
+        type: 'text',
+        value: `Task ${id} not found.`,
+        exitCode: 1,
+      }
+    }
     if (tokens.includes('--offline') && !isNetworkRestricted()) {
       process.env.UR_OFFLINE = '1'
     }
     const result = await startExistingBackgroundTask(cwd, existing.id, {
       dryRun: tokens.includes('--dry-run'),
     })
-    if (!result) return { type: 'text', value: `Task ${id} not found.` }
+    if (!result) {
+      return {
+        type: 'text',
+        value: `Task ${id} not found.`,
+        exitCode: 1,
+      }
+    }
     const task = result.task
     return {
       type: 'text',
@@ -149,12 +177,22 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'pr') {
     const id = pos[1]
-    if (!id) return { type: 'text', value: usage() }
+    if (!id) return { type: 'text', value: usage(), exitCode: 2 }
     const task = getBackgroundTask(cwd, id)
-    if (!task) return { type: 'text', value: `Task ${id} not found.` }
+    if (!task) {
+      return {
+        type: 'text',
+        value: `Task ${id} not found.`,
+        exitCode: 1,
+      }
+    }
     const worktreePath = task.worktree?.path
     if (!worktreePath) {
-      return { type: 'text', value: `Task ${id} was not started with a worktree; cannot create PR.` }
+      return {
+        type: 'text',
+        value: `Task ${id} was not started with a worktree; cannot create PR.`,
+        exitCode: 1,
+      }
     }
     const base = option(tokens, '--base') ?? task.pr?.base ?? 'HEAD'
     const title = option(tokens, '--title') ?? task.pr?.title ?? `UR task: ${task.task}`
@@ -183,6 +221,7 @@ export const call: LocalCommandCall = async (args: string) => {
         value: json
           ? JSON.stringify(result, null, 2)
           : `${formatPrSummary(summary)}\n\nPR create ${pr.code === 0 ? 'succeeded' : 'failed'}:\n${pr.stdout}\n${pr.stderr || ''}`.trim(),
+        ...(pr.code === 0 ? {} : { exitCode: 1 }),
       }
     }
 
@@ -200,11 +239,17 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'status') {
     const id = pos[1]
-    if (!id) return { type: 'text', value: usage() }
+    if (!id) return { type: 'text', value: usage(), exitCode: 2 }
     const task = getBackgroundTask(cwd, id) ?? listBackgroundTasks(cwd).find(t => t.id.startsWith(id))
-    if (!task) return { type: 'text', value: `Task ${id} not found.` }
+    if (!task) {
+      return {
+        type: 'text',
+        value: `Task ${id} not found.`,
+        exitCode: 1,
+      }
+    }
     return { type: 'text', value: formatTask(task, json) }
   }
 
-  return { type: 'text', value: usage() }
+  return { type: 'text', value: usage(), exitCode: 2 }
 }

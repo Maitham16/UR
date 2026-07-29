@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import type { LocalCommandCall } from '../../types/command.js'
 import { getCwd } from '../../utils/cwd.js'
 import { commandExists } from '../../ur/sysinfo.js'
@@ -23,8 +23,23 @@ export const call: LocalCommandCall = async (args: string) => {
   }
   const tpl = TEMPLATES[lang]
   if (!tpl) return { type: 'text', value: `unknown lang "${lang}". choose: ${Object.keys(TEMPLATES).join(', ')}` }
+  if (!/^[a-z0-9][a-z0-9_-]*$/i.test(name)) {
+    return {
+      type: 'text',
+      value:
+        `invalid tool name "${name}". use letters, numbers, hyphens, or underscores; paths are not allowed.`,
+    }
+  }
   mkdirSync(dir, { recursive: true })
-  const file = join(dir, `${name}.${tpl.ext}`)
+  const resolvedDir = resolve(dir)
+  const file = resolve(resolvedDir, `${name}.${tpl.ext}`)
+  const rel = relative(resolvedDir, file)
+  if (rel.startsWith('..') || rel === '' || rel.includes('\0')) {
+    return {
+      type: 'text',
+      value: `invalid tool name "${name}". destination must stay inside .ur/tools.`,
+    }
+  }
   if (existsSync(file)) return { type: 'text', value: `already exists: .ur/tools/${name}.${tpl.ext}` }
   writeFileSync(file, tpl.body)
   return { type: 'text', value: `created .ur/tools/${name}.${tpl.ext}\nAsk UR to run it — it will request approval before executing, and you can keep it as a plugin if useful.` }

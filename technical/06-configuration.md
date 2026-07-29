@@ -34,23 +34,23 @@ restore their session model without showing the picker.
   "model": "qwen2.5-coder:7b",
   "provider": {
     "active": "ollama",
-    "model": "…", "baseUrl": "…", "timeoutMs": 30000,
-    "commandPath": "…",            // external CLI path for cli-login providers
-    "fallback": "…",
+    "model": "qwen2.5-coder:7b",
+    "baseUrl": "http://localhost:11434",
+    "timeoutMs": 30000,
+    "fallback": "disabled",
     "openaiTransport": "responses", // chat-completions (default) | responses
     "responses": {
       "store": false,
       "compactThreshold": 20000,
       "toolSearch": "hosted"        // off (default) | hosted
     },
-    "preferences": {},
-    "availableModels": [], "modelOverrides": {}
+    "preferences": {}
   },
   "ollama": { "host": "http://localhost:11434", "lanDiscovery": true },
   "offline": false,
   "effortLevel": "high",
   "fastMode": false, "fastModePerSessionOptIn": false,
-  "advisorModel": "…",
+  "advisorModel": "qwen2.5-coder:32b",
   "alwaysThinkingEnabled": false, "showThinkingSummaries": true,
   "availableModels": [], "modelOverrides": {}
 }
@@ -64,7 +64,7 @@ restore their session model without showing the picker.
     "deny":  ["Bash(rm -rf:*)", "mcp__untrusted-server"],
     "ask":   ["Bash(git push:*)"],
     "additionalDirectories": ["../lib"],
-    "defaultMode": "acceptEdits",       // default | plan | acceptEdits | autoApprove
+    "defaultMode": "acceptEdits",       // default | plan | acceptEdits | autoApprove | bypassPermissions
     "profiles": {                       // named rule sets, appended when active
       "reviewing": { "deny": ["Edit", "Write", "Bash"], "description": "read-only" },
       "trusted":   { "allow": ["Bash(git:*)"] }
@@ -84,11 +84,14 @@ restore their session model without showing the picker.
     "suggestMinConfidence": 0.75
   },
   "sandbox": { /* SandboxSettingsSchema — OS sandbox for shell commands */ },
-  "autoMode": { "allow": [], "soft_deny": [], "deny": [] },
-  "useAutoModeDuringPlan": false, "disableAutoMode": false,
+  "tasks": {
+    "requireBeforeChanges": {
+      "enabled": true,                  // default: true
+      "freeReads": 3                    // calls allowed before ordinary mutations require a plan
+    }
+  },
+  "disableAutoMode": "disable",
   "skipDangerousModePermissionPrompt": false,
-  "skipAutoPermissionPrompt": false,
-  "classifierPermissionsEnabled": false,
   "allowManagedPermissionRulesOnly": false
 }
 ```
@@ -111,6 +114,14 @@ Permission modes:
 - `acceptEdits`: auto-approve safe in-workspace file edits and safe commands.
 - `autoApprove`: auto-approve command/tool permission approvals, while
   user-input dialogs still ask and explicit denials remain enforced.
+- `bypassPermissions`: bypass permission prompts after the separate dangerous-mode
+  acknowledgement/CLI opt-in; use only in an external sandbox with no sensitive access.
+
+`autoMode`, `useAutoModeDuringPlan`, `skipAutoPermissionPrompt`, and
+`permissions.disableAutoMode` exist only in builds compiled with
+`TRANSCRIPT_CLASSIFIER`; `classifierPermissionsEnabled` is additionally internal-only.
+The standard npm build accepts `autoApprove`, which is deterministic permission approval,
+not model-based classification.
 
 ### Hooks
 ```jsonc
@@ -120,7 +131,7 @@ Permission modes:
       { "matcher": "Bash",
         "hooks": [ { "type": "command", "command": "./scripts/lint-command.sh" } ] }
     ],
-    "PostToolUse": [ … ], "UserPromptSubmit": [ … ]
+    "PostToolUse": [], "UserPromptSubmit": []
   },
   "disableAllHooks": false,
   "allowManagedHooksOnly": false,
@@ -137,10 +148,9 @@ Hook events (`src/entrypoints/sdk/coreTypes.ts:HOOK_EVENTS`): `PreToolUse`, `Pos
 Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 `execAgentHook.ts` — run a model prompt or subagent as the hook). View with `/hooks`.
 
-### MCP
+### MCP policy
 ```jsonc
 {
-  "mcpServers": { "db": { "command": "npx", "args": ["…"] } },
   "enableAllProjectMcpServers": false,
   "enabledMcpjsonServers": [], "disabledMcpjsonServers": [],
   "allowedMcpServers": [], "deniedMcpServers": [],
@@ -148,20 +158,27 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 }
 ```
 
+Server definitions do not live under `mcpServers` in `settings.json`; configure them through
+`ur mcp` / `.mcp.json`. The keys above are approval and enterprise-policy controls.
+
 ### Git & attribution
 ```jsonc
 {
-  "attribution": { "commit": true, "pr": true,
-                   "includeCoAuthoredBy": true, "includeGitInstructions": true }
+  "attribution": {
+    "commit": "Co-authored-by: UR-Nexus <noreply@example.invalid>",
+    "pr": "Generated with UR-Nexus"
+  },
+  "includeCoAuthoredBy": true,
+  "includeGitInstructions": true
 }
 ```
 
 ### UI & terminal
 ```jsonc
 {
-  "statusLine": { "type": "command", "command": "…", "padding": 1 },
-  "theme": "…", "language": "en",
-  "spinnerTipsEnabled": true, "spinnerVerbs": { "mode": "…", "verbs": [] },
+  "statusLine": { "type": "command", "command": "./scripts/status.sh", "padding": 1 },
+  "language": "en",
+  "spinnerTipsEnabled": true, "spinnerVerbs": { "mode": "append", "verbs": [] },
   "spinnerTipsOverride": { "excludeDefault": false, "tips": [] },
   "syntaxHighlightingDisabled": false,
   "terminalTitleFromRename": true,
@@ -173,15 +190,17 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 }
 ```
 
+`theme` is global application config managed by `/theme`, not a `SettingsSchema` key.
+
 ### Memory & verification
 ```jsonc
 {
-  "autoMemoryEnabled": true, "autoMemoryDirectory": "…",
+  "autoMemoryEnabled": true, "autoMemoryDirectory": "~/.ur/project-memory",
   "autoMemoryExtractionInterval": 1,   // run extraction every N turns (token dial)
   "automaticLearningEnabled": true,    // local outcome stats, no model calls
   "verifier": { "askBeforeGates": true }, // one approval request per user turn
   "autoDreamEnabled": false,
-  "plansDirectory": "…"
+  "plansDirectory": ".ur/plans"
 }
 ```
 
@@ -191,9 +210,11 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
   "enabledPlugins": { "fmt@acme": true },
   "pluginConfigs": {},
   "extraKnownMarketplaces": {},
-  "strictKnownMarketplaces": false, "blockedMarketplaces": [],
-  "strictPluginOnlyCustomization": false,
-  "marketplace": {}, "plugin": { "defaultView": "…" }
+  "strictKnownMarketplaces": [
+    { "source": "github", "repo": "acme/approved-plugins" }
+  ],
+  "blockedMarketplaces": [],
+  "strictPluginOnlyCustomization": false
 }
 ```
 
@@ -201,26 +222,42 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 ```jsonc
 {
   "apiKeyHelper": "./get-key.sh",
-  "awsCredentialExport": "…", "awsAuthRefresh": "…", "gcpAuthRefresh": "…",
-  "xaaIdp": { "issuer": "…", "clientId": "…", "callbackPort": 0 },
-  "forceLoginMethod": "…", "forceLoginOrgUUID": "…",
-  "otelHeadersHelper": "…",
+  "awsCredentialExport": "./scripts/aws-env.sh",
+  "awsAuthRefresh": "./scripts/aws-refresh.sh",
+  "gcpAuthRefresh": "gcloud auth application-default login",
+  "forceLoginMethod": "urai",
+  "forceLoginOrgUUID": "00000000-0000-0000-0000-000000000000",
+  "otelHeadersHelper": "./scripts/otel-headers.sh",
   "env": { "FOO": "bar" },              // extra env for the session
   "companyAnnouncements": [],
-  "remote": { "defaultEnvironmentId": "…" },
+  "remote": { "defaultEnvironmentId": "dev-lab" },
   "autoUpdatesChannel": "stable",
-  "minimumVersion": "…", "disableDeepLinkRegistration": false,
+  "minimumVersion": "1.65.6",
   "cleanupPeriodDays": 30,
-  "fileSuggestion": { "type": "command", "command": "…", "respectGitignore": true },
-  "defaultShell": "…",
+  "fileSuggestion": { "type": "command", "command": "./scripts/files.sh" },
+  "respectGitignore": true,
+  "defaultShell": "bash",
   "skipWebFetchPreflight": false,
-  "voiceEnabled": false, "assistantName": "…",
-  "sshConfigs": {}, "environment": {},
-  "agent": "…"                          // default agent config
+  "voiceEnabled": false,
+  "sshConfigs": [
+    { "id": "lab", "name": "Lab server", "sshHost": "dev@lab.example" }
+  ],
+  "agent": "reviewer"                   // default agent config
 }
 ```
 
-## Environment variables (grep of `src/`)
+`xaaIdp` is conditional on `UR_CODE_ENABLE_XAA`; when enabled,
+`callbackPort` is optional but must be a positive integer. The
+`disableDeepLinkRegistration: "disable"` key exists only in LODESTONE builds.
+`assistantName` is KAIROS-only. There are no top-level `environment`,
+`marketplace`, or `plugin` objects in the standard settings schema.
+
+## Supported environment variables
+
+These tables cover user-facing runtime controls. Platform-detection variables,
+CI-provider metadata, test fixtures, and compile-time-only/internal branches
+are not presented as supported configuration merely because source code reads
+them.
 
 ### Providers
 
@@ -229,7 +266,8 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 | `OLLAMA_API_KEY` | Bearer token for Ollama's hosted API. With no host set, also switches the base URL to `https://ollama.com` — a local daemon needs no key, a direct connection does. Allowlisted through the Agentic CI env scrub |
 | `OLLAMA_HOST` / `OLLAMA_BASE_URL` | Explicit Ollama endpoint; always wins over the key-implied cloud default |
 | `OLLAMA_CONTEXT_TOKENS` | Override the detected context window |
-| `OLLAMA_REQUEST_TIMEOUT_MS` | Per-request timeout |
+| `API_TIMEOUT_MS` | Explicit Ollama request timeout in milliseconds; overrides the model-aware runtime default |
+| `UR_API_TIMEOUT_MS` | Default provider HTTP-client timeout where supported |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` | Provider credentials; also allowlisted for Agentic CI |
 
 ### Core behavior
@@ -237,34 +275,32 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 |---|---|
 | `UR_CODE_SIMPLE=1` | Minimal tool set (Bash/Read/Edit); set by `--bare` |
 | `UR_CODE_REMOTE=true` | Remote/CCR container mode (raises heap to 8GB) |
-| `UR_CODE_DISABLE_BACKGROUND_TASKS=1` | No background tasks |
+| `UR_CODE_DISABLE_BACKGROUND_TASKS=1` | Remove background mode from the Bash, PowerShell, and Agent tools. It does not disable the separate public `ur bg` command |
 | `UR_CODE_DISABLE_AUTO_MEMORY=1` | Disable auto-memory |
-| `UR_CODE_DISABLE_CRON=1` | Disable cron/trigger scheduling |
 | `UR_CODE_DISABLE_COMMAND_INJECTION_CHECK=1` | Skip bash injection analysis (not recommended) |
 | `UR_CODE_MAX_OUTPUT_TOKENS` | Cap model output tokens |
 | `UR_CODE_MAX_RETRIES` | API retry cap |
 | `UR_CODE_EXTRA_BODY` | Extra JSON merged into API requests |
-| `UR_CODE_COORDINATOR_MODE=1` | Coordinator (lead + workers) mode |
-| `UR_CODE_EXPERIMENTAL_AGENT_TEAMS=1` | Agent teams/swarm mode |
-| `UR_CODE_REPL=1` | REPL tool mode (VM-wrapped primitives) |
-| `UR_CODE_USE_POWERSHELL_TOOL=1` | PowerShell tool |
-| `UR_CODE_VERIFY_PLAN=true` | VerifyPlanExecution tool |
-| `UR_CODE_INDEX=1` | Semantic code index + CodeSearch tool |
+| `UR_CODE_EXPERIMENTAL_AGENT_TEAMS=1` | Opt into agent teams/swarm mode in external builds (also available through hidden `--agent-teams`); the runtime kill-switch still applies |
+| `UR_CODE_USE_POWERSHELL_TOOL=1` | Enable the PowerShell tool on Windows |
+| `UR_CODE_INDEX=1` | Force-enable the semantic code index + CodeSearch tool; an existing built index enables it automatically, while `0`, `false`, or `off` force-disable it |
+| `UR_CODE_ENABLE_TASKS=1` | Use structured TaskCreate/Get/Update/List tools in headless/SDK sessions; interactive sessions use them by default |
+| `UR_CODE_MAX_TOOL_USE_CONCURRENCY` | Cap concurrent-safe tools in the ordinary agent loop (default 10, clamped to 1–32) |
+| `UR_MAX_CONCURRENT_TOOLS` | Cap concurrent-safe tools in the streaming executor (default 8, clamped to 1–32); set both concurrency variables when one limit is desired across both paths |
 | `ENABLE_LSP_TOOL=1` | LSP tool |
+| `UR_BROWSER_TOOL=1` / `WEB_BROWSER_TOOL=1` | Enable the model-invocable Browser tool. Its guarded `fetch` action is runtime-independent; interactive actions require `playwright-core` and an installed Chromium/Chrome executable |
 | `UR_CODE_SYNTAX_HIGHLIGHT=0` | Disable syntax highlighting |
 | `UR_CODE_ACCESSIBILITY=1` | Accessibility rendering |
 | `UR_CODE_SHELL_PREFIX` | Prefix every shell command |
-| `UR_CODE_PRESET_PREFIX` | Prompt preset prefix |
-| `UR_CODE_TAGS` | Session tags |
+| `UR_CODE_TAGS` | Add one opaque `tags` value to analytics environment metadata; it does not tag a conversation for `/resume` |
 | `UR_CODE_OVERRIDE_DATE` | Fake "today" (testing) |
-| `UR_CODE_ABLATION_BASELINE=1` | Harness-science L0 baseline: sets SIMPLE, no thinking/compaction/memory/background |
+| `UR_CODE_DISABLE_AUTO_LEARNING=1` | Disable automatic local pass/fail outcome recording |
 
 ### Providers & auth
 | Variable | Effect |
 |---|---|
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `OPENROUTER_API_KEY` | API-key providers |
 | `UR_MODEL_POOL_CHEAP/STRONG/DEFAULT` | Model pools for routing |
-| `UR_CODE_USE_BEDROCK` / `UR_CODE_USE_VERTEX` | AWS Bedrock / GCP Vertex backends |
 | `UR_CODE_OAUTH_TOKEN` / `UR_CODE_OAUTH_REFRESH_TOKEN` / `UR_CODE_OAUTH_SCOPES` | OAuth token injection |
 | `UR_CODE_SESSION_ACCESS_TOKEN` | Remote session token |
 | `URHQ_DEFAULT_MODELO_MODEL` / `URHQ_DEFAULT_MODELS_MODEL` / `URHQ_DEFAULT_MODELH_MODEL` | Default model tiers (opus/sonnet/haiku-class) |
@@ -279,7 +315,7 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 | `UR_ACP_STDIO_*` | Bound ACP durable sessions, prompts, output, and runtime |
 | `UR_SKILLS_STRICT_SPEC=true` | Reject file skills that violate the Agent Skills specification |
 | `UR_SKILLS_REQUIRE_TRUSTED_SIGNATURE=true` | Require a trusted Ed25519 skill signature at load and invocation |
-| `UR_SKILL_TRUSTED_KEYS_FILE` | Override the private trusted skill-key store |
+| `UR_SKILL_TRUSTED_KEYS_FILE` | Override the trusted **public** skill-key store used to verify signatures |
 | `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` / `OTEL_LOGS_EXPORTER` | Explicitly enable `otlp` or `console`; unset/`none` is off |
 | `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` | Opt into bounded prompt/tool/memory content attributes (off by default) |
 | `OTEL_SDK_DISABLED=true` | Disable all OpenTelemetry SDK export |
@@ -291,6 +327,14 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 `UR_CODE_EAGER_FLUSH`, `UR_CODE_STREAMLINED_OUTPUT`, `UR_CODE_DEBUG_REPAINTS`,
 `UR_CODE_EXIT_AFTER_FIRST_RENDER`, `UR_CODE_TEST_FIXTURES_ROOT`.
 
+Names found only in dead feature branches are not runtime switches. In particular,
+`UR_CODE_REPL`, `UR_CODE_VERIFY_PLAN`, `UR_CODE_USE_BEDROCK`,
+`UR_CODE_USE_VERTEX`, `UR_CODE_DISABLE_CRON`, `UR_CODE_COORDINATOR_MODE`, and
+`UR_CODE_ABLATION_BASELINE` do not enable their named backend/tool/mode in the standard
+build. The last three are read only inside `AGENT_TRIGGERS`, `COORDINATOR_MODE`, and
+`ABLATION_BASELINE` compile-time branches respectively; none of those features is enabled
+by `scripts/bundle.mjs`.
+
 ## Keybindings
 
 `~/.claude`-style keybindings live at `~/.ur/keybindings.json`; open with `/keybindings`,
@@ -301,9 +345,9 @@ global + command-scoped bindings; see `useGlobalKeybindings.tsx` / `useCommandKe
 
 `outputStyle` setting selects a style; custom styles load from an output-styles directory
 (`src/outputStyles/loadOutputStylesDir.ts`). `/output-style` is deprecated in favor of
-`/config`. Built-in styles (`src/constants/outputStyles.ts`) include Explanatory,
-Concise, JSON-strict (every response a parseable JSON object), Debug-verbose
-(hypothesis-driven diagnostics), and Release-notes (changelog tone).
+`/config`. Built-in styles (`src/constants/outputStyles.ts`) are Explanatory,
+Game Designer, Learning, Concise, JSON-strict (every response a parseable JSON object),
+Debug-verbose (hypothesis-driven diagnostics), and Release-notes (changelog tone).
 
 ## Settings not covered above
 

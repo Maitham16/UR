@@ -21,17 +21,17 @@ users don't call tools directly.
 | `Grep` | Regex content search (ripgrep-backed) | `pattern`, `path`, `glob`, output modes | "Where is refreshToken referenced?" |
 | `CodeSearch` | Semantic code search over the local embedding index — auto-enabled when a built index exists (`ur code-index build`); `UR_CODE_INDEX=off` disables | `query` | "Find code that debounces user input" |
 | `Bash` | Run shell commands; supports background tasks, sandboxing, safety checks (`src/tools/BashTool/bashSecurity.ts`); commands with unterminated quotes are rejected pre-execution with an actionable diagnostic (errorCode 11, heredoc guidance) | `command`, `timeout`, `run_in_background`, sandbox overrides | "Run the test suite" |
-| `PowerShell` | Windows PowerShell variant (enabled on Windows) | same shape as Bash | — |
+| `PowerShell` | Windows PowerShell variant (Windows plus `UR_CODE_USE_POWERSHELL_TOOL=1` in the external build) | same shape as Bash | — |
 
 ## Web & network tools
 
 | Tool | Purpose | Key inputs | Example request |
 |---|---|---|---|
 | `WebFetch` | Fetch a public HTTP(S) URL → markdown → analyze with a small model; DNS and every redirect are checked against private/reserved addresses | `url`, `prompt` | "Summarize this blog post: https://…" |
-| `Computer` | Desktop control: screenshot (read-only), click, type. Clicks bounds-checked against real screen geometry; state-changing actions always ask. macOS/Linux only |
-| `web_search` | Web search | `query` | "Search for the fastify v5 migration guide" |
+| `Computer` | Desktop control: screenshot (read-only), click, type. Clicks are bounds-checked against real screen geometry and state-changing actions always ask. macOS/Linux only | action-specific coordinates, text, or output path | "Take a screenshot of the desktop" |
+| `WebSearch` | Provider-side web search. The current runtime gate exposes it for every non-Ollama provider (`getAPIProvider() === 'foundry'`) and hides it on the default Ollama backend; actual server-tool support still depends on the selected provider/model | `query`, optional `allowed_domains` or `blocked_domains` (mutually exclusive) | "Search for the fastify v5 migration guide" |
 | `Api` | Direct public HTTP(S) calls with JSON extraction; private targets, unsafe redirects, oversized responses, GET bodies, and silent sensitive-header sends are rejected/confirmed | `url`, `method`, `headers`, `body`, `timeout` (≤300s), `extract` (dotted path) | "Call GET https://api.github.com/repos/x/y and give me .stargazers_count" |
-| `Browser` | Drive a persistent Playwright browser session: goto/click/type/screenshot/evaluate/fetch; every navigation and subrequest is URL-guarded | `url`, `action`, `selector`, `text`, `expression` | "Open the public staging UI, click Login, screenshot the result" |
+| `Browser` | Guarded public-URL fetch plus a persistent Playwright session for goto/click/type/screenshot/evaluate. Requires `UR_BROWSER_TOOL=1` or `WEB_BROWSER_TOOL=1`; `fetch` needs no browser process, while interactive actions require the externalized `playwright-core` dependency and an installed Chromium/Chrome executable | `url`, `action`, `selector`, `text`, `expression` | "Open the public staging UI, click Login, screenshot the result" |
 
 ## Dev-workflow tools
 
@@ -48,33 +48,34 @@ users don't call tools directly.
 | Tool | Purpose | Example request |
 |---|---|---|
 | `TodoWrite` | Maintain the session todo list | (agent tracks multi-step work) |
-| `TaskCreate` / `TaskGet` / `TaskUpdate` / `TaskList` | Structured task list v2 (dependencies, statuses) — replaces TodoWrite when `todo v2` enabled | "Track these five subtasks" |
+| `TaskCreate` / `TaskGet` / `TaskUpdate` / `TaskList` | Structured task list v2 (dependencies, atomic claims/statuses/numeric ordering) — replaces TodoWrite when the todo-v2 runtime gate is enabled | "Track these five subtasks" |
 | `EnterPlanMode` / `ExitPlanMode` | Enter/leave plan mode; plan approval flow | "Plan first, then implement" |
 | `AskUserQuestion` | Multiple-choice questions to the user | (agent asks when blocked on a decision) |
 | `TaskOutput` / `TaskStop` | Read output of / stop a background task | "Kill the dev server you started" |
 | `EnterWorktree` / `ExitWorktree` | Move the session into/out of an isolated git worktree (worktree mode) | "Do this in a scratch worktree" |
-| `SendUserMessage` | Send a mid-turn brief message to the user (Brief tool) | — |
+| `SendUserMessage` | KAIROS/KAIROS_BRIEF build-only mid-turn brief; not present in the standard npm build | — |
 
 ## Multi-agent tools
 
-The table below lists tools present in the public build. Internal overlay
-modules that export `null` are compile-time placeholders, are never added to
-the tool pool, and are not supported user-facing tools.
+The table below separates the ordinary Agent/Skill tools from coordination
+tools that require an explicit runtime/build gate. Internal overlay modules
+that export `null` are compile-time placeholders, are never added to the tool
+pool, and are not supported user-facing tools.
 
 | Tool | Purpose | Example request |
 |---|---|---|
 | `Agent` | Spawn a subagent (built-in types: `general-purpose`, `Explore`, `Plan`, `verification`, `statusline-setup`, `ur-code-guide`, plus user agents from `/agents` and `.ur/agents/`) | "Use a subagent to survey how errors are handled repo-wide" |
-| `SendMessage` | Message another running agent/teammate | (agent coordination) |
+| `SendMessage` | Message another running agent/teammate; useful only while swarm mode is enabled | (agent coordination) |
 | `TeamCreate` / `TeamDelete` | Create/remove agent teams (swarm mode, `isAgentSwarmsEnabled`) | "Spin up a team for this migration" |
 | `Skill` | Invoke a skill programmatically (model-triggered skills) | "Use the dockerize skill" |
 
-## Scheduling (implemented, feature-gated)
+## Scheduling (nonstandard builds)
 
 | Tool | Gate | Purpose |
 |---|---|---|
 | `CronCreate` / `CronDelete` / `CronList` | AGENT_TRIGGERS | Local scheduled jobs (used by `/loop`, `/automation`) |
 | `RemoteTrigger` | AGENT_TRIGGERS_REMOTE | Manage scheduled remote agents via API |
-| `Sleep` | PROACTIVE/KAIROS | Wait for a duration |
+| `Sleep` | PROACTIVE/KAIROS overlay | The public-source overlay currently exports `null`; do not treat the environment name as a usable tool |
 
 ## MCP & discovery
 
@@ -89,7 +90,7 @@ the tool pool, and are not supported user-facing tools.
 | Tool | Gate | Purpose |
 |---|---|---|
 | `Config` | USER_TYPE=ant | Get/set UR settings programmatically |
-| `REPL` | REPL mode | Wraps Bash/Read/Edit inside a persistent VM; hides the primitives |
+| `REPL` | internal overlay | The public-source overlay currently exports `null`; `UR_CODE_REPL` alone cannot enable it |
 | `StructuredOutput` | synthetic | Enforces structured output schemas in headless runs |
 
 `ListPeers`, `Workflow`, `Monitor`, `PushNotification`, `SendUserFile`,

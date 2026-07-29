@@ -43,6 +43,7 @@ export const call: LocalCommandCall = async (args: string) => {
       return {
         type: 'text',
         value: `Could not clear the profile: ${result.error}`,
+        exitCode: 1,
       }
     }
     return {
@@ -57,11 +58,12 @@ export const call: LocalCommandCall = async (args: string) => {
       return {
         type: 'text',
         value: 'Usage: /permission-profile use <name>\n\n' + renderList(),
+        exitCode: 2,
       }
     }
     const result = setActiveProfile(name)
     if (!result.ok) {
-      return { type: 'text', value: result.error }
+      return { type: 'text', value: result.error, exitCode: 1 }
     }
     return {
       type: 'text',
@@ -74,5 +76,6 @@ export const call: LocalCommandCall = async (args: string) => {
   return {
     type: 'text',
     value: 'Usage: /permission-profile [list | use <name> | clear]',
+    exitCode: 2,
   }
 }

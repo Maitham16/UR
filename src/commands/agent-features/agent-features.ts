@@ -11,9 +11,11 @@ export const call: LocalCommandCall = async (args: string) => {
   const tokens = parseArguments(args)
   const json = tokens.includes('--json')
   const force = tokens.includes('--force')
-  const init = tokens.includes('init') || tokens.includes('--init')
+  const action =
+    tokens.find(token => !token.startsWith('--')) ??
+    (tokens.includes('--init') ? 'init' : 'list')
 
-  if (init) {
+  if (action === 'init') {
     const result = scaffoldAgentFeatures(getCwd(), { force })
     if (json) {
       return { type: 'text', value: JSON.stringify(result, null, 2) }
@@ -21,5 +23,13 @@ export const call: LocalCommandCall = async (args: string) => {
     return { type: 'text', value: formatScaffoldResult(result) }
   }
 
-  return { type: 'text', value: formatAgentFeatureList(json) }
+  if (action === 'list' || action === 'status') {
+    return { type: 'text', value: formatAgentFeatureList(json) }
+  }
+
+  return {
+    type: 'text',
+    value: 'Usage: ur agent-features list|init [--force] [--json]',
+    exitCode: 2,
+  }
 }

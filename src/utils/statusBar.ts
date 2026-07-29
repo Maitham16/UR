@@ -1,3 +1,4 @@
+import { isBackgroundTask, type TaskState } from '../tasks/types.js'
 import { isUpdateAvailable } from './updateNotice.js'
 
 export type StatusBarInput = {
@@ -21,6 +22,23 @@ export type StatusBarDisplayInput = {
   isCI?: boolean
   term?: string
   disabled?: boolean
+}
+
+/**
+ * Count only work that is both active and actually backgrounded.
+ *
+ * The task store intentionally retains foreground and recently-finished
+ * entries. Counting the whole store made the status line show stale ratios
+ * such as "tasks: 0/4 active" long after the work had ended.
+ */
+export function countActiveBackgroundTasks(
+  tasks: Iterable<TaskState>,
+): number {
+  let active = 0
+  for (const task of tasks) {
+    if (isBackgroundTask(task)) active += 1
+  }
+  return active
 }
 
 export function statusBarShouldDisplay({
@@ -63,8 +81,12 @@ export function buildDefaultStatusBar({
   if (model) {
     parts.push(model)
   }
-  if (taskTotalCount > 0) {
-    parts.push(`tasks: ${taskRunningCount}/${taskTotalCount} active`)
+  if (taskRunningCount > 0) {
+    parts.push(
+      taskTotalCount > taskRunningCount
+        ? `tasks: ${taskRunningCount}/${taskTotalCount} active`
+        : `tasks: ${taskRunningCount} active`,
+    )
   }
   if (providerLabel) {
     parts.push(providerLabel)

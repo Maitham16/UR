@@ -45,32 +45,18 @@ Use \`deleted\` to permanently remove a task.
 
 ## Staleness
 
-Make sure to read a task's latest state using \`TaskGet\` before updating it.
+Read a task's latest state using \`TaskGet\` before updating it when another
+worker may have changed it or when your local state may be stale. A task you
+just created or read does not need an immediate redundant read.
 
 ## Examples
 
-Mark task as in progress when starting work:
-\`\`\`json
-{"taskId": "1", "status": "in_progress"}
-\`\`\`
+- Start task 1: set \`taskId\` to \`1\` and \`status\` to \`in_progress\`.
+- Complete task 1 after its checks pass: set \`status\` to \`completed\`.
+- Delete task 1: set \`status\` to \`deleted\`.
+- Claim task 1: set \`owner\` to your worker name.
+- Make task 2 wait for task 1: add \`1\` to \`addBlockedBy\`.
 
-Mark task as completed after finishing work:
-\`\`\`json
-{"taskId": "1", "status": "completed"}
-\`\`\`
-
-Delete a task:
-\`\`\`json
-{"taskId": "1", "status": "deleted"}
-\`\`\`
-
-Claim a task by setting owner:
-\`\`\`json
-{"taskId": "1", "owner": "my-name"}
-\`\`\`
-
-Set up task dependencies:
-\`\`\`json
-{"taskId": "2", "addBlockedBy": ["1"]}
-\`\`\`
+Invoke \`TaskUpdate\` through its native structured tool interface for each
+update. These field descriptions are not a substitute for a tool call.
 `

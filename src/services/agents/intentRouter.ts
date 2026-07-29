@@ -222,9 +222,15 @@ export function formatRoute(result: RouteResult, json: boolean): string {
     }
   }
   lines.push('')
-  const dispatch = result.pattern
-    ? `ur pattern run ${result.pattern} ${JSON.stringify(result.task || 'your task')}`
-    : `Agent({ subagent_type: "${result.agent}", description: "${result.task.slice(0, 40)}", prompt: ${JSON.stringify(result.task)} })`
-  lines.push(`Suggested dispatch:\n  ${dispatch}`)
+  if (result.pattern) {
+    lines.push(
+      `Suggested dispatch:\n  ur pattern run ${result.pattern} ${JSON.stringify(result.task || 'your task')} --execute`,
+    )
+  } else {
+    lines.push(
+      'Suggested dispatch (executable CLI; no tool call is emitted by this preview):',
+      `  ur --agent ${result.agent} --print ${JSON.stringify(result.task)}`,
+    )
+  }
   return lines.join('\n')
 }

@@ -1,7 +1,9 @@
 import type { LocalCommandCall } from '../../types/command.js'
+import { existsSync } from 'node:fs'
 import {
   addCrewTask,
   createCrew,
+  crewPath,
   deleteCrew,
   formatCrew,
   formatCrewList,
@@ -18,7 +20,29 @@ import { getCwd } from '../../utils/cwd.js'
 function option(tokens: string[], name: string): string | undefined {
   const index = tokens.indexOf(name)
   if (index === -1) return undefined
-  return tokens[index + 1]
+  const value = tokens[index + 1]
+  return value && !value.startsWith('--') ? value : undefined
+}
+
+function integerOption(
+  tokens: string[],
+  name: string,
+  minimum: number,
+  maximum: number,
+): { value?: number; error?: string } {
+  if (!tokens.includes(name)) return {}
+  const raw = option(tokens, name)
+  const value = raw === undefined ? Number.NaN : Number(raw)
+  if (
+    !Number.isSafeInteger(value) ||
+    value < minimum ||
+    value > maximum
+  ) {
+    return {
+      error: `${name} must be an integer between ${minimum} and ${maximum}.`,
+    }
+  }
+  return { value }
 }
 
 function positionals(tokens: string[]): string[] {
@@ -54,7 +78,7 @@ function usage(): string {
     '  ur crew show <name> [--json]',
     '  ur crew add <name> --task "another subtask"',
     '  ur crew run <name> [--workers N] [--dynamic] [--max-workers N] [--worktrees] [--max-attempts N] [--retry-backoff-ms N] [--dry-run] [--resume] [--decompose] [--max-turns N] [--skip-permissions] [--json]',
-    '  ur crew reset <name>',
+    '  ur crew reset <name> [--max-attempts N]',
     '  ur crew delete <name>',
     '',
     'A lead decomposes the goal into a shared task board; workers claim and run',
@@ -71,6 +95,26 @@ export const call: LocalCommandCall = async (args: string) => {
   const positional = positionals(tokens)
   const action = positional[0] ?? 'list'
   const name = positional[1]
+  const workers = integerOption(tokens, '--workers', 1, 32)
+  const maxWorkers = integerOption(tokens, '--max-workers', 1, 32)
+  const maxTurns = integerOption(tokens, '--max-turns', 1, 1_000_000)
+  const maxAttempts = integerOption(tokens, '--max-attempts', 1, 5)
+  const retryBackoffMs = integerOption(
+    tokens,
+    '--retry-backoff-ms',
+    0,
+    30_000,
+  )
+  const invalidNumber = [
+    workers,
+    maxWorkers,
+    maxTurns,
+    maxAttempts,
+    retryBackoffMs,
+  ].find(result => result.error)
+  if (invalidNumber?.error) {
+    return { type: 'text', value: invalidNumber.error, exitCode: 2 }
+  }
 
   if (action === 'list') {
     return { type: 'text', value: formatCrewList(listCrews(cwd), json) }
@@ -78,7 +122,16 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'create') {
     const goal = option(tokens, '--goal')
-    if (!name || !goal) return { type: 'text', value: usage() }
+    if (!name || !goal) {
+      return { type: 'text', value: usage(), exitCode: 2 }
+    }
+    if (existsSync(crewPath(cwd, name))) {
+      return {
+        type: 'text',
+        value: `Crew already exists: ${name}. Delete it explicitly before recreating it.`,
+        exitCode: 1,
+      }
+    }
     const decompose = tokens.includes('--decompose')
     const decomposed = decompose ? await decomposeTask(goal, { cwd, dryRun: tokens.includes('--dry-run') }) : undefined
     const spec = createCrew(cwd, name, goal, { lead: option(tokens, '--lead'), decomposed })
@@ -90,7 +143,7 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'plan') {
     const goal = option(tokens, '--goal')
-    if (!goal) return { type: 'text', value: usage() }
+    if (!goal) return { type: 'text', value: usage(), exitCode: 2 }
     const tasks = await decomposeTask(goal, { cwd, dryRun: tokens.includes('--dry-run') })
     const result = {
       goal,
@@ -101,64 +154,88 @@ export const call: LocalCommandCall = async (args: string) => {
     return { type: 'text', value: formatDecomposition(result, json) }
   }
 
-  if (!name) return { type: 'text', value: usage() }
+  if (!name) return { type: 'text', value: usage(), exitCode: 2 }
 
   if (action === 'show') {
     const spec = loadCrew(cwd, name)
-    if (!spec) return { type: 'text', value: `Crew not found: ${name}` }
+    if (!spec) {
+      return { type: 'text', value: `Crew not found: ${name}`, exitCode: 1 }
+    }
     return { type: 'text', value: formatCrew(spec, json) }
   }
 
   if (action === 'add') {
     const task = option(tokens, '--task')
-    if (!task) return { type: 'text', value: 'Provide --task "subtask instruction".' }
+    if (!task) {
+      return {
+        type: 'text',
+        value: 'Provide --task "subtask instruction".',
+        exitCode: 2,
+      }
+    }
     const spec = addCrewTask(cwd, name, task)
-    if (!spec) return { type: 'text', value: `Crew not found: ${name}` }
+    if (!spec) {
+      return { type: 'text', value: `Crew not found: ${name}`, exitCode: 1 }
+    }
     return { type: 'text', value: json ? formatCrew(spec, true) : `Added a task to ${spec.name} (now ${spec.tasks.length}).` }
   }
 
   if (action === 'reset') {
-    const spec = reopenClaimed(cwd, name)
-    if (!spec) return { type: 'text', value: `Crew not found: ${name}` }
-    return { type: 'text', value: json ? formatCrew(spec, true) : `Reopened in-progress tasks on ${spec.name}.` }
+    const spec = reopenClaimed(
+      cwd,
+      name,
+      maxAttempts.value,
+    )
+    if (!spec) {
+      return { type: 'text', value: `Crew not found: ${name}`, exitCode: 1 }
+    }
+    return {
+      type: 'text',
+      value: json
+        ? formatCrew(spec, true)
+        : `Applied safe recovery to in-progress tasks on ${spec.name}.`,
+    }
   }
 
   if (action === 'delete' || action === 'remove') {
-    return { type: 'text', value: deleteCrew(cwd, name) ? `Deleted crew ${name}.` : `Crew not found: ${name}` }
+    const deleted = deleteCrew(cwd, name)
+    return {
+      type: 'text',
+      value: deleted ? `Deleted crew ${name}.` : `Crew not found: ${name}`,
+      ...(deleted ? {} : { exitCode: 1 }),
+    }
   }
 
   if (action === 'run') {
     const spec = loadCrew(cwd, name)
     if (!spec) {
       const goal = option(tokens, '--goal')
-      if (!goal) return { type: 'text', value: `Crew not found: ${name}` }
+      if (!goal) {
+        return {
+          type: 'text',
+          value: `Crew not found: ${name}`,
+          exitCode: 1,
+        }
+      }
       const decomposed = await decomposeTask(goal, { cwd, dryRun: tokens.includes('--dry-run') })
       createCrew(cwd, name, goal, { lead: option(tokens, '--lead'), decomposed })
     } else if (tokens.includes('--decompose') && spec.tasks.length === 0) {
       const decomposed = await decomposeTask(spec.goal, { cwd, dryRun: tokens.includes('--dry-run') })
       createCrew(cwd, name, spec.goal, { lead: spec.lead, decomposed })
     }
-    const workersRaw = option(tokens, '--workers')
-    const maxTurnsRaw = option(tokens, '--max-turns')
     const events: string[] = []
     const result = await runCrew(name, {
       cwd,
-      workers: workersRaw ? Number(workersRaw) : 1,
+      workers: workers.value ?? 1,
       dynamic: tokens.includes('--dynamic'),
-      maxWorkers: option(tokens, '--max-workers')
-        ? Number(option(tokens, '--max-workers'))
-        : undefined,
-      maxAttempts: option(tokens, '--max-attempts')
-        ? Number(option(tokens, '--max-attempts'))
-        : undefined,
-      retryBackoffMs: option(tokens, '--retry-backoff-ms')
-        ? Number(option(tokens, '--retry-backoff-ms'))
-        : undefined,
+      maxWorkers: maxWorkers.value,
+      maxAttempts: maxAttempts.value,
+      retryBackoffMs: retryBackoffMs.value,
       dryRun: tokens.includes('--dry-run'),
       worktrees: tokens.includes('--worktrees'),
       resume: tokens.includes('--resume'),
       skipPermissions: tokens.includes('--skip-permissions'),
-      maxTurns: maxTurnsRaw ? Number(maxTurnsRaw) : undefined,
+      maxTurns: maxTurns.value,
       onEvent: event => {
         if (event.kind === 'claim') events.push(`  ${event.worker} claimed ${event.taskId} (${event.title})`)
         else if (event.kind === 'done') events.push(`  ${event.worker} finished ${event.taskId}: ${event.status}`)
@@ -167,8 +244,14 @@ export const call: LocalCommandCall = async (args: string) => {
       },
     })
     const trace = !json && events.length ? `\n\nTimeline:\n${events.join('\n')}` : ''
-    return { type: 'text', value: `${formatRunCrewResult(result, json)}${trace}` }
+    return {
+      type: 'text',
+      value: `${formatRunCrewResult(result, json)}${trace}`,
+      ...(result.progress.done === result.progress.total
+        ? {}
+        : { exitCode: 1 }),
+    }
   }
 
-  return { type: 'text', value: usage() }
+  return { type: 'text', value: usage(), exitCode: 2 }
 }

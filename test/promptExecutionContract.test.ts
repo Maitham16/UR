@@ -2,6 +2,8 @@ import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { EXECUTION_CONTRACT_SECTION } from '../src/constants/executionContract.js'
 import { getTaskToolGuidance } from '../src/constants/taskToolGuidance.js'
+import { getPrompt as getAgentToolPrompt } from '../src/tools/AgentTool/prompt.js'
+import { PROMPT as TODO_WRITE_PROMPT } from '../src/tools/TodoWriteTool/prompt.js'
 
 test('execution contract is ordered, complete, and compact', () => {
   for (let step = 1; step <= 6; step++) {
@@ -53,6 +55,17 @@ test('legacy task guidance remains available without masking canonical tools', (
     getTaskToolGuidance(new Set(['TaskCreate', 'TaskUpdate', 'TodoWrite'])),
   ).not.toContain('TodoWrite')
   expect(getTaskToolGuidance(new Set())).toBeNull()
+})
+
+test('legacy todo prompt does not model narrated work as execution', () => {
+  expect(TODO_WRITE_PROMPT).toContain('dependency order')
+  expect(TODO_WRITE_PROMPT).toMatch(
+    /relevant\s+verification have succeeded/,
+  )
+  expect(TODO_WRITE_PROMPT).toContain('native structured interfaces')
+  expect(TODO_WRITE_PROMPT).not.toContain('*Executes:')
+  expect(TODO_WRITE_PROMPT).not.toContain('* Uses the')
+  expect(TODO_WRITE_PROMPT).not.toContain('command completed successfully')
 })
 
 test('system prompt includes the contract and removes contradictory verification rules', () => {
@@ -141,6 +154,8 @@ test('task tool prompts use one unambiguous lifecycle vocabulary', () => {
   expect(createPrompt).toContain('Use TaskUpdate, not TaskCreate')
   expect(updatePrompt).not.toContain('Mark tasks as resolved')
   expect(updatePrompt).toContain('next unblocked task')
+  expect(updatePrompt).not.toContain('```json')
+  expect(updatePrompt).toContain('native structured tool interface')
 })
 
 test('delegation guidance requires scoped tasks and independent evidence', () => {
@@ -154,4 +169,23 @@ test('delegation guidance requires scoped tasks and independent evidence', () =>
   expect(agentPrompt).not.toContain(
     "outputs should generally be trusted",
   )
+  expect(agentPrompt).not.toContain('Uses the ${AGENT_TOOL_NAME} tool')
+  expect(agentPrompt).not.toContain('greeting-responder')
+  expect(agentPrompt).toContain(
+    'Never narrate a tool call as if narration executed it',
+  )
+})
+
+test('rendered Agent prompt never delegates greetings or narrates execution', async () => {
+  const prompt = await getAgentToolPrompt([
+    {
+      agentType: 'test-runner',
+      whenToUse: 'Run focused verification after implementation',
+      tools: ['Bash'],
+    } as never,
+  ])
+
+  expect(prompt).not.toContain('greeting-responder')
+  expect(prompt).not.toContain('Uses the Agent tool')
+  expect(prompt).not.toContain('write the following code')
 })

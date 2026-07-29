@@ -56,16 +56,24 @@ async function listWorktrees(cwd: string): Promise<string> {
   return ['UR worktrees (git worktree list)', '', ...urWorktrees].join('\n')
 }
 
-async function removeWorktreePath(cwd: string, path: string): Promise<string> {
+async function removeWorktreePath(
+  cwd: string,
+  path: string,
+): Promise<{ ok: boolean; message: string }> {
   const root = findGitRoot(cwd)
-  if (!root) return 'Not inside a git repository.'
+  if (!root) return { ok: false, message: 'Not inside a git repository.' }
   const remove = await git(root, ['worktree', 'remove', path], 120_000)
   if (remove.code !== 0) {
     // If remove fails (e.g., dirty), try force remove
     const force = await git(root, ['worktree', 'remove', '--force', path], 120_000)
-    if (force.code !== 0) return `Failed to remove worktree ${path}: ${force.stderr || force.error}`
+    if (force.code !== 0) {
+      return {
+        ok: false,
+        message: `Failed to remove worktree ${path}: ${force.stderr || force.error}`,
+      }
+    }
   }
-  return `Removed worktree ${path}`
+  return { ok: true, message: `Removed worktree ${path}` }
 }
 
 export const call: LocalCommandCall = async (args: string) => {
@@ -82,10 +90,16 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'status' || action === 'show') {
     const id = pos[1]
-    if (!id) return { type: 'text', value: usage() }
+    if (!id) return { type: 'text', value: usage(), exitCode: 2 }
     const tasks = listBackgroundTasks(cwd)
     const task = tasks.find(t => t.id === id || t.worktree?.path?.includes(id))
-    if (!task) return { type: 'text', value: `No worktree found matching "${id}".` }
+    if (!task) {
+      return {
+        type: 'text',
+        value: `No worktree found matching "${id}".`,
+        exitCode: 1,
+      }
+    }
     if (json) return { type: 'text', value: JSON.stringify(task, null, 2) }
     return {
       type: 'text',
@@ -116,11 +130,16 @@ export const call: LocalCommandCall = async (args: string) => {
       }
     }
     const results: string[] = []
+    let failed = false
     for (const task of removable) {
       try {
         const path = task.worktree!.path!
         const gitRemove = await removeWorktreePath(cwd, path)
-        results.push(gitRemove)
+        results.push(gitRemove.message)
+        if (!gitRemove.ok) {
+          failed = true
+          continue
+        }
         // Also remove the .ur/worktrees/<branch> directory if anything remains
         try {
           await rm(path, { recursive: true, force: true })
@@ -128,11 +147,16 @@ export const call: LocalCommandCall = async (args: string) => {
           // ignore
         }
       } catch (e) {
+        failed = true
         results.push(`Failed to clean ${task.id}: ${errorMessage(e)}`)
       }
     }
-    return { type: 'text', value: ['Cleaned worktrees:', ...results].join('\n') }
+    return {
+      type: 'text',
+      value: ['Cleaned worktrees:', ...results].join('\n'),
+      ...(failed ? { exitCode: 1 } : {}),
+    }
   }
 
-  return { type: 'text', value: usage() }
+  return { type: 'text', value: usage(), exitCode: 2 }
 }

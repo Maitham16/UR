@@ -17,6 +17,13 @@ export const call: LocalCommandCall = async (args, context) => {
   const json = tokens.includes('--json')
   const fileIndex = tokens.indexOf('--file')
   const filePath = fileIndex >= 0 ? tokens[fileIndex + 1] : undefined
+  if (fileIndex >= 0 && !filePath) {
+    return {
+      type: 'text',
+      value: 'Usage: ur agent-inspect --file <transcript.jsonl>',
+      exitCode: 2,
+    }
+  }
 
   // Subagent spend lives in sibling transcripts, not in the parent's messages,
   // so it needs its own path rather than being derivable from --file.
@@ -28,6 +35,7 @@ export const call: LocalCommandCall = async (args, context) => {
         type: 'text',
         value:
           'Could not locate a session directory. Pass one: ur agent-inspect --costs <sessionDir>/subagents',
+        exitCode: 1,
       }
     }
     return {
@@ -44,6 +52,7 @@ export const call: LocalCommandCall = async (args, context) => {
       return {
         type: 'text',
         value: error instanceof Error ? error.message : String(error),
+        exitCode: 1,
       }
     }
   } else {
@@ -54,6 +63,7 @@ export const call: LocalCommandCall = async (args, context) => {
         type: 'text',
         value:
           'No in-session messages available. Run inside a session, or pass a transcript: ur agent-inspect --file <path.jsonl>',
+        exitCode: 1,
       }
     }
   }

@@ -215,6 +215,35 @@ function main() {
       fail('packed ur doctor --help did not print doctor usage')
     }
 
+    const sdkImport = run(
+      nodeBin,
+      [
+        '--input-type=module',
+        '--eval',
+        "import { parseResultText, UrClient } from 'ur-agent/sdk'; if (parseResultText('{\"result\":\"sdk-ok\"}') !== 'sdk-ok' || parseResultText('[{\"type\":\"result\",\"result\":\"\"}]') !== '' || typeof UrClient !== 'function') process.exit(1); console.log('sdk-ok')",
+      ],
+      { cwd: packageRoot },
+    )
+    expectStatus('packed ur-agent/sdk ESM import', sdkImport, 0)
+    if (sdkImport.stdout.trim() !== 'sdk-ok') {
+      fail(`packed ur-agent/sdk ESM import returned "${sdkImport.stdout.trim()}"`)
+    }
+
+    const sdkRequire = run(
+      nodeBin,
+      [
+        '--eval',
+        "const { parseResultText, UrClient } = require('ur-agent/sdk'); if (parseResultText('{\"result\":\"sdk-ok\"}') !== 'sdk-ok' || parseResultText('[{\"type\":\"result\",\"result\":\"\"}]') !== '' || typeof UrClient !== 'function') process.exit(1); console.log('sdk-ok')",
+      ],
+      { cwd: packageRoot },
+    )
+    expectStatus('packed ur-agent/sdk CommonJS require', sdkRequire, 0)
+    if (sdkRequire.stdout.trim() !== 'sdk-ok') {
+      fail(
+        `packed ur-agent/sdk CommonJS require returned "${sdkRequire.stdout.trim()}"`,
+      )
+    }
+
     const providerDoctor = runPackagedBundle(packageRoot, [
       'provider',
       'doctor',

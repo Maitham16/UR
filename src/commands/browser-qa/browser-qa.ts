@@ -80,18 +80,56 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (command === 'validate') {
     const results = all.map(item => ({ file: item.file, errors: validateFixture(item.fixture) }))
-    return { type: 'text', value: json ? JSON.stringify({ results }, null, 2) : JSON.stringify({ results }, null, 2) }
+    const valid = results.every(result => result.errors.length === 0)
+    return {
+      type: 'text',
+      value: JSON.stringify({ valid, results }, null, 2),
+      ...(valid ? {} : { exitCode: 1 }),
+    }
   }
 
   if (command === 'run') {
     const name = tokens.find(token => !token.startsWith('--') && token !== 'run')
+    if (!name) {
+      return {
+        type: 'text',
+        value: 'Usage: ur browser-qa run <fixture> [--dry-run] [--json]',
+        exitCode: 2,
+      }
+    }
     const selected = all.find(item => item.file === name || item.fixture?.name === name)
-    if (!selected?.fixture) return { type: 'text', value: `Browser QA fixture not found: ${name ?? ''}` }
+    if (!selected?.fixture) {
+      return {
+        type: 'text',
+        value: `Browser QA fixture not found: ${name}`,
+        exitCode: 1,
+      }
+    }
     const errors = validateFixture(selected.fixture)
-    if (errors.length > 0) return { type: 'text', value: `Invalid fixture: ${errors.join(', ')}` }
+    if (errors.length > 0) {
+      return {
+        type: 'text',
+        value: `Invalid fixture: ${errors.join(', ')}`,
+        exitCode: 1,
+      }
+    }
     const result = await smoke(selected.fixture, dryRun)
-    return { type: 'text', value: json ? JSON.stringify(result, null, 2) : JSON.stringify(result, null, 2) }
+    const ok =
+      dryRun ||
+      (!!result &&
+        typeof result === 'object' &&
+        (result as { ok?: unknown }).ok === true)
+    return {
+      type: 'text',
+      value: JSON.stringify(result, null, 2),
+      ...(ok ? {} : { exitCode: 1 }),
+    }
   }
 
-  return { type: 'text', value: 'Usage: ur browser-qa list|validate|run [fixture] [--dry-run] [--json]' }
+  return {
+    type: 'text',
+    value:
+      'Usage: ur browser-qa list|validate|run [fixture] [--dry-run] [--json]',
+    exitCode: 2,
+  }
 }

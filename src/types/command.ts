@@ -14,7 +14,7 @@ import type { LogOption } from './logs.js'
 import type { Message } from './message.js'
 import type { PluginManifest } from './plugin.js'
 
-export type LocalCommandResult =
+export type LocalCommandResult = (
   | { type: 'text'; value: string }
   | {
       type: 'compact'
@@ -22,6 +22,24 @@ export type LocalCommandResult =
       displayText?: string
     }
   | { type: 'skip' } // Skip messages
+) & {
+  /**
+   * Process status for script-facing CLI adapters.
+   *
+   * Local command implementations return this instead of mutating the global
+   * process, which keeps direct/unit invocation deterministic. Interactive
+   * slash-command callers may ignore it; the top-level CLI adapter honors it.
+   */
+  exitCode?: number
+}
+
+export function localCommandExitCode(
+  result: LocalCommandResult,
+  fallback = 0,
+): number {
+  const code = result.exitCode ?? fallback
+  return Number.isSafeInteger(code) && code >= 0 && code <= 255 ? code : 1
+}
 
 export type PromptCommand = {
   type: 'prompt'

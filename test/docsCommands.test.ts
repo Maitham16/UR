@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
@@ -25,6 +26,24 @@ function staticSiteCommandNames(): string[] {
   )?.[1]
   if (!commandBlock) throw new Error('documentation/app.js command catalog not found')
   return [...commandBlock.matchAll(/\n\s+name: '([^']+)'/g)].map(
+    match => match[1]!,
+  )
+}
+
+/** Canonical command names printed by the bundled binary in its default build. */
+function shippedCommandNames(): string[] {
+  const help = execFileSync(
+    process.execPath,
+    [join(REPO, 'bin/ur.js'), '--help'],
+    {
+      cwd: REPO,
+      encoding: 'utf8',
+      env: {...process.env, NODE_ENV: 'test'},
+    },
+  )
+  const commandSection = help.split('\nCommands:\n')[1]
+  if (!commandSection) throw new Error('bundled CLI help has no Commands section')
+  return [...commandSection.matchAll(/^\s{2}([a-z][a-z0-9-]*)(?:\||\s)/gm)].map(
     match => match[1]!,
   )
 }
@@ -111,15 +130,10 @@ describe('documentation commands and links', () => {
 
   test('static documentation site has one card for every shipped CLI command', () => {
     const names = staticSiteCommandNames()
-    expect(names).toHaveLength(59) // `ur`, `ur -p`, and 57 shipped subcommands
     expect(new Set(names).size).toBe(names.length)
 
     const commandNames = names.filter(name => name !== 'ur' && name !== 'ur -p')
-    expect(commandNames).toHaveLength(57)
-    for (const name of commandNames) expect(commands.has(name)).toBe(true)
-    for (const required of ['audit', 'cloud', 'recipe', 'thread', 'wiki']) {
-      expect(commandNames).toContain(required)
-    }
+    expect(commandNames.sort()).toEqual(shippedCommandNames().sort())
   })
 
   test('static documentation version and HTML ids are consistent', () => {
@@ -133,7 +147,14 @@ describe('documentation commands and links', () => {
 
   test('npm package files include the documentation set', () => {
     const packageJson = JSON.parse(readRepoFile('package.json'))
-    for (const entry of ['docs', 'documentation', 'examples', 'README.md', 'CHANGELOG.md']) {
+    for (const entry of [
+      'docs',
+      'technical',
+      'documentation',
+      'examples',
+      'README.md',
+      'CHANGELOG.md',
+    ]) {
       expect(packageJson.files).toContain(entry)
     }
   })

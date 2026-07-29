@@ -7,6 +7,7 @@ import {
 } from '../../services/agents/artifactsServer.js'
 import { threadsDir } from '../../services/agents/dashboardRoutes.js'
 import { getCwd } from '../../utils/cwd.js'
+import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { safeParseJSON } from '../../utils/json.js'
 import {
   getProjectsDir,
@@ -68,13 +69,13 @@ pre{white-space:pre-wrap;background:#f7f7f7;padding:8px;border-radius:6px}
 
 export const call: LocalCommandCall = async (args: string): Promise<LocalCommandResult> => {
   const cwd = getCwd()
-  const tokens = (args ?? '').trim().split(/\s+/).filter(Boolean)
+  const tokens = parseArguments(args)
   const action = tokens[0] ?? 'list'
 
   if (action === 'share') {
     const sessionId = tokens[1]
     if (sessionId && !SESSION_ID_PATTERN.test(sessionId)) {
-      return { type: 'text', value: 'Invalid session id.' }
+      return { type: 'text', value: 'Invalid session id.', exitCode: 2 }
     }
     let transcriptPath = sessionId
       ? getTranscriptPathForSession(sessionId)
@@ -86,10 +87,18 @@ export const call: LocalCommandCall = async (args: string): Promise<LocalCommand
         ? readdirSync(dir).filter(f => f.endsWith('.jsonl'))
         : []
       if (!sessionId && candidates.length === 0) {
-        return { type: 'text', value: `No transcript found at ${transcriptPath}.` }
+        return {
+          type: 'text',
+          value: `No transcript found at ${transcriptPath}.`,
+          exitCode: 1,
+        }
       }
       if (sessionId) {
-        return { type: 'text', value: `No transcript for session ${sessionId} (${transcriptPath}).` }
+        return {
+          type: 'text',
+          value: `No transcript for session ${sessionId} (${transcriptPath}).`,
+          exitCode: 1,
+        }
       }
       transcriptPath = candidates
         .map(name => join(dir, name))
@@ -126,5 +135,9 @@ export const call: LocalCommandCall = async (args: string): Promise<LocalCommand
     }
   }
 
-  return { type: 'text', value: 'Usage: ur thread share [sessionId] | list [--json]' }
+  return {
+    type: 'text',
+    value: 'Usage: ur thread share [sessionId] | list [--json]',
+    exitCode: 2,
+  }
 }

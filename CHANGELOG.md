@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.65.7
+
+- Audited all 14 technical chapters against the shipped source and generated
+  CLI. The manual now distinguishes public runtime behavior from compile-time
+  flags, compatibility-only state, and source helpers; it is included in the
+  npm package and checked for valid paths, commands, configuration, and package
+  coverage.
+- Reworked agent guidance into one compact, ordered execution contract plus
+  mode-specific code, research, debug, browser, image, video, and data
+  workflows. Structured tool calls, dependency-aware planning, bounded
+  parallelism, failure recovery, result inspection, verification, honest
+  completion, and prompt-injection boundaries remain explicit without unsafe
+  package-manager guesses or examples that merely narrate fake tool calls.
+- Hardened task execution end to end. Both Task V2 and legacy TodoWrite plans
+  participate in mutation and completion gates, task order is numeric and
+  dependency-aware, failed/skipped states are rendered honestly, and the
+  verifier refuses an overall completion while actionable work remains or task
+  state cannot be read.
+- Workflow execution now checks approval before invoking a side effect,
+  enforces verification unless explicitly advisory, records every settled
+  parallel branch, and persists progress atomically. Resume restores bounded
+  exact dependency outputs without replaying completed steps; missing or
+  oversized required output fails closed and explains how to recover.
+- Multi-agent crews and planned `/exec` runs use bounded parallel workers,
+  dependency fan-in, exact verdicts, cancellation-aware respawn, isolated retry
+  worktrees, and a shared-checkout write gate. Ambiguous side effects are not
+  replayed, per-prompt worktrees keep dependent steps together, and concurrent
+  output files cannot overwrite one another.
+- Fixed false-success and argument-parsing behavior across root and slash
+  commands. Invalid usage returns 2, failed operations return 1, child process
+  failures propagate, previews do not mutate, and claim-ledger persistence is
+  structurally validated, workspace-contained, private, atomic, and bounded.
+- Strengthened provider and tool-call interoperability for smaller/local
+  models: streamed calls keep stable ordinals, cumulative fragments are
+  deduplicated conservatively, malformed or rewritten inputs are revalidated,
+  Ollama image results and session-host overrides are preserved, and OpenAI
+  Responses transport settings now reach actual client selection.
+- Improved terminal task UX: live task/status displays use the selected
+  session model, show only actionable or active background work, preserve
+  selection as rows change, handle narrow terminals, expose blockers and every
+  terminal status, and never advertise blocked work as the next action.
+- Hardened session, export, research, notes, file-operation, worktree, and
+  sandbox paths against traversal, symlink escape, oversized/corrupt state,
+  interrupted writes, stale replay, and misleading success. Unsupported
+  workflow/monitor task implementations remain inspectable as history but are
+  no longer presented as runnable.
+- Added a typed `ur-agent/sdk` subpath for ESM and CommonJS with validated
+  subprocess inputs, deterministic JSON/NDJSON result parsing, environment
+  precedence, and nonzero-exit handling. Release gates rebuild generated
+  artifacts before publish, smoke-test both SDK module formats from the packed
+  tarball, require the technical manual, and verify runtime dependency ranges.
+
 ## 1.65.6
 
 - Remote sessions no longer reconnect forever when the server repeatedly
