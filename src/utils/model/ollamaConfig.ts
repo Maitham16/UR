@@ -61,6 +61,20 @@ export function setOllamaBaseUrlOverride(url: string | undefined): void {
   sessionOverride = url
 }
 
+/**
+ * The host chosen for this session, if any.
+ *
+ * Exposed because callers that resolve a base URL from provider settings must
+ * check this *first*. `--discover-ollama` sets it, but two call sites read
+ * `provider.baseUrl` before falling back to `getOllamaBaseUrl()`, so a
+ * persisted setting silently outranked a host the user had just picked
+ * interactively: `/model` kept listing localhost models and requests kept
+ * going to the local daemon.
+ */
+export function getOllamaSessionOverride(): string | undefined {
+  return sessionOverride ? normalizeOllamaBaseUrl(sessionOverride) : undefined
+}
+
 /** Clear the in-memory session override. */
 export function clearOllamaBaseUrlOverride(): void {
   sessionOverride = undefined

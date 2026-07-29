@@ -24,7 +24,10 @@ import { getInitialSettings } from '../../utils/settings/settings.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
 import { getProviderApiKey } from '../providers/providerCredentials.js'
 import { isNetworkRestricted, offlineBlockReason } from '../../utils/offlineMode.js'
-import { getOllamaBaseUrl } from '../../utils/model/ollamaConfig.js'
+import {
+  getOllamaBaseUrl,
+  getOllamaSessionOverride,
+} from '../../utils/model/ollamaConfig.js'
 
 export type ProviderMessageClient = {
   beta: {
@@ -287,9 +290,15 @@ async function createLocalProviderClient(
   const { createOllamaURHQClient } = await import('./ollama.js')
   const settings = getInitialSettings()
   const configured = getActiveProviderSettings(settings)
-  const baseUrlOverride = configured.active === providerId
-    ? configured.baseUrl ?? getOllamaBaseUrl(process.env, settings)
-    : getOllamaBaseUrl(process.env, settings)
+  // Session override first: `configured.baseUrl ??` short-circuits before
+  // getOllamaBaseUrl is ever called, so a persisted base_url meant requests
+  // kept going to the local daemon after the user picked a network host.
+  const sessionHost = getOllamaSessionOverride()
+  const baseUrlOverride = sessionHost
+    ? sessionHost
+    : configured.active === providerId
+      ? configured.baseUrl ?? getOllamaBaseUrl(process.env, settings)
+      : getOllamaBaseUrl(process.env, settings)
   return createOllamaURHQClient({ baseUrlOverride }) as ProviderMessageClient
 }
 

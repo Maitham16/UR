@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.65.2
+
+- Fixed `--discover-ollama` having no effect on model discovery or requests.
+  `getOllamaBaseUrl` resolves the session host correctly, but three callers
+  read a persisted `provider.baseUrl` *before* consulting it, so a value
+  written by `ur config set base_url` silently outranked a host chosen
+  interactively seconds earlier. `/model-doctor` calls `getOllamaBaseUrl()`
+  directly and was right, which is how the split surfaced: the doctor reported
+  `http://172.20.10.5:11434` and its six models while `/model` listed the local
+  daemon's, in the same session.
+- This was not cosmetic. The request client had the same inversion
+  (`configured.baseUrl ?? getOllamaBaseUrl(...)` short-circuits), so calls went
+  to the local daemon while the doctor said otherwise — a different model than
+  the user believed, with no visible signal. The provider doctor had it too, so
+  it probed a host that was not in use.
+- A model that does not advertise the `tools` capability now says so in the
+  transcript. UR already detected it and wrote the warning to the debug log,
+  which is invisible in a normal session: tool definitions were stripped, and
+  the model — having no way to act — described work it had not performed and
+  reported files it had not created. The warning appears once per model and
+  names the fix.
+- `AskUserQuestion` states that `options` is required and that a question with
+  no discrete choices should be asked in plain text rather than by calling the
+  tool with a prose question and no options.
+- Fixed the task list displaying out of order. `listTasks` returned `readdir`
+  order, which is lexicographic in practice, so past nine tasks it read
+  1, 10, 11, 12, ... 2, 20, 3. Under ten tasks the two orders are identical,
+  which is why it went unnoticed and why a test written against a short
+  fixture would have passed against the broken code.
+- A task list is now required before any tool that changes the workspace
+  (`Edit`, `Write`, `Bash`, ...). The system prompt already asked for one on
+  multi-step work and the agent still edited files and reported completion with
+  no plan on record. Reads are never blocked, so it can investigate before
+  planning; the first three tool calls are free so a one-line fix needs no
+  ceremony; task tools are exempt so the gate cannot block its own remedy; and
+  subagents are exempt since they execute a step rather than own the plan.
+  Configure with `tasks.requireBeforeChanges`.
+
 ## 1.65.1
 
 - Fixed `ur selftest run` reporting 0/5 anywhere but the UR repo. The drill

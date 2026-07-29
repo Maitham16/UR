@@ -45,6 +45,7 @@ import {
   isPromptTooLongMessage,
 } from './services/api/errors.js'
 import { logAntError, logForDebugging } from './utils/debug.js'
+import { consumePendingProviderNotice } from './services/api/ollama.js'
 import {
   createUserMessage,
   createUserInterruptionMessage,
@@ -478,6 +479,15 @@ async function* queryLoop(
       ? microcompactResult.compactionInfo?.pendingCacheEdits
       : undefined
     queryCheckpoint('query_microcompact_end')
+
+    // Capability warnings raised while the provider built the request. These
+    // are queued rather than logged because the debug log is invisible in a
+    // normal session: a model that silently lost its tools then described work
+    // it had not done, and nothing on screen said why.
+    const providerNotice = consumePendingProviderNotice()
+    if (providerNotice) {
+      yield createSystemMessage(providerNotice, 'warning')
+    }
 
     // Project the collapsed context view and maybe commit more collapses.
     // Runs BEFORE autocompact so that if collapse gets us under the

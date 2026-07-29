@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process'
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
-import { getOllamaBaseUrl } from '../../utils/model/ollamaConfig.js'
+import {
+  getOllamaBaseUrl,
+  getOllamaSessionOverride,
+} from '../../utils/model/ollamaConfig.js'
 import { getInitialSettings, updateSettingsForSource } from '../../utils/settings/settings.js'
 import type { EditableSettingSource } from '../../utils/settings/constants.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
@@ -1106,7 +1109,11 @@ async function checkEndpoint(
   result: ProviderDoctorResult,
 ): Promise<void> {
   if (!definition.endpointKind) return
+  // Same precedence as providerBaseUrl: the doctor must probe the host the
+  // session is actually using, or it reports a healthy localhost while
+  // requests go to the discovered machine.
   const baseUrl =
+    (definition.id === 'ollama' ? getOllamaSessionOverride() : undefined) ??
     settings.baseUrl ??
     (definition.id === 'ollama' ? getOllamaBaseUrl() : definition.defaultBaseUrl)
   if (!baseUrl) {
@@ -1876,6 +1883,16 @@ function providerBaseUrl(
   definition: ProviderDefinition,
   settings: SettingsJson,
 ): string | undefined {
+  // A host picked this session with --discover-ollama must outrank a persisted
+  // provider.baseUrl. Checking settings first meant the discovered host never
+  // reached model discovery for anyone who had ever run `ur config set
+  // base_url`, so /model kept listing localhost models with no indication why.
+  if (provider === 'ollama') {
+    const sessionHost = getOllamaSessionOverride()
+    if (sessionHost) {
+      return sessionHost
+    }
+  }
   const providerSettings = getActiveProviderSettings(settings)
   if (providerSettings.baseUrl) {
     return providerSettings.baseUrl

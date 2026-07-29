@@ -109,7 +109,7 @@ const questionOptionSchema = lazySchema(() => z.object({
 const questionSchema = lazySchema(() => z.object({
   question: z.string().describe('The complete question to ask the user. Should be clear, specific, and end with a question mark. Example: "Which library should we use for date formatting?" If multiSelect is true, phrase it accordingly, e.g. "Which features do you want to enable?"'),
   header: z.string().describe(`The category being decided, as a chip/tag (max ${ASK_USER_QUESTION_TOOL_CHIP_WIDTH} chars). Name the dimension, not the question: for "Which database should we use?" the header is "Database", not "Which DB". Examples: "Auth method", "Library", "Approach".`),
-  options: z.array(questionOptionSchema()).min(2).max(8).describe(`The available choices for this question. Must have 2-8 options. Keep options concise and distinct; there should be no 'Other' option, that will be provided automatically.`),
+  options: z.array(questionOptionSchema()).min(2).max(8).describe(`REQUIRED: 2-8 concrete choices. A question with no options is not askable here — if you cannot name at least two specific answers, the question is open-ended, so ask it in plain assistant text instead of calling this tool. Do not call this tool with a prose question and omit options. Keep options concise and distinct; there should be no 'Other' option, that will be provided automatically.`),
   multiSelect: z.boolean().default(false).describe('Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.')
 }));
 const annotationsSchema = lazySchema(() => {

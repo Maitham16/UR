@@ -444,6 +444,24 @@ export async function deleteTask(
   }
 }
 
+/**
+ * Order task IDs the way they were allocated: ascending integers.
+ *
+ * Non-numeric IDs are possible for externally-created lists, so those fall
+ * back to a stable string comparison and sort after the numeric ones rather
+ * than producing NaN comparisons, which leave the order unspecified.
+ */
+export function compareTaskIds(a: string, b: string): number {
+  const left = Number.parseInt(a, 10)
+  const right = Number.parseInt(b, 10)
+  const leftIsNumeric = !Number.isNaN(left)
+  const rightIsNumeric = !Number.isNaN(right)
+  if (leftIsNumeric && rightIsNumeric) return left - right
+  if (leftIsNumeric) return -1
+  if (rightIsNumeric) return 1
+  return a.localeCompare(b)
+}
+
 export async function listTasks(taskListId: string): Promise<Task[]> {
   const dir = getTasksDir(taskListId)
   let files: string[]
@@ -455,6 +473,11 @@ export async function listTasks(taskListId: string): Promise<Task[]> {
   const taskIds = files
     .filter(f => f.endsWith('.json'))
     .map(f => f.replace('.json', ''))
+    // readdir returns filesystem order, which is lexicographic in practice:
+    // past nine tasks that reads 1, 10, 11, 12, ... 2, 20, 3. IDs are
+    // allocated as ascending integers, so sort them as integers. Promise.all
+    // preserves input order, so this is the only place the order is decided.
+    .sort(compareTaskIds)
   const results = await Promise.all(taskIds.map(id => getTask(taskListId, id)))
   return results.filter((t): t is Task => t !== null)
 }

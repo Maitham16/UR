@@ -386,6 +386,23 @@ const TEXT_TOOL_CALL_HINT = [
   'Escape newlines inside JSON strings as \\n. Do not wrap the JSON in prose or code fences.',
 ].join('\n')
 
+/**
+ * A warning raised while building a request that the user must see.
+ *
+ * The adapter is far below the transcript, so it cannot yield a message
+ * itself. Queue it here and let the query loop drain it — the same shape the
+ * prune notice uses. Only capability warnings belong here: anything that
+ * merely aids debugging should stay in the debug log.
+ */
+let pendingProviderNotice: string | null = null
+
+/** Returns and clears the queued notice, so it is shown exactly once. */
+export function consumePendingProviderNotice(): string | null {
+  const notice = pendingProviderNotice
+  pendingProviderNotice = null
+  return notice
+}
+
 export function toOllamaChatRequest(
   params: BetaMessageStreamParams,
   stream: boolean,
@@ -397,12 +414,17 @@ export function toOllamaChatRequest(
   const toolsDropped = toolsRequested && !supportsTools
   if (toolsDropped && !warnedToolsUnsupportedModels.has(params.model)) {
     warnedToolsUnsupportedModels.add(params.model)
-    logForDebugging(
-      `Ollama model "${params.model}" does not advertise the 'tools' capability; ` +
-        'tool definitions are not sent and tool calls fall back to text parsing. ' +
-        'Expect degraded agent behavior — prefer a tools-capable model (check with: ollama show <model>).',
-      { level: 'warn' },
-    )
+    const message =
+      `"${params.model}" does not advertise the 'tools' capability, so tool ` +
+      `definitions are not sent to it. It cannot read or write files, run ` +
+      `commands, or use any tool — asked to, it will describe what it would ` +
+      `do and may report work it did not perform. Pick a tools-capable model ` +
+      `with /model (check with: ur model-doctor).`
+    logForDebugging(message, { level: 'warn' })
+    // The debug log is invisible in a normal session, so this warning reached
+    // nobody: the model silently lost its tools and confabulated the results.
+    // Queue it for the transcript instead.
+    pendingProviderNotice = message
   }
   const systemMessage: OllamaMessage = {
     role: 'system',

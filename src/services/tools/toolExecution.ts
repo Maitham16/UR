@@ -120,6 +120,23 @@ import {
   isToolSearchToolAvailable,
   supportsToolReferenceExpansion,
 } from '../../utils/toolSearch.js'
+import { checkTaskListGate } from './taskListGate.js'
+
+/**
+ * How many tasks exist for this session.
+ *
+ * Returns a permissive count on any failure. A gate that blocks every tool
+ * call because the task directory was briefly unreadable would be worse than
+ * the problem it solves, so an unknown count is treated as "a list exists".
+ */
+async function countTasksForGate(): Promise<number> {
+  try {
+    const { getTaskListId, listTasks } = await import('../../utils/tasks.js')
+    return (await listTasks(getTaskListId())).length
+  } catch {
+    return Number.POSITIVE_INFINITY
+  }
+}
 import {
   McpAuthError,
   McpToolCallError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -666,6 +683,36 @@ async function checkPermissionsAndCallTool(
       }
     }
   }
+  // Require a plan before anything is changed. Placed beside input validation
+  // because that is the one point every tool call passes through; enforcing it
+  // in the prompt alone did not hold.
+  const gate = checkTaskListGate({
+    toolName: tool.name,
+    taskCount: await countTasksForGate(),
+    readsSoFar: toolUseContext.messages?.length ?? 0,
+    isSubagent: Boolean(toolUseContext.agentId),
+  })
+  if (!gate.allowed) {
+    logEvent('tengu_task_list_gate_blocked', {
+      toolName: sanitizeToolNameForAnalytics(tool.name),
+    })
+    return [
+      {
+        message: createUserMessage({
+          content: [
+            {
+              type: 'tool_result',
+              content: `<tool_use_error>TaskListRequired: ${gate.reason}</tool_use_error>`,
+              is_error: true,
+              tool_use_id: toolUseID,
+            },
+          ],
+        }),
+        shouldSkipPermissionCheck: false,
+      },
+    ]
+  }
+
   if (!parsedInput.success) {
     let errorContent = formatZodValidationError(tool.name, parsedInput.error)
 

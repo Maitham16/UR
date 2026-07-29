@@ -424,6 +424,22 @@ export const SettingsSchema = lazySchema(() =>
         })
         .optional()
         .describe('Spoken output settings'),
+      tasks: z
+        .object({
+          requireBeforeChanges: z
+            .object({
+              enabled: z.boolean().optional(),
+              freeReads: z.number().optional(),
+            })
+            .optional()
+            .describe(
+              'Require a task list before any tool that changes the workspace (Edit, Write, Bash, ...). ' +
+                'Reads are never blocked, so the agent can investigate before planning; freeReads is how many ' +
+                'tool calls may run before the gate applies at all. Set enabled=false to make the task list advisory again.',
+            ),
+        })
+        .optional()
+        .describe('Task list behaviour.'),
       context: z
         .object({
           pruneToolResults: z
