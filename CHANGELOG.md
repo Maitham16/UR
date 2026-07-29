@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.65.8
+
+- Fixed provider API-key entry in `/model`: the masked input now uses the
+  available terminal width, explicit cursor/focus state, and a one-line secret
+  viewport instead of rendering one masked character per row. Narrow and
+  invalid resize states retain a safe minimum width.
+
 ## 1.65.7
 
 - Audited all 14 technical chapters against the shipped source and generated

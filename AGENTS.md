@@ -3,7 +3,7 @@
 This is the durable handoff for coding agents working in this repository. Read
 this file before exploring the tree. It records the architecture, decisions,
 invariants, validation state, and release workflow established during the
-v1.65.7 audit.
+v1.65.7 audit and maintained through v1.65.8.
 
 Do not start by re-auditing the entire repository. Confirm the current version
 and working-tree state, then open only the technical chapter and source paths
@@ -22,6 +22,11 @@ relevant to the requested change.
    listed in this file.
 6. Update this memory when a material invariant, architecture path, release
    process, version, or validation result changes.
+
+Standing user release preference: every completed code change must receive a
+new patch version, a matching newest-first changelog entry, synchronized build
+surfaces, release validation, and manual GitHub/npm push commands. Never reuse
+a version already present on npm.
 
 ## Project identity
 
@@ -74,17 +79,16 @@ the required catalog and packaging. Update technical documentation whenever a
 public command, option, tool, provider, setting, workflow, SDK contract, or
 runtime behavior changes.
 
-## Release snapshot: 2026-07-29
+## Release snapshot: 2026-07-30
 
-- Local package version: **1.65.7**
-- npm `latest` at the time of the audit: **1.65.6**
-- v1.65.7 had not been committed, tagged, pushed, or published when this memory
-  was created.
-- The v1.65.7 working tree contains a large, intentional audit/fix set. Do not
-  discard or overwrite it.
-- Final exact-source validation:
-  - 2,064 tests passed, 0 failed
-  - 9,086 assertions across 251 files
+- Local package version: **1.65.8**
+- npm `latest` at the time of this update: **1.65.7**
+- v1.65.8 had not been committed, tagged, pushed, or published when this
+  snapshot was updated.
+- Full functional validation immediately before the version-only 1.65.8
+  rebuild:
+  - 2,067 tests passed, 0 failed
+  - 9,090 assertions across 252 files
   - typecheck passed
   - lint passed
   - `git diff --check` passed
@@ -96,6 +100,12 @@ runtime behavior changes.
   - final npm publish dry run passed
   - tarball: 156 files, 6.5 MB packed, 32.4 MB unpacked
   - SDK ESM, CommonJS, and TypeScript declarations built successfully
+- Post-bump validation:
+  - 27 focused UI, terminal-safety, versioning, and release-readiness tests
+    passed
+  - release check passed for 1.65.8
+  - npm publish dry run passed for `ur-agent@1.65.8`
+  - the global `/opt/homebrew/bin/ur` bundle matches the local verified bundle
 
 This snapshot is evidence, not a permanent guarantee. Rerun relevant gates
 after later changes.
@@ -339,6 +349,8 @@ refactoring:
 - `cli-highlight` is declared; no ambient `any` shim hides missing packages.
 - Highlighter loading failures are logged.
 - Dependency-declaration tests scan imported packages.
+- Provider API-key entry supplies explicit terminal width, cursor/focus state,
+  and a one-line secret viewport so masked keys never render vertically.
 - CLI handlers no longer report success after failed underlying work.
 - SDK query validation, environment precedence, NDJSON parsing, and nonzero exit
   behavior are tested.
