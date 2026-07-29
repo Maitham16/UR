@@ -53,16 +53,10 @@ let cachedPaneBackendExecutor: TeammateExecutor | null = null
  */
 let inProcessFallbackActive = false
 
-/**
- * Placeholder for TmuxBackend - will be replaced with actual implementation.
- * This allows the registry to compile before the backend implementations exist.
- */
+/** Lazily registered constructor, avoiding a registry/backend import cycle. */
 let TmuxBackendClass: (new () => PaneBackend) | null = null
 
-/**
- * Placeholder for ITermBackend - will be replaced with actual implementation.
- * This allows the registry to compile before the backend implementations exist.
- */
+/** Lazily registered constructor, avoiding a registry/backend import cycle. */
 let ITermBackendClass: (new () => PaneBackend) | null = null
 
 /**

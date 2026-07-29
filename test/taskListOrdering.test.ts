@@ -1,5 +1,18 @@
 import { expect, test } from 'bun:test'
-import { compareTaskIds } from '../src/utils/tasks.ts'
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  compareTaskIds,
+  createTask,
+  getTasksDir,
+  listTasks,
+} from '../src/utils/tasks.ts'
 
 // listTasks returned whatever order readdir gave, which is lexicographic in
 // practice. Under ten tasks that looks correct and hides the bug entirely;
@@ -47,6 +60,18 @@ test('non-numeric ids stay ordered and never compare as NaN', () => {
   expect(sorted).toEqual(['1', '2', 'alpha', 'beta'])
 })
 
+test('numeric-looking prefixes are not treated as allocated integer ids', () => {
+  const mixed = ['12-external', '10', '2beta', '2', '1e3', '3.5']
+  expect([...mixed].sort(compareTaskIds)).toEqual([
+    '2',
+    '10',
+    '12-external',
+    '1e3',
+    '2beta',
+    '3.5',
+  ])
+})
+
 test('the comparator is symmetric and stable', () => {
   // An inconsistent comparator produces different orders for the same input
   // depending on the engine's sort.
@@ -63,5 +88,84 @@ test('the comparator is symmetric and stable', () => {
         Math.sign(compareTaskIds(a, b)) + Math.sign(compareTaskIds(b, a)),
       ).toBe(0)
     }
+  }
+})
+
+test('listTasks returns real task files in numeric order past nine', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ur-task-order-'))
+  const previousConfig = process.env.UR_CONFIG_DIR
+  process.env.UR_CONFIG_DIR = root
+  try {
+    const taskListId = 'ordering'
+    const dir = getTasksDir(taskListId)
+    mkdirSync(dir, { recursive: true })
+    for (const id of ['1', '10', '11', '2', '20', '3']) {
+      writeFileSync(
+        join(dir, `${id}.json`),
+        JSON.stringify({
+          id,
+          subject: `Task ${id}`,
+          description: '',
+          status: 'pending',
+          blocks: [],
+          blockedBy: [],
+        }),
+      )
+    }
+
+    expect((await listTasks(taskListId)).map(task => task.id)).toEqual([
+      '1',
+      '2',
+      '3',
+      '10',
+      '11',
+      '20',
+    ])
+  } finally {
+    if (previousConfig === undefined) {
+      delete process.env.UR_CONFIG_DIR
+    } else {
+      process.env.UR_CONFIG_DIR = previousConfig
+    }
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('external prefixed ids do not advance the numeric allocator', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ur-task-allocate-'))
+  const previousConfig = process.env.UR_CONFIG_DIR
+  process.env.UR_CONFIG_DIR = root
+  try {
+    const taskListId = 'allocation'
+    const dir = getTasksDir(taskListId)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, '12-external.json'),
+      JSON.stringify({
+        id: '12-external',
+        subject: 'External task',
+        description: '',
+        status: 'pending',
+        blocks: [],
+        blockedBy: [],
+      }),
+    )
+
+    expect(
+      await createTask(taskListId, {
+        subject: 'First native task',
+        description: '',
+        status: 'pending',
+        blocks: [],
+        blockedBy: [],
+      }),
+    ).toBe('1')
+  } finally {
+    if (previousConfig === undefined) {
+      delete process.env.UR_CONFIG_DIR
+    } else {
+      process.env.UR_CONFIG_DIR = previousConfig
+    }
+    rmSync(root, { recursive: true, force: true })
   }
 })

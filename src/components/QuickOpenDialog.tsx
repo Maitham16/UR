@@ -15,6 +15,7 @@ import { highlightMatch } from '../utils/highlightMatch.js';
 import { readFileInRange } from '../utils/readFileInRange.js';
 import { FuzzyPicker } from './design-system/FuzzyPicker.js';
 import { LoadingState } from './design-system/LoadingState.js';
+import { getQuickOpenLayout } from './searchPickerLayout.js';
 type Props = {
   onDone: () => void;
   onInsert: (text: string) => void;
@@ -65,7 +66,11 @@ export function QuickOpenDialog(t0) {
     t3 = $[2];
   }
   useEffect(t2, t3);
-  const previewOnRight = columns >= 120;
+  const {
+    previewOnRight,
+    maxPathWidth,
+    previewWidth
+  } = getQuickOpenLayout(columns);
   const effectivePreviewLines = previewOnRight ? VISIBLE_RESULTS - 1 : PREVIEW_LINES;
   let t4;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
@@ -128,8 +133,6 @@ export function QuickOpenDialog(t0) {
     t6 = $[7];
   }
   useEffect(t5, t6);
-  const maxPathWidth = previewOnRight ? Math.max(20, Math.floor((columns - 10) * 0.4)) : Math.max(20, columns - 8);
-  const previewWidth = previewOnRight ? Math.max(40, columns - maxPathWidth - 14) : columns - 6;
   let t7;
   if ($[8] !== onDone || $[9] !== results.length) {
     t7 = p_1 => {

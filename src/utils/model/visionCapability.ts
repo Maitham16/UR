@@ -54,7 +54,11 @@ export function resolveVisionSupport(
   model: string,
   capabilities: ReadonlySet<string> | null | undefined,
 ): VisionSupport {
-  if (capabilities && capabilities.size > 0) {
+  // `null`/`undefined` means the provider did not supply a capability list.
+  // A present-but-empty set is still an advertised list and is therefore an
+  // authoritative "no". Treating it as unknown made `/api/show` responses
+  // with `capabilities: []` take the name-heuristic path.
+  if (capabilities !== null && capabilities !== undefined) {
     return capabilities.has('vision') ? 'supported' : 'unsupported'
   }
   return nameSuggestsVision(model) ? 'supported' : 'unknown'

@@ -1,5 +1,8 @@
 import { request as httpRequest } from 'node:http'
-import { resolveVisionSupport } from '../../utils/model/visionCapability.js'
+import {
+  resolveVisionSupport,
+  type VisionSupport,
+} from '../../utils/model/visionCapability.js'
 import { request as httpsRequest } from 'node:https'
 import type { LocalCommandCall } from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
@@ -12,7 +15,7 @@ type OllamaTag = {
 }
 
 type OllamaShow = {
-  capabilities?: string[]
+  capabilities?: unknown
   model_info?: Record<string, unknown>
   details?: Record<string, unknown>
 }
@@ -25,6 +28,8 @@ export type ModelCapability = {
   contextLength?: number
   embeddingLength?: number
   family?: string
+  visionSupport: VisionSupport
+  /** Compatibility field for existing JSON consumers. */
   likelyVision: boolean
   likelyCode: boolean
 }
@@ -104,16 +109,24 @@ export function buildOllamaShowRequestBody(name: string): string {
   return JSON.stringify({ model: name })
 }
 
-// Delegates to the shared resolver so the doctor, the router and the Ollama
-// adapter cannot drift apart again. 'unknown' reports as not-confirmed rather
-// than as a definite no.
-function inferVision(name: string, capabilities: string[]): boolean {
-  return (
-    resolveVisionSupport(
-      name,
-      capabilities.length > 0 ? new Set(capabilities) : null,
-    ) === 'supported'
-  )
+export function advertisedCapabilities(
+  show: OllamaShow | null | undefined,
+): string[] | null {
+  if (!show || !Array.isArray(show.capabilities)) return null
+  const normalized = [
+    ...new Set(
+      show.capabilities.flatMap(capability =>
+        typeof capability === 'string' && capability.trim()
+          ? [capability.trim()]
+          : [],
+      ),
+    ),
+  ]
+  // `[]` is a valid, authoritative list. A non-empty array containing no
+  // usable strings is malformed provider data, not proof of missing vision.
+  return show.capabilities.length === 0 || normalized.length > 0
+    ? normalized
+    : null
 }
 
 function inferCode(name: string, family?: string): boolean {
@@ -134,7 +147,12 @@ async function inspectModel(model: OllamaTag): Promise<ModelCapability> {
     body: buildOllamaShowRequestBody(name),
   })
   const info = show?.model_info ?? {}
-  const capabilities = show?.capabilities ?? []
+  const capabilityList = advertisedCapabilities(show)
+  const capabilities = capabilityList ?? []
+  const visionSupport = resolveVisionSupport(
+    name,
+    capabilityList === null ? null : new Set(capabilityList),
+  )
   const family =
     typeof show?.details?.family === 'string'
       ? show.details.family
@@ -150,7 +168,8 @@ async function inspectModel(model: OllamaTag): Promise<ModelCapability> {
     contextLength: findNumber(info, 'context_length'),
     embeddingLength: findNumber(info, 'embedding_length'),
     family,
-    likelyVision: inferVision(name, capabilities),
+    visionSupport,
+    likelyVision: visionSupport === 'supported',
     likelyCode: inferCode(name, family),
   }
 }
@@ -181,7 +200,15 @@ function formatReport(models: ModelCapability[]): string {
       }`,
     )
     lines.push(`  Likely code-ready: ${model.likelyCode ? 'yes' : 'unknown'}`)
-    lines.push(`  Likely vision-ready: ${model.likelyVision ? 'yes' : 'no/unknown'}`)
+    lines.push(
+      `  Vision support: ${
+        model.visionSupport === 'supported'
+          ? 'yes'
+          : model.visionSupport === 'unsupported'
+            ? 'no'
+            : 'unknown'
+      }`,
+    )
     lines.push('')
   }
   lines.push(

@@ -320,7 +320,8 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur eval report ...` to show a saved report or write a single-suite dashboard
 - `ur eval dashboard` to generate the local HTML dashboard across all reports
 - `ur eval bench ...` to import local SWE-bench, Terminal-Bench, or Aider Polyglot exports
-- `ur crew ...` to run lead+worker agent crews with optional automatic task decomposition
+- `ur crew ...` to run dependency-aware agent crews with parallel independent
+  tasks and bounded, isolated worker recovery
 - `ur pattern ...` to run multi-agent collaboration patterns (PEER, DOE, concurrent, handoff, debate, parallel)
 - `ur workflow ...` to define, validate, graph, run, and resume declarative agent workflows
 - `ur goal ...` to track long-horizon objectives that persist across sessions
@@ -461,6 +462,7 @@ ur eval report starter --dashboard
 ur eval dashboard
 ur crew create parser-crew --goal "fix the flaky parser test" --decompose --dry-run
 ur crew run parser-crew --workers 3 --decompose --dry-run
+ur crew run parser-crew --workers 3 --worktrees --max-attempts 2
 ur pattern parallel "refactor login without changing behavior" --execute --dry-run
 ```
 

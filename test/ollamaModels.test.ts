@@ -176,6 +176,30 @@ test('cacheOllamaModelMetadata reads context length from api/show model_info', (
   })
 })
 
+test('Ollama context metadata is scoped to the endpoint that returned it', () => {
+  try {
+    withCleanOllamaContext(() => {
+      setOllamaBaseUrlOverride('http://host-a.local:11434')
+      cacheOllamaModelMetadata('shared-model', {
+        model_info: { 'shared.context_length': 16_384 },
+      })
+      expect(getOllamaContextLengthForModel('shared-model')).toBe(16_384)
+
+      setOllamaBaseUrlOverride('http://host-b.local:11434')
+      expect(getOllamaContextLengthForModel('shared-model')).toBeUndefined()
+      cacheOllamaModelMetadata('shared-model', {
+        model_info: { 'shared.context_length': 65_536 },
+      })
+      expect(getOllamaContextLengthForModel('shared-model')).toBe(65_536)
+
+      setOllamaBaseUrlOverride('http://host-a.local:11434')
+      expect(getOllamaContextLengthForModel('shared-model')).toBe(16_384)
+    })
+  } finally {
+    clearOllamaBaseUrlOverride()
+  }
+})
+
 test('OLLAMA_CONTEXT_TOKENS overrides advertised Ollama context length', () => {
   withCleanOllamaContext(() => {
     process.env.OLLAMA_CONTEXT_TOKENS = '123456'

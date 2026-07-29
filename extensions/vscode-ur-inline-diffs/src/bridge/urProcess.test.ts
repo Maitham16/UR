@@ -61,6 +61,16 @@ describe('NdjsonBuffer', () => {
     buffer.push('{"type":"a"}\n')
     expect(buffer.flush()).toEqual([])
   })
+
+  test('drops an oversized line without retaining it or losing later frames', () => {
+    const buffer = new NdjsonBuffer(20)
+    const messages = buffer.push(
+      `${'x'.repeat(100)}\n{"type":"result"}\n`,
+    )
+    expect(buffer.droppedOversizedLine).toBe(true)
+    expect(messages).toEqual([{ type: 'result' }])
+    expect(buffer.flush()).toEqual([])
+  })
 })
 
 describe('buildUrArgs', () => {
@@ -229,6 +239,42 @@ describe('runUrTurn message + result handling', () => {
     expect(result?.ok).toBe(true)
     expect(result?.sawResult).toBe(true)
     expect(result?.canceled).toBe(false)
+  })
+
+  test('a non-error result cannot hide a later non-zero process exit', () => {
+    const { spawn, getChild } = spawnRecorder()
+    let result: Parameters<Parameters<typeof runUrTurn>[1]['onExit']>[0] | undefined
+    runUrTurn({ cwd: '/work', prompt: 'hi' }, { ...noopHandlers(), onExit: r => { result = r } }, { spawn })
+    getChild().emitStdout('{"type":"result","is_error":false}\n')
+    getChild().emitStderr('Session flush failed\n')
+    getChild().exit(1)
+    expect(result?.ok).toBe(false)
+    expect(result?.sawResult).toBe(true)
+    expect(result?.exitCode).toBe(1)
+    expect(result?.error).toContain('produced a result, but the process exited unsuccessfully')
+    expect(result?.error).toContain('Session flush failed')
+  })
+
+  test('a non-error result cannot hide signal termination', () => {
+    const { spawn, getChild } = spawnRecorder()
+    let result: Parameters<Parameters<typeof runUrTurn>[1]['onExit']>[0] | undefined
+    runUrTurn({ cwd: '/work', prompt: 'hi' }, { ...noopHandlers(), onExit: r => { result = r } }, { spawn })
+    getChild().emitStdout('{"type":"result","is_error":false}\n')
+    getChild().exit(null, 'SIGKILL')
+    expect(result?.ok).toBe(false)
+    expect(result?.signal).toBe('SIGKILL')
+    expect(result?.error).toContain('produced a result, but the process exited unsuccessfully')
+  })
+
+  test('stderr capture stays bounded while preserving the useful tail', () => {
+    const { spawn, getChild } = spawnRecorder()
+    let result: Parameters<Parameters<typeof runUrTurn>[1]['onExit']>[0] | undefined
+    runUrTurn({ cwd: '/work', prompt: 'hi' }, { ...noopHandlers(), onExit: r => { result = r } }, { spawn })
+    getChild().emitStderr(`${'old-noise'.repeat(4_000)}\nuseful-tail`)
+    getChild().exit(1)
+    expect(result?.stderr.length).toBeLessThan(17_000)
+    expect(result?.stderr).toContain('earlier stderr characters omitted')
+    expect(result?.stderr).toEndWith('useful-tail')
   })
 
   test('never reports ok when no result line was seen, even with exit code 0', () => {

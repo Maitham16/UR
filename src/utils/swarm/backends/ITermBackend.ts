@@ -308,7 +308,7 @@ export class ITermBackend implements PaneBackend {
   ): Promise<void> {
     // iTerm2 handles pane balancing automatically
     logForDebugging(
-      '[ITermBackend] Pane rebalancing not implemented for iTerm2',
+      '[ITermBackend] Pane balancing delegated to iTerm2 automatic layout',
     )
   }
 
@@ -339,8 +339,8 @@ export class ITermBackend implements PaneBackend {
   }
 
   /**
-   * Stub for hiding a pane - not supported in iTerm2 backend.
-   * iTerm2 doesn't have a direct equivalent to tmux's break-pane.
+   * Unsupported operation: iTerm2 has no direct equivalent to tmux's
+   * break-pane. `supportsHideShow` is false so callers can avoid this path.
    */
   async hidePane(
     _paneId: PaneId,
@@ -351,8 +351,8 @@ export class ITermBackend implements PaneBackend {
   }
 
   /**
-   * Stub for showing a hidden pane - not supported in iTerm2 backend.
-   * iTerm2 doesn't have a direct equivalent to tmux's join-pane.
+   * Unsupported operation: iTerm2 has no direct equivalent to tmux's
+   * join-pane. `supportsHideShow` is false so callers can avoid this path.
    */
   async showPane(
     _paneId: PaneId,

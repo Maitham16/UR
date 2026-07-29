@@ -1,8 +1,9 @@
-import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { stringWidth } from '../../ink/stringWidth.js';
+import wrapText from '../../ink/wrap-text.js';
 import { Ansi, Text } from '../../ink.js';
+import sliceAnsi from '../../utils/sliceAnsi.js';
 import type { Theme } from '../../utils/theme.js';
 type DividerProps = {
   /**
@@ -40,6 +41,61 @@ type DividerProps = {
   title?: string;
 };
 
+export type DividerParts = {
+  left: string;
+  title: string | undefined;
+  right: string;
+};
+
+function fillToWidth(char: string, width: number): string {
+  if (width <= 0) return '';
+
+  const unit = stringWidth(char) > 0 ? char : '─';
+  const unitWidth = stringWidth(unit);
+  const repeated = unit.repeat(Math.ceil(width / unitWidth));
+  let result = sliceAnsi(repeated, 0, width);
+
+  // sliceAnsi keeps a wide glyph that straddles the boundary. Dividers have
+  // a strict layout contract, so drop that glyph and pad the spare cell.
+  if (stringWidth(result) > width) {
+    result = sliceAnsi(repeated, 0, Math.max(0, width - 1));
+  }
+
+  return result + ' '.repeat(Math.max(0, width - stringWidth(result)));
+}
+
+/**
+ * Compute a single-line divider that is guaranteed to fit `width` cells.
+ * ANSI-styled titles are truncated without breaking their escape sequences.
+ */
+export function getDividerParts(
+  width: number,
+  char: string,
+  title?: string,
+): DividerParts {
+  const safeWidth = Number.isFinite(width)
+    ? Math.max(0, Math.floor(width))
+    : 0;
+
+  if (!title || safeWidth < 3) {
+    return {
+      left: fillToWidth(char, safeWidth),
+      title: undefined,
+      right: '',
+    };
+  }
+
+  const fittedTitle = wrapText(title, safeWidth - 2, 'truncate-end');
+  const sideWidth = Math.max(0, safeWidth - stringWidth(fittedTitle) - 2);
+  const leftWidth = Math.floor(sideWidth / 2);
+
+  return {
+    left: fillToWidth(char, leftWidth),
+    title: fittedTitle,
+    right: fillToWidth(char, sideWidth - leftWidth),
+  };
+}
+
 /**
  * A horizontal divider line.
  *
@@ -63,86 +119,37 @@ type DividerProps = {
  * // With centered title
  * <Divider title="3 new messages" />
  */
-export function Divider(t0) {
-  const $ = _c(21);
-  const {
-    width,
-    color,
-    char: t1,
-    padding: t2,
-    title
-  } = t0;
-  const char = t1 === undefined ? "\u2500" : t1;
-  const padding = t2 === undefined ? 0 : t2;
-  const {
-    columns: terminalWidth
-  } = useTerminalSize();
-  const effectiveWidth = Math.max(0, (width ?? terminalWidth) - padding);
-  if (title) {
-    const titleWidth = stringWidth(title) + 2;
-    const sideWidth = Math.max(0, effectiveWidth - titleWidth);
-    const leftWidth = Math.floor(sideWidth / 2);
-    const rightWidth = sideWidth - leftWidth;
-    const t3 = !color;
-    let t4;
-    if ($[0] !== char || $[1] !== leftWidth) {
-      t4 = char.repeat(leftWidth);
-      $[0] = char;
-      $[1] = leftWidth;
-      $[2] = t4;
-    } else {
-      t4 = $[2];
-    }
-    let t5;
-    if ($[3] !== title) {
-      t5 = <Text dimColor={true}><Ansi>{title}</Ansi></Text>;
-      $[3] = title;
-      $[4] = t5;
-    } else {
-      t5 = $[4];
-    }
-    let t6;
-    if ($[5] !== char || $[6] !== rightWidth) {
-      t6 = char.repeat(rightWidth);
-      $[5] = char;
-      $[6] = rightWidth;
-      $[7] = t6;
-    } else {
-      t6 = $[7];
-    }
-    let t7;
-    if ($[8] !== color || $[9] !== t3 || $[10] !== t4 || $[11] !== t5 || $[12] !== t6) {
-      t7 = <Text color={color} dimColor={t3}>{t4}{" "}{t5}{" "}{t6}</Text>;
-      $[8] = color;
-      $[9] = t3;
-      $[10] = t4;
-      $[11] = t5;
-      $[12] = t6;
-      $[13] = t7;
-    } else {
-      t7 = $[13];
-    }
-    return t7;
+export function Divider({
+  width,
+  color,
+  char = '─',
+  padding = 0,
+  title,
+}: DividerProps): React.ReactNode {
+  const { columns: terminalWidth } = useTerminalSize();
+  const parts = getDividerParts(
+    Math.max(0, (width ?? terminalWidth) - padding),
+    char,
+    title,
+  );
+  const dimColor = !color;
+
+  if (parts.left === '' && parts.title === undefined && parts.right === '') {
+    return null;
   }
-  const t3 = !color;
-  let t4;
-  if ($[14] !== char || $[15] !== effectiveWidth) {
-    t4 = char.repeat(effectiveWidth);
-    $[14] = char;
-    $[15] = effectiveWidth;
-    $[16] = t4;
-  } else {
-    t4 = $[16];
+
+  if (parts.title !== undefined) {
+    return (
+      <Text color={color} dimColor={dimColor}>
+        {parts.left} <Text dimColor><Ansi>{parts.title}</Ansi></Text>{' '}
+        {parts.right}
+      </Text>
+    );
   }
-  let t5;
-  if ($[17] !== color || $[18] !== t3 || $[19] !== t4) {
-    t5 = <Text color={color} dimColor={t3}>{t4}</Text>;
-    $[17] = color;
-    $[18] = t3;
-    $[19] = t4;
-    $[20] = t5;
-  } else {
-    t5 = $[20];
-  }
-  return t5;
+
+  return (
+    <Text color={color} dimColor={dimColor}>
+      {parts.left}
+    </Text>
+  );
 }

@@ -16,6 +16,10 @@ type Props = {
   dim?: boolean;
 };
 const DEFAULT_WIDTH = 80;
+export function normalizeHighlightedCodeWidth(width?: number): number {
+  if (width === undefined) return DEFAULT_WIDTH;
+  return Number.isFinite(width) ? Math.max(1, Math.floor(width)) : DEFAULT_WIDTH;
+}
 export const HighlightedCode = memo(function HighlightedCode(t0: Props) {
   const $ = _c(21);
   const {
@@ -26,7 +30,7 @@ export const HighlightedCode = memo(function HighlightedCode(t0: Props) {
   } = t0;
   const dim = t1 === undefined ? false : t1;
   const ref = useRef(null);
-  const [measuredWidth, setMeasuredWidth] = useState(width || DEFAULT_WIDTH);
+  const [measuredWidth, setMeasuredWidth] = useState(normalizeHighlightedCodeWidth(width));
   const [theme] = useTheme();
   const settings = useSettings();
   const syntaxHighlightingDisabled = settings.syntaxHighlightingDisabled ?? false;
@@ -64,12 +68,14 @@ export const HighlightedCode = memo(function HighlightedCode(t0: Props) {
   let t4;
   if ($[4] !== width) {
     t3 = () => {
-      if (!width && ref.current) {
+      if (width !== undefined) {
+        setMeasuredWidth(normalizeHighlightedCodeWidth(width));
+      } else if (ref.current) {
         const {
           width: elementWidth
         } = measureElement(ref.current);
         if (elementWidth > 0) {
-          setMeasuredWidth(elementWidth - 2);
+          setMeasuredWidth(normalizeHighlightedCodeWidth(elementWidth - 2));
         }
       }
     };
@@ -82,6 +88,7 @@ export const HighlightedCode = memo(function HighlightedCode(t0: Props) {
     t4 = $[6];
   }
   useEffect(t3, t4);
+  const renderWidth = width === undefined ? measuredWidth : normalizeHighlightedCodeWidth(width);
   let t5;
   bb1: {
     if (colorFile === null) {
@@ -89,11 +96,11 @@ export const HighlightedCode = memo(function HighlightedCode(t0: Props) {
       break bb1;
     }
     let t6;
-    if ($[7] !== colorFile || $[8] !== dim || $[9] !== measuredWidth || $[10] !== theme) {
-      t6 = colorFile.render(theme, measuredWidth, dim);
+    if ($[7] !== colorFile || $[8] !== dim || $[9] !== renderWidth || $[10] !== theme) {
+      t6 = colorFile.render(theme, renderWidth, dim);
       $[7] = colorFile;
       $[8] = dim;
-      $[9] = measuredWidth;
+      $[9] = renderWidth;
       $[10] = theme;
       $[11] = t6;
     } else {

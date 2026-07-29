@@ -91,8 +91,66 @@ describe('prompt planning', () => {
     expect(plan.tasks).toHaveLength(3)
     expect(plan.tasks.map(task => task.order)).toEqual([1, 2, 3])
     expect(plan.tasks[1]?.dependencies).toEqual(['task-1'])
-    expect(plan.tasks[2]?.dependencies).toEqual(['task-2'])
+    expect(plan.tasks[2]?.dependencies).toEqual(['task-1', 'task-2'])
     expect(plan.tasks[2]?.assignedAgent).toBe('reporter')
+  })
+
+  test('verification fans in after every earlier parallel branch', () => {
+    const plan = decomposePrompt(
+      [
+        '- Implement the parser',
+        '- Update the documentation',
+        '- Run the full test suite',
+      ].join('\n'),
+    )
+    expect(plan.tasks[0]?.dependencies).toEqual([])
+    expect(plan.tasks[1]?.dependencies).toEqual([])
+    expect(plan.tasks[2]?.assignedAgent).toBe('verifier')
+    expect(plan.tasks[2]?.dependencies).toEqual(['task-1', 'task-2'])
+  })
+
+  test('nested list details stay with their parent and trailing work is preserved', () => {
+    const prompt = [
+      'Keep the existing public API stable.',
+      '- Implement the parser',
+      '  - Handle JSON input',
+      '  - Return useful parse errors',
+      '- Update the documentation',
+      'Once everything is complete, run tests.',
+    ].join('\n')
+    const plan = decomposePrompt(prompt)
+
+    expect(plan.tasks).toHaveLength(3)
+    expect(plan.tasks[0]?.description).toContain('Handle JSON input')
+    expect(plan.tasks[0]?.description).toContain('Return useful parse errors')
+    expect(plan.tasks[2]?.title).toContain('Once everything is complete')
+    expect(plan.tasks[2]?.dependencies).toEqual(['task-1', 'task-2'])
+    expect(plan.tasks.every(task => task.input.originalPrompt === prompt)).toBe(
+      true,
+    )
+  })
+
+  test('task decomposition stays bounded for very long lists', () => {
+    const prompt = Array.from(
+      { length: 30 },
+      (_, index) => `- Implement independent unit ${index + 1}`,
+    ).join('\n')
+    const plan = decomposePrompt(prompt)
+    expect(plan.tasks).toHaveLength(12)
+    expect(plan.tasks.at(-1)?.description).toContain('unit 30')
+  })
+
+  test('new file targets do not have to exist before creation', () => {
+    const plan = decomposePrompt('Create src/new-module.ts')
+    expect(plan.tasks[0]?.input.targetFiles).toEqual(['src/new-module.ts'])
+    expect(plan.tasks[0]?.input.requiredFiles).toEqual([])
+  })
+
+  test('parallel plan creation produces unique run ids', () => {
+    const ids = new Set(
+      Array.from({ length: 100 }, () => decomposePrompt('Inspect README').id),
+    )
+    expect(ids.size).toBe(100)
   })
 
   test('ambiguous prompt needs context with explicit assumptions', () => {
@@ -133,6 +191,20 @@ describe('prompt planning', () => {
     ])
   })
 
+  test('absolute paths inside a known workspace are not treated as outside', () => {
+    const dir = tempDir('ur-nexus-inside-path-')
+    try {
+      const file = join(dir, 'README.md')
+      writeFileSync(file, '# Test\n')
+      const plan = decomposePrompt(`Update ${file}`, undefined, dir)
+      expect(plan.tasks[0]?.outsideWorkspacePaths).toEqual([])
+      expect(plan.tasks[0]?.approvalRequired).toBe(false)
+      expect(plan.tasks[0]?.status).toBe('ready')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test('task statuses transition through running to finished', async () => {
     const dir = tempDir('ur-nexus-plan-')
     try {
@@ -156,13 +228,37 @@ describe('prompt planning', () => {
     }
   })
 
+  test('malformed executor output fails the task instead of crashing the plan', async () => {
+    const dir = tempDir('ur-nexus-malformed-result-')
+    try {
+      const result = await runPromptPlan(
+        planWithTasks([task('t1', 'Inspect malformed result')]),
+        {
+          cwd: dir,
+          executeTask: async () => undefined as never,
+        },
+      )
+      expect(result.failed).toBe(1)
+      expect(result.taskResults[0]?.execution?.ok).toBe(false)
+      expect(result.taskResults[0]?.execution?.error).toContain(
+        'structured execution result',
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test('independent tasks can run in parallel', async () => {
     const dir = tempDir('ur-nexus-parallel-')
     try {
       let active = 0
       let maxActive = 0
       await runPromptPlan(
-        planWithTasks([task('t1', 'A'), task('t2', 'B'), task('t3', 'C')]),
+        planWithTasks([
+          task('t1', 'Inspect A'),
+          task('t2', 'Review B'),
+          task('t3', 'Analyze C'),
+        ]),
         {
           cwd: dir,
           config: { maxAgents: 3 },
@@ -207,6 +303,11 @@ describe('prompt planning', () => {
         '/tmp/ur-nexus-cache',
       ])
       expect(result.tasks[0]?.status).toBe('waiting-approval')
+      expect(result.taskResults[0]?.execution).toBeUndefined()
+      expect(result.taskResults[0]?.preVerification.ok).toBe(false)
+      expect(
+        result.taskResults[0]?.preVerification.issues.map(issue => issue.code),
+      ).toContain('approval_required')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -253,7 +354,7 @@ describe('prompt planning', () => {
       let largeActive = 0
       let largeMaxActive = 0
       const largeTasks = Array.from({ length: 6 }, (_, index) =>
-        task(`t${index + 1}`, `Task ${index + 1}`),
+        task(`t${index + 1}`, `Inspect area ${index + 1}`),
       )
       const large = await runPromptPlan(planWithTasks(largeTasks), {
         cwd: largeDir,
@@ -294,6 +395,159 @@ describe('prompt planning', () => {
       )
       expect(order).toEqual(['t1', 't2'])
       expect(result.finished).toBe(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('scheduler can fan out after a single prerequisite finishes', async () => {
+    const dir = tempDir('ur-nexus-fanout-')
+    try {
+      const tasks = [
+        task('t1', 'Prepare shared context'),
+        task('t2', 'Inspect parser', ['t1']),
+        task('t3', 'Inspect renderer', ['t1']),
+      ]
+      let activeAfterRoot = 0
+      let maxActiveAfterRoot = 0
+      const result = await runPromptPlan(planWithTasks(tasks), {
+        cwd: dir,
+        config: { maxAgents: 3 },
+        executeTask: async current => {
+          if (current.id !== 't1') {
+            activeAfterRoot += 1
+            maxActiveAfterRoot = Math.max(
+              maxActiveAfterRoot,
+              activeAfterRoot,
+            )
+            await Bun.sleep(10)
+            activeAfterRoot -= 1
+          }
+          return { ok: true, output: current.id, commandsRun: ['true'] }
+        },
+      })
+
+      expect(result.finished).toBe(3)
+      expect(maxActiveAfterRoot).toBe(2)
+      expect(result.maxAgentsUsed).toBe(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('potential shared-workspace mutations never overlap', async () => {
+    const dir = tempDir('ur-nexus-shared-mutations-')
+    try {
+      let active = 0
+      let maxActive = 0
+      const result = await runPromptPlan(
+        planWithTasks([
+          task('t1', 'Implement parser'),
+          task('t2', 'Update documentation'),
+        ]),
+        {
+          cwd: dir,
+          config: { maxAgents: 3 },
+          executeTask: async current => {
+            active += 1
+            maxActive = Math.max(maxActive, active)
+            await Bun.sleep(10)
+            writeFileSync(join(dir, `${current.id}.txt`), current.id)
+            active -= 1
+            return {
+              ok: true,
+              output: `changed ${current.id}.txt`,
+              changedFiles: [`${current.id}.txt`],
+            }
+          },
+        },
+      )
+
+      expect(result.finished).toBe(2)
+      expect(maxActive).toBe(1)
+      expect(result.maxAgentsUsed).toBe(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('review tasks that request corrections are serialized as mutations', async () => {
+    const dir = tempDir('ur-nexus-review-corrections-')
+    try {
+      let active = 0
+      let maxActive = 0
+      const result = await runPromptPlan(
+        planWithTasks([
+          task('t1', 'Review parser and correct errors'),
+          task('t2', 'Audit renderer and repair gaps'),
+        ]),
+        {
+          cwd: dir,
+          config: { maxAgents: 3 },
+          executeTask: async () => {
+            active += 1
+            maxActive = Math.max(maxActive, active)
+            await Bun.sleep(10)
+            active -= 1
+            return { ok: true, output: 'review complete', commandsRun: ['true'] }
+          },
+        },
+      )
+
+      expect(result.finished).toBe(2)
+      expect(maxActive).toBe(1)
+      expect(result.maxAgentsUsed).toBe(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('a task classified read-only fails if it mutates the workspace', async () => {
+    const dir = tempDir('ur-nexus-readonly-write-')
+    try {
+      const result = await runPromptPlan(
+        planWithTasks([task('t1', 'Inspect parser')]),
+        {
+          cwd: dir,
+          executeTask: async () => {
+            writeFileSync(join(dir, 'unexpected.txt'), 'unexpected')
+            return {
+              ok: true,
+              output: 'changed unexpected.txt',
+              changedFiles: ['unexpected.txt'],
+            }
+          },
+        },
+      )
+      expect(result.failed).toBe(1)
+      expect(
+        result.taskResults[0]?.postVerification?.issues.map(
+          issue => issue.code,
+        ),
+      ).toContain('read_only_task_modified_workspace')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('numeric task order controls serial scheduling even for unsorted input', async () => {
+    const dir = tempDir('ur-nexus-plan-order-')
+    try {
+      const tasks = [
+        { ...task('t3', 'Third'), order: 3 },
+        { ...task('t1', 'First'), order: 1 },
+        { ...task('t2', 'Second'), order: 2 },
+      ]
+      const executionOrder: string[] = []
+      await runPromptPlan(planWithTasks(tasks), {
+        cwd: dir,
+        config: { parallelAgents: false },
+        executeTask: async current => {
+          executionOrder.push(current.id)
+          return { ok: true, output: current.id, commandsRun: ['true'] }
+        },
+      })
+      expect(executionOrder).toEqual(['t1', 't2', 't3'])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -401,6 +655,41 @@ describe('prompt planning', () => {
     )
   })
 
+  test('command verification rejects commands merely mentioned by another command', () => {
+    const current = task('t1', 'Verify claims')
+    const result = validateAfterExecution(
+      current,
+      {
+        ok: true,
+        output: 'I ran `npm test`.',
+        commandsRun: ['echo npm test'],
+      },
+      { cwd: process.cwd() },
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues.map(issue => issue.code)).toContain(
+      'unsupported_command_claim',
+    )
+  })
+
+  test('file verification normalizes equivalent relative paths', () => {
+    const current = task('t1', 'Verify claims')
+    const result = validateAfterExecution(
+      current,
+      {
+        ok: true,
+        output: 'I updated ./src/actual.ts.',
+        changedFiles: ['./src/actual.ts'],
+      },
+      {
+        cwd: process.cwd(),
+        actualChangedFiles: ['src/actual.ts'],
+      },
+    )
+    expect(result.ok).toBe(true)
+    expect(result.issues).toEqual([])
+  })
+
   test('file state before and after detects actual changed files', () => {
     const dir = tempDir('ur-nexus-evidence-')
     try {
@@ -451,5 +740,153 @@ describe('prompt planning', () => {
     expect(result.issues.map(issue => issue.code)).toContain(
       'unsupported_command_claim',
     )
+  })
+
+  test('partial run options preserve the plan verification policy', async () => {
+    const dir = tempDir('ur-nexus-config-merge-')
+    try {
+      const plan = planWithTasks([task('t1', 'Verify claims')])
+      plan.config.parallelAgents = false
+      plan.config.strictVerification = false
+      const result = await runPromptPlan(plan, {
+        cwd: dir,
+        config: { maxAgents: 8 },
+        executeTask: async () => ({
+          ok: true,
+          output: 'I updated src/unobserved.ts.',
+          changedFiles: ['src/unobserved.ts'],
+        }),
+      })
+
+      expect(result.finished).toBe(1)
+      expect(result.maxAgentsAllowed).toBe(1)
+      expect(
+        result.taskResults[0]?.postVerification?.issues.map(
+          issue => issue.code,
+        ),
+      ).toContain('unsupported_file_change_claim')
+      expect(
+        result.taskResults[0]?.postVerification?.issues.every(
+          issue => issue.severity === 'warning',
+        ),
+      ).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('resumed plans keep finished prerequisites without pretending to reverify them', async () => {
+    const dir = tempDir('ur-nexus-plan-resume-')
+    try {
+      const completed = {
+        ...task('t1', 'Already complete'),
+        status: 'finished' as const,
+      }
+      const pending = task('t2', 'Inspect next step', ['t1'])
+      const executed: string[] = []
+      const result = await runPromptPlan(
+        planWithTasks([completed, pending]),
+        {
+          cwd: dir,
+          executeTask: async current => {
+            executed.push(current.id)
+            return { ok: true, output: current.id, commandsRun: ['true'] }
+          },
+        },
+      )
+
+      expect(executed).toEqual(['t2'])
+      expect(result.finished).toBe(2)
+      expect(result.taskResults[0]?.execution).toBeUndefined()
+      expect(
+        result.taskResults[0]?.preVerification.issues.map(issue => issue.code),
+      ).toContain('preexisting_completion_not_reverified')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('invalid dependency graphs fail closed without executing tasks', async () => {
+    const dir = tempDir('ur-nexus-invalid-graph-')
+    try {
+      const duplicateA = task('duplicate', 'Duplicate A')
+      const duplicateB = {
+        ...task('duplicate', 'Duplicate B'),
+        order: 2,
+      }
+      const missing = task('missing', 'Missing dependency', ['absent'])
+      const self = task('self', 'Self dependency', ['self'])
+      const cycleA = task('cycle-a', 'Cycle A', ['cycle-b'])
+      const cycleB = task('cycle-b', 'Cycle B', ['cycle-a'])
+      let executions = 0
+      const result = await runPromptPlan(
+        planWithTasks([
+          duplicateA,
+          duplicateB,
+          missing,
+          self,
+          cycleA,
+          cycleB,
+        ]),
+        {
+          cwd: dir,
+          executeTask: async () => {
+            executions += 1
+            return { ok: true, output: 'must not execute' }
+          },
+        },
+      )
+
+      expect(executions).toBe(0)
+      expect(result.taskResults).toHaveLength(6)
+      expect(
+        result.taskResults
+          .flatMap(record => record.preVerification.issues)
+          .map(issue => issue.code),
+      ).toEqual(
+        expect.arrayContaining([
+          'duplicate_task_id',
+          'missing_dependency',
+          'self_dependency',
+          'cyclic_dependency',
+        ]),
+      )
+      expect(
+        result.taskResults.every(record => record.preVerification.ok === false),
+      ).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('failed prerequisites block dependents with explicit evidence', async () => {
+    const dir = tempDir('ur-nexus-dependency-failure-')
+    try {
+      const result = await runPromptPlan(
+        planWithTasks([
+          task('t1', 'Fail first'),
+          task('t2', 'Must wait', ['t1']),
+        ]),
+        {
+          cwd: dir,
+          executeTask: async current =>
+            current.id === 't1'
+              ? { ok: false, error: 'expected failure' }
+              : { ok: true, output: 'must not run' },
+        },
+      )
+
+      expect(result.tasks.map(current => current.status)).toEqual([
+        'failed',
+        'blocked',
+      ])
+      expect(result.blocked).toBe(1)
+      expect(result.taskResults[1]?.execution).toBeUndefined()
+      expect(
+        result.taskResults[1]?.preVerification.issues.map(issue => issue.code),
+      ).toContain('dependency_not_completed')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

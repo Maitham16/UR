@@ -739,7 +739,10 @@ export function renderGroupedAgentToolUse(toolUses: Array<{
       <Box flexDirection="row">
         <ToolUseLoader shouldAnimate={shouldAnimate && anyUnresolved} isUnresolved={anyUnresolved} isError={anyError} />
         <Text>
-          {allComplete ? allAsync ? <>
+          {allComplete ? anyError ? <>
+                <Text bold>{toolUses.length}</Text>{' '}
+                {commonType ? `${commonType} agents` : 'agents'} finished with errors
+              </> : allAsync ? <>
                 <Text bold>{toolUses.length}</Text> background agents launched{' '}
                 <Text dimColor>
                   <KeyboardShortcutHint shortcut="↓" action="manage" parens />
@@ -754,7 +757,7 @@ export function renderGroupedAgentToolUse(toolUses: Array<{
         </Text>
         {!allAsync && <CtrlOToExpand />}
       </Box>
-      {agentStats.map((stat, index) => <AgentProgressLine key={stat.id} agentType={stat.agentType} description={stat.description} descriptionColor={stat.descriptionColor} taskDescription={stat.taskDescription} toolUseCount={stat.toolUseCount} tokens={stat.tokens} color={stat.color} isLast={index === agentStats.length - 1} isResolved={stat.isResolved} isError={stat.isError} isAsync={stat.isAsync} shouldAnimate={shouldAnimate} lastToolInfo={stat.lastToolInfo} hideType={allSameType} name={stat.name} />)}
+      {agentStats.map((stat, index) => <AgentProgressLine key={stat.id} agentType={stat.agentType} description={stat.description} descriptionColor={stat.descriptionColor} taskDescription={stat.taskDescription} toolUseCount={stat.toolUseCount} tokens={stat.tokens} color={stat.color} isLast={index === agentStats.length - 1} isResolved={stat.isResolved} isError={stat.isError} isAsync={stat.isAsync} lastToolInfo={stat.lastToolInfo} hideType={allSameType} name={stat.name} />)}
     </Box>;
 }
 export function userFacingName(input: Partial<{

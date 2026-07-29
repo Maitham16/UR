@@ -1,5 +1,65 @@
 # Changelog
 
+## 1.65.6
+
+- Remote sessions no longer reconnect forever when the server repeatedly
+  accepts a WebSocket upgrade and then reports that the session is missing.
+  Repeated `connect()` calls reuse the live client, malformed permission and
+  cancellation frames fail safely, and the cancellation wire type now matches
+  the runtime schema.
+- Tool execution can no longer silently run zero tools because of a negative
+  concurrency setting. Concurrency is normalized to a bounded range, and
+  serial or parallel tool cancellation always clears in-progress state.
+- Replaced scattered and sometimes unsafe model instructions with one compact,
+  ordered execution contract shared by normal, minimal, and remote modes. It
+  preserves structured tool use, dependency-aware parallel calls, result
+  observation, recovery, verification, honest completion, and prompt-injection
+  boundaries while removing guesses such as forcing system Python package
+  installs. Ollama retains an explicit native-tool discipline and may use text
+  recovery only when the runtime says native tools are unavailable.
+- Tool calls are normalized and validated again at the final execution
+  boundary, including permission-hook rewrites. Unknown tools, duplicate IDs,
+  malformed object inputs, and unsafe read-to-write rewrites fail closed.
+  Ollama/Kimi streaming repairs supported split calls without turning invalid
+  arguments into empty objects, deduplicates cumulative frames, and preserves
+  distinct same-name calls.
+- Task planning now uses dependency-ordered lifecycle guidance, atomic
+  task-store updates, transactional dependency checks, and strict gate reads.
+  Mutations are classified at execution time, delegation cannot consume the
+  short-task allowance, and completion claims are rejected while actionable
+  tasks remain or task state cannot be verified.
+- Repeated failing calls now use bounded SHA-256 identities with per-query
+  cleanup, TTL and capacity limits, so large or sensitive tool inputs are not
+  retained. Identical failures are refused and eventually abort the turn;
+  corrected inputs are allowed immediately.
+- `ur crew` now runs independent workers in parallel, honors dependency
+  fan-in, claims work across processes, and supports bounded respawns with
+  backoff and cancellation. Automatic retries use isolated fresh worktrees;
+  ambiguous shared-workspace mutations are never replayed.
+- Hardened the upstream proxy relay against unterminated or overflowing
+  protobuf varints, half-open rejected HTTP clients, and synchronous WebSocket
+  constructor failures.
+- Terminal UI layouts now remain valid in very small windows. Search pickers,
+  fullscreen modals, dividers, highlighted code, the startup logo, and cursor
+  widths clamp or reflow instead of overflowing; empty picker focus,
+  Meta-key punctuation/input-buffer handling, prompt-footer sizing, live-model
+  status refreshes, and task progress presentation are corrected.
+- Hardened IDE state storage against symlink redirection, oversized or corrupt
+  state, and interrupted writes. The VS Code chat now treats an abnormal
+  process exit as failure even after a result frame, bounds NDJSON/stderr
+  buffering, validates webview messages, and improves keyboard focus, live
+  status, alert, and attachment accessibility.
+- The Node launcher now enforces the declared Bun minimum, including
+  prerelease ordering, rather than checking only whether a `bun` executable
+  exists.
+- Release automation now runs the validated serial Bun test command (parallel
+  workers currently collide on ephemeral test servers), grants the permissions
+  needed to download verified artifacts, keeps
+  prereleases off npm's `latest` tag, marks GitHub prereleases correctly,
+  validates every version-bearing surface, supports safe prerelease bumps, and
+  cleans package-check temporary state. Validation docs and historical
+  changelog ordering were corrected.
+
 ## 1.65.5
 
 - Syntax highlighting works again — in assistant messages, code previews and
@@ -1658,36 +1718,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   `FileEditTool.call`.
 - Verified source and production bundle release checks for the `1.22.6` build.
 
-## 1.22.3
-
-### Added
-- **Executable skill directories.** A `.ur/skills/<name>/` directory containing
-  `skill.yaml` is now an executable skill that compiles into a `WorkflowSpec`.
-  Supports `instructions.md`, `scripts/`, `templates/`, and `checklists/`.
-  `src/skills/skillSpec.ts` parses, validates, and compiles skills; step prompts
-  support `$ARGUMENTS`, `$0..$N`, and `$ARGUMENTS[N]` substitution.
-- **`ur skill` CLI.** New command surface: `ur skill list`, `ur skill show <name>`,
-  `ur skill run <name> [args]`, and `ur skill init <name>`. Registered in
-  `src/commands.ts` and `src/main.tsx`.
-- **Semantic repo index.** `src/utils/codeIndex/repoIndex.ts` builds offline,
-  dependency-free indexes under `.ur/code-index/`: `repo.json` (file
-  classification + imports/importedBy), `symbols.json`, `calls.json`,
-  `tests.json`, `docs.json`, and `configs.json`. `ur code-index repo` exposes
-  `build|status|search|symbols|callers|tests|docs|configs` subcommands.
-- **`--repo` flag for code-index build/watch.** `ur code-index build --repo`
-  builds both the embedding index and the repo index; `watch --repo` refreshes
-  the repo index on file changes.
-
-### Changed
-- Reused the existing workflow engine for executable skills and extended the
-  existing `ur code-index` surface for the repo index, keeping changes additive.
-
-### Verified
-- Added `test/skillSpec.test.ts`, `test/skillCommand.test.ts`, and
-  `test/repoIndex.test.ts` covering skill parsing, compilation, CLI scaffolding,
-  repo file classification, symbol/call/test/doc/config extraction, and index
-  round-trips.
-
 ## 1.22.5
 
 ### Added
@@ -1741,6 +1771,36 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   `test/repoEditReadOps.test.ts` covering binding-aware rename, cross-file
   import updates, rollback on check failure, move, organize imports, unused
   detection, and caller mapping.
+
+## 1.22.3
+
+### Added
+- **Executable skill directories.** A `.ur/skills/<name>/` directory containing
+  `skill.yaml` is now an executable skill that compiles into a `WorkflowSpec`.
+  Supports `instructions.md`, `scripts/`, `templates/`, and `checklists/`.
+  `src/skills/skillSpec.ts` parses, validates, and compiles skills; step prompts
+  support `$ARGUMENTS`, `$0..$N`, and `$ARGUMENTS[N]` substitution.
+- **`ur skill` CLI.** New command surface: `ur skill list`, `ur skill show <name>`,
+  `ur skill run <name> [args]`, and `ur skill init <name>`. Registered in
+  `src/commands.ts` and `src/main.tsx`.
+- **Semantic repo index.** `src/utils/codeIndex/repoIndex.ts` builds offline,
+  dependency-free indexes under `.ur/code-index/`: `repo.json` (file
+  classification + imports/importedBy), `symbols.json`, `calls.json`,
+  `tests.json`, `docs.json`, and `configs.json`. `ur code-index repo` exposes
+  `build|status|search|symbols|callers|tests|docs|configs` subcommands.
+- **`--repo` flag for code-index build/watch.** `ur code-index build --repo`
+  builds both the embedding index and the repo index; `watch --repo` refreshes
+  the repo index on file changes.
+
+### Changed
+- Reused the existing workflow engine for executable skills and extended the
+  existing `ur code-index` surface for the repo index, keeping changes additive.
+
+### Verified
+- Added `test/skillSpec.test.ts`, `test/skillCommand.test.ts`, and
+  `test/repoIndex.test.ts` covering skill parsing, compilation, CLI scaffolding,
+  repo file classification, symbol/call/test/doc/config extraction, and index
+  round-trips.
 
 ## 1.22.2
 

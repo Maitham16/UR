@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { builtinModules } from 'node:module'
+import ts from 'typescript'
 
 // cli-highlight was imported by four rendering surfaces and declared nowhere.
 // Its loader caught the resolution failure and returned null, so every code
@@ -27,9 +28,6 @@ const PATTERNS = [
   DYNAMIC_IMPORT,
   TYPEOF_IMPORT,
 ] as const
-
-/** Native addons resolved at runtime with a graceful fallback when absent. */
-const OPTIONAL_NATIVE = /(?:-napi|\.node)$/
 
 function sourceFiles(dir: string, found: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -78,8 +76,34 @@ function isExternal(specifier: string): boolean {
   if (specifier.startsWith('node:')) return false
   if (specifier.startsWith('bun:')) return false
   if (builtinModules.includes(packageName(specifier))) return false
-  if (OPTIONAL_NATIVE.test(specifier)) return false
   return true
+}
+
+/** Static `require("pkg")` calls, excluding strings/comments and templates. */
+function requiredSpecifiers(file: string, source: string): string[] {
+  const kind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    kind,
+  )
+  const found: string[] = []
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'require' &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteral(node.arguments[0]!)
+    ) {
+      found.push(node.arguments[0]!.text)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  return found
 }
 
 test('every external module imported by src is declared in package.json', () => {
@@ -98,14 +122,18 @@ test('every external module imported by src is declared in package.json', () => 
   const undeclared = new Map<string, string>()
   for (const file of sourceFiles(SOURCE_ROOT)) {
     const source = readFileSync(file, 'utf8')
+    const specifiers: string[] = []
     for (const pattern of PATTERNS) {
       for (const match of source.matchAll(pattern)) {
-        const specifier = match[1]
-        if (!specifier || !isExternal(specifier)) continue
-        const name = packageName(specifier)
-        if (!exempt.has(name) && !undeclared.has(name)) {
-          undeclared.set(name, file)
-        }
+        if (match[1]) specifiers.push(match[1])
+      }
+    }
+    specifiers.push(...requiredSpecifiers(file, source))
+    for (const specifier of specifiers) {
+      if (!isExternal(specifier)) continue
+      const name = packageName(specifier)
+      if (!exempt.has(name) && !undeclared.has(name)) {
+        undeclared.set(name, file)
       }
     }
   }

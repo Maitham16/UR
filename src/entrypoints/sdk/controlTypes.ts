@@ -1,8 +1,8 @@
 type JsonObject = Record<string, any>
 
 export type SDKControlCancelRequest = JsonObject & {
-  type: 'control_cancel'
-  request_id?: string
+  type: 'control_cancel_request'
+  request_id: string
 }
 
 export type SDKControlInitializeRequest = JsonObject & {
@@ -65,7 +65,7 @@ type AssistantStdoutMessage = JsonObject & {
 
 type GenericStdoutMessage = JsonObject & {
   type:
-    | 'control_cancel'
+    | 'control_cancel_request'
     | 'control_request'
     | 'control_response'
     | 'keep_alive'

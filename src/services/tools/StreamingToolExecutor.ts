@@ -116,30 +116,27 @@ export class StreamingToolExecutor {
    * Add a tool to the execution queue. Will start executing immediately if conditions allow.
    */
   addTool(block: ToolUseBlock, assistantMessage: AssistantMessage): void {
+    if (this.tools.some(tool => tool.id === block.id)) {
+      // A Set cannot represent two in-flight calls with the same ID, and tool
+      // results would be correlated to the wrong assistant block. Abort the
+      // eager batch as soon as the provider violation becomes observable.
+      this.discard()
+      throw new Error(`Duplicate tool_use id received: ${block.id}`)
+    }
     const toolDefinition = findToolByName(this.toolDefinitions, block.name)
     if (!toolDefinition) {
+      // Route unknown tools through runToolUse as well. It owns telemetry and
+      // the repeated-failure guard; synthesizing an error here let a weak
+      // streaming model repeat the same hallucinated tool forever.
       this.tools.push({
         id: block.id,
         block,
         assistantMessage,
-        status: 'completed',
-        isConcurrencySafe: true,
+        status: 'queued',
+        isConcurrencySafe: false,
         pendingProgress: [],
-        results: [
-          createUserMessage({
-            content: [
-              {
-                type: 'tool_result',
-                content: `<tool_use_error>Error: No such tool available: ${block.name}</tool_use_error>`,
-                is_error: true,
-                tool_use_id: block.id,
-              },
-            ],
-            toolUseResult: `Error: No such tool available: ${block.name}`,
-            sourceToolAssistantUUID: assistantMessage.uuid,
-          }),
-        ],
       })
+      void this.processQueue()
       return
     }
 
@@ -402,10 +399,11 @@ export class StreamingToolExecutor {
           break
         }
 
+        const innerMessage = update.message.message
         const isErrorResult =
           update.message.type === 'user' &&
-          Array.isArray(update.message.message.content) &&
-          update.message.message.content.some(
+          Array.isArray(innerMessage?.content) &&
+          innerMessage.content.some(
             _ => _.type === 'tool_result' && _.is_error === true,
           )
 

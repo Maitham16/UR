@@ -1,7 +1,5 @@
-import {
-  DEFAULT_PROMPT_PLANNING_CONFIG,
-  resolvePromptPlanningConfig,
-} from './config.js'
+import { randomUUID } from 'node:crypto'
+import { resolvePromptPlanningConfig } from './config.js'
 import type {
   NexusAgentRole,
   NexusRiskLevel,
@@ -9,7 +7,7 @@ import type {
   PromptPlan,
   PromptPlanningConfig,
 } from './types.js'
-import { isAbsolute } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 
 const URL_PATTERN = /\bhttps?:\/\/[^\s)]+/gi
 const PATH_PATTERN =
@@ -29,6 +27,11 @@ const SECURITY_PATTERN =
   /\b(pentest|penetration\s+test|exploit|sqlmap|nmap|metasploit|payload|vulnerabilit(?:y|ies)|cve|xss|csrf|rce|security\s+scan|attack)\b/i
 const AUTHORIZED_SECURITY_PATTERN =
   /\b(authorized|authorization|owned|own\s+system|my\s+(?:app|site|server|service)|localhost|127\.0\.0\.1|::1|lab|sandbox|ctf|test\s+target)\b/i
+const CREATE_TARGET_PATTERN =
+  /\b(?:create|generate|scaffold)\b|^\s*(?:add|write)\s+(?:a|an|new)\b/i
+const STANDALONE_DIRECTIVE_PATTERN =
+  /^(?:then|after|once|next|finally|before|verify|validate|test|run|create|add|update|fix|implement|build|bump|publish|report|summari[sz]e)\b/i
+const MAX_PLANNED_TASKS = 12
 
 function compact(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
@@ -66,18 +69,64 @@ export function extractReferencedFiles(text: string): string[] {
   return unique(paths)
 }
 
+function indentationWidth(value: string): number {
+  return [...value].reduce(
+    (width, character) => width + (character === '\t' ? 2 : 1),
+    0,
+  )
+}
+
 function splitNumberedOrBulletedLines(prompt: string): string[] {
+  const lines = prompt.split(/\r?\n/)
+  const listItems = lines
+    .map(line => line.match(/^(\s*)(?:[-*]|\d+[.)])\s+(.+)$/))
+    .filter(
+      (match): match is RegExpMatchArray =>
+        match !== null && Boolean(match[2]),
+    )
+  if (listItems.length < 2) return []
+
+  const baseIndent = Math.min(
+    ...listItems.map(match => indentationWidth(match[1] ?? '')),
+  )
   const segments: string[] = []
-  for (const line of prompt.split(/\r?\n/)) {
-    const match = line.match(/^\s*(?:[-*]|\d+[.)])\s+(.+)$/)
-    if (match?.[1]) segments.push(match[1])
+  let currentIndex = -1
+  for (const line of lines) {
+    const match = line.match(/^(\s*)(?:[-*]|\d+[.)])\s+(.+)$/)
+    if (match?.[2]) {
+      const value = compact(match[2])
+      if (indentationWidth(match[1] ?? '') === baseIndent) {
+        segments.push(value)
+        currentIndex = segments.length - 1
+      } else if (currentIndex >= 0) {
+        segments[currentIndex] = `${segments[currentIndex]}; ${value}`
+      }
+      continue
+    }
+
+    const value = compact(line)
+    if (!value || currentIndex < 0) continue
+    if (STANDALONE_DIRECTIVE_PATTERN.test(value)) {
+      segments.push(value)
+      currentIndex = segments.length - 1
+    } else {
+      segments[currentIndex] = `${segments[currentIndex]}; ${value}`
+    }
   }
-  return segments.length >= 2 ? segments.map(compact) : []
+  return segments.length >= 2 ? segments : []
+}
+
+function boundTaskCount(segments: string[]): string[] {
+  if (segments.length <= MAX_PLANNED_TASKS) return segments
+  return [
+    ...segments.slice(0, MAX_PLANNED_TASKS - 1),
+    segments.slice(MAX_PLANNED_TASKS - 1).join('; '),
+  ]
 }
 
 function splitLongPrompt(prompt: string): string[] {
   const bulletSegments = splitNumberedOrBulletedLines(prompt)
-  if (bulletSegments.length > 0) return bulletSegments
+  if (bulletSegments.length > 0) return boundTaskCount(bulletSegments)
 
   const trimmed = compact(prompt)
   if (trimmed.length < 220 && !/[;\n]/.test(prompt)) return [trimmed]
@@ -86,23 +135,35 @@ function splitLongPrompt(prompt: string): string[] {
     .split(/\r?\n+/)
     .map(compact)
     .filter(Boolean)
-  if (lines.length >= 2) return lines
+  if (lines.length >= 2) return boundTaskCount(lines)
 
   const sentenceSegments = trimmed
     .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
     .map(compact)
     .filter(Boolean)
-  if (sentenceSegments.length >= 2) return sentenceSegments
+  if (sentenceSegments.length >= 2) return boundTaskCount(sentenceSegments)
 
   const directiveSegments = trimmed
     .split(/\s+(?:then|also|next|finally)\s+/i)
     .map(compact)
     .filter(Boolean)
-  return directiveSegments.length >= 2 ? directiveSegments : [trimmed]
+  return directiveSegments.length >= 2
+    ? boundTaskCount(directiveSegments)
+    : [trimmed]
 }
 
 function needsPreviousTask(segment: string): boolean {
-  return /^(then|after|next|finally|verify|validate|test|run tests|summari[sz]e|report)\b/i.test(
+  return /^(then|after|once|next|finally|verify|validate|test|run\s+(?:the\s+)?tests?|summari[sz]e|report)\b/i.test(
+    segment,
+  )
+}
+
+function needsAllPreviousTasks(
+  segment: string,
+  role: NexusAgentRole,
+): boolean {
+  if (role === 'verifier' || role === 'reporter') return true
+  return /^(?:finally|once|after\s+(?:all|everything)|when\b.*\b(?:done|complete)|before\s+(?:finishing|completion))\b/i.test(
     segment,
   )
 }
@@ -147,6 +208,17 @@ function isOutsideReadOnly(segment: string, outsidePaths: string[]): boolean {
   return outsidePaths.length > 0 && READ_PATTERN.test(segment) && !WRITE_PATTERN.test(segment)
 }
 
+function isOutsideWorkspace(file: string, workspaceRoot?: string): boolean {
+  if (!isAbsolute(file)) return false
+  if (!workspaceRoot) return true
+  const workspaceRelative = relative(resolve(workspaceRoot), resolve(file))
+  return (
+    workspaceRelative === '..' ||
+    workspaceRelative.startsWith(`..${sep}`) ||
+    isAbsolute(workspaceRelative)
+  )
+}
+
 function riskSignals(segment: string, outsidePaths: string[]): string[] {
   const signals: string[] = []
   if (DESTRUCTIVE_PATTERN.test(segment)) signals.push('destructive command')
@@ -189,15 +261,21 @@ function approvalReasonFor(
   return 'This task requires explicit approval before execution.'
 }
 
-function verificationCriteria(segment: string, files: string[]): string[] {
+function verificationCriteria(
+  segment: string,
+  files: string[],
+  requiredFiles: string[],
+): string[] {
   const criteria = [
     `Result directly addresses: ${compact(segment)}`,
     'Assumptions are stated before execution when context is incomplete.',
     'Unsupported claims are rejected during verification.',
     'Approval-required actions are not executed before approval evidence exists.',
   ]
-  if (files.length > 0) {
+  if (requiredFiles.length > 0) {
     criteria.push('Referenced files exist before file-specific work starts.')
+  }
+  if (files.length > 0) {
     criteria.push('Any claimed file changes are backed by actual changed files.')
   }
   return criteria
@@ -206,10 +284,15 @@ function verificationCriteria(segment: string, files: string[]): string[] {
 function makeTask(
   segment: string,
   index: number,
-  previousTaskId: string | null,
+  previousTaskIds: string[],
+  originalPrompt: string,
+  workspaceRoot?: string,
 ): NexusTask {
   const files = extractReferencedFiles(segment)
-  const outsidePaths = files.filter(file => isAbsolute(file))
+  const requiredFiles = CREATE_TARGET_PATTERN.test(segment) ? [] : files
+  const outsidePaths = files.filter(file =>
+    isOutsideWorkspace(file, workspaceRoot),
+  )
   const signals = riskSignals(segment, outsidePaths)
   const approvalRequired = signals.length > 0
   const approvalReason = approvalReasonFor(segment, signals, outsidePaths)
@@ -217,8 +300,12 @@ function makeTask(
   const needsScope =
     SECURITY_PATTERN.test(segment) && !AUTHORIZED_SECURITY_PATTERN.test(segment)
   const needsContext = isCriticallyAmbiguous(segment)
-  const dependencies =
-    previousTaskId && needsPreviousTask(segment) ? [previousTaskId] : []
+  const role = inferRole(segment)
+  const dependencies = needsAllPreviousTasks(segment, role)
+    ? [...previousTaskIds]
+    : needsPreviousTask(segment) && previousTaskIds.length > 0
+      ? [previousTaskIds[previousTaskIds.length - 1]!]
+      : []
   const assumptions = needsContext
     ? ['Critical target/context is missing; ask for clarification before execution.']
     : [
@@ -241,18 +328,19 @@ function makeTask(
           ? 'waiting-approval'
           : dependencies.length > 0 ? 'pending' : 'ready',
     dependencies,
-    assignedAgent: inferRole(segment),
+    assignedAgent: role,
     input: {
       prompt: segment,
+      originalPrompt,
       assumptions,
-      requiredFiles: files,
+      requiredFiles,
       targetFiles: files,
       resources: extractUrls(segment),
     },
     expectedOutput: needsContext
       ? 'A clarification request naming the missing target or context.'
       : `Completed work for: ${compact(segment)}`,
-    verificationCriteria: verificationCriteria(segment, files),
+    verificationCriteria: verificationCriteria(segment, files, requiredFiles),
     fileTargets: files,
     riskLevel: riskLevel(signals, files),
     approvalRequired,
@@ -269,23 +357,27 @@ function makeTask(
 export function decomposePrompt(
   prompt: string,
   config?: Partial<PromptPlanningConfig>,
+  workspaceRoot?: string,
 ): PromptPlan {
-  const resolvedConfig = {
-    ...DEFAULT_PROMPT_PLANNING_CONFIG,
-    ...resolvePromptPlanningConfig(config),
-  }
+  const resolvedConfig = resolvePromptPlanningConfig(config)
   const originalPrompt = prompt
   const segments = splitLongPrompt(prompt).filter(Boolean)
   const sourceSegments = segments.length > 0 ? segments : ['']
-  let previousTaskId: string | null = null
+  const previousTaskIds: string[] = []
   const tasks = sourceSegments.map((segment, index) => {
-    const task = makeTask(segment, index, previousTaskId)
-    previousTaskId = task.id
+    const task = makeTask(
+      segment,
+      index,
+      previousTaskIds,
+      originalPrompt,
+      workspaceRoot,
+    )
+    previousTaskIds.push(task.id)
     return task
   })
 
   return {
-    id: `plan-${Date.now().toString(36)}`,
+    id: `plan-${randomUUID()}`,
     originalPrompt,
     tasks,
     assumptions: unique(tasks.flatMap(task => task.input.assumptions)),

@@ -104,6 +104,7 @@ import { Verifier } from './services/verifier/index.js'
 import { StreamingToolExecutor } from './services/tools/StreamingToolExecutor.js'
 import { queryCheckpoint } from './utils/queryProfiler.js'
 import { runTools } from './services/tools/toolOrchestration.js'
+import { clearRepeatedFailuresForQuery } from './services/tools/repeatedFailureGuard.js'
 import { applyToolResultBudget } from './utils/toolResultStorage.js'
 import { recordContentReplacement } from './utils/sessionStorage.js'
 import { handleStopHooks } from './query/stopHooks.js'
@@ -235,20 +236,35 @@ export async function* query(
   Terminal
 > {
   const consumedCommandUuids: string[] = []
-  const terminal = yield* queryLoop(params, consumedCommandUuids)
-  // Only reached if queryLoop returned normally. Skipped on throw (error
-  // propagates through yield*) and on .return() (Return completion closes
-  // both generators). This gives the same asymmetric started-without-completed
-  // signal as print.ts's drainCommandQueue when the turn fails.
-  for (const uuid of consumedCommandUuids) {
-    notifyCommandLifecycle(uuid, 'completed')
+  const ownedRepeatedFailureQueryChains = new Set<string>()
+  try {
+    const terminal = yield* queryLoop(
+      params,
+      consumedCommandUuids,
+      ownedRepeatedFailureQueryChains,
+    )
+    // Only reached if queryLoop returned normally. Skipped on throw (error
+    // propagates through yield*) and on .return() (Return completion closes
+    // both generators). This gives the same asymmetric started-without-completed
+    // signal as print.ts's drainCommandQueue when the turn fails.
+    for (const uuid of consumedCommandUuids) {
+      notifyCommandLifecycle(uuid, 'completed')
+    }
+    return terminal
+  } finally {
+    // Only depth-zero chains are registered below, so a nested query cannot
+    // clear failure history while its owner is still using it. Cleanup also
+    // runs on thrown errors and early generator return.
+    for (const chainId of ownedRepeatedFailureQueryChains) {
+      clearRepeatedFailuresForQuery(chainId)
+    }
   }
-  return terminal
 }
 
 async function* queryLoop(
   params: QueryParams,
   consumedCommandUuids: string[],
+  ownedRepeatedFailureQueryChains: Set<string>,
 ): AsyncGenerator<
   | StreamEvent
   | RequestStartEvent
@@ -406,6 +422,9 @@ async function* queryLoop(
 
     const queryChainIdForAnalytics =
       queryTracking.chainId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+    if (queryTracking.depth === 0) {
+      ownedRepeatedFailureQueryChains.add(queryTracking.chainId)
+    }
 
     toolUseContext = {
       ...toolUseContext,

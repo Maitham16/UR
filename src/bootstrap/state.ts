@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { BetaMessageStreamParams } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
 import type { Attributes, Meter, MetricOptions } from '@opentelemetry/api'
 import type { logs } from '@opentelemetry/api-logs'
@@ -202,6 +201,9 @@ type State = {
   // auto-updates, remote control, and web-dependent commands. Local Ollama and
   // filesystem tools still work.
   offlineMode: boolean
+  // True only for a fully interactive REPL bridge. Outbound-only CCR mirrors
+  // deliberately keep this false because they cannot receive peer messages.
+  replBridgeActive: boolean
   // Direct connect server URL (for display in header)
   directConnectServerUrl: string | undefined
   // System prompt section cache state
@@ -395,11 +397,7 @@ function getInitialState(): State {
     isRemoteMode: false,
     // Offline / local-first mode
     offlineMode: false,
-    ...(process.env.USER_TYPE === 'ant'
-      ? {
-          replBridgeActive: false,
-        }
-      : {}),
+    replBridgeActive: false,
     // Direct connect server URL
     directConnectServerUrl: undefined,
     // System prompt section cache state
@@ -1432,6 +1430,9 @@ export function registerHookCallbacks(
 
   // `registerHookCallbacks` may be called multiple times, so we need to merge (not overwrite)
   for (const [event, matchers] of Object.entries(hooks)) {
+    if (!matchers || matchers.length === 0) {
+      continue
+    }
     const eventKey = event as HookEvent
     if (!STATE.registeredHooks[eventKey]) {
       STATE.registeredHooks[eventKey] = []
@@ -1457,6 +1458,9 @@ export function clearRegisteredPluginHooks(): void {
 
   const filtered: Partial<Record<HookEvent, RegisteredHookMatcher[]>> = {}
   for (const [event, matchers] of Object.entries(STATE.registeredHooks)) {
+    if (!matchers) {
+      continue
+    }
     // Keep only callback hooks (those without pluginRoot)
     const callbackHooks = matchers.filter(m => !('pluginRoot' in m))
     if (callbackHooks.length > 0) {
@@ -1570,7 +1574,11 @@ export function clearInvokedSkillsForAgent(agentId: string): void {
 }
 
 export function isReplBridgeActive(): boolean {
-  return Boolean(STATE.replBridgeActive)
+  return STATE.replBridgeActive
+}
+
+export function setReplBridgeActive(active: boolean): void {
+  STATE.replBridgeActive = active
 }
 
 // Slow operations tracking for dev bar

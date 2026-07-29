@@ -269,7 +269,6 @@ export class SessionsWebSocket {
     )
     this.state = 'connected'
     this.reconnectAttempts = 0
-    this.sessionNotFoundRetries = 0
     this.startPingInterval()
 
     if (!this.flushQueuedControlResponses()) {
@@ -299,6 +298,12 @@ export class SessionsWebSocket {
 
       // Forward SDK messages to callback
       if (isSessionsMessage(message)) {
+        // A successfully decoded session message proves that the subscription
+        // is usable. Merely reaching WebSocket OPEN does not: the server can
+        // accept the upgrade and immediately close it with 4001. Resetting the
+        // budget in handleOpen therefore made repeated 4001 responses retry
+        // forever instead of honoring MAX_SESSION_NOT_FOUND_RETRIES.
+        this.sessionNotFoundRetries = 0
         this.callbacks.onMessage(message)
       } else {
         logForDebugging(
@@ -579,6 +584,8 @@ export class SessionsWebSocket {
    */
   close(): void {
     logForDebugging('[SessionsWebSocket] Closing connection')
+    this.reconnectAttempts = 0
+    this.sessionNotFoundRetries = 0
     this.closeConnection(true)
   }
 
@@ -597,7 +604,15 @@ export class SessionsWebSocket {
       // Under Bun (native WebSocket), onX handlers are the clean way to detach.
       // Under Node (ws package), the listeners were attached with .on() in connect(),
       // but since we're about to close and null out this.ws, no cleanup is needed.
-      this.ws.close()
+      try {
+        this.ws.close()
+      } catch (error) {
+        logError(
+          new Error(
+            `[SessionsWebSocket] Failed to close WebSocket: ${errorMessage(error)}`,
+          ),
+        )
+      }
       this.ws = null
     }
 

@@ -502,6 +502,17 @@ test('Kimi markup and bare JSON are both parsed', () => {
   ])
 })
 
+test('Kimi markup is rejected when its tool is unavailable', () => {
+  expect(() =>
+    parseTextToolCalls(
+      '<|tool_call_begin|>DefinitelyMissing<|tool_call_argument_begin|>{}<|tool_call_end|>',
+      {
+        availableToolNames: new Set(['Write']),
+      },
+    ),
+  ).toThrow('unavailable tool')
+})
+
 const ASK = new Set(['AskUserQuestion'])
 
 function labels(call: ReturnType<typeof parseClarifyingQuestions>) {

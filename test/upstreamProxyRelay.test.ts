@@ -62,6 +62,13 @@ afterEach(() => {
 })
 
 describe('upstream proxy relay hardening', () => {
+  test('rejects unterminated and overflowing protobuf length varints', () => {
+    expect(decodeChunk(Uint8Array.from([0x0a, 0x80]))).toBeNull()
+    expect(
+      decodeChunk(Uint8Array.from([0x0a, 0xff, 0xff, 0xff, 0xff, 0x10])),
+    ).toBeNull()
+  })
+
   test('forwarding, keepalive, and cleanup work without global WebSocket', () => {
     globalThis.WebSocket = undefined as unknown as typeof WebSocket
     const fake = createWebSocket(1)
@@ -106,6 +113,54 @@ describe('upstream proxy relay hardening', () => {
     expect(client.endCalls()).toBe(1)
     expect(state.closed).toBe(true)
     expect(state.connectBuf).toHaveLength(0)
+  })
+
+  test('fully closes rejected non-CONNECT clients', () => {
+    const client = createClientSocket()
+    const state = _relayInternalsForTests.newConnState()
+
+    _relayInternalsForTests.handleData(
+      client.socket,
+      state,
+      Buffer.from('GET http://example.test/ HTTP/1.1\r\n\r\n'),
+      'ws://unused.test',
+      'Basic unused',
+      'Bearer unused',
+    )
+
+    expect(Buffer.concat(client.writes).toString('utf8')).toStartWith(
+      'HTTP/1.1 405 Method Not Allowed',
+    )
+    expect(client.endCalls()).toBe(1)
+    expect(state.closed).toBe(true)
+    expect(state.connectBuf).toHaveLength(0)
+  })
+
+  test('turns synchronous WebSocket setup failures into a 502', () => {
+    const client = createClientSocket()
+    const state = _relayInternalsForTests.newConnState()
+    globalThis.WebSocket = class {
+      constructor() {
+        throw new Error('websocket constructor failed')
+      }
+    } as unknown as typeof WebSocket
+
+    expect(() =>
+      _relayInternalsForTests.handleData(
+        client.socket,
+        state,
+        Buffer.from('CONNECT example.test:443 HTTP/1.1\r\n\r\n'),
+        'ws://unused.test',
+        'Basic unused',
+        'Bearer unused',
+      ),
+    ).not.toThrow()
+
+    expect(Buffer.concat(client.writes).toString('utf8')).toStartWith(
+      'HTTP/1.1 502 Bad Gateway',
+    )
+    expect(client.endCalls()).toBe(1)
+    expect(state.closed).toBe(true)
   })
 
   test('closes a connection whose pre-open WebSocket queue exceeds its cap', () => {

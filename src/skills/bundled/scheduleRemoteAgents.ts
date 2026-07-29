@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import type { MCPServerConnection } from '../../services/mcp/types.js'
 import { isPolicyAllowed } from '../../services/policyLimits/index.js'
@@ -33,13 +32,16 @@ const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
  * should return the raw UUID directly so we don't need this client-side decoding.
  * The tagged ID format is an internal implementation detail that could change.
  */
-function taggedIdToUUID(taggedId: string): string | null {
+export function taggedIdToUUID(taggedId: string): string | null {
   const prefix = 'mcpsrv_'
   if (!taggedId.startsWith(prefix)) {
     return null
   }
   const rest = taggedId.slice(prefix.length)
-  // Skip version prefix (2 chars, always "01")
+  if (!rest.startsWith('01') || rest.length === 2) {
+    return null
+  }
+  // Skip the validated version prefix.
   const base58Data = rest.slice(2)
 
   // Decode base58 to bigint
@@ -53,7 +55,11 @@ function taggedIdToUUID(taggedId: string): string | null {
   }
 
   // Convert to UUID hex string
-  const hex = n.toString(16).padStart(32, '0')
+  const rawHex = n.toString(16)
+  if (rawHex.length > 32) {
+    return null
+  }
+  const hex = rawHex.padStart(32, '0')
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
 }
 
@@ -112,6 +118,26 @@ function formatConnectorsInfo(connectors: ConnectorInfo[]): string {
 const BASE_QUESTION = 'What would you like to do with scheduled remote agents?'
 
 /**
+ * `/schedule` creates recurring trigger runs; it does not provide a worker
+ * scheduler inside each run. Keep the distinction explicit so a generated
+ * prompt never implies safety properties that the trigger service cannot
+ * provide. When the user deliberately asks a scheduled run to delegate work,
+ * these rules become part of the prompt-writing contract.
+ */
+export const MULTI_WORKER_SCHEDULE_GUIDANCE = `## Multiple workers inside one scheduled run
+
+A cron trigger starts one isolated remote session per fire. It does not itself coordinate child workers or prevent two cron fires from overlapping. Do not describe separate triggers as cooperating workers. Prefer one owner when work shares mutable state or has a strict order.
+
+Only when the user explicitly wants one scheduled run to delegate independent tasks, include a compact orchestration contract in \`PROMPT_HERE\`:
+
+- Define a manifest with a stable \`run_id\`; stable \`task_id\` values; explicit \`depends_on\` task IDs; and finite \`max_workers\`, \`max_attempts_per_task\` (including the first attempt), retry backoff, and run deadline. If unspecified, propose \`max_workers: 3\`, \`max_attempts_per_task: 2\`, \`retry_backoff_seconds: [10]\`, and \`deadline_minutes: 25\` during review.
+- A task is eligible only while pending, after every dependency succeeded and its retry backoff elapsed. Run only eligible independent tasks concurrently. A failed or cancelled dependency blocks its dependents.
+- Atomically claim each \`task_id\`. Allow exactly one live attempt per task and never start a replacement until the previous worker is confirmed terminal. For code changes, give each worker its own branch and worktree; never share a writable checkout. Serialize integration and verification.
+- Retry a crash or failure only when the old worker is confirmed terminal and either no externally visible side effect occurred or the operation has a verified idempotency key. Never auto-retry an unknown outcome after a mutation, commit, push, PR, message, or external API call; mark it \`needs_reconciliation\` for inspection.
+- Cancellation or deadline stops dispatch, cancels running workers where supported, marks undispatched work cancelled, and is never retryable. Exhausted tasks remain failed or blocked; do not respawn indefinitely.
+- Finish with per-task status, attempt count, branch or artifact, verification evidence, and unresolved reconciliation or blocked work. If overlapping cron fires could mutate the same target, require a durable run lease or target-system idempotency key; otherwise keep the workflow single-owner.`
+
+/**
  * Formats setup notes as a bulleted Heads-up block. Shared between the
  * initial AskUserQuestion dialog text (no-args path) and the prompt-body
  * section (args path) so notes are never silently dropped.
@@ -133,7 +159,7 @@ async function getCurrentRepoHttpsUrl(): Promise<string | null> {
   return `https://${parsed.host}/${parsed.owner}/${parsed.name}`
 }
 
-function buildPrompt(opts: {
+export function buildScheduleRemoteAgentsPrompt(opts: {
   userTimezone: string
   connectorsInfo: string
   gitRepoUrl: string | null
@@ -276,6 +302,8 @@ The user's local timezone is **${userTimezone}**. Cron expressions are always in
 - \`0 8 1 * *\` — First of every month at 8am **UTC**
 
 Minimum interval is 1 hour. \`*/30 * * * *\` will be rejected.
+
+${MULTI_WORKER_SCHEDULE_GUIDANCE}
 
 ## Workflow
 
@@ -432,7 +460,7 @@ export function registerScheduleRemoteAgentsSkill(): void {
         )
       }
       const environmentsInfo = lines.join('\n')
-      const prompt = buildPrompt({
+      const prompt = buildScheduleRemoteAgentsPrompt({
         userTimezone,
         connectorsInfo,
         gitRepoUrl,

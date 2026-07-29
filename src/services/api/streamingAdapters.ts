@@ -1,5 +1,9 @@
 import { randomUUID } from 'crypto'
-import { ProviderResponseParseError } from './providerClient.js'
+import {
+  isProviderToolInput,
+  ProviderResponseParseError,
+} from './providerClient.js'
+import { parseToolInputJsonLenient } from '../../utils/json.js'
 import {
   GEMINI_THOUGHT_SIGNATURE,
   getGeminiThoughtSignature,
@@ -167,11 +171,13 @@ async function* streamOpenAIEvents(
   let sawDone = false
   let finishReason: string | undefined
   let usage = EMPTY_USAGE
+  const emittedToolIds = new Set<string>()
   const toolStates = new Map<number, {
     blockIndex?: number
     id?: string
     name?: string
     pendingArgs: string
+    allArgs: string
   }>()
 
   let activeThinkingIndex: number | null = null
@@ -225,12 +231,23 @@ async function* streamOpenAIEvents(
     id?: string
     name?: string
     pendingArgs: string
-  }) {
+    allArgs: string
+  }, final = false) {
     if (state.blockIndex !== undefined) return
     if (!state.name) return
+    // Do not synthesize an ID while more deltas may still carry the provider's
+    // real one. Emitting a fallback first makes later tool_result correlation
+    // impossible because content_block_start is immutable.
+    if (!state.id && !final) return
     for (const event of stopText()) yield event
     state.blockIndex = blockIndex++
     state.id = state.id ?? `toolu_${providerName}_${randomUUID().replace(/-/g, '')}`
+    if (emittedToolIds.has(state.id)) {
+      throw new ProviderResponseParseError(
+        `${providerName} stream contains duplicate tool call id "${state.id}"`,
+      )
+    }
+    emittedToolIds.add(state.id)
     sawBlock = true
     sawToolUse = true
     yield {
@@ -287,23 +304,66 @@ async function* streamOpenAIEvents(
           delta: { type: 'text_delta', text: delta.content },
         }
       }
+      if (
+        delta.tool_calls !== undefined &&
+        !Array.isArray(delta.tool_calls)
+      ) {
+        throw new ProviderResponseParseError(
+          `${providerName} streamed tool_calls must be an array`,
+          { toolCalls: delta.tool_calls },
+        )
+      }
       for (const toolDelta of delta.tool_calls ?? []) {
+        if (
+          toolDelta?.type !== undefined &&
+          toolDelta.type !== 'function'
+        ) {
+          throw new ProviderResponseParseError(
+            `${providerName} streamed an unsupported tool call type`,
+            { toolDelta },
+          )
+        }
         const index = Number.isInteger(toolDelta?.index) ? toolDelta.index : 0
-        const state = toolStates.get(index) ?? { pendingArgs: '' }
+        if (index < 0) {
+          throw new ProviderResponseParseError(
+            `${providerName} streamed a negative tool call index`,
+            { toolDelta },
+          )
+        }
+        const state = toolStates.get(index) ?? {
+          pendingArgs: '',
+          allArgs: '',
+        }
         toolStates.set(index, state)
         if (typeof toolDelta.id === 'string' && toolDelta.id.length > 0) {
+          if (state.id && state.id !== toolDelta.id) {
+            throw new ProviderResponseParseError(
+              `${providerName} changed the id for streamed tool_calls[${index}]`,
+              { previousId: state.id, toolDelta },
+            )
+          }
           state.id = toolDelta.id
         }
         if (
           typeof toolDelta.function?.name === 'string' &&
           toolDelta.function.name.length > 0
         ) {
-          state.name = toolDelta.function.name
+          const fragment = toolDelta.function.name
+          if (!state.name) {
+            state.name = fragment
+          } else if (fragment === state.name) {
+            // Cumulative resend.
+          } else if (fragment.startsWith(state.name)) {
+            state.name = fragment
+          } else {
+            state.name += fragment
+          }
         }
         if (
           typeof toolDelta.function?.arguments === 'string' &&
           toolDelta.function.arguments.length > 0
         ) {
+          state.allArgs += toolDelta.function.arguments
           if (state.blockIndex === undefined) {
             state.pendingArgs += toolDelta.function.arguments
           } else {
@@ -328,12 +388,17 @@ async function* streamOpenAIEvents(
   for (const event of stopText()) yield event
   for (const event of stopThinking()) yield event
   for (const [index, state] of toolStates.entries()) {
+    for (const event of ensureTool(state, true)) yield event
     if (state.blockIndex === undefined) {
       throw new ProviderResponseParseError(
         `${providerName} streamed tool_calls[${index}] without a function name`,
         { state },
       )
     }
+    parseStreamedToolInput(
+      state.allArgs,
+      `${providerName} streamed tool_calls[${index}].function.arguments`,
+    )
     yield { type: 'content_block_stop', index: state.blockIndex }
   }
   if (isOpenAIToolStopReason(finishReason) && !sawToolUse) {
@@ -374,11 +439,14 @@ async function* streamOpenAIResponsesEvents(
   let usage = EMPTY_USAGE
   let blockIndex = 0
   let stopReason = 'end_turn'
+  const toolIds = new Set<string>()
   const blocks = new Map<string, {
     index: number
     kind: 'text' | 'thinking' | 'tool_use'
     emitted: string
     stopped: boolean
+    toolId?: string
+    toolName?: string
   }>()
 
   const ensureMessageStart = function* () {
@@ -393,19 +461,52 @@ async function* streamOpenAIResponsesEvents(
     item?: any,
   ) {
     let state = blocks.get(key)
-    if (state) return state
+    if (state) {
+      if (
+        kind === 'tool_use' &&
+        item &&
+        ((item.call_id && item.call_id !== state.toolId) ||
+          (item.name && item.name !== state.toolName))
+      ) {
+        throw new ProviderResponseParseError(
+          `${providerName} changed a streamed function call after it started`,
+          { item, state },
+        )
+      }
+      return state
+    }
     for (const event of ensureMessageStart()) yield event
     state = { index: blockIndex++, kind, emitted: '', stopped: false }
     blocks.set(key, state)
     if (kind === 'tool_use') {
+      if (
+        typeof item?.call_id !== 'string' ||
+        item.call_id.length === 0 ||
+        typeof item?.name !== 'string' ||
+        item.name.length === 0
+      ) {
+        throw new ProviderResponseParseError(
+          `${providerName} streamed a function call without call_id or name`,
+          { item },
+        )
+      }
+      if (toolIds.has(item.call_id)) {
+        throw new ProviderResponseParseError(
+          `${providerName} stream contains duplicate tool call id "${item.call_id}"`,
+          { item },
+        )
+      }
+      toolIds.add(item.call_id)
+      state.toolId = item.call_id
+      state.toolName = item.name
       sawToolUse = true
       yield {
         type: 'content_block_start',
         index: state.index,
         content_block: {
           type: 'tool_use',
-          id: item?.call_id ?? item?.id ?? `toolu_${randomUUID().replace(/-/g, '')}`,
-          name: item?.name ?? 'unknown_tool',
+          id: item.call_id,
+          name: item.name,
           input: {},
           ...(item?.namespace ? { namespace: item.namespace } : {}),
         },
@@ -429,6 +530,12 @@ async function* streamOpenAIResponsesEvents(
   const stopBlock = function* (key: string) {
     const state = blocks.get(key)
     if (!state || state.stopped) return
+    if (state.kind === 'tool_use') {
+      parseStreamedToolInput(
+        state.emitted,
+        `${providerName} streamed function call arguments`,
+      )
+    }
     state.stopped = true
     yield { type: 'content_block_stop', index: state.index }
   }
@@ -517,8 +624,10 @@ async function* streamOpenAIResponsesEvents(
       case 'response.function_call_arguments.delta': {
         let state = blocks.get(toolKey)
         if (!state) {
-          for (const output of ensureBlock(toolKey, 'tool_use', event.item)) yield output
-          state = blocks.get(toolKey)!
+          throw new ProviderResponseParseError(
+            `${providerName} streamed function arguments before the function call item`,
+            { event },
+          )
         }
         const delta = String(event.delta ?? '')
         state.emitted += delta
@@ -533,11 +642,12 @@ async function* streamOpenAIResponsesEvents(
       }
       case 'response.output_item.done':
         if (event.item?.type === 'function_call') {
-          let state = blocks.get(toolKey)
-          if (!state) {
-            for (const output of ensureBlock(toolKey, 'tool_use', event.item)) yield output
-            state = blocks.get(toolKey)!
-          }
+          for (const output of ensureBlock(
+            toolKey,
+            'tool_use',
+            event.item,
+          )) yield output
+          const state = blocks.get(toolKey)!
           const args = String(event.item.arguments ?? '')
           if (!state.emitted && args) {
             state.emitted = args
@@ -546,6 +656,11 @@ async function* streamOpenAIResponsesEvents(
               index: state.index,
               delta: { type: 'input_json_delta', partial_json: args },
             }
+          } else if (args && args !== state.emitted) {
+            throw new ProviderResponseParseError(
+              `${providerName} changed streamed function arguments in the completed item`,
+              { streamed: state.emitted, completed: args },
+            )
           }
           for (const output of stopBlock(toolKey)) yield output
         }
@@ -558,8 +673,23 @@ async function* streamOpenAIResponsesEvents(
           const detail = event.response?.error?.message ?? 'response failed'
           throw new ProviderResponseParseError(`${providerName} failed: ${detail}`, { event })
         }
+        if (event.type === 'response.cancelled') {
+          throw new ProviderResponseParseError(
+            `${providerName} response was cancelled before completion`,
+            { event },
+          )
+        }
         terminal = true
         const reason = event.response?.incomplete_details?.reason
+        if (
+          event.type === 'response.incomplete' &&
+          reason !== 'max_output_tokens'
+        ) {
+          throw new ProviderResponseParseError(
+            `${providerName} response was incomplete: ${String(reason ?? 'unknown reason')}`,
+            { event },
+          )
+        }
         stopReason = sawToolUse
           ? 'tool_use'
           : reason === 'max_output_tokens'
@@ -598,6 +728,11 @@ async function* streamAnthropicEvents(
   const providerName = options.providerName ?? 'anthropic'
   let sawMessageStart = false
   let sawMessageStop = false
+  let stopReason: string | undefined
+  let sawToolUse = false
+  const openBlocks = new Set<number>()
+  const toolIds = new Set<string>()
+  const streamedToolInputs = new Map<number, string>()
 
   for await (const payload of readSSEData(body, options.signal)) {
     if (payload === '[DONE]') break
@@ -626,6 +761,7 @@ async function* streamAnthropicEvents(
       continue
     }
     if (event.type === 'message_delta') {
+      stopReason = event.delta?.stop_reason
       yield {
         ...event,
         delta: {
@@ -636,7 +772,87 @@ async function* streamAnthropicEvents(
       }
       continue
     }
+    if (event.type === 'content_block_start') {
+      if (
+        !Number.isInteger(event.index) ||
+        event.index < 0 ||
+        openBlocks.has(event.index)
+      ) {
+        throw new ProviderResponseParseError(
+          `${providerName} stream contains an invalid or duplicate content block index`,
+          { event },
+        )
+      }
+      openBlocks.add(event.index)
+      if (event.content_block?.type === 'tool_use') {
+        const block = event.content_block
+        if (
+          typeof block.id !== 'string' ||
+          block.id.length === 0 ||
+          typeof block.name !== 'string' ||
+          block.name.length === 0 ||
+          !isProviderToolInput(block.input ?? {})
+        ) {
+          throw new ProviderResponseParseError(
+            `${providerName} stream contains an invalid tool_use block`,
+            { event },
+          )
+        }
+        if (toolIds.has(block.id)) {
+          throw new ProviderResponseParseError(
+            `${providerName} stream contains duplicate tool call id "${block.id}"`,
+            { event },
+          )
+        }
+        toolIds.add(block.id)
+        streamedToolInputs.set(event.index, '')
+        sawToolUse = true
+      }
+    } else if (event.type === 'content_block_delta') {
+      if (!openBlocks.has(event.index)) {
+        throw new ProviderResponseParseError(
+          `${providerName} streamed a delta for an unopened content block`,
+          { event },
+        )
+      }
+      if (
+        streamedToolInputs.has(event.index) &&
+        event.delta?.type === 'input_json_delta'
+      ) {
+        if (typeof event.delta.partial_json !== 'string') {
+          throw new ProviderResponseParseError(
+            `${providerName} streamed a non-string tool input delta`,
+            { event },
+          )
+        }
+        streamedToolInputs.set(
+          event.index,
+          streamedToolInputs.get(event.index)! + event.delta.partial_json,
+        )
+      }
+    } else if (event.type === 'content_block_stop') {
+      if (!openBlocks.delete(event.index)) {
+        throw new ProviderResponseParseError(
+          `${providerName} stopped an unopened content block`,
+          { event },
+        )
+      }
+      const streamedInput = streamedToolInputs.get(event.index)
+      if (streamedInput !== undefined) {
+        parseStreamedToolInput(
+          streamedInput,
+          `${providerName} streamed tool_use input`,
+        )
+        streamedToolInputs.delete(event.index)
+      }
+    }
     if (event.type === 'message_stop') {
+      if (openBlocks.size > 0) {
+        throw new ProviderResponseParseError(
+          `${providerName} stopped with unfinished content blocks`,
+          { openBlocks: [...openBlocks] },
+        )
+      }
       sawMessageStop = true
     }
     yield event
@@ -647,6 +863,11 @@ async function* streamAnthropicEvents(
   }
   if (!sawMessageStop) {
     throw new ProviderResponseParseError(`${providerName} stream ended before message_stop`)
+  }
+  if (stopReason === 'tool_use' && !sawToolUse) {
+    throw new ProviderResponseParseError(
+      `${providerName} stream stopped for tool_use without a tool_use block`,
+    )
   }
 }
 
@@ -668,6 +889,7 @@ async function* streamGeminiEvents(
   let sawToolUse = false
   let finishReason: string | undefined
   let usage = EMPTY_USAGE
+  const geminiToolCalls = new Map<string, string>()
 
   const stopText = function* () {
     if (activeTextIndex !== null) {
@@ -787,6 +1009,30 @@ async function* streamGeminiEvents(
                 { functionCall: call },
               )
             }
+            const args = parseStreamedToolInput(
+              call.args ?? {},
+              'gemini streamed functionCall.args',
+            )
+            const explicitId =
+              typeof call.id === 'string' && call.id.length > 0
+                ? call.id
+                : undefined
+            if (explicitId) {
+              const signature = `${call.name}\u0000${canonicalJson(args)}`
+              const previous = geminiToolCalls.get(explicitId)
+              if (previous === signature) {
+                // Some proxies resend cumulative candidate parts. Executing
+                // the same functionCall twice would duplicate mutations.
+                continue
+              }
+              if (previous !== undefined) {
+                throw new ProviderResponseParseError(
+                  `gemini stream reused tool call id "${explicitId}" for different calls`,
+                  { functionCall: call },
+                )
+              }
+              geminiToolCalls.set(explicitId, signature)
+            }
             const currentIndex = blockIndex++
             sawBlock = true
             sawToolUse = true
@@ -795,8 +1041,8 @@ async function* streamGeminiEvents(
               index: currentIndex,
               content_block: {
                 type: 'tool_use',
-                id: typeof call.id === 'string' && call.id.length > 0
-                  ? call.id
+                id: explicitId
+                  ? explicitId
                   : `gemini_tool_${randomUUID().replace(/-/g, '')}`,
                 name: call.name,
                 input: {},
@@ -805,7 +1051,7 @@ async function* streamGeminiEvents(
                 }),
               },
             }
-            const inputJson = stringifyToolInput(call.args ?? {})
+            const inputJson = stringifyToolInput(args)
             if (inputJson && inputJson !== '{}') {
               yield {
                 type: 'content_block_delta',
@@ -1056,4 +1302,40 @@ function mapGeminiStopReason(reason: string | undefined, includesToolUse: boolea
 function stringifyToolInput(input: unknown): string {
   if (typeof input === 'string') return input
   return JSON.stringify(input ?? {})
+}
+
+function parseStreamedToolInput(input: unknown, path: string): Record<string, unknown> {
+  let parsed = input
+  if (typeof input === 'string') {
+    try {
+      parsed = input.length > 0 ? JSON.parse(input) : {}
+    } catch (error) {
+      parsed = parseToolInputJsonLenient(input)
+      if (parsed === null) {
+        throw new ProviderResponseParseError(`${path} is not valid JSON`, {
+          input,
+          cause: error,
+        })
+      }
+    }
+  }
+  if (!isProviderToolInput(parsed)) {
+    throw new ProviderResponseParseError(`${path} must be a JSON object`, {
+      input,
+    })
+  }
+  return parsed
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(',')}]`
+  }
+  if (isProviderToolInput(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value)
 }

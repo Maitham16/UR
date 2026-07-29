@@ -24,6 +24,19 @@ const parsed = ts.parseJsonConfigFileContent(
 )
 
 const rootFiles = new Set(parsed.fileNames.map(file => path.resolve(file)))
+const uncheckedRootFiles = parsed.fileNames.filter(file => {
+  const source = ts.sys.readFile(file)
+  return source !== undefined && /^\s*\/\/\s*@ts-nocheck\b/m.test(source)
+})
+if (uncheckedRootFiles.length > 0) {
+  process.stderr.write(
+    `Strict core typecheck cannot include @ts-nocheck files:\n${uncheckedRootFiles
+      .map(file => `- ${path.relative(root, file)}`)
+      .join('\n')}\n`,
+  )
+  process.exit(1)
+}
+
 const program = ts.createProgram(parsed.fileNames, parsed.options)
 const diagnostics = ts
   .getPreEmitDiagnostics(program)

@@ -22,7 +22,16 @@ function option(tokens: string[], name: string): string | undefined {
 }
 
 function positionals(tokens: string[]): string[] {
-  const withValue = new Set(['--goal', '--task', '--lead', '--workers', '--max-turns'])
+  const withValue = new Set([
+    '--goal',
+    '--task',
+    '--lead',
+    '--workers',
+    '--max-workers',
+    '--max-turns',
+    '--max-attempts',
+    '--retry-backoff-ms',
+  ])
   const values: string[] = []
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]
@@ -44,12 +53,14 @@ function usage(): string {
     '  ur crew plan <name> --goal "..." [--decompose] [--json]',
     '  ur crew show <name> [--json]',
     '  ur crew add <name> --task "another subtask"',
-    '  ur crew run <name> [--workers N] [--worktrees] [--dry-run] [--resume] [--decompose] [--max-turns N] [--skip-permissions] [--json]',
+    '  ur crew run <name> [--workers N] [--dynamic] [--max-workers N] [--worktrees] [--max-attempts N] [--retry-backoff-ms N] [--dry-run] [--resume] [--decompose] [--max-turns N] [--skip-permissions] [--json]',
     '  ur crew reset <name>',
     '  ur crew delete <name>',
     '',
     'A lead decomposes the goal into a shared task board; workers claim and run',
     'open tasks as headless `ur -p` subagents (optionally each in a git worktree).',
+    'Independent tasks run in parallel. Failed mutating tasks retry only when',
+    '`--worktrees` gives every attempt a fresh checkout.',
   ].join('\n')
 }
 
@@ -137,6 +148,12 @@ export const call: LocalCommandCall = async (args: string) => {
       maxWorkers: option(tokens, '--max-workers')
         ? Number(option(tokens, '--max-workers'))
         : undefined,
+      maxAttempts: option(tokens, '--max-attempts')
+        ? Number(option(tokens, '--max-attempts'))
+        : undefined,
+      retryBackoffMs: option(tokens, '--retry-backoff-ms')
+        ? Number(option(tokens, '--retry-backoff-ms'))
+        : undefined,
       dryRun: tokens.includes('--dry-run'),
       worktrees: tokens.includes('--worktrees'),
       resume: tokens.includes('--resume'),
@@ -145,6 +162,8 @@ export const call: LocalCommandCall = async (args: string) => {
       onEvent: event => {
         if (event.kind === 'claim') events.push(`  ${event.worker} claimed ${event.taskId} (${event.title})`)
         else if (event.kind === 'done') events.push(`  ${event.worker} finished ${event.taskId}: ${event.status}`)
+        else if (event.kind === 'retry') events.push(`  ${event.worker} retrying ${event.taskId} as attempt ${event.attempt} after ${event.delayMs}ms`)
+        else if (event.kind === 'retry-skipped') events.push(`  ${event.worker} did not retry ${event.taskId}: ${event.reason}`)
       },
     })
     const trace = !json && events.length ? `\n\nTimeline:\n${events.join('\n')}` : ''

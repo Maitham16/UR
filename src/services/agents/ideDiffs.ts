@@ -1,7 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, rmSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { safeParseJSON } from '../../utils/json.js'
+import {
+  ensurePrivateDirectory,
+  readPrivateText,
+  writePrivateTextAtomic,
+} from '../../utils/privateState.js'
 
 export type IdeDiffStatus = 'pending' | 'commented' | 'approved' | 'rejected'
 
@@ -36,6 +41,9 @@ export type IdeDiffBundle = {
 type Manifest = { version: 1; diffs: IdeDiffBundle[] }
 
 const DIFF_ID_PATTERN = /^diff-[1-9][0-9]*$/u
+const MAX_MANIFEST_BYTES = 32 * 1024 * 1024
+const MAX_METADATA_BYTES = 8 * 1024 * 1024
+const MAX_PATCH_BYTES = 128 * 1024 * 1024
 
 export function ideDir(cwd: string): string {
   return join(cwd, '.ur', 'ide')
@@ -78,14 +86,25 @@ function now(): string {
 }
 
 function ensureDirs(cwd: string): void {
-  mkdirSync(patchesDir(cwd), { recursive: true })
-  mkdirSync(metadataDir(cwd), { recursive: true })
+  // The project can contain attacker-controlled symlinks. Validate every
+  // component below .ur instead of allowing recursive mkdir/read/write to
+  // follow .ur/ide/diffs (or patches/metadata) outside the repository.
+  const root = join(cwd, '.ur')
+  ensurePrivateDirectory(root, patchesDir(cwd))
+  ensurePrivateDirectory(root, metadataDir(cwd))
 }
 
 function loadManifest(cwd: string): Manifest {
   const path = manifestPath(cwd)
   if (!existsSync(path)) return { version: 1, diffs: [] }
-  const parsed = safeParseJSON(readFileSync(path, 'utf-8'), false)
+  ensureDirs(cwd)
+  const body = readPrivateText(
+    ideDiffsDir(cwd),
+    path,
+    MAX_MANIFEST_BYTES,
+  )
+  if (body === null) return { version: 1, diffs: [] }
+  const parsed = safeParseJSON(body, false)
   return parsed && typeof parsed === 'object' && Array.isArray((parsed as Manifest).diffs)
     ? { version: 1, diffs: (parsed as Manifest).diffs.filter(bundle => isValidBundle(cwd, bundle)) }
     : { version: 1, diffs: [] }
@@ -93,7 +112,12 @@ function loadManifest(cwd: string): Manifest {
 
 function saveManifest(cwd: string, manifest: Manifest): void {
   ensureDirs(cwd)
-  writeFileSync(manifestPath(cwd), `${JSON.stringify(manifest, null, 2)}\n`)
+  writePrivateTextAtomic(
+    ideDiffsDir(cwd),
+    manifestPath(cwd),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    MAX_MANIFEST_BYTES,
+  )
 }
 
 function nextId(manifest: Manifest): string {
@@ -191,8 +215,18 @@ export async function createIdeDiffBundle(
     createdAt,
     updatedAt: createdAt,
   }
-  writeFileSync(join(ideDiffsDir(cwd), patchFile), captured.diff)
-  writeFileSync(join(ideDiffsDir(cwd), metadataFile), `${JSON.stringify(bundle, null, 2)}\n`)
+  writePrivateTextAtomic(
+    ideDiffsDir(cwd),
+    join(ideDiffsDir(cwd), patchFile),
+    captured.diff,
+    MAX_PATCH_BYTES,
+  )
+  writePrivateTextAtomic(
+    ideDiffsDir(cwd),
+    join(ideDiffsDir(cwd), metadataFile),
+    `${JSON.stringify(bundle, null, 2)}\n`,
+    MAX_METADATA_BYTES,
+  )
   manifest.diffs.push(bundle)
   saveManifest(cwd, manifest)
   return { bundle, command: captured.command }
@@ -211,7 +245,7 @@ export function readIdeDiffPatch(cwd: string, id: string): string | null {
   if (!bundle) return null
   const path = bundleArtifactPath(cwd, bundle, 'patch')
   if (!path) return null
-  return existsSync(path) ? readFileSync(path, 'utf-8') : null
+  return readPrivateText(ideDiffsDir(cwd), path, MAX_PATCH_BYTES)
 }
 
 function mutate(cwd: string, id: string, fn: (bundle: IdeDiffBundle) => void): IdeDiffBundle | null {
@@ -223,7 +257,12 @@ function mutate(cwd: string, id: string, fn: (bundle: IdeDiffBundle) => void): I
   ensureDirs(cwd)
   const metadataPath = bundleArtifactPath(cwd, bundle, 'metadata')
   if (!metadataPath) return null
-  writeFileSync(metadataPath, `${JSON.stringify(bundle, null, 2)}\n`)
+  writePrivateTextAtomic(
+    ideDiffsDir(cwd),
+    metadataPath,
+    `${JSON.stringify(bundle, null, 2)}\n`,
+    MAX_METADATA_BYTES,
+  )
   saveManifest(cwd, manifest)
   return bundle
 }
@@ -261,6 +300,15 @@ export function deleteIdeDiffBundle(cwd: string, id: string): boolean {
   const patchPath = bundleArtifactPath(cwd, bundle, 'patch')
   const metadataPath = bundleArtifactPath(cwd, bundle, 'metadata')
   if (!patchPath || !metadataPath) return false
+  // rmSync unlinks a final symlink safely, but an intermediate symlink can
+  // redirect the resolved target outside the store. loadManifest/ensureDirs
+  // already validates the directory chain; reject unsafe final entries too
+  // and validate both before deleting either to avoid partial removal.
+  for (const path of [patchPath, metadataPath]) {
+    if (!existsSync(path)) continue
+    const info = lstatSync(path)
+    if (info.isSymbolicLink() || !info.isFile()) return false
+  }
   rmSync(patchPath, { force: true })
   rmSync(metadataPath, { force: true })
   manifest.diffs = manifest.diffs.filter(diff => diff.id !== id)

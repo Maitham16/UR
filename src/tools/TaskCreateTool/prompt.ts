@@ -26,9 +26,7 @@ Use this tool proactively in these scenarios:
 - User explicitly requests todo list - When the user directly asks you to use the todo list
 - User asks to queue work - When the user says "add to your tasks", "add this to your task list", "put this on the list", "queue this up", or anything similar, IMMEDIATELY call this tool with that request — even if you are in the middle of other work and even if the item sounds small. The user is watching the live task panel and expects the item to appear there right away. Acknowledge briefly and continue what you were doing unless asked to switch.
 - User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
-- After receiving new instructions - Immediately capture user requirements as tasks
-- When you start working on a task - Mark it as in_progress BEFORE beginning work
-- After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
+- When new instructions materially change multi-step work - update the plan before continuing
 
 ## When NOT to Use This Tool
 
@@ -57,5 +55,6 @@ All tasks are created with status \`pending\`.
 - Create tasks with clear, specific subjects that describe the outcome
 - Provide dependencies during creation when known, or use TaskUpdate later to adjust them
 ${teammateTips}- Check TaskList first to avoid creating duplicate tasks
+- Use TaskUpdate, not TaskCreate, for status or ownership changes
 `
 }

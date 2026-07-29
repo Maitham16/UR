@@ -1,4 +1,13 @@
-import { mkdir, readdir, readFile, unlink, writeFile } from 'fs/promises'
+import {
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  unlink,
+  writeFile,
+} from 'fs/promises'
+import { randomUUID } from 'node:crypto'
 import { join } from 'path'
 import { z } from 'zod/v4'
 import { getIsNonInteractiveSession, getSessionId } from '../bootstrap/state.js'
@@ -95,6 +104,19 @@ export type Task = z.infer<ReturnType<typeof TaskSchema>>
 // High water mark file name - stores the maximum task ID ever assigned
 const HIGH_WATER_MARK_FILE = '.highwatermark'
 
+/**
+ * Parse an allocated task ID without accepting a numeric-looking prefix.
+ *
+ * Number.parseInt('12-external', 10) returns 12, which previously made an
+ * externally-created ID affect ordering, deletion high-water marks, and the
+ * next allocated ID. Allocated IDs are decimal safe integers in full.
+ */
+function parseNumericTaskId(value: string): number | null {
+  if (!/^\d+$/u.test(value)) return null
+  const numeric = Number(value)
+  return Number.isSafeInteger(numeric) && numeric >= 0 ? numeric : null
+}
+
 // Lock options: retry with backoff so concurrent callers (multiple URs
 // in a swarm) wait for the lock instead of failing immediately. The sync
 // lockSync API blocked the event loop; the async API needs explicit retries
@@ -119,8 +141,7 @@ async function readHighWaterMark(taskListId: string): Promise<number> {
   const path = getHighWaterMarkPath(taskListId)
   try {
     const content = (await readFile(path, 'utf-8')).trim()
-    const value = parseInt(content, 10)
-    return isNaN(value) ? 0 : value
+    return parseNumericTaskId(content) ?? 0
   } catch {
     return 0
   }
@@ -131,7 +152,7 @@ async function writeHighWaterMark(
   value: number,
 ): Promise<void> {
   const path = getHighWaterMarkPath(taskListId)
-  await writeFile(path, String(value))
+  await writeFileAtomically(path, String(value))
 }
 
 export function isTodoV2Enabled(): boolean {
@@ -260,8 +281,8 @@ async function findHighestTaskIdFromFiles(taskListId: string): Promise<number> {
     if (!file.endsWith('.json')) {
       continue
     }
-    const taskId = parseInt(file.replace('.json', ''), 10)
-    if (!isNaN(taskId) && taskId > highest) {
+    const taskId = parseNumericTaskId(file.slice(0, -'.json'.length))
+    if (taskId !== null && taskId > highest) {
       highest = taskId
     }
   }
@@ -298,10 +319,12 @@ export async function createTask(
 
     // Read highest ID from disk while holding the lock
     const highestId = await findHighestTaskId(taskListId)
+    if (highestId >= Number.MAX_SAFE_INTEGER) {
+      throw new Error('Task ID space is exhausted')
+    }
     const id = String(highestId + 1)
     const task: Task = { id, ...taskData }
-    const path = getTaskPath(taskListId, id)
-    await writeFile(path, jsonStringify(task, null, 2))
+    await writeTaskSnapshotUnsafe(taskListId, task)
     notifyTasksUpdated()
     return id
   } finally {
@@ -318,22 +341,7 @@ export async function getTask(
   const path = getTaskPath(taskListId, taskId)
   try {
     const content = await readFile(path, 'utf-8')
-    const data = jsonParse(content) as { status?: string }
-
-    // TEMPORARY: Migrate old status names for existing sessions (ant-only)
-    if (process.env.USER_TYPE === 'ant') {
-      if (data.status === 'open') data.status = 'pending'
-      else if (data.status === 'resolved') data.status = 'completed'
-      // Migrate development task statuses to in_progress
-      else if (
-        data.status &&
-        ['planning', 'implementing', 'reviewing', 'verifying'].includes(
-          data.status,
-        )
-      ) {
-        data.status = 'in_progress'
-      }
-    }
+    const data = migrateLegacyTaskData(jsonParse(content))
     const parsed = TaskSchema().safeParse(data)
     if (!parsed.success) {
       logForDebugging(
@@ -353,6 +361,29 @@ export async function getTask(
   }
 }
 
+function migrateLegacyTaskData(value: unknown): unknown {
+  if (
+    process.env.USER_TYPE !== 'ant' ||
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value)
+  ) {
+    return value
+  }
+  const data = { ...(value as Record<string, unknown>) }
+  if (data.status === 'open') data.status = 'pending'
+  else if (data.status === 'resolved') data.status = 'completed'
+  else if (
+    typeof data.status === 'string' &&
+    ['planning', 'implementing', 'reviewing', 'verifying'].includes(
+      data.status,
+    )
+  ) {
+    data.status = 'in_progress'
+  }
+  return data
+}
+
 // Internal: no lock. Callers already holding a lock on taskPath must use this
 // to avoid deadlock (claimTask, deleteTask cascade, etc.).
 async function updateTaskUnsafe(
@@ -365,10 +396,40 @@ async function updateTaskUnsafe(
     return null
   }
   const updated: Task = { ...existing, ...updates, id: taskId }
-  const path = getTaskPath(taskListId, taskId)
-  await writeFile(path, jsonStringify(updated, null, 2))
+  await writeTaskSnapshotUnsafe(taskListId, updated)
   notifyTasksUpdated()
   return updated
+}
+
+async function writeFileAtomically(path: string, content: string): Promise<void> {
+  const temporaryPath =
+    `${path}.${process.pid}.${randomUUID().replaceAll('-', '')}.tmp`
+  let handle: Awaited<ReturnType<typeof open>> | undefined
+  let renamed = false
+  try {
+    handle = await open(temporaryPath, 'wx', 0o600)
+    await handle.writeFile(content, { encoding: 'utf-8' })
+    await handle.sync()
+    await handle.close()
+    handle = undefined
+    await rename(temporaryPath, path)
+    renamed = true
+  } finally {
+    await handle?.close().catch(() => undefined)
+    if (!renamed) {
+      await unlink(temporaryPath).catch(() => undefined)
+    }
+  }
+}
+
+async function writeTaskSnapshotUnsafe(
+  taskListId: string,
+  task: Task,
+): Promise<void> {
+  await writeFileAtomically(
+    getTaskPath(taskListId, task.id),
+    jsonStringify(task, null, 2),
+  )
 }
 
 export async function updateTask(
@@ -399,21 +460,76 @@ export async function deleteTask(
   taskId: string,
 ): Promise<boolean> {
   const path = getTaskPath(taskListId, taskId)
+  const listLockPath = await ensureTaskListLockFile(taskListId)
+  let releaseList: (() => Promise<void>) | undefined
+  const taskReleases: Array<() => Promise<void>> = []
 
   try {
+    // Coordinate deletion with createTask/resetTaskList/blockTask so a
+    // dependency cannot be validated against a task that disappears before
+    // the reciprocal edges are committed.
+    releaseList = await lockfile.lock(listLockPath, LOCK_OPTIONS)
+    const initialTasks = await listTasks(taskListId)
+    if (!initialTasks.some(task => task.id === taskId)) return false
+
+    // Lock the target and every task that currently references it. Cleanup is
+    // committed before unlinking the target, so an I/O failure cannot leave a
+    // missing task with dangling graph edges.
+    const affectedPaths = initialTasks
+      .map(task => getTaskPath(taskListId, task.id))
+      .sort()
+    for (const affectedPath of affectedPaths) {
+      taskReleases.push(
+        await lockfile.lock(affectedPath, LOCK_OPTIONS),
+      )
+    }
+
+    const allTasks = await listTasks(taskListId)
+    const target = allTasks.find(task => task.id === taskId)
+    if (!target) return false
+    const affectedTasks = allTasks.filter(
+      task =>
+        task.id !== taskId &&
+        (task.blocks.includes(taskId) || task.blockedBy.includes(taskId)),
+    )
+
     // Update high water mark before deleting to prevent ID reuse
-    const numericId = parseInt(taskId, 10)
-    if (!isNaN(numericId)) {
+    const numericId = parseNumericTaskId(taskId)
+    if (numericId !== null) {
       const currentMark = await readHighWaterMark(taskListId)
       if (numericId > currentMark) {
         await writeHighWaterMark(taskListId, numericId)
       }
     }
 
-    // Delete the task file
+    const writtenSnapshots: Task[] = []
     try {
+      for (const task of affectedTasks) {
+        const cleaned: Task = {
+          ...task,
+          blocks: task.blocks.filter(id => id !== taskId),
+          blockedBy: task.blockedBy.filter(id => id !== taskId),
+        }
+        await writeTaskSnapshotUnsafe(taskListId, cleaned)
+        writtenSnapshots.push(task)
+      }
+
+      // Unlink last: once the target is gone, every persisted graph reference
+      // to it has already been removed.
       await unlink(path)
     } catch (e) {
+      // Restore any cleanup already written while the target still exists.
+      for (const snapshot of writtenSnapshots.reverse()) {
+        try {
+          await writeTaskSnapshotUnsafe(taskListId, snapshot)
+        } catch (rollbackError) {
+          logForDebugging(
+            `[Tasks] Failed to roll back deletion of task ${taskId}: ` +
+              errorMessage(rollbackError),
+          )
+          logError(rollbackError)
+        }
+      }
       const code = getErrnoCode(e)
       if (code === 'ENOENT') {
         return false
@@ -421,26 +537,19 @@ export async function deleteTask(
       throw e
     }
 
-    // Remove references to this task from other tasks
-    const allTasks = await listTasks(taskListId)
-    for (const task of allTasks) {
-      const newBlocks = task.blocks.filter(id => id !== taskId)
-      const newBlockedBy = task.blockedBy.filter(id => id !== taskId)
-      if (
-        newBlocks.length !== task.blocks.length ||
-        newBlockedBy.length !== task.blockedBy.length
-      ) {
-        await updateTask(taskListId, task.id, {
-          blocks: newBlocks,
-          blockedBy: newBlockedBy,
-        })
-      }
-    }
-
     notifyTasksUpdated()
     return true
-  } catch {
+  } catch (error) {
+    logForDebugging(
+      `[Tasks] Failed to delete task ${taskId}: ${errorMessage(error)}`,
+    )
+    logError(error)
     return false
+  } finally {
+    for (const release of taskReleases.reverse()) {
+      await release().catch(() => undefined)
+    }
+    await releaseList?.().catch(() => undefined)
   }
 }
 
@@ -452,11 +561,13 @@ export async function deleteTask(
  * than producing NaN comparisons, which leave the order unspecified.
  */
 export function compareTaskIds(a: string, b: string): number {
-  const left = Number.parseInt(a, 10)
-  const right = Number.parseInt(b, 10)
-  const leftIsNumeric = !Number.isNaN(left)
-  const rightIsNumeric = !Number.isNaN(right)
-  if (leftIsNumeric && rightIsNumeric) return left - right
+  const left = parseNumericTaskId(a)
+  const right = parseNumericTaskId(b)
+  const leftIsNumeric = left !== null
+  const rightIsNumeric = right !== null
+  if (left !== null && right !== null) {
+    return left === right ? a.localeCompare(b) : left - right
+  }
   if (leftIsNumeric) return -1
   if (rightIsNumeric) return 1
   return a.localeCompare(b)
@@ -472,7 +583,7 @@ export async function listTasks(taskListId: string): Promise<Task[]> {
   }
   const taskIds = files
     .filter(f => f.endsWith('.json'))
-    .map(f => f.replace('.json', ''))
+    .map(f => f.slice(0, -'.json'.length))
     // readdir returns filesystem order, which is lexicographic in practice:
     // past nine tasks that reads 1, 10, 11, 12, ... 2, 20, 3. IDs are
     // allocated as ascending integers, so sort them as integers. Promise.all
@@ -482,34 +593,356 @@ export async function listTasks(taskListId: string): Promise<Task[]> {
   return results.filter((t): t is Task => t !== null)
 }
 
+export type TaskListGateInspection = {
+  /** All schema-valid task snapshots, in the same numeric order as listTasks. */
+  tasks: Task[]
+  /** Total persisted task snapshots. Gate policy may further filter by status. */
+  taskCount: number
+}
+
+/**
+ * Strict task-store read for the mutation gate.
+ *
+ * The normal listTasks API intentionally remains forgiving for UI callers:
+ * a broken file is logged and omitted. A safety gate cannot treat corruption
+ * or an I/O failure as proof that no plan exists, so this variant only maps a
+ * missing task-list directory (ENOENT from readdir) to an empty list. Every
+ * task-file read, JSON parse, schema, and filename/id mismatch is surfaced.
+ */
+export async function inspectTaskListForGate(
+  taskListId: string,
+): Promise<TaskListGateInspection> {
+  const dir = getTasksDir(taskListId)
+  let files: string[]
+  try {
+    files = await readdir(dir)
+  } catch (error) {
+    if (getErrnoCode(error) === 'ENOENT') {
+      return { tasks: [], taskCount: 0 }
+    }
+    throw error
+  }
+
+  const taskIds = files
+    .filter(file => file.endsWith('.json'))
+    .map(file => file.slice(0, -'.json'.length))
+    .sort(compareTaskIds)
+  const tasks = await Promise.all(
+    taskIds.map(async taskId => {
+      const content = await readFile(getTaskPath(taskListId, taskId), 'utf-8')
+      const task = TaskSchema().parse(
+        migrateLegacyTaskData(jsonParse(content)),
+      )
+      if (task.id !== taskId) {
+        throw new Error(
+          `Task file ${taskId}.json contains mismatched task id ${task.id}`,
+        )
+      }
+      return task
+    }),
+  )
+  return { tasks, taskCount: tasks.length }
+}
+
+export type TaskDependencyValidation =
+  | { valid: true }
+  | {
+    valid: false
+    reason: 'task_not_found' | 'self_dependency' | 'cycle'
+  }
+
+export type TaskDependencyEdge = {
+  fromTaskId: string
+  toTaskId: string
+}
+
+type TaskDependencyFailureReason = Extract<
+  TaskDependencyValidation,
+  { valid: false }
+>['reason']
+
+export type TaskDependencyBatchValidation =
+  | { success: true }
+  | {
+    success: false
+    reason: TaskDependencyFailureReason
+    dependency: TaskDependencyEdge
+  }
+
+export type TaskDependencyBatchResult =
+  | { success: true; task: Task }
+  | {
+    success: false
+    reason: TaskDependencyFailureReason | 'blocked' | 'write_failed'
+    dependency?: TaskDependencyEdge
+    blockedBy?: string[]
+  }
+
+function cloneTask(task: Task): Task {
+  return {
+    ...task,
+    blocks: [...task.blocks],
+    blockedBy: [...task.blockedBy],
+    metadata: task.metadata ? { ...task.metadata } : undefined,
+  }
+}
+
+function validateTaskDependencyInSnapshot(
+  tasks: Task[],
+  fromTaskId: string,
+  toTaskId: string,
+): TaskDependencyValidation {
+  if (fromTaskId === toTaskId) {
+    return { valid: false, reason: 'self_dependency' }
+  }
+
+  const byId = new Map(tasks.map(task => [task.id, task]))
+  const fromTask = byId.get(fromTaskId)
+  const toTask = byId.get(toTaskId)
+  if (!fromTask || !toTask) {
+    return { valid: false, reason: 'task_not_found' }
+  }
+  if (fromTask.blocks.includes(toTaskId)) {
+    return { valid: true }
+  }
+
+  // Adding A -> B creates a cycle exactly when B already reaches A.
+  const pending = [toTaskId]
+  const visited = new Set<string>()
+  while (pending.length > 0) {
+    const currentId = pending.pop()!
+    if (currentId === fromTaskId) {
+      return { valid: false, reason: 'cycle' }
+    }
+    if (visited.has(currentId)) continue
+    visited.add(currentId)
+    const current = byId.get(currentId)
+    if (current) pending.push(...current.blocks)
+  }
+  return { valid: true }
+}
+
+function applyTaskDependenciesToSnapshot(
+  tasks: Task[],
+  dependencies: readonly TaskDependencyEdge[],
+):
+  | { success: true; tasks: Task[] }
+  | {
+    success: false
+    reason: TaskDependencyFailureReason
+    dependency: TaskDependencyEdge
+  } {
+  const clonedTasks = tasks.map(cloneTask)
+  const byId = new Map(clonedTasks.map(task => [task.id, task]))
+
+  for (const dependency of dependencies) {
+    const validation = validateTaskDependencyInSnapshot(
+      clonedTasks,
+      dependency.fromTaskId,
+      dependency.toTaskId,
+    )
+    if (validation.valid === false) {
+      return {
+        success: false,
+        reason: validation.reason,
+        dependency,
+      }
+    }
+
+    const fromTask = byId.get(dependency.fromTaskId)!
+    const toTask = byId.get(dependency.toTaskId)!
+    if (!fromTask.blocks.includes(dependency.toTaskId)) {
+      fromTask.blocks.push(dependency.toTaskId)
+    }
+    if (!toTask.blockedBy.includes(dependency.fromTaskId)) {
+      toTask.blockedBy.push(dependency.fromTaskId)
+    }
+  }
+
+  return { success: true, tasks: clonedTasks }
+}
+
+/**
+ * Validate an A -> B dependency ("A blocks B") before writing either half of
+ * the reciprocal relationship.
+ */
+export async function validateTaskDependency(
+  taskListId: string,
+  fromTaskId: string,
+  toTaskId: string,
+): Promise<TaskDependencyValidation> {
+  const tasks = await listTasks(taskListId)
+  return validateTaskDependencyInSnapshot(tasks, fromTaskId, toTaskId)
+}
+
+/**
+ * Validate a whole proposed dependency batch against one evolving snapshot.
+ * This catches cycles that only exist when two individually-valid edges are
+ * combined in the same TaskCreate/TaskUpdate call.
+ */
+export async function validateTaskDependencies(
+  taskListId: string,
+  dependencies: readonly TaskDependencyEdge[],
+): Promise<TaskDependencyBatchValidation> {
+  const tasks = await listTasks(taskListId)
+  const result = applyTaskDependenciesToSnapshot(tasks, dependencies)
+  if (result.success === false) return result
+  return { success: true }
+}
+
+/**
+ * Atomically (within this filesystem task store) update one task and add a
+ * batch of reciprocal dependency edges. All proposed edges are validated
+ * together under the task-list lock, all affected task files are locked in a
+ * stable order, and already-written files are restored if a later write fails.
+ */
+export async function updateTaskWithDependencies(
+  taskListId: string,
+  taskId: string,
+  updates: Partial<Omit<Task, 'id'>>,
+  dependencies: readonly TaskDependencyEdge[],
+): Promise<TaskDependencyBatchResult> {
+  const listLockPath = await ensureTaskListLockFile(taskListId)
+  let releaseList: (() => Promise<void>) | undefined
+  const taskReleases: Array<() => Promise<void>> = []
+
+  try {
+    releaseList = await lockfile.lock(listLockPath, LOCK_OPTIONS)
+    const initialTasks = await listTasks(taskListId)
+    const initialById = new Map(initialTasks.map(task => [task.id, task]))
+    if (!initialById.has(taskId)) {
+      return { success: false, reason: 'task_not_found' }
+    }
+
+    const referencedTaskIds = new Set([
+      taskId,
+      ...dependencies.flatMap(dependency => [
+        dependency.fromTaskId,
+        dependency.toTaskId,
+      ]),
+    ])
+    for (const referencedTaskId of referencedTaskIds) {
+      if (!initialById.has(referencedTaskId)) {
+        const dependency = dependencies.find(
+          edge =>
+            edge.fromTaskId === referencedTaskId ||
+            edge.toTaskId === referencedTaskId,
+        )
+        return {
+          success: false,
+          reason: 'task_not_found',
+          dependency,
+        }
+      }
+    }
+
+    // Lock the full snapshot. A cycle can traverse tasks not named directly
+    // in this request, so locking only the endpoints would allow an ordinary
+    // graph update on an intermediate task to invalidate validation.
+    const taskPaths = initialTasks
+      .map(initialTask => getTaskPath(taskListId, initialTask.id))
+      .sort()
+    for (const taskPath of taskPaths) {
+      taskReleases.push(await lockfile.lock(taskPath, LOCK_OPTIONS))
+    }
+
+    // Re-read after acquiring the per-task locks so ordinary field updates
+    // that started before this transaction are included rather than lost.
+    const originalTasks = await listTasks(taskListId)
+    const applied = applyTaskDependenciesToSnapshot(
+      originalTasks,
+      dependencies,
+    )
+    if (applied.success === false) return applied
+
+    const updatedById = new Map(applied.tasks.map(task => [task.id, task]))
+    const task = updatedById.get(taskId)
+    if (!task) return { success: false, reason: 'task_not_found' }
+    if (updates.status === 'completed') {
+      const unresolvedBlockers = task.blockedBy.filter(blockerId => {
+        const blocker = updatedById.get(blockerId)
+        return blocker !== undefined && blocker.status !== 'completed'
+      })
+      if (unresolvedBlockers.length > 0) {
+        return {
+          success: false,
+          reason: 'blocked',
+          blockedBy: unresolvedBlockers,
+        }
+      }
+    }
+    const updatedTask = TaskSchema().parse({
+      ...task,
+      ...updates,
+      id: taskId,
+    })
+    updatedById.set(taskId, updatedTask)
+
+    const originalById = new Map(
+      originalTasks.map(originalTask => [originalTask.id, originalTask]),
+    )
+    const changedTasks = [...updatedById.values()].filter(candidate => {
+      const original = originalById.get(candidate.id)
+      return original !== undefined &&
+        jsonStringify(original) !== jsonStringify(candidate)
+    })
+
+    const writtenSnapshots: Task[] = []
+    try {
+      for (const changedTask of changedTasks) {
+        const original = originalById.get(changedTask.id)!
+        await writeTaskSnapshotUnsafe(taskListId, changedTask)
+        writtenSnapshots.push(original)
+      }
+    } catch (error) {
+      for (const snapshot of writtenSnapshots.reverse()) {
+        try {
+          await writeTaskSnapshotUnsafe(taskListId, snapshot)
+        } catch (rollbackError) {
+          logForDebugging(
+            `[Tasks] Failed to roll back task graph update for #${taskId}: ` +
+              errorMessage(rollbackError),
+          )
+          logError(rollbackError)
+        }
+      }
+      logForDebugging(
+        `[Tasks] Failed to update task graph for #${taskId}: ` +
+          errorMessage(error),
+      )
+      logError(error)
+      return { success: false, reason: 'write_failed' }
+    }
+
+    if (changedTasks.length > 0) notifyTasksUpdated()
+    return { success: true, task: updatedTask }
+  } catch (error) {
+    logForDebugging(
+      `[Tasks] Failed to lock task graph for #${taskId}: ` +
+        errorMessage(error),
+    )
+    logError(error)
+    return { success: false, reason: 'write_failed' }
+  } finally {
+    for (const release of taskReleases.reverse()) {
+      await release().catch(() => undefined)
+    }
+    await releaseList?.().catch(() => undefined)
+  }
+}
+
 export async function blockTask(
   taskListId: string,
   fromTaskId: string,
   toTaskId: string,
 ): Promise<boolean> {
-  const [fromTask, toTask] = await Promise.all([
-    getTask(taskListId, fromTaskId),
-    getTask(taskListId, toTaskId),
-  ])
-  if (!fromTask || !toTask) {
-    return false
-  }
-
-  // Update source task: A blocks B
-  if (!fromTask.blocks.includes(toTaskId)) {
-    await updateTask(taskListId, fromTaskId, {
-      blocks: [...fromTask.blocks, toTaskId],
-    })
-  }
-
-  // Update target task: B is blockedBy A
-  if (!toTask.blockedBy.includes(fromTaskId)) {
-    await updateTask(taskListId, toTaskId, {
-      blockedBy: [...toTask.blockedBy, fromTaskId],
-    })
-  }
-
-  return true
+  const result = await updateTaskWithDependencies(
+    taskListId,
+    fromTaskId,
+    {},
+    [{ fromTaskId, toTaskId }],
+  )
+  return result.success
 }
 
 export type ClaimTaskResult = {

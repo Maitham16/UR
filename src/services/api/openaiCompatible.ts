@@ -5,6 +5,8 @@
 
 import { randomUUID } from 'crypto'
 import {
+  assertValidProviderToolUses,
+  isProviderToolInput,
   ProviderCapabilityError,
   ProviderResponseParseError,
 } from './providerClient.js'
@@ -398,6 +400,7 @@ export function parseOpenAICompatibleResponse(
     providerName,
   )
   const includesToolUse = hasToolUse(content)
+  assertValidProviderToolUses(content, `${providerName} response`)
   if (isOpenAIToolStopReason(choice?.finish_reason) && !includesToolUse) {
     throw new ProviderResponseParseError(
       `${providerName} response finished with ${choice?.finish_reason} but did not include a tool call`,
@@ -700,15 +703,29 @@ function parseLegacyOpenAIFunctionCall(functionCall: any, path: string): any {
 
 function parseToolArguments(args: unknown, path: string): unknown {
   if (args === undefined || args === null || args === '') return {}
-  if (typeof args !== 'string') return args
+  if (typeof args !== 'string') {
+    if (!isProviderToolInput(args)) {
+      throw new ProviderResponseParseError(`${path} must be a JSON object`, {
+        args,
+      })
+    }
+    return args
+  }
+  let parsed: unknown
   try {
-    return JSON.parse(args)
+    parsed = JSON.parse(args)
   } catch (error) {
     throw new ProviderResponseParseError(`${path} is not valid JSON`, {
       args,
       cause: error,
     })
   }
+  if (!isProviderToolInput(parsed)) {
+    throw new ProviderResponseParseError(`${path} must decode to a JSON object`, {
+      args,
+    })
+  }
+  return parsed
 }
 
 function hasToolUse(content: any[]): boolean {

@@ -6,6 +6,10 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as vscode from 'vscode'
 import type { DiffArtifact, DiffManifest } from '../bridge/types.js'
+import {
+  safeWorkspacePath,
+  writeWorkspaceJsonAtomic,
+} from '../util/safeWorkspacePath.js'
 
 export function workspaceRoot(): string | undefined {
   const activeUri = vscode.window.activeTextEditor?.document.uri
@@ -30,6 +34,9 @@ export function metadataPath(root: string, bundle: DiffArtifact): string {
 }
 
 const DIFF_ID_PATTERN = /^diff-[1-9][0-9]*$/u
+const DIFF_STATUSES = new Set(['pending', 'commented', 'approved', 'rejected'])
+const MAX_DIFF_JSON_BYTES = 16 * 1024 * 1024
+const MAX_PATCH_BYTES = 64 * 1024 * 1024
 
 function artifactPath(root: string, bundle: DiffArtifact, kind: 'patch' | 'metadata'): string {
   if (!DIFF_ID_PATTERN.test(bundle.id)) throw new Error(`Invalid UR diff id: ${bundle.id}`)
@@ -41,55 +48,120 @@ function artifactPath(root: string, bundle: DiffArtifact, kind: 'patch' | 'metad
   const rootPath = path.resolve(diffsRoot(root))
   const target = path.resolve(rootPath, relative)
   if (!target.startsWith(`${rootPath}${path.sep}`)) throw new Error(`UR diff ${kind} path escapes the diff store`)
-  return target
+  return safeWorkspacePath(root, target, `UR diff ${kind}`)
 }
 
-function isValidBundle(value: unknown): value is DiffArtifact {
-  if (!value || typeof value !== 'object') return false
-  const bundle = value as DiffArtifact
+function isValidBundle(root: string, value: unknown): value is DiffArtifact {
+  if (!isRecord(value)) return false
+  const bundle = value as unknown as DiffArtifact
   try {
-    patchPath('.', bundle)
-    metadataPath('.', bundle)
-    return true
+    patchPath(root, bundle)
+    metadataPath(root, bundle)
+    return (
+      typeof bundle.title === 'string' &&
+      bundle.title.length > 0 &&
+      DIFF_STATUSES.has(bundle.status) &&
+      (bundle.baseRef === undefined || typeof bundle.baseRef === 'string') &&
+      (bundle.staged === undefined || typeof bundle.staged === 'boolean') &&
+      Array.isArray(bundle.files) &&
+      bundle.files.every(isValidFileChange) &&
+      Array.isArray(bundle.comments) &&
+      bundle.comments.every(isValidComment) &&
+      typeof bundle.createdAt === 'string' &&
+      typeof bundle.updatedAt === 'string'
+    )
   } catch {
     return false
   }
 }
 
-function readJson<T>(file: string, fallback: T): T {
+function readJson<T>(
+  root: string,
+  file: string,
+  fallback: T,
+  maxBytes = MAX_DIFF_JSON_BYTES,
+): T {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8')) as T
+    const safeFile = safeWorkspacePath(root, file, 'UR diff')
+    const size = fs.statSync(safeFile).size
+    if (!Number.isSafeInteger(size) || size < 0 || size > maxBytes) {
+      return fallback
+    }
+    return JSON.parse(fs.readFileSync(safeFile, 'utf8')) as T
   } catch {
     return fallback
   }
 }
 
-function writeJson(file: string, value: unknown): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`)
+function writeJson(root: string, file: string, value: unknown): void {
+  writeWorkspaceJsonAtomic(root, file, value, 'UR diff')
 }
 
 export function loadManifest(root: string): DiffManifest {
-  const manifest = readJson<DiffManifest>(manifestPath(root), { version: 1, diffs: [] })
-  return Array.isArray(manifest.diffs)
-    ? { version: 1, diffs: manifest.diffs.filter(isValidBundle) }
+  const manifest = readJson<DiffManifest>(
+    root,
+    manifestPath(root),
+    { version: 1, diffs: [] },
+  )
+  return isRecord(manifest) && Array.isArray(manifest.diffs)
+    ? {
+        version: 1,
+        diffs: manifest.diffs.filter(bundle => isValidBundle(root, bundle)),
+      }
     : { version: 1, diffs: [] }
 }
 
 export function loadBundleMetadata(root: string, bundle: DiffArtifact): DiffArtifact {
-  const metadata = readJson<DiffArtifact>(metadataPath(root, bundle), bundle)
-  return isValidBundle(metadata) && metadata.id === bundle.id ? metadata : bundle
+  const metadata = readJson<DiffArtifact>(
+    root,
+    metadataPath(root, bundle),
+    bundle,
+  )
+  return isValidBundle(root, metadata) && metadata.id === bundle.id
+    ? metadata
+    : bundle
 }
 
 export function readPatch(root: string, bundle: DiffArtifact): string {
   const file = patchPath(root, bundle)
-  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
+  if (!fs.existsSync(file)) return ''
+  const size = fs.statSync(file).size
+  if (!Number.isSafeInteger(size) || size < 0 || size > MAX_PATCH_BYTES) {
+    throw new Error(`UR diff patch exceeds ${MAX_PATCH_BYTES / (1024 * 1024)} MiB`)
+  }
+  return fs.readFileSync(file, 'utf8')
 }
 
 export function writeManifest(root: string, manifest: DiffManifest): void {
-  writeJson(manifestPath(root), manifest)
+  writeJson(root, manifestPath(root), manifest)
 }
 
 export function writeBundleMetadata(root: string, bundle: DiffArtifact): void {
-  writeJson(metadataPath(root, bundle), bundle)
+  writeJson(root, metadataPath(root, bundle), bundle)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isValidFileChange(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return (
+    typeof value.path === 'string' &&
+    Number.isSafeInteger(value.additions) &&
+    Number(value.additions) >= 0 &&
+    Number.isSafeInteger(value.deletions) &&
+    Number(value.deletions) >= 0
+  )
+}
+
+function isValidComment(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return (
+    typeof value.at === 'string' &&
+    typeof value.text === 'string' &&
+    (value.file === undefined || typeof value.file === 'string') &&
+    (value.line === undefined ||
+      (Number.isSafeInteger(value.line) && Number(value.line) > 0))
+  )
 }

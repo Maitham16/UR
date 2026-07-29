@@ -25,6 +25,7 @@ function maxAgents(value: unknown, fallback: number): number {
 
 export function resolvePromptPlanningConfig(
   settings?: unknown,
+  fallback: PromptPlanningConfig = DEFAULT_PROMPT_PLANNING_CONFIG,
 ): PromptPlanningConfig {
   const root = asRecord(settings) ?? {}
   const nested =
@@ -40,23 +41,23 @@ export function resolvePromptPlanningConfig(
   return {
     taskPlanning: bool(
       value('taskPlanning'),
-      DEFAULT_PROMPT_PLANNING_CONFIG.taskPlanning,
+      fallback.taskPlanning,
     ),
     parallelAgents: bool(
       value('parallelAgents'),
-      DEFAULT_PROMPT_PLANNING_CONFIG.parallelAgents,
+      fallback.parallelAgents,
     ),
     maxAgents: maxAgents(
       value('maxAgents'),
-      DEFAULT_PROMPT_PLANNING_CONFIG.maxAgents,
+      fallback.maxAgents,
     ),
     showTaskBoard: bool(
       value('showTaskBoard'),
-      DEFAULT_PROMPT_PLANNING_CONFIG.showTaskBoard,
+      fallback.showTaskBoard,
     ),
     strictVerification: bool(
       value('strictVerification'),
-      DEFAULT_PROMPT_PLANNING_CONFIG.strictVerification,
+      fallback.strictVerification,
     ),
   }
 }

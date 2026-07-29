@@ -3,7 +3,11 @@ import {
   buildDefaultStatusBar,
   statusBarShouldDisplay,
 } from '../src/utils/statusBar.js'
-import { getEffectiveStatusLineSettings } from '../src/components/StatusLine.js'
+import {
+  buildStatusLineRefreshKey,
+  buildStatusLineRuntimeFields,
+  getEffectiveStatusLineSettings,
+} from '../src/components/StatusLine.js'
 import { getProviderRuntimeInfo } from '../src/services/providers/providerRegistry.js'
 
 describe('UR-Nexus status bar', () => {
@@ -24,11 +28,17 @@ describe('UR-Nexus status bar', () => {
     expect(text).toContain('modelH')
     expect(text).toContain('acceptEdits')
     expect(text).toContain('main')
-    expect(text).toContain('tasks: 1/3 running')
+    expect(text).toContain('tasks: 1/3 active')
     expect(text).toContain('tests passed')
     expect(text).not.toContain('UR-Nexus')
     expect(text).not.toContain('v1.25.3')
     expect(text).not.toContain('Auth:')
+    expect(text.indexOf('modelH')).toBeLessThan(
+      text.indexOf('tasks: 1/3 active'),
+    )
+    expect(text.indexOf('tasks: 1/3 active')).toBeLessThan(
+      text.indexOf('Codex CLI'),
+    )
   })
 
   test('shows update availability when known', () => {
@@ -82,5 +92,48 @@ describe('UR-Nexus status bar', () => {
     expect(text).toContain('gemini-cli/gemini-2.5-pro')
     expect(text).not.toContain('Codex CLI')
     expect(text).not.toContain('codex/gpt-5.5')
+  })
+
+  test('custom status-line input and invalidation follow the live model', () => {
+    const runtime = getProviderRuntimeInfo({
+      provider: {
+        active: 'gemini-cli',
+        model: 'persisted/model',
+      },
+    })
+    const firstModel = 'gemini-cli/gemini-2.5-pro'
+    const nextModel = 'gemini-cli/gemini-3-pro'
+    const fields = buildStatusLineRuntimeFields(firstModel, runtime)
+
+    expect(fields.model.id).toBe(firstModel)
+    expect(fields.provider.model).toBe(firstModel)
+    expect(fields.provider.model).not.toBe('persisted/model')
+    expect(buildStatusLineRefreshKey(runtime, firstModel)).not.toBe(
+      buildStatusLineRefreshKey(runtime, nextModel),
+    )
+  })
+
+  test('status-line invalidation keys cannot collide across delimited runtime fields', () => {
+    const runtime = getProviderRuntimeInfo({
+      provider: {
+        active: 'gemini-cli',
+        model: 'persisted/model',
+      },
+    })
+    const firstRuntime = {
+      ...runtime,
+      model: 'persisted/model',
+    }
+    const secondRuntime = {
+      ...runtime,
+      model: 'model|persisted/model',
+    }
+
+    expect(buildStatusLineRefreshKey(firstRuntime, 'segment|model')).not.toBe(
+      buildStatusLineRefreshKey(secondRuntime, 'segment'),
+    )
+    expect(JSON.parse(buildStatusLineRefreshKey(runtime, 'live/model'))[1]).toBe(
+      'live/model',
+    )
   })
 })

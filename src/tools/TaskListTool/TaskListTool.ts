@@ -69,9 +69,11 @@ export const TaskListTool = buildTool({
       t => !t.metadata?._internal,
     )
 
-    // Build a set of resolved task IDs for filtering
-    const resolvedTaskIds = new Set(
-      allTasks.filter(t => t.status === 'completed').map(t => t.id),
+    // Keep only blockers that both still exist and remain unresolved. Deleted
+    // or corrupt references otherwise render as permanent phantom blockers,
+    // while claimTask already treats those IDs as absent.
+    const unresolvedTaskIds = new Set(
+      allTasks.filter(t => t.status !== 'completed').map(t => t.id),
     )
 
     const tasks = allTasks.map(task => ({
@@ -79,7 +81,7 @@ export const TaskListTool = buildTool({
       subject: task.subject,
       status: task.status,
       owner: task.owner,
-      blockedBy: task.blockedBy.filter(id => !resolvedTaskIds.has(id)),
+      blockedBy: task.blockedBy.filter(id => unresolvedTaskIds.has(id)),
     }))
 
     return {

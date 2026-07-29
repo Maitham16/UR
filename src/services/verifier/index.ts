@@ -46,6 +46,11 @@ import {
 import { loadPluginValidators, type PluginValidator } from '../../utils/plugins/loadPluginValidators.js'
 import picomatch from 'picomatch'
 import { buildSubagentNudge, type SubagentNudge } from './subagentNudge.js'
+import {
+  getTaskListId,
+  inspectTaskListForGate,
+  type Task,
+} from '../../utils/tasks.js'
 
 export type VerifierMode = 'off' | 'loose' | 'strict'
 
@@ -71,6 +76,10 @@ export type VerifierOptions = {
   mode?: VerifierMode
   /** Test-only/runtime override for project-gate approval behavior. */
   askBeforeGates?: boolean
+  /** Test/embedding override for the strict task completion check. */
+  getActionableTasks?: () => Promise<
+    Array<Pick<Task, 'id' | 'subject' | 'status'>>
+  >
 }
 
 export type CheckResult = { ok: true } | { ok: false; reminder: string }
@@ -98,6 +107,9 @@ export class Verifier {
   private enableSubagentNudge: boolean
   private mode: VerifierMode
   private askBeforeGatesOverride: boolean | undefined
+  private getActionableTasks: NonNullable<
+    VerifierOptions['getActionableTasks']
+  >
 
   constructor(options: VerifierOptions) {
     this.cwd = options.cwd
@@ -107,6 +119,20 @@ export class Verifier {
     this.pluginValidatorsPromise = loadPluginValidators()
     this.mode = resolveMode(options.mode)
     this.askBeforeGatesOverride = options.askBeforeGates
+    this.getActionableTasks =
+      options.getActionableTasks ??
+      (async () => {
+        const { tasks } = await inspectTaskListForGate(getTaskListId())
+        return tasks
+          .filter(
+            task =>
+              !task.metadata?._internal &&
+              (task.status === 'pending' ||
+                task.status === 'in_progress' ||
+                task.status === 'failed'),
+          )
+          .map(({ id, subject, status }) => ({ id, subject, status }))
+      })
     // L2 is opt-in: the deep verification subagent only auto-spawns when the
     // user explicitly enables it via UR_VERIFIER_AUTO_SUBAGENT. By default the
     // verifier runs L1 gates only ("try the implementation") and the user
@@ -181,6 +207,39 @@ export class Verifier {
           this.bumpRejection(turnId)
           const failed = gate as Extract<typeof gate, { ok: false }>
           return { ok: false, reminder: failed.reminder }
+        }
+        try {
+          const actionableTasks = await this.getActionableTasks()
+          if (actionableTasks.length > 0) {
+            this.bumpRejection(turnId)
+            const preview = actionableTasks
+              .slice(0, 5)
+              .map(task => `#${task.id} [${task.status}] ${task.subject}`)
+              .join('; ')
+            const remaining =
+              actionableTasks.length > 5
+                ? `; +${actionableTasks.length - 5} more`
+                : ''
+            return {
+              ok: false,
+              reminder:
+                `You declared completion while ${actionableTasks.length} ` +
+                `actionable task(s) remain: ${preview}${remaining}. Finish ` +
+                `the next unblocked task and update it immediately, or report ` +
+                `the work as partial/blocked without claiming overall completion.`,
+            }
+          }
+        } catch (error) {
+          this.bumpRejection(turnId)
+          const detail =
+            error instanceof Error ? error.message : String(error)
+          return {
+            ok: false,
+            reminder:
+              `You declared completion, but the task store could not be ` +
+              `verified: ${detail.slice(0, 300)}. Inspect or repair the task ` +
+              `list before claiming overall completion.`,
+          }
         }
       }
     }

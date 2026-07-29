@@ -641,7 +641,8 @@ export function getActiveProviderSettings(settings: SettingsJson | null = getIni
 }
 
 export function getProviderRuntimeInfo(settings: SettingsJson | null = getInitialSettings()): ProviderRuntimeInfo {
-  const providerSettings = getActiveProviderSettings(settings)
+  const effectiveSettings = settings ?? {}
+  const providerSettings = getActiveProviderSettings(effectiveSettings)
   const provider = providerSettings.active ?? DEFAULT_PROVIDER_ID
   const definition = getProviderDefinition(provider)
   return {
@@ -660,7 +661,7 @@ export function getProviderRuntimeInfo(settings: SettingsJson | null = getInitia
     authMode: definition.authMode,
     authLabel: authModeLabel(definition.authMode),
     model: providerSettings.model,
-    baseUrl: providerSettings.baseUrl ?? definition.defaultBaseUrl,
+    baseUrl: providerBaseUrl(provider, definition, effectiveSettings),
     fallback: providerSettings.fallback,
   }
 }
@@ -1872,7 +1873,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   ],
 }
 
-const cachedModelsByProvider = new Map<ProviderId, ProviderModelDefinition[]>()
+const cachedModelsByProvider = new Map<string, ProviderModelDefinition[]>()
 
 export function clearProviderModelCacheForTests(): void {
   cachedModelsByProvider.clear()
@@ -1894,7 +1895,10 @@ function providerBaseUrl(
     }
   }
   const providerSettings = getActiveProviderSettings(settings)
-  if (providerSettings.baseUrl) {
+  if (
+    providerSettings.active === provider &&
+    providerSettings.baseUrl
+  ) {
     return providerSettings.baseUrl
   }
   if (provider === 'ollama') {
@@ -1969,8 +1973,20 @@ function modelDefinitionsFromNames(
   }))
 }
 
-function getCachedProviderModels(provider: ProviderId): ProviderModelDefinition[] {
-  return cachedModelsByProvider.get(provider) ?? []
+function providerModelCacheKey(
+  provider: ProviderId,
+  settings: SettingsJson = getInitialSettings(),
+): string {
+  if (provider !== 'ollama') return provider
+  const definition = getProviderDefinition(provider)
+  return `${provider}@${providerBaseUrl(provider, definition, settings) ?? ''}`
+}
+
+function getCachedProviderModels(
+  provider: ProviderId,
+  settings: SettingsJson = getInitialSettings(),
+): ProviderModelDefinition[] {
+  return cachedModelsByProvider.get(providerModelCacheKey(provider, settings)) ?? []
 }
 
 export function cacheProviderModelsForProvider(
@@ -1986,7 +2002,7 @@ export function cacheProviderModelsForProvider(
       ? modelDefinitionsFromNames(provider, models as string[], 'cache')
       : (models as ProviderModelDefinition[])
   if (definitions.length > 0) {
-    cachedModelsByProvider.set(provider, definitions)
+    cachedModelsByProvider.set(providerModelCacheKey(provider), definitions)
   }
 }
 
@@ -2195,17 +2211,22 @@ export async function listModelsForProviderWithSource(
     }
   }
 
+  const cacheSettings = options.settings ?? getInitialSettings()
+  // Capture before the request. If the session endpoint changes while a
+  // discovery fetch is in flight, its response still belongs to the endpoint
+  // that initiated it, never the newly selected host.
+  const cacheKey = providerModelCacheKey(provider, cacheSettings)
   try {
     const liveModels = await discoverLiveModelsForProvider(provider, options)
     if (liveModels.length > 0) {
-      cachedModelsByProvider.set(provider, liveModels)
+      cachedModelsByProvider.set(cacheKey, liveModels)
       return {
         provider,
         models: liveModels,
         source: 'live',
       }
     }
-    const cachedModels = getCachedProviderModels(provider)
+    const cachedModels = cachedModelsByProvider.get(cacheKey) ?? []
     if (cachedModels.length > 0) {
       return {
         provider,
@@ -2222,7 +2243,7 @@ export async function listModelsForProviderWithSource(
       warning: `Live model discovery for "${provider}" returned no models.`,
     }
   } catch (error) {
-    const cachedModels = getCachedProviderModels(provider)
+    const cachedModels = cachedModelsByProvider.get(cacheKey) ?? []
     if (cachedModels.length > 0) {
       return {
         provider,

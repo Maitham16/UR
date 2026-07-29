@@ -96,7 +96,7 @@ describe('promptPlanExecutor integration', () => {
     const finalBoard = events[events.length - 1]?.board ?? ''
     const line = finalBoard.split('\n').find(l => l.includes('Fail task'))
     expect(line).toContain('failed')
-    expect(line).toContain('[✓]')
+    expect(line).toContain('[✗]')
   })
 
   it('does not emit duplicate consecutive boards', async () => {

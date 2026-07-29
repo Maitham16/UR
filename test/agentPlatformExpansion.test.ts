@@ -53,6 +53,7 @@ const VISION: ModelCapability = {
   name: 'llava:13b',
   advertisedCapabilities: ['vision'],
   contextLength: 8_000,
+  visionSupport: 'supported',
   likelyVision: true,
   likelyCode: false,
 }
@@ -60,6 +61,7 @@ const CODER: ModelCapability = {
   name: 'qwen3-coder:480b',
   advertisedCapabilities: ['tools'],
   contextLength: 128_000,
+  visionSupport: 'unsupported',
   likelyVision: false,
   likelyCode: true,
 }
@@ -68,6 +70,7 @@ const EMBED: ModelCapability = {
   advertisedCapabilities: [],
   embeddingLength: 768,
   contextLength: 2_048,
+  visionSupport: 'unsupported',
   likelyVision: false,
   likelyCode: false,
 }
@@ -91,6 +94,24 @@ describe('modelRouter', () => {
     expect(result.recommended).toBe('llava:13b')
   })
 
+  test('keeps unknown vision support distinct from a confirmed no', () => {
+    const unknown: ModelCapability = {
+      ...CODER,
+      name: 'new-multimodal-model',
+      visionSupport: 'unknown',
+    }
+    expect(scoreModel(unknown, ['vision']).reasons).toContain(
+      'vision support unknown',
+    )
+    expect(scoreModel(unknown, ['vision']).reasons).not.toContain(
+      'no vision support (penalized)',
+    )
+    const result = recommendModel('inspect this screenshot', [unknown, CODER])
+    expect(result.recommended).toBe('new-multimodal-model')
+    expect(result.rationale).toContain('no installed model has confirmed')
+    expect(result.rationale).toContain('unconfirmed fallback')
+  })
+
   test('recommends an embedding model for retrieval indexing', () => {
     const result = recommendModel('build a semantic embedding index of the docs', [CODER, EMBED])
     expect(result.recommended).toBe('nomic-embed-text')
@@ -108,6 +129,7 @@ describe('modelRouter', () => {
         name: 'llama3.2:3b',
         advertisedCapabilities: [],
         contextLength: 8_000,
+        visionSupport: 'unsupported',
         likelyVision: false,
         likelyCode: false,
       },
@@ -115,6 +137,7 @@ describe('modelRouter', () => {
         name: 'qwen2.5-coder:32b',
         advertisedCapabilities: ['tools'],
         contextLength: 128_000,
+        visionSupport: 'unsupported',
         likelyVision: false,
         likelyCode: true,
       },
@@ -138,6 +161,7 @@ describe('modelRouter', () => {
         name: 'kimi-k2.7-code:cloud',
         advertisedCapabilities: ['tools'],
         contextLength: 128_000,
+        visionSupport: 'unknown',
         likelyVision: false,
         likelyCode: true,
       },
@@ -145,6 +169,7 @@ describe('modelRouter', () => {
         name: 'qwen2.5-coder:7b',
         advertisedCapabilities: ['tools'],
         contextLength: 32_000,
+        visionSupport: 'unsupported',
         likelyVision: false,
         likelyCode: true,
       },
@@ -172,6 +197,7 @@ describe('modelRouter', () => {
         name: 'nomic-embed-text:latest',
         advertisedCapabilities: [],
         contextLength: 8_000,
+        visionSupport: 'unsupported',
         likelyVision: false,
         likelyCode: false,
         embeddingLength: 768,

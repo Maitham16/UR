@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle'
 import type {
   ContentBlockParam,
@@ -22,6 +21,7 @@ import {
 import {
   addToToolDuration,
   getCodeEditToolDecisionCounter,
+  getSessionId,
   getStatsStore,
 } from '../../bootstrap/state.js'
 import { getCwd } from '../../utils/cwd.js'
@@ -120,11 +120,16 @@ import {
   isToolSearchToolAvailable,
   supportsToolReferenceExpansion,
 } from '../../utils/toolSearch.js'
-import { checkTaskListGate } from './taskListGate.js'
+import {
+  checkTaskListGate,
+  countActionableTasksForGate,
+} from './taskListGate.js'
 import {
   callSignature,
   checkRepeatedFailure,
   recordCallFailure,
+  recordCallSuccess,
+  RepeatedToolFailureAbort,
 } from './repeatedFailureGuard.js'
 
 /**
@@ -139,12 +144,25 @@ import {
  * Message count is not a proxy for it: a long conversation with no tool use
  * would exhaust the allowance before the agent had done anything.
  */
-function countToolCalls(messages: unknown): number {
+function countToolCalls(
+  messages: unknown,
+  excludedMessageId?: string,
+): number {
   if (!Array.isArray(messages)) return 0
   let count = 0
   for (const message of messages) {
-    const content = (message as { message?: { content?: unknown } })?.message
-      ?.content
+    const envelope = (
+      message as {
+        message?: { id?: unknown; content?: unknown }
+      }
+    )?.message
+    if (
+      excludedMessageId !== undefined &&
+      envelope?.id === excludedMessageId
+    ) {
+      continue
+    }
+    const content = envelope?.content
     if (!Array.isArray(content)) continue
     for (const block of content) {
       if ((block as { type?: string })?.type === 'tool_use') count++
@@ -153,13 +171,73 @@ function countToolCalls(messages: unknown): number {
   return count
 }
 
-async function countTasksForGate(): Promise<number> {
-  try {
-    const { getTaskListId, listTasks } = await import('../../utils/tasks.js')
-    return (await listTasks(getTaskListId())).length
-  } catch {
-    return Number.POSITIVE_INFINITY
+/**
+ * Count completed/prior tool calls plus the current response's stable ordinal.
+ * Every call in one assistant batch sees the same historical snapshot, so
+ * history alone would let an arbitrarily large parallel batch share the
+ * trivial-call allowance.
+ */
+export function countToolCallsBeforeCurrent(
+  messages: unknown,
+  assistantMessage: AssistantMessage,
+  toolUseID: string,
+): number {
+  const currentMessageId = assistantMessage.message?.id
+  let count = countToolCalls(
+    messages,
+    typeof currentMessageId === 'string' ? currentMessageId : undefined,
+  )
+  const currentContent = assistantMessage.message?.content
+  if (!Array.isArray(currentContent)) return count
+  for (const block of currentContent) {
+    if (block.type !== 'tool_use') continue
+    if (block.id === toolUseID) return count
+    count++
   }
+  // Missing correlation is treated conservatively as occurring after every
+  // tool block currently visible in the response.
+  return count
+}
+
+async function countTasksForGate(): Promise<number | null> {
+  try {
+    const { getTaskListId, inspectTaskListForGate } =
+      await import('../../utils/tasks.js')
+    const inspection = await inspectTaskListForGate(getTaskListId())
+    return countActionableTasksForGate(inspection.tasks)
+  } catch {
+    return null
+  }
+}
+
+function getStopHookInfo(attachment: unknown): StopHookInfo | null {
+  if (
+    typeof attachment !== 'object' ||
+    attachment === null ||
+    !('command' in attachment) ||
+    typeof attachment.command !== 'string' ||
+    !('durationMs' in attachment) ||
+    typeof attachment.durationMs !== 'number'
+  ) {
+    return null
+  }
+  return {
+    command: attachment.command,
+    durationMs: attachment.durationMs,
+  }
+}
+
+function repeatedFailureScope(
+  toolUseContext: ToolUseContext,
+  fallbackTurnId?: string,
+): string {
+  if (toolUseContext.queryTracking?.chainId) {
+    return `query:${toolUseContext.queryTracking.chainId}`
+  }
+  return (
+    `session:${getSessionId()}:agent:${toolUseContext.agentId ?? 'main'}:` +
+    `turn:${fallbackTurnId ?? 'untracked'}`
+  )
 }
 import {
   McpAuthError,
@@ -404,7 +482,12 @@ export async function* runToolUse(
       tool = fallbackTool
     }
   }
-  const messageId = assistantMessage.message.id
+  const messageId = assistantMessage.message?.id
+  if (typeof messageId !== 'string' || messageId.length === 0) {
+    throw new Error(
+      `Cannot execute tool_use ${toolUse.id}: assistant message has no id`,
+    )
+  }
   const requestId = assistantMessage.requestId
   const mcpServerType = getMcpServerType(
     toolName,
@@ -417,6 +500,37 @@ export async function* runToolUse(
 
   // Check if the tool exists
   if (!tool) {
+    const callSig = callSignature(
+      toolName,
+      toolUse.input,
+      repeatedFailureScope(toolUseContext, messageId),
+    )
+    const repeat = checkRepeatedFailure(callSig)
+    if (repeat.action === 'abort') {
+      throw new RepeatedToolFailureAbort(
+        `Repeated tool failure: ${repeat.reason}`,
+      )
+    }
+    if (repeat.action === 'refuse') {
+      // Refused attempts still count. Without this increment the counter
+      // freezes at `limit` and can never reach `abortAfter`.
+      recordCallFailure(callSig)
+      yield {
+        message: createUserMessage({
+          content: [
+            {
+              type: 'tool_result',
+              content: `<tool_use_error>RepeatedFailure: ${repeat.reason}</tool_use_error>`,
+              is_error: true,
+              tool_use_id: toolUse.id,
+            },
+          ],
+          sourceToolAssistantUUID: assistantMessage.uuid,
+        }),
+      }
+      return
+    }
+    recordCallFailure(callSig)
     const sanitizedToolName = sanitizeToolNameForAnalytics(toolName)
     logForDebugging(`Unknown tool ${toolName}: ${toolUse.id}`)
     logEvent('tengu_tool_use_error', {
@@ -517,6 +631,21 @@ export async function* runToolUse(
       yield update
     }
   } catch (error) {
+    if (error instanceof RepeatedToolFailureAbort) {
+      throw error
+    }
+    if (!(error instanceof AbortError)) {
+      // Exceptions raised before tool.call() (for example by a hook or
+      // permission adapter) bypass the inner execution catch. Count them too,
+      // otherwise an identical preflight crash can loop indefinitely.
+      recordCallFailure(
+        callSignature(
+          tool.name,
+          toolInput,
+          repeatedFailureScope(toolUseContext, messageId),
+        ),
+      )
+    }
     logError(error)
     const errorMessage = error instanceof Error ? error.message : String(error)
     const toolInfo = tool ? ` (${tool.name})` : ''
@@ -609,6 +738,13 @@ function streamedCheckPermissionsAndCallTool(
           mcpServerBaseUrl,
         ),
       })
+      if (!progress.toolUseID || progress.data === undefined) {
+        logForDebugging(
+          `Ignoring malformed progress update for ${tool.name}: missing toolUseID or data`,
+          { level: 'warn' },
+        )
+        return
+      }
       stream.enqueue({
         message: createProgressMessage({
           toolUseID: progress.toolUseID,
@@ -710,7 +846,11 @@ async function checkPermissionsAndCallTool(
   // Break a loop before anything else. A model that cannot recover from a
   // refusal will repeat the same malformed call indefinitely, and every other
   // check here would keep rejecting it politely forever.
-  const callSig = callSignature(tool.name, input)
+  let callSig = callSignature(
+    tool.name,
+    input,
+    repeatedFailureScope(toolUseContext, messageId),
+  )
   const repeat = checkRepeatedFailure(callSig)
   if (repeat.action !== 'allow') {
     logEvent('tengu_repeated_failure_guard', {
@@ -718,8 +858,13 @@ async function checkPermissionsAndCallTool(
       action: repeat.action as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
     if (repeat.action === 'abort') {
-      throw new Error(`Repeated tool failure: ${repeat.reason}`)
+      throw new RepeatedToolFailureAbort(
+        `Repeated tool failure: ${repeat.reason}`,
+      )
     }
+    // A refusal is itself another unchanged attempt. Count it so a model that
+    // ignores the refusal reaches abortAfter instead of being refused forever.
+    recordCallFailure(callSig)
     return [
       {
         message: createUserMessage({
@@ -732,43 +877,6 @@ async function checkPermissionsAndCallTool(
             },
           ],
         }),
-        shouldSkipPermissionCheck: false,
-      },
-    ]
-  }
-
-  // Require a plan before anything is changed. Placed beside input validation
-  // because that is the one point every tool call passes through; enforcing it
-  // in the prompt alone did not hold.
-  const gate = checkTaskListGate({
-    toolName: tool.name,
-    taskCount: await countTasksForGate(),
-    // Tool calls, not messages. Counting messages meant any conversation at
-    // all pushed this past the threshold, so the allowance for simple
-    // single-step work never applied and the gate fired on the first Write.
-    readsSoFar: countToolCalls(toolUseContext.messages),
-    isSubagent: Boolean(toolUseContext.agentId),
-  })
-  if (!gate.allowed) {
-    // Counts toward the repeat guard: a model that answers the gate by
-    // re-sending the same call is exactly the loop this protects against.
-    recordCallFailure(callSig)
-    logEvent('tengu_task_list_gate_blocked', {
-      toolName: sanitizeToolNameForAnalytics(tool.name),
-    })
-    return [
-      {
-        message: createUserMessage({
-          content: [
-            {
-              type: 'tool_result',
-              content: `<tool_use_error>TaskListRequired: ${gate.reason}</tool_use_error>`,
-              is_error: true,
-              tool_use_id: toolUseID,
-            },
-          ],
-        }),
-        shouldSkipPermissionCheck: false,
       },
     ]
   }
@@ -848,6 +956,7 @@ async function checkPermissionsAndCallTool(
     toolUseContext,
   )
   if (isValidCall?.result === false) {
+    recordCallFailure(callSig)
     logForDebugging(
       `${tool.name} tool validation error: ${isValidCall.message?.slice(0, 200)}`,
     )
@@ -890,6 +999,55 @@ async function checkPermissionsAndCallTool(
           ],
           toolUseResult: `Error: ${isValidCall.message}`,
           sourceToolAssistantUUID: assistantMessage.uuid,
+        }),
+      },
+    ]
+  }
+  const initiallyValidatedCallSig = callSig
+
+  // Require a plan before anything is changed. The resolved tool is the
+  // authority: a fixed name list missed PowerShell, Computer, MCP tools,
+  // aliases and future mutators, while falsely blocking read-only Bash/API
+  // calls. Tool defaults classify unknown implementations as non-read-only.
+  let isMutating = true
+  try {
+    isMutating = !tool.isReadOnly(parsedInput.data)
+  } catch {
+    // Classification failures must not become a bypass.
+    isMutating = true
+  }
+  const gate = checkTaskListGate({
+    toolName: tool.name,
+    taskCount: await countTasksForGate(),
+    // Tool calls, not messages. Counting messages meant any conversation at
+    // all pushed this past the threshold, so the allowance for simple
+    // single-step work never applied and the gate fired on the first Write.
+    readsSoFar: countToolCallsBeforeCurrent(
+      toolUseContext.messages,
+      assistantMessage,
+      toolUseID,
+    ),
+    isSubagent: Boolean(toolUseContext.agentId),
+    isMutating,
+  })
+  if (gate.allowed === false) {
+    // Counts toward the repeat guard: a model that answers the gate by
+    // re-sending the same call is exactly the loop this protects against.
+    recordCallFailure(callSig)
+    logEvent('tengu_task_list_gate_blocked', {
+      toolName: sanitizeToolNameForAnalytics(tool.name),
+    })
+    return [
+      {
+        message: createUserMessage({
+          content: [
+            {
+              type: 'tool_result',
+              content: `<tool_use_error>TaskListRequired: ${gate.reason}</tool_use_error>`,
+              is_error: true,
+              tool_use_id: toolUseID,
+            },
+          ],
         }),
       },
     ]
@@ -965,7 +1123,7 @@ async function checkPermissionsAndCallTool(
     tool,
     processedInput,
     toolUseID,
-    assistantMessage.message.id,
+    messageId,
     requestId,
     mcpServerType,
     mcpServerBaseUrl,
@@ -976,19 +1134,10 @@ async function checkPermissionsAndCallTool(
           onToolProgress(result.message.message)
         } else {
           resultingMessages.push(result.message)
-          const att = result.message.message.attachment
-          if (
-            att &&
-            'command' in att &&
-            att.command !== undefined &&
-            'durationMs' in att &&
-            att.durationMs !== undefined
-          ) {
-            preToolHookInfos.push({
-              command: att.command,
-              durationMs: att.durationMs,
-            })
-          }
+          const stopHookInfo = getStopHookInfo(
+            result.message.message.attachment,
+          )
+          if (stopHookInfo) preToolHookInfos.push(stopHookInfo)
         }
         break
       case 'hookPermissionResult':
@@ -1013,6 +1162,36 @@ async function checkPermissionsAndCallTool(
           'pre_tool_hook_duration_ms',
           Date.now() - preToolHookStart,
         )
+        callSig = callSignature(
+          tool.name,
+          processedInput,
+          repeatedFailureScope(toolUseContext, messageId),
+        )
+        {
+          const stoppedRepeat = checkRepeatedFailure(callSig)
+          if (stoppedRepeat.action === 'abort') {
+            throw new RepeatedToolFailureAbort(
+              `Repeated tool failure: ${stoppedRepeat.reason}`,
+            )
+          }
+          recordCallFailure(callSig)
+          if (stoppedRepeat.action === 'refuse') {
+            resultingMessages.push({
+              message: createUserMessage({
+                content: [
+                  {
+                    type: 'tool_result',
+                    content: `<tool_use_error>RepeatedFailure: ${stoppedRepeat.reason}</tool_use_error>`,
+                    is_error: true,
+                    tool_use_id: toolUseID,
+                  },
+                ],
+                sourceToolAssistantUUID: assistantMessage.uuid,
+              }),
+            })
+            return resultingMessages
+          }
+        }
         resultingMessages.push({
           message: createUserMessage({
             content: [createToolResultStopMessage(toolUseID)],
@@ -1094,6 +1273,13 @@ async function checkPermissionsAndCallTool(
   )
   const permissionDecision = resolved.decision
   processedInput = resolved.input
+  // Permission and PreToolUse hooks may replace the model's input. Attribute
+  // denials and later outcomes to the effective call, not to stale arguments.
+  callSig = callSignature(
+    tool.name,
+    processedInput,
+    repeatedFailureScope(toolUseContext, messageId),
+  )
   const permissionDurationMs = Date.now() - permissionStart
   // In auto mode, canUseTool awaits the classifier (side_query) — if that's
   // slow the collapsed view shows "Running…" with no (Ns) tick since
@@ -1158,6 +1344,7 @@ async function checkPermissionsAndCallTool(
   }
 
   if (permissionDecision.behavior !== 'allow') {
+    recordCallFailure(callSig)
     logForDebugging(`${tool.name} tool permission denied`)
     const decisionInfo = toolUseContext.toolDecisions?.get(toolUseID)
     endToolBlockedOnUserSpan('reject', decisionInfo?.source || 'unknown')
@@ -1296,6 +1483,192 @@ async function checkPermissionsAndCallTool(
     processedInput = permissionDecision.updatedInput
   }
 
+  // Converge on the exact input that tool.call() will receive before the last
+  // validation/gate pass. Permission/hook flows may return a fresh object
+  // derived from the observable backfill clone. For file tools, restore the
+  // model's original path when the hook did not actually change it; this keeps
+  // transcript/VCR output stable while all other hook changes flow through.
+  if (
+    backfilledClone &&
+    processedInput !== callInput &&
+    typeof processedInput === 'object' &&
+    processedInput !== null &&
+    'file_path' in processedInput &&
+    'file_path' in (callInput as Record<string, unknown>) &&
+    (processedInput as Record<string, unknown>).file_path ===
+      (backfilledClone as Record<string, unknown>).file_path
+  ) {
+    callInput = {
+      ...processedInput,
+      file_path: (callInput as Record<string, unknown>).file_path,
+    } as typeof processedInput
+  } else if (processedInput !== backfilledClone) {
+    callInput = processedInput
+  }
+
+  const finishPreExecutionRejection = (): void => {
+    const info = toolUseContext.toolDecisions?.get(toolUseID)
+    endToolBlockedOnUserSpan('reject', info?.source || 'config')
+    endToolSpan()
+    toolUseContext.toolDecisions?.delete(toolUseID)
+  }
+
+  // Hooks and interactive permission UIs are allowed to rewrite input, but
+  // rewritten values are not trusted to preserve schema, semantic validation,
+  // read-only classification, or repeated-failure identity. Re-check the exact
+  // effective call immediately before execution.
+  const finalParsedInput = tool.inputSchema.safeParse(callInput)
+  if (!finalParsedInput.success) {
+    callSig = callSignature(
+      tool.name,
+      callInput,
+      repeatedFailureScope(toolUseContext, messageId),
+    )
+    const finalRepeat = checkRepeatedFailure(callSig)
+    if (finalRepeat.action === 'abort') {
+      finishPreExecutionRejection()
+      throw new RepeatedToolFailureAbort(
+        `Repeated tool failure: ${finalRepeat.reason}`,
+      )
+    }
+    if (finalRepeat.action === 'refuse') {
+      recordCallFailure(callSig)
+      finishPreExecutionRejection()
+      resultingMessages.push({
+        message: createUserMessage({
+          content: [
+            {
+              type: 'tool_result',
+              content: `<tool_use_error>RepeatedFailure: ${finalRepeat.reason}</tool_use_error>`,
+              is_error: true,
+              tool_use_id: toolUseID,
+            },
+          ],
+          sourceToolAssistantUUID: assistantMessage.uuid,
+        }),
+      })
+      return resultingMessages
+    }
+
+    recordCallFailure(callSig)
+    const finalInputError = formatZodValidationError(
+      tool.name,
+      finalParsedInput.error,
+    )
+    finishPreExecutionRejection()
+    resultingMessages.push({
+      message: createUserMessage({
+        content: [
+          {
+            type: 'tool_result',
+            content: `<tool_use_error>InputValidationError after input update: ${finalInputError}</tool_use_error>`,
+            is_error: true,
+            tool_use_id: toolUseID,
+          },
+        ],
+        toolUseResult: `InputValidationError: ${finalParsedInput.error.message}`,
+        sourceToolAssistantUUID: assistantMessage.uuid,
+      }),
+    })
+    return resultingMessages
+  }
+
+  callInput = finalParsedInput.data
+  callSig = callSignature(
+    tool.name,
+    callInput,
+    repeatedFailureScope(toolUseContext, messageId),
+  )
+  const finalRepeat = checkRepeatedFailure(callSig)
+  if (finalRepeat.action === 'abort') {
+    finishPreExecutionRejection()
+    throw new RepeatedToolFailureAbort(
+      `Repeated tool failure: ${finalRepeat.reason}`,
+    )
+  }
+  if (finalRepeat.action === 'refuse') {
+    recordCallFailure(callSig)
+    finishPreExecutionRejection()
+    resultingMessages.push({
+      message: createUserMessage({
+        content: [
+          {
+            type: 'tool_result',
+            content: `<tool_use_error>RepeatedFailure: ${finalRepeat.reason}</tool_use_error>`,
+            is_error: true,
+            tool_use_id: toolUseID,
+          },
+        ],
+        sourceToolAssistantUUID: assistantMessage.uuid,
+      }),
+    })
+    return resultingMessages
+  }
+
+  if (callSig !== initiallyValidatedCallSig) {
+    const finalValidation = await tool.validateInput?.(
+      finalParsedInput.data,
+      toolUseContext,
+    )
+    if (finalValidation?.result === false) {
+      recordCallFailure(callSig)
+      finishPreExecutionRejection()
+      resultingMessages.push({
+        message: createUserMessage({
+          content: [
+            {
+              type: 'tool_result',
+              content: `<tool_use_error>${finalValidation.message}</tool_use_error>`,
+              is_error: true,
+              tool_use_id: toolUseID,
+            },
+          ],
+          toolUseResult: `Error: ${finalValidation.message}`,
+          sourceToolAssistantUUID: assistantMessage.uuid,
+        }),
+      })
+      return resultingMessages
+    }
+  }
+
+  let finalIsMutating = true
+  try {
+    finalIsMutating = !tool.isReadOnly(finalParsedInput.data)
+  } catch {
+    finalIsMutating = true
+  }
+  if (callSig !== initiallyValidatedCallSig || finalIsMutating !== isMutating) {
+    const finalGate = checkTaskListGate({
+      toolName: tool.name,
+      taskCount: await countTasksForGate(),
+      readsSoFar: countToolCallsBeforeCurrent(
+        toolUseContext.messages,
+        assistantMessage,
+        toolUseID,
+      ),
+      isSubagent: Boolean(toolUseContext.agentId),
+      isMutating: finalIsMutating,
+    })
+    if (finalGate.allowed === false) {
+      recordCallFailure(callSig)
+      finishPreExecutionRejection()
+      resultingMessages.push({
+        message: createUserMessage({
+          content: [
+            {
+              type: 'tool_result',
+              content: `<tool_use_error>TaskListRequired after input update: ${finalGate.reason}</tool_use_error>`,
+              is_error: true,
+              tool_use_id: toolUseID,
+            },
+          ],
+          sourceToolAssistantUUID: assistantMessage.uuid,
+        }),
+      })
+      return resultingMessages
+    }
+  }
+
   // Prepare tool parameters for logging in tool_result event.
   // Gated by OTEL_LOG_TOOL_DETAILS — tool parameters can contain sensitive
   // content (bash commands, MCP server names, etc.) so they're opt-in only.
@@ -1343,31 +1716,6 @@ async function checkPermissionsAndCallTool(
   const startTime = Date.now()
 
   startSessionActivity('tool_exec')
-  // If processedInput still points at the backfill clone, no hook/permission
-  // replaced it — pass the pre-backfill callInput so call() sees the model's
-  // original field values. Otherwise converge on the hook-supplied input.
-  // Permission/hook flows may return a fresh object derived from the
-  // backfilled clone (e.g. via inputSchema.parse). If its file_path matches
-  // the backfill-expanded value, restore the model's original so the tool
-  // result string embeds the path the model emitted — keeps transcript/VCR
-  // hashes stable. Other hook modifications flow through unchanged.
-  if (
-    backfilledClone &&
-    processedInput !== callInput &&
-    typeof processedInput === 'object' &&
-    processedInput !== null &&
-    'file_path' in processedInput &&
-    'file_path' in (callInput as Record<string, unknown>) &&
-    (processedInput as Record<string, unknown>).file_path ===
-      (backfilledClone as Record<string, unknown>).file_path
-  ) {
-    callInput = {
-      ...processedInput,
-      file_path: (callInput as Record<string, unknown>).file_path,
-    } as typeof processedInput
-  } else if (processedInput !== backfilledClone) {
-    callInput = processedInput
-  }
   try {
     const result = await tool.call(
       callInput,
@@ -1649,7 +1997,7 @@ async function checkPermissionsAndCallTool(
       toolUseContext,
       tool,
       toolUseID,
-      assistantMessage.message.id,
+      messageId,
       processedInput,
       toolOutput,
       requestId,
@@ -1663,34 +2011,18 @@ async function checkPermissionsAndCallTool(
       } else if (isMcpTool(tool)) {
         hookResults.push(hookResult)
         if (hookResult.message.type === 'attachment') {
-          const att = hookResult.message.attachment
-          if (
-            'command' in att &&
-            att.command !== undefined &&
-            'durationMs' in att &&
-            att.durationMs !== undefined
-          ) {
-            postToolHookInfos.push({
-              command: att.command,
-              durationMs: att.durationMs,
-            })
-          }
+          const stopHookInfo = getStopHookInfo(
+            hookResult.message.attachment,
+          )
+          if (stopHookInfo) postToolHookInfos.push(stopHookInfo)
         }
       } else {
         resultingMessages.push(hookResult)
         if (hookResult.message.type === 'attachment') {
-          const att = hookResult.message.attachment
-          if (
-            'command' in att &&
-            att.command !== undefined &&
-            'durationMs' in att &&
-            att.durationMs !== undefined
-          ) {
-            postToolHookInfos.push({
-              command: att.command,
-              durationMs: att.durationMs,
-            })
-          }
+          const stopHookInfo = getStopHookInfo(
+            hookResult.message.attachment,
+          )
+          if (stopHookInfo) postToolHookInfos.push(stopHookInfo)
         }
       }
     }
@@ -1750,6 +2082,11 @@ async function checkPermissionsAndCallTool(
     for (const hookResult of hookResults) {
       resultingMessages.push(hookResult)
     }
+    if (mappedToolResultBlock.is_error === true) {
+      recordCallFailure(callSig)
+    } else {
+      recordCallSuccess(callSig)
+    }
     return resultingMessages
   } catch (error) {
     const durationMs = Date.now() - startTime
@@ -1794,6 +2131,7 @@ async function checkPermissionsAndCallTool(
     }
 
     if (!(error instanceof AbortError)) {
+      recordCallFailure(callSig)
       const errorMsg = errorMessage(error)
       logForDebugging(
         `${tool.name} tool error (${durationMs}ms): ${errorMsg.slice(0, 200)}`,

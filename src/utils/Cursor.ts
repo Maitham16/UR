@@ -166,7 +166,12 @@ export class Cursor {
     selection: number = 0,
   ): Cursor {
     // make MeasuredText on less than columns width, to account for cursor
-    return new Cursor(new MeasuredText(text, columns - 1), offset, selection)
+    const safeColumns = normalizeCursorColumns(columns)
+    return new Cursor(
+      new MeasuredText(text, safeColumns - 1),
+      offset,
+      selection,
+    )
   }
 
   getViewportStartLine(maxVisibleLines?: number): number {
@@ -1103,6 +1108,16 @@ export class Cursor {
 
     return null
   }
+}
+
+/**
+ * Text input callers derive their width from surrounding terminal chrome and
+ * can briefly produce zero or negative values during a resize. Keep one cell
+ * for text and one for the visible cursor so wrapping and cursor coordinates
+ * remain valid.
+ */
+export function normalizeCursorColumns(columns: number): number {
+  return Number.isFinite(columns) ? Math.max(2, Math.floor(columns)) : 2
 }
 
 class WrappedLine {

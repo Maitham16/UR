@@ -10,6 +10,7 @@ import {
   deleteTask,
   getTaskListId,
   isTodoV2Enabled,
+  updateTaskWithDependencies,
 } from '../../utils/tasks.js'
 import { getAgentName, getTeamName } from '../../utils/teammate.js'
 import { TASK_CREATE_TOOL_NAME } from './constants.js'
@@ -110,16 +111,58 @@ export const TaskCreateTool = buildTool({
     const initialBlockedBy = [
       ...new Set([...(blockedBy ?? []), ...(addBlockedBy ?? [])]),
     ]
-    const taskId = await createTask(getTaskListId(), {
+    const taskListId = getTaskListId()
+    const taskId = await createTask(taskListId, {
       subject,
       description,
       activeForm,
       status: 'pending',
       owner: undefined,
-      blocks: initialBlocks,
-      blockedBy: initialBlockedBy,
+      // Relationships are written through blockTask below so both tasks keep
+      // reciprocal blocks/blockedBy edges. Storing only this side produced
+      // contradictory TaskGet, TaskList and claim behaviour.
+      blocks: [],
+      blockedBy: [],
       metadata,
     })
+
+    const dependencies = [
+      ...initialBlocks.map(targetId => ({
+        fromTaskId: taskId,
+        toTaskId: targetId,
+        field: 'blocks',
+      })),
+      ...initialBlockedBy.map(blockerId => ({
+        fromTaskId: blockerId,
+        toTaskId: taskId,
+        field: 'blockedBy',
+      })),
+    ]
+    const dependencyResult = await updateTaskWithDependencies(
+      taskListId,
+      taskId,
+      {},
+      dependencies,
+    )
+    if (dependencyResult.success === false) {
+      const dependency = dependencyResult.dependency
+      await deleteTask(taskListId, taskId)
+      if (dependency) {
+        const field = dependencies.find(
+          candidate =>
+            candidate.fromTaskId === dependency.fromTaskId &&
+            candidate.toTaskId === dependency.toTaskId,
+        )?.field ?? 'dependency'
+        throw new Error(
+          `Invalid ${field} dependency ` +
+            `#${dependency.fromTaskId} -> #${dependency.toTaskId}: ` +
+            dependencyResult.reason,
+        )
+      }
+      throw new Error(
+        `Failed to create task dependencies: ${dependencyResult.reason}`,
+      )
+    }
 
     const blockingErrors: string[] = []
     const generator = executeTaskCreatedHooks(
@@ -140,7 +183,7 @@ export const TaskCreateTool = buildTool({
     }
 
     if (blockingErrors.length > 0) {
-      await deleteTask(getTaskListId(), taskId)
+      await deleteTask(taskListId, taskId)
       throw new Error(blockingErrors.join('\n'))
     }
 

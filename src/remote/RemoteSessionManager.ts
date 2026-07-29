@@ -111,6 +111,15 @@ export class RemoteSessionManager {
       `[RemoteSessionManager] Connecting to session ${this.config.sessionId}`,
     )
 
+    // Reuse the existing client. SessionsWebSocket.connect() is idempotent
+    // while connecting/connected and can start a fresh attempt after a
+    // permanent close. Replacing it here leaked the old socket and allowed
+    // duplicate message/permission callbacks when connect() was called twice.
+    if (this.websocket) {
+      void this.websocket.connect()
+      return
+    }
+
     const wsCallbacks: SessionsWebSocketCallbacks = {
       onMessage: message => this.handleMessage(message),
       onConnected: () => {
@@ -160,6 +169,12 @@ export class RemoteSessionManager {
     // Handle control cancel requests (server cancelling a pending permission prompt)
     if (message.type === 'control_cancel_request') {
       const { request_id } = message
+      if (typeof request_id !== 'string' || request_id.length === 0) {
+        this.reportInvalidControlMessage(
+          'control_cancel_request is missing a request_id',
+        )
+        return
+      }
       const pendingRequest = this.pendingPermissionRequests.get(request_id)
       logForDebugging(
         `[RemoteSessionManager] Permission request cancelled: ${request_id}`,
@@ -190,6 +205,31 @@ export class RemoteSessionManager {
   private handleControlRequest(request: SDKControlRequest): void {
     const { request_id, request: inner } = request
 
+    if (typeof request_id !== 'string' || request_id.length === 0) {
+      this.reportInvalidControlMessage(
+        'control_request is missing a request_id',
+      )
+      return
+    }
+    if (
+      typeof inner !== 'object' ||
+      inner === null ||
+      typeof inner.subtype !== 'string'
+    ) {
+      this.reportInvalidControlMessage(
+        `control_request ${request_id} is missing a request subtype`,
+      )
+      this.websocket?.sendControlResponse({
+        type: 'control_response',
+        response: {
+          subtype: 'error',
+          request_id,
+          error: 'Invalid control request: missing request subtype',
+        },
+      })
+      return
+    }
+
     if (inner.subtype === 'can_use_tool') {
       logForDebugging(
         `[RemoteSessionManager] Permission request for tool: ${inner.tool_name}`,
@@ -212,6 +252,12 @@ export class RemoteSessionManager {
       }
       this.websocket?.sendControlResponse(response)
     }
+  }
+
+  private reportInvalidControlMessage(detail: string): void {
+    const error = new Error(`[RemoteSessionManager] Invalid ${detail}`)
+    logError(error)
+    this.callbacks.onError?.(error)
   }
 
   /**

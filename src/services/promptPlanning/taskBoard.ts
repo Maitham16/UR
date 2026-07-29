@@ -45,8 +45,11 @@ export function progressSummary(tasks: NexusTask[]): string {
   return `Progress: ${finished}/${tasks.length} finished, ${running} running, ${queued} queued, ${waiting} waiting, ${failed} failed, ${skipped} skipped`
 }
 
-function isFinished(task: NexusTask): boolean {
-  return task.status === 'finished' || task.status === 'failed' || task.status === 'skipped'
+function statusMark(task: NexusTask): '[✓]' | '[✗]' | '[–]' | '[ ]' {
+  if (task.status === 'finished') return '[✓]'
+  if (task.status === 'failed') return '[✗]'
+  if (task.status === 'skipped') return '[–]'
+  return '[ ]'
 }
 
 export function renderTaskBoard(
@@ -63,8 +66,7 @@ export function renderTaskBoard(
   const rows = orderedTasks.map(task => {
     const status = pad(publicStatus(task), 18)
     const agent = pad(String(task.assignedAgent), 8)
-    const check = isFinished(task) ? '[✓]' : '[ ]'
-    return `${check} ${task.order}. ${status} | ${agent} | ${task.title}`
+    return `${statusMark(task)} ${task.order}. ${status} | ${agent} | ${task.title}`
   })
 
   return [

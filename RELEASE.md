@@ -54,15 +54,26 @@ rg -n "Version [0-9]|expected: [0-9]|UR-Nexus v[0-9]" README.md docs documentati
 bun test test/docsCoverage.test.ts test/docsCommands.test.ts
 ```
 
+Run the repository-owned bump script so dependency ranges cannot be changed by
+an accidental text replacement:
+
+```bash
+node scripts/version-bump.mjs <next-version>
+```
+
 Version bump checklist (all versioned release surfaces must move together):
 
 1. `package.json` `version`
 2. `bunfig.toml` `MACRO.VERSION`
-3. `documentation/index.html` version eyebrow
+3. `documentation/index.html` version eyebrow and the expected version in
+   `docs/VALIDATION.md`
 4. `extensions/vscode-ur-inline-diffs/package.json` and its lockfile version
    fields (the VSIX test requires them to match the root package version)
 5. `extensions/jetbrains-ur/build.gradle.kts` `version`
-6. Add a `CHANGELOG.md` entry, then run `bun run build` so `dist/cli.js`
+6. The `MACRO.VERSION` fallbacks in `src/commands/agent-ci/agent-ci.ts`,
+   `src/services/agents/agenticCi.ts`, and
+   `src/services/agents/featureScaffolds.ts`
+7. Add a `CHANGELOG.md` entry, then run `bun run build` so `dist/cli.js`
    embeds the new version (`bun run release:check` verifies all of this).
 
 If `npm whoami` fails, run:

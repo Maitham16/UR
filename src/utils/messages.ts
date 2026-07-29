@@ -2682,7 +2682,14 @@ export function normalizeContentFromAPI(
         let normalizedInput: unknown
         if (typeof contentBlock.input === 'string') {
           let parsed = safeParseJSON(contentBlock.input, false)
-          if (parsed === null && contentBlock.input.length > 0) {
+          const parsedAsJsonNull =
+            parsed === null &&
+            /^\uFEFF?\s*null\s*$/u.test(contentBlock.input)
+          if (
+            parsed === null &&
+            contentBlock.input.length > 0 &&
+            !parsedAsJsonNull
+          ) {
             // Strict parse failed. Before collapsing to {} (which surfaces to
             // the user as "required parameter missing" and traps local models
             // in a retry loop), attempt conservative repair: markdown fences,
@@ -2708,11 +2715,24 @@ export function normalizeContentFromAPI(
                   { level: 'warn' },
                 )
               }
+              throw new Error(
+                `Tool use input for ${String(contentBlock.name)} is not valid JSON after conservative repair`,
+              )
             }
           }
-          normalizedInput = parsed ?? {}
+          normalizedInput = parsedAsJsonNull ? null : (parsed ?? {})
         } else {
           normalizedInput = contentBlock.input
+        }
+
+        if (
+          typeof normalizedInput !== 'object' ||
+          normalizedInput === null ||
+          Array.isArray(normalizedInput)
+        ) {
+          throw new Error(
+            `Tool use input for ${String(contentBlock.name)} must be a JSON object`,
+          )
         }
 
         const sanitized = stripEmptyParameterNames(normalizedInput)

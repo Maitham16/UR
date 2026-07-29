@@ -31,6 +31,11 @@ export type TaskApprovalDecision = {
 
 export type NexusTaskInput = {
   prompt: string
+  /**
+   * The complete user goal. Executors should use this only as shared context
+   * and execute `prompt`, which is the bounded task assigned to this worker.
+   */
+  originalPrompt?: string
   assumptions: string[]
   requiredFiles: string[]
   targetFiles: string[]

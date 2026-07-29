@@ -7,6 +7,7 @@ import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
 import { clamp } from '../../ink/layout/geometry.js';
 import { Box, Text, useTerminalFocus } from '../../ink.js';
 import { SearchBox } from '../SearchBox.js';
+import { getFuzzyPickerVisibleCount } from '../searchPickerLayout.js';
 import { Byline } from './Byline.js';
 import { KeyboardShortcutHint } from './KeyboardShortcutHint.js';
 import { ListItem } from './ListItem.js';
@@ -64,7 +65,6 @@ const DEFAULT_VISIBLE = 8;
 // Pane (paddingTop + Divider) + title + 3 gaps + SearchBox (rounded border = 3
 // rows) + hints. matchLabel adds +1 when present, accounted for separately.
 const CHROME_ROWS = 10;
-const MIN_VISIBLE = 2;
 export function FuzzyPicker<T>({
   title,
   placeholder = 'Type to search…',
@@ -97,12 +97,13 @@ export function FuzzyPicker<T>({
   // Cap visibleCount so the picker never exceeds the terminal height. When it
   // overflows, each re-render (arrow key, ctrl+p) mis-positions the cursor-up
   // by the overflow amount and a previously-drawn line flashes blank.
-  const visibleCount = Math.max(MIN_VISIBLE, Math.min(requestedVisible, rows - CHROME_ROWS - (matchLabel ? 1 : 0)));
+  const visibleCount = getFuzzyPickerVisibleCount(requestedVisible, rows, CHROME_ROWS, !!matchLabel);
 
   // Full hint row with onTab+onShiftTab is ~100 chars and wraps inconsistently
   // below that. Compact mode drops shift+tab and shortens labels.
   const compact = columns < 120;
   const step = (delta: 1 | -1) => {
+    if (items.length === 0) return;
     setFocusedIndex(i => clamp(i + delta, 0, items.length - 1));
   };
 
@@ -159,14 +160,14 @@ export function FuzzyPicker<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
   useEffect(() => {
-    setFocusedIndex(i => clamp(i, 0, items.length - 1));
+    setFocusedIndex(i => items.length === 0 ? 0 : clamp(i, 0, items.length - 1));
   }, [items.length]);
   const focused = items[focusedIndex];
   useEffect(() => {
     onFocus?.(focused);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused]);
-  const windowStart = clamp(focusedIndex - visibleCount + 1, 0, items.length - visibleCount);
+  const windowStart = clamp(focusedIndex - visibleCount + 1, 0, Math.max(0, items.length - visibleCount));
   const visible = items.slice(windowStart, windowStart + visibleCount);
   const emptyText = typeof emptyMessage === 'function' ? emptyMessage(query) : emptyMessage;
   const searchBox = <SearchBox query={query} cursorOffset={cursorOffset} placeholder={placeholder} isFocused isTerminalFocused={isTerminalFocused} />;

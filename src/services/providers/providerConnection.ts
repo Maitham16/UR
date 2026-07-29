@@ -21,6 +21,10 @@ import {
   type CredentialOptions,
 } from './providerCredentials.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
+import {
+  getOllamaBaseUrl,
+  getOllamaSessionOverride,
+} from '../../utils/model/ollamaConfig.js'
 
 export type ConnectionState =
   | 'connected'
@@ -96,9 +100,17 @@ export async function getProviderConnection(
     : { ...base, state: 'needs-endpoint', detail: 'no base URL configured' }
 }
 
-function getConfiguredBaseUrl(provider: ProviderId): string | undefined {
-  const settings = getActiveProviderSettings(getInitialSettings())
+export function getConfiguredBaseUrl(provider: ProviderId): string | undefined {
+  const allSettings = getInitialSettings()
+  const settings = getActiveProviderSettings(allSettings)
   const scoped = settings.active === provider ? settings.baseUrl : undefined
+  if (provider === 'ollama') {
+    return (
+      getOllamaSessionOverride() ??
+      scoped ??
+      getOllamaBaseUrl(process.env, allSettings)
+    )
+  }
   return scoped ?? getProviderDefinition(provider).defaultBaseUrl
 }
 

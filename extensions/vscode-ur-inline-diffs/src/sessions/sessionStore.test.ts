@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
@@ -15,13 +23,16 @@ import {
 } from './sessionStore.js'
 
 let dir: string
+let outsideDir: string | undefined
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'ur-chat-store-'))
+  outsideDir = undefined
 })
 
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
+  if (outsideDir) rmSync(outsideDir, { recursive: true, force: true })
 })
 
 function userMessage(sessionId: string, text: string): ChatMessage {
@@ -53,6 +64,15 @@ describe('createSession', () => {
     const file = join(chatRoot(dir), 'sessions', `${record.session.id}.json`)
     expect(file.startsWith(dir)).toBe(true)
   })
+
+  test('refuses a symlinked chat store instead of writing outside the workspace', () => {
+    outsideDir = mkdtempSync(join(tmpdir(), 'ur-chat-outside-'))
+    mkdirSync(join(dir, '.ur', 'ide'), { recursive: true })
+    symlinkSync(outsideDir, chatRoot(dir), 'dir')
+
+    expect(() => createSession(dir)).toThrow(/symbolic link/i)
+    expect(readdirSync(outsideDir)).toEqual([])
+  })
 })
 
 describe('listSessions', () => {
@@ -77,6 +97,32 @@ describe('listSessions', () => {
   test('empty workspace has no sessions', () => {
     expect(listSessions(dir)).toEqual([])
   })
+
+  test('filters structurally invalid manifest entries', () => {
+    mkdirSync(chatRoot(dir), { recursive: true })
+    writeFileSync(
+      join(chatRoot(dir), 'manifest.json'),
+      JSON.stringify({
+        version: 1,
+        sessions: [
+          {
+            id: 'bad',
+            title: 'Redirected',
+            workspaceRoot: '/tmp/not-this-workspace',
+            createdAt: 'now',
+            updatedAt: 'now',
+          },
+        ],
+      }),
+    )
+    expect(listSessions(dir)).toEqual([])
+  })
+
+  test('treats valid JSON with the wrong top-level shape as an empty manifest', () => {
+    mkdirSync(chatRoot(dir), { recursive: true })
+    writeFileSync(join(chatRoot(dir), 'manifest.json'), 'null')
+    expect(listSessions(dir)).toEqual([])
+  })
 })
 
 describe('readSession', () => {
@@ -94,6 +140,29 @@ describe('readSession', () => {
     expect(readSession(dir, '../../etc/passwd')).toBeNull()
     expect(readSession(dir, '../outside')).toBeNull()
     expect(readSession(dir, 'a/b')).toBeNull()
+  })
+
+  test('rejects structurally corrupt session JSON instead of crashing later', () => {
+    const created = createSession(dir)
+    const file = join(chatRoot(dir), 'sessions', `${created.session.id}.json`)
+    writeFileSync(
+      file,
+      JSON.stringify({ session: created.session, messages: { not: 'an array' } }),
+    )
+    expect(readSession(dir, created.session.id)).toBeNull()
+  })
+
+  test('rejects a record that redirects its workspace root', () => {
+    const created = createSession(dir)
+    const file = join(chatRoot(dir), 'sessions', `${created.session.id}.json`)
+    writeFileSync(
+      file,
+      JSON.stringify({
+        session: { ...created.session, workspaceRoot: '/tmp/not-this-workspace' },
+        messages: [],
+      }),
+    )
+    expect(readSession(dir, created.session.id)).toBeNull()
   })
 })
 

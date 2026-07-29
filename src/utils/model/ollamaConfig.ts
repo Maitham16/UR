@@ -9,7 +9,7 @@ export type OllamaSettingsInput = {
   }
 }
 
-function normalizeOllamaBaseUrl(value: string | undefined): string {
+export function normalizeOllamaBaseUrl(value: string | undefined): string {
   const base = value?.trim() || 'http://localhost:11434'
   const withScheme = /^https?:\/\//.test(base) ? base : `http://${base}`
   return withScheme.replace(/\/api\/?$/, '').replace(/\/$/, '')

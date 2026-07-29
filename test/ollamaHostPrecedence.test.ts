@@ -1,8 +1,14 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import {
   clearProviderModelCacheForTests,
+  getProviderRuntimeInfo,
   listModelsForProviderWithSource,
 } from '../src/services/providers/providerRegistry.ts'
+import {
+  assertProviderAllowedOffline,
+  resolveProviderBaseUrl,
+} from '../src/services/api/providerClient.ts'
+import { getConfiguredBaseUrl } from '../src/services/providers/providerConnection.ts'
 import {
   clearOllamaBaseUrlOverride,
   getOllamaBaseUrl,
@@ -23,6 +29,9 @@ import {
 
 const PERSISTED_LOCALHOST = {
   provider: { active: 'ollama', baseUrl: 'http://localhost:11434' },
+} as never
+const PERSISTED_REMOTE = {
+  provider: { active: 'ollama', baseUrl: 'http://ollama.example:11434' },
 } as never
 
 beforeEach(() => {
@@ -65,6 +74,40 @@ test('the session override outranks the environment', () => {
   ).toBe('http://172.20.10.5:11434')
 })
 
+test('runtime requests, status, and connection reporting resolve the same session host', () => {
+  setOllamaBaseUrlOverride('http://172.20.10.5:11434')
+
+  expect(resolveProviderBaseUrl('ollama', PERSISTED_LOCALHOST)).toBe(
+    'http://172.20.10.5:11434',
+  )
+  expect(getProviderRuntimeInfo(PERSISTED_LOCALHOST).baseUrl).toBe(
+    'http://172.20.10.5:11434',
+  )
+  expect(getConfiguredBaseUrl('ollama')).toBe('http://172.20.10.5:11434')
+})
+
+test('offline gating evaluates the session host rather than a stale persisted host', () => {
+  const previousOffline = process.env.UR_OFFLINE
+  process.env.UR_OFFLINE = '1'
+  try {
+    setOllamaBaseUrlOverride('http://172.20.10.5:11434')
+    expect(() =>
+      assertProviderAllowedOffline('ollama', PERSISTED_LOCALHOST),
+    ).toThrow('offline')
+
+    setOllamaBaseUrlOverride('http://localhost:11434')
+    expect(() =>
+      assertProviderAllowedOffline('ollama', PERSISTED_REMOTE),
+    ).not.toThrow()
+  } finally {
+    if (previousOffline === undefined) {
+      delete process.env.UR_OFFLINE
+    } else {
+      process.env.UR_OFFLINE = previousOffline
+    }
+  }
+})
+
 test('model discovery queries the discovered host, not the persisted one', async () => {
   // The exact configuration that broke: a real settings.json pinning
   // localhost, plus a host chosen this session.
@@ -89,4 +132,42 @@ test('without an override the persisted host is still honoured', async () => {
     adapters: { fetch: recordingFetch(seen) } as never,
   })
   expect(seen[0]).toBe('http://localhost:11434/api/tags')
+})
+
+test('cached model lists never leak across Ollama endpoints', async () => {
+  const hostA = 'http://172.20.10.5:11434'
+  const hostB = 'http://172.20.10.6:11434'
+  setOllamaBaseUrlOverride(hostA)
+
+  const first = await listModelsForProviderWithSource('ollama', {
+    settings: PERSISTED_LOCALHOST,
+    adapters: {
+      fetch: (async () =>
+        new Response(JSON.stringify({ models: [{ name: 'host-a-model' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })) as unknown as typeof fetch,
+    } as never,
+  })
+  expect(first.models.map(model => model.id)).toEqual(['host-a-model'])
+
+  const unreachable = (async () => {
+    throw new Error('unreachable')
+  }) as unknown as typeof fetch
+  setOllamaBaseUrlOverride(hostB)
+  const second = await listModelsForProviderWithSource('ollama', {
+    settings: PERSISTED_LOCALHOST,
+    adapters: { fetch: unreachable } as never,
+  })
+  expect(second.models.map(model => model.id)).not.toContain('host-a-model')
+  expect(second.source).not.toBe('cache')
+
+  // Endpoint A's cache remains useful when returning to that exact host.
+  setOllamaBaseUrlOverride(hostA)
+  const restored = await listModelsForProviderWithSource('ollama', {
+    settings: PERSISTED_LOCALHOST,
+    adapters: { fetch: unreachable } as never,
+  })
+  expect(restored.source).toBe('cache')
+  expect(restored.models.map(model => model.id)).toEqual(['host-a-model'])
 })

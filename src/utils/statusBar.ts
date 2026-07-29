@@ -57,21 +57,23 @@ export function buildDefaultStatusBar({
 }: StatusBarInput): string {
   const parts: string[] = []
 
-  if (providerLabel) {
-    parts.push(providerLabel)
-  }
+  // Put the live model and active work first. The status line truncates at
+  // terminal width, so provider/branch metadata must not hide the state users
+  // most need while a request is running.
   if (model) {
     parts.push(model)
+  }
+  if (taskTotalCount > 0) {
+    parts.push(`tasks: ${taskRunningCount}/${taskTotalCount} active`)
+  }
+  if (providerLabel) {
+    parts.push(providerLabel)
   }
   if (mode) {
     parts.push(mode)
   }
   if (branch && branch !== 'HEAD') {
     parts.push(branch)
-  }
-
-  if (taskTotalCount > 0) {
-    parts.push(`tasks: ${taskRunningCount}/${taskTotalCount} running`)
   }
 
   if (checksStatus) {

@@ -40,18 +40,75 @@ var vscode17 = __toESM(require("vscode"));
 var vscode2 = __toESM(require("vscode"));
 
 // src/diffs/store.ts
+var fs2 = __toESM(require("node:fs"));
+var path2 = __toESM(require("node:path"));
+var vscode = __toESM(require("vscode"));
+
+// src/util/safeWorkspacePath.ts
+var import_node_crypto = require("node:crypto");
 var fs = __toESM(require("node:fs"));
 var path = __toESM(require("node:path"));
-var vscode = __toESM(require("vscode"));
+function safeWorkspacePath(workspaceRoot2, candidate, label = "UR workspace data") {
+  const root = path.resolve(workspaceRoot2);
+  const target = path.resolve(candidate);
+  const relative3 = path.relative(root, target);
+  if (!relative3 || relative3 === ".." || relative3.startsWith(`..${path.sep}`) || path.isAbsolute(relative3)) {
+    throw new Error(`${label} path escapes the workspace`);
+  }
+  let current = root;
+  for (const segment of relative3.split(path.sep)) {
+    current = path.join(current, segment);
+    try {
+      if (fs.lstatSync(current).isSymbolicLink()) {
+        throw new Error(`${label} path contains a symbolic link: ${current}`);
+      }
+    } catch (error) {
+      if (isMissingPath(error)) continue;
+      throw error;
+    }
+  }
+  return target;
+}
+function writeWorkspaceJsonAtomic(workspaceRoot2, candidate, value, label = "UR workspace data") {
+  const target = safeWorkspacePath(workspaceRoot2, candidate, label);
+  const directory = path.dirname(target);
+  safeWorkspacePath(workspaceRoot2, directory, label);
+  fs.mkdirSync(directory, { recursive: true });
+  safeWorkspacePath(workspaceRoot2, directory, label);
+  const temporary = path.join(
+    directory,
+    `.${path.basename(target)}.${process.pid}.${(0, import_node_crypto.randomUUID)()}.tmp`
+  );
+  try {
+    fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}
+`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 384
+    });
+    fs.renameSync(temporary, target);
+  } catch (error) {
+    try {
+      fs.rmSync(temporary, { force: true });
+    } catch {
+    }
+    throw error;
+  }
+}
+function isMissingPath(error) {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+// src/diffs/store.ts
 function workspaceRoot() {
   const activeUri = vscode.window.activeTextEditor?.document.uri;
   return (activeUri ? vscode.workspace.getWorkspaceFolder(activeUri) : void 0)?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 function diffsRoot(root) {
-  return path.join(root, ".ur", "ide", "diffs");
+  return path2.join(root, ".ur", "ide", "diffs");
 }
 function manifestPath(root) {
-  return path.join(diffsRoot(root), "manifest.json");
+  return path2.join(diffsRoot(root), "manifest.json");
 }
 function patchPath(root, bundle) {
   return artifactPath(root, bundle, "patch");
@@ -60,58 +117,91 @@ function metadataPath(root, bundle) {
   return artifactPath(root, bundle, "metadata");
 }
 var DIFF_ID_PATTERN = /^diff-[1-9][0-9]*$/u;
+var DIFF_STATUSES = /* @__PURE__ */ new Set(["pending", "commented", "approved", "rejected"]);
+var MAX_DIFF_JSON_BYTES = 16 * 1024 * 1024;
+var MAX_PATCH_BYTES = 64 * 1024 * 1024;
 function artifactPath(root, bundle, kind) {
   if (!DIFF_ID_PATTERN.test(bundle.id)) throw new Error(`Invalid UR diff id: ${bundle.id}`);
-  const relative2 = kind === "patch" ? bundle.patchFile : bundle.metadataFile;
+  const relative3 = kind === "patch" ? bundle.patchFile : bundle.metadataFile;
   const expected = kind === "patch" ? `patches/${bundle.id}.patch` : `metadata/${bundle.id}.json`;
-  if (relative2.replaceAll("\\", "/") !== expected) {
+  if (relative3.replaceAll("\\", "/") !== expected) {
     throw new Error(`Invalid UR diff ${kind} path for ${bundle.id}`);
   }
-  const rootPath = path.resolve(diffsRoot(root));
-  const target = path.resolve(rootPath, relative2);
-  if (!target.startsWith(`${rootPath}${path.sep}`)) throw new Error(`UR diff ${kind} path escapes the diff store`);
-  return target;
+  const rootPath = path2.resolve(diffsRoot(root));
+  const target = path2.resolve(rootPath, relative3);
+  if (!target.startsWith(`${rootPath}${path2.sep}`)) throw new Error(`UR diff ${kind} path escapes the diff store`);
+  return safeWorkspacePath(root, target, `UR diff ${kind}`);
 }
-function isValidBundle(value) {
-  if (!value || typeof value !== "object") return false;
+function isValidBundle(root, value) {
+  if (!isRecord(value)) return false;
   const bundle = value;
   try {
-    patchPath(".", bundle);
-    metadataPath(".", bundle);
-    return true;
+    patchPath(root, bundle);
+    metadataPath(root, bundle);
+    return typeof bundle.title === "string" && bundle.title.length > 0 && DIFF_STATUSES.has(bundle.status) && (bundle.baseRef === void 0 || typeof bundle.baseRef === "string") && (bundle.staged === void 0 || typeof bundle.staged === "boolean") && Array.isArray(bundle.files) && bundle.files.every(isValidFileChange) && Array.isArray(bundle.comments) && bundle.comments.every(isValidComment) && typeof bundle.createdAt === "string" && typeof bundle.updatedAt === "string";
   } catch {
     return false;
   }
 }
-function readJson(file, fallback) {
+function readJson(root, file, fallback, maxBytes = MAX_DIFF_JSON_BYTES) {
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    const safeFile = safeWorkspacePath(root, file, "UR diff");
+    const size = fs2.statSync(safeFile).size;
+    if (!Number.isSafeInteger(size) || size < 0 || size > maxBytes) {
+      return fallback;
+    }
+    return JSON.parse(fs2.readFileSync(safeFile, "utf8"));
   } catch {
     return fallback;
   }
 }
-function writeJson(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}
-`);
+function writeJson(root, file, value) {
+  writeWorkspaceJsonAtomic(root, file, value, "UR diff");
 }
 function loadManifest(root) {
-  const manifest = readJson(manifestPath(root), { version: 1, diffs: [] });
-  return Array.isArray(manifest.diffs) ? { version: 1, diffs: manifest.diffs.filter(isValidBundle) } : { version: 1, diffs: [] };
+  const manifest = readJson(
+    root,
+    manifestPath(root),
+    { version: 1, diffs: [] }
+  );
+  return isRecord(manifest) && Array.isArray(manifest.diffs) ? {
+    version: 1,
+    diffs: manifest.diffs.filter((bundle) => isValidBundle(root, bundle))
+  } : { version: 1, diffs: [] };
 }
 function loadBundleMetadata(root, bundle) {
-  const metadata = readJson(metadataPath(root, bundle), bundle);
-  return isValidBundle(metadata) && metadata.id === bundle.id ? metadata : bundle;
+  const metadata = readJson(
+    root,
+    metadataPath(root, bundle),
+    bundle
+  );
+  return isValidBundle(root, metadata) && metadata.id === bundle.id ? metadata : bundle;
 }
 function readPatch(root, bundle) {
   const file = patchPath(root, bundle);
-  return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  if (!fs2.existsSync(file)) return "";
+  const size = fs2.statSync(file).size;
+  if (!Number.isSafeInteger(size) || size < 0 || size > MAX_PATCH_BYTES) {
+    throw new Error(`UR diff patch exceeds ${MAX_PATCH_BYTES / (1024 * 1024)} MiB`);
+  }
+  return fs2.readFileSync(file, "utf8");
 }
 function writeManifest(root, manifest) {
-  writeJson(manifestPath(root), manifest);
+  writeJson(root, manifestPath(root), manifest);
 }
 function writeBundleMetadata(root, bundle) {
-  writeJson(metadataPath(root, bundle), bundle);
+  writeJson(root, metadataPath(root, bundle), bundle);
+}
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function isValidFileChange(value) {
+  if (!isRecord(value)) return false;
+  return typeof value.path === "string" && Number.isSafeInteger(value.additions) && Number(value.additions) >= 0 && Number.isSafeInteger(value.deletions) && Number(value.deletions) >= 0;
+}
+function isValidComment(value) {
+  if (!isRecord(value)) return false;
+  return typeof value.at === "string" && typeof value.text === "string" && (value.file === void 0 || typeof value.file === "string") && (value.line === void 0 || Number.isSafeInteger(value.line) && Number(value.line) > 0);
 }
 
 // src/bridge/urCli.ts
@@ -234,7 +324,7 @@ function isCapturedNonZeroExit(error) {
 
 // src/actions/background.ts
 var VALID_STATUSES = ["queued", "running", "completed", "failed", "canceled"];
-function isRecord(value) {
+function isRecord2(value) {
   return typeof value === "object" && value !== null;
 }
 function tryParseBackgroundListJson(raw) {
@@ -244,10 +334,10 @@ function tryParseBackgroundListJson(raw) {
   } catch {
     return null;
   }
-  if (!isRecord(data) || !Array.isArray(data.tasks)) return null;
+  if (!isRecord2(data) || !Array.isArray(data.tasks)) return null;
   const summaries = [];
   for (const entry of data.tasks) {
-    if (!isRecord(entry)) continue;
+    if (!isRecord2(entry)) continue;
     if (typeof entry.id !== "string" || typeof entry.task !== "string") continue;
     if (!VALID_STATUSES.includes(entry.status)) continue;
     const status = entry.status;
@@ -652,7 +742,7 @@ var ActionsTreeProvider = class {
 };
 
 // src/chat/chatController.ts
-var import_node_crypto2 = require("node:crypto");
+var import_node_crypto4 = require("node:crypto");
 var vscode6 = __toESM(require("vscode"));
 
 // src/bridge/types.ts
@@ -670,6 +760,12 @@ function isCanUseToolRequest(message) {
 var import_node_child_process3 = require("node:child_process");
 var NdjsonBuffer = class {
   buffer = "";
+  discardingOversizedLine = false;
+  maxLineLength;
+  droppedOversizedLine = false;
+  constructor(maxLineLength = 16 * 1024 * 1024) {
+    this.maxLineLength = Number.isSafeInteger(maxLineLength) && maxLineLength > 0 ? maxLineLength : 16 * 1024 * 1024;
+  }
   /** Feed a raw chunk (may contain zero, one, or many complete lines, and may
    * split a line across two calls). Returns every complete, parseable line
    * found. Malformed lines are dropped, never thrown — the CLI's own
@@ -677,21 +773,45 @@ var NdjsonBuffer = class {
    * to stderr, so a malformed line here means something unexpected slipped
    * through, not a reason to crash the extension. */
   push(chunk) {
-    this.buffer += chunk;
     const messages = [];
-    for (; ; ) {
-      const newline = this.buffer.indexOf("\n");
-      if (newline === -1) break;
-      const line = this.buffer.slice(0, newline);
-      this.buffer = this.buffer.slice(newline + 1);
-      const parsed = parseNdjsonLine(line);
+    let offset = 0;
+    while (offset < chunk.length) {
+      const newline = chunk.indexOf("\n", offset);
+      const end = newline === -1 ? chunk.length : newline;
+      const segment = chunk.slice(offset, end);
+      if (this.discardingOversizedLine) {
+        if (newline === -1) return messages;
+        this.discardingOversizedLine = false;
+        offset = newline + 1;
+        continue;
+      }
+      if (this.buffer.length + segment.length > this.maxLineLength) {
+        this.buffer = "";
+        this.droppedOversizedLine = true;
+        if (newline === -1) {
+          this.discardingOversizedLine = true;
+          return messages;
+        }
+        offset = newline + 1;
+        continue;
+      }
+      this.buffer += segment;
+      if (newline === -1) return messages;
+      const parsed = parseNdjsonLine(this.buffer);
+      this.buffer = "";
       if (parsed) messages.push(parsed);
+      offset = newline + 1;
     }
     return messages;
   }
   /** Whatever is left with no trailing newline yet (a genuinely partial line
    * stays buffered; call this only once the stream has actually ended). */
   flush() {
+    if (this.discardingOversizedLine) {
+      this.buffer = "";
+      this.discardingOversizedLine = false;
+      return [];
+    }
     const rest = this.buffer;
     this.buffer = "";
     const parsed = parseNdjsonLine(rest);
@@ -736,6 +856,7 @@ function buildControlResponse(requestId, decision) {
   };
 }
 var defaultSpawn = (command2, args, options) => (0, import_node_child_process3.spawn)(command2, args, options);
+var MAX_CAPTURED_STDERR_CHARS = 16 * 1024;
 function runUrTurn(request, handlers, deps = {}) {
   const spawnFn = deps.spawn ?? defaultSpawn;
   const executable = deps.executable ?? (deps.command ? { command: deps.command, args: [], source: "configured", display: deps.command } : resolveUrCommand({ cwd: request.cwd }));
@@ -768,7 +889,8 @@ function runUrTurn(request, handlers, deps = {}) {
     } };
   }
   const stdoutBuffer = new NdjsonBuffer();
-  const stderrChunks = [];
+  let stderrTail = "";
+  let omittedStderrChars = 0;
   let sawResult = false;
   let resultIsError = false;
   let canceled = false;
@@ -776,8 +898,11 @@ function runUrTurn(request, handlers, deps = {}) {
   const finish = (exitCode, signal, spawnError) => {
     if (settled) return;
     settled = true;
-    const stderr = stderrChunks.join("");
-    const ok = !canceled && !spawnError && sawResult && !resultIsError;
+    const stderr = omittedStderrChars > 0 ? `[${omittedStderrChars} earlier stderr characters omitted]
+${stderrTail}` : stderrTail;
+    const protocolError = stdoutBuffer.droppedOversizedLine ? "UR emitted an oversized stream-JSON line; the extension refused to buffer unbounded output." : void 0;
+    const exitedCleanly = exitCode === 0 && signal === null;
+    const ok = !canceled && !spawnError && !protocolError && exitedCleanly && sawResult && !resultIsError;
     handlers.onExit({
       ok,
       exitCode,
@@ -785,7 +910,22 @@ function runUrTurn(request, handlers, deps = {}) {
       canceled,
       sawResult,
       stderr,
-      error: spawnError ?? (!ok && !canceled ? deriveErrorMessage(executable, request.cwd, sawResult, resultIsError, exitCode, signal, stderr) : void 0)
+      error: spawnError ?? (!ok && !canceled ? protocolError ? formatTurnFailure({
+        executable,
+        cwd: request.cwd,
+        exitCode,
+        signal,
+        stderr,
+        reason: protocolError
+      }) : deriveErrorMessage(
+        executable,
+        request.cwd,
+        sawResult,
+        resultIsError,
+        exitCode,
+        signal,
+        stderr
+      ) : void 0)
     });
   };
   const handleMessage = (message) => {
@@ -811,7 +951,15 @@ function runUrTurn(request, handlers, deps = {}) {
     }
   });
   child.stderr?.on("data", (chunk) => {
-    stderrChunks.push(chunk.toString("utf8"));
+    const text = chunk.toString("utf8");
+    const combined = stderrTail + text;
+    if (combined.length > MAX_CAPTURED_STDERR_CHARS) {
+      const excess = combined.length - MAX_CAPTURED_STDERR_CHARS;
+      omittedStderrChars += excess;
+      stderrTail = combined.slice(excess);
+    } else {
+      stderrTail = combined;
+    }
   });
   child.on("error", (error) => {
     finish(
@@ -822,7 +970,8 @@ function runUrTurn(request, handlers, deps = {}) {
         cwd: request.cwd,
         exitCode: null,
         signal: null,
-        stderr: stderrChunks.join(""),
+        stderr: omittedStderrChars > 0 ? `[${omittedStderrChars} earlier stderr characters omitted]
+${stderrTail}` : stderrTail,
         reason: `Failed to run: ${errorMessage2(error)}`
       })
     );
@@ -849,7 +998,7 @@ function writeControlResponse(child, requestId, decision) {
   }
 }
 function deriveErrorMessage(executable, cwd, sawResult, resultIsError, exitCode, signal, stderr) {
-  const reason = sawResult && resultIsError ? "UR reported an error completing this turn." : "UR exited without producing a successful result.";
+  const reason = sawResult && resultIsError ? "UR reported an error completing this turn." : sawResult ? "UR produced a result, but the process exited unsuccessfully." : "UR exited without producing a successful result.";
   return formatTurnFailure({ executable, cwd, exitCode, signal, stderr, reason });
 }
 function formatTurnFailure(options) {
@@ -874,7 +1023,7 @@ function errorMessage2(error) {
 }
 
 // src/context/ideContext.ts
-var path2 = __toESM(require("node:path"));
+var path3 = __toESM(require("node:path"));
 function formatAttachmentLabel(attachment) {
   if (attachment.kind === "file") return `@${attachment.file.path}`;
   const { path: filePath, startLine, endLine } = attachment.selection;
@@ -918,7 +1067,7 @@ function captureEditorSnapshot() {
   if (!editor) return { workspaceRoot: vscode18.workspace.workspaceFolders?.[0]?.uri.fsPath };
   const workspaceRoot2 = vscode18.workspace.getWorkspaceFolder(editor.document.uri)?.uri.fsPath;
   const absolutePath = editor.document.uri.fsPath;
-  const relativePath = workspaceRoot2 ? path2.relative(workspaceRoot2, absolutePath) : absolutePath;
+  const relativePath = workspaceRoot2 ? path3.relative(workspaceRoot2, absolutePath) : absolutePath;
   const activeFile = { path: relativePath, languageId: editor.document.languageId };
   const selection = editor.selection;
   if (selection.isEmpty) return { workspaceRoot: workspaceRoot2, activeFile };
@@ -934,48 +1083,67 @@ function captureEditorSnapshot() {
 }
 
 // src/sessions/sessionStore.ts
-var import_node_crypto = require("node:crypto");
-var fs2 = __toESM(require("node:fs"));
-var path3 = __toESM(require("node:path"));
+var import_node_crypto2 = require("node:crypto");
+var fs3 = __toESM(require("node:fs"));
+var path4 = __toESM(require("node:path"));
 var SESSION_ID_PATTERN = /^[a-zA-Z0-9-]{1,128}$/;
 var TITLE_MAX_LENGTH = 60;
 var DEFAULT_TITLE = "New Chat";
+var MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
+var MAX_SESSION_BYTES = 64 * 1024 * 1024;
 function chatRoot(root) {
-  return path3.join(root, ".ur", "ide", "chat");
+  return path4.join(root, ".ur", "ide", "chat");
 }
 function manifestPath2(root) {
-  return path3.join(chatRoot(root), "manifest.json");
+  return path4.join(chatRoot(root), "manifest.json");
 }
 function isValidSessionId(id) {
   return SESSION_ID_PATTERN.test(id);
 }
 function sessionFilePath(root, id) {
   if (!isValidSessionId(id)) return null;
-  const sessionsDir = path3.join(chatRoot(root), "sessions");
-  const target = path3.join(sessionsDir, `${id}.json`);
-  const resolvedDir = path3.resolve(sessionsDir) + path3.sep;
-  const resolvedTarget = path3.resolve(target);
+  const sessionsDir = path4.join(chatRoot(root), "sessions");
+  const target = path4.join(sessionsDir, `${id}.json`);
+  const resolvedDir = path4.resolve(sessionsDir) + path4.sep;
+  const resolvedTarget = path4.resolve(target);
   if (!resolvedTarget.startsWith(resolvedDir)) return null;
   return target;
 }
-function readJson2(file, fallback) {
+function readJson2(root, file, fallback, maxBytes) {
   try {
-    return JSON.parse(fs2.readFileSync(file, "utf8"));
+    const safeFile = safeWorkspacePath(root, file, "UR chat");
+    const size = fs3.statSync(safeFile).size;
+    if (!Number.isSafeInteger(size) || size < 0 || size > maxBytes) {
+      return fallback;
+    }
+    return JSON.parse(fs3.readFileSync(safeFile, "utf8"));
   } catch {
     return fallback;
   }
 }
-function writeJson2(file, value) {
-  fs2.mkdirSync(path3.dirname(file), { recursive: true });
-  fs2.writeFileSync(file, `${JSON.stringify(value, null, 2)}
-`);
+function writeJson2(root, file, value) {
+  writeWorkspaceJsonAtomic(root, file, value, "UR chat");
 }
 function readManifest(root) {
-  const manifest = readJson2(manifestPath2(root), { version: 1, sessions: [] });
-  return Array.isArray(manifest.sessions) ? manifest : { version: 1, sessions: [] };
+  const manifest = readJson2(
+    root,
+    manifestPath2(root),
+    { version: 1, sessions: [] },
+    MAX_MANIFEST_BYTES
+  );
+  if (!isRecord3(manifest) || !Array.isArray(manifest.sessions)) {
+    return { version: 1, sessions: [] };
+  }
+  const unique = /* @__PURE__ */ new Map();
+  for (const session of manifest.sessions) {
+    if (isValidSession(session, root) && !unique.has(session.id)) {
+      unique.set(session.id, session);
+    }
+  }
+  return { version: 1, sessions: [...unique.values()] };
 }
 function writeManifest2(root, manifest) {
-  writeJson2(manifestPath2(root), manifest);
+  writeJson2(root, manifestPath2(root), manifest);
 }
 function upsertManifestEntry(root, session) {
   const manifest = readManifest(root);
@@ -989,9 +1157,10 @@ function upsertManifestEntry(root, session) {
 }
 function createSession(root, options = {}) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
+  const requestedTitle = typeof options.title === "string" ? options.title.trim() : "";
   const session = {
-    id: (0, import_node_crypto.randomUUID)(),
-    title: options.title?.trim() || DEFAULT_TITLE,
+    id: (0, import_node_crypto2.randomUUID)(),
+    title: requestedTitle ? requestedTitle.slice(0, TITLE_MAX_LENGTH) : DEFAULT_TITLE,
     workspaceRoot: root,
     createdAt: now,
     updatedAt: now
@@ -999,7 +1168,7 @@ function createSession(root, options = {}) {
   const record = { session, messages: [] };
   const file = sessionFilePath(root, session.id);
   if (!file) throw new Error(`Generated an invalid session id: ${session.id}`);
-  writeJson2(file, record);
+  writeJson2(root, file, record);
   upsertManifestEntry(root, session);
   return record;
 }
@@ -1010,10 +1179,17 @@ function listSessions(root, options = {}) {
 }
 function readSession(root, id) {
   const file = sessionFilePath(root, id);
-  if (!file || !fs2.existsSync(file)) return null;
-  return readJson2(file, null);
+  if (!file) return null;
+  const record = readJson2(
+    root,
+    file,
+    null,
+    MAX_SESSION_BYTES
+  );
+  return isValidRecord(record, root, id) ? record : null;
 }
 function appendMessage(root, id, message) {
+  if (!isValidMessage(message, id)) return null;
   const record = readSession(root, id);
   if (!record) return null;
   record.messages.push(message);
@@ -1023,18 +1199,21 @@ function appendMessage(root, id, message) {
   }
   const file = sessionFilePath(root, id);
   if (!file) return null;
-  writeJson2(file, record);
+  writeJson2(root, file, record);
   upsertManifestEntry(root, record.session);
   return record;
 }
 function setCliSessionId(root, id, cliSessionId) {
+  if (typeof cliSessionId !== "string" || !cliSessionId || cliSessionId.length > 256 || cliSessionId.includes("\0")) {
+    return null;
+  }
   const record = readSession(root, id);
   if (!record) return null;
   record.session.cliSessionId = cliSessionId;
   record.session.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
   const file = sessionFilePath(root, id);
   if (!file) return null;
-  writeJson2(file, record);
+  writeJson2(root, file, record);
   upsertManifestEntry(root, record.session);
   return record;
 }
@@ -1043,9 +1222,66 @@ function deriveTitle(message) {
   if (!text) return DEFAULT_TITLE;
   return text.length > TITLE_MAX_LENGTH ? `${text.slice(0, TITLE_MAX_LENGTH - 1)}\u2026` : text;
 }
+function isRecord3(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function isValidSession(value, root) {
+  if (!isRecord3(value)) return false;
+  return typeof value.id === "string" && isValidSessionId(value.id) && typeof value.title === "string" && value.title.length > 0 && value.title.length <= TITLE_MAX_LENGTH && typeof value.workspaceRoot === "string" && path4.resolve(value.workspaceRoot) === path4.resolve(root) && typeof value.createdAt === "string" && typeof value.updatedAt === "string" && (value.cliSessionId === void 0 || typeof value.cliSessionId === "string" && value.cliSessionId.length > 0 && value.cliSessionId.length <= 256 && !value.cliSessionId.includes("\0")) && (value.archived === void 0 || typeof value.archived === "boolean");
+}
+function isValidRecord(value, root, id) {
+  if (!isRecord3(value) || !isValidSession(value.session, root)) return false;
+  if (value.session.id !== id || !Array.isArray(value.messages)) return false;
+  return value.messages.every((message) => isValidMessage(message, id));
+}
+function isValidMessage(value, sessionId) {
+  if (!isRecord3(value)) return false;
+  if (typeof value.id !== "string" || !value.id || value.id.length > 256 || value.sessionId !== sessionId || value.role !== "user" && value.role !== "assistant" && value.role !== "status" || typeof value.createdAt !== "string" || !Array.isArray(value.content)) {
+    return false;
+  }
+  return value.content.every(isValidContentBlock);
+}
+function isValidContentBlock(value) {
+  if (!isRecord3(value) || typeof value.type !== "string") return false;
+  if (value.type === "text") return typeof value.text === "string";
+  if (value.type === "tool_use") {
+    return typeof value.id === "string" && typeof value.name === "string" && "input" in value;
+  }
+  if (value.type === "tool_result") {
+    return typeof value.toolUseId === "string" && typeof value.ok === "boolean" && typeof value.summary === "string";
+  }
+  if (value.type === "permission_request") {
+    return typeof value.requestId === "string" && typeof value.toolName === "string" && (value.resolved === void 0 || value.resolved === "allow" || value.resolved === "deny");
+  }
+  return false;
+}
 
 // src/chat/chatPanel.ts
+var import_node_crypto3 = require("node:crypto");
 var vscode5 = __toESM(require("vscode"));
+
+// src/chat/webviewProtocol.ts
+var MAX_WEBVIEW_PROMPT_LENGTH = 1e6;
+var MAX_REQUEST_ID_LENGTH = 256;
+function isWebviewInboundMessage(value) {
+  if (!isRecord4(value) || typeof value.type !== "string") return false;
+  if (value.type === "ready" || value.type === "cancel") return true;
+  if (value.type === "send") {
+    return typeof value.text === "string" && value.text.length <= MAX_WEBVIEW_PROMPT_LENGTH && !value.text.includes("\0");
+  }
+  if (value.type === "permissionDecision") {
+    return typeof value.requestId === "string" && value.requestId.length > 0 && value.requestId.length <= MAX_REQUEST_ID_LENGTH && (value.decision === "allow" || value.decision === "deny");
+  }
+  if (value.type === "removeAttachment") {
+    return Number.isSafeInteger(value.index) && Number(value.index) >= 0 && Number(value.index) <= 1e4;
+  }
+  return false;
+}
+function isRecord4(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+// src/chat/chatPanel.ts
 var ChatPanel = class _ChatPanel {
   static current;
   panel;
@@ -1055,7 +1291,9 @@ var ChatPanel = class _ChatPanel {
     this.panel = panel;
     this.panel.webview.html = renderChatHtml(this.panel.webview);
     this.disposables.push(
-      this.panel.webview.onDidReceiveMessage((message) => onMessage(message)),
+      this.panel.webview.onDidReceiveMessage((message) => {
+        if (isWebviewInboundMessage(message)) onMessage(message);
+      }),
       this.panel.onDidDispose(() => this.handleDispose())
     );
   }
@@ -1086,10 +1324,7 @@ var ChatPanel = class _ChatPanel {
   }
 };
 function nonce() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let value = "";
-  for (let i = 0; i < 32; i++) value += chars.charAt(Math.floor(Math.random() * chars.length));
-  return value;
+  return (0, import_node_crypto3.randomBytes)(24).toString("base64url");
 }
 function renderChatHtml(webview) {
   const scriptNonce = nonce();
@@ -1212,22 +1447,22 @@ function renderChatHtml(webview) {
   </style>
 </head>
 <body>
-  <div id="banner"></div>
-  <div id="messages">
+  <div id="banner" role="alert" aria-live="assertive"></div>
+  <div id="messages" role="log" aria-live="polite" aria-relevant="additions" aria-label="UR chat messages">
     <div id="empty-state">Ask UR about this workspace. Use <code>UR: Add Selection to Chat</code> or <code>UR: Add Current File to Chat</code> to attach code first.</div>
   </div>
-  <div id="permission-prompt">
-    <div><strong>UR wants to use <span id="permission-tool"></span></strong></div>
+  <div id="permission-prompt" role="alertdialog" aria-modal="true" aria-labelledby="permission-title">
+    <div id="permission-title"><strong>UR wants to use <span id="permission-tool"></span></strong></div>
     <div class="input-preview" id="permission-input"></div>
     <div class="actions">
       <button id="permission-allow">Allow</button>
       <button id="permission-deny" class="secondary">Deny</button>
     </div>
   </div>
-  <div id="attachments"></div>
-  <div id="status-line"></div>
+  <div id="attachments" aria-label="Attached editor context"></div>
+  <div id="status-line" role="status" aria-live="polite"></div>
   <form id="composer">
-    <textarea id="input" placeholder="Message UR\u2026" rows="2"></textarea>
+    <textarea id="input" aria-label="Message UR" maxlength="1000000" placeholder="Message UR\u2026" rows="2"></textarea>
     <button id="send" type="submit">Send</button>
     <button id="cancel" type="button" class="secondary" hidden>Cancel</button>
   </form>
@@ -1246,6 +1481,8 @@ function renderChatHtml(webview) {
       const inputEl = document.getElementById('input');
       const sendButton = document.getElementById('send');
       const cancelButton = document.getElementById('cancel');
+      const permissionAllowButton = document.getElementById('permission-allow');
+      const permissionDenyButton = document.getElementById('permission-deny');
 
       let currentStatus = 'idle';
       let pendingPermissionRequestId = null;
@@ -1312,6 +1549,8 @@ function renderChatHtml(webview) {
           const remove = document.createElement('button');
           remove.type = 'button';
           remove.textContent = '\\u00d7';
+          remove.title = 'Remove ' + attachment.label;
+          remove.setAttribute('aria-label', 'Remove ' + attachment.label);
           remove.addEventListener('click', function () {
             vscode.postMessage({ type: 'removeAttachment', index: index });
           });
@@ -1337,9 +1576,15 @@ function renderChatHtml(webview) {
         bannerEl.classList.add('visible');
       }
 
+      function hideBanner() {
+        bannerEl.textContent = '';
+        bannerEl.classList.remove('visible');
+      }
+
       window.addEventListener('message', function (event) {
         const message = event.data;
         if (message.type === 'init') {
+          hideBanner();
           renderAll(message.messages);
           renderAttachments(message.attachments);
           applyStatus(message.status);
@@ -1349,9 +1594,12 @@ function renderChatHtml(webview) {
           applyStatus(message.status);
         } else if (message.type === 'permissionRequest') {
           pendingPermissionRequestId = message.requestId;
+          permissionAllowButton.disabled = false;
+          permissionDenyButton.disabled = false;
           permissionToolEl.textContent = message.toolName;
           permissionInputEl.textContent = JSON.stringify(message.input, null, 2);
           permissionEl.classList.add('visible');
+          permissionDenyButton.focus();
         } else if (message.type === 'permissionResolved') {
           if (pendingPermissionRequestId === message.requestId) {
             pendingPermissionRequestId = null;
@@ -1370,6 +1618,7 @@ function renderChatHtml(webview) {
         event.preventDefault();
         const text = inputEl.value.trim();
         if (!text || currentStatus === 'running') return;
+        hideBanner();
         vscode.postMessage({ type: 'send', text: text });
         inputEl.value = '';
       });
@@ -1385,12 +1634,16 @@ function renderChatHtml(webview) {
         vscode.postMessage({ type: 'cancel' });
       });
 
-      document.getElementById('permission-allow').addEventListener('click', function () {
+      permissionAllowButton.addEventListener('click', function () {
         if (!pendingPermissionRequestId) return;
+        permissionAllowButton.disabled = true;
+        permissionDenyButton.disabled = true;
         vscode.postMessage({ type: 'permissionDecision', requestId: pendingPermissionRequestId, decision: 'allow' });
       });
-      document.getElementById('permission-deny').addEventListener('click', function () {
+      permissionDenyButton.addEventListener('click', function () {
         if (!pendingPermissionRequestId) return;
+        permissionAllowButton.disabled = true;
+        permissionDenyButton.disabled = true;
         vscode.postMessage({ type: 'permissionDecision', requestId: pendingPermissionRequestId, decision: 'deny' });
       });
 
@@ -1649,7 +1902,7 @@ var ChatController = class {
     this.ensurePanel();
     const sessionId = this.record.session.id;
     const userMessage = {
-      id: (0, import_node_crypto2.randomUUID)(),
+      id: (0, import_node_crypto4.randomUUID)(),
       sessionId,
       role: "user",
       content: [{ type: "text", text: promptText }],
@@ -1708,7 +1961,7 @@ var ChatController = class {
   }
   appendChatMessage(root, sessionId, role, content) {
     if (!this.record || this.record.session.id !== sessionId) return;
-    const message = { id: (0, import_node_crypto2.randomUUID)(), sessionId, role, content, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+    const message = { id: (0, import_node_crypto4.randomUUID)(), sessionId, role, content, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
     appendMessage(root, sessionId, message);
     this.record.messages.push(message);
     this.panel?.post({ type: "messageAppended", message });
@@ -1721,10 +1974,10 @@ var ChatController = class {
     if (turnId !== this.activeTurnId) {
       return Promise.resolve({ behavior: "deny", message: "This chat turn is no longer active." });
     }
-    return new Promise((resolve3) => {
+    return new Promise((resolve4) => {
       const toolName = request.request.tool_name ?? "tool";
       const input = request.request.input ?? {};
-      this.pendingPermissions.set(request.request_id, { resolve: resolve3, toolName, input, turnId });
+      this.pendingPermissions.set(request.request_id, { resolve: resolve4, toolName, input, turnId });
       this.panel?.post({ type: "permissionRequest", requestId: request.request_id, toolName, input });
     });
   }
@@ -1881,7 +2134,7 @@ var ChatTreeProvider = class {
 
 // src/diffs/actions.ts
 var import_node_child_process4 = require("node:child_process");
-var fs3 = __toESM(require("node:fs"));
+var fs4 = __toESM(require("node:fs"));
 var import_node_util2 = require("node:util");
 var vscode8 = __toESM(require("vscode"));
 var execFileAsync2 = (0, import_node_util2.promisify)(import_node_child_process4.execFile);
@@ -1921,7 +2174,7 @@ async function applyDiff(item, provider) {
     return;
   }
   const patch = patchPath(root, bundle);
-  if (!fs3.existsSync(patch)) {
+  if (!fs4.existsSync(patch)) {
     vscode8.window.showErrorMessage(`UR patch file missing for ${bundle.id}.`);
     return;
   }
@@ -2053,7 +2306,7 @@ async function openDiff(item) {
 
 // src/model/modelPicker.ts
 var vscode10 = __toESM(require("vscode"));
-function isRecord2(value) {
+function isRecord5(value) {
   return typeof value === "object" && value !== null;
 }
 function parseProviderList(raw) {
@@ -2061,7 +2314,7 @@ function parseProviderList(raw) {
     const data = JSON.parse(raw);
     if (!Array.isArray(data)) return [];
     return data.flatMap((entry) => {
-      if (!isRecord2(entry) || typeof entry.id !== "string" || typeof entry.name !== "string") return [];
+      if (!isRecord5(entry) || typeof entry.id !== "string" || typeof entry.name !== "string") return [];
       return [
         {
           id: entry.id,
@@ -2079,14 +2332,14 @@ function parseProviderList(raw) {
 function parseProviderModels(raw) {
   try {
     const data = JSON.parse(raw);
-    if (!isRecord2(data) || typeof data.provider !== "string" || !Array.isArray(data.models)) return void 0;
+    if (!isRecord5(data) || typeof data.provider !== "string" || !Array.isArray(data.models)) return void 0;
     const source = data.source === "live" || data.source === "cache" || data.source === "static" ? data.source : "static";
     return {
       provider: data.provider,
       source,
       warning: typeof data.warning === "string" ? data.warning : void 0,
       models: data.models.flatMap((model) => {
-        if (!isRecord2(model) || typeof model.id !== "string") return [];
+        if (!isRecord5(model) || typeof model.id !== "string") return [];
         return [
           {
             id: model.id,
@@ -2104,7 +2357,7 @@ function parseProviderModels(raw) {
 function parseProviderStatus(raw) {
   try {
     const data = JSON.parse(raw);
-    if (!isRecord2(data)) return {};
+    if (!isRecord5(data)) return {};
     return {
       provider: typeof data.provider === "string" ? data.provider : void 0,
       model: typeof data.model === "string" ? data.model : void 0
@@ -2116,8 +2369,8 @@ function parseProviderStatus(raw) {
 function parseIdeStatus(raw) {
   try {
     const data = JSON.parse(raw);
-    if (!isRecord2(data)) return {};
-    const provider = isRecord2(data.provider) ? data.provider : {};
+    if (!isRecord5(data)) return {};
+    const provider = isRecord5(data.provider) ? data.provider : {};
     return {
       model: typeof provider.model === "string" ? provider.model : void 0
     };
@@ -2333,7 +2586,7 @@ function deriveMultimodalSupport(providerId) {
 // src/options/providerOptionsLoader.ts
 var PROVIDER_KINDS = ["ur-native", "subscription-cli", "subscription-placeholder"];
 var ACCESS_TYPES = ["subscription", "api", "local", "server"];
-function isRecord3(value) {
+function isRecord6(value) {
   return typeof value === "object" && value !== null;
 }
 function parseProviderListJson(raw) {
@@ -2346,7 +2599,7 @@ function parseProviderListJson(raw) {
   if (!Array.isArray(data)) return [];
   const options = [];
   for (const entry of data) {
-    if (!isRecord3(entry)) continue;
+    if (!isRecord6(entry)) continue;
     if (typeof entry.id !== "string" || typeof entry.name !== "string") continue;
     const providerKind = PROVIDER_KINDS.includes(entry.providerKind) ? entry.providerKind : "subscription-placeholder";
     const accessType = ACCESS_TYPES.includes(entry.accessType) ? entry.accessType : "api";
@@ -2590,13 +2843,13 @@ async function showSearchActions() {
 var vscode15 = __toESM(require("vscode"));
 
 // src/status/statusData.ts
-function isRecord4(value) {
+function isRecord7(value) {
   return typeof value === "object" && value !== null;
 }
 function safeParseRecord(raw) {
   try {
     const parsed = JSON.parse(raw);
-    return isRecord4(parsed) ? parsed : {};
+    return isRecord7(parsed) ? parsed : {};
   } catch {
     return {};
   }
@@ -2609,8 +2862,8 @@ function asKnownBoolean(value) {
 }
 function parseIdeStatusJson(raw, fallbackWorkspaceRoot = "") {
   const data = safeParseRecord(raw);
-  const acpRaw = isRecord4(data.acp) ? data.acp : {};
-  const providerRaw = isRecord4(data.provider) ? data.provider : {};
+  const acpRaw = isRecord7(data.acp) ? data.acp : {};
+  const providerRaw = isRecord7(data.provider) ? data.provider : {};
   return {
     workspaceRoot: typeof data.workspaceRoot === "string" && data.workspaceRoot ? data.workspaceRoot : fallbackWorkspaceRoot,
     acp: {

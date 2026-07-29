@@ -20,6 +20,87 @@ async function withTimeout<T>(promise: Promise<T>): Promise<T> {
 }
 
 describe('StreamingToolExecutor discard', () => {
+  test('routes unknown tools through the guarded execution path', async () => {
+    let calls = 0
+    const runToolUse = async function* (): AsyncGenerator<never, void> {
+      calls += 1
+    }
+    const executor = new StreamingToolExecutor(
+      [],
+      (() => {}) as never,
+      {
+        abortController: new AbortController(),
+        setInProgressToolUseIDs: () => {},
+      } as never,
+      runToolUse as never,
+    )
+
+    executor.addTool(
+      {
+        type: 'tool_use',
+        id: 'unknown-stream-tool',
+        name: 'HallucinatedTool',
+        input: {},
+      },
+      { uuid: 'assistant-stream' } as never,
+    )
+    await Array.fromAsync(executor.getRemainingResults())
+
+    expect(calls).toBe(1)
+  })
+
+  test('rejects a duplicate streamed ID and discards the eager batch', async () => {
+    const started = deferred()
+    let runningSignal: AbortSignal | undefined
+    const runToolUse = async function* (
+      _block: unknown,
+      _assistantMessage: unknown,
+      _canUseTool: unknown,
+      context: { abortController: AbortController },
+    ): AsyncGenerator<never, void> {
+      runningSignal = context.abortController.signal
+      started.resolve()
+      await new Promise<void>(resolve => {
+        context.abortController.signal.addEventListener('abort', () => resolve(), {
+          once: true,
+        })
+      })
+    }
+    const tool = {
+      name: 'MutatingTool',
+      inputSchema: z.object({}),
+      isConcurrencySafe: () => false,
+    }
+    let inProgress = new Set<string>()
+    const executor = new StreamingToolExecutor(
+      [tool] as never,
+      (() => {}) as never,
+      {
+        abortController: new AbortController(),
+        setInProgressToolUseIDs(
+          update: (previous: Set<string>) => Set<string>,
+        ) {
+          inProgress = update(inProgress)
+        },
+      } as never,
+      runToolUse as never,
+    )
+    const block = {
+      type: 'tool_use' as const,
+      id: 'duplicate-stream-id',
+      name: tool.name,
+      input: {},
+    }
+    executor.addTool(block, { uuid: 'assistant-stream' } as never)
+    await started.promise
+
+    expect(() =>
+      executor.addTool(block, { uuid: 'assistant-stream' } as never),
+    ).toThrow('Duplicate tool_use id')
+    expect(runningSignal?.aborted).toBe(true)
+    expect(inProgress.size).toBe(0)
+  })
+
   test('aborts in-flight tools, skips queued tools, and settles bookkeeping', async () => {
     const firstStarted = deferred()
     const startedToolIDs: string[] = []

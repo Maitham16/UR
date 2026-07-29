@@ -93,6 +93,17 @@ if (!documentationIndex.includes(`Version ${version}`)) {
   fail(`documentation/index.html version eyebrow must be ${version}`)
 }
 
+const versionFallbackFiles = [
+  'src/commands/agent-ci/agent-ci.ts',
+  'src/services/agents/agenticCi.ts',
+  'src/services/agents/featureScaffolds.ts',
+]
+for (const file of versionFallbackFiles) {
+  if (!read(file).includes(`MACRO.VERSION : '${version}'`)) {
+    fail(`${file} MACRO.VERSION fallback must be ${version}`)
+  }
+}
+
 const distPath = join(root, 'dist', 'cli.js')
 if (!existsSync(distPath)) {
   fail('dist/cli.js is missing; run bun run bundle')
@@ -136,8 +147,12 @@ if (readme.includes('falls back to `llama3.2`') || usage.includes('3. `llama3.2`
 if (config.includes('Ollama Cloud, remote model endpoints, and model API keys are not supported')) {
   fail('configuration docs still say Ollama Cloud models are unsupported')
 }
-if (validation.includes('expected: 1.3.x')) {
-  fail('validation docs still contain the stale 1.3.x expected version')
+const expectedValidationVersion =
+  `# expected for this release: "${version} (UR-Nexus)"`
+if (!validation.includes(expectedValidationVersion)) {
+  fail(
+    `docs/VALIDATION.md smoke-test version must be ${version}`,
+  )
 }
 
 try {

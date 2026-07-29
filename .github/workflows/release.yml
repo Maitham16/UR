@@ -33,6 +33,8 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       tag: ${{ steps.resolve.outputs.tag }}
       already-on-npm: ${{ steps.resolve.outputs.already-on-npm }}
+      npm-tag: ${{ steps.resolve.outputs.npm-tag }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
     steps:
       - name: Checkout tag
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -74,10 +76,20 @@ jobs:
           if npm view "ur-agent@${version}" version >/dev/null 2>&1; then
             published=true
           fi
+          prerelease=false
+          npm_tag=latest
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+            # Never let a prerelease replace the stable release behind
+            # `npm install ur-agent`. All prereleases advance `next`.
+            npm_tag=next
+          fi
           {
             printf 'tag=%s\n' "$tag"
             printf 'version=%s\n' "$version"
             printf 'already-on-npm=%s\n' "$published"
+            printf 'npm-tag=%s\n' "$npm_tag"
+            printf 'prerelease=%s\n' "$prerelease"
           } >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
@@ -88,12 +100,9 @@ jobs:
           set -euo pipefail
           bun run typecheck
           bun run lint
-          # By default bun loads every test file into one process; across ~173
-          # files this repo peaks past 3 GB. A runner that OOM-kills that
-          # process leaves the parent waiting on dead children — a silent hang
-          # rather than an honest failure. `--parallel` implies `--isolate`, so
-          # memory is reclaimed per worker and the gate can actually fail.
-          bun test --timeout 120000 --parallel=4
+          # Bun's parallel workers can collide on server.listen(0), producing
+          # EADDRINUSE in tests that correctly request an ephemeral port.
+          bun test --timeout 120000
           bun run build
           bun run release:check
 
@@ -160,6 +169,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      actions: read
       contents: write
     steps:
       - name: Checkout tag
@@ -183,6 +193,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.verify.outputs.tag }}
           VERSION: ${{ needs.verify.outputs.version }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
         run: |
           set -euo pipefail
           # Notes are the changelog section for this version, so the release
@@ -198,11 +209,13 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release edit "$TAG" \
               --title "UR-Nexus $VERSION" \
+              --prerelease="$PRERELEASE" \
               --notes-file release-notes.md
             gh release upload "$TAG" dist-release/*.tgz --clobber
           else
             gh release create "$TAG" \
               --title "UR-Nexus $VERSION" \
+              --prerelease="$PRERELEASE" \
               --notes-file release-notes.md \
               --verify-tag \
               dist-release/*.tgz
@@ -213,6 +226,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      actions: read
       contents: read
     steps:
       - name: Checkout tag
@@ -243,6 +257,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ needs.verify.outputs.version }}
           ALREADY_PUBLISHED: ${{ needs.verify.outputs.already-on-npm }}
+          NPM_TAG: ${{ needs.verify.outputs.npm-tag }}
         run: |
           set -euo pipefail
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
@@ -255,4 +270,6 @@ jobs:
             exit 0
           fi
           # Publish the exact artifact the gate verified, not a fresh pack.
-          npm publish dist-release/ur-agent-"$VERSION".tgz --access public
+          npm publish dist-release/ur-agent-"$VERSION".tgz \
+            --access public \
+            --tag "$NPM_TAG"

@@ -19,6 +19,16 @@ export type SuggestionType = 'command' | 'file' | 'directory' | 'agent' | 'shell
 export const OVERLAY_MAX_ITEMS = 5;
 
 /**
+ * Suggestion rows render inside the prompt's horizontal padding. Keep every
+ * downstream width calculation positive, including while a terminal is being
+ * resized through very small intermediate dimensions.
+ */
+export function getPromptSuggestionRowWidth(columns: number): number {
+  const safeColumns = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : 1;
+  return Math.max(1, safeColumns - 4);
+}
+
+/**
  * Get the icon for a suggestion based on its type
  * Icons: + for files, ◇ for MCP resources, * for agents
  */
@@ -43,6 +53,7 @@ const SuggestionItemRow = memo(function SuggestionItemRow(t0) {
     isSelected
   } = t0;
   const columns = useTerminalSize().columns;
+  const rowWidth = getPromptSuggestionRowWidth(columns);
   const isUnified = isUnifiedSuggestion(item.id);
   if (isUnified) {
     let t1;
@@ -70,7 +81,7 @@ const SuggestionItemRow = memo(function SuggestionItemRow(t0) {
         t2 = $[3];
       }
       const descReserve = t2;
-      const maxPathLength = columns - 2 - 4 - separatorWidth - descReserve;
+      const maxPathLength = Math.max(1, rowWidth - 2 - separatorWidth - descReserve);
       let t3;
       if ($[4] !== item.displayText || $[5] !== maxPathLength) {
         t3 = truncatePathMiddle(item.displayText, maxPathLength);
@@ -82,21 +93,14 @@ const SuggestionItemRow = memo(function SuggestionItemRow(t0) {
       }
       displayText = t3;
     } else {
+      const maxPrimaryWidth = Math.max(1, rowWidth - 2);
       if (isMcpResource) {
-        let t2;
-        if ($[7] !== item.displayText) {
-          t2 = truncateToWidth(item.displayText, 30);
-          $[7] = item.displayText;
-          $[8] = t2;
-        } else {
-          t2 = $[8];
-        }
-        displayText = t2;
+        displayText = truncateToWidth(item.displayText, Math.min(30, maxPrimaryWidth));
       } else {
-        displayText = item.displayText;
+        displayText = truncateToWidth(item.displayText, maxPrimaryWidth);
       }
     }
-    const availableWidth = columns - 2 - stringWidth(displayText) - separatorWidth - 4;
+    const availableWidth = rowWidth - 2 - stringWidth(displayText) - separatorWidth;
     let lineContent;
     if (item.description) {
       const maxDescLength = Math.max(0, availableWidth);
@@ -110,10 +114,11 @@ const SuggestionItemRow = memo(function SuggestionItemRow(t0) {
         t2 = $[11];
       }
       const truncatedDesc = t2;
-      lineContent = `${icon} ${displayText} – ${truncatedDesc}`;
+      lineContent = truncatedDesc ? `${icon} ${displayText} – ${truncatedDesc}` : `${icon} ${displayText}`;
     } else {
       lineContent = `${icon} ${displayText}`;
     }
+    lineContent = truncateToWidth(lineContent, rowWidth);
     let t2;
     if ($[12] !== dimColor || $[13] !== lineContent || $[14] !== textColor) {
       t2 = <Text color={textColor} dimColor={dimColor} wrap="truncate">{lineContent}</Text>;
@@ -126,13 +131,14 @@ const SuggestionItemRow = memo(function SuggestionItemRow(t0) {
     }
     return t2;
   }
-  const maxNameWidth = Math.floor(columns * 0.4);
-  const displayTextWidth = Math.min(maxColumnWidth ?? stringWidth(item.displayText) + 5, maxNameWidth);
+  const maxNameWidth = Math.max(1, Math.floor(rowWidth * 0.4));
+  const displayTextWidth = Math.max(1, Math.min(maxColumnWidth ?? stringWidth(item.displayText) + 5, maxNameWidth, rowWidth));
   const textColor_0 = item.color || (isSelected ? "suggestion" : undefined);
   const shouldDim = !isSelected;
   let displayText_0 = item.displayText;
-  if (stringWidth(displayText_0) > displayTextWidth - 2) {
-    const t1 = displayTextWidth - 2;
+  const displayTextContentWidth = Math.max(1, displayTextWidth - 2);
+  if (stringWidth(displayText_0) > displayTextContentWidth) {
+    const t1 = displayTextContentWidth;
     let t2;
     if ($[16] !== displayText_0 || $[17] !== t1) {
       t2 = truncateToWidth(displayText_0, t1);
@@ -145,9 +151,11 @@ const SuggestionItemRow = memo(function SuggestionItemRow(t0) {
     displayText_0 = t2;
   }
   const paddedDisplayText = displayText_0 + " ".repeat(Math.max(0, displayTextWidth - stringWidth(displayText_0)));
-  const tagText = item.tag ? `[${item.tag}] ` : "";
+  const rawTagText = item.tag ? `[${item.tag}] ` : "";
+  const tagBudget = Math.max(0, rowWidth - displayTextWidth);
+  const tagText = tagBudget > 0 ? truncateToWidth(rawTagText, tagBudget) : "";
   const tagWidth = stringWidth(tagText);
-  const descriptionWidth = Math.max(0, columns - displayTextWidth - tagWidth - 4);
+  const descriptionWidth = Math.max(0, rowWidth - displayTextWidth - tagWidth);
   let t1;
   if ($[19] !== descriptionWidth || $[20] !== item.description) {
     t1 = item.description ? truncateToWidth(item.description.replace(/\s+/g, " "), descriptionWidth) : "";

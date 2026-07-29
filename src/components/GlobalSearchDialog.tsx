@@ -16,6 +16,7 @@ import { readFileInRange } from '../utils/readFileInRange.js';
 import { ripGrepStream } from '../utils/ripgrep.js';
 import { FuzzyPicker } from './design-system/FuzzyPicker.js';
 import { LoadingState } from './design-system/LoadingState.js';
+import { getGlobalSearchLayout } from './searchPickerLayout.js';
 type Props = {
   onDone: () => void;
   onInsert: (text: string) => void;
@@ -47,7 +48,13 @@ export function GlobalSearchDialog(t0) {
     columns,
     rows
   } = useTerminalSize();
-  const previewOnRight = columns >= 140;
+  const {
+    previewOnRight,
+    listWidth,
+    maxPathWidth,
+    maxTextWidth,
+    previewWidth
+  } = getGlobalSearchLayout(columns);
   const visibleResults = Math.min(VISIBLE_RESULTS, Math.max(4, rows - 14));
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -152,10 +159,6 @@ export function GlobalSearchDialog(t0) {
     t6 = $[6];
   }
   const handleQueryChange = t6;
-  const listWidth = previewOnRight ? Math.floor((columns - 10) * 0.5) : columns - 8;
-  const maxPathWidth = Math.max(20, Math.floor(listWidth * 0.4));
-  const maxTextWidth = Math.max(20, listWidth - maxPathWidth - 4);
-  const previewWidth = previewOnRight ? Math.max(40, columns - listWidth - 14) : columns - 6;
   let t7;
   if ($[7] !== matches.length || $[8] !== onDone) {
     t7 = m_3 => {

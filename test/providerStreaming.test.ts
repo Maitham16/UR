@@ -166,6 +166,89 @@ describe('provider real streaming', () => {
     }
   })
 
+  test('OpenAI-compatible streaming waits for a late real tool-call ID', async () => {
+    const original = globalThis.fetch
+    globalThis.fetch = (async () =>
+      responseFromChunks([
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"type":"function","function":{"name":"Edit","arguments":"{\\"file_path\\":\\"a\\""}}]}}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"late-real-id","function":{"arguments":",\\"content\\":\\"b\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
+        'data: [DONE]\n\n',
+      ])) as unknown as typeof fetch
+    try {
+      const client = await createOpenAICompatibleClient({
+        baseUrl: 'http://localhost:1234/v1',
+        maxRetries: 1,
+      })
+      const { data } = await client.beta.messages.create({
+        model: 'local-model',
+        messages: userMessages(),
+        max_tokens: 16,
+        stream: true,
+        tools: sampleTools,
+      }).withResponse()
+      const events = await collect(data)
+      expect(
+        events.find(
+          event =>
+            event.type === 'content_block_start' &&
+            event.content_block?.type === 'tool_use',
+        )?.content_block.id,
+      ).toBe('late-real-id')
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  test('OpenAI-compatible streaming rejects duplicate IDs across parallel calls', async () => {
+    const original = globalThis.fetch
+    globalThis.fetch = (async () =>
+      responseFromChunks([
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"same","type":"function","function":{"name":"Edit","arguments":"{}"}},{"index":1,"id":"same","type":"function","function":{"name":"Edit","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}\n\n',
+        'data: [DONE]\n\n',
+      ])) as unknown as typeof fetch
+    try {
+      const client = await createOpenAICompatibleClient({
+        baseUrl: 'http://localhost:1234/v1',
+        maxRetries: 1,
+      })
+      const { data } = await client.beta.messages.create({
+        model: 'local-model',
+        messages: userMessages(),
+        max_tokens: 16,
+        stream: true,
+        tools: sampleTools,
+      }).withResponse()
+      await expect(collect(data)).rejects.toThrow('duplicate tool call id')
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  test('OpenAI-compatible streaming rejects tool arguments that are not an object', async () => {
+    const original = globalThis.fetch
+    globalThis.fetch = (async () =>
+      responseFromChunks([
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"bad-input","type":"function","function":{"name":"Edit","arguments":"[]"}}]},"finish_reason":"tool_calls"}]}\n\n',
+        'data: [DONE]\n\n',
+      ])) as unknown as typeof fetch
+    try {
+      const client = await createOpenAICompatibleClient({
+        baseUrl: 'http://localhost:1234/v1',
+        maxRetries: 1,
+      })
+      const { data } = await client.beta.messages.create({
+        model: 'local-model',
+        messages: userMessages(),
+        max_tokens: 16,
+        stream: true,
+        tools: sampleTools,
+      }).withResponse()
+      await expect(collect(data)).rejects.toThrow('must be a JSON object')
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
   test('OpenRouter streams OpenAI-format tool_call deltas as tool_use input_json_delta', async () => {
     const post = spyOn(axios, 'post').mockResolvedValue({
       data: sse([
@@ -251,6 +334,61 @@ describe('provider real streaming', () => {
       .toBe('tool_use')
   })
 
+  test('standard Anthropic rejects duplicate streamed tool_use IDs', async () => {
+    spyOn(axios, 'post').mockResolvedValue({
+      data: sse([
+        'data: {"type":"message_start","message":{"id":"msg","model":"claude","usage":{}}}\n\n',
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"same","name":"Edit","input":{}}}\n\n',
+        'data: {"type":"content_block_stop","index":0}\n\n',
+        'data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"same","name":"Edit","input":{}}}\n\n',
+        'data: {"type":"content_block_stop","index":1}\n\n',
+        'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{}}\n\n',
+        'data: {"type":"message_stop"}\n\n',
+      ]),
+      headers: {},
+    })
+    const client = await createStandardAPIClient({
+      providerId: 'anthropic-api',
+      apiKey: 'sk-ant',
+      maxRetries: 1,
+    })
+    const { data } = await client.beta.messages.create({
+      model: 'claude',
+      messages: userMessages(),
+      max_tokens: 16,
+      stream: true,
+      tools: sampleTools,
+    }).withResponse()
+    await expect(collect(data)).rejects.toThrow('duplicate tool call id')
+  })
+
+  test('standard Anthropic rejects an incomplete streamed tool input', async () => {
+    spyOn(axios, 'post').mockResolvedValue({
+      data: sse([
+        'data: {"type":"message_start","message":{"id":"msg","model":"claude","usage":{}}}\n\n',
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu-bad","name":"Edit","input":{}}}\n\n',
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"file_path\\":"}}\n\n',
+        'data: {"type":"content_block_stop","index":0}\n\n',
+        'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{}}\n\n',
+        'data: {"type":"message_stop"}\n\n',
+      ]),
+      headers: {},
+    })
+    const client = await createStandardAPIClient({
+      providerId: 'anthropic-api',
+      apiKey: 'sk-ant',
+      maxRetries: 1,
+    })
+    const { data } = await client.beta.messages.create({
+      model: 'claude',
+      messages: userMessages(),
+      max_tokens: 16,
+      stream: true,
+      tools: sampleTools,
+    }).withResponse()
+    await expect(collect(data)).rejects.toThrow('not valid JSON')
+  })
+
   test('standard Gemini streams text deltas and functionCall parts', async () => {
     const post = spyOn(axios, 'post').mockResolvedValue({
       data: sse([
@@ -323,5 +461,37 @@ describe('provider real streaming', () => {
       text: '',
       gemini_thought_signature: 'opaque-final-signature',
     })
+  })
+
+  test('standard Gemini deduplicates cumulative functionCall resends', async () => {
+    const repeatedPart =
+      '{"functionCall":{"id":"gemini-same","name":"Edit","args":{"content":"b","file_path":"a"}}}'
+    spyOn(axios, 'post').mockResolvedValue({
+      data: sse([
+        `data: {"candidates":[{"content":{"parts":[${repeatedPart}]}}]}\n\n`,
+        `data: {"candidates":[{"content":{"parts":[${repeatedPart}]},"finishReason":"FUNCTION_CALL"}]}\n\n`,
+      ]),
+      headers: {},
+    })
+    const client = await createStandardAPIClient({
+      providerId: 'gemini-api',
+      apiKey: 'gm-key',
+      maxRetries: 1,
+    })
+    const { data } = await client.beta.messages.create({
+      model: 'gemini-test',
+      messages: userMessages(),
+      max_tokens: 16,
+      stream: true,
+      tools: sampleTools,
+    }).withResponse()
+    const events = await collect(data)
+    expect(
+      events.filter(
+        event =>
+          event.type === 'content_block_start' &&
+          event.content_block?.type === 'tool_use',
+      ),
+    ).toHaveLength(1)
   })
 })

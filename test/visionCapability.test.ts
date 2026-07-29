@@ -6,6 +6,7 @@ import {
   resolveVisionSupport,
   shouldSendImages,
 } from '../src/utils/model/visionCapability.ts'
+import { advertisedCapabilities } from '../src/commands/model-doctor/model-doctor.ts'
 
 // Three different answers to "can this model see" disagreed. The Ollama
 // adapter's modelCapabilityEnabled returned `has(x) ?? true`, so an
@@ -27,7 +28,29 @@ test('an unadvertised model is unknown, not unsupported', () => {
   // This is the case that produced the wrong advice: kimi-k2.7-code:cloud
   // returned no capabilities and was told it had no vision support.
   expect(resolveVisionSupport('kimi-k2.7-code:cloud', null)).toBe('unknown')
-  expect(resolveVisionSupport('kimi-k2.7-code:cloud', new Set())).toBe('unknown')
+  expect(resolveVisionSupport('kimi-k2.7-code:cloud', undefined)).toBe(
+    'unknown',
+  )
+})
+
+test('an explicitly empty capability list is an authoritative no', () => {
+  expect(resolveVisionSupport('kimi-k2.7-code:cloud', new Set())).toBe(
+    'unsupported',
+  )
+  // A name hint cannot overrule what the provider explicitly advertised.
+  expect(resolveVisionSupport('llava:13b', new Set())).toBe('unsupported')
+})
+
+test('model-doctor preserves absent versus explicitly empty capability lists', () => {
+  expect(advertisedCapabilities(undefined)).toBeNull()
+  expect(advertisedCapabilities({})).toBeNull()
+  expect(advertisedCapabilities({ capabilities: [] })).toEqual([])
+  expect(advertisedCapabilities({ capabilities: [42, null] })).toBeNull()
+  expect(
+    advertisedCapabilities({
+      capabilities: [' tools ', '', 42, 'vision', 'vision'],
+    }),
+  ).toEqual(['tools', 'vision'])
 })
 
 test('a recognised vision name confirms support without a capability list', () => {

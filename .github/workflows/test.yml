@@ -66,6 +66,8 @@ jobs:
       - name: Run tests (Bun)
         run: |
           set -xeuo pipefail
+          # Bun's parallel workers can collide on server.listen(0), producing
+          # EADDRINUSE in tests that correctly request an ephemeral port.
           bun test --timeout 120000 2>&1 | tee test-output.log
 
       - name: Upload test output on failure

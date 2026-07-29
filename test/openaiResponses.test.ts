@@ -207,6 +207,30 @@ describe('OpenAI Responses request and response mapping', () => {
     expect(message.openai_response_output[0]).toEqual(opaque)
   })
 
+  test('rejects duplicate function call IDs in buffered responses', () => {
+    expect(() =>
+      parseOpenAIResponsesMessage(
+        rawResponse({
+          output: [
+            {
+              type: 'function_call',
+              call_id: 'duplicate',
+              name: 'Edit',
+              arguments: '{}',
+            },
+            {
+              type: 'function_call',
+              call_id: 'duplicate',
+              name: 'Edit',
+              arguments: '{}',
+            },
+          ],
+        }),
+        'fallback',
+      ),
+    ).toThrow('duplicate tool call id')
+  })
+
   test('adapts non-streaming and streaming message calls without network access', async () => {
     const requests: Array<{ url: string; body: any; headers: Headers }> = []
     let call = 0
@@ -275,6 +299,95 @@ describe('OpenAI Responses request and response mapping', () => {
     expect(events.at(-1)?.type).toBe('message_stop')
     expect(requests[1].body.stream).toBe(true)
     expect(requests[1].body.background).toBe(false)
+  })
+
+  test('streaming fails closed when function arguments arrive before their item', async () => {
+    const fetch = async () =>
+      sseResponse([
+        {
+          type: 'response.created',
+          response: rawResponse({ status: 'in_progress', output: [] }),
+        },
+        {
+          type: 'response.function_call_arguments.delta',
+          output_index: 0,
+          delta: '{}',
+        },
+        {
+          type: 'response.completed',
+          response: rawResponse(),
+        },
+      ])
+    const client = await createOpenAIResponsesClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://example.test/v1',
+      maxRetries: 0,
+      fetch,
+    })
+    const handle = client.beta.messages.create({
+      model: 'gpt-test',
+      messages: [{ role: 'user', content: 'stream' }],
+      max_tokens: 10,
+      stream: true,
+    }) as any
+    const streamed = await handle.withResponse()
+    await expect(collect(streamed.data)).rejects.toThrow(
+      'before the function call item',
+    )
+  })
+
+  test('streaming rejects completed function arguments that are not an object', async () => {
+    const fetch = async () =>
+      sseResponse([
+        {
+          type: 'response.created',
+          response: rawResponse({ status: 'in_progress', output: [] }),
+        },
+        {
+          type: 'response.output_item.added',
+          output_index: 0,
+          item: {
+            type: 'function_call',
+            call_id: 'call-invalid-input',
+            name: 'Edit',
+          },
+        },
+        {
+          type: 'response.function_call_arguments.delta',
+          output_index: 0,
+          delta: '[]',
+        },
+        {
+          type: 'response.output_item.done',
+          output_index: 0,
+          item: {
+            type: 'function_call',
+            call_id: 'call-invalid-input',
+            name: 'Edit',
+            arguments: '[]',
+          },
+        },
+        {
+          type: 'response.completed',
+          response: rawResponse(),
+        },
+      ])
+    const client = await createOpenAIResponsesClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://example.test/v1',
+      maxRetries: 0,
+      fetch,
+    })
+    const handle = client.beta.messages.create({
+      model: 'gpt-test',
+      messages: [{ role: 'user', content: 'stream' }],
+      max_tokens: 10,
+      stream: true,
+    }) as any
+    const streamed = await handle.withResponse()
+    await expect(collect(streamed.data)).rejects.toThrow(
+      'must be a JSON object',
+    )
   })
 })
 

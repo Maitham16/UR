@@ -6,6 +6,7 @@ import {
   call,
   changedFilesSinceBefore,
   normalizeExecConcurrency,
+  plannedTaskPrompt,
   readPrompts,
   runExecPool,
 } from '../src/commands/exec/exec.js'
@@ -77,6 +78,37 @@ describe('ur exec command', () => {
       expect(results[0]!.dryRun).toBe(true)
       expect(results[0]!.command.join(' ')).toContain('-p')
       expect(results[0]!.command.join(' ')).toContain('add tests')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('planned worker prompt keeps the overall goal but bounds worker scope', async () => {
+    const dir = tempDir('ur-exec-goal-context-')
+    try {
+      const overallGoal = [
+        'Keep the public API stable.',
+        '- Implement the parser',
+        '- Update the documentation',
+      ].join('\n')
+      const [result] = await runExecPool([overallGoal], {
+        cwd: dir,
+        concurrency: 1,
+        dryRun: true,
+      })
+      const plannedTask = result?.plan?.tasks[0]
+      if (!plannedTask) throw new Error('expected a planned task')
+
+      const workerPrompt = plannedTaskPrompt(plannedTask)
+      expect(workerPrompt).toContain('Overall goal (shared context only')
+      expect(workerPrompt).toContain('Keep the public API stable.')
+      expect(workerPrompt).toContain(
+        'Assigned task (execute only this bounded unit of work)',
+      )
+      expect(workerPrompt).toContain('Implement the parser')
+      expect(workerPrompt).toContain(
+        'Never claim a file change or command that was not actually observed',
+      )
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -386,25 +418,62 @@ describe('ur exec command', () => {
     }
   })
 
-  test('independent real planned tasks run in parallel', async () => {
+  test('independent read-only planned tasks run in parallel', async () => {
     const dir = tempDir('ur-exec-parallel-')
     try {
       let active = 0
       let maxActive = 0
-      const results = await runExecPool(['- Add parser\n- Add docs\n- Add tests'], {
-        cwd: dir,
-        concurrency: 1,
-        planning: { taskPlanning: true, maxAgents: 3 },
-        executePlannedTask: async () => {
-          active += 1
-          maxActive = Math.max(maxActive, active)
-          await new Promise(resolve => setTimeout(resolve, 10))
-          active -= 1
-          return { ok: true, output: 'done', commandsRun: ['true'] }
+      const results = await runExecPool(
+        ['- Inspect parser\n- Review docs\n- Analyze test coverage'],
+        {
+          cwd: dir,
+          concurrency: 1,
+          planning: { taskPlanning: true, maxAgents: 3 },
+          executePlannedTask: async () => {
+            active += 1
+            maxActive = Math.max(maxActive, active)
+            await new Promise(resolve => setTimeout(resolve, 10))
+            active -= 1
+            return { ok: true, output: 'done', commandsRun: ['true'] }
+          },
         },
-      })
+      )
       expect(maxActive).toBeGreaterThan(1)
       expect(results[0]!.plannedRun?.finished).toBe(3)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('shared-cwd planned mutations are serialized for reliable evidence', async () => {
+    const dir = tempDir('ur-exec-mutation-serialization-')
+    try {
+      let active = 0
+      let maxActive = 0
+      const results = await runExecPool(
+        ['- Implement parser\n- Update documentation'],
+        {
+          cwd: dir,
+          concurrency: 1,
+          planning: { taskPlanning: true, maxAgents: 3 },
+          executePlannedTask: async task => {
+            active += 1
+            maxActive = Math.max(maxActive, active)
+            await Bun.sleep(10)
+            writeFileSync(join(dir, `${task.id}.txt`), task.id)
+            active -= 1
+            return {
+              ok: true,
+              output: `changed ${task.id}.txt`,
+              changedFiles: [`${task.id}.txt`],
+            }
+          },
+        },
+      )
+
+      expect(maxActive).toBe(1)
+      expect(results[0]!.plannedRun?.finished).toBe(2)
+      expect(results[0]!.plannedRun?.maxAgentsUsed).toBe(1)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -484,6 +553,34 @@ describe('ur exec command', () => {
       )
       expect(results[0]!.verificationFailures?.map(f => f.code)).toContain(
         'unsupported_command_claim',
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('final report distinguishes failed tasks from blocked dependents', async () => {
+    const dir = tempDir('ur-exec-blocked-report-')
+    try {
+      const results = await runExecPool(
+        ['- Implement parser\n- Verify parser behavior'],
+        {
+          cwd: dir,
+          concurrency: 1,
+          planning: { taskPlanning: true },
+          executePlannedTask: async task =>
+            task.id === 'task-1'
+              ? { ok: false, error: 'implementation failed' }
+              : { ok: true, output: 'must not run' },
+        },
+      )
+      const report = results[0]?.finalReport
+      expect(report?.summary.failed).toBe(1)
+      expect(report?.summary.blocked).toBe(1)
+      expect(report?.blockedTasks.map(task => task.id)).toEqual(['task-2'])
+      expect(report?.waitingApprovalTasks).toEqual([])
+      expect(results[0]?.finalReportText).toContain(
+        'Waiting on prerequisite: 1',
       )
     } finally {
       rmSync(dir, { recursive: true, force: true })

@@ -9,7 +9,6 @@ import {
 } from '../../utils/hooks.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import {
-  blockTask,
   deleteTask,
   getTask,
   getTaskListId,
@@ -17,7 +16,8 @@ import {
   listTasks,
   type TaskStatus,
   TaskStatusSchema,
-  updateTask,
+  updateTaskWithDependencies,
+  validateTaskDependencies,
 } from '../../utils/tasks.js'
 import {
   getAgentId,
@@ -109,7 +109,10 @@ export const TaskUpdateTool = buildTool({
     return isTodoV2Enabled()
   },
   isConcurrencySafe() {
-    return true
+    // This tool performs read-modify-write updates across reciprocal task
+    // files. Parallel TaskUpdate calls can otherwise lose fields or leave
+    // one-sided dependency edges.
+    return false
   },
   toAutoClassifierInput(input) {
     const parts = [input.taskId]
@@ -151,6 +154,42 @@ export const TaskUpdateTool = buildTool({
           taskId,
           updatedFields: [],
           error: 'Task not found',
+        },
+      }
+    }
+
+    const requestedDependencies = [
+      ...(addBlocks ?? []).map(targetId => ({
+        fromTaskId: taskId,
+        toTaskId: targetId,
+        field: 'addBlocks',
+      })),
+      ...(addBlockedBy ?? []).map(blockerId => ({
+        fromTaskId: blockerId,
+        toTaskId: taskId,
+        field: 'addBlockedBy',
+      })),
+    ]
+    const dependencyValidation = await validateTaskDependencies(
+      taskListId,
+      requestedDependencies,
+    )
+    if (dependencyValidation.success === false) {
+      const dependency = dependencyValidation.dependency
+      const field = requestedDependencies.find(
+        candidate =>
+          candidate.fromTaskId === dependency.fromTaskId &&
+          candidate.toTaskId === dependency.toTaskId,
+      )?.field ?? 'dependency'
+      return {
+        data: {
+          success: false,
+          taskId,
+          updatedFields: [],
+          error:
+            `Invalid ${field} dependency ` +
+            `#${dependency.fromTaskId} -> #${dependency.toTaskId}: ` +
+            dependencyValidation.reason,
         },
       }
     }
@@ -230,6 +269,32 @@ export const TaskUpdateTool = buildTool({
       if (status !== existingTask.status) {
         // Run TaskCompleted hooks when marking a task as completed
         if (status === 'completed') {
+          const tasksById = new Map(
+            (await listTasks(taskListId)).map(task => [task.id, task]),
+          )
+          const effectiveBlockers = new Set([
+            ...existingTask.blockedBy,
+            ...(addBlockedBy ?? []),
+          ])
+          const unresolvedBlockers = [...effectiveBlockers].filter(
+            blockerId => {
+              const blocker = tasksById.get(blockerId)
+              return blocker !== undefined && blocker.status !== 'completed'
+            },
+          )
+          if (unresolvedBlockers.length > 0) {
+            return {
+              data: {
+                success: false,
+                taskId,
+                updatedFields: [],
+                error:
+                  `Task #${taskId} is still blocked by ` +
+                  unresolvedBlockers.map(id => `#${id}`).join(', '),
+              },
+            }
+          }
+
           const blockingErrors: string[] = []
 
           const generator = executeTaskCompletedHooks(
@@ -269,8 +334,38 @@ export const TaskUpdateTool = buildTool({
       }
     }
 
-    if (Object.keys(updates).length > 0) {
-      await updateTask(taskListId, taskId, updates)
+    const newBlocks = (addBlocks ?? []).filter(
+      id => !existingTask.blocks.includes(id),
+    )
+    const newBlockedBy = (addBlockedBy ?? []).filter(
+      id => !existingTask.blockedBy.includes(id),
+    )
+    if (newBlocks.length > 0) updatedFields.push('blocks')
+    if (newBlockedBy.length > 0) updatedFields.push('blockedBy')
+
+    const committed = await updateTaskWithDependencies(
+      taskListId,
+      taskId,
+      updates,
+      requestedDependencies,
+    )
+    if (committed.success === false) {
+      const dependency = committed.dependency
+      return {
+        data: {
+          success: false,
+          taskId,
+          updatedFields: [],
+          error: dependency
+            ? `Failed to add dependency ` +
+              `#${dependency.fromTaskId} -> #${dependency.toTaskId}: ` +
+              committed.reason
+            : committed.reason === 'blocked'
+              ? `Task #${taskId} is still blocked by ` +
+                (committed.blockedBy ?? []).map(id => `#${id}`).join(', ')
+            : `Failed to commit task update: ${committed.reason}`,
+        },
+      }
     }
 
     // Notify new owner via mailbox when ownership changes
@@ -295,32 +390,6 @@ export const TaskUpdateTool = buildTool({
         },
         taskListId,
       )
-    }
-
-    // Add blocks if provided and not already present
-    if (addBlocks && addBlocks.length > 0) {
-      const newBlocks = addBlocks.filter(
-        id => !existingTask.blocks.includes(id),
-      )
-      for (const blockId of newBlocks) {
-        await blockTask(taskListId, taskId, blockId)
-      }
-      if (newBlocks.length > 0) {
-        updatedFields.push('blocks')
-      }
-    }
-
-    // Add blockedBy if provided and not already present (reverse: the blocker blocks this task)
-    if (addBlockedBy && addBlockedBy.length > 0) {
-      const newBlockedBy = addBlockedBy.filter(
-        id => !existingTask.blockedBy.includes(id),
-      )
-      for (const blockerId of newBlockedBy) {
-        await blockTask(taskListId, blockerId, taskId)
-      }
-      if (newBlockedBy.length > 0) {
-        updatedFields.push('blockedBy')
-      }
     }
 
     // Structural verification nudge: if the main-thread agent just closed
@@ -371,13 +440,14 @@ export const TaskUpdateTool = buildTool({
       verificationNudgeNeeded,
     } = content as Output
     if (!success) {
-      // Return as non-error so it doesn't trigger sibling tool cancellation
-      // in StreamingToolExecutor. "Task not found" is a benign condition
-      // (e.g., task list already cleaned up) that the model can handle.
+      // This is a failed state transition, not a successful no-op. The
+      // streaming executor only cascades sibling cancellation for Bash, so
+      // marking it as an error is both accurate and safe for parallel tasks.
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
         content: error || `Task #${taskId} not found`,
+        is_error: true,
       }
     }
 

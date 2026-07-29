@@ -4,36 +4,23 @@
 // This module only renders and relays postMessage traffic; all state and
 // decisions live in chat/chatController.ts.
 
+import { randomBytes } from 'node:crypto'
 import * as vscode from 'vscode'
-import type { ChatMessage, ChatSession } from '../bridge/types.js'
 import type { ContextAttachment } from '../context/ideContext.js'
 import { formatAttachmentLabel } from '../context/ideContext.js'
+import {
+  isWebviewInboundMessage,
+  type WebviewInboundMessage,
+  type WebviewOutboundMessage,
+  type WireAttachment,
+} from './webviewProtocol.js'
 
-export type ChatStatus = 'idle' | 'running' | 'canceled' | 'error'
-
-/** Wire shape for an attachment chip — the label is computed extension-side
- * via the already-tested formatAttachmentLabel() so the webview never has to
- * re-implement that formatting in JS. */
-export interface WireAttachment {
-  label: string
-}
-
-export type WebviewInboundMessage =
-  | { type: 'ready' }
-  | { type: 'send'; text: string }
-  | { type: 'cancel' }
-  | { type: 'permissionDecision'; requestId: string; decision: 'allow' | 'deny' }
-  | { type: 'removeAttachment'; index: number }
-
-export type WebviewOutboundMessage =
-  | { type: 'init'; session: ChatSession; messages: ChatMessage[]; status: ChatStatus; attachments: WireAttachment[] }
-  | { type: 'messageAppended'; message: ChatMessage }
-  | { type: 'statusChanged'; status: ChatStatus }
-  | { type: 'permissionRequest'; requestId: string; toolName: string; input: unknown }
-  | { type: 'permissionResolved'; requestId: string }
-  | { type: 'attachmentsChanged'; attachments: WireAttachment[] }
-  | { type: 'errorBanner'; message: string }
-  | { type: 'sessionRenamed'; title: string }
+export type {
+  ChatStatus,
+  WebviewInboundMessage,
+  WebviewOutboundMessage,
+  WireAttachment,
+} from './webviewProtocol.js'
 
 export class ChatPanel {
   private static current: ChatPanel | undefined
@@ -46,7 +33,9 @@ export class ChatPanel {
     this.panel = panel
     this.panel.webview.html = renderChatHtml(this.panel.webview)
     this.disposables.push(
-      this.panel.webview.onDidReceiveMessage((message: WebviewInboundMessage) => onMessage(message)),
+      this.panel.webview.onDidReceiveMessage((message: unknown) => {
+        if (isWebviewInboundMessage(message)) onMessage(message)
+      }),
       this.panel.onDidDispose(() => this.handleDispose()),
     )
   }
@@ -82,10 +71,7 @@ export class ChatPanel {
 }
 
 function nonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  let value = ''
-  for (let i = 0; i < 32; i++) value += chars.charAt(Math.floor(Math.random() * chars.length))
-  return value
+  return randomBytes(24).toString('base64url')
 }
 
 function renderChatHtml(webview: vscode.Webview): string {
@@ -210,22 +196,22 @@ function renderChatHtml(webview: vscode.Webview): string {
   </style>
 </head>
 <body>
-  <div id="banner"></div>
-  <div id="messages">
+  <div id="banner" role="alert" aria-live="assertive"></div>
+  <div id="messages" role="log" aria-live="polite" aria-relevant="additions" aria-label="UR chat messages">
     <div id="empty-state">Ask UR about this workspace. Use <code>UR: Add Selection to Chat</code> or <code>UR: Add Current File to Chat</code> to attach code first.</div>
   </div>
-  <div id="permission-prompt">
-    <div><strong>UR wants to use <span id="permission-tool"></span></strong></div>
+  <div id="permission-prompt" role="alertdialog" aria-modal="true" aria-labelledby="permission-title">
+    <div id="permission-title"><strong>UR wants to use <span id="permission-tool"></span></strong></div>
     <div class="input-preview" id="permission-input"></div>
     <div class="actions">
       <button id="permission-allow">Allow</button>
       <button id="permission-deny" class="secondary">Deny</button>
     </div>
   </div>
-  <div id="attachments"></div>
-  <div id="status-line"></div>
+  <div id="attachments" aria-label="Attached editor context"></div>
+  <div id="status-line" role="status" aria-live="polite"></div>
   <form id="composer">
-    <textarea id="input" placeholder="Message UR…" rows="2"></textarea>
+    <textarea id="input" aria-label="Message UR" maxlength="1000000" placeholder="Message UR…" rows="2"></textarea>
     <button id="send" type="submit">Send</button>
     <button id="cancel" type="button" class="secondary" hidden>Cancel</button>
   </form>
@@ -244,6 +230,8 @@ function renderChatHtml(webview: vscode.Webview): string {
       const inputEl = document.getElementById('input');
       const sendButton = document.getElementById('send');
       const cancelButton = document.getElementById('cancel');
+      const permissionAllowButton = document.getElementById('permission-allow');
+      const permissionDenyButton = document.getElementById('permission-deny');
 
       let currentStatus = 'idle';
       let pendingPermissionRequestId = null;
@@ -310,6 +298,8 @@ function renderChatHtml(webview: vscode.Webview): string {
           const remove = document.createElement('button');
           remove.type = 'button';
           remove.textContent = '\\u00d7';
+          remove.title = 'Remove ' + attachment.label;
+          remove.setAttribute('aria-label', 'Remove ' + attachment.label);
           remove.addEventListener('click', function () {
             vscode.postMessage({ type: 'removeAttachment', index: index });
           });
@@ -335,9 +325,15 @@ function renderChatHtml(webview: vscode.Webview): string {
         bannerEl.classList.add('visible');
       }
 
+      function hideBanner() {
+        bannerEl.textContent = '';
+        bannerEl.classList.remove('visible');
+      }
+
       window.addEventListener('message', function (event) {
         const message = event.data;
         if (message.type === 'init') {
+          hideBanner();
           renderAll(message.messages);
           renderAttachments(message.attachments);
           applyStatus(message.status);
@@ -347,9 +343,12 @@ function renderChatHtml(webview: vscode.Webview): string {
           applyStatus(message.status);
         } else if (message.type === 'permissionRequest') {
           pendingPermissionRequestId = message.requestId;
+          permissionAllowButton.disabled = false;
+          permissionDenyButton.disabled = false;
           permissionToolEl.textContent = message.toolName;
           permissionInputEl.textContent = JSON.stringify(message.input, null, 2);
           permissionEl.classList.add('visible');
+          permissionDenyButton.focus();
         } else if (message.type === 'permissionResolved') {
           if (pendingPermissionRequestId === message.requestId) {
             pendingPermissionRequestId = null;
@@ -368,6 +367,7 @@ function renderChatHtml(webview: vscode.Webview): string {
         event.preventDefault();
         const text = inputEl.value.trim();
         if (!text || currentStatus === 'running') return;
+        hideBanner();
         vscode.postMessage({ type: 'send', text: text });
         inputEl.value = '';
       });
@@ -383,12 +383,16 @@ function renderChatHtml(webview: vscode.Webview): string {
         vscode.postMessage({ type: 'cancel' });
       });
 
-      document.getElementById('permission-allow').addEventListener('click', function () {
+      permissionAllowButton.addEventListener('click', function () {
         if (!pendingPermissionRequestId) return;
+        permissionAllowButton.disabled = true;
+        permissionDenyButton.disabled = true;
         vscode.postMessage({ type: 'permissionDecision', requestId: pendingPermissionRequestId, decision: 'allow' });
       });
-      document.getElementById('permission-deny').addEventListener('click', function () {
+      permissionDenyButton.addEventListener('click', function () {
         if (!pendingPermissionRequestId) return;
+        permissionAllowButton.disabled = true;
+        permissionDenyButton.disabled = true;
         vscode.postMessage({ type: 'permissionDecision', requestId: pendingPermissionRequestId, decision: 'deny' });
       });
 
@@ -401,6 +405,6 @@ function renderChatHtml(webview: vscode.Webview): string {
 
 /** Attachment labels are computed extension-side (formatAttachmentLabel is
  * pure and already tested) so the webview only ever renders plain strings. */
-export function toWireAttachment(attachment: ContextAttachment): { label: string } {
+export function toWireAttachment(attachment: ContextAttachment): WireAttachment {
   return { label: formatAttachmentLabel(attachment) }
 }

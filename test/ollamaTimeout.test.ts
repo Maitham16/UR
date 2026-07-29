@@ -1,9 +1,19 @@
 import { APIConnectionTimeoutError } from '@urhq-ai/sdk'
 import { expect, test } from 'bun:test'
 import {
+  consumePendingProviderNotice,
   createOllamaURHQClient,
   getOllamaRequestTimeoutMs,
+  toOllamaChatRequest,
 } from '../src/services/api/ollama.js'
+import {
+  clearOllamaBaseUrlOverride,
+  setOllamaBaseUrlOverride,
+} from '../src/utils/model/ollamaConfig.js'
+import {
+  clearOllamaModelMetadataCacheForTests,
+  getOllamaContextLengthForModel,
+} from '../src/utils/model/ollamaModels.js'
 import {
   getNonstreamingFallbackTimeoutMs,
   isOllamaCloudRuntime,
@@ -181,6 +191,73 @@ test('Ollama chat requests set num_ctx and keep_alive for warm, full-context run
   }
 })
 
+test('an Ollama client uses context metadata from its captured endpoint', async () => {
+  const previousFetch = globalThis.fetch
+  const hostA = 'http://host-a.local:11434'
+  const hostB = 'http://host-b.local:11434'
+  const seen: string[] = []
+  let requestBody: Record<string, any> | undefined
+
+  clearOllamaModelMetadataCacheForTests()
+  setOllamaBaseUrlOverride(hostB)
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input)
+    seen.push(url)
+    if (url === `${hostA}/api/show`) {
+      return new Response(
+        JSON.stringify({
+          capabilities: ['completion', 'tools'],
+          model_info: { 'endpoint-test.context_length': 16_384 },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    if (url === `${hostA}/api/chat`) {
+      requestBody = JSON.parse(String(init?.body))
+      return ndjsonResponse([
+        {
+          message: { role: 'assistant', content: 'ok' },
+          done: true,
+          done_reason: 'stop',
+        },
+      ])
+    }
+    throw new Error(`Unexpected Ollama test URL: ${url}`)
+  }) as typeof globalThis.fetch
+
+  try {
+    // The explicit client remains pinned to host A even while the live session
+    // points at host B. A trailing /api is normalized before requests/cache keys.
+    const client = createOllamaURHQClient({
+      baseUrlOverride: `${hostA}/api/`,
+    }) as any
+    const { data } = await client.beta.messages
+      .create({
+        model: 'endpoint-context-test:latest',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 10,
+        stream: true,
+      })
+      .withResponse()
+    for await (const _event of data) {
+      // consume the stream
+    }
+
+    expect(seen).toEqual([`${hostA}/api/show`, `${hostA}/api/chat`])
+    expect(requestBody?.options?.num_ctx).toBe(16_384)
+    expect(
+      getOllamaContextLengthForModel('endpoint-context-test:latest', hostA),
+    ).toBe(16_384)
+    expect(
+      getOllamaContextLengthForModel('endpoint-context-test:latest'),
+    ).toBeUndefined()
+  } finally {
+    globalThis.fetch = previousFetch
+    clearOllamaBaseUrlOverride()
+    clearOllamaModelMetadataCacheForTests()
+  }
+})
+
 test('Ollama chat requests keep vision inputs for vision-capable models', async () => {
   const previousFetch = globalThis.fetch
   let requestBody: Record<string, any> | undefined
@@ -250,6 +327,32 @@ test('Ollama chat requests omit native tools when the model does not advertise t
   } finally {
     globalThis.fetch = previousFetch
   }
+})
+
+test('the no-native-tools notice describes the fallback honestly', () => {
+  consumePendingProviderNotice()
+  toOllamaChatRequest(
+    {
+      model: 'notice-fallback-model:latest',
+      messages: [{ role: 'user', content: 'use a tool' }],
+      max_tokens: 10,
+      stream: false,
+      tools: [
+        {
+          name: 'example_tool',
+          description: 'Example tool',
+          input_schema: { type: 'object', properties: {} },
+        },
+      ],
+    } as never,
+    false,
+    new Set(['completion']),
+  )
+
+  const notice = consumePendingProviderNotice()
+  expect(notice).toContain('conservative text-call fallback')
+  expect(notice).toContain('matching tool results')
+  expect(notice).not.toContain('cannot read or write files')
 })
 
 test('Ollama stream forwards unexpected thinking chunks before text', async () => {

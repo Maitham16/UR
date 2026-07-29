@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, normalize, relative, sep } from 'node:path'
 import type {
   NexusTask,
   TaskClaim,
@@ -24,6 +24,12 @@ function normalizeSet(values?: Iterable<string>): Set<string> {
 
 function unique(values: Iterable<string>): string[] {
   return [...new Set([...values].map(value => value.trim()).filter(Boolean))]
+}
+
+function normalizeEvidencePath(cwd: string, value: string): string {
+  const absolute = isAbsolute(value) ? normalize(value) : normalize(join(cwd, value))
+  const workspaceRelative = relative(cwd, absolute)
+  return workspaceRelative.split(sep).join('/').replace(/^\.\//, '')
 }
 
 function fileExists(cwd: string, file: string, knownFiles: Set<string>): boolean {
@@ -109,9 +115,15 @@ export function validateBeforeExecution(
 }
 
 function commandWasRun(claimed: string, commandsRun: Set<string>): boolean {
-  if (commandsRun.has(claimed)) return true
+  const normalizedClaim = claimed.replace(/\s+/g, ' ').trim()
   for (const command of commandsRun) {
-    if (command.includes(claimed) || claimed.includes(command)) return true
+    const normalizedCommand = command.replace(/\s+/g, ' ').trim()
+    if (
+      normalizedCommand === normalizedClaim ||
+      normalizedCommand.startsWith(`${normalizedClaim} `)
+    ) {
+      return true
+    }
   }
   return false
 }
@@ -126,16 +138,19 @@ export function validateAfterExecution(
   const hasObservedFileEvidence =
     context.actualChangedFiles !== undefined ||
     result.observedChangedFiles !== undefined
-  const actualChangedFiles = normalizeSet(
-    hasObservedFileEvidence
-      ? [
-          ...(context.actualChangedFiles ?? []),
-          ...(result.observedChangedFiles ?? []),
-        ]
-      : [
-          ...(result.changedFiles ?? []),
-          ...(result.observedChangedFiles ?? []),
-        ],
+  const rawActualChangedFiles = hasObservedFileEvidence
+    ? [
+        ...(context.actualChangedFiles ?? []),
+        ...(result.observedChangedFiles ?? []),
+      ]
+    : [
+        ...(result.changedFiles ?? []),
+        ...(result.observedChangedFiles ?? []),
+      ]
+  const actualChangedFiles = new Set(
+    [...rawActualChangedFiles].map(file =>
+      normalizeEvidencePath(context.cwd, file),
+    ),
   )
   const commandsRun = normalizeSet([
     ...(context.commandsRun ?? []),
@@ -151,6 +166,9 @@ export function validateAfterExecution(
       .filter((claim): claim is Extract<TaskClaim, { type: 'fileChanged' }> => claim.type === 'fileChanged')
       .map(claim => claim.value),
   ])
+  const normalizedReportedChangedFiles = new Set(
+    reportedChangedFiles.map(file => normalizeEvidencePath(context.cwd, file)),
+  )
   const reportedCommands = unique([
     ...(result.reportedCommands ?? []),
     ...claims
@@ -173,7 +191,7 @@ export function validateAfterExecution(
   }
 
   for (const file of reportedChangedFiles) {
-    if (!actualChangedFiles.has(file)) {
+    if (!actualChangedFiles.has(normalizeEvidencePath(context.cwd, file))) {
       issues.push(
         issue(
           'unsupported_file_change_claim',
@@ -186,7 +204,7 @@ export function validateAfterExecution(
   }
 
   for (const file of actualChangedFiles) {
-    if (!reportedChangedFiles.includes(file)) {
+    if (!normalizedReportedChangedFiles.has(file)) {
       issues.push(
         issue(
           'unreported_file_change',

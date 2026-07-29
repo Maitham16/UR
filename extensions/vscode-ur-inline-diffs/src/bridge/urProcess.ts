@@ -39,6 +39,16 @@ export type SpawnFn = (
 
 export class NdjsonBuffer {
   private buffer = ''
+  private discardingOversizedLine = false
+  readonly maxLineLength: number
+  droppedOversizedLine = false
+
+  constructor(maxLineLength = 16 * 1024 * 1024) {
+    this.maxLineLength =
+      Number.isSafeInteger(maxLineLength) && maxLineLength > 0
+        ? maxLineLength
+        : 16 * 1024 * 1024
+  }
 
   /** Feed a raw chunk (may contain zero, one, or many complete lines, and may
    * split a line across two calls). Returns every complete, parseable line
@@ -47,15 +57,38 @@ export class NdjsonBuffer {
    * to stderr, so a malformed line here means something unexpected slipped
    * through, not a reason to crash the extension. */
   push(chunk: string): StdoutMessage[] {
-    this.buffer += chunk
     const messages: StdoutMessage[] = []
-    for (;;) {
-      const newline = this.buffer.indexOf('\n')
-      if (newline === -1) break
-      const line = this.buffer.slice(0, newline)
-      this.buffer = this.buffer.slice(newline + 1)
-      const parsed = parseNdjsonLine(line)
+    let offset = 0
+
+    while (offset < chunk.length) {
+      const newline = chunk.indexOf('\n', offset)
+      const end = newline === -1 ? chunk.length : newline
+      const segment = chunk.slice(offset, end)
+
+      if (this.discardingOversizedLine) {
+        if (newline === -1) return messages
+        this.discardingOversizedLine = false
+        offset = newline + 1
+        continue
+      }
+
+      if (this.buffer.length + segment.length > this.maxLineLength) {
+        this.buffer = ''
+        this.droppedOversizedLine = true
+        if (newline === -1) {
+          this.discardingOversizedLine = true
+          return messages
+        }
+        offset = newline + 1
+        continue
+      }
+
+      this.buffer += segment
+      if (newline === -1) return messages
+      const parsed = parseNdjsonLine(this.buffer)
+      this.buffer = ''
       if (parsed) messages.push(parsed)
+      offset = newline + 1
     }
     return messages
   }
@@ -63,6 +96,11 @@ export class NdjsonBuffer {
   /** Whatever is left with no trailing newline yet (a genuinely partial line
    * stays buffered; call this only once the stream has actually ended). */
   flush(): StdoutMessage[] {
+    if (this.discardingOversizedLine) {
+      this.buffer = ''
+      this.discardingOversizedLine = false
+      return []
+    }
     const rest = this.buffer
     this.buffer = ''
     const parsed = parseNdjsonLine(rest)
@@ -168,6 +206,7 @@ export interface UrTurnDeps {
 }
 
 const defaultSpawn: SpawnFn = (command, args, options) => nodeSpawn(command, args, options) as UrChildProcess
+const MAX_CAPTURED_STDERR_CHARS = 16 * 1024
 
 export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps: UrTurnDeps = {}): UrTurnHandle {
   const spawnFn = deps.spawn ?? defaultSpawn
@@ -202,7 +241,8 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
   }
 
   const stdoutBuffer = new NdjsonBuffer()
-  const stderrChunks: string[] = []
+  let stderrTail = ''
+  let omittedStderrChars = 0
   let sawResult = false
   let resultIsError = false
   let canceled = false
@@ -211,8 +251,26 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
   const finish = (exitCode: number | null, signal: NodeJS.Signals | null, spawnError?: string) => {
     if (settled) return
     settled = true
-    const stderr = stderrChunks.join('')
-    const ok = !canceled && !spawnError && sawResult && !resultIsError
+    const stderr =
+      omittedStderrChars > 0
+        ? `[${omittedStderrChars} earlier stderr characters omitted]\n${stderrTail}`
+        : stderrTail
+    const protocolError = stdoutBuffer.droppedOversizedLine
+      ? 'UR emitted an oversized stream-JSON line; the extension refused to buffer unbounded output.'
+      : undefined
+    // A result frame is necessary but not sufficient for success. The CLI can
+    // still fail after emitting it (for example while flushing hooks or
+    // persisting the session). Treating that abnormal process exit as success
+    // hides the failure from the chat UI and encourages the user to trust an
+    // incomplete turn.
+    const exitedCleanly = exitCode === 0 && signal === null
+    const ok =
+      !canceled &&
+      !spawnError &&
+      !protocolError &&
+      exitedCleanly &&
+      sawResult &&
+      !resultIsError
     handlers.onExit({
       ok,
       exitCode,
@@ -220,7 +278,28 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
       canceled,
       sawResult,
       stderr,
-      error: spawnError ?? (!ok && !canceled ? deriveErrorMessage(executable, request.cwd, sawResult, resultIsError, exitCode, signal, stderr) : undefined),
+      error:
+        spawnError ??
+        (!ok && !canceled
+          ? protocolError
+            ? formatTurnFailure({
+                executable,
+                cwd: request.cwd,
+                exitCode,
+                signal,
+                stderr,
+                reason: protocolError,
+              })
+            : deriveErrorMessage(
+                executable,
+                request.cwd,
+                sawResult,
+                resultIsError,
+                exitCode,
+                signal,
+                stderr,
+              )
+          : undefined),
     })
   }
 
@@ -253,7 +332,15 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
     }
   })
   child.stderr?.on('data', (chunk: Buffer) => {
-    stderrChunks.push(chunk.toString('utf8'))
+    const text = chunk.toString('utf8')
+    const combined = stderrTail + text
+    if (combined.length > MAX_CAPTURED_STDERR_CHARS) {
+      const excess = combined.length - MAX_CAPTURED_STDERR_CHARS
+      omittedStderrChars += excess
+      stderrTail = combined.slice(excess)
+    } else {
+      stderrTail = combined
+    }
   })
   child.on('error', error => {
     finish(
@@ -264,7 +351,10 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
         cwd: request.cwd,
         exitCode: null,
         signal: null,
-        stderr: stderrChunks.join(''),
+        stderr:
+          omittedStderrChars > 0
+            ? `[${omittedStderrChars} earlier stderr characters omitted]\n${stderrTail}`
+            : stderrTail,
         reason: `Failed to run: ${errorMessage(error)}`,
       }),
     )
@@ -303,9 +393,12 @@ function deriveErrorMessage(
   signal: NodeJS.Signals | null,
   stderr: string,
 ): string {
-  const reason = sawResult && resultIsError
-    ? 'UR reported an error completing this turn.'
-    : 'UR exited without producing a successful result.'
+  const reason =
+    sawResult && resultIsError
+      ? 'UR reported an error completing this turn.'
+      : sawResult
+        ? 'UR produced a result, but the process exited unsuccessfully.'
+        : 'UR exited without producing a successful result.'
   return formatTurnFailure({ executable, cwd, exitCode, signal, stderr, reason })
 }
 

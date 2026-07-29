@@ -31,12 +31,15 @@ function run(command, args, options = {}) {
   })
 }
 
-function packageSmokeEnv() {
+function packageSmokeEnv(temporaryRoot) {
   return {
     ...process.env,
     BUN_BIN: bunBin,
     UR_CODE_SIMPLE: '1',
-    UR_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'ur-package-config-')),
+    // Keep every smoke-test config under the package-check work directory so
+    // the finally block removes it. Creating these directly in os.tmpdir()
+    // leaked one directory for every command on every release check.
+    UR_CONFIG_DIR: mkdtempSync(join(temporaryRoot, '.ur-package-config-')),
     URHQ_API_KEY: '',
     URHQ_AUTH_TOKEN: '',
     URHQ_UNIX_SOCKET: '',
@@ -93,14 +96,14 @@ function checkPackageContents(tarball) {
 function runPackagedBin(packageRoot, args) {
   return run(nodeBin, [join(packageRoot, 'bin', 'ur.js'), ...args], {
     cwd: packageRoot,
-    env: packageSmokeEnv(),
+    env: packageSmokeEnv(packageRoot),
   })
 }
 
 function runPackagedBundle(packageRoot, args) {
   return run(bunBin, [join(packageRoot, 'dist', 'cli.js'), ...args], {
     cwd: packageRoot,
-    env: packageSmokeEnv(),
+    env: packageSmokeEnv(packageRoot),
   })
 }
 
@@ -128,7 +131,7 @@ function expectStatus(label, result, expectedStatus) {
  * asks the registry the exact question that matters and takes seconds, where
  * installing the tree takes minutes and fails for unrelated network reasons.
  */
-function checkDependenciesResolve(packedPackage) {
+function checkDependenciesResolve(packedPackage, npmCache) {
   const deps = Object.entries(packedPackage.dependencies ?? {})
   if (deps.length === 0) return
   const unresolved = []
@@ -144,6 +147,10 @@ function checkDependenciesResolve(packedPackage) {
     const result = spawnSync('npm', ['view', `${name}@${range}`, 'version'], {
       encoding: 'utf8',
       timeout: 60_000,
+      env: {
+        ...process.env,
+        npm_config_cache: npmCache,
+      },
     })
     if (result.status !== 0 || !result.stdout.trim()) {
       unresolved.push(
@@ -185,7 +192,7 @@ function main() {
       fail('packed package.json must not declare sharp in devDependencies')
     }
 
-    checkDependenciesResolve(packedPackage)
+    checkDependenciesResolve(packedPackage, join(workDir, 'npm-cache'))
 
     const version = runPackagedBin(packageRoot, ['--version'])
     expectStatus('packed ur --version', version, 0)

@@ -86,6 +86,56 @@ export class ProviderCapabilityError extends Error {
   }
 }
 
+export function isProviderToolInput(
+  value: unknown,
+): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * All provider families converge on Anthropic-shaped tool_use blocks. Enforce
+ * the invariants once at that boundary so malformed calls cannot reach
+ * orchestration with duplicate IDs or primitive inputs.
+ */
+export function assertValidProviderToolUses(
+  content: unknown,
+  context: string,
+): void {
+  if (!Array.isArray(content)) {
+    throw new ProviderResponseParseError(`${context} content must be an array`, {
+      content,
+    })
+  }
+  const ids = new Set<string>()
+  for (const [index, block] of content.entries()) {
+    if (block?.type !== 'tool_use') continue
+    const path = `${context} tool_use[${index}]`
+    if (typeof block.id !== 'string' || block.id.length === 0) {
+      throw new ProviderResponseParseError(`${path} is missing an id`, {
+        block,
+      })
+    }
+    if (ids.has(block.id)) {
+      throw new ProviderResponseParseError(
+        `${context} contains duplicate tool call id "${block.id}"`,
+        { block },
+      )
+    }
+    ids.add(block.id)
+    if (typeof block.name !== 'string' || block.name.length === 0) {
+      throw new ProviderResponseParseError(`${path} is missing a name`, {
+        block,
+      })
+    }
+    if (!isProviderToolInput(block.input)) {
+      throw new ProviderResponseParseError(
+        `${path} input must be a JSON object`,
+        { block },
+      )
+    }
+  }
+}
+
 export type ProviderRuntimeSelection = {
   providerId: ProviderId
   providerName: string
@@ -249,15 +299,31 @@ function isLoopbackBaseUrl(value: string | undefined): boolean {
   }
 }
 
-function assertProviderAllowedOffline(providerId: ProviderId): void {
+export function resolveProviderBaseUrl(
+  providerId: ProviderId,
+  settings: SettingsJson = getInitialSettings(),
+): string | undefined {
+  const definition = getProviderDefinition(providerId)
+  const active = getActiveProviderSettings(settings)
+  const configuredBaseUrl =
+    active.active === providerId ? active.baseUrl : undefined
+  if (providerId === 'ollama') {
+    return (
+      getOllamaSessionOverride() ??
+      configuredBaseUrl ??
+      getOllamaBaseUrl(process.env, settings)
+    )
+  }
+  return configuredBaseUrl ?? definition.defaultBaseUrl
+}
+
+export function assertProviderAllowedOffline(
+  providerId: ProviderId,
+  settings: SettingsJson = getInitialSettings(),
+): void {
   if (!isNetworkRestricted()) return
   const definition = getProviderDefinition(providerId)
-  const settings = getInitialSettings()
-  const active = getActiveProviderSettings(settings)
-  const configuredBaseUrl = active.active === providerId ? active.baseUrl : undefined
-  const baseUrl = providerId === 'ollama'
-    ? configuredBaseUrl ?? getOllamaBaseUrl(process.env, settings)
-    : configuredBaseUrl ?? definition.defaultBaseUrl
+  const baseUrl = resolveProviderBaseUrl(providerId, settings)
   const localEndpoint =
     (definition.accessType === 'local' || definition.accessType === 'server') &&
     isLoopbackBaseUrl(baseUrl)
@@ -289,16 +355,7 @@ async function createLocalProviderClient(
   }
   const { createOllamaURHQClient } = await import('./ollama.js')
   const settings = getInitialSettings()
-  const configured = getActiveProviderSettings(settings)
-  // Session override first: `configured.baseUrl ??` short-circuits before
-  // getOllamaBaseUrl is ever called, so a persisted base_url meant requests
-  // kept going to the local daemon after the user picked a network host.
-  const sessionHost = getOllamaSessionOverride()
-  const baseUrlOverride = sessionHost
-    ? sessionHost
-    : configured.active === providerId
-      ? configured.baseUrl ?? getOllamaBaseUrl(process.env, settings)
-      : getOllamaBaseUrl(process.env, settings)
+  const baseUrlOverride = resolveProviderBaseUrl(providerId, settings)
   return createOllamaURHQClient({ baseUrlOverride }) as ProviderMessageClient
 }
 

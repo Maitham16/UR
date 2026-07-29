@@ -281,6 +281,91 @@ describe('projectGates', () => {
 })
 
 describe('Verifier integration', () => {
+  test('rejects overall completion while actionable tasks remain', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
+    try {
+      const v = new Verifier({
+        cwd,
+        getActionableTasks: async () => [
+          {
+            id: '2',
+            subject: 'Run focused verification',
+            status: 'pending',
+          },
+          {
+            id: '3',
+            subject: 'Resolve failed integration check',
+            status: 'failed',
+          },
+        ],
+      })
+      v.beginTurn(TURN)
+      v.recordToolCall(
+        TURN,
+        fakeToolUse('Write', { file_path: '/x' }),
+        true,
+      )
+
+      const result = await v.checkTurn(TURN, 'Task is complete.', true)
+      expect(result.ok).toBe(false)
+      if (result.ok === false) {
+        expect(result.reminder).toContain('#2 [pending]')
+        expect(result.reminder).toContain('#3 [failed]')
+        expect(result.reminder).toContain('partial/blocked')
+      }
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('allows an evidenced completion when no actionable tasks remain', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
+    try {
+      const v = new Verifier({
+        cwd,
+        getActionableTasks: async () => [],
+      })
+      v.beginTurn(TURN)
+      v.recordToolCall(
+        TURN,
+        fakeToolUse('Write', { file_path: '/x' }),
+        true,
+      )
+
+      expect(
+        (await v.checkTurn(TURN, 'Task is complete.', true)).ok,
+      ).toBe(true)
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('fails closed when task completion state cannot be verified', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
+    try {
+      const v = new Verifier({
+        cwd,
+        getActionableTasks: async () => {
+          throw new Error('corrupt task snapshot')
+        },
+      })
+      v.beginTurn(TURN)
+      v.recordToolCall(
+        TURN,
+        fakeToolUse('Write', { file_path: '/x' }),
+        true,
+      )
+
+      const result = await v.checkTurn(TURN, 'Task is complete.', true)
+      expect(result.ok).toBe(false)
+      if (result.ok === false) {
+        expect(result.reminder).toContain('corrupt task snapshot')
+      }
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
   test('passes when the agent claimed work and actually did it', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {

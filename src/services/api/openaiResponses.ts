@@ -8,6 +8,7 @@ import {
   toOpenAITools,
 } from './openaiCompatible.js'
 import {
+  assertValidProviderToolUses,
   ProviderCapabilityError,
   ProviderResponseParseError,
   type ProviderMessageClient,
@@ -495,6 +496,7 @@ export function parseOpenAIResponsesMessage(data: unknown, fallbackModel: string
     }
   }
   const includesToolUse = content.some(block => block.type === 'tool_use')
+  assertValidProviderToolUses(content, 'OpenAI Responses response')
   const incompleteReason = response.incomplete_details?.reason
   return {
     id: response.id,

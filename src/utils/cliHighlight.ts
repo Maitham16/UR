@@ -1,9 +1,7 @@
-// @ts-nocheck
 // highlight.js's type defs carry `/// <reference lib="dom" />`. SSETransport,
 // mcp/client, ssh, dumpPrompts use DOM types (TextDecodeOptions, RequestInfo)
-// that only typecheck because this file's `typeof import('highlight.js')` pulls
-// lib.dom in. tsconfig has lib: ["ESNext"] only — fixing the actual DOM-type
-// deps is a separate sweep; this ref preserves the status quo.
+// that rely on DOM declarations. tsconfig has lib: ["ESNext"] only, so keep
+// this explicit reference while still typechecking this module normally.
 /// <reference lib="dom" />
 
 import { extname } from 'path'
@@ -20,14 +18,23 @@ export type CliHighlight = {
 // faulted in.
 let cliHighlightPromise: Promise<CliHighlight | null> | undefined
 
-let loadedGetLanguage: typeof import('highlight.js').getLanguage | undefined
+type GetHighlightLanguage = (
+  languageName: string,
+) => import('highlight.js').Language | undefined
+
+let loadedGetLanguage: GetHighlightLanguage | undefined
 
 async function loadCliHighlight(): Promise<CliHighlight | null> {
   try {
     const cliHighlight = await import('cli-highlight')
     // cache hit — cli-highlight already loaded highlight.js
     const highlightJs = await import('highlight.js')
-    loadedGetLanguage = highlightJs.getLanguage
+    // highlight.js is CommonJS-compatible: its ESM namespace exposes the
+    // public registry on `default`, not as named exports. The old named lookup
+    // was undefined at runtime, so telemetry always reported "unknown".
+    loadedGetLanguage = highlightJs.default.getLanguage.bind(
+      highlightJs.default,
+    )
     return {
       highlight: cliHighlight.highlight,
       supportsLanguage: cliHighlight.supportsLanguage,

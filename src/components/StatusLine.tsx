@@ -3,7 +3,7 @@ import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { logEvent } from 'src/services/analytics/index.js';
-import { getProviderRuntimeInfo, type ProviderSettings } from 'src/services/providers/providerRegistry.js';
+import { getProviderRuntimeInfo, type ProviderRuntimeInfo, type ProviderSettings } from 'src/services/providers/providerRegistry.js';
 import { useAppState, useSetAppState } from 'src/state/AppState.js';
 import type { PermissionMode } from 'src/utils/permissions/PermissionMode.js';
 import { getIsRemoteMode, getKairosActive, getMainThreadAgentType, getOriginalCwd, getSdkBetas, getSessionId } from '../bootstrap/state.js';
@@ -57,6 +57,48 @@ export function statusLineShouldDisplay(settings: ReadonlySettings): boolean {
     disabled: process.env.UR_STATUS_BAR === '0' || process.env.UR_STATUS_BAR === 'false'
   });
 }
+export type StatusLineRuntimeFields = {
+  model: {
+    id: ModelName;
+    display_name: string;
+  };
+  provider: {
+    id: string;
+    display_name: string;
+    auth_mode: string;
+    model?: string;
+    base_url?: string;
+    fallback?: string;
+  };
+};
+export function buildStatusLineRuntimeFields(runtimeModel: ModelName, providerRuntime: ProviderRuntimeInfo): StatusLineRuntimeFields {
+  return {
+    model: {
+      id: runtimeModel,
+      display_name: renderModelName(runtimeModel)
+    },
+    provider: {
+      id: providerRuntime.provider,
+      display_name: providerRuntime.providerLabel,
+      auth_mode: providerRuntime.authLabel,
+      // Custom hooks should see the model serving this session, not the
+      // persisted provider default that /model intentionally does not write.
+      model: runtimeModel,
+      base_url: providerRuntime.baseUrl,
+      fallback: providerRuntime.fallback
+    }
+  };
+}
+export function buildStatusLineRefreshKey(providerRuntime: ProviderRuntimeInfo, mainLoopModel: ModelName): string {
+  return JSON.stringify([
+    providerRuntime.provider,
+    mainLoopModel,
+    renderModelName(mainLoopModel) ?? '',
+    providerRuntime.model ?? '',
+    providerRuntime.baseUrl ?? '',
+    providerRuntime.fallback ?? ''
+  ]);
+}
 function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200kTokens: boolean, settings: ReadonlySettings, messages: Message[], addedDirs: string[], mainLoopModel: ModelName, vimMode?: VimMode): StatusLineCommandInput {
   const agentType = getMainThreadAgentType();
   const worktreeSession = getCurrentWorktreeSession();
@@ -66,6 +108,7 @@ function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200k
     exceeds200kTokens
   });
   const providerRuntime = getProviderRuntimeInfo(settings);
+  const runtimeFields = buildStatusLineRuntimeFields(runtimeModel, providerRuntime);
   const outputStyleName = settings?.outputStyle || DEFAULT_OUTPUT_STYLE_NAME;
   const currentUsage = getCurrentUsage(messages);
   const contextWindowSize = getContextWindowForModel(
@@ -96,18 +139,7 @@ function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200k
     ...(sessionName && {
       session_name: sessionName
     }),
-    model: {
-      id: runtimeModel,
-      display_name: renderModelName(runtimeModel)
-    },
-    provider: {
-      id: providerRuntime.provider,
-      display_name: providerRuntime.providerLabel,
-      auth_mode: providerRuntime.authLabel,
-      model: providerRuntime.model,
-      base_url: providerRuntime.baseUrl,
-      fallback: providerRuntime.fallback
-    },
+    ...runtimeFields,
     workspace: {
       current_dir: getCwd(),
       project_dir: getOriginalCwd(),
@@ -199,15 +231,9 @@ function StatusLineInner({
   const mainLoopModel = useMainLoopModel();
   const effectiveSettings = getEffectiveStatusLineSettings(settings, providerSelection);
   const providerRuntime = getProviderRuntimeInfo(effectiveSettings);
-  const providerRuntimeKey = [
-    providerRuntime.provider,
-    // Include the live model, or switching with /model leaves the key
-    // unchanged and the bar keeps rendering the previous value.
-    renderModelName(mainLoopModel) ?? '',
-    providerRuntime.model ?? '',
-    providerRuntime.baseUrl ?? '',
-    providerRuntime.fallback ?? '',
-  ].join('|');
+  // Include the live model, or switching with /model leaves the key unchanged
+  // and a custom status-line command keeps rendering the previous value.
+  const providerRuntimeKey = buildStatusLineRefreshKey(providerRuntime, mainLoopModel);
   const taskValues = Object.values(tasks);
   const taskRunningCount = taskValues.filter(task => task.status === 'running' || task.status === 'pending').length;
   const defaultStatusLineText = buildDefaultStatusBar({

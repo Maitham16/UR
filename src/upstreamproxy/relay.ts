@@ -101,14 +101,23 @@ export function decodeChunk(buf: Uint8Array): Uint8Array | null {
   let len = 0
   let shift = 0
   let i = 1
+  let terminated = false
   while (i < buf.length) {
     const b = buf[i]!
-    len |= (b & 0x7f) << shift
+    // UpstreamProxyChunk lengths are uint32 varints. Reject values that
+    // overflow uint32 rather than letting JavaScript's signed bitwise
+    // operators wrap them into a negative length.
+    if (shift === 28 && (b & 0xf0) !== 0) return null
+    len += (b & 0x7f) * 2 ** shift
     i++
-    if ((b & 0x80) === 0) break
+    if ((b & 0x80) === 0) {
+      terminated = true
+      break
+    }
     shift += 7
     if (shift > 28) return null
   }
+  if (!terminated) return null
   if (i + len > buf.length) return null
   return buf.subarray(i, i + len)
 }
@@ -338,8 +347,11 @@ function handleData(
     const firstLine = reqHead.split('\r\n')[0] ?? ''
     const m = firstLine.match(/^CONNECT\s+(\S+)\s+HTTP\/1\.[01]$/i)
     if (!m) {
-      sock.write('HTTP/1.1 405 Method Not Allowed\r\n\r\n')
-      sock.end()
+      closeClientWithResponse(
+        sock,
+        st,
+        'HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\n\r\n',
+      )
       return
     }
     // Stash any bytes that arrived after the CONNECT header so
@@ -409,21 +421,33 @@ function openTunnel(
     Authorization: wsAuthHeader,
   }
   let ws: WebSocketLike
-  if (nodeWSCtor) {
-    ws = new nodeWSCtor(wsUrl, {
-      headers,
-      agent: getWebSocketProxyAgent(wsUrl),
-      ...getWebSocketTLSOptions(),
-    }) as unknown as WebSocketLike
-  } else {
-    ws = new globalThis.WebSocket(wsUrl, {
-      // @ts-expect-error — Bun extension; not in lib.dom WebSocket types
-      headers,
-      proxy: getWebSocketProxyUrl(wsUrl),
-      tls: getWebSocketTLSOptions() || undefined,
-    })
+  try {
+    if (nodeWSCtor) {
+      ws = new nodeWSCtor(wsUrl, {
+        headers,
+        agent: getWebSocketProxyAgent(wsUrl),
+        ...getWebSocketTLSOptions(),
+      }) as unknown as WebSocketLike
+    } else {
+      ws = new globalThis.WebSocket(wsUrl, {
+        // @ts-expect-error — Bun extension; not in lib.dom WebSocket types
+        headers,
+        proxy: getWebSocketProxyUrl(wsUrl),
+        tls: getWebSocketTLSOptions() || undefined,
+      })
+    }
+    ws.binaryType = 'arraybuffer'
+  } catch (error) {
+    logForDebugging(
+      `[upstreamproxy] websocket setup failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    closeClientWithResponse(
+      sock,
+      st,
+      'HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n',
+    )
+    return
   }
-  ws.binaryType = 'arraybuffer'
   st.ws = ws
 
   ws.onopen = () => {

@@ -1,4 +1,5 @@
 import { parseToolInputJsonLenient } from '../../utils/json.js'
+import { randomUUID } from 'node:crypto'
 
 export interface ParsedToolCall {
   id: string
@@ -22,33 +23,76 @@ const SECTION_RE = /<\|tool_calls_section_begin\|>([\s\S]*?)<\|tool_calls_sectio
 const CALL_RE = /<\|tool_call_begin\|>([\s\S]*?)<\|tool_call_argument_begin\|>([\s\S]*?)<\|tool_call_end\|>/g
 const STRAY_RE = /<\|tool_calls?_section_(?:begin|end)\|>|<\|tool_call_(?:begin|end|argument_begin)\|>/g
 
+export class KimiToolCallParseError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'KimiToolCallParseError'
+    Object.setPrototypeOf(this, new.target.prototype)
+  }
+}
+
+function parsedToolCallId(prefix: 'kimi' | 'bare', index: number): string {
+  return `${prefix}_${randomUUID().replace(/-/g, '')}_${index}`
+}
+
 function parseArgs(raw: string): Record<string, unknown> {
   const s = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
+  let parsed: unknown
   try {
-    const v = JSON.parse(s)
-    return v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
+    parsed = JSON.parse(s)
   } catch {
-    // Local models routinely emit almost-JSON here (raw newlines inside
-    // string values, trailing commas). Silently returning {} used to turn
-    // these calls into empty tool inputs that fail validation with
-    // "required parameter missing" and send the model into a retry loop.
-    const repaired = parseToolInputJsonLenient(s)
-    return repaired && typeof repaired === 'object' && !Array.isArray(repaired)
-      ? (repaired as Record<string, unknown>)
-      : {}
+    parsed = parseToolInputJsonLenient(s)
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new KimiToolCallParseError(
+      'Kimi tool call arguments must be a valid JSON object',
+    )
+  }
+  return parsed as Record<string, unknown>
 }
 
 export function parseKimiToolCalls(text: string): KimiParseResult {
   if (!text || !text.includes('<|tool_call')) return { text, toolCalls: [] }
   const toolCalls: ParsedToolCall[] = []
   let i = 0
+  const callBegins = text.match(/<\|tool_call_begin\|>/g)?.length ?? 0
+  const argumentBegins =
+    text.match(/<\|tool_call_argument_begin\|>/g)?.length ?? 0
+  const callEnds = text.match(/<\|tool_call_end\|>/g)?.length ?? 0
+  const sectionBegins =
+    text.match(/<\|tool_calls_section_begin\|>/g)?.length ?? 0
+  const sectionEnds =
+    text.match(/<\|tool_calls_section_end\|>/g)?.length ?? 0
+  if (
+    callBegins === 0 ||
+    callBegins !== argumentBegins ||
+    callBegins !== callEnds ||
+    sectionBegins !== sectionEnds
+  ) {
+    throw new KimiToolCallParseError(
+      'Kimi tool call markup is incomplete or malformed',
+    )
+  }
   CALL_RE.lastIndex = 0
   let cleaned = text.replace(CALL_RE, (_full, rawName: string, rawArgs: string) => {
     const name = (rawName ?? '').trim().replace(/^functions\./, '').replace(/[:.]\d+\s*$/, '').trim()
-    if (name) toolCalls.push({ id: `kimi_${Date.now().toString(36)}_${i++}`, name, input: parseArgs(rawArgs ?? '') })
+    if (!name) {
+      throw new KimiToolCallParseError(
+        'Kimi tool call is missing a function name',
+      )
+    }
+    toolCalls.push({
+      id: parsedToolCallId('kimi', i++),
+      name,
+      input: parseArgs(rawArgs ?? ''),
+    })
     return ''
   })
+  if (toolCalls.length !== callBegins) {
+    throw new KimiToolCallParseError(
+      'Kimi tool call markup is incomplete or malformed',
+    )
+  }
   cleaned = cleaned.replace(SECTION_RE, '').replace(STRAY_RE, '').replace(/\n{3,}/g, '\n\n').trim()
   return { text: cleaned, toolCalls }
 }
@@ -538,6 +582,26 @@ function maybeBareJsonToolCall(
   const input = parseJsonObject(text)
   if (!input) return null
 
+  if ('tool' in input || 'input' in input) {
+    if (
+      typeof input.tool !== 'string' ||
+      !input.input ||
+      typeof input.input !== 'object' ||
+      Array.isArray(input.input)
+    ) {
+      return null
+    }
+    const name = reconcileToolName(input.tool, availableToolNames)
+    if (!hasTool(availableToolNames, name)) {
+      return null
+    }
+    return {
+      id: parsedToolCallId('bare', index),
+      name,
+      input: input.input as Record<string, unknown>,
+    }
+  }
+
   if (
     hasTool(availableToolNames, 'TaskCreate') &&
     sameKeys(input, ['subject', 'description'], ['activeForm', 'metadata']) &&
@@ -549,7 +613,11 @@ function maybeBareJsonToolCall(
         input.metadata !== null &&
         !Array.isArray(input.metadata)))
   ) {
-    return { id: `bare_${Date.now().toString(36)}_${index}`, name: 'TaskCreate', input }
+    return {
+      id: parsedToolCallId('bare', index),
+      name: 'TaskCreate',
+      input,
+    }
   }
 
   if (
@@ -560,7 +628,7 @@ function maybeBareJsonToolCall(
   ) {
     // Strip hallucinated extras (e.g. "encoding") — Write's schema is strict.
     return {
-      id: `bare_${Date.now().toString(36)}_${index}`,
+      id: parsedToolCallId('bare', index),
       name: 'Write',
       input: pickKeys(input, ['file_path', 'content']),
     }
@@ -575,7 +643,7 @@ function maybeBareJsonToolCall(
     (input.replace_all === undefined || typeof input.replace_all === 'boolean')
   ) {
     return {
-      id: `bare_${Date.now().toString(36)}_${index}`,
+      id: parsedToolCallId('bare', index),
       name: 'Edit',
       input: pickKeys(input, ['file_path', 'old_string', 'new_string'], ['replace_all']),
     }
@@ -585,7 +653,7 @@ function maybeBareJsonToolCall(
     const askInput = normalizeAskUserQuestionInput(input)
     if (askInput) {
       return {
-        id: `bare_${Date.now().toString(36)}_${index}`,
+        id: parsedToolCallId('bare', index),
         name: 'AskUserQuestion',
         input: askInput,
       }
@@ -596,7 +664,7 @@ function maybeBareJsonToolCall(
     const bashInput = normalizeBashInput(input)
     if (bashInput) {
       return {
-        id: `bare_${Date.now().toString(36)}_${index}`,
+        id: parsedToolCallId('bare', index),
         name: 'Bash',
         input: bashInput,
       }
@@ -607,7 +675,7 @@ function maybeBareJsonToolCall(
     const readInput = normalizeReadInput(input)
     if (readInput) {
       return {
-        id: `bare_${Date.now().toString(36)}_${index}`,
+        id: parsedToolCallId('bare', index),
         name: 'Read',
         input: readInput,
       }
@@ -618,7 +686,7 @@ function maybeBareJsonToolCall(
     const taskUpdateInput = normalizeTaskUpdateInput(input)
     if (taskUpdateInput) {
       return {
-        id: `bare_${Date.now().toString(36)}_${index}`,
+        id: parsedToolCallId('bare', index),
         name: 'TaskUpdate',
         input: taskUpdateInput,
       }
@@ -629,7 +697,7 @@ function maybeBareJsonToolCall(
     const globInput = normalizeGlobInput(input)
     if (globInput) {
       return {
-        id: `bare_${Date.now().toString(36)}_${index}`,
+        id: parsedToolCallId('bare', index),
         name: 'Glob',
         input: globInput,
       }
@@ -640,7 +708,7 @@ function maybeBareJsonToolCall(
     const grepInput = normalizeGrepInput(input)
     if (grepInput) {
       return {
-        id: `bare_${Date.now().toString(36)}_${index}`,
+        id: parsedToolCallId('bare', index),
         name: 'Grep',
         input: grepInput,
       }
@@ -654,7 +722,7 @@ export function looksLikeBareJsonToolCallPrefix(text: string): boolean {
   const trimmed = text.trimStart()
   if (trimmed.startsWith('```')) return true
   if (!trimmed.startsWith('{')) return false
-  return /^\{\s*"(?:subject|description|file_path|content|old_string|new_string|replace_all|questions|command|taskId|status|pattern|path|glob)"\s*:/.test(trimmed)
+  return /^\{\s*"(?:tool|input|subject|description|file_path|content|old_string|new_string|replace_all|questions|command|taskId|status|pattern|path|glob)"\s*:/.test(trimmed)
 }
 
 export function parseBareJsonToolCalls(
@@ -716,10 +784,20 @@ export function parseTextToolCalls(
   options: TextToolCallParseOptions = {},
 ): KimiParseResult {
   const kimi = parseKimiToolCalls(text)
+  const kimiToolCalls = kimi.toolCalls.map(call => {
+    if (!options.availableToolNames) return call
+    const name = reconcileToolName(call.name, options.availableToolNames)
+    if (!hasTool(options.availableToolNames, name)) {
+      throw new KimiToolCallParseError(
+        `Kimi returned unavailable tool "${name}"`,
+      )
+    }
+    return name === call.name ? call : { ...call, name }
+  })
   const bare = parseBareJsonToolCalls(kimi.text, options)
   return {
     text: bare.text,
-    toolCalls: [...kimi.toolCalls, ...bare.toolCalls],
+    toolCalls: [...kimiToolCalls, ...bare.toolCalls],
   }
 }
 

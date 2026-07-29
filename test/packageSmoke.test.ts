@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -12,12 +18,12 @@ function readPackageJson(path = repoRoot) {
   return JSON.parse(readFileSync(join(path, 'package.json'), 'utf8'))
 }
 
-function packageSmokeEnv() {
+function packageSmokeEnv(temporaryRoot: string) {
   return {
     ...process.env,
     BUN_BIN: bunBin,
     UR_CODE_SIMPLE: '1',
-    UR_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'ur-package-config-')),
+    UR_CONFIG_DIR: mkdtempSync(join(temporaryRoot, '.ur-package-config-')),
     URHQ_API_KEY: '',
     URHQ_AUTH_TOKEN: '',
     URHQ_UNIX_SOCKET: '',
@@ -56,7 +62,7 @@ function runPackagedBin(packageRoot: string, args: string[]) {
   return spawnSync(nodeBin, [join(packageRoot, 'bin', 'ur.js'), ...args], {
     cwd: packageRoot,
     encoding: 'utf8',
-    env: packageSmokeEnv(),
+    env: packageSmokeEnv(packageRoot),
   })
 }
 
@@ -64,7 +70,7 @@ function runPackagedBundle(packageRoot: string, args: string[]) {
   return spawnSync(bunBin, [join(packageRoot, 'dist', 'cli.js'), ...args], {
     cwd: packageRoot,
     encoding: 'utf8',
-    env: packageSmokeEnv(),
+    env: packageSmokeEnv(packageRoot),
   })
 }
 
@@ -92,6 +98,45 @@ describe('package runtime contract', () => {
     expect(result.stderr).toContain('UR-Nexus requires Bun')
     expect(result.stderr).toContain('Bun >=1.3')
     expect(result.stderr).toContain('BUN_BIN')
+  })
+
+  test('launcher rejects a prerelease Bun below the stable engine minimum', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'ur-old-bun-'))
+    try {
+      const oldBun = join(tmp, 'bun')
+      writeFileSync(
+        oldBun,
+        [
+          '#!/usr/bin/env node',
+          "if (process.argv[2] === '--version') {",
+          "  process.stdout.write('1.3.0-beta.1\\n')",
+          '  process.exit(0)',
+          '}',
+          'process.exit(99)',
+          '',
+        ].join('\n'),
+      )
+      chmodSync(oldBun, 0o755)
+
+      const result = spawnSync(
+        nodeBin,
+        [join(repoRoot, 'bin', 'ur.js'), '--version'],
+        {
+          cwd: repoRoot,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            BUN_BIN: oldBun,
+          },
+        },
+      )
+
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain('Found Bun 1.3.0-beta.1')
+      expect(result.stderr).toContain('engines.bun ">=1.3.0"')
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
   })
 
   test('packed package CLI starts and reports missing API key cleanly', () => {
@@ -129,7 +174,9 @@ describe('package runtime contract', () => {
 
       expect(pkg.dependencies?.sharp).toBeDefined()
     } finally {
-      rmSync(packageRoot.split('/extract/package')[0], {
+      // packageRoot is <temporary>/extract/package. Resolve through parent
+      // directories instead of splitting on a POSIX-only path fragment.
+      rmSync(join(packageRoot, '..', '..'), {
         recursive: true,
         force: true,
       })

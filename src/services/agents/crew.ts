@@ -12,24 +12,43 @@
  * actual model spawning lives behind the injected step runner (see cliStepRunner).
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { safeParseJSON } from '../../utils/json.js'
+import { lockSync } from '../../utils/lockfile.js'
 import { makeCliStepRunner, makeDryRunner } from './cliStepRunner.js'
 import type { StepRunner, Verdict } from './executor.js'
 import type { WorkflowStep } from './workflows.js'
 import type { DecomposedTask } from './decomposer.js'
 
-export type CrewTaskStatus = 'todo' | 'claimed' | 'done' | 'failed'
+export type CrewTaskStatus = 'todo' | 'claimed' | 'done' | 'failed' | 'blocked'
+
+export type CrewAttemptIsolation = 'shared' | 'worktree' | 'dry-run'
 
 export type CrewTask = {
   id: string
   title: string
   prompt: string
   status: CrewTaskStatus
+  /** Task ids that must be done before this task can be claimed. */
+  dependsOn?: string[]
   assignee?: string
   worktree?: string
+  /** Number of times a worker process has been started for this task. */
+  attempts?: number
+  /** Isolation used by the most recent attempt. */
+  attemptIsolation?: CrewAttemptIsolation
+  lastError?: string
   result?: string
   verdict?: Verdict | null
   claimedAt?: string
@@ -55,7 +74,11 @@ export function crewDir(cwd: string): string {
 }
 
 export function sanitizeCrewName(name: string): string {
-  return name.trim().replace(/[^a-zA-Z0-9_-]/g, '-')
+  const normalized = name.trim().replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-')
+  if (!normalized) return 'crew'
+  if (normalized.length <= 80) return normalized
+  const suffix = createHash('sha256').update(normalized).digest('hex').slice(0, 10)
+  return `${normalized.slice(0, 69)}-${suffix}`
 }
 
 export function crewPath(cwd: string, name: string): string {
@@ -87,16 +110,68 @@ export function loadCrew(cwd: string, name: string): CrewSpec | null {
   return isCrewSpec(parsed) ? parsed : null
 }
 
-export function saveCrew(cwd: string, spec: CrewSpec): void {
+const crewLockWaitArray = new Int32Array(new SharedArrayBuffer(4))
+
+function crewLockPath(cwd: string, name: string): string {
+  return join(crewDir(cwd), `${sanitizeCrewName(name)}.mutation-lock`)
+}
+
+function acquireCrewLock(cwd: string, name: string): () => void {
   mkdirSync(crewDir(cwd), { recursive: true })
-  writeFileSync(crewPath(cwd, spec.name), `${JSON.stringify(spec, null, 2)}\n`)
+  const path = crewLockPath(cwd, name)
+  writeFileSync(path, '', { flag: 'a', mode: 0o600 })
+  let lastError: unknown
+  for (let attempt = 0; attempt < 21; attempt++) {
+    try {
+      return lockSync(path, { realpath: false, stale: 30_000 })
+    } catch (error) {
+      lastError = error
+      if (
+        (error as NodeJS.ErrnoException).code !== 'ELOCKED' ||
+        attempt === 20
+      ) {
+        throw error
+      }
+      Atomics.wait(crewLockWaitArray, 0, 0, Math.min(100, 10 + attempt * 5))
+    }
+  }
+  throw lastError
+}
+
+function withCrewLock<T>(cwd: string, name: string, operation: () => T): T {
+  const release = acquireCrewLock(cwd, name)
+  try {
+    return operation()
+  } finally {
+    release()
+  }
+}
+
+function writeCrew(cwd: string, spec: CrewSpec): void {
+  mkdirSync(crewDir(cwd), { recursive: true })
+  const destination = crewPath(cwd, spec.name)
+  const temporary = `${destination}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    writeFileSync(temporary, `${JSON.stringify(spec, null, 2)}\n`, {
+      mode: 0o600,
+    })
+    renameSync(temporary, destination)
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary)
+  }
+}
+
+export function saveCrew(cwd: string, spec: CrewSpec): void {
+  withCrewLock(cwd, spec.name, () => writeCrew(cwd, spec))
 }
 
 export function deleteCrew(cwd: string, name: string): boolean {
-  const path = crewPath(cwd, name)
-  if (!existsSync(path)) return false
-  unlinkSync(path)
-  return true
+  return withCrewLock(cwd, name, () => {
+    const path = crewPath(cwd, name)
+    if (!existsSync(path)) return false
+    unlinkSync(path)
+    return true
+  })
 }
 
 /**
@@ -151,6 +226,9 @@ function makeTask(index: number, instruction: string, goal: string): CrewTask {
 
 function makeTaskFromDecomposed(task: DecomposedTask, goal: string): CrewTask {
   const title = task.goal.length > 72 ? `${task.goal.slice(0, 69)}...` : task.goal
+  const dependencies = task.dependsOn?.length
+    ? `\nDepends on: ${task.dependsOn.join(', ')}\nDependency outputs:\n{{prior}}`
+    : ''
   const files = task.filesTouched.length ? `\nFiles touched: ${task.filesTouched.join(', ')}` : ''
   const risk = `\nRisk level: ${task.risk}`
   const tests = `\nTests required: ${task.testsRequired.join(', ')}`
@@ -158,8 +236,9 @@ function makeTaskFromDecomposed(task: DecomposedTask, goal: string): CrewTask {
   return {
     id: task.id,
     title,
-    prompt: `Overall goal: ${goal}\n\nYour subtask: ${task.goal}${files}${risk}${tests}${rollback}\n\nComplete only this subtask. End your reply with VERDICT: PASS if you finished it, or VERDICT: FAIL if you could not.`,
+    prompt: `Overall goal: ${goal}\n\nYour subtask: ${task.goal}${dependencies}${files}${risk}${tests}${rollback}\n\nComplete only this subtask. End your reply with VERDICT: PASS if you finished it, or VERDICT: FAIL if you could not.`,
     status: 'todo',
+    dependsOn: task.dependsOn,
     filesTouched: task.filesTouched,
     risk: task.risk,
     testsRequired: task.testsRequired,
@@ -195,37 +274,131 @@ export function createCrew(
 }
 
 export function addCrewTask(cwd: string, name: string, instruction: string): CrewSpec | null {
-  const spec = loadCrew(cwd, name)
-  if (!spec) return null
-  const task = makeTask(spec.tasks.length, instruction, spec.goal)
-  const updated: CrewSpec = { ...spec, updatedAt: new Date().toISOString(), tasks: [...spec.tasks, task] }
-  saveCrew(cwd, updated)
-  return updated
+  return withCrewLock(cwd, name, () => {
+    const spec = loadCrew(cwd, name)
+    if (!spec) return null
+    const task = makeTask(spec.tasks.length, instruction, spec.goal)
+    const updated: CrewSpec = {
+      ...spec,
+      updatedAt: new Date().toISOString(),
+      tasks: [...spec.tasks, task],
+    }
+    writeCrew(cwd, updated)
+    return updated
+  })
 }
 
 /**
- * Atomically claim the next open task for a worker. Synchronous read-modify-write
- * keeps claims race-free within the single-process event loop, so concurrent
- * workers never grab the same task.
+ * Claim the next dependency-ready task. The exported wrapper holds a
+ * cross-process board lock around this read-modify-write transaction.
  */
-export function claimNextTask(cwd: string, name: string, worker: string): CrewTask | null {
+function claimNextTaskUnlocked(
+  cwd: string,
+  name: string,
+  worker: string,
+  maxAttempts = Number.MAX_SAFE_INTEGER,
+): CrewTask | null {
   const spec = loadCrew(cwd, name)
   if (!spec) return null
-  const task = spec.tasks.find(item => item.status === 'todo')
+
+  const byId = new Map(spec.tasks.map(task => [task.id, task]))
+  let boardChanged = false
+  const now = new Date().toISOString()
+  for (const candidate of spec.tasks) {
+    if (
+      candidate.status === 'todo' &&
+      (candidate.attempts ?? 0) >= maxAttempts
+    ) {
+      candidate.status = 'failed'
+      candidate.finishedAt = now
+      candidate.lastError = `Exhausted the ${maxAttempts}-attempt limit.`
+      candidate.result = candidate.lastError
+      candidate.verdict = 'FAIL'
+      boardChanged = true
+    }
+  }
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const candidate of spec.tasks) {
+      if (candidate.status !== 'todo') continue
+      const badDependency = (candidate.dependsOn ?? []).find(dep => {
+        const dependency = byId.get(dep)
+        return !dependency || dependency.status === 'failed' || dependency.status === 'blocked'
+      })
+      if (!badDependency) continue
+      candidate.status = 'blocked'
+      candidate.finishedAt = new Date().toISOString()
+      candidate.result = byId.has(badDependency)
+        ? `Blocked because dependency ${badDependency} did not complete successfully.`
+        : `Blocked because dependency ${badDependency} does not exist.`
+      changed = true
+      boardChanged = true
+    }
+  }
+
+  const task = spec.tasks.find(
+    item =>
+      item.status === 'todo' &&
+      (item.dependsOn ?? []).every(dep => byId.get(dep)?.status === 'done'),
+  )
+
+  // No claimed prerequisite and no runnable task means the remaining dependency
+  // graph is cyclic. Make that terminal instead of spinning worker waves forever.
+  if (!task && !spec.tasks.some(item => item.status === 'claimed')) {
+    const stranded = spec.tasks.filter(item => item.status === 'todo')
+    if (stranded.length > 0) {
+      const now = new Date().toISOString()
+      for (const candidate of stranded) {
+        candidate.status = 'blocked'
+        candidate.finishedAt = now
+        candidate.result = 'Blocked by a cyclic or otherwise unresolvable dependency graph.'
+      }
+      spec.updatedAt = now
+      writeCrew(cwd, spec)
+      return null
+    }
+  }
+
+  if (boardChanged) {
+    spec.updatedAt = new Date().toISOString()
+    writeCrew(cwd, spec)
+  }
   if (!task) return null
   task.status = 'claimed'
   task.assignee = worker
+  task.attempts = (task.attempts ?? 0) + 1
+  task.attemptIsolation = undefined
+  task.worktree = undefined
+  task.lastError = undefined
   task.claimedAt = new Date().toISOString()
   spec.updatedAt = task.claimedAt
-  saveCrew(cwd, spec)
+  writeCrew(cwd, spec)
   return task
 }
 
-export function completeTask(
+export function claimNextTask(
+  cwd: string,
+  name: string,
+  worker: string,
+  maxAttempts = Number.MAX_SAFE_INTEGER,
+): CrewTask | null {
+  return withCrewLock(cwd, name, () =>
+    claimNextTaskUnlocked(cwd, name, worker, maxAttempts),
+  )
+}
+
+function completeTaskUnlocked(
   cwd: string,
   name: string,
   taskId: string,
-  result: { status: 'done' | 'failed'; output?: string; verdict?: Verdict | null; worktree?: string },
+  result: {
+    status: 'done' | 'failed'
+    output?: string
+    verdict?: Verdict | null
+    worktree?: string
+    error?: string
+  },
 ): CrewSpec | null {
   const spec = loadCrew(cwd, name)
   if (!spec) return null
@@ -234,56 +407,109 @@ export function completeTask(
   task.status = result.status
   task.result = result.output?.slice(0, 2000)
   task.verdict = result.verdict ?? null
+  task.lastError = result.status === 'failed'
+    ? (result.error ?? result.output)?.slice(0, 1000)
+    : undefined
   if (result.worktree) task.worktree = result.worktree
   task.finishedAt = new Date().toISOString()
   spec.updatedAt = task.finishedAt
-  saveCrew(cwd, spec)
+  writeCrew(cwd, spec)
   return spec
+}
+
+export function completeTask(
+  cwd: string,
+  name: string,
+  taskId: string,
+  result: {
+    status: 'done' | 'failed'
+    output?: string
+    verdict?: Verdict | null
+    worktree?: string
+    error?: string
+  },
+): CrewSpec | null {
+  return withCrewLock(cwd, name, () =>
+    completeTaskUnlocked(cwd, name, taskId, result),
+  )
 }
 
 /** Reset orphaned `claimed` tasks (from a crashed run) back to `todo`. */
 export function reopenClaimed(cwd: string, name: string): CrewSpec | null {
-  const spec = loadCrew(cwd, name)
-  if (!spec) return null
-  let changed = false
-  for (const task of spec.tasks) {
-    if (task.status === 'claimed') {
-      task.status = 'todo'
-      task.assignee = undefined
-      changed = true
+  return withCrewLock(cwd, name, () => {
+    const spec = loadCrew(cwd, name)
+    if (!spec) return null
+    let changed = false
+    for (const task of spec.tasks) {
+      if (task.status === 'claimed') {
+        task.status = 'todo'
+        task.assignee = undefined
+        task.claimedAt = undefined
+        task.attemptIsolation = undefined
+        task.worktree = undefined
+        changed = true
+      }
     }
-  }
-  if (changed) {
-    spec.updatedAt = new Date().toISOString()
-    saveCrew(cwd, spec)
-  }
-  return spec
+    if (changed) {
+      spec.updatedAt = new Date().toISOString()
+      writeCrew(cwd, spec)
+    }
+    return spec
+  })
 }
 
-export type CrewProgress = { total: number; done: number; failed: number; todo: number; claimed: number }
+export type CrewProgress = {
+  total: number
+  done: number
+  failed: number
+  blocked: number
+  todo: number
+  claimed: number
+}
 
 export function crewProgress(spec: CrewSpec): CrewProgress {
   return {
     total: spec.tasks.length,
     done: spec.tasks.filter(t => t.status === 'done').length,
     failed: spec.tasks.filter(t => t.status === 'failed').length,
+    blocked: spec.tasks.filter(t => t.status === 'blocked').length,
     todo: spec.tasks.filter(t => t.status === 'todo').length,
     claimed: spec.tasks.filter(t => t.status === 'claimed').length,
   }
 }
 
 function taskToStep(task: CrewTask, lead: string): WorkflowStep {
-  return { id: task.id, name: task.title, agent: lead, prompt: task.prompt }
+  return {
+    id: task.id,
+    name: task.title,
+    agent: lead,
+    prompt: task.prompt,
+    dependsOn: task.dependsOn,
+  }
 }
 
-/** Create a git worktree for a worker; returns null (and leaves cwd) on failure. */
+function isolatedTaskToStep(task: CrewTask, lead: string): WorkflowStep {
+  const step = taskToStep(task, lead)
+  return {
+    ...step,
+    prompt:
+      `${step.prompt}\n\nThis attempt runs in an isolated git worktree. ` +
+      'Do not push, publish, deploy, send messages, or perform other external mutations. ' +
+      'Leave code changes in this worktree for the lead to review and integrate.',
+  }
+}
+
+/** Create a fresh git worktree for one task attempt. */
 async function ensureWorktree(
   cwd: string,
   crew: string,
-  worker: string,
+  attemptId: string,
 ): Promise<string | null> {
-  const path = join(crewDir(cwd), '.worktrees', `${crew}-${worker}`)
-  const branch = `ur/crew/${crew}/${worker}`
+  const normalizedAttemptId = attemptId.replace(/[^a-zA-Z0-9_-]/g, '-')
+  const attemptHash = createHash('sha256').update(attemptId).digest('hex').slice(0, 10)
+  const safeAttemptId = `${normalizedAttemptId.slice(0, 96)}-${attemptHash}`
+  const path = join(crewDir(cwd), '.worktrees', `${crew}-${safeAttemptId}`)
+  const branch = `ur/crew/${crew}/${safeAttemptId}`
   if (existsSync(path)) return path
   mkdirSync(join(crewDir(cwd), '.worktrees'), { recursive: true })
   const result = await execFileNoThrowWithCwd(
@@ -312,18 +538,154 @@ export type RunCrewOptions = {
   dynamic?: boolean
   /** Resource governor for dynamic mode (default 8, hard cap 32). */
   maxWorkers?: number
+  /**
+   * Maximum process starts for one task, including the first attempt. Clamped
+   * to 1..5. Automatic retries require dry-run mode, a fresh worktree per
+   * attempt, or an injected runner whose caller explicitly sets retrySafe.
+   */
+  maxAttempts?: number
+  /** Base exponential retry delay in milliseconds (default 250, max 30s). */
+  retryBackoffMs?: number
+  /** Cooperative cancellation: no new task or retry starts after abort. */
+  signal?: AbortSignal
+  /**
+   * Tests and embedding callers may attest that runnerFor rolls back or is
+   * idempotent. Never set this for an agent mutating the shared workspace.
+   */
+  retrySafe?: boolean
 }
 
 export type CrewEvent =
-  | { kind: 'claim'; worker: string; taskId: string; title: string }
-  | { kind: 'done'; worker: string; taskId: string; status: 'done' | 'failed'; verdict?: Verdict | null }
+  | { kind: 'claim'; worker: string; taskId: string; title: string; attempt: number }
+  | {
+      kind: 'retry'
+      worker: string
+      taskId: string
+      attempt: number
+      delayMs: number
+      reason: string
+    }
+  | { kind: 'retry-skipped'; worker: string; taskId: string; reason: string }
+  | { kind: 'cancelled'; worker: string; taskId?: string }
+  | {
+      kind: 'done'
+      worker: string
+      taskId: string
+      status: 'done' | 'failed'
+      verdict?: Verdict | null
+      attempts: number
+    }
   | { kind: 'worker-exit'; worker: string; handled: number }
 
 export type RunCrewResult = {
   name: string
   workers: number
   progress: CrewProgress
-  handled: Array<{ worker: string; taskId: string; status: 'done' | 'failed' }>
+  handled: Array<{
+    worker: string
+    taskId: string
+    status: 'done' | 'failed'
+    attempts: number
+  }>
+}
+
+function updateClaimedTask(
+  cwd: string,
+  name: string,
+  taskId: string,
+  update: (task: CrewTask) => void,
+): CrewTask | null {
+  return withCrewLock(cwd, name, () => {
+    const spec = loadCrew(cwd, name)
+    if (!spec) return null
+    const task = spec.tasks.find(item => item.id === taskId && item.status === 'claimed')
+    if (!task) return null
+    update(task)
+    spec.updatedAt = new Date().toISOString()
+    writeCrew(cwd, spec)
+    return task
+  })
+}
+
+function beginRetry(cwd: string, name: string, taskId: string, worker: string): CrewTask | null {
+  return updateClaimedTask(cwd, name, taskId, task => {
+    task.assignee = worker
+    task.attempts = (task.attempts ?? 1) + 1
+    task.claimedAt = new Date().toISOString()
+    task.attemptIsolation = undefined
+    task.worktree = undefined
+    task.lastError = undefined
+  })
+}
+
+/**
+ * Recover tasks left claimed by a dead scheduler without replaying an agent
+ * that may already have changed the shared workspace. Only isolated attempts
+ * can be safely started again; ambiguous shared attempts become terminal.
+ */
+function recoverClaimedSafely(cwd: string, name: string, maxAttempts: number): CrewSpec | null {
+  return withCrewLock(cwd, name, () => {
+    const spec = loadCrew(cwd, name)
+    if (!spec) return null
+    let changed = false
+    const now = new Date().toISOString()
+    for (const task of spec.tasks) {
+      if (task.status !== 'claimed') continue
+      const isolated =
+        task.attemptIsolation === 'worktree' || task.attemptIsolation === 'dry-run'
+      if (isolated && (task.attempts ?? 1) < maxAttempts) {
+        task.status = 'todo'
+        task.assignee = undefined
+        task.claimedAt = undefined
+        task.attemptIsolation = undefined
+        task.worktree = undefined
+        task.lastError = 'Previous isolated worker exited before reporting completion.'
+      } else {
+        task.status = 'failed'
+        task.finishedAt = now
+        task.lastError = isolated
+          ? `Previous worker exited and exhausted the ${maxAttempts}-attempt limit.`
+          : 'Previous worker exited after a shared-workspace attempt; automatic replay was refused because mutations may be ambiguous.'
+        task.result = task.lastError
+        task.verdict = 'FAIL'
+      }
+      changed = true
+    }
+    if (changed) {
+      spec.updatedAt = now
+      writeCrew(cwd, spec)
+    }
+    return spec
+  })
+}
+
+function priorOutputsForTask(cwd: string, name: string, task: CrewTask): Record<string, string> {
+  const spec = loadCrew(cwd, name)
+  if (!spec) return {}
+  const byId = new Map(spec.tasks.map(item => [item.id, item]))
+  const outputs: Record<string, string> = {}
+  for (const dependency of task.dependsOn ?? []) {
+    const result = byId.get(dependency)?.result
+    if (result !== undefined) outputs[dependency] = result
+  }
+  return outputs
+}
+
+async function retryDelay(ms: number, signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return false
+  if (ms <= 0) return true
+  return await new Promise(resolve => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve(true)
+    }, ms)
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+      resolve(false)
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 export async function runCrew(name: string, options: RunCrewOptions): Promise<RunCrewResult> {
@@ -331,13 +693,26 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
   const baseSpec = loadCrew(cwd, name)
   if (!baseSpec) throw new Error(`Crew not found: ${name}`)
 
-  // Orphaned `claimed` tasks (from a crashed run) are reopened either way; the
-  // distinction is that without --resume the user is restarting the same board.
-  reopenClaimed(cwd, name)
+  const boundedInteger = (
+    value: number | undefined,
+    fallback: number,
+    minimum: number,
+    maximum: number,
+  ): number => {
+    if (value === undefined || !Number.isFinite(value)) return fallback
+    return Math.min(maximum, Math.max(minimum, Math.floor(value)))
+  }
+  const workerCount = boundedInteger(options.workers, 1, 1, 32)
+  const maxAttempts = boundedInteger(options.maxAttempts, 2, 1, 5)
+  const retryBackoffMs = boundedInteger(options.retryBackoffMs, 250, 0, 30_000)
+  recoverClaimedSafely(cwd, name, maxAttempts)
 
-  const workerCount = Math.max(1, options.workers ?? 1)
   const lead = baseSpec.lead
   const handled: RunCrewResult['handled'] = []
+  const retryIsSafe =
+    options.dryRun === true ||
+    (options.worktrees === true && !options.runnerFor) ||
+    (options.runnerFor !== undefined && options.retrySafe === true)
 
   const makeRunner = (workerCwd: string): StepRunner => {
     if (options.runnerFor) return options.runnerFor(workerCwd)
@@ -352,28 +727,177 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
 
   async function worker(workerId: string): Promise<number> {
     let count = 0
-    let workerCwd = cwd
-    if (options.worktrees && !options.dryRun && !options.runnerFor) {
-      const wt = await ensureWorktree(cwd, name, workerId)
-      if (wt) workerCwd = wt
-    }
-    const runner = makeRunner(workerCwd)
+    let cancellationEmitted = false
 
-    for (;;) {
-      const task = claimNextTask(cwd, name, workerId)
+    while (!options.signal?.aborted) {
+      let task = claimNextTask(cwd, name, workerId, maxAttempts)
       if (!task) break
-      options.onEvent?.({ kind: 'claim', worker: workerId, taskId: task.id, title: task.title })
-      const out = await runner({ step: taskToStep(task, lead), iteration: 1, priorOutputs: {} })
-      const status: 'done' | 'failed' = out.isError || out.verdict === 'FAIL' ? 'failed' : 'done'
-      completeTask(cwd, name, task.id, {
-        status,
-        output: out.output,
-        verdict: out.verdict,
-        worktree: workerCwd === cwd ? undefined : workerCwd,
+      options.onEvent?.({
+        kind: 'claim',
+        worker: workerId,
+        taskId: task.id,
+        title: task.title,
+        attempt: task.attempts ?? 1,
       })
-      handled.push({ worker: workerId, taskId: task.id, status })
-      options.onEvent?.({ kind: 'done', worker: workerId, taskId: task.id, status, verdict: out.verdict })
-      count += 1
+
+      for (;;) {
+        const attempt = task.attempts ?? 1
+        if (options.signal?.aborted) {
+          completeTask(cwd, name, task.id, {
+            status: 'failed',
+            output: 'Cancelled before the worker attempt started.',
+            verdict: 'FAIL',
+            error: 'Crew run cancelled.',
+          })
+          handled.push({ worker: workerId, taskId: task.id, status: 'failed', attempts: attempt })
+          options.onEvent?.({ kind: 'cancelled', worker: workerId, taskId: task.id })
+          cancellationEmitted = true
+          count += 1
+          break
+        }
+
+        let workerCwd = cwd
+        let setupError: string | undefined
+        let isolation: CrewAttemptIsolation = options.dryRun ? 'dry-run' : 'shared'
+        if (options.worktrees && !options.dryRun && !options.runnerFor) {
+          const attemptId = `${baseSpec.createdAt}-${task.id}-a${attempt}`
+          const worktree = await ensureWorktree(cwd, name, attemptId)
+          if (worktree) {
+            workerCwd = worktree
+            isolation = 'worktree'
+          } else {
+            setupError = `Could not create isolated worktree for ${task.id} attempt ${attempt}.`
+          }
+        }
+
+        updateClaimedTask(cwd, name, task.id, current => {
+          current.attemptIsolation = isolation
+          current.worktree = workerCwd === cwd ? undefined : workerCwd
+        })
+
+        let output = ''
+        let verdict: Verdict | null | undefined = 'FAIL'
+        let isError = true
+        let failureReason = setupError
+        if (!setupError) {
+          try {
+            // A new runner means a new child-agent process for every retry.
+            const runner = makeRunner(workerCwd)
+            const out = await runner({
+              step: isolation === 'worktree'
+                ? isolatedTaskToStep(task, lead)
+                : taskToStep(task, lead),
+              iteration: attempt,
+              priorOutputs: priorOutputsForTask(cwd, name, task),
+            })
+            output = out.output
+            verdict = out.verdict
+            isError = out.isError === true
+            if (isError || verdict === 'FAIL') {
+              failureReason = output || `Worker returned ${verdict ?? 'an error'}.`
+            }
+          } catch (error) {
+            failureReason = error instanceof Error ? error.message : String(error)
+            output = `Worker process crashed: ${failureReason}`
+          }
+        } else {
+          output = setupError
+        }
+
+        const status: 'done' | 'failed' =
+          isError || verdict === 'FAIL' ? 'failed' : 'done'
+        if (status === 'done') {
+          completeTask(cwd, name, task.id, {
+            status,
+            output,
+            verdict,
+            worktree: workerCwd === cwd ? undefined : workerCwd,
+          })
+          handled.push({ worker: workerId, taskId: task.id, status, attempts: attempt })
+          options.onEvent?.({
+            kind: 'done',
+            worker: workerId,
+            taskId: task.id,
+            status,
+            verdict,
+            attempts: attempt,
+          })
+          count += 1
+          break
+        }
+
+        const attemptsRemain = attempt < maxAttempts
+        if (attemptsRemain && retryIsSafe) {
+          const delayMs = Math.min(30_000, retryBackoffMs * (2 ** (attempt - 1)))
+          options.onEvent?.({
+            kind: 'retry',
+            worker: workerId,
+            taskId: task.id,
+            attempt: attempt + 1,
+            delayMs,
+            reason: failureReason ?? 'Worker failed.',
+          })
+          if (!(await retryDelay(delayMs, options.signal))) {
+            completeTask(cwd, name, task.id, {
+              status: 'failed',
+              output: 'Cancelled while waiting to retry an isolated worker attempt.',
+              verdict: 'FAIL',
+              worktree: workerCwd === cwd ? undefined : workerCwd,
+              error: 'Crew run cancelled.',
+            })
+            handled.push({ worker: workerId, taskId: task.id, status: 'failed', attempts: attempt })
+            options.onEvent?.({ kind: 'cancelled', worker: workerId, taskId: task.id })
+            cancellationEmitted = true
+            count += 1
+            break
+          }
+          const next = beginRetry(cwd, name, task.id, workerId)
+          if (!next) {
+            completeTask(cwd, name, task.id, {
+              status: 'failed',
+              output,
+              verdict,
+              worktree: workerCwd === cwd ? undefined : workerCwd,
+              error: 'Task state changed before its retry could start.',
+            })
+            handled.push({ worker: workerId, taskId: task.id, status: 'failed', attempts: attempt })
+            count += 1
+            break
+          }
+          task = next
+          continue
+        }
+
+        if (attemptsRemain && !retryIsSafe) {
+          options.onEvent?.({
+            kind: 'retry-skipped',
+            worker: workerId,
+            taskId: task.id,
+            reason: 'Shared-workspace mutations may be ambiguous; use fresh worktrees to enable safe retries.',
+          })
+        }
+        completeTask(cwd, name, task.id, {
+          status: 'failed',
+          output,
+          verdict,
+          worktree: workerCwd === cwd ? undefined : workerCwd,
+          error: failureReason,
+        })
+        handled.push({ worker: workerId, taskId: task.id, status: 'failed', attempts: attempt })
+        options.onEvent?.({
+          kind: 'done',
+          worker: workerId,
+          taskId: task.id,
+          status: 'failed',
+          verdict,
+          attempts: attempt,
+        })
+        count += 1
+        break
+      }
+    }
+    if (options.signal?.aborted && !cancellationEmitted) {
+      options.onEvent?.({ kind: 'cancelled', worker: workerId })
     }
     options.onEvent?.({ kind: 'worker-exit', worker: workerId, handled: count })
     return count
@@ -387,23 +911,42 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
     // when all workers drain and todos remain (appended after drain), a new
     // wave spawns. The governor caps concurrency so a runaway decomposition
     // cannot fork-bomb the machine.
-    const governor = Math.min(32, Math.max(1, options.maxWorkers ?? 8))
+    const governor = boundedInteger(options.maxWorkers, 8, 1, 32)
     const active = new Set<Promise<number>>()
-    const todoCount = (): number => {
+    const runnableCount = (): number => {
       const spec = loadCrew(cwd, name)
-      return spec ? spec.tasks.filter(t => t.status === 'todo').length : 0
+      if (!spec) return 0
+      const byId = new Map(spec.tasks.map(task => [task.id, task]))
+      return spec.tasks.filter(
+        task =>
+          task.status === 'todo' &&
+          (task.attempts ?? 0) < maxAttempts &&
+          (task.dependsOn ?? []).every(dep => byId.get(dep)?.status === 'done'),
+      ).length
     }
-    for (;;) {
-      while (active.size < governor && todoCount() > active.size) {
+    const todoCount = (): number =>
+      loadCrew(cwd, name)?.tasks.filter(task => task.status === 'todo').length ?? 0
+    while (!options.signal?.aborted) {
+      while (active.size < governor && runnableCount() > 0) {
         spawned += 1
         const id = `w${spawned}`
         const p = worker(id).finally(() => active.delete(p))
         active.add(p)
       }
-      if (active.size === 0) break
+      if (active.size === 0) {
+        // Give claimNextTask one chance to turn invalid/missing/cyclic
+        // dependencies into terminal blocked tasks.
+        if (todoCount() > 0) {
+          spawned += 1
+          await worker(`w${spawned}`)
+          continue
+        }
+        break
+      }
       await Promise.race(active)
-      if (active.size === 0 && todoCount() === 0) break
+      if (active.size === 0 && runnableCount() === 0) break
     }
+    await Promise.all(active)
   } else {
     spawned = workerCount
     const workerIds = Array.from({ length: workerCount }, (_, i) => `w${i + 1}`)
@@ -432,12 +975,18 @@ export function formatCrewList(crews: CrewSpec[], json: boolean): string {
 export function formatCrew(spec: CrewSpec, json: boolean): string {
   if (json) return JSON.stringify({ ...spec, progress: crewProgress(spec) }, null, 2)
   const p = crewProgress(spec)
-  const mark: Record<CrewTaskStatus, string> = { todo: '○', claimed: '◐', done: '✓', failed: '✗' }
+  const mark: Record<CrewTaskStatus, string> = {
+    todo: '○',
+    claimed: '◐',
+    done: '✓',
+    failed: '✗',
+    blocked: '⊘',
+  }
   const lines = [
     `Crew: ${spec.name}`,
     `Goal: ${spec.goal}`,
     `Lead: ${spec.lead}`,
-    `Progress: ${p.done}/${p.total} done, ${p.todo} todo, ${p.claimed} in-progress, ${p.failed} failed`,
+    `Progress: ${p.done}/${p.total} done, ${p.todo} todo, ${p.claimed} in-progress, ${p.failed} failed, ${p.blocked} blocked`,
     '',
     'Tasks:',
   ]
@@ -452,10 +1001,10 @@ export function formatRunCrewResult(result: RunCrewResult, json: boolean): strin
   const p = result.progress
   const lines = [
     `Crew ${result.name} ran with ${result.workers} worker(s).`,
-    `Handled ${result.handled.length} task(s); ${p.done}/${p.total} done${p.failed ? `, ${p.failed} failed` : ''}.`,
+    `Handled ${result.handled.length} task(s); ${p.done}/${p.total} done${p.failed ? `, ${p.failed} failed` : ''}${p.blocked ? `, ${p.blocked} blocked` : ''}.`,
   ]
   for (const item of result.handled) {
-    lines.push(`  ${item.worker} → ${item.taskId}: ${item.status}`)
+    lines.push(`  ${item.worker} → ${item.taskId}: ${item.status} (${item.attempts} attempt${item.attempts === 1 ? '' : 's'})`)
   }
   return lines.join('\n')
 }

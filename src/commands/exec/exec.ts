@@ -94,6 +94,7 @@ export type ExecFinalReport = {
     total: number
     finished: number
     failed: number
+    blocked: number
     waitingApproval: number
     skipped: number
   }
@@ -101,6 +102,7 @@ export type ExecFinalReport = {
   maxAgentsAllowed: number
   finishedTasks: Array<{ id: string; title: string; agent: string }>
   failedTasks: Array<{ id: string; title: string; agent: string }>
+  blockedTasks: Array<{ id: string; title: string; agent: string }>
   waitingApprovalTasks: Array<{ id: string; title: string; agent: string }>
   skippedTasks: Array<{ id: string; title: string; agent: string }>
   actualChangedFiles: string[]
@@ -214,10 +216,11 @@ export function execCommandForPrompt(
 function planPrompt(
   prompt: string,
   options?: ExecPlanningOptions,
+  cwd?: string,
 ): { plan?: PromptPlan; taskBoard?: string } {
   const config = resolvePromptPlanningConfig(options)
   if (!config.taskPlanning) return {}
-  const plan = decomposePrompt(prompt, config)
+  const plan = decomposePrompt(prompt, config, cwd)
   return {
     plan,
     taskBoard: config.showTaskBoard ? renderTaskBoard(plan) : undefined,
@@ -262,7 +265,16 @@ export function changedFilesSinceBefore(
   return [...afterFiles].filter(file => !before.has(file))
 }
 
-function plannedTaskPrompt(task: NexusTask): string {
+function boundedPlanningContext(value: string): string {
+  const normalized = value.trim()
+  if (normalized.length <= 6_000) return normalized
+  return `${normalized.slice(0, 4_200)}\n\n[...middle of overall goal omitted for bounded worker context...]\n\n${normalized.slice(-1_600)}`
+}
+
+export function plannedTaskPrompt(task: NexusTask): string {
+  const overallGoal = boundedPlanningContext(
+    task.input.originalPrompt ?? task.input.prompt,
+  )
   return [
     `UR-Nexus planned task ${task.id}: ${task.title}`,
     `Order: ${task.order}`,
@@ -270,9 +282,14 @@ function plannedTaskPrompt(task: NexusTask): string {
     `Approval required: ${task.approvalRequired ? 'yes' : 'not required'}`,
     ...(task.approvalReason ? [`Approval reason: ${task.approvalReason}`] : []),
     '',
-    task.description,
+    'Overall goal (shared context only; do not redo sibling tasks):',
+    overallGoal,
+    '',
+    'Assigned task (execute only this bounded unit of work):',
+    task.input.prompt,
     '',
     `Assigned role: ${task.assignedAgent}`,
+    `Completed prerequisites: ${task.dependencies.length > 0 ? task.dependencies.join(', ') : 'none'}`,
     `File targets: ${task.fileTargets.length > 0 ? task.fileTargets.join(', ') : 'not specified'}`,
     '',
     'Assumptions:',
@@ -282,6 +299,8 @@ function plannedTaskPrompt(task: NexusTask): string {
     '',
     'Verification criteria:',
     ...task.verificationCriteria.map(value => `- ${value}`),
+    '',
+    'Report the concrete outcome and observed evidence. Never claim a file change or command that was not actually observed.',
   ].join('\n')
 }
 
@@ -332,7 +351,6 @@ function taskLine(task: NexusTask): { id: string; title: string; agent: string }
 
 function isWaitingTask(task: NexusTask): boolean {
   return [
-    'blocked',
     'waiting-approval',
     'needs-scope',
     'needs-context',
@@ -367,6 +385,7 @@ export function buildExecFinalReport(run: RunPromptPlanResult): ExecFinalReport 
       total: run.tasks.length,
       finished: run.finished,
       failed: run.failed,
+      blocked: run.blocked,
       waitingApproval: run.waitingApproval,
       skipped: run.skipped,
     },
@@ -374,6 +393,7 @@ export function buildExecFinalReport(run: RunPromptPlanResult): ExecFinalReport 
     maxAgentsAllowed: run.maxAgentsAllowed,
     finishedTasks: run.tasks.filter(task => task.status === 'finished').map(taskLine),
     failedTasks: run.tasks.filter(task => task.status === 'failed').map(taskLine),
+    blockedTasks: run.tasks.filter(task => task.status === 'blocked').map(taskLine),
     waitingApprovalTasks: run.tasks.filter(isWaitingTask).map(taskLine),
     skippedTasks: run.tasks.filter(task => task.status === 'skipped').map(taskLine),
     actualChangedFiles,
@@ -394,6 +414,7 @@ export function buildExecFinalReport(run: RunPromptPlanResult): ExecFinalReport 
     remainingLimitations: [
       'File evidence is based on workspace snapshots before and after each task.',
       'Command evidence is confirmed only when the task runner surfaces observed commands.',
+      'Natural-language acceptance criteria still rely on the task runner success signal; reported file and command evidence is checked independently.',
       'Detached or provider-internal tool activity is reported as unverified unless surfaced in task execution results.',
     ],
   }
@@ -425,6 +446,7 @@ export function formatExecFinalReport(report: ExecFinalReport): string {
     `Total: ${report.summary.total}`,
     `Finished: ${report.summary.finished}`,
     `Failed: ${report.summary.failed}`,
+    `Waiting on prerequisite: ${report.summary.blocked}`,
     `Waiting approval/input: ${report.summary.waitingApproval}`,
     `Skipped: ${report.summary.skipped}`,
     `Agents used: ${report.activeAgentsUsed} active / ${report.maxAgentsAllowed} max`,
@@ -439,6 +461,13 @@ export function formatExecFinalReport(report: ExecFinalReport): string {
     'Failed tasks:',
     ...formatList(
       report.failedTasks,
+      'none',
+      task => `- ${task.id} | ${task.agent} | ${task.title}`,
+    ),
+    '',
+    'Waiting on prerequisite tasks:',
+    ...formatList(
+      report.blockedTasks,
       'none',
       task => `- ${task.id} | ${task.agent} | ${task.title}`,
     ),
@@ -569,7 +598,7 @@ async function runPromptPlans(
         nextIndex += 1
         if (index >= prompts.length) return
         const prompt = prompts[index]!
-        const plan = decomposePrompt(prompt, config)
+        const plan = decomposePrompt(prompt, config, opts.cwd)
         const boardHistory: string[] = []
         const run = await runPromptPlan(plan, {
           cwd: opts.cwd,
@@ -640,7 +669,7 @@ export async function runExecPool(
       },
       command: execCommandForPrompt(prompt, normalizedOpts),
       dryRun: true,
-      ...planPrompt(prompt, planning),
+      ...planPrompt(prompt, planning, normalizedOpts.cwd),
     }))
   }
 

@@ -131,7 +131,7 @@ describe('taskBoard', () => {
     expect(board).toContain('Task 5')
   })
 
-  it('should mark finished, failed, and skipped tasks as checked', () => {
+  it('should distinguish completed, failed, and skipped terminal states', () => {
     const board = renderTaskBoard(makeTasks())
     const lines = board.split('\n')
 
@@ -140,8 +140,8 @@ describe('taskBoard', () => {
     const task5Line = lines.find(line => line.includes('Task 5'))
 
     expect(task3Line).toContain('[✓]')
-    expect(task4Line).toContain('[✓]')
-    expect(task5Line).toContain('[✓]')
+    expect(task4Line).toContain('[✗]')
+    expect(task5Line).toContain('[–]')
   })
 
   it('should not mark pending or running tasks as checked', () => {
@@ -155,22 +155,22 @@ describe('taskBoard', () => {
     expect(task2Line).toContain('[ ]')
   })
 
-  it('should show failed status clearly, not unchecked', () => {
+  it('should show failed status with a failure marker', () => {
     const board = renderTaskBoard(makeTasks())
     const lines = board.split('\n')
 
     const task4Line = lines.find(line => line.includes('Task 4'))
     expect(task4Line).toContain('failed')
-    expect(task4Line).toContain('[✓]')
+    expect(task4Line).toContain('[✗]')
   })
 
-  it('should show skipped status clearly, not unchecked', () => {
+  it('should show skipped status with a neutral marker', () => {
     const board = renderTaskBoard(makeTasks())
     const lines = board.split('\n')
 
     const task5Line = lines.find(line => line.includes('Task 5'))
     expect(task5Line).toContain('skipped')
-    expect(task5Line).toContain('[✓]')
+    expect(task5Line).toContain('[–]')
   })
 
   it('should produce an accurate progress summary', () => {

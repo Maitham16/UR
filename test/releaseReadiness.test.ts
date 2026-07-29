@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { compare } from 'semver'
 
 const REPO = join(import.meta.dir, '..')
 
@@ -33,7 +34,8 @@ test('GitHub production checks run only after the test step succeeds', () => {
     expect(step).toBeGreaterThan(tests)
   }
 
-  expect(workflow).toContain('bun test --timeout 120000')
+  expect(workflow).toContain('bun test --timeout 120000 2>&1')
+  expect(workflow).not.toContain('--parallel=4')
   expect(workflow).toContain('bun ci')
   expect(workflow).toContain('bun run dependencies:audit')
   expect(workflow).toContain('bun run lint')
@@ -69,6 +71,24 @@ test('release gate audits the Bun lockfile used by shipped builds', () => {
   expect(releaseCheck).toContain("execFileSync('bun', ['audit']")
 })
 
+test('strict-core cannot report unchecked files as type-safe', () => {
+  const strictConfig = JSON.parse(
+    readFileSync(join(REPO, 'tsconfig.strict-core.json'), 'utf8'),
+  ) as { files: string[] }
+  const uncheckedFiles = strictConfig.files.filter(file =>
+    /^\s*\/\/\s*@ts-nocheck\b/m.test(
+      readFileSync(join(REPO, file), 'utf8'),
+    ),
+  )
+  const strictCheck = readFileSync(
+    join(REPO, 'scripts', 'strict-core-check.mjs'),
+    'utf8',
+  )
+
+  expect(uncheckedFiles).toEqual([])
+  expect(strictCheck).toContain('Strict core typecheck cannot include @ts-nocheck files')
+})
+
 test('release gate keeps npm, documentation, and IDE versions synchronized', () => {
   const releaseCheck = readFileSync(
     join(REPO, 'scripts', 'release-check.mjs'),
@@ -85,6 +105,70 @@ test('release gate keeps npm, documentation, and IDE versions synchronized', () 
     "read('extensions/jetbrains-ur/build.gradle.kts')",
   )
   expect(releaseCheck).toContain("read('documentation/index.html')")
+  expect(releaseCheck).toContain(
+    "`# expected for this release: \"${version} (UR-Nexus)\"`",
+  )
+  expect(releaseCheck).toContain(
+    "'src/commands/agent-ci/agent-ci.ts'",
+  )
+  expect(releaseCheck).toContain(
+    "'src/services/agents/agenticCi.ts'",
+  )
+  expect(releaseCheck).toContain(
+    "'src/services/agents/featureScaffolds.ts'",
+  )
+})
+
+test('changelog starts at the package version and remains newest-first', () => {
+  const packageJson = JSON.parse(
+    readFileSync(join(REPO, 'package.json'), 'utf8'),
+  ) as { version: string }
+  const changelog = readFileSync(join(REPO, 'CHANGELOG.md'), 'utf8')
+  const versions = [...changelog.matchAll(/^## (\S+)$/gm)].map(
+    match => match[1]!,
+  )
+
+  expect(versions[0]).toBe(packageJson.version)
+  for (let index = 1; index < versions.length; index += 1) {
+    const newer = versions[index - 1]!
+    const older = versions[index]!
+    expect(compare(newer, older), `${newer} must precede ${older}`).toBeGreaterThan(0)
+  }
+})
+
+test('release workflow downloads artifacts with permission and keeps prereleases off latest', () => {
+  const workflow = readFileSync(
+    join(REPO, '.github', 'workflows', 'release.yml'),
+    'utf8',
+  )
+  const githubRelease = workflow.slice(
+    workflow.indexOf('  github-release:'),
+    workflow.indexOf('  npm-publish:'),
+  )
+  const npmPublish = workflow.slice(workflow.indexOf('  npm-publish:'))
+
+  expect(githubRelease).toContain('actions: read')
+  expect(npmPublish).toContain('actions: read')
+  expect(workflow).toContain('npm_tag=latest')
+  expect(workflow).toContain('npm_tag=next')
+  expect(workflow).toContain('--prerelease="$PRERELEASE"')
+  expect(workflow).toContain('--tag "$NPM_TAG"')
+  expect(workflow).toContain('bun test --timeout 120000')
+  expect(workflow).not.toContain('--parallel=4')
+})
+
+test('package smoke configurations are cleaned with the package-check work directory', () => {
+  const packageCheck = readFileSync(
+    join(REPO, 'scripts', 'package-check.mjs'),
+    'utf8',
+  )
+
+  expect(packageCheck).toContain(
+    "mkdtempSync(join(temporaryRoot, '.ur-package-config-'))",
+  )
+  expect(packageCheck).not.toContain(
+    "mkdtempSync(join(tmpdir(), 'ur-package-config-'))",
+  )
 })
 
 test('Dependabot monitors every shipped dependency ecosystem', () => {

@@ -18,7 +18,10 @@ import {
   cacheOllamaModelMetadata,
   getOllamaContextLengthForModel,
 } from '../../utils/model/ollamaModels.js'
-import { getOllamaBaseUrl } from '../../utils/model/ollamaConfig.js'
+import {
+  getOllamaBaseUrl,
+  normalizeOllamaBaseUrl,
+} from '../../utils/model/ollamaConfig.js'
 import {
   computeOllamaNumCtx,
   getOllamaKeepAlive,
@@ -41,6 +44,11 @@ import {
   type VisionSupport,
 } from '../../utils/model/visionCapability.js'
 import { logForDebugging } from '../../utils/debug.js'
+import {
+  assertValidProviderToolUses,
+  isProviderToolInput,
+  ProviderResponseParseError,
+} from './providerClient.js'
 
 type OllamaMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -110,6 +118,11 @@ type OllamaChatRequest = {
   format?: unknown
 }
 
+type OllamaFetchResult = {
+  response: Response
+  textToolFallbackAllowed: boolean
+}
+
 const DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS = 300_000
 const REMOTE_OLLAMA_REQUEST_TIMEOUT_MS = 120_000
 const CLOUD_OLLAMA_REQUEST_TIMEOUT_MS = 120_000
@@ -120,23 +133,21 @@ const ollamaModelCapabilitiesCache = new Map<
   OllamaModelCapabilities | null
 >()
 
-let ollamaBaseUrlOverride: string | undefined
-
 export function createOllamaURHQClient(
   options?: { baseUrlOverride?: string }
 ): unknown {
-  if (options?.baseUrlOverride) {
-    ollamaBaseUrlOverride = options.baseUrlOverride
-  }
+  // Capture the endpoint per client. A module-global override allowed creating
+  // client B to silently retarget in-flight and future requests from client A.
+  const baseUrl = getEffectiveOllamaBaseUrl(options?.baseUrlOverride)
 
   return {
     beta: {
       messages: {
         create(params: BetaMessageStreamParams, options?: RequestOptions) {
           if (params.stream) {
-            return createStreamingRequest(params, options)
+            return createStreamingRequest(params, options, baseUrl)
           }
-          return createNonStreamingRequest(params, options)
+          return createNonStreamingRequest(params, options, baseUrl)
         },
         async countTokens(params: {
           messages?: MessageParam[]
@@ -155,8 +166,10 @@ export function createOllamaURHQClient(
 /**
  * Get the current Ollama base URL, respecting any override.
  */
-export function getEffectiveOllamaBaseUrl(): string {
-  return ollamaBaseUrlOverride ?? getOllamaBaseUrl()
+export function getEffectiveOllamaBaseUrl(override?: string): string {
+  return override === undefined
+    ? getOllamaBaseUrl()
+    : normalizeOllamaBaseUrl(override)
 }
 
 /**
@@ -186,16 +199,30 @@ export function buildOllamaHeaders(
 function createStreamingRequest(
   params: BetaMessageStreamParams,
   options?: RequestOptions,
+  baseUrl = getEffectiveOllamaBaseUrl(),
 ) {
   const controller = createLinkedAbortController(options)
-  const responsePromise = fetchOllamaChat(params, true, controller, options)
+  const responsePromise = fetchOllamaChat(
+    params,
+    true,
+    controller,
+    options,
+    baseUrl,
+  )
 
   return {
     async withResponse() {
-      const response = await responsePromise
+      const { response, textToolFallbackAllowed } = await responsePromise
       const requestId = `ollama-${randomUUID()}`
       return {
-        data: createURHQStream(response, params, controller, requestId, options),
+        data: createURHQStream(
+          response,
+          params,
+          controller,
+          requestId,
+          textToolFallbackAllowed,
+          options,
+        ),
         request_id: requestId,
         response,
       }
@@ -206,14 +233,21 @@ function createStreamingRequest(
 async function createNonStreamingRequest(
   params: BetaMessageStreamParams,
   options?: RequestOptions,
+  baseUrl = getEffectiveOllamaBaseUrl(),
 ): Promise<BetaMessage> {
   const controller = createLinkedAbortController(options)
-  const response = await fetchOllamaChat(params, false, controller, options)
+  const { response, textToolFallbackAllowed } = await fetchOllamaChat(
+    params,
+    false,
+    controller,
+    options,
+    baseUrl,
+  )
   const json = (await response.json()) as OllamaChatChunk
   if (json.error) {
     throw new Error(json.error)
   }
-  return ollamaResponseToURHQMessage(json, params)
+  return ollamaResponseToURHQMessage(json, params, textToolFallbackAllowed)
 }
 
 async function fetchOllamaChat(
@@ -221,7 +255,8 @@ async function fetchOllamaChat(
   stream: boolean,
   controller: AbortController,
   options?: RequestOptions,
-): Promise<Response> {
+  baseUrl = getEffectiveOllamaBaseUrl(),
+): Promise<OllamaFetchResult> {
   // Match the main API timeout convention. Larger local models can take more
   // than 30s to load before Ollama returns response headers, especially after
   // tool-result turns.
@@ -234,12 +269,18 @@ async function fetchOllamaChat(
   try {
     const capabilities = await getOllamaModelCapabilities(
       params.model,
+      baseUrl,
       controller.signal,
     )
-    const response = await fetch(`${getEffectiveOllamaBaseUrl()}/api/chat`, {
+    const textToolFallbackAllowed =
+      (params.tools?.length ?? 0) > 0 &&
+      !modelCapabilityEnabled(capabilities, 'tools')
+    const response = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
       headers: buildOllamaHeaders(),
-      body: JSON.stringify(toOllamaChatRequest(params, stream, capabilities)),
+      body: JSON.stringify(
+        toOllamaChatRequest(params, stream, capabilities, baseUrl),
+      ),
       signal: controller.signal,
     })
 
@@ -248,7 +289,7 @@ async function fetchOllamaChat(
       throw createOllamaHTTPError(response.status, body, response.statusText)
     }
 
-    return response
+    return { response, textToolFallbackAllowed }
   } catch (error) {
     if (controller.signal.aborted) {
       if (options?.signal?.aborted) {
@@ -379,10 +420,10 @@ const warnedToolsUnsupportedModels = new Set<string>()
 const TEXT_TOOL_CALL_HINT = [
   '',
   'IMPORTANT: This runtime could not register native tool-calling for the current model.',
-  'To invoke a tool, output ONLY a single-line JSON object with that tool’s arguments, e.g.:',
-  '{"file_path": "/abs/path/file.py", "content": "full file content"}   (Write)',
-  '{"file_path": "/abs/path/file.py", "old_string": "before", "new_string": "after"}   (Edit)',
-  '{"command": "ls -la"}   (Bash)',
+  'To invoke a tool, output ONLY a single-line JSON object naming the tool and its input, e.g.:',
+  '{"tool":"Write","input":{"file_path":"/abs/path/file.py","content":"full file content"}}',
+  '{"tool":"Edit","input":{"file_path":"/abs/path/file.py","old_string":"before","new_string":"after"}}',
+  '{"tool":"Bash","input":{"command":"ls -la"}}',
   'Escape newlines inside JSON strings as \\n. Do not wrap the JSON in prose or code fences.',
 ].join('\n')
 
@@ -407,6 +448,7 @@ export function toOllamaChatRequest(
   params: BetaMessageStreamParams,
   stream: boolean,
   capabilities: OllamaModelCapabilities | null,
+  baseUrl = getEffectiveOllamaBaseUrl(),
 ): OllamaChatRequest {
   const supportsTools = modelCapabilityEnabled(capabilities, 'tools')
   const tools = supportsTools ? toOllamaTools(params.tools) : []
@@ -415,11 +457,12 @@ export function toOllamaChatRequest(
   if (toolsDropped && !warnedToolsUnsupportedModels.has(params.model)) {
     warnedToolsUnsupportedModels.add(params.model)
     const message =
-      `"${params.model}" does not advertise the 'tools' capability, so tool ` +
-      `definitions are not sent to it. It cannot read or write files, run ` +
-      `commands, or use any tool — asked to, it will describe what it would ` +
-      `do and may report work it did not perform. Pick a tools-capable model ` +
-      `with /model (check with: ur model-doctor).`
+      `"${params.model}" does not advertise the 'tools' capability, so native ` +
+      `tool definitions are not sent to it. UR will attempt a conservative ` +
+      `text-call fallback, but it is less reliable and may not support every ` +
+      `tool. Do not trust claims of completed actions without matching tool ` +
+      `results. For reliable tool use, pick a tools-capable model with /model ` +
+      `(check with: ur model-doctor).`
     logForDebugging(message, { level: 'warn' })
     // The debug log is invisible in a normal session, so this warning reached
     // nobody: the model silently lost its tools and confabulated the results.
@@ -460,7 +503,7 @@ export function toOllamaChatRequest(
     options.num_predict = params.max_tokens
   }
   const numCtx = computeOllamaNumCtx({
-    modelContextLength: getOllamaContextLengthForModel(params.model),
+    modelContextLength: getOllamaContextLengthForModel(params.model, baseUrl),
     estimatedPromptTokens: estimateInputTokens(params),
     maxTokens:
       typeof params.max_tokens === 'number' ? params.max_tokens : undefined,
@@ -723,37 +766,39 @@ function modelCapabilityEnabled(
 
 async function getOllamaModelCapabilities(
   model: string,
+  baseUrl: string,
   signal?: AbortSignal,
 ): Promise<OllamaModelCapabilities | null> {
   const normalizedModel = model.trim()
   if (!normalizedModel) {
     return null
   }
-  if (ollamaModelCapabilitiesCache.has(normalizedModel)) {
-    return ollamaModelCapabilitiesCache.get(normalizedModel) ?? null
+  const cacheKey = JSON.stringify([baseUrl, normalizedModel])
+  if (ollamaModelCapabilitiesCache.has(cacheKey)) {
+    return ollamaModelCapabilitiesCache.get(cacheKey) ?? null
   }
 
   try {
-    const response = await fetch(`${getEffectiveOllamaBaseUrl()}/api/show`, {
+    const response = await fetch(`${baseUrl}/api/show`, {
       method: 'POST',
       headers: buildOllamaHeaders(),
       body: JSON.stringify({ model: normalizedModel }),
       signal,
     })
     if (!response.ok) {
-      ollamaModelCapabilitiesCache.set(normalizedModel, null)
+      ollamaModelCapabilitiesCache.set(cacheKey, null)
       return null
     }
     const body = await response.json()
-    cacheOllamaModelMetadata(normalizedModel, body)
+    cacheOllamaModelMetadata(normalizedModel, body, undefined, baseUrl)
     const capabilities = parseOllamaModelCapabilities(body)
-    ollamaModelCapabilitiesCache.set(normalizedModel, capabilities)
+    ollamaModelCapabilitiesCache.set(cacheKey, capabilities)
     return capabilities
   } catch (error) {
     if (signal?.aborted) {
       throw error
     }
-    ollamaModelCapabilitiesCache.set(normalizedModel, null)
+    ollamaModelCapabilitiesCache.set(cacheKey, null)
     return null
   }
 }
@@ -780,12 +825,20 @@ function createURHQStream(
   params: BetaMessageStreamParams,
   controller: AbortController,
   requestId: string,
+  textToolFallbackAllowed: boolean,
   options?: RequestOptions,
 ): Stream<BetaRawMessageStreamEvent> {
   const stream = {
     controller,
     async *[Symbol.asyncIterator](): AsyncGenerator<BetaRawMessageStreamEvent> {
-      yield* streamURHQEvents(response, params, controller, requestId, options)
+      yield* streamURHQEvents(
+        response,
+        params,
+        controller,
+        requestId,
+        textToolFallbackAllowed,
+        options,
+      )
     },
   }
   return stream as unknown as Stream<BetaRawMessageStreamEvent>
@@ -796,6 +849,7 @@ async function* streamURHQEvents(
   params: BetaMessageStreamParams,
   controller: AbortController,
   requestId: string,
+  textToolFallbackAllowed: boolean,
   options?: RequestOptions,
 ): AsyncGenerator<BetaRawMessageStreamEvent> {
   const usage = emptyUsage()
@@ -888,6 +942,13 @@ async function* streamURHQEvents(
     final = false,
   ): BetaRawMessageStreamEvent[] => {
     const events: BetaRawMessageStreamEvent[] = []
+    if (!textToolFallbackAllowed) {
+      if (pendingVisibleText) {
+        events.push(...textEvents(pendingVisibleText))
+        pendingVisibleText = ''
+      }
+      return events
+    }
     const options = {
       availableToolNames,
       parseBareJsonToolCalls: true,
@@ -952,7 +1013,9 @@ async function* streamURHQEvents(
     if (deltaText) {
       text += deltaText
       if (!inToolSection) {
-        const markerIdx = text.indexOf('<|tool_call')
+        const markerIdx = textToolFallbackAllowed
+          ? text.indexOf('<|tool_call')
+          : -1
         if (markerIdx !== -1) inToolSection = true
         const proseEnd = markerIdx === -1 ? text.length : markerIdx
         const toEmit = text.slice(emittedLen, proseEnd)
@@ -982,97 +1045,34 @@ async function* streamURHQEvents(
     }
   }
 
-  // Convert any Kimi/ChatML text-form tool calls into real tool_use blocks so
-  // they execute instead of leaking as text (which makes the agent stop early).
-  const kimiParsed = parseKimiToolCalls(text)
-  textToolCalls.push(...kimiParsed.toolCalls)
-
-  // Some local models emit the SAME call twice: once natively via
-  // message.tool_calls AND once narrated as JSON in the content text. Without
-  // dedup both execute — the user sees duplicated Write/Bash rows with
-  // mismatched results and the model gets confusing double feedback. Drop
-  // text-form calls whose reconciled name + serialized input match a native
-  // structured call.
-  if (toolCalls.length > 0 && textToolCalls.length > 0) {
-    const structuredKeys = new Set(
-      toolCalls
-        .filter(c => c.function?.name)
-        .map(
-          c =>
-            `${reconcileToolName(c.function!.name!, availableToolNames)} ${toolArgsKey(
-              typeof c.function?.arguments === 'string'
-                ? parseToolInput(c.function.arguments)
-                : (c.function?.arguments ?? {}),
-            )}`,
-        ),
-    )
-    const deduped = textToolCalls.filter(
-      tc =>
-        !structuredKeys.has(
-          `${reconcileToolName(tc.name, availableToolNames)} ${toolArgsKey(tc.input ?? {})}`,
-        ),
-    )
-    if (deduped.length !== textToolCalls.length) {
-      logForDebugging(
-        `Ollama: dropped ${textToolCalls.length - deduped.length} text-form tool call(s) duplicating native tool_calls`,
-      )
-      textToolCalls.length = 0
-      textToolCalls.push(...deduped)
+  if (textToolFallbackAllowed) {
+    const kimiParsed = parseKimiToolCalls(text)
+    textToolCalls.push(...kimiParsed.toolCalls)
+    if (toolCalls.length === 0 && textToolCalls.length === 0) {
+      const clarify = parseClarifyingQuestions(text, { availableToolNames })
+      if (clarify) textToolCalls.push(clarify)
     }
   }
 
-  // When the model wrote clarifying questions as plain prose instead of calling
-  // AskUserQuestion, synthesize the tool call so the multiple-choice picker
-  // renders (the streamed prose remains as a preamble).
-  if (toolCalls.length === 0 && textToolCalls.length === 0) {
-    const clarify = parseClarifyingQuestions(text, { availableToolNames })
-    if (clarify) textToolCalls.push(clarify)
-  }
+  const normalizedToolUses = normalizeOllamaToolUses(
+    toolCalls,
+    textToolCalls,
+    availableToolNames,
+    'Ollama stream',
+  )
 
-  for (const call of toolCalls) {
-    const rawName = call.function?.name
-    if (!rawName) {
-      continue
-    }
-    const name = reconcileToolName(rawName, availableToolNames)
-    const input = stringifyToolInput(call.function?.arguments ?? {})
+  for (const call of normalizedToolUses) {
     yield {
       type: 'content_block_start',
       index: blockIndex,
       content_block: {
         type: 'tool_use',
-        id: `toolu_ollama_${randomUUID().replace(/-/g, '')}`,
-        name,
+        id: call.id,
+        name: call.name,
         input: {},
       },
     } as BetaRawMessageStreamEvent
-    if (input) {
-      yield {
-        type: 'content_block_delta',
-        index: blockIndex,
-        delta: { type: 'input_json_delta', partial_json: input },
-      } as BetaRawMessageStreamEvent
-    }
-    yield {
-      type: 'content_block_stop',
-      index: blockIndex,
-    } as BetaRawMessageStreamEvent
-    blockIndex++
-  }
-
-  // Emit tool_use blocks for the parsed text-form tool calls.
-  for (const tc of textToolCalls) {
-    yield {
-      type: 'content_block_start',
-      index: blockIndex,
-      content_block: {
-        type: 'tool_use',
-        id: tc.id,
-        name: reconcileToolName(tc.name, availableToolNames),
-        input: {},
-      },
-    } as BetaRawMessageStreamEvent
-    const inputJson = JSON.stringify(tc.input ?? {})
+    const inputJson = JSON.stringify(call.input)
     if (inputJson && inputJson !== '{}') {
       yield {
         type: 'content_block_delta',
@@ -1090,8 +1090,7 @@ async function* streamURHQEvents(
   if (
     !textStarted &&
     !thinkingStarted &&
-    toolCalls.length === 0 &&
-    textToolCalls.length === 0
+    normalizedToolUses.length === 0
   ) {
     yield {
       type: 'content_block_start',
@@ -1107,7 +1106,10 @@ async function* streamURHQEvents(
   yield {
     type: 'message_delta',
     delta: {
-      stop_reason: textToolCalls.length > 0 ? 'tool_use' : getStopReason(finalChunk, toolCalls),
+      stop_reason:
+        normalizedToolUses.length > 0
+          ? 'tool_use'
+          : getStopReason(finalChunk, []),
       stop_sequence: null,
     },
     usage: usageFromOllama(finalChunk, text + thinking),
@@ -1217,36 +1219,34 @@ async function readWithDeadline(
 function ollamaResponseToURHQMessage(
   response: OllamaChatChunk,
   params: BetaMessageStreamParams,
+  textToolFallbackAllowed: boolean,
 ): BetaMessage {
   const content: BetaContentBlock[] = []
   const structured = response.message?.tool_calls ?? []
   const thinking = response.message?.thinking ?? ''
   const availableToolNames = getAvailableToolNames(params.tools)
-  const kimi = parseTextToolCalls(response.message?.content ?? '', {
-    availableToolNames,
-    parseBareJsonToolCalls: true,
-  })
-  const text = kimi.text
-  const structuredKeys = new Set(
-    structured
-      .filter(call => call.function?.name)
-      .map(call =>
-        `${reconcileToolName(call.function!.name!, availableToolNames)}\0${toolArgsKey(
-          parseToolInput(call.function?.arguments ?? {}),
-        )}`,
-      ),
-  )
-  const textToolCalls = kimi.toolCalls.filter(call =>
-    !structuredKeys.has(
-      `${reconcileToolName(call.name, availableToolNames)}\0${toolArgsKey(call.input ?? {})}`,
-    ),
-  )
-  // When clarifying questions arrived as plain prose instead of an
-  // AskUserQuestion call, synthesize the tool call so the picker renders.
+  const rawText = response.message?.content ?? ''
+  const parsedText = textToolFallbackAllowed
+    ? parseTextToolCalls(rawText, {
+        availableToolNames,
+        parseBareJsonToolCalls: true,
+      })
+    : { text: rawText, toolCalls: [] }
+  const text = parsedText.text
+  const textToolCalls = [...parsedText.toolCalls]
   const clarifyCall =
-    structured.length === 0 && textToolCalls.length === 0
+    textToolFallbackAllowed &&
+    structured.length === 0 &&
+    textToolCalls.length === 0
       ? parseClarifyingQuestions(text, { availableToolNames })
       : null
+  if (clarifyCall) textToolCalls.push(clarifyCall)
+  const normalizedToolUses = normalizeOllamaToolUses(
+    structured,
+    textToolCalls,
+    availableToolNames,
+    'Ollama response',
+  )
   if (thinking) {
     content.push({
       type: 'thinking',
@@ -1254,38 +1254,19 @@ function ollamaResponseToURHQMessage(
       signature: '',
     } as BetaContentBlock)
   }
-  if (text || (!structured.length && !textToolCalls.length)) {
+  if (text || normalizedToolUses.length === 0) {
     content.push({ type: 'text', text } as BetaContentBlock)
   }
-  for (const call of structured) {
-    const rawName = call.function?.name
-    if (!rawName) {
-      continue
-    }
+  for (const call of normalizedToolUses) {
     content.push({
       type: 'tool_use',
-      id: `toolu_ollama_${randomUUID().replace(/-/g, '')}`,
-      name: reconcileToolName(rawName, availableToolNames),
-      input: parseToolInput(call.function?.arguments ?? {}),
-    } as BetaContentBlock)
-  }
-  for (const tc of textToolCalls) {
-    content.push({
-      type: 'tool_use',
-      id: tc.id,
-      name: reconcileToolName(tc.name, availableToolNames),
-      input: tc.input,
-    } as BetaContentBlock)
-  }
-  if (clarifyCall) {
-    content.push({
-      type: 'tool_use',
-      id: clarifyCall.id,
-      name: clarifyCall.name,
-      input: clarifyCall.input,
+      id: call.id,
+      name: call.name,
+      input: call.input,
     } as BetaContentBlock)
   }
 
+  assertValidProviderToolUses(content, 'Ollama response')
   return {
     id: `ollama-${randomUUID()}`,
     type: 'message',
@@ -1293,9 +1274,7 @@ function ollamaResponseToURHQMessage(
     model: response.model ?? params.model,
     content,
     stop_reason:
-      textToolCalls.length > 0 || clarifyCall
-        ? 'tool_use'
-        : getStopReason(response, structured),
+      normalizedToolUses.length > 0 ? 'tool_use' : getStopReason(response, []),
     stop_sequence: null,
     usage: usageFromOllama(response, text + thinking),
   } as BetaMessage
@@ -1315,7 +1294,13 @@ function isEmptyToolArgs(value: unknown): boolean {
 /** Canonical serialization for duplicate detection: object keys are sorted
  *  recursively so `{a,b}` and `{b,a}` produce the same key. */
 function toolArgsKey(value: unknown): string {
-  if (typeof value === 'string') return value
+  if (typeof value === 'string') {
+    const parsed = parseToolInputJsonLenient(value)
+    if (isPlainObject(parsed)) {
+      return JSON.stringify(sortKeysDeep(parsed))
+    }
+    return `string:${value}`
+  }
   try {
     return JSON.stringify(sortKeysDeep(value ?? {}))
   } catch {
@@ -1333,6 +1318,97 @@ function sortKeysDeep(value: unknown): unknown {
     return sorted
   }
   return value
+}
+
+type NormalizedOllamaToolUse = {
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
+function normalizeOllamaToolUses(
+  structured: OllamaToolCall[],
+  textCalls: ParsedToolCall[],
+  availableToolNames: ReadonlySet<string>,
+  context: string,
+): NormalizedOllamaToolUse[] {
+  const normalized: NormalizedOllamaToolUse[] = []
+  const seen = new Set<string>()
+  let duplicateCount = 0
+
+  const append = (
+    rawName: unknown,
+    rawInput: unknown,
+    source: 'structured' | 'text',
+  ): void => {
+    const input =
+      source === 'structured'
+        ? parseToolInput(rawInput)
+        : isProviderToolInput(rawInput)
+          ? rawInput
+          : null
+    if (!input) {
+      throw new ProviderResponseParseError(
+        `${context} text tool call input must be a JSON object`,
+        { rawName, rawInput },
+      )
+    }
+    if (typeof rawName !== 'string' || rawName.trim().length === 0) {
+      throw new ProviderResponseParseError(
+        `${context} tool call is missing a function name`,
+        { rawName, rawInput },
+      )
+    }
+    const name = reconcileToolName(rawName, availableToolNames)
+    if (!availableToolNames.has(name)) {
+      throw new ProviderResponseParseError(
+        `${context} returned unavailable tool "${name}"`,
+        { rawName, availableToolNames: [...availableToolNames] },
+      )
+    }
+    const key = `${name}\u0000${toolArgsKey(input)}`
+    if (seen.has(key)) {
+      duplicateCount++
+      return
+    }
+    seen.add(key)
+    normalized.push({
+      id: `toolu_ollama_${randomUUID().replace(/-/g, '')}`,
+      name,
+      input,
+    })
+  }
+
+  for (const call of structured) {
+    append(
+      call.function?.name,
+      call.function?.arguments ?? {},
+      'structured',
+    )
+  }
+  for (const call of textCalls) {
+    append(call.name, call.input, 'text')
+  }
+
+  if (duplicateCount > 0) {
+    logForDebugging(
+      `Ollama: dropped ${duplicateCount} duplicate tool call(s) after canonical normalization`,
+    )
+  }
+  return normalized
+}
+
+function parseCompleteStringToolInput(
+  value: string,
+): Record<string, unknown> | null {
+  const parsed = parseToolInputJsonLenient(value)
+  return isPlainObject(parsed) ? parsed : null
+}
+
+function mergeToolArgumentStrings(previous: string, next: string): string {
+  if (next.startsWith(previous)) return next
+  if (previous.startsWith(next)) return previous
+  return previous + next
 }
 
 /**
@@ -1363,7 +1439,10 @@ export function mergeToolCalls(
   for (const current of incoming) {
     const fn = current?.function
     if (!fn) {
-      continue
+      throw new ProviderResponseParseError(
+        'Ollama streamed a tool call without a function payload',
+        { current },
+      )
     }
     const name = fn.name
     const args = fn.arguments
@@ -1371,11 +1450,14 @@ export function mergeToolCalls(
 
     if (!name) {
       if (!last?.function) {
+        // Preserve an argument-first fragment until a later chunk supplies the
+        // name. Dropping it silently turned a provider tool stop into no call.
+        target.push({ function: { arguments: args ?? {} } })
         continue
       }
       const prev = last.function.arguments
       if (typeof prev === 'string' && typeof args === 'string') {
-        last.function.arguments = prev + args
+        last.function.arguments = mergeToolArgumentStrings(prev, args)
       } else if (isPlainObject(prev) && isPlainObject(args)) {
         last.function.arguments = { ...prev, ...args }
       } else if (isEmptyToolArgs(prev) && !isEmptyToolArgs(args)) {
@@ -1384,12 +1466,16 @@ export function mergeToolCalls(
       continue
     }
 
-    if (
-      last?.function?.name === name &&
-      typeof args === 'string' &&
-      typeof last.function.arguments === 'string'
-    ) {
-      last.function.arguments = last.function.arguments + args
+    if (last?.function && !last.function.name) {
+      last.function.name = name
+      const previous = last.function.arguments
+      if (typeof previous === 'string' && typeof args === 'string') {
+        last.function.arguments = mergeToolArgumentStrings(previous, args)
+      } else if (isPlainObject(previous) && isPlainObject(args)) {
+        last.function.arguments = { ...previous, ...args }
+      } else if (isEmptyToolArgs(previous)) {
+        last.function.arguments = args ?? {}
+      }
       continue
     }
 
@@ -1401,6 +1487,30 @@ export function mergeToolCalls(
     )
     if (duplicate) {
       continue
+    }
+
+    if (
+      last?.function?.name === name &&
+      typeof args === 'string' &&
+      typeof last.function.arguments === 'string'
+    ) {
+      const previous = last.function.arguments
+      const previousComplete = parseCompleteStringToolInput(previous)
+      const currentComplete = parseCompleteStringToolInput(args)
+      if (!previousComplete) {
+        const merged = mergeToolArgumentStrings(previous, args)
+        if (
+          !currentComplete ||
+          args.startsWith(previous) ||
+          parseCompleteStringToolInput(merged)
+        ) {
+          last.function.arguments = merged
+          continue
+        }
+      }
+      // Both payloads are independently complete, or a complete payload begins
+      // after an abandoned fragment. Preserve the provider's call boundary;
+      // final normalization will reject any abandoned incomplete payload.
     }
 
     if (
@@ -1574,9 +1684,16 @@ function stringifyToolInput(input: unknown): string {
   return JSON.stringify(input ?? {})
 }
 
-function parseToolInput(input: unknown): unknown {
+function parseToolInput(input: unknown): Record<string, unknown> {
   if (typeof input !== 'string') {
-    return input ?? {}
+    const normalized = input ?? {}
+    if (!isProviderToolInput(normalized)) {
+      throw new ProviderResponseParseError(
+        'Ollama tool call arguments must be a JSON object',
+        { input },
+      )
+    }
+    return normalized
   }
   const parsed = parseToolInputJsonLenient(input)
   if (parsed === null && input.trim().length > 0) {
@@ -1584,6 +1701,17 @@ function parseToolInput(input: unknown): unknown {
       `Ollama tool call arguments failed to parse even after repair: ${input.slice(0, 200)}`,
       { level: 'warn' },
     )
+    throw new ProviderResponseParseError(
+      'Ollama tool call arguments are not valid JSON after conservative repair',
+      { input },
+    )
   }
-  return parsed ?? {}
+  const normalized = parsed ?? {}
+  if (!isProviderToolInput(normalized)) {
+    throw new ProviderResponseParseError(
+      'Ollama tool call arguments must decode to a JSON object',
+      { input },
+    )
+  }
+  return normalized
 }

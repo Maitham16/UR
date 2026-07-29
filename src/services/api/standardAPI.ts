@@ -16,6 +16,8 @@ import {
   toOpenAICompatibleRequest,
 } from './openaiCompatible.js'
 import {
+  assertValidProviderToolUses,
+  isProviderToolInput,
   ProviderCapabilityError,
   ProviderResponseParseError,
 } from './providerClient.js'
@@ -283,6 +285,7 @@ function parseAPIResponse(family: string, data: any, fallbackModel: string): any
         throw new ProviderResponseParseError('anthropic response did not include content', { data })
       }
       const anthropicContent = parseAnthropicContent(data.content)
+      assertValidProviderToolUses(anthropicContent, 'anthropic response')
       if (data.stop_reason === 'tool_use' && !hasToolUse(anthropicContent)) {
         throw new ProviderResponseParseError(
           'anthropic response stopped for tool_use but did not include a tool_use block',
@@ -311,6 +314,7 @@ function parseAPIResponse(family: string, data: any, fallbackModel: string): any
       }
       const parts = data.candidates?.[0]?.content?.parts ?? []
       const content = parseGeminiParts(parts)
+      assertValidProviderToolUses(content, 'gemini response')
       if (
         data.candidates?.[0]?.finishReason === 'FUNCTION_CALL' &&
         !hasToolUse(content)
@@ -537,6 +541,12 @@ function parseAnthropicContent(content: any): any[] {
           { block },
         )
       }
+      if (!isProviderToolInput(block.input ?? {})) {
+        throw new ProviderResponseParseError(
+          `anthropic content[${index}].input must be a JSON object`,
+          { block },
+        )
+      }
       return {
         type: 'tool_use',
         id: block.id,
@@ -597,15 +607,29 @@ function parseGeminiParts(parts: any): any[] {
 
 function parseGeminiFunctionArgs(args: unknown, path: string): unknown {
   if (args === undefined || args === null || args === '') return {}
-  if (typeof args !== 'string') return args
+  if (typeof args !== 'string') {
+    if (!isProviderToolInput(args)) {
+      throw new ProviderResponseParseError(`${path} must be a JSON object`, {
+        args,
+      })
+    }
+    return args
+  }
+  let parsed: unknown
   try {
-    return JSON.parse(args)
+    parsed = JSON.parse(args)
   } catch (error) {
     throw new ProviderResponseParseError(`${path} is not valid JSON`, {
       args,
       cause: error,
     })
   }
+  if (!isProviderToolInput(parsed)) {
+    throw new ProviderResponseParseError(`${path} must decode to a JSON object`, {
+      args,
+    })
+  }
+  return parsed
 }
 
 function contentToGeminiParts(content: any, toolNamesById: Map<string, string>): any[] {

@@ -27,6 +27,8 @@ export type RiskLevel = 'low' | 'medium' | 'high'
 export type DecomposedTask = {
   id: string
   goal: string
+  /** Task ids that must finish successfully before this task may start. */
+  dependsOn?: string[]
   filesTouched: string[]
   risk: RiskLevel
   testsRequired: string[]
@@ -106,6 +108,7 @@ function decomposePrompt(goal: string): string {
     '    {',
     '      "id": "t1",',
     '      "goal": "concise subtask goal",',
+    '      "dependsOn": [],',
     '      "filesTouched": ["src/example.ts"],',
     '      "risk": "low|medium|high",',
     '      "testsRequired": ["unit test"],',
@@ -116,6 +119,7 @@ function decomposePrompt(goal: string): string {
     '',
     'Guidelines:',
     '- Each subtask should be small enough to implement and verify independently.',
+    '- Use "dependsOn" only for real ordering constraints; independent tasks must use an empty array so they can run in parallel.',
     '- "filesTouched" should list the files likely to change.',
     '- "risk" should be high for auth/security/concurrency/destructive changes, medium for refactor/API changes, low for docs/style.',
     '- "testsRequired" should list the test categories that must pass.',
@@ -145,6 +149,9 @@ export async function decomposeTask(goal: string, options: DecomposeOptions): Pr
     const tasks = (parsed as { tasks: DecomposedTask[] }).tasks
     return tasks.map(t => ({
       ...t,
+      dependsOn: Array.isArray(t.dependsOn)
+        ? [...new Set(t.dependsOn.filter(dep => typeof dep === 'string' && dep !== t.id))]
+        : [],
       rollbackPoint: t.rollbackPoint ?? rollbackPoint,
       filesTouched: Array.isArray(t.filesTouched) ? t.filesTouched : [],
       testsRequired: Array.isArray(t.testsRequired) ? t.testsRequired : inferTests(t.goal),

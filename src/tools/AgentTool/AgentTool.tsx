@@ -1263,7 +1263,10 @@ export const AgentTool = buildTool({
     }
   },
   isReadOnly() {
-    return true; // delegates permission checks to its underlying tools
+    // A delegated agent can mutate the workspace through its own tools. Its
+    // inner permission checks still apply, but the parent call must not bypass
+    // the "plan before mutations" gate by advertising itself as read-only.
+    return false;
   },
   toAutoClassifierInput(input) {
     const i = input as AgentToolInput;

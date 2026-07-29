@@ -2,16 +2,19 @@ import type { ModelOption } from './modelOptions.js'
 import { getOllamaBaseUrl } from './ollamaConfig.js'
 import { categorizeOllamaModels } from './ollamaRouter.js'
 
-const ollamaModelMetadataByName = new Map<string, OllamaModelMetadata>()
-let cachedOllamaModelNames: string[] = []
+const ollamaModelMetadataByEndpointAndName = new Map<
+  string,
+  OllamaModelMetadata
+>()
+const cachedOllamaModelNamesByEndpoint = new Map<string, string[]>()
 
 export function getCachedOllamaModelNames(): string[] {
-  return cachedOllamaModelNames
+  return cachedOllamaModelNamesByEndpoint.get(getOllamaBaseUrl()) ?? []
 }
 
-function setCachedOllamaModelNames(names: string[]): void {
+function setCachedOllamaModelNames(names: string[], baseUrl: string): void {
   if (names.length > 0) {
-    cachedOllamaModelNames = names
+    cachedOllamaModelNamesByEndpoint.set(baseUrl, names)
   }
 }
 
@@ -51,16 +54,17 @@ export function parseOllamaModelNames(value: unknown): string[] {
 export async function listOllamaModelNames(
   signal?: AbortSignal,
 ): Promise<string[]> {
-  const response = await fetch(`${getOllamaBaseUrl()}/api/tags`, {
+  const baseUrl = getOllamaBaseUrl()
+  const response = await fetch(`${baseUrl}/api/tags`, {
     signal,
   })
   if (!response.ok) {
     return []
   }
   const body = await response.json()
-  cacheOllamaModelsFromTags(body)
+  cacheOllamaModelsFromTags(body, baseUrl)
   const names = parseOllamaModelNames(body)
-  setCachedOllamaModelNames(names)
+  setCachedOllamaModelNames(names, baseUrl)
   return names
 }
 
@@ -138,7 +142,8 @@ export async function refreshOllamaModelMetadata(
       : undefined
 
   try {
-    const response = await fetch(`${getOllamaBaseUrl()}/api/show`, {
+    const baseUrl = getOllamaBaseUrl()
+    const response = await fetch(`${baseUrl}/api/show`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -149,7 +154,12 @@ export async function refreshOllamaModelMetadata(
     if (!response.ok) {
       return
     }
-    cacheOllamaModelMetadata(normalizedModel, await response.json())
+    cacheOllamaModelMetadata(
+      normalizedModel,
+      await response.json(),
+      undefined,
+      baseUrl,
+    )
   } catch {
     // Best-effort cache warm only. The caller still has the default context.
   } finally {
@@ -159,7 +169,10 @@ export async function refreshOllamaModelMetadata(
   }
 }
 
-export function cacheOllamaModelsFromTags(value: unknown): void {
+export function cacheOllamaModelsFromTags(
+  value: unknown,
+  baseUrl = getOllamaBaseUrl(),
+): void {
   if (!value || typeof value !== 'object' || !('models' in value)) {
     return
   }
@@ -172,7 +185,7 @@ export function cacheOllamaModelsFromTags(value: unknown): void {
     if (names.length === 0) {
       continue
     }
-    cacheOllamaModelMetadata(names[0]!, model, names)
+    cacheOllamaModelMetadata(names[0]!, model, names, baseUrl)
   }
 }
 
@@ -180,6 +193,7 @@ export function cacheOllamaModelMetadata(
   model: string,
   value: unknown,
   aliases = getOllamaModelNameCandidates(value),
+  baseUrl = getOllamaBaseUrl(),
 ): void {
   const names = [model, ...aliases]
     .map(name => name.trim())
@@ -194,9 +208,9 @@ export function cacheOllamaModelMetadata(
   }
 
   for (const name of names) {
-    const key = normalizeOllamaModelName(name)
-    const current = ollamaModelMetadataByName.get(key) ?? {}
-    ollamaModelMetadataByName.set(key, {
+    const key = ollamaModelMetadataKey(baseUrl, name)
+    const current = ollamaModelMetadataByEndpointAndName.get(key) ?? {}
+    ollamaModelMetadataByEndpointAndName.set(key, {
       ...current,
       contextLength,
     })
@@ -212,9 +226,11 @@ export function isOllamaCloudModel(model: string): boolean {
 
 export function getOllamaContextLengthForModel(
   model: string,
+  baseUrl = getOllamaBaseUrl(),
 ): number | undefined {
-  const cached = ollamaModelMetadataByName.get(normalizeOllamaModelName(model))
-    ?.contextLength
+  const cached = ollamaModelMetadataByEndpointAndName.get(
+    ollamaModelMetadataKey(baseUrl, model),
+  )?.contextLength
   if (isOllamaCloudModel(model)) {
     return Math.max(cached ?? 0, OLLAMA_CLOUD_MIN_CONTEXT)
   }
@@ -222,8 +238,12 @@ export function getOllamaContextLengthForModel(
 }
 
 export function clearOllamaModelMetadataCacheForTests(): void {
-  ollamaModelMetadataByName.clear()
-  cachedOllamaModelNames = []
+  ollamaModelMetadataByEndpointAndName.clear()
+  cachedOllamaModelNamesByEndpoint.clear()
+}
+
+function ollamaModelMetadataKey(baseUrl: string, model: string): string {
+  return JSON.stringify([baseUrl, normalizeOllamaModelName(model)])
 }
 
 function getOllamaModelNameCandidates(value: unknown): string[] {

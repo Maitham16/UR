@@ -12,6 +12,7 @@
  */
 
 import type { ModelCapability } from '../../commands/model-doctor/model-doctor.js'
+import type { VisionSupport } from '../../utils/model/visionCapability.js'
 import {
   classifyTaskComplexity,
   pickBestCoderModel,
@@ -29,6 +30,18 @@ export type ModelScore = {
   name: string
   score: number
   reasons: string[]
+}
+
+/**
+ * Read the doctor's tri-state answer without turning old cached records into a
+ * false negative. Historical records only have `likelyVision`; `true` proves
+ * support, while `false` meant either unsupported or unknown.
+ */
+export function getModelVisionSupport(
+  model: Pick<ModelCapability, 'likelyVision'> &
+    Partial<Pick<ModelCapability, 'visionSupport'>>,
+): VisionSupport {
+  return model.visionSupport ?? (model.likelyVision ? 'supported' : 'unknown')
 }
 
 export type ModelRouteResult = {
@@ -90,12 +103,15 @@ export function scoreModel(
 
   for (const need of needs) {
     if (need === 'vision') {
-      if (model.likelyVision) {
+      const support = getModelVisionSupport(model)
+      if (support === 'supported') {
         score += 5
         reasons.push('vision-capable')
-      } else {
+      } else if (support === 'unsupported') {
         score -= 4
         reasons.push('no vision support (penalized)')
+      } else {
+        reasons.push('vision support unknown')
       }
     }
     if (need === 'code') {
@@ -185,10 +201,15 @@ export function recommendModel(
     .sort((a, b) => b.score - a.score)
 
   const top = ranked[0] ?? null
-  // A vision task with no vision model is a hard miss; surface it explicitly.
-  const visionMissing =
+  const visionSupport = routableModels.map(getModelVisionSupport)
+  const visionConfirmed =
+    needs.includes('vision') && visionSupport.includes('supported')
+  const visionUnknown =
+    needs.includes('vision') && visionSupport.includes('unknown')
+  const visionConfirmedMissing =
     needs.includes('vision') &&
-    !routableModels.some(model => model.likelyVision)
+    !visionConfirmed &&
+    !visionUnknown
 
   let rationale: string
   if (!top) {
@@ -199,8 +220,10 @@ export function recommendModel(
       : 'No local Ollama models found. Start Ollama or pull a model, then re-run.'
   } else if (needs.length === 0) {
     rationale = `No special capability needs detected for a "${route.category}" task; any installed model should work.`
-  } else if (visionMissing) {
+  } else if (visionConfirmedMissing) {
     rationale = `This task needs vision but no installed model is vision-capable. Best available fallback is ${top.name}; consider pulling a vision model (e.g. llava, minicpm-v).`
+  } else if (needs.includes('vision') && !visionConfirmed) {
+    rationale = `This task needs vision, but no installed model has confirmed vision support. Best unconfirmed fallback is ${top.name}; try it or select a known vision model (e.g. llava, minicpm-v).`
   } else {
     rationale = `Needs ${needs.join(', ')}; ${top.name} fits best (${top.reasons.join('; ') || 'default'}).`
   }

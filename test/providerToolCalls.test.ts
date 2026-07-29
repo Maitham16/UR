@@ -424,4 +424,152 @@ describe('provider tool-call request and response mapping', () => {
       expect((error as Error).message).toContain('tool_calls')
     }
   })
+
+  test('OpenAI-family adapters reject duplicate tool call IDs', async () => {
+    const duplicate = openAIToolResponse('gpt-5.5')
+    duplicate.choices[0]!.message.tool_calls.push({
+      ...duplicate.choices[0]!.message.tool_calls[0]!,
+      function: {
+        name: 'Edit',
+        arguments: JSON.stringify({
+          file_path: 'src/other.ts',
+          content: 'other',
+        }),
+      },
+    })
+    spyOn(axios, 'post').mockResolvedValue({ data: duplicate, headers: {} })
+    const client = await createStandardAPIClient({
+      providerId: 'openai-api',
+      apiKey: 'sk-openai',
+      maxRetries: 1,
+    })
+
+    await expect(
+      client.beta.messages.create({
+        model: 'gpt-5.5',
+        messages: userMessages(),
+        max_tokens: 32,
+        tools: sampleTools,
+      }),
+    ).rejects.toThrow('duplicate tool call id')
+  })
+
+  test('Anthropic rejects duplicate tool_use IDs at the provider boundary', async () => {
+    spyOn(axios, 'post').mockResolvedValue({
+      data: {
+        id: 'msg_duplicate',
+        model: 'claude-test',
+        content: [
+          { type: 'tool_use', id: 'same', name: 'Edit', input: {} },
+          { type: 'tool_use', id: 'same', name: 'Edit', input: {} },
+        ],
+        stop_reason: 'tool_use',
+        usage: {},
+      },
+      headers: {},
+    })
+    const client = await createStandardAPIClient({
+      providerId: 'anthropic-api',
+      apiKey: 'sk-ant',
+      maxRetries: 1,
+    })
+    await expect(
+      client.beta.messages.create({
+        model: 'claude-test',
+        messages: userMessages(),
+        max_tokens: 32,
+        tools: sampleTools,
+      }),
+    ).rejects.toThrow('duplicate tool call id')
+  })
+
+  test('Gemini rejects non-object functionCall args', async () => {
+    spyOn(axios, 'post').mockResolvedValue({
+      data: {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  functionCall: {
+                    id: 'same',
+                    name: 'Edit',
+                    args: { file_path: 'a' },
+                  },
+                },
+                {
+                  functionCall: {
+                    id: 'same',
+                    name: 'Edit',
+                    args: ['not-an-object'],
+                  },
+                },
+              ],
+            },
+            finishReason: 'FUNCTION_CALL',
+          },
+        ],
+        usageMetadata: {},
+      },
+      headers: {},
+    })
+    const client = await createStandardAPIClient({
+      providerId: 'gemini-api',
+      apiKey: 'gemini-key',
+      maxRetries: 1,
+    })
+    await expect(
+      client.beta.messages.create({
+        model: 'gemini-test',
+        messages: userMessages(),
+        max_tokens: 32,
+        tools: sampleTools,
+      }),
+    ).rejects.toThrow('JSON object')
+  })
+
+  test('Gemini rejects duplicate functionCall IDs', async () => {
+    spyOn(axios, 'post').mockResolvedValue({
+      data: {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  functionCall: {
+                    id: 'same',
+                    name: 'Edit',
+                    args: { file_path: 'a' },
+                  },
+                },
+                {
+                  functionCall: {
+                    id: 'same',
+                    name: 'Edit',
+                    args: { file_path: 'b' },
+                  },
+                },
+              ],
+            },
+            finishReason: 'FUNCTION_CALL',
+          },
+        ],
+        usageMetadata: {},
+      },
+      headers: {},
+    })
+    const client = await createStandardAPIClient({
+      providerId: 'gemini-api',
+      apiKey: 'gemini-key',
+      maxRetries: 1,
+    })
+    await expect(
+      client.beta.messages.create({
+        model: 'gemini-test',
+        messages: userMessages(),
+        max_tokens: 32,
+        tools: sampleTools,
+      }),
+    ).rejects.toThrow('duplicate tool call id')
+  })
 })

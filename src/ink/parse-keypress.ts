@@ -9,7 +9,7 @@ import { PASTE_END, PASTE_START } from './termio/csi.js'
 import { createTokenizer, type Tokenizer } from './termio/tokenize.js'
 
 // eslint-disable-next-line no-control-regex
-const META_KEY_CODE_RE = /^(?:\x1b)([a-zA-Z0-9])$/
+const META_KEY_CODE_RE = /^(?:\x1b)([\x20-\x7e])$/
 
 // eslint-disable-next-line no-control-regex
 const FN_KEY_RE =
@@ -222,8 +222,10 @@ export const INITIAL_STATE: KeyParseState = {
 function inputToString(input: Buffer | string): string {
   if (Buffer.isBuffer(input)) {
     if (input[0]! > 127 && input[1] === undefined) {
-      ;(input[0] as unknown as number) -= 128
-      return '\x1b' + String(input)
+      // Some terminals encode Meta+ASCII by setting the high bit. Decode it
+      // without modifying the caller-owned stdin buffer: buffers may be
+      // logged, replayed, or passed to another listener after this parser.
+      return '\x1b' + String.fromCharCode(input[0]! - 128)
     } else {
       return String(input)
     }
@@ -755,6 +757,7 @@ function parseKeypress(s: string = ''): ParsedKey {
     key.name = s.toLowerCase()
     key.shift = true
   } else if ((parts = META_KEY_CODE_RE.exec(s))) {
+    key.name = parts[1]!.toLowerCase()
     key.meta = true
     key.shift = /^[A-Z]$/.test(parts[1]!)
   } else if ((parts = FN_KEY_RE.exec(s))) {

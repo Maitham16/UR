@@ -13,6 +13,7 @@ import type { Message } from '../types/message.js';
 import { openBrowser, openPath } from '../utils/browser.js';
 import { isFullscreenEnvEnabled } from '../utils/fullscreen.js';
 import { plural } from '../utils/stringUtils.js';
+import { getFullscreenModalSize } from './fullscreenLayoutSizing.js';
 import { isNullRenderingAttachment } from './messages/nullRenderingAttachments.js';
 import PromptInputFooterSuggestions from './PromptInput/PromptInputFooterSuggestions.js';
 import type { StickyPrompt } from './VirtualMessageList.js';
@@ -291,6 +292,7 @@ export function FullscreenLayout(t0) {
     rows: terminalRows,
     columns
   } = useTerminalSize();
+  const modalSize = getFullscreenModalSize(columns, terminalRows, MODAL_TRANSCRIPT_PEEK);
   const [stickyPrompt, setStickyPrompt] = useState(null);
   let t4;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -421,10 +423,10 @@ export function FullscreenLayout(t0) {
     let t18;
     if ($[33] !== columns || $[34] !== modal || $[35] !== modalScrollRef || $[36] !== terminalRows) {
       t18 = modal != null && <ModalContext value={{
-        rows: terminalRows - MODAL_TRANSCRIPT_PEEK - 1,
-        columns: columns - 4,
+        rows: modalSize.rows,
+        columns: modalSize.columns,
         scrollRef: modalScrollRef ?? null
-      }}><Box position="absolute" bottom={0} left={0} right={0} maxHeight={terminalRows - MODAL_TRANSCRIPT_PEEK} flexDirection="column" overflow="hidden" opaque={true}><Box flexShrink={0}><Text color="permission">{"\u2594".repeat(columns)}</Text></Box><Box flexDirection="column" paddingX={2} flexShrink={0} overflow="hidden">{modal}</Box></Box></ModalContext>;
+      }}><Box position="absolute" bottom={0} left={0} right={0} maxHeight={modalSize.maxHeight} flexDirection="column" overflow="hidden" opaque={true}><Box flexShrink={0}><Text color="permission">{"\u2594".repeat(modalSize.borderWidth)}</Text></Box><Box flexDirection="column" paddingX={modalSize.paddingX} flexShrink={0} overflow="hidden">{modal}</Box></Box></ModalContext>;
       $[33] = columns;
       $[34] = modal;
       $[35] = modalScrollRef;

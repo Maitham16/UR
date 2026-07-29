@@ -28,6 +28,30 @@ export type LayoutDimensions = {
   totalWidth: number
 }
 
+export type CondensedLogoLayout = {
+  stacked: boolean
+  showMark: boolean
+  textWidth: number
+}
+
+/**
+ * The small house mark and row gap consume 15 cells. Stack the mark above the
+ * text before that reservation would leave an unusably narrow text column,
+ * and omit the mark when even the artwork cannot fit.
+ */
+export function getCondensedLogoLayout(columns: number): CondensedLogoLayout {
+  const safeColumns = Number.isFinite(columns)
+    ? Math.max(1, Math.floor(columns))
+    : 1
+  const stacked = safeColumns < 35
+
+  return {
+    stacked,
+    showMark: safeColumns >= 12,
+    textWidth: stacked ? safeColumns : Math.max(1, safeColumns - 15),
+  }
+}
+
 /**
  * Determines the layout mode based on terminal width
  */
@@ -65,7 +89,10 @@ export function calculateLayoutDimensions(
   }
 
   // Vertical mode
-  const totalWidth = Math.min(columns - BORDER_PADDING, MAX_LEFT_WIDTH + 20)
+  const totalWidth = Math.max(
+    1,
+    Math.min(columns - BORDER_PADDING, MAX_LEFT_WIDTH + 20),
+  )
   return {
     leftWidth: totalWidth,
     rightWidth: totalWidth,

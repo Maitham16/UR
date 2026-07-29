@@ -400,7 +400,7 @@ as first-class subcommands in the shipped CLI.
 | `ur task` | Start, run, and hand off worktree-per-task sessions with optional PR creation. |
 | `ur automation` | Store and run project-local scheduled automation specs under `.ur/automations/`. |
 | `ur workflow` | Define, validate, graph, run, and resume declarative agent workflows. |
-| `ur crew` | Run a lead and worker subagent crew over a shared task board; `--decompose` auto-splits tasks with risk/tests/rollback metadata. |
+| `ur crew` | Run dependency-aware worker subagents over a shared task board; independent tasks fan out, while bounded retries require isolated worktrees. |
 | `ur pattern` | Run multi-agent collaboration patterns (PEER, DOE, concurrent, handoff, debate, parallel); `--execute` runs them as a workflow. |
 | `ur goal` | Track long-horizon objectives that persist across sessions. |
 | `ur repo-edit` | Build a repo edit index, plan AST-aware renames, preview patches, and apply with rollback. |
@@ -572,6 +572,7 @@ ur spec verify checkout --kernel
 ur crew create parser-crew --goal "fix the flaky parser test" --decompose --dry-run
 ur crew plan parser-crew --goal "fix the flaky parser test" --decompose
 ur crew run parser-crew --workers 3 --decompose --dry-run
+ur crew run parser-crew --workers 3 --worktrees --max-attempts 2
 ur pattern parallel "refactor login without changing behavior" --execute --dry-run
 ur arena "implement a debounce helper" --agents 3 --judge hybrid --verify "bun test"
 ur agent-ci init default

@@ -198,6 +198,43 @@ describe('SessionsWebSocket reliability', () => {
     expect(connected).toBe(1)
   })
 
+  test('bounds consecutive 4001 closes even when every handshake opens', async () => {
+    const scheduler = createReconnectScheduler()
+    let permanentlyClosed = 0
+    activeClient = new SessionsWebSocket(
+      'missing-session',
+      'org-456',
+      () => 'access-token',
+      {
+        onMessage: () => {},
+        onClose: () => permanentlyClosed++,
+      },
+      scheduler.options,
+    )
+
+    await activeClient.connect()
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      const socket = FakeWebSocket.instances.at(-1)!
+      socket.emit('open')
+      socket.emit('close', {
+        code: 4001,
+        reason: 'session not found',
+      })
+
+      if (attempt <= 3) {
+        expect(permanentlyClosed).toBe(0)
+        expect(scheduler.pending()).toHaveLength(1)
+        expect(scheduler.pending()[0]!.delayMs).toBe(2_000 * attempt)
+        scheduler.runNext()
+        await Promise.resolve()
+      }
+    }
+
+    expect(FakeWebSocket.instances).toHaveLength(4)
+    expect(scheduler.pending()).toHaveLength(0)
+    expect(permanentlyClosed).toBe(1)
+  })
+
   test('queues one permission response during reconnect and flushes it once', async () => {
     const scheduler = createReconnectScheduler()
     activeClient = new SessionsWebSocket(

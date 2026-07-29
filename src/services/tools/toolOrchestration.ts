@@ -5,15 +5,71 @@ import type { AssistantMessage, Message } from '../../types/message.js'
 import { all } from '../../utils/generators.js'
 import { type MessageUpdateLazy, runToolUse } from './toolExecution.js'
 
-function getMaxToolUseConcurrency(): number {
-  return (
-    parseInt(process.env.UR_CODE_MAX_TOOL_USE_CONCURRENCY || '', 10) || 10
+const DEFAULT_MAX_TOOL_USE_CONCURRENCY = 10
+const HARD_MAX_TOOL_USE_CONCURRENCY = 32
+
+export function getMaxToolUseConcurrency(): number {
+  const configured = Number.parseInt(
+    process.env.UR_CODE_MAX_TOOL_USE_CONCURRENCY ?? '',
+    10,
   )
+  if (!Number.isFinite(configured) || configured < 1) {
+    return DEFAULT_MAX_TOOL_USE_CONCURRENCY
+  }
+  return Math.min(configured, HARD_MAX_TOOL_USE_CONCURRENCY)
 }
 
 export type MessageUpdate = {
   message?: Message
   newContext: ToolUseContext
+}
+
+function assistantMessageContainsToolUse(
+  message: AssistantMessage,
+  toolUseId: string,
+): boolean {
+  const content = message.message?.content
+  if (!Array.isArray(content)) return false
+  return content.some(
+    (block: unknown) =>
+      typeof block === 'object' &&
+      block !== null &&
+      'type' in block &&
+      block.type === 'tool_use' &&
+      'id' in block &&
+      block.id === toolUseId,
+  )
+}
+
+function validateToolUseBatch(
+  toolUseMessages: ToolUseBlock[],
+  assistantMessages: AssistantMessage[],
+): void {
+  const ids = new Set<string>()
+  for (const toolUse of toolUseMessages) {
+    if (ids.has(toolUse.id)) {
+      throw new Error(`Duplicate tool_use id received: ${toolUse.id}`)
+    }
+    ids.add(toolUse.id)
+    const matches = assistantMessages.filter(message =>
+      assistantMessageContainsToolUse(message, toolUse.id),
+    )
+    if (matches.length !== 1) {
+      throw new Error(
+        `Expected exactly one assistant message for tool_use ${toolUse.id}; ` +
+          `found ${matches.length}`,
+      )
+    }
+  }
+}
+
+function assistantMessageForToolUse(
+  toolUse: ToolUseBlock,
+  assistantMessages: AssistantMessage[],
+): AssistantMessage {
+  return assistantMessages.find(message =>
+    assistantMessageContainsToolUse(message, toolUse.id),
+  )!
 }
 
 export async function* runTools(
@@ -22,6 +78,9 @@ export async function* runTools(
   canUseTool: CanUseToolFn,
   toolUseContext: ToolUseContext,
 ): AsyncGenerator<MessageUpdate, void> {
+  // Validate the entire batch before starting the first mutation. Duplicate
+  // IDs make result correlation and in-progress Set bookkeeping ambiguous.
+  validateToolUseBatch(toolUseMessages, assistantMessages)
   let currentContext = toolUseContext
   for (const { isConcurrencySafe, blocks } of partitionToolCalls(
     toolUseMessages,
@@ -127,25 +186,27 @@ async function* runToolsSerially(
     toolUseContext.setInProgressToolUseIDs(prev =>
       new Set(prev).add(toolUse.id),
     )
-    for await (const update of runToolUse(
-      toolUse,
-      assistantMessages.find(_ =>
-        _.message.content.some(
-          _ => _.type === 'tool_use' && _.id === toolUse.id,
-        ),
-      )!,
-      canUseTool,
-      currentContext,
-    )) {
-      if (update.contextModifier) {
-        currentContext = update.contextModifier.modifyContext(currentContext)
+    try {
+      for await (const update of runToolUse(
+        toolUse,
+        assistantMessageForToolUse(toolUse, assistantMessages),
+        canUseTool,
+        currentContext,
+      )) {
+        if (update.contextModifier) {
+          currentContext = update.contextModifier.modifyContext(currentContext)
+        }
+        yield {
+          message: update.message,
+          newContext: currentContext,
+        }
       }
-      yield {
-        message: update.message,
-        newContext: currentContext,
-      }
+    } finally {
+      // Async-generator consumers may stop early (abort, fallback, teardown).
+      // Always clear UI/runtime bookkeeping even when iteration is cancelled
+      // or an invariant error escapes runToolUse.
+      markToolUseAsComplete(toolUseContext, toolUse.id)
     }
-    markToolUseAsComplete(toolUseContext, toolUse.id)
   }
 }
 
@@ -155,25 +216,33 @@ async function* runToolsConcurrently(
   canUseTool: CanUseToolFn,
   toolUseContext: ToolUseContext,
 ): AsyncGenerator<MessageUpdateLazy, void> {
-  yield* all(
-    toolUseMessages.map(async function* (toolUse) {
-      toolUseContext.setInProgressToolUseIDs(prev =>
-        new Set(prev).add(toolUse.id),
-      )
-      yield* runToolUse(
-        toolUse,
-        assistantMessages.find(_ =>
-          _.message.content.some(
-            _ => _.type === 'tool_use' && _.id === toolUse.id,
-          ),
-        )!,
-        canUseTool,
-        toolUseContext,
-      )
+  try {
+    yield* all(
+      toolUseMessages.map(async function* (toolUse) {
+        toolUseContext.setInProgressToolUseIDs(prev =>
+          new Set(prev).add(toolUse.id),
+        )
+        try {
+          yield* runToolUse(
+            toolUse,
+            assistantMessageForToolUse(toolUse, assistantMessages),
+            canUseTool,
+            toolUseContext,
+          )
+        } finally {
+          markToolUseAsComplete(toolUseContext, toolUse.id)
+        }
+      }),
+      getMaxToolUseConcurrency(),
+    )
+  } finally {
+    // The generic all() multiplexer can still have child generators awaiting
+    // their next value when its consumer cancels. Clear every batch member
+    // here as a final guard; deleting an ID that never started is harmless.
+    for (const toolUse of toolUseMessages) {
       markToolUseAsComplete(toolUseContext, toolUse.id)
-    }),
-    getMaxToolUseConcurrency(),
-  )
+    }
+  }
 }
 
 function markToolUseAsComplete(

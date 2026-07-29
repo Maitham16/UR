@@ -17,6 +17,7 @@ const FAST: ModelCapability = {
   size: 4e9,
   advertisedCapabilities: ['tools'],
   contextLength: 32768,
+  visionSupport: 'unsupported',
   likelyVision: false,
   likelyCode: true,
 }
@@ -25,6 +26,7 @@ const ORACLE: ModelCapability = {
   size: 0,
   advertisedCapabilities: ['tools'],
   contextLength: 262144,
+  visionSupport: 'unsupported',
   likelyVision: false,
   likelyCode: true,
 }

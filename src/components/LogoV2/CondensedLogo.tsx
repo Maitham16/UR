@@ -9,8 +9,7 @@ import { Box, Text } from '../../ink.js';
 import { useAppState } from '../../state/AppState.js';
 import { getEffortSuffix } from '../../utils/effort.js';
 import { truncate } from '../../utils/format.js';
-import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
-import { formatModelAndBilling, getLogoDisplayData, truncatePath } from '../../utils/logoV2Utils.js';
+import { formatModelAndBilling, getCondensedLogoLayout, getLogoDisplayData, truncatePath } from '../../utils/logoV2Utils.js';
 import { renderModelSetting } from '../../utils/model/model.js';
 import { OffscreenFreeze } from '../OffscreenFreeze.js';
 import { UrHouse } from './UrHouse.js';
@@ -69,8 +68,12 @@ export function CondensedLogo() {
     t3 = $[6];
   }
   useEffect(t2, t3);
-  const textWidth = Math.max(columns - 15, 20);
-  const truncatedVersion = truncate(version, Math.max(textWidth - 13, 6));
+  const {
+    stacked,
+    showMark,
+    textWidth
+  } = getCondensedLogoLayout(columns);
+  const truncatedVersion = truncate(version, Math.max(textWidth - 4, 1));
   const effortSuffix = getEffortSuffix(model, effortValue);
   const {
     shouldSplit,
@@ -78,14 +81,8 @@ export function CondensedLogo() {
     truncatedBilling
   } = formatModelAndBilling(modelDisplayName + effortSuffix, billingType, textWidth);
   const cwdAvailableWidth = agentName ? textWidth - 1 - stringWidth(agentName) - 3 : textWidth;
-  const truncatedCwd = truncatePath(cwd, Math.max(cwdAvailableWidth, 10));
-  let t4;
-  if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = isFullscreenEnvEnabled() ? <UrHouse size="small" /> : <UrHouse size="small" />;
-    $[7] = t4;
-  } else {
-    t4 = $[7];
-  }
+  const truncatedCwd = truncatePath(cwd, Math.max(cwdAvailableWidth, 1));
+  const t4 = showMark ? <UrHouse size="small" /> : null;
   let t5;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
     t5 = <Text bold={true}>UR</Text>;
@@ -111,7 +108,7 @@ export function CondensedLogo() {
   } else {
     t7 = $[14];
   }
-  const t8 = agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd;
+  const t8 = truncate(agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd, textWidth);
   let t9;
   if ($[15] !== t8) {
     t9 = <Text dimColor={true}>{t8}</Text>;
@@ -138,19 +135,7 @@ export function CondensedLogo() {
   } else {
     t11 = $[22];
   }
-  let t12;
-  if ($[23] !== t10 || $[24] !== t11 || $[25] !== t6 || $[26] !== t7 || $[27] !== t9) {
-    t12 = <OffscreenFreeze><Box flexDirection="row" gap={2} alignItems="center">{t4}<Box flexDirection="column">{t6}{t7}{t9}{t10}{t11}</Box></Box></OffscreenFreeze>;
-    $[23] = t10;
-    $[24] = t11;
-    $[25] = t6;
-    $[26] = t7;
-    $[27] = t9;
-    $[28] = t12;
-  } else {
-    t12 = $[28];
-  }
-  return t12;
+  return <OffscreenFreeze><Box flexDirection={stacked ? "column" : "row"} gap={stacked ? 0 : 2} alignItems="center">{t4}<Box flexDirection="column">{t6}{t7}{t9}{t10}{t11}</Box></Box></OffscreenFreeze>;
 }
 function _temp2(s_0) {
   return s_0.effortValue;
