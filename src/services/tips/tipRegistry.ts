@@ -445,17 +445,116 @@ const externalTips: Tip[] = [
   {
     id: 'web-app',
     content: async () =>
-      'Run tasks in the cloud while you keep coding locally · ur.ai/web',
+      '/cloud run "<task>" to run a task in an isolated worktree while you keep coding',
+    cooldownSessions: 15,
+    isRelevant: async () => true,
+  },
+  // Every tip below names a command that exists in this build and has been
+  // exercised end to end. No hosted service, no app, no domain — the only
+  // external thing UR has is its GitHub repo.
+  {
+    id: 'model-doctor-capabilities',
+    content: async () =>
+      'ur model-doctor shows which local models can actually use tools and vision — a model without tools will describe work instead of doing it',
+    cooldownSessions: 12,
+    isRelevant: async () => true,
+  },
+  {
+    id: 'selftest-drills',
+    content: async () =>
+      'ur selftest run checks the shipped binary end to end after an upgrade, and prints the checks that need a live model',
     cooldownSessions: 15,
     isRelevant: async () => true,
   },
   {
-    id: 'mobile-app',
+    id: 'sources-provenance',
     content: async () =>
-      '/mobile to use UR from the UR app on your phone',
+      '/sources lists every page and MCP result that entered this session · /sources --check "<claim>" says whether it came from one',
+    cooldownSessions: 12,
+    isRelevant: async () => true,
+  },
+  {
+    id: 'agent-inspect-costs',
+    content: async () =>
+      'ur agent-inspect --costs breaks a fan-out down per agent, labelled with what each one was doing',
     cooldownSessions: 15,
     isRelevant: async () => true,
   },
+  {
+    id: 'memory-integrity',
+    content: async () =>
+      'ur memory-integrity record then verify detects memory files edited, deleted, or dropped in by something other than UR',
+    cooldownSessions: 20,
+    isRelevant: async () => true,
+  },
+  {
+    id: 'grade-trajectory',
+    content: async () =>
+      'ur grade-trajectory --file <transcript.jsonl> --min-score 70 grades how a run worked, not just what it concluded, and exits non-zero to gate CI',
+    cooldownSessions: 20,
+    isRelevant: async () => true,
+  },
+  {
+    id: 'ci-loop-heal',
+    content: async () =>
+      'ur ci-loop --command "bun test" fixes failures and reruns until green',
+    cooldownSessions: 12,
+    isRelevant: async () => true,
+  },
+  // A short line per real capability. The point is recall: most of these get
+  // forgotten, and a user who never learns /repo-edit or /spec exists is using
+  // a fraction of what is installed. Every command here is in the registry.
+  ...(
+    [
+      ['spec-driven', '/spec init <name> — requirements → design → tasks, run with proof gates'],
+      ['repo-edit', '/repo-edit rename <sym> --to <new> — compiler-accurate rename with rollback'],
+      ['code-index', '/code-index search "<idea>" — semantic search over your code, local embeddings'],
+      ['knowledge', '/knowledge add <file> then /knowledge search — curated notes with provenance'],
+      ['context-pack', '/context-pack — scan architecture, record decisions and constraints under .ur/'],
+      ['semantic-memory', '/semantic-memory search "<topic>" — search past memory by meaning'],
+      ['remember', '/remember <fact> — store a durable preference · /forget to remove it'],
+      ['wiki', '/wiki generate — living repo wiki plus a prompt-injected repo map'],
+      ['crew', '/crew create <name> --workers 3 — lead splits a goal, workers claim tasks'],
+      ['arena', '/arena "<task>" --agents 3 — N attempts in isolated worktrees, judged'],
+      ['pattern', '/pattern run debate "<question>" — PEER, debate, handoff and parallel patterns'],
+      ['goal', '/goal add <name> --objective "<x>" — objectives that persist across sessions'],
+      ['bg', '/bg run "<task>" — detached local agent you can steer, log and kill'],
+      ['worktree', '/task start <name> --worktree — isolated branch per task, PR handoff'],
+      ['eval', '/eval run <suite> --repeat 3 — replayable graded cases with CI gates'],
+      ['test-first', '/test-first run — detect the stack, then compile/test/lint loops'],
+      ['guardrails', '/guardrails check "<text>" — regex, PII and LLM rules with tripwires'],
+      ['audit', '/audit export --format csv — hash-chained trail with tamper verification'],
+      ['security-suite', '/security scan — secrets, threat model, dependency vulnerabilities'],
+      ['sandbox', '/sandbox eval "<command>" — see what the OS sandbox would allow'],
+      ['permission-profile', '/permission-profile use <name> — switch a named permission set'],
+      ['escalate', '/escalate run "<task>" — fast model, escalating hard steps to an oracle'],
+      ['model-route', '/model-route "<task>" — pick the model that fits the work'],
+      ['advisor', '/advisor <model> — a second model critiques the main one'],
+      ['rewind', '/rewind — restore code and conversation to an earlier checkpoint'],
+      ['undo', '/undo — revert the last file edit, including a file it created'],
+      ['diff', '/diff — uncommitted changes and per-turn diffs'],
+      ['trace', '/trace — what the last turns actually called, with results'],
+      ['research', '/research, /paper, /cite, /graph — notes, papers and a claim graph'],
+      ['multimodal', '/image, /video, /youtube, /pdf — inspect media and documents'],
+      ['browser', '/browser "<url> <task>" — drive a real browser · /browser-qa to replay'],
+      ['mcp', '/mcp — connect MCP servers · /plugin for plugins and marketplaces'],
+      ['skills', '/skill run <name> · /create-skill <name> — reusable workflows'],
+      ['toolsmith', '/toolsmith <name> python — scaffold a local helper tool UR can run'],
+      ['workflow', '/workflow run <name> — declarative steps with dependencies'],
+      ['automation', '/automation create <name> --schedule "0 3 * * *" — project-local cron'],
+      ['devcontainer', '/devcontainer exec -- <cmd> — run in a reproducible container'],
+      ['ur-doctor', '/ur-doctor — full health check: tools, Ollama, .ur, MCP, Playwright'],
+      ['dna', '/dna — detect language, package manager, build, test and lint'],
+      ['statusline', '/statusline — put model, branch and context in your prompt'],
+      ['speak', '/speak <text> — read a line aloud with the system voice'],
+      ['computer', '/computer screenshot — desktop control; changes need --yes'],
+    ] as const
+  ).map(([id, text]) => ({
+    id: `cmd-${id}`,
+    content: async () => text,
+    cooldownSessions: 25,
+    isRelevant: async () => true,
+  })),
   {
     id: 'modelOplan-mode-reminder',
     content: async () =>

@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.65.3
+
+- Removed two tips for things that do not exist: `/mobile to use UR from the
+  UR app on your phone` (no such command, no such app) and a pointer to
+  `ur.ai/web` (no DNS record, same dead domain class as the `ur.com` links
+  removed earlier). Tips are the first thing a new user reads, so a tip for
+  something that is not there is the worst place to be wrong.
+- Added short tips covering the command surface that was going unnoticed —
+  spec-driven development, compiler-accurate renames, semantic code search,
+  crews and arenas, evals, guardrails, the audit trail, the security suite,
+  research and multimodal commands, and the tools added this week. One line
+  each: the goal is recall, not documentation.
+- Added `test/tipsAreReal.test.ts`: every command a tip names must exist in the
+  slash-command reference, and no tip may reference a domain UR does not own.
+  It also asserts the checker finds real citations, so it cannot start passing
+  vacuously on an empty match.
+
 ## 1.65.2
 
 - Fixed `--discover-ollama` having no effect on model discovery or requests.
