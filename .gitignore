@@ -3,6 +3,11 @@ node_modules/
 .bun/
 # Project uses bun (bun.lock); ignore stray npm lock from accidental `npm i`
 package-lock.json
+# macOS makes " 2.json" copies when a file is duplicated or restored; the exact
+# name above misses those, which is how "package-lock 2.json" got committed.
+package-lock*.json
+* 2.json
+* 2.ts
 
 # Build and generated output
 backup/
