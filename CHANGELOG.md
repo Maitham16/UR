@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.68.9
+
+- Narrowed that allowlist entry from `ur.com` to `ur.com/docs`. Replacing a
+  docs-only host with a bare domain widened what WebFetch retrieves without
+  asking, on a list whose own header warns that broad entries are dangerous
+  where a host may serve user-supplied content — and the domain in question
+  does not exist yet, so whatever ends up hosted there would have inherited
+  that trust. The matcher enforces path-segment boundaries, so `/docs-evil/x`
+  does not match. Caught by `apiTool`, which asserted the old entry.
+
+## 1.68.8
+
+- The bundled `ur-guide` agent no longer answers UR questions out of another
+  product's documentation. It instructed the model to fetch
+  `https://docs.claude.com/llms.txt` and present it to users as "UR SDK docs"
+  and "UR API docs", including the line "Agent SDK docs are part of the UR API
+  documentation at the same URL". Its other source, `docs.ur.dev`, was never
+  served. Both now resolve to `https://ur.com/docs`.
+- Replaced the remaining 33 `docs.ur.dev` links across MCP help, the security
+  dialog, keybindings, settings validation tips, preflight checks and the
+  feedback survey. Two sandbox dialogs had been pointing their href at the new
+  domain while still displaying the old one.
+- `docs.ur.dev` in the WebFetch preapproved-host allowlist now points at
+  ur.com. Changed on its own: it is a hostname the fetch tool trusts, not a
+  link.
+- `KNOWN_AGENTS` listed `ur-code-guide`; the registered agent type is
+  `ur-guide`. A workflow naming the real agent was warned as unknown, while the
+  listed name would have been accepted despite resolving to nothing.
+- Removed a dead `UR_CODE_DOCS_MAP_URL` export from `constants/prompts.ts` —
+  a duplicate of the live constant, imported by nothing.
+- Added `test/docsUrlIntegrity.test.ts`, including a check that a link's
+  displayed text matches where it actually goes.
+
 ## 1.68.7
 
 - Corrected the ur.ai -> ur.com replacement, which had rewritten identifiers as

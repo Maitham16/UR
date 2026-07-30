@@ -106,9 +106,6 @@ import { getTaskToolGuidance } from './taskToolGuidance.js'
 import { TASK_CREATE_TOOL_NAME } from '../tools/TaskCreateTool/constants.js'
 import { TASK_UPDATE_TOOL_NAME } from '../tools/TaskUpdateTool/constants.js'
 
-export const UR_CODE_DOCS_MAP_URL =
-  'https://docs.ur.dev/docs/en/ur_docs_map.md'
-
 /**
  * Boundary marker separating static (cross-org cacheable) content from dynamic content.
  * Everything BEFORE this marker in the system prompt array can use scope: 'global'.

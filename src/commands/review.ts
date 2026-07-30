@@ -4,7 +4,7 @@ import { isUltrareviewEnabled } from './review/ultrareviewEnabled.js'
 
 // Legal wants the explicit surface name plus a docs link visible before the
 // user triggers, so the description carries "UR on the web" + URL.
-const CCR_TERMS_URL = 'https://docs.ur.dev/docs/en/ur-on-the-web'
+const CCR_TERMS_URL = 'https://ur.com/docs/ur-on-the-web'
 
 const LOCAL_REVIEW_PROMPT = (args: string) => `
       You are an expert code reviewer. Follow these steps:

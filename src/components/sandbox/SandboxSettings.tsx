@@ -277,7 +277,7 @@ function SandboxModeTab(t0) {
   }
   let t6;
   if ($[12] === Symbol.for("react.memo_cache_sentinel")) {
-    t6 = <Box flexDirection="column" marginTop={1} gap={1}>{t5}<Text dimColor={true}>Learn more:{" "}<Link url="https://docs.ur.dev/docs/en/sandboxing">docs.ur.dev/docs/en/sandboxing</Link></Text></Box>;
+    t6 = <Box flexDirection="column" marginTop={1} gap={1}>{t5}<Text dimColor={true}>Learn more:{" "}<Link url="https://ur.com/docs/sandboxing">ur.com/docs/sandboxing</Link></Text></Box>;
     $[12] = t6;
   } else {
     t6 = $[12];

@@ -2252,7 +2252,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
     })
     // biome-ignore lint/suspicious/noConsole: intentional dialog output
     console.log(
-      `\nUR Remote Control is launching in spawn mode which lets you create new sessions in this project from UR on Web or your Mobile app. Learn more here: https://docs.ur.dev/docs/en/remote-control\n\n` +
+      `\nUR Remote Control is launching in spawn mode which lets you create new sessions in this project from UR on Web or your Mobile app. Learn more here: https://ur.com/docs/remote-control\n\n` +
         `Spawn mode for this project:\n` +
         `  [1] same-dir \u2014 sessions share the current directory (default)\n` +
         `  [2] worktree \u2014 each session gets an isolated git worktree\n\n` +

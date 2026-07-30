@@ -87,7 +87,7 @@ export function URInChromeOnboarding(t0) {
   }
   let t9;
   if ($[13] === Symbol.for("react.memo_cache_sentinel")) {
-    t9 = <Text dimColor={true}>For more info, use{" "}{t8}{" "}or visit <Link url="https://docs.ur.dev/docs/en/chrome" /></Text>;
+    t9 = <Text dimColor={true}>For more info, use{" "}{t8}{" "}or visit <Link url="https://ur.com/docs/chrome" /></Text>;
     $[13] = t9;
   } else {
     t9 = $[13];

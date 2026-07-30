@@ -127,7 +127,7 @@ export function PreflightStep(t0) {
   useEffect(t3, t4);
   let t5;
   if ($[6] !== isChecking || $[7] !== result || $[8] !== showSpinner) {
-    t5 = isChecking && showSpinner ? <Box paddingLeft={1}><Spinner /><Text>Checking connectivity...</Text></Box> : !result?.success && !isChecking && <Box flexDirection="column" gap={1}><Text color="error">Unable to connect to the local Ollama server</Text><Text color="error">{result?.error}</Text>{result?.sslHint ? <Box flexDirection="column" gap={1}><Text>{result.sslHint}</Text><Text color="suggestion">See https://docs.ur.dev/docs/en/network-config</Text></Box> : <Box flexDirection="column" gap={1}><Text>Please make sure your local Ollama server is running at http://localhost:11434 (start it with: ollama serve).</Text></Box>}</Box>;
+    t5 = isChecking && showSpinner ? <Box paddingLeft={1}><Spinner /><Text>Checking connectivity...</Text></Box> : !result?.success && !isChecking && <Box flexDirection="column" gap={1}><Text color="error">Unable to connect to the local Ollama server</Text><Text color="error">{result?.error}</Text>{result?.sslHint ? <Box flexDirection="column" gap={1}><Text>{result.sslHint}</Text><Text color="suggestion">See https://ur.com/docs/network-config</Text></Box> : <Box flexDirection="column" gap={1}><Text>Please make sure your local Ollama server is running at http://localhost:11434 (start it with: ollama serve).</Text></Box>}</Box>;
     $[6] = isChecking;
     $[7] = result;
     $[8] = showSpinner;

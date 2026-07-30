@@ -234,7 +234,7 @@ function URInChromeMenu(t0) {
   }
   let t10;
   if ($[33] === Symbol.for("react.memo_cache_sentinel")) {
-    t10 = <Text dimColor={true}>Learn more: https://docs.ur.dev/docs/en/chrome</Text>;
+    t10 = <Text dimColor={true}>Learn more: https://ur.com/docs/chrome</Text>;
     $[33] = t10;
   } else {
     t10 = $[33];

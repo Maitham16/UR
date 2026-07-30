@@ -127,7 +127,11 @@ export const KNOWN_AGENTS: readonly string[] = [
   'explore',
   'verification',
   'statusline-setup',
-  'ur-code-guide',
+  // Must match UR_CODE_GUIDE_AGENT_TYPE in AgentTool/built-in/urCodeGuideAgent.
+  // This read 'ur-code-guide', which is not a registered agent: a workflow
+  // using the real 'ur-guide' was warned as unknown, while the name listed
+  // here would have been accepted despite resolving to nothing.
+  'ur-guide',
   // installable templates (see featureScaffolds.AGENT_TEMPLATES)
   'reviewer',
   'test-runner',
