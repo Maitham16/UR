@@ -17,7 +17,7 @@ import { join } from 'node:path'
 // of already-valid code. Stripping the remaining 150 surfaces ~870 errors,
 // mostly fork artifacts (dead `'external' === 'ant'` build-constant branches),
 // but they are not all noise and they are not being checked.
-const NOCHECK_BUDGET = 150
+const NOCHECK_BUDGET = 149
 
 function sourceFiles(dir: string, found: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

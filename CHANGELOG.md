@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.68.2
+
+- **Security: explicit file deny rules were not enforced.** `matchingRuleForInput`
+  resolved which permission rule matched a path by reading `igResult.rule.pattern`
+  from `ignore().test()`. That property does not exist — `TestResult` is
+  `{ ignored, unignored }` — and the access sat behind an `igResult.rule` guard,
+  so the guard was always false and the function returned `null` unconditionally.
+  Every caller (FileWriteTool, FileEditTool, FileReadTool, PowerShell path
+  validation, attachments, and the read/write permission checks themselves) does
+  `const denyRule = matchingRuleForInput(path, ctx, kind, 'deny'); if (denyRule)
+  { deny }`, so a path the user had explicitly denied was reported as matching no
+  rule and allowed through. The comment above one call site reads "SECURITY: This
+  must come before any allow checks ... to prevent bypassing explicit read deny
+  rules"; the code beneath it had never run.
+- The library cannot report which pattern matched, so resolution now tests
+  patterns individually after a combined fast-path check, and skips the empty
+  pattern that `/**` reduces to — which would otherwise deny every path.
+- `filesystem.ts` and `toolExecution.ts` are off `@ts-nocheck` (149 files remain).
+  The missing property was invisible to `tsc` for exactly as long as the
+  suppression was there; this is the defect the ratchet in 1.68.0 was added for.
+- Added `test/denyRuleMatching.test.ts`, which asserts the negative case as well
+  as the positive — the bug made *everything* return `null`, so "returns null for
+  an unmatched path" proves nothing on its own.
+
 ## 1.68.1
 
 - A detected prompt-injection attempt is now reported to the user instead of
