@@ -390,21 +390,25 @@ function stringField(input: Record<string, unknown>, names: string[]): string {
 function normalizeQuestionOption(value: unknown): Record<string, unknown> | null {
   const option = objectValue(value)
   if (!option) return null
-  const label =
-    typeof option.label === 'string' && option.label.trim()
-      ? option.label.trim()
-      : typeof option.value === 'string' && option.value.trim()
-        ? option.value.trim()
-        : ''
-  const description =
-    typeof option.description === 'string' && option.description.trim()
-      ? option.description.trim()
-      : label
-  if (!label || !description) return null
+  if (!sameKeys(option, ['label'], ['description', 'preview'])) return null
+  if (typeof option.label !== 'string' || !option.label.trim()) return null
+  if (
+    option.description !== undefined &&
+    (typeof option.description !== 'string' || !option.description.trim())
+  ) {
+    return null
+  }
+  if (option.preview !== undefined && typeof option.preview !== 'string') {
+    return null
+  }
   return {
-    label,
-    description,
-    ...(typeof option.preview === 'string' ? { preview: option.preview } : {}),
+    label: option.label.trim(),
+    ...(typeof option.description === 'string'
+      ? { description: option.description.trim() }
+      : {}),
+    ...(typeof option.preview === 'string'
+      ? { preview: option.preview }
+      : {}),
   }
 }
 
@@ -422,13 +426,19 @@ function normalizeQuestion(value: unknown, index: number): Record<string, unknow
     'body',
   ])
   if (!questionText || !Array.isArray(question.options)) return null
-  const options = question.options
-    .map(normalizeQuestionOption)
-    .filter((option): option is Record<string, unknown> => option !== null)
-  if (options.length < 2 || options.length > 4) return null
+  const normalizedOptions = question.options.map(normalizeQuestionOption)
+  if (
+    !normalizedOptions.every(
+      (option): option is Record<string, unknown> => option !== null,
+    )
+  ) {
+    return null
+  }
+  const options = normalizedOptions
+  if (options.length < 2 || options.length > 8) return null
   const header =
     typeof question.header === 'string' && question.header.trim()
-      ? question.header.trim().slice(0, 12)
+      ? question.header.trim()
       : headerFromQuestion(questionText, index)
   return {
     question: questionText,
@@ -847,185 +857,4 @@ export function synthesizeKimiToolCalls(message: unknown): void {
   )
   m.content = [...kept, ...synthesized]
   m.stop_reason = 'tool_use'
-}
-
-// --- Plain-prose clarifying-question fallback --------------------------------
-// Open models frequently ignore the AskUserQuestion tool and instead write
-// clarifying questions as ordinary prose (e.g. "1. What engine? Pygame, Unity,
-// or Godot?"). With no tool call there is nothing to render the multiple-choice
-// picker, so the user is forced to type. parseClarifyingQuestions detects that
-// shape and synthesizes an AskUserQuestion tool call so the picker shows up no
-// matter which Ollama model is in use. It is deliberately conservative: it only
-// fires when the turn is short, code-free, ends on a question, and yields at
-// least one question with >=2 concrete options. Otherwise it returns null and
-// the prose is left untouched.
-
-const CLARIFY_MAX_LEN = 2000
-
-// Leading filler stripped from a candidate option ("Or do you want X" -> "X").
-const OPTION_LEADIN_RE =
-  /^(?:and\s+)?(?:or|also|just|maybe|perhaps|either|alternatively|optionally|well)\b[\s,:]*/i
-const OPTION_QUESTION_LEADIN_RE =
-  /^(?:(?:do|would|should|could|can|will)\s+(?:you|we|i)\s+(?:want|prefer|like|need|use|go\s+with|have)?|you\s+(?:could|can|might|may)|i\s+(?:could|can|would|might)|we\s+(?:could|can|might)|want|prefer|pick|choose|use|go\s+with|how\s+about|what\s+about)\b[\s,:]*/i
-
-// Catch-all phrases the picker already covers via its automatic "Other" entry.
-const OPTION_CATCHALL_RE =
-  /^(?:(?:or\s+)?(?:something|anything|someone)\s+else|other(?:\s+option)?|none(?:\s+of\s+(?:the\s+)?(?:above|these))?|no|nope|not\s+sure|any(?:thing)?|else|you\s+(?:choose|decide|pick)|your\s+(?:call|choice))$/i
-
-// Trailing qualifier dropped from a recommendation ("Pygame is the simplest" -> "Pygame").
-const OPTION_TRAILING_QUALIFIER_RE =
-  /\s+(?:is|are|would\s+be|seems?|sounds?|looks?)\s+(?:the\s+)?(?:simplest|easiest|best|recommended|fastest|cleanest|most\s+\w+)(?:\s+(?:option|choice|approach))?$/i
-
-const CLARIFY_HEADER_STOP_WORDS = new Set([
-  'a', 'about', 'also', 'an', 'and', 'are', 'be', 'can', 'could', 'do', 'does',
-  'for', 'i', 'is', 'or', 'should', 'support', 'that', 'the', 'this', 'to',
-  'want', 'we', 'what', 'which', 'with', 'without', 'would', 'you',
-])
-
-function clarifyHeader(question: string): string {
-  const word = question
-    .replace(/[^A-Za-z0-9]+/g, ' ')
-    .split(/\s+/)
-    .find(part => part && !CLARIFY_HEADER_STOP_WORDS.has(part.toLowerCase()))
-  return (word ?? 'Options').slice(0, 12)
-}
-
-function cleanOption(raw: string): string {
-  let opt = raw.trim()
-  opt = opt.replace(/^[\s"'`*_\-–—]+/, '').replace(/[\s"'`*_.?!,;:]+$/g, '')
-  // Lead-ins can stack ("Or do you want X"); strip a few rounds.
-  for (let i = 0; i < 3; i++) {
-    const before = opt
-    opt = opt
-      .replace(OPTION_LEADIN_RE, '')
-      .replace(OPTION_QUESTION_LEADIN_RE, '')
-    if (opt === before) break
-  }
-  opt = opt.replace(OPTION_TRAILING_QUALIFIER_RE, '')
-  opt = opt.replace(/\b(?:instead|please|etc\.?)$/i, '')
-  return opt.replace(/[\s,;:]+$/g, '').trim()
-}
-
-// "A, B, C, or D" / "A or B" -> ["A","B","C","D"]; null when there is no
-// trailing "or" enumeration (a comma list with no "or" is one bundled option).
-function splitEnumeration(s: string): string[] | null {
-  if (!/\bor\b/i.test(s)) return null
-  const parts = s
-    .split(/\s*,?\s+or\s+|\s*,\s*/gi)
-    .map(p => p.trim())
-    .filter(Boolean)
-  return parts.length >= 2 ? parts : null
-}
-
-function extractClarifyOptions(text: string): string[] {
-  const trimmed = text.trim()
-  if (!trimmed) return []
-  const clauses = trimmed
-    .split(/(?<=[?.!;])\s+/)
-    .map(c => c.trim())
-    .filter(Boolean)
-  const options: string[] = []
-  for (const clause of clauses) {
-    // Drop a leading connector before enumeration detection so a clause that
-    // starts with "Or" isn't mistaken for an enumeration boundary.
-    const stripped = clause.replace(OPTION_LEADIN_RE, '')
-    const candidates = splitEnumeration(stripped) ?? [stripped]
-    for (const candidate of candidates) {
-      const cleaned = cleanOption(candidate)
-      if (!cleaned || cleaned.length > 120) continue
-      if (OPTION_CATCHALL_RE.test(cleaned)) continue
-      options.push(cleaned)
-    }
-  }
-  const seen = new Set<string>()
-  const unique: string[] = []
-  for (const opt of options) {
-    const key = opt.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    unique.push(opt)
-    if (unique.length === 4) break
-  }
-  return unique
-}
-
-function buildClarifyQuestion(segment: string): Record<string, unknown> | null {
-  const s = segment
-    .replace(/^\s*(?:\d+[.)]|[-*•])\s+/, '')
-    .replace(/\*\*/g, '')
-    .trim()
-  const qEnd = s.indexOf('?')
-  if (qEnd === -1) return null
-  const question = s.slice(0, qEnd + 1).trim()
-  const remainder = s.slice(qEnd + 1).trim()
-  let options = extractClarifyOptions(remainder)
-  if (options.length < 2) {
-    // Inline-option question ("Use TypeScript or JavaScript?") — pull options
-    // from the final clause of the question itself, but only when it contains
-    // an explicit "or" enumeration so ordinary prose ("Done. Want tests too?")
-    // is not mistaken for a choice list.
-    const inner = question.replace(/\?+$/, '')
-    const lastClause = (inner.split(/(?<=[.!;])\s+/).pop() ?? inner).trim()
-    if (/\bor\b/i.test(lastClause)) {
-      const inline = extractClarifyOptions(lastClause + '.')
-      if (inline.length >= 2) options = inline
-    }
-  }
-  if (options.length < 2) return null
-  return {
-    question,
-    header: clarifyHeader(question),
-    options: options.map(label => ({ label, description: label })),
-  }
-}
-
-export function parseClarifyingQuestions(
-  text: string,
-  options: TextToolCallParseOptions = {},
-): ParsedToolCall | null {
-  if (!hasTool(options.availableToolNames, 'AskUserQuestion')) return null
-  const trimmed = text.trim()
-  if (!trimmed || trimmed.length > CLARIFY_MAX_LEN) return null
-  if (trimmed.includes('```') || trimmed.includes('<|')) return null
-  const lines = trimmed
-    .split('\n')
-    .map(l => l.trim())
-    .filter(Boolean)
-  // Only convert turns that end awaiting input.
-  if (lines.length === 0 || !lines[lines.length - 1]!.endsWith('?')) return null
-
-  const isListItem = (l: string): boolean => /^(?:\d+[.)]|[-*•])\s+/.test(l)
-  let segments: string[]
-  if (lines.some(isListItem)) {
-    segments = []
-    for (const line of lines) {
-      if (isListItem(line) || segments.length === 0) segments.push(line)
-      else segments[segments.length - 1] += ' ' + line
-    }
-  } else {
-    segments = trimmed
-      .split(/\n{2,}/)
-      .map(s => s.replace(/\n/g, ' ').trim())
-      .filter(s => s.includes('?'))
-    if (segments.length === 0) segments = [trimmed.replace(/\n/g, ' ')]
-  }
-
-  const questions: Record<string, unknown>[] = []
-  const seenQuestions = new Set<string>()
-  for (const segment of segments) {
-    if (questions.length === 4) break
-    const built = buildClarifyQuestion(segment)
-    if (!built) continue
-    const key = (built.question as string).toLowerCase()
-    if (seenQuestions.has(key)) continue
-    seenQuestions.add(key)
-    questions.push(built)
-  }
-  if (questions.length === 0) return null
-
-  return {
-    id: `clarify_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-    name: 'AskUserQuestion',
-    input: { questions },
-  }
 }

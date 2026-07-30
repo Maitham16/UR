@@ -36,6 +36,27 @@ function packageSmokeEnv(temporaryRoot: string) {
   }
 }
 
+function parsePackedArtifact(packOutput: string): { filename: string } {
+  const decoded: unknown = JSON.parse(packOutput)
+  const candidate = Array.isArray(decoded)
+    ? decoded[0]
+    : decoded && typeof decoded === 'object'
+      ? Object.values(decoded)[0]
+      : undefined
+
+  if (
+    !candidate ||
+    typeof candidate !== 'object' ||
+    !('filename' in candidate) ||
+    typeof candidate.filename !== 'string' ||
+    candidate.filename.length === 0
+  ) {
+    throw new Error(`npm pack returned no packaged artifact:\n${packOutput}`)
+  }
+
+  return candidate as { filename: string }
+}
+
 function packAndExtract(): string {
   const tmp = mkdtempSync(join(tmpdir(), 'ur-package-smoke-'))
   const packOutput = execFileSync(
@@ -50,7 +71,10 @@ function packAndExtract(): string {
       },
     },
   )
-  const packed = JSON.parse(packOutput)[0]
+  // npm 11 returns an array here; npm 12 returns an object keyed by package
+  // name. Accept both documented CLI shapes so release checks do not depend on
+  // which supported npm major happens to be installed.
+  const packed = parsePackedArtifact(packOutput)
   const tarball = join(tmp, packed.filename)
   const extractDir = join(tmp, 'extract')
   execFileSync('mkdir', ['-p', extractDir])

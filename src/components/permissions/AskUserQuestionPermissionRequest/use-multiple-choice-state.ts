@@ -1,20 +1,26 @@
 import { useCallback, useReducer } from 'react'
+import {
+  createPrototypeSafeRecord,
+  getOwnRecordValue,
+  setPrototypeSafeRecordValue,
+} from './prototypeSafeRecord.js'
 
 export type AnswerValue = string
 
 export type QuestionState = {
   selectedValue?: string | string[]
   textInputValue: string
+  otherInputValue: string
 }
 
-type State = {
+export type MultipleChoiceStateData = {
   currentQuestionIndex: number
   answers: Record<string, AnswerValue>
   questionStates: Record<string, QuestionState>
   isInTextInput: boolean
 }
 
-type Action =
+export type MultipleChoiceAction =
   | { type: 'next-question' }
   | { type: 'prev-question' }
   | {
@@ -31,7 +37,10 @@ type Action =
     }
   | { type: 'set-text-input-mode'; isInInput: boolean }
 
-function reducer(state: State, action: Action): State {
+export function multipleChoiceReducer(
+  state: MultipleChoiceStateData,
+  action: MultipleChoiceAction,
+): MultipleChoiceStateData {
   switch (action.type) {
     case 'next-question':
       return {
@@ -48,7 +57,10 @@ function reducer(state: State, action: Action): State {
       }
 
     case 'update-question-state': {
-      const existing = state.questionStates[action.questionText]
+      const existing = getOwnRecordValue(
+        state.questionStates,
+        action.questionText,
+      )
       const newState: QuestionState = {
         selectedValue:
           action.updates.selectedValue ??
@@ -56,24 +68,28 @@ function reducer(state: State, action: Action): State {
           (action.isMultiSelect ? [] : undefined),
         textInputValue:
           action.updates.textInputValue ?? existing?.textInputValue ?? '',
+        otherInputValue:
+          action.updates.otherInputValue ?? existing?.otherInputValue ?? '',
       }
 
       return {
         ...state,
-        questionStates: {
-          ...state.questionStates,
-          [action.questionText]: newState,
-        },
+        questionStates: setPrototypeSafeRecordValue(
+          state.questionStates,
+          action.questionText,
+          newState,
+        ),
       }
     }
 
     case 'set-answer': {
       const newState = {
         ...state,
-        answers: {
-          ...state.answers,
-          [action.questionText]: action.answer,
-        },
+        answers: setPrototypeSafeRecordValue(
+          state.answers,
+          action.questionText,
+          action.answer,
+        ),
       }
 
       if (action.shouldAdvance) {
@@ -95,11 +111,13 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-const INITIAL_STATE: State = {
-  currentQuestionIndex: 0,
-  answers: {},
-  questionStates: {},
-  isInTextInput: false,
+export function createInitialMultipleChoiceState(): MultipleChoiceStateData {
+  return {
+    currentQuestionIndex: 0,
+    answers: createPrototypeSafeRecord<AnswerValue>(),
+    questionStates: createPrototypeSafeRecord<QuestionState>(),
+    isInTextInput: false,
+  }
 }
 
 export type MultipleChoiceState = {
@@ -123,7 +141,10 @@ export type MultipleChoiceState = {
 }
 
 export function useMultipleChoiceState(): MultipleChoiceState {
-  const [state, dispatch] = useReducer(reducer, INITIAL_STATE)
+  const [state, dispatch] = useReducer(
+    multipleChoiceReducer,
+    createInitialMultipleChoiceState(),
+  )
 
   const nextQuestion = useCallback(() => {
     dispatch({ type: 'next-question' })

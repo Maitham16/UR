@@ -5,10 +5,13 @@ import {
   checkTaskListGate,
   countActionableTasksForGate,
   countActionableTodosForGate,
+  isLocalPreviewOpenForTaskGate,
+  isMutationRequiringTaskList,
   isMutatingTool,
   isPlanArtifactMutationForGate,
 } from '../src/services/tools/taskListGate.ts'
 import { AgentTool } from '../src/tools/AgentTool/AgentTool.tsx'
+import { BashTool } from '../src/tools/BashTool/BashTool.tsx'
 import { countToolCallsBeforeCurrent } from '../src/services/tools/toolExecution.ts'
 
 // The system prompt already asked for a task list on multi-step work and the
@@ -132,6 +135,34 @@ test('the gate never blocks the fix for itself', () => {
   }
 })
 
+test('exiting plan mode is not mistaken for an implementation mutation', () => {
+  for (const taskCount of [0, null]) {
+    expect(
+      checkTaskListGate({
+        toolName: 'ExitPlanMode',
+        taskCount,
+        readsSoFar: 99,
+        isSubagent: false,
+        isMutating: true,
+        config: CONFIG,
+      }).allowed,
+    ).toBe(true)
+  }
+
+  // The control-flow exemption must not open the gate for real workspace
+  // writes under otherwise identical conditions.
+  expect(
+    checkTaskListGate({
+      toolName: 'Write',
+      taskCount: 0,
+      readsSoFar: 99,
+      isSubagent: false,
+      isMutating: true,
+      config: CONFIG,
+    }).allowed,
+  ).toBe(false)
+})
+
 test('the exact current-session plan file is a narrow gate exemption', () => {
   const expectedPlanFile = '/tmp/ur-plans/steady-river.md'
   expect(
@@ -218,6 +249,74 @@ test('runtime tool classification covers dynamic and future mutators', () => {
   ).toBe(true)
 })
 
+test('a single loopback browser preview bypasses only the task gate', () => {
+  const input = {
+    command: 'open "http://localhost:8123/index.html?v=11"',
+  }
+
+  expect(
+    isLocalPreviewOpenForTaskGate({
+      toolName: 'Bash',
+      toolInput: input,
+    }),
+  ).toBe(true)
+  expect(
+    isMutationRequiringTaskList({
+      toolName: 'Bash',
+      toolInput: input,
+      isMutating: true,
+    }),
+  ).toBe(false)
+
+  // App launch remains a side effect under Bash's permission policy. The
+  // task-only classification must never become an auto-approval shortcut.
+  expect(BashTool.isReadOnly?.(input as never)).toBe(false)
+})
+
+test('local preview classification fails closed for shell and URL variants', () => {
+  const stillTaskGated = [
+    'open "http://localhost:8123" && touch /tmp/task-gate-proof',
+    'open "http://localhost:8123/$(touch /tmp/task-gate-proof)"',
+    'open "http://localhost:8123/`touch /tmp/task-gate-proof`"',
+    'open "https://example.com"',
+    'open "./index.html"',
+    'open -a Safari "http://localhost:8123"',
+    'open "http://localhost:8123" > /tmp/task-gate-proof',
+    'touch /tmp/task-gate-proof',
+  ]
+
+  for (const command of stillTaskGated) {
+    expect(
+      isMutationRequiringTaskList({
+        toolName: 'Bash',
+        toolInput: { command },
+        isMutating: true,
+      }),
+      command,
+    ).toBe(true)
+  }
+
+  expect(
+    isMutationRequiringTaskList({
+      toolName: 'Bash',
+      toolInput: {
+        command: 'open "http://127.0.0.1:8123"',
+        _simulatedSedEdit: { filePath: '/tmp/x', newContent: 'changed' },
+      },
+      isMutating: true,
+    }),
+  ).toBe(true)
+  expect(
+    isMutationRequiringTaskList({
+      toolName: 'Edit',
+      toolInput: {
+        command: 'open "http://localhost:8123"',
+      },
+      isMutating: true,
+    }),
+  ).toBe(true)
+})
+
 test('terminal and internal tasks do not permanently bypass the gate', () => {
   expect(
     countActionableTasksForGate([
@@ -234,6 +333,45 @@ test('terminal and internal tasks do not permanently bypass the gate', () => {
       { status: 'in_progress' },
     ]),
   ).toBe(2)
+})
+
+test('gate recovery distinguishes an absent list from an all-terminal list', () => {
+  const absent = checkTaskListGate({
+    toolName: 'Edit',
+    taskCount: 0,
+    totalTaskCount: 0,
+    readsSoFar: 10,
+    isSubagent: false,
+    isMutating: true,
+    config: CONFIG,
+  })
+  expect(absent.allowed).toBe(false)
+  expect((absent as { reason: string }).reason).toContain(
+    'No actionable task exists',
+  )
+  expect((absent as { reason: string }).reason).not.toContain(
+    'task list exists',
+  )
+
+  const terminal = checkTaskListGate({
+    toolName: 'Edit',
+    taskCount: 0,
+    totalTaskCount: 9,
+    readsSoFar: 10,
+    isSubagent: false,
+    isMutating: true,
+    config: CONFIG,
+  })
+  expect(terminal.allowed).toBe(false)
+  const reason = (terminal as { reason: string }).reason
+  expect(reason).toContain('task list exists')
+  expect(reason).toContain('every tracked task is terminal')
+  expect(reason).toContain('TaskCreate')
+  expect(reason).toContain('TaskUpdate')
+  expect(reason).toContain('pending/in_progress')
+  expect(reason).toContain(
+    'do not mark that task complete before the check',
+  )
 })
 
 test('headless TodoWrite plans open the same mutation gate as task-v2 plans', () => {
@@ -317,8 +455,8 @@ test('the allowance counts tool calls, not conversation length', () => {
   // allowance exists to let through.
   const source = readFileSync('src/services/tools/toolExecution.ts', 'utf8')
   const call = source.slice(source.indexOf('checkTaskListGate({'))
-  expect(call.slice(0, 400)).toContain('countToolCalls')
-  expect(call.slice(0, 400)).not.toContain('messages?.length')
+  expect(call.slice(0, 700)).toContain('countToolCalls')
+  expect(call.slice(0, 700)).not.toContain('messages?.length')
 })
 
 test('countToolCalls ignores plain conversation', () => {

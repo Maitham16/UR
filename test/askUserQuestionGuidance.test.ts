@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import {
   ASK_USER_QUESTION_TOOL_PROMPT,
+  PREVIEW_FEATURE_PROMPT,
 } from '../src/tools/AskUserQuestionTool/prompt.ts'
 
 // Choice menus were arriving with all three fields saying the same thing: the
@@ -33,19 +34,61 @@ test('the prompt shows a worked bad and good example', () => {
   expect(ASK_USER_QUESTION_TOOL_PROMPT).toContain('no concurrent writers')
 })
 
+test('the prompt specifies the nested bounds and a canonical JSON input', () => {
+  expect(ASK_USER_QUESTION_TOOL_PROMPT).toContain('1-4 complete question objects')
+  expect(ASK_USER_QUESTION_TOOL_PROMPT).toContain(
+    'an `options` array with 2-8 option objects',
+  )
+  expect(ASK_USER_QUESTION_TOOL_PROMPT).toContain(
+    'Never put option rows directly in the top-level `questions` array',
+  )
+
+  const canonical = ASK_USER_QUESTION_TOOL_PROMPT.match(
+    /\n(\{"questions":\[[^\n]+\]\})\n/,
+  )?.[1]
+  expect(canonical).toBeDefined()
+  expect(() => JSON.parse(canonical!)).not.toThrow()
+})
+
+test('the prompt limits questions to material blocking decisions', () => {
+  expect(ASK_USER_QUESTION_TOOL_PROMPT).toContain('Do not over-question')
+  expect(ASK_USER_QUESTION_TOOL_PROMPT).toContain(
+    'ask the most blocking 1-4 first',
+  )
+  expect(ASK_USER_QUESTION_TOOL_PROMPT).toContain(
+    'ask the remainder in a later round',
+  )
+})
+
+test('HTML previews are documented as escaped inert text', () => {
+  expect(PREVIEW_FEATURE_PROMPT.html).toContain('raw HTML is not accepted')
+  expect(PREVIEW_FEATURE_PROMPT.html).toContain(
+    'escaped and rendered as inert preformatted text',
+  )
+  expect(PREVIEW_FEATURE_PROMPT.html).toContain(
+    'Do not include HTML tags, attributes, URLs, scripts, styles, event handlers',
+  )
+  expect(PREVIEW_FEATURE_PROMPT.html).not.toContain('use inline style attributes')
+})
+
 test('the description field asks for consequences, not a restatement', () => {
-  const line = SCHEMA.split('\n').find(l => l.includes('description: z.string()'))
+  const line = SCHEMA.split('\n').find(l =>
+    l.includes('description: boundedText'),
+  )
   expect(line).toBeDefined()
-  expect(line).toContain('What actually happens if this is chosen')
-  expect(line).toContain('NOT restate the label')
+  expect(line).toContain('consequence, trade-off, or limitation')
+  expect(line).toContain('never duplicate the label')
 })
 
 test('the label field says to name the choice, not echo the question', () => {
-  const line = SCHEMA.split('\n').find(l => l.includes('label: z.string()'))
-  expect(line).toContain('do not restate the question')
+  expect(SCHEMA).toContain('concise name of this choice')
+  expect(ASK_USER_QUESTION_TOOL_PROMPT).toContain(
+    'It is not a restatement of the question',
+  )
 })
 
 test('the header field says to name the dimension', () => {
-  const line = SCHEMA.split('\n').find(l => l.includes('header: z.string()'))
-  expect(line).toContain('Name the dimension')
+  const line = SCHEMA.split('\n').find(l => l.includes('header: boundedText'))
+  expect(line).toContain('naming the decision dimension')
+  expect(line).toContain('not a shortened question')
 })

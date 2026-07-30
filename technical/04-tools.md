@@ -61,6 +61,10 @@ only after `EnterPlanMode` (or `/plan`) has successfully made the active mode
 `plan`. Plan approval may change that mode before permission-edited input is
 revalidated; the executor labels that second validation as post-permission so
 the already-validated exit can finish, while new out-of-mode calls still fail.
+`ExitPlanMode` is exempt from the implementation task-list gate because it is
+the approval/control transition that precedes implementation. Its own plan-mode
+validation remains authoritative, so the exemption does not make a stale
+second exit valid.
 
 For non-trivial work, the task list uses one record per cohesive outcome with
 an observable done check rather than one omnibus record. Genuine single-outcome
@@ -79,7 +83,32 @@ precision-losing numeric IDs are rejected.
 Task-gate recovery names the tracking surface that is actually present:
 interactive Task V2 sessions use `TaskCreate`, while default headless sessions
 use `TodoWrite`. It never instructs a model to recover by calling a tool absent
-from that runtime.
+from that runtime. Runtime inspection tracks actionable and total user tasks
+separately: an all-terminal list is reported truthfully and the model is told
+to reopen or create the cohesive remaining task. Real Edit/Bash mutations stay
+gated. One simple `open <loopback-http(s)-URL>` Bash preview is exempt only
+from the task-list gate; remote/file URLs, flags, shell composition, expansion,
+redirection, backgrounding, sandbox overrides, and permission-time rewrites to
+mutating commands fail closed. The preview command remains a Bash side effect
+and still follows normal permission, sandbox, and plan-worker rules.
+
+`AskUserQuestion` exposes a request-only model schema: one top-level
+`questions` array with 1–4 complete question objects, each containing
+`question`, a header of at most 12 characters, and 2–8 labeled choices.
+Descriptions are optional and are never fabricated from labels. The runtime
+accepts only lossless compatibility forms such as string choices and recognized
+question-text aliases; it does not turn arbitrary prose or flat option rows into
+invented questions. More than four blocking decisions are asked in later
+rounds.
+
+Answers and annotations are not model input fields. They are accepted only
+during post-permission validation after the interactive UI has returned one
+non-empty answer for every question; an unchanged generic approval cannot
+produce a successful “user answered” result. The UI uses prototype-safe records,
+provides a real custom `Other` path for both ordinary and preview questions,
+and does not count selecting `Other` itself as an answer. HTML-configured
+previews are escaped into an inert preformatted-text wrapper rather than
+executed as model-provided markup.
 
 ## Multi-agent tools
 
@@ -144,8 +173,17 @@ not only a modification timestamp. Full and ranged reads are compared at the
 final write boundary, preventing same-timestamp external replacements from
 being overwritten.
 
+`Write` requires `file_path` and the complete literal `content` in the same
+structured call. Prose outside the call is never treated as file content, and a
+missing-content failure states that no file was written instead of fabricating
+the intended file.
+
 `Edit` remains fail-closed rather than applying a fuzzy replacement to similar
 code. When an exact contiguous `old_string` is absent, its bounded error points
 to a verified matching line when one exists and tells the model to re-read that
 region, use a smaller current 2–4-line anchor, split distant HTML/CSS/JavaScript
-sections, and never retry the unchanged call.
+sections, and never retry the unchanged call. One narrow idempotent case returns
+success without writing: a non-`replace_all` deletion-only edit whose
+`new_string` is already present uniquely and whose larger `old_string` is
+absent. General stale, fuzzy, empty-replacement, and ambiguous matches still
+fail.

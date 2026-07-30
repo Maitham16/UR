@@ -361,6 +361,125 @@ test('a permission rewrite from read-only to mutating is revalidated and gated',
   )
 })
 
+test('loopback open reaches Bash permission but a mutating rewrite is task-gated', async () => {
+  let callCount = 0
+  let permissionCount = 0
+  const tool = {
+    name: 'Bash',
+    inputSchema: z.strictObject({ command: z.string() }),
+    // App launch remains permission-relevant even though the narrow loopback
+    // preview does not require an unfinished workspace task.
+    isReadOnly: () => false,
+    isConcurrencySafe: () => false,
+    isEnabled: () => true,
+    async call() {
+      callCount++
+      return { data: 'preview launched' }
+    },
+  }
+  const priorCalls = Array.from({ length: 3 }, (_, index) => ({
+    type: 'assistant',
+    message: {
+      id: `preview-prior-message-${index}`,
+      content: [
+        {
+          type: 'tool_use',
+          id: `preview-prior-${index}`,
+          name: 'Read',
+          input: {},
+        },
+      ],
+    },
+  }))
+  const state = getDefaultAppState()
+  const context = {
+    abortController: new AbortController(),
+    options: {
+      commands: [],
+      debug: false,
+      mainLoopModel: 'test-model',
+      tools: [tool],
+      verbose: false,
+      thinkingConfig: { type: 'disabled' },
+      mcpClients: [],
+      mcpResources: {},
+      isNonInteractiveSession: true,
+      agentDefinitions: { activeAgents: [], allAgents: [] },
+    },
+    getAppState: () => state,
+    setAppState: () => {},
+    messages: priorCalls,
+    readFileState: new Map(),
+    setInProgressToolUseIDs: () => {},
+    setResponseLength: () => {},
+    updateFileHistoryState: () => {},
+    updateAttributionState: () => {},
+  }
+  const previewInput = {
+    command: 'open "http://localhost:8123/index.html?v=11"',
+  }
+  const canUseUnchanged = async () => {
+    permissionCount++
+    return {
+      behavior: 'allow' as const,
+      updatedInput: previewInput,
+    }
+  }
+
+  const allowed = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'loopback-preview-open',
+        name: tool.name,
+        input: previewInput,
+      } as never,
+      {
+        type: 'assistant',
+        uuid: 'assistant-loopback-preview',
+        message: { id: 'message-loopback-preview', content: [] },
+      } as never,
+      canUseUnchanged as never,
+      context as never,
+    ),
+  )
+  expect(permissionCount).toBe(1)
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(allowed)).not.toContain('TaskListRequired')
+
+  const rewritten = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'loopback-preview-rewritten',
+        name: tool.name,
+        input: previewInput,
+      } as never,
+      {
+        type: 'assistant',
+        uuid: 'assistant-loopback-preview-rewritten',
+        message: {
+          id: 'message-loopback-preview-rewritten',
+          content: [],
+        },
+      } as never,
+      (async () => {
+        permissionCount++
+        return {
+          behavior: 'allow' as const,
+          updatedInput: { command: 'touch /tmp/task-gate-proof' },
+        }
+      }) as never,
+      context as never,
+    ),
+  )
+  expect(permissionCount).toBe(2)
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(rewritten)).toContain(
+    'TaskListRequired after input update',
+  )
+})
+
 test('a headless TodoWrite plan satisfies the final mutation gate', async () => {
   const previousInteractive = getIsInteractive()
   setIsInteractive(false)
@@ -770,4 +889,84 @@ test('the exact session plan file is allowed but a rewritten workspace path is g
 
   expect(callCount).toBe(1)
   expect(JSON.stringify(outsidePlanModeOutput)).toContain('TaskListRequired')
+})
+
+test('interactive tools require post-permission response validation even when input is unchanged', async () => {
+  let callCount = 0
+  const validationPhases: Array<string | undefined> = []
+  const tool = {
+    name: 'InteractiveQuestion',
+    inputSchema: z.strictObject({ question: z.string() }),
+    isReadOnly: () => true,
+    isConcurrencySafe: () => true,
+    isEnabled: () => true,
+    requiresUserInteraction: () => true,
+    async validateInput(
+      _input: { question: string },
+      context: { validationPhase?: string },
+    ) {
+      validationPhases.push(context.validationPhase)
+      if (context.validationPhase === 'post-permission') {
+        return {
+          result: false as const,
+          message: 'No verified user response was collected',
+          errorCode: 1,
+        }
+      }
+      return { result: true as const }
+    },
+    async call() {
+      callCount++
+      return { data: 'must not execute' }
+    },
+  }
+  const state = getDefaultAppState()
+  const context = {
+    abortController: new AbortController(),
+    options: {
+      commands: [],
+      debug: false,
+      mainLoopModel: 'test-model',
+      tools: [tool],
+      verbose: false,
+      thinkingConfig: { type: 'disabled' },
+      mcpClients: [],
+      mcpResources: {},
+      isNonInteractiveSession: true,
+      agentDefinitions: { activeAgents: [], allAgents: [] },
+    },
+    getAppState: () => state,
+    setAppState: () => {},
+    messages: [],
+    readFileState: new Map(),
+    setInProgressToolUseIDs: () => {},
+    setResponseLength: () => {},
+    updateFileHistoryState: () => {},
+    updateAttributionState: () => {},
+  }
+  const input = { question: 'Which option?' }
+  const output = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'interactive-unchanged-input',
+        name: tool.name,
+        input,
+      } as never,
+      {
+        type: 'assistant',
+        uuid: 'assistant-interactive-validation',
+        message: { id: 'message-interactive-validation', content: [] },
+      } as never,
+      (async () => ({
+        behavior: 'allow' as const,
+        updatedInput: input,
+      })) as never,
+      context as never,
+    ),
+  )
+
+  expect(validationPhases).toEqual([undefined, 'post-permission'])
+  expect(callCount).toBe(0)
+  expect(JSON.stringify(output)).toContain('No verified user response')
 })

@@ -21,11 +21,11 @@ Preview content is rendered as markdown in a monospace box. Multi-line text with
   html: `
 Preview feature:
 Use the optional \`preview\` field on options when presenting concrete artifacts that users need to visually compare:
-- HTML mockups of UI layouts or components
-- Formatted code snippets showing different implementations
-- Visual comparisons or diagrams
+- Plain-text or ASCII mockups of UI layouts or components
+- Inert code snippets showing different implementations
+- Textual visual comparisons or diagrams
 
-Preview content must be a self-contained HTML fragment (no <html>/<body> wrapper, no <script> or <style> tags — use inline style attributes instead). Do not use previews for simple preference questions where labels and descriptions suffice. Note: previews are only supported for single-select questions (not multiSelect).
+Preview content is untrusted text: raw HTML is not accepted or executed. It is escaped and rendered as inert preformatted text. Do not include HTML tags, attributes, URLs, scripts, styles, event handlers, or other executable markup. Do not use previews for simple preference questions where labels and descriptions suffice. Note: previews are only supported for single-select questions (not multiSelect).
 `,
 } as const
 
@@ -37,10 +37,20 @@ export const ASK_USER_QUESTION_TOOL_PROMPT = `Use this tool when you need to ask
 
 Strongly prefer this tool over asking a question in plain assistant text. Any time your reply would end with a question that offers the user options or asks them to choose a direction (e.g. "Would you like A or B?", "Which approach should I take?", "Want me to do X or Y?"), call this tool with those options instead so the user gets a selectable arrow-key menu. Only ask in plain text when the answer is genuinely open-ended and cannot be expressed as a small set of choices.
 
+Strict input hierarchy:
+- Invoke the tool with exactly one top-level \`questions\` array containing 1-4 complete question objects.
+- Every question object contains \`question\`, a concise \`header\` (maximum 12 characters), and an \`options\` array with 2-8 option objects. Use \`multiSelect: true\` only when more than one choice may apply.
+- Every option object contains a \`label\`. Add \`description\` only when it contributes a real consequence, trade-off, or limitation; \`preview\` is optional.
+- Keep each question and its own options nested together. Never put option rows directly in the top-level \`questions\` array, and never send incomplete header/prompt-only entries.
+
+Canonical valid tool arguments (invoke the structured tool; do not print this object as prose):
+{"questions":[{"question":"Which database should we use?","header":"Database","options":[{"label":"PostgreSQL (Recommended)","description":"Strong consistency and concurrency; requires a running server and migrations."},{"label":"SQLite","description":"Zero setup and a single file; unsuitable for multiple concurrent writers."}],"multiSelect":false}]}
+
 Usage notes:
 - Users will always be able to select "Other" to provide custom text input, so it is safe to offer choices even when you are unsure you have listed every option
 - Use multiSelect: true to allow multiple answers to be selected for a question
 - If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
+- Do not over-question. Ask only decisions that materially affect the result and cannot be inferred safely. If more than four decisions are truly needed, ask the most blocking 1-4 first and ask the remainder in a later round.
 
 Writing the three fields — they must each carry DIFFERENT information:
 - \`header\` names the dimension being decided ("Database", "Auth method"). It is not a shortened copy of the question.

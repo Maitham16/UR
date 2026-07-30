@@ -75,6 +75,12 @@ const outputSchema = lazySchema(() =>
       .boolean()
       .describe('Whether the user modified the proposed changes'),
     replaceAll: z.boolean().describe('Whether all occurrences were replaced'),
+    alreadyApplied: z
+      .boolean()
+      .optional()
+      .describe(
+        'Whether the requested deletion-only replacement was already present and no write was needed',
+      ),
     gitDiff: gitDiffSchema().optional(),
   }),
 )

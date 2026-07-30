@@ -491,6 +491,83 @@ test('Ollama keeps bare JSON as text when native tools are available', async () 
   }
 })
 
+test('Ollama preserves ordinary prose choices instead of inventing Ask tool input', async () => {
+  const prose = 'Should I use TypeScript or JavaScript?'
+  const askTool = {
+    name: 'AskUserQuestion',
+    description: 'Ask a structured question',
+    input_schema: {
+      type: 'object',
+      properties: {
+        questions: { type: 'array' },
+      },
+      required: ['questions'],
+    },
+  }
+
+  for (const mode of ['non-streaming', 'streaming'] as const) {
+    const result = await runOllamaFixture(`prose-choice-${mode}`, mode, {
+      capabilities: [],
+      message: {
+        role: 'assistant',
+        content: prose,
+      },
+      tools: [askTool],
+    })
+
+    expect(toolUsesFromResult(mode, result)).toHaveLength(0)
+    expect(visibleTextFromResult(mode, result)).toBe(prose)
+  }
+})
+
+test('Ollama never treats preceding prose as missing Write content', async () => {
+  const prose =
+    "Now I'll create the complete space warship game. This will be a comprehensive single-file implementation with all the required systems.\n\n"
+  const filePath = '/Users/maith/Desktop/space/index.html'
+  const writeTool = {
+    name: 'Write',
+    description: 'Write a file',
+    input_schema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string' },
+        content: { type: 'string' },
+      },
+      required: ['file_path', 'content'],
+      additionalProperties: false,
+    },
+  }
+
+  for (const mode of ['non-streaming', 'streaming'] as const) {
+    const result = await runOllamaFixture(`missing-write-content-${mode}`, mode, {
+      capabilities: ['tools'],
+      message: {
+        role: 'assistant',
+        content: prose,
+        tool_calls: [
+          {
+            function: {
+              name: 'Write',
+              arguments: { file_path: filePath },
+            },
+          },
+        ],
+      },
+      tools: [writeTool],
+    })
+
+    const toolUses = toolUsesFromResult(mode, result)
+    expect(toolUses).toHaveLength(1)
+    const input =
+      mode === 'non-streaming'
+        ? toolUses[0]?.input
+        : streamedToolInputs(result)[0]?.input
+    expect(input).toEqual({ file_path: filePath })
+    expect(input).not.toHaveProperty('content')
+    expect(visibleTextFromResult(mode, result)).toBe(prose)
+  }
+})
+
 test('Ollama rejects malformed Kimi arguments instead of emitting empty input', async () => {
   const malformed =
     '<|tool_call_begin|>Write<|tool_call_argument_begin|>' +

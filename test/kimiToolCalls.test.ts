@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test'
 import {
   parseBareJsonToolCalls,
-  parseClarifyingQuestions,
   parseTextToolCalls,
   reconcileToolName,
   synthesizeKimiToolCalls,
@@ -70,7 +69,7 @@ test('bare TaskCreate JSON is converted when the tool is available', () => {
 
 test('bare AskUserQuestion JSON is converted and normalized', () => {
   const result = parseTextToolCalls(
-    'The directory is empty, so I have choices to confirm first.\n{"questions":[{"question":"What technology stack do you prefer?","options":[{"label":"HTML5 Canvas + plain JavaScript (no build step, runs directly in browser)","value":"canvas-vanilla","description":"Single index.html and game.js. Fastest to run and simplest to understand."},{"label":"HTML5 Canvas + TypeScript with a small build","value":"canvas-ts","description":"Uses Vite or esbuild. Better typed but requires npm install and build."},{"label":"Phaser 3 JavaScript","value":"phaser-js","description":"Popular game framework. More features, but external dependency."}]},{"question":"Which platformer features should the level include?","options":[{"label":"Mario-style basics only: run, jump, platforms, coins, enemies, flagpole end","value":"basic"},{"label":"Add power-ups (mushroom/fire flower), pits, and a boss at the end","value":"advanced"}],"multiSelect":false},{"question":"Do you want this to be desktop-only or also support mobile touch controls?","options":[{"label":"Desktop keyboard only","value":"desktop"},{"label":"Desktop + on-screen touch controls for mobile","value":"mobile"}]}]}',
+    'The directory is empty, so I have choices to confirm first.\n{"questions":[{"question":"What technology stack do you prefer?","options":[{"label":"HTML5 Canvas + plain JavaScript (no build step, runs directly in browser)","description":"Single index.html and game.js. Fastest to run and simplest to understand."},{"label":"HTML5 Canvas + TypeScript with a small build","description":"Uses Vite or esbuild. Better typed but requires npm install and build."},{"label":"Phaser 3 JavaScript","description":"Popular game framework. More features, but external dependency."}]},{"question":"Which platformer features should the level include?","options":[{"label":"Mario-style basics only: run, jump, platforms, coins, enemies, flagpole end"},{"label":"Add power-ups (mushroom/fire flower), pits, and a boss at the end"}],"multiSelect":false},{"question":"Do you want this to be desktop-only or also support mobile touch controls?","options":[{"label":"Desktop keyboard only"},{"label":"Desktop + on-screen touch controls for mobile"}]}]}',
     {
       availableToolNames: new Set(['AskUserQuestion']),
       parseBareJsonToolCalls: true,
@@ -106,11 +105,9 @@ test('bare AskUserQuestion JSON is converted and normalized', () => {
         options: [
           {
             label: 'Mario-style basics only: run, jump, platforms, coins, enemies, flagpole end',
-            description: 'Mario-style basics only: run, jump, platforms, coins, enemies, flagpole end',
           },
           {
             label: 'Add power-ups (mushroom/fire flower), pits, and a boss at the end',
-            description: 'Add power-ups (mushroom/fire flower), pits, and a boss at the end',
           },
         ],
         multiSelect: false,
@@ -121,11 +118,9 @@ test('bare AskUserQuestion JSON is converted and normalized', () => {
         options: [
           {
             label: 'Desktop keyboard only',
-            description: 'Desktop keyboard only',
           },
           {
             label: 'Desktop + on-screen touch controls for mobile',
-            description: 'Desktop + on-screen touch controls for mobile',
           },
         ],
       },
@@ -151,22 +146,78 @@ test('bare AskUserQuestion JSON accepts prompt aliases and missing descriptions'
         question: 'Which game should I build from "Mario egg"?',
         header: 'game',
         options: [
-          { label: 'Platformer', description: 'Platformer' },
-          { label: 'Egg puzzle', description: 'Egg puzzle' },
-          { label: 'Pet sim', description: 'Pet sim' },
+          { label: 'Platformer' },
+          { label: 'Egg puzzle' },
+          { label: 'Pet sim' },
         ],
       },
       {
         question: 'Which visual style should I use?',
         header: 'visual',
         options: [
-          { label: 'Pixel art', description: 'Pixel art' },
-          { label: 'Cartoon', description: 'Cartoon' },
-          { label: 'Minimal', description: 'Minimal' },
+          { label: 'Pixel art' },
+          { label: 'Cartoon' },
+          { label: 'Minimal' },
         ],
       },
     ],
   })
+})
+
+test('bare AskUserQuestion rejects ambiguous option objects without truncating', () => {
+  for (const ambiguousOption of [
+    { value: 'machine-only-value' },
+    { description: 'Description without a label' },
+  ]) {
+    const text = JSON.stringify({
+      questions: [
+        {
+          question: 'Which choice?',
+          header: 'Choice',
+          options: [
+            { label: 'First' },
+            ambiguousOption,
+            { label: 'Third' },
+          ],
+        },
+      ],
+    })
+    const result = parseBareJsonToolCalls(text, {
+      availableToolNames: ASK,
+      parseBareJsonToolCalls: true,
+    })
+
+    expect(result.text).toBe(text)
+    expect(result.toolCalls).toHaveLength(0)
+  }
+})
+
+test('bare AskUserQuestion preserves overlong headers for schema validation', () => {
+  const header = 'Header longer than twelve'
+  const result = parseBareJsonToolCalls(
+    JSON.stringify({
+      questions: [
+        {
+          question: 'Which choice?',
+          header,
+          options: [{ label: 'First' }, { label: 'Second' }],
+        },
+      ],
+    }),
+    {
+      availableToolNames: ASK,
+      parseBareJsonToolCalls: true,
+    },
+  )
+
+  expect(result.toolCalls).toHaveLength(1)
+  expect(
+    (
+      result.toolCalls[0]?.input.questions as Array<{
+        header: string
+      }>
+    )[0]?.header,
+  ).toBe(header)
 })
 
 test('remote transport synthesizes bare AskUserQuestion JSON into a tool use', () => {
@@ -175,7 +226,7 @@ test('remote transport synthesizes bare AskUserQuestion JSON into a tool use', (
       content: [
         {
           type: 'text',
-          text: 'The directory is empty, so I have choices to confirm first.\n{"questions":[{"question":"What technology stack do you prefer?","options":[{"label":"HTML5 Canvas + plain JavaScript","value":"canvas-vanilla","description":"Single index.html and game.js."},{"label":"Phaser 3 JavaScript","value":"phaser-js","description":"Popular game framework."}]}]}',
+          text: 'The directory is empty, so I have choices to confirm first.\n{"questions":[{"question":"What technology stack do you prefer?","options":[{"label":"HTML5 Canvas + plain JavaScript","description":"Single index.html and game.js."},{"label":"Phaser 3 JavaScript","description":"Popular game framework."}]}]}',
         },
       ],
       stop_reason: 'end_turn',
@@ -515,99 +566,70 @@ test('Kimi markup is rejected when its tool is unavailable', () => {
 
 const ASK = new Set(['AskUserQuestion'])
 
-function labels(call: ReturnType<typeof parseClarifyingQuestions>) {
-  const questions = (call!.input.questions as Array<{
-    question: string
-    options: Array<{ label: string }>
-  }>)
-  return questions.map(q => ({
-    question: q.question,
-    options: q.options.map(o => o.label),
+test('ordinary prose is never converted into an AskUserQuestion call', () => {
+  const text = 'Should I use TypeScript or JavaScript?'
+  const result = parseTextToolCalls(text, {
+    availableToolNames: ASK,
+    parseBareJsonToolCalls: true,
+  })
+
+  expect(result.text).toBe(text)
+  expect(result.toolCalls).toHaveLength(0)
+})
+
+test('bare AskUserQuestion JSON accepts the canonical eight-option maximum', () => {
+  const options = Array.from({ length: 8 }, (_, index) => ({
+    label: `Choice ${index + 1}`,
+    description: `Trade-off ${index + 1}`,
   }))
-}
-
-test('plain-prose numbered clarifying questions synthesize an AskUserQuestion', () => {
-  const text = [
-    '1. What technology? Python with Pygame is the simplest. Or do you want JavaScript/HTML5, Unity, Godot, or something else?',
-    '2. What should be in the game? Just run/jump and a level? Or also coins, enemies, flagpole, multiple levels, sound?',
-  ].join('\n')
-
-  const call = parseClarifyingQuestions(text, { availableToolNames: ASK })
-  expect(call).not.toBeNull()
-  expect(call!.name).toBe('AskUserQuestion')
-  expect(labels(call)).toEqual([
-    {
-      question: 'What technology?',
-      options: ['Python with Pygame', 'JavaScript/HTML5', 'Unity', 'Godot'],
-    },
-    {
-      question: 'What should be in the game?',
-      options: [
-        'run/jump and a level',
-        'coins, enemies, flagpole, multiple levels, sound',
+  const result = parseBareJsonToolCalls(
+    JSON.stringify({
+      questions: [
+        {
+          question: 'Which choice?',
+          header: 'Choice',
+          options,
+        },
       ],
-    },
-  ])
-})
-
-test('inline-option single question synthesizes options from the question clause', () => {
-  const call = parseClarifyingQuestions(
-    'Should I use TypeScript or JavaScript?',
-    { availableToolNames: ASK },
-  )
-  expect(call).not.toBeNull()
-  expect(labels(call)).toEqual([
-    { question: 'Should I use TypeScript or JavaScript?', options: ['TypeScript', 'JavaScript'] },
-  ])
-})
-
-test('every synthesized option has a description and a short header', () => {
-  const call = parseClarifyingQuestions(
-    'Which database? Postgres, MySQL, or SQLite?',
-    { availableToolNames: ASK },
-  )
-  const questions = call!.input.questions as Array<{
-    header: string
-    options: Array<{ label: string; description: string }>
-  }>
-  expect(questions[0]!.header.length).toBeLessThanOrEqual(12)
-  for (const opt of questions[0]!.options) {
-    expect(opt.description).toBe(opt.label)
-  }
-})
-
-test('no synthesis when AskUserQuestion is unavailable', () => {
-  expect(
-    parseClarifyingQuestions('Pick A, B, or C?', {
-      availableToolNames: new Set(['Bash']),
     }),
-  ).toBeNull()
-})
-
-test('no synthesis for a yes/no question with no concrete options', () => {
-  expect(
-    parseClarifyingQuestions('Done. Want me to add tests too?', {
+    {
       availableToolNames: ASK,
-    }),
-  ).toBeNull()
+      parseBareJsonToolCalls: true,
+    },
+  )
+
+  expect(result.toolCalls).toHaveLength(1)
+  expect(result.toolCalls[0]?.name).toBe('AskUserQuestion')
+  expect(
+    (
+      result.toolCalls[0]?.input.questions as Array<{
+        options: unknown[]
+      }>
+    )[0]?.options,
+  ).toHaveLength(8)
 })
 
-test('no synthesis when the turn does not end on a question', () => {
-  expect(
-    parseClarifyingQuestions(
-      'I can use Python, Ruby, or Go. I will start now.',
-      { availableToolNames: ASK },
-    ),
-  ).toBeNull()
-})
+test('structured AskUserQuestion calls remain structured and lossless', () => {
+  const input = {
+    questions: [
+      {
+        question: 'Which language?',
+        header: 'Language',
+        options: [
+          { label: 'TypeScript', description: 'Static checking.' },
+          { label: 'JavaScript', description: 'No compile step.' },
+        ],
+      },
+    ],
+  }
+  const result = parseTextToolCalls(
+    `<|tool_call_begin|>AskUserQuestion<|tool_call_argument_begin|>${JSON.stringify(input)}<|tool_call_end|>`,
+    { availableToolNames: ASK },
+  )
 
-test('no synthesis when the turn contains a code block', () => {
-  expect(
-    parseClarifyingQuestions(
-      'Use one of these?\n```\nnpm i a or b\n```\nWhich, a or b?',
-      { availableToolNames: ASK },
-    ),
-  ).toBeNull()
+  expect(result.text).toBe('')
+  expect(result.toolCalls).toHaveLength(1)
+  expect(result.toolCalls[0]?.input).toEqual(input)
 })
 
 // --- Regression: Kimi-marker tool calls with almost-JSON arguments.

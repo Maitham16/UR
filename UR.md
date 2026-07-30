@@ -52,6 +52,16 @@ very code you are editing — be careful, verify, and prefer small reviewable st
   surfaces as "required parameter missing" and traps models in retry loops.
 - Models may emit the same call natively AND as narrated JSON text — dedupe
   by reconciled name + canonical (key-sorted) args before emitting blocks.
+- Never synthesize `AskUserQuestion` from ordinary prose. A rhetorical or
+  enumerated sentence is not reliable structured user intent. Keep genuine
+  provider calls and conservative bare-JSON recovery, then validate the full
+  nested 1–4 question / 2–8 option shape.
+- `AskUserQuestion` request schemas never expose response fields. `answers` and
+  `annotations` are permission-UI output and must pass post-permission
+  completeness checks before the tool can report that the user answered.
+- A `Write` call with no `content` has no recoverable file body. Never copy the
+  preceding assistant prose or invent content; return an actionable validation
+  error and require a new complete structured call.
 - If a model doesn't advertise the `tools` capability in `/api/show`, tool
   definitions are silently dropped; the system prompt gets a bare-JSON
   format hint and everything depends on text parsing. Prefer tools-capable

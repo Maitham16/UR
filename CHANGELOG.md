@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.65.11
+
+- Hardened `AskUserQuestion` for weaker models without inventing user intent.
+  Its model schema now exposes only a strict 1–4-question request shape with
+  2–8 nested choices, compact validation explains malformed flat arrays, and
+  lossless recovery never fabricates labels, descriptions, or prose-derived
+  questions.
+- Made question interaction truthful and safe. Answers are accepted only after
+  post-permission validation has collected one real response per question,
+  custom `Other` works in both menu layouts, question-keyed UI state is
+  prototype-safe, and HTML-configured previews render escaped inert text
+  instead of executable model markup.
+- Improved weak-model file-tool recovery. `Write` now explains that
+  `file_path` and complete `content` must be supplied together and never treats
+  surrounding prose as file data; a narrow deletion-only `Edit` whose desired
+  replacement is already uniquely present reports “already up to date” without
+  writing, while ambiguous and general stale edits still fail closed.
+- Corrected task-gate control flow and diagnostics. `ExitPlanMode` can reach
+  its approval transition without an implementation task, stale out-of-mode
+  calls remain invalid, and gate recovery distinguishes a missing plan from an
+  all-terminal task list so unfinished Edit/Bash work is reopened rather than
+  retried unchanged. A simple loopback browser preview bypasses only the task
+  gate while retaining Bash permission and rewrite checks.
+- Kept package validation compatible with both npm 11 and npm 12
+  `npm pack --json` output shapes, so upgrading npm does not make a valid
+  tarball look missing during tests or release checks.
+
 ## 1.65.10
 
 - Reworked approved-plan execution into a capability-aware task graph. Plans

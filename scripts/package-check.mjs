@@ -52,6 +52,26 @@ function packageSmokeEnv(temporaryRoot) {
   }
 }
 
+function parsePackedArtifact(output) {
+  const decoded = JSON.parse(output)
+  const packed = Array.isArray(decoded)
+    ? decoded[0]
+    : decoded && typeof decoded === 'object'
+      ? Object.values(decoded)[0]
+      : undefined
+
+  if (
+    !packed ||
+    typeof packed !== 'object' ||
+    typeof packed.filename !== 'string' ||
+    packed.filename.length === 0
+  ) {
+    throw new Error(`npm pack did not report a tarball: ${output}`)
+  }
+
+  return packed
+}
+
 function packPackage(workDir) {
   const output = execFileSync(
     'npm',
@@ -66,10 +86,8 @@ function packPackage(workDir) {
       },
     },
   )
-  const packed = JSON.parse(output)[0]
-  if (!packed?.filename) {
-    throw new Error(`npm pack did not report a tarball: ${output}`)
-  }
+  // npm 11 emits an array; npm 12 emits an object keyed by package name.
+  const packed = parsePackedArtifact(output)
   return join(workDir, packed.filename)
 }
 

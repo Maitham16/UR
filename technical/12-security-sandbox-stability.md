@@ -38,6 +38,23 @@ feature. Its AI-classified `auto` mode is therefore source-only. The accepted
 `permissions.classifierPermissionsEnabled` schema field is not read by a
 shipped enforcement path and must not be treated as an active control.
 
+Tools that require user interaction are semantically validated again after the
+permission decision even when their input signature did not change. This keeps
+an unchanged generic approval or hook allow-result from being mistaken for the
+interaction result.
+For `AskUserQuestion`, model requests cannot supply `answers` or `annotations`;
+post-permission execution requires an exact, complete, non-empty answer map.
+Question-keyed UI state uses null-prototype records and own-property checks, so
+model-controlled names such as `constructor` or `__proto__` cannot become
+inherited answers or mutate the record prototype. The tool rejects those
+reserved question names at its outer schema as an additional boundary.
+
+Model-provided Ask previews are never trusted as executable HTML. When an SDK
+selects the HTML preview format, the runtime escapes raw input into one inert
+`<pre data-ur-preview="text">…</pre>` wrapper and validates that wrapper before
+interaction. Scripts, event handlers, URL attributes, style injection, and
+closing-tag escapes remain text rather than active markup.
+
 Bash adds command parsing, command-injection checks, dangerous-pattern
 classification, project safety policy, path validation, and sandbox-aware
 permission decisions. `UR_CODE_DISABLE_COMMAND_INJECTION_CHECK` weakens one of

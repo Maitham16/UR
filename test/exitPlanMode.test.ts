@@ -127,6 +127,80 @@ test('ExitPlanMode rejects a new out-of-mode call but permits post-permission re
   expect(postPermission).toEqual({ result: true })
 })
 
+test('a stale out-of-mode ExitPlanMode call is rejected before permission', async () => {
+  const state = getDefaultAppState()
+  const toolUse = {
+    type: 'tool_use',
+    id: 'stale-exit-plan-call',
+    name: ExitPlanModeV2Tool.name,
+    input: {},
+  }
+  const assistantMessage = {
+    type: 'assistant',
+    uuid: 'assistant-stale-exit-plan-call',
+    message: {
+      id: 'message-stale-exit-plan-call',
+      content: [toolUse],
+    },
+  }
+  const priorCalls = Array.from({ length: 4 }, (_, index) => ({
+    type: 'assistant',
+    message: {
+      id: `stale-exit-prior-read-${index}`,
+      content: [
+        {
+          type: 'tool_use',
+          id: `stale-exit-prior-read-use-${index}`,
+          name: 'Read',
+          input: {},
+        },
+      ],
+    },
+  }))
+  let permissionChecked = false
+  const context = {
+    abortController: new AbortController(),
+    options: {
+      commands: [],
+      debug: false,
+      mainLoopModel: 'test-model',
+      tools: [ExitPlanModeV2Tool],
+      verbose: false,
+      thinkingConfig: { type: 'disabled' },
+      mcpClients: [],
+      mcpResources: {},
+      isNonInteractiveSession: true,
+      agentDefinitions: { activeAgents: [], allAgents: [] },
+    },
+    getAppState: () => state,
+    setAppState: () => {},
+    messages: priorCalls,
+    readFileState: new Map(),
+    setInProgressToolUseIDs: () => {},
+    setResponseLength: () => {},
+    updateFileHistoryState: () => {},
+    updateAttributionState: () => {},
+  }
+
+  const output = await Array.fromAsync(
+    runToolUse(
+      toolUse as never,
+      assistantMessage as never,
+      (async () => {
+        permissionChecked = true
+        return { behavior: 'allow' as const, updatedInput: {} }
+      }) as never,
+      context as never,
+    ),
+  )
+
+  const serialized = JSON.stringify(output)
+  expect(permissionChecked).toBe(false)
+  expect(serialized).toContain('not in plan mode')
+  expect(serialized).not.toContain('TaskListRequired')
+  expect(state.toolPermissionContext.mode).toBe('default')
+})
+
 test('ExitPlanMode completes when approval changes mode and rewrites allowed prompts', async () => {
   let state = getDefaultAppState()
   state = {
@@ -153,6 +227,20 @@ test('ExitPlanMode completes when approval changes mode and rewrites allowed pro
       content: [toolUse],
     },
   }
+  const priorCalls = Array.from({ length: 4 }, (_, index) => ({
+    type: 'assistant',
+    message: {
+      id: `exit-plan-prior-read-${index}`,
+      content: [
+        {
+          type: 'tool_use',
+          id: `exit-plan-prior-read-use-${index}`,
+          name: 'Read',
+          input: {},
+        },
+      ],
+    },
+  }))
   let permissionChecked = false
   const context = {
     abortController: new AbortController(),
@@ -172,7 +260,9 @@ test('ExitPlanMode completes when approval changes mode and rewrites allowed pro
     setAppState: (update: (previous: typeof state) => typeof state) => {
       state = update(state)
     },
-    messages: [],
+    // Exhaust the trivial-call allowance. ExitPlanMode is a control
+    // transition and must still reach its approval flow without TaskCreate.
+    messages: priorCalls,
     readFileState: new Map(),
     setInProgressToolUseIDs: () => {},
     setResponseLength: () => {},
@@ -207,6 +297,7 @@ test('ExitPlanMode completes when approval changes mode and rewrites allowed pro
 
   const serialized = JSON.stringify(output)
   expect(permissionChecked).toBe(true)
+  expect(serialized).not.toContain('TaskListRequired')
   expect(serialized).not.toContain('not in plan mode')
   expect(serialized).not.toContain('tool_use_error')
   expect(serialized).toContain('approved exiting plan mode')

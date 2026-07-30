@@ -242,6 +242,35 @@ export function findActualString(
 }
 
 /**
+ * Detect the narrow idempotent case where an edit only removes text around a
+ * desired replacement and that exact result is already present once.
+ *
+ * This deliberately does not recover general stale or fuzzy replacements:
+ * accepting those could hide a change applied to the wrong location.
+ */
+export function isDeletionOnlyEditAlreadyApplied(
+  fileContent: string,
+  oldString: string,
+  newString: string,
+  replaceAll: boolean,
+): boolean {
+  if (
+    replaceAll ||
+    oldString.length === 0 ||
+    newString.length === 0 ||
+    oldString === newString ||
+    !oldString.includes(newString) ||
+    findActualString(fileContent, oldString) !== null
+  ) {
+    return false
+  }
+
+  const actualNewString = findActualString(fileContent, newString)
+  if (actualNewString === null) return false
+  return fileContent.split(actualNewString).length - 1 === 1
+}
+
+/**
  * When old_string matched via quote normalization (curly quotes in file,
  * straight quotes from model), apply the same curly quote style to new_string
  * so the edit preserves the file's typography.

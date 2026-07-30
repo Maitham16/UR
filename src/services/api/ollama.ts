@@ -30,7 +30,6 @@ import {
 import {
   looksLikeBareJsonToolCallPrefix,
   parseBareJsonToolCalls,
-  parseClarifyingQuestions,
   parseKimiToolCalls,
   parseTextToolCalls,
   reconcileToolName,
@@ -1043,10 +1042,6 @@ async function* streamURHQEvents(
   if (textToolFallbackAllowed) {
     const kimiParsed = parseKimiToolCalls(text)
     textToolCalls.push(...kimiParsed.toolCalls)
-    if (toolCalls.length === 0 && textToolCalls.length === 0) {
-      const clarify = parseClarifyingQuestions(text, { availableToolNames })
-      if (clarify) textToolCalls.push(clarify)
-    }
   }
 
   const normalizedToolUses = normalizeOllamaToolUses(
@@ -1229,13 +1224,6 @@ function ollamaResponseToURHQMessage(
     : { text: rawText, toolCalls: [] }
   const text = parsedText.text
   const textToolCalls = [...parsedText.toolCalls]
-  const clarifyCall =
-    textToolFallbackAllowed &&
-    structured.length === 0 &&
-    textToolCalls.length === 0
-      ? parseClarifyingQuestions(text, { availableToolNames })
-      : null
-  if (clarifyCall) textToolCalls.push(clarifyCall)
   const normalizedToolUses = normalizeOllamaToolUses(
     structured,
     textToolCalls,

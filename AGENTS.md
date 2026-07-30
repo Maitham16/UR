@@ -3,7 +3,7 @@
 This is the durable handoff for coding agents working in this repository. Read
 this file before exploring the tree. It records the architecture, decisions,
 invariants, validation state, and release workflow established during the
-v1.65.7 audit and maintained through v1.65.10.
+v1.65.7 audit and maintained through v1.65.11.
 
 Do not start by re-auditing the entire repository. Confirm the current version
 and working-tree state, then open only the technical chapter and source paths
@@ -81,25 +81,27 @@ runtime behavior changes.
 
 ## Release snapshot: 2026-07-30
 
-- Local package version: **1.65.10**
-- npm `latest` at the time of this update: **1.65.9**
-- v1.65.10 has not been committed, tagged, pushed, or published.
+- Local package version: **1.65.11**
+- npm `latest` at the time of this update: **1.65.10**
+- v1.65.11 has not been committed, tagged, pushed, or published.
 - Full post-bump functional validation:
-  - 2,107 tests passed, 0 failed
-  - 9,327 assertions across 255 files
+  - 2,137 tests passed, 0 failed
+  - 9,493 assertions across 258 files
   - typecheck and strict-core typecheck passed (133 strict files)
   - lint passed
-  - both independent worker re-audits reported no remaining blocker
+  - both parallel implementation/regression workers completed their scopes
 - Release validation:
   - CLI plus ESM/CommonJS/typed SDK builds passed with 86 synchronized version
     occurrences
-  - release check and packaged CLI smoke test passed for 1.65.10
+  - release check and packaged CLI smoke test passed for 1.65.11 on npm 12
   - dependency audit reported no known vulnerabilities; all six runtime
     dependency ranges resolve; the safety matrix is current
   - secret scan and `git diff --check` passed
-  - local CLI reports `1.65.10 (UR-Nexus)` and `--help` exits successfully
+  - local CLI reports `1.65.11 (UR-Nexus)` and `--help` exits successfully
   - npm publish dry run passed: 156 files, 6.5 MB packed, 32.4 MB unpacked,
-    shasum `1adf6187a88b5f7ad417c06300af9fb0a0cca926`
+    shasum `7449e0ccbbf34bcbda3d3d34dea47a49a1294992`
+  - the current remote `master` production workflow is green; v1.65.11 CI
+    remains pending until the local release commit is pushed
 
 This snapshot is evidence, not a permanent guarantee. Rerun relevant gates
 after later changes.
@@ -197,6 +199,10 @@ be established.
 - Task order is numeric, never lexicographic (`2` precedes `10`).
 - Dependencies must complete before dependents run.
 - A task cannot be marked completed merely because execution stopped.
+- Gate recovery distinguishes no tasks from an all-terminal list and requires
+  remaining Edit/Bash work to be created or reopened. Only one simple
+  loopback-URL `open` preview bypasses the task gate; Bash permission,
+  sandbox, plan-worker, and permission-rewrite checks still apply.
 - Verification checks the TodoWrite/task state before accepting completion.
 - Task V1 and V2 behavior must remain compatible with their respective tests.
 
@@ -383,6 +389,11 @@ refactoring:
   is establishing that plan; the exemption is exact-path and mode scoped.
 - `ExitPlanMode` post-permission validation no longer mistakes an approved mode
   transition for a new out-of-mode call.
+- `ExitPlanMode` is exempt from the implementation task gate, while its own
+  live plan-mode validation still rejects stale second exits.
+- Task-gate diagnostics distinguish a genuinely absent list from an existing
+  all-terminal list and tell the model to create or reopen the cohesive
+  remaining task rather than retrying unchanged.
 - Approved plans decompose cohesive outcomes into dependency-correct task
   graphs and use only the task and worker capabilities actually present.
 - Standard built-in Explore/Plan workers are structurally read-only, and a
@@ -391,6 +402,18 @@ refactoring:
   Task V2 lookup, dependency checks, or persistence.
 - Exact Edit mismatches return bounded, verified recovery guidance instead of
   applying an unsafe fuzzy replacement.
+- A narrow deletion-only Edit whose desired replacement is already uniquely
+  present returns an explicit no-write, already-up-to-date result; general
+  stale and ambiguous edits remain errors.
+- AskUserQuestion exposes a request-only nested schema, never accepts model
+  supplied answers, revalidates every interaction after permission, and
+  requires one real answer per question before reporting success.
+- Ask UI records are prototype-safe, preview questions have a genuine custom
+  Other path, and HTML preview mode escapes model content as inert text.
+- Write missing-content recovery never infers a file from surrounding prose;
+  the error and tool prompt require complete content in the structured call.
+- Ollama/Kimi no longer synthesize AskUserQuestion calls from ordinary prose.
+  Structured and conservative bare-JSON calls remain supported.
 - Command-registry release checks use a Linux/platform-neutral baseline and
   test the supported macOS/x64-Windows `/desktop` delta separately.
 - CLI handlers no longer report success after failed underlying work.

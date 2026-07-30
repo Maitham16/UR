@@ -132,6 +132,7 @@ import {
   checkTaskListGate,
   countActionableTasksForGate,
   countActionableTodosForGate,
+  isMutationRequiringTaskList,
   isPlanArtifactMutationForGate,
 } from './taskListGate.js'
 import {
@@ -204,18 +205,29 @@ export function countToolCallsBeforeCurrent(
 
 async function countTasksForGate(
   toolUseContext: ToolUseContext,
-): Promise<number | null> {
+): Promise<{
+  actionableCount: number
+  totalCount: number
+} | null> {
   try {
     const { getTaskListId, inspectTaskListForGate, isTodoV2Enabled } =
       await import('../../utils/tasks.js')
     if (!isTodoV2Enabled()) {
       const todoKey = toolUseContext.agentId ?? getSessionId()
-      return countActionableTodosForGate(
-        toolUseContext.getAppState().todos?.[todoKey],
-      )
+      const todos = toolUseContext.getAppState().todos?.[todoKey] ?? []
+      return {
+        actionableCount: countActionableTodosForGate(todos),
+        totalCount: todos.length,
+      }
     }
     const inspection = await inspectTaskListForGate(getTaskListId())
-    return countActionableTasksForGate(inspection.tasks)
+    const userTasks = inspection.tasks.filter(
+      task => !task.metadata?._internal,
+    )
+    return {
+      actionableCount: countActionableTasksForGate(userTasks),
+      totalCount: userTasks.length,
+    }
   } catch {
     return null
   }
@@ -1185,6 +1197,11 @@ async function checkPermissionsAndCallTool(
     parsedInput.data,
     toolUseContext,
   )
+  const isTaskListGatedMutation = isMutationRequiringTaskList({
+    toolName: tool.name,
+    toolInput: parsedInput.data,
+    isMutating,
+  })
   if (isMutating && isBuiltInReadOnlyPlanningSubagent(toolUseContext)) {
     recordCallFailure(callSig)
     return [
@@ -1203,9 +1220,11 @@ async function checkPermissionsAndCallTool(
       },
     ]
   }
+  const taskCounts = await countTasksForGate(toolUseContext)
   const gate = checkTaskListGate({
     toolName: tool.name,
-    taskCount: await countTasksForGate(toolUseContext),
+    taskCount: taskCounts?.actionableCount ?? null,
+    totalTaskCount: taskCounts?.totalCount ?? null,
     // Tool calls, not messages. Counting messages meant any conversation at
     // all pushed this past the threshold, so the allowance for simple
     // single-step work never applied and the gate fired on the first Write.
@@ -1215,7 +1234,7 @@ async function checkPermissionsAndCallTool(
       toolUseID,
     ),
     isSubagent: Boolean(toolUseContext.agentId),
-    isMutating,
+    isMutating: isTaskListGatedMutation,
     isPlanArtifactMutation,
     taskPlanningToolName: getTaskPlanningToolName(toolUseContext),
   })
@@ -1811,7 +1830,10 @@ async function checkPermissionsAndCallTool(
     return resultingMessages
   }
 
-  if (callSig !== initiallyValidatedCallSig) {
+  // Interactive tools receive trusted response fields from their permission
+  // UI. Always run their post-permission validation, even when a generic hook
+  // approved the unchanged request: approval alone is not a user answer.
+  if (callSig !== initiallyValidatedCallSig || tool.requiresUserInteraction?.()) {
     const finalValidation = await tool.validateInput?.(
       finalParsedInput.data,
       {
@@ -1857,6 +1879,11 @@ async function checkPermissionsAndCallTool(
     finalParsedInput.data,
     toolUseContext,
   )
+  const finalIsTaskListGatedMutation = isMutationRequiringTaskList({
+    toolName: tool.name,
+    toolInput: finalParsedInput.data,
+    isMutating: finalIsMutating,
+  })
   if (
     finalIsMutating &&
     isBuiltInReadOnlyPlanningSubagent(toolUseContext)
@@ -1882,6 +1909,7 @@ async function checkPermissionsAndCallTool(
   const effectiveCallChanged =
     callSig !== initiallyValidatedCallSig ||
     finalIsMutating !== isMutating ||
+    finalIsTaskListGatedMutation !== isTaskListGatedMutation ||
     finalIsPlanArtifactMutation !== isPlanArtifactMutation
   // Re-read task state for every ordinary mutation, even when hooks and the
   // permission UI returned the input unchanged. A task can be completed,
@@ -1889,17 +1917,19 @@ async function checkPermissionsAndCallTool(
   // on the initial snapshot would let that unchanged call cross the boundary
   // with no longer-verifiable plan. Read-only calls and the exact plan
   // artifact do not need a second task-store read.
-  if (finalIsMutating && !finalIsPlanArtifactMutation) {
+  if (finalIsTaskListGatedMutation && !finalIsPlanArtifactMutation) {
+    const finalTaskCounts = await countTasksForGate(toolUseContext)
     const finalGate = checkTaskListGate({
       toolName: tool.name,
-      taskCount: await countTasksForGate(toolUseContext),
+      taskCount: finalTaskCounts?.actionableCount ?? null,
+      totalTaskCount: finalTaskCounts?.totalCount ?? null,
       readsSoFar: countToolCallsBeforeCurrent(
         toolUseContext.messages,
         assistantMessage,
         toolUseID,
       ),
       isSubagent: Boolean(toolUseContext.agentId),
-      isMutating: finalIsMutating,
+      isMutating: finalIsTaskListGatedMutation,
       isPlanArtifactMutation: finalIsPlanArtifactMutation,
       taskPlanningToolName: getTaskPlanningToolName(toolUseContext),
     })
