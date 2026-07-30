@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react/compiler-runtime";
 // Conditionally require()'d in LogoV2.tsx behind feature('KAIROS') ||
 // feature('KAIROS_CHANNELS'). No feature() guard here — the whole file

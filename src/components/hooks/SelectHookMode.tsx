@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react/compiler-runtime";
 /**
  * SelectHookMode shows all hooks configured for a given event+matcher pair.

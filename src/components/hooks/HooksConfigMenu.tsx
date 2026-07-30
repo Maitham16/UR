@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react/compiler-runtime";
 /**
  * HooksConfigMenu is a read-only browser for configured hooks.

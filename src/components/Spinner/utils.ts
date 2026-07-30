@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { RGBColor as RGBColorString } from '../../ink/styles.js'
 import type { RGBColor as RGBColorType } from './types.js'
 

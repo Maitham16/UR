@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
 import type {
   SDKControlCancelRequest,

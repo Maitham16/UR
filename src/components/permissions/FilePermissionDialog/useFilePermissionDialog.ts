@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useMemo, useState } from 'react'
 import { useAppState } from 'src/state/AppState.js'
 import { useKeybindings } from '../../../keybindings/useKeybinding.js'

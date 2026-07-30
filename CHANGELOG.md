@@ -1,6 +1,38 @@
 # Changelog
 
-## 1.67.0
+## 1.68.0
+
+- Removed `@ts-nocheck` from 73 files, putting 21,503 previously unchecked lines
+  under `tsc`. Every one of those files produced **zero** errors once the
+  suppression was lifted — they were not suppressed because they were broken,
+  they were suppressed and then fixed, or never needed it. The blind spot was
+  33% larger than the actual debt. Typecheck remains clean at exit 0.
+- Added `test/typeCheckCoverage.test.ts`, a ratchet: the `@ts-nocheck` count may
+  fall but never rise, and the budget must be lowered when files come off the
+  list so it cannot silently stop ratcheting. It also asserts that `query.ts`,
+  `permissions.ts`, `filesystem.ts` and `toolExecution.ts` are still suppressed
+  — a standing reminder that the highest-consequence files are the unchecked
+  ones, with instructions to delete the test when that stops being true.
+- Remaining debt, measured rather than estimated: 150 files, ~870 errors, but
+  concentrated — 3 files hold 231 of them, while 95 files have 3 or fewer each
+  and 135 have 10 or fewer. Of the total, 32 are dead build-constant comparisons
+  from the fork (`'external' === 'ant'`) and 562 are property-access-on-`any`.
+  The 95 cheap files are the next batch.
+
+- Restored the worked examples in the TodoWrite tool prompt, with their
+  narrated tool use removed. After 1.65.5 that
+  prompt was cut from 184 lines to 48, which removed every demonstration and
+  left only abstract rules ("work is non-trivial when it needs planning,
+  investigation, multiple deliverables..."). A large model infers intent from
+  rules; a small local model pattern-matches on examples. Task lists stopped
+  being produced, and the task-list gate was then hardened over five successive
+  commits to force what the prompt no longer taught — which is what produced
+  refused writes and retry loops on small models. The newer lifecycle rules are
+  good and are kept; what returns is seven worked examples covering when to use
+  the list, when not to, and why, including the single-file case where one Write
+  call still warrants a plan.
+
+### Also in this release (was staged as 1.67.0)
 
 - Two subsystems loaded behind feature flags were not merely disabled, they
   were broken in a way that only showed if you enabled them.
@@ -24,6 +56,13 @@
   errors across ~108k lines, including `query.ts`, `permissions.ts` and
   `filesystem.ts`. Both defects above sat inside that blind spot.
 
+
+- The original examples narrated tool use as prose ("* Uses the Edit tool to
+  add a comment *", "*Executes: npm install*"), which is the exact anti-pattern
+  the same prompt forbids in its closing paragraph — and what a small model
+  copies when it reports a file as written without calling Write. That is why
+  the examples were cut, and cutting them was not baseless; it just took the
+  decision guidance with it. They now return without the narration.
 
 ## 1.66.2
 

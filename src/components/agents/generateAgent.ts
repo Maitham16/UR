@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { ContentBlock } from '@urhq-ai/sdk/resources/index.mjs'
 import { getUserContext } from 'src/context.js'
 import { queryModelWithoutStreaming } from 'src/services/api/ur.js'

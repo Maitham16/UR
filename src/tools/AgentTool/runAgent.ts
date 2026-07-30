@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle'
 import { canSpawnAgent, registerAgent } from './fanOutLimits.js'
 import { resolveFanOutLimits } from './fanOutSettings.js'

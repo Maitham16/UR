@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Pure (non-React) kill helpers for LocalShellTask.
 // Extracted so runAgent.ts can kill agent-scoped bash tasks without pulling
 // React/Ink into its module graph (same rationale as guards.ts).

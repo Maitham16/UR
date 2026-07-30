@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle'
 import type { Message } from '../types/message.js'
 import type { Attachment } from '../utils/attachments.js'
