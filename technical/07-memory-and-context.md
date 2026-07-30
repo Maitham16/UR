@@ -104,11 +104,39 @@ rollback preserve a private copy of the full original before replacement.
 |---|---|
 | Visualize usage | `/context` (colored grid); `/files` is an ant-only command and is absent from the standard npm CLI |
 | Manual compaction | `/compact [focus instructions]` |
-| Auto-compaction | `src/services/compact` — triggers near the limit; `DISABLE_AUTO_COMPACT` env disables; PreCompact/PostCompact hooks fire |
+| Auto-compaction | `src/services/compact` — triggers at one canonical model-aware threshold; `DISABLE_AUTO_COMPACT` env disables; PreCompact/PostCompact hooks fire |
 | Context collapse | `src/services/contextCollapse` and `CtxInspect` are behind the compile-time `CONTEXT_COLLAPSE` feature, which the standard npm bundle does not include |
 | Micro-compaction | session-memory compact (`sessionMemoryCompact.ts`): force on with `ENABLE_UR_CODE_SM_COMPACT=1`, force off with `DISABLE_UR_CODE_SM_COMPACT=1`; otherwise both `tengu_session_memory` and `tengu_sm_compact` runtime gates must be on |
 | Clear | `/clear` (aliases `/reset`, `/new`) |
 | Read caps | Read tool truncates large files/lines; `/read`, `/analyze`, `/summarize` for deliberate loads |
+
+The effective context window always stays positive, including for small local
+models. By default proactive compaction reserves a scaled output buffer (up to
+20,000 tokens) plus a 13,000-token compact/manual safety band. The global
+`compaction.autoThreshold` setting can instead select 50–95% of the effective
+window while retaining a 3,000-token manual reserve;
+`UR_AUTOCOMPACT_PCT_OVERRIDE` is the explicit environment override. Trigger
+logic, prompt notifications, `/context`, and the SDK all use this same
+threshold and estimated live usage, including messages added after the last
+provider response.
+
+When proactive auto-compaction is active, the prompt notification and
+`/context` show a clamped approximate 0–100% value remaining until the actual
+trigger, with separate warning and final-error bands. The estimate uses the
+same live token counter, while the query may conservatively improve it by
+snipping or pruning immediately before the trigger. Reactive-compaction and
+context-collapse modes own their thresholds and therefore do not display a
+misleading proactive countdown. A successful compaction suppresses the stale
+pre-compact warning.
+
+Full, partial, and session-memory compaction restore the authoritative live
+task state after the boundary. Task V2 snapshots retain exact IDs, statuses,
+owners, and dependency edges; legacy TodoWrite snapshots retain order and
+status. The snapshot is bounded to 64 actionable-first records and an
+estimated 6,000-token budget. If more exist, the model is required to call
+`TaskList` before task mutation rather than guessing omitted IDs. Compact
+boundaries also permanently consume the task-gate's initial trivial-call
+allowance so compaction cannot reopen an implementation bypass.
 
 ## Repo wiki & map
 

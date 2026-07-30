@@ -104,7 +104,7 @@ interface Props {
   data: ContextData;
 }
 export function ContextVisualization(t0) {
-  const $ = _c(87);
+  const $ = _c(88);
   const {
     data
   } = t0;
@@ -122,7 +122,8 @@ export function ContextVisualization(t0) {
     systemPromptSections,
     agents,
     skills,
-    messageBreakdown
+    messageBreakdown,
+    autoCompactPercentLeft
   } = data;
   let T0;
   let T1;
@@ -134,7 +135,7 @@ export function ContextVisualization(t0) {
   let t7;
   let t8;
   let t9;
-  if ($[0] !== categories || $[1] !== gridRows || $[2] !== mcpTools || $[3] !== model || $[4] !== percentage || $[5] !== rawMaxTokens || $[6] !== systemTools || $[7] !== t1 || $[8] !== totalTokens) {
+  if ($[0] !== categories || $[1] !== gridRows || $[2] !== mcpTools || $[3] !== model || $[4] !== percentage || $[5] !== rawMaxTokens || $[6] !== systemTools || $[7] !== t1 || $[8] !== totalTokens || $[87] !== autoCompactPercentLeft) {
     const deferredBuiltinTools = t1 === undefined ? [] : t1;
     const visibleCategories = categories.filter(_temp);
     let t10;
@@ -190,12 +191,13 @@ export function ContextVisualization(t0) {
       t14 = $[29];
     }
     let t15;
-    if ($[30] !== model || $[31] !== percentage || $[32] !== t13 || $[33] !== t14) {
-      t15 = <Text dimColor={true}>{model} · {t13}/{t14}{" "}tokens ({percentage}%)</Text>;
+    if ($[30] !== model || $[31] !== percentage || $[32] !== t13 || $[33] !== t14 || $[87] !== autoCompactPercentLeft) {
+      t15 = <Text dimColor={true}>{model} · {t13}/{t14}{" "}tokens ({percentage}%){autoCompactPercentLeft !== undefined ? ` · ≈${autoCompactPercentLeft}% until auto-compact` : ""}</Text>;
       $[30] = model;
       $[31] = percentage;
       $[32] = t13;
       $[33] = t14;
+      $[87] = autoCompactPercentLeft;
       $[34] = t15;
     } else {
       t15 = $[34];

@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.66.1
+
+- Corrected the warning-state result used by reactive compaction and context
+  collapse when a custom proactive threshold is configured. Their
+  effective-window override can no longer report that the separate proactive
+  auto-compact trigger was crossed.
+
+## 1.66.0
+
+- Unified proactive compaction around one model-aware threshold and one live
+  token estimator. Small context windows now retain positive warning, error,
+  and trigger thresholds; configured 50–95% thresholds are honored; prompt
+  notifications, `/context`, and the SDK expose a clamped live-estimated
+  percentage remaining until the real trigger; reactive/collapse modes do not
+  claim a false
+  countdown; and successful compaction clears stale warnings.
+- Preserved exact task execution state across full, partial, and
+  session-memory compaction. The restored authoritative snapshot keeps Task V2
+  IDs, statuses, owners, and dependency edges (or TodoWrite order/status),
+  prioritizes actionable work under 64-record and estimated 6,000-token
+  bounds, and requires `TaskList` before mutations when records were omitted.
+- Closed a task-gate bypass caused by compacted history. Compact boundaries
+  now carry durable metadata that consumes the initial trivial-call allowance,
+  including SDK serialization, so a model cannot compact and then mutate as
+  though no earlier tool calls occurred.
+- Removed a competing private compaction path from in-process workers. Workers
+  now use the normal agent query loop and therefore inherit the same feature
+  flags, exact trigger, session-memory-first path, reactive/collapse policy,
+  failure circuit breaker, cleanup, and compact-boundary behavior.
+- Brought Kimi/Ollama bare task-call recovery into parity with the live task
+  schemas. Dependency fields, numeric task/dependency IDs, and `failed` or
+  `skipped` terminal updates are normalized safely; invalid IDs, statuses, and
+  unknown fields fail closed.
+- Audited v1.65.0 through v1.65.5 for regression-safe enhancements. Every
+  concrete earlier technique is already present or superseded by stricter
+  current behavior, so no legacy implementation or removed feature was copied
+  back.
+
 ## 1.65.14
 
 - Restored the proactive task-first behavior that was present in v1.65.0 and

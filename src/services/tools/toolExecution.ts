@@ -149,13 +149,31 @@ import {
  * Message count is not a proxy for it: a long conversation with no tool use
  * would exhaust the allowance before the agent had done anything.
  */
+const TASK_GATE_FREE_CALL_COUNT_SATURATION = Number.MAX_SAFE_INTEGER
+
 function countToolCalls(
   messages: unknown,
   excludedMessageId?: string,
 ): number {
   if (!Array.isArray(messages)) return 0
   let count = 0
+  let freeCallsConsumed = false
   for (const message of messages) {
+    const compactBoundary = message as {
+      type?: unknown
+      subtype?: unknown
+      compactMetadata?: {
+        taskGateFreeCallsConsumed?: unknown
+      }
+    }
+    if (
+      compactBoundary.type === 'system' &&
+      compactBoundary.subtype === 'compact_boundary' &&
+      compactBoundary.compactMetadata?.taskGateFreeCallsConsumed === true
+    ) {
+      freeCallsConsumed = true
+    }
+
     const envelope = (
       message as {
         message?: { id?: unknown; content?: unknown }
@@ -173,7 +191,9 @@ function countToolCalls(
       if ((block as { type?: string })?.type === 'tool_use') count++
     }
   }
-  return count
+  return freeCallsConsumed
+    ? TASK_GATE_FREE_CALL_COUNT_SATURATION
+    : count
 }
 
 /**
@@ -192,6 +212,7 @@ export function countToolCallsBeforeCurrent(
     messages,
     typeof currentMessageId === 'string' ? currentMessageId : undefined,
   )
+  if (count === TASK_GATE_FREE_CALL_COUNT_SATURATION) return count
   const currentContent = assistantMessage.message?.content
   if (!Array.isArray(currentContent)) return count
   for (const block of currentContent) {

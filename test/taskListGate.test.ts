@@ -17,6 +17,11 @@ import { BashTool } from '../src/tools/BashTool/BashTool.tsx'
 import { ComputerTool } from '../src/tools/ComputerTool/ComputerTool.tsx'
 import { SkillTool } from '../src/tools/SkillTool/SkillTool.ts'
 import { countToolCallsBeforeCurrent } from '../src/services/tools/toolExecution.ts'
+import { createCompactBoundaryMessage } from '../src/utils/messages.ts'
+import {
+  fromSDKCompactMetadata,
+  toSDKCompactMetadata,
+} from '../src/utils/messages/mappers.ts'
 
 // The system prompt already asked for a task list on multi-step work and the
 // agent still edited files, ran commands and reported completion with no plan
@@ -711,6 +716,97 @@ test('the allowance counts tool calls, not conversation length', () => {
   const call = source.slice(source.indexOf('checkTaskListGate({'))
   expect(call.slice(0, 700)).toContain('countToolCalls')
   expect(call.slice(0, 700)).not.toContain('messages?.length')
+})
+
+test('manual and automatic compaction durably consume the free-call allowance', () => {
+  const currentWrite = {
+    type: 'assistant',
+    message: {
+      id: 'post-compact-write-message',
+      content: [
+        {
+          type: 'tool_use',
+          id: 'post-compact-write',
+          name: 'Write',
+          input: {},
+        },
+      ],
+    },
+  }
+
+  for (const trigger of ['manual', 'auto'] as const) {
+    const boundary = createCompactBoundaryMessage(trigger, 100)
+    expect(boundary.compactMetadata?.taskGateFreeCallsConsumed).toBe(true)
+
+    // Exercise the SDK/remote representation as well as JSON transcript
+    // persistence, since both are session-resume paths.
+    const resumedBoundary = JSON.parse(
+      JSON.stringify({
+        ...boundary,
+        compactMetadata: fromSDKCompactMetadata(
+          toSDKCompactMetadata(boundary.compactMetadata!),
+        ),
+      }),
+    )
+    const readsSoFar = countToolCallsBeforeCurrent(
+      [resumedBoundary],
+      currentWrite as never,
+      'post-compact-write',
+    )
+    expect(readsSoFar).toBe(Number.MAX_SAFE_INTEGER)
+
+    expect(
+      checkTaskListGate({
+        toolName: 'Write',
+        taskCount: 0,
+        totalTaskCount: 0,
+        readsSoFar,
+        isSubagent: false,
+        isMutating: true,
+        config: CONFIG,
+      }).allowed,
+    ).toBe(false)
+
+    // The persisted gate state must not turn a read-only call into a mutation.
+    expect(
+      checkTaskListGate({
+        toolName: 'Bash',
+        taskCount: 0,
+        totalTaskCount: 0,
+        readsSoFar,
+        isSubagent: false,
+        isMutating: false,
+        config: CONFIG,
+      }).allowed,
+    ).toBe(true)
+  }
+})
+
+test('repeated compaction keeps the free-call allowance consumed', () => {
+  const first = createCompactBoundaryMessage('manual', 100)
+  const second = createCompactBoundaryMessage('auto', 80)
+  const currentWrite = {
+    type: 'assistant',
+    message: {
+      id: 'recompacted-write-message',
+      content: [
+        {
+          type: 'tool_use',
+          id: 'recompacted-write',
+          name: 'Write',
+          input: {},
+        },
+      ],
+    },
+  }
+
+  expect(
+    countToolCallsBeforeCurrent(
+      [first, second],
+      currentWrite as never,
+      'recompacted-write',
+    ),
+  ).toBe(Number.MAX_SAFE_INTEGER)
 })
 
 test('countToolCalls ignores plain conversation', () => {

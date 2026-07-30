@@ -432,9 +432,23 @@ function normalizeAskUserQuestionInput(input: Record<string, unknown>): Record<s
   }
 }
 
-function stringArray(value: unknown): string[] | null {
-  return Array.isArray(value) && value.every(item => typeof item === 'string')
-    ? value
+function normalizeTaskId(value: unknown): string | null {
+  if (typeof value === 'string' && value.length > 0) return value
+  if (
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value > 0
+  ) {
+    return String(value)
+  }
+  return null
+}
+
+function normalizeTaskIdArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null
+  const taskIds = value.map(normalizeTaskId)
+  return taskIds.every((taskId): taskId is string => taskId !== null)
+    ? taskIds
     : null
 }
 
@@ -523,6 +537,37 @@ function normalizeGrepInput(input: Record<string, unknown>): Record<string, unkn
   return input
 }
 
+function normalizeTaskCreateInput(input: Record<string, unknown>): Record<string, unknown> | null {
+  const dependencyFields = [
+    'blocks',
+    'blockedBy',
+    'addBlocks',
+    'addBlockedBy',
+  ]
+  if (
+    !sameKeys(
+      input,
+      ['subject', 'description'],
+      ['activeForm', 'metadata', ...dependencyFields],
+    ) ||
+    typeof input.subject !== 'string' ||
+    typeof input.description !== 'string' ||
+    (input.activeForm !== undefined && typeof input.activeForm !== 'string') ||
+    (input.metadata !== undefined && !objectValue(input.metadata))
+  ) {
+    return null
+  }
+
+  const normalizedDependencies: Record<string, string[]> = {}
+  for (const field of dependencyFields) {
+    if (input[field] === undefined) continue
+    const taskIds = normalizeTaskIdArray(input[field])
+    if (!taskIds) return null
+    normalizedDependencies[field] = taskIds
+  }
+  return { ...input, ...normalizedDependencies }
+}
+
 function normalizeTaskUpdateInput(input: Record<string, unknown>): Record<string, unknown> | null {
   const updateFields = [
     'subject',
@@ -534,24 +579,46 @@ function normalizeTaskUpdateInput(input: Record<string, unknown>): Record<string
     'owner',
     'metadata',
   ]
-  const allowedStatuses = new Set(['pending', 'in_progress', 'completed', 'deleted'])
+  const allowedStatuses = new Set([
+    'pending',
+    'in_progress',
+    'completed',
+    'failed',
+    'skipped',
+    'deleted',
+  ])
+  const taskId = normalizeTaskId(input.taskId)
   if (
     !sameKeys(input, ['taskId'], updateFields) ||
-    typeof input.taskId !== 'string' ||
+    !taskId ||
     !updateFields.some(field => Object.prototype.hasOwnProperty.call(input, field)) ||
     (input.subject !== undefined && typeof input.subject !== 'string') ||
     (input.description !== undefined && typeof input.description !== 'string') ||
     (input.activeForm !== undefined && typeof input.activeForm !== 'string') ||
     (input.status !== undefined &&
       (typeof input.status !== 'string' || !allowedStatuses.has(input.status))) ||
-    (input.addBlocks !== undefined && !stringArray(input.addBlocks)) ||
-    (input.addBlockedBy !== undefined && !stringArray(input.addBlockedBy)) ||
     (input.owner !== undefined && typeof input.owner !== 'string') ||
     (input.metadata !== undefined && !objectValue(input.metadata))
   ) {
     return null
   }
-  return input
+
+  const addBlocks =
+    input.addBlocks === undefined
+      ? undefined
+      : normalizeTaskIdArray(input.addBlocks)
+  const addBlockedBy =
+    input.addBlockedBy === undefined
+      ? undefined
+      : normalizeTaskIdArray(input.addBlockedBy)
+  if (addBlocks === null || addBlockedBy === null) return null
+
+  return {
+    ...input,
+    taskId,
+    ...(addBlocks === undefined ? {} : { addBlocks }),
+    ...(addBlockedBy === undefined ? {} : { addBlockedBy }),
+  }
 }
 
 function maybeBareJsonToolCall(
@@ -586,21 +653,14 @@ function maybeBareJsonToolCall(
     }
   }
 
-  if (
-    hasTool(availableToolNames, 'TaskCreate') &&
-    sameKeys(input, ['subject', 'description'], ['activeForm', 'metadata']) &&
-    typeof input.subject === 'string' &&
-    typeof input.description === 'string' &&
-    (input.activeForm === undefined || typeof input.activeForm === 'string') &&
-    (input.metadata === undefined ||
-      (typeof input.metadata === 'object' &&
-        input.metadata !== null &&
-        !Array.isArray(input.metadata)))
-  ) {
-    return {
-      id: parsedToolCallId('bare', index),
-      name: 'TaskCreate',
-      input,
+  if (hasTool(availableToolNames, 'TaskCreate')) {
+    const taskCreateInput = normalizeTaskCreateInput(input)
+    if (taskCreateInput) {
+      return {
+        id: parsedToolCallId('bare', index),
+        name: 'TaskCreate',
+        input: taskCreateInput,
+      }
     }
   }
 
@@ -706,7 +766,7 @@ export function looksLikeBareJsonToolCallPrefix(text: string): boolean {
   const trimmed = text.trimStart()
   if (trimmed.startsWith('```')) return true
   if (!trimmed.startsWith('{')) return false
-  return /^\{\s*"(?:tool|input|subject|description|file_path|content|old_string|new_string|replace_all|questions|command|taskId|status|pattern|path|glob)"\s*:/.test(trimmed)
+  return /^\{\s*"(?:tool|input|subject|description|activeForm|metadata|blocks|blockedBy|addBlocks|addBlockedBy|owner|file_path|content|old_string|new_string|replace_all|questions|command|taskId|status|pattern|path|glob)"\s*:/.test(trimmed)
 }
 
 export function parseBareJsonToolCalls(

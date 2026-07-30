@@ -3731,12 +3731,26 @@ Read the team config to discover your teammates' names. Check the task list peri
     }
     case 'todo_reminder': {
       const todoItems = attachment.content
-        .map((todo, index) => `${index + 1}. [${todo.status}] ${todo.content}`)
+        .map((todo, index) => {
+          const activeForm =
+            todo.status === 'in_progress'
+              ? `\n   Active form: ${todo.activeForm}`
+              : ''
+          return `${index + 1}. [${todo.status}] ${todo.content}${activeForm}`
+        })
         .join('\n')
 
-      let message = `The TodoWrite tool hasn't been used recently. If you're working on tasks that would benefit from tracking progress, consider using the TodoWrite tool to track progress. Also consider cleaning up the todo list if has become stale and no longer matches what you are working on. Only use it if it's relevant to the current work. This is just a gentle reminder - ignore if not applicable. Make sure that you NEVER mention this reminder to the user\n`
+      let message = attachment.authoritativeAfterCompact
+        ? `Authoritative live TodoWrite state restored after compaction. Continue this list instead of recreating it, preserve the order, and change a status only when the corresponding work actually starts or its observable done check passes.`
+        : `The TodoWrite tool hasn't been used recently. If you're working on tasks that would benefit from tracking progress, consider using the TodoWrite tool to track progress. Also consider cleaning up the todo list if has become stale and no longer matches what you are working on. Only use it if it's relevant to the current work. This is just a gentle reminder - ignore if not applicable. Make sure that you NEVER mention this reminder to the user\n`
+      if (
+        attachment.authoritativeAfterCompact &&
+        attachment.itemCount > attachment.content.length
+      ) {
+        message += ` This bounded snapshot contains ${attachment.content.length} of ${attachment.itemCount} items; use TodoWrite with care because omitted items still exist.`
+      }
       if (todoItems.length > 0) {
-        message += `\n\nHere are the existing contents of your todo list:\n\n[${todoItems}]`
+        message += `\n\nExisting todo list:\n\n${todoItems}`
       }
 
       return wrapMessagesInSystemReminder([
@@ -3751,12 +3765,35 @@ Read the team config to discover your teammates' names. Check the task list peri
         return []
       }
       const taskItems = attachment.content
-        .map(task => `#${task.id}. [${task.status}] ${task.subject}`)
+        .map(task => {
+          const owner = task.owner ? `\n   Owner: ${task.owner}` : ''
+          const blockedBy =
+            task.blockedBy.length > 0
+              ? `\n   Blocked by: ${task.blockedBy.map(id => `#${id}`).join(', ')}`
+              : ''
+          const blocks =
+            task.blocks.length > 0
+              ? `\n   Blocks: ${task.blocks.map(id => `#${id}`).join(', ')}`
+              : ''
+          const description =
+            task.description.length > 500
+              ? `${task.description.slice(0, 500)}… [truncated; use TaskGet]`
+              : task.description
+          return `#${task.id} [${task.status}] ${task.subject}${owner}${blockedBy}${blocks}\n   Done check / description: ${description}`
+        })
         .join('\n')
 
-      let message = `The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using ${TASK_CREATE_TOOL_NAME} to add new tasks and ${TASK_UPDATE_TOOL_NAME} to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has become stale. Only use these if relevant to the current work. This is just a gentle reminder - ignore if not applicable. Make sure that you NEVER mention this reminder to the user\n`
+      let message = attachment.authoritativeAfterCompact
+        ? `Authoritative live task-store state restored after compaction. Continue these exact task IDs; do not recreate duplicate tasks. Preserve dependency order, keep at most one task in_progress per worker, and mark a task completed only after its observable done check passes.`
+        : `The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using ${TASK_CREATE_TOOL_NAME} to add new tasks and ${TASK_UPDATE_TOOL_NAME} to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has become stale. Only use these if relevant to the current work. This is just a gentle reminder - ignore if not applicable. Make sure that you NEVER mention this reminder to the user\n`
+      if (
+        attachment.authoritativeAfterCompact &&
+        attachment.itemCount > attachment.content.length
+      ) {
+        message += ` This bounded snapshot contains ${attachment.content.length} of ${attachment.itemCount} tasks. Call TaskList before any task mutation so omitted IDs are not duplicated or overwritten.`
+      }
       if (taskItems.length > 0) {
-        message += `\n\nHere are the existing tasks:\n\n${taskItems}`
+        message += `\n\nExisting tasks:\n\n${taskItems}`
       }
 
       return wrapMessagesInSystemReminder([
@@ -4614,6 +4651,10 @@ export function createCompactBoundaryMessage(
     compactMetadata: {
       trigger,
       preTokens,
+      // Compaction marks a session as no longer being in its short initial
+      // phase. Persist this on the boundary so manual/automatic compaction and
+      // session resume cannot reset the task gate's free-call allowance.
+      taskGateFreeCallsConsumed: true,
       userContext,
       messagesSummarized,
     },

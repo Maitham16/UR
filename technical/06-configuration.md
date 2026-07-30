@@ -105,6 +105,27 @@ Fan-out limits clamp rather than disable: out-of-range, negative and
 non-numeric values fall back to the default or the ceiling, so a settings file
 cannot switch the governor off.
 
+### Global app compaction controls
+
+`autoCompactEnabled` and `compaction.autoThreshold` are global app controls
+managed by `/config` or the `Config` tool and persisted in the global UR
+configuration (`~/.ur.json`, or `.config.json` in a legacy UR config home).
+They are not keys in the project `settings.json` schema.
+
+```text
+autoCompactEnabled = true
+compaction.autoThreshold = 80
+```
+
+The threshold accepts an inclusive percentage from 50 through 95. It is
+applied to the effective model context window and retains a 3,000-token manual
+compaction reserve. `UR_AUTOCOMPACT_PCT_OVERRIDE` has higher precedence for
+the current process; `DISABLE_AUTO_COMPACT` or `DISABLE_COMPACT` disables the
+proactive trigger. `/context` and the prompt notification report an
+approximate percentage left to this same resolved threshold; the active query
+may free additional context through bounded pruning immediately before the
+trigger.
+
 Rule syntax: `ToolName` (blanket) or `ToolName(specifier)` — e.g. `Bash(npm run *)`,
 `Edit(src/**)`, `mcp__server__tool`. Managed via `/permissions` UI as well.
 

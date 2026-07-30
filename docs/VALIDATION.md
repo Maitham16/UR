@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.65.14 (UR-Nexus)"
+# expected for this release: "1.66.1 (UR-Nexus)"
 ```
 
 ## 0.1 First-workspace model selection (1.45.4)

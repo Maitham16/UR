@@ -3,7 +3,7 @@
 This is the durable handoff for coding agents working in this repository. Read
 this file before exploring the tree. It records the architecture, decisions,
 invariants, validation state, and release workflow established during the
-v1.65.7 audit and maintained through v1.65.14.
+v1.65.7 audit and maintained through v1.66.1.
 
 Do not start by re-auditing the entire repository. Confirm the current version
 and working-tree state, then open only the technical chapter and source paths
@@ -81,31 +81,33 @@ runtime behavior changes.
 
 ## Release snapshot: 2026-07-30
 
-- Local package version: **1.65.14**
-- npm `latest` at the time of this update: **1.65.13**
-- GitHub Actions production run `30513121469` for v1.65.13 completed
-  successfully.
-- v1.65.14 has not been committed, tagged, pushed, or published.
+- Local package version: **1.66.1**
+- npm `latest` at the time of this update: **1.66.0**; that version was
+  published externally from the first 1.66.0 dry-run candidate while final
+  verification was still in progress. `npm whoami`
+  successfully resolves the maintainer account `maitham88`.
+- GitHub Actions production run `30515287806` for the v1.65.14 `master`
+  commit completed successfully.
+- v1.66.1 has not been committed, tagged, pushed, or published.
 - Full post-build functional validation:
-  - 2,166 tests passed, 0 failed
-  - 9,693 assertions across 259 files
+  - 2,191 tests passed, 0 failed
+  - 9,784 assertions across 262 files
   - typecheck and strict-core typecheck passed (133 strict files)
 - Release validation, lint, secret scan, CLI version/help smoke tests,
   dependency audit, package smoke test, and npm publish dry-run all passed.
-- Dry-run tarball: 156 files, 6.5 MB packed, 32.4 MB unpacked; SHA-1
-  `66ff0d1533ff5de1200cdf5ab24991c6b0294cd1`.
+- Dry-run tarball: 156 files, 6.5 MB packed, 32.5 MB unpacked; SHA-1
+  `2d894ed6c0ee5159da4fb865ca15160212bb54f6`.
 - Release validation:
   - CLI plus ESM/CommonJS/typed SDK builds passed with 86 synchronized version
     occurrences
-  - release check and packaged CLI smoke test passed for 1.65.14
+  - release check and packaged CLI smoke test passed for 1.66.1
   - dependency audit reported no known vulnerabilities; all six runtime
     dependency ranges resolve; the safety matrix is current
   - secret scan and `git diff --check` passed
-  - local CLI reports `1.65.14 (UR-Nexus)` and `--help` exits successfully
-  - npm publish dry run passed: 156 files, 6.5 MB packed, 32.4 MB unpacked,
-    shasum `66ff0d1533ff5de1200cdf5ab24991c6b0294cd1`
-  - the current remote `master` production workflow is green; v1.65.14 CI
-    remains pending until the local release commit is pushed
+  - local CLI reports `1.66.1 (UR-Nexus)` and `--help` exits successfully
+  - npm publish dry run passed: 156 files, 6.5 MB packed, 32.5 MB unpacked,
+    shasum `2d894ed6c0ee5159da4fb865ca15160212bb54f6`
+  - v1.66.1 CI remains pending until the local release commit is pushed
 
 This snapshot is evidence, not a permanent guarantee. Rerun relevant gates
 after later changes.
@@ -196,6 +198,11 @@ be established.
   gated normally.
 - The gate must count actual tool calls, not assistant messages. The first valid
   write after creating a plan must not be blocked.
+- A compact boundary permanently consumes the short initial free-call
+  allowance. Full, partial, and session-memory compaction restore a bounded
+  authoritative task snapshot: exact Task V2 IDs/statuses/owners/dependencies
+  or legacy TodoWrite order/status. Omitted records require `TaskList` before
+  task mutation.
 - Permission-time task and path state is rechecked at the final execution
   boundary, including unchanged and in-place rewritten inputs.
 - Task tool inputs accept positive safe-integer JSON IDs for model
@@ -448,6 +455,20 @@ refactoring:
 - Kimi K2.7 Ollama Cloud requests receive a 300-second model-aware default;
   explicit request/API timeout overrides and the 120-second remote-session
   ceiling still win.
+- Proactive compaction uses one positive model-aware threshold and one live
+  estimator. The UI and `/context` show an explicitly approximate percentage
+  until that threshold; reactive/collapse modes use their own window and do
+  not claim a proactive countdown.
+- Full, partial, and session-memory compaction restore bounded authoritative
+  task state, and compact boundaries cannot reset the task gate's free-call
+  allowance. In-process workers use the normal query-loop compaction policy
+  and prune both model and UI transcript mirrors at the boundary.
+- Kimi bare task recovery matches the live task schema for dependency fields,
+  numeric IDs, and failed/skipped terminal states while invalid or unknown
+  input remains fail-closed.
+- The v1.65.0–v1.65.5 history audit found no safe missing implementation to
+  backport: every concrete technique is still present or superseded by
+  stricter tested behavior.
 - Command-registry release checks use a Linux/platform-neutral baseline and
   test the supported macOS/x64-Windows `/desktop` delta separately.
 - CLI handlers no longer report success after failed underlying work.

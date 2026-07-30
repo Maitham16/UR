@@ -103,6 +103,13 @@ positive safe-integer JSON number; the tool boundary normalizes it to the
 canonical decimal string. Zero, negative, fractional, non-finite, Boolean, and
 precision-losing numeric IDs are rejected.
 
+The Kimi/Ollama compatibility parser applies the same task schema instead of a
+smaller parallel implementation. A clearly delimited bare `TaskCreate` object
+may contain `blocks`, `blockedBy`, `addBlocks`, or `addBlockedBy`; a bare
+`TaskUpdate` accepts the live terminal `failed` and `skipped` statuses as well
+as numeric IDs. IDs are normalized to canonical strings, while unknown fields,
+invalid IDs/statuses, ambiguous prose, and unavailable tools fail closed.
+
 Task-gate recovery names the tracking surface that is actually present:
 interactive Task V2 sessions use `TaskCreate`, while default headless sessions
 use `TodoWrite`. It never instructs a model to recover by calling a tool absent

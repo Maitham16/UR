@@ -184,6 +184,12 @@ use legacy `TodoWrite` by default, or Task V2 when
   alone outside live plan mode are not exempt.
 - Configure the behavior at
   `tasks.requireBeforeChanges.{enabled,freeReads}`.
+- Full, partial, and session-memory compaction restore the live task board as
+  an authoritative bounded snapshot, including exact Task V2 IDs, statuses,
+  owners, and dependency edges. In-process workers do not run a second private
+  compaction algorithm: they use the same `runAgent` query-loop policy,
+  feature gates, session-memory-first behavior, threshold, circuit breaker,
+  and compact-boundary handling as the main agent.
 
 The prompt contract, plan-file structure, plan-agent output, approval handoff,
 task-tool result, and gate recovery text all reinforce the same decomposition

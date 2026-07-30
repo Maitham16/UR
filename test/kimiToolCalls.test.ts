@@ -67,6 +67,50 @@ test('bare TaskCreate JSON is converted when the tool is available', () => {
   })
 })
 
+test('bare TaskCreate accepts live dependency fields and normalizes numeric IDs', () => {
+  const result = parseBareJsonToolCalls(
+    'Planning\n{"blockedBy":[1,"2"],"subject":"Implement feature","description":"Make the change","activeForm":"Implementing feature","metadata":{"scope":"focused"},"blocks":[3],"addBlocks":["4"],"addBlockedBy":[5]}\nNext\n',
+    {
+      availableToolNames: new Set(['TaskCreate']),
+      parseBareJsonToolCalls: true,
+    },
+  )
+
+  expect(result.text).toBe('Planning\nNext\n')
+  expect(result.toolCalls).toHaveLength(1)
+  expect(result.toolCalls[0]).toMatchObject({
+    name: 'TaskCreate',
+    input: {
+      subject: 'Implement feature',
+      description: 'Make the change',
+      activeForm: 'Implementing feature',
+      metadata: { scope: 'focused' },
+      blocks: ['3'],
+      blockedBy: ['1', '2'],
+      addBlocks: ['4'],
+      addBlockedBy: ['5'],
+    },
+  })
+})
+
+test('bare task recovery rejects invalid dependency IDs and unknown fields', () => {
+  const texts = [
+    '{"subject":"Invalid zero","description":"No","blocks":[0]}',
+    '{"subject":"Invalid fraction","description":"No","blockedBy":[1.5]}',
+    `{"subject":"Invalid unsafe integer","description":"No","addBlocks":[${Number.MAX_SAFE_INTEGER + 1}]}`,
+    '{"subject":"Unknown field","description":"No","blocks":[1],"removeBlocks":["2"]}',
+  ]
+
+  for (const text of texts) {
+    const result = parseBareJsonToolCalls(text, {
+      availableToolNames: new Set(['TaskCreate']),
+      parseBareJsonToolCalls: true,
+    })
+    expect(result.text).toBe(text)
+    expect(result.toolCalls).toHaveLength(0)
+  }
+})
+
 test('bare AskUserQuestion JSON is converted and normalized', () => {
   const result = parseTextToolCalls(
     'The directory is empty, so I have choices to confirm first.\n{"questions":[{"question":"What technology stack do you prefer?","options":[{"label":"HTML5 Canvas + plain JavaScript (no build step, runs directly in browser)","description":"Single index.html and game.js. Fastest to run and simplest to understand."},{"label":"HTML5 Canvas + TypeScript with a small build","description":"Uses Vite or esbuild. Better typed but requires npm install and build."},{"label":"Phaser 3 JavaScript","description":"Popular game framework. More features, but external dependency."}]},{"question":"Which platformer features should the level include?","options":[{"label":"Mario-style basics only: run, jump, platforms, coins, enemies, flagpole end"},{"label":"Add power-ups (mushroom/fire flower), pits, and a boss at the end"}],"multiSelect":false},{"question":"Do you want this to be desktop-only or also support mobile touch controls?","options":[{"label":"Desktop keyboard only"},{"label":"Desktop + on-screen touch controls for mobile"}]}]}',
@@ -338,6 +382,64 @@ test('bare Bash Read and TaskUpdate JSON objects are recovered separately', () =
     taskId: '6',
     status: 'completed',
   })
+})
+
+test('bare TaskUpdate normalizes numeric IDs and accepts failed and skipped statuses', () => {
+  const failed = parseBareJsonToolCalls(
+    '{"taskId":6,"status":"failed","addBlocks":[7,"8"],"addBlockedBy":[9],"metadata":{"reason":"test failure"}}',
+    {
+      availableToolNames: new Set(['TaskUpdate']),
+      parseBareJsonToolCalls: true,
+    },
+  )
+  const skipped = parseBareJsonToolCalls(
+    '{"addBlockedBy":[11],"taskId":10,"status":"skipped"}',
+    {
+      availableToolNames: new Set(['TaskUpdate']),
+      parseBareJsonToolCalls: true,
+    },
+  )
+
+  expect(failed.toolCalls).toHaveLength(1)
+  expect(failed.toolCalls[0]).toMatchObject({
+    name: 'TaskUpdate',
+    input: {
+      taskId: '6',
+      status: 'failed',
+      addBlocks: ['7', '8'],
+      addBlockedBy: ['9'],
+      metadata: { reason: 'test failure' },
+    },
+  })
+  expect(skipped.toolCalls).toHaveLength(1)
+  expect(skipped.toolCalls[0]).toMatchObject({
+    name: 'TaskUpdate',
+    input: {
+      taskId: '10',
+      status: 'skipped',
+      addBlockedBy: ['11'],
+    },
+  })
+})
+
+test('bare TaskUpdate rejects invalid IDs, statuses, and unknown fields', () => {
+  const texts = [
+    '{"taskId":0,"status":"failed"}',
+    '{"taskId":-1,"status":"skipped"}',
+    '{"taskId":1.5,"status":"completed"}',
+    `{"taskId":${Number.MAX_SAFE_INTEGER + 1},"status":"completed"}`,
+    '{"taskId":1,"status":"cancelled"}',
+    '{"taskId":1,"status":"failed","blocks":[2]}',
+  ]
+
+  for (const text of texts) {
+    const result = parseBareJsonToolCalls(text, {
+      availableToolNames: new Set(['TaskUpdate']),
+      parseBareJsonToolCalls: true,
+    })
+    expect(result.text).toBe(text)
+    expect(result.toolCalls).toHaveLength(0)
+  }
 })
 
 test('remote transport synthesizes bare Bash Read and TaskUpdate JSON into tool uses', () => {

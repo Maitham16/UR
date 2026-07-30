@@ -487,11 +487,22 @@ export type Attachment =
       type: 'todo_reminder'
       content: TodoList
       itemCount: number
+      /**
+       * Set for the live state snapshot re-injected after compaction.
+       * Unlike the periodic reminder, this state must not be treated as stale
+       * or optional because earlier task-tool results are no longer visible.
+       */
+      authoritativeAfterCompact?: boolean
     }
   | {
       type: 'task_reminder'
       content: Task[]
       itemCount: number
+      /**
+       * Set for the live state snapshot re-injected after compaction.
+       * The persisted task store remains the source of truth.
+       */
+      authoritativeAfterCompact?: boolean
     }
   | {
       type: 'nested_memory'
