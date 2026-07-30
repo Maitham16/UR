@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.67.0
+
+- Two subsystems loaded behind feature flags were not merely disabled, they
+  were broken in a way that only showed if you enabled them.
+  `services/compact/reactiveCompact.ts` did not exist on disk at all, yet
+  `query.ts` requires it by path and `/compact` calls two functions on it;
+  `services/contextCollapse/index.ts` was a stub exporting four names while
+  `query.ts` called four different ones, three of which were absent. Setting
+  either flag would have failed on the first turn with MODULE_NOT_FOUND or
+  "is not a function" rather than degrading to "feature off". Both modules now
+  export the full surface their callers use, returning result-shaped objects
+  instead of null so property access on the result cannot throw.
+- Neither was reachable in shipped builds — the bundler passes only VOICE_MODE
+  and CHICAGO_MCP, and live context management runs through
+  `services/compact/autoCompact.ts`, which is real and unaffected.
+- Added `test/optionalSubsystems.test.ts`, which derives the required exports
+  from what `query.ts` actually calls rather than from a hand-written list, so
+  a new call site cannot reintroduce the gap. It also asserts autoCompact has
+  not itself become a stub.
+- Audit note: 223 files carry `@ts-nocheck` and are invisible to
+  `tsc --noEmit`. Stripping the suppressions in a scratch copy surfaces 872
+  errors across ~108k lines, including `query.ts`, `permissions.ts` and
+  `filesystem.ts`. Both defects above sat inside that blind spot.
+
+
+## 1.66.2
+
+- A long session on Ollama now says when it has run out of context instead of
+  quietly getting worse. Ollama truncates an oversized prompt from the front
+  rather than returning an error, and the front of the prompt is the system
+  prompt — so the first thing discarded is the instruction set. The model then
+  answers with no tool guidance and no task-list requirement, which from the
+  outside looks like the model degrading on long prompts rather than like
+  context running out. Both numbers needed to detect this were already computed
+  on every request; they were never compared. A near-full context now warns at
+  85% and a full one explains what was dropped and offers `/compact`, a fresh
+  session, a larger-context model, or `UR_OLLAMA_NUM_CTX`.
+- Added `test/contextPressure.test.ts`, including that unknown sizing produces
+  no warning — an unmeasured context is not a full one.
+
 ## 1.66.1
 
 - Corrected the warning-state result used by reactive compaction and context

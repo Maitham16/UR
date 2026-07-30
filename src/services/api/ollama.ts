@@ -24,6 +24,7 @@ import {
 } from '../../utils/model/ollamaConfig.js'
 import {
   computeOllamaNumCtx,
+  describeContextPressure,
   getOllamaKeepAlive,
   getOllamaNumCtxOverride,
 } from '../../utils/model/ollamaTuning.js'
@@ -520,15 +521,33 @@ export function toOllamaChatRequest(
   if (typeof params.max_tokens === 'number') {
     options.num_predict = params.max_tokens
   }
+  const modelContextLength = getOllamaContextLengthForModel(
+    params.model,
+    baseUrl,
+  )
+  const estimatedPromptTokens = estimateInputTokens(params)
   const numCtx = computeOllamaNumCtx({
-    modelContextLength: getOllamaContextLengthForModel(params.model, baseUrl),
-    estimatedPromptTokens: estimateInputTokens(params),
+    modelContextLength,
+    estimatedPromptTokens,
     maxTokens:
       typeof params.max_tokens === 'number' ? params.max_tokens : undefined,
     override: getOllamaNumCtxOverride(),
   })
   if (numCtx !== undefined) {
     options.num_ctx = numCtx
+  }
+
+  // Overflow is invisible from the outside: Ollama drops the front of the
+  // prompt and answers anyway, so the failure looks like the model got worse
+  // rather than like context ran out. Say it in the transcript.
+  const pressure = describeContextPressure({
+    estimatedPromptTokens,
+    numCtx,
+    modelContextLength,
+    model: params.model,
+  })
+  if (pressure.message && !pendingProviderNotice) {
+    pendingProviderNotice = pressure.message
   }
   if (Object.keys(options).length > 0) {
     request.options = options
