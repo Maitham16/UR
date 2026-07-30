@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.68.1
+
+- A detected prompt-injection attempt is now reported to the user instead of
+  being refused in silence. Consolidating the scattered prompt guidance into the
+  execution contract was a genuine improvement, but one clause did not survive:
+  the older text said to "flag it directly to the user", and the replacement
+  told the model to refuse embedded directives and stopped there. So
+  `scanForInjection` would correctly flag hostile content, annotate the model's
+  own copy of the block, write an evidence-ledger entry — and say nothing to the
+  person whose fetched page or issue comment was carrying the attack. The
+  detection was never the weak part; the reporting was.
+
 ## 1.68.0
 
 - Removed `@ts-nocheck` from 73 files, putting 21,503 previously unchecked lines

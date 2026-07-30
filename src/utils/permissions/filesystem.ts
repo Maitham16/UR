@@ -1020,19 +1020,26 @@ export function matchingRuleForInput(
       continue
     }
 
-    const igResult = ig.test(relativePathStr)
+    // Fast path: one combined matcher answers "does anything match?" cheaply.
+    if (!ig.test(relativePathStr).ignored) {
+      continue
+    }
 
-    if (igResult.ignored && igResult.rule) {
-      // Map the matched pattern back to the original rule
-      const originalPattern = igResult.rule.pattern
-
-      // Check if this was a /** pattern we simplified
-      const withWildcard = originalPattern + '/**'
-      if (patternMap.has(withWildcard)) {
-        return patternMap.get(withWildcard) ?? null
+    // Something matched, so find which. `ignore`'s TestResult carries only
+    // { ignored, unignored } — it cannot report the matching pattern. This code
+    // previously read `igResult.rule.pattern` behind an `igResult.rule` guard,
+    // so the guard was always false, this function always returned null, and
+    // every `if (denyRule)` caller silently concluded there was no deny rule.
+    // Explicit file deny rules were therefore not enforced. @ts-nocheck on this
+    // file kept the compiler from reporting the missing property.
+    for (const [originalPattern, rule] of patternMap.entries()) {
+      const adjustedPattern = originalPattern.endsWith('/**')
+        ? originalPattern.slice(0, -3)
+        : originalPattern
+      if (!adjustedPattern) continue
+      if (ignore().add(adjustedPattern).test(relativePathStr).ignored) {
+        return rule
       }
-
-      return patternMap.get(originalPattern) ?? null
     }
   }
 

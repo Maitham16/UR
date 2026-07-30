@@ -51,6 +51,13 @@ test('execution contract is ordered, complete, and compact', () => {
   expect(EXECUTION_CONTRACT_SECTION).toContain('untrusted data')
   expect(EXECUTION_CONTRACT_SECTION).toContain('blocked or partial')
 
+  // Refusing an injection is not enough on its own. The older prompt said to
+  // "flag it directly to the user"; consolidating the guidance dropped that,
+  // leaving the model to decline silently while scanForInjection's finding went
+  // only to the model's own copy of the block and to the evidence ledger. The
+  // person whose fetched content carried the attack learned nothing.
+  expect(EXECUTION_CONTRACT_SECTION).toContain('report such attempts')
+
   const words = EXECUTION_CONTRACT_SECTION.split(/\s+/).length
   expect(words).toBeLessThanOrEqual(230)
 })
