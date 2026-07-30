@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.68.10
+
+- `ToolSearchTool` no longer registers on runtimes where it cannot work. Its
+  purpose is fetching schemas for tools whose definitions were deferred, and
+  deferral needs the runtime to expand `tool_reference` blocks — an
+  Anthropic-native beta shape that no UR runtime supports (UR runs on Ollama,
+  OpenAI-compatible servers and vendor CLIs). `isEnabled()` consulted only
+  `isToolSearchEnabledOptimistic()`, which reads the mode, and the mode
+  defaults to `'tst'` (on). The tool therefore registered on every run: its
+  description shipped with each request, and the model was offered a tool that
+  could not function, because nothing was ever deferred for it to fetch.
+- Audit note on the surface as a whole: 168 commands, of which 8 touch a
+  feature flag that is not compiled in, and in each case the flag gates a
+  sub-feature rather than the command. 89 of 91 flags are absent from shipped
+  builds. Two of those (`CONTEXT_COLLAPSE`, `REACTIVE_COMPACT`) would have
+  failed on the first turn if enabled and were fixed in 1.68.2.
+
 ## 1.68.9
 
 - Narrowed that allowlist entry from `ur.com` to `ur.com/docs`. Replacing a
