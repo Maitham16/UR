@@ -49,6 +49,28 @@ test('Edit mismatch rejects a malformed HTML/JS cross-section and points to a ve
   expect(message).toContain('do not retry this call unchanged')
 })
 
+test('Edit mismatch points past hallucinated closing tags to the distinctive target anchor', () => {
+  const file = [
+    '<canvas id="canvas"></canvas>',
+    '<div id="menu">',
+    '</div>',
+    '<div id="gameOverScreen" class="menu hidden"></div>',
+    '',
+    '<script>',
+  ].join('\n')
+  const hallucinatedBlock = ['</div>', '</div>', '<script>'].join('\n')
+
+  expect(findActualString(file, hallucinatedBlock)).toBeNull()
+  const message = formatStringNotFoundMessage(file, hallucinatedBlock)
+
+  expect(message).toContain(
+    'verified anchor "<script>" from old_string line 3 uniquely matches the current file at line 6',
+  )
+  expect(message).toContain('complete 3-line block is not contiguous')
+  expect(message).toContain('Re-read the target around line 6')
+  expect(message).not.toContain('target around line 3')
+})
+
 test('Edit mismatch output bounds an over-large old_string', () => {
   const oldString = '<!-- Player ship -->\n' + 'stale JavaScript();\n'.repeat(100)
   const message = formatStringNotFoundMessage('unrelated file', oldString)
@@ -157,6 +179,70 @@ test('Edit returns a truthful no-write result for an already-applied deletion', 
     expect(result.data.structuredPatch).toEqual([])
     expect(readFileSync(filePath, 'utf8')).toBe(desired)
     expect(statSync(filePath).mtimeMs).toBe(beforeMtime)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('Edit leaves the file unchanged when old_string hallucinates an extra closing tag', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'ur-edit-extra-closing-tag-'))
+  try {
+    const filePath = join(directory, 'game.html')
+    const file = [
+      '<canvas id="canvas"></canvas>',
+      '<div id="menu">',
+      '</div>',
+      '<div id="gameOverScreen" class="menu hidden"></div>',
+      '',
+      '<script>',
+    ].join('\n')
+    writeFileSync(filePath, file)
+    const readFileState = createFileStateCacheWithSizeLimit(10)
+    readFileState.set(filePath, {
+      content: file,
+      timestamp: getFileModificationTime(filePath),
+      offset: undefined,
+      limit: undefined,
+    })
+    const context = {
+      abortController: new AbortController(),
+      options: {
+        commands: [],
+        tools: [],
+        mainLoopModel: 'test-model',
+        thinkingConfig: { type: 'disabled' as const },
+        mcpClients: [],
+        mcpResources: {},
+        isNonInteractiveSession: true,
+        debug: false,
+        verbose: false,
+        agentDefinitions: { activeAgents: [], allAgents: [] },
+      },
+      getAppState: () => getDefaultAppState(),
+      setAppState: () => {},
+      messages: [],
+      readFileState,
+      setInProgressToolUseIDs: () => {},
+      setResponseLength: () => {},
+      updateFileHistoryState: () => {},
+      updateAttributionState: () => {},
+      toolUseId: 'extra-closing-tag-test',
+    }
+    const result = await FileEditTool.validateInput?.(
+      {
+        file_path: filePath,
+        old_string: '</div>\n</div>\n<script>',
+        new_string: '</div>\n<script>',
+        replace_all: false,
+      },
+      context as never,
+    )
+
+    expect(result).toMatchObject({ result: false, errorCode: 8 })
+    expect(
+      result && 'message' in result ? result.message : '',
+    ).toContain('verified anchor "<script>"')
+    expect(readFileSync(filePath, 'utf8')).toBe(file)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }

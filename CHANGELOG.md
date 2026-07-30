@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.65.12
+
+- Forced explicit weak-model decision menus through the real
+  `AskUserQuestion` UI. A provider-neutral end-turn guard accepts only one
+  canonical Ask object from explicit reasoning or one complete rigid Markdown
+  choice menu, validates it unchanged against the live tool schema, and rejects
+  examples, ambiguity, ordinary prose, workers, and headless sessions.
+- Removed two task-list dead ends without weakening the mutation boundary.
+  Live plan mode may run only the exact current plan-directory bootstrap Bash
+  shape before tasks exist, and the last actionable task remains `in_progress`
+  when a file mutation has no later successful observable check. The same task
+  can then be verified or corrected instead of creating a duplicate.
+- Improved exact `Edit` mismatch recovery for stale HTML blocks. Diagnostics
+  now select the most distinctive verified line near the real target, such as
+  `<script>`, rather than an unrelated generic closing tag; edits remain
+  fail-closed and never apply fuzzy replacements.
+- Raised the default Ollama Cloud timeout for the known-slow Kimi K2.7 family
+  from 120 to 300 seconds in both streaming and permitted non-streaming paths.
+  Explicit timeouts and the stricter remote-session ceiling still take
+  precedence.
+
 ## 1.65.11
 
 - Hardened `AskUserQuestion` for weaker models without inventing user intent.

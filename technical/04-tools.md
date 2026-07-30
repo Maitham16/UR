@@ -92,6 +92,24 @@ redirection, backgrounding, sandbox overrides, and permission-time rewrites to
 mutating commands fail closed. The preview command remains a Bash side effect
 and still follows normal permission, sandbox, and plan-worker rules.
 
+Task completion also protects that lifecycle boundary. When the final
+actionable `in_progress` task has a successful `Write`/`Edit`/`MultiEdit`/
+`NotebookEdit` after its recorded start but no later successful inspection,
+runtime, test, shell, or delegated-check result, `TaskUpdate(completed)` is
+soft-deferred: it returns a non-error explanation and leaves the same task
+`in_progress`. The model verifies and retries completion instead of creating a
+duplicate task or discovering an all-terminal dead end on the next corrective
+Edit. The guard is evidence-based and conservative: missing/compacted history,
+non-file work, and intermediate tasks are not guessed into a deferred state.
+
+Live plan mode also treats setup of the exact current session plan artifact as
+planning infrastructure rather than implementation. `Write` creates the plan
+file's parent automatically, but weak models may first emit `mkdir -p` for that
+exact parent or the bounded `ls ... || mkdir -p ... && ls ...` check. Only those
+exact-path shapes bypass the task-list requirement; Bash permission and sandbox
+checks still apply, and a hook rewrite, sibling path, extra command, expansion,
+background launch, or sandbox override fails closed at the final boundary.
+
 `AskUserQuestion` exposes a request-only model schema: one top-level
 `questions` array with 1–4 complete question objects, each containing
 `question`, a header of at most 12 characters, and 2–8 labeled choices.
@@ -100,6 +118,18 @@ accepts only lossless compatibility forms such as string choices and recognized
 question-text aliases; it does not turn arbitrary prose or flat option rows into
 invented questions. More than four blocking decisions are asked in later
 rounds.
+
+One narrow end-turn recovery exists for weak models that clearly attempted this
+tool but failed to emit a native call. On an interactive main-agent turn with
+no existing tool use, the runtime may recover either one canonical
+`questions` object at the very end of a reasoning block that explicitly says
+to invoke `AskUserQuestion`, or one standalone Markdown decision menu with
+exactly one bold question, 2–8 bold labeled options with descriptions, and a
+terminal instruction to select an option. The recovered object must pass the
+live `AskUserQuestion` schema unchanged before the normal tool executor opens
+the UI. JSON repair, truncation, duplicate/ambiguous candidates, casual “A or
+B?” prose, examples, incomplete menus, background workers, headless sessions,
+and unavailable/disabled tools all fail closed.
 
 Answers and annotations are not model input fields. They are accepted only
 during post-permission validation after the interactive UI has returned one
@@ -180,10 +210,10 @@ the intended file.
 
 `Edit` remains fail-closed rather than applying a fuzzy replacement to similar
 code. When an exact contiguous `old_string` is absent, its bounded error points
-to a verified matching line when one exists and tells the model to re-read that
-region, use a smaller current 2–4-line anchor, split distant HTML/CSS/JavaScript
-sections, and never retry the unchanged call. One narrow idempotent case returns
-success without writing: a non-`replace_all` deletion-only edit whose
-`new_string` is already present uniquely and whose larger `old_string` is
-absent. General stale, fuzzy, empty-replacement, and ambiguous matches still
-fail.
+to the most distinctive verified matching line when one exists, rather than an
+unrelated generic delimiter, and tells the model to re-read that region, use a
+smaller current 2–4-line anchor, split distant HTML/CSS/JavaScript sections, and
+never retry the unchanged call. One narrow idempotent case returns success
+without writing: a non-`replace_all` deletion-only edit whose `new_string` is
+already present uniquely and whose larger `old_string` is absent. General
+stale, fuzzy, empty-replacement, and ambiguous matches still fail.

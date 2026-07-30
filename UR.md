@@ -55,7 +55,11 @@ very code you are editing — be careful, verify, and prefer small reviewable st
 - Never synthesize `AskUserQuestion` from ordinary prose. A rhetorical or
   enumerated sentence is not reliable structured user intent. Keep genuine
   provider calls and conservative bare-JSON recovery, then validate the full
-  nested 1–4 question / 2–8 option shape.
+  nested 1–4 question / 2–8 option shape. The sole prose exception is the
+  provider-neutral, end-turn recovery for a complete standalone decision menu:
+  one bold question, 2–8 bold labels with descriptions, and an explicit final
+  selection instruction. It still requires the live schema and an interactive
+  main-agent turn; ambiguity fails closed.
 - `AskUserQuestion` request schemas never expose response fields. `answers` and
   `annotations` are permission-UI output and must pass post-permission
   completeness checks before the tool can report that the user answered.

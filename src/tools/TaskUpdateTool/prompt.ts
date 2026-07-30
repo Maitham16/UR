@@ -10,6 +10,12 @@ export const PROMPT = `Use this tool to update a task in the task list.
 - After completion, call TaskList to find the next unblocked task
 
 - ONLY mark a task as completed when you have FULLY accomplished it
+- After changing a file, run a relevant observable check in a later tool turn
+  before completing the final actionable task. A Write/Edit result proves only
+  that bytes changed, not that the result works.
+- If that final completion has no successful post-change check, TaskUpdate
+  keeps the same task in_progress and names the next verification action. Run
+  it and retry completion; do not create a duplicate task.
 - If you encounter errors, blockers, or cannot finish, keep the task as in_progress
 - When blocked, record the blocking work as a dependency or notify the owner
 - Never mark a task as completed if:

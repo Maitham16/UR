@@ -111,15 +111,18 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   search, and bounded private cursor state. Compacted context persistence
   requires a 32-byte `UR_OPENAI_RESPONSES_STATE_KEY`.
 - `ollama.ts` selects timeouts from explicit request options, then
-  `API_TIMEOUT_MS`, then runtime defaults. `:cloud` models and remote sessions
-  use 120 seconds; local models use 300 seconds. The same model-aware value is
-  applied while waiting for `/api/chat` response headers and as the absolute
-  deadline in `readOllamaChunks`.
+  `API_TIMEOUT_MS`, then runtime defaults. Remote sessions and ordinary
+  `:cloud` models use 120 seconds; local models and Kimi K2.7 Cloud use 300
+  seconds because large Kimi coding turns can legitimately take longer than
+  two minutes before completing. The same model-aware value is applied while
+  waiting for `/api/chat` response headers and as the absolute deadline in
+  `readOllamaChunks`.
 - `ur.ts` identifies an Ollama Cloud runtime from both the selected provider and
   the `:cloud` suffix. It disables shared automatic request retries for that
-  route, applies the same 120-second bound to any permitted non-streaming
+  route, applies the same model-aware bound to any permitted non-streaming
   fallback, and skips fallback entirely when the Ollama stream deadline itself
-  caused the failure. Explicit `API_TIMEOUT_MS` remains authoritative.
+  caused the failure. Explicit `API_TIMEOUT_MS` remains authoritative, and
+  remote-session safety keeps its 120-second ceiling.
 
 ## Capability-aware routing
 

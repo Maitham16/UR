@@ -197,6 +197,8 @@ test('task tool prompts use one unambiguous lifecycle vocabulary', () => {
   )
   expect(updatePrompt).not.toContain('Mark tasks as resolved')
   expect(updatePrompt).toContain('next unblocked task')
+  expect(updatePrompt).toContain('successful post-change check')
+  expect(updatePrompt).toContain('do not create a duplicate task')
   expect(updatePrompt).not.toContain('```json')
   expect(updatePrompt).toContain('native structured tool interface')
 })

@@ -126,6 +126,7 @@ type OllamaFetchResult = {
 const DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS = 300_000
 const REMOTE_OLLAMA_REQUEST_TIMEOUT_MS = 120_000
 const CLOUD_OLLAMA_REQUEST_TIMEOUT_MS = 120_000
+const KIMI_CLOUD_REQUEST_TIMEOUT_MS = 300_000
 const OLLAMA_GATEWAY_TIMEOUT_MESSAGE =
   'Ollama gateway timed out while waiting for the model to respond. Check the selected Ollama endpoint or increase API_TIMEOUT_MS if the model needs more time.'
 const ollamaModelCapabilitiesCache = new Map<
@@ -386,14 +387,31 @@ export function getOllamaRequestTimeoutMs(
   if (isTruthyEnv(env.UR_CODE_REMOTE)) {
     return REMOTE_OLLAMA_REQUEST_TIMEOUT_MS
   }
-  if (isOllamaCloudModel(model)) {
-    return CLOUD_OLLAMA_REQUEST_TIMEOUT_MS
-  }
-  return DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS
+  return getOllamaModelDefaultTimeoutMs(model)
 }
 
 export function isOllamaCloudModel(model: string | undefined): boolean {
   return model?.trim().toLowerCase().endsWith(':cloud') ?? false
+}
+
+/**
+ * Kimi K2.7 regularly needs more than two minutes before its first useful
+ * cloud response on large coding contexts. Keep the ordinary cloud deadline
+ * bounded at two minutes, but give this known slow family the same five-minute
+ * ceiling as local large models. Explicit request/API_TIMEOUT_MS overrides and
+ * the stricter remote-session deadline still win in getOllamaRequestTimeoutMs.
+ */
+export function getOllamaModelDefaultTimeoutMs(
+  model: string | undefined,
+): number {
+  const normalized = model?.trim().toLowerCase() ?? ''
+  if (/^kimi-k2\.7(?:[-.:]|$)/.test(normalized) && isOllamaCloudModel(model)) {
+    return KIMI_CLOUD_REQUEST_TIMEOUT_MS
+  }
+  if (isOllamaCloudModel(model)) {
+    return CLOUD_OLLAMA_REQUEST_TIMEOUT_MS
+  }
+  return DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS
 }
 
 function isTruthyEnv(value: string | undefined): boolean {

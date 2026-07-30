@@ -149,6 +149,11 @@ use legacy `TodoWrite` by default, or Task V2 when
 - Dependencies block transition or claim until prerequisites are complete.
 - Actionable `pending` or `in_progress` entries open the gate; completed and
   internal entries do not.
+- The last actionable `in_progress` task cannot be terminalized immediately
+  after a recorded file mutation with no later successful observable check.
+  `TaskUpdate` soft-defers that completion and keeps the same task actionable;
+  it does not infer or auto-create a replacement task. A later successful
+  inspection/runtime/test/delegated check allows the explicit completion retry.
 - Reads remain unrestricted. Ordinary mutations have a default allowance of
   three preceding tool calls, counted by tool call rather than message.
   Delegation and child mutations always require an actionable parent task.
@@ -159,10 +164,13 @@ use legacy `TodoWrite` by default, or Task V2 when
   exempt so the agent can repair the plan.
 - Creating or updating the exact current-session plan-mode Markdown file is
   also exempt: that file is the planning artifact, not an ordinary workspace
-  change. The exemption and live actionable-task state are re-evaluated at the
-  final execution boundary after permission-hook input rewrites; sibling files
-  and the plans directory are not exempt, and the filename alone is not exempt
-  outside live plan mode.
+  change. A bounded Bash bootstrap may only create/check that file's exact
+  parent (`mkdir -p`, optionally guarded by the known `ls` pattern); this
+  compatibility path remains subject to Bash permission and sandbox checks.
+  The exemption and live actionable-task state are re-evaluated at the final
+  execution boundary after permission-hook input rewrites. Sibling paths,
+  general plans-directory commands, added shell operations, and the filename
+  alone outside live plan mode are not exempt.
 - Configure the behavior at
   `tasks.requireBeforeChanges.{enabled,freeReads}`.
 

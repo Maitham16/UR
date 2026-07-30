@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { dirname } from 'node:path'
 import { z } from 'zod/v4'
 import {
   getIsInteractive,
@@ -468,6 +469,134 @@ test('loopback open reaches Bash permission but a mutating rewrite is task-gated
         return {
           behavior: 'allow' as const,
           updatedInput: { command: 'touch /tmp/task-gate-proof' },
+        }
+      }) as never,
+      context as never,
+    ),
+  )
+  expect(permissionCount).toBe(2)
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(rewritten)).toContain(
+    'TaskListRequired after input update',
+  )
+})
+
+test('plan-directory bootstrap reaches Bash permission but a rewritten command is gated', async () => {
+  let callCount = 0
+  let permissionCount = 0
+  const tool = {
+    name: 'Bash',
+    inputSchema: z.strictObject({ command: z.string() }),
+    isReadOnly: () => false,
+    isConcurrencySafe: () => false,
+    isEnabled: () => true,
+    async call() {
+      callCount++
+      return { data: 'plan directory ready' }
+    },
+  }
+  const priorCalls = Array.from({ length: 3 }, (_, index) => ({
+    type: 'assistant',
+    message: {
+      id: `plan-bootstrap-prior-message-${index}`,
+      content: [
+        {
+          type: 'tool_use',
+          id: `plan-bootstrap-prior-${index}`,
+          name: 'Read',
+          input: {},
+        },
+      ],
+    },
+  }))
+  const state = getDefaultAppState()
+  state.toolPermissionContext = {
+    ...state.toolPermissionContext,
+    mode: 'plan',
+  }
+  const context = {
+    abortController: new AbortController(),
+    options: {
+      commands: [],
+      debug: false,
+      mainLoopModel: 'test-model',
+      tools: [tool],
+      verbose: false,
+      thinkingConfig: { type: 'disabled' },
+      mcpClients: [],
+      mcpResources: {},
+      isNonInteractiveSession: true,
+      agentDefinitions: { activeAgents: [], allAgents: [] },
+    },
+    getAppState: () => state,
+    setAppState: () => {},
+    messages: priorCalls,
+    readFileState: new Map(),
+    setInProgressToolUseIDs: () => {},
+    setResponseLength: () => {},
+    updateFileHistoryState: () => {},
+    updateAttributionState: () => {},
+  }
+  const planDirectory = dirname(getPlanFilePath())
+  const bootstrapInput = {
+    command:
+      `ls -la ${planDirectory} 2>/dev/null || ` +
+      `mkdir -p ${planDirectory} && ls -la ${planDirectory}`,
+  }
+
+  const allowed = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'plan-directory-bootstrap',
+        name: tool.name,
+        input: bootstrapInput,
+      } as never,
+      {
+        type: 'assistant',
+        uuid: 'assistant-plan-directory-bootstrap',
+        message: {
+          id: 'message-plan-directory-bootstrap',
+          content: [],
+        },
+      } as never,
+      (async () => {
+        permissionCount++
+        return {
+          behavior: 'allow' as const,
+          updatedInput: bootstrapInput,
+        }
+      }) as never,
+      context as never,
+    ),
+  )
+  expect(permissionCount).toBe(1)
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(allowed)).not.toContain('TaskListRequired')
+
+  const rewritten = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'plan-directory-bootstrap-rewritten',
+        name: tool.name,
+        input: bootstrapInput,
+      } as never,
+      {
+        type: 'assistant',
+        uuid: 'assistant-plan-directory-bootstrap-rewritten',
+        message: {
+          id: 'message-plan-directory-bootstrap-rewritten',
+          content: [],
+        },
+      } as never,
+      (async () => {
+        permissionCount++
+        return {
+          behavior: 'allow' as const,
+          updatedInput: {
+            command: `mkdir -p ${planDirectory} && touch /tmp/not-a-plan`,
+          },
         }
       }) as never,
       context as never,

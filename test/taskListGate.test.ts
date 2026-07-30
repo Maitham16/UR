@@ -226,6 +226,67 @@ test('the exact current-session plan file is a narrow gate exemption', () => {
   ).toBe(true)
 })
 
+test('only exact current-plan directory bootstrap Bash is a plan artifact', () => {
+  const expectedPlanFile =
+    '/Users/example/.ur/plans/typed-scribbling-hoare.md'
+  const planDirectory = '/Users/example/.ur/plans'
+  const transcriptCommand =
+    `ls -la ${planDirectory} 2>/dev/null || ` +
+    `mkdir -p ${planDirectory} && ls -la ${planDirectory}`
+
+  for (const command of [
+    `mkdir -p ${planDirectory}`,
+    `ls -la ${planDirectory} || mkdir -p ${planDirectory}`,
+    transcriptCommand,
+  ]) {
+    expect(
+      isPlanArtifactMutationForGate({
+        toolName: 'Bash',
+        toolInput: { command },
+        expectedPlanFile,
+        isPlanMode: true,
+      }),
+      command,
+    ).toBe(true)
+  }
+
+  for (const command of [
+    `mkdir -p ${planDirectory} && touch /tmp/not-a-plan`,
+    `ls -la ${planDirectory} || mkdir -p ${planDirectory} && rm -rf /tmp/x`,
+    'mkdir -p /Users/example/.ur/plans-sibling',
+    `mkdir -p "${planDirectory}/$(touch /tmp/not-a-plan)"`,
+  ]) {
+    expect(
+      isPlanArtifactMutationForGate({
+        toolName: 'Bash',
+        toolInput: { command },
+        expectedPlanFile,
+        isPlanMode: true,
+      }),
+      command,
+    ).toBe(false)
+  }
+  expect(
+    isPlanArtifactMutationForGate({
+      toolName: 'Bash',
+      toolInput: { command: transcriptCommand },
+      expectedPlanFile,
+      isPlanMode: false,
+    }),
+  ).toBe(false)
+  expect(
+    isPlanArtifactMutationForGate({
+      toolName: 'Bash',
+      toolInput: {
+        command: transcriptCommand,
+        dangerouslyDisableSandbox: true,
+      },
+      expectedPlanFile,
+      isPlanMode: true,
+    }),
+  ).toBe(false)
+})
+
 test('runtime tool classification covers dynamic and future mutators', () => {
   expect(
     checkTaskListGate({

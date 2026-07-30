@@ -3,7 +3,7 @@
 This is the durable handoff for coding agents working in this repository. Read
 this file before exploring the tree. It records the architecture, decisions,
 invariants, validation state, and release workflow established during the
-v1.65.7 audit and maintained through v1.65.11.
+v1.65.7 audit and maintained through v1.65.12.
 
 Do not start by re-auditing the entire repository. Confirm the current version
 and working-tree state, then open only the technical chapter and source paths
@@ -81,13 +81,18 @@ runtime behavior changes.
 
 ## Release snapshot: 2026-07-30
 
-- Local package version: **1.65.11**
-- npm `latest` at the time of this update: **1.65.10**
-- v1.65.11 has not been committed, tagged, pushed, or published.
-- Full post-bump functional validation:
-  - 2,137 tests passed, 0 failed
-  - 9,493 assertions across 258 files
+- Local package version: **1.65.12**
+- npm `latest` at the time of this update: **1.65.11**
+- GitHub Actions run `30509686121` for v1.65.11 completed successfully.
+- v1.65.12 has not been committed, tagged, pushed, or published.
+- Full post-build functional validation:
+  - 2,152 tests passed, 0 failed
+  - 9,555 assertions across 259 files
   - typecheck and strict-core typecheck passed (133 strict files)
+- Release validation, secret scan, CLI version/help smoke tests, dependency
+  audit, package smoke test, and npm publish dry-run all passed.
+- Dry-run tarball: 156 files, 6.5 MB packed, 32.4 MB unpacked; SHA-1
+  `74ef3908a48bab3032ac05b6cde90b5055b5410d`.
   - lint passed
   - both parallel implementation/regression workers completed their scopes
 - Release validation:
@@ -401,7 +406,8 @@ refactoring:
 - Positive integer task IDs from models normalize to canonical strings before
   Task V2 lookup, dependency checks, or persistence.
 - Exact Edit mismatches return bounded, verified recovery guidance instead of
-  applying an unsafe fuzzy replacement.
+  applying an unsafe fuzzy replacement, and prefer the most distinctive
+  verified current-file anchor over a generic shared delimiter.
 - A narrow deletion-only Edit whose desired replacement is already uniquely
   present returns an explicit no-write, already-up-to-date result; general
   stale and ambiguous edits remain errors.
@@ -413,7 +419,19 @@ refactoring:
 - Write missing-content recovery never infers a file from surrounding prose;
   the error and tool prompt require complete content in the structured call.
 - Ollama/Kimi no longer synthesize AskUserQuestion calls from ordinary prose.
-  Structured and conservative bare-JSON calls remain supported.
+  Structured and conservative bare-JSON calls remain supported. A provider-
+  neutral end-turn guard may recover only an explicit canonical Ask object from
+  reasoning or a complete, rigidly structured decision menu, after live-schema
+  validation; casual questions and ambiguous prose remain text.
+- The exact live plan-directory bootstrap can bypass only the task-list gate;
+  Bash permission, sandbox, plan-child, and permission-rewrite checks still
+  apply.
+- The final actionable task remains in progress after an unchecked file
+  mutation, preventing an all-terminal Edit dead end while requiring observable
+  verification before completion.
+- Kimi K2.7 Ollama Cloud requests receive a 300-second model-aware default;
+  explicit request/API timeout overrides and the 120-second remote-session
+  ceiling still win.
 - Command-registry release checks use a Linux/platform-neutral baseline and
   test the supported macOS/x64-Windows `/desktop` delta separately.
 - CLI handlers no longer report success after failed underlying work.

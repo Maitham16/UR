@@ -45,9 +45,22 @@ test('getOllamaRequestTimeoutMs uses shorter default for remote sessions', () =>
   )
 })
 
-test('getOllamaRequestTimeoutMs uses shorter default for Ollama cloud models', () => {
+test('getOllamaRequestTimeoutMs gives slow Kimi K2.7 cloud turns five minutes', () => {
   expect(
     getOllamaRequestTimeoutMs(undefined, {}, 'kimi-k2.7-code:cloud'),
+  ).toBe(300_000)
+  expect(
+    getOllamaRequestTimeoutMs(undefined, {}, 'glm-5.2:cloud'),
+  ).toBe(120_000)
+})
+
+test('remote-session deadline still wins for Kimi K2.7 cloud', () => {
+  expect(
+    getOllamaRequestTimeoutMs(
+      undefined,
+      { UR_CODE_REMOTE: '1' },
+      'kimi-k2.7-code:cloud',
+    ),
   ).toBe(120_000)
 })
 
@@ -79,6 +92,9 @@ test('Ollama cloud non-streaming fallback uses the same bounded timeout', () => 
       {},
       'ollama',
     ),
+  ).toBe(300_000)
+  expect(
+    getNonstreamingFallbackTimeoutMs('glm-5.2:cloud', {}, 'ollama'),
   ).toBe(120_000)
   expect(
     getNonstreamingFallbackTimeoutMs('qwen3:latest', {}, 'ollama'),

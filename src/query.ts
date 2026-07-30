@@ -102,6 +102,7 @@ import type { QuerySource } from './constants/querySource.js'
 import { createDumpPromptsFetch } from './services/api/dumpPrompts.js'
 import { Verifier } from './services/verifier/index.js'
 import { StreamingToolExecutor } from './services/tools/StreamingToolExecutor.js'
+import { recoverExplicitChoiceToolUse } from './services/tools/explicitChoiceRecovery.js'
 import { queryCheckpoint } from './utils/queryProfiler.js'
 import { runTools } from './services/tools/toolOrchestration.js'
 import { clearRepeatedFailuresForQuery } from './services/tools/repeatedFailureGuard.js'
@@ -1081,6 +1082,42 @@ async function* queryLoop(
       // To help track down bugs, log loudly for ants
       logAntError('Query error', error)
       return { reason: 'model_error', error }
+    }
+
+    // Some weak/open models describe a valid AskUserQuestion invocation in a
+    // reasoning block, or render an unmistakable Markdown choice menu, but
+    // finish with end_turn instead of emitting a native tool call. Recover
+    // only those two lossless forms, validate them against the live tool
+    // schema, and then route the synthetic block through the normal executor
+    // so the real interactive picker opens.
+    if (!toolUseContext.abortController.signal.aborted) {
+      const recoveredChoice = recoverExplicitChoiceToolUse({
+        assistantMessages,
+        tools: toolUseContext.options.tools,
+        agentId: toolUseContext.agentId,
+        isNonInteractiveSession: Boolean(
+          toolUseContext.options.isNonInteractiveSession,
+        ),
+        uuid: deps.uuid,
+      })
+      if (recoveredChoice) {
+        assistantMessages.push(recoveredChoice.assistantMessage)
+        toolUseBlocks.push(recoveredChoice.toolUse)
+        needsFollowUp = true
+        logForDebugging(
+          `Recovered explicit AskUserQuestion call from ${recoveredChoice.source}`,
+        )
+        yield recoveredChoice.assistantMessage
+        if (
+          streamingToolExecutor &&
+          !toolUseContext.abortController.signal.aborted
+        ) {
+          streamingToolExecutor.addTool(
+            recoveredChoice.toolUse,
+            recoveredChoice.assistantMessage,
+          )
+        }
+      }
     }
 
     // Execute post-sampling hooks after model response is complete

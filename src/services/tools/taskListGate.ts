@@ -1,3 +1,4 @@
+import { dirname } from 'node:path'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import { expandPath } from '../../utils/path.js'
 import {
@@ -85,10 +86,119 @@ const PLAN_ARTIFACT_MUTATING_TOOLS = new Set([
   'MultiEdit',
 ])
 
+function isShellOperator(
+  token: unknown,
+  operator: string,
+): boolean {
+  return (
+    typeof token === 'object' &&
+    token !== null &&
+    'op' in token &&
+    (token as { op?: unknown }).op === operator
+  )
+}
+
+/**
+ * Recognize only the plan-directory bootstrap emitted in real plan-mode
+ * transcripts. FileWrite creates its parent automatically, but weak models
+ * sometimes check/create ~/.ur/plans first. That setup belongs to the current
+ * plan artifact; it is not implementation work and must not force TaskCreate
+ * before plan approval.
+ */
+function isPlanDirectoryBootstrapForGate(input: {
+  toolInput: unknown
+  expectedPlanFile: string
+}): boolean {
+  if (
+    typeof input.toolInput !== 'object' ||
+    input.toolInput === null
+  ) {
+    return false
+  }
+  const candidate = input.toolInput as {
+    command?: unknown
+    run_in_background?: unknown
+    dangerouslyDisableSandbox?: unknown
+    _simulatedSedEdit?: unknown
+  }
+  if (
+    typeof candidate.command !== 'string' ||
+    candidate.run_in_background === true ||
+    candidate.dangerouslyDisableSandbox === true ||
+    candidate._simulatedSedEdit !== undefined
+  ) {
+    return false
+  }
+
+  const command = candidate.command
+  if (
+    command.includes('$') ||
+    command.includes('`') ||
+    command.includes('\\') ||
+    command.includes('\n') ||
+    command.includes('\r') ||
+    command.includes('\0') ||
+    hasUnbalancedQuotes(command)
+  ) {
+    return false
+  }
+
+  const parsed = tryParseShellCommand(command)
+  if (!parsed.success) return false
+  const tokens = parsed.tokens
+  let expectedPlanDirectory: string
+  try {
+    expectedPlanDirectory = dirname(expandPath(input.expectedPlanFile))
+  } catch {
+    return false
+  }
+  const isPlanDirectory = (token: unknown): boolean => {
+    if (typeof token !== 'string' || token.trim() === '') return false
+    try {
+      return expandPath(token) === expectedPlanDirectory
+    } catch {
+      return false
+    }
+  }
+  const isMkdir =
+    tokens.length === 3 &&
+    tokens[0] === 'mkdir' &&
+    tokens[1] === '-p' &&
+    isPlanDirectory(tokens[2])
+  if (isMkdir) return true
+
+  const hasSilentStderr =
+    tokens[3] === '2' &&
+    isShellOperator(tokens[4], '>') &&
+    tokens[5] === '/dev/null'
+  const guardOperatorIndex = hasSilentStderr ? 6 : 3
+  const mkdirIndex = guardOperatorIndex + 1
+  const hasGuardedMkdir =
+    tokens[0] === 'ls' &&
+    tokens[1] === '-la' &&
+    isPlanDirectory(tokens[2]) &&
+    isShellOperator(tokens[guardOperatorIndex], '||') &&
+    tokens[mkdirIndex] === 'mkdir' &&
+    tokens[mkdirIndex + 1] === '-p' &&
+    isPlanDirectory(tokens[mkdirIndex + 2])
+  if (!hasGuardedMkdir) return false
+
+  const afterMkdir = mkdirIndex + 3
+  if (tokens.length === afterMkdir) return true
+  return (
+    tokens.length === afterMkdir + 4 &&
+    isShellOperator(tokens[afterMkdir], '&&') &&
+    tokens[afterMkdir + 1] === 'ls' &&
+    tokens[afterMkdir + 2] === '-la' &&
+    isPlanDirectory(tokens[afterMkdir + 3])
+  )
+}
+
 /**
  * The current session's plan file is itself the planning artifact, so the
- * task-list gate must not block creating or updating it. Match the exact
- * normalized file—not the whole plans directory or a shared string prefix.
+ * task-list gate must not block creating/updating it or narrowly bootstrapping
+ * its exact parent directory. Match normalized exact paths—not the whole plans
+ * directory, a sibling plan, or a shared string prefix.
  */
 export function isPlanArtifactMutationForGate(input: {
   toolName: string
@@ -97,6 +207,12 @@ export function isPlanArtifactMutationForGate(input: {
   isPlanMode: boolean
 }): boolean {
   if (!input.isPlanMode) return false
+  if (input.toolName === 'Bash') {
+    return isPlanDirectoryBootstrapForGate({
+      toolInput: input.toolInput,
+      expectedPlanFile: input.expectedPlanFile,
+    })
+  }
   if (!PLAN_ARTIFACT_MUTATING_TOOLS.has(input.toolName)) return false
   if (
     typeof input.toolInput !== 'object' ||

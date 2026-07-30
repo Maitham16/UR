@@ -131,12 +131,18 @@ const STRING_NOT_FOUND_PREVIEW_CHARS = 600
 type SearchAnchor = {
   fileLine: number
   unique: boolean
+  searchLine: string
+  searchLineNumber: number
+  occurrenceCount: number
+  distinctiveCharacterCount: number
 }
 
 /**
  * Locate a complete line shared by the requested block and the current file.
- * Prefer a unique line because it gives the model a safe, precise place to
- * re-read after an over-large or stale old_string fails.
+ * Prefer a unique, distinctive line because it gives the model a safe,
+ * precise place to re-read after an over-large or stale old_string fails.
+ * This avoids steering recovery toward a generic delimiter such as `</div>`
+ * when a more specific anchor such as `<script>` identifies the real target.
  */
 function findSearchAnchor(
   fileContent: string,
@@ -159,22 +165,44 @@ function findSearchAnchor(
     }
   }
 
-  let repeatedMatch: SearchAnchor | null = null
-  for (const searchLine of searchString.split('\n')) {
+  const candidates: SearchAnchor[] = []
+  const searchLines = searchString.split('\n')
+  for (let searchIndex = 0; searchIndex < searchLines.length; searchIndex++) {
+    const searchLine = searchLines[searchIndex]!
     const normalized = normalizeLineForMatch(searchLine)
     if (normalized.trim().length === 0) continue
     const occurrence = occurrencesByLine.get(normalized)
     if (!occurrence) continue
-    if (occurrence.count === 1) {
-      return { fileLine: occurrence.firstIndex + 1, unique: true }
-    }
-    repeatedMatch ??= {
+    candidates.push({
       fileLine: occurrence.firstIndex + 1,
-      unique: false,
-    }
+      unique: occurrence.count === 1,
+      searchLine: normalized,
+      searchLineNumber: searchIndex + 1,
+      occurrenceCount: occurrence.count,
+      distinctiveCharacterCount: normalized.replace(
+        /[^A-Za-z0-9_$]/g,
+        '',
+      ).length,
+    })
   }
 
-  return repeatedMatch
+  candidates.sort((left, right) => {
+    if (left.unique !== right.unique) return left.unique ? -1 : 1
+    if (left.occurrenceCount !== right.occurrenceCount) {
+      return left.occurrenceCount - right.occurrenceCount
+    }
+    if (
+      left.distinctiveCharacterCount !== right.distinctiveCharacterCount
+    ) {
+      return right.distinctiveCharacterCount - left.distinctiveCharacterCount
+    }
+    if (left.searchLine.length !== right.searchLine.length) {
+      return right.searchLine.length - left.searchLine.length
+    }
+    return left.searchLineNumber - right.searchLineNumber
+  })
+
+  return candidates[0] ?? null
 }
 
 /**
@@ -190,8 +218,15 @@ export function formatStringNotFoundMessage(
 ): string {
   const lineCount = searchString.split('\n').length
   const anchor = findSearchAnchor(fileContent, searchString)
+  const anchorPreview = anchor
+    ? JSON.stringify(
+        anchor.searchLine.length > 160
+          ? `${anchor.searchLine.slice(0, 160)}…`
+          : anchor.searchLine,
+      )
+    : null
   const location = anchor
-    ? `A line from old_string ${anchor.unique ? 'uniquely ' : ''}matches the current file at line ${anchor.fileLine}, but the complete ${lineCount}-line block is not contiguous there.`
+    ? `The verified anchor ${anchorPreview} from old_string line ${anchor.searchLineNumber} ${anchor.unique ? 'uniquely ' : ''}matches the current file at line ${anchor.fileLine}, but the complete ${lineCount}-line block is not contiguous there.`
     : 'No complete non-empty line from old_string matches the current file.'
   const recovery = anchor
     ? `Re-read the target around line ${anchor.fileLine}, then retry with the smallest unique contiguous old_string copied from the current Read output (usually 2-4 lines).`

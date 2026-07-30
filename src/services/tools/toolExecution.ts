@@ -241,7 +241,8 @@ function isCurrentPlanArtifactMutation(
   if (
     toolName !== FILE_WRITE_TOOL_NAME &&
     toolName !== FILE_EDIT_TOOL_NAME &&
-    toolName !== 'MultiEdit'
+    toolName !== 'MultiEdit' &&
+    toolName !== BASH_TOOL_NAME
   ) {
     return false
   }
