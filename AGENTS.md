@@ -386,7 +386,7 @@ refactoring:
 - Task IDs sort numerically.
 - Task-list mutation gates and completion verification are enforced.
 - Repeated identical failures are refused and eventually aborted.
-- Tips contain real commands and no dead `ur.ai` links.
+- Tips contain real commands and no links to domains UR does not yet serve.
 - Version changes use `scripts/version-bump.mjs`; never use broad `sed`
   replacement because it previously corrupted dependency versions.
 - Status UI follows the live `/model` selection.

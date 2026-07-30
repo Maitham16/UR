@@ -31,7 +31,7 @@ export function isVoiceGrowthBookEnabled(): boolean {
  */
 export function hasVoiceAuth(): boolean {
   // Voice mode requires UR OAuth — it uses the voice_stream
-  // endpoint on ur.ai which is not available with API keys,
+  // endpoint on ur.com which is not available with API keys,
   // Bedrock, Vertex, or Foundry.
   if (!isURHQAuthEnabled()) {
     return false

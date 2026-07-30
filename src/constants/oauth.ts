@@ -54,10 +54,10 @@ type OauthConfig = {
   CONSOLE_AUTHORIZE_URL: string
   UR_AI_AUTHORIZE_URL: string
   /**
-   * The ur.ai web origin. Separate from UR_AI_AUTHORIZE_URL because
+   * The ur.com web origin. Separate from UR_AI_AUTHORIZE_URL because
    * that now routes through ur.com/cai/* for attribution — deriving
    * .origin from it would give ur.com, breaking links to /code,
-   * /settings/connectors, and other ur.ai web pages.
+   * /settings/connectors, and other ur.com web pages.
    */
   UR_AI_ORIGIN: string
   TOKEN_URL: string

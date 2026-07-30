@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.68.7
+
+- Corrected the ur.ai -> ur.com replacement, which had rewritten identifiers as
+  well as URLs. `'ur.ai'` served two roles in this codebase: a domain in links
+  such as `https://ur.ai/settings/billing`, and a discriminant value in
+  `authTokenSource === 'ur.ai'`, `authMethod = 'ur.ai'` and
+  `source: 'ur.ai' as const`. A blanket replace changed both, which typechecked
+  and looked internally consistent but altered command availability — one
+  command that should have been hidden became visible, caught by
+  `commandRegistryIntegrity`. The 39 URLs now point at ur.com; the 11 auth
+  discriminants are back to their original values, which also keeps any
+  `"ur.ai"` already persisted in a user's auth state matching.
+
+## 1.68.6
+
+- An oversized Ollama request now recovers instead of only explaining itself.
+  1.68.3 reported "this request was 19.6 MB" clearly and then left the user to
+  run /compact by hand. UR already had both halves of the fix — `isMediaSizeError`
+  and `stripImagesFromMessages` — but both were wired to reactive compact's
+  retry, and REACTIVE_COMPACT is not compiled into any shipped build, so neither
+  was reachable. `isMediaSizeError` and `isMediaSizeErrorMessage` had no callers
+  at all outside their own file.
+- On a body-size rejection the request is retried once with images from earlier
+  turns removed, keeping the most recent one. Stale attachments are the usual
+  bulk and the least valuable part of it: only the newest is normally still
+  under discussion.
+- The retry is announced with both sizes and says to re-attach an earlier image
+  if it is needed. Dropping a user's attachments silently would be the same
+  invisible behaviour being fixed everywhere else.
+- No retry is attempted when there is at most one image-bearing message, since
+  it would resend identical bytes and fail identically.
+
+## 1.68.5
+
+- Replaced every `ur.ai` reference in `src/` with `ur.com` (202 sites, 0 left).
+  Note what these are: most are upstream URL structures carried into the fork —
+  `/settings/billing`, `/settings/connectors`, `/upgrade/max`, `/chrome`,
+  `/chrome/reconnect`, `/admin-settings/usage`, and desktop auto-update
+  redirects like `/api/desktop/darwin/universal/dmg/latest/redirect`. Changing
+  the domain does not make those endpoints exist; it moves them to a domain UR
+  will control. The features behind them still need a backend or removal.
+- `test/tipsAreReal.test.ts` still forbids `ur.ai` and `ur.com` in tips, since
+  the domain is not serving yet. Relax that deliberately once it is.
+- Corrected a comment in that test which claimed both domains "have no DNS
+  records". That came from a lookup run where `github.com` and `example.com`
+  fail identically — the environment had no DNS — so it was never evidence.
+
 ## 1.68.4
 
 - The status line now reports subagents running in the current turn:

@@ -1564,7 +1564,7 @@ async function run(): Promise<CommanderCommand> {
       }
     }
 
-    // Extract UR in Chrome option and enforce ur.ai subscriber check (unless user is ant)
+    // Extract UR in Chrome option and enforce ur.com subscriber check (unless user is ant)
     const chromeOpts = options as {
       chrome?: boolean;
     };
@@ -1819,12 +1819,12 @@ async function run(): Promise<CommanderCommand> {
     });
     void assertMinVersion();
 
-    // ur.ai config fetch: -p mode only (interactive uses useManageMCPConnections
+    // ur.com config fetch: -p mode only (interactive uses useManageMCPConnections
     // two-phase loading). Kicked off here to overlap with setup(); awaited
     // before runHeadless so single-turn -p sees connectors. Skipped under
     // enterprise/strict MCP to preserve policy boundaries.
     const uraiConfigPromise: Promise<Record<string, ScopedMcpServerConfig>> = isNonInteractiveSession && !strictMcpConfig && !doesEnterpriseMcpConfigExist() &&
-    // --bare / SIMPLE: skip ur.ai proxy servers (datadog, Gmail,
+    // --bare / SIMPLE: skip ur.com proxy servers (datadog, Gmail,
     // Slack, BigQuery, PubMed — 6-14s each to connect). Scripted calls
     // that need MCP pass --mcp-config explicitly.
     !isBareMode() ? fetchURAIMcpConfigsIfEligible().then(configs => {
@@ -1833,7 +1833,7 @@ async function run(): Promise<CommanderCommand> {
         blocked
       } = filterMcpServersByPolicy(configs);
       if (blocked.length > 0) {
-        process.stderr.write(`Warning: ur.ai MCP ${plural(blocked.length, 'server')} blocked by enterprise policy: ${blocked.join(', ')}\n`);
+        process.stderr.write(`Warning: ur.com MCP ${plural(blocked.length, 'server')} blocked by enterprise policy: ${blocked.join(', ')}\n`);
       }
       return allowed;
     }) : Promise.resolve({});
@@ -2337,7 +2337,7 @@ async function run(): Promise<CommanderCommand> {
         void refreshPolicyLimits();
         // Clear user data cache BEFORE GrowthBook refresh so it picks up fresh credentials
         resetUserCache();
-        // Refresh GrowthBook after login to get updated feature flags (e.g., for ur.ai MCPs)
+        // Refresh GrowthBook after login to get updated feature flags (e.g., for ur.com MCPs)
         refreshGrowthBookAfterAuthChange();
         // Clear any stale trusted device token then enroll for Remote Control.
         // Both self-gate on tengu_sessions_elevated_auth_enforcement internally
@@ -2872,14 +2872,14 @@ async function run(): Promise<CommanderCommand> {
       // message and turn-1 tool list both need configured MCP tools present.
       // Zero-server case is free via the early return in connectMcpBatch.
       // Connectors parallelize inside getMcpToolsCommandsAndResources
-      // (processBatched with Promise.all). ur.ai is awaited too — its
+      // (processBatched with Promise.all). ur.com is awaited too — its
       // fetch was kicked off early (line ~2558) so only residual time blocks
-      // here. --bare skips ur.ai entirely for perf-sensitive scripts.
+      // here. --bare skips ur.com entirely for perf-sensitive scripts.
       profileCheckpoint('before_connectMcp');
       await connectMcpBatch(regularMcpConfigs, 'regular');
       profileCheckpoint('after_connectMcp');
-      // Dedup: suppress plugin MCP servers that duplicate a ur.ai
-      // connector (connector wins), then connect ur.ai servers.
+      // Dedup: suppress plugin MCP servers that duplicate a ur.com
+      // connector (connector wins), then connect ur.com servers.
       // Bounded wait — #23725 made this blocking so single-turn -p sees
       // connectors, but with 40+ slow connectors tengu_startup_perf p99
       // climbed to 76s. If fetch+connect doesn't finish in time, proceed;
@@ -2900,7 +2900,7 @@ async function run(): Promise<CommanderCommand> {
             if (sig && uraiSigs.has(sig)) suppressed.add(name);
           }
           if (suppressed.size > 0) {
-            logForDebugging(`[MCP] Lazy dedup: suppressing ${suppressed.size} plugin server(s) that duplicate ur.ai connectors: ${[...suppressed].join(', ')}`);
+            logForDebugging(`[MCP] Lazy dedup: suppressing ${suppressed.size} plugin server(s) that duplicate ur.com connectors: ${[...suppressed].join(', ')}`);
             // Disconnect before filtering from state. Only connected
             // servers need cleanup — clearServerCache on a never-connected
             // server triggers a real connect just to kill it (memoize
@@ -2936,11 +2936,11 @@ async function run(): Promise<CommanderCommand> {
             });
           }
         }
-        // Suppress ur.ai connectors that duplicate an enabled
+        // Suppress ur.com connectors that duplicate an enabled
         // manual server (URL-signature match). Plugin dedup above only
         // handles `plugin:*` keys; this catches manual `.mcp.json` entries.
         // plugin:* must be excluded here — step 1 already suppressed
-        // those (ur.ai wins); leaving them in suppresses the
+        // those (ur.com wins); leaving them in suppresses the
         // connector too, and neither survives (gh-39974).
         const nonPluginConfigs = pickBy(regularMcpConfigs, (_, n) => !n.startsWith('plugin:'));
         const {
@@ -2954,7 +2954,7 @@ async function run(): Promise<CommanderCommand> {
       })]);
       if (uraiTimer) clearTimeout(uraiTimer);
       if (uraiTimedOut) {
-        logForDebugging(`[MCP] ur.ai connectors not ready after ${UR_AI_MCP_TIMEOUT_MS}ms — proceeding; background connection continues`);
+        logForDebugging(`[MCP] ur.com connectors not ready after ${UR_AI_MCP_TIMEOUT_MS}ms — proceeding; background connection continues`);
       }
       profileCheckpoint('after_connectMcp_urai');
 
@@ -5511,7 +5511,7 @@ async function run(): Promise<CommanderCommand> {
     }
   }
 
-  // Remote Control command — connect local environment to ur.ai/code.
+  // Remote Control command — connect local environment to ur.com/code.
   // The actual command is intercepted by the fast-path in cli.tsx before
   // Commander.js runs, so this registration exists only for help output.
   // Always hidden: isBridgeEnabled() at this point (before enableConfigs)
@@ -5522,7 +5522,7 @@ async function run(): Promise<CommanderCommand> {
   if (feature('BRIDGE_MODE')) {
     program.command('remote-control', {
       hidden: true
-    }).alias('rc').description('Connect your local environment for remote-control sessions via ur.ai/code').action(async () => {
+    }).alias('rc').description('Connect your local environment for remote-control sessions via ur.com/code').action(async () => {
       // Unreachable — cli.tsx fast-path handles this command before main.tsx loads.
       // If somehow reached, delegate to bridgeMain.
       const {

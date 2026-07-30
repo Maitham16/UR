@@ -1540,7 +1540,7 @@ function runHeadlessStreaming(
   let bridgeLastForwardedIndex = 0
 
   // Forward new messages from mutableMessages to the bridge.
-  // Called incrementally during each turn (so ur.ai sees progress
+  // Called incrementally during each turn (so ur.com sees progress
   // and stays alive during permission waits) and again after the turn.
   //
   // writeMessages has its own UUID-based dedup (initialMessageUUIDs,
@@ -2241,7 +2241,7 @@ function runHeadlessStreaming(
               },
             })) {
               // Forward messages to bridge incrementally (mid-turn) so
-              // ur.ai sees progress and the connection stays alive
+              // ur.com sees progress and the connection stays alive
               // while blocked on permission requests.
               forwardMessagesToBridge()
 

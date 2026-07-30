@@ -182,7 +182,7 @@ type LocalJSXCommand = {
  * of the listed auth types. See meetsAvailabilityRequirement() in commands.ts.
  *
  * Example: `availability: ['ur-ai', 'console']` shows the command to
- * ur.ai subscribers and direct Console API key users,
+ * ur.com subscribers and direct Console API key users,
  * but hides it from custom base URL users.
  */
 export type CommandAvailability =

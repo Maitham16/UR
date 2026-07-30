@@ -279,10 +279,9 @@ async function fetchOllamaChat(
       !modelCapabilityEnabled(capabilities, 'tools')
     // Serialized once so its size is available when the server rejects it for
     // being too large — otherwise the error cannot say how big "too large" was.
-    const requestBody = JSON.stringify(
-      toOllamaChatRequest(params, stream, capabilities, baseUrl),
-    )
-    const response = await fetch(`${baseUrl}/api/chat`, {
+    const chatRequest = toOllamaChatRequest(params, stream, capabilities, baseUrl)
+    const requestBody = JSON.stringify(chatRequest)
+    let response = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
       headers: buildOllamaHeaders(),
       body: requestBody,
@@ -291,6 +290,42 @@ async function fetchOllamaChat(
 
     if (!response.ok) {
       const body = await response.text().catch(() => '')
+      const rawMessage =
+        extractOllamaHTTPErrorMessage(body) || response.statusText
+
+      // Recover instead of only explaining. UR already has the pieces for this
+      // — isMediaSizeError and stripImagesFromMessages — but they are wired to
+      // reactive compact's retry, and REACTIVE_COMPACT is not compiled into any
+      // shipped build, so nothing was reachable to act on an oversized body.
+      // Stale images are the usual bulk and the least valuable part of it: only
+      // the newest attachment is normally still being discussed.
+      const retryRequest = isOllamaRequestTooLarge(response.status, rawMessage)
+        ? dropStaleImagesFromRequest(chatRequest)
+        : null
+      if (retryRequest) {
+        const retryBody = JSON.stringify(retryRequest)
+        pendingProviderNotice ??= describeImageRetry(
+          requestBody.length,
+          retryBody.length,
+        )
+        response = await fetch(`${baseUrl}/api/chat`, {
+          method: 'POST',
+          headers: buildOllamaHeaders(),
+          body: retryBody,
+          signal: controller.signal,
+        })
+        if (!response.ok) {
+          const retryErrorBody = await response.text().catch(() => '')
+          throw createOllamaHTTPError(
+            response.status,
+            retryErrorBody,
+            response.statusText,
+            retryBody.length,
+          )
+        }
+        return { response, textToolFallbackAllowed }
+      }
+
       throw createOllamaHTTPError(
         response.status,
         body,
@@ -347,6 +382,45 @@ function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
   return `${bytes} bytes`
+}
+
+/**
+ * Remove images from every message except the most recent one carrying any.
+ *
+ * The newest attachment is normally the one still under discussion; older ones
+ * are transcript ballast that base64 inflates by roughly a third. Returns null
+ * when there is nothing to drop, so the caller can tell "retry is worth it"
+ * from "retrying would send exactly the same bytes again".
+ */
+export function dropStaleImagesFromRequest(
+  request: OllamaChatRequest,
+): OllamaChatRequest | null {
+  const withImages = request.messages
+    .map((message, index) => ((message.images?.length ?? 0) > 0 ? index : -1))
+    .filter(index => index >= 0)
+  if (withImages.length <= 1) return null
+
+  const keep = withImages.at(-1)
+  return {
+    ...request,
+    messages: request.messages.map((message, index) =>
+      index === keep || (message.images?.length ?? 0) === 0
+        ? message
+        : { ...message, images: undefined },
+    ),
+  }
+}
+
+export function describeImageRetry(
+  originalBytes: number,
+  retriedBytes: number,
+): string {
+  return (
+    `The request was ${formatBytes(originalBytes)}, which Ollama rejected as too ` +
+    `large. Images from earlier turns were dropped and it was retried at ` +
+    `${formatBytes(retriedBytes)}. The most recent image was kept. If you need ` +
+    `an earlier one again, re-attach it.`
+  )
 }
 
 export function describeOversizedOllamaRequest(requestBytes?: number): string {

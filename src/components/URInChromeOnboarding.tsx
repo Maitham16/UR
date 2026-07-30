@@ -6,8 +6,8 @@ import { Box, Link, Newline, Text, useInput } from '../ink.js';
 import { isChromeExtensionInstalled } from '../utils/urInChrome/setup.js';
 import { saveGlobalConfig } from '../utils/config.js';
 import { Dialog } from './design-system/Dialog.js';
-const CHROME_EXTENSION_URL = 'https://ur.ai/chrome';
-const CHROME_PERMISSIONS_URL = 'https://ur.ai/chrome/permissions';
+const CHROME_EXTENSION_URL = 'https://ur.com/chrome';
+const CHROME_PERMISSIONS_URL = 'https://ur.com/chrome/permissions';
 type Props = {
   onDone(): void;
 };

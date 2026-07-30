@@ -9,13 +9,13 @@ import { errorMessage } from '../utils/errors.js';
 import { gracefulShutdown } from '../utils/gracefulShutdown.js';
 import { flushSessionStorage } from '../utils/sessionStorage.js';
 import { LoadingState } from './design-system/LoadingState.js';
-const DESKTOP_DOCS_URL = 'https://ur.ai/desktop';
+const DESKTOP_DOCS_URL = 'https://ur.com/desktop';
 export function getDownloadUrl(): string {
   switch (process.platform) {
     case 'win32':
-      return 'https://ur.ai/api/desktop/win32/x64/exe/latest/redirect';
+      return 'https://ur.com/api/desktop/win32/x64/exe/latest/redirect';
     default:
-      return 'https://ur.ai/api/desktop/darwin/universal/dmg/latest/redirect';
+      return 'https://ur.com/api/desktop/darwin/universal/dmg/latest/redirect';
   }
 }
 type DesktopHandoffState = 'checking' | 'prompt-download' | 'flushing' | 'opening' | 'success' | 'error';

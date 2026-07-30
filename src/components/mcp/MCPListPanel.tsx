@@ -397,7 +397,7 @@ export function MCPListPanel(t0) {
   }
   let t23;
   if ($[51] !== urAiServers || $[52] !== renderServerItem) {
-    t23 = urAiServers.length > 0 && <Box flexDirection="column" marginBottom={1}><Box paddingLeft={2}><Text bold={true}>ur.ai</Text></Box>{urAiServers.map(server_5 => renderServerItem(server_5))}</Box>;
+    t23 = urAiServers.length > 0 && <Box flexDirection="column" marginBottom={1}><Box paddingLeft={2}><Text bold={true}>ur.com</Text></Box>{urAiServers.map(server_5 => renderServerItem(server_5))}</Box>;
     $[51] = urAiServers;
     $[52] = renderServerItem;
     $[53] = t23;

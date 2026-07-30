@@ -4,13 +4,13 @@
  */
 
 // UR.ai server names are prefixed with this string
-const URAI_SERVER_PREFIX = 'ur.ai '
+const URAI_SERVER_PREFIX = 'ur.com '
 
 /**
  * Normalize server names to be compatible with the API pattern ^[a-zA-Z0-9_-]{1,64}$
  * Replaces any invalid characters (including dots and spaces) with underscores.
  *
- * For ur.ai servers (names starting with "ur.ai "), also collapses
+ * For ur.com servers (names starting with "ur.com "), also collapses
  * consecutive underscores and strips leading/trailing underscores to prevent
  * interference with the __ delimiter used in MCP tool names.
  */

@@ -1520,7 +1520,7 @@ export const SDKRateLimitInfoSchema = lazySchema(() =>
       isUsingOverage: z.boolean().optional(),
       surpassedThreshold: z.number().optional(),
     })
-    .describe('Rate limit information for ur.ai subscription users.'),
+    .describe('Rate limit information for ur.com subscription users.'),
 )
 
 export const SDKAssistantMessageSchema = lazySchema(() =>

@@ -22,7 +22,7 @@ Usage notes:
 \`\`\`
 # UR.md
 
-This file provides guidance to UR (ur.ai/code) when working with code in this repository.
+This file provides guidance to UR (ur.com/code) when working with code in this repository.
 \`\`\``
 
 const NEW_INIT_PROMPT = `Set up a minimal UR.md (and optionally skills and hooks) for this repo. UR.md is loaded into every UR session, so it must be concise — only include what UR would get wrong without it.
@@ -125,7 +125,7 @@ Prefix the file with:
 \`\`\`
 # UR.md
 
-This file provides guidance to UR (ur.ai/code) when working with code in this repository.
+This file provides guidance to UR (ur.com/code) when working with code in this repository.
 \`\`\`
 
 If UR.md already exists: read it, propose specific changes as diffs, and explain why each change improves it. Do not silently overwrite.

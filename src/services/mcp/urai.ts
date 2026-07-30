@@ -62,7 +62,7 @@ export const fetchURAIMcpConfigsIfEligible = memoize(
       // In non-interactive mode, isURAISubscriber() returns false when URHQ_API_KEY
       // is set (even with valid OAuth tokens) because preferThirdPartyAuthentication() causes
       // isURHQAuthEnabled() to return false. Checking the scope directly allows users
-      // with both API keys and OAuth tokens to access ur.ai MCPs in print mode.
+      // with both API keys and OAuth tokens to access ur.com MCPs in print mode.
       if (!tokens.scopes?.includes('user:mcp_servers')) {
         logForDebugging(
           `[urai-mcp] Missing user:mcp_servers scope (scopes=${tokens.scopes?.join(',') || 'none'})`,
@@ -97,7 +97,7 @@ export const fetchURAIMcpConfigsIfEligible = memoize(
       const usedNormalizedNames = new Set<string>()
 
       for (const server of response.data.data) {
-        const baseName = `ur.ai ${server.display_name}`
+        const baseName = `ur.com ${server.display_name}`
 
         // Try without suffix first, then increment until we find an unused normalized name
         let finalName = baseName
@@ -144,7 +144,7 @@ export function clearURAIMcpConfigsCache(): void {
 }
 
 /**
- * Record that a ur.ai connector successfully connected. Idempotent.
+ * Record that a ur.com connector successfully connected. Idempotent.
  *
  * Gates the "N connectors unavailable/need auth" startup notifications: a
  * connector that was working yesterday and is now failed is a state change

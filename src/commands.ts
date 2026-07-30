@@ -576,7 +576,7 @@ export function meetsAvailabilityRequirement(cmd: Command): boolean {
         if (isURAISubscriber()) return true
         break
       case 'console':
-        // Console API key user = direct 1P API customer (not 3P, not ur.ai).
+        // Console API key user = direct 1P API customer (not 3P, not ur.com).
         // Excludes 3P (Bedrock/Vertex/Foundry) who don't set URHQ_BASE_URL
         // and gateway users who proxy through a custom base URL.
         if (

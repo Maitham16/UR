@@ -725,7 +725,7 @@ export async function computeSimpleEnvInfo(
       ? `UR uses the provider and model selected in /model. Do not invent UR-specific model IDs; choose models from the active provider's model list.`
       : null,
     includeURProductInfo
-      ? `UR is available as a CLI in the terminal, desktop app (Mac/Windows), web app (ur.ai/code), and IDE extensions (VS Code, JetBrains).`
+      ? `UR is available as a CLI in the terminal, desktop app (Mac/Windows), web app (ur.com/code), and IDE extensions (VS Code, JetBrains).`
       : null,
     includeURProductInfo
       ? `Fast mode for UR keeps the selected provider/model and requests faster output when that backend supports it. It can be toggled with /fast.`
