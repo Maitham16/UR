@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.65.10
+
+- Reworked approved-plan execution into a capability-aware task graph. Plans
+  now split separately completable outcomes, keep genuinely atomic work whole,
+  express review-to-fix and verification dependencies, and launch only ready,
+  non-conflicting work in parallel waves of at most eight. The handoff uses
+  `TaskCreate`/`TaskUpdate`, `TodoWrite`, or the numbered plan according to the
+  tools actually available, and never advertises a worker that is not active.
+- Made the built-in Explore and Plan agents available in the standard CLI with
+  structurally read-only tools. Parent and child execution boundaries reject
+  mutations even after permission-hook rewrites, custom agents cannot inherit
+  the exemption by reusing a name, and team creation/deletion rechecks live
+  plan mode before changing state.
+- Task tools now accept positive safe-integer JSON task IDs as well as strings
+  and normalize them to canonical persisted strings, fixing smaller models
+  that call `TaskUpdate` with `taskId: 1`.
+- Exact edit failures now return a bounded preview and a verified line anchor
+  for a fresh, smaller contiguous match. Large cross-section replacements fail
+  closed with actionable recovery instead of retrying unchanged or applying a
+  risky fuzzy edit.
+
 ## 1.65.9
 
 - Fixed the plan-file/task-list deadlock. While plan mode is active, the exact

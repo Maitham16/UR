@@ -66,6 +66,10 @@ const ALWAYS_REQUIRE_PLAN_TOOLS = new Set([
   'Task',
 ])
 
+const TASK_DECOMPOSITION_RECOVERY =
+  'For non-trivial work, create one task per cohesive outcome with its own ' +
+  'observable done check; keep one task only when the work is genuinely atomic.'
+
 const PLAN_ARTIFACT_MUTATING_TOOLS = new Set([
   'Write',
   'Edit',
@@ -183,6 +187,8 @@ export function checkTaskListGate(input: {
    * be writable before TaskCreate without opening ordinary workspace writes.
    */
   isPlanArtifactMutation?: boolean
+  /** Exact task-list tool available in this runtime (TaskCreate or TodoWrite). */
+  taskPlanningToolName?: string
   config?: TaskListGateConfig
 }): GateDecision {
   const config = input.config ?? getTaskListGateConfig()
@@ -195,12 +201,15 @@ export function checkTaskListGate(input: {
     return { allowed: true }
   }
   if (input.taskCount === null) {
+    const taskTool = input.taskPlanningToolName ?? 'TaskCreate'
     return {
       allowed: false,
       reason:
         `The task list could not be read, so ${input.toolName} was not allowed ` +
-        `to change state without a verifiable plan. Retry TaskList or ` +
-        `TaskCreate, then retry this call. Disable with ` +
+        `to change state without a verifiable plan. Use ${taskTool} to create ` +
+        `or repair the task list, then retry this call. ` +
+        `${TASK_DECOMPOSITION_RECOVERY} ` +
+        `Disable with ` +
         `tasks.requireBeforeChanges.enabled=false in settings.`,
     }
   }
@@ -208,22 +217,25 @@ export function checkTaskListGate(input: {
     input.isSubagent ||
     ALWAYS_REQUIRE_PLAN_TOOLS.has(input.toolName)
   ) {
+    const taskTool = input.taskPlanningToolName ?? 'TaskCreate'
     return {
       allowed: false,
       reason:
         `No actionable parent task exists for ${input.toolName}. Call ` +
-        `TaskCreate before delegating or changing state, then retry this call. ` +
+        `${taskTool} before delegating or changing state, then retry this call. ` +
+        `${TASK_DECOMPOSITION_RECOVERY} ` +
         `Disable with tasks.requireBeforeChanges.enabled=false in settings.`,
     }
   }
   if (input.readsSoFar < config.freeReads) return { allowed: true }
+  const taskTool = input.taskPlanningToolName ?? 'TaskCreate'
   return {
     allowed: false,
     reason:
       `No task list exists, and ${input.toolName} changes the workspace. ` +
-      `Call TaskCreate first with the steps you intend to take, then retry ` +
-      `this call. Reads are unrestricted, so investigate as much as you need ` +
-      `before writing the list. ` +
+      `Call ${taskTool} first, then retry this call. ` +
+      `${TASK_DECOMPOSITION_RECOVERY} Reads are unrestricted, so investigate ` +
+      `as much as you need before writing the list. ` +
       `Disable with tasks.requireBeforeChanges.enabled=false in settings.`,
   }
 }

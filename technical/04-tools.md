@@ -62,6 +62,25 @@ only after `EnterPlanMode` (or `/plan`) has successfully made the active mode
 revalidated; the executor labels that second validation as post-permission so
 the already-validated exit can finish, while new out-of-mode calls still fail.
 
+For non-trivial work, the task list uses one record per cohesive outcome with
+an observable done check rather than one omnibus record. Genuine single-outcome
+work remains one task; files, commands, and tiny mechanical steps are not
+artificial task boundaries. Dependency edges represent only real ordering
+constraints. Mutually independent tasks with no conflicting shared mutations
+can be delegated together, while dependent or conflicting work stays
+sequential.
+
+Task IDs remain strings in storage and tool output. Model inputs for
+`TaskCreate` dependencies and `TaskGet`/`TaskUpdate` identifiers may also use a
+positive safe-integer JSON number; the tool boundary normalizes it to the
+canonical decimal string. Zero, negative, fractional, non-finite, Boolean, and
+precision-losing numeric IDs are rejected.
+
+Task-gate recovery names the tracking surface that is actually present:
+interactive Task V2 sessions use `TaskCreate`, while default headless sessions
+use `TodoWrite`. It never instructs a model to recover by calling a tool absent
+from that runtime.
+
 ## Multi-agent tools
 
 The table below separates the ordinary Agent/Skill tools from coordination
@@ -124,3 +143,9 @@ File Edit/Write/NotebookEdit require the exact content snapshot the model read,
 not only a modification timestamp. Full and ranged reads are compared at the
 final write boundary, preventing same-timestamp external replacements from
 being overwritten.
+
+`Edit` remains fail-closed rather than applying a fuzzy replacement to similar
+code. When an exact contiguous `old_string` is absent, its bounded error points
+to a verified matching line when one exists and tells the model to re-read that
+region, use a smaller current 2–4-line anchor, split distant HTML/CSS/JavaScript
+sections, and never retry the unchanged call.

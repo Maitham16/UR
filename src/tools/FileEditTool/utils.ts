@@ -126,6 +126,90 @@ function findActualStringWhitespaceTolerant(
   return null
 }
 
+const STRING_NOT_FOUND_PREVIEW_CHARS = 600
+
+type SearchAnchor = {
+  fileLine: number
+  unique: boolean
+}
+
+/**
+ * Locate a complete line shared by the requested block and the current file.
+ * Prefer a unique line because it gives the model a safe, precise place to
+ * re-read after an over-large or stale old_string fails.
+ */
+function findSearchAnchor(
+  fileContent: string,
+  searchString: string,
+): SearchAnchor | null {
+  const fileLines = fileContent.split('\n')
+  const occurrencesByLine = new Map<
+    string,
+    { firstIndex: number; count: number }
+  >()
+
+  for (let index = 0; index < fileLines.length; index++) {
+    const normalized = normalizeLineForMatch(fileLines[index]!)
+    if (normalized.trim().length === 0) continue
+    const occurrence = occurrencesByLine.get(normalized)
+    if (occurrence) {
+      occurrence.count++
+    } else {
+      occurrencesByLine.set(normalized, { firstIndex: index, count: 1 })
+    }
+  }
+
+  let repeatedMatch: SearchAnchor | null = null
+  for (const searchLine of searchString.split('\n')) {
+    const normalized = normalizeLineForMatch(searchLine)
+    if (normalized.trim().length === 0) continue
+    const occurrence = occurrencesByLine.get(normalized)
+    if (!occurrence) continue
+    if (occurrence.count === 1) {
+      return { fileLine: occurrence.firstIndex + 1, unique: true }
+    }
+    repeatedMatch ??= {
+      fileLine: occurrence.firstIndex + 1,
+      unique: false,
+    }
+  }
+
+  return repeatedMatch
+}
+
+/**
+ * Build actionable, bounded recovery guidance for an exact-match miss.
+ *
+ * Approximate edits are deliberately not applied automatically: choosing the
+ * wrong similar block can silently corrupt code. Instead, point the model at a
+ * verified anchor and require a fresh, smaller exact match.
+ */
+export function formatStringNotFoundMessage(
+  fileContent: string,
+  searchString: string,
+): string {
+  const lineCount = searchString.split('\n').length
+  const anchor = findSearchAnchor(fileContent, searchString)
+  const location = anchor
+    ? `A line from old_string ${anchor.unique ? 'uniquely ' : ''}matches the current file at line ${anchor.fileLine}, but the complete ${lineCount}-line block is not contiguous there.`
+    : 'No complete non-empty line from old_string matches the current file.'
+  const recovery = anchor
+    ? `Re-read the target around line ${anchor.fileLine}, then retry with the smallest unique contiguous old_string copied from the current Read output (usually 2-4 lines).`
+    : 'Search for a short distinctive fragment, re-read the current target region, then retry with the smallest unique contiguous old_string (usually 2-4 lines).'
+  const preview =
+    searchString.length > STRING_NOT_FOUND_PREVIEW_CHARS
+      ? `${searchString.slice(0, STRING_NOT_FOUND_PREVIEW_CHARS)}\n… [old_string preview truncated; ${searchString.length} characters total]`
+      : searchString
+
+  return [
+    'String to replace not found in file.',
+    location,
+    recovery,
+    'Do not include Read line-number prefixes. Split large cross-section replacements into smaller edits, and do not retry this call unchanged.',
+    `old_string preview:\n${preview}`,
+  ].join('\n')
+}
+
 /**
  * Finds the actual string in the file content that matches the search string,
  * accounting for quote normalization and whitespace differences.

@@ -128,6 +128,7 @@ import {
   LOCAL_COMMAND_CAVEAT_TAG,
   LOCAL_COMMAND_STDOUT_TAG,
 } from '../constants/xml.js'
+import { PLAN_TASK_GRAPH_REQUIREMENT } from '../constants/planImplementationContract.js'
 import { DiagnosticTrackingService } from '../services/diagnosticTracking.js'
 import {
   findToolByName,
@@ -3185,6 +3186,7 @@ function getPlanModeInstructions(attachment: {
   isSubAgent?: boolean
   planFilePath: string
   planExists: boolean
+  availablePlanAgentTypes?: string[]
 }): UserMessage[] {
   if (attachment.isSubAgent) {
     return getPlanModeV2SubAgentInstructions(attachment)
@@ -3207,6 +3209,7 @@ Goal: Write your final plan to the plan file (the only file you can edit).
 - Ensure that the plan file is concise enough to scan quickly, but detailed enough to execute effectively
 - Include the paths of critical files to be modified
 - Reference existing functions and utilities you found that should be reused, with their file paths
+- ${PLAN_TASK_GRAPH_REQUIREMENT}
 - Include a verification section describing how to test the changes end-to-end (run the code, use MCP tools, run tests)`
 
 const PLAN_PHASE4_TRIM = `### Phase 4: Final Plan
@@ -3215,6 +3218,7 @@ Goal: Write your final plan to the plan file (the only file you can edit).
 - Include only your recommended approach, not all alternatives
 - List the paths of files to be modified
 - Reference existing functions and utilities to reuse, with their file paths
+- ${PLAN_TASK_GRAPH_REQUIREMENT}
 - End with **Verification**: the single command to run to confirm the change works (no numbered test procedures)`
 
 const PLAN_PHASE4_CUT = `### Phase 4: Final Plan
@@ -3222,6 +3226,7 @@ Goal: Write your final plan to the plan file (the only file you can edit).
 - Do NOT write a Context or Background section. The user just told you what they want.
 - List the paths of files to be modified and what changes in each (one line per file)
 - Reference existing functions and utilities to reuse, with their file paths
+- ${PLAN_TASK_GRAPH_REQUIREMENT}
 - End with **Verification**: the single command that confirms the change works
 - Most good plans are under 40 lines. Prose is a sign you are padding.`
 
@@ -3231,6 +3236,7 @@ Goal: Write your final plan to the plan file (the only file you can edit).
 - Do NOT restate the user's request. Do NOT write prose paragraphs.
 - List the paths of files to be modified and what changes in each (one bullet per file)
 - Reference existing functions to reuse, with file:line
+- ${PLAN_TASK_GRAPH_REQUIREMENT}
 - End with the single verification command
 - **Hard limit: 40 lines.** If the plan is longer, delete prose — not file paths.`
 
@@ -3251,10 +3257,24 @@ function getPlanPhase4Section(): string {
   }
 }
 
+function getAvailablePlanAgentTypes(attachment: {
+  availablePlanAgentTypes?: string[]
+}): ReadonlySet<string> {
+  if (attachment.availablePlanAgentTypes !== undefined) {
+    return new Set(attachment.availablePlanAgentTypes)
+  }
+  // Backward compatibility for plan attachments saved before capability
+  // metadata was added.
+  return areExplorePlanAgentsEnabled()
+    ? new Set([EXPLORE_AGENT.agentType, PLAN_AGENT.agentType])
+    : new Set()
+}
+
 function getPlanModeV2Instructions(attachment: {
   isSubAgent?: boolean
   planFilePath?: string
   planExists?: boolean
+  availablePlanAgentTypes?: string[]
 }): UserMessage[] {
   if (attachment.isSubAgent) {
     return []
@@ -3270,27 +3290,24 @@ function getPlanModeV2Instructions(attachment: {
   const planFileInfo = attachment.planExists
     ? `A plan file already exists at ${attachment.planFilePath}. You can read it and make incremental edits using the ${FileEditTool.name} tool.`
     : `No plan file exists yet. You should create your plan at ${attachment.planFilePath} using the ${FileWriteTool.name} tool.`
-
-  const content = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
-
-## Plan File Info:
-${planFileInfo}
-You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
-
-## Plan Workflow
-
-### Phase 1: Initial Understanding
+  const availablePlanAgents = getAvailablePlanAgentTypes(attachment)
+  const phase1 = availablePlanAgents.has(EXPLORE_AGENT.agentType)
+    ? `### Phase 1: Initial Understanding
 Goal: Gain a comprehensive understanding of the user's request by reading through code and asking them questions. Critical: In this phase you should only use the ${EXPLORE_AGENT.agentType} subagent type.
 
 1. Focus on understanding the user's request and the code associated with their request. Actively search for existing functions, utilities, and patterns that can be reused — avoid proposing new code when suitable implementations already exist.
 
 2. **Launch up to ${exploreAgentCount} ${EXPLORE_AGENT.agentType} agents IN PARALLEL** (single message, multiple tool calls) to efficiently explore the codebase.
    - Use 1 agent when the task is isolated to known files, the user provided specific file paths, or you're making a small targeted change.
-   - Use multiple agents when: the scope is uncertain, multiple areas of the codebase are involved, or you need to understand existing patterns before planning.
-   - Quality over quantity - ${exploreAgentCount} agents maximum, but you should try to use the minimum number of agents necessary (usually just 1)
-   - If using multiple agents: Provide each agent with a specific search focus or area to explore. Example: One agent searches for existing implementations, another explores related components, a third investigating testing patterns
+   - Use multiple agents when the scope is uncertain or independent areas need investigation.
+   - Give every agent a distinct search focus; use the minimum number needed.`
+    : `### Phase 1: Initial Understanding
+Goal: Gain a comprehensive understanding of the user's request using the read-only tools that are actually available.
 
-### Phase 2: Design
+1. Focus on the request and associated code. Search for existing functions, utilities, and patterns that can be reused.
+2. Use ${getReadOnlyToolNames()} directly. Batch independent searches and reads in parallel (up to 8 calls per turn), but keep dependent investigation sequential. Do not call a generic Agent as a planning fallback.`
+  const phase2 = availablePlanAgents.has(PLAN_AGENT.agentType)
+    ? `### Phase 2: Design
 Goal: Design an implementation approach.
 
 Launch ${PLAN_AGENT.agentType} agent(s) to design the implementation based on the user's intent and your exploration results from Phase 1.
@@ -3304,23 +3321,26 @@ ${
   agentCount > 1
     ? `- **Multiple agents**: Use up to ${agentCount} agents for complex tasks that benefit from different perspectives
 
-Examples of when to use multiple agents:
-- The task touches multiple parts of the codebase
-- It's a large refactor or architectural change
-- There are many edge cases to consider
-- You'd benefit from exploring different approaches
-
-Example perspectives by task type:
-- New feature: simplicity vs performance vs maintainability
-- Bug fix: root cause vs workaround vs prevention
-- Refactoring: minimal change vs clean architecture
-`
+Examples: simplicity vs performance, root cause vs prevention, or minimal change vs clean architecture.`
     : ''
 }
-In the agent prompt:
-- Provide comprehensive background context from Phase 1 exploration including filenames and code path traces
-- Describe requirements and constraints
-- Request a detailed implementation plan
+In each agent prompt, provide Phase 1 evidence, filenames, code-path traces, requirements, constraints, and the perspective to evaluate.`
+    : `### Phase 2: Design
+Goal: Design the implementation directly from the Phase 1 evidence.
+
+Compare plausible approaches, choose the smallest approach that fully satisfies the request, identify trade-offs and edge cases, and trace every proposed change to current code. No read-only Plan worker is active, so do not call a generic Agent as a substitute.`
+
+  const content = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
+
+## Plan File Info:
+${planFileInfo}
+You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
+
+## Plan Workflow
+
+${phase1}
+
+${phase2}
 
 ### Phase 3: Review
 Goal: Review the plan(s) from Phase 2 and ensure alignment with the user's intentions.
@@ -3370,6 +3390,7 @@ function getReadOnlyToolNames(): string {
 function getPlanModeInterviewInstructions(attachment: {
   planFilePath?: string
   planExists?: boolean
+  availablePlanAgentTypes?: string[]
 }): UserMessage[] {
   const planFileInfo = attachment.planExists
     ? `A plan file already exists at ${attachment.planFilePath}. You can read it and make incremental edits using the ${FileEditTool.name} tool.`
@@ -3388,7 +3409,7 @@ You are pair-planning with the user. Explore the code to build context, ask the 
 
 Repeat this cycle until the plan is complete:
 
-1. **Explore** — Use ${getReadOnlyToolNames()} to read code. Look for existing functions, utilities, and patterns to reuse.${areExplorePlanAgentsEnabled() ? ` You can use the ${EXPLORE_AGENT.agentType} agent type to parallelize complex searches without filling your context, though for straightforward queries direct tools are simpler.` : ''}
+1. **Explore** — Use ${getReadOnlyToolNames()} to read code. Look for existing functions, utilities, and patterns to reuse.${getAvailablePlanAgentTypes(attachment).has(EXPLORE_AGENT.agentType) ? ` You can use the ${EXPLORE_AGENT.agentType} agent type to parallelize complex searches without filling your context, though for straightforward queries direct tools are simpler.` : ''}
 2. **Update the plan file** — After each discovery, immediately capture what you learned. Don't wait until the end.
 3. **Ask the user** — When you hit an ambiguity or decision you can't resolve from code alone, use ${ASK_USER_QUESTION_TOOL_NAME}. Then go back to step 1.
 
@@ -3410,6 +3431,7 @@ Your plan file should be divided into clear sections using markdown headers, bas
 - Ensure that the plan file is concise enough to scan quickly, but detailed enough to execute effectively
 - Include the paths of critical files to be modified
 - Reference existing functions and utilities you found that should be reused, with their file paths
+- ${PLAN_TASK_GRAPH_REQUIREMENT}
 - Include a verification section describing how to test the changes end-to-end (run the code, use MCP tools, run tests)
 
 ### When to Converge

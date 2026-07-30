@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { EXECUTION_CONTRACT_SECTION } from '../src/constants/executionContract.js'
 import { getTaskToolGuidance } from '../src/constants/taskToolGuidance.js'
 import { getPrompt as getAgentToolPrompt } from '../src/tools/AgentTool/prompt.js'
+import { getPrompt as getTaskCreatePrompt } from '../src/tools/TaskCreateTool/prompt.js'
 import { PROMPT as TODO_WRITE_PROMPT } from '../src/tools/TodoWriteTool/prompt.js'
 
 test('execution contract is ordered, complete, and compact', () => {
@@ -14,10 +15,10 @@ test('execution contract is ordered, complete, and compact', () => {
   )
   expect(EXECUTION_CONTRACT_SECTION).toContain('2. Act:')
   expect(EXECUTION_CONTRACT_SECTION).toContain(
-    'For 3+ steps, record ordered tasks before implementation',
+    'For 3+ steps, decompose into cohesive, verifiable tasks before implementation',
   )
   expect(EXECUTION_CONTRACT_SECTION).toContain(
-    'Task lists are not plan mode: call ExitPlanMode after EnterPlanMode succeeds',
+    "Task lists aren't plan mode; ExitPlanMode follows successful EnterPlanMode",
   )
   expect(EXECUTION_CONTRACT_SECTION).toContain(
     'Batch independent calls (maximum 8)',
@@ -41,15 +42,31 @@ test('execution contract is ordered, complete, and compact', () => {
 
 test('canonical task tools receive ordered lifecycle guidance', () => {
   const guidance = getTaskToolGuidance(
-    new Set(['TaskCreate', 'TaskUpdate', 'TaskList']),
+    new Set(['TaskCreate', 'TaskUpdate', 'TaskList', 'Agent']),
   )
 
   expect(guidance).toContain('TaskCreate')
   expect(guidance).toContain('TaskUpdate')
-  expect(guidance).toContain('dependency-ordered')
+  expect(guidance).toContain('one task per cohesive outcome')
+  expect(guidance).toContain('observable done check')
+  expect(guidance).toContain(
+    'never hide separately completable deliverables in one omnibus task',
+  )
+  expect(guidance).toContain('genuinely atomic work as one task')
+  expect(guidance).toContain('complete dependency graph')
+  expect(guidance).toContain('mutually independent tasks')
+  expect(guidance).toContain('no conflicting shared mutations')
+  expect(guidance).toContain('in parallel')
   expect(guidance).toContain('in_progress')
   expect(guidance).toContain('completed immediately after')
   expect(guidance).toContain('TaskList')
+
+  const withoutAgent = getTaskToolGuidance(
+    new Set(['TaskCreate', 'TaskUpdate', 'TaskList']),
+  )
+  expect(withoutAgent).toContain('one task per cohesive outcome')
+  expect(withoutAgent).not.toContain('If delegating')
+  expect(withoutAgent).not.toContain('in parallel')
 })
 
 test('legacy task guidance remains available without masking canonical tools', () => {
@@ -62,6 +79,13 @@ test('legacy task guidance remains available without masking canonical tools', (
 
 test('legacy todo prompt does not model narrated work as execution', () => {
   expect(TODO_WRITE_PROMPT).toContain('dependency order')
+  expect(TODO_WRITE_PROMPT).toContain('one item per cohesive outcome')
+  expect(TODO_WRITE_PROMPT).toContain('observable done check')
+  expect(TODO_WRITE_PROMPT).toContain(
+    'Split separately completable deliverables',
+  )
+  expect(TODO_WRITE_PROMPT).toContain('genuinely atomic work as one item')
+  expect(TODO_WRITE_PROMPT).toContain('individual files, tool calls')
   expect(TODO_WRITE_PROMPT).toMatch(
     /relevant\s+verification have succeeded/,
   )
@@ -145,6 +169,7 @@ test('consolidated guidance preserves every execution safety invariant', () => {
 })
 
 test('task tool prompts use one unambiguous lifecycle vocabulary', () => {
+  const renderedCreatePrompt = getTaskCreatePrompt()
   const createPrompt = readFileSync(
     'src/tools/TaskCreateTool/prompt.ts',
     'utf8',
@@ -155,6 +180,21 @@ test('task tool prompts use one unambiguous lifecycle vocabulary', () => {
   )
   expect(createPrompt).not.toContain('After receiving new instructions')
   expect(createPrompt).toContain('Use TaskUpdate, not TaskCreate')
+  expect(renderedCreatePrompt).toContain('one cohesive outcome')
+  expect(renderedCreatePrompt).toMatch(/Split\s+an omnibus task/)
+  expect(renderedCreatePrompt).toContain('genuinely atomic outcome as one task')
+  expect(renderedCreatePrompt).toContain('real ordering constraints')
+  expect(renderedCreatePrompt).toContain('delegation is available')
+  expect(renderedCreatePrompt).toContain('no conflicting shared mutations')
+  expect(renderedCreatePrompt).toContain(
+    'Emit one `TaskCreate` call per outcome',
+  )
+  expect(renderedCreatePrompt).toMatch(
+    /Batch independent creates in the\s+same assistant turn \(up to 8\)/,
+  )
+  expect(renderedCreatePrompt).toContain(
+    'use `TaskUpdate` to add dependency',
+  )
   expect(updatePrompt).not.toContain('Mark tasks as resolved')
   expect(updatePrompt).toContain('next unblocked task')
   expect(updatePrompt).not.toContain('```json')
@@ -169,6 +209,15 @@ test('delegation guidance requires scoped tasks and independent evidence', () =>
   expect(agentPrompt).toContain("output as evidence, not proof")
   expect(agentPrompt).toContain('task ID, dependency outputs, allowed scope')
   expect(agentPrompt).toContain('independently verified')
+  expect(agentPrompt).toContain(
+    'one cohesive task with its own observable done check per outcome',
+  )
+  expect(agentPrompt).toContain(
+    'Launch mutually independent tasks together only when they have no conflicting shared mutations',
+  )
+  expect(agentPrompt).toContain(
+    'Keep genuinely atomic work as one task',
+  )
   expect(agentPrompt).not.toContain(
     "outputs should generally be trusted",
   )
@@ -191,4 +240,29 @@ test('rendered Agent prompt never delegates greetings or narrates execution', as
   expect(prompt).not.toContain('greeting-responder')
   expect(prompt).not.toContain('Uses the Agent tool')
   expect(prompt).not.toContain('write the following code')
+  expect(prompt).toContain(
+    'Launch mutually independent tasks together only when they have no conflicting shared mutations',
+  )
+})
+
+test('coordinator Agent prompt receives the same decomposition contract', async () => {
+  const prompt = await getAgentToolPrompt(
+    [
+      {
+        agentType: 'general-purpose',
+        whenToUse: 'Implement a scoped task',
+        tools: ['Read', 'Edit', 'Bash'],
+      } as never,
+    ],
+    true,
+  )
+
+  expect(prompt).toContain(
+    'one cohesive task with its own observable done check per outcome',
+  )
+  expect(prompt).toContain(
+    'Launch mutually independent tasks together only when they have no conflicting shared mutations',
+  )
+  expect(prompt).toContain('keep dependent or conflicting work sequential')
+  expect(prompt).toContain('genuinely atomic work as one task')
 })

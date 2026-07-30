@@ -34,6 +34,7 @@ import type {
 import {
   createAttachmentMessage,
   generateFileAttachment,
+  getAvailableReadOnlyPlanAgentTypes,
   getAgentListingDeltaAttachment,
   getDeferredToolsDeltaAttachment,
   getMcpInstructionsDeltaAttachment,
@@ -1560,6 +1561,7 @@ export async function createPlanModeAttachmentIfNeeded(
     isSubAgent: !!context.agentId,
     planFilePath,
     planExists,
+    availablePlanAgentTypes: getAvailableReadOnlyPlanAgentTypes(context),
   })
 }
 

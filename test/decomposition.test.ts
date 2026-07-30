@@ -40,18 +40,34 @@ describe('decomposer', () => {
 
   test('dry-run model path returns mock JSON', async () => {
     const dir = tempDir('ur-decomp-dry-')
-    const runner: HeadlessRunner = async () => ({
-      output: JSON.stringify({
-        tasks: [
-          { id: 't1', goal: 'a', filesTouched: ['src/a.ts'], risk: 'low', testsRequired: ['unit'], rollbackPoint: 'HEAD' },
-        ],
-      }),
-      verdict: null,
-      isError: false,
-    })
+    let decompositionPrompt = ''
+    const runner: HeadlessRunner = async input => {
+      decompositionPrompt = input.prompt
+      return {
+        output: JSON.stringify({
+          tasks: [
+            { id: 't1', goal: 'a', filesTouched: ['src/a.ts'], risk: 'low', testsRequired: ['unit'], rollbackPoint: 'HEAD' },
+          ],
+        }),
+        verdict: null,
+        isError: false,
+      }
+    }
     const tasks = await decomposeTask('do thing', { cwd: dir, runner })
     expect(tasks[0].goal).toBe('a')
     expect(tasks[0].filesTouched).toEqual(['src/a.ts'])
+    expect(decompositionPrompt).toContain(
+      'cohesive subtasks with observable completion checks',
+    )
+    expect(decompositionPrompt).toContain(
+      'never hide them in one omnibus task',
+    )
+    expect(decompositionPrompt).toContain(
+      'Return one task when the goal is genuinely atomic',
+    )
+    expect(decompositionPrompt).toContain(
+      'independent tasks must use an empty array so they can run in parallel',
+    )
     rmSync(dir, { recursive: true, force: true })
   })
 

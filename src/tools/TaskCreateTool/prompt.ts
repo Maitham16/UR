@@ -40,6 +40,23 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
 
 EXCEPTION: none of the "skip" rules apply when the user explicitly asks for an item to be added to the task list ("add to your tasks …"). An explicit request always wins — create the task.
 
+## Decomposition Quality
+
+For non-trivial work, create the complete task graph before implementation:
+
+- One task represents one cohesive outcome with an observable done check.
+  Split an omnibus task when it contains separately completable deliverables.
+- Keep a genuinely atomic outcome as one task. Do not manufacture tasks for
+  individual files, tool calls, or tiny mechanical steps.
+- Express real ordering constraints with \`blocks\` / \`blockedBy\`. Leave
+  unrelated tasks unblocked so agents can claim them in parallel.
+- If delegation is available, launch mutually independent tasks concurrently
+  only when they have no conflicting shared mutations. Keep dependent or
+  conflicting work sequential.
+- Emit one \`TaskCreate\` call per outcome. Batch independent creates in the
+  same assistant turn (up to 8), then use \`TaskUpdate\` to add dependency
+  edges once IDs are known and before starting blocked work.
+
 ## Task Fields
 
 - **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")

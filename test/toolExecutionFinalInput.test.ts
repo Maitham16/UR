@@ -7,6 +7,7 @@ import {
 } from '../src/bootstrap/state.js'
 import { getDefaultAppState } from '../src/state/AppStateStore.js'
 import { runToolUse } from '../src/services/tools/toolExecution.js'
+import { EXPLORE_AGENT } from '../src/tools/AgentTool/built-in/exploreAgent.js'
 import { getPlanFilePath } from '../src/utils/plans.js'
 
 const originalTaskListId = process.env.UR_CODE_TASK_LIST_ID
@@ -21,6 +22,256 @@ afterEach(() => {
     delete process.env.UR_CODE_TASK_LIST_ID
   } else {
     process.env.UR_CODE_TASK_LIST_ID = originalTaskListId
+  }
+})
+
+test('plan mode runs a foreground built-in Explore call but gates a rewrite to a generic agent', async () => {
+  let callCount = 0
+  const tool = {
+    name: 'Agent',
+    aliases: ['Task'],
+    inputSchema: z.strictObject({
+      description: z.string(),
+      prompt: z.string(),
+      subagent_type: z.string(),
+    }),
+    isReadOnly: () => false,
+    isConcurrencySafe: () => true,
+    isEnabled: () => true,
+    async call() {
+      callCount++
+      return { data: 'read-only planning evidence' }
+    },
+    mapToolResultToToolResultBlockParam(data: string, toolUseID: string) {
+      return {
+        type: 'tool_result' as const,
+        tool_use_id: toolUseID,
+        content: [{ type: 'text' as const, text: data }],
+      }
+    },
+  }
+  const state = getDefaultAppState()
+  state.toolPermissionContext = {
+    ...state.toolPermissionContext,
+    mode: 'plan',
+  }
+  const priorCalls = Array.from({ length: 3 }, (_, index) => ({
+    type: 'assistant',
+    message: {
+      content: [
+        {
+          type: 'tool_use',
+          id: `plan-prior-${index}`,
+          name: 'Read',
+          input: {},
+        },
+      ],
+    },
+  }))
+  const context = {
+    abortController: new AbortController(),
+    options: {
+      commands: [],
+      debug: false,
+      mainLoopModel: 'test-model',
+      tools: [tool],
+      verbose: false,
+      thinkingConfig: { type: 'disabled' },
+      mcpClients: [],
+      mcpResources: {},
+      isNonInteractiveSession: true,
+      agentDefinitions: {
+        activeAgents: [EXPLORE_AGENT],
+        allAgents: [EXPLORE_AGENT],
+      },
+    },
+    getAppState: () => state,
+    setAppState: () => {},
+    messages: priorCalls,
+    readFileState: new Map(),
+    setInProgressToolUseIDs: () => {},
+    setResponseLength: () => {},
+    updateFileHistoryState: () => {},
+    updateAttributionState: () => {},
+  }
+  const assistantMessage = {
+    type: 'assistant',
+    uuid: 'assistant-plan-explore-gate',
+    message: {
+      id: 'message-plan-explore-gate',
+      content: [],
+    },
+  }
+  const input = {
+    description: 'Inspect the implementation',
+    prompt: 'Collect read-only evidence for the plan.',
+    subagent_type: 'Explore',
+  }
+
+  const allowedOutput = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'plan-explore-use',
+        name: 'Agent',
+        input,
+      } as never,
+      assistantMessage as never,
+      (async () => ({
+        behavior: 'allow' as const,
+        updatedInput: input,
+      })) as never,
+      context as never,
+    ),
+  )
+
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(allowedOutput)).toContain('read-only planning evidence')
+
+  const rewrittenOutput = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'plan-agent-rewrite-use',
+        name: 'Agent',
+        input: {
+          ...input,
+          prompt: 'This call is rewritten after initial validation.',
+        },
+      } as never,
+      assistantMessage as never,
+      (async (_tool, originalInput) => ({
+        behavior: 'allow' as const,
+        updatedInput: {
+          ...originalInput,
+          subagent_type: 'general-purpose',
+        },
+      })) as never,
+      context as never,
+    ),
+  )
+
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(rewrittenOutput)).toContain(
+    'TaskListRequired after input update',
+  )
+})
+
+test('a built-in planning child cannot mutate even with an actionable task or hook rewrite', async () => {
+  const previousInteractive = getIsInteractive()
+  const previousTaskV2 = process.env.UR_CODE_ENABLE_TASKS
+  setIsInteractive(false)
+  delete process.env.UR_CODE_ENABLE_TASKS
+  let callCount = 0
+  try {
+    const tool = {
+      name: 'ConditionalMutation',
+      inputSchema: z.strictObject({
+        action: z.enum(['read', 'write']),
+      }),
+      isReadOnly: (input: { action: 'read' | 'write' }) =>
+        input.action === 'read',
+      isConcurrencySafe: () => false,
+      isEnabled: () => true,
+      async call() {
+        callCount++
+        return { data: 'must not execute' }
+      },
+    }
+    const state = getDefaultAppState()
+    state.todos['read-only-planning-child'] = [
+      {
+        content: 'Existing actionable task must not open this boundary',
+        activeForm: 'Testing boundary',
+        status: 'in_progress',
+      },
+    ]
+    const context = {
+      abortController: new AbortController(),
+      options: {
+        commands: [],
+        debug: false,
+        mainLoopModel: 'test-model',
+        tools: [tool, { name: 'TodoWrite' }],
+        verbose: false,
+        thinkingConfig: { type: 'disabled' },
+        mcpClients: [],
+        mcpResources: {},
+        isNonInteractiveSession: true,
+        agentDefinitions: {
+          activeAgents: [EXPLORE_AGENT],
+          allAgents: [EXPLORE_AGENT],
+        },
+      },
+      agentId: 'read-only-planning-child',
+      agentType: 'Explore',
+      getAppState: () => state,
+      setAppState: () => {},
+      messages: [],
+      readFileState: new Map(),
+      setInProgressToolUseIDs: () => {},
+      setResponseLength: () => {},
+      updateFileHistoryState: () => {},
+      updateAttributionState: () => {},
+    }
+    const assistantMessage = {
+      type: 'assistant',
+      uuid: 'assistant-read-only-planning-child',
+      message: {
+        id: 'message-read-only-planning-child',
+        content: [],
+      },
+    }
+
+    const directMutation = await Array.fromAsync(
+      runToolUse(
+        {
+          type: 'tool_use',
+          id: 'planning-child-direct-write',
+          name: 'ConditionalMutation',
+          input: { action: 'write' },
+        } as never,
+        assistantMessage as never,
+        (async (_tool, input) => ({
+          behavior: 'allow' as const,
+          updatedInput: input,
+        })) as never,
+        context as never,
+      ),
+    )
+    expect(callCount).toBe(0)
+    expect(JSON.stringify(directMutation)).toContain(
+      'ReadOnlyPlanningAgent',
+    )
+    expect(JSON.stringify(directMutation)).not.toContain('TaskListRequired')
+
+    const rewrittenMutation = await Array.fromAsync(
+      runToolUse(
+        {
+          type: 'tool_use',
+          id: 'planning-child-rewritten-write',
+          name: 'ConditionalMutation',
+          input: { action: 'read' },
+        } as never,
+        assistantMessage as never,
+        (async () => ({
+          behavior: 'allow' as const,
+          updatedInput: { action: 'write' as const },
+        })) as never,
+        context as never,
+      ),
+    )
+    expect(callCount).toBe(0)
+    expect(JSON.stringify(rewrittenMutation)).toContain(
+      'ReadOnlyPlanningAgent after input update',
+    )
+  } finally {
+    setIsInteractive(previousInteractive)
+    if (previousTaskV2 === undefined) {
+      delete process.env.UR_CODE_ENABLE_TASKS
+    } else {
+      process.env.UR_CODE_ENABLE_TASKS = previousTaskV2
+    }
   }
 })
 
@@ -130,20 +381,26 @@ test('a headless TodoWrite plan satisfies the final mutation gate', async () => 
       },
     }
     const state = getDefaultAppState()
-    state.todos[getSessionId()] = [
-      {
-        content: 'Apply the approved edit',
-        activeForm: 'Applying the approved edit',
-        status: 'in_progress',
+    const priorCalls = Array.from({ length: 3 }, (_, index) => ({
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: `legacy-prior-${index}`,
+            name: 'Read',
+            input: {},
+          },
+        ],
       },
-    ]
+    }))
     const context = {
       abortController: new AbortController(),
       options: {
         commands: [],
         debug: false,
         mainLoopModel: 'test-model',
-        tools: [tool],
+        tools: [tool, { name: 'TodoWrite' }],
         verbose: false,
         thinkingConfig: { type: 'disabled' },
         mcpClients: [],
@@ -153,7 +410,7 @@ test('a headless TodoWrite plan satisfies the final mutation gate', async () => 
       },
       getAppState: () => state,
       setAppState: () => {},
-      messages: [],
+      messages: priorCalls,
       readFileState: new Map(),
       setInProgressToolUseIDs: () => {},
       setResponseLength: () => {},
@@ -168,6 +425,41 @@ test('a headless TodoWrite plan satisfies the final mutation gate', async () => 
         content: [],
       },
     }
+    const refusal = await Array.fromAsync(
+      runToolUse(
+        {
+          type: 'tool_use',
+          id: 'legacy-plan-missing',
+          name: 'ConditionalMutation',
+          input: { action: 'write' },
+        } as never,
+        assistantMessage as never,
+        (async (_tool, input) => ({
+          behavior: 'allow' as const,
+          updatedInput: input,
+        })) as never,
+        context as never,
+      ),
+    )
+    expect(callCount).toBe(0)
+    expect(JSON.stringify(refusal)).toContain('Call TodoWrite first')
+    expect(JSON.stringify(refusal)).not.toContain('TaskCreate')
+
+    state.todos[getSessionId()] = [
+      {
+        content: 'Apply the approved edit',
+        activeForm: 'Applying the approved edit',
+        status: 'in_progress',
+      },
+    ]
+    const assistantMessageAfterPlan = {
+      ...assistantMessage,
+      uuid: 'assistant-legacy-plan-gate-after-plan',
+      message: {
+        ...assistantMessage.message,
+        id: 'message-legacy-plan-gate-after-plan',
+      },
+    }
     const output = await Array.fromAsync(
       runToolUse(
         {
@@ -176,7 +468,7 @@ test('a headless TodoWrite plan satisfies the final mutation gate', async () => 
           name: 'ConditionalMutation',
           input: { action: 'read' },
         } as never,
-        assistantMessage as never,
+        assistantMessageAfterPlan as never,
         (async () => ({
           behavior: 'allow' as const,
           updatedInput: { action: 'write' as const },

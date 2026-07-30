@@ -121,7 +121,10 @@ import {
 } from './file.js'
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 import { filterAgentsByMcpRequirements } from '../tools/AgentTool/loadAgentsDir.js'
-import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js'
+import {
+  AGENT_TOOL_NAME,
+  READ_ONLY_PLAN_AGENT_TYPES,
+} from '../tools/AgentTool/constants.js'
 import {
   formatAgentLine,
   shouldInjectAgentListInMessages,
@@ -568,6 +571,7 @@ export type Attachment =
       isSubAgent?: boolean
       planFilePath: string
       planExists: boolean
+      availablePlanAgentTypes?: string[]
     }
   | {
       type: 'plan_mode_reentry'
@@ -1241,9 +1245,50 @@ async function getPlanModeAttachments(
     isSubAgent: !!toolUseContext.agentId,
     planFilePath,
     planExists: existingPlan !== null,
+    availablePlanAgentTypes:
+      getAvailableReadOnlyPlanAgentTypes(toolUseContext),
   })
 
   return attachments
+}
+
+/**
+ * Return only active built-in planning workers that the current tool pool can
+ * actually launch. This keeps plan instructions honest when SDK settings,
+ * policy filters, or custom agents remove/override a built-in definition.
+ */
+export function getAvailableReadOnlyPlanAgentTypes(
+  toolUseContext: Pick<ToolUseContext, 'getAppState' | 'options'>,
+): string[] {
+  const hasAgentTool = toolUseContext.options.tools.some(tool =>
+    toolMatchesName(tool, AGENT_TOOL_NAME),
+  )
+  if (!hasAgentTool) return []
+
+  try {
+    const definitions = toolUseContext.options.agentDefinitions
+    const activeAgents = definitions?.activeAgents ?? []
+    const allowlistedAgents = definitions?.allowedAgentTypes
+      ? activeAgents.filter(agent =>
+          definitions.allowedAgentTypes!.includes(agent.agentType),
+        )
+      : activeAgents
+    return filterDeniedAgents(
+      allowlistedAgents,
+      toolUseContext.getAppState().toolPermissionContext,
+      AGENT_TOOL_NAME,
+    )
+      .filter(
+        agent =>
+          agent.source === 'built-in' &&
+          READ_ONLY_PLAN_AGENT_TYPES.has(agent.agentType),
+      )
+      .map(agent => agent.agentType)
+  } catch {
+    // Capability discovery is model-facing: uncertain live policy must fail
+    // closed instead of advertising a worker that Agent.call may reject.
+    return []
+  }
 }
 
 /**

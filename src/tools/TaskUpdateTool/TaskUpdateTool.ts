@@ -27,15 +27,23 @@ import {
 } from '../../utils/teammate.js'
 import { writeToMailbox } from '../../utils/teammateMailbox.js'
 import { VERIFICATION_AGENT_TYPE } from '../AgentTool/constants.js'
+import {
+  normalizeTaskIdInput,
+  normalizeTaskIdInputs,
+  taskIdInputSchema,
+} from '../taskIdInput.js'
 import { TASK_UPDATE_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, PROMPT } from './prompt.js'
 
 const inputSchema = lazySchema(() => {
   // Extended status schema that includes 'deleted' as a special action
   const TaskUpdateStatusSchema = TaskStatusSchema().or(z.literal('deleted'))
+  const TaskIdSchema = taskIdInputSchema(
+    'The ID of the task to update. Positive integer JSON values are accepted and normalized to strings.',
+  )
 
   return z.strictObject({
-    taskId: z.string().describe('The ID of the task to update'),
+    taskId: TaskIdSchema,
     subject: z.string().optional().describe('New subject for the task'),
     description: z.string().optional().describe('New description for the task'),
     activeForm: z
@@ -48,13 +56,17 @@ const inputSchema = lazySchema(() => {
       'New status for the task',
     ),
     addBlocks: z
-      .array(z.string())
+      .array(TaskIdSchema)
       .optional()
-      .describe('Task IDs that this task blocks'),
+      .describe(
+        'Task IDs that this task blocks. Positive integer JSON values are accepted and normalized to strings.',
+      ),
     addBlockedBy: z
-      .array(z.string())
+      .array(TaskIdSchema)
       .optional()
-      .describe('Task IDs that block this task'),
+      .describe(
+        'Task IDs that block this task. Positive integer JSON values are accepted and normalized to strings.',
+      ),
     owner: z.string().optional().describe('New owner for the task'),
     metadata: z
       .record(z.string(), z.unknown())
@@ -115,7 +127,7 @@ export const TaskUpdateTool = buildTool({
     return false
   },
   toAutoClassifierInput(input) {
-    const parts = [input.taskId]
+    const parts = [String(input.taskId)]
     if (input.status) parts.push(input.status)
     if (input.subject) parts.push(input.subject)
     return parts.join(' ')
@@ -125,7 +137,7 @@ export const TaskUpdateTool = buildTool({
   },
   async call(
     {
-      taskId,
+      taskId: rawTaskId,
       subject,
       description,
       activeForm,
@@ -137,6 +149,9 @@ export const TaskUpdateTool = buildTool({
     },
     context,
   ) {
+    const taskId = normalizeTaskIdInput(rawTaskId)
+    const normalizedAddBlocks = normalizeTaskIdInputs(addBlocks)
+    const normalizedAddBlockedBy = normalizeTaskIdInputs(addBlockedBy)
     const taskListId = getTaskListId()
 
     // Auto-expand task list when updating tasks
@@ -159,12 +174,12 @@ export const TaskUpdateTool = buildTool({
     }
 
     const requestedDependencies = [
-      ...(addBlocks ?? []).map(targetId => ({
+      ...(normalizedAddBlocks ?? []).map(targetId => ({
         fromTaskId: taskId,
         toTaskId: targetId,
         field: 'addBlocks',
       })),
-      ...(addBlockedBy ?? []).map(blockerId => ({
+      ...(normalizedAddBlockedBy ?? []).map(blockerId => ({
         fromTaskId: blockerId,
         toTaskId: taskId,
         field: 'addBlockedBy',
@@ -274,7 +289,7 @@ export const TaskUpdateTool = buildTool({
           )
           const effectiveBlockers = new Set([
             ...existingTask.blockedBy,
-            ...(addBlockedBy ?? []),
+            ...(normalizedAddBlockedBy ?? []),
           ])
           const unresolvedBlockers = [...effectiveBlockers].filter(
             blockerId => {
@@ -334,10 +349,10 @@ export const TaskUpdateTool = buildTool({
       }
     }
 
-    const newBlocks = (addBlocks ?? []).filter(
+    const newBlocks = (normalizedAddBlocks ?? []).filter(
       id => !existingTask.blocks.includes(id),
     )
-    const newBlockedBy = (addBlockedBy ?? []).filter(
+    const newBlockedBy = (normalizedAddBlockedBy ?? []).filter(
       id => !existingTask.blockedBy.includes(id),
     )
     if (newBlocks.length > 0) updatedFields.push('blocks')

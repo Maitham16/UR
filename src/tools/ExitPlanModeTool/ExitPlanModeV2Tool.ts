@@ -8,16 +8,14 @@ import {
   setNeedsAutoModeExitAttachment,
   setNeedsPlanModeExitAttachment,
 } from '../../bootstrap/state.js'
+import {
+  getApprovedPlanCapabilities,
+  getApprovedPlanImplementationInstruction,
+} from '../../constants/planImplementationContract.js'
 import { logEvent } from '../../services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/metadata.js'
-import {
-  buildTool,
-  type Tool,
-  type ToolDef,
-  toolMatchesName,
-} from '../../Tool.js'
+import { buildTool, type Tool, type ToolDef } from '../../Tool.js'
 import { formatAgentId, generateRequestId } from '../../utils/agentId.js'
-import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {
   findInProcessTeammateTaskId,
@@ -38,8 +36,6 @@ import {
   isTeammate,
 } from '../../utils/teammate.js'
 import { writeToMailbox } from '../../utils/teammateMailbox.js'
-import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
-import { TEAM_CREATE_TOOL_NAME } from '../TeamCreateTool/constants.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from './constants.js'
 import { EXIT_PLAN_MODE_V2_TOOL_PROMPT } from './prompt.js'
 import {
@@ -203,10 +199,14 @@ export const outputSchema = lazySchema(() =>
       .string()
       .optional()
       .describe('The file path where the plan was saved'),
-    hasTaskTool: z
-      .boolean()
+    implementationTaskTool: z
+      .enum(['task-v2', 'todo-write', 'none'])
       .optional()
-      .describe('Whether the Agent tool is available in the current context'),
+      .describe('Task tracking surface available after approval'),
+    implementationAgentType: z
+      .string()
+      .optional()
+      .describe('Executable built-in implementation worker type, when present'),
     planWasEdited: z
       .boolean()
       .optional()
@@ -495,16 +495,16 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
       }
     })
 
-    const hasTaskTool =
-      isAgentSwarmsEnabled() &&
-      context.options.tools.some(t => toolMatchesName(t, AGENT_TOOL_NAME))
+    const implementationCapabilities = getApprovedPlanCapabilities(context)
 
     return {
       data: {
         plan,
         isAgent,
         filePath,
-        hasTaskTool: hasTaskTool || undefined,
+        implementationTaskTool: implementationCapabilities.taskTool,
+        implementationAgentType:
+          implementationCapabilities.implementationAgentType,
         planWasEdited: inputPlan !== undefined || undefined,
       },
     }
@@ -514,7 +514,8 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
       isAgent,
       plan,
       filePath,
-      hasTaskTool,
+      implementationTaskTool,
+      implementationAgentType,
       planWasEdited,
       awaitingLeaderApproval,
       requestId,
@@ -560,9 +561,11 @@ Request ID: ${requestId}`,
       }
     }
 
-    const teamHint = hasTaskTool
-      ? `\n\nIf this plan can be broken down into multiple independent tasks, consider using the ${TEAM_CREATE_TOOL_NAME} tool to create a team and parallelize the work.`
-      : ''
+    const implementationInstruction =
+      getApprovedPlanImplementationInstruction({
+        taskTool: implementationTaskTool ?? 'none',
+        ...(implementationAgentType ? { implementationAgentType } : {}),
+      })
 
     // Always include the plan — extractApprovedPlan() in the Ultraplan CCR
     // flow parses the tool_result to retrieve the plan text for the local CLI.
@@ -573,10 +576,12 @@ Request ID: ${requestId}`,
 
     return {
       type: 'tool_result',
-      content: `User has approved your plan. You can now start coding. Start with updating your todo list if applicable
+      content: `User has approved your plan. You can now start implementation.
 
 Your plan has been saved to: ${filePath}
-You can refer back to it if needed during implementation.${teamHint}
+You can refer back to it if needed during implementation.
+
+${implementationInstruction}
 
 ## ${planLabel}:
 ${plan}`,

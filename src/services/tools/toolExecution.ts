@@ -37,7 +37,12 @@ import {
   type ToolProgress,
   type ToolProgressData,
   type ToolUseContext,
+  toolMatchesName,
 } from '../../Tool.js'
+import {
+  AGENT_TOOL_NAME,
+  READ_ONLY_PLAN_AGENT_TYPES,
+} from '../../tools/AgentTool/constants.js'
 import type { BashToolInput } from '../../tools/BashTool/BashTool.js'
 import { startSpeculativeClassifierCheck } from '../../tools/BashTool/bashPermissions.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
@@ -47,10 +52,12 @@ import { FILE_WRITE_TOOL_NAME } from '../../tools/FileWriteTool/prompt.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '../../tools/NotebookEditTool/constants.js'
 import { POWERSHELL_TOOL_NAME } from '../../tools/PowerShellTool/toolName.js'
 import { parseGitCommitId } from '../../tools/shared/gitOperationTracking.js'
+import { TASK_CREATE_TOOL_NAME } from '../../tools/TaskCreateTool/constants.js'
 import {
   isDeferredTool,
   TOOL_SEARCH_TOOL_NAME,
 } from '../../tools/ToolSearchTool/prompt.js'
+import { TODO_WRITE_TOOL_NAME } from '../../tools/TodoWriteTool/constants.js'
 import { getAllBaseTools } from '../../tools.js'
 import type { HookProgress } from '../../types/hooks.js'
 import type {
@@ -240,6 +247,99 @@ function isCurrentPlanArtifactMutation(
     // Failing to resolve the session plan must not exempt a mutation.
     return false
   }
+}
+
+/**
+ * The Agent tool is conservatively mutating because ordinary workers can edit
+ * the workspace. During plan mode, however, the built-in Explore and Plan
+ * definitions have editing/delegation tools removed and exist specifically to
+ * gather read-only evidence. Recognize only those exact active built-ins.
+ *
+ * Custom agents that reuse either name, teammates, background agents, and
+ * isolated/cwd launches stay mutating and therefore remain task-gated.
+ */
+export function isReadOnlyPlanAgentDelegation(
+  tool: { name: string; aliases?: string[] },
+  input: unknown,
+  toolUseContext: Pick<ToolUseContext, 'getAppState' | 'options'>,
+): boolean {
+  try {
+    if (
+      toolUseContext.getAppState().toolPermissionContext.mode !== 'plan' ||
+      !toolMatchesName(tool, AGENT_TOOL_NAME) ||
+      typeof input !== 'object' ||
+      input === null
+    ) {
+      return false
+    }
+
+    const candidate = input as Record<string, unknown>
+    if (
+      typeof candidate.subagent_type !== 'string' ||
+      !READ_ONLY_PLAN_AGENT_TYPES.has(candidate.subagent_type) ||
+      candidate.name !== undefined ||
+      candidate.team_name !== undefined ||
+      candidate.mode !== undefined ||
+      candidate.isolation !== undefined ||
+      candidate.cwd !== undefined ||
+      candidate.run_in_background === true
+    ) {
+      return false
+    }
+
+    const activeAgent =
+      toolUseContext.options.agentDefinitions?.activeAgents?.find(
+        agent => agent.agentType === candidate.subagent_type,
+      )
+    return activeAgent?.source === 'built-in'
+  } catch {
+    // Missing or malformed runtime state must never create a gate bypass.
+    return false
+  }
+}
+
+/**
+ * Identify a live child context created from one of the exact built-in
+ * planning definitions. Parent-side Agent classification alone is not enough:
+ * this child boundary prevents a model from turning Bash (or any future tool)
+ * into a mutation even if a task already exists or permission rules allow it.
+ */
+export function isBuiltInReadOnlyPlanningSubagent(
+  toolUseContext: Pick<
+    ToolUseContext,
+    'agentId' | 'agentType' | 'options'
+  >,
+): boolean {
+  if (
+    !toolUseContext.agentId ||
+    !toolUseContext.agentType ||
+    !READ_ONLY_PLAN_AGENT_TYPES.has(toolUseContext.agentType)
+  ) {
+    return false
+  }
+  return (
+    toolUseContext.options.agentDefinitions?.activeAgents?.find(
+      agent => agent.agentType === toolUseContext.agentType,
+    )?.source === 'built-in'
+  )
+}
+
+function getTaskPlanningToolName(toolUseContext: ToolUseContext): string {
+  if (
+    toolUseContext.options.tools.some(tool =>
+      toolMatchesName(tool, TASK_CREATE_TOOL_NAME),
+    )
+  ) {
+    return TASK_CREATE_TOOL_NAME
+  }
+  if (
+    toolUseContext.options.tools.some(tool =>
+      toolMatchesName(tool, TODO_WRITE_TOOL_NAME),
+    )
+  ) {
+    return TODO_WRITE_TOOL_NAME
+  }
+  return 'the available task-list tool'
 }
 
 function getStopHookInfo(attachment: unknown): StopHookInfo | null {
@@ -1073,7 +1173,9 @@ async function checkPermissionsAndCallTool(
   // calls. Tool defaults classify unknown implementations as non-read-only.
   let isMutating = true
   try {
-    isMutating = !tool.isReadOnly(parsedInput.data)
+    isMutating =
+      !tool.isReadOnly(parsedInput.data) &&
+      !isReadOnlyPlanAgentDelegation(tool, parsedInput.data, toolUseContext)
   } catch {
     // Classification failures must not become a bypass.
     isMutating = true
@@ -1083,6 +1185,24 @@ async function checkPermissionsAndCallTool(
     parsedInput.data,
     toolUseContext,
   )
+  if (isMutating && isBuiltInReadOnlyPlanningSubagent(toolUseContext)) {
+    recordCallFailure(callSig)
+    return [
+      {
+        message: createUserMessage({
+          content: [
+            {
+              type: 'tool_result',
+              content:
+                '<tool_use_error>ReadOnlyPlanningAgent: Built-in Explore and Plan agents may only perform read-only operations. Return your findings to the parent agent instead of changing state.</tool_use_error>',
+              is_error: true,
+              tool_use_id: toolUseID,
+            },
+          ],
+        }),
+      },
+    ]
+  }
   const gate = checkTaskListGate({
     toolName: tool.name,
     taskCount: await countTasksForGate(toolUseContext),
@@ -1097,6 +1217,7 @@ async function checkPermissionsAndCallTool(
     isSubagent: Boolean(toolUseContext.agentId),
     isMutating,
     isPlanArtifactMutation,
+    taskPlanningToolName: getTaskPlanningToolName(toolUseContext),
   })
   if (gate.allowed === false) {
     // Counts toward the repeat guard: a model that answers the gate by
@@ -1721,7 +1842,13 @@ async function checkPermissionsAndCallTool(
 
   let finalIsMutating = true
   try {
-    finalIsMutating = !tool.isReadOnly(finalParsedInput.data)
+    finalIsMutating =
+      !tool.isReadOnly(finalParsedInput.data) &&
+      !isReadOnlyPlanAgentDelegation(
+        tool,
+        finalParsedInput.data,
+        toolUseContext,
+      )
   } catch {
     finalIsMutating = true
   }
@@ -1730,6 +1857,28 @@ async function checkPermissionsAndCallTool(
     finalParsedInput.data,
     toolUseContext,
   )
+  if (
+    finalIsMutating &&
+    isBuiltInReadOnlyPlanningSubagent(toolUseContext)
+  ) {
+    recordCallFailure(callSig)
+    finishPreExecutionRejection()
+    resultingMessages.push({
+      message: createUserMessage({
+        content: [
+          {
+            type: 'tool_result',
+            content:
+              '<tool_use_error>ReadOnlyPlanningAgent after input update: Built-in Explore and Plan agents may only perform read-only operations. Return your findings to the parent agent instead of changing state.</tool_use_error>',
+            is_error: true,
+            tool_use_id: toolUseID,
+          },
+        ],
+        sourceToolAssistantUUID: assistantMessage.uuid,
+      }),
+    })
+    return resultingMessages
+  }
   const effectiveCallChanged =
     callSig !== initiallyValidatedCallSig ||
     finalIsMutating !== isMutating ||
@@ -1752,6 +1901,7 @@ async function checkPermissionsAndCallTool(
       isSubagent: Boolean(toolUseContext.agentId),
       isMutating: finalIsMutating,
       isPlanArtifactMutation: finalIsPlanArtifactMutation,
+      taskPlanningToolName: getTaskPlanningToolName(toolUseContext),
     })
     if (finalGate.allowed === false) {
       recordCallFailure(callSig)

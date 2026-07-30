@@ -31,6 +31,33 @@ test('a mutating call with no task list is refused', () => {
   expect((decision as { reason: string }).reason).toContain(
     'tasks.requireBeforeChanges',
   )
+  expect((decision as { reason: string }).reason).toContain(
+    'one task per cohesive outcome',
+  )
+  expect((decision as { reason: string }).reason).toContain(
+    'observable done check',
+  )
+  expect((decision as { reason: string }).reason).toContain(
+    'genuinely atomic',
+  )
+})
+
+test('gate recovery names the task tool available in headless mode', () => {
+  const decision = checkTaskListGate({
+    toolName: 'Write',
+    taskCount: 0,
+    readsSoFar: 3,
+    isSubagent: false,
+    isMutating: true,
+    taskPlanningToolName: 'TodoWrite',
+    config: CONFIG,
+  })
+
+  expect(decision.allowed).toBe(false)
+  expect((decision as { reason: string }).reason).toContain(
+    'Call TodoWrite first',
+  )
+  expect((decision as { reason: string }).reason).not.toContain('TaskCreate')
 })
 
 test('reads are never blocked, so it can investigate before planning', () => {
@@ -76,15 +103,17 @@ test('a trivial one-shot edit is not gated', () => {
 })
 
 test('subagents must be bound to an actionable parent task before mutation', () => {
-  expect(
-    checkTaskListGate({
-      toolName: 'Write',
-      taskCount: 0,
-      readsSoFar: 0,
-      isSubagent: true,
-      config: CONFIG,
-    }).allowed,
-  ).toBe(false)
+  const refusal = checkTaskListGate({
+    toolName: 'Write',
+    taskCount: 0,
+    readsSoFar: 0,
+    isSubagent: true,
+    config: CONFIG,
+  })
+  expect(refusal.allowed).toBe(false)
+  expect((refusal as { reason: string }).reason).toContain(
+    'one task per cohesive outcome',
+  )
   expect(
     checkTaskListGate({
       toolName: 'Write',

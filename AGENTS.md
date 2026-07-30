@@ -3,7 +3,7 @@
 This is the durable handoff for coding agents working in this repository. Read
 this file before exploring the tree. It records the architecture, decisions,
 invariants, validation state, and release workflow established during the
-v1.65.7 audit and maintained through v1.65.9.
+v1.65.7 audit and maintained through v1.65.10.
 
 Do not start by re-auditing the entire repository. Confirm the current version
 and working-tree state, then open only the technical chapter and source paths
@@ -81,29 +81,25 @@ runtime behavior changes.
 
 ## Release snapshot: 2026-07-30
 
-- Local package version: **1.65.9**
-- npm `latest` at the time of this update: **1.65.8**
-- v1.65.9 has not been committed, tagged, pushed, or published.
-- Full functional validation immediately before the 1.65.9 bump:
-  - 2,073 tests passed, 0 failed
-  - 9,123 assertions across 252 files
-  - typecheck passed
+- Local package version: **1.65.10**
+- npm `latest` at the time of this update: **1.65.9**
+- v1.65.10 has not been committed, tagged, pushed, or published.
+- Full post-bump functional validation:
+  - 2,107 tests passed, 0 failed
+  - 9,327 assertions across 255 files
+  - typecheck and strict-core typecheck passed (133 strict files)
   - lint passed
-  - 54 focused planning, task-gate, command-registry, prompt, and
-    documentation tests passed with 1,465 assertions
-- Post-bump validation:
-  - 32 release-readiness, command-registry, and extension-version tests passed
-    with 1,539 assertions
+  - both independent worker re-audits reported no remaining blocker
+- Release validation:
   - CLI plus ESM/CommonJS/typed SDK builds passed with 86 synchronized version
     occurrences
-  - release check and packaged CLI smoke test passed for 1.65.9
+  - release check and packaged CLI smoke test passed for 1.65.10
   - dependency audit reported no known vulnerabilities; all six runtime
     dependency ranges resolve; the safety matrix is current
   - secret scan and `git diff --check` passed
+  - local CLI reports `1.65.10 (UR-Nexus)` and `--help` exits successfully
   - npm publish dry run passed: 156 files, 6.5 MB packed, 32.4 MB unpacked,
-    shasum `c45f7d17ee77c0028f20751c843b749bc5d43f83`
-  - global `/opt/homebrew/bin/ur` reports 1.65.9 and its CLI bundle SHA-256
-    matches the local verified bundle
+    shasum `1adf6187a88b5f7ad417c06300af9fb0a0cca926`
 
 This snapshot is evidence, not a permanent guarantee. Rerun relevant gates
 after later changes.
@@ -177,6 +173,15 @@ be established.
 ### Tasks and plans
 
 - Multi-step mutations require a plan/task list.
+- Non-trivial plans use one task per cohesive outcome with an observable done
+  check. Split separately completable deliverables, not files, tool calls, or
+  tiny mechanical steps; genuinely atomic work remains one task.
+- Plan dependencies must reflect execution order. Review/inspect/analyze tasks
+  precede corrective work, and verification/report tasks fan in on everything
+  they verify.
+- Approved-plan handoff is capability-aware: use Task V2 only when both
+  `TaskCreate` and `TaskUpdate` exist, otherwise use `TodoWrite`, otherwise use
+  the plan's numbered tasks. Never invent a task or worker tool.
 - Task lists and plan mode are separate state machines. `ExitPlanMode` follows
   a successful `EnterPlanMode` or `/plan`; creating tasks alone does not enter
   plan mode.
@@ -187,6 +192,8 @@ be established.
   write after creating a plan must not be blocked.
 - Permission-time task and path state is rechecked at the final execution
   boundary, including unchanged and in-place rewritten inputs.
+- Task tool inputs accept positive safe-integer JSON IDs for model
+  interoperability but normalize and persist every ID as a canonical string.
 - Task order is numeric, never lexicographic (`2` precedes `10`).
 - Dependencies must complete before dependents run.
 - A task cannot be marked completed merely because execution stopped.
@@ -210,6 +217,9 @@ Primary paths:
 - Preserve real provider tool-call IDs.
 - Repeated identical failing calls are bounded and canonicalized; retrying the
   same unchanged call indefinitely is forbidden.
+- Exact edit misses fail closed. Recovery may identify a verified current-file
+  line and bounded preview, but must require a fresh small contiguous
+  `old_string`; never silently apply a fuzzy replacement.
 - Successful prose cannot conceal a nonzero process exit, signal termination,
   malformed result, or failed tool.
 - CLI commands use exit codes consistently: 0 success, 1 runtime failure,
@@ -230,6 +240,18 @@ Primary paths:
 ### Parallel workers and respawning
 
 - Independent work should run in parallel.
+- Approved plans launch at most eight ready, non-conflicting worker tasks per
+  wave and continue with later waves as slots free. Dependents and conflicting
+  shared writes stay sequential.
+- Ordinary `Agent` workers do not promise automatic respawn. Crew scheduling
+  owns bounded respawn/retry behavior; keep model instructions honest about
+  that distinction.
+- Built-in Explore and Plan agents are available in standard CLI sessions with
+  a structurally read-only tool pool. Only the exact active built-in
+  definitions receive the plan-mode delegation exemption; child execution
+  rejects mutations again after input or hook rewrites.
+- Team creation/deletion is mutating and rechecks live plan mode inside the
+  call immediately before changing state.
 - Top-level mutating jobs use isolated worktrees; shared-tree mutation is
   serialized or refused.
 - Crew workers may respawn, but retries are bounded.
@@ -361,6 +383,14 @@ refactoring:
   is establishing that plan; the exemption is exact-path and mode scoped.
 - `ExitPlanMode` post-permission validation no longer mistakes an approved mode
   transition for a new out-of-mode call.
+- Approved plans decompose cohesive outcomes into dependency-correct task
+  graphs and use only the task and worker capabilities actually present.
+- Standard built-in Explore/Plan workers are structurally read-only, and a
+  second child-runtime boundary rejects attempted mutations.
+- Positive integer task IDs from models normalize to canonical strings before
+  Task V2 lookup, dependency checks, or persistence.
+- Exact Edit mismatches return bounded, verified recovery guidance instead of
+  applying an unsafe fuzzy replacement.
 - Command-registry release checks use a Linux/platform-neutral baseline and
   test the supported macOS/x64-Windows `/desktop` delta separately.
 - CLI handlers no longer report success after failed underlying work.

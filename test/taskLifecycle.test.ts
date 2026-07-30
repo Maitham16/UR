@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TaskCreateTool } from '../src/tools/TaskCreateTool/TaskCreateTool.ts'
+import { TaskGetTool } from '../src/tools/TaskGetTool/TaskGetTool.ts'
 import { TaskListTool } from '../src/tools/TaskListTool/TaskListTool.ts'
 import { TaskUpdateTool } from '../src/tools/TaskUpdateTool/TaskUpdateTool.ts'
 import {
@@ -62,6 +63,90 @@ afterEach(() => {
 })
 
 describe('task dependency and completion lifecycle', () => {
+  test('TaskUpdate normalizes an accepted numeric ID before lookup', async () => {
+    const taskId = await createBareTask('numeric id')
+    expect(taskId).toBe('1')
+
+    const result = await TaskUpdateTool.call(
+      { taskId: 1, status: 'in_progress' },
+      toolContext(),
+    )
+
+    expect(result.data).toMatchObject({
+      success: true,
+      taskId: '1',
+      statusChange: { from: 'pending', to: 'in_progress' },
+    })
+    expect((await getTask(taskListId, taskId))?.status).toBe('in_progress')
+  })
+
+  test('TaskUpdate normalizes numeric dependency IDs before graph updates', async () => {
+    const prerequisite = await createBareTask('numeric prerequisite')
+    const dependent = await createBareTask('numeric dependent')
+
+    const result = await TaskUpdateTool.call(
+      { taskId: 2, addBlockedBy: [1] },
+      toolContext(),
+    )
+
+    expect(result.data).toMatchObject({
+      success: true,
+      taskId: dependent,
+    })
+    expect((await getTask(taskListId, dependent))?.blockedBy).toEqual([
+      prerequisite,
+    ])
+    expect((await getTask(taskListId, prerequisite))?.blocks).toEqual([
+      dependent,
+    ])
+  })
+
+  test('TaskCreate normalizes numeric dependency IDs before graph updates', async () => {
+    const prerequisite = await createBareTask('numeric create prerequisite')
+    const result = await TaskCreateTool.call(
+      {
+        subject: 'numeric create dependent',
+        description: 'numeric create dependent',
+        blockedBy: [1],
+      },
+      toolContext(),
+    )
+    const dependent = result.data.task.id
+
+    expect((await getTask(taskListId, dependent))?.blockedBy).toEqual([
+      prerequisite,
+    ])
+    expect((await getTask(taskListId, prerequisite))?.blocks).toEqual([
+      dependent,
+    ])
+  })
+
+  test('TaskUpdate cannot bypass a pending numeric blocker on completion', async () => {
+    const prerequisite = await createBareTask('pending numeric prerequisite')
+    const dependent = await createBareTask('blocked numeric dependent')
+
+    const result = await TaskUpdateTool.call(
+      { taskId: 2, status: 'completed', addBlockedBy: [1] },
+      toolContext(),
+    )
+
+    expect(result.data.success).toBe(false)
+    expect(result.data.error).toContain(`#${prerequisite}`)
+    expect((await getTask(taskListId, dependent))?.status).toBe('pending')
+    expect((await getTask(taskListId, dependent))?.blockedBy).toEqual([])
+  })
+
+  test('TaskGet normalizes an accepted numeric ID before lookup', async () => {
+    const taskId = await createBareTask('numeric task get')
+
+    const result = await TaskGetTool.call({ taskId: 1 })
+
+    expect(result.data.task).toMatchObject({
+      id: taskId,
+      subject: 'numeric task get',
+    })
+  })
+
   test('blockTask writes reciprocal edges and rejects missing, self, and cyclic edges', async () => {
     const first = await createBareTask('first')
     const second = await createBareTask('second')

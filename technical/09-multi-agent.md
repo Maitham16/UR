@@ -15,7 +15,31 @@ The main agent can spawn subagents. Built-in agent types
 | `verification` | verifies a change actually works (used by `/verify`) |
 | `statusline-setup` | configures the status line |
 | `ur-code-guide` | answers UR/SDK/API questions |
-| `Explore`, `Plan` | read-only search and planning agents, available only in builds compiled with `BUILTIN_EXPLORE_PLAN_AGENTS` and when their runtime gate is enabled; the standard npm bundle does not compile that feature |
+| `Explore`, `Plan` | built-in read-only search and planning agents; registered in the standard npm bundle so plan-mode instructions never advertise missing worker types |
+
+Ordinary `Agent` subagents do not require experimental Teams/swarm mode.
+Approved-plan handoff checks the actual tool pool, agent-type allowlist, live
+`Agent(type)` deny rules, and active built-in definitions. It can fan out
+independent ready tasks only when a selectable implementation worker remains.
+The Teams gate applies only to named teammates, team files/mailboxes, and
+`TeamCreate`/`TeamDelete`.
+
+While the parent is in plan mode, only the exact active built-in `Explore` and
+`Plan` definitions may pass the task-list gate as read-only delegations.
+Plan prompts apply the same type allowlist and live deny rules as the eventual
+`Agent` call, so they do not advertise a planning worker that policy will
+reject.
+Custom agents reusing those names, generic agents, teammates, background
+launches, custom working directories, and worktree launches remain mutating and
+task-gated. `TeamCreate` and `TeamDelete` also reject plan mode explicitly;
+team lifecycle state starts only after the plan is approved.
+
+In the standard bundle, `Explore` and `Plan` receive only `Glob`, `Grep`, and
+`Read`, use `dontAsk` permission mode, and have a second runtime boundary that
+rejects any operation classified as mutating even if an actionable task or
+inherited allow rule exists. Ant-native embedded-search builds substitute
+read-only Bash `find`/`grep` access for the dedicated search tools; the same
+runtime mutation boundary remains in force.
 
 Custom agents:
 - `/agents` — interactive management UI.
@@ -30,7 +54,7 @@ Custom agents:
   `/role-mode install architect|code|debug|ask` installs the four classic role modes as
   scoped agents.
 
-When present, read-only `Explore`/`Plan` agents omit the UR.md hierarchy only
+Read-only `Explore`/`Plan` agents omit the UR.md hierarchy only
 when the default-on `tengu_slim_subagent_agentmd` gate remains enabled and the
 caller did not explicitly provide user context (token saving; see
 `loadAgentsDir.ts`).
@@ -105,6 +129,21 @@ Interactive sessions use the canonical Task V2 tools. Print/headless sessions
 use legacy `TodoWrite` by default, or Task V2 when
 `UR_CODE_ENABLE_TASKS=1`. Both feed the same mutation gate:
 
+- Approved non-trivial plans are translated into a complete task graph before
+  workspace changes: one task record per cohesive outcome with its own
+  observable completion check. Separate deliverables are not hidden in one
+  umbrella item, while files, tool calls, and tiny mechanical steps are not
+  artificial task boundaries.
+- Independent Task V2 records are created together (up to the eight-call
+  prompt batch limit), then real dependency edges are added once task IDs are
+  known. Default headless sessions instead write the complete outcome list
+  through `TodoWrite`; approval handoff detects this capability rather than
+  naming unavailable Task V2 tools. When an actual built-in implementation
+  worker is active, ready tasks without conflicting shared mutations launch in
+  waves of up to eight with bounded scope, acceptance checks, and dependency
+  inputs. Dependent or conflicting writes stay sequential, and the lead
+  verifies worker evidence before completion. An exposed `Agent` tool with no
+  selectable implementation worker is not advertised as delegation support.
 - Task IDs are ordered numerically (`1, 2, 10`), with non-numeric external IDs
   sorted stably after numeric IDs.
 - Dependencies block transition or claim until prerequisites are complete.
@@ -113,6 +152,9 @@ use legacy `TodoWrite` by default, or Task V2 when
 - Reads remain unrestricted. Ordinary mutations have a default allowance of
   three preceding tool calls, counted by tool call rather than message.
   Delegation and child mutations always require an actionable parent task.
+  The sole delegation exception is a foreground built-in `Explore` or `Plan`
+  call during live plan mode; those agents omit workspace-editing and nested
+  delegation tools and remain subject to their child permission checks.
 - An unreadable task store fails closed. Task create/update/list/get tools stay
   exempt so the agent can repair the plan.
 - Creating or updating the exact current-session plan-mode Markdown file is
@@ -124,10 +166,12 @@ use legacy `TodoWrite` by default, or Task V2 when
 - Configure the behavior at
   `tasks.requireBeforeChanges.{enabled,freeReads}`.
 
-The prompt contract tells the model to update each task after observing its
-tool result. Runtime dependencies and mutation gating enforce ordering and
+The prompt contract, plan-file structure, plan-agent output, approval handoff,
+task-tool result, and gate recovery text all reinforce the same decomposition
+and worker rules. Runtime dependencies and mutation gating enforce ordering and
 plan presence; they cannot prove that an arbitrary natural-language task is
-semantically complete. Workflows and crews add stricter verdict rules where a
+semantically complete, so the gate deliberately does not require a fake
+minimum task count. Workflows and crews add stricter verdict rules where a
 machine-checkable execution boundary exists.
 
 ## Task routing
@@ -222,6 +266,9 @@ to false.
   `TeamDelete`, `SendMessage`, `InProcessTeammateTask`, and the
   `TeammateIdle` hook. `--agent-teams` is registered only in ant builds, so it
   is not a supported external CLI flag.
+- Team creation and deletion are unavailable while plan mode is active. Use the
+  standard read-only `Explore`/`Plan` subagents for parallel planning, then
+  create an implementation team after approval.
 - Coordinator mode (`UR_CODE_COORDINATOR_MODE=1`) is additionally behind the
   compile-time `COORDINATOR_MODE` feature. The standard npm bundle does not
   include it; setting the environment variable there has no effect.
