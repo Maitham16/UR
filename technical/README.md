@@ -1,6 +1,6 @@
 # UR-Nexus — Technical Specifications
 
-> Audited against the executable source and tests for `ur-agent` v1.68.2.
+> Audited against the executable source and tests for `ur-agent` v1.68.3.
 > Command, tool, flag, provider, and setting claims are checked against the
 > implementation rather than copied from product prose. Release validation
 > keeps this version synchronized and packages the complete `technical/`

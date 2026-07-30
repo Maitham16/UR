@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.68.3
+
+- `Ollama request failed (400): http: request body too large` now explains
+  itself. That string comes from Go's `net/http` MaxBytesReader rejecting the
+  payload on **byte size**, which is a different limit from the model's context
+  window — so the token-based context warning added in 1.66.2 never fires for
+  it, and a couple of screenshots can breach it while the token estimate still
+  looks comfortable. The request body is now measured at the send site, and the
+  error reports its actual size, names images as the usual cause (base64 adds
+  roughly a third, and every image persists in the transcript on later turns),
+  offers `/compact` or a fresh session, and notes that a reverse proxy in front
+  of Ollama enforces its own limit (`client_max_body_size` for nginx) which
+  tuning Ollama would not affect.
+- The classifier matches the 413 spellings a proxy returns as well as the Go
+  400, and is tested against unrelated 400s so it cannot replace a correct error
+  with confident, irrelevant advice.
+
 ## 1.68.2
 
 - **Security: explicit file deny rules were not enforced.** `matchingRuleForInput`

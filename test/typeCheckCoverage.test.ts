@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 // `tsc --noEmit` passing means much less than it looks like on this codebase:
@@ -20,19 +20,27 @@ import { join } from 'node:path'
 const NOCHECK_BUDGET = 149
 
 function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules') continue
-    const full = join(dir, entry)
-    if (statSync(full).isDirectory()) sourceFiles(full, found)
-    else if (/\.(ts|tsx|mts|cts)$/.test(entry)) found.push(full)
+  // withFileTypes avoids a statSync (and its file handle) per entry.
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules') continue
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) sourceFiles(full, found)
+    else if (/\.(ts|tsx|mts|cts)$/.test(entry.name)) found.push(full)
   }
   return found
 }
 
+// Computed once. Each test calling this independently meant three full walks
+// of ~2400 files, and with four parallel workers that contributed to ENFILE
+// ("file table overflow") on machines with a low ulimit -n — which then fails
+// unrelated tests with misleading "Cannot find module" errors.
+let suppressedCache: string[] | undefined
+
 function suppressedFiles(): string[] {
-  return sourceFiles('src').filter(file =>
+  suppressedCache ??= sourceFiles('src').filter(file =>
     /^\/\/\s*@ts-nocheck/m.test(readFileSync(file, 'utf8')),
   )
+  return suppressedCache
 }
 
 test('the @ts-nocheck budget does not grow', () => {

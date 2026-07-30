@@ -277,18 +277,26 @@ async function fetchOllamaChat(
     const textToolFallbackAllowed =
       (params.tools?.length ?? 0) > 0 &&
       !modelCapabilityEnabled(capabilities, 'tools')
+    // Serialized once so its size is available when the server rejects it for
+    // being too large — otherwise the error cannot say how big "too large" was.
+    const requestBody = JSON.stringify(
+      toOllamaChatRequest(params, stream, capabilities, baseUrl),
+    )
     const response = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
       headers: buildOllamaHeaders(),
-      body: JSON.stringify(
-        toOllamaChatRequest(params, stream, capabilities, baseUrl),
-      ),
+      body: requestBody,
       signal: controller.signal,
     })
 
     if (!response.ok) {
       const body = await response.text().catch(() => '')
-      throw createOllamaHTTPError(response.status, body, response.statusText)
+      throw createOllamaHTTPError(
+        response.status,
+        body,
+        response.statusText,
+        requestBody.length,
+      )
     }
 
     return { response, textToolFallbackAllowed }
@@ -317,15 +325,62 @@ async function fetchOllamaChat(
   }
 }
 
+/**
+ * Go's net/http emits "http: request body too large" from MaxBytesReader when
+ * the payload exceeds the server's limit. It is a byte-size rejection, not a
+ * context-window one, so the token-based context warning never fires for it —
+ * a couple of screenshots can exceed the limit while the token estimate still
+ * looks comfortable. Raw, the message says nothing about cause or remedy.
+ */
+export function isOllamaRequestTooLarge(
+  status: number,
+  message: string,
+): boolean {
+  return (
+    (status === 400 || status === 413) &&
+    /request body too large|payload too large|entity too large/i.test(message)
+  )
+}
+
+/** Bytes as a short human string: 1234567 -> "1.2 MB". */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${bytes} bytes`
+}
+
+export function describeOversizedOllamaRequest(requestBytes?: number): string {
+  const size =
+    requestBytes && requestBytes > 0
+      ? `This request was ${formatBytes(requestBytes)}. `
+      : ''
+  return (
+    `Ollama rejected the request because the HTTP body exceeded its size limit. ` +
+    `${size}This is a byte-size limit on the server, not the model's context ` +
+    `window, so it can trigger even when the conversation fits. Images are the ` +
+    `usual cause — base64 encoding adds roughly a third to their size, and every ` +
+    `image stays in the transcript on later turns. Use /compact or start a new ` +
+    `session to drop older attachments, or send fewer and smaller images. If the ` +
+    `endpoint sits behind a reverse proxy, the proxy's own body limit applies too ` +
+    `(for nginx that is client_max_body_size).`
+  )
+}
+
 function createOllamaHTTPError(
   status: number,
   body: string,
   statusText: string,
+  requestBytes?: number,
 ): Error {
   const rawMessage = extractOllamaHTTPErrorMessage(body) || statusText
   if (isOllamaGatewayTimeout(status, rawMessage)) {
     return new APIConnectionTimeoutError({
       message: OLLAMA_GATEWAY_TIMEOUT_MESSAGE,
+      cause: new Error(`Ollama request failed (${status}): ${rawMessage}`),
+    })
+  }
+  if (isOllamaRequestTooLarge(status, rawMessage)) {
+    return new Error(describeOversizedOllamaRequest(requestBytes), {
       cause: new Error(`Ollama request failed (${status}): ${rawMessage}`),
     })
   }

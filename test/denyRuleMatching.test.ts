@@ -24,10 +24,35 @@ test('the ignore library really does not expose a matched rule', () => {
   expect((result as unknown as Record<string, unknown>).rule).toBeUndefined()
 })
 
-test('the dead property access is gone from the resolver', () => {
-  const source = readFileSync('src/utils/permissions/filesystem.ts', 'utf8')
-  expect(source).not.toContain('igResult.rule')
-  expect(source).not.toMatch(/\.rule\.pattern/)
+/**
+ * Comments quote the removed expression to explain the defect, so a raw grep
+ * matches the explanation and fails on correct code. Strip comments first and
+ * assert against executable source only.
+ */
+function codeWithoutComments(file: string): string {
+  // Line comments only. Stripping /* */ as well removed half this file: it is
+  // full of gitignore patterns like '/**' and '/.ur/**', and the `/*` inside
+  // those string literals opens a block comment that runs to the next `*/`.
+  // A whole-line `//` match is safe — `path.startsWith('//')` does not begin
+  // a line, and the expression under test only ever appears in `//` comments.
+  return readFileSync(file, 'utf8').replace(/^\s*\/\/.*$/gm, '')
+}
+
+test('the dead property access is gone from the executable source', () => {
+  const code = codeWithoutComments('src/utils/permissions/filesystem.ts')
+  expect(code).not.toContain('igResult.rule')
+  expect(code).not.toMatch(/\.rule\.pattern/)
+})
+
+test('the comment-stripping is real, not a way to pass vacuously', () => {
+  // If the stripper ate everything, the test above would pass on any file.
+  const code = codeWithoutComments('src/utils/permissions/filesystem.ts')
+  expect(code).toContain('export function matchingRuleForInput')
+  expect(code).toContain('ignore()')
+  // And it must actually remove a line comment that quotes the banned string.
+  expect(codeWithoutComments.length).toBeGreaterThan(0)
+  const sample = '// see igResult.rule.pattern\nconst x = 1\n'
+  expect(sample.replace(/^\s*\/\/.*$/gm, '')).not.toContain('igResult.rule')
 })
 
 /** The resolution strategy now used by matchingRuleForInput. */
