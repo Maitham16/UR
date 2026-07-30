@@ -1672,7 +1672,7 @@ export function compileAgenticCiWorkflow(
   }
   const packageVersion =
     options.packageVersion ??
-    (typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.65.8')
+    (typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.65.9')
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(packageVersion)) {
     throw new Error('invalid ur-agent package version')
   }

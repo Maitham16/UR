@@ -92,6 +92,8 @@ export type QueryChainTracking = {
   depth: number
 }
 
+export type ToolValidationPhase = 'initial' | 'post-permission'
+
 export type ValidationResult =
   | { result: true }
   | {
@@ -262,6 +264,14 @@ export type ToolUseContext = {
     }
   >
   queryTracking?: QueryChainTracking
+  /**
+   * Semantic validation normally runs before permissions. When a permission
+   * hook or UI rewrites the input, the executor validates it again after the
+   * permission decision. Stateful tools can use this phase to avoid
+   * re-applying a transient pre-permission state prerequisite to the same
+   * already-authorized invocation.
+   */
+  validationPhase?: ToolValidationPhase
   /** Callback factory for requesting interactive prompts from the user.
    * Returns a prompt callback bound to the given source name.
    * Only available in interactive (REPL) contexts. */

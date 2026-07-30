@@ -141,9 +141,10 @@ launch Playwright, evaluate fixture assertions, or replay browser interactions.
   launch a headless `ur -p` run; it is not a resident webhook listener.
 - `/install-slack-app` only opens the Slack Marketplace installation page and
   records the click locally.
-- `/desktop` (alias `/app`) is conditional on macOS or x64 Windows. It flushes
-  the current transcript and hands the session to an installed compatible UR
-  Desktop app; otherwise it offers the platform download.
+- `/desktop` (alias `/app`) is registered only on macOS or x64 Windows. On
+  those supported platforms it flushes the current transcript and hands the
+  session to an installed compatible UR Desktop app; if the app is missing or
+  outdated, it offers the matching platform download.
 - `/session` (alias `/remote`) is visible only when the current runtime is
   already in remote mode. It displays the existing remote-session URL; it does
   not create a remote session. `/remote-env` additionally requires a

@@ -1,4 +1,5 @@
 import { getInitialSettings } from '../../utils/settings/settings.js'
+import { expandPath } from '../../utils/path.js'
 
 /**
  * Requires a task list before the agent changes anything.
@@ -64,6 +65,42 @@ const ALWAYS_REQUIRE_PLAN_TOOLS = new Set([
   'Agent',
   'Task',
 ])
+
+const PLAN_ARTIFACT_MUTATING_TOOLS = new Set([
+  'Write',
+  'Edit',
+  'MultiEdit',
+])
+
+/**
+ * The current session's plan file is itself the planning artifact, so the
+ * task-list gate must not block creating or updating it. Match the exact
+ * normalized file—not the whole plans directory or a shared string prefix.
+ */
+export function isPlanArtifactMutationForGate(input: {
+  toolName: string
+  toolInput: unknown
+  expectedPlanFile: string
+  isPlanMode: boolean
+}): boolean {
+  if (!input.isPlanMode) return false
+  if (!PLAN_ARTIFACT_MUTATING_TOOLS.has(input.toolName)) return false
+  if (
+    typeof input.toolInput !== 'object' ||
+    input.toolInput === null ||
+    !('file_path' in input.toolInput)
+  ) {
+    return false
+  }
+  const filePath = (input.toolInput as { file_path?: unknown }).file_path
+  if (typeof filePath !== 'string' || filePath.trim() === '') return false
+  try {
+    return expandPath(filePath) === expandPath(input.expectedPlanFile)
+  } catch {
+    // Invalid paths never become a planning exemption.
+    return false
+  }
+}
 
 export function getTaskListGateConfig(): TaskListGateConfig {
   const configured = (
@@ -141,6 +178,11 @@ export function checkTaskListGate(input: {
    * The name set above is only a conservative fallback for direct callers.
    */
   isMutating?: boolean
+  /**
+   * True only for an exact current-session plan file. The plan artifact must
+   * be writable before TaskCreate without opening ordinary workspace writes.
+   */
+  isPlanArtifactMutation?: boolean
   config?: TaskListGateConfig
 }): GateDecision {
   const config = input.config ?? getTaskListGateConfig()
@@ -148,6 +190,7 @@ export function checkTaskListGate(input: {
   if (isTaskListGateExempt(input.toolName)) return { allowed: true }
   const isMutating = input.isMutating ?? isMutatingTool(input.toolName)
   if (!isMutating) return { allowed: true }
+  if (input.isPlanArtifactMutation) return { allowed: true }
   if (input.taskCount !== null && input.taskCount > 0) {
     return { allowed: true }
   }

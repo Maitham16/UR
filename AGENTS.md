@@ -3,7 +3,7 @@
 This is the durable handoff for coding agents working in this repository. Read
 this file before exploring the tree. It records the architecture, decisions,
 invariants, validation state, and release workflow established during the
-v1.65.7 audit and maintained through v1.65.8.
+v1.65.7 audit and maintained through v1.65.9.
 
 Do not start by re-auditing the entire repository. Confirm the current version
 and working-tree state, then open only the technical chapter and source paths
@@ -81,31 +81,29 @@ runtime behavior changes.
 
 ## Release snapshot: 2026-07-30
 
-- Local package version: **1.65.8**
-- npm `latest` at the time of this update: **1.65.7**
-- v1.65.8 had not been committed, tagged, pushed, or published when this
-  snapshot was updated.
-- Full functional validation immediately before the version-only 1.65.8
-  rebuild:
-  - 2,067 tests passed, 0 failed
-  - 9,090 assertions across 252 files
+- Local package version: **1.65.9**
+- npm `latest` at the time of this update: **1.65.8**
+- v1.65.9 has not been committed, tagged, pushed, or published.
+- Full functional validation immediately before the 1.65.9 bump:
+  - 2,073 tests passed, 0 failed
+  - 9,123 assertions across 252 files
   - typecheck passed
   - lint passed
-  - `git diff --check` passed
-  - `bun run release:check` passed
-  - dependency audit reported no known vulnerabilities
-  - safety matrix was current
-  - all six runtime dependency ranges resolved
-  - packaged CLI started successfully
-  - final npm publish dry run passed
-  - tarball: 156 files, 6.5 MB packed, 32.4 MB unpacked
-  - SDK ESM, CommonJS, and TypeScript declarations built successfully
+  - 54 focused planning, task-gate, command-registry, prompt, and
+    documentation tests passed with 1,465 assertions
 - Post-bump validation:
-  - 27 focused UI, terminal-safety, versioning, and release-readiness tests
-    passed
-  - release check passed for 1.65.8
-  - npm publish dry run passed for `ur-agent@1.65.8`
-  - the global `/opt/homebrew/bin/ur` bundle matches the local verified bundle
+  - 32 release-readiness, command-registry, and extension-version tests passed
+    with 1,539 assertions
+  - CLI plus ESM/CommonJS/typed SDK builds passed with 86 synchronized version
+    occurrences
+  - release check and packaged CLI smoke test passed for 1.65.9
+  - dependency audit reported no known vulnerabilities; all six runtime
+    dependency ranges resolve; the safety matrix is current
+  - secret scan and `git diff --check` passed
+  - npm publish dry run passed: 156 files, 6.5 MB packed, 32.4 MB unpacked,
+    shasum `c45f7d17ee77c0028f20751c843b749bc5d43f83`
+  - global `/opt/homebrew/bin/ur` reports 1.65.9 and its CLI bundle SHA-256
+    matches the local verified bundle
 
 This snapshot is evidence, not a permanent guarantee. Rerun relevant gates
 after later changes.
@@ -179,8 +177,16 @@ be established.
 ### Tasks and plans
 
 - Multi-step mutations require a plan/task list.
+- Task lists and plan mode are separate state machines. `ExitPlanMode` follows
+  a successful `EnterPlanMode` or `/plan`; creating tasks alone does not enter
+  plan mode.
+- In active plan mode, only the exact normalized session plan file is exempt
+  from the task-list mutation gate. Rewritten paths and out-of-mode writes are
+  gated normally.
 - The gate must count actual tool calls, not assistant messages. The first valid
   write after creating a plan must not be blocked.
+- Permission-time task and path state is rechecked at the final execution
+  boundary, including unchanged and in-place rewritten inputs.
 - Task order is numeric, never lexicographic (`2` precedes `10`).
 - Dependencies must complete before dependents run.
 - A task cannot be marked completed merely because execution stopped.
@@ -351,6 +357,12 @@ refactoring:
 - Dependency-declaration tests scan imported packages.
 - Provider API-key entry supplies explicit terminal width, cursor/focus state,
   and a one-line secret viewport so masked keys never render vertically.
+- Plan-file writes no longer deadlock behind the task-list gate while plan mode
+  is establishing that plan; the exemption is exact-path and mode scoped.
+- `ExitPlanMode` post-permission validation no longer mistakes an approved mode
+  transition for a new out-of-mode call.
+- Command-registry release checks use a Linux/platform-neutral baseline and
+  test the supported macOS/x64-Windows `/desktop` delta separately.
 - CLI handlers no longer report success after failed underlying work.
 - SDK query validation, environment precedence, NDJSON parsing, and nonzero exit
   behavior are tested.

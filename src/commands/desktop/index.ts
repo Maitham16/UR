@@ -1,10 +1,13 @@
 import type { Command } from '../../commands.js'
 
-function isSupportedPlatform(): boolean {
-  if (process.platform === 'darwin') {
+export function isDesktopCommandSupported(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): boolean {
+  if (platform === 'darwin') {
     return true
   }
-  if (process.platform === 'win32' && process.arch === 'x64') {
+  if (platform === 'win32' && arch === 'x64') {
     return true
   }
   return false
@@ -18,9 +21,9 @@ const desktop = {
   // Ungated: the 'ur-ai' availability requirement was unsatisfiable — it
   // needs the 'subscription' provider, which the registry blocks as an
   // internal placeholder, so no user could ever see this command.
-  isEnabled: isSupportedPlatform,
+  isEnabled: isDesktopCommandSupported,
   get isHidden() {
-    return !isSupportedPlatform()
+    return !isDesktopCommandSupported()
   },
   load: () => import('./desktop.js'),
 } satisfies Command

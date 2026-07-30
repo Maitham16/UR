@@ -6,6 +6,7 @@ import {
   countActionableTasksForGate,
   countActionableTodosForGate,
   isMutatingTool,
+  isPlanArtifactMutationForGate,
 } from '../src/services/tools/taskListGate.ts'
 import { AgentTool } from '../src/tools/AgentTool/AgentTool.tsx'
 import { countToolCallsBeforeCurrent } from '../src/services/tools/toolExecution.ts'
@@ -100,6 +101,69 @@ test('the gate never blocks the fix for itself', () => {
   for (const tool of ['TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet']) {
     expect(isMutatingTool(tool)).toBe(false)
   }
+})
+
+test('the exact current-session plan file is a narrow gate exemption', () => {
+  const expectedPlanFile = '/tmp/ur-plans/steady-river.md'
+  expect(
+    isPlanArtifactMutationForGate({
+      toolName: 'Write',
+      toolInput: { file_path: expectedPlanFile },
+      expectedPlanFile,
+      isPlanMode: true,
+    }),
+  ).toBe(true)
+  expect(
+    isPlanArtifactMutationForGate({
+      toolName: 'Edit',
+      toolInput: { file_path: '/tmp/ur-plans/steady-river.md' },
+      expectedPlanFile: '/tmp/ur-plans/../ur-plans/steady-river.md',
+      isPlanMode: true,
+    }),
+  ).toBe(true)
+
+  for (const filePath of [
+    '/tmp/ur-plans/steady-river-copy.md',
+    '/tmp/ur-plans/steady-river.md/child',
+    '/tmp/ur-plans/other-plan.md',
+  ]) {
+    expect(
+      isPlanArtifactMutationForGate({
+        toolName: 'Write',
+        toolInput: { file_path: filePath },
+        expectedPlanFile,
+        isPlanMode: true,
+      }),
+    ).toBe(false)
+  }
+  expect(
+    isPlanArtifactMutationForGate({
+      toolName: 'Bash',
+      toolInput: { file_path: expectedPlanFile },
+      expectedPlanFile,
+      isPlanMode: true,
+    }),
+  ).toBe(false)
+  expect(
+    isPlanArtifactMutationForGate({
+      toolName: 'Write',
+      toolInput: { file_path: expectedPlanFile },
+      expectedPlanFile,
+      isPlanMode: false,
+    }),
+  ).toBe(false)
+
+  expect(
+    checkTaskListGate({
+      toolName: 'Write',
+      taskCount: 0,
+      readsSoFar: 99,
+      isSubagent: false,
+      isMutating: true,
+      isPlanArtifactMutation: true,
+      config: CONFIG,
+    }).allowed,
+  ).toBe(true)
 })
 
 test('runtime tool classification covers dynamic and future mutators', () => {

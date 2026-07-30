@@ -115,6 +115,12 @@ use legacy `TodoWrite` by default, or Task V2 when
   Delegation and child mutations always require an actionable parent task.
 - An unreadable task store fails closed. Task create/update/list/get tools stay
   exempt so the agent can repair the plan.
+- Creating or updating the exact current-session plan-mode Markdown file is
+  also exempt: that file is the planning artifact, not an ordinary workspace
+  change. The exemption and live actionable-task state are re-evaluated at the
+  final execution boundary after permission-hook input rewrites; sibling files
+  and the plans directory are not exempt, and the filename alone is not exempt
+  outside live plan mode.
 - Configure the behavior at
   `tasks.requireBeforeChanges.{enabled,freeReads}`.
 

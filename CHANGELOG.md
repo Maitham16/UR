@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.65.9
+
+- Fixed the plan-file/task-list deadlock. While plan mode is active, the exact
+  normalized session plan file can be written before actionable tasks exist;
+  ordinary workspace mutations still require `TaskCreate`/`TodoWrite`, and
+  permission or hook rewrites are reclassified at the final execution boundary.
+- Fixed `ExitPlanMode` approval races. Permission approval can change the mode
+  and rewrite allowed prompts or edited plan content without causing a false
+  “not in plan mode” error, while genuinely new out-of-mode calls remain
+  rejected. The compact execution contract now distinguishes ordered task
+  tracking from explicit plan mode for weaker models.
+- Fixed Linux GitHub Actions and release validation without misrepresenting the
+  product surface. Registry checks now use the platform-neutral
+  167-command/160-visible/235-token baseline and verify the supported macOS and
+  x64 Windows `/desktop` (`/app`) delta separately.
+
 ## 1.65.8
 
 - Fixed provider API-key entry in `/model`: the masked input now uses the

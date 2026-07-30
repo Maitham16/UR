@@ -76,6 +76,7 @@ import {
 } from '../../utils/hooks.js'
 import { appendProjectMemory } from '../../services/context/projectContextManifest.js'
 import { logError } from '../../utils/log.js'
+import { getPlanFilePath } from '../../utils/plans.js'
 import {
   CANCEL_MESSAGE,
   createProgressMessage,
@@ -124,6 +125,7 @@ import {
   checkTaskListGate,
   countActionableTasksForGate,
   countActionableTodosForGate,
+  isPlanArtifactMutationForGate,
 } from './taskListGate.js'
 import {
   callSignature,
@@ -209,6 +211,34 @@ async function countTasksForGate(
     return countActionableTasksForGate(inspection.tasks)
   } catch {
     return null
+  }
+}
+
+function isCurrentPlanArtifactMutation(
+  toolName: string,
+  input: unknown,
+  toolUseContext: ToolUseContext,
+): boolean {
+  if (
+    toolName !== FILE_WRITE_TOOL_NAME &&
+    toolName !== FILE_EDIT_TOOL_NAME &&
+    toolName !== 'MultiEdit'
+  ) {
+    return false
+  }
+  try {
+    const isPlanMode =
+      toolUseContext.getAppState().toolPermissionContext.mode === 'plan'
+    if (!isPlanMode) return false
+    return isPlanArtifactMutationForGate({
+      toolName,
+      toolInput: input,
+      expectedPlanFile: getPlanFilePath(toolUseContext.agentId),
+      isPlanMode,
+    })
+  } catch {
+    // Failing to resolve the session plan must not exempt a mutation.
+    return false
   }
 }
 
@@ -1048,6 +1078,11 @@ async function checkPermissionsAndCallTool(
     // Classification failures must not become a bypass.
     isMutating = true
   }
+  const isPlanArtifactMutation = isCurrentPlanArtifactMutation(
+    tool.name,
+    parsedInput.data,
+    toolUseContext,
+  )
   const gate = checkTaskListGate({
     toolName: tool.name,
     taskCount: await countTasksForGate(toolUseContext),
@@ -1061,6 +1096,7 @@ async function checkPermissionsAndCallTool(
     ),
     isSubagent: Boolean(toolUseContext.agentId),
     isMutating,
+    isPlanArtifactMutation,
   })
   if (gate.allowed === false) {
     // Counts toward the repeat guard: a model that answers the gate by
@@ -1144,6 +1180,14 @@ async function checkPermissionsAndCallTool(
     tool.backfillObservableInput!(backfilledClone as Record<string, unknown>)
     processedInput = backfilledClone
   }
+  // Hooks receive the mutable observable clone. Keep the post-backfill path
+  // separately so an in-place hook rewrite cannot mutate both the value and
+  // the supposed comparison baseline, making a real path change look
+  // unchanged at the final execution boundary.
+  const backfilledFilePathSnapshot =
+    backfilledClone && 'file_path' in backfilledClone
+      ? (backfilledClone as Record<string, unknown>).file_path
+      : undefined
 
   let shouldPreventContinuation = false
   let stopReason: string | undefined
@@ -1528,13 +1572,22 @@ async function checkPermissionsAndCallTool(
     'file_path' in processedInput &&
     'file_path' in (callInput as Record<string, unknown>) &&
     (processedInput as Record<string, unknown>).file_path ===
-      (backfilledClone as Record<string, unknown>).file_path
+      backfilledFilePathSnapshot
   ) {
     callInput = {
       ...processedInput,
       file_path: (callInput as Record<string, unknown>).file_path,
     } as typeof processedInput
-  } else if (processedInput !== backfilledClone) {
+  } else if (
+    processedInput !== backfilledClone ||
+    (processedInput === backfilledClone &&
+      backfilledFilePathSnapshot !== undefined &&
+      (typeof processedInput !== 'object' ||
+        processedInput === null ||
+        !('file_path' in processedInput) ||
+        (processedInput as Record<string, unknown>).file_path !==
+          backfilledFilePathSnapshot))
+  ) {
     callInput = processedInput
   }
 
@@ -1640,7 +1693,10 @@ async function checkPermissionsAndCallTool(
   if (callSig !== initiallyValidatedCallSig) {
     const finalValidation = await tool.validateInput?.(
       finalParsedInput.data,
-      toolUseContext,
+      {
+        ...toolUseContext,
+        validationPhase: 'post-permission',
+      },
     )
     if (finalValidation?.result === false) {
       recordCallFailure(callSig)
@@ -1669,7 +1725,22 @@ async function checkPermissionsAndCallTool(
   } catch {
     finalIsMutating = true
   }
-  if (callSig !== initiallyValidatedCallSig || finalIsMutating !== isMutating) {
+  const finalIsPlanArtifactMutation = isCurrentPlanArtifactMutation(
+    tool.name,
+    finalParsedInput.data,
+    toolUseContext,
+  )
+  const effectiveCallChanged =
+    callSig !== initiallyValidatedCallSig ||
+    finalIsMutating !== isMutating ||
+    finalIsPlanArtifactMutation !== isPlanArtifactMutation
+  // Re-read task state for every ordinary mutation, even when hooks and the
+  // permission UI returned the input unchanged. A task can be completed,
+  // deleted, or become unreadable while permission is pending; relying only
+  // on the initial snapshot would let that unchanged call cross the boundary
+  // with no longer-verifiable plan. Read-only calls and the exact plan
+  // artifact do not need a second task-store read.
+  if (finalIsMutating && !finalIsPlanArtifactMutation) {
     const finalGate = checkTaskListGate({
       toolName: tool.name,
       taskCount: await countTasksForGate(toolUseContext),
@@ -1680,6 +1751,7 @@ async function checkPermissionsAndCallTool(
       ),
       isSubagent: Boolean(toolUseContext.agentId),
       isMutating: finalIsMutating,
+      isPlanArtifactMutation: finalIsPlanArtifactMutation,
     })
     if (finalGate.allowed === false) {
       recordCallFailure(callSig)
@@ -1689,7 +1761,10 @@ async function checkPermissionsAndCallTool(
           content: [
             {
               type: 'tool_result',
-              content: `<tool_use_error>TaskListRequired after input update: ${finalGate.reason}</tool_use_error>`,
+              content:
+                `<tool_use_error>TaskListRequired ` +
+                `${effectiveCallChanged ? 'after input update' : 'before execution'}: ` +
+                `${finalGate.reason}</tool_use_error>`,
               is_error: true,
               tool_use_id: toolUseID,
             },

@@ -277,7 +277,10 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     // For non-teammates, require user confirmation to exit plan mode
     return true
   },
-  async validateInput(_input, { getAppState, options }) {
+  async validateInput(
+    _input,
+    { getAppState, options, validationPhase },
+  ) {
     // Teammate AppState may show leader's mode (runAgent.ts skips override in
     // acceptEdits/bypassPermissions/auto); isPlanModeRequired() is the real source
     if (isTeammate()) {
@@ -287,7 +290,12 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     // model can call it after plan approval (fresh delta on compact/clear).
     // Reject before checkPermissions to avoid showing the approval dialog.
     const mode = getAppState().toolPermissionContext.mode
-    if (mode !== 'plan') {
+    // A successful plan approval intentionally applies its permission-mode
+    // update before the executor revalidates any UI-rewritten input (for
+    // example, allowedPrompts or a locally edited plan). The initial
+    // validation already proved that this invocation began in plan mode, so
+    // only a brand-new invocation must satisfy the transient mode precondition.
+    if (mode !== 'plan' && validationPhase !== 'post-permission') {
       logEvent('tengu_exit_plan_mode_called_outside_plan', {
         model:
           options.mainLoopModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

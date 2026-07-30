@@ -1,6 +1,6 @@
 # UR-Nexus — Technical Specifications
 
-> Audited against the executable source and tests for `ur-agent` v1.65.8.
+> Audited against the executable source and tests for `ur-agent` v1.65.9.
 > Command, tool, flag, provider, and setting claims are checked against the
 > implementation rather than copied from product prose. Release validation
 > keeps this version synchronized and packages the complete `technical/`
@@ -37,7 +37,7 @@ in this release, so it is not advertised as an available backend.
 - **Package**: `ur-agent`, binary `ur` (`bin/ur.js` → `dist/cli.js`, bundled from `src/entrypoints/cli.tsx`).
 - **Runtime**: the npm binary uses a Node ≥ 18.18 launcher and requires Bun ≥ 1.3 for the bundled CLI; the TUI uses React 19 and the vendored Ink fork in `src/ink`.
 - **Local-first**: default model backend is the local Ollama runtime (`http://localhost:11434`); `--offline` disables all cloud paths.
-- **Registered commands at this release**: 168 bundled registry entries, 161 visible entries, 237 visible slash invocation tokens, and 70 rows in `ur --help`; fast-path lifecycle/server commands are documented separately in doc 02. User/project skills, installed plugins, workflows, and MCP prompts are additive and normalized by source priority.
+- **Registered commands at this release**: 167 platform-neutral bundled registry entries, 160 visible entries, and 235 visible slash invocation tokens. macOS and x64 Windows add `/desktop` (`/app`) for totals of 168, 161, and 237. There are 70 rows in `ur --help`; fast-path lifecycle/server commands are documented separately in doc 02. User/project skills, installed plugins, workflows, and MCP prompts are additive and normalized by source priority.
 - **Registered tools**: the built-in pool is assembled per session from `src/tools.ts:getAllBaseTools()` and then filtered by runtime, mode, settings, permissions, and availability. Doc 04 enumerates the public built-ins and every supported gate; connected MCP tools are additive.
 - **Feature flags**: compile-time `feature(...)` gates (`bun:bundle`) dead-code-eliminate internal-only surfaces from external builds; `USER_TYPE=ant` gates internal commands.
 - **Project state**: lives under `.ur/` in each repo (artifacts, specs, workflows, guardrails, safety policy, knowledge, memory index, devcontainer config, tools, index).

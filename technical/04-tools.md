@@ -55,6 +55,13 @@ users don't call tools directly.
 | `EnterWorktree` / `ExitWorktree` | Move the session into/out of an isolated git worktree (worktree mode) | "Do this in a scratch worktree" |
 | `SendUserMessage` | KAIROS/KAIROS_BRIEF build-only mid-turn brief; not present in the standard npm build | — |
 
+Task tracking and plan mode are separate state machines. Creating an ordered
+`TaskCreate`/`TodoWrite` list does not enter plan mode; `ExitPlanMode` is valid
+only after `EnterPlanMode` (or `/plan`) has successfully made the active mode
+`plan`. Plan approval may change that mode before permission-edited input is
+revalidated; the executor labels that second validation as post-permission so
+the already-validated exit can finish, while new out-of-mode calls still fail.
+
 ## Multi-agent tools
 
 The table below separates the ordinary Agent/Skill tools from coordination

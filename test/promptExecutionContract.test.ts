@@ -14,7 +14,10 @@ test('execution contract is ordered, complete, and compact', () => {
   )
   expect(EXECUTION_CONTRACT_SECTION).toContain('2. Act:')
   expect(EXECUTION_CONTRACT_SECTION).toContain(
-    'For 3+ steps, record an ordered plan before implementation',
+    'For 3+ steps, record ordered tasks before implementation',
+  )
+  expect(EXECUTION_CONTRACT_SECTION).toContain(
+    'Task lists are not plan mode: call ExitPlanMode after EnterPlanMode succeeds',
   )
   expect(EXECUTION_CONTRACT_SECTION).toContain(
     'Batch independent calls (maximum 8)',

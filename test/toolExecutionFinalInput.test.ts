@@ -7,6 +7,7 @@ import {
 } from '../src/bootstrap/state.js'
 import { getDefaultAppState } from '../src/state/AppStateStore.js'
 import { runToolUse } from '../src/services/tools/toolExecution.js'
+import { getPlanFilePath } from '../src/utils/plans.js'
 
 const originalTaskListId = process.env.UR_CODE_TASK_LIST_ID
 
@@ -189,4 +190,292 @@ test('a headless TodoWrite plan satisfies the final mutation gate', async () => 
   } finally {
     setIsInteractive(previousInteractive)
   }
+})
+
+test('an unchanged mutation is gated if its plan disappears during permission', async () => {
+  const previousInteractive = getIsInteractive()
+  setIsInteractive(false)
+  let callCount = 0
+  try {
+    const tool = {
+      name: 'TaskStateRaceMutation',
+      inputSchema: z.strictObject({
+        action: z.literal('write'),
+      }),
+      isReadOnly: () => false,
+      isConcurrencySafe: () => false,
+      isEnabled: () => true,
+      async call() {
+        callCount++
+        return { data: 'must not execute without a live plan' }
+      },
+    }
+    const state = getDefaultAppState()
+    const taskListId = getSessionId()
+    state.todos[taskListId] = [
+      {
+        content: 'Apply the guarded edit',
+        activeForm: 'Applying the guarded edit',
+        status: 'in_progress',
+      },
+    ]
+    const priorCalls = Array.from({ length: 3 }, (_, index) => ({
+      type: 'assistant',
+      message: {
+        id: `task-race-prior-${index}`,
+        content: [
+          {
+            type: 'tool_use',
+            id: `task-race-read-${index}`,
+            name: 'Read',
+            input: {},
+          },
+        ],
+      },
+    }))
+    const context = {
+      abortController: new AbortController(),
+      options: {
+        commands: [],
+        debug: false,
+        mainLoopModel: 'test-model',
+        tools: [tool],
+        verbose: false,
+        thinkingConfig: { type: 'disabled' },
+        mcpClients: [],
+        mcpResources: {},
+        isNonInteractiveSession: true,
+        agentDefinitions: { activeAgents: [], allAgents: [] },
+      },
+      getAppState: () => state,
+      setAppState: () => {},
+      messages: priorCalls,
+      readFileState: new Map(),
+      setInProgressToolUseIDs: () => {},
+      setResponseLength: () => {},
+      updateFileHistoryState: () => {},
+      updateAttributionState: () => {},
+    }
+    const input = { action: 'write' as const }
+    const output = await Array.fromAsync(
+      runToolUse(
+        {
+          type: 'tool_use',
+          id: 'task-state-race-mutation',
+          name: tool.name,
+          input,
+        } as never,
+        {
+          type: 'assistant',
+          uuid: 'assistant-task-state-race',
+          message: {
+            id: 'message-task-state-race',
+            content: [],
+          },
+        } as never,
+        (async () => {
+          // Simulate another actor completing the last task while permission
+          // is pending. The effective tool input itself remains unchanged.
+          state.todos[taskListId] = state.todos[taskListId]!.map(todo => ({
+            ...todo,
+            status: 'completed' as const,
+          }))
+          return {
+            behavior: 'allow' as const,
+            updatedInput: input,
+          }
+        }) as never,
+        context as never,
+      ),
+    )
+
+    expect(callCount).toBe(0)
+    expect(JSON.stringify(output)).toContain(
+      'TaskListRequired before execution',
+    )
+  } finally {
+    setIsInteractive(previousInteractive)
+  }
+})
+
+test('the exact session plan file is allowed but a rewritten workspace path is gated', async () => {
+  let callCount = 0
+  const planFilePath = getPlanFilePath()
+  const tool = {
+    name: 'Write',
+    inputSchema: z.strictObject({
+      file_path: z.string(),
+      content: z.string(),
+    }),
+    isReadOnly: () => false,
+    isConcurrencySafe: () => false,
+    isEnabled: () => true,
+    backfillObservableInput(input: { file_path: string }) {
+      // Real file tools expose an absolute-path clone to hooks. Keeping this
+      // hook-visible object distinct from callInput exercises that path.
+      input.file_path = String(input.file_path)
+    },
+    async call() {
+      callCount++
+      return { data: 'plan updated' }
+    },
+  }
+  const priorCalls = Array.from({ length: 3 }, (_, index) => ({
+    type: 'assistant',
+    message: {
+      id: `plan-read-message-${index}`,
+      content: [
+        {
+          type: 'tool_use',
+          id: `plan-read-${index}`,
+          name: 'Read',
+          input: {},
+        },
+      ],
+    },
+  }))
+  const state = getDefaultAppState()
+  state.toolPermissionContext = {
+    ...state.toolPermissionContext,
+    mode: 'plan',
+  }
+  const context = {
+    abortController: new AbortController(),
+    options: {
+      commands: [],
+      debug: false,
+      mainLoopModel: 'test-model',
+      tools: [tool],
+      verbose: false,
+      thinkingConfig: { type: 'disabled' },
+      mcpClients: [],
+      mcpResources: {},
+      isNonInteractiveSession: true,
+      agentDefinitions: { activeAgents: [], allAgents: [] },
+    },
+    getAppState: () => state,
+    setAppState: () => {},
+    messages: priorCalls,
+    readFileState: new Map(),
+    setInProgressToolUseIDs: () => {},
+    setResponseLength: () => {},
+    updateFileHistoryState: () => {},
+    updateAttributionState: () => {},
+  }
+  const assistantMessage = {
+    type: 'assistant',
+    uuid: 'assistant-plan-file-gate',
+    message: {
+      id: 'message-plan-file-gate',
+      content: [],
+    },
+  }
+
+  const output = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'plan-file-write',
+        name: 'Write',
+        input: {
+          file_path: planFilePath,
+          content: '# Implementation plan',
+        },
+      } as never,
+      assistantMessage as never,
+      (async (_tool, input) => ({
+        behavior: 'allow' as const,
+        updatedInput: input,
+      })) as never,
+      context as never,
+    ),
+  )
+
+  expect(callCount, JSON.stringify(output)).toBe(1)
+  expect(JSON.stringify(output)).not.toContain('TaskListRequired')
+
+  const rewrittenOutput = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'plan-file-rewritten-to-workspace',
+        name: 'Write',
+        input: {
+          file_path: planFilePath,
+          content: '# Implementation plan',
+        },
+      } as never,
+      assistantMessage as never,
+      (async (_tool, input) => ({
+        behavior: 'allow' as const,
+        updatedInput: {
+          ...input,
+          file_path: '/tmp/not-the-current-session-plan.md',
+        },
+      })) as never,
+      context as never,
+    ),
+  )
+
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(rewrittenOutput)).toContain(
+    'TaskListRequired after input update',
+  )
+
+  const inPlaceRewrittenOutput = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'plan-file-in-place-rewrite',
+        name: 'Write',
+        input: {
+          file_path: planFilePath,
+          content: '# In-place rewrite attempt',
+        },
+      } as never,
+      assistantMessage as never,
+      (async (_tool, input) => {
+        // Permission implementations are permitted to mutate and return the
+        // observable clone itself, rather than allocate a fresh object.
+        input.file_path = '/tmp/not-the-current-session-plan.md'
+        return {
+          behavior: 'allow' as const,
+          updatedInput: input,
+        }
+      }) as never,
+      context as never,
+    ),
+  )
+
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(inPlaceRewrittenOutput)).toContain(
+    'TaskListRequired after input update',
+  )
+
+  state.toolPermissionContext = {
+    ...state.toolPermissionContext,
+    mode: 'default',
+  }
+  const outsidePlanModeOutput = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'plan-file-outside-plan-mode',
+        name: 'Write',
+        input: {
+          file_path: planFilePath,
+          content: '# Not in plan mode',
+        },
+      } as never,
+      assistantMessage as never,
+      (async (_tool, input) => ({
+        behavior: 'allow' as const,
+        updatedInput: input,
+      })) as never,
+      context as never,
+    ),
+  )
+
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(outsidePlanModeOutput)).toContain('TaskListRequired')
 })
