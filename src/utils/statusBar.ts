@@ -10,6 +10,7 @@ export type StatusBarInput = {
   branch?: string | null
   taskRunningCount?: number
   taskTotalCount?: number
+  agentRunningCount?: number
   checksStatus?: string | null
   latestVersion?: string | null
   isCheckingUpdate?: boolean
@@ -37,6 +38,33 @@ export function countActiveBackgroundTasks(
   let active = 0
   for (const task of tasks) {
     if (isBackgroundTask(task)) active += 1
+  }
+  return active
+}
+
+/**
+ * Count agents running in the foreground of the current turn.
+ *
+ * isBackgroundTask() excludes these on purpose, so subagents dispatched during
+ * a turn were counted nowhere and the status line stayed silent while they ran
+ * — the one moment the user most wants to know how many are working. Counted
+ * separately rather than folded into the background total: they are different
+ * kinds of work, and merging them would resurrect the stale-ratio problem the
+ * background counter was narrowed to fix.
+ *
+ * Only 'running' counts. A pending foreground agent has not started, and
+ * reporting it as working would be the kind of optimistic number that makes a
+ * status line untrustworthy.
+ */
+export function countActiveForegroundAgents(
+  tasks: Iterable<TaskState>,
+): number {
+  let active = 0
+  for (const task of tasks) {
+    if (task.status !== 'running') continue
+    if (!('isBackgrounded' in task) || task.isBackgrounded !== false) continue
+    if (!String(task.type ?? '').includes('agent')) continue
+    active += 1
   }
   return active
 }
@@ -69,6 +97,7 @@ export function buildDefaultStatusBar({
   branch,
   taskRunningCount = 0,
   taskTotalCount = 0,
+  agentRunningCount = 0,
   checksStatus,
   latestVersion,
   isCheckingUpdate,
@@ -80,6 +109,13 @@ export function buildDefaultStatusBar({
   // most need while a request is running.
   if (model) {
     parts.push(model)
+  }
+  // Foreground agents first: they are the work happening right now, and the
+  // status line truncates at terminal width.
+  if (agentRunningCount > 0) {
+    parts.push(
+      `agents: ${agentRunningCount} running`,
+    )
   }
   if (taskRunningCount > 0) {
     parts.push(

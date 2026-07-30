@@ -28,7 +28,7 @@ import { createBaseHookInput, executeStatusLineCommand } from '../utils/hooks.js
 import { getLastAssistantMessage } from '../utils/messages.js';
 import { getRuntimeMainLoopModel, type ModelName, renderModelName } from '../utils/model/model.js';
 import { getCurrentSessionTitle } from '../utils/sessionStorage.js';
-import { buildDefaultStatusBar, countActiveBackgroundTasks, statusBarShouldDisplay } from '../utils/statusBar.js';
+import { buildDefaultStatusBar, countActiveBackgroundTasks, countActiveForegroundAgents, statusBarShouldDisplay } from '../utils/statusBar.js';
 import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/tokens.js';
 import { getCurrentWorktreeSession } from '../utils/worktree.js';
 import { isVimModeEnabled } from './PromptInput/utils.js';
@@ -236,6 +236,9 @@ function StatusLineInner({
   const providerRuntimeKey = buildStatusLineRefreshKey(providerRuntime, mainLoopModel);
   const taskValues = Object.values(tasks);
   const taskRunningCount = countActiveBackgroundTasks(taskValues);
+  // Subagents dispatched during a turn are excluded from the background count
+  // by design, so nothing reported them while they ran. Counted separately.
+  const agentRunningCount = countActiveForegroundAgents(taskValues);
   const defaultStatusLineText = buildDefaultStatusBar({
     version: MACRO.VERSION,
     providerLabel: providerRuntime.providerLabel,
@@ -248,6 +251,7 @@ function StatusLineInner({
     mode: permissionMode,
     branch,
     taskRunningCount,
+    agentRunningCount,
     // Deliberately omit a denominator: the task store also contains
     // foreground work and retained terminal history, so taskValues.length is
     // not a meaningful "background tasks total".

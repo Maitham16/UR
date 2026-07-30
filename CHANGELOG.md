@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.68.4
+
+- The status line now reports subagents running in the current turn:
+  `agents: 2 running`, separate from the existing background `tasks:` count.
+  `isBackgroundTask()` excludes foreground entries on purpose — it was narrowed
+  to stop stale ratios like `tasks: 0/4 active` outliving the work — but nothing
+  counted them instead, so while subagents ran the bar said nothing at all,
+  which is the one moment the number matters.
+- Counted conservatively on purpose: a pending agent is not reported as running,
+  a backgrounded agent is not counted twice across both numbers, a foreground
+  shell is not labelled an agent, and zero renders nothing rather than
+  `agents: 0`. A wrong number in a status line is worse than a missing one.
+- No tool count was added. A `toolCount` field was drafted and then removed
+  rather than shipped unpopulated; a meaningful count of in-flight tool calls
+  needs hooks into tool execution, and a static "tools registered" total is
+  noise.
+
 ## 1.68.3
 
 - `Ollama request failed (400): http: request body too large` now explains
