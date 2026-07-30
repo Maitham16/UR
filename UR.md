@@ -60,6 +60,10 @@ very code you are editing — be careful, verify, and prefer small reviewable st
   one bold question, 2–8 bold labels with descriptions, and an explicit final
   selection instruction. It still requires the live schema and an interactive
   main-agent turn; ambiguity fails closed.
+- Treat an Ask header as a bounded UI chip, not decision content. A safe
+  overlong header may be compacted deterministically to 12 characters; never
+  rewrite or truncate the actual question, choices, descriptions, previews, or
+  selection mode to make an invalid call pass.
 - `AskUserQuestion` request schemas never expose response fields. `answers` and
   `annotations` are permission-UI output and must pass post-permission
   completeness checks before the tool can report that the user answered.

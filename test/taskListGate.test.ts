@@ -9,6 +9,7 @@ import {
   isMutationRequiringTaskList,
   isMutatingTool,
   isPlanArtifactMutationForGate,
+  isSyntaxVerificationForTaskGate,
 } from '../src/services/tools/taskListGate.ts'
 import { AgentTool } from '../src/tools/AgentTool/AgentTool.tsx'
 import { BashTool } from '../src/tools/BashTool/BashTool.tsx'
@@ -308,6 +309,103 @@ test('runtime tool classification covers dynamic and future mutators', () => {
       config: CONFIG,
     }).allowed,
   ).toBe(true)
+})
+
+test('the exact HTML syntax verifier bypasses only the task gate', () => {
+  const input = {
+    command:
+      'wc -l index.html && node -e "const fs=require(\'fs\');' +
+      'const s=fs.readFileSync(\'index.html\',\'utf8\');try{' +
+      'new Function(s.split(\'<script>\')[1].split(\'</script>\')[0]);' +
+      'console.log(\'JS syntax OK\');}catch(e){' +
+      'console.log(\'SYNTAX ERROR:\',e.message);}"',
+    description: 'Validate JS syntax of game file',
+  }
+
+  expect(
+    isSyntaxVerificationForTaskGate({
+      toolName: 'Bash',
+      toolInput: input,
+    }),
+  ).toBe(true)
+  expect(
+    isMutationRequiringTaskList({
+      toolName: 'Bash',
+      toolInput: input,
+      isMutating: true,
+    }),
+  ).toBe(false)
+  expect(
+    checkTaskListGate({
+      toolName: 'Bash',
+      taskCount: 0,
+      totalTaskCount: 0,
+      readsSoFar: 99,
+      isSubagent: false,
+      isMutating: isMutationRequiringTaskList({
+        toolName: 'Bash',
+        toolInput: input,
+        isMutating: true,
+      }),
+      config: CONFIG,
+    }).allowed,
+  ).toBe(true)
+
+  // Generic Node execution is still not permission-auto-approved. The narrow
+  // compatibility rule affects task tracking only.
+  expect(BashTool.isReadOnly?.(input as never)).toBe(false)
+})
+
+test('Node syntax verification recognition fails closed on executable variants', () => {
+  const safeInline =
+    'node -e "const fs=require(\'fs\');const s=' +
+    'fs.readFileSync(\'index.html\',\'utf8\');try{new Function(' +
+    's.split(\'<script>\')[1].split(\'</script>\')[0]);' +
+    'console.log(\'OK\');}catch(e){console.log(\'ERROR:\',e.message);}"'
+  expect(
+    isSyntaxVerificationForTaskGate({
+      toolName: 'Bash',
+      toolInput: { command: safeInline },
+    }),
+  ).toBe(true)
+  expect(
+    isSyntaxVerificationForTaskGate({
+      toolName: 'Bash',
+      toolInput: { command: 'node --check game.js' },
+    }),
+  ).toBe(true)
+  expect(
+    isSyntaxVerificationForTaskGate({
+      toolName: 'Bash',
+      toolInput: { command: 'node --check "dir/game file.js"' },
+    }),
+  ).toBe(true)
+
+  for (const command of [
+    'node -e "require(\'fs\').writeFileSync(\'x\',\'y\')"',
+    `${safeInline}; touch /tmp/not-a-verification`,
+    `${safeInline} > verification.txt`,
+    safeInline.replace('new Function(', 'new Function(').replace(
+      ');console.log(\'OK\')',
+      ')();console.log(\'OK\')',
+    ),
+    `wc -l other.html && ${safeInline}`,
+    'node --check --run test',
+    'node --check game.js && touch /tmp/not-a-verification',
+    'node --check "$(touch /tmp/not-a-verification)"',
+    'node --check "`touch /tmp/not-a-verification`"',
+    'node --check <(touch /tmp/not-a-verification)',
+    'node --check >(touch /tmp/not-a-verification)',
+    "node --check *(e:'touch /tmp/not-a-verification':)",
+  ]) {
+    expect(
+      isSyntaxVerificationForTaskGate({
+        toolName: 'Bash',
+        toolInput: { command },
+      }),
+      command,
+    ).toBe(false)
+  }
 })
 
 test('a single loopback browser preview bypasses only the task gate', () => {

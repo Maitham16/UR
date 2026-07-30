@@ -481,6 +481,127 @@ test('loopback open reaches Bash permission but a mutating rewrite is task-gated
   )
 })
 
+test('syntax verification reaches Bash permission but a mutating rewrite is task-gated', async () => {
+  let callCount = 0
+  let permissionCount = 0
+  const tool = {
+    name: 'Bash',
+    inputSchema: z.strictObject({ command: z.string() }),
+    isReadOnly: () => false,
+    isConcurrencySafe: () => false,
+    isEnabled: () => true,
+    async call() {
+      callCount++
+      return { data: 'syntax verified' }
+    },
+  }
+  const priorCalls = Array.from({ length: 3 }, (_, index) => ({
+    type: 'assistant',
+    message: {
+      id: `syntax-prior-message-${index}`,
+      content: [
+        {
+          type: 'tool_use',
+          id: `syntax-prior-${index}`,
+          name: 'Read',
+          input: {},
+        },
+      ],
+    },
+  }))
+  const state = getDefaultAppState()
+  const context = {
+    abortController: new AbortController(),
+    options: {
+      commands: [],
+      debug: false,
+      mainLoopModel: 'test-model',
+      tools: [tool],
+      verbose: false,
+      thinkingConfig: { type: 'disabled' },
+      mcpClients: [],
+      mcpResources: {},
+      isNonInteractiveSession: true,
+      agentDefinitions: { activeAgents: [], allAgents: [] },
+    },
+    getAppState: () => state,
+    setAppState: () => {},
+    messages: priorCalls,
+    readFileState: new Map(),
+    setInProgressToolUseIDs: () => {},
+    setResponseLength: () => {},
+    updateFileHistoryState: () => {},
+    updateAttributionState: () => {},
+  }
+  const syntaxInput = {
+    command:
+      'wc -l index.html && node -e "const fs=require(\'fs\');' +
+      'const s=fs.readFileSync(\'index.html\',\'utf8\');try{' +
+      'new Function(s.split(\'<script>\')[1].split(\'</script>\')[0]);' +
+      'console.log(\'JS syntax OK\');}catch(e){' +
+      'console.log(\'SYNTAX ERROR:\',e.message);}"',
+  }
+
+  const allowed = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'syntax-verification',
+        name: tool.name,
+        input: syntaxInput,
+      } as never,
+      {
+        type: 'assistant',
+        uuid: 'assistant-syntax-verification',
+        message: { id: 'message-syntax-verification', content: [] },
+      } as never,
+      (async () => {
+        permissionCount++
+        return {
+          behavior: 'allow' as const,
+          updatedInput: syntaxInput,
+        }
+      }) as never,
+      context as never,
+    ),
+  )
+  expect(permissionCount).toBe(1)
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(allowed)).not.toContain('TaskListRequired')
+
+  const rewritten = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'syntax-verification-rewritten',
+        name: tool.name,
+        input: syntaxInput,
+      } as never,
+      {
+        type: 'assistant',
+        uuid: 'assistant-syntax-verification-rewritten',
+        message: {
+          id: 'message-syntax-verification-rewritten',
+          content: [],
+        },
+      } as never,
+      (async () => {
+        permissionCount++
+        return {
+          behavior: 'allow' as const,
+          updatedInput: { command: 'touch /tmp/task-gate-proof' },
+        }
+      }) as never,
+      context as never,
+    ),
+  )
+  expect(permissionCount).toBe(2)
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(rewritten)).toContain(
+    'TaskListRequired after input update',
+  )
+})
+
 test('plan-directory bootstrap reaches Bash permission but a rewritten command is gated', async () => {
   let callCount = 0
   let permissionCount = 0

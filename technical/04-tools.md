@@ -92,6 +92,15 @@ redirection, backgrounding, sandbox overrides, and permission-time rewrites to
 mutating commands fail closed. The preview command remains a Bash side effect
 and still follows normal permission, sandbox, and plan-worker rules.
 
+Syntax verification has the same task-gate-only separation. A strictly parsed
+`node --check <single-file>` or the bounded HTML checker that reads one file,
+constructs but never invokes its first `<script>` body, and prints only a fixed
+syntax result may run after a task-free one-shot Write. Generic `node -e`,
+additional statements or invocation, mismatched files, flags, redirects,
+expansion, backgrounding, sandbox overrides, and permission-time rewrites do
+not qualify. Node remains non-read-only for Bash permission and sandbox
+purposes, so this compatibility path cannot become a general execution bypass.
+
 Task completion also protects that lifecycle boundary. When the final
 actionable `in_progress` task has a successful `Write`/`Edit`/`MultiEdit`/
 `NotebookEdit` after its recorded start but no later successful inspection,
@@ -117,7 +126,11 @@ Descriptions are optional and are never fabricated from labels. The runtime
 accepts only lossless compatibility forms such as string choices and recognized
 question-text aliases; it does not turn arbitrary prose or flat option rows into
 invented questions. More than four blocking decisions are asked in later
-rounds.
+rounds. The sole presentation-only repair compacts a safe explicit header of at
+most 500 characters to one bounded first-word chip when it exceeds 12
+characters. The question, options, labels, descriptions, previews, metadata,
+and selection mode remain byte-for-byte unchanged. Control/ANSI-bearing or
+grossly oversized headers still fail validation.
 
 One narrow end-turn recovery exists for weak models that clearly attempted this
 tool but failed to emit a native call. On an interactive main-agent turn with
@@ -126,10 +139,11 @@ no existing tool use, the runtime may recover either one canonical
 to invoke `AskUserQuestion`, or one standalone Markdown decision menu with
 exactly one bold question, 2–8 bold labeled options with descriptions, and a
 terminal instruction to select an option. The recovered object must pass the
-live `AskUserQuestion` schema unchanged before the normal tool executor opens
-the UI. JSON repair, truncation, duplicate/ambiguous candidates, casual “A or
-B?” prose, examples, incomplete menus, background workers, headless sessions,
-and unavailable/disabled tools all fail closed.
+live `AskUserQuestion` schema unchanged except for that same deterministic
+UI-header compaction before the normal tool executor opens the UI. JSON repair,
+question/choice truncation, duplicate/ambiguous candidates, casual “A or B?”
+prose, examples, incomplete menus, background workers, headless sessions, and
+unavailable/disabled tools all fail closed.
 
 Answers and annotations are not model input fields. They are accepted only
 during post-permission validation after the interactive UI has returned one

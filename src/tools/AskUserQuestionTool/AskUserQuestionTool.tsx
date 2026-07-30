@@ -12,6 +12,7 @@ import type { Tool, ToolInputJSONSchema } from '../../Tool.js';
 import { buildTool, type ToolDef } from '../../Tool.js';
 import { lazySchema } from '../../utils/lazySchema.js';
 import { zodToJsonSchema } from '../../utils/zodToJsonSchema.js';
+import { headerFromQuestion, normalizeQuestionHeader } from './normalization.js';
 import { ASK_USER_QUESTION_TOOL_CHIP_WIDTH, ASK_USER_QUESTION_TOOL_NAME, ASK_USER_QUESTION_TOOL_PROMPT, DESCRIPTION, PREVIEW_FEATURE_PROMPT } from './prompt.js';
 const MAX_QUESTIONS = 4;
 const MAX_OPTIONS = 8;
@@ -27,11 +28,6 @@ const QUESTION_TEXT_ALIASES = ['question', 'questionText', 'question_text', 'pro
 const CONTROL_OR_ANSI_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]|\u001B\[/;
 function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-function headerFromQuestion(question: string, index: number): string {
-  const stopWords = new Set(['a', 'about', 'also', 'an', 'are', 'be', 'do', 'does', 'for', 'is', 'or', 'should', 'support', 'that', 'the', 'this', 'to', 'want', 'what', 'which', 'with', 'without', 'you']);
-  const word = question.replace(/[^A-Za-z0-9]+/g, ' ').split(/\s+/).find(part => part && !stopWords.has(part.toLowerCase())) ?? `Question ${index + 1}`;
-  return word.slice(0, ASK_USER_QUESTION_TOOL_CHIP_WIDTH);
 }
 function stringField(input: Record<string, unknown>, names: string[]): string {
   for (const name of names) {
@@ -87,7 +83,7 @@ function normalizeQuestionInput(value: unknown, index: number): unknown {
     normalized.options = options.map(normalizeQuestionOptionInput);
   }
   if (typeof question.header === 'string' && question.header.trim()) {
-    normalized.header = question.header.trim();
+    normalized.header = normalizeQuestionHeader(question.header, questionText, index);
   } else if (questionText) {
     normalized.header = headerFromQuestion(questionText, index);
   }

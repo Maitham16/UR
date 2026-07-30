@@ -313,6 +313,112 @@ export function isLocalPreviewOpenForTaskGate(input: {
   }
 }
 
+function safeInlineHtmlSyntaxCheck(script: string): {
+  path: string
+} | null {
+  const match = script.match(
+    /^const\s+(?<fs>[A-Za-z_$][\w$]*)\s*=\s*require\((?<fsq>['"])fs\k<fsq>\)\s*;\s*const\s+(?<source>[A-Za-z_$][\w$]*)\s*=\s*\k<fs>\.readFileSync\((?<pathq>['"])(?<path>[^'"\0\r\n]+)\k<pathq>\s*,\s*(?<utfq>['"])utf8\k<utfq>\)\s*;\s*try\s*\{\s*new\s+Function\(\k<source>\.split\((?<openq>['"])<script>\k<openq>\)\[1\]\.split\((?<closeq>['"])<\/script>\k<closeq>\)\[0\]\)\s*;\s*console\.log\((?<okq>['"])[^'"\0\r\n]*\k<okq>\)\s*;\s*\}\s*catch\s*\((?<error>[A-Za-z_$][\w$]*)\)\s*\{\s*console\.log\((?<errorq>['"])[^'"\0\r\n]*\k<errorq>\s*,\s*\k<error>\.message\)\s*;\s*\}\s*;?$/,
+  )
+  const path = match?.groups?.path
+  return path ? { path } : null
+}
+
+/**
+ * Recognize syntax-only Node verification at the task-list boundary. Node is
+ * intentionally still non-read-only under Bash permissions because generic
+ * `node -e`, NODE_OPTIONS and hook/environment behavior can execute code.
+ *
+ * The inline exception is a complete grammar for the transcript-produced HTML
+ * checker: read one file, compile (but never invoke) its first script block,
+ * and print only a fixed success/error label. Any extra statement, invocation,
+ * redirect, expansion, different file, flag or shell operation fails closed.
+ */
+export function isSyntaxVerificationForTaskGate(input: {
+  toolName: string
+  toolInput: unknown
+}): boolean {
+  if (
+    input.toolName !== 'Bash' ||
+    typeof input.toolInput !== 'object' ||
+    input.toolInput === null
+  ) {
+    return false
+  }
+  const candidate = input.toolInput as {
+    command?: unknown
+    run_in_background?: unknown
+    dangerouslyDisableSandbox?: unknown
+    _simulatedSedEdit?: unknown
+  }
+  if (
+    typeof candidate.command !== 'string' ||
+    candidate.command.trim() === '' ||
+    candidate.run_in_background === true ||
+    candidate.dangerouslyDisableSandbox === true ||
+    candidate._simulatedSedEdit !== undefined ||
+    candidate.command.includes('$') ||
+    candidate.command.includes('`') ||
+    candidate.command.includes('\\') ||
+    candidate.command.includes('\n') ||
+    candidate.command.includes('\r') ||
+    candidate.command.includes('\0') ||
+    hasUnbalancedQuotes(candidate.command)
+  ) {
+    return false
+  }
+
+  const parsed = tryParseShellCommand(candidate.command)
+  if (!parsed.success) return false
+  const tokens = parsed.tokens
+  const allStrings = (values: unknown[]): values is string[] =>
+    values.every(value => typeof value === 'string')
+
+  // `node --check file.js` parses without running the target program. Keep
+  // this task-gate-only: Bash permission and sandbox checks still apply. The
+  // raw grammar also excludes unquoted glob/process-substitution syntax that a
+  // token parser can otherwise collapse into one apparent path.
+  const safeNodeCheckCommand =
+    /^node[ \t]+--check[ \t]+(?:"[^"$`\\\0\r\n]+"|'[^'\0\r\n]+'|[A-Za-z0-9_./:@%+,=\-]+)[ \t]*$/.test(
+      candidate.command,
+    )
+  if (
+    safeNodeCheckCommand &&
+    tokens.length === 3 &&
+    allStrings(tokens) &&
+    tokens[0] === 'node' &&
+    tokens[1] === '--check'
+  ) {
+    const path = tokens[2] as string
+    return Boolean(
+      path &&
+        !path.startsWith('-') &&
+        !/[\0\r\n$`]/.test(path),
+    )
+  }
+
+  const hasLeadingWc =
+    tokens.length === 7 &&
+    tokens[0] === 'wc' &&
+    tokens[1] === '-l' &&
+    typeof tokens[2] === 'string' &&
+    isShellOperator(tokens[3], '&&')
+  const nodeIndex = hasLeadingWc ? 4 : 0
+  if (
+    tokens.length !== nodeIndex + 3 ||
+    tokens[nodeIndex] !== 'node' ||
+    tokens[nodeIndex + 1] !== '-e' ||
+    typeof tokens[nodeIndex + 2] !== 'string'
+  ) {
+    return false
+  }
+
+  const check = safeInlineHtmlSyntaxCheck(
+    tokens[nodeIndex + 2] as string,
+  )
+  if (!check) return false
+  return !hasLeadingWc || tokens[2] === check.path
+}
+
 /**
  * Runtime mutation classification for the task-list gate only. This must not
  * be reused for permission, sandbox, concurrency or planning-child checks.
@@ -325,6 +431,10 @@ export function isMutationRequiringTaskList(input: {
   return (
     input.isMutating &&
     !isLocalPreviewOpenForTaskGate({
+      toolName: input.toolName,
+      toolInput: input.toolInput,
+    }) &&
+    !isSyntaxVerificationForTaskGate({
       toolName: input.toolName,
       toolInput: input.toolInput,
     })

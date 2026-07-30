@@ -47,7 +47,10 @@ test('AskUserQuestion validation compacts repeated indexed omissions', () => {
   expect(message).not.toContain('questions[13].question')
   expect(message).toContain('1-4 complete question objects')
   expect(message).toContain('2-8 objects containing `label`')
-  expect(message).toContain('Do not invent missing choices or truncate entries')
+  expect(message).toContain(
+    'Do not invent missing choices or truncate question/option content',
+  )
+  expect(message).toContain('Overlong UI headers are compacted automatically')
   expect(message).toContain('do not repeat the unchanged call')
   expect(message.split('\n').length).toBeLessThanOrEqual(7)
 })

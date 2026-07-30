@@ -227,9 +227,10 @@ function getAskUserQuestionCorrection(error: ZodError): string | null {
     'objects containing `label`; include `description` only when it adds a ' +
     'useful consequence or trade-off.' +
     countNotice +
-    ' Do not invent missing choices or truncate entries. Retry with at most ' +
-    'four complete questions, ask remaining decisions in later rounds, and ' +
-    'do not repeat the unchanged call.'
+    ' Do not invent missing choices or truncate question/option content. ' +
+    'Overlong UI headers are compacted automatically. Retry with at most four ' +
+    'complete questions, ask remaining decisions in later rounds, and do not ' +
+    'repeat the unchanged call.'
   )
 }
 

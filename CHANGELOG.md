@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.65.13
+
+- Recovered otherwise valid `AskUserQuestion` calls whose UI header exceeds
+  the 12-character chip width. Native structured calls, bare/wrapped JSON, and
+  explicit-choice recovery now compact only that bounded presentation field;
+  questions, choices, labels, descriptions, previews, metadata, and selection
+  behavior remain unchanged, while unsafe or grossly oversized headers still
+  fail validation.
+- Allowed strictly parsed syntax verification after a task-free one-shot
+  Write. `node --check <file>` and the bounded transcript-produced HTML script
+  checker bypass only the task-list requirement; arbitrary Node evaluation,
+  extra commands, redirects, backgrounding, sandbox overrides, and
+  permission-time rewrites fail closed, and normal Bash permission/sandbox
+  checks still apply.
+
 ## 1.65.12
 
 - Forced explicit weak-model decision menus through the real

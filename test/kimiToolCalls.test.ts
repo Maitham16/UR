@@ -192,7 +192,7 @@ test('bare AskUserQuestion rejects ambiguous option objects without truncating',
   }
 })
 
-test('bare AskUserQuestion preserves overlong headers for schema validation', () => {
+test('bare AskUserQuestion compacts only an overlong UI header', () => {
   const header = 'Header longer than twelve'
   const result = parseBareJsonToolCalls(
     JSON.stringify({
@@ -211,13 +211,47 @@ test('bare AskUserQuestion preserves overlong headers for schema validation', ()
   )
 
   expect(result.toolCalls).toHaveLength(1)
-  expect(
-    (
-      result.toolCalls[0]?.input.questions as Array<{
-        header: string
-      }>
-    )[0]?.header,
-  ).toBe(header)
+  expect(result.toolCalls[0]?.input).toEqual({
+    questions: [
+      {
+        question: 'Which choice?',
+        header: 'Header',
+        options: [{ label: 'First' }, { label: 'Second' }],
+      },
+    ],
+  })
+})
+
+test('wrapped bare AskUserQuestion receives the same header-only recovery', () => {
+  const input = {
+    questions: [
+      {
+        question: 'Which choice?',
+        header: 'Decision category',
+        options: [
+          { label: 'First', description: 'Keep the current approach.' },
+          { label: 'Second', description: 'Use the alternative approach.' },
+        ],
+      },
+    ],
+  }
+  const result = parseBareJsonToolCalls(
+    JSON.stringify({ tool: 'AskUserQuestion', input }),
+    {
+      availableToolNames: ASK,
+      parseBareJsonToolCalls: true,
+    },
+  )
+
+  expect(result.toolCalls).toHaveLength(1)
+  expect(result.toolCalls[0]?.input).toEqual({
+    questions: [
+      {
+        ...input.questions[0],
+        header: 'Decision',
+      },
+    ],
+  })
 })
 
 test('remote transport synthesizes bare AskUserQuestion JSON into a tool use', () => {

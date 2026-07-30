@@ -1,5 +1,10 @@
 import { parseToolInputJsonLenient } from '../../utils/json.js'
 import { randomUUID } from 'node:crypto'
+import {
+  headerFromQuestion,
+  normalizeAskQuestionHeaders,
+  normalizeQuestionHeader,
+} from '../../tools/AskUserQuestionTool/normalization.js'
 
 export interface ParsedToolCall {
   id: string
@@ -344,41 +349,6 @@ function objectValue(value: unknown): Record<string, unknown> | null {
     : null
 }
 
-function headerFromQuestion(question: string, index: number): string {
-  const stopWords = new Set([
-    'a',
-    'about',
-    'also',
-    'an',
-    'are',
-    'be',
-    'do',
-    'does',
-    'for',
-    'is',
-    'or',
-    'should',
-    'support',
-    'that',
-    'the',
-    'this',
-    'to',
-    'want',
-    'what',
-    'which',
-    'with',
-    'without',
-    'you',
-  ])
-  const word =
-    question
-      .replace(/[^A-Za-z0-9]+/g, ' ')
-      .split(/\s+/)
-      .find(part => part && !stopWords.has(part.toLowerCase())) ??
-    `Question ${index + 1}`
-  return word.slice(0, 12)
-}
-
 function stringField(input: Record<string, unknown>, names: string[]): string {
   for (const name of names) {
     const value = input[name]
@@ -438,7 +408,7 @@ function normalizeQuestion(value: unknown, index: number): Record<string, unknow
   if (options.length < 2 || options.length > 8) return null
   const header =
     typeof question.header === 'string' && question.header.trim()
-      ? question.header.trim()
+      ? normalizeQuestionHeader(question.header, questionText, index)
       : headerFromQuestion(questionText, index)
   return {
     question: questionText,
@@ -605,10 +575,14 @@ function maybeBareJsonToolCall(
     if (!hasTool(availableToolNames, name)) {
       return null
     }
+    const wrappedInput = input.input as Record<string, unknown>
     return {
       id: parsedToolCallId('bare', index),
       name,
-      input: input.input as Record<string, unknown>,
+      input:
+        name === 'AskUserQuestion'
+          ? normalizeAskQuestionHeaders(wrappedInput)
+          : wrappedInput,
     }
   }
 

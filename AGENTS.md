@@ -3,7 +3,7 @@
 This is the durable handoff for coding agents working in this repository. Read
 this file before exploring the tree. It records the architecture, decisions,
 invariants, validation state, and release workflow established during the
-v1.65.7 audit and maintained through v1.65.12.
+v1.65.7 audit and maintained through v1.65.13.
 
 Do not start by re-auditing the entire repository. Confirm the current version
 and working-tree state, then open only the technical chapter and source paths
@@ -81,31 +81,30 @@ runtime behavior changes.
 
 ## Release snapshot: 2026-07-30
 
-- Local package version: **1.65.12**
-- npm `latest` at the time of this update: **1.65.11**
-- GitHub Actions run `30509686121` for v1.65.11 completed successfully.
-- v1.65.12 has not been committed, tagged, pushed, or published.
+- Local package version: **1.65.13**
+- npm `latest` at the time of this update: **1.65.12**
+- GitHub Actions production run `30511615274` for v1.65.12 completed
+  successfully.
+- v1.65.13 has not been committed, tagged, pushed, or published.
 - Full post-build functional validation:
-  - 2,152 tests passed, 0 failed
-  - 9,555 assertions across 259 files
+  - 2,158 tests passed, 0 failed
+  - 9,599 assertions across 259 files
   - typecheck and strict-core typecheck passed (133 strict files)
-- Release validation, secret scan, CLI version/help smoke tests, dependency
-  audit, package smoke test, and npm publish dry-run all passed.
+- Release validation, lint, secret scan, CLI version/help smoke tests,
+  dependency audit, package smoke test, and npm publish dry-run all passed.
 - Dry-run tarball: 156 files, 6.5 MB packed, 32.4 MB unpacked; SHA-1
-  `74ef3908a48bab3032ac05b6cde90b5055b5410d`.
-  - lint passed
-  - both parallel implementation/regression workers completed their scopes
+  `717d248affa86ec510306304f48f791575d673de`.
 - Release validation:
   - CLI plus ESM/CommonJS/typed SDK builds passed with 86 synchronized version
     occurrences
-  - release check and packaged CLI smoke test passed for 1.65.11 on npm 12
+  - release check and packaged CLI smoke test passed for 1.65.13
   - dependency audit reported no known vulnerabilities; all six runtime
     dependency ranges resolve; the safety matrix is current
   - secret scan and `git diff --check` passed
-  - local CLI reports `1.65.11 (UR-Nexus)` and `--help` exits successfully
+  - local CLI reports `1.65.13 (UR-Nexus)` and `--help` exits successfully
   - npm publish dry run passed: 156 files, 6.5 MB packed, 32.4 MB unpacked,
-    shasum `7449e0ccbbf34bcbda3d3d34dea47a49a1294992`
-  - the current remote `master` production workflow is green; v1.65.11 CI
+    shasum `717d248affa86ec510306304f48f791575d673de`
+  - the current remote `master` production workflow is green; v1.65.13 CI
     remains pending until the local release commit is pushed
 
 This snapshot is evidence, not a permanent guarantee. Rerun relevant gates
@@ -414,6 +413,9 @@ refactoring:
 - AskUserQuestion exposes a request-only nested schema, never accepts model
   supplied answers, revalidates every interaction after permission, and
   requires one real answer per question before reporting success.
+- A safe overlong Ask header is compacted as a presentation-only UI chip across
+  native, bare-JSON, and explicit-choice recovery; question and option content
+  is never shortened to make a call pass.
 - Ask UI records are prototype-safe, preview questions have a genuine custom
   Other path, and HTML preview mode escapes model content as inert text.
 - Write missing-content recovery never infers a file from surrounding prose;
@@ -426,6 +428,9 @@ refactoring:
 - The exact live plan-directory bootstrap can bypass only the task-list gate;
   Bash permission, sandbox, plan-child, and permission-rewrite checks still
   apply.
+- Strictly parsed Node syntax checks may bypass only the task-list gate after a
+  task-free one-shot Write. Generic evaluation and Bash permission/sandbox
+  behavior remain unchanged.
 - The final actionable task remains in progress after an unchecked file
   mutation, preventing an all-terminal Edit dead end while requiring observable
   verification before completion.

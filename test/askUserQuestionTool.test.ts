@@ -117,6 +117,54 @@ test('AskUserQuestion accepts question aliases without inventing option text', (
   ])
 })
 
+test('AskUserQuestion compacts only an overlong UI header and preserves the full decision', () => {
+  const input = {
+    questions: [
+      {
+        header: 'Nova mechanic',
+        multiSelect: false,
+        options: [
+          {
+            description:
+              'Hold space longer to charge a stronger nova blast; releasing fires it.',
+            label: 'Charge & release (Recommended)',
+          },
+          {
+            description:
+              'Continuous fire while holding space; release converges the shots.',
+            label: 'Hold = rapid fire, release = nova',
+          },
+        ],
+        question:
+          "How should the space-bar 'charge then release for nova' mechanic work?",
+      },
+      validQuestion({
+        question: 'What movement controls do you want?',
+        header: 'Controls',
+      }),
+      validQuestion({
+        question: 'What progression should the game use?',
+        header: 'Progression',
+      }),
+      validQuestion({
+        question: 'What visual style do you want?',
+        header: 'Visual style',
+      }),
+    ],
+  }
+  const expected = structuredClone(input)
+  expected.questions[0]!.header = 'Nova'
+
+  const parsed = AskUserQuestionTool.inputSchema.safeParse(input)
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data as unknown).toEqual(expected)
+  expect(parsed.data.questions[0]?.options as unknown).toEqual(
+    input.questions[0]?.options,
+  )
+})
+
 test('AskUserQuestion rejects description-only and value-only option objects', () => {
   for (const ambiguousOption of [
     { description: 'No citations needed' },
@@ -160,7 +208,8 @@ test('AskUserQuestion enforces question, option, and text bounds', () => {
       ],
     },
     { questions: [validQuestion({ question: 'Q'.repeat(501) })] },
-    { questions: [validQuestion({ header: 'H'.repeat(13) })] },
+    { questions: [validQuestion({ header: 'H'.repeat(501) })] },
+    { questions: [validQuestion({ header: '\u001B[31mUnsafe' })] },
     {
       questions: [
         validQuestion({
@@ -267,6 +316,7 @@ test('model input schema exposes request fields only and accurate required field
     'question',
   ])
   expect(question.required).not.toContain('multiSelect')
+  expect(question.properties.header.maxLength).toBe(12)
   expect(question.properties.options.minItems).toBe(2)
   expect(question.properties.options.maxItems).toBe(8)
   expect(question.properties.options.items.required).toEqual(['label'])

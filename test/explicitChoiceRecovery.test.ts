@@ -182,6 +182,47 @@ test('real Ask schema rejects an overlong reasoning label instead of truncating 
   expect(result).toBeNull()
 })
 
+test('reasoning recovery compacts only an overlong presentation header', () => {
+  const input = structuredClone(EXACT_REASONING_INPUT)
+  input.questions[0]!.header = 'Scope decision'
+  const result = recoverExplicitChoiceToolUse({
+    assistantMessages: [
+      assistant(
+        [
+          {
+            type: 'thinking',
+            thinking:
+              'We should use AskUserQuestion tool.' + JSON.stringify(input),
+          },
+        ],
+        'end_turn',
+        'overlong-header',
+      ),
+    ],
+    tools: [AskUserQuestionTool],
+    isNonInteractiveSession: false,
+    uuid: (() => {
+      let index = 0
+      return () => `header-id-${++index}`
+    })(),
+  })
+
+  expect(result?.toolUse.input).toEqual({
+    ...input,
+    questions: [
+      {
+        ...input.questions[0],
+        header: 'Scope',
+      },
+    ],
+  })
+  expect(
+    (
+      result?.toolUse.input.questions as typeof input.questions
+    )[0]?.options,
+  ).toEqual(input.questions[0]?.options)
+})
+
 test('reasoning recovery rejects examples, non-final JSON, and ambiguous duplicates', () => {
   const serialized = JSON.stringify(EXACT_REASONING_INPUT)
   for (const thinkingBlocks of [

@@ -1,6 +1,7 @@
 import type { ToolUseBlock } from '@urhq-ai/sdk/resources/index.mjs'
 import { isDeepStrictEqual } from 'node:util'
 import { findToolByName, type Tools } from '../../Tool.js'
+import { normalizeAskQuestionHeaders } from '../../tools/AskUserQuestionTool/normalization.js'
 import { ASK_USER_QUESTION_TOOL_NAME } from '../../tools/AskUserQuestionTool/prompt.js'
 import type { AssistantMessage } from '../../types/message.js'
 import {
@@ -81,10 +82,11 @@ export function recoverExplicitChoiceToolUse({
     thinkingBlocks,
     textBlocks,
   })) {
-    const parsed = askTool.inputSchema.safeParse(candidate.input)
+    const headerNormalizedInput = normalizeAskQuestionHeaders(candidate.input)
+    const parsed = askTool.inputSchema.safeParse(headerNormalizedInput)
     if (
       !parsed.success ||
-      !isDeepStrictEqual(parsed.data, candidate.input)
+      !isDeepStrictEqual(parsed.data, headerNormalizedInput)
     ) {
       continue
     }
