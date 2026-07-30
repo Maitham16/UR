@@ -61,12 +61,40 @@ const GATE_EXEMPT_TOOLS = new Set([
   'TaskList',
   'TaskGet',
   'TodoWrite',
+  // These bootstrap or clean up the task/team control plane. Requiring an
+  // existing actionable task would deadlock TeamCreate before its task list
+  // exists and TeamDelete/TaskStop after tracked work has finished.
+  'TeamCreate',
+  'TeamDelete',
+  'TaskStop',
+  'KillShell',
   // Exiting plan mode is the approval/control transition that precedes
   // implementation, not implementation work itself. The tool's own initial
   // validation still requires live plan mode, so this exemption cannot make a
   // stale second ExitPlanMode call valid.
   'ExitPlanMode',
 ])
+
+function isControlMessageForTaskGate(input: {
+  toolName: string
+  toolInput: unknown
+}): boolean {
+  if (
+    input.toolName !== 'SendMessage' ||
+    typeof input.toolInput !== 'object' ||
+    input.toolInput === null
+  ) {
+    return false
+  }
+  const message = (input.toolInput as { message?: unknown }).message
+  if (typeof message !== 'object' || message === null) return false
+  const type = (message as { type?: unknown }).type
+  return (
+    type === 'shutdown_request' ||
+    type === 'shutdown_response' ||
+    type === 'plan_approval_response'
+  )
+}
 
 const ALWAYS_REQUIRE_PLAN_TOOLS = new Set([
   // Delegation can mutate through the child process. Letting it consume the
@@ -430,6 +458,7 @@ export function isMutationRequiringTaskList(input: {
 }): boolean {
   return (
     input.isMutating &&
+    !isControlMessageForTaskGate(input) &&
     !isLocalPreviewOpenForTaskGate({
       toolName: input.toolName,
       toolInput: input.toolInput,
@@ -528,8 +557,11 @@ export function checkTaskListGate(input: {
    * be writable before TaskCreate without opening ordinary workspace writes.
    */
   isPlanArtifactMutation?: boolean
-  /** Exact task-list tool available in this runtime (TaskCreate or TodoWrite). */
-  taskPlanningToolName?: string
+  /**
+   * Exact task-list tool available in this runtime. Explicit null means the
+   * caller's custom tool pool has no way to satisfy the gate.
+   */
+  taskPlanningToolName?: string | null
   config?: TaskListGateConfig
 }): GateDecision {
   const config = input.config ?? getTaskListGateConfig()
@@ -540,6 +572,16 @@ export function checkTaskListGate(input: {
   if (input.isPlanArtifactMutation) return { allowed: true }
   if (input.taskCount !== null && input.taskCount > 0) {
     return { allowed: true }
+  }
+  if (input.taskPlanningToolName === null) {
+    return {
+      allowed: false,
+      reason:
+        `No task-list tool is available in the current custom tool pool, so ` +
+        `${input.toolName} cannot safely change state. Enable ` +
+        `TaskCreate+TaskUpdate or TodoWrite, then retry; alternatively disable ` +
+        `tasks.requireBeforeChanges.enabled in settings.`,
+    }
   }
   if (input.taskCount === null) {
     const taskTool = input.taskPlanningToolName ?? 'TaskCreate'

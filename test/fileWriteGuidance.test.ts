@@ -4,6 +4,15 @@ import { getWriteToolDescription } from '../src/tools/FileWriteTool/prompt.ts'
 test('Write guidance requires path and complete content in one tool call', () => {
   const prompt = getWriteToolDescription()
   expect(prompt).toContain(
+    'successful task setup (TaskCreate/TaskUpdate or TodoWrite, whichever is available) must already exist before this call',
+  )
+  expect(prompt).toContain(
+    'A feature-rich one-file build is non-trivial',
+  )
+  expect(prompt).toContain(
+    'Never batch Write with the task setup it depends on',
+  )
+  expect(prompt).toContain(
     'both required fields in the same structured invocation',
   )
   expect(prompt).toContain(

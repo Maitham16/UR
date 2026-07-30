@@ -12,6 +12,7 @@ export function getWriteToolDescription(): string {
 
 Usage:
 - This tool will overwrite the existing file if there is one at the provided path.${getPreReadInstruction()}
+- For non-trivial work when task tools are available, successful task setup (TaskCreate/TaskUpdate or TodoWrite, whichever is available) must already exist before this call. A feature-rich one-file build is non-trivial. Never batch Write with the task setup it depends on.
 - Every call must include both required fields in the same structured invocation: \`file_path\` and the complete literal file text in \`content\`.
 - Put the actual file text inside \`content\`; surrounding assistant prose is never copied into the file. Never call Write with only a path, and never invent or recover missing content from prose.
 - An empty \`content\` string creates an empty file. Use it only when an empty file is genuinely intended.

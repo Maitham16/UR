@@ -343,6 +343,12 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
 
   prompt: async () => getPrompt(getProjectRoot()),
 
+  isReadOnly() {
+    // This wrapper only loads/expands skill instructions. Any downstream tool
+    // calls (including forked skill work) keep their own mutation gates.
+    return true
+  },
+
   // Only one skill/command should run at a time, since the tool expands the
   // command into a full prompt that UR must process before continuing.
   // Skill-coach needs the skill name to avoid false-positive "you could have

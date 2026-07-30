@@ -4,6 +4,12 @@ export const PROMPT = `Use this tool to update a task in the task list.
 
 ## When to Use This Tool
 
+**Start tasks before implementation:**
+- Move the selected ready task from pending to in_progress before its first
+  dependent Write, Edit, mutating shell, Agent, Task, or other state-changing call.
+- Inspect the successful TaskUpdate result first. Never batch the status update
+  with the workspace-changing call it enables.
+
 **Mark tasks as completed:**
 - When you have completed the work described in a task
 - IMPORTANT: Always mark your assigned tasks as completed when you finish them

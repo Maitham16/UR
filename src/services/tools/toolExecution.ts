@@ -53,6 +53,7 @@ import { NOTEBOOK_EDIT_TOOL_NAME } from '../../tools/NotebookEditTool/constants.
 import { POWERSHELL_TOOL_NAME } from '../../tools/PowerShellTool/toolName.js'
 import { parseGitCommitId } from '../../tools/shared/gitOperationTracking.js'
 import { TASK_CREATE_TOOL_NAME } from '../../tools/TaskCreateTool/constants.js'
+import { TASK_UPDATE_TOOL_NAME } from '../../tools/TaskUpdateTool/constants.js'
 import {
   isDeferredTool,
   TOOL_SEARCH_TOOL_NAME,
@@ -337,12 +338,16 @@ export function isBuiltInReadOnlyPlanningSubagent(
   )
 }
 
-function getTaskPlanningToolName(toolUseContext: ToolUseContext): string {
-  if (
-    toolUseContext.options.tools.some(tool =>
-      toolMatchesName(tool, TASK_CREATE_TOOL_NAME),
-    )
-  ) {
+function getTaskPlanningToolName(
+  toolUseContext: ToolUseContext,
+): string | null {
+  const hasTaskCreate = toolUseContext.options.tools.some(tool =>
+    toolMatchesName(tool, TASK_CREATE_TOOL_NAME),
+  )
+  const hasTaskUpdate = toolUseContext.options.tools.some(tool =>
+    toolMatchesName(tool, TASK_UPDATE_TOOL_NAME),
+  )
+  if (hasTaskCreate && hasTaskUpdate) {
     return TASK_CREATE_TOOL_NAME
   }
   if (
@@ -352,7 +357,9 @@ function getTaskPlanningToolName(toolUseContext: ToolUseContext): string {
   ) {
     return TODO_WRITE_TOOL_NAME
   }
-  return 'the available task-list tool'
+  if (hasTaskCreate) return TASK_CREATE_TOOL_NAME
+  if (hasTaskUpdate) return TASK_UPDATE_TOOL_NAME
+  return null
 }
 
 function getStopHookInfo(attachment: unknown): StopHookInfo | null {

@@ -3,7 +3,7 @@
 This is the durable handoff for coding agents working in this repository. Read
 this file before exploring the tree. It records the architecture, decisions,
 invariants, validation state, and release workflow established during the
-v1.65.7 audit and maintained through v1.65.13.
+v1.65.7 audit and maintained through v1.65.14.
 
 Do not start by re-auditing the entire repository. Confirm the current version
 and working-tree state, then open only the technical chapter and source paths
@@ -81,30 +81,30 @@ runtime behavior changes.
 
 ## Release snapshot: 2026-07-30
 
-- Local package version: **1.65.13**
-- npm `latest` at the time of this update: **1.65.12**
-- GitHub Actions production run `30511615274` for v1.65.12 completed
+- Local package version: **1.65.14**
+- npm `latest` at the time of this update: **1.65.13**
+- GitHub Actions production run `30513121469` for v1.65.13 completed
   successfully.
-- v1.65.13 has not been committed, tagged, pushed, or published.
+- v1.65.14 has not been committed, tagged, pushed, or published.
 - Full post-build functional validation:
-  - 2,158 tests passed, 0 failed
-  - 9,599 assertions across 259 files
+  - 2,166 tests passed, 0 failed
+  - 9,693 assertions across 259 files
   - typecheck and strict-core typecheck passed (133 strict files)
 - Release validation, lint, secret scan, CLI version/help smoke tests,
   dependency audit, package smoke test, and npm publish dry-run all passed.
 - Dry-run tarball: 156 files, 6.5 MB packed, 32.4 MB unpacked; SHA-1
-  `717d248affa86ec510306304f48f791575d673de`.
+  `66ff0d1533ff5de1200cdf5ab24991c6b0294cd1`.
 - Release validation:
   - CLI plus ESM/CommonJS/typed SDK builds passed with 86 synchronized version
     occurrences
-  - release check and packaged CLI smoke test passed for 1.65.13
+  - release check and packaged CLI smoke test passed for 1.65.14
   - dependency audit reported no known vulnerabilities; all six runtime
     dependency ranges resolve; the safety matrix is current
   - secret scan and `git diff --check` passed
-  - local CLI reports `1.65.13 (UR-Nexus)` and `--help` exits successfully
+  - local CLI reports `1.65.14 (UR-Nexus)` and `--help` exits successfully
   - npm publish dry run passed: 156 files, 6.5 MB packed, 32.4 MB unpacked,
-    shasum `717d248affa86ec510306304f48f791575d673de`
-  - the current remote `master` production workflow is green; v1.65.13 CI
+    shasum `66ff0d1533ff5de1200cdf5ab24991c6b0294cd1`
+  - the current remote `master` production workflow is green; v1.65.14 CI
     remains pending until the local release commit is pushed
 
 This snapshot is evidence, not a permanent guarantee. Rerun relevant gates
@@ -400,6 +400,17 @@ refactoring:
   remaining task rather than retrying unchanged.
 - Approved plans decompose cohesive outcomes into dependency-correct task
   graphs and use only the task and worker capabilities actually present.
+- Non-trivial state-changing work restores the v1.65.0 task-first order at
+  every model-facing boundary: available Task V2 or TodoWrite setup succeeds,
+  the selected task becomes in_progress, then the mutation/worker runs. A
+  feature-rich one-file build remains non-trivial, and setup is never batched
+  with the mutation it enables.
+- Bare/simple, coordinator, custom-agent, and override-prompt modes retain a
+  usable planner and task contract. Partial Task V2 exposure falls back to
+  TodoWrite; explicitly filtering out every planner fails closed with honest
+  configuration recovery. Team bootstrap/teardown, structured shutdown responses, and
+  emergency TaskStop are narrow control transitions; skill loading and desktop
+  screenshots are reads, while downstream mutations remain gated.
 - Standard built-in Explore/Plan workers are structurally read-only, and a
   second child-runtime boundary rejects attempted mutations.
 - Positive integer task IDs from models normalize to canonical strings before

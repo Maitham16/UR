@@ -58,13 +58,15 @@ export function getApprovedPlanImplementationInstruction(
   const taskTracking =
     capabilities.taskTool === 'task-v2'
       ? [
+          `Your next state-changing calls MUST be ${TASK_CREATE_TOOL_NAME} only. Do not call Write, Edit, a mutating shell, ${AGENT_TOOL_NAME}, Task, or any other state-changing implementation tool yet; do not batch task setup with implementation.`,
           `Use one ${TASK_CREATE_TOOL_NAME} call per cohesive, independently verifiable outcome; one umbrella task does not satisfy this requirement. Keep genuinely atomic work whole instead of manufacturing file- or tool-call-level tasks.`,
-          `Emit independent ${TASK_CREATE_TOOL_NAME} calls together (up to 8 per turn), then use ${TASK_UPDATE_TOOL_NAME} to add dependencies once task IDs are known. Leave unrelated tasks unblocked.`,
+          `Emit independent ${TASK_CREATE_TOOL_NAME} calls together (up to 8 per turn), inspect every successful result, create any remaining outcomes, then use ${TASK_UPDATE_TOOL_NAME} to add dependencies and mark the selected serial task or tasks actually launching in the current worker wave in_progress. Inspect those successful results before implementation. Leave unrelated tasks unblocked.`,
         ]
       : capabilities.taskTool === 'todo-write'
         ? [
+            `Your next state-changing call MUST be ${TODO_WRITE_TOOL_NAME}. Do not call Write, Edit, a mutating shell, ${AGENT_TOOL_NAME}, Task, or any other state-changing implementation tool yet; do not batch todo setup with implementation.`,
             `Use ${TODO_WRITE_TOOL_NAME} to record the complete list with one item per cohesive, independently verifiable outcome; one umbrella item does not satisfy this requirement. Keep genuinely atomic work whole instead of manufacturing file- or tool-call-level items.`,
-            'Order dependent items after their prerequisites, keep every real outcome visible, and update each status from pending to in_progress to completed only as evidence is obtained.',
+            `Inspect the successful ${TODO_WRITE_TOOL_NAME} result before implementation. Order dependent items after their prerequisites, keep every real outcome visible, and update each status from pending to in_progress to completed only as evidence is obtained.`,
           ]
         : [
             'Use the plan’s numbered Implementation Tasks as the execution checklist, with one cohesive, independently verifiable outcome per item. Keep genuinely atomic work whole; do not invent unavailable task tools.',

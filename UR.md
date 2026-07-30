@@ -70,6 +70,18 @@ very code you are editing — be careful, verify, and prefer small reviewable st
 - A `Write` call with no `content` has no recoverable file body. Never copy the
   preceding assistant prose or invent content; return an actionable validation
   error and require a new complete structured call.
+- Restore and preserve the v1.65.0 task-first lifecycle for non-trivial
+  state-changing work: complete the available Task V2 or `TodoWrite` setup,
+  inspect success, mark the selected task `in_progress`, inspect success, and
+  only then call a mutating tool or worker. A feature-rich one-file build is
+  not trivial, and task setup must not be batched with the mutation it enables.
+  Bare/simple, coordinator, custom-agent, and override-prompt modes must retain
+  a planner and this contract. Team bootstrap/teardown, shutdown responses,
+  emergency task stop, skill loading, and screenshots use their documented
+  narrow control/read-only classifications instead of deadlocking the gate.
+  An explicitly planner-less custom pool fails closed with configuration-level
+  recovery instead of naming a missing tool; default product modes always
+  provide a planner.
 - If a model doesn't advertise the `tools` capability in `/api/show`, tool
   definitions are silently dropped; the system prompt gets a bare-JSON
   format hint and everything depends on text parsing. Prefer tools-capable

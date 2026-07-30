@@ -182,7 +182,7 @@ ${
     : `When using the ${AGENT_TOOL_NAME} tool, specify a subagent_type parameter to select which agent type to use. If omitted, the general-purpose agent is used.`
 }
 
-For non-trivial delegation, define one cohesive task with its own observable done check per outcome before launching workers. Launch mutually independent tasks together only when they have no conflicting shared mutations; keep dependent or conflicting work sequential. Keep genuinely atomic work as one task instead of manufacturing extra agents.`
+Before every ordinary Agent launch, finish task setup, inspect its success, and mark the launched task in_progress; never batch task setup with Agent. Exact built-in Explore/Plan agents used read-only in plan mode are the only exception. For non-trivial delegation, define one cohesive task with its own observable done check per outcome. Launch mutually independent tasks together only when they have no conflicting shared mutations; keep dependent or conflicting work sequential. Keep genuinely atomic work as one task instead of manufacturing extra agents.`
 
   // Coordinator mode gets the slim prompt -- the coordinator system prompt
   // already covers usage notes, examples, and when-not-to-use guidance.

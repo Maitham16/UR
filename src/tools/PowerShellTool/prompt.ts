@@ -83,10 +83,13 @@ ${getEditionSection(edition)}
 
 Before executing the command, please follow these steps:
 
-1. Directory Verification:
+1. Task State:
+   - For non-trivial work when task tools are available, successful task setup must precede any state-changing command and its selected task must be in_progress. Read-only investigation is unaffected. Never batch task setup with the mutating PowerShell call it enables.
+
+2. Directory Verification:
    - If the command will create new directories or files, first use \`Get-ChildItem\` (or \`ls\`) to verify the parent directory exists and is the correct location
 
-2. Command Execution:
+3. Command Execution:
    - Always quote file paths that contain spaces with double quotes
    - Capture the output of the command.
 

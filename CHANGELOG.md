@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.65.14
+
+- Restored the proactive task-first behavior that was present in v1.65.0 and
+  removed a prompt/gate contradiction introduced later. For any non-trivial
+  state change, including a feature-rich single-file build, the model is now
+  told at system, task-tool, approved-plan, Ollama/Kimi, file, notebook,
+  shell, and worker boundaries to complete the available task setup, inspect
+  its result, mark the selected task `in_progress`, inspect that result, and
+  only then mutate state.
+- Made the ordering unambiguous for weaker models: task setup cannot be batched
+  with the mutation it enables, approved-plan handoffs require task calls as
+  the next state-changing calls, terminal task lists must be reopened or
+  extended before new work, and task guidance appears before file-tool
+  selection guidance.
+- Closed planner availability and control-flow gaps across tool modes. Legacy
+  `TodoWrite` now follows the same feature-rich/terminal-list lifecycle and is
+  preferred when Task V2 is incomplete; bare/simple, REPL-simple, coordinator,
+  custom-agent, and override-prompt paths all receive a usable planner and the
+  task-state contract. Coordinator workers must be task-bound before launch;
+  an explicitly planner-less custom tool pool now fails closed with honest
+  configuration recovery instead of naming a missing tool.
+- Prevented task-gate deadlocks and false mutations in supporting tools.
+  Team creation/deletion, shutdown/plan control messages, and emergency task
+  stop are narrow control transitions; skill loading and desktop screenshots
+  are read-only while downstream skill work, desktop input, and arbitrary
+  state-changing tools remain gated.
+
 ## 1.65.13
 
 - Recovered otherwise valid `AskUserQuestion` calls whose UI header exceeds

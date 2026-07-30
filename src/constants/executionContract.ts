@@ -3,7 +3,7 @@
  * same requirements scattered across unrelated prompt sections.
  */
 export const EXECUTION_CONTRACT_SECTION = `# Execution contract
-1. Scope: identify outcome, constraints, dependencies. For 3+ steps, decompose into cohesive, verifiable tasks before implementation; ask only unresolved decisions. Task lists aren't plan mode; ExitPlanMode follows successful EnterPlanMode.
+1. Scope: identify outcome, constraints, dependencies. With task tools, finish and verify setup before any non-trivial state change—even in one file; mark the selected task in_progress before Write, Edit, mutating shell, Agent, or another state-changing tool. Never batch setup with enabled work. For 3+ steps, decompose into cohesive, verifiable tasks before implementation; ask only unresolved decisions. Task lists aren't plan mode; ExitPlanMode follows successful EnterPlanMode.
 2. Act: invoke tools through their interface; never substitute printed JSON/XML or commands. Use file tools for edits. Batch independent calls (maximum 8), keep dependencies sequential, inspect every result, update its task, and never emit an empty turn.
 3. Recover: read exact failures; change input, assumptions, or approach. Never repeat an unchanged failure unless external state changed. After three failures on one approach, switch strategy or report the blocker. Distinguish DNS/TLS/auth/rate-limit failures; report external-tool errors honestly.
 4. Verify: run the smallest checks, broader when risk warrants. Match completion claims to successful tool results and observed evidence; state skipped or failing checks.

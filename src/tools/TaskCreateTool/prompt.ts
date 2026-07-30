@@ -26,6 +26,8 @@ Use this tool proactively in these scenarios:
 - User explicitly requests todo list - When the user directly asks you to use the todo list
 - User asks to queue work - When the user says "add to your tasks", "add this to your task list", "put this on the list", "queue this up", or anything similar, IMMEDIATELY call this tool with that request — even if you are in the middle of other work and even if the item sounds small. The user is watching the live task panel and expects the item to appear there right away. Acknowledge briefly and continue what you were doing unless asked to switch.
 - User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+- After receiving new non-trivial state-changing instructions - Immediately capture the complete outcome graph before any Write, Edit, mutating shell, Agent, Task, or other state-changing call. A feature-rich one-file build is still non-trivial.
+- Before beginning implementation - Wait for every required TaskCreate result, create any remaining outcome tasks, then use TaskUpdate to mark the selected ready task in_progress and wait for that result. Never batch task setup with the mutation it enables.
 - When new instructions materially change multi-step work - update the plan before continuing
 
 ## When NOT to Use This Tool
@@ -39,6 +41,12 @@ Skip using this tool when:
 NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
 
 EXCEPTION: none of the "skip" rules apply when the user explicitly asks for an item to be added to the task list ("add to your tasks …"). An explicit request always wins — create the task.
+
+GATE ALIGNMENT: "single file" and "one Write call" do not make work trivial.
+If investigation or planning has already occurred, or the change has multiple
+features or needs observable verification, establish an actionable task before
+Write, Edit, mutating shell, Agent, Task, or another state-changing tool. When earlier tasks are all terminal,
+create a new outcome task or reopen the relevant one with TaskUpdate first.
 
 ## Decomposition Quality
 

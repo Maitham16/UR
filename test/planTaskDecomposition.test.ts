@@ -17,10 +17,31 @@ test('approved plans become complete task graphs before implementation', () => {
   })
 
   expect(instruction).toContain('Before changing the workspace')
+  expect(instruction).toContain(
+    'Your next state-changing calls MUST be TaskCreate only',
+  )
+  expect(instruction).toContain(
+    'Do not call Write, Edit, a mutating shell, Agent, Task, or any other state-changing implementation tool yet',
+  )
+  expect(instruction).toContain(
+    'do not batch task setup with implementation',
+  )
   expect(instruction).toContain('one TaskCreate call per cohesive')
   expect(instruction).toContain('one umbrella task does not satisfy')
   expect(instruction).toContain('independent TaskCreate calls together')
   expect(instruction).toContain('use TaskUpdate to add dependencies')
+  expect(instruction).toContain(
+    'mark the selected serial task or tasks actually launching in the current worker wave in_progress',
+  )
+  expect(instruction).toContain(
+    'Inspect those successful results before implementation',
+  )
+  expect(instruction.indexOf('TaskCreate')).toBeLessThan(
+    instruction.indexOf('Write'),
+  )
+  expect(instruction.indexOf('TaskUpdate')).toBeLessThan(
+    instruction.indexOf('After the graph is complete'),
+  )
   expect(instruction).toContain('launch up to 8 ready tasks')
   expect(instruction).toContain('per parallel wave')
   expect(instruction).toContain('continue with later waves as slots free')
@@ -57,6 +78,12 @@ test('approved-plan handoff follows the actual task and worker capabilities', ()
     headlessCapabilities,
   )
   expect(headlessInstruction).toContain('Use TodoWrite')
+  expect(headlessInstruction).toContain(
+    'Your next state-changing call MUST be TodoWrite',
+  )
+  expect(headlessInstruction).toContain(
+    'do not batch todo setup with implementation',
+  )
   expect(headlessInstruction).not.toContain('TaskCreate')
   expect(headlessInstruction).not.toContain('TaskUpdate')
   expect(headlessInstruction).not.toContain('through Agent')
@@ -78,6 +105,20 @@ test('approved-plan handoff follows the actual task and worker capabilities', ()
     taskTool: 'task-v2',
     implementationAgentType: 'worker',
   })
+
+  for (const partial of [
+    [{ name: 'TaskCreate' }, { name: 'TodoWrite' }],
+    [{ name: 'TaskUpdate' }, { name: 'TodoWrite' }],
+  ]) {
+    expect(
+      getApprovedPlanCapabilities({
+        options: {
+          tools: partial,
+          agentDefinitions: { activeAgents: [], allAgents: [] },
+        },
+      } as never),
+    ).toEqual({ taskTool: 'todo-write' })
+  }
 
   const noTracking = getApprovedPlanImplementationInstruction({
     taskTool: 'none',
@@ -123,6 +164,15 @@ test('keep-context plan approval gives the model an enforceable worker handoff',
   const content = typeof result.content === 'string' ? result.content : ''
 
   expect(content).toContain('one TaskCreate call per cohesive')
+  expect(content).toContain(
+    'Your next state-changing calls MUST be TaskCreate only',
+  )
+  expect(content).toContain(
+    'mark the selected serial task or tasks actually launching in the current worker wave in_progress',
+  )
+  expect(content).toContain(
+    'Inspect those successful results before implementation',
+  )
   expect(content).toContain('through Agent using subagent_type=worker')
   expect(content).not.toContain('consider using the TeamCreate tool')
 
@@ -132,6 +182,28 @@ test('keep-context plan approval gives the model an enforceable worker handoff',
   )
   expect(source).toContain('getApprovedPlanCapabilities(context)')
   expect(source).not.toContain('isAgentSwarmsEnabled() &&')
+})
+
+test('keep-context TodoWrite approval names only the available tracker', () => {
+  const result = ExitPlanModeV2Tool.mapToolResultToToolResultBlockParam(
+    {
+      plan: '# Plan\n\n1. Fix parser\n2. Add tests',
+      isAgent: false,
+      filePath: '/tmp/plan.md',
+      implementationTaskTool: 'todo-write',
+    },
+    'exit-plan-todo',
+  )
+  const content = typeof result.content === 'string' ? result.content : ''
+
+  expect(content).toContain(
+    'Your next state-changing call MUST be TodoWrite',
+  )
+  expect(content).toContain(
+    'Inspect the successful TodoWrite result before implementation',
+  )
+  expect(content).not.toContain('TaskCreate')
+  expect(content).not.toContain('TaskUpdate')
 })
 
 test('clear-context plan approval reuses the same implementation contract', () => {

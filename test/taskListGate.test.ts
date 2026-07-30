@@ -9,10 +9,13 @@ import {
   isMutationRequiringTaskList,
   isMutatingTool,
   isPlanArtifactMutationForGate,
+  isTaskListGateExempt,
   isSyntaxVerificationForTaskGate,
 } from '../src/services/tools/taskListGate.ts'
 import { AgentTool } from '../src/tools/AgentTool/AgentTool.tsx'
 import { BashTool } from '../src/tools/BashTool/BashTool.tsx'
+import { ComputerTool } from '../src/tools/ComputerTool/ComputerTool.tsx'
+import { SkillTool } from '../src/tools/SkillTool/SkillTool.ts'
 import { countToolCallsBeforeCurrent } from '../src/services/tools/toolExecution.ts'
 
 // The system prompt already asked for a task list on multi-step work and the
@@ -64,6 +67,24 @@ test('gate recovery names the task tool available in headless mode', () => {
   expect((decision as { reason: string }).reason).not.toContain('TaskCreate')
 })
 
+test('a planner-less custom pool fails closed with configuration recovery', () => {
+  const decision = checkTaskListGate({
+    toolName: 'Write',
+    taskCount: 0,
+    readsSoFar: 99,
+    isSubagent: false,
+    isMutating: true,
+    taskPlanningToolName: null,
+    config: CONFIG,
+  })
+  expect(decision.allowed).toBe(false)
+  const reason = (decision as { reason: string }).reason
+  expect(reason).toContain('No task-list tool is available')
+  expect(reason).toContain('TaskCreate+TaskUpdate')
+  expect(reason).toContain('TodoWrite')
+  expect(reason).toContain('tasks.requireBeforeChanges.enabled')
+})
+
 test('reads are never blocked, so it can investigate before planning', () => {
   // Demanding a plan before the agent is allowed to look at anything would
   // produce a worse plan, not a better one.
@@ -80,12 +101,86 @@ test('reads are never blocked, so it can investigate before planning', () => {
   }
 })
 
+test('desktop screenshots and skill loading remain read-only', () => {
+  expect(
+    ComputerTool.isReadOnly({ action: 'screenshot' } as never),
+  ).toBe(true)
+  expect(ComputerTool.isReadOnly({ action: 'click' } as never)).toBe(false)
+  expect(ComputerTool.isReadOnly({ action: 'type' } as never)).toBe(false)
+  expect(SkillTool.isReadOnly({ skill: 'pdf' } as never)).toBe(true)
+})
+
+test('team lifecycle and emergency stop cannot deadlock on task state', () => {
+  for (const tool of [
+    'TeamCreate',
+    'TeamDelete',
+    'TaskStop',
+    'KillShell',
+  ]) {
+    expect(isTaskListGateExempt(tool)).toBe(true)
+  }
+
+  for (const type of [
+    'shutdown_request',
+    'shutdown_response',
+    'plan_approval_response',
+  ]) {
+    expect(
+      isMutationRequiringTaskList({
+        toolName: 'SendMessage',
+        toolInput: { message: { type } },
+        isMutating: true,
+      }),
+    ).toBe(false)
+  }
+  expect(
+    isMutationRequiringTaskList({
+      toolName: 'SendMessage',
+      toolInput: { message: { type: 'unknown' } },
+      isMutating: true,
+    }),
+  ).toBe(true)
+})
+
 test('an existing task list opens the gate', () => {
   expect(
     checkTaskListGate({
       toolName: 'Edit',
       taskCount: 1,
       readsSoFar: 50,
+      isSubagent: false,
+      config: CONFIG,
+    }).allowed,
+  ).toBe(true)
+})
+
+test('the reported Write stays blocked until TaskCreate has produced an actionable task', () => {
+  const beforeTaskCreate = checkTaskListGate({
+    toolName: 'Write',
+    taskCount: countActionableTasksForGate([]),
+    totalTaskCount: 0,
+    readsSoFar: 4,
+    isSubagent: false,
+    config: CONFIG,
+  })
+  expect(beforeTaskCreate.allowed).toBe(false)
+
+  const afterTaskCreate = [
+    {
+      status: 'pending',
+      metadata: {
+        doneCheck: 'Load warship.html and verify runtime behavior',
+      },
+    },
+  ]
+  const actionable = countActionableTasksForGate(afterTaskCreate)
+  expect(actionable).toBe(1)
+  expect(
+    checkTaskListGate({
+      toolName: 'Write',
+      taskCount: actionable,
+      totalTaskCount: afterTaskCreate.length,
+      readsSoFar: 5,
       isSubagent: false,
       config: CONFIG,
     }).allowed,

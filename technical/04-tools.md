@@ -74,6 +74,29 @@ constraints. Mutually independent tasks with no conflicting shared mutations
 can be delegated together, while dependent or conflicting work stays
 sequential.
 
+The proactive model lifecycle is explicit:
+`TaskCreate` → inspect successful result → `TaskUpdate(in_progress)` → inspect
+successful result → `Write`/`Edit`/mutating `Bash`/worker. Task setup and its
+dependent mutation are never one parallel batch. A feature-rich one-file build
+is non-trivial even if implementation uses one `Write`; classification follows
+the requested outcomes and verification burden, not the file or tool-call
+count. Approved-plan handoffs require task creation as their next
+state-changing action, and Ollama/Kimi receives the same ordered rule in its
+compact tool-discipline section. If earlier tasks are all terminal, the model
+must create a new cohesive outcome or reopen the relevant task before new
+workspace work.
+
+The runtime gate accepts an actionable `pending` or `in_progress` record; the
+stricter model-facing sequence keeps status truthful before work begins.
+`TodoWrite` is the equivalent single-call setup in legacy/headless pools, with
+the selected item already `in_progress`. Partial Task V2 exposure never masks
+an available `TodoWrite`. Bare/simple, REPL-simple, coordinator, custom-agent,
+and override-prompt paths retain a usable planner and capability-aware task
+contract, so the gate never instructs those modes to call a missing tool.
+If a user explicitly filters every planner from a custom tool pool, runtime
+fails closed and tells the user to enable Task V2/`TodoWrite` or explicitly
+disable the gate; it never tells the model to call a tool that is absent.
+
 Task IDs remain strings in storage and tool output. Model inputs for
 `TaskCreate` dependencies and `TaskGet`/`TaskUpdate` identifiers may also use a
 positive safe-integer JSON number; the tool boundary normalizes it to the
@@ -91,6 +114,15 @@ from the task-list gate; remote/file URLs, flags, shell composition, expansion,
 redirection, backgrounding, sandbox overrides, and permission-time rewrites to
 mutating commands fail closed. The preview command remains a Bash side effect
 and still follows normal permission, sandbox, and plan-worker rules.
+
+Control-plane operations that establish or tear down tracking cannot depend on
+an already-actionable task: `TeamCreate`, `TeamDelete`, `TaskStop`/`KillShell`,
+and structured team shutdown/plan-response messages are narrow task-gate
+exceptions. Their own schemas, mode checks, active-member checks, and normal
+permissions remain authoritative. Loading a `Skill` and taking a desktop
+screenshot are read-only wrappers; downstream skill actions, desktop
+click/type, API/database/browser/MCP mutations, and future tools classified
+state-changing at runtime remain task-gated.
 
 Syntax verification has the same task-gate-only separation. A strictly parsed
 `node --check <single-file>` or the bounded HTML checker that reads one file,

@@ -18,6 +18,13 @@ The main agent can spawn subagents. Built-in agent types
 | `Explore`, `Plan` | built-in read-only search and planning agents; registered in the standard npm bundle so plan-mode instructions never advertise missing worker types |
 
 Ordinary `Agent` subagents do not require experimental Teams/swarm mode.
+Every ordinary worker launch does require successful task setup and an
+`in_progress` parent task first; the exact built-in read-only `Explore`/`Plan`
+plan-mode path below is the only exception. Coordinator mode exposes Task V2
+tools (or `TodoWrite` in a legacy pool) instead of directing workers through an
+unsatisfiable gate. Independent tasks may launch in one worker wave only after
+their task records exist and the tasks actually launching are marked
+`in_progress`.
 Approved-plan handoff checks the actual tool pool, agent-type allowlist, live
 `Agent(type)` deny rules, and active built-in definitions. It can fan out
 independent ready tasks only when a selectable implementation worker remains.
@@ -33,6 +40,10 @@ Custom agents reusing those names, generic agents, teammates, background
 launches, custom working directories, and worktree launches remain mutating and
 task-gated. `TeamCreate` and `TeamDelete` also reject plan mode explicitly;
 team lifecycle state starts only after the plan is approved.
+Outside plan mode, team creation/deletion, structured shutdown responses, and
+emergency `TaskStop` are task-control transitions exempt from the workspace
+task gate so team bootstrap and teardown cannot deadlock. Their tool-specific
+validation still applies, including refusing deletion while members are active.
 
 In the standard bundle, `Explore` and `Plan` receive only `Glob`, `Grep`, and
 `Read`, use `dontAsk` permission mode, and have a second runtime boundary that
