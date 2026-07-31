@@ -79,35 +79,31 @@ the required catalog and packaging. Update technical documentation whenever a
 public command, option, tool, provider, setting, workflow, SDK contract, or
 runtime behavior changes.
 
-## Release snapshot: 2026-07-30
+## Release snapshot: 2026-07-31
 
-- Local package version: **1.66.1**
-- npm `latest` at the time of this update: **1.66.0**; that version was
-  published externally from the first 1.66.0 dry-run candidate while final
-  verification was still in progress. `npm whoami`
-  successfully resolves the maintainer account `maitham88`.
-- GitHub Actions production run `30515287806` for the v1.65.14 `master`
-  commit completed successfully.
-- v1.66.1 has not been committed, tagged, pushed, or published.
+- Local package version: **1.68.17**
+- npm `latest` at the time of this update: **1.68.16**; 1.68.17 was verified
+  as unused before the local bump.
+- v1.68.17 has not been committed, tagged, pushed, or published; its CI remains
+  pending until the local release commit is pushed.
 - Full post-build functional validation:
-  - 2,191 tests passed, 0 failed
-  - 9,784 assertions across 262 files
+  - 2,278 tests passed, 0 failed
+  - 10,174 assertions across 275 files
   - typecheck and strict-core typecheck passed (133 strict files)
 - Release validation, lint, secret scan, CLI version/help smoke tests,
   dependency audit, package smoke test, and npm publish dry-run all passed.
 - Dry-run tarball: 156 files, 6.5 MB packed, 32.5 MB unpacked; SHA-1
-  `2d894ed6c0ee5159da4fb865ca15160212bb54f6`.
+  `83245584a621250d814ee7ef0074ba57cb48058c`.
 - Release validation:
   - CLI plus ESM/CommonJS/typed SDK builds passed with 86 synchronized version
     occurrences
-  - release check and packaged CLI smoke test passed for 1.66.1
+  - release check and packaged CLI smoke test passed for 1.68.17
   - dependency audit reported no known vulnerabilities; all six runtime
     dependency ranges resolve; the safety matrix is current
   - secret scan and `git diff --check` passed
-  - local CLI reports `1.66.1 (UR-Nexus)` and `--help` exits successfully
+  - local CLI reports `1.68.17 (UR-Nexus)` and `--help` exits successfully
   - npm publish dry run passed: 156 files, 6.5 MB packed, 32.5 MB unpacked,
-    shasum `2d894ed6c0ee5159da4fb865ca15160212bb54f6`
-  - v1.66.1 CI remains pending until the local release commit is pushed
+    shasum `83245584a621250d814ee7ef0074ba57cb48058c`
 
 This snapshot is evidence, not a permanent guarantee. Rerun relevant gates
 after later changes.
@@ -449,6 +445,13 @@ refactoring:
 - Strictly parsed Node syntax checks may bypass only the task-list gate after a
   task-free one-shot Write. Generic evaluation and Bash permission/sandbox
   behavior remain unchanged.
+- Task-list mutation classification is distinct from permission auto-approval:
+  tools may identify observational calls through `isTaskListReadOnly` while
+  permissions, sandboxing, concurrency, and read-only planning agents retain
+  the stricter `isReadOnly` result. Bash applies the task-only path generically
+  to known reads, help/version/presence checks, and import-only Python probes
+  for any module; arbitrary code, output writes, backgrounding, overrides,
+  unknown commands, and permission-time mutating rewrites remain gated.
 - The final actionable task remains in progress after an unchecked file
   mutation, preventing an all-terminal Edit dead end while requiring observable
   verification before completion.

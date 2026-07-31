@@ -60,7 +60,9 @@ This is enforced beyond prompt wording:
 
 - `src/services/tools/taskListGate.ts` blocks state-changing calls once the initial
   lightweight allowance is consumed unless an actionable task exists. Delegation and
-  subagent mutations always require a parent task. Reads remain unrestricted.
+  subagent mutations always require a parent task. Reads remain unrestricted. Tool
+  implementations can classify task-only observation separately from stricter
+  permission auto-approval; both classifications are re-evaluated after rewrites.
 - `src/services/tools/repeatedFailureGuard.ts` tracks canonicalized failing calls, refuses
   repeated identical failures, then aborts the stuck turn at a bounded threshold.
 - the tool execution boundary revalidates the final input after hook rewrites; a hook cannot

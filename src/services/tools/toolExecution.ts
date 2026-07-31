@@ -1226,10 +1226,19 @@ async function checkPermissionsAndCallTool(
     parsedInput.data,
     toolUseContext,
   )
+  let isTaskListReadOnly = false
+  try {
+    isTaskListReadOnly = Boolean(
+      tool.isTaskListReadOnly?.(parsedInput.data),
+    )
+  } catch {
+    // A task-classification failure cannot become a mutation bypass.
+    isTaskListReadOnly = false
+  }
   const isTaskListGatedMutation = isMutationRequiringTaskList({
     toolName: tool.name,
     toolInput: parsedInput.data,
-    isMutating,
+    isMutating: isMutating && !isTaskListReadOnly,
   })
   if (isMutating && isBuiltInReadOnlyPlanningSubagent(toolUseContext)) {
     recordCallFailure(callSig)
@@ -1908,10 +1917,18 @@ async function checkPermissionsAndCallTool(
     finalParsedInput.data,
     toolUseContext,
   )
+  let finalIsTaskListReadOnly = false
+  try {
+    finalIsTaskListReadOnly = Boolean(
+      tool.isTaskListReadOnly?.(finalParsedInput.data),
+    )
+  } catch {
+    finalIsTaskListReadOnly = false
+  }
   const finalIsTaskListGatedMutation = isMutationRequiringTaskList({
     toolName: tool.name,
     toolInput: finalParsedInput.data,
-    isMutating: finalIsMutating,
+    isMutating: finalIsMutating && !finalIsTaskListReadOnly,
   })
   if (
     finalIsMutating &&

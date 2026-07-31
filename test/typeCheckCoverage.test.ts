@@ -12,12 +12,17 @@ import { join } from 'node:path'
 // suppression is the only way to move it, which makes the debt visible in a
 // diff instead of accumulating silently.
 //
-// History: 223 files at 1.67.0. 73 of them had zero errors once the suppression
-// was removed — they were suppressed for no reason at all, hiding 21,503 lines
-// of already-valid code. Stripping the remaining 150 surfaces ~870 errors,
-// mostly fork artifacts (dead `'external' === 'ant'` build-constant branches),
-// but they are not all noise and they are not being checked.
-const NOCHECK_BUDGET = 149
+// History: 223 files at 1.67.0 -> 132 at 1.68.15. Almost none of it was
+// file-by-file work; the errors cluster hard by cause:
+//   - 73 files had zero errors once unsuppressed — suppressed for no reason.
+//   - useRegisterOverlay declared an argument its own body defaulted, so every
+//     caller passing one argument errored. One `?` cleared 10.
+//   - Four files declared *empty* interfaces under "Stub: not included in
+//     leaked source". An empty interface means "has no members" to TypeScript,
+//     not "shape unknown", so every property access on one was an error. Giving
+//     them the shapes their consumers use cleared 258 between them.
+// 563 errors remain. Group by error signature before opening files.
+const NOCHECK_BUDGET = 132
 
 function sourceFiles(dir: string, found: string[] = []): string[] {
   // withFileTypes avoids a statSync (and its file handle) per entry.

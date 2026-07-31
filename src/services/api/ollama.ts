@@ -281,6 +281,7 @@ async function fetchOllamaChat(
     // being too large — otherwise the error cannot say how big "too large" was.
     const chatRequest = toOllamaChatRequest(params, stream, capabilities, baseUrl)
     const requestBody = JSON.stringify(chatRequest)
+    logRequestComposition(chatRequest, requestBody.length)
     let response = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
       headers: buildOllamaHeaders(),
@@ -375,6 +376,52 @@ export function isOllamaRequestTooLarge(
     (status === 400 || status === 413) &&
     /request body too large|payload too large|entity too large/i.test(message)
   )
+}
+
+/**
+ * Report where the request's bytes actually go, once per session.
+ *
+ * The fixed cost of tool definitions and the system prompt is the thing that
+ * decides whether a small-context model has room to work, and it had only ever
+ * been estimated by summing prompt source — which double-counts every
+ * `condition ? longText : shortText`, since only one branch is ever sent. This
+ * measures the serialized request instead, so the number is what the server
+ * receives rather than what the source could produce.
+ *
+ * Debug-log only, and once, because it is diagnostic rather than something the
+ * user needs on every turn.
+ */
+let loggedComposition = false
+export function describeRequestComposition(
+  request: OllamaChatRequest,
+  totalBytes: number,
+): string {
+  const toolBytes = request.tools ? JSON.stringify(request.tools).length : 0
+  const systemBytes = request.messages
+    .filter(message => message.role === 'system')
+    .reduce((sum, message) => sum + JSON.stringify(message).length, 0)
+  const conversationBytes = Math.max(
+    0,
+    totalBytes - toolBytes - systemBytes,
+  )
+  const pct = (n: number) =>
+    totalBytes > 0 ? `${Math.round((100 * n) / totalBytes)}%` : '0%'
+  return (
+    `request ${formatBytes(totalBytes)} = ` +
+    `tools ${formatBytes(toolBytes)} (${pct(toolBytes)}, ` +
+    `${request.tools?.length ?? 0} defs) + ` +
+    `system ${formatBytes(systemBytes)} (${pct(systemBytes)}) + ` +
+    `conversation ${formatBytes(conversationBytes)} (${pct(conversationBytes)})`
+  )
+}
+
+function logRequestComposition(
+  request: OllamaChatRequest,
+  totalBytes: number,
+): void {
+  if (loggedComposition) return
+  loggedComposition = true
+  logForDebugging(`[ollama] ${describeRequestComposition(request, totalBytes)}`)
 }
 
 /** Bytes as a short human string: 1234567 -> "1.2 MB". */

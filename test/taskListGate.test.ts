@@ -703,10 +703,16 @@ test('disabling it restores advisory behaviour', () => {
   ).toBe(true)
 })
 
-test('defaults are on, with room for a trivial request', () => {
+test('the gate enforces by default', () => {
+  // Briefly defaulted to advisory to reduce friction. That also removed the
+  // post-permission revalidation and the TOCTOU re-read in
+  // toolExecutionFinalInput — eight tests failed immediately, all on those two
+  // paths. The friction had a different cause (the TodoWrite prompt losing its
+  // examples, fixed in 1.68.0); this is not the lever for it.
   expect(TASK_LIST_GATE_DEFAULTS.enabled).toBe(true)
   expect(TASK_LIST_GATE_DEFAULTS.freeReads).toBeGreaterThan(0)
 })
+
 
 test('the allowance counts tool calls, not conversation length', () => {
   // Shipped counting messages, so any back-and-forth exhausted the allowance

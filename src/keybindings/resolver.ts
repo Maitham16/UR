@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { Key } from '../ink.js'
 import { getKeyName, matchesBinding } from './match.js'
 import { chordToString } from './parser.js'

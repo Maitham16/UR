@@ -282,6 +282,10 @@ import type { RemoteSessionConfig } from '../remote/RemoteSessionManager.js';
 import { REMOTE_SAFE_COMMANDS } from '../commands.js';
 import type { RemoteMessageContent } from '../utils/teleport/api.js';
 import { FullscreenLayout, useUnseenDivider, computeUnseenDivider } from '../components/FullscreenLayout.js';
+import { CommandDeckShell } from '../components/commandDeck/CommandDeckShell.js';
+// Session start captured at module load: the deck's SESSION field measures the
+// process, not a render, so it must not reset when REPL re-renders.
+const DECK_STARTED_AT = Date.now();
 import { isFullscreenEnvEnabled, maybeGetTmuxMouseHint, isMouseTrackingEnabled } from '../utils/fullscreen.js';
 import { AlternateScreen } from '../ink/components/AlternateScreen.js';
 import { ScrollKeybindingHandler } from '../components/ScrollKeybindingHandler.js';
@@ -5015,8 +5019,13 @@ export function REPL({
       </MCPConnectionManager>
     </KeybindingSetup>;
   if (isFullscreenEnvEnabled()) {
+    // The deck and rail are pinned only in fullscreen: inline mode writes to
+    // native scrollback, where there is no fixed viewport to pin them to and a
+    // "fixed" region would simply scroll away with everything else.
     return <AlternateScreen mouseTracking={isMouseTrackingEnabled()}>
-        {mainReturn}
+        <CommandDeckShell version={MACRO.VERSION} startedAt={DECK_STARTED_AT} model={String(mainLoopModel ?? '')}>
+          {mainReturn}
+        </CommandDeckShell>
       </AlternateScreen>;
   }
   return mainReturn;

@@ -410,6 +410,13 @@ export type Tool<
   isConcurrencySafe(input: z.infer<Input>): boolean
   isEnabled(): boolean
   isReadOnly(input: z.infer<Input>): boolean
+  /**
+   * Optional task-tracking classification for tools whose permission safety
+   * is stricter than their workspace-mutation semantics. Returning true skips
+   * only the actionable-task requirement; permissions, sandboxing,
+   * concurrency, and read-only planning-agent checks still use isReadOnly.
+   */
+  isTaskListReadOnly?(input: z.infer<Input>): boolean
   /** Defaults to false. Only set when the tool performs irreversible operations (delete, overwrite, send). */
   isDestructive?(input: z.infer<Input>): boolean
   /**

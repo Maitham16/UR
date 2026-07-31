@@ -62,6 +62,7 @@ import { getDefaultTimeoutMs, getMaxTimeoutMs, getSimplePrompt } from './prompt.
 import { checkReadOnlyConstraints } from './readOnlyValidation.js';
 import { parseSedEditCommand } from './sedEditParser.js';
 import { shouldUseSandbox } from './shouldUseSandbox.js';
+import { isBashTaskListReadOnly } from './taskListReadOnly.js';
 import { BASH_TOOL_NAME } from './toolName.js';
 import { BackgroundHint, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseQueuedMessage } from './UI.js';
 import { buildImageToolResult, isImageOutput, resetCwdIfOutsideProject, resizeShellImageOutput, stdErrAppendShellResetMessage, stripEmptyLines } from './utils.js';
@@ -454,6 +455,9 @@ export const BashTool = buildTool({
     const compoundCommandHasCd = commandHasAnyCd(input.command);
     const result = checkReadOnlyConstraints(input, compoundCommandHasCd);
     return result.behavior === 'allow';
+  },
+  isTaskListReadOnly(input) {
+    return isBashTaskListReadOnly(input);
   },
   toAutoClassifierInput(input) {
     return input.command;

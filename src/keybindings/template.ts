@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Keybindings template generator.
  * Generates a well-documented template file for ~/.ur/keybindings.json

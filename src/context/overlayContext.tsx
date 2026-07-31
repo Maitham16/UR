@@ -35,7 +35,10 @@ const NON_MODAL_OVERLAYS = new Set(['autocomplete']);
  *   // ...
  * }
  */
-export function useRegisterOverlay(id, t0) {
+// t0 is optional by construction — the next line defaults it — but the
+// compiled signature declared it required, so every caller passing only an id
+// was a type error. That is ~10 of the single-error files behind @ts-nocheck.
+export function useRegisterOverlay(id, t0?) {
   const $ = _c(8);
   const enabled = t0 === undefined ? true : t0;
   const store = useContext(AppStoreContext);

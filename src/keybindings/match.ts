@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { Key } from '../ink.js'
 import type { ParsedBinding, ParsedKeystroke } from './types.js'
 

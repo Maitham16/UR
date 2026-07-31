@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react/compiler-runtime";
 import { basename } from 'path';
 import { toString as qrToString } from 'qrcode';

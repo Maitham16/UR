@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useState } from 'react'
 import { isDeepStrictEqual } from 'util'
 import { useRegisterOverlay } from '../../context/overlayContext.js'

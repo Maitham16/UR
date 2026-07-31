@@ -140,6 +140,17 @@ expansion, backgrounding, sandbox overrides, and permission-time rewrites do
 not qualify. Node remains non-read-only for Bash permission and sandbox
 purposes, so this compatibility path cannot become a general execution bypass.
 
+Task tracking no longer equates "not safe to auto-approve" with "changes the
+workspace." Tools may expose a separate `isTaskListReadOnly` classification;
+permissions, sandboxing, concurrency, and read-only planning agents still use
+the stricter `isReadOnly` result. Bash uses the task-only classification for
+known read commands and generic capability inspection: exact help/version
+queries, `command -v`/`which`-style presence checks, and import-only Python
+probes for any syntactically valid module name. This is category-based rather
+than a module allowlist. Arbitrary interpreter statements, output redirects
+outside `/dev/null`, background execution, sandbox overrides, simulated edits,
+unknown commands, and permission-time rewrites to mutations remain gated.
+
 Task completion also protects that lifecycle boundary. When the final
 actionable `in_progress` task has a successful `Write`/`Edit`/`MultiEdit`/
 `NotebookEdit` after its recorded start but no later successful inspection,

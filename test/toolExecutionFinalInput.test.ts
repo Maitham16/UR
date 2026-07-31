@@ -362,6 +362,110 @@ test('a permission rewrite from read-only to mutating is revalidated and gated',
   )
 })
 
+test('task-only read classification is separate and revalidated after permission', async () => {
+  let callCount = 0
+  const tool = {
+    name: 'ExecutableProbe',
+    inputSchema: z.strictObject({
+      action: z.enum(['observe', 'modify']),
+    }),
+    // Executable in both forms, so permission/read-only-agent handling stays
+    // conservative.
+    isReadOnly: () => false,
+    isTaskListReadOnly: (input: { action: 'observe' | 'modify' }) =>
+      input.action === 'observe',
+    isConcurrencySafe: () => false,
+    isEnabled: () => true,
+    async call() {
+      callCount++
+      return { data: 'executed' }
+    },
+  }
+  const priorCalls = Array.from({ length: 3 }, (_, index) => ({
+    type: 'assistant',
+    message: {
+      content: [
+        {
+          type: 'tool_use',
+          id: `task-classification-prior-${index}`,
+          name: 'Read',
+          input: {},
+        },
+      ],
+    },
+  }))
+  const context = {
+    abortController: new AbortController(),
+    options: {
+      commands: [],
+      debug: false,
+      mainLoopModel: 'test-model',
+      tools: [tool],
+      verbose: false,
+      thinkingConfig: { type: 'disabled' },
+      mcpClients: [],
+      mcpResources: {},
+      isNonInteractiveSession: true,
+      agentDefinitions: { activeAgents: [], allAgents: [] },
+    },
+    getAppState: () => getDefaultAppState(),
+    setAppState: () => {},
+    messages: priorCalls,
+    readFileState: new Map(),
+    setInProgressToolUseIDs: () => {},
+    setResponseLength: () => {},
+    updateFileHistoryState: () => {},
+    updateAttributionState: () => {},
+  }
+  const assistantMessage = {
+    type: 'assistant',
+    uuid: 'assistant-task-only-classification',
+    message: {
+      id: 'message-task-only-classification',
+      content: [],
+    },
+  }
+  const toolUse = {
+    type: 'tool_use',
+    id: 'task-only-classification-use',
+    name: tool.name,
+    input: { action: 'observe' as const },
+  }
+
+  const allowed = await Array.fromAsync(
+    runToolUse(
+      toolUse as never,
+      assistantMessage as never,
+      (async (_tool, input) => ({
+        behavior: 'allow' as const,
+        updatedInput: input,
+      })) as never,
+      context as never,
+    ),
+  )
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(allowed)).not.toContain('TaskListRequired')
+
+  const rewritten = await Array.fromAsync(
+    runToolUse(
+      {
+        ...toolUse,
+        id: 'task-only-classification-rewritten',
+      } as never,
+      assistantMessage as never,
+      (async () => ({
+        behavior: 'allow' as const,
+        updatedInput: { action: 'modify' as const },
+      })) as never,
+      context as never,
+    ),
+  )
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(rewritten)).toContain(
+    'TaskListRequired after input update',
+  )
+})
+
 test('loopback open reaches Bash permission but a mutating rewrite is task-gated', async () => {
   let callCount = 0
   let permissionCount = 0
