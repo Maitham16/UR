@@ -130,7 +130,7 @@ export async function authLogin({
 
   const settings = getInitialSettings()
   // forceLoginMethod is a hard constraint (enterprise setting) — matches ConsoleOAuthFlow behavior.
-  // Without it, --console selects Console; --urai (or no flag) selects ur.com.
+  // Without it, --console selects Console; --urai (or no flag) selects ur.ai.
   const loginWithURAi = settings.forceLoginMethod
     ? settings.forceLoginMethod === 'urai'
     : !useConsole

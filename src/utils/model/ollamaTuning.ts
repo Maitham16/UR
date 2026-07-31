@@ -42,62 +42,6 @@ export function computeOllamaNumCtx(input: NumCtxInput): number | undefined {
   return cap(bucketize(desired))
 }
 
-export type ContextPressure = {
-  level: 'ok' | 'tight' | 'overflow'
-  message?: string
-}
-
-/**
- * Ollama silently drops the *front* of an oversized prompt rather than
- * erroring. The front is the system prompt, so the first thing lost is the
- * instruction set — which is why an overflowing session stops producing task
- * lists and starts looking incompetent, with nothing in the output to say why.
- * Both numbers needed to detect this are already computed per request; they
- * were just never compared.
- */
-export function describeContextPressure(input: {
-  estimatedPromptTokens: number
-  numCtx?: number
-  modelContextLength?: number
-  model: string
-}): ContextPressure {
-  const { estimatedPromptTokens, numCtx, modelContextLength, model } = input
-  const effective = numCtx ?? modelContextLength
-  if (!effective || effective <= 0 || estimatedPromptTokens <= 0) {
-    return { level: 'ok' }
-  }
-
-  if (estimatedPromptTokens >= effective) {
-    return {
-      level: 'overflow',
-      message:
-        `This request is about ${fmt(estimatedPromptTokens)} tokens but ${model} ` +
-        `is running with a ${fmt(effective)}-token context. Ollama discards the ` +
-        `oldest tokens instead of failing, so the system prompt and earliest ` +
-        `turns are being dropped and the model is answering without them. ` +
-        `Use /compact, start a new session, pick a model with a larger context, ` +
-        `or raise UR_OLLAMA_NUM_CTX if the model supports more.`,
-    }
-  }
-
-  // Past ~85% the remaining room is mostly consumed by the reply itself.
-  if (estimatedPromptTokens >= effective * 0.85) {
-    return {
-      level: 'tight',
-      message:
-        `This request is using about ${fmt(estimatedPromptTokens)} of ${model}'s ` +
-        `${fmt(effective)}-token context. Once it is full, Ollama drops the ` +
-        `oldest tokens — the system prompt first. /compact will free room.`,
-    }
-  }
-
-  return { level: 'ok' }
-}
-
-function fmt(n: number): string {
-  return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n)
-}
-
 function bucketize(n: number): number {
   for (const bucket of NUM_CTX_BUCKETS) {
     if (bucket >= n) return bucket

@@ -1,7 +1,4 @@
-import type {
-  LocalCommandCall,
-  LocalCommandResult,
-} from '../../types/command.js'
+import type { LocalCommandCall } from '../../types/command.js'
 import {
   buildCodeGraph,
   buildOrUpdateIndex,
@@ -44,7 +41,7 @@ async function graphCommand(
   root: string,
   json: boolean,
   signal: AbortSignal,
-): Promise<LocalCommandResult> {
+): Promise<{ type: 'text'; value: string }> {
   const sub = tokens.filter(t => !t.startsWith('--') && t !== 'graph')[0] ?? 'stats'
   const arg = tokens.filter(t => !t.startsWith('--') && t !== 'graph' && t !== sub).join(' ')
 
@@ -61,7 +58,6 @@ async function graphCommand(
     return {
       type: 'text',
       value: 'No code graph found. Build it first with `ur code-index graph build`.',
-      exitCode: 1,
     }
   }
 
@@ -70,13 +66,7 @@ async function graphCommand(
   }
 
   if (sub === 'impact' || sub === 'deps') {
-    if (!arg) {
-      return {
-        type: 'text',
-        value: `Usage: ur code-index graph ${sub} <file>`,
-        exitCode: 2,
-      }
-    }
+    if (!arg) return { type: 'text', value: `Usage: ur code-index graph ${sub} <file>` }
     const result = sub === 'impact' ? impactOf(graph, arg) : dependenciesOf(graph, arg)
     if (json) return { type: 'text', value: JSON.stringify({ file: arg, [sub]: result }, null, 2) }
     const label = sub === 'impact' ? 'Impacted by changes to' : 'Dependencies of'
@@ -89,13 +79,7 @@ async function graphCommand(
   }
 
   if (sub === 'where') {
-    if (!arg) {
-      return {
-        type: 'text',
-        value: 'Usage: ur code-index graph where <symbol>',
-        exitCode: 2,
-      }
-    }
+    if (!arg) return { type: 'text', value: 'Usage: ur code-index graph where <symbol>' }
     const files = whereDefined(graph, arg)
     if (json) return { type: 'text', value: JSON.stringify({ symbol: arg, files }, null, 2) }
     return {
@@ -107,13 +91,7 @@ async function graphCommand(
   }
 
   if (sub === 'search') {
-    if (!arg) {
-      return {
-        type: 'text',
-        value: 'Usage: ur code-index graph search <query>',
-        exitCode: 2,
-      }
-    }
+    if (!arg) return { type: 'text', value: 'Usage: ur code-index graph search <query>' }
     const hits = graphSearch(graph, arg)
     if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
     return {
@@ -127,7 +105,6 @@ async function graphCommand(
   return {
     type: 'text',
     value: 'Usage: ur code-index graph build|stats|impact <file>|deps <file>|where <symbol>|search <query>',
-    exitCode: 2,
   }
 }
 
@@ -136,7 +113,7 @@ async function repoCommand(
   root: string,
   json: boolean,
   signal: AbortSignal,
-): Promise<LocalCommandResult> {
+): Promise<{ type: 'text'; value: string }> {
   const sub = tokens.filter(t => !t.startsWith('--') && t !== 'repo')[0] ?? 'status'
   const arg = tokens.filter(t => !t.startsWith('--') && t !== 'repo' && t !== sub).join(' ')
 
@@ -155,7 +132,6 @@ async function repoCommand(
     return {
       type: 'text',
       value: 'No repo index found. Build it first with `ur code-index repo build`.',
-      exitCode: 1,
     }
   }
 
@@ -177,13 +153,7 @@ async function repoCommand(
   }
 
   if (sub === 'search') {
-    if (!arg) {
-      return {
-        type: 'text',
-        value: 'Usage: ur code-index repo search <query>',
-        exitCode: 2,
-      }
-    }
+    if (!arg) return { type: 'text', value: 'Usage: ur code-index repo search <query>' }
     const hits = repoSearch(repo, arg)
     if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
     return {
@@ -195,21 +165,9 @@ async function repoCommand(
   }
 
   if (sub === 'symbols') {
-    if (!arg) {
-      return {
-        type: 'text',
-        value: 'Usage: ur code-index repo symbols <query>',
-        exitCode: 2,
-      }
-    }
+    if (!arg) return { type: 'text', value: 'Usage: ur code-index repo symbols <query>' }
     const symbols = loadSymbolIndex(root)
-    if (!symbols) {
-      return {
-        type: 'text',
-        value: 'No symbol index found.',
-        exitCode: 1,
-      }
-    }
+    if (!symbols) return { type: 'text', value: 'No symbol index found.' }
     const hits = symbolSearch(symbols, arg)
     if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
     return {
@@ -221,17 +179,9 @@ async function repoCommand(
   }
 
   if (sub === 'callers') {
-    if (!arg) {
-      return {
-        type: 'text',
-        value: 'Usage: ur code-index repo callers <symbol>',
-        exitCode: 2,
-      }
-    }
+    if (!arg) return { type: 'text', value: 'Usage: ur code-index repo callers <symbol>' }
     const calls = loadCallIndex(root)
-    if (!calls) {
-      return { type: 'text', value: 'No call index found.', exitCode: 1 }
-    }
+    if (!calls) return { type: 'text', value: 'No call index found.' }
     const hits = findCallers(calls, arg)
     if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
     return {
@@ -243,17 +193,9 @@ async function repoCommand(
   }
 
   if (sub === 'tests') {
-    if (!arg) {
-      return {
-        type: 'text',
-        value: 'Usage: ur code-index repo tests <file>',
-        exitCode: 2,
-      }
-    }
+    if (!arg) return { type: 'text', value: 'Usage: ur code-index repo tests <file>' }
     const tests = loadTestIndex(root)
-    if (!tests) {
-      return { type: 'text', value: 'No test index found.', exitCode: 1 }
-    }
+    if (!tests) return { type: 'text', value: 'No test index found.' }
     const hits = findTestsForFile(tests, arg)
     if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
     return {
@@ -265,17 +207,9 @@ async function repoCommand(
   }
 
   if (sub === 'docs') {
-    if (!arg) {
-      return {
-        type: 'text',
-        value: 'Usage: ur code-index repo docs <query>',
-        exitCode: 2,
-      }
-    }
+    if (!arg) return { type: 'text', value: 'Usage: ur code-index repo docs <query>' }
     const docs = loadDocIndex(root)
-    if (!docs) {
-      return { type: 'text', value: 'No doc index found.', exitCode: 1 }
-    }
+    if (!docs) return { type: 'text', value: 'No doc index found.' }
     const hits = docSearch(docs, arg)
     if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
     return {
@@ -287,17 +221,9 @@ async function repoCommand(
   }
 
   if (sub === 'configs') {
-    if (!arg) {
-      return {
-        type: 'text',
-        value: 'Usage: ur code-index repo configs <query>',
-        exitCode: 2,
-      }
-    }
+    if (!arg) return { type: 'text', value: 'Usage: ur code-index repo configs <query>' }
     const configs = loadConfigIndex(root)
-    if (!configs) {
-      return { type: 'text', value: 'No config index found.', exitCode: 1 }
-    }
+    if (!configs) return { type: 'text', value: 'No config index found.' }
     const q = arg.toLowerCase()
     const hits = configs.configs.filter(
       c =>
@@ -318,7 +244,6 @@ async function repoCommand(
     type: 'text',
     value:
       'Usage: ur code-index repo build|status|search <query>|symbols <query>|callers <symbol>|tests <file>|docs <query>|configs <query> [--json]',
-    exitCode: 2,
   }
 }
 
@@ -330,27 +255,11 @@ export const call: LocalCommandCall = async (args: string) => {
   const signal = new AbortController().signal
 
   if (command === 'graph') {
-    try {
-      return await graphCommand(tokens, root, json, signal)
-    } catch (error) {
-      return {
-        type: 'text',
-        value: `Code graph command failed: ${errorText(error)}`,
-        exitCode: 1,
-      }
-    }
+    return graphCommand(tokens, root, json, signal)
   }
 
   if (command === 'repo') {
-    try {
-      return await repoCommand(tokens, root, json, signal)
-    } catch (error) {
-      return {
-        type: 'text',
-        value: `Repo index command failed: ${errorText(error)}`,
-        exitCode: 1,
-      }
-    }
+    return repoCommand(tokens, root, json, signal)
   }
 
   if (command === 'build') {
@@ -387,7 +296,6 @@ export const call: LocalCommandCall = async (args: string) => {
           `Failed to build code index: ${errorText(error)}\n` +
           `Tip: make sure the local Ollama app is running and the embedding model is pulled ` +
           `(e.g. \`ollama pull ${getEmbeddingModel()}\`).`,
-        exitCode: 1,
       }
     }
   }
@@ -439,11 +347,7 @@ export const call: LocalCommandCall = async (args: string) => {
       .filter(token => !token.startsWith('--') && token !== 'search')
       .join(' ')
     if (!query) {
-      return {
-        type: 'text',
-        value: 'Usage: ur code-index search <query> [--json]',
-        exitCode: 2,
-      }
+      return { type: 'text', value: 'Usage: ur code-index search <query> [--json]' }
     }
     try {
       const { hits, index } = await searchCode({ root, query, signal })
@@ -451,7 +355,6 @@ export const call: LocalCommandCall = async (args: string) => {
         return {
           type: 'text',
           value: 'No code index found. Build it first with `ur code-index build`.',
-          exitCode: 1,
         }
       }
       if (json) {
@@ -475,7 +378,6 @@ export const call: LocalCommandCall = async (args: string) => {
         value:
           `Code search failed: ${errorText(error)}\n` +
           `Tip: ensure the local Ollama app is running and "${getEmbeddingModel()}" is pulled.`,
-        exitCode: 1,
       }
     }
   }
@@ -486,6 +388,5 @@ export const call: LocalCommandCall = async (args: string) => {
       'Usage: ur code-index build [--graph] [--repo] | search <query> | status | ' +
       'watch [--graph] [--repo] | graph build|impact <file>|deps <file>|where <symbol>|search <query> | ' +
       'repo build|status|search <query>|symbols <query>|callers <symbol>|tests <file>|docs <query>|configs <query> [--json]',
-    exitCode: 2,
   }
 }

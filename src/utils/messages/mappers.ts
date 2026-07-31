@@ -83,9 +83,6 @@ export function toSDKCompactMetadata(
   return {
     trigger: meta.trigger,
     pre_tokens: meta.preTokens,
-    ...(meta.taskGateFreeCallsConsumed === true && {
-      task_gate_free_calls_consumed: true,
-    }),
     ...(seg && {
       preserved_segment: {
         head_uuid: seg.headUuid,
@@ -106,9 +103,6 @@ export function fromSDKCompactMetadata(
   return {
     trigger: meta.trigger,
     preTokens: meta.pre_tokens,
-    ...(meta.task_gate_free_calls_consumed === true && {
-      taskGateFreeCallsConsumed: true,
-    }),
     ...(seg && {
       preservedSegment: {
         headUuid: seg.head_uuid,

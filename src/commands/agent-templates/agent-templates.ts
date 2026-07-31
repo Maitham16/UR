@@ -50,7 +50,6 @@ export const call: LocalCommandCall = async (args: string) => {
       return {
         type: 'text',
         value: `Unknown agent template${unknownNames.length === 1 ? '' : 's'}: ${unknownNames.join(', ')}\nKnown templates: ${all.map(t => t.name).join(', ')}`,
-        exitCode: 2,
       }
     }
     const result =
@@ -66,6 +65,5 @@ export const call: LocalCommandCall = async (args: string) => {
   return {
     type: 'text',
     value: `Unknown agent-templates command: ${command}\n\n${await formatTemplateList(false)}`,
-    exitCode: 2,
   }
 }

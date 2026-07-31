@@ -9,28 +9,24 @@ import type { LocalWorkflowTaskState } from './LocalWorkflowTask/LocalWorkflowTa
 import type { MonitorMcpTaskState } from './MonitorMcpTask/MonitorMcpTask.js'
 import type { RemoteAgentTaskState } from './RemoteAgentTask/RemoteAgentTask.js'
 
-/** Task states that this distribution can create in a live process. */
-export type RuntimeTaskState =
+export type TaskState =
   | LocalShellTaskState
   | LocalAgentTaskState
   | RemoteAgentTaskState
   | InProcessTeammateTaskState
-  | DreamTaskState
-
-/**
- * Read-only compatibility shapes for historical transcripts/state. They stay
- * in the broad TaskState union so old data remains renderable and inspectable,
- * but no runtime code may create or dispatch lifecycle operations through
- * them.
- */
-export type LegacyPersistedTaskState =
   | LocalWorkflowTaskState
   | MonitorMcpTaskState
-
-export type TaskState = RuntimeTaskState | LegacyPersistedTaskState
+  | DreamTaskState
 
 // Task types that can appear in the background tasks indicator
-export type BackgroundTaskState = TaskState
+export type BackgroundTaskState =
+  | LocalShellTaskState
+  | LocalAgentTaskState
+  | RemoteAgentTaskState
+  | InProcessTeammateTaskState
+  | LocalWorkflowTaskState
+  | MonitorMcpTaskState
+  | DreamTaskState
 
 /**
  * Check if a task should be shown in the background tasks indicator.

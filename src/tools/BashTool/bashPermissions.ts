@@ -734,9 +734,8 @@ export function stripWrappersFromArgv(argv: string[]): string[] {
 
 /**
  * Env vars that make a *different binary* run (injection or resolution hijack).
- * Heuristic only. A preceding shell-state mutation can still affect a later
- * command, so sandbox exclusions additionally require every compound segment
- * to match instead of trusting one stripped command.
+ * Heuristic only — export-&& form bypasses this, and excludedCommands isn't a
+ * security boundary anyway.
  */
 export const BINARY_HIJACK_VARS = /^(LD_|DYLD_|PATH$)/
 

@@ -27,24 +27,15 @@ import {
 } from '../../utils/teammate.js'
 import { writeToMailbox } from '../../utils/teammateMailbox.js'
 import { VERIFICATION_AGENT_TYPE } from '../AgentTool/constants.js'
-import {
-  normalizeTaskIdInput,
-  normalizeTaskIdInputs,
-  taskIdInputSchema,
-} from '../taskIdInput.js'
 import { TASK_UPDATE_TOOL_NAME } from './constants.js'
-import { evaluateCompletionEvidence } from './completionEvidence.js'
 import { DESCRIPTION, PROMPT } from './prompt.js'
 
 const inputSchema = lazySchema(() => {
   // Extended status schema that includes 'deleted' as a special action
   const TaskUpdateStatusSchema = TaskStatusSchema().or(z.literal('deleted'))
-  const TaskIdSchema = taskIdInputSchema(
-    'The ID of the task to update. Positive integer JSON values are accepted and normalized to strings.',
-  )
 
   return z.strictObject({
-    taskId: TaskIdSchema,
+    taskId: z.string().describe('The ID of the task to update'),
     subject: z.string().optional().describe('New subject for the task'),
     description: z.string().optional().describe('New description for the task'),
     activeForm: z
@@ -57,17 +48,13 @@ const inputSchema = lazySchema(() => {
       'New status for the task',
     ),
     addBlocks: z
-      .array(TaskIdSchema)
+      .array(z.string())
       .optional()
-      .describe(
-        'Task IDs that this task blocks. Positive integer JSON values are accepted and normalized to strings.',
-      ),
+      .describe('Task IDs that this task blocks'),
     addBlockedBy: z
-      .array(TaskIdSchema)
+      .array(z.string())
       .optional()
-      .describe(
-        'Task IDs that block this task. Positive integer JSON values are accepted and normalized to strings.',
-      ),
+      .describe('Task IDs that block this task'),
     owner: z.string().optional().describe('New owner for the task'),
     metadata: z
       .record(z.string(), z.unknown())
@@ -92,9 +79,6 @@ const outputSchema = lazySchema(() =>
       })
       .optional(),
     verificationNudgeNeeded: z.boolean().optional(),
-    completionDeferred: z.boolean().optional(),
-    completionMutationTool: z.string().optional(),
-    completionVerificationTarget: z.string().optional(),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -131,7 +115,7 @@ export const TaskUpdateTool = buildTool({
     return false
   },
   toAutoClassifierInput(input) {
-    const parts = [String(input.taskId)]
+    const parts = [input.taskId]
     if (input.status) parts.push(input.status)
     if (input.subject) parts.push(input.subject)
     return parts.join(' ')
@@ -141,7 +125,7 @@ export const TaskUpdateTool = buildTool({
   },
   async call(
     {
-      taskId: rawTaskId,
+      taskId,
       subject,
       description,
       activeForm,
@@ -153,9 +137,6 @@ export const TaskUpdateTool = buildTool({
     },
     context,
   ) {
-    const taskId = normalizeTaskIdInput(rawTaskId)
-    const normalizedAddBlocks = normalizeTaskIdInputs(addBlocks)
-    const normalizedAddBlockedBy = normalizeTaskIdInputs(addBlockedBy)
     const taskListId = getTaskListId()
 
     // Auto-expand task list when updating tasks
@@ -178,12 +159,12 @@ export const TaskUpdateTool = buildTool({
     }
 
     const requestedDependencies = [
-      ...(normalizedAddBlocks ?? []).map(targetId => ({
+      ...(addBlocks ?? []).map(targetId => ({
         fromTaskId: taskId,
         toTaskId: targetId,
         field: 'addBlocks',
       })),
-      ...(normalizedAddBlockedBy ?? []).map(blockerId => ({
+      ...(addBlockedBy ?? []).map(blockerId => ({
         fromTaskId: blockerId,
         toTaskId: taskId,
         field: 'addBlockedBy',
@@ -214,9 +195,6 @@ export const TaskUpdateTool = buildTool({
     }
 
     const updatedFields: string[] = []
-    let completionDeferred = false
-    let completionMutationTool: string | undefined
-    let completionVerificationTarget: string | undefined
 
     // Update basic fields if provided and different from current value
     const updates: {
@@ -296,7 +274,7 @@ export const TaskUpdateTool = buildTool({
           )
           const effectiveBlockers = new Set([
             ...existingTask.blockedBy,
-            ...(normalizedAddBlockedBy ?? []),
+            ...(addBlockedBy ?? []),
           ])
           const unresolvedBlockers = [...effectiveBlockers].filter(
             blockerId => {
@@ -317,75 +295,49 @@ export const TaskUpdateTool = buildTool({
             }
           }
 
-          const otherActionableTasks = [...tasksById.values()].filter(
-            task =>
-              task.id !== taskId &&
-              !task.metadata?._internal &&
-              (task.status === 'pending' ||
-                task.status === 'in_progress'),
+          const blockingErrors: string[] = []
+
+          const generator = executeTaskCompletedHooks(
+            taskId,
+            existingTask.subject,
+            existingTask.description,
+            getAgentName(),
+            getTeamName(),
+            undefined,
+            context?.abortController?.signal,
+            undefined,
+            context,
           )
-          if (
-            existingTask.status === 'in_progress' &&
-            otherActionableTasks.length === 0
-          ) {
-            const evidence = evaluateCompletionEvidence({
-              messages: context.messages,
-              taskId,
-            })
-            if (evidence.defer) {
-              completionDeferred = true
-              completionMutationTool = evidence.mutationTool
-              completionVerificationTarget = evidence.target
+
+          for await (const result of generator) {
+            if (result.blockingError) {
+              blockingErrors.push(
+                getTaskCompletedHookMessage(result.blockingError),
+              )
             }
           }
 
-          if (!completionDeferred) {
-            const blockingErrors: string[] = []
-
-            const generator = executeTaskCompletedHooks(
-              taskId,
-              existingTask.subject,
-              existingTask.description,
-              getAgentName(),
-              getTeamName(),
-              undefined,
-              context?.abortController?.signal,
-              undefined,
-              context,
-            )
-
-            for await (const result of generator) {
-              if (result.blockingError) {
-                blockingErrors.push(
-                  getTaskCompletedHookMessage(result.blockingError),
-                )
-              }
-            }
-
-            if (blockingErrors.length > 0) {
-              return {
-                data: {
-                  success: false,
-                  taskId,
-                  updatedFields: [],
-                  error: blockingErrors.join('\n'),
-                },
-              }
+          if (blockingErrors.length > 0) {
+            return {
+              data: {
+                success: false,
+                taskId,
+                updatedFields: [],
+                error: blockingErrors.join('\n'),
+              },
             }
           }
         }
 
-        if (!completionDeferred) {
-          updates.status = status
-          updatedFields.push('status')
-        }
+        updates.status = status
+        updatedFields.push('status')
       }
     }
 
-    const newBlocks = (normalizedAddBlocks ?? []).filter(
+    const newBlocks = (addBlocks ?? []).filter(
       id => !existingTask.blocks.includes(id),
     )
-    const newBlockedBy = (normalizedAddBlockedBy ?? []).filter(
+    const newBlockedBy = (addBlockedBy ?? []).filter(
       id => !existingTask.blockedBy.includes(id),
     )
     if (newBlocks.length > 0) updatedFields.push('blocks')
@@ -475,9 +427,6 @@ export const TaskUpdateTool = buildTool({
             ? { from: existingTask.status, to: updates.status }
             : undefined,
         verificationNudgeNeeded,
-        completionDeferred: completionDeferred || undefined,
-        completionMutationTool,
-        completionVerificationTarget,
       },
     }
   },
@@ -489,9 +438,6 @@ export const TaskUpdateTool = buildTool({
       error,
       statusChange,
       verificationNudgeNeeded,
-      completionDeferred,
-      completionMutationTool,
-      completionVerificationTarget,
     } = content as Output
     if (!success) {
       // This is a failed state transition, not a successful no-op. The
@@ -502,24 +448,6 @@ export const TaskUpdateTool = buildTool({
         type: 'tool_result',
         content: error || `Task #${taskId} not found`,
         is_error: true,
-      }
-    }
-
-    if (completionDeferred) {
-      const target = completionVerificationTarget
-        ? ` to ${completionVerificationTarget}`
-        : ''
-      return {
-        tool_use_id: toolUseID,
-        type: 'tool_result',
-        content:
-          `Task #${taskId} remains in_progress. ` +
-          `${completionMutationTool ?? 'A file tool'} made the latest change` +
-          `${target}, but no successful observable check ran afterward. ` +
-          `Run the smallest relevant verification now, fix any failure, then ` +
-          `retry TaskUpdate with status completed. For a browser UI, load it ` +
-          `and inspect runtime/console behavior. Do not create a duplicate ` +
-          `task; this task is still actionable.`,
       }
     }
 

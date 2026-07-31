@@ -37,14 +37,15 @@ export const call: LocalCommandCall = async (args, context) => {
   const grade = gradeTrajectory(messages)
   const rendered = formatTrajectoryGrade(grade, json)
 
-  // A gate that cannot fail is decoration. Return the status with the result
-  // so direct invocation stays deterministic and the script-facing adapter
-  // exits non-zero without mutating process-global state.
+  // A gate that cannot fail is decoration. runLocalTextCommand exits with
+  // `process.exitCode ?? 0`, so the exit status has to be set here — a
+  // returned `exitCode` field is silently ignored and the CI step passes
+  // while printing FAILED.
   if (minScore !== null && Number.isFinite(minScore) && grade.overall < minScore) {
+    process.exitCode = 1
     return {
       type: 'text',
       value: `${rendered}\n\nFAILED: trajectory scored ${grade.overall}, below the required ${minScore}.`,
-      exitCode: 1,
     }
   }
   return { type: 'text', value: rendered }

@@ -119,13 +119,6 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (command === 'search') {
     const query = tokens.filter(token => !token.startsWith('--') && token !== 'search').join(' ')
-    if (!query) {
-      return {
-        type: 'text',
-        value: 'Usage: ur semantic-memory search <query> [--json]',
-        exitCode: 2,
-      }
-    }
     const activeIndex = index ?? buildIndex()
     const results = searchIndex(activeIndex, query)
     if (json) return { type: 'text', value: JSON.stringify({ results }, null, 2) }
@@ -138,9 +131,5 @@ export const call: LocalCommandCall = async (args: string) => {
     }
   }
 
-  return {
-    type: 'text',
-    value: 'Usage: ur semantic-memory build|search|status [query] [--json]',
-    exitCode: 2,
-  }
+  return { type: 'text', value: 'Usage: ur semantic-memory build|search|status [query] [--json]' }
 }

@@ -6,7 +6,6 @@ import { stringWidth } from '../../../ink/stringWidth.js';
 import { Box, Text } from '../../../ink.js';
 import type { Question } from '../../../tools/AskUserQuestionTool/AskUserQuestionTool.js';
 import { truncateToWidth } from '../../../utils/format.js';
-import { getOwnRecordValue } from './prototypeSafeRecord.js';
 type Props = {
   questions: Question[];
   currentQuestionIndex: number;
@@ -113,7 +112,7 @@ export function QuestionNavigationBar(t0) {
     if ($[22] !== answers || $[23] !== currentQuestionIndex || $[24] !== tabDisplayTexts) {
       t5 = (q_1, index_2) => {
         const isSelected = index_2 === currentQuestionIndex;
-        const isAnswered = q_1?.question && !!getOwnRecordValue(answers, q_1.question);
+        const isAnswered = q_1?.question && !!answers[q_1.question];
         const checkbox = isAnswered ? figures.checkboxOn : figures.checkboxOff;
         const displayText = tabDisplayTexts[index_2] || q_1?.header || `Q${index_2 + 1}`;
         return <Box key={q_1?.question || `question-${index_2}`}>{isSelected ? <Text backgroundColor="permission" color="inverseText">{" "}{checkbox} {displayText}{" "}</Text> : <Text>{" "}{checkbox} {displayText}{" "}</Text>}</Box>;

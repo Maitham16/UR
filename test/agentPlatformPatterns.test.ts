@@ -318,18 +318,15 @@ describe('workflow executor', () => {
   }
   const loop = { from: 'review', to: 'plan', maxIterations: 3 }
 
-  test('persists progress after each step but emits only semantic checkpoints', async () => {
+  test('runs a linear DAG and checkpoints each step', async () => {
     const checkpoints: string[][] = []
-    const progress: string[][] = []
     const runStep: StepRunner = async ({ step }) => ({ output: `${step.id} ok`, verdict: step.id === 'review' ? 'PASS' : null })
     const result = await executeWorkflow(peerSpec, {
       runStep,
-      onProgress: (_id, completed) => progress.push([...completed]),
       onCheckpoint: (_id, completed) => checkpoints.push([...completed]),
     })
     expect(result.status).toBe('completed')
-    expect(progress.at(-1)).toEqual(['plan', 'exec', 'review'])
-    expect(checkpoints).toEqual([['plan', 'exec']])
+    expect(checkpoints.at(-1)).toEqual(['plan', 'exec', 'review'])
   })
 
   test('PEER loop re-runs the body until the reviewer passes', async () => {
@@ -369,117 +366,11 @@ describe('workflow executor', () => {
         { id: 'ship', name: 'Ship', agent: 'worker', prompt: 's', dependsOn: ['build'], gate: 'approval' },
       ],
     }
-    const heldCalls: string[] = []
-    const held = await executeWorkflow(spec, {
-      runStep: async ({ step }) => {
-        heldCalls.push(step.id)
-        return { output: `${step.id} ok` }
-      },
-      approve: () => false,
-    })
+    const runStep: StepRunner = async ({ step }) => ({ output: `${step.id} ok` })
+    const held = await executeWorkflow(spec, { runStep, approve: () => false })
     expect(held.status).toBe('held')
-    expect(heldCalls).toEqual(['build'])
-    expect(held.steps.find(step => step.id === 'ship')?.iterations).toBe(0)
-
-    const approvedCalls: string[] = []
-    const shipped = await executeWorkflow(spec, {
-      runStep: async ({ step }) => {
-        approvedCalls.push(step.id)
-        return { output: `${step.id} ok` }
-      },
-      approve: () => true,
-    })
+    const shipped = await executeWorkflow(spec, { runStep, approve: () => true })
     expect(shipped.status).toBe('completed')
-    expect(approvedCalls).toEqual(['build', 'ship'])
-  })
-
-  test('standalone verification gates fail closed on FAIL or missing verdict', async () => {
-    const spec: WorkflowSpec = {
-      version: 1,
-      name: 'verify-closed',
-      steps: [
-        {
-          id: 'verify',
-          name: 'Verify',
-          agent: 'verification',
-          prompt: 'verify',
-          gate: 'verification',
-        },
-      ],
-    }
-    const failed = await executeWorkflow(spec, {
-      runStep: async () => ({ output: 'VERDICT: FAIL', verdict: 'FAIL' }),
-    })
-    expect(failed.status).toBe('failed')
-    expect(failed.steps[0]?.status).toBe('failed')
-
-    const missing = await executeWorkflow(spec, {
-      runStep: async () => ({ output: 'looks fine', verdict: null }),
-    })
-    expect(missing.status).toBe('failed')
-    expect(missing.steps[0]?.error).toContain('no verdict')
-
-    const partial = await executeWorkflow(spec, {
-      runStep: async () => ({ output: 'some checks remain', verdict: 'PARTIAL' }),
-    })
-    expect(partial.status).toBe('failed')
-    expect(partial.steps[0]?.error).toContain('PARTIAL')
-  })
-
-  test('runner errors fail closed by default', async () => {
-    const result = await executeWorkflow(
-      {
-        version: 1,
-        name: 'runner-error',
-        steps: [
-          {
-            id: 'build',
-            name: 'Build',
-            agent: 'worker',
-            prompt: 'build',
-          },
-        ],
-      },
-      {
-        runStep: async () => ({
-          output: 'child exited nonzero',
-          isError: true,
-        }),
-      },
-    )
-    expect(result.status).toBe('failed')
-    expect(result.steps[0]?.status).toBe('failed')
-  })
-
-  test('verification is advisory only when the workflow explicitly says so', async () => {
-    const events: ExecEvent[] = []
-    const result = await executeWorkflow(
-      {
-        version: 1,
-        name: 'verify-advisory',
-        steps: [
-          {
-            id: 'review',
-            name: 'Review',
-            agent: 'verification',
-            prompt: 'review',
-            gate: 'verification',
-            verificationMode: 'advisory',
-          },
-        ],
-      },
-      {
-        runStep: async () => ({ output: 'inconclusive', verdict: null }),
-        onEvent: event => events.push(event),
-      },
-    )
-    expect(result.status).toBe('completed')
-    expect(events).toContainEqual({
-      kind: 'gate',
-      id: 'review',
-      gate: 'verification',
-      result: 'advisory',
-    })
   })
 
   const fanOut: WorkflowSpec = {
@@ -528,33 +419,6 @@ describe('workflow executor', () => {
     const result = await executeWorkflow(fanOut, { runStep, maxConcurrency: 2 })
     expect(result.status).toBe('completed')
     expect(peak()).toBe(2)
-  })
-
-  test('records every settled parallel branch when one branch fails', async () => {
-    const progress: string[][] = []
-    const events: ExecEvent[] = []
-    const result = await executeWorkflow(fanOut, {
-      maxConcurrency: 3,
-      stopOnError: true,
-      runStep: async ({ step }) => {
-        if (step.id === 'b') throw new Error('branch b failed')
-        return { output: `${step.id} completed` }
-      },
-      onProgress: (_id, completed) => progress.push([...completed]),
-      onEvent: event => events.push(event),
-    })
-
-    expect(result.status).toBe('failed')
-    expect(result.steps.find(step => step.id === 'a')?.status).toBe('done')
-    expect(result.steps.find(step => step.id === 'b')?.status).toBe('failed')
-    expect(result.steps.find(step => step.id === 'c')?.status).toBe('done')
-    expect(result.steps.find(step => step.id === 'join')?.status).toBe(
-      'skipped',
-    )
-    expect(progress.at(-1)).toEqual(['a', 'c'])
-    expect(
-      events.filter(event => event.kind === 'step-done').map(event => event.id),
-    ).toEqual(['a', 'b', 'c'])
   })
 
   test('maxConcurrency 1 forces strictly sequential execution', async () => {

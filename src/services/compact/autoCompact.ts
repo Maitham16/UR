@@ -22,7 +22,6 @@ import {
   ERROR_MESSAGE_USER_ABORT,
   type RecompactionInfo,
 } from './compact.js'
-import { suppressCompactWarning } from './compactWarningState.js'
 import { runPostCompactCleanup } from './postCompactCleanup.js'
 import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
 
@@ -46,10 +45,7 @@ export function getEffectiveContextWindowSize(model: string): number {
     }
   }
 
-  // Custom/local models and the test override can report a window smaller than
-  // the summary-output reserve. Never let that turn the usable window (and all
-  // thresholds derived from it) into zero or a negative number.
-  return Math.max(1, contextWindow - reservedTokensForSummary)
+  return contextWindow - reservedTokensForSummary
 }
 
 export type AutoCompactTrackingState = {
@@ -65,170 +61,83 @@ export type AutoCompactTrackingState = {
 
 export const AUTOCOMPACT_BUFFER_TOKENS = 13_000
 export const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000
-export const ERROR_THRESHOLD_BUFFER_TOKENS = 5_000
+export const ERROR_THRESHOLD_BUFFER_TOKENS = 20_000
 export const MANUAL_COMPACT_BUFFER_TOKENS = 3_000
-const WARNING_THRESHOLD_FRACTION = 0.15
-const ERROR_THRESHOLD_FRACTION = 0.05
 
 // Stop trying autocompact after this many consecutive failures.
 // BQ 2026-03-10: 1,279 sessions had 50+ consecutive failures (up to 3,272)
 // in a single session, wasting ~250K API calls/day globally.
 const MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3
 
-function validThresholdPercent(value: unknown): value is number {
-  return (
-    typeof value === 'number' &&
-    Number.isFinite(value) &&
-    value >= 50 &&
-    value <= 95
-  )
-}
-
-function validEnvironmentThresholdPercent(value: unknown): value is number {
-  return (
-    typeof value === 'number' &&
-    Number.isFinite(value) &&
-    value > 0 &&
-    value <= 100
-  )
-}
-
-/**
- * Resolve a positive auto-compact trigger inside the usable context window.
- *
- * `effectiveContextWindow` already reserves summary output. Explicit
- * percentages therefore describe that usable window and retain the separate
- * manual-compaction reserve. The environment override wins because it exists
- * specifically to override runtime behavior in tests and diagnostics.
- */
-export function resolveAutoCompactThreshold(
-  effectiveContextWindow: number,
-  userPercent?: number,
-  envPercent?: number,
-): number {
-  const safeWindow = Math.max(
-    1,
-    Number.isFinite(effectiveContextWindow)
-      ? Math.floor(effectiveContextWindow)
-      : 1,
-  )
-  const latestSafeThreshold = Math.max(
-    1,
-    safeWindow - MANUAL_COMPACT_BUFFER_TOKENS,
-  )
-  const configuredPercent = validEnvironmentThresholdPercent(envPercent)
-    ? envPercent
-    : validThresholdPercent(userPercent)
-      ? userPercent
-      : undefined
-
-  if (configuredPercent !== undefined) {
-    const percentageThreshold = Math.floor(
-      safeWindow * (configuredPercent / 100),
-    )
-    return Math.max(1, Math.min(percentageThreshold, latestSafeThreshold))
-  }
-
-  return Math.max(
-    1,
-    Math.min(safeWindow - AUTOCOMPACT_BUFFER_TOKENS, latestSafeThreshold),
-  )
-}
-
 export function getAutoCompactThreshold(model: string): number {
   const effectiveContextWindow = getEffectiveContextWindowSize(model)
-  const envValue = process.env.UR_AUTOCOMPACT_PCT_OVERRIDE
-  const parsedEnvPercent =
-    envValue === undefined ? undefined : Number.parseFloat(envValue)
-  return resolveAutoCompactThreshold(
-    effectiveContextWindow,
-    getGlobalConfig().compactionAutoThreshold,
-    parsedEnvPercent,
-  )
-}
 
-export function calculateAutoCompactProgress(
-  tokenUsage: number,
-  threshold: number,
-): {
-  tokensUntilAutoCompact: number
-  percentLeft: number
-} {
-  const safeThreshold = Math.max(
-    1,
-    Number.isFinite(threshold) ? threshold : 1,
-  )
-  const safeUsage = Number.isFinite(tokenUsage)
-    ? Math.max(0, tokenUsage)
-    : safeThreshold
-  const tokensUntilAutoCompact = Math.max(0, safeThreshold - safeUsage)
-  const percentLeft = Math.min(
-    100,
-    Math.max(
-      0,
-      Math.round((tokensUntilAutoCompact / safeThreshold) * 100),
-    ),
-  )
-  return { tokensUntilAutoCompact, percentLeft }
+  const autocompactThreshold =
+    effectiveContextWindow - AUTOCOMPACT_BUFFER_TOKENS
+
+  const userPercent = getGlobalConfig().compactionAutoThreshold
+  if (
+    typeof userPercent === 'number' &&
+    Number.isFinite(userPercent) &&
+    userPercent >= 50 &&
+    userPercent <= 95
+  ) {
+    const percentageThreshold = Math.floor(
+      effectiveContextWindow * (userPercent / 100),
+    )
+    return Math.min(
+      percentageThreshold,
+      effectiveContextWindow - MANUAL_COMPACT_BUFFER_TOKENS,
+    )
+  }
+
+  // Override for easier testing of autocompact
+  const envPercent = process.env.UR_AUTOCOMPACT_PCT_OVERRIDE
+  if (envPercent) {
+    const parsed = parseFloat(envPercent)
+    if (!isNaN(parsed) && parsed > 0 && parsed <= 100) {
+      const percentageThreshold = Math.floor(
+        effectiveContextWindow * (parsed / 100),
+      )
+      return Math.min(percentageThreshold, autocompactThreshold)
+    }
+  }
+
+  return autocompactThreshold
 }
 
 export function calculateTokenWarningState(
   tokenUsage: number,
   model: string,
-  thresholdOverride?: number,
 ): {
   percentLeft: number
-  tokensUntilAutoCompact: number
-  autoCompactThreshold: number
   isAboveWarningThreshold: boolean
   isAboveErrorThreshold: boolean
   isAboveAutoCompactThreshold: boolean
   isAtBlockingLimit: boolean
 } {
   const autoCompactThreshold = getAutoCompactThreshold(model)
-  const threshold =
-    thresholdOverride ??
-    (isAutoCompactEnabled()
-      ? autoCompactThreshold
-      : getEffectiveContextWindowSize(model))
+  const threshold = isAutoCompactEnabled()
+    ? autoCompactThreshold
+    : getEffectiveContextWindowSize(model)
 
-  const { percentLeft, tokensUntilAutoCompact } =
-    calculateAutoCompactProgress(tokenUsage, threshold)
-
-  // Fixed 20k bands make a small-context model warn from its first token.
-  // Scale the bands down for those models while preserving the established
-  // 20k warning on large windows and a distinct final 5k error band.
-  const warningBuffer = Math.max(
-    1,
-    Math.min(
-      WARNING_THRESHOLD_BUFFER_TOKENS,
-      Math.floor(threshold * WARNING_THRESHOLD_FRACTION),
-    ),
-  )
-  const errorBuffer = Math.max(
-    1,
-    Math.min(
-      ERROR_THRESHOLD_BUFFER_TOKENS,
-      Math.floor(threshold * ERROR_THRESHOLD_FRACTION),
-    ),
+  const percentLeft = Math.max(
+    0,
+    Math.round(((threshold - tokenUsage) / threshold) * 100),
   )
 
-  const warningThreshold = Math.max(0, threshold - warningBuffer)
-  const errorThreshold = Math.max(0, threshold - errorBuffer)
+  const warningThreshold = threshold - WARNING_THRESHOLD_BUFFER_TOKENS
+  const errorThreshold = threshold - ERROR_THRESHOLD_BUFFER_TOKENS
 
   const isAboveWarningThreshold = tokenUsage >= warningThreshold
   const isAboveErrorThreshold = tokenUsage >= errorThreshold
 
   const isAboveAutoCompactThreshold =
-    thresholdOverride === undefined &&
-    isAutoCompactEnabled() &&
-    tokenUsage >= autoCompactThreshold
+    isAutoCompactEnabled() && tokenUsage >= autoCompactThreshold
 
   const actualContextWindow = getEffectiveContextWindowSize(model)
-  const defaultBlockingLimit = Math.max(
-    1,
-    actualContextWindow - MANUAL_COMPACT_BUFFER_TOKENS,
-  )
+  const defaultBlockingLimit =
+    actualContextWindow - MANUAL_COMPACT_BUFFER_TOKENS
 
   // Allow override for testing
   const blockingLimitOverride = process.env.UR_CODE_BLOCKING_LIMIT_OVERRIDE
@@ -244,8 +153,6 @@ export function calculateTokenWarningState(
 
   return {
     percentLeft,
-    tokensUntilAutoCompact,
-    autoCompactThreshold,
     isAboveWarningThreshold,
     isAboveErrorThreshold,
     isAboveAutoCompactThreshold,
@@ -264,32 +171,6 @@ export function isAutoCompactEnabled(): boolean {
   // Check if user has disabled auto-compact in their settings
   const userConfig = getGlobalConfig()
   return userConfig.autoCompactEnabled
-}
-
-/**
- * Whether the proactive threshold is the active context-management policy.
- * Reactive compaction and context collapse keep auto-compaction available as
- * an error-recovery mechanism, but suppress its proactive trigger.
- */
-export function isProactiveAutoCompactEnabled(): boolean {
-  if (!isAutoCompactEnabled()) {
-    return false
-  }
-  if (feature('REACTIVE_COMPACT')) {
-    if (getFeatureValue_CACHED_MAY_BE_STALE('tengu_cobalt_raccoon', false)) {
-      return false
-    }
-  }
-  if (feature('CONTEXT_COLLAPSE')) {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const { isContextCollapseEnabled } =
-      require('../contextCollapse/index.js') as typeof import('../contextCollapse/index.js')
-    /* eslint-enable @typescript-eslint/no-require-imports */
-    if (isContextCollapseEnabled()) {
-      return false
-    }
-  }
-  return true
 }
 
 export async function shouldAutoCompact(
@@ -317,10 +198,44 @@ export async function shouldAutoCompact(
     }
   }
 
-  // Reactive-only and context-collapse modes own proactive context
-  // management. Auto-compaction remains available to their recovery paths.
-  if (!isProactiveAutoCompactEnabled()) {
+  if (!isAutoCompactEnabled()) {
     return false
+  }
+
+  // Reactive-only mode: suppress proactive autocompact, let reactive compact
+  // catch the API's prompt-too-long. feature() wrapper keeps the flag string
+  // out of external builds (REACTIVE_COMPACT is ant-only).
+  // Note: returning false here also means autoCompactIfNeeded never reaches
+  // trySessionMemoryCompaction in the query loop — the /compact call site
+  // still tries session memory first. Revisit if reactive-only graduates.
+  if (feature('REACTIVE_COMPACT')) {
+    if (getFeatureValue_CACHED_MAY_BE_STALE('tengu_cobalt_raccoon', false)) {
+      return false
+    }
+  }
+
+  // Context-collapse mode: same suppression. Collapse IS the context
+  // management system when it's on — the 90% commit / 95% blocking-spawn
+  // flow owns the headroom problem. Autocompact firing at effective-13k
+  // (~93% of effective) sits right between collapse's commit-start (90%)
+  // and blocking (95%), so it would race collapse and usually win, nuking
+  // granular context that collapse was about to save. Gating here rather
+  // than in isAutoCompactEnabled() keeps reactiveCompact alive as the 413
+  // fallback (it consults isAutoCompactEnabled directly) and leaves
+  // sessionMemory + manual /compact working.
+  //
+  // Consult isContextCollapseEnabled (not the raw gate) so the
+  // UR_CONTEXT_COLLAPSE env override is honored here too. require()
+  // inside the block breaks the init-time cycle (this file exports
+  // getEffectiveContextWindowSize which collapse's index imports).
+  if (feature('CONTEXT_COLLAPSE')) {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const { isContextCollapseEnabled } =
+      require('../contextCollapse/index.js') as typeof import('../contextCollapse/index.js')
+    /* eslint-enable @typescript-eslint/no-require-imports */
+    if (isContextCollapseEnabled()) {
+      return false
+    }
   }
 
   const tokenCount = tokenCountWithEstimation(messages) - snipTokensFreed
@@ -388,7 +303,7 @@ export async function autoCompactIfNeeded(
   // EXPERIMENT: Try session memory compaction first
   const sessionMemoryResult = await trySessionMemoryCompaction(
     messages,
-    toolUseContext,
+    toolUseContext.agentId,
     recompactionInfo.autoCompactThreshold,
   )
   if (sessionMemoryResult) {
@@ -396,7 +311,6 @@ export async function autoCompactIfNeeded(
     // and the old message UUID will no longer exist after the REPL replaces messages
     setLastSummarizedMessageId(undefined)
     runPostCompactCleanup(querySource)
-    suppressCompactWarning()
     // Reset cache read baseline so the post-compact drop isn't flagged as a
     // break. compactConversation does this internally; SM-compact doesn't.
     // BQ 2026-03-01: missing this made 20% of tengu_prompt_cache_break events
@@ -426,7 +340,6 @@ export async function autoCompactIfNeeded(
     // and the old message UUID will no longer exist in the new messages array
     setLastSummarizedMessageId(undefined)
     runPostCompactCleanup(querySource)
-    suppressCompactWarning()
 
     return {
       wasCompacted: true,

@@ -1,8 +1,7 @@
 /**
  * Automatic task decomposition with rich metadata.
  *
- * Breaks a large goal into cohesive subtasks with observable completion
- * checks, each annotated with:
+ * Breaks a large goal into atomic subtasks, each annotated with:
  *   - goal
  *   - files touched
  *   - risk level
@@ -101,7 +100,7 @@ function inferTests(goal: string): string[] {
 
 function decomposePrompt(goal: string): string {
   return [
-    'Decompose the following engineering goal into cohesive subtasks with observable completion checks.',
+    'Decompose the following engineering goal into atomic subtasks.',
     'Return a JSON object with exactly this shape (no markdown, no commentary):',
     '',
     '{',
@@ -119,9 +118,7 @@ function decomposePrompt(goal: string): string {
     '}',
     '',
     'Guidelines:',
-    '- Use one subtask per cohesive outcome with a clear completion check.',
-    '- Split separately completable deliverables; never hide them in one omnibus task.',
-    '- Return one task when the goal is genuinely atomic. Do not split merely by file, command, tool call, or tiny mechanical step.',
+    '- Each subtask should be small enough to implement and verify independently.',
     '- Use "dependsOn" only for real ordering constraints; independent tasks must use an empty array so they can run in parallel.',
     '- "filesTouched" should list the files likely to change.',
     '- "risk" should be high for auth/security/concurrency/destructive changes, medium for refactor/API changes, low for docs/style.',

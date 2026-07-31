@@ -61,7 +61,6 @@ import { logForDebugging } from '../utils/debug.js'
 import { loadMemoryPrompt } from '../memdir/memdir.js'
 import { isUndercover } from '../utils/undercover.js'
 import { loadRepoMapForPrompt } from '../services/agents/repoWiki.js'
-import { getWorkingModePrompt } from '../services/agents/workingMode.js'
 import { isMcpInstructionsDeltaEnabled } from '../utils/mcpInstructionsDelta.js'
 
 // Dead code elimination: conditional imports for feature-gated modules
@@ -103,8 +102,9 @@ import type { OutputStyleConfig } from './outputStyles.js'
 import { CYBER_RISK_INSTRUCTION } from './cyberRiskInstruction.js'
 import { EXECUTION_CONTRACT_SECTION } from './executionContract.js'
 import { getTaskToolGuidance } from './taskToolGuidance.js'
-import { TASK_CREATE_TOOL_NAME } from '../tools/TaskCreateTool/constants.js'
-import { TASK_UPDATE_TOOL_NAME } from '../tools/TaskUpdateTool/constants.js'
+
+export const UR_CODE_DOCS_MAP_URL =
+  'https://docs.ur.dev/docs/en/ur_docs_map.md'
 
 /**
  * Boundary marker separating static (cross-org cacheable) content from dynamic content.
@@ -288,33 +288,24 @@ function getUsingYourToolsSection(enabledTools: Set<string>): string {
   ]
 
   const items = [
-    taskToolGuidance,
     `Do NOT use the ${BASH_TOOL_NAME} to run commands when a relevant dedicated tool is provided. Using dedicated tools allows the user to better understand and review your work. This is CRITICAL to assisting the user:`,
     providedToolSubitems,
+    taskToolGuidance,
     `You can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency. However, if some tool calls depend on previous calls to inform dependent values, do NOT call these tools in parallel and instead call them sequentially. For instance, if one operation must complete before another starts, run these operations sequentially instead.`,
   ].filter(item => item !== null)
 
   return [`# Using your tools`, ...prependBullets(items)].join(`\n`)
 }
 
-function getOllamaToolDisciplineSection(
-  enabledTools: ReadonlySet<string>,
-): string | null {
+function getOllamaToolDisciplineSection(): string | null {
   if (getAPIProvider() !== 'ollama') return null
   const items = [
-    enabledTools.has(TASK_CREATE_TOOL_NAME) &&
-    enabledTools.has(TASK_UPDATE_TOOL_NAME)
-      ? `For non-trivial workspace work, call ${TASK_CREATE_TOOL_NAME}, inspect its successful result, call ${TASK_UPDATE_TOOL_NAME} to mark the ready task in_progress, and inspect that success before Write, Edit, a mutating shell, ${AGENT_TOOL_NAME}, Task, or another state-changing tool. A feature-rich one-file build is non-trivial; never batch task setup with implementation.`
-      : null,
     `Use the native structured tool-call interface; never substitute prose, fenced code, XML, or printed arguments for a call. Only use a text fallback when the runtime explicitly says native tools are unavailable and supplies the exact fallback format.`,
     `Use ${FILE_WRITE_TOOL_NAME} or ${FILE_EDIT_TOOL_NAME} for file changes. Batch independent calls in one turn (maximum 8); keep read→decide→write and other dependencies sequential.`,
     `Treat each call as pending until its matching result arrives. Observe that result before continuing, and never claim a file change, command, test, or other action succeeded without a successful result.`,
     `Never emit an empty turn: provide a real tool call, useful user-facing text, or both.`,
   ]
-  return [
-    `# Tool-use discipline`,
-    ...prependBullets(items.filter(item => item !== null)),
-  ].join(`\n`)
+  return [`# Tool-use discipline`, ...prependBullets(items)].join(`\n`)
 }
 
 function getAgentToolSection(): string {
@@ -460,7 +451,6 @@ export async function getSystemPrompt(
     return [
       `You are UR, an AI coding agent.\n\nCWD: ${getCwd()}\nDate: ${getSessionStartDate()}`,
       EXECUTION_CONTRACT_SECTION,
-      getWorkingModePrompt(getCwd()),
       `# Tool discipline
 Use the available Read, Edit, and Bash tools to perform work. Inspect relevant content before editing, prefer the narrowest tool, and treat a tool call as successful only after reading its result.`,
     ]
@@ -489,7 +479,6 @@ ${CYBER_RISK_INSTRUCTION}`,
       getSystemRemindersSection(),
       await loadMemoryPrompt(),
       envInfo,
-      getWorkingModePrompt(cwd),
       getLanguageSection(settings.language),
       // When delta enabled, instructions are announced via persisted
       // mcp_instructions_delta attachments (attachments.ts) instead.
@@ -514,7 +503,6 @@ ${CYBER_RISK_INSTRUCTION}`,
     systemPromptSection('env_info_simple', () =>
       computeSimpleEnvInfo(model, additionalWorkingDirectories),
     ),
-    systemPromptSection('working_mode', () => getWorkingModePrompt(cwd)),
     systemPromptSection('language', () =>
       getLanguageSection(settings.language),
     ),
@@ -584,7 +572,7 @@ ${CYBER_RISK_INSTRUCTION}`,
       : null,
     getActionsSection(),
     getUsingYourToolsSection(enabledTools),
-    getOllamaToolDisciplineSection(enabledTools),
+    getOllamaToolDisciplineSection(),
     getSimpleToneAndStyleSection(),
     getOutputEfficiencySection(),
     // === BOUNDARY MARKER - DO NOT MOVE OR REMOVE ===
@@ -722,7 +710,7 @@ export async function computeSimpleEnvInfo(
       ? `UR uses the provider and model selected in /model. Do not invent UR-specific model IDs; choose models from the active provider's model list.`
       : null,
     includeURProductInfo
-      ? `UR is available as a CLI in the terminal, desktop app (Mac/Windows), web app (ur.com/code), and IDE extensions (VS Code, JetBrains).`
+      ? `UR is available as a CLI in the terminal, desktop app (Mac/Windows), web app (ur.ai/code), and IDE extensions (VS Code, JetBrains).`
       : null,
     includeURProductInfo
       ? `Fast mode for UR keeps the selected provider/model and requests faster output when that backend supports it. It can be toggled with /fast.`

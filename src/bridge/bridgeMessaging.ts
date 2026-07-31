@@ -217,7 +217,7 @@ export type ServerControlRequestHandlers = {
    * When true, all mutable requests (interrupt, set_model, set_permission_mode,
    * set_max_thinking_tokens) reply with an error instead of false-success.
    * initialize still replies success — the server kills the connection otherwise.
-   * Used by the outbound-only bridge mode and the SDK's /bridge subpath so ur.com sees a
+   * Used by the outbound-only bridge mode and the SDK's /bridge subpath so ur.ai sees a
    * proper error instead of "action succeeded but nothing happened locally".
    */
   outboundOnly?: boolean
@@ -263,7 +263,7 @@ export function handleServerControlRequest(
 
   let response: SDKControlResponse
 
-  // Outbound-only: reply error for mutable requests so ur.com doesn't show
+  // Outbound-only: reply error for mutable requests so ur.ai doesn't show
   // false success. initialize must still succeed (server kills the connection
   // if it doesn't — see comment above).
   if (outboundOnly && request.request.subtype !== 'initialize') {

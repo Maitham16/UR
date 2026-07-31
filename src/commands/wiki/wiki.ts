@@ -9,11 +9,10 @@ import {
   wikiDir,
 } from '../../services/agents/repoWiki.js'
 import { getCwd } from '../../utils/cwd.js'
-import { parseArguments } from '../../utils/argumentSubstitution.js'
 
 export const call: LocalCommandCall = async (args: string): Promise<LocalCommandResult> => {
   const cwd = getCwd()
-  const tokens = parseArguments(args)
+  const tokens = (args ?? '').trim().split(/\s+/).filter(Boolean)
   const action = tokens[0] ?? 'status'
   const quiet = tokens.includes('--quiet')
   const json = tokens.includes('--json')
@@ -38,15 +37,6 @@ export const call: LocalCommandCall = async (args: string): Promise<LocalCommand
       value: hook
         ? `Installed post-merge refresh: ${hook}`
         : 'No .git/hooks directory found — run inside a git repository.',
-      ...(hook ? {} : { exitCode: 1 }),
-    }
-  }
-
-  if (action !== 'status') {
-    return {
-      type: 'text',
-      value: 'Usage: ur wiki generate | map | install-hook | status [--json]',
-      exitCode: 2,
     }
   }
 

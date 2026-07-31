@@ -19,13 +19,6 @@ export const call: LocalCommandCall = async args => {
       .slice(checkIndex + 1)
       .filter(token => token !== '--json')
       .join(' ')
-    if (!span) {
-      return {
-        type: 'text',
-        value: 'Usage: ur sources --check "<claim>" [--json]',
-        exitCode: 2,
-      }
-    }
     const matches = findEvidenceFor(span)
     return {
       type: 'text',

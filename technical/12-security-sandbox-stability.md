@@ -1,288 +1,179 @@
 # 12 — Security, Sandbox & Stability
 
-Source of truth: `src/utils/permissions/`, `src/utils/sandbox/`,
-`src/entrypoints/sandboxTypes.ts`, `src/services/safety/projectSafety.ts`,
-`src/security/`, `src/services/guardrails/guardrails.ts`, `src/stability/`,
-`src/services/verifier/`, and `src/services/tools/toolHooks.ts`.
+Source of truth: `src/utils/permissions/`, `src/utils/sandbox/`, `src/services/safety/projectSafety.ts`,
+`src/services/guardrails/guardrails.ts`, `src/security/`, `src/stability/`,
+`src/commands/{permissions,sandbox,sandbox-toggle,safety,guardrails,security,devcontainer,stability}`.
 
-This chapter distinguishes an **enforced runtime boundary** from an
-**inspection/advisory helper**. A command that can scan, classify, or print a
-warning is not described as blocking ordinary agent execution unless it is
-actually wired into that execution path.
+## Permission system
 
-## Permission engine — enforced
+Every tool call is checked (doc 04 §Permission model):
+- Rules: `allow` / `ask` / `deny` lists in settings `permissions`, `--allowedTools` /
+  `--disallowedTools`, or the `/permissions` UI. Syntax `Tool` or `Tool(specifier)`
+  (`Bash(git:*)`, `Edit(src/**)`, `mcp__server__tool`).
+- Modes: `permissions.defaultMode` / `--permission-mode`:
+  `default`, `plan`, `acceptEdits`, `autoApprove`. `autoApprove` skips
+  command/tool approval prompts while preserving user-input dialogs.
+- Bypass: `--dangerously-skip-permissions` (or `--allow-dangerously-skip-permissions` to
+  make it opt-in at runtime); org policy can forbid it (`policyLimits`).
+- Auto-mode: `autoMode.allow / soft_deny / deny` + optional LLM classifier
+  (`classifierPermissionsEnabled`) to auto-approve safe commands;
+  `useAutoModeDuringPlan`, `disableAutoMode` toggles.
+- Managed environments: `allowManagedPermissionRulesOnly`, `allowManagedHooksOnly`,
+  `allowManagedMcpServersOnly`, managed-settings scope wins over all.
+- Bash-specific hardening: command parsing + injection analysis
+  (`bashSecurity.ts`, disable only via `UR_CODE_DISABLE_COMMAND_INJECTION_CHECK`),
+  destructive-command warnings, path validation against allowed directories.
 
-Every enabled tool call passes through the permission engine. Rules are loaded
-from `permissions.allow`, `permissions.ask`, and `permissions.deny`, the
-`--allowed-tools`/`--disallowed-tools` flags, session decisions, and managed
-policy. Rule syntax is `Tool` or `Tool(specifier)`, for example
-`Bash(git:*)`, `Edit(src/**)`, or `mcp__server__tool`.
+## OS sandbox (`/sandbox`)
 
-User-addressable modes are:
-
-| Mode | Runtime behavior |
-|---|---|
-| `default` | Honor explicit rules and ask for undecided operations. |
-| `plan` | Restrict mutation while planning. |
-| `acceptEdits` | Auto-accept the supported edit path while retaining other checks. |
-| `autoApprove` | Convert ordinary approval prompts to allow, except tools that require user interaction. Explicit deny rules and earlier safety checks still apply. |
-| `bypassPermissions` | Broad bypass mode, but explicit ask rules and safety-check decisions that are marked bypass-immune can still prompt. Org/settings kill switches can disable the mode. |
-
-`--dangerously-skip-permissions` selects bypass mode;
-`--allow-dangerously-skip-permissions` makes that mode available to the
-interactive selector. Managed settings can restrict permission rules, hooks,
-and MCP servers to managed sources.
-
-The normal external build does **not** enable the `TRANSCRIPT_CLASSIFIER`
-feature. Its AI-classified `auto` mode is therefore source-only. The accepted
-`permissions.classifierPermissionsEnabled` schema field is not read by a
-shipped enforcement path and must not be treated as an active control.
-
-Tools that require user interaction are semantically validated again after the
-permission decision even when their input signature did not change. This keeps
-an unchanged generic approval or hook allow-result from being mistaken for the
-interaction result.
-For `AskUserQuestion`, model requests cannot supply `answers` or `annotations`;
-post-permission execution requires an exact, complete, non-empty answer map.
-Question-keyed UI state uses null-prototype records and own-property checks, so
-model-controlled names such as `constructor` or `__proto__` cannot become
-inherited answers or mutate the record prototype. The tool rejects those
-reserved question names at its outer schema as an additional boundary.
-
-Model-provided Ask previews are never trusted as executable HTML. When an SDK
-selects the HTML preview format, the runtime escapes raw input into one inert
-`<pre data-ur-preview="text">…</pre>` wrapper and validates that wrapper before
-interaction. Scripts, event handlers, URL attributes, style injection, and
-closing-tag escapes remain text rather than active markup.
-
-Bash adds command parsing, command-injection checks, dangerous-pattern
-classification, project safety policy, path validation, and sandbox-aware
-permission decisions. `UR_CODE_DISABLE_COMMAND_INJECTION_CHECK` weakens one of
-those checks and is not a safe default.
-
-## OS sandbox — enforced when enabled and available
-
-Set `sandbox.enabled` in settings to request OS-level Bash isolation. macOS uses
-`/usr/bin/sandbox-exec`; Linux/WSL uses `bwrap`; Windows is unsupported. With
-`sandbox.failIfUnavailable: false` (the default), an unavailable sandbox warns
-and may run commands unsandboxed subject to permissions. Set
-`failIfUnavailable: true` for a startup hard failure. The
-`allowUnsandboxedCommands` policy controls whether a tool call may explicitly
-request an unsandboxed run.
-
-```text
-/sandbox status
-/sandbox check
-/sandbox init
-/sandbox eval "curl https://example.com" --json
-/sandbox exclude "npm run test:*"
+`src/utils/sandbox/` wraps shell execution in an OS sandbox where supported.
 ```
+/sandbox status          # architecture + dependency check
+/sandbox check           # sandbox deps present?
+/sandbox init            # write sandbox policy
+/sandbox eval "curl https://example.com"   # what approval level would this need?
+/sandbox exclude "docker *"                # same command: exempt a command pattern
+```
+Settings: `sandbox` (SandboxSettingsSchema in `src/entrypoints/sandboxTypes.ts`).
+Configured read/write allow and deny roots are enforced by Seatbelt/bwrap
+profiles. Paths are canonicalized through existing parents. Selective domain
+policies fail closed to blocked network access when the compatibility runtime
+cannot enforce domain-level filtering; bare-repository cleanup removes only a
+signature-verified repository created during the command.
 
-The command surface is easy to misread:
+### Deny-default profiles
 
-- `status` and `check` inspect support/configuration.
-- `init` writes `.ur/safety-policy.json`; it does **not** write or enable an OS
-  sandbox configuration.
-- `eval` classifies a shell string through the project safety policy. It does
-  not execute the command.
-- `/sandbox exclude "<pattern>"` is an interactive slash-command action. It
-  appends a non-duplicate pattern to `sandbox.excludedCommands` in the
-  project-local `.ur/settings.local.json`; the shell form `ur sandbox exclude`
-  is not implemented by the separate non-interactive command.
-- An excluded match skips the OS sandbox for the entire Bash tool call. This is
-  a convenience exception, not a security boundary: it weakens isolation and
-  matching is heuristic. A compound call is excluded only when **every**
-  non-empty executable subcommand matches an exclusion; one unmatched segment
-  or a parse failure keeps the whole call sandboxed. Normal Bash permission
-  and safety-policy checks still apply:
-  exclusion does not itself grant tool permission.
+`buildSeatbeltProfile` emits a deny-default profile — `(deny default)` plus an
+explicit read allowlist — whenever `allowRead` is set, or when `denyByDefault`
+is passed. With neither, it falls back to `(allow default)` with targeted
+denials. That fallback is a blocklist rather than a sandbox: anything the
+denial list fails to anticipate is permitted, which is the shape behind the
+2026 Seatbelt escape write-ups. Prefer `denyByDefault`; it stays opt-in because
+it breaks agents that read outside the standard runtime roots
+(`/System`, `/Library`, `/usr`, `/bin`, `/sbin`), which then need an explicit
+`allowRead`.
 
-Filesystem settings are merged with permission-derived paths. Existing parents
-are canonicalized, sensitive UR/settings/skill paths are made non-writable, and
-a sandbox-created bare-repository signature is scrubbed only when all required
-signature paths appeared after the command.
+## Prompt-injection defenses (`src/security/promptInjection.ts`)
 
-Selective network-domain enforcement is not implemented by the compatibility
-runtime. If allowed/denied domain lists are present, it fails closed by blocking
-network for the sandboxed process instead of pretending to enforce host-level
-filtering.
+Untrusted text reaches the model from fetched pages, search results, file
+contents and — since `@ur` — GitHub comments written by strangers. This module
+is **detection and framing, not filtering**: no reliable injection classifier
+exists, and one that claims to block attacks invites misplaced trust. The
+durable defenses are privilege separation and human approval, documented above.
 
-### Deny-default helper versus active profile
+| Function | Purpose |
+|---|---|
+| `scanForInjection(text)` | Seven rules: instruction override, role reassignment, exfiltration, tool coercion, forged system turns, secrecy demands, boundary forgery. Returns signals with severity; `suspicious` at ≥ 0.6 |
+| `stripHiddenCharacters(text)` | Removes zero-width and bidirectional controls used to hide payloads from human review |
+| `wrapUntrusted(text, source)` | Wraps content in a boundary tagged with a per-call 128-bit nonce |
+| `makeCanary()` / `canaryLeaked()` | Token placed in privileged context; appearing in output proves a boundary was crossed |
 
-`buildSeatbeltProfile()` has a source-level `denyByDefault` option and also uses
-a `(deny default)` profile when `allowRead` is non-empty. However,
-`denyByDefault` is not part of `SandboxSettingsSchema`, and the shipped runtime
-adapter does not pass it. With no `allowRead`, the macOS compatibility profile
-uses `(allow default)` plus write/network/targeted denials. Therefore
-`denyByDefault` is a tested builder capability, not a selectable shipped
-setting. Linux `bwrap` separately mounts `/` read-only when no read allow-list
-is supplied.
+`wrapUntrusted` is applied in `WebFetchTool` and `WebSearchTool` inside
+`mapToolResultToToolResultBlockParam` — the one function every return path
+passes through, so no fetch route can bypass it. WebSearch's citation reminder
+is appended *outside* the boundary: it is UR's own instruction, and wrapping it
+would label it as untrusted data.
 
-## Project shell safety policy — enforced for Bash
+The nonce matters. A fixed `</untrusted-content>` marker is forgeable — text
+containing the closing tag escapes the fence and the remainder is read as
+instruction. Binding the boundary to a random per-call id means breaking out
+requires guessing 128 bits. A block that trips a detector is additionally
+labelled for the model with the rules that fired.
 
-`.ur/safety-policy.json` classifies commands as read-only, project edits, safe
-local commands, network operations, or destructive operations. Bash permission
-checks consume this evaluation.
+## Project safety policy (`/safety`)
 
-```text
+`.ur/safety-policy.json` classifies risky shell commands for this repo
+(`src/services/safety/projectSafety.ts`):
+```
 /safety status
 /safety init
 /safety check --command "rm -rf build" --json
 ```
 
-## Untrusted-content framing — enforced on three channels
+## Guardrails (`/guardrails`)
 
-`src/security/promptInjection.ts` provides deterministic detection and framing,
-not a proof that prompt injection is impossible.
-
-| Function | What it does |
-|---|---|
-| `scanForInjection(text)` | Detects seven instruction/exfiltration/boundary patterns plus hidden Unicode and reports a score. |
-| `stripHiddenCharacters(text)` | Removes zero-width and bidirectional control characters. |
-| `wrapUntrusted(text, source)` | Adds a random 128-bit nonce boundary, warning labels, and an in-memory source-ledger record. |
-| `makeCanary()` / `canaryLeaked()` | Standalone canary helpers. |
-
-The shipped automatic wrappers are exactly:
-
-- `WebFetch` textual results;
-- `WebSearch` formatted results (its citation reminder stays outside the data
-  boundary); and
-- textual MCP tool-result blocks, except a tool explicitly marked as a trusted
-  control channel.
-
-Local file reads, GitHub tool results, arbitrary user text, and every other
-tool result do not pass through this wrapper merely because the module comment
-mentions those threat classes. `makeCanary()` and `canaryLeaked()` are exported
-helpers but are not installed in the main query/tool loop. `/sources` exposes
-the bounded in-memory provenance created by actual `wrapUntrusted()` calls; it
-does not prove that a model used a source to form a claim.
-
-The durable boundaries remain permissions, OS sandboxing where enabled, scoped
-credentials, and explicit human approval.
-
-## Guardrails — manual checks plus two diff gates
-
-Rules in `.ur/guardrails/*.json` support `regex`, `contains`, `pii`,
-`maxLength`, `jsonSchema`, and `llm`; phases are `input`, `output`, or `both`;
-actions are `warn` or `block`.
-
-```text
+Declarative I/O guardrails in `.ur/guardrails/` layered onto the self-review gate
+(`src/services/guardrails/guardrails.ts`). Rule kinds: `regex`, `contains`, `pii`,
+`llm`; phases `input` / `output`; rules can be scoped per tool and can declare
+tripwires (hard-stop on match).
+```
 /guardrails init
 /guardrails list
 /guardrails validate
 /guardrails check "send this to x@y.com" --phase output --json
 ```
 
-`/guardrails check` evaluates the supplied text and reports a tripwire. The
-engine is **not** a universal pre/post hook on every normal tool call. Its
-deterministic diff-compatible rules are additionally wired into:
+## Security toolkit (`/security` + standalone commands)
 
-- `agent-task pr --create` self-review; and
-- the Agent CI review path.
+Backed by `src/security/` (attackSurface, codeAudit, webAudit, cloudAudit, secrets,
+vulnIntel, threatModel, compliance, playbooks, hardening, incident, lab, scope,
+containment, findings/reports):
 
-LLM and JSON-schema guardrails are not part of those diff gates. A blocking
-finding prevents the relevant PR/CI handoff unless that command's explicit
-override path is used; it does not globally stop unrelated agent activity.
-
-## Security toolkit — deterministic/local commands
-
-The `/security` family is a command toolkit, not a collection of automatically
-invoked model tools:
-
-```text
-/security scan
-/security code
-/security secrets
-/security report
-/scope set local
-/threat-model
-/vuln
-/ir
-/compliance
-/playbook
-/harden
-/kali
-/lab create web-vuln
 ```
+/security scan            # umbrella scan
+/security code            # code audit
+/security secrets         # secret scanning
+/security report          # findings report
+/security rules · /security status
+/scope set local          # define/approve an authorized test scope (required for offensive checks)
+/threat-model             # STRIDE/ATT&CK model of the project
+/vuln                     # dependency vulnerability audit via OSV
+/ir                       # read-only incident-response collection
+/compliance               # OWASP / SSDF / CIS mapping
+/playbook                 # defensive playbooks
+/harden                   # host hardening checks (read-only)
+/kali                     # detect installed security tooling (read-only)
+/lab                      # spin up a safe local practice lab
+/security-review          # review pending branch changes for vulnerabilities
+```
+`/security-review` also exists as a bundled worktree skill that fixes low-risk
+findings locally. Security labs accept only known templates and refuse symlinked
+lab roots; approved security fixes canonicalize the target, write atomically,
+and roll back if verification fails. The skill runs focused checks, asks before
+the final full verification suite, and never commits, pushes, or opens a PR
+without a separate explicit request.
 
-Workspace code/secret scans are bounded heuristic scanners. `/vuln` consults
-the dependency vulnerability implementation and can report no results when the
-registry is unavailable. `/ir` and `/harden` are read-only collection/check
-paths. `/scope` controls the security module's active web/testing operations;
-it is separate from ordinary UR filesystem tool permissions. Lab creation
-accepts only known templates and rejects unsafe roots.
+## Devcontainer execution target (`/devcontainer`, alias `/exec-target`)
 
-The bundled `/security-review` skill is a model workflow prompt with explicit
-verification and publishing instructions. Its existence does not turn the
-security scanners into a universal automatic gate.
-
-## Devcontainer target
-
-`/devcontainer` is an explicit Docker-backed execution target described by
-`.ur/devcontainer.json`:
-
-```text
+Opt-in reproducible container target (`.ur/devcontainer.json`): run commands and
+`/ci-loop` inside Docker instead of the host:
+```
 /devcontainer status
 /devcontainer init --image node:22
 /devcontainer exec -- npm test
 ```
 
-It affects commands deliberately routed through the devcontainer command. It
-does not transparently move every Bash/tool call into Docker.
+## Stability layer (MAPE-K) (`/stability`, `/actions`, `/evidence`)
 
-## Stability ledger — recording is enforced; analysis is advisory
-
-Normal tool start/finish hooks append action evidence to `.ur/actions.jsonl`.
-The commands below inspect that ledger:
-
-```text
-/stability metrics
-/stability firewall
-/stability why "ECONNRESET"
-/stability policy
-/stability cooldown
-/evidence 20
-/actions 10
+`src/stability/` implements Monitor-Analyze-Plan-Execute-over-Knowledge controls with an
+append-only ledger (`.ur/actions.jsonl`):
+```
+/stability metrics        # error rates, latencies, loop indicators
+/stability firewall       # active protections
+/stability why "ECONNRESET"   # root-cause analysis of an error
+/stability policy · /stability cooldown
+/evidence 20              # evidence/action ledger tail
+/actions 10               # recent stability actions
 ```
 
-`metrics`, `firewall`, `why`, and `cooldown` calculate failure, latency,
-repetition, blast-radius, or likely-cause summaries. `firewall` prints an
-advisory recommendation; it does not pause or cancel the core query loop.
-`StabilityMonitor` is a self-contained source API and is not instantiated by
-the normal query loop. This is a Monitor/Analyze evidence layer, not a fully
-automatic MAPE-K controller.
+The strict L1 verifier also validates terminal action intent. A final clause
+such as `Let me create it now` requires a successful Write/Edit/NotebookEdit or
+Bash mutation in the current user turn; `I will run the tests now` requires a
+successful Bash call. The detector examines only the final visible clause and
+excludes conditional plans, limiting false positives. Rejections use the
+existing three-injection ceiling, so an uncooperative model cannot loop
+indefinitely. This gate does not change permission or AutoApprove behavior.
+Project-gate approval requests are tracked per user-turn UUID and emitted once;
+the marker is cleared with the rest of the verifier turn state.
 
-## Verifier gates — separate enforced query-loop layer
+## Provenance & claims (`/claim-ledger`, `/cite`)
 
-The verifier is independent of `/stability`. In the default `strict` mode its
-L1 query-loop checks include empty turns, repeated calls, completion claims
-versus successful tool effects, unfinished actionable tasks, and configured or
-auto-detected project gates after edits. Interactive sessions ask before
-running project gates; non-interactive sessions can run them directly unless
-`verifier.askBeforeGates` says otherwise. `UR_VERIFIER_MODE=loose|off` weakens
-or disables these checks.
+`/claim-ledger add --claim "p99 < 200ms" --source bench:latest` records
+claim-to-source provenance; `validate` checks all claims still resolve.
 
-Immediate promises such as “let me create it now” are checked only in the final
-visible clause and require matching successful mutation evidence. Rejections
-are capped at three per user turn to avoid an infinite correction loop. The
-independent L2 verification subagent is opt-in through `/verify` or
-`UR_VERIFIER_AUTO_SUBAGENT=1`; it is not auto-spawned by default.
+## Privacy
 
-## Claim ledger and credentials
-
-`/claim-ledger add` stores claim/source strings in
-`.ur/evidence/claims.json` through the contained private-state writer (atomic
-replacement, regular-file/symlink checks, `0600` mode, and a 2 MiB bound).
-Loading is fail-closed: malformed JSON, a wrong root shape, duplicate IDs,
-unsupported confidence/source kinds, or malformed records make `list`,
-`validate`, and `add` fail nonzero; `add` never replaces the corrupt file with
-an empty ledger. Source kinds are `web`, `file`, `mcp`, `tool`, and `user`.
-`validate` checks only this stored structure; it does **not** fetch URLs, open files,
-or prove that a source still resolves.
-
-On macOS, credentials prefer Keychain and fall back to
-`~/.ur/.credentials.json` when keychain reads/writes fail. On Linux and Windows,
-the current implementation uses that plaintext JSON store directly. The file
-is chmod `0600`, but it is still plaintext; “kept in the OS keychain” is not a
-cross-platform guarantee. `/privacy-settings` and `--offline` control
-telemetry/network behavior separately from credential storage.
+`/privacy-settings` UI; `--offline` kills telemetry; `feedbackSurveyRate`, analytics in
+`src/services/analytics/` (GrowthBook flags + OTel metrics, `otelHeadersHelper`).
+Secrets are kept in the OS keychain via `src/utils/secureStorage/`; `npm run secrets:scan`
+exists for the repo itself.

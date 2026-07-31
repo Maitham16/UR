@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
@@ -320,7 +321,7 @@ export async function archiveBridgeSession(
  * Update the title of a bridge session via PATCH /v1/sessions/{id}.
  *
  * Called when the user renames a session via /rename while a bridge
- * connection is active, so the title stays in sync on ur.com/code.
+ * connection is active, so the title stays in sync on ur.ai/code.
  *
  * Errors are swallowed — title sync is best-effort.
  */

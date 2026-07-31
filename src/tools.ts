@@ -288,17 +288,13 @@ export function filterToolsByDenyRules<
 }
 
 export const getTools = (permissionContext: ToolPermissionContext): Tools => {
-  // Simple mode: Bash/Read/Edit plus the task planner required by the default
-  // mutation gate.
+  // Simple mode: only Bash, Read, and Edit tools
   if (isEnvTruthy(process.env.UR_CODE_SIMPLE)) {
-    const simpleTaskTools: Tool[] = isTodoV2Enabled()
-      ? [TaskCreateTool, TaskGetTool, TaskUpdateTool, TaskListTool]
-      : [TodoWriteTool]
     // --bare + REPL mode: REPL wraps Bash/Read/Edit/etc inside the VM, so
     // return REPL instead of the raw primitives. Matches the non-bare path
     // below which also hides REPL_ONLY_TOOLS when REPL is enabled.
     if (isReplModeEnabled() && REPLTool) {
-      const replSimple: Tool[] = [REPLTool, ...simpleTaskTools]
+      const replSimple: Tool[] = [REPLTool]
       if (
         feature('COORDINATOR_MODE') &&
         coordinatorModeModule?.isCoordinatorMode()
@@ -307,12 +303,7 @@ export const getTools = (permissionContext: ToolPermissionContext): Tools => {
       }
       return filterToolsByDenyRules(replSimple, permissionContext)
     }
-    const simpleTools: Tool[] = [
-      BashTool,
-      FileReadTool,
-      FileEditTool,
-      ...simpleTaskTools,
-    ]
+    const simpleTools: Tool[] = [BashTool, FileReadTool, FileEditTool]
     // When coordinator mode is also active, include AgentTool and TaskStopTool
     // so the coordinator gets Task+TaskStop (via useMergedTools filtering) and
     // workers get Bash/Read/Edit (via filterToolsForAgent filtering).

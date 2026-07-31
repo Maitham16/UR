@@ -3,12 +3,7 @@
  */
 
 import type { AgentId } from '../../types/ids.js'
-import type {
-  AttachmentMessage,
-  HookResultMessage,
-  Message,
-} from '../../types/message.js'
-import type { ToolUseContext } from '../../Tool.js'
+import type { HookResultMessage, Message } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
@@ -42,7 +37,6 @@ import {
   buildPostCompactMessages,
   type CompactionResult,
   createPlanAttachmentIfNeeded,
-  createTaskStateAttachmentIfNeeded,
 } from './compact.js'
 import { estimateMessageTokens } from './microCompact.js'
 import { getCompactUserSummaryMessage } from './prompt.js'
@@ -447,7 +441,6 @@ function createCompactionResultFromSessionMemory(
   hookResults: HookResultMessage[],
   transcriptPath: string,
   agentId?: AgentId,
-  restoredStateAttachments: AttachmentMessage[] = [],
 ): CompactionResult {
   const preCompactTokenCount = tokenCountFromLastAPIResponse(messages)
 
@@ -489,9 +482,7 @@ function createCompactionResultFromSessionMemory(
   ]
 
   const planAttachment = createPlanAttachmentIfNeeded(agentId)
-  const attachments = planAttachment
-    ? [planAttachment, ...restoredStateAttachments]
-    : restoredStateAttachments
+  const attachments = planAttachment ? [planAttachment] : []
 
   return {
     boundaryMarker: annotateBoundaryWithPreservedSegment(
@@ -522,7 +513,7 @@ function createCompactionResultFromSessionMemory(
  */
 export async function trySessionMemoryCompaction(
   messages: Message[],
-  toolUseContext: ToolUseContext,
+  agentId?: AgentId,
   autoCompactThreshold?: number,
 ): Promise<CompactionResult | null> {
   if (!shouldUseSessionMemoryCompaction()) {
@@ -596,8 +587,6 @@ export async function trySessionMemoryCompaction(
 
     // Get transcript path for the summary message
     const transcriptPath = getTranscriptPath()
-    const taskStateAttachment =
-      await createTaskStateAttachmentIfNeeded(toolUseContext)
 
     const compactionResult = createCompactionResultFromSessionMemory(
       messages,
@@ -605,8 +594,7 @@ export async function trySessionMemoryCompaction(
       messagesToKeep,
       hookResults,
       transcriptPath,
-      toolUseContext.agentId,
-      taskStateAttachment ? [taskStateAttachment] : [],
+      agentId,
     )
 
     const postCompactMessages = buildPostCompactMessages(compactionResult)

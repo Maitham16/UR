@@ -54,7 +54,7 @@ if (!packageJson.homepage?.includes(expectedRepo)) {
   fail(`package.json homepage must point at ${expectedRepo}`)
 }
 
-const expectedFiles = ['bin', 'dist', 'docs', 'technical', 'documentation', 'extensions', 'examples', 'plugins', 'CHANGELOG.md', 'CONTRIBUTING.md', 'QUALITY.md', 'README.md', 'RELEASE.md', 'SECURITY.md', 'LICENSE']
+const expectedFiles = ['bin', 'dist', 'docs', 'documentation', 'extensions', 'examples', 'plugins', 'CHANGELOG.md', 'CONTRIBUTING.md', 'QUALITY.md', 'README.md', 'RELEASE.md', 'SECURITY.md', 'LICENSE']
 for (const file of expectedFiles) {
   if (!packageJson.files?.includes(file)) {
     fail(`package.json files is missing ${file}`)
@@ -91,11 +91,6 @@ if (!jetbrainsBuild.includes(`version = "${version}"`)) {
 const documentationIndex = read('documentation/index.html')
 if (!documentationIndex.includes(`Version ${version}`)) {
   fail(`documentation/index.html version eyebrow must be ${version}`)
-}
-
-const technicalReadme = read('technical/README.md')
-if (!technicalReadme.includes(`ur-agent\` v${version}`)) {
-  fail(`technical/README.md source-audit version must be ${version}`)
 }
 
 const versionFallbackFiles = [

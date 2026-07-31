@@ -74,9 +74,7 @@ import {
 import {
   areFileEditsInputsEquivalent,
   findActualString,
-  formatStringNotFoundMessage,
   getPatchForEdit,
-  isDeletionOnlyEditAlreadyApplied,
   preserveQuoteStyle,
 } from './utils.js'
 import {
@@ -316,20 +314,10 @@ export const FileEditTool = buildTool({
     // Use findActualString to handle quote normalization
     const actualOldString = findActualString(file, old_string)
     if (!actualOldString) {
-      if (
-        isDeletionOnlyEditAlreadyApplied(
-          file,
-          old_string,
-          new_string,
-          replace_all,
-        )
-      ) {
-        return { result: true }
-      }
       return {
         result: false,
         behavior: 'ask',
-        message: formatStringNotFoundMessage(file, old_string),
+        message: `String to replace not found in file.\nString: ${old_string}`,
         meta: {
           isFilePathAbsolute: String(isAbsolute(file_path)),
         },
@@ -412,42 +400,6 @@ export const FileEditTool = buildTool({
     // 1. Get current state
     const fs = getFsImplementation()
     const absoluteFilePath = expandPath(file_path)
-
-    // Re-check the narrow idempotent deletion case before diagnostics,
-    // backups, hooks, directory creation, or writes. validateInput already
-    // checked it, but permission handling may have introduced a delay.
-    const initialState = readFileForEdit(absoluteFilePath)
-    if (initialState.fileExists) {
-      const lastRead = readFileState.get(absoluteFilePath)
-      if (
-        !lastRead ||
-        getFileModificationTime(absoluteFilePath) > lastRead.timestamp ||
-        !fileStateMatchesContent(initialState.content, lastRead)
-      ) {
-        throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
-      }
-      if (
-        isDeletionOnlyEditAlreadyApplied(
-          initialState.content,
-          old_string,
-          new_string,
-          replace_all,
-        )
-      ) {
-        return {
-          data: {
-            filePath: file_path,
-            oldString: old_string,
-            newString: new_string,
-            originalFile: initialState.content,
-            structuredPatch: [],
-            userModified: userModified ?? false,
-            replaceAll: replace_all,
-            alreadyApplied: true,
-          },
-        }
-      }
-    }
 
     // Discover skills from this file's path (fire-and-forget, non-blocking)
     // Skip in simple mode - no skills available
@@ -652,14 +604,7 @@ export const FileEditTool = buildTool({
     }
   },
   mapToolResultToToolResultBlockParam(data: FileEditOutput, toolUseID) {
-    const { filePath, userModified, replaceAll, alreadyApplied } = data
-    if (alreadyApplied) {
-      return {
-        tool_use_id: toolUseID,
-        type: 'tool_result',
-        content: `The file ${filePath} already contains the requested replacement. No change was needed.`,
-      }
-    }
+    const { filePath, userModified, replaceAll } = data
     const modifiedNote = userModified
       ? '.  The user modified your proposed changes before accepting them. '
       : ''

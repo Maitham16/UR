@@ -11,8 +11,8 @@ Source of truth: `src/main.tsx` (print mode);
 ```
 ur -p "summarize the failing tests"
 ur -p "…" --output-format json          # structured result
-ur -p "…" --output-format stream-json --verbose   # add --include-partial-messages for chunks
-cat prompts.jsonl | ur -p --input-format stream-json --output-format stream-json --verbose --replay-user-messages
+ur -p "…" --output-format stream-json   # streaming events (add --include-partial-messages)
+cat prompts.jsonl | ur -p --input-format stream-json --output-format stream-json --replay-user-messages
 ur -p "…" --max-turns 5 --fallback-model llama3.3 --no-session-persistence
 ```
 The trust dialog is skipped in `-p` — only run it in directories you trust.
@@ -29,81 +29,17 @@ ur exec --file prompts.jsonl --max-turns 20 --model qwen2.5-coder:7b \
 ur exec "risky idea" --dry-run
 ```
 
-Task planning is enabled by default. Each top-level prompt becomes an ordered
-plan/DAG with a bounded agent budget, live task board, approval state, observed
-file/command evidence, and strict claim verification. Relevant controls are
-`--max-agents`, `--no-task-planning`, `--no-parallel-agents`,
-`--no-task-board`, `--no-strict-verification`, and `--quiet`; all are
-registered and forwarded by the shipped top-level CLI.
-
-With `--worktree`, one worktree is created per top-level prompt, not per child
-step. Dependencies in that plan therefore see prerequisite changes. The result
-reports the worktree path/branch and states explicitly that `/exec` does not
-merge, push, or publish it. Without worktrees, read-only tasks from different
-plans may overlap, but workspace-mutating tasks take a global exclusive gate so
-two prompt plans cannot write the shared checkout concurrently.
-
-Planner roles (`planner`, `executor`, `verifier`, `reporter`) are placed in the
-bounded child prompt as an assigned role; `/exec` does not pass those labels as
-`--agent` definitions. Approval-required tasks are held before execution and
-make that invocation incomplete/nonzero. `/exec` has no persisted
-approve/resume subcommand, so grant the required authority and rerun the
-top-level prompt.
-
-File evidence comes from recursive pre/post workspace metadata snapshots
-(excluding `.git`, dependency, and common build-cache directories),
-supplemented by the runner's dirty-path delta. Command evidence from the
-default runner proves the outer `ur -p` child invocation; commands the child
-model runs inside that session are not independently observed unless an
-executor surfaces them. Natural-language success still begins with the child
-process result; strict verification separately rejects unsupported
-file/command claims it can parse.
-
-`--output-dir` uses sequence, prompt, and task identity and creates files
-exclusively with collision suffixes, so duplicate prompts and concurrent
-processes do not overwrite prior output. JSON results include `outputFile`.
-Usage or invalid numeric options exit 2; any failed, canceled, blocked,
-approval-held, or otherwise incomplete planned run exits 1.
-
 ## SDK / programmatic use (`/sdk`, `src/sdk/`)
-
-```ts
-import { query, queryJSON, UrClient } from 'ur-agent/sdk'
-
-const run = await query('Summarize the README', { maxTurns: 4 })
-const client = new UrClient({ cwd: process.cwd(), model: 'qwen2.5-coder:7b' })
-const data = await client.queryJSON<{ files: string[] }>(
-  'Return JSON with the relevant files',
-)
-```
 
 ```
 /sdk info      # show headless patterns (spawn `ur -p`, stream-json protocol, MCP serve)
 /sdk init      # scaffold TypeScript + Python SDK example projects
 ```
-
-The npm package publishes a typed `ur-agent/sdk` subpath for ESM and CommonJS.
-It is a dependency-free **subprocess wrapper**: each `query` launches the
-installed `ur -p`, buffers stdout, and returns
-`{ok,text,raw,exitCode,stderr}`. It therefore inherits the child CLI's
-permissions, configuration, MCP setup, and model routing; it is not an
-in-process model API. `queryJSON` returns `null` on a nonzero child result or
-invalid final JSON. `UrClient` merges default and per-call environment maps,
-and an explicit `model` wins over an `UR_MODEL` entry in either map.
-
-`outputFormat: 'stream-json'` automatically supplies the CLI-required
-`--verbose`; `parseResultText` selects the terminal result from NDJSON even
-when lifecycle events follow it. The current API still buffers the stream and
-preserves the full NDJSON in `raw`; it does not expose an event iterator.
-Empty prompts, non-positive/non-integer `maxTurns` or `timeoutMs`, and unknown
-output formats reject before spawning.
-
-`src/entrypoints/agentSdkTypes.ts` remains an internal structured-protocol type
-barrel, not this runtime wrapper. `/sdk init` scaffolds runnable TypeScript and
-Python subprocess examples. `ur mcp serve` exposes UR over MCP; `ur a2a serve`
-and `ur acp serve` are the shipped HTTP-facing agent protocols. The separate
-direct-connect `ur server` implementation is behind the compile-time
-`DIRECT_CONNECT` feature and is absent from the standard npm bundle.
+`src/entrypoints/agentSdkTypes.ts` is an internal type barrel used by the CLI;
+it is not a runtime npm SDK. The supported embedding contract is the generated
+subprocess example from `/sdk init` using `ur -p` plus stream-json. `ur mcp
+serve` exposes UR as an MCP server so other agents/apps can drive it; `ur
+server` exposes an HTTP session API (see doc 02).
 
 ## CI loop (`/ci-loop`, alias `/heal`)
 
@@ -124,10 +60,6 @@ test names that merely contain words such as "failed". A "No tests found"
 failure stops after the first attempt without starting a fix agent; run from
 the test root or pass `--cwd <path>`.
 Runs inside `/devcontainer` target when configured (doc 12).
-Script-facing status is fail-closed: a passing run exits 0;
-failed/blocked/exhausted/cannot-fix (including dry-run's non-completed preview
-result) exits 1; and invalid arguments, working directories, or seed-log paths
-exit 2.
 
 ## Test-first loop (`/test-first`, aliases `/quality-loop`, `/tf-loop`)
 
@@ -154,11 +86,8 @@ Cron-style project automations with host-scheduler installation (doc 08):
 ur automation install --platform systemd --interval 300
 ur automation run-due --now 2026-07-09T03:00:00Z
 ```
-The source tree also contains `/loop` plus cron tools behind the compile-time
-`AGENT_TRIGGERS` feature, and `/schedule` plus `RemoteTrigger` behind
-`AGENT_TRIGGERS_REMOTE`. Neither feature is compiled into the standard npm
-bundle, so environment variables alone cannot enable those two in-session
-surfaces there.
+In-session recurring runs: `/loop 10m /ci-loop` (bundled skill, cron tools).
+Remote scheduled agents: `/schedule` skill + `RemoteTrigger` tool (feature-gated).
 
 ## Eval harness (`/eval`, aliases `/evals`)
 
@@ -177,15 +106,10 @@ Public eval harness (`src/services/agents/evals.ts`) with project suites under
 Cases run in fresh detached worktrees by default. `--no-isolate` is an
 explicit opt-out. A case can add `expect.trajectory` rules for required,
 forbidden, ordered, and successfully completed tools, plus tool-call,
-failure, repetition, permission-denial, and turn limits. The
-`EvalTrajectory` object stores only control-flow metadata: normalized tool
-names, hashed/opaque call IDs, success flags, and counts. It does not retain
-prompts, assistant prose, paths, tool inputs, or tool outputs.
-
-The saved eval report is broader than the trajectory object: it keeps a
-bounded terminal-output preview and may keep bounded, redacted test
-stdout/stderr in metrics. Treat reports as potentially sensitive artifacts
-despite trajectory redaction.
+failure, repetition, permission-denial, and turn limits. Stream-JSON capture
+stores only control-flow metadata: normalized tool names, opaque call IDs,
+success flags, counts, and the terminal result. It does not retain prompts,
+assistant prose, paths, tool inputs, or tool outputs.
 
 Use a saved report as a CI gate:
 
@@ -223,13 +147,9 @@ Results are stored under `benchmarks/results/<version>/` against
 
 ## Learning loop
 
-`/learn run --reflect` mines `.ur/artifacts` + CI outcomes into
-per-category/per-model success-rate stats and lessons. Learned statistics are
-consulted automatically by eligible model-routing and escalation paths once
-their evidence thresholds are met. `/learn apply` has a narrower effect: it
-persists the best sufficiently sampled overall model as the escalation
-policy's `oracle`; it does not directly rewrite arena or model-route policy
-(doc 05).
+`/learn run --reflect` mines `.ur/artifacts` + CI outcomes into per-category/per-model
+success-rate stats and lessons; `/learn apply` biases `escalate`, `arena`, and
+`model-route` decisions (doc 05).
 
 ## Frontier automation contracts
 

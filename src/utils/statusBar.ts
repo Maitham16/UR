@@ -1,4 +1,3 @@
-import { isBackgroundTask, type TaskState } from '../tasks/types.js'
 import { isUpdateAvailable } from './updateNotice.js'
 
 export type StatusBarInput = {
@@ -10,7 +9,6 @@ export type StatusBarInput = {
   branch?: string | null
   taskRunningCount?: number
   taskTotalCount?: number
-  agentRunningCount?: number
   checksStatus?: string | null
   latestVersion?: string | null
   isCheckingUpdate?: boolean
@@ -23,50 +21,6 @@ export type StatusBarDisplayInput = {
   isCI?: boolean
   term?: string
   disabled?: boolean
-}
-
-/**
- * Count only work that is both active and actually backgrounded.
- *
- * The task store intentionally retains foreground and recently-finished
- * entries. Counting the whole store made the status line show stale ratios
- * such as "tasks: 0/4 active" long after the work had ended.
- */
-export function countActiveBackgroundTasks(
-  tasks: Iterable<TaskState>,
-): number {
-  let active = 0
-  for (const task of tasks) {
-    if (isBackgroundTask(task)) active += 1
-  }
-  return active
-}
-
-/**
- * Count agents running in the foreground of the current turn.
- *
- * isBackgroundTask() excludes these on purpose, so subagents dispatched during
- * a turn were counted nowhere and the status line stayed silent while they ran
- * — the one moment the user most wants to know how many are working. Counted
- * separately rather than folded into the background total: they are different
- * kinds of work, and merging them would resurrect the stale-ratio problem the
- * background counter was narrowed to fix.
- *
- * Only 'running' counts. A pending foreground agent has not started, and
- * reporting it as working would be the kind of optimistic number that makes a
- * status line untrustworthy.
- */
-export function countActiveForegroundAgents(
-  tasks: Iterable<TaskState>,
-): number {
-  let active = 0
-  for (const task of tasks) {
-    if (task.status !== 'running') continue
-    if (!('isBackgrounded' in task) || task.isBackgrounded !== false) continue
-    if (!String(task.type ?? '').includes('agent')) continue
-    active += 1
-  }
-  return active
 }
 
 export function statusBarShouldDisplay({
@@ -97,7 +51,6 @@ export function buildDefaultStatusBar({
   branch,
   taskRunningCount = 0,
   taskTotalCount = 0,
-  agentRunningCount = 0,
   checksStatus,
   latestVersion,
   isCheckingUpdate,
@@ -110,19 +63,8 @@ export function buildDefaultStatusBar({
   if (model) {
     parts.push(model)
   }
-  // Foreground agents first: they are the work happening right now, and the
-  // status line truncates at terminal width.
-  if (agentRunningCount > 0) {
-    parts.push(
-      `agents: ${agentRunningCount} running`,
-    )
-  }
-  if (taskRunningCount > 0) {
-    parts.push(
-      taskTotalCount > taskRunningCount
-        ? `tasks: ${taskRunningCount}/${taskTotalCount} active`
-        : `tasks: ${taskRunningCount} active`,
-    )
+  if (taskTotalCount > 0) {
+    parts.push(`tasks: ${taskRunningCount}/${taskTotalCount} active`)
   }
   if (providerLabel) {
     parts.push(providerLabel)

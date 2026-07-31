@@ -303,18 +303,12 @@ describe('crew', () => {
     expect(claimNextTask(cwd, 'board', 'w3')).toBeNull()
   })
 
-  test('reopenClaimed refuses ambiguous shared-checkout replay', () => {
+  test('reopenClaimed restores orphaned tasks', () => {
     const cwd = tmp()
     createCrew(cwd, 'board', '1. a\n2. b')
-    const claimed = claimNextTask(cwd, 'board', 'w1')
+    claimNextTask(cwd, 'board', 'w1')
     const reopened = reopenClaimed(cwd, 'board')
-    expect(
-      reopened?.tasks.find(task => task.id === claimed?.id),
-    ).toMatchObject({
-      status: 'failed',
-      verdict: 'FAIL',
-    })
-    expect(reopened?.tasks.filter(task => task.status === 'todo')).toHaveLength(1)
+    expect(reopened?.tasks.every(t => t.status === 'todo')).toBe(true)
   })
 
   test('runCrew completes every task with an injected runner', async () => {

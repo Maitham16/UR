@@ -16,8 +16,8 @@ import { lt } from '../utils/semver.js'
 /**
  * Runtime check for bridge mode entitlement.
  *
- * Remote Control requires a ur.com subscription (the bridge auths to CCR
- * with the ur.com OAuth token). isURAISubscriber() excludes
+ * Remote Control requires a ur.ai subscription (the bridge auths to CCR
+ * with the ur.ai OAuth token). isURAISubscriber() excludes
  * Bedrock/Vertex/Foundry, apiKeyHelper/gateway deployments, env-var API keys,
  * and Console API logins — none of which have the OAuth token CCR needs.
  *
@@ -69,7 +69,7 @@ export async function isBridgeEnabledBlocking(): Promise<boolean> {
 export async function getBridgeDisabledReason(): Promise<string | null> {
   if (feature('BRIDGE_MODE')) {
     if (!isURAISubscriber()) {
-      return 'Remote Control requires a ur.com subscription. Run `ur auth login` to sign in with your ur.com account.'
+      return 'Remote Control requires a ur.ai subscription. Run `ur auth login` to sign in with your ur.ai account.'
     }
     if (!hasProfileScope()) {
       return 'Remote Control requires a full-scope login token. Long-lived tokens (from `ur setup-token` or UR_CODE_OAUTH_TOKEN) are limited to inference-only for security reasons. Run `ur auth login` to use Remote Control.'
@@ -132,7 +132,7 @@ export function isEnvLessBridgeEnabled(): boolean {
  * Kill-switch for the `cse_*` → `session_*` client-side retag shim.
  *
  * The shim exists because compat/convert.go:27 validates TagSession and the
- * ur.com frontend routes on `session_*`, while v2 worker endpoints hand out
+ * ur.ai frontend routes on `session_*`, while v2 worker endpoints hand out
  * `cse_*`. Once the server tags by environment_kind and the frontend accepts
  * `cse_*` directly, flip this to false to make toCompatSessionId a no-op.
  * Defaults to true — the shim stays active until explicitly disabled.

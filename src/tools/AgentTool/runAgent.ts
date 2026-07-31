@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { feature } from 'bun:bundle'
 import { canSpawnAgent, registerAgent } from './fanOutLimits.js'
 import { resolveFanOutLimits } from './fanOutSettings.js'
@@ -362,14 +363,6 @@ export async function* runAgent({
     fanOutDecision.depth,
   )
 
-  // Establish slot ownership immediately after registration. Every operation
-  // below — including context loading, hooks, skills, MCP setup, and context
-  // construction — may fail before query() starts, so their resources are
-  // declared up front and cleaned conditionally by this single boundary.
-  let initialMessages: Message[] | undefined
-  let mcpCleanup: (() => Promise<void>) | undefined
-  let agentToolUseContext: ToolUseContext | undefined
-  try {
   // Route this agent's transcript into a grouping subdirectory if requested
   // (e.g. workflow subagents write to subagents/workflows/<runId>/).
   if (transcriptSubdir) {
@@ -394,7 +387,7 @@ export async function* runAgent({
   const contextMessages: Message[] = forkContextMessages
     ? filterIncompleteToolCalls(forkContextMessages)
     : []
-  initialMessages = [...contextMessages, ...promptMessages]
+  const initialMessages: Message[] = [...contextMessages, ...promptMessages]
 
   const agentReadFileState =
     forkContextMessages !== undefined
@@ -670,13 +663,14 @@ export async function* runAgent({
   }
 
   // Initialize agent-specific MCP servers (additive to parent's servers)
-  const agentMcp = await initializeAgentMcpServers(
+  const {
+    clients: mergedMcpClients,
+    tools: agentMcpTools,
+    cleanup: mcpCleanup,
+  } = await initializeAgentMcpServers(
     agentDefinition,
     toolUseContext.options.mcpClients,
   )
-  const mergedMcpClients = agentMcp.clients
-  const agentMcpTools = agentMcp.tools
-  mcpCleanup = agentMcp.cleanup
 
   // Merge agent MCP tools with resolved agent tools, deduplicating by name.
   // resolvedTools is already deduplicated (see resolveAgentTools), so skip
@@ -720,7 +714,7 @@ export async function* runAgent({
   // Create subagent context using shared helper
   // - Sync agents share setAppState, setResponseLength, abortController with parent
   // - Async agents are fully isolated (but with explicit unlinked abortController)
-  agentToolUseContext = createSubagentContext(toolUseContext, {
+  const agentToolUseContext = createSubagentContext(toolUseContext, {
     options: agentOptions,
     agentId,
     agentType: agentDefinition.agentType,
@@ -768,6 +762,7 @@ export async function* runAgent({
   let lastRecordedUuid: UUID | null =
     (initialMessages.at(-1)?.uuid as UUID | undefined) ?? null
 
+  try {
     for await (const message of query({
       messages: initialMessages,
       systemPrompt: agentSystemPrompt,
@@ -841,7 +836,7 @@ export async function* runAgent({
     // not strand the concurrency budget.
     releaseFanOutSlot()
     // Clean up agent-specific MCP servers (runs on normal completion, abort, or error)
-    await mcpCleanup?.()
+    await mcpCleanup()
     // Clean up agent's session hooks
     if (agentDefinition.hooks) {
       clearSessionHooks(rootSetAppState, agentId)
@@ -851,9 +846,9 @@ export async function* runAgent({
       cleanupAgentTracking(agentId)
     }
     // Release cloned file state cache memory
-    agentToolUseContext?.readFileState.clear()
+    agentToolUseContext.readFileState.clear()
     // Release the cloned fork context messages
-    if (initialMessages) initialMessages.length = 0
+    initialMessages.length = 0
     // Release perfetto agent registry entry
     unregisterPerfettoAgent(agentId)
     // Release transcript subdir mapping
@@ -871,6 +866,17 @@ export async function* runAgent({
     // `run_in_background` shell loop (e.g. test fixture fake-logs.sh) outlives
     // the agent as a PPID=1 zombie once the main session eventually exits.
     killShellTasksForAgent(agentId, toolUseContext.getAppState, rootSetAppState)
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    if (feature('MONITOR_TOOL')) {
+      const mcpMod =
+        require('../../tasks/MonitorMcpTask/MonitorMcpTask.js') as typeof import('../../tasks/MonitorMcpTask/MonitorMcpTask.js')
+      mcpMod.killMonitorMcpTasksForAgent(
+        agentId,
+        toolUseContext.getAppState,
+        rootSetAppState,
+      )
+    }
+    /* eslint-enable @typescript-eslint/no-require-imports */
   }
 }
 

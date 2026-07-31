@@ -216,7 +216,7 @@ export async function openCurrentSessionInDesktop(): Promise<{
     return {
       success: false,
       error:
-        'UR Desktop is not installed. Install it from https://ur.com/download',
+        'UR Desktop is not installed. Install it from https://ur.ai/download',
     }
   }
 

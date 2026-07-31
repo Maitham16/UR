@@ -363,23 +363,17 @@ async function* streamOpenAIEvents(
           typeof toolDelta.function?.arguments === 'string' &&
           toolDelta.function.arguments.length > 0
         ) {
-          const argumentDelta = novelCumulativeSuffix(
-            state.allArgs,
-            toolDelta.function.arguments,
-          )
-          state.allArgs += argumentDelta
-          if (argumentDelta.length > 0) {
-            if (state.blockIndex === undefined) {
-              state.pendingArgs += argumentDelta
-            } else {
-              yield {
-                type: 'content_block_delta',
-                index: state.blockIndex,
-                delta: {
-                  type: 'input_json_delta',
-                  partial_json: argumentDelta,
-                },
-              }
+          state.allArgs += toolDelta.function.arguments
+          if (state.blockIndex === undefined) {
+            state.pendingArgs += toolDelta.function.arguments
+          } else {
+            yield {
+              type: 'content_block_delta',
+              index: state.blockIndex,
+              delta: {
+                type: 'input_json_delta',
+                partial_json: toolDelta.function.arguments,
+              },
             }
           }
         }
@@ -1308,19 +1302,6 @@ function mapGeminiStopReason(reason: string | undefined, includesToolUse: boolea
 function stringifyToolInput(input: unknown): string {
   if (typeof input === 'string') return input
   return JSON.stringify(input ?? {})
-}
-
-/**
- * Most OpenAI-compatible servers stream argument fragments, but several local
- * gateways resend the cumulative argument string on every delta. Emit only
- * the unseen suffix in that case; ordinary fragments still append unchanged.
- */
-function novelCumulativeSuffix(previous: string, incoming: string): string {
-  if (incoming === previous) return ''
-  if (previous.length > 0 && incoming.startsWith(previous)) {
-    return incoming.slice(previous.length)
-  }
-  return incoming
 }
 
 function parseStreamedToolInput(input: unknown, path: string): Record<string, unknown> {

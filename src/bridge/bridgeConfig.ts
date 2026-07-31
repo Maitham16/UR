@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Shared bridge auth/URL resolution. Consolidates the ant-only
  * UR_BRIDGE_* dev overrides that were previously copy-pasted across

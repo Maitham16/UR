@@ -54,10 +54,6 @@ const TEXT_FILES = [
       `(# expected for this release: ")${SEMVER_SOURCE}( \\(UR-Nexus\\)")`,
     ),
   },
-  {
-    file: 'technical/README.md',
-    pattern: new RegExp(`(ur-agent\` v)${SEMVER_SOURCE}(\\.)`),
-  },
   // These carry the version as a build-time fallback for MACRO.VERSION.
   {
     file: 'src/commands/agent-ci/agent-ci.ts',

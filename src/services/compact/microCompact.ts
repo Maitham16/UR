@@ -229,8 +229,7 @@ export async function microcompactMessages(
   toolUseContext?: ToolUseContext,
   querySource?: QuerySource,
 ): Promise<MicrocompactResult> {
-  // A new query now has the post-rewrite boundary/messages needed for a fresh
-  // estimate, so the pre-rewrite warning can no longer flash back into view.
+  // Clear suppression flag at start of new microcompact attempt
   clearCompactWarningSuppression()
 
   // Time-based trigger runs first and short-circuits. If the gap since the

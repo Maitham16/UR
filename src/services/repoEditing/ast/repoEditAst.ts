@@ -385,8 +385,8 @@ export async function findCallersAst(options: CallersOptions): Promise<EditPlan>
   return createReadPlan('callers', `Callers of ${options.symbol}${options.file ? ` in ${options.file}` : ''}`, refs, diagnosticsBefore)
 }
 
-export function formatRenamePlanAst(plan: EditPlan, root = '.'): string {
-  const patch = formatWorkspaceEditAsPatch(root, plan.edits)
+export function formatRenamePlanAst(plan: EditPlan): string {
+  const patch = formatWorkspaceEditAsPatch('.', plan.edits)
   if (plan.edits.edits.length === 0) {
     return `No binding-aware rename matches for symbol.`
   }
@@ -406,17 +406,14 @@ export function formatRenamePlanAst(plan: EditPlan, root = '.'): string {
   return lines.join('\n')
 }
 
-export function formatMovePlanAst(plan: EditPlan, root = '.'): string {
-  const patch = formatWorkspaceEditAsPatch(root, plan.edits)
+export function formatMovePlanAst(plan: EditPlan): string {
+  const patch = formatWorkspaceEditAsPatch('.', plan.edits)
   if (plan.edits.edits.length === 0) return 'No move edits computed.'
   return [plan.description, '', patch].join('\n')
 }
 
-export function formatOrganizeImportsPlanAst(
-  plan: EditPlan,
-  root = '.',
-): string {
-  const patch = formatWorkspaceEditAsPatch(root, plan.edits)
+export function formatOrganizeImportsPlanAst(plan: EditPlan): string {
+  const patch = formatWorkspaceEditAsPatch('.', plan.edits)
   if (plan.edits.edits.length === 0) return 'No imports to organize.'
   return [plan.description, '', patch].join('\n')
 }

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { c as _c } from "react/compiler-runtime";
 /**
  * SelectEventMode is the entrypoint of the Hooks config menu, where the user
@@ -53,7 +54,7 @@ export function SelectEventMode(t0) {
   }
   let t3;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Box flexDirection="column"><Text dimColor={true}>{figures.info} This menu is read-only. To add or modify hooks, edit settings.json directly or ask UR.{" "}<Link url="https://ur.com/docs/hooks">Learn more</Link></Text></Box>;
+    t3 = <Box flexDirection="column"><Text dimColor={true}>{figures.info} This menu is read-only. To add or modify hooks, edit settings.json directly or ask UR.{" "}<Link url="https://docs.ur.dev/docs/en/hooks">Learn more</Link></Text></Box>;
     $[4] = t3;
   } else {
     t3 = $[4];

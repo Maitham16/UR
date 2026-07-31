@@ -1,157 +1,119 @@
 # 11 — Integrations
 
-Source of truth: `src/services/mcp/`, `src/entrypoints/{mcp,mcp2026,agUi}.ts`,
-`src/services/agents/{acpStdio,acpServer,a2aProtocol,a2aServer,agUi}.ts`,
-`src/services/agents/ideConfig.ts`, `extensions/{vscode-ur-inline-diffs,jetbrains-ur}/`,
-`src/tools/BrowserTool/BrowserTool.ts`, `src/commands/{browser,browser-qa,chrome,desktop,voice}/`,
-and `scripts/bundle.mjs`.
+Source of truth: `src/services/mcp/`, `src/services/agents/{acpStdio,acpServer,a2aProtocol,a2aServer,agUi}.ts`,
+`extensions/{vscode-ur-inline-diffs,jetbrains-ur}/`, `src/utils/urInChrome/`, `src/bridge/`,
+`src/commands/{mcp,ide,acp,a2a-card,chrome,browser,install-slack-app,bridge,desktop,voice}`.
 
-Availability terms used here:
+## MCP (Model Context Protocol) — UR as a client
 
-- **Shipped** — present in the normal external npm build.
-- **Conditional** — shipped, but hidden or inactive until its documented platform,
-  authentication, setting, dependency, or environment condition is satisfied.
-- **Source-only** — implemented behind a Bun build feature that
-  `scripts/bundle.mjs` does not enable for the normal external build. Source
-  presence alone does not make that command available to npm users.
+Transports: `stdio`, `sse`, `http` (streamable), `ws` (`src/services/mcp/{client,config}.ts`).
+Config sources: settings `mcpServers`, project `.mcp.json`, `--mcp-config` files/strings
+(`--strict-mcp-config` to use only those), UR Desktop import.
 
-## MCP client
-
-UR can consume MCP servers over `stdio`, SSE, streamable HTTP, and WebSocket.
-The `mcp add` CLI supports `stdio`, `sse`, and `http`; WebSocket entries can be
-loaded from a validated settings/config object.
-
-Configuration can come from the `mcpServers` setting, project `.mcp.json`, or
-one or more `--mcp-config` JSON files/strings. `--strict-mcp-config` ignores the
-ordinary user/project MCP sources, but managed enterprise policy still applies.
-
-```text
-ur mcp add fs -- npx -y @modelcontextprotocol/server-filesystem /tmp
-ur mcp add --transport http sentry https://mcp.sentry.dev/mcp
-ur mcp add --transport http corridor https://app.corridor.dev/api/mcp \
-  --header "Authorization: Bearer …"
-ur mcp add-json db '{"command":"pg-mcp","args":["--dsn","…"]}'
-ur mcp list
-ur mcp get fs
-ur mcp remove fs
-ur mcp add-from-ur-desktop
-ur mcp reset-project-choices
-/mcp
 ```
+ur mcp add fs -- npx -y @modelcontextprotocol/server-filesystem /tmp   # stdio
+ur mcp add --transport http sentry https://mcp.sentry.dev/mcp
+ur mcp add --transport http corridor https://app.corridor.dev/api/mcp --header "Authorization: Bearer …"
+ur mcp add-json db '{"command":"pg-mcp","args":["--dsn","…"]}'
+ur mcp list · ur mcp get fs · ur mcp remove fs
+ur mcp add-from-ur-desktop
+ur mcp reset-project-choices        # re-prompt for .mcp.json approvals
+/mcp                                 # in-session UI: status, enable/disable, auth
+```
+- OAuth-protected servers: `src/services/mcp/auth.ts` + `McpAuthTool`; `--client-secret`
+  or `MCP_CLIENT_SECRET` for the client secret; XAA IdP settings (`xaaIdp`).
+  For non-interactive XAA login, pipe the token to
+  `ur mcp xaa login --id-token-stdin`; the bounded stdin path avoids exposing
+  the token through shell history or process arguments.
+- Tools appear as `mcp__<server>__<tool>`; resources via `ListMcpResourcesTool` /
+  `ReadMcpResourceTool`; prompts become slash commands; MCP skills gate `MCP_SKILLS`.
+- Permission control: `allowedMcpServers` / `deniedMcpServers` settings,
+  `mcp__server` deny rules strip a whole server, `enableAllProjectMcpServers`.
+- Env expansion in server configs (`envExpansion.ts`); header helpers for auth
+  (`headersHelper.ts`); official registry lookup (`officialRegistry.ts`).
 
-Runtime behavior:
+## UR as a server
 
-- Tool names use `mcp__<server>__<tool>`. Resources use
-  `ListMcpResources`/`ReadMcpResource`; server prompts may be registered as
-  slash commands.
-- `allowedMcpServers`, `deniedMcpServers`, managed MCP policy, per-project
-  approval, and session enable/disable state filter which servers can connect.
-- HTTP/SSE OAuth state is handled by `src/services/mcp/auth.ts`. `--client-secret`
-  prompts for a secret, while `MCP_CLIENT_SECRET` supplies it non-interactively.
-  XAA commands are registered only when the XAA runtime gate is enabled.
-- Environment expansion and header-helper execution are supported by
-  `envExpansion.ts` and `headersHelper.ts`; those helpers do not bypass normal
-  MCP policy.
-
-## UR server surfaces
-
-| Surface | Availability and start command | Actual contract |
+| Surface | Start | Protocol |
 |---|---|---|
-| MCP stdio | Shipped: `ur mcp serve` | Lists enabled built-in UR tools only. Input is schema-validated, normal permissions are rechecked, calls are bounded, and any operation needing an unavailable interactive approval fails closed. |
-| MCP 2026 HTTP | Shipped: `ur mcp serve-http` | Bun HTTP `/mcp` adapter with negotiated Tasks/Apps metadata. Loopback may run without a token; an off-loopback bind requires `UR_MCP_HTTP_TOKEN`. `--allow-origin` entries are exact HTTP(S) origins. |
-| ACP stdio | Shipped: `ur acp stdio` | Official-SDK-backed ACP v1 agent with persisted ACP sessions, new/load/list/delete/resume/close, prompt streaming, modes/config updates, MCP input, cancellation, and native `session/request_permission` requests. |
-| UR HTTP JSON-RPC | Shipped: `ur acp serve` | UR-specific JSON-RPC at `/acp`; it is not the ACP wire protocol. Supports UR sessions, direct tool calls, and task methods. Off-loopback requires `--token` or `UR_ACP_TOKEN`. |
-| A2A | Shipped: `ur a2a serve` | Negotiated A2A v1 routes, stable v0.3 JSON-RPC at `/a2a/jsonrpc`, and separate UR compatibility task routes. Off-loopback requires a static token or delegation secret. |
-| AG-UI | Shipped: `ur ag-ui serve` | HTTP/SSE `/ag-ui` adapter with `/ag-ui/capabilities`. Loopback is the default; off-loopback requires `UR_AG_UI_TOKEN`. Browser origins are exact allow-list entries. |
-| Direct-connect session server | Source-only (`DIRECT_CONNECT`) | `ur server` and `ur open` are not in the normal external bundle. |
-| Remote-control bridge | Source-only (`BRIDGE_MODE`) | `ur remote-control`/`rc` and the bridge fast paths are not in the normal external bundle. |
-| SSH remote runner | Source-only (`SSH_REMOTE`) | `ur ssh` is not in the normal external bundle. |
+| MCP server | `ur mcp serve` | exposes UR tools over MCP (stdio) |
+| MCP 2026 HTTP | `UR_MCP_HTTP_TOKEN=… ur mcp serve-http` | opt-in stateless `/mcp` adapter with negotiated Tasks and Apps |
+| ACP stdio agent | `ur acp stdio` | Stable ACP v1 via the official SDK: durable list/load/delete/resume/close, exact replay, modes, config, commands, permissions, MCP, streaming |
+| UR HTTP agent API | `UR_ACP_TOKEN=… ur acp serve`; `/acp` | UR-specific HTTP JSON-RPC for scripts, tools/tasks, and the experimental JetBrains plugin; not an ACP binding |
+| A2A server | `UR_A2A_TOKEN=… ur a2a serve --port 8765` | negotiated strict v1 JSON-RPC/HTTP+JSON, stable-SDK v0.3 at `/a2a/jsonrpc`, and separate UR compatibility routes under `/a2a/tasks` |
+| AG-UI adapter | `UR_AG_UI_TOKEN=… ur ag-ui serve --host 0.0.0.0` | official-schema HTTP/SSE at `/ag-ui` with truthful discovery at `/ag-ui/capabilities` |
+| HTTP session server | `ur server --port … --auth-token …` | direct-connect sessions (`src/server/`), unix-socket option, idle timeouts, max sessions |
+| Remote control bridge | `ur remote-control` (`rc`) or `/remote-control` | pairs this machine with mobile/web clients (`src/bridge/`); org policy `allow_remote_control` gates it |
 
-The stdio MCP limits are
-`UR_MCP_MAX_CALLS_PER_MINUTE`, `UR_MCP_MAX_CONCURRENT_CALLS`,
-`UR_MCP_TOOL_TIMEOUT_MS`, `UR_MCP_MAX_INPUT_CHARS`, and
-`UR_MCP_MAX_OUTPUT_CHARS`. The HTTP adapter has request/rate/concurrency limits
-under `UR_MCP_HTTP_*` and uses `UR_MCP_TOOL_TIMEOUT_MS` for underlying tool
-calls.
+`ur mcp serve` exposes built-in tools only. Every call is schema-validated,
+rechecked by the normal permission engine, and executed without an interactive
+approval channel; operations that need approval therefore fail closed. The
+stdio adapter bounds calls, concurrency, runtime, and protocol payload sizes.
+Operators can tune those bounds with `UR_MCP_MAX_CALLS_PER_MINUTE`,
+`UR_MCP_MAX_CONCURRENT_CALLS`, `UR_MCP_TOOL_TIMEOUT_MS`,
+`UR_MCP_MAX_INPUT_CHARS`, and `UR_MCP_MAX_OUTPUT_CHARS`.
 
-The network agent adapters also enforce bounded requests and work:
+`ur mcp serve-http` requires matching protocol/method/name request metadata,
+uses the real UR MCP registry, and applies bearer auth, exact CORS origins,
+owner-isolated durable tasks, rate/concurrency/runtime limits, private atomic
+persistence, and corrupt-state quarantine. Its limits use `UR_MCP_HTTP_*`.
 
-- UR HTTP JSON-RPC uses `UR_ACP_*`.
-- A2A uses `UR_A2A_*`; compatibility-route `skipPermissions` additionally
-  requires the static server token or a delegation token scoped to
-  `permissions:bypass`. The standard A2A protocol runner uses `dontAsk`, so an
-  unavailable interactive approval is denied.
-- AG-UI uses `UR_AG_UI_*`, disables session persistence for adapter runs,
-  denies permission requests because it advertises no approval UI, and aborts
-  the child run when the stream is cancelled.
-- ACP stdio is the exception: it relays UR permission decisions to the ACP
-  client's native request-permission channel and denies on cancellation/client
-  failure.
+`ur ag-ui serve` binds to loopback by default and requires `UR_AG_UI_TOKEN`
+off-loopback. Browser origins are exact allow-list entries. Adapter runs are
+isolated and non-persistent, disconnects cancel execution, approval-requiring
+operations fail closed, and request/rate/concurrency/runtime/output limits use
+`UR_AG_UI_*`. See `docs/AG_UI.md` for the complete supported contract.
+
+The UR HTTP API and A2A surfaces apply request, prompt, task, output, and tool
+limits through the `UR_ACP_*` and `UR_A2A_*` environment variables. Delegated
+A2A protocol and compatibility tasks are isolated by token subject, tenant,
+and skill;
+bypassing permissions on the compatibility route also requires the static
+operator token or the explicit `permissions:bypass` scope. The official A2A
+runner uses fail-closed `dontAsk` permissions because the network binding has
+no interactive approval channel. The stdio ACP runner instead bridges UR tool
+decisions to the client's native `session/request_permission` UI and fails
+closed on cancellation or client errors.
 
 ## IDE integration
 
-`ur ide status|doctor|config` reports integration state. `/ide` provides the
-interactive connection UI and inline-diff commands:
+- `/ide` — connect/status/doctor, per-editor config, inline diff bundles
+  (`/ide diff capture`, `diff list`, `diff show <id>`; `src/services/agents/ideDiffs.ts`).
+- `--ide` flag auto-connects at startup when exactly one IDE is detected.
+- VS Code extension shipped in `extensions/vscode-ur-inline-diffs/` (inline diffs, actions
+  tree, background actions bridge over the ur CLI).
+- Experimental JetBrains plugin shipped in `extensions/jetbrains-ur/`. It uses
+  the loopback UR HTTP `/acp` JSON-RPC methods (`initialize`, `session/new`,
+  `session/prompt`) and keeps HTTP work off the IDE event thread.
+- ACP stdio mode (`ur acp stdio`) is the transport used by editor plugins;
+  LSP-powered diagnostics come from `src/services/lsp/`.
 
-```text
-/ide diff capture
-/ide diff list
-/ide diff show <id>
-```
+## Browser control
 
-The shipped editor paths are deliberately different:
+Three tiers:
+1. **`Browser` tool / `/browser`** — Playwright when installed (goto/click/type/
+   screenshot/evaluate/fetch): `/browser https://localhost:3000 "log in and screenshot"`.
+2. **UR in Chrome** — `/chrome` settings UI, `--chrome`/`--no-chrome`, extension talks over
+   a native host (`ur --chrome-native-host`) and MCP server (`ur --ur-in-chrome-mcp`);
+   auto-registers the `ur-in-chrome` bundled skill when configured.
+3. **`/browser-qa`** — validate and replay browser QA fixtures: `/browser-qa run login-flow`.
 
-- The VS Code extension in `extensions/vscode-ur-inline-diffs/` spawns
-  `ur -p --output-format stream-json --verbose --permission-prompt-tool stdio`
-  for chat turns. It does **not** use ACP stdio.
-- The experimental JetBrains plugin uses the loopback, UR-specific HTTP
-  `/acp` JSON-RPC service (`ur acp serve`), not ACP stdio.
-- Editors with their own ACP client can launch `ur acp stdio`; this is a
-  supported generic ACP surface, but it is not the transport used by the two
-  bundled plugins above.
-- `--ide` auto-connects to the legacy detected-IDE channel when exactly one
-  valid IDE is detected. LSP diagnostics are a separate integration under
-  `src/services/lsp/`.
+## GitHub & Slack
 
-## Browser surfaces
+- `GitHub` tool (PRs/issues/search, doc 04); `/pr-comments`, `/review`; `--from-pr` resume.
+- `/install-slack-app` — Slack app install.
+- `/trigger` — consume GitHub/Slack webhook payloads headlessly (doc 10).
 
-These three surfaces are not interchangeable:
+## Remote & desktop
 
-1. `/browser <url|task>` is a **shipped advisory command**. It detects a
-   workspace Playwright installation and tells the user/model which path is
-   available; it does not navigate, click, type, or take a screenshot itself.
-2. The `Browser` model tool is **conditional** on `UR_BROWSER_TOOL=1` or
-   `WEB_BROWSER_TOOL=1`. Its `fetch` action uses bounded plain HTTP. Interactive
-   `goto`, `click`, `type`, `evaluate`, and `screenshot` actions dynamically
-   require `playwright-core` plus an installed Chromium-compatible browser.
-   Every action asks through the normal permission engine.
-3. `/chrome` is an interactive settings/onboarding UI for the Chrome extension
-   and its MCP/native-host bridge. It is unavailable in print/offline mode and
-   the current UI requires a UR subscription. `--chrome` and `--no-chrome`
-   select the integration for a session.
+- `/desktop` (alias `/app`) — continue session in UR Desktop.
+- `/session` (alias `/remote`) — QR/URL for the current remote session.
+- `/remote-env` — default environment for teleport sessions; `/web-setup` (gated) for web.
+- `ur ssh <host> [dir]` — run against a remote machine over SSH (`src/ssh/`);
+  `sshConfigs` setting stores named targets.
+- `ur open <cc-url>` — deep-link handler (`disableDeepLinkRegistration` to opt out).
 
-`/browser-qa` validates `.ur/browser-qa/*.json` fixtures. Its `run` action is a
-five-second HTTP fetch smoke test that reports status/body size; it does not
-launch Playwright, evaluate fixture assertions, or replay browser interactions.
+## Voice & niceties
 
-## GitHub, Slack, desktop, and voice
-
-- The `GitHub` tool, `/pr-comments`, `/review`, and `--from-pr` cover GitHub
-  workflows. `/trigger` parses GitHub/Slack webhook JSON and can explicitly
-  launch a headless `ur -p` run; it is not a resident webhook listener.
-- `/install-slack-app` only opens the Slack Marketplace installation page and
-  records the click locally.
-- `/desktop` (alias `/app`) is registered only on macOS or x64 Windows. On
-  those supported platforms it flushes the current transcript and hands the
-  session to an installed compatible UR Desktop app; if the app is missing or
-  outdated, it offers the matching platform download.
-- `/session` (alias `/remote`) is visible only when the current runtime is
-  already in remote mode. It displays the existing remote-session URL; it does
-  not create a remote session. `/remote-env` additionally requires a
-  subscription, the `allow_remote_sessions` policy, and network access.
-- `/voice` is shipped because the external bundle enables `VOICE_MODE`, but is
-  conditional on the GrowthBook kill switch, a valid UR OAuth login, microphone
-  access, a recording utility, and interactive mode. It toggles streaming voice
-  input. `/speak` is a separate local OS text-to-speech command and does not
-  require voice input.
-- `/buddy` is source-only because the normal bundle does not enable `BUDDY`.
+- `/voice` toggles voice input (feature `VOICE_MODE`, `voiceEnabled` setting, `src/voice/`).
+- `/buddy` companion sprite (BUDDY gate); `/think-back` year in review.

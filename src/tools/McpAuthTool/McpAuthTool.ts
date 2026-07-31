@@ -83,14 +83,14 @@ export function createMcpAuthTool(
       return { behavior: 'allow', updatedInput: input }
     },
     async call(_input, context) {
-      // ur.com connectors use a separate auth flow (handleURAIAuth in
+      // ur.ai connectors use a separate auth flow (handleURAIAuth in
       // MCPRemoteServerMenu) that we don't invoke programmatically here —
       // just point the user at /mcp.
       if (config.type === 'urai-proxy') {
         return {
           data: {
             status: 'unsupported' as const,
-            message: `This is a ur.com MCP connector. Ask the user to run /mcp and select "${serverName}" to authenticate.`,
+            message: `This is a ur.ai MCP connector. Ask the user to run /mcp and select "${serverName}" to authenticate.`,
           },
         }
       }

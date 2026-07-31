@@ -567,11 +567,6 @@ class Project {
   >()
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private activeDrain: Promise<void> | null = null
-  // A timer-started drain can finish failing before a durability caller gets
-  // to flush(). Retain that failure until flush observes it; the failed queue
-  // entries remain queued so a subsequent flush can retry after the caller
-  // fixes the underlying filesystem problem.
-  private retainedDrainError: Error | null = null
   private FLUSH_INTERVAL_MS = 100
   private readonly MAX_CHUNK_BYTES = 100 * 1024 * 1024
 
@@ -584,7 +579,6 @@ class Project {
     if (this.flushTimer) clearTimeout(this.flushTimer)
     this.flushTimer = null
     this.activeDrain = null
-    this.retainedDrainError = null
     this.writeQueues = new Map()
   }
 
@@ -631,7 +625,7 @@ class Project {
   }
 
   private scheduleDrain(): void {
-    if (this.flushTimer || this.activeDrain || this.retainedDrainError) {
+    if (this.flushTimer || this.activeDrain) {
       return
     }
     this.flushTimer = setTimeout(() => {
@@ -647,16 +641,10 @@ class Project {
   private startDrain(): Promise<void> {
     if (this.activeDrain) return this.activeDrain
     const drain = this.drainWriteQueue()
-    const tracked = drain
-      .catch(error => {
-        this.retainedDrainError =
-          error instanceof Error ? error : new Error(String(error))
-        throw error
-      })
-      .finally(() => {
-        if (this.activeDrain === tracked) this.activeDrain = null
-        if (this.writeQueues.size > 0) this.scheduleDrain()
-      })
+    const tracked = drain.finally(() => {
+      if (this.activeDrain === tracked) this.activeDrain = null
+      if (this.writeQueues.size > 0) this.scheduleDrain()
+    })
     this.activeDrain = tracked
     return tracked
   }
@@ -678,37 +666,34 @@ class Project {
         continue
       }
       const batch = queue.splice(0)
-      let persistedCount = 0
+
+      let content = ''
+      const pending: Array<{
+        resolve: () => void
+        reject: (error: unknown) => void
+      }> = []
 
       try {
-        while (persistedCount < batch.length) {
-          let content = ''
-          let chunkEnd = persistedCount
+        for (const { entry, resolve, reject } of batch) {
+          const line = jsonStringify(entry) + '\n'
 
-          while (chunkEnd < batch.length) {
-            const line = jsonStringify(batch[chunkEnd]!.entry) + '\n'
-            if (
-              content.length > 0 &&
-              content.length + line.length >= this.MAX_CHUNK_BYTES
-            ) {
-              break
-            }
-            content += line
-            chunkEnd++
+          if (content.length + line.length >= this.MAX_CHUNK_BYTES && content.length > 0) {
+            await this.appendToFile(filePath, content)
+            for (const item of pending) item.resolve()
+            pending.length = 0
+            content = ''
           }
 
+          content += line
+          pending.push({ resolve, reject })
+        }
+
+        if (content.length > 0) {
           await this.appendToFile(filePath, content)
-          for (let index = persistedCount; index < chunkEnd; index++) {
-            batch[index]!.resolve()
-          }
-          persistedCount = chunkEnd
+          for (const item of pending) item.resolve()
         }
       } catch (error) {
-        const failed = batch.slice(persistedCount)
-        for (const item of failed) item.reject(error)
-        // Preserve FIFO order relative to writes that arrived while the failed
-        // append was in flight. Already-persisted chunks are not duplicated.
-        queue.unshift(...failed)
+        for (const item of batch) item.reject(error)
         throw error
       }
     }
@@ -880,25 +865,8 @@ class Project {
       clearTimeout(this.flushTimer)
       this.flushTimer = null
     }
-
-    // A scheduled drain may have failed and settled before flush was called.
-    // Surface that exact failure once. Its entries remain queued; after the
-    // caller repairs the filesystem, calling flush again performs the retry.
-    if (this.retainedDrainError) {
-      const error = this.retainedDrainError
-      this.retainedDrainError = null
-      throw error
-    }
-
     while (this.activeDrain || this.writeQueues.size > 0) {
-      try {
-        await (this.activeDrain ?? this.startDrain())
-      } catch (error) {
-        // This caller directly observed the active drain failure, so do not
-        // make it observe the same retained error again before retrying.
-        this.retainedDrainError = null
-        throw error
-      }
+      await (this.activeDrain ?? this.startDrain())
     }
 
     // Wait for non-queue tracked operations (e.g. removeMessageByUuid)

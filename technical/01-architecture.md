@@ -1,7 +1,7 @@
 # 01 — Runtime Architecture
 
 Source of truth: `src/entrypoints/cli.tsx`, `src/main.tsx`, `src/QueryEngine.ts`, `src/query.ts`,
-`src/tasks/`, `src/services/`, `src/state/AppState.tsx`.
+`src/tasks/`, `src/services/`, `src/state/AppState.ts`.
 
 ## Process layout
 
@@ -13,11 +13,11 @@ bin/ur.js  →  dist/cli.js (bundled from src/entrypoints/cli.tsx)
                  │    a2a serve                     → Agent-to-Agent HTTP server (src/services/agents/a2aServer.ts)
                  │    --ur-in-chrome-mcp            → Chrome-extension MCP server
                  │    --chrome-native-host          → Chrome native-messaging host
-                 │    remote-control|rc|remote|sync|bridge → BRIDGE_MODE build only (not in npm build)
-                 │    ps|logs|attach|kill, --bg     → BG_SESSIONS build only (not in npm build)
-                 │    daemon [subcommand]           → DAEMON build only (not in npm build)
-                 │    environment-runner            → BYOC_ENVIRONMENT_RUNNER build only
-                 │    self-hosted-runner            → SELF_HOSTED_RUNNER build only
+                 │    remote-control|rc|remote|sync|bridge → bridge (remote-control) daemon
+                 │    ps|logs|attach|kill, --bg     → background session registry (~/.ur/sessions/)
+                 │    daemon [subcommand]           → long-running supervisor (feature-gated)
+                 │    environment-runner            → headless BYOC runner (feature-gated)
+                 │    self-hosted-runner            → self-hosted runner poller (feature-gated)
                  │    --worktree --tmux             → exec into tmux worktree before full load
                  │    --bare                        → sets UR_CODE_SIMPLE=1 (minimal mode)
                  │
@@ -29,49 +29,21 @@ bin/ur.js  →  dist/cli.js (bundled from src/entrypoints/cli.tsx)
 1. **REPL (Ink/React)** — renders the prompt, transcript, permission dialogs, spinners,
    status line, and dialog launchers (`src/screens/`, `src/components/`, vendored Ink fork in
    `src/ink/`). Input supports vim mode (`src/vim`), custom keybindings (`src/keybindings`),
-   paste/image handling, `!` shell mode, and `/` command typeahead.
+   paste/image handling, `!` shell mode, `#` memory notes, and `/` command typeahead.
    Visual language: thinking blocks render dim/italic labeled "model reasoning to itself"
    (left-bordered when expanded via ctrl+o); user-facing answers carry an accent-colored ⏺
    marker; the live task panel (TaskListV2) is pinned in the fixed bottom region above the
    prompt — visible while the agent works, statuses updating in real time (ctrl+T toggles).
-2. **Interactive controller** (`src/screens/REPL.tsx`) — owns the interactive
-   conversation state and calls `query()` directly after assembling the system prompt,
-   tools, permissions, hooks, file-state cache, and session state.
-3. **QueryEngine** (`src/QueryEngine.ts`) — owns the equivalent multi-turn lifecycle for
-   headless and SDK sessions. Its source explicitly reserves REPL integration for a future
-   phase; it is not the controller used by `REPL.tsx`.
-4. **query.ts** — the shared provider-agnostic agent loop: streams native
-   Anthropic/OpenAI/Gemini/Ollama/OpenAI-compatible responses, validates and dispatches tool
-   calls, applies permissions/hooks, and yields model/tool messages.
-5. **Context management** — auto-compaction (`src/services/compact/`), context collapse
+2. **QueryEngine** (`src/QueryEngine.ts`) — orchestrates a turn: builds the system prompt,
+   assembles the tool pool (`src/tools.ts:assembleToolPool` — built-ins + MCP, deny-rule
+   filtered, sorted for prompt-cache stability), streams the model response, dispatches tool
+   calls through the permission layer (`src/utils/permissions/`), runs hooks
+   (`src/utils/hooks/`), tracks cost (`src/cost-tracker.ts`), and persists history
+   (`src/history.ts`).
+3. **query.ts** — the low-level provider-agnostic model call (native Anthropic/OpenAI/Gemini/
+   Ollama/OpenAI-compatible streaming; `src/services/providers/` decides the backend).
+4. **Context management** — auto-compaction (`src/services/compact/`), context collapse
    (`src/services/contextCollapse/`), token accounting shown by `/context` and `/ctx_viz`.
-
-## Execution reliability contract
-
-Every main-session system prompt, including `--bare`, receives the same compact six-step
-contract from `src/constants/executionContract.ts`: scope the request, act through structured
-tools, maintain an ordered plan for 3+ steps, inspect every result, run proportional
-verification, and report only observed evidence. Independent calls may be batched (up to
-eight); dependent read → decide → write chains remain sequential. The contract also forbids
-unchanged retries, empty turns, fabricated completion, and treating untrusted tool output as
-instructions.
-
-This is enforced beyond prompt wording:
-
-- `src/services/tools/taskListGate.ts` blocks state-changing calls once the initial
-  lightweight allowance is consumed unless an actionable task exists. Delegation and
-  subagent mutations always require a parent task. Reads remain unrestricted. Tool
-  implementations can classify task-only observation separately from stricter
-  permission auto-approval; both classifications are re-evaluated after rewrites.
-- `src/services/tools/repeatedFailureGuard.ts` tracks canonicalized failing calls, refuses
-  repeated identical failures, then aborts the stuck turn at a bounded threshold.
-- the tool execution boundary revalidates the final input after hook rewrites; a hook cannot
-  rewrite an already-approved call into an unvalidated or unapproved operation.
-- `src/services/verifier/` ties file/command/test completion claims to successful tool
-  results and issues a bounded corrective nudge when evidence is missing.
-- provider adapters reject malformed, duplicate, incomplete, or non-object tool calls.
-  Ollama additionally recovers conservative text-form calls for weaker models and preserves
-  mixed text/image tool results.
 
 ## Command types (`src/types/command.ts`)
 
@@ -96,14 +68,12 @@ are omitted, and only conflicting aliases are removed from otherwise distinct co
 | `LocalShellTask` | A backgrounded shell command (Bash tool `run_in_background`, `/tasks` list) |
 | `LocalAgentTask` | An in-process subagent run (Agent tool / `/bg`-style local agents) |
 | `RemoteAgentTask` | A cloud/remote agent session |
-| `InProcessTeammateTask` | A teammate agent implementation registered in every build; instances are created only while agent-teams/swarm mode is enabled |
-| `LocalWorkflowTask` | Reserved WORKFLOW_SCRIPTS state type; the standard npm build does not create it |
-| `MonitorMcpTask` | Reserved MONITOR_TOOL state type; the standard npm build does not create it |
-| `DreamTask` | Background auto-memory consolidation task; the implementation is always registered, while runs require `autoDreamEnabled` or its runtime feature configuration |
+| `InProcessTeammateTask` | A teammate agent in agent-teams/swarm mode |
+| `LocalWorkflowTask` | A running declarative workflow (`/workflow run`) |
+| `MonitorMcpTask` | A Monitor-tool watch on an MCP resource/condition |
+| `DreamTask` | Idle-time proactive task (KAIROS feature gate) |
 
-`/tasks` (alias `/bashes`) shows active states held in `AppState`. `TaskStop` can stop only
-types with a registered concrete implementation; persisted unknown or source-only task
-types fail with `unsupported_type` instead of pretending cleanup succeeded.
+All are visible in `/tasks` (alias `/bashes`) and stoppable via the `TaskStop` tool.
 
 ## Services worth knowing (`src/services/`)
 
@@ -124,7 +94,7 @@ types fail with `unsupported_type` instead of pretending cleanup succeeded.
 
 | Path | Contents |
 |---|---|
-| `~/.ur/` | Global config, session registry, logs, and secure-storage data. macOS uses Keychain when available; other platforms currently use a mode-0600 file fallback |
+| `~/.ur/` | Global config, credentials (keychain-backed via `src/utils/secureStorage`), session registry, logs |
 | `~/.ur/projects/<slug>/` | Per-project session transcripts and history |
 | `.ur/` (repo) | Project state: `settings.json`, `settings.local.json`, `artifacts/`, `specs/`, `workflows/`, `guardrails/`, `safety-policy.json`, `knowledge/`, `memory/`, `index/`, `tools/`, `devcontainer.json`, `automations/`, `evals/`, `context/`, `runs/`, `actions.jsonl` (stability ledger) |
 | `UR.md` / `UR.local.md` | Project instruction memory (analogue of CLAUDE.md), auto-loaded each session |
@@ -139,10 +109,7 @@ task board, learning stats), `/threads/<id>` (shared session transcripts via
 ## Native/TS subsystems
 
 - `src/native-ts/yoga-layout`, `color-diff`, `file-index` — vendored native-speed helpers.
-- `src/ssh/` — SSH remote-session source used only by builds compiled with `SSH_REMOTE`;
-  the standard npm build does not expose `ur ssh`.
+- `src/ssh/` — SSH remote sessions (`ur ssh <host>`).
 - `src/upstreamproxy/` — proxying model traffic through a configured upstream.
-- `src/voice/` — voice-input subsystem. The standard npm bundle is compiled
-  with `VOICE_MODE`; actual use still requires UR OAuth, the runtime kill-switch
-  to remain enabled, microphone access, and a supported audio backend.
+- `src/voice/` — voice input mode (ships enabled as of 1.45; native audio backend optional).
 - `src/buddy/` — companion sprite UI (feature-gated `BUDDY`).

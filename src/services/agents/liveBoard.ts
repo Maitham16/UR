@@ -85,7 +85,6 @@ export class LiveExecutionBoard {
       }
       case 'gate':
         if (event.result === 'hold') this.touch(event.id).state = 'held'
-        else if (event.result === 'fail') this.touch(event.id).state = 'failed'
         break
       case 'loop':
         this.iteration = event.iteration

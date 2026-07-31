@@ -12,7 +12,6 @@ export const call: LocalCommandCall = async (args: string) => {
         'Usage: /import-session <path-to-transcript.jsonl>\n' +
         'The file must be a session .jsonl copied from another machine ' +
         '(found under the projects directory of that install).',
-      exitCode: 2,
     }
   }
   try {
@@ -28,7 +27,6 @@ export const call: LocalCommandCall = async (args: string) => {
     return {
       type: 'text',
       value: `Import failed: ${error instanceof Error ? error.message : String(error)}`,
-      exitCode: 1,
     }
   }
 }

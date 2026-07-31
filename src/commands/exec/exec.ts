@@ -18,15 +18,14 @@ import {
   type RunPromptPlanResult,
   type TaskApprovalDecision,
   type TaskExecutionEvent,
+  type TaskExecutionResult,
   type TaskExecutor,
   type VerificationIssue,
 } from '../../services/promptPlanning/index.js'
-import { isClearlyReadOnlyTask } from '../../services/promptPlanning/executor.js'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { gitExe } from '../../utils/git.js'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { randomUUID } from 'node:crypto'
 
 function option(tokens: string[], name: string): string | undefined {
   const index = tokens.indexOf(name)
@@ -80,7 +79,6 @@ export type ExecPoolResult = StartBackgroundTaskResult & {
   changedFiles?: string[]
   verificationFailures?: ExecVerificationFailure[]
   warnings?: ExecVerificationFailure[]
-  executionNote?: string
 }
 
 export type ExecVerificationFailure = {
@@ -134,12 +132,6 @@ type RunExecPoolOptions = {
   onPlanningEvent?: (event: TaskExecutionEvent) => void
   streamTaskBoard?: boolean
   writeTaskBoard?: (text: string) => void
-  createPlanWorktree?: (input: {
-    cwd: string
-    prompt: string
-    index: number
-    slug: string
-  }) => Promise<ExecPlanWorktree>
   legacyRunner?: (prompts: string[], opts: RunExecPoolOptions) => Promise<ExecPoolResult[]>
   backgroundRunner?: {
     startBackgroundTask: (
@@ -151,38 +143,9 @@ type RunExecPoolOptions = {
   }
 }
 
-type ExecPlanWorktree = {
-  worktreePath: string
-  worktreeBranch?: string
-  headCommit?: string
-  gitRoot?: string
-  hookBased?: boolean
-}
-
 export function normalizeExecConcurrency(value: number): number {
   if (!Number.isFinite(value)) return 1
   return Math.max(1, Math.min(32, Math.floor(value)))
-}
-
-function positiveIntegerOption(
-  tokens: string[],
-  name: string,
-): { value?: number; error?: string } {
-  const index = tokens.indexOf(name)
-  if (index === -1) return {}
-  const raw = tokens[index + 1]
-  if (
-    raw === undefined ||
-    raw.startsWith('--') ||
-    !/^\d+$/u.test(raw) ||
-    !Number.isSafeInteger(Number(raw)) ||
-    Number(raw) < 1
-  ) {
-    return {
-      error: `${name} must be a positive integer.`,
-    }
-  }
-  return { value: Number(raw) }
 }
 
 export async function readPrompts(tokens: string[]): Promise<string[]> {
@@ -597,8 +560,6 @@ function aggregateTask(
   plan: PromptPlan,
   run: RunPromptPlanResult,
   cwd: string,
-  runCwd: string,
-  worktree?: ExecPlanWorktree,
 ): BackgroundTask {
   const failed =
     run.failed > 0 ||
@@ -611,104 +572,14 @@ function aggregateTask(
     task: prompt,
     status: failed ? 'failed' : 'completed',
     cwd,
-    runCwd,
+    runCwd: cwd,
     logFile: '',
     outputFile: '',
     inboxFile: '',
     createdAt: plan.createdAt,
     updatedAt: now,
     completedAt: now,
-    branch: worktree?.worktreeBranch,
-    worktree: worktree
-      ? {
-          enabled: true,
-          path: worktree.worktreePath,
-          branch: worktree.worktreeBranch,
-        }
-      : undefined,
   }
-}
-
-type WorkspaceGateWaiter = {
-  readOnly: boolean
-  resolve: (release: () => void) => void
-}
-
-/**
- * Coordinate planned tasks across every top-level prompt that shares a
- * checkout. runPromptPlan has its own per-plan lock, but without this outer
- * gate two plans could still snapshot and mutate the same files concurrently.
- *
- * Read-only tasks may run together. Mutating tasks are exclusive and writers
- * are not starved by readers queued later.
- */
-export function coordinateSharedWorkspaceTasks(
-  executeTask: TaskExecutor,
-): TaskExecutor {
-  const waiters: WorkspaceGateWaiter[] = []
-  let activeReaders = 0
-  let writerActive = false
-
-  const drain = (): void => {
-    if (writerActive || waiters.length === 0) return
-    const first = waiters[0]!
-    if (!first.readOnly) {
-      if (activeReaders > 0) return
-      waiters.shift()
-      writerActive = true
-      first.resolve(() => {
-        writerActive = false
-        drain()
-      })
-      return
-    }
-
-    while (waiters[0]?.readOnly) {
-      const reader = waiters.shift()!
-      activeReaders += 1
-      reader.resolve(() => {
-        activeReaders -= 1
-        drain()
-      })
-    }
-  }
-
-  const acquire = async (readOnly: boolean): Promise<() => void> =>
-    await new Promise(resolve => {
-      waiters.push({ readOnly, resolve })
-      drain()
-    })
-
-  return async task => {
-    const release = await acquire(isClearlyReadOnlyTask(task))
-    try {
-      return await executeTask(task)
-    } finally {
-      release()
-    }
-  }
-}
-
-function planWorktreeSlug(index: number): string {
-  return `exec-${Date.now().toString(36)}-${index + 1}-${randomUUID().slice(0, 8)}`
-}
-
-async function createExecPlanWorktree(
-  opts: RunExecPoolOptions,
-  prompt: string,
-  index: number,
-): Promise<ExecPlanWorktree> {
-  const slug = planWorktreeSlug(index)
-  if (opts.createPlanWorktree) {
-    return await opts.createPlanWorktree({
-      cwd: opts.cwd,
-      prompt,
-      index,
-      slug,
-    })
-  }
-  const { createAgentWorktree } = await import('../../utils/worktree.js')
-  return await createAgentWorktree(slug, opts.cwd)
 }
 
 async function runPromptPlans(
@@ -716,11 +587,7 @@ async function runPromptPlans(
   opts: RunExecPoolOptions,
 ): Promise<ExecPoolResult[]> {
   const config = resolvePromptPlanningConfig(opts.planning)
-  const sharedCheckoutExecutor = opts.worktree
-    ? undefined
-    : coordinateSharedWorkspaceTasks(
-        opts.executePlannedTask ?? defaultPlannedTaskExecutor(opts),
-      )
+  const executeTask = opts.executePlannedTask ?? defaultPlannedTaskExecutor(opts)
   const results: ExecPoolResult[] = new Array(prompts.length)
   let nextIndex = 0
   const workers = Array.from(
@@ -731,24 +598,10 @@ async function runPromptPlans(
         nextIndex += 1
         if (index >= prompts.length) return
         const prompt = prompts[index]!
-        const worktree = opts.worktree
-          ? await createExecPlanWorktree(opts, prompt, index)
-          : undefined
-        const runCwd = worktree?.worktreePath ?? opts.cwd
-        const executeTask =
-          sharedCheckoutExecutor ??
-          (opts.executePlannedTask ??
-            defaultPlannedTaskExecutor({
-              ...opts,
-              cwd: runCwd,
-              // The plan already owns one worktree. Passing --worktree to
-              // every child would isolate dependent steps from one another.
-              worktree: false,
-            }))
-        const plan = decomposePrompt(prompt, config, runCwd)
+        const plan = decomposePrompt(prompt, config, opts.cwd)
         const boardHistory: string[] = []
         const run = await runPromptPlan(plan, {
-          cwd: runCwd,
+          cwd: opts.cwd,
           config,
           executeTask,
           onEvent: event => {
@@ -764,22 +617,9 @@ async function runPromptPlans(
           ? renderTaskBoard(completedPlan, { maxAgents: run.maxAgentsAllowed })
           : undefined
         const finalReport = buildExecFinalReport(run)
-        const executionNote = worktree
-          ? `Plan ran in one shared worktree at ${worktree.worktreePath}${worktree.worktreeBranch ? ` (${worktree.worktreeBranch})` : ''}. Changes remain isolated; ur exec does not merge, push, or publish them.`
-          : undefined
-        if (executionNote) {
-          finalReport.remainingLimitations.push(executionNote)
-        }
         const command = finalReport.commandsRun
         results[index] = {
-          task: aggregateTask(
-            prompt,
-            completedPlan,
-            run,
-            opts.cwd,
-            runCwd,
-            worktree,
-          ),
+          task: aggregateTask(prompt, completedPlan, run, opts.cwd),
           command,
           dryRun: false,
           plan: completedPlan,
@@ -792,7 +632,6 @@ async function runPromptPlans(
           changedFiles: finalReport.filesChanged,
           verificationFailures: finalReport.verificationFailures,
           warnings: finalReport.warnings,
-          executionNote,
         }
       }
     },
@@ -831,9 +670,6 @@ export async function runExecPool(
       command: execCommandForPrompt(prompt, normalizedOpts),
       dryRun: true,
       ...planPrompt(prompt, planning, normalizedOpts.cwd),
-      executionNote: normalizedOpts.worktree
-        ? 'Dry run only: a live planned run creates one shared worktree per top-level prompt so dependent steps see prerequisite changes.'
-        : undefined,
     }))
   }
 
@@ -903,75 +739,23 @@ export async function runExecPool(
   return results
 }
 
-function safeOutputSegment(value: string, maximum: number): string {
-  return (
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, maximum) || 'task'
-  )
-}
-
-export function execOutputFileBaseName(
-  index: number,
-  prompt: string,
-  taskId: string,
-): string {
-  const sequence = String(index + 1).padStart(3, '0')
+function writeOutputFile(outputDir: string, prompt: string, content: string): void {
+  mkdirSync(outputDir, { recursive: true })
   const slug = prompt
-    ? safeOutputSegment(prompt, 40)
-    : 'task'
-  const identity = safeOutputSegment(taskId, 24)
-  return `${sequence}-${slug}-${identity}.txt`
-}
-
-export function writeExecOutputFile(
-  outputDir: string,
-  index: number,
-  prompt: string,
-  taskId: string,
-  content: string,
-): string {
-  mkdirSync(outputDir, { recursive: true, mode: 0o700 })
-  const base = execOutputFileBaseName(index, prompt, taskId)
-  for (let suffix = 0; suffix < 10_000; suffix++) {
-    const filename =
-      suffix === 0 ? base : base.replace(/\.txt$/u, `-${suffix}.txt`)
-    const path = join(outputDir, filename)
-    try {
-      writeFileSync(path, content, {
-        encoding: 'utf8',
-        flag: 'wx',
-        mode: 0o600,
-      })
-      return path
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-    }
-  }
-  throw new Error(`Could not allocate a unique output path in ${outputDir}.`)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40) || 'task'
+  writeFileSync(join(outputDir, `${slug}.txt`), content)
 }
 
 export const call: LocalCommandCall = async (args: string) => {
   const tokens = parseArguments(args)
   const json = tokens.includes('--json')
-  const concurrencyOption = positiveIntegerOption(tokens, '--concurrency')
-  const maxTurnsOption = positiveIntegerOption(tokens, '--max-turns')
-  const maxAgentsOption = positiveIntegerOption(tokens, '--max-agents')
-  const invalidOption =
-    concurrencyOption.error ?? maxTurnsOption.error ?? maxAgentsOption.error
-  if (invalidOption) {
-    return {
-      type: 'text',
-      value: `Error: ${invalidOption}\n\n${usage()}`,
-      exitCode: 2,
-    }
-  }
   const concurrency = normalizeExecConcurrency(
-    concurrencyOption.value ?? 1,
+    Number(option(tokens, '--concurrency') ?? '1'),
   )
-  const maxTurns = maxTurnsOption.value
+  const maxTurns = option(tokens, '--max-turns') ? Number(option(tokens, '--max-turns')) : undefined
   const model = option(tokens, '--model')
   const outputDir = option(tokens, '--output-dir')
   const worktree = tokens.includes('--worktree')
@@ -980,14 +764,16 @@ export const call: LocalCommandCall = async (args: string) => {
   const planning = resolvePromptPlanningConfig({
     taskPlanning: !tokens.includes('--no-task-planning'),
     parallelAgents: !tokens.includes('--no-parallel-agents'),
-    maxAgents: maxAgentsOption.value,
+    maxAgents: option(tokens, '--max-agents')
+      ? Number(option(tokens, '--max-agents'))
+      : undefined,
     showTaskBoard: !tokens.includes('--no-task-board'),
     strictVerification: !tokens.includes('--no-strict-verification'),
   })
 
   const prompts = await readPrompts(tokens)
   if (prompts.length === 0) {
-    return { type: 'text', value: usage(), exitCode: 2 }
+    return { type: 'text', value: usage() }
   }
 
   const results = await runExecPool(prompts, {
@@ -1012,16 +798,9 @@ export const call: LocalCommandCall = async (args: string) => {
       : background?.getBackgroundTask(getCwd(), result.task.id)
     const log = task ? background!.readBackgroundLog(getCwd(), result.task.id) : null
     const content = result.finalReportText ?? log ?? ''
-    const outputFile =
-      outputDir && !result.dryRun
-        ? writeExecOutputFile(
-            outputDir,
-            index,
-            prompt,
-            result.task.id,
-            content,
-          )
-        : undefined
+    if (outputDir && !result.dryRun) {
+      writeOutputFile(outputDir, prompt, content)
+    }
     return {
       index,
       prompt,
@@ -1037,19 +816,11 @@ export const call: LocalCommandCall = async (args: string) => {
       changedFiles: result.changedFiles,
       verificationFailures: result.verificationFailures,
       warnings: result.warnings,
-      executionNote: result.executionNote,
-      outputFile,
     }
   })
 
-  const exitCode = outputs.some(output =>
-    output.status === 'failed' || output.status === 'canceled',
-  )
-    ? 1
-    : 0
   return {
     type: 'text',
-    exitCode,
     value: json
       ? JSON.stringify(outputs, null, 2)
       : outputs
@@ -1057,7 +828,6 @@ export const call: LocalCommandCall = async (args: string) => {
             [
               ...(o.taskBoard ? [o.taskBoard, ''] : []),
               ...(o.finalReport ? [formatExecFinalReport(o.finalReport), ''] : []),
-              ...(o.executionNote ? [o.executionNote, ''] : []),
               `${o.index}: ${o.prompt} -> ${o.status}`,
             ].join('\n'),
           )

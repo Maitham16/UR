@@ -14,14 +14,9 @@ import type {
   BuiltInAgentDefinition,
 } from '../loadAgentsDir.js'
 
-// One source for all three domains below. These previously pointed at
-// docs.ur.dev (not served) and docs.claude.com — the latter is Anthropic's
-// documentation, which this agent presented to users as "UR SDK docs" and
-// "UR API docs". Answering questions about UR out of another product's manual
-// is wrong regardless of how closely the two are related.
-const UR_DOCS_URL = 'https://ur.com/docs'
-const UR_CODE_DOCS_MAP_URL = UR_DOCS_URL
-const CDP_DOCS_MAP_URL = UR_DOCS_URL
+const UR_CODE_DOCS_MAP_URL =
+  'https://docs.ur.dev/docs/en/ur_docs_map.md'
+const CDP_DOCS_MAP_URL = 'https://docs.claude.com/llms.txt'
 
 export const UR_CODE_GUIDE_AGENT_TYPE = 'ur-guide'
 

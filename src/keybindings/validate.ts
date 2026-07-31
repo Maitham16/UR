@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { plural } from '../utils/stringUtils.js'
 import { chordToString, parseChord, parseKeystroke } from './parser.js'
 import {

@@ -1,56 +1,28 @@
 import { FILE_EDIT_TOOL_NAME } from '../FileEditTool/constants.js'
 
-// This prompt was cut from 184 lines to 48 after 1.65.5, which removed every
-// worked example and left only abstract rules ("work is non-trivial when it
-// needs planning, investigation, multiple deliverables..."). Large models infer
-// the intent from rules; small local models do not — they pattern-match on
-// examples. Task lists stopped appearing, and the task-list gate was then
-// hardened repeatedly to force what the prompt no longer taught, which is what
-// produced blocked writes and retry loops.
-//
-// The rules from the shorter version are good and are kept below. What is
-// restored is the demonstrations: when to use it, when not to, and why.
-//
-// The cut was not baseless, though. The original examples narrated tool use as
-// prose — "* Uses the Edit tool to add a comment *", "*Executes: npm install*"
-// — which is the exact anti-pattern the last paragraph of this prompt forbids,
-// and a model that pattern-matches on them learns to describe a tool call
-// instead of making one. That is the "it said it wrote the file and did not"
-// failure. So the examples come back for their decision value, with every
-// narrated execution removed. test/promptExecutionContract.test.ts enforces
-// both halves: the guidance must be present, the narration must not.
-
-export const PROMPT = `Use this tool to create and manage the ordered work plan for the current session. It tracks progress, organises complex work, and shows the user where their request stands.
+export const PROMPT = `Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+It also helps the user understand the progress of the task and overall progress of their requests.
 
 ## When to Use This Tool
-
 Use this tool proactively in these scenarios:
 
-1. Complex multi-step tasks — when a task requires 3 or more distinct steps or actions
-2. Non-trivial and complex tasks — tasks that require careful planning or multiple operations
-3. User explicitly requests a todo list
-4. User provides multiple tasks — a list of things to be done (numbered or comma-separated)
-5. After receiving new instructions — immediately capture user requirements as todos
-6. When you start working on a task — mark it in_progress BEFORE beginning work; only one item should be in_progress at a time
-7. After completing a task — mark it completed and add any follow-up work discovered during implementation
-
-Work is non-trivial when it needs planning, investigation, multiple
-deliverables, dependencies, several features, or post-change verification.
-Investigate first when scope is unknown so the list records concrete
-outcomes rather than guesses. A feature-rich
-single-file build is non-trivial even if one Write call could create it.
+1. Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
+2. Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+3. User explicitly requests todo list - When the user directly asks you to use the todo list
+4. User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+5. After receiving new instructions - Immediately capture user requirements as todos
+6. When you start working on a task - Mark it as in_progress BEFORE beginning work. Ideally you should only have one todo as in_progress at a time
+7. After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
 
 ## When NOT to Use This Tool
 
 Skip using this tool when:
-
 1. There is only a single, straightforward task
-2. The task is trivial and tracking it provides no organisational benefit
+2. The task is trivial and tracking it provides no organizational benefit
 3. The task can be completed in less than 3 trivial steps
 4. The task is purely conversational or informational
 
-If there is one trivial task to do, just do it. Ceremony on a one-line request
-is what trains users to switch this off.
+NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
 
 ## Examples of When to Use the Todo List
 
@@ -68,7 +40,7 @@ Assistant: *Creates todo list with the following items:*
 The assistant used the todo list because:
 1. Adding dark mode is a multi-step feature requiring UI, state management, and styling changes
 2. The user explicitly requested tests and build be run afterward
-3. The assistant added the verification step as its own tracked outcome
+3. The assistant inferred that tests and build need to pass by adding "Ensure tests and build succeed" as the final task
 </reasoning>
 </example>
 
@@ -80,35 +52,41 @@ I've found 15 instances of 'getCwd' across 8 different files.
 
 <reasoning>
 The assistant used the todo list because:
-1. It searched first to understand the scope of the task
-2. Finding multiple occurrences across files made this a multi-step task
-3. The list ensures every instance is tracked and updated systematically
+1. First, the assistant searched to understand the scope of the task
+2. Upon finding multiple occurrences across different files, it determined this was a complex task with multiple steps
+3. The todo list helps ensure every instance is tracked and updated systematically
+4. This approach prevents missing any occurrences and maintains code consistency
 </reasoning>
 </example>
+
 
 <example>
 User: I need to implement these features for my e-commerce site: user registration, product catalog, shopping cart, and checkout flow.
 Assistant: *Creates a todo list breaking down each feature into specific tasks based on the project architecture*
-Let's start with user registration.
+Let's start with user registration. This will involve creating database models, API endpoints, and frontend forms that integrate with your existing authentication system.
 
 <reasoning>
 The assistant used the todo list because:
-1. The user provided multiple complex features in a comma-separated list
-2. The list organises large features into manageable outcomes
-3. It allows tracking progress across the entire implementation
+1. The user provided multiple complex features to implement in a comma separated list
+2. The todo list helps organize these large features into manageable tasks
+3. This approach allows for tracking progress across the entire implementation
 </reasoning>
 </example>
 
 <example>
-User: make me a warship space game, full advanced, one file html+js
-Assistant: *Creates todo list: 1) Scaffold the HTML shell and canvas, 2) Implement the render and game loop, 3) Implement player ship movement and physics, 4) Implement enemy fleet and AI, 5) Implement collision, damage and scoring, 6) Write the file and verify it opens in a browser*
-*Marks the first item in_progress, then writes the file*
+User: Can you help optimize my React application? It's rendering slowly and has performance issues.
+Assistant: *Reviews component structure, render patterns, state management, and data fetching*
+After analyzing your codebase, I've identified several performance issues.
+*Creates todo list with items like: 1) Implementing memoization for expensive calculations in ProductList, 2) Adding virtualization for long lists in Dashboard, 3) Optimizing image loading in Gallery component, 4) Fixing state update loops in ShoppingCart, 5) Reviewing bundle size and implementing code splitting*
+Let's start by implementing memoization for the expensive calculations in your ProductList component.
 
 <reasoning>
-The assistant used the todo list because a "full advanced" game is a
-feature-rich build with several independent systems and a verification step,
-even though the deliverable is a single file produced by one Write call. The
-number of files is not what makes work non-trivial.
+The assistant used the todo list because:
+1. First, the assistant examined the codebase to identify specific performance issues
+2. Based on this analysis, it identified multiple optimization opportunities
+3. Performance optimization is a non-trivial task requiring multiple steps
+4. The todo list helps methodically track improvements across different components
+5. This systematic approach ensures all performance bottlenecks are addressed
 </reasoning>
 </example>
 
@@ -121,63 +99,86 @@ Assistant: In Python, you can print "Hello World" with this simple code:
 python
 print("Hello World")
 
+This will output the text "Hello World" to the console when executed.
+
 <reasoning>
-A single trivial task completed in one step. Nothing to track.
+The assistant did not use the todo list because this is a single, trivial task that can be completed in one step. There's no need to track multiple tasks or steps for such a straightforward request.
 </reasoning>
 </example>
 
 <example>
 User: What does the git status command do?
-Assistant: The git status command shows the current state of your working directory and staging area.
+Assistant: The git status command shows the current state of your working directory and staging area. It displays which changes have been staged, which haven't, and which files aren't being tracked by Git. This is a fundamental command for understanding the current state of your repository before making commits.
 
 <reasoning>
-An informational request with no coding task to complete.
+The assistant did not use the todo list because this is an informational request with no actual coding task to complete. The user is simply asking for an explanation, not for the assistant to perform multiple steps or tasks.
 </reasoning>
 </example>
 
 <example>
 User: Can you add a comment to the calculateTotal function to explain what it does?
-Assistant: Adds the comment with a single ${FILE_EDIT_TOOL_NAME} call and reports the result.
+Assistant: Sure, let me add a comment to the calculateTotal function to explain what it does.
+* Uses the ${FILE_EDIT_TOOL_NAME} tool to add a comment to the calculateTotal function *
 
 <reasoning>
-A single straightforward edit confined to one location. No systematic
-organisation required. Note that the edit is performed by issuing the tool
-call, not by describing it — a narrated action is not an executed one.
+The assistant did not use the todo list because this is a single, straightforward task confined to one location in the code. Adding a comment doesn't require tracking multiple steps or systematic organization.
 </reasoning>
 </example>
 
-## Lifecycle
+<example>
+User: Run npm install for me and tell me what happens.
+Assistant: I'll run the npm install command for you.
 
-1. Decompose non-trivial work into one item per cohesive outcome with its own
-   observable done check. Split separately completable deliverables out of
-   omnibus items, but keep genuinely atomic work as one item; never create
-   items merely for individual files, tool calls, or tiny mechanical steps.
-2. Put todos in dependency order. Keep unrelated outcomes independent rather
-   than inventing dependencies.
-3. Provide both forms for every item:
-   - \`content\`: imperative outcome, such as "Run tests".
-   - \`activeForm\`: present-continuous status, such as "Running tests".
-4. In the setup call, mark the next unblocked item \`in_progress\`. Inspect the
-   successful TodoWrite result before any dependent Write, Edit, mutating
-   shell, Agent, Task, or other state-changing call. Never batch todo setup
-   with the work it enables. Keep only one item \`in_progress\` in this list.
-5. Update the list immediately when requirements or discovered work change.
-6. Mark an item \`completed\` only after its implementation and relevant
-   verification have succeeded. Do not batch completion updates.
-7. If work is partial, blocked, or failing, leave the item open and record the
-   concrete follow-up or blocker in the list.
-8. Remove an item only when it is genuinely obsolete or was created by mistake.
-9. If every item is terminal and new work arrives, add a new pending/in_progress
-   outcome or reopen the relevant item before changing state.
+*Executes: npm install*
 
-Never mark an item completed when tests still fail, an error is unresolved, a
-required dependency is missing, or only part of the outcome was implemented.
-After each completion, continue with the next unblocked item until every
-required todo is completed or an honest blocker has been reported.
+The command completed successfully. Here's the output:
+[Output of npm install command]
 
-Invoke tools through their native structured interfaces. Narrating a todo,
-file edit, or command does not execute it, and printed arguments are not a
-substitute for a tool call.`
+All dependencies have been installed according to your package.json file.
+
+<reasoning>
+The assistant did not use the todo list because this is a single command execution with immediate results. There are no multiple steps to track or organize, making the todo list unnecessary for this straightforward task.
+</reasoning>
+</example>
+
+## Task States and Management
+
+1. **Task States**: Use these states to track progress:
+   - pending: Task not yet started
+   - in_progress: Currently working on (limit to ONE task at a time)
+   - completed: Task finished successfully
+
+   **IMPORTANT**: Task descriptions must have two forms:
+   - content: The imperative form describing what needs to be done (e.g., "Run tests", "Build the project")
+   - activeForm: The present continuous form shown during execution (e.g., "Running tests", "Building the project")
+
+2. **Task Management**:
+   - Update task status in real-time as you work
+   - Mark tasks complete IMMEDIATELY after finishing (don't batch completions)
+   - Exactly ONE task must be in_progress at any time (not less, not more)
+   - Complete current tasks before starting new ones
+   - Remove tasks that are no longer relevant from the list entirely
+
+3. **Task Completion Requirements**:
+   - ONLY mark a task as completed when you have FULLY accomplished it
+   - If you encounter errors, blockers, or cannot finish, keep the task as in_progress
+   - When blocked, create a new task describing what needs to be resolved
+   - Never mark a task as completed if:
+     - Tests are failing
+     - Implementation is partial
+     - You encountered unresolved errors
+     - You couldn't find necessary files or dependencies
+
+4. **Task Breakdown**:
+   - Create specific, actionable items
+   - Break complex tasks into smaller, manageable steps
+   - Use clear, descriptive task names
+   - Always provide both forms:
+     - content: "Fix authentication bug"
+     - activeForm: "Fixing authentication bug"
+
+When in doubt, use this tool. Being proactive with task management demonstrates attentiveness and ensures you complete all requirements successfully.
+`
 
 export const DESCRIPTION =
-  'Create and update the ordered todo list for multi-step work. Use proactively for tasks with 3 or more steps. Keep statuses current, keep exactly one item in_progress, and complete items only after relevant verification succeeds.'
+  'Update the todo list for the current session. To be used proactively and often to track progress and pending tasks. Make sure that at least one task is in_progress at all times. Always provide both content (imperative) and activeForm (present continuous) for each task.'

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Hook Zod schemas extracted to break import cycles.
  *

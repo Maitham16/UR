@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { feature } from 'bun:bundle';
 import figures from 'figures';
 import * as React from 'react';

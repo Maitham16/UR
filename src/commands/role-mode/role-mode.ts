@@ -56,7 +56,6 @@ export const call: LocalCommandCall = async (args: string) => {
       return {
         type: 'text',
         value: `Unknown role mode "${name ?? ''}". Available: ${listModeNames().join(', ')}`,
-        exitCode: name ? 1 : 2,
       }
     }
     return { type: 'text', value: renderModeAgent(mode) }
@@ -72,7 +71,6 @@ export const call: LocalCommandCall = async (args: string) => {
       return {
         type: 'text',
         value: `Unknown role mode "${target}". Available: ${listModeNames().join(', ')}, or "all".`,
-        exitCode: 1,
       }
     }
     const agentsDir = join(getCwd(), '.ur', 'agents')
@@ -107,6 +105,5 @@ export const call: LocalCommandCall = async (args: string) => {
   return {
     type: 'text',
     value: 'Usage: ur role-mode list|show <name>|install <name|all> [--force] [--json]',
-    exitCode: 2,
   }
 }

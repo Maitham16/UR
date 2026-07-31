@@ -219,7 +219,7 @@ function makeTask(index: number, instruction: string, goal: string): CrewTask {
   return {
     id: `t${index + 1}`,
     title,
-    prompt: `Overall goal: ${goal}\n\nYour subtask: ${instruction}\n\nComplete only this subtask. End with exactly one standalone final line: VERDICT: PASS if you finished it, or VERDICT: FAIL if you could not.`,
+    prompt: `Overall goal: ${goal}\n\nYour subtask: ${instruction}\n\nComplete only this subtask. End your reply with VERDICT: PASS if you finished it, or VERDICT: FAIL if you could not.`,
     status: 'todo',
   }
 }
@@ -236,7 +236,7 @@ function makeTaskFromDecomposed(task: DecomposedTask, goal: string): CrewTask {
   return {
     id: task.id,
     title,
-    prompt: `Overall goal: ${goal}\n\nYour subtask: ${task.goal}${dependencies}${files}${risk}${tests}${rollback}\n\nComplete only this subtask. End with exactly one standalone final line: VERDICT: PASS if you finished it, or VERDICT: FAIL if you could not.`,
+    prompt: `Overall goal: ${goal}\n\nYour subtask: ${task.goal}${dependencies}${files}${risk}${tests}${rollback}\n\nComplete only this subtask. End your reply with VERDICT: PASS if you finished it, or VERDICT: FAIL if you could not.`,
     status: 'todo',
     dependsOn: task.dependsOn,
     filesTouched: task.filesTouched,
@@ -434,18 +434,28 @@ export function completeTask(
   )
 }
 
-/**
- * Backward-compatible recovery entry point.
- *
- * Claimed tasks are no longer blindly reopened: this delegates to the same
- * isolation-aware policy used by `runCrew({ resume: true })`.
- */
-export function reopenClaimed(
-  cwd: string,
-  name: string,
-  maxAttempts = 2,
-): CrewSpec | null {
-  return recoverClaimedSafely(cwd, name, maxAttempts)
+/** Reset orphaned `claimed` tasks (from a crashed run) back to `todo`. */
+export function reopenClaimed(cwd: string, name: string): CrewSpec | null {
+  return withCrewLock(cwd, name, () => {
+    const spec = loadCrew(cwd, name)
+    if (!spec) return null
+    let changed = false
+    for (const task of spec.tasks) {
+      if (task.status === 'claimed') {
+        task.status = 'todo'
+        task.assignee = undefined
+        task.claimedAt = undefined
+        task.attemptIsolation = undefined
+        task.worktree = undefined
+        changed = true
+      }
+    }
+    if (changed) {
+      spec.updatedAt = new Date().toISOString()
+      writeCrew(cwd, spec)
+    }
+    return spec
+  })
 }
 
 export type CrewProgress = {
@@ -613,12 +623,7 @@ function beginRetry(cwd: string, name: string, taskId: string, worker: string): 
  * that may already have changed the shared workspace. Only isolated attempts
  * can be safely started again; ambiguous shared attempts become terminal.
  */
-export function recoverClaimedSafely(
-  cwd: string,
-  name: string,
-  maxAttempts = 2,
-): CrewSpec | null {
-  const boundedMaxAttempts = boundedInteger(maxAttempts, 2, 1, 5)
+function recoverClaimedSafely(cwd: string, name: string, maxAttempts: number): CrewSpec | null {
   return withCrewLock(cwd, name, () => {
     const spec = loadCrew(cwd, name)
     if (!spec) return null
@@ -628,7 +633,7 @@ export function recoverClaimedSafely(
       if (task.status !== 'claimed') continue
       const isolated =
         task.attemptIsolation === 'worktree' || task.attemptIsolation === 'dry-run'
-      if (isolated && (task.attempts ?? 1) < boundedMaxAttempts) {
+      if (isolated && (task.attempts ?? 1) < maxAttempts) {
         task.status = 'todo'
         task.assignee = undefined
         task.claimedAt = undefined
@@ -639,7 +644,7 @@ export function recoverClaimedSafely(
         task.status = 'failed'
         task.finishedAt = now
         task.lastError = isolated
-          ? `Previous worker exited and exhausted the ${boundedMaxAttempts}-attempt limit.`
+          ? `Previous worker exited and exhausted the ${maxAttempts}-attempt limit.`
           : 'Previous worker exited after a shared-workspace attempt; automatic replay was refused because mutations may be ambiguous.'
         task.result = task.lastError
         task.verdict = 'FAIL'
@@ -683,27 +688,24 @@ async function retryDelay(ms: number, signal?: AbortSignal): Promise<boolean> {
   })
 }
 
-function boundedInteger(
-  value: number | undefined,
-  fallback: number,
-  minimum: number,
-  maximum: number,
-): number {
-  if (value === undefined || !Number.isFinite(value)) return fallback
-  return Math.min(maximum, Math.max(minimum, Math.floor(value)))
-}
-
 export async function runCrew(name: string, options: RunCrewOptions): Promise<RunCrewResult> {
   const cwd = options.cwd
   const baseSpec = loadCrew(cwd, name)
   if (!baseSpec) throw new Error(`Crew not found: ${name}`)
 
+  const boundedInteger = (
+    value: number | undefined,
+    fallback: number,
+    minimum: number,
+    maximum: number,
+  ): number => {
+    if (value === undefined || !Number.isFinite(value)) return fallback
+    return Math.min(maximum, Math.max(minimum, Math.floor(value)))
+  }
   const workerCount = boundedInteger(options.workers, 1, 1, 32)
   const maxAttempts = boundedInteger(options.maxAttempts, 2, 1, 5)
   const retryBackoffMs = boundedInteger(options.retryBackoffMs, 250, 0, 30_000)
-  if (options.resume) {
-    recoverClaimedSafely(cwd, name, maxAttempts)
-  }
+  recoverClaimedSafely(cwd, name, maxAttempts)
 
   const lead = baseSpec.lead
   const handled: RunCrewResult['handled'] = []
@@ -791,13 +793,8 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
             output = out.output
             verdict = out.verdict
             isError = out.isError === true
-            if (isError) {
-              failureReason = output || 'Worker returned an error.'
-            } else if (verdict !== 'PASS') {
-              const reportedVerdict = verdict ?? 'no verdict'
-              failureReason =
-                `Worker returned ${reportedVerdict}; an exact PASS verdict is required.` +
-                (output ? ` ${output}` : '')
+            if (isError || verdict === 'FAIL') {
+              failureReason = output || `Worker returned ${verdict ?? 'an error'}.`
             }
           } catch (error) {
             failureReason = error instanceof Error ? error.message : String(error)
@@ -808,7 +805,7 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
         }
 
         const status: 'done' | 'failed' =
-          !isError && verdict === 'PASS' ? 'done' : 'failed'
+          isError || verdict === 'FAIL' ? 'failed' : 'done'
         if (status === 'done') {
           completeTask(cwd, name, task.id, {
             status,
@@ -929,8 +926,6 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
     }
     const todoCount = (): number =>
       loadCrew(cwd, name)?.tasks.filter(task => task.status === 'todo').length ?? 0
-    const claimedCount = (): number =>
-      loadCrew(cwd, name)?.tasks.filter(task => task.status === 'claimed').length ?? 0
     while (!options.signal?.aborted) {
       while (active.size < governor && runnableCount() > 0) {
         spawned += 1
@@ -941,7 +936,7 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
       if (active.size === 0) {
         // Give claimNextTask one chance to turn invalid/missing/cyclic
         // dependencies into terminal blocked tasks.
-        if (todoCount() > 0 && claimedCount() === 0) {
+        if (todoCount() > 0) {
           spawned += 1
           await worker(`w${spawned}`)
           continue

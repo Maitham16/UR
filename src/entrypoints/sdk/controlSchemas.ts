@@ -271,7 +271,6 @@ export const SDKControlGetContextUsageResponseSchema = lazySchema(() =>
         })
         .optional(),
       autoCompactThreshold: z.number().optional(),
-      autoCompactPercentLeft: z.number().min(0).max(100).optional(),
       isAutoCompactEnabled: z.boolean(),
       messageBreakdown: z
         .object({

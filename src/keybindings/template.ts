@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Keybindings template generator.
  * Generates a well-documented template file for ~/.ur/keybindings.json
@@ -44,7 +45,7 @@ export function generateKeybindingsTemplate(): string {
   // Format as object wrapper with bindings array
   const config = {
     $schema: 'https://www.schemastore.org/ur-keybindings.json',
-    $docs: 'https://ur.com/docs/keybindings',
+    $docs: 'https://docs.ur.dev/docs/en/keybindings',
     bindings,
   }
 

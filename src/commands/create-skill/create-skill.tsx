@@ -62,7 +62,7 @@ export const call: LocalCommandCall = async (args: string) => {
     colonIndex === -1 ? '' : cleaned.slice(colonIndex + 1).trim()
 
   if (!rawName) {
-    return { type: 'text', value: USAGE, exitCode: 2 }
+    return { type: 'text', value: USAGE }
   }
 
   const name = slugify(rawName)
@@ -70,7 +70,6 @@ export const call: LocalCommandCall = async (args: string) => {
     return {
       type: 'text',
       value: `Invalid skill name "${rawName}". Use letters, numbers, and spaces or hyphens.`,
-      exitCode: 2,
     }
   }
 
@@ -100,13 +99,11 @@ export const call: LocalCommandCall = async (args: string) => {
       return {
         type: 'text',
         value: `A skill already exists at ${getDisplayPath(skillFile)}. Pick a different name or edit it directly.`,
-        exitCode: 1,
       }
     }
     return {
       type: 'text',
       value: `Failed to create skill: ${error instanceof Error ? error.message : String(error)}`,
-      exitCode: 1,
     }
   }
 

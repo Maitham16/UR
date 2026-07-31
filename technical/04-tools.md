@@ -21,17 +21,17 @@ users don't call tools directly.
 | `Grep` | Regex content search (ripgrep-backed) | `pattern`, `path`, `glob`, output modes | "Where is refreshToken referenced?" |
 | `CodeSearch` | Semantic code search over the local embedding index — auto-enabled when a built index exists (`ur code-index build`); `UR_CODE_INDEX=off` disables | `query` | "Find code that debounces user input" |
 | `Bash` | Run shell commands; supports background tasks, sandboxing, safety checks (`src/tools/BashTool/bashSecurity.ts`); commands with unterminated quotes are rejected pre-execution with an actionable diagnostic (errorCode 11, heredoc guidance) | `command`, `timeout`, `run_in_background`, sandbox overrides | "Run the test suite" |
-| `PowerShell` | Windows PowerShell variant (Windows plus `UR_CODE_USE_POWERSHELL_TOOL=1` in the external build) | same shape as Bash | — |
+| `PowerShell` | Windows PowerShell variant (enabled on Windows) | same shape as Bash | — |
 
 ## Web & network tools
 
 | Tool | Purpose | Key inputs | Example request |
 |---|---|---|---|
 | `WebFetch` | Fetch a public HTTP(S) URL → markdown → analyze with a small model; DNS and every redirect are checked against private/reserved addresses | `url`, `prompt` | "Summarize this blog post: https://…" |
-| `Computer` | Desktop control: screenshot (read-only), click, type. Clicks are bounds-checked against real screen geometry and state-changing actions always ask. macOS/Linux only | action-specific coordinates, text, or output path | "Take a screenshot of the desktop" |
-| `WebSearch` | Provider-side web search. The current runtime gate exposes it for every non-Ollama provider (`getAPIProvider() === 'foundry'`) and hides it on the default Ollama backend; actual server-tool support still depends on the selected provider/model | `query`, optional `allowed_domains` or `blocked_domains` (mutually exclusive) | "Search for the fastify v5 migration guide" |
+| `Computer` | Desktop control: screenshot (read-only), click, type. Clicks bounds-checked against real screen geometry; state-changing actions always ask. macOS/Linux only |
+| `web_search` | Web search | `query` | "Search for the fastify v5 migration guide" |
 | `Api` | Direct public HTTP(S) calls with JSON extraction; private targets, unsafe redirects, oversized responses, GET bodies, and silent sensitive-header sends are rejected/confirmed | `url`, `method`, `headers`, `body`, `timeout` (≤300s), `extract` (dotted path) | "Call GET https://api.github.com/repos/x/y and give me .stargazers_count" |
-| `Browser` | Guarded public-URL fetch plus a persistent Playwright session for goto/click/type/screenshot/evaluate. Requires `UR_BROWSER_TOOL=1` or `WEB_BROWSER_TOOL=1`; `fetch` needs no browser process, while interactive actions require the externalized `playwright-core` dependency and an installed Chromium/Chrome executable | `url`, `action`, `selector`, `text`, `expression` | "Open the public staging UI, click Login, screenshot the result" |
+| `Browser` | Drive a persistent Playwright browser session: goto/click/type/screenshot/evaluate/fetch; every navigation and subrequest is URL-guarded | `url`, `action`, `selector`, `text`, `expression` | "Open the public staging UI, click Login, screenshot the result" |
 
 ## Dev-workflow tools
 
@@ -48,183 +48,33 @@ users don't call tools directly.
 | Tool | Purpose | Example request |
 |---|---|---|
 | `TodoWrite` | Maintain the session todo list | (agent tracks multi-step work) |
-| `TaskCreate` / `TaskGet` / `TaskUpdate` / `TaskList` | Structured task list v2 (dependencies, atomic claims/statuses/numeric ordering) — replaces TodoWrite when the todo-v2 runtime gate is enabled | "Track these five subtasks" |
+| `TaskCreate` / `TaskGet` / `TaskUpdate` / `TaskList` | Structured task list v2 (dependencies, statuses) — replaces TodoWrite when `todo v2` enabled | "Track these five subtasks" |
 | `EnterPlanMode` / `ExitPlanMode` | Enter/leave plan mode; plan approval flow | "Plan first, then implement" |
 | `AskUserQuestion` | Multiple-choice questions to the user | (agent asks when blocked on a decision) |
 | `TaskOutput` / `TaskStop` | Read output of / stop a background task | "Kill the dev server you started" |
 | `EnterWorktree` / `ExitWorktree` | Move the session into/out of an isolated git worktree (worktree mode) | "Do this in a scratch worktree" |
-| `SendUserMessage` | KAIROS/KAIROS_BRIEF build-only mid-turn brief; not present in the standard npm build | — |
-
-Task tracking and plan mode are separate state machines. Creating an ordered
-`TaskCreate`/`TodoWrite` list does not enter plan mode; `ExitPlanMode` is valid
-only after `EnterPlanMode` (or `/plan`) has successfully made the active mode
-`plan`. Plan approval may change that mode before permission-edited input is
-revalidated; the executor labels that second validation as post-permission so
-the already-validated exit can finish, while new out-of-mode calls still fail.
-`ExitPlanMode` is exempt from the implementation task-list gate because it is
-the approval/control transition that precedes implementation. Its own plan-mode
-validation remains authoritative, so the exemption does not make a stale
-second exit valid.
-
-For non-trivial work, the task list uses one record per cohesive outcome with
-an observable done check rather than one omnibus record. Genuine single-outcome
-work remains one task; files, commands, and tiny mechanical steps are not
-artificial task boundaries. Dependency edges represent only real ordering
-constraints. Mutually independent tasks with no conflicting shared mutations
-can be delegated together, while dependent or conflicting work stays
-sequential.
-
-The proactive model lifecycle is explicit:
-`TaskCreate` → inspect successful result → `TaskUpdate(in_progress)` → inspect
-successful result → `Write`/`Edit`/mutating `Bash`/worker. Task setup and its
-dependent mutation are never one parallel batch. A feature-rich one-file build
-is non-trivial even if implementation uses one `Write`; classification follows
-the requested outcomes and verification burden, not the file or tool-call
-count. Approved-plan handoffs require task creation as their next
-state-changing action, and Ollama/Kimi receives the same ordered rule in its
-compact tool-discipline section. If earlier tasks are all terminal, the model
-must create a new cohesive outcome or reopen the relevant task before new
-workspace work.
-
-The runtime gate accepts an actionable `pending` or `in_progress` record; the
-stricter model-facing sequence keeps status truthful before work begins.
-`TodoWrite` is the equivalent single-call setup in legacy/headless pools, with
-the selected item already `in_progress`. Partial Task V2 exposure never masks
-an available `TodoWrite`. Bare/simple, REPL-simple, coordinator, custom-agent,
-and override-prompt paths retain a usable planner and capability-aware task
-contract, so the gate never instructs those modes to call a missing tool.
-If a user explicitly filters every planner from a custom tool pool, runtime
-fails closed and tells the user to enable Task V2/`TodoWrite` or explicitly
-disable the gate; it never tells the model to call a tool that is absent.
-
-Task IDs remain strings in storage and tool output. Model inputs for
-`TaskCreate` dependencies and `TaskGet`/`TaskUpdate` identifiers may also use a
-positive safe-integer JSON number; the tool boundary normalizes it to the
-canonical decimal string. Zero, negative, fractional, non-finite, Boolean, and
-precision-losing numeric IDs are rejected.
-
-The Kimi/Ollama compatibility parser applies the same task schema instead of a
-smaller parallel implementation. A clearly delimited bare `TaskCreate` object
-may contain `blocks`, `blockedBy`, `addBlocks`, or `addBlockedBy`; a bare
-`TaskUpdate` accepts the live terminal `failed` and `skipped` statuses as well
-as numeric IDs. IDs are normalized to canonical strings, while unknown fields,
-invalid IDs/statuses, ambiguous prose, and unavailable tools fail closed.
-
-Task-gate recovery names the tracking surface that is actually present:
-interactive Task V2 sessions use `TaskCreate`, while default headless sessions
-use `TodoWrite`. It never instructs a model to recover by calling a tool absent
-from that runtime. Runtime inspection tracks actionable and total user tasks
-separately: an all-terminal list is reported truthfully and the model is told
-to reopen or create the cohesive remaining task. Real Edit/Bash mutations stay
-gated. One simple `open <loopback-http(s)-URL>` Bash preview is exempt only
-from the task-list gate; remote/file URLs, flags, shell composition, expansion,
-redirection, backgrounding, sandbox overrides, and permission-time rewrites to
-mutating commands fail closed. The preview command remains a Bash side effect
-and still follows normal permission, sandbox, and plan-worker rules.
-
-Control-plane operations that establish or tear down tracking cannot depend on
-an already-actionable task: `TeamCreate`, `TeamDelete`, `TaskStop`/`KillShell`,
-and structured team shutdown/plan-response messages are narrow task-gate
-exceptions. Their own schemas, mode checks, active-member checks, and normal
-permissions remain authoritative. Loading a `Skill` and taking a desktop
-screenshot are read-only wrappers; downstream skill actions, desktop
-click/type, API/database/browser/MCP mutations, and future tools classified
-state-changing at runtime remain task-gated.
-
-Syntax verification has the same task-gate-only separation. A strictly parsed
-`node --check <single-file>` or the bounded HTML checker that reads one file,
-constructs but never invokes its first `<script>` body, and prints only a fixed
-syntax result may run after a task-free one-shot Write. Generic `node -e`,
-additional statements or invocation, mismatched files, flags, redirects,
-expansion, backgrounding, sandbox overrides, and permission-time rewrites do
-not qualify. Node remains non-read-only for Bash permission and sandbox
-purposes, so this compatibility path cannot become a general execution bypass.
-
-Task tracking no longer equates "not safe to auto-approve" with "changes the
-workspace." Tools may expose a separate `isTaskListReadOnly` classification;
-permissions, sandboxing, concurrency, and read-only planning agents still use
-the stricter `isReadOnly` result. Bash uses the task-only classification for
-known read commands and generic capability inspection: exact help/version
-queries, `command -v`/`which`-style presence checks, and import-only Python
-probes for any syntactically valid module name. This is category-based rather
-than a module allowlist. Arbitrary interpreter statements, output redirects
-outside `/dev/null`, background execution, sandbox overrides, simulated edits,
-unknown commands, and permission-time rewrites to mutations remain gated.
-
-Task completion also protects that lifecycle boundary. When the final
-actionable `in_progress` task has a successful `Write`/`Edit`/`MultiEdit`/
-`NotebookEdit` after its recorded start but no later successful inspection,
-runtime, test, shell, or delegated-check result, `TaskUpdate(completed)` is
-soft-deferred: it returns a non-error explanation and leaves the same task
-`in_progress`. The model verifies and retries completion instead of creating a
-duplicate task or discovering an all-terminal dead end on the next corrective
-Edit. The guard is evidence-based and conservative: missing/compacted history,
-non-file work, and intermediate tasks are not guessed into a deferred state.
-
-Live plan mode also treats setup of the exact current session plan artifact as
-planning infrastructure rather than implementation. `Write` creates the plan
-file's parent automatically, but weak models may first emit `mkdir -p` for that
-exact parent or the bounded `ls ... || mkdir -p ... && ls ...` check. Only those
-exact-path shapes bypass the task-list requirement; Bash permission and sandbox
-checks still apply, and a hook rewrite, sibling path, extra command, expansion,
-background launch, or sandbox override fails closed at the final boundary.
-
-`AskUserQuestion` exposes a request-only model schema: one top-level
-`questions` array with 1–4 complete question objects, each containing
-`question`, a header of at most 12 characters, and 2–8 labeled choices.
-Descriptions are optional and are never fabricated from labels. The runtime
-accepts only lossless compatibility forms such as string choices and recognized
-question-text aliases; it does not turn arbitrary prose or flat option rows into
-invented questions. More than four blocking decisions are asked in later
-rounds. The sole presentation-only repair compacts a safe explicit header of at
-most 500 characters to one bounded first-word chip when it exceeds 12
-characters. The question, options, labels, descriptions, previews, metadata,
-and selection mode remain byte-for-byte unchanged. Control/ANSI-bearing or
-grossly oversized headers still fail validation.
-
-One narrow end-turn recovery exists for weak models that clearly attempted this
-tool but failed to emit a native call. On an interactive main-agent turn with
-no existing tool use, the runtime may recover either one canonical
-`questions` object at the very end of a reasoning block that explicitly says
-to invoke `AskUserQuestion`, or one standalone Markdown decision menu with
-exactly one bold question, 2–8 bold labeled options with descriptions, and a
-terminal instruction to select an option. The recovered object must pass the
-live `AskUserQuestion` schema unchanged except for that same deterministic
-UI-header compaction before the normal tool executor opens the UI. JSON repair,
-question/choice truncation, duplicate/ambiguous candidates, casual “A or B?”
-prose, examples, incomplete menus, background workers, headless sessions, and
-unavailable/disabled tools all fail closed.
-
-Answers and annotations are not model input fields. They are accepted only
-during post-permission validation after the interactive UI has returned one
-non-empty answer for every question; an unchanged generic approval cannot
-produce a successful “user answered” result. The UI uses prototype-safe records,
-provides a real custom `Other` path for both ordinary and preview questions,
-and does not count selecting `Other` itself as an answer. HTML-configured
-previews are escaped into an inert preformatted-text wrapper rather than
-executed as model-provided markup.
+| `SendUserMessage` | Send a mid-turn brief message to the user (Brief tool) | — |
 
 ## Multi-agent tools
 
-The table below separates the ordinary Agent/Skill tools from coordination
-tools that require an explicit runtime/build gate. Internal overlay modules
-that export `null` are compile-time placeholders, are never added to the tool
-pool, and are not supported user-facing tools.
+The table below lists tools present in the public build. Internal overlay
+modules that export `null` are compile-time placeholders, are never added to
+the tool pool, and are not supported user-facing tools.
 
 | Tool | Purpose | Example request |
 |---|---|---|
 | `Agent` | Spawn a subagent (built-in types: `general-purpose`, `Explore`, `Plan`, `verification`, `statusline-setup`, `ur-code-guide`, plus user agents from `/agents` and `.ur/agents/`) | "Use a subagent to survey how errors are handled repo-wide" |
-| `SendMessage` | Message another running agent/teammate; useful only while swarm mode is enabled | (agent coordination) |
+| `SendMessage` | Message another running agent/teammate | (agent coordination) |
 | `TeamCreate` / `TeamDelete` | Create/remove agent teams (swarm mode, `isAgentSwarmsEnabled`) | "Spin up a team for this migration" |
 | `Skill` | Invoke a skill programmatically (model-triggered skills) | "Use the dockerize skill" |
 
-## Scheduling (nonstandard builds)
+## Scheduling (implemented, feature-gated)
 
 | Tool | Gate | Purpose |
 |---|---|---|
 | `CronCreate` / `CronDelete` / `CronList` | AGENT_TRIGGERS | Local scheduled jobs (used by `/loop`, `/automation`) |
 | `RemoteTrigger` | AGENT_TRIGGERS_REMOTE | Manage scheduled remote agents via API |
-| `Sleep` | PROACTIVE/KAIROS overlay | The public-source overlay currently exports `null`; do not treat the environment name as a usable tool |
+| `Sleep` | PROACTIVE/KAIROS | Wait for a duration |
 
 ## MCP & discovery
 
@@ -239,7 +89,7 @@ pool, and are not supported user-facing tools.
 | Tool | Gate | Purpose |
 |---|---|---|
 | `Config` | USER_TYPE=ant | Get/set UR settings programmatically |
-| `REPL` | internal overlay | The public-source overlay currently exports `null`; `UR_CODE_REPL` alone cannot enable it |
+| `REPL` | REPL mode | Wraps Bash/Read/Edit inside a persistent VM; hides the primitives |
 | `StructuredOutput` | synthetic | Enforces structured output schemas in headless runs |
 
 `ListPeers`, `Workflow`, `Monitor`, `PushNotification`, `SendUserFile`,
@@ -266,18 +116,3 @@ File Edit/Write/NotebookEdit require the exact content snapshot the model read,
 not only a modification timestamp. Full and ranged reads are compared at the
 final write boundary, preventing same-timestamp external replacements from
 being overwritten.
-
-`Write` requires `file_path` and the complete literal `content` in the same
-structured call. Prose outside the call is never treated as file content, and a
-missing-content failure states that no file was written instead of fabricating
-the intended file.
-
-`Edit` remains fail-closed rather than applying a fuzzy replacement to similar
-code. When an exact contiguous `old_string` is absent, its bounded error points
-to the most distinctive verified matching line when one exists, rather than an
-unrelated generic delimiter, and tells the model to re-read that region, use a
-smaller current 2–4-line anchor, split distant HTML/CSS/JavaScript sections, and
-never retry the unchanged call. One narrow idempotent case returns success
-without writing: a non-`replace_all` deletion-only edit whose `new_string` is
-already present uniquely and whose larger `old_string` is absent. General
-stale, fuzzy, empty-replacement, and ambiguous matches still fail.

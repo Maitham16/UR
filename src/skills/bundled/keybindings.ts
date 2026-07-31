@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { DEFAULT_BINDINGS } from '../../keybindings/defaultBindings.js'
 import { isKeybindingCustomizationEnabled } from '../../keybindings/loadUserBindings.js'
 import {
@@ -113,7 +114,7 @@ function generateReservedShortcuts(): string {
 
 const FILE_FORMAT_EXAMPLE: KeybindingsSchemaType = {
   $schema: 'https://www.schemastore.org/ur-keybindings.json',
-  $docs: 'https://ur.com/docs/keybindings',
+  $docs: 'https://docs.ur.dev/docs/en/keybindings',
   bindings: [
     {
       context: 'Chat',

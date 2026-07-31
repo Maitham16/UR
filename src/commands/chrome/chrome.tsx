@@ -11,9 +11,9 @@ import { isChromeExtensionInstalled } from '../../utils/urInChrome/setup.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { env } from '../../utils/env.js';
 import { isRunningOnHomespace } from '../../utils/envUtils.js';
-const CHROME_EXTENSION_URL = 'https://ur.com/chrome';
-const CHROME_PERMISSIONS_URL = 'https://ur.com/chrome/permissions';
-const CHROME_RECONNECT_URL = 'https://ur.com/chrome/reconnect';
+const CHROME_EXTENSION_URL = 'https://ur.ai/chrome';
+const CHROME_PERMISSIONS_URL = 'https://ur.ai/chrome/permissions';
+const CHROME_RECONNECT_URL = 'https://ur.ai/chrome/reconnect';
 type MenuAction = 'install-extension' | 'reconnect' | 'manage-permissions' | 'toggle-default';
 type Props = {
   onDone: (result?: string) => void;
@@ -212,7 +212,7 @@ function URInChromeMenu(t0) {
   }
   let t8;
   if ($[23] !== isURAISubscriber) {
-    t8 = true && !isURAISubscriber && <Text color="error">UR in Chrome requires a ur.com subscription.</Text>;
+    t8 = true && !isURAISubscriber && <Text color="error">UR in Chrome requires a ur.ai subscription.</Text>;
     $[23] = isURAISubscriber;
     $[24] = t8;
   } else {
@@ -234,7 +234,7 @@ function URInChromeMenu(t0) {
   }
   let t10;
   if ($[33] === Symbol.for("react.memo_cache_sentinel")) {
-    t10 = <Text dimColor={true}>Learn more: https://ur.com/docs/chrome</Text>;
+    t10 = <Text dimColor={true}>Learn more: https://docs.ur.dev/docs/en/chrome</Text>;
     $[33] = t10;
   } else {
     t10 = $[33];

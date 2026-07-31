@@ -34,29 +34,6 @@ export const call: LocalCommandCall = async (args: string) => {
   const cwd = getCwd()
   const maxAttemptsRaw = option(tokens, '--max-attempts')
   const maxTurnsRaw = option(tokens, '--max-turns')
-  const maxAttempts =
-    maxAttemptsRaw === undefined ? undefined : Number(maxAttemptsRaw)
-  const maxTurns = maxTurnsRaw === undefined ? undefined : Number(maxTurnsRaw)
-  if (
-    maxAttempts !== undefined &&
-    (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1)
-  ) {
-    return {
-      type: 'text',
-      value: '--max-attempts must be a positive integer.',
-      exitCode: 2,
-    }
-  }
-  if (
-    maxTurns !== undefined &&
-    (!Number.isSafeInteger(maxTurns) || maxTurns < 1)
-  ) {
-    return {
-      type: 'text',
-      value: '--max-turns must be a positive integer.',
-      exitCode: 2,
-    }
-  }
 
   if (action === 'detect') {
     const stack = detectTestFirstStack(cwd)
@@ -86,33 +63,16 @@ export const call: LocalCommandCall = async (args: string) => {
             `Installed test-first gates: ${installed.path}`,
             ...installed.commands.map(command => `  ${command}`),
           ].join('\n'),
-      ...(stack.commands.length > 0 ? {} : { exitCode: 1 }),
-    }
-  }
-
-  if (action !== 'run') {
-    return {
-      type: 'text',
-      value: 'Usage: ur test-first detect|run|install [options]',
-      exitCode: 2,
     }
   }
 
   const result = await runTestFirstLoop({
     cwd,
-    maxAttempts,
+    maxAttempts: maxAttemptsRaw ? Number(maxAttemptsRaw) : undefined,
     dryRun: tokens.includes('--dry-run'),
     skipPermissions: tokens.includes('--skip-permissions'),
-    maxTurns,
+    maxTurns: maxTurnsRaw ? Number(maxTurnsRaw) : undefined,
     installGates: tokens.includes('--install-gates'),
   })
-  return {
-    type: 'text',
-    value: formatTestFirstResult(result, json),
-    ...(
-      result.status === 'passed' || result.status === 'planned'
-        ? {}
-        : { exitCode: 1 }
-    ),
-  }
+  return { type: 'text', value: formatTestFirstResult(result, json) }
 }

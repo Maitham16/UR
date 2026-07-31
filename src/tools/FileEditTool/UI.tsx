@@ -77,8 +77,7 @@ export function renderToolUseMessage({
 export function renderToolResultMessage({
   filePath,
   structuredPatch,
-  originalFile,
-  alreadyApplied
+  originalFile
 }: FileEditOutput, _progressMessagesForMessage: ProgressMessage[], {
   style,
   verbose
@@ -86,11 +85,6 @@ export function renderToolResultMessage({
   style?: 'condensed';
   verbose: boolean;
 }): React.ReactNode {
-  if (alreadyApplied) {
-    return <MessageResponse>
-        <Text dimColor>Already up to date</Text>
-      </MessageResponse>;
-  }
   // For plan files, show /plan hint above the diff
   const isPlanFile = filePath.startsWith(getPlansDirectory());
   return <FileEditToolUpdatedMessage filePath={filePath} structuredPatch={structuredPatch} firstLine={originalFile.split('\n')[0] ?? null} fileContent={originalFile} style={style} verbose={verbose} previewHint={isPlanFile ? '/plan to preview' : undefined} />;

@@ -480,7 +480,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'openai-compatible-models',
     validateModel: 'discovered-list',
     runtimeKind: 'ur-native',
-    ...UR_NATIVE_CAPABILITIES,
+    ...SUBSCRIPTION_CLI_CAPABILITIES,
     authMode: 'local',
     legalPath: 'local OpenAI-compatible server',
     accessPathLabel: 'local OpenAI-compatible endpoint',
@@ -637,10 +637,6 @@ export function getActiveProviderSettings(settings: SettingsJson | null = getIni
     baseUrl: configured.baseUrl,
     commandPath: configured.commandPath,
     fallback,
-    openaiTransport: configured.openaiTransport,
-    responses: configured.responses
-      ? { ...configured.responses }
-      : undefined,
   }
 }
 

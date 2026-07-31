@@ -19,7 +19,7 @@ import type { Transport } from './Transport.js'
 
 const KEEP_ALIVE_FRAME = '{"type":"keep_alive"}\n'
 
-export const MAX_REPLAY_BUFFER_MESSAGES = 1000
+const DEFAULT_MAX_BUFFER_SIZE = 1000
 const DEFAULT_BASE_RECONNECT_DELAY = 1000
 const DEFAULT_MAX_RECONNECT_DELAY = 30000
 /** Time budget for reconnection attempts before giving up (10 minutes). */
@@ -129,7 +129,7 @@ export class WebSocketTransport implements Transport {
     this.refreshHeaders = refreshHeaders
     this.autoReconnect = options?.autoReconnect ?? true
     this.isBridge = options?.isBridge ?? false
-    this.messageBuffer = new CircularBuffer(MAX_REPLAY_BUFFER_MESSAGES)
+    this.messageBuffer = new CircularBuffer(DEFAULT_MAX_BUFFER_SIZE)
   }
 
   public async connect(): Promise<void> {
@@ -201,10 +201,8 @@ export class WebSocketTransport implements Transport {
   private onBunOpen = () => {
     this.handleOpenEvent()
     // Bun's WebSocket doesn't expose upgrade response headers,
-    // so replay every buffered meaningful frame. Not all protocol frames have
-    // a UUID (control frames use request_id), therefore lastSentId cannot be
-    // used as a proxy for whether replay work is pending.
-    if (this.messageBuffer.length() > 0) {
+    // so replay all buffered messages. The server deduplicates by UUID.
+    if (this.lastSentId) {
       this.replayBufferedMessages('')
     }
   }
@@ -666,23 +664,7 @@ export class WebSocketTransport implements Transport {
 
   async write(message: StdoutMessage): Promise<void> {
     if (message.type !== 'keep_alive') {
-      const willEvictOldest =
-        this.messageBuffer.length() >= MAX_REPLAY_BUFFER_MESSAGES
       this.messageBuffer.add(message)
-      if (willEvictOldest) {
-        // Replay memory must remain bounded during a prolonged disconnect.
-        // Make the oldest-frame eviction observable instead of silently
-        // implying that every historical frame is still recoverable.
-        logForDebugging(
-          `WebSocketTransport: Replay buffer full; evicting oldest frame (capacity ${MAX_REPLAY_BUFFER_MESSAGES})`,
-          { level: 'warn' },
-        )
-        logForDiagnosticsNoPII(
-          'error',
-          'cli_websocket_replay_buffer_overflow',
-          { capacity: MAX_REPLAY_BUFFER_MESSAGES },
-        )
-      }
     }
     if ('uuid' in message && typeof message.uuid === 'string') {
       this.lastSentId = message.uuid

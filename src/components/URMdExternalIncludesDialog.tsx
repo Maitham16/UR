@@ -74,7 +74,7 @@ export function AgentMdExternalIncludesDialog(t0) {
   }
   let t8;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t8 = <Text dimColor={true}>Important: Only use UR with files you trust. Accessing untrusted files may pose security risks{" "}<Link url="https://ur.com/docs/security" />{" "}</Text>;
+    t8 = <Text dimColor={true}>Important: Only use UR with files you trust. Accessing untrusted files may pose security risks{" "}<Link url="https://docs.ur.dev/docs/en/security" />{" "}</Text>;
     $[8] = t8;
   } else {
     t8 = $[8];

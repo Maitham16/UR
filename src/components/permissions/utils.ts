@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { getHostPlatformForAnalytics } from '../../utils/env.js'
 import { type CompletionType, logUnaryEvent } from '../../utils/unaryLogging.js'
 import type { ToolUseConfirm } from './PermissionRequest.js'

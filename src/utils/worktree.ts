@@ -898,10 +898,7 @@ export async function cleanupWorktree(): Promise<void> {
  * global session state (currentWorktreeSession, process.chdir, project config).
  * Falls back to hook-based creation if not in a git repository.
  */
-export async function createAgentWorktree(
-  slug: string,
-  cwd: string = getCwd(),
-): Promise<{
+export async function createAgentWorktree(slug: string): Promise<{
   worktreePath: string
   worktreeBranch?: string
   headCommit?: string
@@ -925,7 +922,7 @@ export async function createAgentWorktree(
   // the main repo's .ur/worktrees/ even when spawned from inside a session
   // worktree — otherwise they nest at <worktree>/.ur/worktrees/ and the
   // periodic cleanup (which scans the canonical root) never finds them.
-  const gitRoot = findCanonicalGitRoot(cwd)
+  const gitRoot = findCanonicalGitRoot(getCwd())
   if (!gitRoot) {
     throw new Error(
       'Cannot create agent worktree: not in a git repository and no WorktreeCreate hooks are configured. ' +

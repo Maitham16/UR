@@ -17,30 +17,6 @@
 export type VisionSupport = 'supported' | 'unsupported' | 'unknown'
 
 /**
- * Normalize a provider's advertised capability list without turning malformed
- * data into an authoritative "no".
- *
- * An explicitly empty array is meaningful: the provider advertised no
- * capabilities. A non-empty array containing no usable strings is malformed,
- * so callers must preserve it as unknown rather than claim the model lacks
- * vision. Keeping this conversion beside the tri-state resolver prevents the
- * adapter, doctor, and router from feeding it different interpretations.
- */
-export function normalizeAdvertisedCapabilities(
-  value: unknown,
-): Set<string> | null {
-  if (!Array.isArray(value)) return null
-  const normalized = new Set(
-    value.flatMap(capability =>
-      typeof capability === 'string' && capability.trim()
-        ? [capability.trim().toLowerCase()]
-        : [],
-    ),
-  )
-  return value.length === 0 || normalized.size > 0 ? normalized : null
-}
-
-/**
  * Families that ship vision weights. Name matching is a fallback for servers
  * that do not advertise capabilities; it can confirm support but never rule it
  * out, since an unrecognised name means nothing either way.

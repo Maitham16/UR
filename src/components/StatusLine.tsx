@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle';
 import * as React from 'react';
-import { isDeckRailVisible } from './commandDeck/deckVisibility.js';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { logEvent } from 'src/services/analytics/index.js';
 import { getProviderRuntimeInfo, type ProviderRuntimeInfo, type ProviderSettings } from 'src/services/providers/providerRegistry.js';
@@ -29,7 +28,7 @@ import { createBaseHookInput, executeStatusLineCommand } from '../utils/hooks.js
 import { getLastAssistantMessage } from '../utils/messages.js';
 import { getRuntimeMainLoopModel, type ModelName, renderModelName } from '../utils/model/model.js';
 import { getCurrentSessionTitle } from '../utils/sessionStorage.js';
-import { buildDefaultStatusBar, countActiveBackgroundTasks, countActiveForegroundAgents, statusBarShouldDisplay } from '../utils/statusBar.js';
+import { buildDefaultStatusBar, statusBarShouldDisplay } from '../utils/statusBar.js';
 import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/tokens.js';
 import { getCurrentWorktreeSession } from '../utils/worktree.js';
 import { isVimModeEnabled } from './PromptInput/utils.js';
@@ -236,10 +235,7 @@ function StatusLineInner({
   // and a custom status-line command keeps rendering the previous value.
   const providerRuntimeKey = buildStatusLineRefreshKey(providerRuntime, mainLoopModel);
   const taskValues = Object.values(tasks);
-  const taskRunningCount = countActiveBackgroundTasks(taskValues);
-  // Subagents dispatched during a turn are excluded from the background count
-  // by design, so nothing reported them while they ran. Counted separately.
-  const agentRunningCount = countActiveForegroundAgents(taskValues);
+  const taskRunningCount = taskValues.filter(task => task.status === 'running' || task.status === 'pending').length;
   const defaultStatusLineText = buildDefaultStatusBar({
     version: MACRO.VERSION,
     providerLabel: providerRuntime.providerLabel,
@@ -252,10 +248,7 @@ function StatusLineInner({
     mode: permissionMode,
     branch,
     taskRunningCount,
-    agentRunningCount,
-    // Deliberately omit a denominator: the task store also contains
-    // foreground work and retained terminal history, so taskValues.length is
-    // not a meaningful "background tasks total".
+    taskTotalCount: taskValues.length,
     latestVersion: autoUpdaterResult?.status === 'success' ? null : autoUpdaterResult?.version,
     isCheckingUpdate: isAutoUpdating
   });
@@ -441,9 +434,7 @@ function StatusLineInner({
 
   // Get padding from settings or default to 0
   const paddingX = effectiveSettings?.statusLine?.padding ?? 0;
-  // The deck rail already shows model, provider, mode, branch and the update
-  // notice. A user-configured statusLine command is theirs and still renders.
-  const renderedStatusLineText = effectiveSettings?.statusLine ? statusLineText : isDeckRailVisible() ? null : defaultStatusLineText;
+  const renderedStatusLineText = effectiveSettings?.statusLine ? statusLineText : defaultStatusLineText;
 
   // StatusLine must have stable height in fullscreen — the footer is
   // flexShrink:0 so a 0→1 row change when the command finishes steals

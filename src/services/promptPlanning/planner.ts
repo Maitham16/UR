@@ -30,7 +30,7 @@ const AUTHORIZED_SECURITY_PATTERN =
 const CREATE_TARGET_PATTERN =
   /\b(?:create|generate|scaffold)\b|^\s*(?:add|write)\s+(?:a|an|new)\b/i
 const STANDALONE_DIRECTIVE_PATTERN =
-  /^(?:then|after|once|next|finally|before|verify|validate|test|run|create|add|update|fix|correct|improve|enhance|optimi[sz]e|implement|build|handle|support|document|refactor|remove|rename|migrate|review|audit|inspect|analy[sz]e|bump|publish|report|summari[sz]e)\b/i
+  /^(?:then|after|once|next|finally|before|verify|validate|test|run|create|add|update|fix|implement|build|bump|publish|report|summari[sz]e)\b/i
 const MAX_PLANNED_TASKS = 12
 
 function compact(value: string): string {
@@ -124,45 +124,29 @@ function boundTaskCount(segments: string[]): string[] {
   ]
 }
 
-/**
- * Split only explicit action boundaries. Detail sentences stay attached to
- * their outcome, so "Fix auth. It fails on Safari." remains one task, while
- * "Fix auth. Add a regression test." becomes two observable outcomes.
- */
-function splitDirectiveClauses(prompt: string): string[] {
-  const normalized = prompt.replace(/\s+and\s+then\s+/gi, ' then ')
-  const clauses = normalized
-    .split(
-      /;\s*|(?<=[.!?])\s+(?=[A-Z0-9])|\s+(?=(?:then|also|next|finally)\s+)/i,
-    )
-    .map(compact)
-    .filter(Boolean)
-  if (clauses.length < 2) return []
-
-  const segments: string[] = [clauses[0]!]
-  for (const clause of clauses.slice(1)) {
-    if (STANDALONE_DIRECTIVE_PATTERN.test(clause)) {
-      segments.push(clause)
-      continue
-    }
-    const last = segments.length - 1
-    segments[last] = `${segments[last]} ${clause}`
-  }
-  return segments.length >= 2 ? segments : []
-}
-
 function splitLongPrompt(prompt: string): string[] {
   const bulletSegments = splitNumberedOrBulletedLines(prompt)
   if (bulletSegments.length > 0) return boundTaskCount(bulletSegments)
 
   const trimmed = compact(prompt)
+  if (trimmed.length < 220 && !/[;\n]/.test(prompt)) return [trimmed]
+
   const lines = prompt
     .split(/\r?\n+/)
     .map(compact)
     .filter(Boolean)
   if (lines.length >= 2) return boundTaskCount(lines)
 
-  const directiveSegments = splitDirectiveClauses(trimmed)
+  const sentenceSegments = trimmed
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+    .map(compact)
+    .filter(Boolean)
+  if (sentenceSegments.length >= 2) return boundTaskCount(sentenceSegments)
+
+  const directiveSegments = trimmed
+    .split(/\s+(?:then|also|next|finally)\s+/i)
+    .map(compact)
+    .filter(Boolean)
   return directiveSegments.length >= 2
     ? boundTaskCount(directiveSegments)
     : [trimmed]
@@ -185,14 +169,8 @@ function needsAllPreviousTasks(
 }
 
 function inferRole(segment: string): NexusAgentRole {
-  if (
-    /\b(plan|analy[sz]e|decompose|review|audit|inspect)\b/i.test(segment)
-  ) {
-    return 'planner'
-  }
-  if (/\b(verify|validate|tests?|testing|checks?|prove)\b/i.test(segment)) {
-    return 'verifier'
-  }
+  if (/\b(plan|analy[sz]e|decompose)\b/i.test(segment)) return 'planner'
+  if (/\b(verify|validate|test|check|prove)\b/i.test(segment)) return 'verifier'
   if (/\b(report|summari[sz]e|release notes|changelog)\b/i.test(segment)) {
     return 'reporter'
   }
@@ -306,7 +284,7 @@ function verificationCriteria(
 function makeTask(
   segment: string,
   index: number,
-  previousTasks: NexusTask[],
+  previousTaskIds: string[],
   originalPrompt: string,
   workspaceRoot?: string,
 ): NexusTask {
@@ -323,14 +301,8 @@ function makeTask(
     SECURITY_PATTERN.test(segment) && !AUTHORIZED_SECURITY_PATTERN.test(segment)
   const needsContext = isCriticallyAmbiguous(segment)
   const role = inferRole(segment)
-  const previousTaskIds = previousTasks.map(task => task.id)
-  const previousTask = previousTasks.at(-1)
-  const followsInvestigation =
-    role === 'executor' && previousTask?.assignedAgent === 'planner'
   const dependencies = needsAllPreviousTasks(segment, role)
     ? [...previousTaskIds]
-    : followsInvestigation
-      ? [previousTask.id]
     : needsPreviousTask(segment) && previousTaskIds.length > 0
       ? [previousTaskIds[previousTaskIds.length - 1]!]
       : []
@@ -391,16 +363,16 @@ export function decomposePrompt(
   const originalPrompt = prompt
   const segments = splitLongPrompt(prompt).filter(Boolean)
   const sourceSegments = segments.length > 0 ? segments : ['']
-  const previousTasks: NexusTask[] = []
+  const previousTaskIds: string[] = []
   const tasks = sourceSegments.map((segment, index) => {
     const task = makeTask(
       segment,
       index,
-      previousTasks,
+      previousTaskIds,
       originalPrompt,
       workspaceRoot,
     )
-    previousTasks.push(task)
+    previousTaskIds.push(task.id)
     return task
   })
 

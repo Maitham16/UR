@@ -85,10 +85,47 @@ function CollapseLabel(t0) {
   }
   return t5;
 }
-export function TokenWarning({
-  tokenUsage,
-  model
-}: Props) {
+export function TokenWarning(t0) {
+  const $ = _c(13);
+  const {
+    tokenUsage,
+    model
+  } = t0;
+  let t1;
+  if ($[0] !== model || $[1] !== tokenUsage) {
+    t1 = calculateTokenWarningState(tokenUsage, model);
+    $[0] = model;
+    $[1] = tokenUsage;
+    $[2] = t1;
+  } else {
+    t1 = $[2];
+  }
+  const {
+    percentLeft,
+    isAboveWarningThreshold,
+    isAboveErrorThreshold
+  } = t1;
+  const suppressWarning = useCompactWarningSuppression();
+  if (!isAboveWarningThreshold || suppressWarning) {
+    return null;
+  }
+  let t2;
+  if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
+    t2 = isAutoCompactEnabled();
+    $[3] = t2;
+  } else {
+    t2 = $[3];
+  }
+  const showAutoCompactWarning = t2;
+  let t3;
+  if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
+    t3 = getUpgradeMessage("warning");
+    $[4] = t3;
+  } else {
+    t3 = $[4];
+  }
+  const upgradeMessage = t3;
+  let displayPercentLeft = percentLeft;
   let reactiveOnlyMode = false;
   let collapseMode = false;
   if (feature("REACTIVE_COMPACT")) {
@@ -104,53 +141,39 @@ export function TokenWarning({
       collapseMode = true;
     }
   }
-  const effectiveWindow = reactiveOnlyMode || collapseMode ? getEffectiveContextWindowSize(model) : undefined;
-  const {
-    percentLeft,
-    isAboveWarningThreshold,
-    isAboveErrorThreshold
-  } = calculateTokenWarningState(tokenUsage, model, effectiveWindow);
-  const suppressWarning = useCompactWarningSuppression();
-  if (suppressWarning) {
-    return null;
+  if (reactiveOnlyMode || collapseMode) {
+    const effectiveWindow = getEffectiveContextWindowSize(model);
+    let t4;
+    if ($[5] !== effectiveWindow || $[6] !== tokenUsage) {
+      t4 = Math.round((effectiveWindow - tokenUsage) / effectiveWindow * 100);
+      $[5] = effectiveWindow;
+      $[6] = tokenUsage;
+      $[7] = t4;
+    } else {
+      t4 = $[7];
+    }
+    displayPercentLeft = Math.max(0, t4);
   }
-  // Read configuration on every render. /config can change enablement or the
-  // threshold without changing the model or token count.
-  const showAutoCompactWarning = isAutoCompactEnabled();
-  const upgradeMessage = getUpgradeMessage("warning");
-  const displayPercentLeft = percentLeft;
   if (collapseMode && feature("CONTEXT_COLLAPSE")) {
-    return isAboveWarningThreshold ? <Box flexDirection="row"><CollapseLabel upgradeMessage={upgradeMessage} /></Box> : null;
+    let t4;
+    if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
+      t4 = <Box flexDirection="row"><CollapseLabel upgradeMessage={upgradeMessage} /></Box>;
+      $[8] = t4;
+    } else {
+      t4 = $[8];
+    }
+    return t4;
   }
-  const autocompactLabel = reactiveOnlyMode ? `${100 - displayPercentLeft}% context used` : `≈${displayPercentLeft}% until auto-compact`;
-
-  if (showAutoCompactWarning && !reactiveOnlyMode) {
-    return <Box flexDirection="row">
-      <Text
-        color={isAboveErrorThreshold ? "error" : isAboveWarningThreshold ? "warning" : undefined}
-        dimColor={!isAboveWarningThreshold}
-        wrap="truncate"
-      >
-        {upgradeMessage ? `${autocompactLabel} \u00b7 ${upgradeMessage}` : autocompactLabel}
-      </Text>
-    </Box>;
+  const autocompactLabel = reactiveOnlyMode ? `${100 - displayPercentLeft}% context used` : `${displayPercentLeft}% until auto-compact`;
+  let t4;
+  if ($[9] !== autocompactLabel || $[10] !== isAboveErrorThreshold || $[11] !== percentLeft) {
+    t4 = <Box flexDirection="row">{showAutoCompactWarning ? <Text dimColor={true} wrap="truncate">{upgradeMessage ? `${autocompactLabel} \u00b7 ${upgradeMessage}` : autocompactLabel}</Text> : <Text color={isAboveErrorThreshold ? "error" : "warning"} wrap="truncate">{upgradeMessage ? `Context low (${percentLeft}% remaining) \u00b7 ${upgradeMessage}` : `Context low (${percentLeft}% remaining) \u00b7 Run /compact to compact & continue`}</Text>}</Box>;
+    $[9] = autocompactLabel;
+    $[10] = isAboveErrorThreshold;
+    $[11] = percentLeft;
+    $[12] = t4;
+  } else {
+    t4 = $[12];
   }
-
-  if (!isAboveWarningThreshold) {
-    return null;
-  }
-
-  if (reactiveOnlyMode) {
-    return <Box flexDirection="row">
-      <Text color={isAboveErrorThreshold ? "error" : "warning"} wrap="truncate">
-        {upgradeMessage ? `${autocompactLabel} \u00b7 ${upgradeMessage}` : autocompactLabel}
-      </Text>
-    </Box>;
-  }
-
-  return <Box flexDirection="row">
-    <Text color={isAboveErrorThreshold ? "error" : "warning"} wrap="truncate">
-      {upgradeMessage ? `Context low (${percentLeft}% remaining) \u00b7 ${upgradeMessage}` : `Context low (${percentLeft}% remaining) \u00b7 Run /compact to compact & continue`}
-    </Text>
-  </Box>;
+  return t4;
 }

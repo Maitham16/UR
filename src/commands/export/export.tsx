@@ -1,10 +1,10 @@
+import { join } from 'path';
 import React from 'react';
 import { ExportDialog } from '../../components/ExportDialog.js';
 import type { ToolUseContext } from '../../Tool.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import type { Message } from '../../types/message.js';
 import { getCwd } from '../../utils/cwd.js';
-import { resolveExportPath } from '../../utils/exportPath.js';
 import { renderMessagesToPlainText } from '../../utils/exportRenderer.js';
 import { writeFileSync_DEPRECATED } from '../../utils/slowOperations.js';
 function formatTimestamp(date: Date): string {
@@ -57,8 +57,9 @@ export async function call(onDone: LocalJSXCommandOnDone, context: ToolUseContex
   // If args are provided, write directly to file and skip dialog
   const filename = args.trim();
   if (filename) {
+    const finalFilename = filename.endsWith('.txt') ? filename : filename.replace(/\.[^.]+$/, '') + '.txt';
+    const filepath = join(getCwd(), finalFilename);
     try {
-      const filepath = resolveExportPath(getCwd(), filename);
       writeFileSync_DEPRECATED(filepath, content, {
         encoding: 'utf-8',
         flush: true

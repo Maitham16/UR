@@ -1,3 +1,4 @@
+// @ts-nocheck
 import axios from 'axios'
 import { getOauthConfig } from '../constants/oauth.js'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'

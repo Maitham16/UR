@@ -42,7 +42,7 @@ import type { McpSdkServerConfig, McpServerConfig, ScopedMcpServerConfig } from 
 import { isPolicyAllowed, loadPolicyLimits, refreshPolicyLimits, waitForPolicyLimitsToLoad } from './services/policyLimits/index.js';
 import { loadRemoteManagedSettings, refreshRemoteManagedSettings } from './services/remoteManagedSettings/index.js';
 import type { ToolInputJSONSchema } from './Tool.js';
-import { localCommandExitCode, type LocalCommandModule } from './types/command.js';
+import type { LocalCommandModule } from './types/command.js';
 import { createSyntheticOutputTool, isSyntheticOutputToolEnabled } from './tools/SyntheticOutputTool/SyntheticOutputTool.js';
 import { getTools } from './tools.js';
 import { canUserConfigureAdvisor, getInitialAdvisorSetting, isAdvisorEnabled, isValidAdvisorModel, modelSupportsAdvisor } from './utils/advisor.js';
@@ -1564,7 +1564,7 @@ async function run(): Promise<CommanderCommand> {
       }
     }
 
-    // Extract UR in Chrome option and enforce ur.com subscriber check (unless user is ant)
+    // Extract UR in Chrome option and enforce ur.ai subscriber check (unless user is ant)
     const chromeOpts = options as {
       chrome?: boolean;
     };
@@ -1819,12 +1819,12 @@ async function run(): Promise<CommanderCommand> {
     });
     void assertMinVersion();
 
-    // ur.com config fetch: -p mode only (interactive uses useManageMCPConnections
+    // ur.ai config fetch: -p mode only (interactive uses useManageMCPConnections
     // two-phase loading). Kicked off here to overlap with setup(); awaited
     // before runHeadless so single-turn -p sees connectors. Skipped under
     // enterprise/strict MCP to preserve policy boundaries.
     const uraiConfigPromise: Promise<Record<string, ScopedMcpServerConfig>> = isNonInteractiveSession && !strictMcpConfig && !doesEnterpriseMcpConfigExist() &&
-    // --bare / SIMPLE: skip ur.com proxy servers (datadog, Gmail,
+    // --bare / SIMPLE: skip ur.ai proxy servers (datadog, Gmail,
     // Slack, BigQuery, PubMed — 6-14s each to connect). Scripted calls
     // that need MCP pass --mcp-config explicitly.
     !isBareMode() ? fetchURAIMcpConfigsIfEligible().then(configs => {
@@ -1833,7 +1833,7 @@ async function run(): Promise<CommanderCommand> {
         blocked
       } = filterMcpServersByPolicy(configs);
       if (blocked.length > 0) {
-        process.stderr.write(`Warning: ur.com MCP ${plural(blocked.length, 'server')} blocked by enterprise policy: ${blocked.join(', ')}\n`);
+        process.stderr.write(`Warning: ur.ai MCP ${plural(blocked.length, 'server')} blocked by enterprise policy: ${blocked.join(', ')}\n`);
       }
       return allowed;
     }) : Promise.resolve({});
@@ -2337,7 +2337,7 @@ async function run(): Promise<CommanderCommand> {
         void refreshPolicyLimits();
         // Clear user data cache BEFORE GrowthBook refresh so it picks up fresh credentials
         resetUserCache();
-        // Refresh GrowthBook after login to get updated feature flags (e.g., for ur.com MCPs)
+        // Refresh GrowthBook after login to get updated feature flags (e.g., for ur.ai MCPs)
         refreshGrowthBookAfterAuthChange();
         // Clear any stale trusted device token then enroll for Remote Control.
         // Both self-gate on tengu_sessions_elevated_auth_enforcement internally
@@ -2872,14 +2872,14 @@ async function run(): Promise<CommanderCommand> {
       // message and turn-1 tool list both need configured MCP tools present.
       // Zero-server case is free via the early return in connectMcpBatch.
       // Connectors parallelize inside getMcpToolsCommandsAndResources
-      // (processBatched with Promise.all). ur.com is awaited too — its
+      // (processBatched with Promise.all). ur.ai is awaited too — its
       // fetch was kicked off early (line ~2558) so only residual time blocks
-      // here. --bare skips ur.com entirely for perf-sensitive scripts.
+      // here. --bare skips ur.ai entirely for perf-sensitive scripts.
       profileCheckpoint('before_connectMcp');
       await connectMcpBatch(regularMcpConfigs, 'regular');
       profileCheckpoint('after_connectMcp');
-      // Dedup: suppress plugin MCP servers that duplicate a ur.com
-      // connector (connector wins), then connect ur.com servers.
+      // Dedup: suppress plugin MCP servers that duplicate a ur.ai
+      // connector (connector wins), then connect ur.ai servers.
       // Bounded wait — #23725 made this blocking so single-turn -p sees
       // connectors, but with 40+ slow connectors tengu_startup_perf p99
       // climbed to 76s. If fetch+connect doesn't finish in time, proceed;
@@ -2900,7 +2900,7 @@ async function run(): Promise<CommanderCommand> {
             if (sig && uraiSigs.has(sig)) suppressed.add(name);
           }
           if (suppressed.size > 0) {
-            logForDebugging(`[MCP] Lazy dedup: suppressing ${suppressed.size} plugin server(s) that duplicate ur.com connectors: ${[...suppressed].join(', ')}`);
+            logForDebugging(`[MCP] Lazy dedup: suppressing ${suppressed.size} plugin server(s) that duplicate ur.ai connectors: ${[...suppressed].join(', ')}`);
             // Disconnect before filtering from state. Only connected
             // servers need cleanup — clearServerCache on a never-connected
             // server triggers a real connect just to kill it (memoize
@@ -2936,11 +2936,11 @@ async function run(): Promise<CommanderCommand> {
             });
           }
         }
-        // Suppress ur.com connectors that duplicate an enabled
+        // Suppress ur.ai connectors that duplicate an enabled
         // manual server (URL-signature match). Plugin dedup above only
         // handles `plugin:*` keys; this catches manual `.mcp.json` entries.
         // plugin:* must be excluded here — step 1 already suppressed
-        // those (ur.com wins); leaving them in suppresses the
+        // those (ur.ai wins); leaving them in suppresses the
         // connector too, and neither survives (gh-39974).
         const nonPluginConfigs = pickBy(regularMcpConfigs, (_, n) => !n.startsWith('plugin:'));
         const {
@@ -2954,7 +2954,7 @@ async function run(): Promise<CommanderCommand> {
       })]);
       if (uraiTimer) clearTimeout(uraiTimer);
       if (uraiTimedOut) {
-        logForDebugging(`[MCP] ur.com connectors not ready after ${UR_AI_MCP_TIMEOUT_MS}ms — proceeding; background connection continues`);
+        logForDebugging(`[MCP] ur.ai connectors not ready after ${UR_AI_MCP_TIMEOUT_MS}ms — proceeding; background connection continues`);
       }
       profileCheckpoint('after_connectMcp_urai');
 
@@ -4638,11 +4638,7 @@ async function run(): Promise<CommanderCommand> {
       // biome-ignore lint/suspicious/noConsole:: CLI command output
       console.log(result.displayText);
     }
-    const fallbackExitCode =
-      typeof process.exitCode === 'number'
-        ? process.exitCode
-        : Number(process.exitCode ?? 0);
-    process.exit(localCommandExitCode(result, fallbackExitCode));
+    process.exit(process.exitCode ?? 0);
   };
   program.command('agent-features [action]').alias('agent-roadmap').description('Show or initialize UR agent feature expansion scaffolds').option('--json', 'Output as JSON').option('--force', 'Overwrite existing scaffold files').action(async (action: string | undefined, opts: {
     json?: boolean;
@@ -4820,7 +4816,7 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, ...task.map(quoteLocalCommandArg), opts.execute ? '--execute' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.resume ? '--resume' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.save ? '--save' : undefined, opts.force ? '--force' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/pattern/pattern.js'), args);
   });
-  program.command('workflow [action] [name] [stepId]').alias('wf').description('Declarative agent workflows: init, list, show, validate, graph, run, plan, next, approve, done, reset').option('--ascii', 'Render the graph as ASCII instead of Mermaid').option('--force', 'Overwrite on init').option('--dry-run', 'Preview run without calling any model').option('--resume', 'Resume run from persisted crash-recovery progress').option('--max-turns <n>', 'Max agentic turns per step when running').option('--concurrency <n>', 'Max independent steps to run in parallel (1 = sequential)').option('--live', 'Stream a live execution board while running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each step (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, stepId: string | undefined, opts: {
+  program.command('workflow [action] [name] [stepId]').alias('wf').description('Declarative agent workflows: init, list, show, validate, graph, run, plan, next, done, reset').option('--ascii', 'Render the graph as ASCII instead of Mermaid').option('--force', 'Overwrite on init').option('--dry-run', 'Preview run without calling any model').option('--resume', 'Resume run from the last checkpoint').option('--max-turns <n>', 'Max agentic turns per step when running').option('--concurrency <n>', 'Max independent steps to run in parallel (1 = sequential)').option('--live', 'Stream a live execution board while running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each step (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, stepId: string | undefined, opts: {
     ascii?: boolean;
     force?: boolean;
     dryRun?: boolean;
@@ -4834,18 +4830,13 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, stepId ? quoteLocalCommandArg(stepId) : undefined, opts.ascii ? '--ascii' : undefined, opts.force ? '--force' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.resume ? '--resume' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.concurrency ? `--concurrency ${quoteLocalCommandArg(opts.concurrency)}` : undefined, opts.live ? '--live' : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/workflow/workflow.js'), args);
   });
-  program.command('skill [action] [name] [args...]').alias('skills').description('Executable skill workflows: list, show, run, approve, reset, init, verify, sign, keygen').option('--dry-run', 'Preview run without calling any model').option('--resume', 'Resume from persisted progress or a single-use approval').option('--max-turns <n>', 'Max agentic turns per step when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each step (sandboxes only)').option('--require-trusted', 'Require a valid signature from the trusted key store').option('--key <path>', 'Private Ed25519 key for signing').option('--key-id <id>', 'Trusted key identifier for signing').option('--out <path>', 'Output path for a generated private key').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, args: string[] = [], opts: {
+  program.command('skill [action] [name] [args...]').alias('skills').description('Executable skill workflows: list, show, run, init').option('--dry-run', 'Preview run without calling any model').option('--max-turns <n>', 'Max agentic turns per step when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each step (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, args: string[] = [], opts: {
     dryRun?: boolean;
-    resume?: boolean;
     maxTurns?: string;
     skipPermissions?: boolean;
-    requireTrusted?: boolean;
-    key?: string;
-    keyId?: string;
-    out?: string;
     json?: boolean;
   }) => {
-    const cmdArgs = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, ...args.map(quoteLocalCommandArg), opts.dryRun ? '--dry-run' : undefined, opts.resume ? '--resume' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.requireTrusted ? '--require-trusted' : undefined, opts.key ? `--key ${quoteLocalCommandArg(opts.key)}` : undefined, opts.keyId ? `--key-id ${quoteLocalCommandArg(opts.keyId)}` : undefined, opts.out ? `--out ${quoteLocalCommandArg(opts.out)}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const cmdArgs = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, ...args.map(quoteLocalCommandArg), opts.dryRun ? '--dry-run' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/skill/skill.js'), cmdArgs);
   });
   program.command('selftest [action]').alias('drills').description('End-to-end drills against the shipped binary, plus manual prompts').option('--json', 'Output as JSON').action(async (action: string | undefined, opts: {
@@ -4906,16 +4897,11 @@ async function run(): Promise<CommanderCommand> {
     const args = [opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/local-first/local-first.js'), args);
   });
-  program.command('crew [action] [name]').alias('crews').description('Headless agent crew: a lead splits a goal into a shared task board that worker subagents claim and run').option('--goal <goal>', 'Goal text for create').option('--task <task>', 'Subtask text for add').option('--lead <agent>', 'Lead/worker subagent type (default general-purpose)').option('--workers <n>', 'Number of parallel workers for run').option('--dynamic', 'Dynamically scale workers to ready tasks').option('--max-workers <n>', 'Maximum workers in dynamic mode').option('--max-attempts <n>', 'Maximum process starts per task (hard cap 5)').option('--retry-backoff-ms <n>', 'Base exponential retry delay in milliseconds').option('--decompose', 'Use model-assisted task decomposition').option('--worktrees', 'Run each worker in its own git worktree').option('--dry-run', 'Run offline without calling any model').option('--resume', 'Safely recover claimed tasks and continue the board').option('--max-turns <n>', 'Max agentic turns per task when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each worker (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, opts: {
+  program.command('crew [action] [name]').alias('crews').description('Headless agent crew: a lead splits a goal into a shared task board that worker subagents claim and run').option('--goal <goal>', 'Goal text for create').option('--task <task>', 'Subtask text for add').option('--lead <agent>', 'Lead/worker subagent type (default general-purpose)').option('--workers <n>', 'Number of parallel workers for run').option('--worktrees', 'Run each worker in its own git worktree').option('--dry-run', 'Run offline without calling any model').option('--resume', 'Reopen in-progress tasks and continue the board').option('--max-turns <n>', 'Max agentic turns per task when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each worker (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, opts: {
     goal?: string;
     task?: string;
     lead?: string;
     workers?: string;
-    dynamic?: boolean;
-    maxWorkers?: string;
-    maxAttempts?: string;
-    retryBackoffMs?: string;
-    decompose?: boolean;
     worktrees?: boolean;
     dryRun?: boolean;
     resume?: boolean;
@@ -4923,7 +4909,7 @@ async function run(): Promise<CommanderCommand> {
     skipPermissions?: boolean;
     json?: boolean;
   }) => {
-    const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, opts.goal ? `--goal ${quoteLocalCommandArg(opts.goal)}` : undefined, opts.task ? `--task ${quoteLocalCommandArg(opts.task)}` : undefined, opts.lead ? `--lead ${quoteLocalCommandArg(opts.lead)}` : undefined, opts.workers ? `--workers ${quoteLocalCommandArg(opts.workers)}` : undefined, opts.dynamic ? '--dynamic' : undefined, opts.maxWorkers ? `--max-workers ${quoteLocalCommandArg(opts.maxWorkers)}` : undefined, opts.maxAttempts ? `--max-attempts ${quoteLocalCommandArg(opts.maxAttempts)}` : undefined, opts.retryBackoffMs ? `--retry-backoff-ms ${quoteLocalCommandArg(opts.retryBackoffMs)}` : undefined, opts.decompose ? '--decompose' : undefined, opts.worktrees ? '--worktrees' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.resume ? '--resume' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, opts.goal ? `--goal ${quoteLocalCommandArg(opts.goal)}` : undefined, opts.task ? `--task ${quoteLocalCommandArg(opts.task)}` : undefined, opts.lead ? `--lead ${quoteLocalCommandArg(opts.lead)}` : undefined, opts.workers ? `--workers ${quoteLocalCommandArg(opts.workers)}` : undefined, opts.worktrees ? '--worktrees' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.resume ? '--resume' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/crew/crew.js'), args);
   });
   program.command('goal [action] [name]').alias('goals').description('Track long-horizon objectives that persist across sessions and resume their workflow').option('--objective <text>', 'Objective text for add').option('--workflow <name>', 'Workflow that advances this goal').option('--pattern <id>', 'Collaboration pattern associated with this goal').option('--note <text>', 'Progress note text').option('--max-turns <n>', 'Max agentic turns per step when resuming').option('--dry-run', 'Resume offline without calling any model').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, opts: {
@@ -5436,30 +5422,18 @@ async function run(): Promise<CommanderCommand> {
     .option('--file <jsonl>', 'Read prompts from a JSONL file')
     .option('--concurrency <n>', 'Number of parallel agents', '1')
     .option('--max-turns <n>', 'Maximum turns per prompt')
-    .option('--max-agents <n>', 'Maximum planned task agents per prompt')
     .option('--model <model>', 'Ollama model to use')
     .option('--output-dir <dir>', 'Directory to write per-prompt outputs')
     .option('--worktree', 'Run each prompt in its own worktree')
-    .option('--no-task-planning', 'Run each prompt directly without deterministic task decomposition')
-    .option('--no-parallel-agents', 'Serialize planned tasks within each prompt')
-    .option('--no-task-board', 'Do not render the planned task board')
-    .option('--no-strict-verification', 'Warn instead of failing on unsupported execution claims')
-    .option('--quiet', 'Suppress live task-board updates')
     .option('--dry-run', 'Print commands without running')
     .option('--json', 'Output as JSON')
     .action(async (prompts: string[], opts: {
       file?: string;
       concurrency?: string;
       maxTurns?: string;
-      maxAgents?: string;
       model?: string;
       outputDir?: string;
       worktree?: boolean;
-      taskPlanning?: boolean;
-      parallelAgents?: boolean;
-      taskBoard?: boolean;
-      strictVerification?: boolean;
-      quiet?: boolean;
       dryRun?: boolean;
       json?: boolean;
     }) => {
@@ -5468,15 +5442,9 @@ async function run(): Promise<CommanderCommand> {
         opts.file ? `--file ${quoteLocalCommandArg(opts.file)}` : undefined,
         opts.concurrency ? `--concurrency ${quoteLocalCommandArg(opts.concurrency)}` : undefined,
         opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined,
-        opts.maxAgents ? `--max-agents ${quoteLocalCommandArg(opts.maxAgents)}` : undefined,
         opts.model ? `--model ${quoteLocalCommandArg(opts.model)}` : undefined,
         opts.outputDir ? `--output-dir ${quoteLocalCommandArg(opts.outputDir)}` : undefined,
         opts.worktree ? '--worktree' : undefined,
-        opts.taskPlanning === false ? '--no-task-planning' : undefined,
-        opts.parallelAgents === false ? '--no-parallel-agents' : undefined,
-        opts.taskBoard === false ? '--no-task-board' : undefined,
-        opts.strictVerification === false ? '--no-strict-verification' : undefined,
-        opts.quiet ? '--quiet' : undefined,
         opts.dryRun ? '--dry-run' : undefined,
         opts.json ? '--json' : undefined,
       ].filter(Boolean).join(' ');
@@ -5511,7 +5479,7 @@ async function run(): Promise<CommanderCommand> {
     }
   }
 
-  // Remote Control command — connect local environment to ur.com/code.
+  // Remote Control command — connect local environment to ur.ai/code.
   // The actual command is intercepted by the fast-path in cli.tsx before
   // Commander.js runs, so this registration exists only for help output.
   // Always hidden: isBridgeEnabled() at this point (before enableConfigs)
@@ -5522,7 +5490,7 @@ async function run(): Promise<CommanderCommand> {
   if (feature('BRIDGE_MODE')) {
     program.command('remote-control', {
       hidden: true
-    }).alias('rc').description('Connect your local environment for remote-control sessions via ur.com/code').action(async () => {
+    }).alias('rc').description('Connect your local environment for remote-control sessions via ur.ai/code').action(async () => {
       // Unreachable — cli.tsx fast-path handles this command before main.tsx loads.
       // If somehow reached, delegate to bridgeMain.
       const {

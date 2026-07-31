@@ -101,21 +101,11 @@ function formatContextAsMarkdownTable(data: ContextData): string {
     messageBreakdown,
     systemTools,
     systemPromptSections,
-    autoCompactThreshold,
-    autoCompactPercentLeft,
-    isAutoCompactEnabled,
   } = data
 
   let output = `## Context Usage\n\n`
   output += `**Model:** ${model}  \n`
   output += `**Tokens:** ${formatTokens(totalTokens)} / ${formatTokens(rawMaxTokens)} (${percentage}%)\n`
-  if (
-    isAutoCompactEnabled &&
-    autoCompactThreshold !== undefined &&
-    autoCompactPercentLeft !== undefined
-  ) {
-    output += `**Auto-compact:** ≈${autoCompactPercentLeft}% remaining until trigger\n`
-  }
 
   // Context-collapse status. Always show when the runtime gate is on —
   // the user needs to know which strategy is managing their context

@@ -52,7 +52,7 @@ const READ_ONLY_TASK_PATTERN =
 const MUTATING_TASK_PATTERN =
   /\b(?:add|address|apply|build|bump|changes?|correct|create|delete|deploy|edit|enhance|execute|export|fix|format|generate|harden|implement|improve|install|modify|move|optimi[sz]e|patch|publish|refactor|remove|rename|repair|resolve|run|save|scaffold|update|write)\b/i
 
-export function isClearlyReadOnlyTask(task: NexusTask): boolean {
+function isClearlyReadOnlyTask(task: NexusTask): boolean {
   const description = `${task.title}\n${task.description}\n${task.input.prompt}`
   return (
     READ_ONLY_TASK_PATTERN.test(description) &&

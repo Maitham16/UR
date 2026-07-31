@@ -4,24 +4,12 @@ export const PROMPT = `Use this tool to update a task in the task list.
 
 ## When to Use This Tool
 
-**Start tasks before implementation:**
-- Move the selected ready task from pending to in_progress before its first
-  dependent Write, Edit, mutating shell, Agent, Task, or other state-changing call.
-- Inspect the successful TaskUpdate result first. Never batch the status update
-  with the workspace-changing call it enables.
-
 **Mark tasks as completed:**
 - When you have completed the work described in a task
 - IMPORTANT: Always mark your assigned tasks as completed when you finish them
 - After completion, call TaskList to find the next unblocked task
 
 - ONLY mark a task as completed when you have FULLY accomplished it
-- After changing a file, run a relevant observable check in a later tool turn
-  before completing the final actionable task. A Write/Edit result proves only
-  that bytes changed, not that the result works.
-- If that final completion has no successful post-change check, TaskUpdate
-  keeps the same task in_progress and names the next verification action. Run
-  it and retry completion; do not create a duplicate task.
 - If you encounter errors, blockers, or cannot finish, keep the task as in_progress
 - When blocked, record the blocking work as a dependency or notify the owner
 - Never mark a task as completed if:
@@ -57,18 +45,32 @@ Use \`deleted\` to permanently remove a task.
 
 ## Staleness
 
-Read a task's latest state using \`TaskGet\` before updating it when another
-worker may have changed it or when your local state may be stale. A task you
-just created or read does not need an immediate redundant read.
+Make sure to read a task's latest state using \`TaskGet\` before updating it.
 
 ## Examples
 
-- Start task 1: set \`taskId\` to \`1\` and \`status\` to \`in_progress\`.
-- Complete task 1 after its checks pass: set \`status\` to \`completed\`.
-- Delete task 1: set \`status\` to \`deleted\`.
-- Claim task 1: set \`owner\` to your worker name.
-- Make task 2 wait for task 1: add \`1\` to \`addBlockedBy\`.
+Mark task as in progress when starting work:
+\`\`\`json
+{"taskId": "1", "status": "in_progress"}
+\`\`\`
 
-Invoke \`TaskUpdate\` through its native structured tool interface for each
-update. These field descriptions are not a substitute for a tool call.
+Mark task as completed after finishing work:
+\`\`\`json
+{"taskId": "1", "status": "completed"}
+\`\`\`
+
+Delete a task:
+\`\`\`json
+{"taskId": "1", "status": "deleted"}
+\`\`\`
+
+Claim a task by setting owner:
+\`\`\`json
+{"taskId": "1", "owner": "my-name"}
+\`\`\`
+
+Set up task dependencies:
+\`\`\`json
+{"taskId": "2", "addBlockedBy": ["1"]}
+\`\`\`
 `

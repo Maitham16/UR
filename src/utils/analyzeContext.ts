@@ -11,8 +11,7 @@ import { getCommandName } from '../commands.js'
 import { getSystemContext } from '../context.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
-  calculateAutoCompactProgress,
-  getAutoCompactThreshold,
+  AUTOCOMPACT_BUFFER_TOKENS,
   getEffectiveContextWindowSize,
   isAutoCompactEnabled,
   MANUAL_COMPACT_BUFFER_TOKENS,
@@ -56,16 +55,13 @@ import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
 import { errorMessage, toError } from './errors.js'
 import { logError } from './log.js'
-import {
-  getMessagesAfterCompactBoundary,
-  normalizeMessagesForAPI,
-} from './messages.js'
+import { normalizeMessagesForAPI } from './messages.js'
 import { getRuntimeMainLoopModel } from './model/model.js'
 import type { SettingSource } from './settings/constants.js'
 import { jsonStringify } from './slowOperations.js'
 import { buildEffectiveSystemPrompt } from './systemPrompt.js'
 import type { Theme } from './theme.js'
-import { getCurrentUsage, tokenCountWithEstimation } from './tokens.js'
+import { getCurrentUsage } from './tokens.js'
 
 const RESERVED_CATEGORY_NAME = 'Autocompact buffer'
 const MANUAL_COMPACT_BUFFER_NAME = 'Compact buffer'
@@ -213,7 +209,6 @@ export interface ContextData {
   /** Skill statistics */
   readonly skills?: SkillInfo
   readonly autoCompactThreshold?: number
-  readonly autoCompactPercentLeft?: number
   readonly isAutoCompactEnabled: boolean
   messageBreakdown?: {
     toolCallTokens: number
@@ -1007,7 +1002,7 @@ export async function analyzeContextUsage(
   // Check if autocompact is enabled and calculate threshold
   const isAutoCompact = isAutoCompactEnabled()
   const autoCompactThreshold = isAutoCompact
-    ? getAutoCompactThreshold(runtimeModel)
+    ? getEffectiveContextWindowSize(model) - AUTOCOMPACT_BUFFER_TOKENS
     : undefined
 
   // Create categories
@@ -1178,16 +1173,6 @@ export async function analyzeContextUsage(
 
   // Use API total if available, otherwise fall back to estimated total
   const finalTotalTokens = totalFromAPI ?? totalIncludingReserved
-  const autoProgressTokenUsage = tokenCountWithEstimation(
-    getMessagesAfterCompactBoundary(originalMessages ?? messages),
-  )
-  const autoCompactPercentLeft =
-    autoCompactThreshold === undefined || skipReservedBuffer
-      ? undefined
-      : calculateAutoCompactProgress(
-          autoProgressTokenUsage,
-          autoCompactThreshold,
-        ).percentLeft
 
   // Pre-calculate grid based on model context window and terminal width
   // For narrow screens (< 80 cols), use 5x5 for 200k models, 5x10 for 1M+ models
@@ -1391,7 +1376,6 @@ export async function analyzeContextUsage(
           }
         : undefined,
     autoCompactThreshold,
-    autoCompactPercentLeft,
     isAutoCompactEnabled: isAutoCompact,
     messageBreakdown: formattedMessageBreakdown,
     apiUsage,

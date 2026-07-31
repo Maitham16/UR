@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
   buildDefaultStatusBar,
-  countActiveBackgroundTasks,
   statusBarShouldDisplay,
 } from '../src/utils/statusBar.js'
 import {
@@ -10,7 +9,6 @@ import {
   getEffectiveStatusLineSettings,
 } from '../src/components/StatusLine.js'
 import { getProviderRuntimeInfo } from '../src/services/providers/providerRegistry.js'
-import type { TaskState } from '../src/tasks/types.js'
 
 describe('UR-Nexus status bar', () => {
   test('formats compact runtime state', () => {
@@ -41,34 +39,6 @@ describe('UR-Nexus status bar', () => {
     expect(text.indexOf('tasks: 1/3 active')).toBeLessThan(
       text.indexOf('Codex CLI'),
     )
-  })
-
-  test('uses a compact active-task count when totals contain no history', () => {
-    expect(
-      buildDefaultStatusBar({
-        version: '1.25.3',
-        taskRunningCount: 2,
-        taskTotalCount: 2,
-      }),
-    ).toBe('tasks: 2 active')
-  })
-
-  test('excludes foreground and finished work from the active count', () => {
-    const tasks = [
-      { type: 'local_bash', status: 'running' },
-      { type: 'remote_agent', status: 'pending' },
-      {
-        type: 'local_agent',
-        status: 'running',
-        isBackgrounded: false,
-      },
-      { type: 'local_bash', status: 'completed' },
-      { type: 'local_bash', status: 'failed' },
-    ]
-
-    expect(
-      countActiveBackgroundTasks(tasks as unknown as TaskState[]),
-    ).toBe(2)
   })
 
   test('shows update availability when known', () => {

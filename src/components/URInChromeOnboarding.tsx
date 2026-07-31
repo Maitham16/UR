@@ -6,8 +6,8 @@ import { Box, Link, Newline, Text, useInput } from '../ink.js';
 import { isChromeExtensionInstalled } from '../utils/urInChrome/setup.js';
 import { saveGlobalConfig } from '../utils/config.js';
 import { Dialog } from './design-system/Dialog.js';
-const CHROME_EXTENSION_URL = 'https://ur.com/chrome';
-const CHROME_PERMISSIONS_URL = 'https://ur.com/chrome/permissions';
+const CHROME_EXTENSION_URL = 'https://ur.ai/chrome';
+const CHROME_PERMISSIONS_URL = 'https://ur.ai/chrome/permissions';
 type Props = {
   onDone(): void;
 };
@@ -87,7 +87,7 @@ export function URInChromeOnboarding(t0) {
   }
   let t9;
   if ($[13] === Symbol.for("react.memo_cache_sentinel")) {
-    t9 = <Text dimColor={true}>For more info, use{" "}{t8}{" "}or visit <Link url="https://ur.com/docs/chrome" /></Text>;
+    t9 = <Text dimColor={true}>For more info, use{" "}{t8}{" "}or visit <Link url="https://docs.ur.dev/docs/en/chrome" /></Text>;
     $[13] = t9;
   } else {
     t9 = $[13];

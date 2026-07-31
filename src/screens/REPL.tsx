@@ -177,7 +177,6 @@ import { deserializeMessages } from '../utils/conversationRecovery.js';
 import { extractReadFilesFromMessages, extractBashToolsFromMessages } from '../utils/queryHelpers.js';
 import { resetMicrocompactState } from '../services/compact/microCompact.js';
 import { runPostCompactCleanup } from '../services/compact/postCompactCleanup.js';
-import { suppressCompactWarning } from '../services/compact/compactWarningState.js';
 import { provisionContentReplacementState, reconstructContentReplacementState, type ContentReplacementRecord } from '../utils/toolResultStorage.js';
 import { partialCompactConversation } from '../services/compact/compact.js';
 import type { LogOption } from '../types/logs.js';
@@ -282,9 +281,6 @@ import type { RemoteSessionConfig } from '../remote/RemoteSessionManager.js';
 import { REMOTE_SAFE_COMMANDS } from '../commands.js';
 import type { RemoteMessageContent } from '../utils/teleport/api.js';
 import { FullscreenLayout, useUnseenDivider, computeUnseenDivider } from '../components/FullscreenLayout.js';
-import { CommandDeckShell } from '../components/commandDeck/CommandDeckShell.js';
-const DECK_STARTED_AT = Date.now();
-
 import { isFullscreenEnvEnabled, maybeGetTmuxMouseHint, isMouseTrackingEnabled } from '../utils/fullscreen.js';
 import { AlternateScreen } from '../ink/components/AlternateScreen.js';
 import { ScrollKeybindingHandler } from '../components/ScrollKeybindingHandler.js';
@@ -2278,7 +2274,7 @@ export function REPL({
 
       // When the REPL bridge is connected, also forward the sandbox
       // permission request as a can_use_tool control_request so the
-      // remote user (e.g. on ur.com) can approve it too.
+      // remote user (e.g. on ur.ai) can approve it too.
       if (feature('BRIDGE_MODE')) {
         const bridgeCallbacks = store.getState().replBridgePermissionCallbacks;
         if (bridgeCallbacks) {
@@ -3844,7 +3840,7 @@ export function REPL({
   useLogMessages(messages, messages.length === initialMessages?.length);
 
   // REPL Bridge: replicate user/assistant messages to the bridge session
-  // for remote access via ur.com. No-op in external builds or when not enabled.
+  // for remote access via ur.ai. No-op in external builds or when not enabled.
   const {
     sendBridgeResult
   } = useReplBridge(messages, setMessages, abortControllerRef, commands, mainLoopModel);
@@ -4990,7 +4986,6 @@ export function REPL({
             }
             setConversationId(randomUUID());
             runPostCompactCleanup(context.options.querySource);
-            suppressCompactWarning();
             if (direction === 'from') {
               const r = textForResubmit(message);
               if (r) {
@@ -5017,13 +5012,10 @@ export function REPL({
             </Box>} />
       </MCPConnectionManager>
     </KeybindingSetup>;
-  const shell = <CommandDeckShell version={MACRO.VERSION} startedAt={DECK_STARTED_AT} model={String(mainLoopModel ?? '')} messages={messages} updateVersion={autoUpdaterResult?.status === 'success' ? null : (autoUpdaterResult?.version ?? null)}>
-      {mainReturn}
-    </CommandDeckShell>;
   if (isFullscreenEnvEnabled()) {
     return <AlternateScreen mouseTracking={isMouseTrackingEnabled()}>
-        {shell}
+        {mainReturn}
       </AlternateScreen>;
   }
-  return shell;
+  return mainReturn;
 }

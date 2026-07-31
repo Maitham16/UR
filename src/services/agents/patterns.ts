@@ -596,7 +596,7 @@ export function formatExecutionPlan(plan: ExecutionPlan, json: boolean): string 
     `${plan.patternName}`,
     `Task: ${plan.task}`,
     '',
-    'Orchestration plan (step metadata; this preview does not invoke tools):',
+    'Orchestration plan (run each stage as a subagent; feed each result into the next):',
     '',
   ]
   for (const step of plan.steps) {
@@ -608,8 +608,9 @@ export function formatExecutionPlan(plan: ExecutionPlan, json: boolean): string 
       `${step.order}. ${step.role} → subagent_type: ${step.agent}${tags.length ? `  [${tags.join(', ')}]` : ''}`,
     )
     lines.push(`   Goal: ${step.goal}`)
-    lines.push(`   Description: ${step.role}: ${truncate(plan.task, 40)}`)
-    lines.push(`   Prompt: ${step.prompt}`)
+    lines.push(
+      `   Agent({ subagent_type: "${step.agent}", description: "${step.role}: ${truncate(plan.task, 40)}", prompt: ${JSON.stringify(step.prompt)} })`,
+    )
     lines.push('')
   }
   if (plan.loop) {
@@ -618,9 +619,7 @@ export function formatExecutionPlan(plan: ExecutionPlan, json: boolean): string 
     )
   }
   lines.push('')
-  lines.push(
-    `Execute through the workflow runner: ur pattern run ${plan.patternId} ${JSON.stringify(plan.task)} --execute`,
-  )
+  lines.push('Saved as a runnable workflow: ur workflow show ' + plan.patternId)
   return lines.join('\n')
 }
 

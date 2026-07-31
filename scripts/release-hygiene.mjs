@@ -2,31 +2,10 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, lstatSync, readdirSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 
-export const requiredTechnicalPackageFiles = [
-  'technical/README.md',
-  'technical/01-architecture.md',
-  'technical/02-cli-reference.md',
-  'technical/03-slash-commands.md',
-  'technical/04-tools.md',
-  'technical/05-providers-and-models.md',
-  'technical/06-configuration.md',
-  'technical/07-memory-and-context.md',
-  'technical/08-skills-plugins-workflows.md',
-  'technical/09-multi-agent.md',
-  'technical/10-headless-automation-eval.md',
-  'technical/11-integrations.md',
-  'technical/12-security-sandbox-stability.md',
-  'technical/13-research.md',
-  'technical/14-sessions.md',
-]
-
 export const requiredPackageFiles = [
   'package.json',
   'bin/ur.js',
   'dist/cli.js',
-  'dist/sdk/index.js',
-  'dist/sdk/index.cjs',
-  'dist/sdk/index.d.ts',
   'README.md',
   'LICENSE',
   'CHANGELOG.md',
@@ -36,7 +15,6 @@ export const requiredPackageFiles = [
   'docs/providers.md',
   'documentation/index.html',
   'plugins/core/README.md',
-  ...requiredTechnicalPackageFiles,
 ]
 
 export const requiredSourceZipEntries = [

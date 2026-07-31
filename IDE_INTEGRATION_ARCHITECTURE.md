@@ -110,7 +110,7 @@ lockfile. The CLI is ready for a much richer bridge than the shipped extension p
 | Background/async agent tasks | `src/services/agents/backgroundRunner.ts` | `BackgroundTask`: id, status (`queued\|running\|completed\|failed\|canceled`), worktree, PR metadata, log/output/inbox files, mid-flight steering via `appendBackgroundFeedback`. This is the real "unified task visibility" data source. |
 | General evidence store | `src/services/agents/artifacts.ts` | `Artifact`: kind (`plan\|diff\|test-run\|screenshot\|browser-recording\|note`), status (`pending\|approved\|rejected`), feedback. **Overlaps with `ideDiffs.ts` for the `diff` kind** — two parallel stores exist today (§6). |
 | Verifier | `src/services/verifier/*` | Modes `off\|loose\|strict`, project gates, quality verdicts `HIGH\|MEDIUM\|LOW\|UNKNOWN` — status-card material. |
-| Headless streaming contract | `src/cli/print.ts`, `src/sdk/index.ts` | `ur -p --output-format stream-json --verbose` emits NDJSON `SDKMessage`s; `--output-format stream-json` **requires** `--verbose` (enforced, errors otherwise). A `control_request`/`control_response` protocol (`can_use_tool`) already flows through this same stream for permission prompts (`--permission-prompt-tool stdio`). This is a fully-built streaming primitive. The published `ur-agent/sdk` wrapper can request it and returns the terminal text plus buffered raw NDJSON; it does not yet expose an event iterator. |
+| Headless streaming contract | `src/cli/print.ts`, `src/sdk/index.ts` | `ur -p --output-format stream-json --verbose` emits NDJSON `SDKMessage`s; `--output-format stream-json` **requires** `--verbose` (enforced, errors otherwise). A `control_request`/`control_response` protocol (`can_use_tool`) already flows through this same stream for permission prompts (`--permission-prompt-tool stdio`). This is a fully-built, already-streaming primitive that the SDK (`ur-nexus/sdk`, `query`/`queryJSON`/`UrClient`) already builds on. |
 
 ### 1.7 `docs/IDE.md`
 
@@ -157,7 +157,7 @@ ur -p --output-format stream-json --verbose --permission-prompt-tool stdio \
    [--resume <sessionId>] [--model <id>] [--provider <id>] "<prompt>"
 ```
 
-This is the exact contract `ur-agent/sdk` and `acpServer.ts`'s `runSynchronousTask`
+This is the exact contract `ur-nexus/sdk` and `acpServer.ts`'s `runSynchronousTask`
 already use, just switched to `stream-json` (NDJSON on stdout, one `SDKMessage` per line)
 instead of blocking on the whole run. `control_request` messages (`can_use_tool`) appear
 in-stream for permission prompts; the extension answers by writing a `control_response`

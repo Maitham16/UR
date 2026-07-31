@@ -1,20 +1,8 @@
 // Lightweight persistent stores under .ur/: user memory notes and a research
-// store (papers, citations, notes). JSONL, append-only. Write failures are
-// deliberately surfaced so commands never report persistence that did not
-// happen.
+// store (papers, citations, notes). JSONL, append-only, never throws.
 import { createHash } from 'node:crypto'
-import {
-  appendFileSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs'
-import { isAbsolute, dirname, join, relative, sep } from 'node:path'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 interface NoteRecord {
   ts: string
@@ -22,106 +10,30 @@ interface NoteRecord {
   kind: string
 }
 
-function readJsonl(file: string | undefined): NoteRecord[] {
-  if (!file || !existsSync(file)) return []
+function readJsonl(file: string): NoteRecord[] {
+  if (!existsSync(file)) return []
   const out: NoteRecord[] = []
   for (const line of readFileSync(file, 'utf8').split('\n').filter(Boolean)) {
     try {
-      const parsed = JSON.parse(line) as Partial<NoteRecord>
-      if (
-        typeof parsed.ts === 'string' &&
-        typeof parsed.text === 'string' &&
-        typeof parsed.kind === 'string'
-      ) {
-        out.push({
-          ts: parsed.ts,
-          text: parsed.text,
-          kind: parsed.kind,
-        })
-      }
+      out.push(JSON.parse(line) as NoteRecord)
     } catch {
-      // Isolate a damaged JSONL line while retaining later valid records.
+      /* skip */
     }
   }
   return out
 }
 
 function append(file: string, rec: NoteRecord): void {
-  appendFileSync(file, JSON.stringify(rec) + '\n', {
-    encoding: 'utf8',
-    mode: 0o600,
-  })
-}
-
-function writeAtomic(file: string, content: string): void {
-  mkdirSync(dirname(file), { recursive: true })
-  const temporary = `${file}.${process.pid}.${Date.now()}.tmp`
   try {
-    writeFileSync(temporary, content, {mode: 0o600})
-    renameSync(temporary, file)
-  } catch (error) {
-    try {
-      if (existsSync(temporary)) unlinkSync(temporary)
-    } catch {
-      // Preserve the original write error.
-    }
-    throw error
+    mkdirSync(dirname(file), { recursive: true })
+    appendFileSync(file, JSON.stringify(rec) + '\n')
+  } catch {
+    /* best-effort */
   }
 }
 
-function escapesWorkspace(workspace: string, target: string): boolean {
-  const rel = relative(workspace, target)
-  return rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)
-}
-
-function projectStoreFile(
-  cwd: string,
-  directory: 'memory' | 'research',
-  name: string,
-  create: boolean,
-): string | undefined {
-  const workspace = realpathSync(cwd)
-  let current = workspace
-  for (const segment of ['.ur', directory]) {
-    current = join(current, segment)
-    if (!existsSync(current)) {
-      if (!create) return undefined
-      mkdirSync(current, { mode: 0o700 })
-    }
-    const stat = lstatSync(current)
-    if (!stat.isDirectory() || stat.isSymbolicLink()) {
-      throw new Error(`${directory} storage must use regular workspace directories`)
-    }
-    const resolved = realpathSync(current)
-    if (escapesWorkspace(workspace, resolved)) {
-      throw new Error(`${directory} storage resolves outside the workspace`)
-    }
-    current = resolved
-  }
-  const target = join(current, name)
-  if (existsSync(target)) {
-    const stat = lstatSync(target)
-    if (!stat.isFile() || stat.isSymbolicLink()) {
-      throw new Error(`${directory} collection must be a regular file`)
-    }
-  }
-  return create || existsSync(target) ? target : undefined
-}
-
-const memFile = (cwd: string, create: boolean) =>
-  projectStoreFile(cwd, 'memory', 'notes.jsonl', create)
-const researchFile = (cwd: string, kind: string, create: boolean) =>
-  projectStoreFile(cwd, 'research', `${kind}.jsonl`, create)
-const MAX_NOTE_BYTES = 64 * 1024
-
-function boundedText(text: string): string {
-  const normalized = text.trim()
-  if (!normalized) throw new Error('note text cannot be empty')
-  if (Buffer.byteLength(normalized, 'utf8') > MAX_NOTE_BYTES) {
-    throw new Error(`note text exceeds ${MAX_NOTE_BYTES} bytes`)
-  }
-  return normalized
-}
+const memFile = (cwd: string) => join(cwd, '.ur', 'memory', 'notes.jsonl')
+const researchFile = (cwd: string, kind: string) => join(cwd, '.ur', 'research', `${kind}.jsonl`)
 
 function memorySlug(text: string): string {
   const words = text
@@ -188,62 +100,25 @@ export function rememberInAutoMemory(memoryDir: string, text: string): string | 
 
 // ── User memory ────────────────────────────────────────────────────────────
 export function remember(cwd: string, text: string): void {
-  append(memFile(cwd, true)!, {
-    ts: new Date().toISOString(),
-    text: boundedText(text),
-    kind: 'note',
-  })
+  append(memFile(cwd), { ts: new Date().toISOString(), text, kind: 'note' })
 }
 
 export function listMemory(cwd: string): NoteRecord[] {
-  return readJsonl(memFile(cwd, false))
+  return readJsonl(memFile(cwd))
 }
 
 /** Remove notes containing `needle` (case-insensitive). Returns count removed. */
 export function forget(cwd: string, needle: string): number {
-  const file = memFile(cwd, false)
-  if (!file) return 0
+  const file = memFile(cwd)
   const all = readJsonl(file)
   const kept = all.filter((n) => !n.text.toLowerCase().includes(needle.toLowerCase()))
   const removed = all.length - kept.length
   if (removed > 0) {
-    writeAtomic(
-      file,
-      kept.map((n) => JSON.stringify(n)).join('\n') +
-        (kept.length ? '\n' : ''),
-    )
-  }
-  return removed
-}
-
-/**
- * Remove promoted auto-memory topic files matching exact remembered texts and
- * repair MEMORY.md links. The deterministic content hash used by memorySlug is
- * the stable identifier shared with rememberInAutoMemory.
- */
-export function forgetInAutoMemory(
-  memoryDir: string,
-  texts: readonly string[],
-): number {
-  if (!existsSync(memoryDir) || texts.length === 0) return 0
-  const fileNames = new Set(texts.map(text => `${memorySlug(text.trim())}.md`))
-  let removed = 0
-  for (const fileName of fileNames) {
-    const path = join(memoryDir, fileName)
-    if (!existsSync(path)) continue
-    unlinkSync(path)
-    removed++
-  }
-
-  const indexPath = join(memoryDir, 'MEMORY.md')
-  if (existsSync(indexPath)) {
-    const existing = readFileSync(indexPath, 'utf8')
-    const kept = existing
-      .split('\n')
-      .filter(line => ![...fileNames].some(fileName => line.includes(`](${fileName})`)))
-      .join('\n')
-    if (kept !== existing) {
-      writeAtomic(indexPath, kept.endsWith('\n') ? kept : `${kept}\n`)
+    try {
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, kept.map((n) => JSON.stringify(n)).join('\n') + (kept.length ? '\n' : ''))
+    } catch {
+      /* best-effort */
     }
   }
   return removed
@@ -251,13 +126,9 @@ export function forgetInAutoMemory(
 
 // ── Research store ─────────────────────────────────────────────────────────
 export function addResearch(cwd: string, kind: 'papers' | 'citations' | 'notes', text: string): void {
-  append(researchFile(cwd, kind, true)!, {
-    ts: new Date().toISOString(),
-    text: boundedText(text),
-    kind,
-  })
+  append(researchFile(cwd, kind), { ts: new Date().toISOString(), text, kind })
 }
 
 export function listResearch(cwd: string, kind: 'papers' | 'citations' | 'notes'): NoteRecord[] {
-  return readJsonl(researchFile(cwd, kind, false))
+  return readJsonl(researchFile(cwd, kind))
 }

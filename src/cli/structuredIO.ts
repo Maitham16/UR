@@ -275,7 +275,7 @@ export class StructuredIO {
 
   /**
    * Inject a control_response message to resolve a pending permission request.
-   * Used by the bridge to feed permission responses from ur.com into the
+   * Used by the bridge to feed permission responses from ur.ai into the
    * SDK permission flow.
    *
    * Also sends a control_cancel_request to the SDK consumer so its canUseTool
@@ -312,7 +312,7 @@ export class StructuredIO {
   /**
    * Register a callback invoked whenever a can_use_tool control_request
    * is written to stdout. Used by the bridge to forward permission
-   * requests to ur.com.
+   * requests to ur.ai.
    */
   setOnControlRequestSent(
     callback: ((request: SDKControlRequest) => void) | undefined,
@@ -323,7 +323,7 @@ export class StructuredIO {
   /**
    * Register a callback invoked when a can_use_tool control_response arrives
    * from the SDK consumer (via stdin). Used by the bridge to cancel the
-   * stale permission prompt on ur.com when the SDK consumer wins the race.
+   * stale permission prompt on ur.ai when the SDK consumer wins the race.
    */
   setOnControlRequestResolved(
     callback: ((requestId: string) => void) | undefined,
@@ -401,7 +401,7 @@ export class StructuredIO {
         this.trackResolvedToolUseId(request.request)
         this.pendingRequests.delete(message.response.request_id)
         // Notify the bridge when the SDK consumer resolves a can_use_tool
-        // request, so it can cancel the stale permission prompt on ur.com.
+        // request, so it can cancel the stale permission prompt on ur.ai.
         if (
           request.request.request.subtype === 'can_use_tool' &&
           this.onControlRequestResolved

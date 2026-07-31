@@ -36,7 +36,6 @@ export interface MessageOrigin {
 export interface CompactMetadata {
   trigger?: string
   preTokens?: number
-  taskGateFreeCallsConsumed?: boolean
   preservedSegment?: unknown
   direction?: string
   messagesSummarized?: number

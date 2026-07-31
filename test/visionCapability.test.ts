@@ -3,11 +3,9 @@ import { readFileSync } from 'node:fs'
 import {
   describeVisionSupport,
   nameSuggestsVision,
-  normalizeAdvertisedCapabilities,
   resolveVisionSupport,
   shouldSendImages,
 } from '../src/utils/model/visionCapability.ts'
-import { parseOllamaModelCapabilities } from '../src/services/api/ollama.ts'
 import { advertisedCapabilities } from '../src/commands/model-doctor/model-doctor.ts'
 
 // Three different answers to "can this model see" disagreed. The Ollama
@@ -53,38 +51,6 @@ test('model-doctor preserves absent versus explicitly empty capability lists', (
       capabilities: [' tools ', '', 42, 'vision', 'vision'],
     }),
   ).toEqual(['tools', 'vision'])
-})
-
-test('adapter and doctor normalize malformed capability data identically', () => {
-  for (const malformed of [
-    undefined,
-    null,
-    'vision',
-    {},
-    [42, null],
-    ['', '   ', false],
-  ]) {
-    expect(normalizeAdvertisedCapabilities(malformed)).toBeNull()
-    expect(parseOllamaModelCapabilities({ capabilities: malformed })).toBeNull()
-    expect(advertisedCapabilities({ capabilities: malformed })).toBeNull()
-  }
-
-  const explicitEmpty = normalizeAdvertisedCapabilities([])
-  expect(explicitEmpty).toEqual(new Set())
-  expect(parseOllamaModelCapabilities({ capabilities: [] })).toEqual(new Set())
-  expect(advertisedCapabilities({ capabilities: [] })).toEqual([])
-
-  const mixed = [' Tools ', 42, '', 'VISION', 'vision']
-  expect(normalizeAdvertisedCapabilities(mixed)).toEqual(
-    new Set(['tools', 'vision']),
-  )
-  expect(parseOllamaModelCapabilities({ capabilities: mixed })).toEqual(
-    new Set(['tools', 'vision']),
-  )
-  expect(advertisedCapabilities({ capabilities: mixed })).toEqual([
-    'tools',
-    'vision',
-  ])
 })
 
 test('a recognised vision name confirms support without a capability list', () => {

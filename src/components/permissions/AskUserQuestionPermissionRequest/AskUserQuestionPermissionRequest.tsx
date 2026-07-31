@@ -20,12 +20,6 @@ import { isPlanModeInterviewPhaseEnabled } from '../../../utils/planModeV2.js';
 import { getPlanFilePath } from '../../../utils/plans.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { PermissionDialog } from '../PermissionDialog.js';
-import {
-  clonePrototypeSafeRecord,
-  createPrototypeSafeRecord,
-  getOwnRecordValue,
-  setPrototypeSafeRecordValue
-} from './prototypeSafeRecord.js';
 import { QuestionView } from './QuestionView.js';
 import { SubmitQuestionsView } from './SubmitQuestionsView.js';
 import { useMultipleChoiceState } from './use-multiple-choice-state.js';
@@ -34,17 +28,6 @@ const MIN_CONTENT_HEIGHT = 12;
 const MIN_CONTENT_WIDTH = 40;
 // Lines used by chrome around the content area (nav bar, title, footer, help text, etc.)
 const CONTENT_CHROME_OVERHEAD = 15;
-
-export function resolveQuestionAnswer(
-  label: string | string[],
-  textInput: string | undefined,
-  hasImages: boolean,
-): string {
-  if (Array.isArray(label)) return label.join(', ');
-  if (textInput) return hasImages ? `${textInput} (Image attached)` : textInput;
-  if (label === '__other__') return hasImages ? '(Image attached)' : '';
-  return label;
-}
 
 export function AskUserQuestionPermissionRequest(props: PermissionRequestProps): React.ReactNode {
   const settings = useSettings();
@@ -103,9 +86,7 @@ function AskUserQuestionPermissionRequestBody({
         }
       }
       const rightPanelHeight = maxPreviewBoxHeight + 2;
-      // Preview questions include a real custom "Other" row after the model
-      // supplied options.
-      const leftPanelHeight = q.options.length + 3;
+      const leftPanelHeight = q.options.length + 2;
       const sideByHeight = Math.max(leftPanelHeight, rightPanelHeight);
       maxHeight = Math.max(maxHeight, sideByHeight + 7);
     } else {
@@ -116,7 +97,7 @@ function AskUserQuestionPermissionRequestBody({
   const globalContentHeight = Math.min(Math.max(maxHeight, MIN_CONTENT_HEIGHT), maxAllowedHeight);
   const globalContentWidth = Math.max(maxWidth, MIN_CONTENT_WIDTH);
 
-  const [pastedContentsByQuestion, setPastedContentsByQuestion] = useState<Record<string, Record<number, PastedContent>>>(() => createPrototypeSafeRecord());
+  const [pastedContentsByQuestion, setPastedContentsByQuestion] = useState<Record<string, Record<number, PastedContent>>>({});
   const nextPasteIdRef = useRef(0);
 
   const onImagePaste = useCallback(
@@ -140,26 +121,25 @@ function AskUserQuestionPermissionRequestBody({
       };
       cacheImagePath(newContent);
       storeImage(newContent);
-      setPastedContentsByQuestion(prev => {
-        const previousQuestionContents = getOwnRecordValue(prev, questionText);
-        const questionContents = previousQuestionContents
-          ? clonePrototypeSafeRecord(previousQuestionContents)
-          : Object.create(null) as Record<number, PastedContent>;
-        questionContents[pasteId] = newContent;
-        return setPrototypeSafeRecordValue(prev, questionText, questionContents);
-      });
+      setPastedContentsByQuestion(prev => ({
+        ...prev,
+        [questionText]: {
+          ...(prev[questionText] ?? {}),
+          [pasteId]: newContent
+        }
+      }));
     },
     []
   );
 
   const onRemoveImage = useCallback((questionText: string, id: number) => {
     setPastedContentsByQuestion(prev => {
-      const previousQuestionContents = getOwnRecordValue(prev, questionText);
-      const questionContents = previousQuestionContents
-        ? clonePrototypeSafeRecord(previousQuestionContents)
-        : Object.create(null) as Record<number, PastedContent>;
+      const questionContents = { ...(prev[questionText] ?? {}) };
       delete questionContents[id];
-      return setPrototypeSafeRecordValue(prev, questionText, questionContents);
+      return {
+        ...prev,
+        [questionText]: questionContents
+      };
     });
   }, []);
 
@@ -183,7 +163,7 @@ function AskUserQuestionPermissionRequestBody({
 
   const currentQuestion = currentQuestionIndex < (questions?.length || 0) ? questions?.[currentQuestionIndex] : null;
   const isInSubmitView = currentQuestionIndex === (questions?.length || 0);
-  const allQuestionsAnswered = questions?.every(q => q?.question && !!getOwnRecordValue(answers, q.question)) ?? false;
+  const allQuestionsAnswered = questions?.every(q => q?.question && !!answers[q.question]) ?? false;
   const hideSubmitTab = questions.length === 1 && !questions[0]?.multiSelect;
 
   const handleCancel = useCallback(() => {
@@ -203,7 +183,7 @@ function AskUserQuestionPermissionRequestBody({
   const handleRespondToUR = useCallback(async () => {
     const questionsWithAnswers = questions
       .map(q => {
-        const answer = getOwnRecordValue(answers, q.question);
+        const answer = answers[q.question];
         if (answer) {
           return `- "${q.question}"\n  Answer: ${answer}`;
         }
@@ -232,7 +212,7 @@ function AskUserQuestionPermissionRequestBody({
   const handleFinishPlanInterview = useCallback(async () => {
     const questionsWithAnswers = questions
       .map(q => {
-        const answer = getOwnRecordValue(answers, q.question);
+        const answer = answers[q.question];
         if (answer) {
           return `- "${q.question}"\n  Answer: ${answer}`;
         }
@@ -267,17 +247,10 @@ Questions asked and answers provided:\n${questionsWithAnswers}`;
           interviewPhaseEnabled: isInPlanMode && isPlanModeInterviewPhaseEnabled()
         });
       }
-      const annotations = createPrototypeSafeRecord<{ preview?: string; notes?: string }>();
+      const annotations: Record<string, { preview?: string; notes?: string }> = {};
       for (const q of questions) {
-        const answer = getOwnRecordValue(answersToSubmit, q.question);
-        const questionState = getOwnRecordValue(questionStates, q.question);
-        const selectedValue = questionState?.selectedValue;
-        const selectedOther =
-          selectedValue === '__other__' ||
-          (Array.isArray(selectedValue) && selectedValue.includes('__other__'));
-        // The standard dialog stores custom Other text in textInputValue.
-        // It is the answer itself, not an additional annotation.
-        const notes = selectedOther ? undefined : questionState?.textInputValue;
+        const answer = answersToSubmit[q.question];
+        const notes = questionStates[q.question]?.textInputValue;
         const selectedOption = answer ? q.options.find(opt => opt.label === answer) : undefined;
         const preview = selectedOption?.preview;
         if (preview || notes?.trim()) {
@@ -307,14 +280,23 @@ Questions asked and answers provided:\n${questionsWithAnswers}`;
   const handleQuestionAnswer = useCallback(
     (questionText: string, label: string | string[], textInput?: string, shouldAdvance = true) => {
       const isMultiSelect = Array.isArray(label);
-      const hasImages = Object.values(getOwnRecordValue(pastedContentsByQuestion, questionText) ?? {})
-        .some(content => content.type === 'image');
-      // Selecting Other is not itself an answer. Keep the question
-      // incomplete until the user types text or attaches an image.
-      const answer = resolveQuestionAnswer(label, textInput, hasImages);
+      let answer: string;
+      if (isMultiSelect) {
+        answer = label.join(', ');
+      } else if (textInput) {
+        const questionImages = Object.values(pastedContentsByQuestion[questionText] ?? {})
+          .filter((c): c is Extract<PastedContent, { type: 'image' }> => c.type === 'image');
+        answer = questionImages.length > 0 ? `${textInput} (Image attached)` : textInput;
+      } else if (label === '__other__') {
+        const questionImages = Object.values(pastedContentsByQuestion[questionText] ?? {})
+          .filter((c): c is Extract<PastedContent, { type: 'image' }> => c.type === 'image');
+        answer = questionImages.length > 0 ? '(Image attached)' : label;
+      } else {
+        answer = label;
+      }
       const isSingleQuestion = questions.length === 1;
-      if (!isMultiSelect && isSingleQuestion && shouldAdvance && answer) {
-        const updatedAnswers = setPrototypeSafeRecordValue(answers, questionText, answer);
+      if (!isMultiSelect && isSingleQuestion && shouldAdvance) {
+        const updatedAnswers = { ...answers, [questionText]: answer };
         submitAnswers(updatedAnswers).catch(logError);
         return;
       }
@@ -360,8 +342,7 @@ Questions asked and answers provided:\n${questionsWithAnswers}`;
   );
 
   if (currentQuestion) {
-    const pastedContents = getOwnRecordValue(pastedContentsByQuestion, currentQuestion.question)
-      ?? Object.create(null) as Record<number, PastedContent>;
+    const pastedContents = pastedContentsByQuestion[currentQuestion.question] ?? {};
     return (
       <PermissionDialog
         title={currentQuestion.question}

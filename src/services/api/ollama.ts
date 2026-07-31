@@ -24,13 +24,13 @@ import {
 } from '../../utils/model/ollamaConfig.js'
 import {
   computeOllamaNumCtx,
-  describeContextPressure,
   getOllamaKeepAlive,
   getOllamaNumCtxOverride,
 } from '../../utils/model/ollamaTuning.js'
 import {
   looksLikeBareJsonToolCallPrefix,
   parseBareJsonToolCalls,
+  parseClarifyingQuestions,
   parseKimiToolCalls,
   parseTextToolCalls,
   reconcileToolName,
@@ -39,7 +39,6 @@ import {
 import { parseToolInputJsonLenient } from '../../utils/json.js'
 import {
   describeVisionSupport,
-  normalizeAdvertisedCapabilities,
   resolveVisionSupport,
   shouldSendImages,
   type VisionSupport,
@@ -127,7 +126,6 @@ type OllamaFetchResult = {
 const DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS = 300_000
 const REMOTE_OLLAMA_REQUEST_TIMEOUT_MS = 120_000
 const CLOUD_OLLAMA_REQUEST_TIMEOUT_MS = 120_000
-const KIMI_CLOUD_REQUEST_TIMEOUT_MS = 300_000
 const OLLAMA_GATEWAY_TIMEOUT_MESSAGE =
   'Ollama gateway timed out while waiting for the model to respond. Check the selected Ollama endpoint or increase API_TIMEOUT_MS if the model needs more time.'
 const ollamaModelCapabilitiesCache = new Map<
@@ -277,62 +275,18 @@ async function fetchOllamaChat(
     const textToolFallbackAllowed =
       (params.tools?.length ?? 0) > 0 &&
       !modelCapabilityEnabled(capabilities, 'tools')
-    // Serialized once so its size is available when the server rejects it for
-    // being too large — otherwise the error cannot say how big "too large" was.
-    const chatRequest = toOllamaChatRequest(params, stream, capabilities, baseUrl)
-    const requestBody = JSON.stringify(chatRequest)
-    logRequestComposition(chatRequest, requestBody.length)
-    let response = await fetch(`${baseUrl}/api/chat`, {
+    const response = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
       headers: buildOllamaHeaders(),
-      body: requestBody,
+      body: JSON.stringify(
+        toOllamaChatRequest(params, stream, capabilities, baseUrl),
+      ),
       signal: controller.signal,
     })
 
     if (!response.ok) {
       const body = await response.text().catch(() => '')
-      const rawMessage =
-        extractOllamaHTTPErrorMessage(body) || response.statusText
-
-      // Recover instead of only explaining. UR already has the pieces for this
-      // — isMediaSizeError and stripImagesFromMessages — but they are wired to
-      // reactive compact's retry, and REACTIVE_COMPACT is not compiled into any
-      // shipped build, so nothing was reachable to act on an oversized body.
-      // Stale images are the usual bulk and the least valuable part of it: only
-      // the newest attachment is normally still being discussed.
-      const retryRequest = isOllamaRequestTooLarge(response.status, rawMessage)
-        ? dropStaleImagesFromRequest(chatRequest)
-        : null
-      if (retryRequest) {
-        const retryBody = JSON.stringify(retryRequest)
-        pendingProviderNotice ??= describeImageRetry(
-          requestBody.length,
-          retryBody.length,
-        )
-        response = await fetch(`${baseUrl}/api/chat`, {
-          method: 'POST',
-          headers: buildOllamaHeaders(),
-          body: retryBody,
-          signal: controller.signal,
-        })
-        if (!response.ok) {
-          const retryErrorBody = await response.text().catch(() => '')
-          throw createOllamaHTTPError(
-            response.status,
-            retryErrorBody,
-            response.statusText,
-            retryBody.length,
-          )
-        }
-        return { response, textToolFallbackAllowed }
-      }
-
-      throw createOllamaHTTPError(
-        response.status,
-        body,
-        response.statusText,
-        requestBody.length,
-      )
+      throw createOllamaHTTPError(response.status, body, response.statusText)
     }
 
     return { response, textToolFallbackAllowed }
@@ -361,147 +315,15 @@ async function fetchOllamaChat(
   }
 }
 
-/**
- * Go's net/http emits "http: request body too large" from MaxBytesReader when
- * the payload exceeds the server's limit. It is a byte-size rejection, not a
- * context-window one, so the token-based context warning never fires for it —
- * a couple of screenshots can exceed the limit while the token estimate still
- * looks comfortable. Raw, the message says nothing about cause or remedy.
- */
-export function isOllamaRequestTooLarge(
-  status: number,
-  message: string,
-): boolean {
-  return (
-    (status === 400 || status === 413) &&
-    /request body too large|payload too large|entity too large/i.test(message)
-  )
-}
-
-/**
- * Report where the request's bytes actually go, once per session.
- *
- * The fixed cost of tool definitions and the system prompt is the thing that
- * decides whether a small-context model has room to work, and it had only ever
- * been estimated by summing prompt source — which double-counts every
- * `condition ? longText : shortText`, since only one branch is ever sent. This
- * measures the serialized request instead, so the number is what the server
- * receives rather than what the source could produce.
- *
- * Debug-log only, and once, because it is diagnostic rather than something the
- * user needs on every turn.
- */
-let loggedComposition = false
-export function describeRequestComposition(
-  request: OllamaChatRequest,
-  totalBytes: number,
-): string {
-  const toolBytes = request.tools ? JSON.stringify(request.tools).length : 0
-  const systemBytes = request.messages
-    .filter(message => message.role === 'system')
-    .reduce((sum, message) => sum + JSON.stringify(message).length, 0)
-  const conversationBytes = Math.max(
-    0,
-    totalBytes - toolBytes - systemBytes,
-  )
-  const pct = (n: number) =>
-    totalBytes > 0 ? `${Math.round((100 * n) / totalBytes)}%` : '0%'
-  return (
-    `request ${formatBytes(totalBytes)} = ` +
-    `tools ${formatBytes(toolBytes)} (${pct(toolBytes)}, ` +
-    `${request.tools?.length ?? 0} defs) + ` +
-    `system ${formatBytes(systemBytes)} (${pct(systemBytes)}) + ` +
-    `conversation ${formatBytes(conversationBytes)} (${pct(conversationBytes)})`
-  )
-}
-
-function logRequestComposition(
-  request: OllamaChatRequest,
-  totalBytes: number,
-): void {
-  if (loggedComposition) return
-  loggedComposition = true
-  logForDebugging(`[ollama] ${describeRequestComposition(request, totalBytes)}`)
-}
-
-/** Bytes as a short human string: 1234567 -> "1.2 MB". */
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${bytes} bytes`
-}
-
-/**
- * Remove images from every message except the most recent one carrying any.
- *
- * The newest attachment is normally the one still under discussion; older ones
- * are transcript ballast that base64 inflates by roughly a third. Returns null
- * when there is nothing to drop, so the caller can tell "retry is worth it"
- * from "retrying would send exactly the same bytes again".
- */
-export function dropStaleImagesFromRequest(
-  request: OllamaChatRequest,
-): OllamaChatRequest | null {
-  const withImages = request.messages
-    .map((message, index) => ((message.images?.length ?? 0) > 0 ? index : -1))
-    .filter(index => index >= 0)
-  if (withImages.length <= 1) return null
-
-  const keep = withImages.at(-1)
-  return {
-    ...request,
-    messages: request.messages.map((message, index) =>
-      index === keep || (message.images?.length ?? 0) === 0
-        ? message
-        : { ...message, images: undefined },
-    ),
-  }
-}
-
-export function describeImageRetry(
-  originalBytes: number,
-  retriedBytes: number,
-): string {
-  return (
-    `The request was ${formatBytes(originalBytes)}, which Ollama rejected as too ` +
-    `large. Images from earlier turns were dropped and it was retried at ` +
-    `${formatBytes(retriedBytes)}. The most recent image was kept. If you need ` +
-    `an earlier one again, re-attach it.`
-  )
-}
-
-export function describeOversizedOllamaRequest(requestBytes?: number): string {
-  const size =
-    requestBytes && requestBytes > 0
-      ? `This request was ${formatBytes(requestBytes)}. `
-      : ''
-  return (
-    `Ollama rejected the request because the HTTP body exceeded its size limit. ` +
-    `${size}This is a byte-size limit on the server, not the model's context ` +
-    `window, so it can trigger even when the conversation fits. Images are the ` +
-    `usual cause — base64 encoding adds roughly a third to their size, and every ` +
-    `image stays in the transcript on later turns. Use /compact or start a new ` +
-    `session to drop older attachments, or send fewer and smaller images. If the ` +
-    `endpoint sits behind a reverse proxy, the proxy's own body limit applies too ` +
-    `(for nginx that is client_max_body_size).`
-  )
-}
-
 function createOllamaHTTPError(
   status: number,
   body: string,
   statusText: string,
-  requestBytes?: number,
 ): Error {
   const rawMessage = extractOllamaHTTPErrorMessage(body) || statusText
   if (isOllamaGatewayTimeout(status, rawMessage)) {
     return new APIConnectionTimeoutError({
       message: OLLAMA_GATEWAY_TIMEOUT_MESSAGE,
-      cause: new Error(`Ollama request failed (${status}): ${rawMessage}`),
-    })
-  }
-  if (isOllamaRequestTooLarge(status, rawMessage)) {
-    return new Error(describeOversizedOllamaRequest(requestBytes), {
       cause: new Error(`Ollama request failed (${status}): ${rawMessage}`),
     })
   }
@@ -564,31 +386,14 @@ export function getOllamaRequestTimeoutMs(
   if (isTruthyEnv(env.UR_CODE_REMOTE)) {
     return REMOTE_OLLAMA_REQUEST_TIMEOUT_MS
   }
-  return getOllamaModelDefaultTimeoutMs(model)
-}
-
-export function isOllamaCloudModel(model: string | undefined): boolean {
-  return model?.trim().toLowerCase().endsWith(':cloud') ?? false
-}
-
-/**
- * Kimi K2.7 regularly needs more than two minutes before its first useful
- * cloud response on large coding contexts. Keep the ordinary cloud deadline
- * bounded at two minutes, but give this known slow family the same five-minute
- * ceiling as local large models. Explicit request/API_TIMEOUT_MS overrides and
- * the stricter remote-session deadline still win in getOllamaRequestTimeoutMs.
- */
-export function getOllamaModelDefaultTimeoutMs(
-  model: string | undefined,
-): number {
-  const normalized = model?.trim().toLowerCase() ?? ''
-  if (/^kimi-k2\.7(?:[-.:]|$)/.test(normalized) && isOllamaCloudModel(model)) {
-    return KIMI_CLOUD_REQUEST_TIMEOUT_MS
-  }
   if (isOllamaCloudModel(model)) {
     return CLOUD_OLLAMA_REQUEST_TIMEOUT_MS
   }
   return DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS
+}
+
+export function isOllamaCloudModel(model: string | undefined): boolean {
+  return model?.trim().toLowerCase().endsWith(':cloud') ?? false
 }
 
 function isTruthyEnv(value: string | undefined): boolean {
@@ -697,33 +502,15 @@ export function toOllamaChatRequest(
   if (typeof params.max_tokens === 'number') {
     options.num_predict = params.max_tokens
   }
-  const modelContextLength = getOllamaContextLengthForModel(
-    params.model,
-    baseUrl,
-  )
-  const estimatedPromptTokens = estimateInputTokens(params)
   const numCtx = computeOllamaNumCtx({
-    modelContextLength,
-    estimatedPromptTokens,
+    modelContextLength: getOllamaContextLengthForModel(params.model, baseUrl),
+    estimatedPromptTokens: estimateInputTokens(params),
     maxTokens:
       typeof params.max_tokens === 'number' ? params.max_tokens : undefined,
     override: getOllamaNumCtxOverride(),
   })
   if (numCtx !== undefined) {
     options.num_ctx = numCtx
-  }
-
-  // Overflow is invisible from the outside: Ollama drops the front of the
-  // prompt and answers anyway, so the failure looks like the model got worse
-  // rather than like context ran out. Say it in the transcript.
-  const pressure = describeContextPressure({
-    estimatedPromptTokens,
-    numCtx,
-    modelContextLength,
-    model: params.model,
-  })
-  if (pressure.message && !pendingProviderNotice) {
-    pendingProviderNotice = pressure.message
   }
   if (Object.keys(options).length > 0) {
     request.options = options
@@ -1016,14 +803,20 @@ async function getOllamaModelCapabilities(
   }
 }
 
-export function parseOllamaModelCapabilities(
-  value: unknown,
-): OllamaModelCapabilities | null {
+function parseOllamaModelCapabilities(value: unknown): OllamaModelCapabilities | null {
   if (!value || typeof value !== 'object' || !('capabilities' in value)) {
     return null
   }
-  return normalizeAdvertisedCapabilities(
-    (value as { capabilities?: unknown }).capabilities,
+  const capabilities = (value as { capabilities?: unknown }).capabilities
+  if (!Array.isArray(capabilities)) {
+    return null
+  }
+  return new Set(
+    capabilities.flatMap(capability =>
+      typeof capability === 'string' && capability.trim()
+        ? [capability.trim()]
+        : [],
+    ),
   )
 }
 
@@ -1255,6 +1048,10 @@ async function* streamURHQEvents(
   if (textToolFallbackAllowed) {
     const kimiParsed = parseKimiToolCalls(text)
     textToolCalls.push(...kimiParsed.toolCalls)
+    if (toolCalls.length === 0 && textToolCalls.length === 0) {
+      const clarify = parseClarifyingQuestions(text, { availableToolNames })
+      if (clarify) textToolCalls.push(clarify)
+    }
   }
 
   const normalizedToolUses = normalizeOllamaToolUses(
@@ -1437,6 +1234,13 @@ function ollamaResponseToURHQMessage(
     : { text: rawText, toolCalls: [] }
   const text = parsedText.text
   const textToolCalls = [...parsedText.toolCalls]
+  const clarifyCall =
+    textToolFallbackAllowed &&
+    structured.length === 0 &&
+    textToolCalls.length === 0
+      ? parseClarifyingQuestions(text, { availableToolNames })
+      : null
+  if (clarifyCall) textToolCalls.push(clarifyCall)
   const normalizedToolUses = normalizeOllamaToolUses(
     structured,
     textToolCalls,

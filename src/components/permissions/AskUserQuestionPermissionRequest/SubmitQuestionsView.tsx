@@ -6,7 +6,6 @@ import type { PermissionDecision } from '../../../utils/permissions/PermissionRe
 import { Select } from '../../CustomSelect/index.js';
 import { Divider } from '../../design-system/Divider.js';
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
-import { getOwnRecordValue } from './prototypeSafeRecord.js';
 import { QuestionNavigationBar } from './QuestionNavigationBar.js';
 
 type Props = {
@@ -51,9 +50,9 @@ export function SubmitQuestionsView({
           {Object.keys(answers).length > 0 && (
             <Box flexDirection="column" marginBottom={1}>
               {questions
-                .filter(q => q?.question && getOwnRecordValue(answers, q.question))
+                .filter(q => q?.question && answers[q.question])
                 .map(q => {
-                  const answer = getOwnRecordValue(answers, q.question);
+                  const answer = answers[q.question];
                   return (
                     <Box key={q.question || 'answer'} flexDirection="column" marginLeft={1}>
                       <Text>{figures.bullet} {q.question || 'Question'}</Text>

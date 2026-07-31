@@ -65,7 +65,6 @@ export const call: LocalCommandCall = async (args: string) => {
     return {
       type: 'text',
       value: `Desktop control is not supported on ${process.platform}.`,
-      exitCode: 1,
     }
   }
   // parseArguments, not split(): shell wiring quotes each argument.
@@ -78,13 +77,7 @@ export const call: LocalCommandCall = async (args: string) => {
   if (action === 'screenshot') {
     const path = rest[1] ?? join(tmpdir(), `ur-screenshot-${Date.now()}.png`)
     const error = await run(buildScreenshotCommand(platform, path))
-    if (error) {
-      return {
-        type: 'text',
-        value: `Screenshot failed: ${error}`,
-        exitCode: 1,
-      }
-    }
+    if (error) return { type: 'text', value: `Screenshot failed: ${error}` }
     if (!existsSync(path)) {
       return {
         type: 'text',
@@ -92,7 +85,6 @@ export const call: LocalCommandCall = async (args: string) => {
           'Screenshot reported success but no file was written. ' +
           'On macOS, grant Screen Recording permission to your terminal in ' +
           'System Settings → Privacy & Security.',
-        exitCode: 1,
       }
     }
     return {
@@ -104,11 +96,7 @@ export const call: LocalCommandCall = async (args: string) => {
   if (action === 'click') {
     const point = { x: Number(rest[1]), y: Number(rest[2]) }
     if (!Number.isInteger(point.x) || !Number.isInteger(point.y)) {
-      return {
-        type: 'text',
-        value: 'Usage: /computer click <x> <y> --yes',
-        exitCode: 2,
-      }
+      return { type: 'text', value: 'Usage: /computer click <x> <y> --yes' }
     }
     const screen = await screenSize(platform)
     if (!screen) {
@@ -117,21 +105,18 @@ export const call: LocalCommandCall = async (args: string) => {
         value:
           'Could not determine screen size, so the click target cannot be ' +
           'validated. Refusing rather than clicking blind.',
-        exitCode: 1,
       }
     }
     if (!isPointWithin(point, screen)) {
       return {
         type: 'text',
         value: `Point ${point.x},${point.y} is outside the ${screen.width}x${screen.height} screen.`,
-        exitCode: 2,
       }
     }
     if (!approved) {
       return {
         type: 'text',
         value: `${describeAction({ type: 'click', point, button: rightClick ? 'right' : 'left' })} — re-run with --yes to confirm.`,
-        exitCode: 2,
       }
     }
     const error = await run(
@@ -142,7 +127,6 @@ export const call: LocalCommandCall = async (args: string) => {
       value: error
         ? `Click failed: ${error}`
         : `Clicked at ${point.x},${point.y}`,
-      ...(error ? { exitCode: 1 } : {}),
     }
   }
 
@@ -153,14 +137,12 @@ export const call: LocalCommandCall = async (args: string) => {
       return {
         type: 'text',
         value: 'Usage: /computer type <text> --yes  (1–2000 characters)',
-        exitCode: 2,
       }
     }
     if (!approved) {
       return {
         type: 'text',
         value: `${describeAction({ type: 'type', text })} — re-run with --yes to confirm.`,
-        exitCode: 2,
       }
     }
     const error = await run(command)
@@ -169,7 +151,6 @@ export const call: LocalCommandCall = async (args: string) => {
       value: error
         ? `Type failed: ${error}`
         : `Typed ${text.length} characters into the focused window.`,
-      ...(error ? { exitCode: 1 } : {}),
     }
   }
 
@@ -180,6 +161,5 @@ export const call: LocalCommandCall = async (args: string) => {
       '  /computer screenshot [path]\n' +
       '  /computer click <x> <y> [--right] --yes\n' +
       '  /computer type <text> --yes',
-    exitCode: 2,
   }
 }

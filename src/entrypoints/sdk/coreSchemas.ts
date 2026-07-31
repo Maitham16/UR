@@ -1520,7 +1520,7 @@ export const SDKRateLimitInfoSchema = lazySchema(() =>
       isUsingOverage: z.boolean().optional(),
       surpassedThreshold: z.number().optional(),
     })
-    .describe('Rate limit information for ur.com subscription users.'),
+    .describe('Rate limit information for ur.ai subscription users.'),
 )
 
 export const SDKAssistantMessageSchema = lazySchema(() =>
@@ -1689,7 +1689,6 @@ export const SDKCompactBoundaryMessageSchema = lazySchema(() =>
     compact_metadata: z.object({
       trigger: z.enum(['manual', 'auto']),
       pre_tokens: z.number(),
-      task_gate_free_calls_consumed: z.boolean().optional(),
       preserved_segment: z
         .object({
           head_uuid: UUIDPlaceholder(),

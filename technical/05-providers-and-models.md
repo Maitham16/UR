@@ -22,13 +22,9 @@ Source of truth: `src/services/providers/providerRegistry.ts`, `src/utils/model/
 | `antigravity-cli` | Antigravity | subscription via official CLI | — | `disabled: true` |
 | `lmstudio` | LM Studio | local server | OpenAI-compatible (localhost:1234/v1) | `disabled: true` |
 
-Provider aliases are normalized by provider commands and interactive pickers (e.g.
-`chatgpt`, `codex`, `openai codex` → `codex-cli`). Raw `settings.json` is stricter:
-`provider.active` and `provider.fallback` must use canonical registry IDs. Each definition
-declares capability metadata (native tool calls, native streaming, safety boundary label)
-used by the runtime and `/provider` UI. UR-native adapters—including LM Studio—use the
-UR-native request/tool boundary and never inherit an external subscription-CLI capability
-record.
+Provider aliases are accepted everywhere a provider is named (e.g. `chatgpt`, `codex`,
+`openai codex` → `codex-cli`). Each definition declares capability metadata (native tool
+calls, native streaming, safety boundary label) used by the runtime and `/provider` UI.
 
 ### How to use
 
@@ -88,8 +84,8 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
 - The startup picker validates the provider/model pair through the provider
   registry and persists it to `.ur/settings.local.json`. User-global model
   settings are intentionally insufficient for a new workspace.
-- `settings.json → model`, `provider.active`, top-level `availableModels`, and top-level
-  `modelOverrides` persist choices per scope.
+- `settings.json → model`, `provider.active`, `provider.availableModels`,
+  `provider.modelOverrides` persist choices per scope.
 - `src/utils/model/aliases.ts` maps friendly aliases; `validateModel.ts` checks against the
   provider's discovered list; `ollamaTuning.ts` adjusts context/params for local models.
 - Deprecation warnings and 1M-context upgrade checks live in `deprecation.ts` /
@@ -111,18 +107,15 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   search, and bounded private cursor state. Compacted context persistence
   requires a 32-byte `UR_OPENAI_RESPONSES_STATE_KEY`.
 - `ollama.ts` selects timeouts from explicit request options, then
-  `API_TIMEOUT_MS`, then runtime defaults. Remote sessions and ordinary
-  `:cloud` models use 120 seconds; local models and Kimi K2.7 Cloud use 300
-  seconds because large Kimi coding turns can legitimately take longer than
-  two minutes before completing. The same model-aware value is applied while
-  waiting for `/api/chat` response headers and as the absolute deadline in
-  `readOllamaChunks`.
+  `API_TIMEOUT_MS`, then runtime defaults. `:cloud` models and remote sessions
+  use 120 seconds; local models use 300 seconds. The same model-aware value is
+  applied while waiting for `/api/chat` response headers and as the absolute
+  deadline in `readOllamaChunks`.
 - `ur.ts` identifies an Ollama Cloud runtime from both the selected provider and
   the `:cloud` suffix. It disables shared automatic request retries for that
-  route, applies the same model-aware bound to any permitted non-streaming
+  route, applies the same 120-second bound to any permitted non-streaming
   fallback, and skips fallback entirely when the Ollama stream deadline itself
-  caused the failure. Explicit `API_TIMEOUT_MS` remains authoritative, and
-  remote-session safety keeps its 120-second ceiling.
+  caused the failure. Explicit `API_TIMEOUT_MS` remains authoritative.
 
 ## Capability-aware routing
 
@@ -156,15 +149,14 @@ reports "likely agent capabilities":
 ```
 
 ### Automatic learning loop (learning.ts)
-Every ci-loop, arena, escalation, test-first, and completed **local** cloud
-best-of-N run
-**automatically** records its pass/fail outcome (per task category and model) into
-`.ur/learning/stats.json` — a pure JSON fold, no model calls. The `auto` routing strategy
-and `/escalate`'s difficulty bias consume this evidence: a model with ≥3 recorded runs and
-a ≥60% success rate for the task's category is preferred when selectable; thin evidence
-falls back to the static heuristics unchanged. The store is idempotent (outcome keys
-dedupe) and best-effort (a broken store never fails a run). `/learn` remains for
-inspection and the optional LLM reflection pass:
+Every ci-loop, arena, escalation, and test-first run **automatically** records its
+pass/fail outcome (per task category and model) into `.ur/learning/stats.json` — a pure
+JSON fold, no model calls. The `auto` routing strategy and `/escalate`'s difficulty bias
+consume this evidence: a model with ≥3 recorded runs and a ≥60% success rate for the
+task's category is preferred when selectable; thin evidence falls back to the static
+heuristics unchanged. The store is idempotent (outcome keys dedupe) and best-effort
+(a broken store never fails a run). `/learn` remains for inspection and the optional
+LLM reflection pass:
 ```
 /learn stats            # view what the agent has learned
 /learn run --reflect    # optional: distill failures into lessons (uses a model)
@@ -176,9 +168,9 @@ Disable automatic learning with `automaticLearningEnabled: false` or
 
 | Feature | Command | Notes |
 |---|---|---|
-| Effort level | `/effort low·medium·high·max·auto` | low/medium/high persist as `effortLevel`; max is session-only in the external build; auto clears the override |
-| Fast mode | `/fast` source exists but reports unavailable | requires the hosted first-party serving tier, which the standard npm build does not use; setting `fastMode` cannot manufacture that tier |
-| Advisor model | `/advisor` is hidden in the standard build | requires first-party beta headers plus an enabled runtime feature configuration; `advisorModel` alone does not enable it |
+| Effort level | `/effort low·medium·high·max·auto` | persisted as `effortLevel` setting |
+| Fast mode | `/fast on` | `fastMode` / `fastModePerSessionOptIn` settings |
+| Advisor model | `/advisor <model>` / `/advisor off` | secondary model that critiques answers (`advisorModel` setting) |
 | Always thinking | `alwaysThinkingEnabled` setting | force extended thinking |
 | Thinking summaries | `showThinkingSummaries` setting | UI display of thinking |
 | Fallback model | `--fallback-model` (print mode) | on overload |

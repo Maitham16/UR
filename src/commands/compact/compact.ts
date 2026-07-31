@@ -57,7 +57,7 @@ export const call: LocalCommandCall = async (args, context) => {
     if (!customInstructions) {
       const sessionMemoryResult = await trySessionMemoryCompaction(
         messages,
-        context,
+        context.agentId,
       )
       if (sessionMemoryResult) {
         getUserContext.cache.clear?.()

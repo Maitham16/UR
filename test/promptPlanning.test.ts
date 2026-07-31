@@ -80,67 +80,6 @@ describe('prompt planning', () => {
     expect(plan.tasks[0]?.approvalRequired).toBe(false)
   })
 
-  test('short explicit deliverables split without fragmenting task details', () => {
-    const plan = decomposePrompt(
-      'Implement the parser. Add focused regression tests. Update the documentation.',
-    )
-    expect(plan.tasks).toHaveLength(3)
-    expect(plan.tasks.map(task => task.title)).toEqual([
-      'Implement the parser',
-      'Add focused regression tests',
-      'Update the documentation',
-    ])
-    expect(plan.tasks[0]?.dependencies).toEqual([])
-    expect(plan.tasks[1]?.dependencies).toEqual(['task-1'])
-    expect(plan.tasks[2]?.dependencies).toEqual([])
-
-    const cohesive = decomposePrompt(
-      'Update README wording. Keep the existing concise tone.',
-    )
-    expect(cohesive.tasks).toHaveLength(1)
-    expect(cohesive.tasks[0]?.description).toContain(
-      'Keep the existing concise tone',
-    )
-  })
-
-  test('explicit transition clauses split but a genuinely atomic compound stays whole', () => {
-    const staged = decomposePrompt(
-      'Implement the parser and then add regression tests',
-    )
-    expect(staged.tasks).toHaveLength(2)
-    expect(staged.tasks[1]?.dependencies).toEqual(['task-1'])
-
-    const atomic = decomposePrompt(
-      'Create a parser that reads JSON and returns useful errors',
-    )
-    expect(atomic.tasks).toHaveLength(1)
-  })
-
-  test('common enhancement outcomes stay separate and investigation precedes fixes', () => {
-    const enhancements = decomposePrompt(
-      'Enhance the UI. Improve prompt handling. Add tests.',
-    )
-    expect(enhancements.tasks.map(task => task.title)).toEqual([
-      'Enhance the UI',
-      'Improve prompt handling',
-      'Add tests',
-    ])
-    expect(enhancements.tasks[0]?.dependencies).toEqual([])
-    expect(enhancements.tasks[1]?.dependencies).toEqual([])
-    expect(enhancements.tasks[2]?.dependencies).toEqual(['task-1', 'task-2'])
-
-    for (const prompt of [
-      'Review the code. Fix any issues. Add tests.',
-      'Inspect the implementation. Correct any gaps. Verify everything.',
-      'Analyze the UI. Improve the layout. Test it.',
-    ]) {
-      const plan = decomposePrompt(prompt)
-      expect(plan.tasks).toHaveLength(3)
-      expect(plan.tasks[1]?.dependencies).toEqual(['task-1'])
-      expect(plan.tasks[2]?.dependencies).toEqual(['task-1', 'task-2'])
-    }
-  })
-
   test('long prompt becomes multiple dependent tasks when ordering is explicit', () => {
     const plan = decomposePrompt(
       [

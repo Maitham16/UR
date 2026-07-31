@@ -115,7 +115,7 @@ export type BridgeCoreParams = {
    * (HTTP-only, orgUUID+model supplied by the daemon caller).
    *
    * Receives `gitRepoUrl`+`branch` so the REPL wrapper can build the git
-   * source/outcome for ur.com's session card. Daemon ignores them.
+   * source/outcome for ur.ai's session card. Daemon ignores them.
    */
   createSession: (opts: {
     environmentId: string
@@ -528,7 +528,7 @@ export async function initBridgeCore(
   const recentInboundUUIDs = new BoundedUUIDSet(2000)
 
   // 7. Start poll loop for work items — this is what makes the session
-  // "live" on ur.com. When a user types there, the backend dispatches
+  // "live" on ur.ai. When a user types there, the backend dispatches
   // a work item to our environment. We poll for it, get the ingress token,
   // and connect the ingress WebSocket.
   //

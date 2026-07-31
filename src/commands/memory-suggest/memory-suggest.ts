@@ -54,27 +54,15 @@ function recentUserMessages(path: string, limit: number): string[] {
 export const call: LocalCommandCall = async (args: string) => {
   // parseArguments, not split(): shell wiring quotes each argument.
   const tokens = parseArguments(args)
-  const turns = Number(flagValue(tokens, '--turns') ?? '30')
-  const minConfidence = Number(
+  const turns = Number.parseInt(flagValue(tokens, '--turns') ?? '30', 10)
+  const minConfidence = Number.parseFloat(
     flagValue(tokens, '--min-confidence') ?? '0.75',
   )
-  if (!Number.isSafeInteger(turns) || turns < 1) {
-    return {
-      type: 'text',
-      value: '--turns expects a positive integer',
-      exitCode: 2,
-    }
+  if (!Number.isFinite(turns) || turns < 1) {
+    return { type: 'text', value: '--turns expects a positive integer' }
   }
-  if (
-    !Number.isFinite(minConfidence) ||
-    minConfidence < 0 ||
-    minConfidence > 1
-  ) {
-    return {
-      type: 'text',
-      value: '--min-confidence expects a number from 0 to 1',
-      exitCode: 2,
-    }
+  if (!Number.isFinite(minConfidence)) {
+    return { type: 'text', value: '--min-confidence expects a number' }
   }
 
   const messages = recentUserMessages(getTranscriptPath(), turns)

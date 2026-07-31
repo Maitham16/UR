@@ -39,8 +39,6 @@ function writeFixture(root: string, version: string): void {
     'documentation/index.html': `<p class="eyebrow">Version ${version}</p>\n`,
     'docs/VALIDATION.md':
       `# expected for this release: "${version} (UR-Nexus)"\n`,
-    'technical/README.md':
-      `Audited against \`ur-agent\` v${version}.\n`,
     'src/commands/agent-ci/agent-ci.ts':
       `return typeof MACRO !== 'undefined' ? MACRO.VERSION : '${version}'\n`,
     'src/services/agents/agenticCi.ts':
@@ -97,7 +95,6 @@ test('version bump moves every surface from one prerelease to another', () => {
       'extensions/jetbrains-ur/build.gradle.kts',
       'documentation/index.html',
       'docs/VALIDATION.md',
-      'technical/README.md',
       'src/commands/agent-ci/agent-ci.ts',
       'src/services/agents/agenticCi.ts',
       'src/services/agents/featureScaffolds.ts',

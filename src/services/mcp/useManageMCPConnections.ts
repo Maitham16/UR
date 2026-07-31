@@ -597,7 +597,7 @@ export function useManageMCPConnections(
                     gate.kind === 'disabled'
                       ? 'Channels are not currently available'
                       : gate.kind === 'auth'
-                        ? 'Channels require ur.com authentication · run /login'
+                        ? 'Channels require ur.ai authentication · run /login'
                         : gate.kind === 'policy'
                           ? 'Channels are not enabled for your org · have an administrator set channelsEnabled: true in managed settings'
                           : gate.reason
@@ -766,7 +766,7 @@ export function useManageMCPConnections(
   // Re-runs on session change (/clear) and on /reload-plugins (pluginReconnectKey).
   // On plugin reload, also disconnects stale plugin MCP servers (scope 'dynamic')
   // that no longer appear in configs — prevents ghost tools from disabled plugins.
-  // Skip ur.com dedup here to avoid blocking on the network fetch; the connect
+  // Skip ur.ai dedup here to avoid blocking on the network fetch; the connect
   // useEffect below runs immediately after and dedups before connecting.
   const sessionId = getSessionId()
   useEffect(() => {
@@ -854,12 +854,12 @@ export function useManageMCPConnections(
   ])
 
   // Load MCP configs and connect to servers
-  // Two-phase loading: UR configs first (fast), then ur.com configs (may be slow)
+  // Two-phase loading: UR configs first (fast), then ur.ai configs (may be slow)
   useEffect(() => {
     let cancelled = false
 
     async function loadAndConnectMcpConfigs() {
-      // Clear ur.com MCP cache so we fetch fresh configs with current auth
+      // Clear ur.ai MCP cache so we fetch fresh configs with current auth
       // state. This is important when authVersion changes (e.g., after login/
       // logout). Kick off the fetch now so it overlaps with loadAllPlugins()
       // inside getURCodeMcpConfigs; it's awaited only at the dedup step.
@@ -873,7 +873,7 @@ export function useManageMCPConnections(
       }
 
       // Phase 1: Load UR configs. Plugin MCP servers that duplicate a
-      // --mcp-config entry or a ur.com connector are suppressed here so they
+      // --mcp-config entry or a ur.ai connector are suppressed here so they
       // don't connect alongside the connector in Phase 2.
       const { servers: urCodeConfigs, errors: mcpErrors } =
         isStrictMcpConfig
@@ -901,7 +901,7 @@ export function useManageMCPConnections(
         )
       })
 
-      // Phase 2: Await ur.com configs (started above; memoized — no second fetch)
+      // Phase 2: Await ur.ai configs (started above; memoized — no second fetch)
       let uraiConfigs: Record<string, ScopedMcpServerConfig> = {}
       if (!isStrictMcpConfig) {
         uraiConfigs = filterMcpServersByPolicy(
@@ -909,8 +909,8 @@ export function useManageMCPConnections(
         ).allowed
         if (cancelled) return
 
-        // Suppress ur.com connectors that duplicate an enabled manual server.
-        // Keys never collide (`slack` vs `ur.com Slack`) so the merge below
+        // Suppress ur.ai connectors that duplicate an enabled manual server.
+        // Keys never collide (`slack` vs `ur.ai Slack`) so the merge below
         // won't catch this — need content-based dedup by URL signature.
         if (Object.keys(uraiConfigs).length > 0) {
           const { servers: dedupedURAi } = dedupURAiMcpServers(
@@ -921,7 +921,7 @@ export function useManageMCPConnections(
         }
 
         if (Object.keys(uraiConfigs).length > 0) {
-          // Add ur.com servers as pending immediately so they show up in UI
+          // Add ur.ai servers as pending immediately so they show up in UI
           setAppState(prevState => {
             const existingServerNames = new Set(
               prevState.mcp.clients.map(c => c.name),
@@ -957,7 +957,7 @@ export function useManageMCPConnections(
           ).catch(error => {
             logMCPError(
               'useManageMcpConnections',
-              `Failed to get ur.com MCP resources: ${errorMessage(error)}`,
+              `Failed to get ur.ai MCP resources: ${errorMessage(error)}`,
             )
           })
         }

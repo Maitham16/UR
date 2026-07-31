@@ -12,12 +12,8 @@
 // that sandbox network restrictions require explicit user permission rules.
 
 export const PREAPPROVED_HOSTS = new Set([
-  // UR. Scoped to /docs rather than the bare domain: this list grants
-  // unattended fetches, and the header above warns that broad entries are
-  // dangerous where a host may serve user-supplied content. The entry it
-  // replaced, docs.ur.dev, was a docs-only host, so the whole domain would
-  // have been a silent widening.
-  'ur.com/docs',
+  // UR
+  'docs.ur.dev',
   'modelcontextprotocol.io',
   'github.com/Maitham16',
   'agentskills.io',

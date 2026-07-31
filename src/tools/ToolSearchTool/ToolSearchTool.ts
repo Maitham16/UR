@@ -15,10 +15,7 @@ import {
 import { logForDebugging } from '../../utils/debug.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { escapeRegExp } from '../../utils/stringUtils.js'
-import {
-  isToolSearchEnabledOptimistic,
-  supportsToolReferenceExpansion,
-} from '../../utils/toolSearch.js'
+import { isToolSearchEnabledOptimistic } from '../../utils/toolSearch.js'
 import { getPrompt, isDeferredTool, TOOL_SEARCH_TOOL_NAME } from './prompt.js'
 
 export const inputSchema = lazySchema(() =>
@@ -306,16 +303,6 @@ async function searchToolsWithKeywords(
 
 export const ToolSearchTool = buildTool({
   isEnabled() {
-    // The optimistic check only reads the mode, which defaults to 'tst' (on).
-    // Deferral additionally needs the runtime to expand tool_reference blocks,
-    // and no UR runtime does — see supportsToolReferenceExpansion, asserted
-    // false in test/deferredToolSchemas.test.ts. Registering on the mode alone
-    // shipped this tool's description on every request and offered the model a
-    // tool that cannot function: the deferred schemas it exists to fetch are
-    // never deferred in the first place.
-    if (!supportsToolReferenceExpansion()) {
-      return false
-    }
     return isToolSearchEnabledOptimistic()
   },
   isConcurrencySafe() {

@@ -80,9 +80,7 @@ export const call: LocalCommandCall = async (args, context) => {
   if (action === 'add') {
     const kind = (option(tokens, '--kind') ?? 'note') as ArtifactKind
     const title = option(tokens, '--title')
-    if (!title || !KINDS.has(kind)) {
-      return { type: 'text', value: usage(), exitCode: 2 }
-    }
+    if (!title || !KINDS.has(kind)) return { type: 'text', value: usage() }
     const artifact = recordArtifact(cwd, {
       kind,
       title,
@@ -136,11 +134,7 @@ export const call: LocalCommandCall = async (args, context) => {
     const portArg = option(tokens, '--port') ?? positional[1]
     const port = Number(portArg ?? 4180)
     if (!Number.isInteger(port) || port < 0 || port > 65535) {
-      return {
-        type: 'text',
-        value: `Invalid port: ${portArg}`,
-        exitCode: 2,
-      }
+      return { type: 'text', value: `Invalid port: ${portArg}` }
     }
     try {
       const { url } = await startArtifactsServer(cwd, port)
@@ -153,69 +147,35 @@ export const call: LocalCommandCall = async (args, context) => {
       }
       return { type: 'text', value: message }
     } catch (error) {
-      return {
-        type: 'text',
-        value: `Failed to start artifacts server on port ${port}: ${error}`,
-        exitCode: 1,
-      }
+      return { type: 'text', value: `Failed to start artifacts server on port ${port}: ${error}` }
     }
   }
 
-  if (!id) return { type: 'text', value: usage(), exitCode: 2 }
+  if (!id) return { type: 'text', value: usage() }
 
   if (action === 'show') {
     const artifact = getArtifact(cwd, id)
-    if (!artifact) {
-      return {
-        type: 'text',
-        value: `Artifact not found: ${id}`,
-        exitCode: 1,
-      }
-    }
+    if (!artifact) return { type: 'text', value: `Artifact not found: ${id}` }
     return { type: 'text', value: formatArtifact(artifact, readArtifactBody(cwd, id), json) }
   }
 
   if (action === 'approve') {
     const artifact = setStatus(cwd, id, 'approved')
-    return {
-      type: 'text',
-      value: artifact
-        ? `Approved artifact ${id}.`
-        : `Artifact not found: ${id}`,
-      ...(artifact ? {} : { exitCode: 1 }),
-    }
+    return { type: 'text', value: artifact ? `Approved artifact ${id}.` : `Artifact not found: ${id}` }
   }
 
   if (action === 'reject') {
     const feedback = option(tokens, '--feedback')
     if (feedback) addFeedback(cwd, id, feedback)
     const artifact = setStatus(cwd, id, 'rejected')
-    return {
-      type: 'text',
-      value: artifact
-        ? `Rejected artifact ${id}.`
-        : `Artifact not found: ${id}`,
-      ...(artifact ? {} : { exitCode: 1 }),
-    }
+    return { type: 'text', value: artifact ? `Rejected artifact ${id}.` : `Artifact not found: ${id}` }
   }
 
   if (action === 'feedback' || action === 'comment') {
     const feedback = option(tokens, '--feedback')
-    if (!feedback) {
-      return {
-        type: 'text',
-        value: 'Provide --feedback "...".',
-        exitCode: 2,
-      }
-    }
+    if (!feedback) return { type: 'text', value: 'Provide --feedback "...".' }
     const artifact = addFeedback(cwd, id, feedback)
-    if (!artifact) {
-      return {
-        type: 'text',
-        value: `Artifact not found: ${id}`,
-        exitCode: 1,
-      }
-    }
+    if (!artifact) return { type: 'text', value: `Artifact not found: ${id}` }
     const taskId = option(tokens, '--task') ?? backgroundTaskIdFromTrace(artifact.links?.trace)
     const task = taskId
       ? appendBackgroundFeedback(cwd, taskId, feedback, { artifactId: id })
@@ -229,13 +189,8 @@ export const call: LocalCommandCall = async (args, context) => {
   }
 
   if (action === 'delete' || action === 'remove') {
-    const deleted = deleteArtifact(cwd, id)
-    return {
-      type: 'text',
-      value: deleted ? `Deleted artifact ${id}.` : `Artifact not found: ${id}`,
-      ...(deleted ? {} : { exitCode: 1 }),
-    }
+    return { type: 'text', value: deleteArtifact(cwd, id) ? `Deleted artifact ${id}.` : `Artifact not found: ${id}` }
   }
 
-  return { type: 'text', value: usage(), exitCode: 2 }
+  return { type: 'text', value: usage() }
 }

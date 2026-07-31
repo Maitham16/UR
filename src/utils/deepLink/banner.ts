@@ -4,7 +4,7 @@
  * Builds the warning text shown when a session was opened by an external
  * ur-cli:// deep link. Linux xdg-open and browsers with "always allow"
  * set dispatch the link with no OS-level confirmation, so the application
- * provides its own provenance signal — mirroring ur.com's security
+ * provides its own provenance signal — mirroring ur.ai's security
  * interstitial for external-source prefills.
  *
  * The user must press Enter to submit; this banner primes them to read the

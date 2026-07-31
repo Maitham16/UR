@@ -5,7 +5,6 @@ import {
   getCommands,
   normalizeCommandTokens,
 } from '../src/commands.js'
-import { isDesktopCommandSupported } from '../src/commands/desktop/index.js'
 import { initBundledSkills } from '../src/skills/bundled/index.js'
 import { clearBundledSkills } from '../src/skills/bundledSkills.js'
 import type { Command } from '../src/types/command.js'
@@ -24,14 +23,6 @@ function localCommand(name: string, aliases: string[] = []): Command {
 }
 
 describe('command registry integrity', () => {
-  test('desktop registration supports only its shipped platform artifacts', () => {
-    expect(isDesktopCommandSupported('darwin', 'arm64')).toBe(true)
-    expect(isDesktopCommandSupported('darwin', 'x64')).toBe(true)
-    expect(isDesktopCommandSupported('win32', 'x64')).toBe(true)
-    expect(isDesktopCommandSupported('win32', 'arm64')).toBe(false)
-    expect(isDesktopCommandSupported('linux', 'x64')).toBe(false)
-  })
-
   test('normalization preserves source priority and removes ambiguous tokens', () => {
     const first = localCommand('first', ['shared', 'one'])
     const duplicateAlias = localCommand('second', ['shared', 'two', 'two'])
@@ -117,28 +108,6 @@ describe('command registry integrity', () => {
         command =>
           !command.isHidden &&
           (command.loadedFrom === undefined || command.loadedFrom === 'bundled'),
-      )
-      const visibleTokens = new Set(
-        shippedVisibleCommands.flatMap(command => [
-          command.userFacingName?.() ?? command.name,
-          ...(command.aliases ?? []),
-        ]),
-      )
-      const desktopDelta = isDesktopCommandSupported() ? 1 : 0
-      expect(commands.some(command => command.name === 'desktop')).toBe(
-        desktopDelta === 1,
-      )
-      expect(commands).toHaveLength(167 + desktopDelta)
-      expect(shippedVisibleCommands).toHaveLength(160 + desktopDelta)
-      expect(visibleTokens.size).toBe(235 + desktopDelta * 2)
-
-      const technicalReadme = readFileSync('technical/README.md', 'utf8')
-      expect(technicalReadme).toContain(
-        '167 platform-neutral bundled registry entries, 160 visible entries, ' +
-          'and 235 visible slash invocation tokens',
-      )
-      expect(technicalReadme).toContain(
-        'macOS and x64 Windows add `/desktop` (`/app`) for totals of 168, 161, and 237',
       )
       for (const command of shippedVisibleCommands) {
         const name = command.userFacingName?.() ?? command.name

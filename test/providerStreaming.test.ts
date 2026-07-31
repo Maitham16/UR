@@ -199,40 +199,6 @@ describe('provider real streaming', () => {
     }
   })
 
-  test('OpenAI-compatible streaming deduplicates cumulative argument deltas', async () => {
-    const original = globalThis.fetch
-    globalThis.fetch = (async () =>
-      responseFromChunks([
-        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"cumulative-id","type":"function","function":{"name":"Edit","arguments":"{\\"file_path\\":\\"a\\""}}]}}]}\n\n',
-        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"file_path\\":\\"a\\",\\"content\\":\\"b\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
-        'data: [DONE]\n\n',
-      ])) as unknown as typeof fetch
-    try {
-      const client = await createOpenAICompatibleClient({
-        baseUrl: 'http://localhost:1234/v1',
-        maxRetries: 1,
-      })
-      const { data } = await client.beta.messages.create({
-        model: 'local-model',
-        messages: userMessages(),
-        max_tokens: 16,
-        stream: true,
-        tools: sampleTools,
-      }).withResponse()
-      const events = await collect(data)
-      const inputDeltas = events
-        .filter(event => event.delta?.type === 'input_json_delta')
-        .map(event => event.delta.partial_json)
-
-      expect(inputDeltas).toEqual([
-        '{"file_path":"a"',
-        ',"content":"b"}',
-      ])
-    } finally {
-      globalThis.fetch = original
-    }
-  })
-
   test('OpenAI-compatible streaming rejects duplicate IDs across parallel calls', async () => {
     const original = globalThis.fetch
     globalThis.fetch = (async () =>

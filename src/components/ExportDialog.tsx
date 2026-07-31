@@ -1,3 +1,4 @@
+import { join } from 'path';
 import React, { useCallback, useState } from 'react';
 import type { ExitState } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
@@ -5,7 +6,6 @@ import { setClipboard } from '../ink/termio/osc.js';
 import { Box, Text } from '../ink.js';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { getCwd } from '../utils/cwd.js';
-import { resolveExportPath } from '../utils/exportPath.js';
 import { writeFileSync_DEPRECATED } from '../utils/slowOperations.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/select.js';
@@ -55,8 +55,9 @@ export function ExportDialog({
     }
   };
   const handleFilenameSubmit = () => {
+    const finalFilename = filename.endsWith('.txt') ? filename : filename.replace(/\.[^.]+$/, '') + '.txt';
+    const filepath = join(getCwd(), finalFilename);
     try {
-      const filepath = resolveExportPath(getCwd(), filename);
       writeFileSync_DEPRECATED(filepath, content, {
         encoding: 'utf-8',
         flush: true

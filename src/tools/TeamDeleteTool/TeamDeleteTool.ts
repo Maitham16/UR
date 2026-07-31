@@ -55,18 +55,6 @@ export const TeamDeleteTool: Tool<InputSchema, Output> = buildTool({
     return getPrompt()
   },
 
-  async validateInput(_input, context) {
-    if (context.getAppState().toolPermissionContext.mode === 'plan') {
-      return {
-        result: false,
-        message:
-          'TeamDelete is unavailable in plan mode because it changes team and task state. Finish or exit plan mode before deleting a team.',
-        errorCode: 9,
-      }
-    }
-    return { result: true }
-  },
-
   mapToolResultToToolResultBlockParam(data, toolUseID) {
     return {
       tool_use_id: toolUseID,
@@ -83,11 +71,6 @@ export const TeamDeleteTool: Tool<InputSchema, Output> = buildTool({
   async call(_input, context) {
     const { setAppState, getAppState } = context
     const appState = getAppState()
-    if (appState.toolPermissionContext.mode === 'plan') {
-      throw new Error(
-        'TeamDelete is unavailable in plan mode because it changes team and task state.',
-      )
-    }
     const teamName = appState.teamContext?.teamName
 
     if (teamName) {

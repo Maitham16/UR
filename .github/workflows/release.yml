@@ -152,8 +152,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist-release
-          # The build and full release gate already ran above. Avoid invoking
-          # prepack a second time while producing the exact verified artifact.
+          # --ignore-scripts: prepack already ran as part of release:check above.
           npm pack --ignore-scripts --pack-destination dist-release
           ls -l dist-release
 

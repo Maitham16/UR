@@ -13,7 +13,6 @@ import { Divider } from '../../design-system/Divider.js';
 import { FilePathLink } from '../../FilePathLink.js';
 import { QuestionNavigationBar } from './QuestionNavigationBar.js';
 import { PreviewQuestionView } from './PreviewQuestionView.js';
-import { getOwnRecordValue } from './prototypeSafeRecord.js';
 import type { QuestionState } from './use-multiple-choice-state.js';
 
 type Props = {
@@ -67,7 +66,6 @@ export function QuestionView({
   const [isFooterFocused, setIsFooterFocused] = useState(false);
   const [footerIndex, setFooterIndex] = useState(0);
   const [isOtherFocused, setIsOtherFocused] = useState(false);
-  const questionState = getOwnRecordValue(questionStates, question.question);
   const editorName = useMemo(() => {
     const editor = getExternalEditor();
     return editor ? toIDEDisplayName(editor) : null;
@@ -141,7 +139,7 @@ export function QuestionView({
     };
 
     const placeholder = question.multiSelect ? 'Type something' : 'Type something.';
-    const textInputValue = questionState?.textInputValue ?? '';
+    const textInputValue = questionStates[question.question]?.textInputValue ?? '';
 
     return [
       ...textOptions,
@@ -157,7 +155,7 @@ export function QuestionView({
         onOpenEditor: handleOpenEditor
       }
     ];
-  }, [question, questionState, onUpdateQuestionState]);
+  }, [question, questionStates, onUpdateQuestionState]);
 
   const hasAnyPreview = !question.multiSelect && question.options.some(opt => opt.preview);
   if (hasAnyPreview) {
@@ -209,11 +207,11 @@ export function QuestionView({
             <SelectMulti
               key={question.question}
               options={options}
-              defaultValue={questionState?.selectedValue as string[] | undefined}
+              defaultValue={questionStates[question.question]?.selectedValue as string[] | undefined}
               onChange={values => {
                 onUpdateQuestionState(question.question, { selectedValue: values }, true);
                 const textInput = values.includes('__other__')
-                  ? questionState?.textInputValue
+                  ? questionStates[question.question]?.textInputValue
                   : undefined;
                 const finalValues = values.filter(v => v !== '__other__').concat(textInput ? [textInput] : []);
                 onAnswer(question.question, finalValues, undefined, false);
@@ -232,10 +230,10 @@ export function QuestionView({
             <Select
               key={question.question}
               options={options}
-              defaultValue={questionState?.selectedValue as string | undefined}
+              defaultValue={questionStates[question.question]?.selectedValue as string | undefined}
               onChange={value => {
                 onUpdateQuestionState(question.question, { selectedValue: value }, false);
-                const textInput = value === '__other__' ? questionState?.textInputValue : undefined;
+                const textInput = value === '__other__' ? questionStates[question.question]?.textInputValue : undefined;
                 onAnswer(question.question, value, textInput);
               }}
               onFocus={handleFocus}

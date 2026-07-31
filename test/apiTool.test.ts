@@ -38,7 +38,7 @@ describe('ApiTool', () => {
 
   test('preapproved hosts are allowed for GET', async () => {
     const result = await ApiTool.checkPermissions(
-      { url: 'https://ur.com/docs/something', method: 'GET' } as never,
+      { url: 'https://docs.ur.dev/something', method: 'GET' } as never,
       makeContext(),
     )
     expect(result.behavior).toBe('allow')

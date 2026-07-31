@@ -8,26 +8,17 @@ import { getModeColor } from 'src/utils/permissions/PermissionMode.js';
 import { parseToolInputJsonLenient } from 'src/utils/json.js';
 import { z } from 'zod/v4';
 import { Box, Text } from '../../ink.js';
-import type { Tool, ToolInputJSONSchema } from '../../Tool.js';
+import type { Tool } from '../../Tool.js';
 import { buildTool, type ToolDef } from '../../Tool.js';
 import { lazySchema } from '../../utils/lazySchema.js';
-import { zodToJsonSchema } from '../../utils/zodToJsonSchema.js';
-import { headerFromQuestion, normalizeQuestionHeader } from './normalization.js';
 import { ASK_USER_QUESTION_TOOL_CHIP_WIDTH, ASK_USER_QUESTION_TOOL_NAME, ASK_USER_QUESTION_TOOL_PROMPT, DESCRIPTION, PREVIEW_FEATURE_PROMPT } from './prompt.js';
-const MAX_QUESTIONS = 4;
-const MAX_OPTIONS = 8;
-const MAX_QUESTION_CHARS = 500;
-const MAX_LABEL_CHARS = 80;
-const MAX_DESCRIPTION_CHARS = 500;
-const MAX_PREVIEW_CHARS = 16 * 1024;
-const MAX_PREVIEW_LINES = 200;
-const MAX_ANSWER_CHARS = 2_000;
-const MAX_TOTAL_INPUT_CHARS = 64 * 1024;
-const RESERVED_RECORD_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'toString', 'valueOf']);
-const QUESTION_TEXT_ALIASES = ['question', 'questionText', 'question_text', 'prompt', 'text'] as const;
-const CONTROL_OR_ANSI_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]|\u001B\[/;
 function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+function headerFromQuestion(question: string, index: number): string {
+  const stopWords = new Set(['a', 'about', 'also', 'an', 'are', 'be', 'do', 'does', 'for', 'is', 'or', 'should', 'support', 'that', 'the', 'this', 'to', 'want', 'what', 'which', 'with', 'without', 'you']);
+  const word = question.replace(/[^A-Za-z0-9]+/g, ' ').split(/\s+/).find(part => part && !stopWords.has(part.toLowerCase())) ?? `Question ${index + 1}`;
+  return word.slice(0, ASK_USER_QUESTION_TOOL_CHIP_WIDTH);
 }
 function stringField(input: Record<string, unknown>, names: string[]): string {
   for (const name of names) {
@@ -40,97 +31,94 @@ function normalizeQuestionOptionInput(value: unknown): unknown {
   if (typeof value === 'string') {
     const label = value.trim();
     return label ? {
-      label
+      label,
+      description: label
     } : value;
   }
   const option = objectValue(value);
   if (!option) return value;
-  // Preserve unknown keys so the strict schema can reject them. Compatibility
-  // normalization must never turn an ambiguous object into a valid choice by
-  // inventing a label from a machine value or from descriptive prose.
-  const normalized = { ...option };
-  if (typeof option.label === 'string') normalized.label = option.label.trim();
-  if (typeof option.description === 'string') normalized.description = option.description.trim();
-  if (typeof option.preview === 'string') normalized.preview = normalizePreviewInput(option.preview);
-  return normalized;
-}
-function normalizePreviewInput(preview: string): string {
-  if (getQuestionPreviewFormat() !== 'html') return preview;
-  const alreadySafe = preview.match(/^<pre data-ur-preview="text">([\s\S]*)<\/pre>$/);
-  if (alreadySafe && !alreadySafe[1]?.includes('<')) return preview;
-  const escaped = preview.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-  return `<pre data-ur-preview="text">${escaped}</pre>`;
+  const label = typeof option.label === 'string' && option.label.trim() ? option.label.trim() : typeof option.value === 'string' && option.value.trim() ? option.value.trim() : typeof option.description === 'string' && option.description.trim() ? option.description.trim() : '';
+  const description = typeof option.description === 'string' && option.description.trim() ? option.description.trim() : label;
+  if (!label || !description) return value;
+  return {
+    label,
+    description,
+    ...(typeof option.preview === 'string' ? {
+      preview: option.preview
+    } : {})
+  };
 }
 function normalizeQuestionInput(value: unknown, index: number): unknown {
   const question = objectValue(value);
-  if (!question) return value;
-  const normalized = { ...question };
-  const questionText = stringField(question, [...QUESTION_TEXT_ALIASES]);
-  if (questionText) normalized.question = questionText;
-  for (const alias of QUESTION_TEXT_ALIASES) {
-    if (alias !== 'question') delete normalized[alias];
-  }
-  let options = question.options;
-  if (options === undefined && question.choices !== undefined) {
-    options = question.choices;
-    delete normalized.choices;
-  }
-  if (typeof options === 'string') {
-    const parsed = parseToolInputJsonLenient(options);
-    if (Array.isArray(parsed)) options = parsed;
-  }
-  if (Array.isArray(options)) {
-    normalized.options = options.map(normalizeQuestionOptionInput);
-  }
-  if (typeof question.header === 'string' && question.header.trim()) {
-    normalized.header = normalizeQuestionHeader(question.header, questionText, index);
-  } else if (questionText) {
-    normalized.header = headerFromQuestion(questionText, index);
-  }
-  return normalized;
+  if (!question || !Array.isArray(question.options)) return value;
+  const questionText = stringField(question, ['question', 'questionText', 'question_text', 'prompt', 'text', 'title', 'message', 'body']);
+  if (!questionText) return value;
+  return {
+    question: questionText,
+    header: typeof question.header === 'string' && question.header.trim() ? question.header.trim().slice(0, ASK_USER_QUESTION_TOOL_CHIP_WIDTH) : headerFromQuestion(questionText, index),
+    options: question.options.map(normalizeQuestionOptionInput),
+    ...(typeof question.multiSelect === 'boolean' ? {
+      multiSelect: question.multiSelect
+    } : {})
+  };
 }
 function normalizeAskUserQuestionInput(value: unknown): unknown {
   const input = objectValue(value);
   if (!input) return value;
-  const normalized = { ...input };
-  let questions = input.questions;
-  if (typeof questions === 'string') {
-    const parsed = parseToolInputJsonLenient(questions);
-    if (Array.isArray(parsed)) questions = parsed;
+  const commonFields = {
+    ...(objectValue(input.answers) ? {
+      answers: input.answers
+    } : {}),
+    ...(objectValue(input.annotations) ? {
+      annotations: input.annotations
+    } : {}),
+    ...(objectValue(input.metadata) ? {
+      metadata: input.metadata
+    } : {})
+  };
+  // Models (especially small local ones) sometimes send `questions` or
+  // `options` as a JSON string instead of an actual array. Parse it before
+  // the array checks so zod sees the real structure.
+  if (typeof input.questions === 'string') {
+    const parsed = parseToolInputJsonLenient(input.questions);
+    if (Array.isArray(parsed)) input.questions = parsed;
   }
-  if (Array.isArray(questions)) {
-    normalized.questions = questions.map(normalizeQuestionInput);
-    return normalized;
+  if (typeof input.options === 'string') {
+    const parsed = parseToolInputJsonLenient(input.options);
+    if (Array.isArray(parsed)) input.options = parsed;
   }
-  let options = input.options;
-  if (typeof options === 'string') {
-    const parsed = parseToolInputJsonLenient(options);
-    if (Array.isArray(parsed)) options = parsed;
-  }
-  if (stringField(input, [...QUESTION_TEXT_ALIASES]) && Array.isArray(options)) {
-    const singleQuestion = normalizeQuestionInput({
-      question: stringField(input, [...QUESTION_TEXT_ALIASES]),
-      ...(input.header !== undefined ? {
-        header: input.header
-      } : {}),
-      options,
-      ...(input.multiSelect !== undefined ? {
-        multiSelect: input.multiSelect
-      } : {})
-    }, 0);
-    for (const key of [...QUESTION_TEXT_ALIASES, 'header', 'options', 'choices', 'multiSelect']) {
-      delete normalized[key];
-    }
+  if (Array.isArray(input.questions)) {
     return {
-      ...normalized,
-      questions: [singleQuestion]
+      questions: input.questions.map(normalizeQuestionInput),
+      ...commonFields
     };
   }
-  return normalized;
+  if (typeof input.question === 'string' && Array.isArray(input.options)) {
+    return {
+      questions: [normalizeQuestionInput(input, 0)],
+      ...commonFields
+    };
+  }
+  return value;
 }
-function boundedText(max: number, field: string) {
-  return z.string().trim().min(1, `${field} cannot be empty`).max(max, `${field} must be at most ${max} characters`).refine(value => !CONTROL_OR_ANSI_RE.test(value), `${field} must not contain control or ANSI escape characters`);
-}
+const questionOptionSchema = lazySchema(() => z.object({
+  label: z.string().describe('The choice itself, 1-5 words. Name the option, do not restate the question: for "Which database?" use "PostgreSQL", not "Use PostgreSQL for the database".'),
+  description: z.string().describe('What actually happens if this is chosen, and the cost of choosing it — the information the user needs that the label does not already give them. Must NOT restate the label in a full sentence. Bad: label "PostgreSQL" / description "Use PostgreSQL." Good: label "PostgreSQL" / description "Relational, strong consistency; needs a running server and a migration step." Include the trade-off, limitation, or consequence that makes this choice different from the others.'),
+  preview: z.string().optional().describe('Optional preview content rendered when this option is focused. Use for mockups, code snippets, or visual comparisons that help users compare options. See the tool description for the expected content format.')
+}));
+const questionSchema = lazySchema(() => z.object({
+  question: z.string().describe('The complete question to ask the user. Should be clear, specific, and end with a question mark. Example: "Which library should we use for date formatting?" If multiSelect is true, phrase it accordingly, e.g. "Which features do you want to enable?"'),
+  header: z.string().describe(`The category being decided, as a chip/tag (max ${ASK_USER_QUESTION_TOOL_CHIP_WIDTH} chars). Name the dimension, not the question: for "Which database should we use?" the header is "Database", not "Which DB". Examples: "Auth method", "Library", "Approach".`),
+  options: z.array(questionOptionSchema()).min(2).max(8).describe(`REQUIRED: 2-8 concrete choices. A question with no options is not askable here — if you cannot name at least two specific answers, the question is open-ended, so ask it in plain assistant text instead of calling this tool. Do not call this tool with a prose question and omit options. Keep options concise and distinct; there should be no 'Other' option, that will be provided automatically.`),
+  multiSelect: z.boolean().default(false).describe('Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.')
+}));
+const annotationsSchema = lazySchema(() => {
+  const annotationSchema = z.object({
+    preview: z.string().optional().describe('The preview content of the selected option, if the question used previews.'),
+    notes: z.string().optional().describe('Free-text notes the user added to their selection.')
+  });
+  return z.record(z.string(), annotationSchema).optional().describe('Optional per-question annotations from the user (e.g., notes on preview selections). Keyed by question text.');
+});
 const UNIQUENESS_REFINE = {
   check: (data: {
     questions: {
@@ -140,79 +128,44 @@ const UNIQUENESS_REFINE = {
       }[];
     }[];
   }) => {
-    const questions = data.questions.map(q => q.question.toLocaleLowerCase());
+    const questions = data.questions.map(q => q.question);
     if (questions.length !== new Set(questions).size) {
       return false;
     }
     for (const question of data.questions) {
-      const labels = question.options.map(opt => opt.label.toLocaleLowerCase());
+      const labels = question.options.map(opt => opt.label);
       if (labels.length !== new Set(labels).size) {
         return false;
       }
     }
     return true;
   },
-  message: 'Question texts must be unique, and option labels must be unique within each question (ignoring case)'
+  message: 'Question texts must be unique, option labels must be unique within each question'
 } as const;
-const questionOptionSchema = lazySchema(() => z.strictObject({
-  label: boundedText(MAX_LABEL_CHARS, 'Option label').refine(label => {
-    const normalized = label.trim().toLocaleLowerCase();
-    return normalized !== 'other' && normalized !== '__other__';
-  }, 'Do not provide an Other option; the UI supplies it automatically.').describe('The concise name of this choice, usually 1-5 words. It must be distinct from every other label in this question.'),
-  description: boundedText(MAX_DESCRIPTION_CHARS, 'Option description').optional().describe('Optional consequence, trade-off, or limitation that adds information beyond the label. Omit it when there is nothing useful to add; never duplicate the label merely to fill this field.'),
-  preview: z.string().max(MAX_PREVIEW_CHARS, `Option preview must be at most ${MAX_PREVIEW_CHARS} characters`).refine(value => value.split(/\r?\n/).length <= MAX_PREVIEW_LINES, `Option preview must be at most ${MAX_PREVIEW_LINES} lines`).optional().describe('Optional bounded preview content rendered when this option is focused.')
-}));
-const questionSchema = lazySchema(() => z.strictObject({
-  question: boundedText(MAX_QUESTION_CHARS, 'Question').refine(question => !RESERVED_RECORD_KEYS.has(question), 'Question text uses a reserved record key; rephrase it.').describe('The complete, specific decision question shown to the user. Ask one decision per object.'),
-  header: boundedText(ASK_USER_QUESTION_TOOL_CHIP_WIDTH, 'Question header').describe(`A short category chip naming the decision dimension, not a shortened question (max ${ASK_USER_QUESTION_TOOL_CHIP_WIDTH} characters; for “Which database?” use “Database”).`),
-  options: z.array(questionOptionSchema()).min(2).max(MAX_OPTIONS).describe(`REQUIRED: 2-${MAX_OPTIONS} concrete choices nested inside this question object. Do not put option rows directly in the top-level questions array.`),
-  multiSelect: z.boolean().optional().describe('Set to true only when choices are not mutually exclusive. Omit it for ordinary single-select questions.')
-}).refine(question => !(question.multiSelect && question.options.some(option => option.preview !== undefined)), {
-  message: 'Preview choices are single-select only; remove previews or set multiSelect to false.'
-}));
-const annotationsSchema = lazySchema(() => {
-  const annotationSchema = z.strictObject({
-    preview: z.string().max(MAX_PREVIEW_CHARS).optional(),
-    notes: z.string().trim().max(MAX_ANSWER_CHARS).optional()
-  });
-  return z.record(z.string(), annotationSchema).optional();
-});
-const responseFields = lazySchema(() => ({
-  answers: z.record(z.string(), z.string().trim().min(1).max(MAX_ANSWER_CHARS)).optional(),
-  annotations: annotationsSchema()
-}));
-const metadataSchema = lazySchema(() => z.strictObject({
-  source: z.string().trim().min(1).max(100).optional()
-}).optional());
-const requestObjectSchema = lazySchema(() => z.strictObject({
-  questions: z.array(questionSchema()).min(1).max(MAX_QUESTIONS).describe(`Questions to ask the user (1-${MAX_QUESTIONS}). Ask only decisions that materially affect the result and cannot be inferred.`),
-  metadata: metadataSchema()
-}).refine(UNIQUENESS_REFINE.check, {
-  message: UNIQUENESS_REFINE.message
-}).refine(input => JSON.stringify(input).length <= MAX_TOTAL_INPUT_CHARS, {
-  message: `AskUserQuestion input must be at most ${MAX_TOTAL_INPUT_CHARS} characters`
+const commonFields = lazySchema(() => ({
+  answers: z.record(z.string(), z.string()).optional().describe('User answers collected by the permission component'),
+  annotations: annotationsSchema(),
+  metadata: z.object({
+    source: z.string().optional().describe('Optional identifier for the source of this question (e.g., "remember" for /remember command). Used for analytics tracking.')
+  }).optional().describe('Optional metadata for tracking and analytics purposes. Not displayed to user.')
 }));
 const inputSchema = lazySchema(() => z.preprocess(normalizeAskUserQuestionInput, z.strictObject({
-  questions: z.array(questionSchema()).min(1).max(MAX_QUESTIONS),
-  metadata: metadataSchema(),
-  ...responseFields()
+  questions: z.array(questionSchema()).min(1).max(4).describe('Questions to ask the user (1-4 questions)'),
+  ...commonFields()
 }).refine(UNIQUENESS_REFINE.check, {
   message: UNIQUENESS_REFINE.message
-}).refine(input => JSON.stringify(input).length <= MAX_TOTAL_INPUT_CHARS, {
-  message: `AskUserQuestion input must be at most ${MAX_TOTAL_INPUT_CHARS} characters`
 })));
-const modelInputJSONSchema = zodToJsonSchema(requestObjectSchema()) as ToolInputJSONSchema;
 type InputSchema = ReturnType<typeof inputSchema>;
-const outputSchema = lazySchema(() => z.strictObject({
+const outputSchema = lazySchema(() => z.object({
   questions: z.array(questionSchema()).describe('The questions that were asked'),
-  answers: z.record(z.string(), z.string().trim().min(1).max(MAX_ANSWER_CHARS)).describe('The answers provided by the user (question text -> answer string; multi-select answers are comma-separated)'),
+  answers: z.record(z.string(), z.string()).describe('The answers provided by the user (question text -> answer string; multi-select answers are comma-separated)'),
   annotations: annotationsSchema()
 }));
 type OutputSchema = ReturnType<typeof outputSchema>;
 
-// SDK callers request questions. Answers and annotations are trusted response
-// fields injected only after the permission UI has collected user input.
-export const _sdkInputSchema = requestObjectSchema;
+// SDK schemas are identical to internal schemas now that `preview` and
+// `annotations` are public (configurable via `toolConfig.askUserQuestion`).
+export const _sdkInputSchema = inputSchema;
 export const _sdkOutputSchema = outputSchema;
 export type Question = z.infer<ReturnType<typeof questionSchema>>;
 export type QuestionOption = z.infer<ReturnType<typeof questionOptionSchema>>;
@@ -263,7 +216,6 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
   get inputSchema(): InputSchema {
     return inputSchema();
   },
-  inputJSONSchema: modelInputJSONSchema,
   get outputSchema(): OutputSchema {
     return outputSchema();
   },
@@ -293,10 +245,14 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
   requiresUserInteraction() {
     return true;
   },
-  async validateInput(input, context) {
-    const {
-      questions
-    } = input;
+  async validateInput({
+    questions
+  }) {
+    if (getQuestionPreviewFormat() !== 'html') {
+      return {
+        result: true
+      };
+    }
     for (const q of questions) {
       for (const opt of q.options) {
         const err = validateHtmlPreview(opt.preview);
@@ -308,45 +264,6 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
           };
         }
       }
-    }
-    if (context.validationPhase !== 'post-permission') {
-      if (Object.prototype.hasOwnProperty.call(input, 'answers') || Object.prototype.hasOwnProperty.call(input, 'annotations')) {
-        return {
-          result: false,
-          message: 'answers and annotations are response fields supplied only after trusted user interaction; omit them from the tool request',
-          errorCode: 1
-        };
-      }
-      return {
-        result: true
-      };
-    }
-    if (!Object.prototype.hasOwnProperty.call(input, 'answers') || !input.answers) {
-      return {
-        result: false,
-        message: 'No verified user answers were collected. AskUserQuestion cannot complete from an unchanged permission approval.',
-        errorCode: 1
-      };
-    }
-    const expectedQuestions = new Set(questions.map(question => question.question));
-    const answerKeys = Object.keys(input.answers);
-    const missingAnswers = questions.filter(question => !Object.prototype.hasOwnProperty.call(input.answers, question.question)).map(question => question.question);
-    const unexpectedAnswers = answerKeys.filter(key => !expectedQuestions.has(key));
-    if (missingAnswers.length > 0 || unexpectedAnswers.length > 0) {
-      const details = [...(missingAnswers.length > 0 ? [`missing: ${missingAnswers.join(', ')}`] : []), ...(unexpectedAnswers.length > 0 ? [`unexpected: ${unexpectedAnswers.join(', ')}`] : [])].join('; ');
-      return {
-        result: false,
-        message: `Verified answers must contain exactly one entry for every question (${details}).`,
-        errorCode: 1
-      };
-    }
-    const unexpectedAnnotations = Object.keys(input.annotations ?? {}).filter(key => !expectedQuestions.has(key));
-    if (unexpectedAnnotations.length > 0) {
-      return {
-        result: false,
-        message: `User annotations contain unknown question keys: ${unexpectedAnnotations.join(', ')}`,
-        errorCode: 1
-      };
     }
     return {
       result: true
@@ -381,12 +298,9 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
   },
   async call({
     questions,
-    answers,
+    answers = {},
     annotations
   }, _context) {
-    if (!answers) {
-      throw new Error('AskUserQuestion reached execution without verified user answers');
-    }
     return {
       data: {
         questions,
@@ -425,10 +339,17 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
 // (did it emit HTML?) and catching the specific things we told it not to do.
 function validateHtmlPreview(preview: string | undefined): string | null {
   if (preview === undefined) return null;
-  if (getQuestionPreviewFormat() !== 'html') return null;
-  const safeTextWrapper = preview.match(/^<pre data-ur-preview="text">([\s\S]*)<\/pre>$/);
-  if (!safeTextWrapper || safeTextWrapper[1]?.includes('<')) {
-    return 'HTML previews must use UR’s escaped text wrapper; raw model-provided HTML is not rendered';
+  if (/<\s*(html|body|!doctype)\b/i.test(preview)) {
+    return 'preview must be an HTML fragment, not a full document (no <html>, <body>, or <!DOCTYPE>)';
+  }
+  // SDK consumers typically set this via innerHTML — disallow executable/style
+  // tags so a preview can't run code or restyle the host page. Inline event
+  // handlers (onclick etc.) are still possible; consumers should sanitize.
+  if (/<\s*(script|style)\b/i.test(preview)) {
+    return 'preview must not contain <script> or <style> tags. Use inline styles via the style attribute if needed.';
+  }
+  if (!/<[a-z][^>]*>/i.test(preview)) {
+    return 'preview must contain HTML (previewFormat is set to "html"). Wrap content in a tag like <div> or <pre>.';
   }
   return null;
 }

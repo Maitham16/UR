@@ -151,9 +151,9 @@ export const ComputerTool = buildTool({
     // Input events go to whichever window has focus; two at once interleave.
     return false
   },
-  isReadOnly(input) {
-    // Screenshot is a read. Click/type remain state-changing and task-gated.
-    return input.action === 'screenshot'
+  isReadOnly() {
+    // Screenshots read, but the tool as a whole can type and click.
+    return false
   },
   isEnabled() {
     return supportedPlatform() !== null

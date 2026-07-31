@@ -93,15 +93,7 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
     return input.team_name
   },
 
-  async validateInput(input, context) {
-    if (context.getAppState().toolPermissionContext.mode === 'plan') {
-      return {
-        result: false,
-        message:
-          'TeamCreate is unavailable in plan mode because it changes team and task state. Finish and approve the plan before creating a team; use read-only Explore or Plan agents for planning research.',
-        errorCode: 9,
-      }
-    }
+  async validateInput(input, _context) {
     if (!input.team_name || input.team_name.trim().length === 0) {
       return {
         result: false,
@@ -136,11 +128,6 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
   async call(input, context) {
     const { setAppState, getAppState } = context
     const { team_name, description: _description, agent_type } = input
-    if (getAppState().toolPermissionContext.mode === 'plan') {
-      throw new Error(
-        'TeamCreate is unavailable in plan mode because it changes team and task state.',
-      )
-    }
 
     // Check if already in a team - restrict to one team per leader
     const appState = getAppState()

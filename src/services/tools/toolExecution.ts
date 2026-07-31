@@ -37,12 +37,7 @@ import {
   type ToolProgress,
   type ToolProgressData,
   type ToolUseContext,
-  toolMatchesName,
 } from '../../Tool.js'
-import {
-  AGENT_TOOL_NAME,
-  READ_ONLY_PLAN_AGENT_TYPES,
-} from '../../tools/AgentTool/constants.js'
 import type { BashToolInput } from '../../tools/BashTool/BashTool.js'
 import { startSpeculativeClassifierCheck } from '../../tools/BashTool/bashPermissions.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
@@ -52,13 +47,10 @@ import { FILE_WRITE_TOOL_NAME } from '../../tools/FileWriteTool/prompt.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '../../tools/NotebookEditTool/constants.js'
 import { POWERSHELL_TOOL_NAME } from '../../tools/PowerShellTool/toolName.js'
 import { parseGitCommitId } from '../../tools/shared/gitOperationTracking.js'
-import { TASK_CREATE_TOOL_NAME } from '../../tools/TaskCreateTool/constants.js'
-import { TASK_UPDATE_TOOL_NAME } from '../../tools/TaskUpdateTool/constants.js'
 import {
   isDeferredTool,
   TOOL_SEARCH_TOOL_NAME,
 } from '../../tools/ToolSearchTool/prompt.js'
-import { TODO_WRITE_TOOL_NAME } from '../../tools/TodoWriteTool/constants.js'
 import { getAllBaseTools } from '../../tools.js'
 import type { HookProgress } from '../../types/hooks.js'
 import type {
@@ -84,7 +76,6 @@ import {
 } from '../../utils/hooks.js'
 import { appendProjectMemory } from '../../services/context/projectContextManifest.js'
 import { logError } from '../../utils/log.js'
-import { getPlanFilePath } from '../../utils/plans.js'
 import {
   CANCEL_MESSAGE,
   createProgressMessage,
@@ -132,9 +123,6 @@ import {
 import {
   checkTaskListGate,
   countActionableTasksForGate,
-  countActionableTodosForGate,
-  isMutationRequiringTaskList,
-  isPlanArtifactMutationForGate,
 } from './taskListGate.js'
 import {
   callSignature,
@@ -145,35 +133,24 @@ import {
 } from './repeatedFailureGuard.js'
 
 /**
+ * How many tasks exist for this session.
+ *
+ * Returns a permissive count on any failure. A gate that blocks every tool
+ * call because the task directory was briefly unreadable would be worse than
+ * the problem it solves, so an unknown count is treated as "a list exists".
+ */
+/**
  * Tool calls already made, which is what the gate's allowance is about.
  * Message count is not a proxy for it: a long conversation with no tool use
  * would exhaust the allowance before the agent had done anything.
  */
-const TASK_GATE_FREE_CALL_COUNT_SATURATION = Number.MAX_SAFE_INTEGER
-
 function countToolCalls(
   messages: unknown,
   excludedMessageId?: string,
 ): number {
   if (!Array.isArray(messages)) return 0
   let count = 0
-  let freeCallsConsumed = false
   for (const message of messages) {
-    const compactBoundary = message as {
-      type?: unknown
-      subtype?: unknown
-      compactMetadata?: {
-        taskGateFreeCallsConsumed?: unknown
-      }
-    }
-    if (
-      compactBoundary.type === 'system' &&
-      compactBoundary.subtype === 'compact_boundary' &&
-      compactBoundary.compactMetadata?.taskGateFreeCallsConsumed === true
-    ) {
-      freeCallsConsumed = true
-    }
-
     const envelope = (
       message as {
         message?: { id?: unknown; content?: unknown }
@@ -191,9 +168,7 @@ function countToolCalls(
       if ((block as { type?: string })?.type === 'tool_use') count++
     }
   }
-  return freeCallsConsumed
-    ? TASK_GATE_FREE_CALL_COUNT_SATURATION
-    : count
+  return count
 }
 
 /**
@@ -212,7 +187,6 @@ export function countToolCallsBeforeCurrent(
     messages,
     typeof currentMessageId === 'string' ? currentMessageId : undefined,
   )
-  if (count === TASK_GATE_FREE_CALL_COUNT_SATURATION) return count
   const currentContent = assistantMessage.message?.content
   if (!Array.isArray(currentContent)) return count
   for (const block of currentContent) {
@@ -225,162 +199,15 @@ export function countToolCallsBeforeCurrent(
   return count
 }
 
-async function countTasksForGate(
-  toolUseContext: ToolUseContext,
-): Promise<{
-  actionableCount: number
-  totalCount: number
-} | null> {
+async function countTasksForGate(): Promise<number | null> {
   try {
-    const { getTaskListId, inspectTaskListForGate, isTodoV2Enabled } =
+    const { getTaskListId, inspectTaskListForGate } =
       await import('../../utils/tasks.js')
-    if (!isTodoV2Enabled()) {
-      const todoKey = toolUseContext.agentId ?? getSessionId()
-      const todos = toolUseContext.getAppState().todos?.[todoKey] ?? []
-      return {
-        actionableCount: countActionableTodosForGate(todos),
-        totalCount: todos.length,
-      }
-    }
     const inspection = await inspectTaskListForGate(getTaskListId())
-    const userTasks = inspection.tasks.filter(
-      task => !task.metadata?._internal,
-    )
-    return {
-      actionableCount: countActionableTasksForGate(userTasks),
-      totalCount: userTasks.length,
-    }
+    return countActionableTasksForGate(inspection.tasks)
   } catch {
     return null
   }
-}
-
-function isCurrentPlanArtifactMutation(
-  toolName: string,
-  input: unknown,
-  toolUseContext: ToolUseContext,
-): boolean {
-  if (
-    toolName !== FILE_WRITE_TOOL_NAME &&
-    toolName !== FILE_EDIT_TOOL_NAME &&
-    toolName !== 'MultiEdit' &&
-    toolName !== BASH_TOOL_NAME
-  ) {
-    return false
-  }
-  try {
-    const isPlanMode =
-      toolUseContext.getAppState().toolPermissionContext.mode === 'plan'
-    if (!isPlanMode) return false
-    return isPlanArtifactMutationForGate({
-      toolName,
-      toolInput: input,
-      expectedPlanFile: getPlanFilePath(toolUseContext.agentId),
-      isPlanMode,
-    })
-  } catch {
-    // Failing to resolve the session plan must not exempt a mutation.
-    return false
-  }
-}
-
-/**
- * The Agent tool is conservatively mutating because ordinary workers can edit
- * the workspace. During plan mode, however, the built-in Explore and Plan
- * definitions have editing/delegation tools removed and exist specifically to
- * gather read-only evidence. Recognize only those exact active built-ins.
- *
- * Custom agents that reuse either name, teammates, background agents, and
- * isolated/cwd launches stay mutating and therefore remain task-gated.
- */
-export function isReadOnlyPlanAgentDelegation(
-  tool: { name: string; aliases?: string[] },
-  input: unknown,
-  toolUseContext: Pick<ToolUseContext, 'getAppState' | 'options'>,
-): boolean {
-  try {
-    if (
-      toolUseContext.getAppState().toolPermissionContext.mode !== 'plan' ||
-      !toolMatchesName(tool, AGENT_TOOL_NAME) ||
-      typeof input !== 'object' ||
-      input === null
-    ) {
-      return false
-    }
-
-    const candidate = input as Record<string, unknown>
-    if (
-      typeof candidate.subagent_type !== 'string' ||
-      !READ_ONLY_PLAN_AGENT_TYPES.has(candidate.subagent_type) ||
-      candidate.name !== undefined ||
-      candidate.team_name !== undefined ||
-      candidate.mode !== undefined ||
-      candidate.isolation !== undefined ||
-      candidate.cwd !== undefined ||
-      candidate.run_in_background === true
-    ) {
-      return false
-    }
-
-    const activeAgent =
-      toolUseContext.options.agentDefinitions?.activeAgents?.find(
-        agent => agent.agentType === candidate.subagent_type,
-      )
-    return activeAgent?.source === 'built-in'
-  } catch {
-    // Missing or malformed runtime state must never create a gate bypass.
-    return false
-  }
-}
-
-/**
- * Identify a live child context created from one of the exact built-in
- * planning definitions. Parent-side Agent classification alone is not enough:
- * this child boundary prevents a model from turning Bash (or any future tool)
- * into a mutation even if a task already exists or permission rules allow it.
- */
-export function isBuiltInReadOnlyPlanningSubagent(
-  toolUseContext: Pick<
-    ToolUseContext,
-    'agentId' | 'agentType' | 'options'
-  >,
-): boolean {
-  if (
-    !toolUseContext.agentId ||
-    !toolUseContext.agentType ||
-    !READ_ONLY_PLAN_AGENT_TYPES.has(toolUseContext.agentType)
-  ) {
-    return false
-  }
-  return (
-    toolUseContext.options.agentDefinitions?.activeAgents?.find(
-      agent => agent.agentType === toolUseContext.agentType,
-    )?.source === 'built-in'
-  )
-}
-
-function getTaskPlanningToolName(
-  toolUseContext: ToolUseContext,
-): string | null {
-  const hasTaskCreate = toolUseContext.options.tools.some(tool =>
-    toolMatchesName(tool, TASK_CREATE_TOOL_NAME),
-  )
-  const hasTaskUpdate = toolUseContext.options.tools.some(tool =>
-    toolMatchesName(tool, TASK_UPDATE_TOOL_NAME),
-  )
-  if (hasTaskCreate && hasTaskUpdate) {
-    return TASK_CREATE_TOOL_NAME
-  }
-  if (
-    toolUseContext.options.tools.some(tool =>
-      toolMatchesName(tool, TODO_WRITE_TOOL_NAME),
-    )
-  ) {
-    return TODO_WRITE_TOOL_NAME
-  }
-  if (hasTaskCreate) return TASK_CREATE_TOOL_NAME
-  if (hasTaskUpdate) return TASK_UPDATE_TOOL_NAME
-  return null
 }
 
 function getStopHookInfo(attachment: unknown): StopHookInfo | null {
@@ -411,36 +238,6 @@ function repeatedFailureScope(
     `session:${getSessionId()}:agent:${toolUseContext.agentId ?? 'main'}:` +
     `turn:${fallbackTurnId ?? 'untracked'}`
   )
-}
-
-/**
- * Match the narrow extra-key recovery performed by the execution validator.
- * Outer preflight exceptions are recorded by runToolUse; using the raw input
- * there would create a different repeat signature from the cleaned input that
- * checkPermissionsAndCallTool checks on the next attempt.
- */
-function repeatSignatureInput(tool: Tool, input: unknown): unknown {
-  const parsedInput = tool.inputSchema.safeParse(input)
-  if (
-    parsedInput.success ||
-    parsedInput.error.issues.length === 0 ||
-    !parsedInput.error.issues.every(
-      issue => issue.code === 'unrecognized_keys',
-    )
-  ) {
-    return input
-  }
-  const { input: cleaned, stripped } = stripUnrecognizedKeys(
-    input,
-    parsedInput.error.issues,
-  )
-  if (
-    stripped.length > 0 &&
-    tool.inputSchema.safeParse(cleaned).success
-  ) {
-    return cleaned
-  }
-  return input
 }
 import {
   McpAuthError,
@@ -625,7 +422,7 @@ function findMcpServerConnection(
   }
 
   // mcpInfo.serverName is normalized (e.g., "ur_ai_Slack"), but client.name
-  // is the original name (e.g., "ur.com Slack"). Normalize both for comparison.
+  // is the original name (e.g., "ur.ai Slack"). Normalize both for comparison.
   return mcpClients.find(
     client => normalizeNameForMCP(client.name) === mcpInfo.serverName,
   )
@@ -844,7 +641,7 @@ export async function* runToolUse(
       recordCallFailure(
         callSignature(
           tool.name,
-          repeatSignatureInput(tool, toolInput),
+          toolInput,
           repeatedFailureScope(toolUseContext, messageId),
         ),
       )
@@ -1214,55 +1011,14 @@ async function checkPermissionsAndCallTool(
   // calls. Tool defaults classify unknown implementations as non-read-only.
   let isMutating = true
   try {
-    isMutating =
-      !tool.isReadOnly(parsedInput.data) &&
-      !isReadOnlyPlanAgentDelegation(tool, parsedInput.data, toolUseContext)
+    isMutating = !tool.isReadOnly(parsedInput.data)
   } catch {
     // Classification failures must not become a bypass.
     isMutating = true
   }
-  const isPlanArtifactMutation = isCurrentPlanArtifactMutation(
-    tool.name,
-    parsedInput.data,
-    toolUseContext,
-  )
-  let isTaskListReadOnly = false
-  try {
-    isTaskListReadOnly = Boolean(
-      tool.isTaskListReadOnly?.(parsedInput.data),
-    )
-  } catch {
-    // A task-classification failure cannot become a mutation bypass.
-    isTaskListReadOnly = false
-  }
-  const isTaskListGatedMutation = isMutationRequiringTaskList({
-    toolName: tool.name,
-    toolInput: parsedInput.data,
-    isMutating: isMutating && !isTaskListReadOnly,
-  })
-  if (isMutating && isBuiltInReadOnlyPlanningSubagent(toolUseContext)) {
-    recordCallFailure(callSig)
-    return [
-      {
-        message: createUserMessage({
-          content: [
-            {
-              type: 'tool_result',
-              content:
-                '<tool_use_error>ReadOnlyPlanningAgent: Built-in Explore and Plan agents may only perform read-only operations. Return your findings to the parent agent instead of changing state.</tool_use_error>',
-              is_error: true,
-              tool_use_id: toolUseID,
-            },
-          ],
-        }),
-      },
-    ]
-  }
-  const taskCounts = await countTasksForGate(toolUseContext)
   const gate = checkTaskListGate({
     toolName: tool.name,
-    taskCount: taskCounts?.actionableCount ?? null,
-    totalTaskCount: taskCounts?.totalCount ?? null,
+    taskCount: await countTasksForGate(),
     // Tool calls, not messages. Counting messages meant any conversation at
     // all pushed this past the threshold, so the allowance for simple
     // single-step work never applied and the gate fired on the first Write.
@@ -1272,9 +1028,7 @@ async function checkPermissionsAndCallTool(
       toolUseID,
     ),
     isSubagent: Boolean(toolUseContext.agentId),
-    isMutating: isTaskListGatedMutation,
-    isPlanArtifactMutation,
-    taskPlanningToolName: getTaskPlanningToolName(toolUseContext),
+    isMutating,
   })
   if (gate.allowed === false) {
     // Counts toward the repeat guard: a model that answers the gate by
@@ -1358,14 +1112,6 @@ async function checkPermissionsAndCallTool(
     tool.backfillObservableInput!(backfilledClone as Record<string, unknown>)
     processedInput = backfilledClone
   }
-  // Hooks receive the mutable observable clone. Keep the post-backfill path
-  // separately so an in-place hook rewrite cannot mutate both the value and
-  // the supposed comparison baseline, making a real path change look
-  // unchanged at the final execution boundary.
-  const backfilledFilePathSnapshot =
-    backfilledClone && 'file_path' in backfilledClone
-      ? (backfilledClone as Record<string, unknown>).file_path
-      : undefined
 
   let shouldPreventContinuation = false
   let stopReason: string | undefined
@@ -1750,22 +1496,13 @@ async function checkPermissionsAndCallTool(
     'file_path' in processedInput &&
     'file_path' in (callInput as Record<string, unknown>) &&
     (processedInput as Record<string, unknown>).file_path ===
-      backfilledFilePathSnapshot
+      (backfilledClone as Record<string, unknown>).file_path
   ) {
     callInput = {
       ...processedInput,
       file_path: (callInput as Record<string, unknown>).file_path,
     } as typeof processedInput
-  } else if (
-    processedInput !== backfilledClone ||
-    (processedInput === backfilledClone &&
-      backfilledFilePathSnapshot !== undefined &&
-      (typeof processedInput !== 'object' ||
-        processedInput === null ||
-        !('file_path' in processedInput) ||
-        (processedInput as Record<string, unknown>).file_path !==
-          backfilledFilePathSnapshot))
-  ) {
+  } else if (processedInput !== backfilledClone) {
     callInput = processedInput
   }
 
@@ -1868,16 +1605,10 @@ async function checkPermissionsAndCallTool(
     return resultingMessages
   }
 
-  // Interactive tools receive trusted response fields from their permission
-  // UI. Always run their post-permission validation, even when a generic hook
-  // approved the unchanged request: approval alone is not a user answer.
-  if (callSig !== initiallyValidatedCallSig || tool.requiresUserInteraction?.()) {
+  if (callSig !== initiallyValidatedCallSig) {
     const finalValidation = await tool.validateInput?.(
       finalParsedInput.data,
-      {
-        ...toolUseContext,
-        validationPhase: 'post-permission',
-      },
+      toolUseContext,
     )
     if (finalValidation?.result === false) {
       recordCallFailure(callSig)
@@ -1902,82 +1633,21 @@ async function checkPermissionsAndCallTool(
 
   let finalIsMutating = true
   try {
-    finalIsMutating =
-      !tool.isReadOnly(finalParsedInput.data) &&
-      !isReadOnlyPlanAgentDelegation(
-        tool,
-        finalParsedInput.data,
-        toolUseContext,
-      )
+    finalIsMutating = !tool.isReadOnly(finalParsedInput.data)
   } catch {
     finalIsMutating = true
   }
-  const finalIsPlanArtifactMutation = isCurrentPlanArtifactMutation(
-    tool.name,
-    finalParsedInput.data,
-    toolUseContext,
-  )
-  let finalIsTaskListReadOnly = false
-  try {
-    finalIsTaskListReadOnly = Boolean(
-      tool.isTaskListReadOnly?.(finalParsedInput.data),
-    )
-  } catch {
-    finalIsTaskListReadOnly = false
-  }
-  const finalIsTaskListGatedMutation = isMutationRequiringTaskList({
-    toolName: tool.name,
-    toolInput: finalParsedInput.data,
-    isMutating: finalIsMutating && !finalIsTaskListReadOnly,
-  })
-  if (
-    finalIsMutating &&
-    isBuiltInReadOnlyPlanningSubagent(toolUseContext)
-  ) {
-    recordCallFailure(callSig)
-    finishPreExecutionRejection()
-    resultingMessages.push({
-      message: createUserMessage({
-        content: [
-          {
-            type: 'tool_result',
-            content:
-              '<tool_use_error>ReadOnlyPlanningAgent after input update: Built-in Explore and Plan agents may only perform read-only operations. Return your findings to the parent agent instead of changing state.</tool_use_error>',
-            is_error: true,
-            tool_use_id: toolUseID,
-          },
-        ],
-        sourceToolAssistantUUID: assistantMessage.uuid,
-      }),
-    })
-    return resultingMessages
-  }
-  const effectiveCallChanged =
-    callSig !== initiallyValidatedCallSig ||
-    finalIsMutating !== isMutating ||
-    finalIsTaskListGatedMutation !== isTaskListGatedMutation ||
-    finalIsPlanArtifactMutation !== isPlanArtifactMutation
-  // Re-read task state for every ordinary mutation, even when hooks and the
-  // permission UI returned the input unchanged. A task can be completed,
-  // deleted, or become unreadable while permission is pending; relying only
-  // on the initial snapshot would let that unchanged call cross the boundary
-  // with no longer-verifiable plan. Read-only calls and the exact plan
-  // artifact do not need a second task-store read.
-  if (finalIsTaskListGatedMutation && !finalIsPlanArtifactMutation) {
-    const finalTaskCounts = await countTasksForGate(toolUseContext)
+  if (callSig !== initiallyValidatedCallSig || finalIsMutating !== isMutating) {
     const finalGate = checkTaskListGate({
       toolName: tool.name,
-      taskCount: finalTaskCounts?.actionableCount ?? null,
-      totalTaskCount: finalTaskCounts?.totalCount ?? null,
+      taskCount: await countTasksForGate(),
       readsSoFar: countToolCallsBeforeCurrent(
         toolUseContext.messages,
         assistantMessage,
         toolUseID,
       ),
       isSubagent: Boolean(toolUseContext.agentId),
-      isMutating: finalIsTaskListGatedMutation,
-      isPlanArtifactMutation: finalIsPlanArtifactMutation,
-      taskPlanningToolName: getTaskPlanningToolName(toolUseContext),
+      isMutating: finalIsMutating,
     })
     if (finalGate.allowed === false) {
       recordCallFailure(callSig)
@@ -1987,10 +1657,7 @@ async function checkPermissionsAndCallTool(
           content: [
             {
               type: 'tool_result',
-              content:
-                `<tool_use_error>TaskListRequired ` +
-                `${effectiveCallChanged ? 'after input update' : 'before execution'}: ` +
-                `${finalGate.reason}</tool_use_error>`,
+              content: `<tool_use_error>TaskListRequired after input update: ${finalGate.reason}</tool_use_error>`,
               is_error: true,
               tool_use_id: toolUseID,
             },

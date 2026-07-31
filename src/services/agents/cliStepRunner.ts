@@ -11,16 +11,11 @@ import type { StepRunInput, StepRunOutput, StepRunner, Verdict } from './executo
  *   verdict so a workflow can be previewed (and the engine exercised) offline.
  */
 
-const VERDICT_LINE_RE =
-  /^\s*(?:(?:\*\*|__)\s*)?VERDICT:\s*(PASS|FAIL|PARTIAL)\s*(?:(?:\*\*|__)\s*)?[.!]?\s*$/gimu
+const VERDICT_RE = /\bVERDICT:\s*(PASS|FAIL|PARTIAL)\b/i
 
 export function extractVerdict(text: string): Verdict | null {
-  const matches = [...text.matchAll(VERDICT_LINE_RE)]
-  // A verdict is control data. Ignore inline mentions and fail closed when a
-  // model emits disagreeing/multiple verdict lines instead of guessing which
-  // one it intended.
-  if (matches.length !== 1) return null
-  return matches[0]?.[1]?.toUpperCase() as Verdict
+  const match = VERDICT_RE.exec(text)
+  return match ? (match[1].toUpperCase() as Verdict) : null
 }
 
 /** Resolve {{depId}} / {{prior}} placeholders and append reviewer feedback. */
@@ -58,7 +53,7 @@ function pickResultText(parsed: unknown): string | null {
   if (Array.isArray(parsed)) {
     for (let i = parsed.length - 1; i >= 0; i--) {
       const found = pickResultText(parsed[i])
-      if (found !== null) return found
+      if (found) return found
     }
     return null
   }
@@ -80,36 +75,19 @@ export type CliStepRunnerOptions = {
   bin?: { file: string; baseArgs: string[] }
 }
 
-export function buildCliStepArgs(
-  input: StepRunInput,
-  options: CliStepRunnerOptions,
-): string[] {
-  const prompt = compileStepPrompt(input)
-  const baseArgs = options.bin?.baseArgs ?? [process.argv[1] ?? '']
-  const args = [...baseArgs, '-p', '--output-format', 'json']
-  if (options.maxTurns && options.maxTurns > 0) {
-    args.push('--max-turns', String(options.maxTurns))
-  }
-  if (options.skipPermissions) {
-    args.push('--dangerously-skip-permissions')
-  }
-  // A workflow step's agent is executable configuration, not display-only
-  // metadata. Forward it to the child session so built-in and project-defined
-  // agent prompts actually govern that step.
-  args.push('--agent', input.step.agent)
-  // Commander treats --tools as variadic. Put the positional prompt first and
-  // the comma-delimited tool pool last so the option cannot consume it.
-  args.push(prompt)
-  if (input.step.allowedTools?.length) {
-    args.push('--tools', input.step.allowedTools.join(','))
-  }
-  return args
-}
-
 export function makeCliStepRunner(options: CliStepRunnerOptions): StepRunner {
   return async (input: StepRunInput): Promise<StepRunOutput> => {
+    const prompt = compileStepPrompt(input)
     const file = options.bin?.file ?? process.execPath
-    const args = buildCliStepArgs(input, options)
+    const baseArgs = options.bin?.baseArgs ?? [process.argv[1] ?? '']
+    const args = [...baseArgs, '-p', '--output-format', 'json']
+    if (options.maxTurns && options.maxTurns > 0) {
+      args.push('--max-turns', String(options.maxTurns))
+    }
+    if (options.skipPermissions) {
+      args.push('--dangerously-skip-permissions')
+    }
+    args.push(prompt)
 
     const result = await execFileNoThrowWithCwd(file, args, {
       cwd: options.cwd,

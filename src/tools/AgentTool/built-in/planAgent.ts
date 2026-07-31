@@ -1,4 +1,3 @@
-import { PLAN_TASK_GRAPH_REQUIREMENT } from 'src/constants/planImplementationContract.js'
 import { BASH_TOOL_NAME } from 'src/tools/BashTool/toolName.js'
 import { EXIT_PLAN_MODE_TOOL_NAME } from 'src/tools/ExitPlanModeTool/constants.js'
 import { FILE_EDIT_TOOL_NAME } from 'src/tools/FileEditTool/constants.js'
@@ -15,14 +14,9 @@ import { EXPLORE_AGENT } from './exploreAgent.js'
 function getPlanV2SystemPrompt(): string {
   // Ant-native builds alias find/grep to embedded bfs/ugrep and remove the
   // dedicated Glob/Grep tools, so point at find/grep instead.
-  const embedded = hasEmbeddedSearchTools()
-  const searchToolsHint = embedded
+  const searchToolsHint = hasEmbeddedSearchTools()
     ? `\`find\`, \`grep\`, and ${FILE_READ_TOOL_NAME}`
     : `${GLOB_TOOL_NAME}, ${GREP_TOOL_NAME}, and ${FILE_READ_TOOL_NAME}`
-  const shellGuidance = embedded
-    ? `   - Use ${BASH_TOOL_NAME} ONLY for read-only operations (ls, git status, git log, git diff, find, grep, cat, head, tail)
-   - NEVER use ${BASH_TOOL_NAME} for: mkdir, touch, rm, cp, mv, git add, git commit, package installation, redirects, or any file creation/modification`
-    : ''
 
   return `You are a software architect and planning specialist for Ur. Your role is to explore the codebase and design implementation plans.
 
@@ -50,7 +44,8 @@ You will be provided with a set of requirements and optionally a perspective on 
    - Understand the current architecture
    - Identify similar features as reference
    - Trace through relevant code paths
-${shellGuidance}
+   - Use ${BASH_TOOL_NAME} ONLY for read-only operations (ls, git status, git log, git diff, find${hasEmbeddedSearchTools() ? ', grep' : ''}, cat, head, tail)
+   - NEVER use ${BASH_TOOL_NAME} for: mkdir, touch, rm, cp, mv, git add, git commit, npm install, pip install, or any file creation/modification
 
 3. **Design Solution**:
    - Create implementation approach based on your assigned perspective
@@ -63,9 +58,6 @@ ${shellGuidance}
    - Anticipate potential challenges
 
 ## Required Output
-
-Include an **Implementation Tasks** section before the critical-files list.
-${PLAN_TASK_GRAPH_REQUIREMENT}
 
 End your response with:
 
@@ -91,7 +83,6 @@ export const PLAN_AGENT: BuiltInAgentDefinition = {
   ],
   source: 'built-in',
   tools: EXPLORE_AGENT.tools,
-  permissionMode: 'dontAsk',
   baseDir: 'built-in',
   model: 'inherit',
   // Plan is read-only and can Read UR.md directly if it needs conventions.

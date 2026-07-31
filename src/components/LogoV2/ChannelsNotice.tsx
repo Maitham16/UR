@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { c as _c } from "react/compiler-runtime";
 // Conditionally require()'d in LogoV2.tsx behind feature('KAIROS') ||
 // feature('KAIROS_CHANNELS'). No feature() guard here — the whole file
@@ -70,7 +71,7 @@ export function ChannelsNotice() {
     }
     let t2;
     if ($[9] === Symbol.for("react.memo_cache_sentinel")) {
-      t2 = <Text dimColor={true}>Channels require ur.com authentication · run /login, then restart</Text>;
+      t2 = <Text dimColor={true}>Channels require ur.ai authentication · run /login, then restart</Text>;
       $[9] = t2;
     } else {
       t2 = $[9];

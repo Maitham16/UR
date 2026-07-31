@@ -79,29 +79,18 @@ export type ExecuteOptions = {
   runStep: StepRunner
   loop?: ExecLoop | null
   onEvent?: (event: ExecEvent) => void
-  /**
-   * Called whenever the authoritative completed set changes. Use this for
-   * crash-recovery persistence, including review loops that reopen prior steps.
-   */
-  onProgress?: (
-    stepId: string,
-    completed: string[],
-    outputs: Readonly<Record<string, string>>,
-  ) => void
-  /** Called only after a step with `checkpoint: true` is marked done. */
+  /** Called after a step is marked done; persist the completed set here. */
   onCheckpoint?: (stepId: string, completed: string[]) => void
   /** Step ids already completed (resume). */
   resumeCompleted?: string[]
-  /** Exact persisted outputs for completed steps (resume). */
-  resumeOutputs?: Readonly<Record<string, string>>
   /** Decide approval gates. Defaults to holding (false) so nothing auto-approves. */
   approve?: (step: WorkflowStep) => boolean | Promise<boolean>
-  /** Stop the whole run if a step errors (default true). */
+  /** Stop the whole run if a step errors. */
   stopOnError?: boolean
   /**
    * Maximum number of independent ready steps to run concurrently. Defaults to
    * DEFAULT_MAX_CONCURRENCY. Set to 1 to force strictly sequential execution.
-   * All gated steps run alone so their control-flow decision is deterministic.
+   * Gated steps (approval, enforcing verification loop) always run alone.
    */
   maxConcurrency?: number
 }
@@ -122,22 +111,8 @@ export async function executeWorkflow(
 
   const order = validation.order
   const byId = new Map(spec.steps.map(step => [step.id, step]))
-  const done = new Set(
-    (options.resumeCompleted ?? []).filter(stepId => byId.has(stepId)),
-  )
-  const outputs: Record<string, string> = Object.create(null) as Record<
-    string,
-    string
-  >
-  for (const stepId of done) {
-    if (
-      options.resumeOutputs != null &&
-      Object.prototype.hasOwnProperty.call(options.resumeOutputs, stepId) &&
-      typeof options.resumeOutputs[stepId] === 'string'
-    ) {
-      outputs[stepId] = options.resumeOutputs[stepId] as string
-    }
-  }
+  const done = new Set(options.resumeCompleted ?? [])
+  const outputs: Record<string, string> = {}
   const results = new Map<string, ExecStepResult>()
   const loop = options.loop ?? null
 
@@ -163,23 +138,6 @@ export async function executeWorkflow(
     return next
   }
 
-  // A resumed completed step is still done; it was not skipped by this run.
-  // Keep iterations at zero to make the no-replay guarantee observable.
-  for (const stepId of done) {
-    const step = byId.get(stepId)
-    if (!step) continue
-    results.set(stepId, {
-      id: step.id,
-      agent: step.agent,
-      status: 'done',
-      verdict: null,
-      iterations: 0,
-      output: Object.prototype.hasOwnProperty.call(outputs, stepId)
-        ? outputs[stepId] as string
-        : '',
-    })
-  }
-
   const finish = (status: ExecStatus): ExecResult => {
     emit({ kind: 'finish', status })
     const steps = order.map(
@@ -202,7 +160,6 @@ export async function executeWorkflow(
     1,
     Math.floor(options.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY),
   )
-  const stopOnError = options.stopOnError !== false
   let safety = 0
 
   const readyNow = (): string[] =>
@@ -212,63 +169,24 @@ export async function executeWorkflow(
         (byId.get(id)?.dependsOn ?? []).every(dep => done.has(dep)),
     )
 
-  // Every gate runs sequentially because its outcome can branch control flow.
-  // Approval is checked before runStep, and verification is fail-closed unless
-  // the workflow explicitly marks it advisory.
+  // A step must run sequentially when its post-run outcome can branch control
+  // flow: an approval gate may hold the run, and the enforcing loop's
+  // verification step may re-open the loop. Every other step is a pure
+  // fan-out node whose mutually independent ready peers can run concurrently.
   const needsSequential = (id: string): boolean => {
     const s = byId.get(id)
     if (!s) return true
-    return s.gate != null
+    if (s.gate === 'approval') return true
+    if (loop != null && loop.from === id && s.gate === 'verification') return true
+    return false
   }
 
   const priorOutputsFor = (step: WorkflowStep): Record<string, string> => {
-    const collected: Record<string, string> = Object.create(null) as Record<
-      string,
-      string
-    >
+    const collected: Record<string, string> = {}
     for (const dep of step.dependsOn ?? []) {
-      if (Object.prototype.hasOwnProperty.call(outputs, dep)) {
-        collected[dep] = outputs[dep] as string
-      }
+      if (outputs[dep] !== undefined) collected[dep] = outputs[dep]
     }
     return collected
-  }
-
-  const outputSnapshot = (): Readonly<Record<string, string>> =>
-    Object.fromEntries(
-      [...done]
-        .filter(stepId =>
-          Object.prototype.hasOwnProperty.call(outputs, stepId),
-        )
-        .map(stepId => [stepId, outputs[stepId] as string]),
-    )
-
-  const reportProgress = (stepId: string): void => {
-    options.onProgress?.(stepId, [...done], outputSnapshot())
-  }
-
-  const missingRequiredOutputs = (step: WorkflowStep): string[] => {
-    const dependencies = step.dependsOn ?? []
-    const needsEveryDependency = step.prompt.includes('{{prior}}')
-    return dependencies.filter(
-      dependency =>
-        (needsEveryDependency ||
-          step.prompt.includes(`{{${dependency}}}`)) &&
-        !Object.prototype.hasOwnProperty.call(outputs, dependency),
-    )
-  }
-
-  const failMissingOutputs = (
-    step: WorkflowStep,
-    missing: string[],
-  ): ExecResult => {
-    recordResult(step, {
-      status: 'failed',
-      error:
-        `Cannot resume "${step.id}": required persisted output is unavailable for ` +
-        `${missing.join(', ')}. Completed steps were not replayed; reset the workflow to rerun them intentionally.`,
-    })
-    return finish('failed')
   }
 
   // Run a batch of independent fan-out steps concurrently. They are launched
@@ -277,11 +195,6 @@ export async function executeWorkflow(
   // sequential run — only wall-clock time changes. Returns a terminal
   // ExecResult when the run must stop, otherwise null.
   const runBatch = async (ids: string[]): Promise<ExecResult | null> => {
-    for (const id of ids) {
-      const step = byId.get(id) as WorkflowStep
-      const missing = missingRequiredOutputs(step)
-      if (missing.length > 0) return failMissingOutputs(step, missing)
-    }
     emit({ kind: 'wave', ids: [...ids], iteration: cycle })
     const launched = ids.map(id => {
       const batchStep = byId.get(id) as WorkflowStep
@@ -310,7 +223,6 @@ export async function executeWorkflow(
       ),
     )
 
-    let batchFailed = false
     for (let i = 0; i < ids.length; i++) {
       const batchStep = byId.get(ids[i]) as WorkflowStep
       const outcome = settled[i]
@@ -322,8 +234,7 @@ export async function executeWorkflow(
           error: reason instanceof Error ? reason.message : String(reason),
         })
         emit({ kind: 'step-done', id: batchStep.id, isError: true })
-        batchFailed = true
-        continue
+        return finish('failed')
       }
       const run = outcome.value
       outputs[batchStep.id] = run.output
@@ -339,23 +250,25 @@ export async function executeWorkflow(
         verdict: run.verdict ?? null,
         isError: run.isError,
       })
-      if (run.isError && stopOnError) {
+      if (run.isError && options.stopOnError) {
         recordResult(batchStep, { status: 'failed' })
-        batchFailed = true
-        continue
+        return finish('failed')
+      }
+      // Only non-enforcing verification gates can reach a batch (the enforcing
+      // loop step is always handled sequentially), so this is advisory.
+      if (batchStep.gate === 'verification') {
+        emit({
+          kind: 'gate',
+          id: batchStep.id,
+          gate: 'verification',
+          result: 'advisory',
+        })
       }
       recordResult(batchStep, { status: 'done' })
       done.add(batchStep.id)
-      reportProgress(batchStep.id)
-      if (batchStep.checkpoint === true) {
-        options.onCheckpoint?.(batchStep.id, [...done])
-      }
+      options.onCheckpoint?.(batchStep.id, [...done])
     }
-    // Promise.allSettled means every branch already ran. Fold every outcome
-    // before stopping so successful siblings are persisted and no executed
-    // branch is falsely reported as skipped merely because an earlier sibling
-    // failed in deterministic display order.
-    return batchFailed ? finish('failed') : null
+    return null
   }
 
   while (safety++ < hardCap) {
@@ -363,8 +276,8 @@ export async function executeWorkflow(
     if (ready.length === 0) break
 
     // Greedily batch a prefix of consecutive fan-out steps (in topological
-    // order) up to the concurrency cap, stopping at the first gated step so
-    // approval and verification semantics remain exact.
+    // order) up to the concurrency cap, stopping at the first step that needs
+    // sequential handling so approval / verification-loop semantics are exact.
     const batch: string[] = []
     if (maxConcurrency > 1) {
       for (const id of ready) {
@@ -380,46 +293,10 @@ export async function executeWorkflow(
       continue
     }
 
-    // Single-step path: covers all gated steps and sequential execution.
+    // Single-step path: covers approval gates and the verification loop.
     const nextId = ready[0]
     const step = byId.get(nextId)
     if (!step) break
-
-    // Approval protects the step itself: never start or invoke the runner until
-    // the gate has passed. The default remains fail-safe (hold).
-    if (step.gate === 'approval') {
-      let approved = false
-      try {
-        approved = options.approve ? await options.approve(step) : false
-      } catch (error) {
-        recordResult(step, {
-          status: 'failed',
-          error: error instanceof Error ? error.message : String(error),
-        })
-        emit({
-          kind: 'gate',
-          id: step.id,
-          gate: 'approval',
-          result: 'fail',
-        })
-        return finish('failed')
-      }
-      emit({
-        kind: 'gate',
-        id: step.id,
-        gate: 'approval',
-        result: approved ? 'pass' : 'hold',
-      })
-      if (!approved) {
-        recordResult(step, { status: 'held' })
-        return finish('held')
-      }
-    }
-
-    const missingOutputs = missingRequiredOutputs(step)
-    if (missingOutputs.length > 0) {
-      return failMissingOutputs(step, missingOutputs)
-    }
 
     emit({ kind: 'step-start', id: step.id, agent: step.agent, iteration: cycle })
 
@@ -430,7 +307,10 @@ export async function executeWorkflow(
       pendingFeedbackFor = undefined
     }
 
-    const priorOutputs = priorOutputsFor(step)
+    const priorOutputs: Record<string, string> = {}
+    for (const dep of step.dependsOn ?? []) {
+      if (outputs[dep] !== undefined) priorOutputs[dep] = outputs[dep]
+    }
 
     let run: StepRunOutput
     try {
@@ -464,80 +344,60 @@ export async function executeWorkflow(
       isError: run.isError,
     })
 
-    if (run.isError && stopOnError) {
+    if (run.isError && options.stopOnError) {
       recordResult(step, { status: 'failed' })
       return finish('failed')
     }
 
-    // Verification gates are enforcing by default. A missing/PARTIAL/FAIL
-    // verdict cannot complete a workflow unless the spec explicitly selects
-    // advisory mode.
+    // Approval gate.
+    if (step.gate === 'approval') {
+      const approved = options.approve ? await options.approve(step) : false
+      emit({
+        kind: 'gate',
+        id: step.id,
+        gate: 'approval',
+        result: approved ? 'pass' : 'hold',
+      })
+      if (!approved) {
+        recordResult(step, { status: 'held' })
+        return finish('held')
+      }
+    }
+
+    // Verification gate: enforcing only when a loop targets this step.
     if (step.gate === 'verification') {
-      const passed = run.isError !== true && run.verdict === 'PASS'
-      if (passed) {
-        emit({ kind: 'gate', id: step.id, gate: 'verification', result: 'pass' })
-      } else if (run.isError) {
-        emit({ kind: 'gate', id: step.id, gate: 'verification', result: 'fail' })
-        recordResult(step, {
-          status: 'failed',
-          error: run.output || 'Verification runner failed',
-        })
-        return finish('failed')
-      } else if (loop != null && loop.from === step.id) {
-        emit({ kind: 'gate', id: step.id, gate: 'verification', result: 'fail' })
-        if (cycle < loop.maxIterations) {
-          const start = order.indexOf(loop.to)
-          const end = order.indexOf(loop.from)
-          for (const id of order.slice(start, end + 1)) {
-            done.delete(id)
-            delete outputs[id]
+      const enforcing = loop != null && loop.from === step.id
+      if (enforcing) {
+        if (run.verdict === 'PASS') {
+          emit({ kind: 'gate', id: step.id, gate: 'verification', result: 'pass' })
+        } else {
+          emit({ kind: 'gate', id: step.id, gate: 'verification', result: 'fail' })
+          if (cycle < (loop as ExecLoop).maxIterations) {
+            const start = order.indexOf((loop as ExecLoop).to)
+            const end = order.indexOf((loop as ExecLoop).from)
+            for (const id of order.slice(start, end + 1)) done.delete(id)
+            pendingFeedback = run.output
+            pendingFeedbackFor = (loop as ExecLoop).to
+            cycle++
+            emit({
+              kind: 'loop',
+              from: (loop as ExecLoop).from,
+              to: (loop as ExecLoop).to,
+              iteration: cycle,
+            })
+            continue
           }
-          reportProgress(loop.to)
-          pendingFeedback = run.output
-          pendingFeedbackFor = loop.to
-          cycle++
-          emit({
-            kind: 'loop',
-            from: loop.from,
-            to: loop.to,
-            iteration: cycle,
-          })
-          continue
+          recordResult(step, { status: 'failed' })
+          return finish('max-iterations')
         }
-        recordResult(step, {
-          status: 'failed',
-          error:
-            run.verdict == null
-              ? 'Verification gate returned no verdict'
-              : `Verification gate returned ${run.verdict}`,
-        })
-        return finish('max-iterations')
-      } else if (step.verificationMode === 'advisory') {
-        emit({
-          kind: 'gate',
-          id: step.id,
-          gate: 'verification',
-          result: 'advisory',
-        })
       } else {
-        emit({ kind: 'gate', id: step.id, gate: 'verification', result: 'fail' })
-        recordResult(step, {
-          status: 'failed',
-          error:
-            run.verdict == null
-              ? 'Verification gate returned no verdict'
-              : `Verification gate returned ${run.verdict}`,
-        })
-        return finish('failed')
+        emit({ kind: 'gate', id: step.id, gate: 'verification', result: 'advisory' })
       }
     }
 
     recordResult(step, { status: 'done' })
     done.add(step.id)
-    reportProgress(step.id)
-    if (step.checkpoint === true) {
-      options.onCheckpoint?.(step.id, [...done])
-    }
+    options.onCheckpoint?.(step.id, [...done])
   }
 
   return finish(done.size === order.length ? 'completed' : 'failed')

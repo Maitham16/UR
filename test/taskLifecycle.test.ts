@@ -3,13 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TaskCreateTool } from '../src/tools/TaskCreateTool/TaskCreateTool.ts'
-import { TaskGetTool } from '../src/tools/TaskGetTool/TaskGetTool.ts'
 import { TaskListTool } from '../src/tools/TaskListTool/TaskListTool.ts'
 import { TaskUpdateTool } from '../src/tools/TaskUpdateTool/TaskUpdateTool.ts'
-import {
-  checkTaskListGate,
-  countActionableTasksForGate,
-} from '../src/services/tools/taskListGate.ts'
 import {
   blockTask,
   createTask,
@@ -26,12 +21,11 @@ let previousTaskListId: string | undefined
 
 const taskListId = 'task-lifecycle-regression'
 
-function toolContext(messages: unknown[] = []) {
+function toolContext() {
   let appState = { expandedView: undefined as string | undefined }
   return {
     abortController: new AbortController(),
     options: { tools: [] },
-    messages,
     getAppState() {
       return appState
     },
@@ -39,44 +33,6 @@ function toolContext(messages: unknown[] = []) {
       appState = update(appState)
     },
   } as never
-}
-
-function successfulToolHistory(
-  calls: Array<{
-    id: string
-    name: string
-    input: Record<string, unknown>
-    isError?: boolean
-  }>,
-): unknown[] {
-  return calls.flatMap(call => [
-    {
-      type: 'assistant',
-      message: {
-        content: [
-          {
-            type: 'tool_use',
-            id: call.id,
-            name: call.name,
-            input: call.input,
-          },
-        ],
-      },
-    },
-    {
-      type: 'user',
-      message: {
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: call.id,
-            content: call.isError ? 'failed' : 'ok',
-            is_error: call.isError === true,
-          },
-        ],
-      },
-    },
-  ])
 }
 
 async function createBareTask(subject: string): Promise<string> {
@@ -106,90 +62,6 @@ afterEach(() => {
 })
 
 describe('task dependency and completion lifecycle', () => {
-  test('TaskUpdate normalizes an accepted numeric ID before lookup', async () => {
-    const taskId = await createBareTask('numeric id')
-    expect(taskId).toBe('1')
-
-    const result = await TaskUpdateTool.call(
-      { taskId: 1, status: 'in_progress' },
-      toolContext(),
-    )
-
-    expect(result.data).toMatchObject({
-      success: true,
-      taskId: '1',
-      statusChange: { from: 'pending', to: 'in_progress' },
-    })
-    expect((await getTask(taskListId, taskId))?.status).toBe('in_progress')
-  })
-
-  test('TaskUpdate normalizes numeric dependency IDs before graph updates', async () => {
-    const prerequisite = await createBareTask('numeric prerequisite')
-    const dependent = await createBareTask('numeric dependent')
-
-    const result = await TaskUpdateTool.call(
-      { taskId: 2, addBlockedBy: [1] },
-      toolContext(),
-    )
-
-    expect(result.data).toMatchObject({
-      success: true,
-      taskId: dependent,
-    })
-    expect((await getTask(taskListId, dependent))?.blockedBy).toEqual([
-      prerequisite,
-    ])
-    expect((await getTask(taskListId, prerequisite))?.blocks).toEqual([
-      dependent,
-    ])
-  })
-
-  test('TaskCreate normalizes numeric dependency IDs before graph updates', async () => {
-    const prerequisite = await createBareTask('numeric create prerequisite')
-    const result = await TaskCreateTool.call(
-      {
-        subject: 'numeric create dependent',
-        description: 'numeric create dependent',
-        blockedBy: [1],
-      },
-      toolContext(),
-    )
-    const dependent = result.data.task.id
-
-    expect((await getTask(taskListId, dependent))?.blockedBy).toEqual([
-      prerequisite,
-    ])
-    expect((await getTask(taskListId, prerequisite))?.blocks).toEqual([
-      dependent,
-    ])
-  })
-
-  test('TaskUpdate cannot bypass a pending numeric blocker on completion', async () => {
-    const prerequisite = await createBareTask('pending numeric prerequisite')
-    const dependent = await createBareTask('blocked numeric dependent')
-
-    const result = await TaskUpdateTool.call(
-      { taskId: 2, status: 'completed', addBlockedBy: [1] },
-      toolContext(),
-    )
-
-    expect(result.data.success).toBe(false)
-    expect(result.data.error).toContain(`#${prerequisite}`)
-    expect((await getTask(taskListId, dependent))?.status).toBe('pending')
-    expect((await getTask(taskListId, dependent))?.blockedBy).toEqual([])
-  })
-
-  test('TaskGet normalizes an accepted numeric ID before lookup', async () => {
-    const taskId = await createBareTask('numeric task get')
-
-    const result = await TaskGetTool.call({ taskId: 1 })
-
-    expect(result.data.task).toMatchObject({
-      id: taskId,
-      subject: 'numeric task get',
-    })
-  })
-
   test('blockTask writes reciprocal edges and rejects missing, self, and cyclic edges', async () => {
     const first = await createBareTask('first')
     const second = await createBareTask('second')
@@ -356,135 +228,6 @@ describe('task dependency and completion lifecycle', () => {
 
     expect(result.data.success).toBe(true)
     expect((await getTask(taskListId, dependent))?.status).toBe('completed')
-  })
-
-  test('the last task stays actionable after an unchecked file mutation', async () => {
-    const taskId = await createBareTask('Create browser game')
-    await updateTask(taskListId, taskId, { status: 'in_progress' })
-    const history = successfulToolHistory([
-      {
-        id: 'start-task-1',
-        name: 'TaskUpdate',
-        input: { taskId: 1, status: 'in_progress' },
-      },
-      {
-        id: 'write-game',
-        name: 'Write',
-        input: {
-          file_path: '/Users/example/warship/index.html',
-          content: '<canvas></canvas>',
-        },
-      },
-    ])
-
-    const result = await TaskUpdateTool.call(
-      { taskId, status: 'completed' },
-      toolContext(history),
-    )
-
-    expect(result.data).toMatchObject({
-      success: true,
-      taskId,
-      completionDeferred: true,
-      completionMutationTool: 'Write',
-      completionVerificationTarget:
-        '/Users/example/warship/index.html',
-    })
-    expect(result.data.statusChange).toBeUndefined()
-    expect((await getTask(taskListId, taskId))?.status).toBe(
-      'in_progress',
-    )
-    const liveTasks = await listTasks(taskListId)
-    expect(
-      checkTaskListGate({
-        toolName: 'Edit',
-        taskCount: countActionableTasksForGate(liveTasks),
-        totalTaskCount: liveTasks.length,
-        readsSoFar: 99,
-        isSubagent: false,
-        isMutating: true,
-        config: { enabled: true, freeReads: 3 },
-      }).allowed,
-    ).toBe(true)
-
-    const toolResult =
-      TaskUpdateTool.mapToolResultToToolResultBlockParam(
-        result.data,
-        'deferred-completion',
-      )
-    expect(toolResult.is_error).not.toBe(true)
-    expect(toolResult.content).toContain('remains in_progress')
-    expect(toolResult.content).toContain('no successful observable check')
-    expect(toolResult.content).toContain('browser UI')
-    expect(toolResult.content).toContain('Do not create a duplicate task')
-  })
-
-  test('a successful post-mutation check permits final task completion', async () => {
-    const taskId = await createBareTask('Create browser game')
-    await updateTask(taskListId, taskId, { status: 'in_progress' })
-    const history = successfulToolHistory([
-      {
-        id: 'start-task-1',
-        name: 'TaskUpdate',
-        input: { taskId, status: 'in_progress' },
-      },
-      {
-        id: 'write-game',
-        name: 'Write',
-        input: { file_path: '/workspace/index.html' },
-      },
-      {
-        id: 'inspect-game',
-        name: 'Browser',
-        input: { action: 'console_errors' },
-      },
-    ])
-
-    const result = await TaskUpdateTool.call(
-      { taskId, status: 'completed' },
-      toolContext(history),
-    )
-
-    expect(result.data.success).toBe(true)
-    expect(result.data.completionDeferred).toBeUndefined()
-    expect(result.data.statusChange).toEqual({
-      from: 'in_progress',
-      to: 'completed',
-    })
-    expect((await getTask(taskListId, taskId))?.status).toBe('completed')
-  })
-
-  test('a failed post-mutation check cannot close the final task', async () => {
-    const taskId = await createBareTask('Create browser game')
-    await updateTask(taskListId, taskId, { status: 'in_progress' })
-    const history = successfulToolHistory([
-      {
-        id: 'start-task-1',
-        name: 'TaskUpdate',
-        input: { taskId, status: 'in_progress' },
-      },
-      {
-        id: 'write-game',
-        name: 'Write',
-        input: { file_path: '/workspace/index.html' },
-      },
-      {
-        id: 'broken-runtime-check',
-        name: 'Browser',
-        input: { action: 'console_errors' },
-        isError: true,
-      },
-    ])
-
-    const result = await TaskUpdateTool.call(
-      { taskId, status: 'completed' },
-      toolContext(history),
-    )
-
-    expect(result.data.completionDeferred).toBe(true)
-    expect((await getTask(taskListId, taskId))?.status).toBe(
-      'in_progress',
-    )
   })
 
   test('deleteTask removes reciprocal references before unlinking', async () => {

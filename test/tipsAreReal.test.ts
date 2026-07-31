@@ -42,14 +42,8 @@ test('the check reads real tips, so it cannot pass vacuously', () => {
 })
 
 test('no tip points at a domain UR does not own', () => {
-  // Tips are the first thing a new user reads, so a dead link there is the
-  // worst place to be wrong. ur.ai was never registered. ur.com is being
-  // acquired but is not serving yet — relax this deliberately once it is,
-  // rather than by accident.
-  //
-  // An earlier version of this comment asserted both domains "have no DNS
-  // records". That came from a lookup run in an environment with no DNS at
-  // all, where github.com fails identically, so it was never evidence.
+  // ur.com and ur.ai both have no DNS records; links to them are dead on
+  // arrival and were already removed from the docs once.
   expect(TIPS).not.toMatch(/ur\.(ai|com)/)
 })
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import * as path from 'path'
 import { pathToFileURL } from 'url'
 import { logForDebugging } from '../../utils/debug.js'

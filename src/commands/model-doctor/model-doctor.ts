@@ -1,6 +1,5 @@
 import { request as httpRequest } from 'node:http'
 import {
-  normalizeAdvertisedCapabilities,
   resolveVisionSupport,
   type VisionSupport,
 } from '../../utils/model/visionCapability.js'
@@ -113,9 +112,21 @@ export function buildOllamaShowRequestBody(name: string): string {
 export function advertisedCapabilities(
   show: OllamaShow | null | undefined,
 ): string[] | null {
-  if (!show) return null
-  const normalized = normalizeAdvertisedCapabilities(show.capabilities)
-  return normalized === null ? null : [...normalized]
+  if (!show || !Array.isArray(show.capabilities)) return null
+  const normalized = [
+    ...new Set(
+      show.capabilities.flatMap(capability =>
+        typeof capability === 'string' && capability.trim()
+          ? [capability.trim()]
+          : [],
+      ),
+    ),
+  ]
+  // `[]` is a valid, authoritative list. A non-empty array containing no
+  // usable strings is malformed provider data, not proof of missing vision.
+  return show.capabilities.length === 0 || normalized.length > 0
+    ? normalized
+    : null
 }
 
 function inferCode(name: string, family?: string): boolean {

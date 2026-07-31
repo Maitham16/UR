@@ -350,7 +350,7 @@ function handleRemoteAuthFailure(
   const label: Record<typeof transportType, string> = {
     sse: 'SSE',
     http: 'HTTP',
-    'urai-proxy': 'ur.com proxy',
+    'urai-proxy': 'ur.ai proxy',
   }
   logMCPDebug(
     name,
@@ -361,12 +361,12 @@ function handleRemoteAuthFailure(
 }
 
 /**
- * Fetch wrapper for ur.com proxy connections. Attaches the OAuth bearer
+ * Fetch wrapper for ur.ai proxy connections. Attaches the OAuth bearer
  * token and retries once on 401 via handleOAuth401Error (force-refresh).
  *
  * The UR API path has this retry (withRetry.ts, grove.ts) to handle
  * memoize-cache staleness and clock drift. Without the same here, a single
- * stale token mass-401s every ur.com connector and sticks them all in the
+ * stale token mass-401s every ur.ai connector and sticks them all in the
  * 15-min needs-auth cache.
  */
 export function createURAiProxyFetch(innerFetch: FetchLike): FetchLike {
@@ -375,7 +375,7 @@ export function createURAiProxyFetch(innerFetch: FetchLike): FetchLike {
       await checkAndRefreshOAuthTokenIfNeeded()
       const currentTokens = getURAIOAuthTokens()
       if (!currentTokens) {
-        throw new Error('No ur.com OAuth token available')
+        throw new Error('No ur.ai OAuth token available')
       }
       // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
       const headers = new Headers(init?.headers)
@@ -867,18 +867,18 @@ export const connectToServer = memoize(
       } else if (serverRef.type === 'urai-proxy') {
         logMCPDebug(
           name,
-          `Initializing ur.com proxy transport for server ${serverRef.id}`,
+          `Initializing ur.ai proxy transport for server ${serverRef.id}`,
         )
 
         const tokens = getURAIOAuthTokens()
         if (!tokens) {
-          throw new Error('No ur.com OAuth token found')
+          throw new Error('No ur.ai OAuth token found')
         }
 
         const oauthConfig = getOauthConfig()
         const proxyUrl = `${oauthConfig.MCP_PROXY_URL}${oauthConfig.MCP_PROXY_PATH.replace('{server_id}', serverRef.id)}`
 
-        logMCPDebug(name, `Using ur.com proxy at ${proxyUrl}`)
+        logMCPDebug(name, `Using ur.ai proxy at ${proxyUrl}`)
 
         // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
         const fetchWithAuth = createURAiProxyFetch(globalThis.fetch)
@@ -900,7 +900,7 @@ export const connectToServer = memoize(
           new URL(proxyUrl),
           transportOptions,
         )
-        logMCPDebug(name, `ur.com proxy transport created successfully`)
+        logMCPDebug(name, `ur.ai proxy transport created successfully`)
       } else if (
         (serverRef.type === 'stdio' || !serverRef.type) &&
         isURInChromeMCPServer(name)
@@ -1123,7 +1123,7 @@ export const connectToServer = memoize(
         ) {
           logMCPDebug(
             name,
-            `ur.com proxy connection failed after ${elapsed}ms: ${error.message}`,
+            `ur.ai proxy connection failed after ${elapsed}ms: ${error.message}`,
           )
           logMCPError(name, error)
 

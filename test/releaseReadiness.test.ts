@@ -71,16 +71,6 @@ test('release gate audits the Bun lockfile used by shipped builds', () => {
   expect(releaseCheck).toContain("execFileSync('bun', ['audit']")
 })
 
-test('npm publication rebuilds generated artifacts before validating them', () => {
-  const packageJson = JSON.parse(
-    readFileSync(join(REPO, 'package.json'), 'utf8'),
-  ) as { scripts?: Record<string, string> }
-
-  expect(packageJson.scripts?.prepack).toBe(
-    'bun run build && bun run release:check',
-  )
-})
-
 test('strict-core cannot report unchecked files as type-safe', () => {
   const strictConfig = JSON.parse(
     readFileSync(join(REPO, 'tsconfig.strict-core.json'), 'utf8'),
@@ -115,7 +105,6 @@ test('release gate keeps npm, documentation, and IDE versions synchronized', () 
     "read('extensions/jetbrains-ur/build.gradle.kts')",
   )
   expect(releaseCheck).toContain("read('documentation/index.html')")
-  expect(releaseCheck).toContain("read('technical/README.md')")
   expect(releaseCheck).toContain(
     "`# expected for this release: \"${version} (UR-Nexus)\"`",
   )

@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import figures from 'figures'
-import {
-  byIdAsc,
-  formatTaskStatusSummary,
-  getTaskIcon,
-  summarizeTaskStatuses,
-} from '../src/components/TaskListV2.js'
+import { byIdAsc, getTaskIcon } from '../src/components/TaskListV2.js'
 import type { Task } from '../src/utils/tasks.js'
 
 // Tests the pure display logic of the pinned task panel. An earlier version
@@ -38,21 +33,6 @@ describe('TaskListV2 display logic', () => {
     it('falls back to locale comparison for non-numeric ids', () => {
       const tasks = [makeTask({ id: 'b' }), makeTask({ id: 'a' })]
       expect(tasks.sort(byIdAsc).map(t => t.id)).toEqual(['a', 'b'])
-    })
-
-    it('does not treat numeric-looking prefixes as allocated task ids', () => {
-      const tasks = [
-        makeTask({ id: '2beta' }),
-        makeTask({ id: '10' }),
-        makeTask({ id: '2' }),
-        makeTask({ id: 'alpha' }),
-      ]
-      expect(tasks.sort(byIdAsc).map(t => t.id)).toEqual([
-        '2',
-        '10',
-        '2beta',
-        'alpha',
-      ])
     })
   })
 
@@ -90,29 +70,6 @@ describe('TaskListV2 display logic', () => {
         icon: figures.warning,
         color: 'warning',
       })
-    })
-  })
-
-  describe('status summaries', () => {
-    it('does not misreport failed or skipped tasks as in progress', () => {
-      const tasks = [
-        makeTask({ id: '1', status: 'completed' }),
-        makeTask({ id: '2', status: 'in_progress' }),
-        makeTask({ id: '3', status: 'pending' }),
-        makeTask({ id: '4', status: 'failed' }),
-        makeTask({ id: '5', status: 'skipped' }),
-      ]
-
-      expect(summarizeTaskStatuses(tasks)).toEqual({
-        pending: 1,
-        in_progress: 1,
-        completed: 1,
-        failed: 1,
-        skipped: 1,
-      })
-      expect(formatTaskStatusSummary(tasks)).toBe(
-        '1 done, 1 in progress, 1 pending, 1 failed, 1 skipped',
-      )
     })
   })
 })

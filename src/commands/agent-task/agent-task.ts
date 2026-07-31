@@ -363,7 +363,6 @@ export const call: LocalCommandCall = async (args: string) => {
           value: json
             ? JSON.stringify({ state, review, prCreated: false, blocked: true }, null, 2)
             : `PR creation blocked by self-review.\n\n${summary}\n\nFix these issues, or re-run with --force to override or --no-review to skip.`,
-          exitCode: 1,
         }
       }
     }
@@ -373,16 +372,11 @@ export const call: LocalCommandCall = async (args: string) => {
       return {
         type: 'text',
         value: JSON.stringify({ state, review, pr }, null, 2),
-        ...(pr.created || pr.dryRun ? {} : { exitCode: 1 }),
       }
     }
     const reviewText =
       review && review.length > 0 ? `${summarizeFindings(review)}\n\n` : ''
-    return {
-      type: 'text',
-      value: `${reviewText}${formatPrResult(pr)}`,
-      ...(pr.created || pr.dryRun ? {} : { exitCode: 1 }),
-    }
+    return { type: 'text', value: `${reviewText}${formatPrResult(pr)}` }
   }
 
   if (json) {
@@ -403,6 +397,5 @@ export const call: LocalCommandCall = async (args: string) => {
     type: 'text',
     value:
       'Usage: ur agent-task status|diff|pr [--json]\n       ur agent-task pr --create [--draft] [--base main] [--title text] [--body text] [--dry-run]\n       (pr --create runs a self-review gate first; use --force to override blocking findings or --no-review to skip)',
-    exitCode: 2,
   }
 }

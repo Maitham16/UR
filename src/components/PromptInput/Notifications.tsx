@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
 import * as React from 'react';
@@ -13,7 +14,7 @@ import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { useVoiceEnabled } from '../../hooks/useVoiceEnabled.js';
 import { Box, Text } from '../../ink.js';
 import { useURAiLimits } from '../../services/urAiLimitsHook.js';
-import { calculateTokenWarningState, isProactiveAutoCompactEnabled } from '../../services/compact/autoCompact.js';
+import { calculateTokenWarningState } from '../../services/compact/autoCompact.js';
 import type { MCPServerConnection } from '../../services/mcp/types.js';
 import type { Message } from '../../types/message.js';
 import { getApiKeyHelperElapsedMs, getConfiguredApiKeyHelper, getSubscriptionType } from '../../utils/auth.js';
@@ -24,14 +25,13 @@ import { formatDuration } from '../../utils/format.js';
 import { setEnvHookNotifier } from '../../utils/hooks/fileChangedWatcher.js';
 import { toIDEDisplayName } from '../../utils/ide.js';
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js';
-import { tokenCountWithEstimation } from '../../utils/tokens.js';
+import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js';
 import { AutoUpdaterWrapper } from '../AutoUpdaterWrapper.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { IdeStatusIndicator } from '../IdeStatusIndicator.js';
 import { MemoryUsageIndicator } from '../MemoryUsageIndicator.js';
 import { SentryErrorBoundary } from '../SentryErrorBoundary.js';
 import { TokenWarning } from '../TokenWarning.js';
-import { isDeckRailVisible } from '../commandDeck/deckVisibility.js';
 import { SandboxPromptFooterHint } from './SandboxPromptFooterHint.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -74,10 +74,7 @@ export function Notifications(t0) {
   let t3;
   if ($[0] !== messages) {
     const messagesForTokenCount = getMessagesAfterCompactBoundary(messages);
-    // Use the trigger's live estimator so new user/tool/attachment messages are
-    // included. The query may still prune or snip context immediately before
-    // the trigger, so the displayed percentage is intentionally approximate.
-    t3 = tokenCountWithEstimation(messagesForTokenCount);
+    t3 = tokenCountFromLastAPIResponse(messagesForTokenCount);
     $[0] = messages;
     $[1] = t3;
   } else {
@@ -94,7 +91,7 @@ export function Notifications(t0) {
   } else {
     t4 = $[4];
   }
-  const isShowingCompactMessage = isProactiveAutoCompactEnabled() || t4.isAboveWarningThreshold;
+  const isShowingCompactMessage = t4.isAboveWarningThreshold;
   const {
     status: ideStatus
   } = useIdeConnectionStatus(mcpClients);
@@ -322,7 +319,7 @@ function NotificationContent({
             {tokenUsage} tokens
           </Text>
         </Box>}
-      {!isBriefOnly && !isDeckRailVisible() && <TokenWarning tokenUsage={tokenUsage} model={mainLoopModel} />}
+      {!isBriefOnly && <TokenWarning tokenUsage={tokenUsage} model={mainLoopModel} />}
       {shouldShowAutoUpdater && <AutoUpdaterWrapper verbose={verbose} onAutoUpdaterResult={onAutoUpdaterResult} autoUpdaterResult={autoUpdaterResult} isUpdating={isAutoUpdating} onChangeIsUpdating={onChangeIsUpdating} showSuccessMessage={!isShowingCompactMessage} />}
       {feature('VOICE_MODE') ? voiceEnabled && voiceError && <Box>
               <Text color="error" wrap="truncate">

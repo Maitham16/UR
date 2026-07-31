@@ -32,17 +32,3 @@ export const GENERAL_PURPOSE_AGENT: BuiltInAgentDefinition = {
   // model is intentionally omitted - uses getDefaultSubagentModel().
   getSystemPrompt: getGeneralPurposeSystemPrompt,
 }
-
-/**
- * Stable workflow/crew spelling for a general execution agent.
- *
- * Declarative workflows have used `agent: worker` for years. Registering the
- * alias makes that field executable through `ur --agent worker` while still
- * allowing a project-defined `worker` agent to override the built-in.
- */
-export const WORKER_AGENT: BuiltInAgentDefinition = {
-  ...GENERAL_PURPOSE_AGENT,
-  agentType: 'worker',
-  whenToUse:
-    'General execution worker used by declarative workflows, skills, and collaboration patterns.',
-}

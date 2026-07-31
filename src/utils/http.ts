@@ -52,7 +52,7 @@ export function getMCPUserAgent(): string {
 // User-Agent for WebFetch requests to arbitrary sites. `UR-User` is
 // UR's publicly documented agent for user-initiated fetches (what site
 // operators match in robots.txt); the ur suffix lets them distinguish
-// local CLI traffic from ur.com server-side fetches.
+// local CLI traffic from ur.ai server-side fetches.
 export function getWebFetchUserAgent(): string {
   return `UR-User (${getURCodeUserAgent()})`
 }

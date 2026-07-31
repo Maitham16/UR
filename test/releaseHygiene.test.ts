@@ -17,7 +17,6 @@ import {
   releasePathViolations,
   requiredPackageFiles,
   requiredSourceZipEntries,
-  requiredTechnicalPackageFiles,
   sourceArchiveCandidatePaths,
 } from '../scripts/release-hygiene.mjs'
 
@@ -81,25 +80,6 @@ describe('release hygiene file-list checks', () => {
   test('allows required package runtime files', () => {
     expect(releasePathViolations(requiredPackageFiles)).toEqual([])
     expect(missingRequiredPackageFiles(requiredPackageFiles)).toEqual([])
-  })
-
-  test('requires the complete 14-chapter technical manual in the npm package', () => {
-    const technicalFiles = [
-      'technical/README.md',
-      ...Array.from({ length: 14 }, (_, index) => {
-        const prefix = String(index + 1).padStart(2, '0')
-        const match = requiredTechnicalPackageFiles.find(path =>
-          path.startsWith(`technical/${prefix}-`),
-        )
-        if (!match) throw new Error(`Missing required technical chapter ${prefix}`)
-        return match
-      }),
-    ]
-    expect(requiredTechnicalPackageFiles).toEqual(technicalFiles)
-    for (const path of requiredTechnicalPackageFiles) {
-      expect(existsSync(join(repoRoot, path)), path).toBe(true)
-      expect(requiredPackageFiles).toContain(path)
-    }
   })
 
   test('reports missing package runtime files', () => {

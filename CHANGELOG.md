@@ -1,681 +1,6 @@
 # Changelog
 
-## 1.68.19
-
-- Removed the duplicate status footer: the deck rail and the old status bar,
-  token warning and permission-mode hint were all on screen at once, printing
-  model, provider, mode and context usage twice. The three legacy fields now
-  suppress themselves while the rail is up, via a dependency-free predicate so
-  the prompt-input footer's module graph is unchanged.
-- Permission modes render as words in the rail. The app supplies "acceptEdits";
-  the rail was showing "ACCEPTEDITS".
-- Metric bars are blue at every level, per the palette rules. Level is still
-  carried by the value's colour.
-
-## 1.68.18
-
-- The shell is presentational and imports only ink and useTerminalSize. A first
-  version read live state itself (settings, provider registry, app state, git),
-  and importing it from REPL changed REPL's module graph enough to flip a
-  command from hidden to visible — caught by `commandRegistryIntegrity`, which
-  passed with the REPL edit stashed and failed with it applied. Loading a module
-  is not free here; some register on load. Session values now arrive as props
-  from a caller that already holds them.
-
-- Reconstructed three more stub type files, clearing 177 further errors:
-  `keybindings/types.ts` (six empty interfaces), `ink/cursor.ts`, and
-  `commands/plugin/unifiedTypes.ts`. Same defect as the MCP types in 1.68.14 —
-  an empty interface means "has no members" to TypeScript, not "shape unknown",
-  so every property access on one was an error and the consuming files carried
-  `@ts-nocheck` as a result.
-- `KeybindingBlock.bindings` is keyed by chord string, not an array. A first
-  attempt typed it `ParsedBinding[]`, which made every entry in the default
-  binding table an error — the declaration form (`'ctrl+d': 'app:exit'`) and the
-  parsed form (chord resolved into keystrokes) are different shapes, and
-  conflating them broke a file that had been fine.
-- `KeybindingAction` is a string rather than a union of known actions:
-  `defaultBindings.ts` assembles entries conditionally from feature flags, so a
-  value missing from a union would turn a working binding into an error.
-- Suppression list: 140 -> 132. Eight keybinding and ink files came off.
-- Totals for the sweep so far: 223 -> 132 files, 868 -> 563 errors, and almost
-  none of it file-by-file. Four stub files accounted for 258 errors on their
-  own.
-
-## 1.68.17
-
-
-- Fixed false `TaskListRequired` failures for observational Bash capability
-  checks. Task tracking now has a classification distinct from permission
-  auto-approval, so an executable probe can remain permission- and
-  sandbox-sensitive without being mislabeled as a workspace change.
-- The Bash classification is category-based rather than tailored to one
-  module: known reads, exact help/version checks, command-presence checks, and
-  import-only Python probes for any module can run without reopening a
-  completed task. Arbitrary interpreter code, output writes, background
-  execution, sandbox overrides, and unknown commands remain task-gated.
-- Both the initial call and its final post-permission input are classified.
-  Hooks or permission handlers therefore cannot rewrite an observational probe
-  into an untracked mutation.
-
-## 1.68.16
-
-
-- First pieces of the UR Nexus visual identity, as terminal primitives rather
-  than artwork: `constants/urPalette.ts` (obsidian/bronze/electrum/lapis tokens
-  in true-colour, ANSI-256 and monochrome tiers, with depth detection),
-  `constants/urOrnament.ts` (frieze bands, the four border styles, the gate
-  brand mark), and `utils/statusBarItems.ts` (width-aware status-bar registry).
-- The ornaments are thin box-drawing strokes, not solid blocks. Heavy glyphs
-  (▟▙██) were tried first and read as chunky sprites against a design built
-  from fine line-work. Everything renders on macOS Terminal, GNOME Terminal,
-  Konsole, Alacritty, foot and over SSH — no image protocol, so no user gets a
-  degraded version of the identity.
-- Friezes tile to an exact width and truncate rather than pad: a band that
-  overshoots its column budget wraps, and a wrapped frieze reads as corruption
-  rather than decoration. The ASCII gate is cell-for-cell the same size as the
-  Unicode one so a fallback does not shift the layout.
-- Status-bar items degrade by dropping whole items, lowest priority first,
-  after trying short forms — never by truncating the assembled string, which
-  cuts through whichever number sits at the boundary.
-- Section 11 of the design spec lists context usage at priority 2 but its own
-  narrow-width example keeps `ctx` while dropping state and agents. The
-  examples win: at a glance the two things worth knowing are how far along the
-  work is and how much room is left. Drop order is now an explicit per-item
-  rank rather than emerging from zone position.
-
-## 1.68.15
-
-
-- Redesigned the fixed top shell and bottom status area. The full-width bordered
-  banner is replaced by a three-column command deck: identity and version left,
-  workspace and branch centre, clock right, with a single graphite separator
-  beneath. The bright orange frame is gone, bronze is reserved for UR branding
-  and structural accents, and lapis blue carries focus, selection and context
-  usage. The house artwork is imported unchanged, character for character; the
-  UR wordmark is kept but rendered at normal weight rather than as the headline.
-- The footer is now a two-row rail with no surrounding box. Items declare a
-  priority, two widths and three renderings, so the rail degrades before it
-  drops and never wraps — verified at 80x24, 100x30, 120x40 and 160x50.
-  Mode and context usage are the last things to go.
-- System metrics render vertically with fixed-width labels and right-aligned
-  values, so the column does not shift when 9% becomes 71%. Miniature bars
-  appear only when the column affords them. CPU is sampled on a timer rather
-  than read per render: os.cpus() reports cumulative ticks, so a single reading
-  carries no rate, and the first reading reports `--` instead of a fabricated 0%.
-- Wired by composing around FullscreenLayout rather than adding a slot to it.
-  That file is React-Compiler output with hand-numbered memo slots and
-  @ts-nocheck; inserting a slot means renumbering the sequence, and an
-  off-by-one there produces cached JSX rendered against changed props — a fault
-  that neither throws nor typechecks. REPL changes by ten lines.
-- The deck is fullscreen-only. Inline mode writes to native scrollback, where
-  there is no fixed viewport and a "fixed" region would scroll away with
-  everything else. When the terminal is too short for deck, rail and a few
-  lines of conversation, the shell steps aside and renders content alone rather
-  than letting Ink silently shrink the fixed regions.
-
-## 1.68.14
-
-
-- Gave the MCP settings types their real shapes. `components/mcp/types.ts`
-  declared seven **empty** interfaces under a "Stub: not included in leaked
-  source" comment. An empty interface does not mean "unknown shape" to
-  TypeScript, it means "has no members" — so every property access on one was an
-  error, and that single file produced ~221 of the 858 errors sitting behind
-  `@ts-nocheck`. The MCP menus were not wrong; their types were.
-- The shapes are reconstructed from what the components actually access, with
-  `transport` as a literal discriminant so the server union narrows on
-  `transport === 'stdio'` instead of collapsing. Fields whose internals the UI
-  never inspects are `Record<string, unknown>` rather than `any`, so a consumer
-  must still narrow before reaching inside.
-- 118 errors cleared, `MCPAgentServerMenu` off the suppression list (141 -> 140).
-- Method note: of 42 files carrying exactly one error, nine shared one cause;
-  221 more came from this one stub. These cluster, so the productive next step
-  is grouping by error signature rather than opening files one at a time.
-
-## 1.68.13
-
-
-- Eight more files came off `@ts-nocheck` (149 -> 141) from a single fix. The
-  compiled signature of `useRegisterOverlay(id, t0)` declared two required
-  parameters while its own first statement reads
-  `const enabled = t0 === undefined ? true : t0` — the argument was optional by
-  construction and required by declaration, so every caller passing only an id
-  was a type error. Marking it optional cleared 10 errors across 10 files.
-- That is the shape worth looking for in the rest: of 42 files carrying exactly
-  one error, nine shared this one cause. The remaining suppressed files surface
-  ~858 errors, and the useful next step is grouping them by cause rather than
-  working through them file by file.
-
-## 1.68.12
-
-
-- The Ollama request path now reports where a request's bytes actually go —
-  tool definitions, system prompt, conversation — once per session in the debug
-  log. The fixed cost of tools plus system prompt is what decides whether a
-  small-context model has room left to work, and until now it had only been
-  estimated by summing prompt source. That estimate is wrong by construction:
-  these prompts are full of `condition ? longText : shortText`, and summing the
-  file counts both branches when only one is ever sent. The measurement is
-  taken from the serialized request, so it is what the server receives.
-- Reported as a share of the whole with the tool-definition count, because
-  "system prompt is large" and "conversation is large" call for opposite fixes
-  and are indistinguishable in a single total.
-
-## 1.68.11
-
-
-- Investigated turning the task-list gate advisory by default and did not do
-  it. The friction it causes is real, but the gate is also the final
-  revalidation before a tool executes, and defaulting it off removes two
-  properties nothing else provides: a permission handler or hook that rewrites
-  a read-only call into a mutating one is re-checked *after* the rewrite, and
-  task state is re-read at execution time so a plan that disappears while
-  permission is pending cannot let the mutation through. Eight tests in
-  `toolExecutionFinalInput` fail the moment enforcement is defaulted off, all
-  on those two paths. The rule and its revalidation are not separable: the
-  re-read is how the rule is applied at execution time, so with no rule there
-  is nothing to revalidate.
-- The friction had two causes and both are already fixed forward: the
-  allowance counted messages instead of tool calls, so the gate fired on the
-  first Write (1.65.5), and the TodoWrite prompt had lost its worked examples,
-  so smaller models stopped producing task lists at all (1.68.0). The gate is
-  reached far less often as a result. `tasks.requireBeforeChanges.enabled`
-  remains available for anyone who wants it off knowingly.
-
-## 1.68.10
-
-
-- `ToolSearchTool` no longer registers on runtimes where it cannot work. Its
-  purpose is fetching schemas for tools whose definitions were deferred, and
-  deferral needs the runtime to expand `tool_reference` blocks — an
-  Anthropic-native beta shape that no UR runtime supports (UR runs on Ollama,
-  OpenAI-compatible servers and vendor CLIs). `isEnabled()` consulted only
-  `isToolSearchEnabledOptimistic()`, which reads the mode, and the mode
-  defaults to `'tst'` (on). The tool therefore registered on every run: its
-  description shipped with each request, and the model was offered a tool that
-  could not function, because nothing was ever deferred for it to fetch.
-- Audit note on the surface as a whole: 168 commands, of which 8 touch a
-  feature flag that is not compiled in, and in each case the flag gates a
-  sub-feature rather than the command. 89 of 91 flags are absent from shipped
-  builds. Two of those (`CONTEXT_COLLAPSE`, `REACTIVE_COMPACT`) would have
-  failed on the first turn if enabled and were fixed in 1.68.2.
-
-## 1.68.9
-
-
-- Narrowed that allowlist entry from `ur.com` to `ur.com/docs`. Replacing a
-  docs-only host with a bare domain widened what WebFetch retrieves without
-  asking, on a list whose own header warns that broad entries are dangerous
-  where a host may serve user-supplied content — and the domain in question
-  does not exist yet, so whatever ends up hosted there would have inherited
-  that trust. The matcher enforces path-segment boundaries, so `/docs-evil/x`
-  does not match. Caught by `apiTool`, which asserted the old entry.
-
-## 1.68.8
-
-
-- The bundled `ur-guide` agent no longer answers UR questions out of another
-  product's documentation. It instructed the model to fetch
-  `https://docs.claude.com/llms.txt` and present it to users as "UR SDK docs"
-  and "UR API docs", including the line "Agent SDK docs are part of the UR API
-  documentation at the same URL". Its other source, `docs.ur.dev`, was never
-  served. Both now resolve to `https://ur.com/docs`.
-- Replaced the remaining 33 `docs.ur.dev` links across MCP help, the security
-  dialog, keybindings, settings validation tips, preflight checks and the
-  feedback survey. Two sandbox dialogs had been pointing their href at the new
-  domain while still displaying the old one.
-- `docs.ur.dev` in the WebFetch preapproved-host allowlist now points at
-  ur.com. Changed on its own: it is a hostname the fetch tool trusts, not a
-  link.
-- `KNOWN_AGENTS` listed `ur-code-guide`; the registered agent type is
-  `ur-guide`. A workflow naming the real agent was warned as unknown, while the
-  listed name would have been accepted despite resolving to nothing.
-- Removed a dead `UR_CODE_DOCS_MAP_URL` export from `constants/prompts.ts` —
-  a duplicate of the live constant, imported by nothing.
-- Added `test/docsUrlIntegrity.test.ts`, including a check that a link's
-  displayed text matches where it actually goes.
-
-## 1.68.7
-
-
-- Corrected the ur.ai -> ur.com replacement, which had rewritten identifiers as
-  well as URLs. `'ur.ai'` served two roles in this codebase: a domain in links
-  such as `https://ur.ai/settings/billing`, and a discriminant value in
-  `authTokenSource === 'ur.ai'`, `authMethod = 'ur.ai'` and
-  `source: 'ur.ai' as const`. A blanket replace changed both, which typechecked
-  and looked internally consistent but altered command availability — one
-  command that should have been hidden became visible, caught by
-  `commandRegistryIntegrity`. The 39 URLs now point at ur.com; the 11 auth
-  discriminants are back to their original values, which also keeps any
-  `"ur.ai"` already persisted in a user's auth state matching.
-
-## 1.68.6
-
-
-- An oversized Ollama request now recovers instead of only explaining itself.
-  1.68.3 reported "this request was 19.6 MB" clearly and then left the user to
-  run /compact by hand. UR already had both halves of the fix — `isMediaSizeError`
-  and `stripImagesFromMessages` — but both were wired to reactive compact's
-  retry, and REACTIVE_COMPACT is not compiled into any shipped build, so neither
-  was reachable. `isMediaSizeError` and `isMediaSizeErrorMessage` had no callers
-  at all outside their own file.
-- On a body-size rejection the request is retried once with images from earlier
-  turns removed, keeping the most recent one. Stale attachments are the usual
-  bulk and the least valuable part of it: only the newest is normally still
-  under discussion.
-- The retry is announced with both sizes and says to re-attach an earlier image
-  if it is needed. Dropping a user's attachments silently would be the same
-  invisible behaviour being fixed everywhere else.
-- No retry is attempted when there is at most one image-bearing message, since
-  it would resend identical bytes and fail identically.
-
-## 1.68.5
-
-
-- Replaced every `ur.ai` reference in `src/` with `ur.com` (202 sites, 0 left).
-  Note what these are: most are upstream URL structures carried into the fork —
-  `/settings/billing`, `/settings/connectors`, `/upgrade/max`, `/chrome`,
-  `/chrome/reconnect`, `/admin-settings/usage`, and desktop auto-update
-  redirects like `/api/desktop/darwin/universal/dmg/latest/redirect`. Changing
-  the domain does not make those endpoints exist; it moves them to a domain UR
-  will control. The features behind them still need a backend or removal.
-- `test/tipsAreReal.test.ts` still forbids `ur.ai` and `ur.com` in tips, since
-  the domain is not serving yet. Relax that deliberately once it is.
-- Corrected a comment in that test which claimed both domains "have no DNS
-  records". That came from a lookup run where `github.com` and `example.com`
-  fail identically — the environment had no DNS — so it was never evidence.
-
-## 1.68.4
-
-
-- The status line now reports subagents running in the current turn:
-  `agents: 2 running`, separate from the existing background `tasks:` count.
-  `isBackgroundTask()` excludes foreground entries on purpose — it was narrowed
-  to stop stale ratios like `tasks: 0/4 active` outliving the work — but nothing
-  counted them instead, so while subagents ran the bar said nothing at all,
-  which is the one moment the number matters.
-- Counted conservatively on purpose: a pending agent is not reported as running,
-  a backgrounded agent is not counted twice across both numbers, a foreground
-  shell is not labelled an agent, and zero renders nothing rather than
-  `agents: 0`. A wrong number in a status line is worse than a missing one.
-- No tool count was added. A `toolCount` field was drafted and then removed
-  rather than shipped unpopulated; a meaningful count of in-flight tool calls
-  needs hooks into tool execution, and a static "tools registered" total is
-  noise.
-
-## 1.68.3
-
-
-- `Ollama request failed (400): http: request body too large` now explains
-  itself. That string comes from Go's `net/http` MaxBytesReader rejecting the
-  payload on **byte size**, which is a different limit from the model's context
-  window — so the token-based context warning added in 1.66.2 never fires for
-  it, and a couple of screenshots can breach it while the token estimate still
-  looks comfortable. The request body is now measured at the send site, and the
-  error reports its actual size, names images as the usual cause (base64 adds
-  roughly a third, and every image persists in the transcript on later turns),
-  offers `/compact` or a fresh session, and notes that a reverse proxy in front
-  of Ollama enforces its own limit (`client_max_body_size` for nginx) which
-  tuning Ollama would not affect.
-- The classifier matches the 413 spellings a proxy returns as well as the Go
-  400, and is tested against unrelated 400s so it cannot replace a correct error
-  with confident, irrelevant advice.
-
-## 1.68.2
-
-
-- **Security: explicit file deny rules were not enforced.** `matchingRuleForInput`
-  resolved which permission rule matched a path by reading `igResult.rule.pattern`
-  from `ignore().test()`. That property does not exist — `TestResult` is
-  `{ ignored, unignored }` — and the access sat behind an `igResult.rule` guard,
-  so the guard was always false and the function returned `null` unconditionally.
-  Every caller (FileWriteTool, FileEditTool, FileReadTool, PowerShell path
-  validation, attachments, and the read/write permission checks themselves) does
-  `const denyRule = matchingRuleForInput(path, ctx, kind, 'deny'); if (denyRule)
-  { deny }`, so a path the user had explicitly denied was reported as matching no
-  rule and allowed through. The comment above one call site reads "SECURITY: This
-  must come before any allow checks ... to prevent bypassing explicit read deny
-  rules"; the code beneath it had never run.
-- The library cannot report which pattern matched, so resolution now tests
-  patterns individually after a combined fast-path check, and skips the empty
-  pattern that `/**` reduces to — which would otherwise deny every path.
-- `filesystem.ts` and `toolExecution.ts` are off `@ts-nocheck` (149 files remain).
-  The missing property was invisible to `tsc` for exactly as long as the
-  suppression was there; this is the defect the ratchet in 1.68.0 was added for.
-- Added `test/denyRuleMatching.test.ts`, which asserts the negative case as well
-  as the positive — the bug made *everything* return `null`, so "returns null for
-  an unmatched path" proves nothing on its own.
-
-## 1.68.1
-
-
-- A detected prompt-injection attempt is now reported to the user instead of
-  being refused in silence. Consolidating the scattered prompt guidance into the
-  execution contract was a genuine improvement, but one clause did not survive:
-  the older text said to "flag it directly to the user", and the replacement
-  told the model to refuse embedded directives and stopped there. So
-  `scanForInjection` would correctly flag hostile content, annotate the model's
-  own copy of the block, write an evidence-ledger entry — and say nothing to the
-  person whose fetched page or issue comment was carrying the attack. The
-  detection was never the weak part; the reporting was.
-
-## 1.68.0
-
-
-- Removed `@ts-nocheck` from 73 files, putting 21,503 previously unchecked lines
-  under `tsc`. Every one of those files produced **zero** errors once the
-  suppression was lifted — they were not suppressed because they were broken,
-  they were suppressed and then fixed, or never needed it. The blind spot was
-  33% larger than the actual debt. Typecheck remains clean at exit 0.
-- Added `test/typeCheckCoverage.test.ts`, a ratchet: the `@ts-nocheck` count may
-  fall but never rise, and the budget must be lowered when files come off the
-  list so it cannot silently stop ratcheting. It also asserts that `query.ts`,
-  `permissions.ts`, `filesystem.ts` and `toolExecution.ts` are still suppressed
-  — a standing reminder that the highest-consequence files are the unchecked
-  ones, with instructions to delete the test when that stops being true.
-- Remaining debt, measured rather than estimated: 150 files, ~870 errors, but
-  concentrated — 3 files hold 231 of them, while 95 files have 3 or fewer each
-  and 135 have 10 or fewer. Of the total, 32 are dead build-constant comparisons
-  from the fork (`'external' === 'ant'`) and 562 are property-access-on-`any`.
-  The 95 cheap files are the next batch.
-
-- Restored the worked examples in the TodoWrite tool prompt, with their
-  narrated tool use removed. After 1.65.5 that
-  prompt was cut from 184 lines to 48, which removed every demonstration and
-  left only abstract rules ("work is non-trivial when it needs planning,
-  investigation, multiple deliverables..."). A large model infers intent from
-  rules; a small local model pattern-matches on examples. Task lists stopped
-  being produced, and the task-list gate was then hardened over five successive
-  commits to force what the prompt no longer taught — which is what produced
-  refused writes and retry loops on small models. The newer lifecycle rules are
-  good and are kept; what returns is seven worked examples covering when to use
-  the list, when not to, and why, including the single-file case where one Write
-  call still warrants a plan.
-
-### Also in this release (was staged as 1.67.0)
-
-- Two subsystems loaded behind feature flags were not merely disabled, they
-  were broken in a way that only showed if you enabled them.
-  `services/compact/reactiveCompact.ts` did not exist on disk at all, yet
-  `query.ts` requires it by path and `/compact` calls two functions on it;
-  `services/contextCollapse/index.ts` was a stub exporting four names while
-  `query.ts` called four different ones, three of which were absent. Setting
-  either flag would have failed on the first turn with MODULE_NOT_FOUND or
-  "is not a function" rather than degrading to "feature off". Both modules now
-  export the full surface their callers use, returning result-shaped objects
-  instead of null so property access on the result cannot throw.
-- Neither was reachable in shipped builds — the bundler passes only VOICE_MODE
-  and CHICAGO_MCP, and live context management runs through
-  `services/compact/autoCompact.ts`, which is real and unaffected.
-- Added `test/optionalSubsystems.test.ts`, which derives the required exports
-  from what `query.ts` actually calls rather than from a hand-written list, so
-  a new call site cannot reintroduce the gap. It also asserts autoCompact has
-  not itself become a stub.
-- Audit note: 223 files carry `@ts-nocheck` and are invisible to
-  `tsc --noEmit`. Stripping the suppressions in a scratch copy surfaces 872
-  errors across ~108k lines, including `query.ts`, `permissions.ts` and
-  `filesystem.ts`. Both defects above sat inside that blind spot.
-
-
-- The original examples narrated tool use as prose ("* Uses the Edit tool to
-  add a comment *", "*Executes: npm install*"), which is the exact anti-pattern
-  the same prompt forbids in its closing paragraph — and what a small model
-  copies when it reports a file as written without calling Write. That is why
-  the examples were cut, and cutting them was not baseless; it just took the
-  decision guidance with it. They now return without the narration.
-
-## 1.66.2
-
-
-- A long session on Ollama now says when it has run out of context instead of
-  quietly getting worse. Ollama truncates an oversized prompt from the front
-  rather than returning an error, and the front of the prompt is the system
-  prompt — so the first thing discarded is the instruction set. The model then
-  answers with no tool guidance and no task-list requirement, which from the
-  outside looks like the model degrading on long prompts rather than like
-  context running out. Both numbers needed to detect this were already computed
-  on every request; they were never compared. A near-full context now warns at
-  85% and a full one explains what was dropped and offers `/compact`, a fresh
-  session, a larger-context model, or `UR_OLLAMA_NUM_CTX`.
-- Added `test/contextPressure.test.ts`, including that unknown sizing produces
-  no warning — an unmeasured context is not a full one.
-
-## 1.66.1
-
-
-- Corrected the warning-state result used by reactive compaction and context
-  collapse when a custom proactive threshold is configured. Their
-  effective-window override can no longer report that the separate proactive
-  auto-compact trigger was crossed.
-
-## 1.66.0
-
-
-- Unified proactive compaction around one model-aware threshold and one live
-  token estimator. Small context windows now retain positive warning, error,
-  and trigger thresholds; configured 50–95% thresholds are honored; prompt
-  notifications, `/context`, and the SDK expose a clamped live-estimated
-  percentage remaining until the real trigger; reactive/collapse modes do not
-  claim a false
-  countdown; and successful compaction clears stale warnings.
-- Preserved exact task execution state across full, partial, and
-  session-memory compaction. The restored authoritative snapshot keeps Task V2
-  IDs, statuses, owners, and dependency edges (or TodoWrite order/status),
-  prioritizes actionable work under 64-record and estimated 6,000-token
-  bounds, and requires `TaskList` before mutations when records were omitted.
-- Closed a task-gate bypass caused by compacted history. Compact boundaries
-  now carry durable metadata that consumes the initial trivial-call allowance,
-  including SDK serialization, so a model cannot compact and then mutate as
-  though no earlier tool calls occurred.
-- Removed a competing private compaction path from in-process workers. Workers
-  now use the normal agent query loop and therefore inherit the same feature
-  flags, exact trigger, session-memory-first path, reactive/collapse policy,
-  failure circuit breaker, cleanup, and compact-boundary behavior.
-- Brought Kimi/Ollama bare task-call recovery into parity with the live task
-  schemas. Dependency fields, numeric task/dependency IDs, and `failed` or
-  `skipped` terminal updates are normalized safely; invalid IDs, statuses, and
-  unknown fields fail closed.
-- Audited v1.65.0 through v1.65.5 for regression-safe enhancements. Every
-  concrete earlier technique is already present or superseded by stricter
-  current behavior, so no legacy implementation or removed feature was copied
-  back.
-
-## 1.65.14
-
-
-- Restored the proactive task-first behavior that was present in v1.65.0 and
-  removed a prompt/gate contradiction introduced later. For any non-trivial
-  state change, including a feature-rich single-file build, the model is now
-  told at system, task-tool, approved-plan, Ollama/Kimi, file, notebook,
-  shell, and worker boundaries to complete the available task setup, inspect
-  its result, mark the selected task `in_progress`, inspect that result, and
-  only then mutate state.
-- Made the ordering unambiguous for weaker models: task setup cannot be batched
-  with the mutation it enables, approved-plan handoffs require task calls as
-  the next state-changing calls, terminal task lists must be reopened or
-  extended before new work, and task guidance appears before file-tool
-  selection guidance.
-- Closed planner availability and control-flow gaps across tool modes. Legacy
-  `TodoWrite` now follows the same feature-rich/terminal-list lifecycle and is
-  preferred when Task V2 is incomplete; bare/simple, REPL-simple, coordinator,
-  custom-agent, and override-prompt paths all receive a usable planner and the
-  task-state contract. Coordinator workers must be task-bound before launch;
-  an explicitly planner-less custom tool pool now fails closed with honest
-  configuration recovery instead of naming a missing tool.
-- Prevented task-gate deadlocks and false mutations in supporting tools.
-  Team creation/deletion, shutdown/plan control messages, and emergency task
-  stop are narrow control transitions; skill loading and desktop screenshots
-  are read-only while downstream skill work, desktop input, and arbitrary
-  state-changing tools remain gated.
-
-## 1.65.13
-
-
-- Recovered otherwise valid `AskUserQuestion` calls whose UI header exceeds
-  the 12-character chip width. Native structured calls, bare/wrapped JSON, and
-  explicit-choice recovery now compact only that bounded presentation field;
-  questions, choices, labels, descriptions, previews, metadata, and selection
-  behavior remain unchanged, while unsafe or grossly oversized headers still
-  fail validation.
-- Allowed strictly parsed syntax verification after a task-free one-shot
-  Write. `node --check <file>` and the bounded transcript-produced HTML script
-  checker bypass only the task-list requirement; arbitrary Node evaluation,
-  extra commands, redirects, backgrounding, sandbox overrides, and
-  permission-time rewrites fail closed, and normal Bash permission/sandbox
-  checks still apply.
-
-## 1.65.12
-
-
-- Forced explicit weak-model decision menus through the real
-  `AskUserQuestion` UI. A provider-neutral end-turn guard accepts only one
-  canonical Ask object from explicit reasoning or one complete rigid Markdown
-  choice menu, validates it unchanged against the live tool schema, and rejects
-  examples, ambiguity, ordinary prose, workers, and headless sessions.
-- Removed two task-list dead ends without weakening the mutation boundary.
-  Live plan mode may run only the exact current plan-directory bootstrap Bash
-  shape before tasks exist, and the last actionable task remains `in_progress`
-  when a file mutation has no later successful observable check. The same task
-  can then be verified or corrected instead of creating a duplicate.
-- Improved exact `Edit` mismatch recovery for stale HTML blocks. Diagnostics
-  now select the most distinctive verified line near the real target, such as
-  `<script>`, rather than an unrelated generic closing tag; edits remain
-  fail-closed and never apply fuzzy replacements.
-- Raised the default Ollama Cloud timeout for the known-slow Kimi K2.7 family
-  from 120 to 300 seconds in both streaming and permitted non-streaming paths.
-  Explicit timeouts and the stricter remote-session ceiling still take
-  precedence.
-
-## 1.65.11
-
-
-- Hardened `AskUserQuestion` for weaker models without inventing user intent.
-  Its model schema now exposes only a strict 1–4-question request shape with
-  2–8 nested choices, compact validation explains malformed flat arrays, and
-  lossless recovery never fabricates labels, descriptions, or prose-derived
-  questions.
-- Made question interaction truthful and safe. Answers are accepted only after
-  post-permission validation has collected one real response per question,
-  custom `Other` works in both menu layouts, question-keyed UI state is
-  prototype-safe, and HTML-configured previews render escaped inert text
-  instead of executable model markup.
-- Improved weak-model file-tool recovery. `Write` now explains that
-  `file_path` and complete `content` must be supplied together and never treats
-  surrounding prose as file data; a narrow deletion-only `Edit` whose desired
-  replacement is already uniquely present reports “already up to date” without
-  writing, while ambiguous and general stale edits still fail closed.
-- Corrected task-gate control flow and diagnostics. `ExitPlanMode` can reach
-  its approval transition without an implementation task, stale out-of-mode
-  calls remain invalid, and gate recovery distinguishes a missing plan from an
-  all-terminal task list so unfinished Edit/Bash work is reopened rather than
-  retried unchanged. A simple loopback browser preview bypasses only the task
-  gate while retaining Bash permission and rewrite checks.
-- Kept package validation compatible with both npm 11 and npm 12
-  `npm pack --json` output shapes, so upgrading npm does not make a valid
-  tarball look missing during tests or release checks.
-
-## 1.65.10
-
-
-- Reworked approved-plan execution into a capability-aware task graph. Plans
-  now split separately completable outcomes, keep genuinely atomic work whole,
-  express review-to-fix and verification dependencies, and launch only ready,
-  non-conflicting work in parallel waves of at most eight. The handoff uses
-  `TaskCreate`/`TaskUpdate`, `TodoWrite`, or the numbered plan according to the
-  tools actually available, and never advertises a worker that is not active.
-- Made the built-in Explore and Plan agents available in the standard CLI with
-  structurally read-only tools. Parent and child execution boundaries reject
-  mutations even after permission-hook rewrites, custom agents cannot inherit
-  the exemption by reusing a name, and team creation/deletion rechecks live
-  plan mode before changing state.
-- Task tools now accept positive safe-integer JSON task IDs as well as strings
-  and normalize them to canonical persisted strings, fixing smaller models
-  that call `TaskUpdate` with `taskId: 1`.
-- Exact edit failures now return a bounded preview and a verified line anchor
-  for a fresh, smaller contiguous match. Large cross-section replacements fail
-  closed with actionable recovery instead of retrying unchanged or applying a
-  risky fuzzy edit.
-
-## 1.65.9
-
-
-- Fixed the plan-file/task-list deadlock. While plan mode is active, the exact
-  normalized session plan file can be written before actionable tasks exist;
-  ordinary workspace mutations still require `TaskCreate`/`TodoWrite`, and
-  permission or hook rewrites are reclassified at the final execution boundary.
-- Fixed `ExitPlanMode` approval races. Permission approval can change the mode
-  and rewrite allowed prompts or edited plan content without causing a false
-  “not in plan mode” error, while genuinely new out-of-mode calls remain
-  rejected. The compact execution contract now distinguishes ordered task
-  tracking from explicit plan mode for weaker models.
-- Fixed Linux GitHub Actions and release validation without misrepresenting the
-  product surface. Registry checks now use the platform-neutral
-  167-command/160-visible/235-token baseline and verify the supported macOS and
-  x64 Windows `/desktop` (`/app`) delta separately.
-
-## 1.65.8
-
-
-- Fixed provider API-key entry in `/model`: the masked input now uses the
-  available terminal width, explicit cursor/focus state, and a one-line secret
-  viewport instead of rendering one masked character per row. Narrow and
-  invalid resize states retain a safe minimum width.
-
-## 1.65.7
-
-
-- Audited all 14 technical chapters against the shipped source and generated
-  CLI. The manual now distinguishes public runtime behavior from compile-time
-  flags, compatibility-only state, and source helpers; it is included in the
-  npm package and checked for valid paths, commands, configuration, and package
-  coverage.
-- Reworked agent guidance into one compact, ordered execution contract plus
-  mode-specific code, research, debug, browser, image, video, and data
-  workflows. Structured tool calls, dependency-aware planning, bounded
-  parallelism, failure recovery, result inspection, verification, honest
-  completion, and prompt-injection boundaries remain explicit without unsafe
-  package-manager guesses or examples that merely narrate fake tool calls.
-- Hardened task execution end to end. Both Task V2 and legacy TodoWrite plans
-  participate in mutation and completion gates, task order is numeric and
-  dependency-aware, failed/skipped states are rendered honestly, and the
-  verifier refuses an overall completion while actionable work remains or task
-  state cannot be read.
-- Workflow execution now checks approval before invoking a side effect,
-  enforces verification unless explicitly advisory, records every settled
-  parallel branch, and persists progress atomically. Resume restores bounded
-  exact dependency outputs without replaying completed steps; missing or
-  oversized required output fails closed and explains how to recover.
-- Multi-agent crews and planned `/exec` runs use bounded parallel workers,
-  dependency fan-in, exact verdicts, cancellation-aware respawn, isolated retry
-  worktrees, and a shared-checkout write gate. Ambiguous side effects are not
-  replayed, per-prompt worktrees keep dependent steps together, and concurrent
-  output files cannot overwrite one another.
-- Fixed false-success and argument-parsing behavior across root and slash
-  commands. Invalid usage returns 2, failed operations return 1, child process
-  failures propagate, previews do not mutate, and claim-ledger persistence is
-  structurally validated, workspace-contained, private, atomic, and bounded.
-- Strengthened provider and tool-call interoperability for smaller/local
-  models: streamed calls keep stable ordinals, cumulative fragments are
-  deduplicated conservatively, malformed or rewritten inputs are revalidated,
-  Ollama image results and session-host overrides are preserved, and OpenAI
-  Responses transport settings now reach actual client selection.
-- Improved terminal task UX: live task/status displays use the selected
-  session model, show only actionable or active background work, preserve
-  selection as rows change, handle narrow terminals, expose blockers and every
-  terminal status, and never advertise blocked work as the next action.
-- Hardened session, export, research, notes, file-operation, worktree, and
-  sandbox paths against traversal, symlink escape, oversized/corrupt state,
-  interrupted writes, stale replay, and misleading success. Unsupported
-  workflow/monitor task implementations remain inspectable as history but are
-  no longer presented as runnable.
-- Added a typed `ur-agent/sdk` subpath for ESM and CommonJS with validated
-  subprocess inputs, deterministic JSON/NDJSON result parsing, environment
-  precedence, and nonzero-exit handling. Release gates rebuild generated
-  artifacts before publish, smoke-test both SDK module formats from the packed
-  tarball, require the technical manual, and verify runtime dependency ranges.
-
 ## 1.65.6
-
 
 - Remote sessions no longer reconnect forever when the server repeatedly
   accepts a WebSocket upgrade and then reports that the session is missing.
@@ -737,7 +62,6 @@
 
 ## 1.65.5
 
-
 - Syntax highlighting works again — in assistant messages, code previews and
   question dialogs. `cli-highlight` was imported by four rendering surfaces and
   declared in `package.json` by none of them, so the import threw on every run
@@ -764,7 +88,6 @@
   could leave a stale value on screen after a switch.
 ## 1.65.4
 
-
 - A tool call that keeps failing identically is now stopped. A 4B model refused
   once by the task-list gate answered by emitting `Write` with no arguments
   repeatedly, and nothing intervened — the trajectory grader names this pattern
@@ -779,7 +102,6 @@
   left the guard counting zero.
 
 ## 1.65.3
-
 
 - Removed two tips for things that do not exist: `/mobile to use UR from the
   UR app on your phone` (no such command, no such app) and a pointer to
@@ -797,7 +119,6 @@
   vacuously on an empty match.
 
 ## 1.65.2
-
 
 - Fixed `--discover-ollama` having no effect on model discovery or requests.
   `getOllamaBaseUrl` resolves the session host correctly, but three callers
@@ -837,7 +158,6 @@
 
 ## 1.65.1
 
-
 - Fixed `ur selftest run` reporting 0/5 anywhere but the UR repo. The drill
   runner spawned `./bin/ur.js`, a path relative to the current directory, so
   every drill failed instantly with an empty detail — which reads as five
@@ -850,7 +170,6 @@
   directory; verified it fails against the old code and passes against the fix.
 
 ## 1.65.0
-
 
 - The release gate now asks the registry whether the packed dependency ranges
   can actually be installed. This is the check that was missing when 1.61.2
@@ -866,7 +185,6 @@
   on a clean tree.
 
 ## 1.64.1
-
 
 - Fixed `npm install -g ur-agent` failing with
   `No matching version found for playwright-core@^1.64.0`. Releases 1.61.2,
@@ -884,7 +202,6 @@
   Verified it fails when the historical break is reintroduced.
 
 ## 1.64.0
-
 
 - Tool-result pruning now announces itself. It changed context silently, so
   there was no way to confirm it fired or to attribute a missing detail to it —
@@ -910,7 +227,6 @@
 
 ## 1.63.0
 
-
 - Added size-triggered pruning of superseded tool results
   (`context.pruneToolResults`). UR already had the clearing machinery, but
   nothing external could reach it: cached microcompact is internal-only and
@@ -930,7 +246,6 @@
 
 ## 1.62.0
 
-
 - `ur agent-inspect --costs` now labels each row with what the agent was
   actually doing. A real 62-agent fan-out reported opaque hex ids, so you could
   see that one agent burned 810k input tokens — 14% of the session — without
@@ -941,7 +256,6 @@
   would lose spend in order to avoid losing a label.
 
 ## 1.61.2
-
 
 - Fixed `ur agent-inspect --costs` reporting nothing, always. It resolved the
   *live* session, but every `ur` invocation mints a new session id, so bare it
@@ -955,7 +269,6 @@
   `agent-*.jsonl`. Only the reader's choice of session was wrong.
 
 ## 1.61.1
-
 
 - Fixed secondary model queries failing on any Ollama setup whose session model
   is not `qwen2.5-coder:7b`. `getSmallFastModel()` fell back to the compiled
@@ -972,7 +285,6 @@
   the failure is visible as a failed tool call.
 
 ## 1.61.0
-
 
 - Added `ur selftest`, end-to-end drills for the gap that produced every
   serious defect in recent releases: a module that is correct while something
@@ -993,7 +305,6 @@
 
 ## 1.60.1
 
-
 - `ur memory-integrity verify` no longer reports an empty or missing store as
   verified. It printed "verified — 0 file(s) match the recorded digests" for an
   empty directory, and that identical reassurance would have appeared for a
@@ -1008,7 +319,6 @@
   resolved the wrong path.
 
 ## 1.60.0
-
 
 - Added `ur memory-integrity`, tamper-evidence for the file-backed memory
   stores. Project task memory was hash-chained and could prove tampering; the
@@ -1037,7 +347,6 @@
 
 ## 1.59.0
 
-
 - Added `ur sources`, a claim-to-source ledger. `wrapUntrusted` already stamped
   every untrusted block with a nonce and a source label, but discarded both the
   moment the block reached the model, so there was no way to audit what web or
@@ -1064,7 +373,6 @@
 
 ## 1.58.1
 
-
 - Unified vision-capability detection behind
   `src/utils/model/visionCapability.ts`. Three implementations disagreed: the
   Ollama adapter's `modelCapabilityEnabled` returned `has(x) ?? true`, so a
@@ -1087,7 +395,6 @@
 
 ## 1.58.0
 
-
 - Added per-agent cost and token attribution: `ur agent-inspect --costs`.
   `stats.ts` already read every `{sessionId}/subagents/agent-{agentId}.jsonl`
   transcript, but only to fold those tokens into a single total, so a fan-out
@@ -1102,7 +409,6 @@
 
 ## 1.57.5
 
-
 - Fixed the release gate failing on `repoEditImports`. The gate runs
   `bun test --timeout 120000`, but a per-test budget silently overrides that
   global, and this test declared 15s while its body — which builds a
@@ -1113,7 +419,6 @@
   20s) are flagged by it; ordinary call arguments are not.
 
 ## 1.57.4
-
 
 - Fixed slash command arguments being silently truncated. `parseArguments`
   kept only the string tokens shell-quote returned, but shell-quote classifies
@@ -1138,7 +443,6 @@
 
 ## 1.57.3
 
-
 - Stopped a false diagnosis on failed tool calls. When a tool call failed
   schema validation, UR appended "this tool's schema was not sent to the API"
   and told the model to load it via `ToolSearch`. Both claims were wrong on
@@ -1155,7 +459,6 @@
 
 ## 1.57.2
 
-
 - Fixed the Ollama adapter discarding images returned by tools. A tool result
   containing an image was flattened with `contentBlockToText`, which renders an
   image block as the literal string `[Image output omitted]` — so a `Computer`
@@ -1170,7 +473,6 @@
 
 ## 1.57.1
 
-
 - Fixed the `Computer` tool returning a byte count instead of the screenshot.
   `mapToolResultToToolResultBlockParam` dropped the captured image, so the
   model saw only "Captured 5164460 bytes" and had to ask the user where to save
@@ -1181,7 +483,6 @@
   for the model to read rather than reporting nothing usable.
 
 ## 1.57.0
-
 
 - Connected four features that were built, tested and then left unreachable.
   Each had passing unit tests while contributing nothing to a real session.
@@ -1211,7 +512,6 @@
 
 ## 1.56.1
 
-
 - Documented the 1.52.0–1.56.0 features, which had reached `technical/03` as
   command rows but nowhere else. Doc 09 now covers the fan-out limits and how
   to run several workers at once; doc 12 covers the prompt-injection module and
@@ -1221,7 +521,6 @@
   profiles, and the provider environment variables.
 
 ## 1.56.0
-
 
 - Added a subagent fan-out governor. Agents could spawn agents with no depth or
   concurrency bound, and `/crew`, `/arena`, `/bg fanout` and `/pattern` all
@@ -1251,7 +550,6 @@
 
 ## 1.55.0
 
-
 - Narrowed `APIProvider` to the two values `getAPIProvider()` can actually
   return, `'foundry' | 'ollama'`, and let the compiler find every dead branch.
   It surfaced 66 errors across 25 files; all are now resolved and the
@@ -1278,7 +576,6 @@
 
 ## 1.54.1
 
-
 - Fixed `/speak`, `/computer`, `/memory-suggest`, `/import-session` and
   `/permission-profile` being unreachable from the shell. They were registered
   as slash commands but never wired into the Commander tree in `main.tsx`, so
@@ -1293,7 +590,6 @@
   scan and was burying the plan in twenty lines of noise.
 
 ## 1.54.0
-
 
 - Wired the 1.53.0 capability libraries into runnable commands. They were
   verified modules but nothing invoked them; these are the execution paths.
@@ -1313,7 +609,6 @@
   own; `/remember` still does the writing.
 
 ## 1.53.0
-
 
 - Added automatic memory extraction (`src/memdir/extractFacts.ts`). Durable
   preferences and project conventions are proposed from user messages, deduped
@@ -1345,7 +640,6 @@
 
 ## 1.52.0
 
-
 - Implemented Ollama Cloud authentication. The Ollama client sent no
   `Authorization` header at all, so the hosted API was unreachable: local
   sessions only worked because the signed-in daemon proxies `:cloud` models on
@@ -1366,7 +660,6 @@
 
 ## 1.51.0
 
-
 - Added named permission profiles. `settings.permissions.profiles` holds named
   rule sets (allow/deny/ask plus a description) and
   `settings.permissions.activeProfile` selects one; its rules are appended to
@@ -1384,7 +677,6 @@
   finishing without polling. The in-app toast behavior is unchanged.
 
 ## 1.50.6
-
 
 - Implemented `--effort` on Ollama. The support predicate compared
   `getAPIProvider()` against `'firstParty'` — a value it can never return — so
@@ -1421,7 +713,6 @@
 
 ## 1.50.5
 
-
 - Added `.github/workflows/release.yml`. The repository had only a test
   workflow, so tags never became production releases: 18 tags existed with no
   GitHub Release and no automated publish. Pushing a `v*` tag now runs the full
@@ -1436,7 +727,6 @@
 
 ## 1.50.4
 
-
 - Removed the `/install-github-app` command and its GitHub App setup flow,
   along with the startup tip suggesting `@ur` be tagged from issues and pull
   requests. The composite action at the repository root is removed with it.
@@ -1446,7 +736,6 @@
   repository is gone.
 
 ## 1.50.3
-
 
 - Removed the GitHub App installation step from `/install-github-app`. UR
   authenticates in CI with the workflow's built-in `GITHUB_TOKEN` and a
@@ -1463,7 +752,6 @@
 
 ## 1.50.2
 
-
 - Fixed local-provider sessions showing "Not logged in · Run /login" with no
   account to log in to, introduced in 1.50.1. Credential ownership and URHQ
   auth applicability are separate questions: an Ollama session uses the user's
@@ -1477,7 +765,6 @@
   the provider test into the final condition.
 
 ## 1.50.1
-
 
 - Fixed an always-true provider test that silently disabled a large part of the
   command surface. `isUsing3PServices()` was derived from `getAPIProvider()`,
@@ -1496,7 +783,6 @@
   flow, so it is now available on every provider including local runtimes.
 
 ## 1.50.0
-
 
 - Completed `/install-github-app` so `@ur <task>` works from GitHub. The
   mention now triggers on issue comments, pull-request comments, inline review
@@ -1530,7 +816,6 @@
 
 ## 1.49.0
 
-
 - Added cryptographically signed A2A Agent Cards: RFC 7515 detached JWS over
   the RFC 8785 canonical form of the card, using Ed25519 (`alg: "EdDSA"`).
   Verification recomputes the payload with `signatures` excluded, so a card can
@@ -1546,7 +831,6 @@
   through `git ls-files --others`.
 
 ## 1.48.0
-
 
 - Added managed cloud fan-out with durable, idempotent steering, owner-scoped
   mobile/A2A control, explicit PASS plus safe-branch selection, and
@@ -1566,7 +850,6 @@
 
 ## 1.47.1
 
-
 - Hardened file downloads, filesystem permission checks, and signed skill
   trees against traversal and chained-symlink escapes.
 - Fixed task-memory integrity validation, prompt-plan file locking and change
@@ -1579,7 +862,6 @@
   coverage for each corrected path.
 
 ## 1.47.0
-
 
 - Added a secure, opt-in AG-UI HTTP/SSE adapter with official schema/encoder
   integration, truthful capability discovery, ordered text/tool/state events,
@@ -1619,7 +901,6 @@
 
 ## 1.46.0
 
-
 - Added a stable, official-SDK ACP v1 stdio agent with resumable sessions,
   client MCP transports and additional roots, streamed updates, native
   permission requests, cancellation, and private persisted session identity.
@@ -1651,7 +932,6 @@
 
 ## 1.45.6
 
-
 - Deduplicated project verification approval so compile/test/lint commands are
   offered at most once per user turn. The approval marker is cleared for the
   next user task, preserving one explicit decision per task.
@@ -1660,7 +940,6 @@
   technical, static-site, npm, IDE, and bundled release metadata.
 
 ## 1.45.5
-
 
 - Bounded Ollama Cloud response-header and streaming phases to 120 seconds by
   default while preserving the five-minute allowance for local Ollama models.
@@ -1677,7 +956,6 @@
 
 ## 1.45.4
 
-
 - Added mandatory provider-first model selection for the first interactive run
   in every workspace that has no project-local model. The validated provider
   and model pair is saved to `.ur/settings.local.json` before the REPL starts.
@@ -1689,7 +967,6 @@
   resume flows remain non-blocking. AutoApprove behavior is unchanged.
 
 ## 1.45.3
-
 
 - Made slash-command resolution deterministic across bundled skills, plugins,
   project skills, workflows, and built-ins. Duplicate canonical tokens are
@@ -1710,7 +987,6 @@
   worktree publishing contract.
 
 ## 1.45.2
-
 
 Correctness and containment release completing the runtime audit.
 
@@ -1744,7 +1020,6 @@ Correctness and containment release completing the runtime audit.
 
 ## 1.45.1
 
-
 Completes the three partially-delivered 1.45.0 items to 100%.
 
 - Semantic code search is now zero-config: the CodeSearch tool auto-enables
@@ -1760,7 +1035,6 @@ Completes the three partially-delivered 1.45.0 items to 100%.
   removal reserved for the next major).
 
 ## 1.45.0
-
 
 Top-tier feature release — closes the gaps against 2026's leading agents.
 
@@ -1806,7 +1080,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.44.10
 
-
 - Render `AskUserQuestion` permission requests inside a `PermissionDialog` so
   multiple-choice options appear as a bordered dialog box rather than a plain
   list.
@@ -1819,14 +1092,12 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.44.9
 
-
 - Fix recurring "String to replace not found in file" Edit errors by adding
   whitespace-tolerant matching (trailing whitespace, tab/space indentation).
 - Fix AskUserQuestion "questions type expected as array" validation errors by
   parsing stringified `questions`/`options` from small local models.
 
 ## 1.44.8
-
 
 - Keep auto-memory and automatic learning on by default with explicit opt-outs.
   Automatic learning can now be disabled with `automaticLearningEnabled: false`
@@ -1838,7 +1109,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.44.7
 
-
 - Add `autoApprove` permission mode for command/tool approval prompts. It
   auto-approves operations that would otherwise require permission approval,
   while preserving user-input dialogs and explicit denials.
@@ -1846,16 +1116,13 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.44.6
 
-
 - Internal permission-mode iteration superseded by `1.44.7`.
 
 ## 1.44.5
 
-
 - Internal permission-mode iteration superseded by `1.44.6`.
 
 ## 1.44.4
-
 
 - The agent now learns from every run automatically — no `/learn run` needed.
   ci-loop, arena, escalation, and test-first completions fold their pass/fail
@@ -1877,7 +1144,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   this is an explicit token/compute dial for long sessions.
 
 ## 1.44.3
-
 
 - Make thinking visually distinct from answers: thinking blocks are labeled
   "model reasoning to itself — not the answer" (dim italic, left-bordered when
@@ -1912,7 +1178,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.44.2
 
-
 - Fix Ollama streamed tool-call accumulation: Ollama streams each completed
   tool call in its own chunk, but the merge logic overwrote call N-1 with
   call N, collapsing multi-call turns (e.g. several `Write` calls scaffolding
@@ -1937,14 +1202,12 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.44.1
 
-
 - Fix task board rendering: finished, failed, and skipped tasks now render as
   checked instead of unchecked.
 - Deduplicate consecutive task board emissions and keep final boards clean
   (single header, single progress summary).
 
 ## 1.44.0
-
 
 - Add `verifier.askBeforeGates` setting (default `false`). When enabled, UR asks
   via `AskUserQuestion` whether to run project verification commands after a
@@ -1956,7 +1219,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.43.6
 
-
 - Render output from reasoning models on OpenAI-compatible providers (LM Studio,
   vLLM). The streaming and non-streaming parsers now read `reasoning_content`
   (and `reasoning`) deltas and surface them as thinking blocks. Models that emit
@@ -1964,7 +1226,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   distills, QwQ) previously produced an empty response with no error.
 
 ## 1.43.5
-
 
 - Fix model discovery for OpenAI-compatible providers (LM Studio, llama.cpp,
   vLLM) when base_url omits the API version segment. Discovery and `ur provider
@@ -1975,7 +1236,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.43.4
 
-
 - Tolerate hallucinated extra parameters on tool calls: when input validation
   fails only because of unrecognized keys (e.g. `title`/`description` on a
   `Write` call), those keys are stripped and the call is re-validated instead
@@ -1984,14 +1244,12 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.43.3
 
-
 - Bias the assistant toward the interactive arrow-key select menu: the
   AskUserQuestion tool guidance now instructs the model to use the selectable
   menu whenever it offers the user a choice, instead of asking a free-form
   question in plain text that the user has to answer by typing.
 
 ## 1.43.2
-
 
 - Fix artifact pages hanging blank: diff viewer assets (diff2html,
   highlight.js theme) are now served locally from `/assets` via the new
@@ -2002,7 +1260,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   port can be passed positionally (`ur artifacts serve 4181`).
 
 ## 1.43.1
-
 
 - Artifacts page renders diffs VS Code-style: side-by-side/inline views with
   syntax highlighting via diff2html (plain-text fallback when offline). New
@@ -2015,14 +1272,12 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.43.0
 
-
 - Add `ur artifacts serve [--port 4180]`: a local web page for artifacts.
   `GET /artifacts/<id>` renders one artifact (status, summary, feedback,
   content), `/` lists all, with `/artifacts/<id>/raw` and `/api/artifacts[/<id>]`
   endpoints. Bound to 127.0.0.1; stop with `ur artifacts serve --stop`.
 
 ## 1.42.0
-
 
 - Project safety policy no longer hard-blocks commands. Risky or deny-matched
   commands (package installs, destructive git operations, secret access,
@@ -2032,14 +1287,12 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.41.1
 
-
 - Harden provider tests against stored API keys in the local secure storage.
 - Revert sandbox default to disabled; expose `sandbox.enabled`,
   `sandbox.failIfUnavailable`, and `sandbox.allowUnsandboxedCommands` through
   the `/config` tool so users can toggle the sandbox on/off explicitly.
 
 ## 1.41.0
-
 
 - Persist the model chosen through the interactive `/model` picker to settings
   and clear saved model state when `/model default` is used.
@@ -2048,7 +1301,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.40.1
 
-
 - Pin `diff` to ^7 and OpenTelemetry packages to 2.6.1/0.214.0 to match the
   source API, fixing type errors from accidental dependency bumps, and rebuild
   the shipped bundle against these versions.
@@ -2056,12 +1308,10 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.40.0
 
-
 - Version bump: align package, build macro, VS Code extension, docs eyebrow, and
   changelog for the 1.40.0 release.
 
 ## 1.37.5
-
 
 - Version bump: align package, build macro, VS Code extension, docs eyebrow, and
   changelog for the 1.37.5 patch release.
@@ -2083,12 +1333,10 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.37.3
 
-
 - Version bump: align package, build macro, VS Code extension, docs eyebrow, and
   changelog for the 1.37.3 patch release.
 
 ## 1.37.2
-
 
 - Tightened provider reliability: API-provider calls now use a finite default
   timeout, consistent retry handling for transient network/provider failures,
@@ -2111,7 +1359,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.35.1
 
-
 - Polished the bundled VS Code inline-diffs view with native toolbar icons,
   useful empty-state rows, clearer diff labels, and a cleaner review webview.
 - Fixed `ur ide status` routing so the IDE extension status action reports
@@ -2120,7 +1367,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   Ollama gateway timeouts retry cleanly.
 
 ## 1.35.0
-
 
 - New `ur connect` CLI command (same implementation as the `/connect` slash
   command): `ur connect status`, `ur connect <provider>`,
@@ -2146,7 +1392,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.34.0
 
-
 - Restore the 1.30.3 subscription approach: Codex CLI, Claude Code, Gemini CLI
   and Antigravity are first-class in `/model` again — shown by default and
   usable directly (no `UR_ENABLE_EXTERNAL_APP_PROVIDERS` opt-in and no runtime
@@ -2158,7 +1403,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.33.0
 
-
 - Add API keys from inside UR while it is running: in `/model`, selecting an
   API provider (OpenAI, Anthropic, Gemini, OpenRouter) that isn't connected now
   shows a masked key-entry step. The key is stored in the OS keychain, then the
@@ -2168,7 +1412,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   Gemini, Antigravity).
 
 ## 1.32.0
-
 
 - `/model` now shows the subscription providers (Codex CLI, Claude Code, Gemini
   CLI, Antigravity) again. They are enabled the moment you `ur connect` them
@@ -2184,7 +1427,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   tolerance), so a saved API model keeps working across restarts.
 
 ## 1.31.0
-
 
 - Add in-app provider connection: `ur connect` / `/connect` connects a provider
   once and persists it. Subscription providers (Codex, Claude Code, Gemini,
@@ -2202,7 +1444,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.30.6
 
-
 - Restore a visible `subscription` access entry in provider lists without
   exposing provider app bridges as normal runtimes.
 - Keep subscription selection honest: no fake UR model IDs are listed, and the
@@ -2210,7 +1451,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   runtime exists.
 
 ## 1.30.5
-
 
 - Hide external app bridge providers from normal `/model`, `/provider`, and
   `ur provider list` output. The default provider UX now shows only UR-native
@@ -2220,7 +1460,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   auth label, and idle task noise are omitted.
 
 ## 1.30.4
-
 
 - Make the default provider runtime independent of provider apps. Codex CLI,
   Claude Code, Gemini CLI, and Antigravity are now treated as explicit external
@@ -2232,14 +1471,12 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.30.3
 
-
 - Fix Codex CLI dispatch for real interactive terminals by inheriting terminal
   stdin for `codex exec`. Codex treats both `/dev/null` and closed pipes as
   piped stdin, so the previous `1.30.2` EOF approach still triggered
   `Reading additional input from stdin`.
 
 ## 1.30.2
-
 
 - Fix Codex subscription dispatch failing with `exited 1 ... Reading additional
   input from stdin`. `codex exec` reads stdin even when the prompt is an
@@ -2249,14 +1486,12 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.30.1
 
-
 - Fix Codex CLI runtime dispatch by ignoring stdin when UR already passes the
   prompt as a command argument. This prevents `codex exec` from treating UR's
   closed pipe as extra stdin and exiting after `Reading additional input from
   stdin...`.
 
 ## 1.30.0
-
 
 - IDE integration commands: `ur ide status`, `ur ide doctor`, and `ur ide config
   <editor>` for VS Code, Cursor, Windsurf, Zed, JetBrains, Neovim, and generic
@@ -2278,7 +1513,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.29.1
 
-
 - Replace fabricated Claude Code and Gemini CLI static model names with
   provider-scoped CLI model aliases/names that the official CLIs can receive.
 - Reject stale subscription CLI selections such as `claude-code/sonnet-5` before
@@ -2287,7 +1521,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   suggested action, and an explicit no-cross-provider-fallback note.
 
 ## 1.29.0
-
 
 - Customer release consolidating the multi-provider selection and runtime
   dispatch work (1.27.5–1.28.1) into a single production line.
@@ -2300,7 +1533,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.28.1
 
-
 - Keep the status bar synchronized with in-session provider/model changes from
   `/model`, `/model <model>`, and `/provider`, instead of waiting for persisted
   settings to reload.
@@ -2308,7 +1540,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   provider/model over stale persisted settings.
 
 ## 1.28.0
-
 
 - Subscription CLI providers (Codex, Claude Code, Gemini, Antigravity) now
   perform real dispatch: the official CLI is spawned in non-interactive mode with
@@ -2331,7 +1562,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.27.6
 
-
 - Route runtime requests through the selected provider/model pair instead of
   allowing stale Ollama/default-provider paths to handle non-Ollama requests.
 - Add runtime dispatch validation, backend labels, and focused mocked dispatch
@@ -2340,7 +1570,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   appears in the UI message list.
 
 ## 1.27.5
-
 
 - Make `/model` provider-first and provider-scoped, with clear subscription,
   API-key, local runtime, and OpenAI-compatible server labels.
@@ -2352,7 +1581,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.25.3
 
-
 - Add provider alias resolution so `ur config set provider claude`,
   `ur config set provider "Claude Code"`, and `ur provider doctor agy`
   resolve to canonical provider IDs.
@@ -2360,7 +1588,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 - Update provider documentation and status-bar examples for the 1.25.3 release.
 
 ## 1.25.2
-
 
 - Refresh public documentation so README, docs, static site, validation runbook,
   and code inventory all describe the current UR-Nexus feature set.
@@ -2372,19 +1599,16 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.25.1
 
-
 - Fix VS Code extension installation to use the bundled UR-Nexus inline-diffs extension instead of the stale unpublished `urhq.ur` marketplace ID.
 - Harden AskUserQuestion normalization for description-only option objects and keep the eight-option schema in the production bundle.
 
 ## 1.25.0
-
 
 - Add legal multi-provider auth/provider management for subscription CLI, API-key, and local runtime access paths.
 - Add provider doctor/status/config commands, provider-aware status bar display, and explicit no-token-scraping safety policy.
 - Relax plan-mode clarification choices so professional redesign prompts do not fail when more than four options are supplied.
 
 ## 1.24.0
-
 
 ### Added
 - Plugin marketplace capability metadata for MCP tools, executable skills,
@@ -2404,12 +1628,10 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.23.3
 
-
 ### Fixed
 - `repoIndex` tests failing in CI because `listIndexableFiles` silently returned `[]` when ripgrep (`rg`) was unavailable. Added a Node.js recursive file walker fallback that applies the same extension and skip-segment filters.
 
 ## 1.23.2
-
 
 ### Added
 - **CI failure diagnostics** in `.github/workflows/test.yml`: environment-info step, verbose test reporter, captured `test-output.log`, and artifact upload on failure so the production test runner exposes which test fails without requiring admin log access.
@@ -2419,7 +1641,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.23.1
 
-
 ### Added
 - **CI agent (`ur ci-loop`)** with agent constitution: hard rules against hiding failures, deleting without approval, editing generated/vendor files, claiming tests passed without execution, and changing public API without warning.
 - **Plugin marketplace extensibility** for `templates`, `validators`, and `languageAdapters` alongside existing MCP tools and skills.
@@ -2428,7 +1649,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 - UR identity updated to "autonomous engineering workflow engine (plan, execute, test, verify, document, benchmark, reproduce)".
 
 ## 1.22.8
-
 
 ### Added
 - 
@@ -2440,7 +1660,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 - 
 
 ## 1.22.7
-
 
 ### Added
 - **Benchmark mode (`ur eval`).**
@@ -2486,7 +1705,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.22.6
 
-
 ### Fixed
 - Fixed Bash tool runtime execution failing every command with
   `timeoutMs is not defined` by keeping the command hook timeout value in scope
@@ -2502,7 +1720,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.22.5
 
-
 ### Added
 - **Real sandbox core architecture (`ur sandbox`).** New first-class command to inspect sandbox status, run dependency checks, initialize `.ur/safety-policy.json`, and evaluate shell-command approval levels.
 - **Worktree-per-task (`ur task`).** New command surface to start, run, list, and hand off agent tasks in isolated git branches/worktrees: `task start <name> [--worktree]`, `task run <id>`, `task pr <id> [--create]`, `task list`, `task status <id>`.
@@ -2517,7 +1734,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 - `bun run typecheck`, `bun run lint`, `bun run test` (500 pass), `bun run bundle`, and `bun run smoke` all pass.
 
 ## 1.22.4
-
 
 ### Added
 - **AST-aware `ur repo-edit` (P7).** Added
@@ -2558,7 +1774,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.22.3
 
-
 ### Added
 - **Executable skill directories.** A `.ur/skills/<name>/` directory containing
   `skill.yaml` is now an executable skill that compiles into a `WorkflowSpec`.
@@ -2589,7 +1804,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.22.2
 
-
 ### Added
 - **Lifecycle hooks.** Added six new hook events in `src/entrypoints/sdk/coreTypes.ts`
   and `src/entrypoints/sdk/coreSchemas.ts`: `BeforeEdit`, `AfterEdit`,
@@ -2615,7 +1829,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   the new memory categories and metadata.
 
 ## 1.22.1
-
 
 ### Added
 - **Rich task decomposition.** `src/services/agents/decomposer.ts` splits large
@@ -2648,7 +1861,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   workflow execution, and all seven kernel roles.
 
 ## 1.22.0
-
 
 ### Added
 - **Agent execution metrics in `ur eval`.** `ur eval run` now captures
@@ -2713,7 +1925,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.21.0
 
-
 ### Added
 - **Agent skill runner (`agentSkillRunner.ts`).** Reusable helper that wraps
   `startBackgroundTask({ worktree: true, pr: true })`, polls the background
@@ -2742,7 +1953,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   `ur worktree` command.
 
 ## 1.20.0
-
 
 ### Added
 - **ACP server (`ur acp`).** Added an HTTP+JSON-RPC Agent Communication
@@ -2779,7 +1989,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.19.0
 
-
 ### Added
 - **Permission and safety policy (`ur safety`).** Added a project shell safety
   evaluator that separates read, write, execute, and network command classes;
@@ -2807,7 +2016,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.18.0
 
-
 ### Added
 - **Test-first execution loop (`ur test-first`).** Added a P0 quality loop that
   detects the project stack, orders compile/test/lint commands, runs them as
@@ -2832,7 +2040,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.17.0
 
-
 ### Added
 - **Reliable repo editing (`ur repo-edit`).** Added a P0 repo-editing workflow
   with dependency-free file/symbol indexing, indexed search, AST-aware
@@ -2848,7 +2055,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   rollback after failed checks.
 
 ## 1.16.0
-
 
 ### Added
 - **Network Ollama discovery.** `ur --discover-ollama` scans active local subnets
@@ -2872,7 +2078,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.15.0
 
-
 ### Changed
 - **Version bump.** Updated from 1.14.0 to 1.15.0 across `package.json`, `bunfig.toml`, and bundled CLI.
 
@@ -2880,7 +2085,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 - Rebuilt `dist/cli.js` at 1.15.0 and verified release check, package check, and version output.
 
 ## 1.14.1
-
 
 ### Changed
 - Removed the `desktop-app` startup tip pointing to the legacy desktop URL.
@@ -2890,7 +2094,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.14.0
 
-
 ### Changed
 - **Version bump.** Updated from 1.13.9 to 1.14.0 across `package.json`, `bunfig.toml`, and bundled CLI.
 
@@ -2898,7 +2101,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 - Rebuilt `dist/cli.js` at 1.14.0 and verified release check, package check, and version output.
 
 ## 1.13.9
-
 
 ### Added
 - **Spec-driven development (`ur spec`).** Scaffolds `requirements.md ->
@@ -2935,7 +2137,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.13.8
 
-
 ### Fixed
 - **Image paste resize fallback.** Clipboard image paste now falls back to
   macOS `sips` when the normal Sharp/native resize path cannot process an
@@ -2950,7 +2151,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   npm publish dry-run.
 
 ## 1.13.7
-
 
 ### Added
 - **Explicit update notice.** Interactive sessions now show
@@ -2968,7 +2168,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.13.6
 
-
 ### Added
 - **Professional static documentation site.** Added `documentation/` with a
   full HTML/CSS/JS documentation project covering installation, architecture,
@@ -2982,7 +2181,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   release check, package check, secret scan, and npm publish dry-run.
 
 ## 1.13.5
-
 
 ### Added
 - **Headless agent crews.** Added `ur crew` for lead/worker task boards that
@@ -3007,7 +2205,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   `ur-nexus@1.13.5`.
 
 ## 1.13.4
-
 
 ### Added
 - **Parallel workflow execution.** The declarative workflow executor now runs
@@ -3041,7 +2238,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.13.3
 
-
 ### Added
 - **Checkpointed agent workflows.** Added `ur workflow` for declaring,
   validating, graphing, planning, resuming, and dry-running multi-step agent
@@ -3066,7 +2262,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.13.2
 
-
 ### Added
 - **Top-level code-index and role-mode commands.** `ur code-index` and
   `ur role-mode` are now registered in the main CLI, matching the shipped
@@ -3088,7 +2283,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   to `ur-nexus@1.13.2`.
 
 ## 1.13.1
-
 
 ### Added
 - **AGENTS.md as runtime context.** UR now loads `AGENTS.md` (the cross-tool
@@ -3123,7 +2317,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.12.3
 
-
 ### Added
 - **Agent feature expansion commands.** Added `ur agent-features`,
   `ur agent-templates`, `ur automation`, `ur agent-task`, `ur model-doctor`,
@@ -3152,7 +2345,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.12.2
 
-
 ### Changed
 - **Ziggurat of Ur spinner.** Replaced the canoe spinner with the Ziggurat of
   Ur catching light: an up-pyramid whose lit face sweeps across (`△ ◭ ▲ ◮`)
@@ -3164,7 +2356,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.12.1
 
-
 ### Changed
 - **Mashoof spinner.** The activity spinner is now a Mashoof (مشحوف) — the
   marsh canoe — bobbing on the water. It cycles boat-hull arcs (`⌣ ⏝ ‿`) into
@@ -3172,7 +2363,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   the brightness "breathe" was dropped so it reads as a clean bob.
 
 ## 1.12.0
-
 
 ### Added
 - **Agent trend coverage.** New `ur agent-trends` CLI command and
@@ -3193,7 +2383,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.11.3
 
-
 ### Changed
 - **Read-only web browsing.** `WebSearch` and `WebFetch` now run without
   prompting by default, while still respecting explicit deny or ask rules.
@@ -3201,7 +2390,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
   final answers can mention where the result came from.
 
 ## 1.11.2
-
 
 ### Fixed
 - **Clarification dialogs.** `AskUserQuestion` is now loaded without a
@@ -3211,14 +2399,12 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.11.1
 
-
 ### Changed
 - **Npm publication docs.** README installation guidance now reflects that
   `ur-nexus` is published on npm, while keeping the GitHub install path for
   source-based installs.
 
 ## 1.11.0
-
 
 ### Changed
 - **Ollama model selection now lets routing work by default.** The launcher no
@@ -3250,12 +2436,10 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.10.2
 
-
 ### Fixed
 - **Clipboard image paste — the fix that actually ships.** The 1.10.1 change edited the native NSPasteboard branch, which is dead-code-eliminated from the bundle (its feature gate compiles out), so it never ran. The live path is osascript, whose `saveImage` reused a fixed temp file (`ur_cli_latest_screenshot.png`) opened `with write permission` but never truncated — so a smaller image pasted over a previously larger one kept the old trailing bytes, producing a corrupt PNG ("found in clipboard but not attached"). Added `set eof fp to 0` to truncate before writing.
 
 ## 1.10.1
-
 
 ### Fixed
 - **Clipboard image paste.** An image the clipboard reported as present but the native reader couldn't decode was silently dropped — "found in clipboard but not attached." `getImageFromClipboard` now falls back to the osascript path instead of treating a native `null` as authoritative.
@@ -3267,7 +2451,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.10.0
 
-
 ### Added
 - **`skill-forge` plugin** in the `ur-plugins-official` marketplace — have the agent author skills for you. `/forge-skill <description>` runs on the active session model: it designs the skill (name, `when_to_use` triggers, arguments, minimal `allowed-tools`, inline vs fork, and steps that each carry a success criterion), shows the `SKILL.md` for a single confirmation, then saves it to `~/.ur/skills/<name>/` (or `./.ur/skills/` with `--project`) without clobbering an existing one. `/skill-refine <name> : <change>` improves an existing skill, and a bundled `skill-authoring` skill encodes the conventions. Complements the built-in `/create-skill`, which only scaffolds an empty template.
 
@@ -3275,7 +2458,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 - The plugin manifest plus its two command and one skill frontmatter blocks parse as strict YAML; the marketplace entry resolves; and there are no slash-command name collisions across the marketplace.
 
 ## 1.9.0
-
 
 ### Added
 - **Seven first-party integration plugins** in the `ur-plugins-official` marketplace. Each bundles an official MCP server, curated slash commands, and a methodology skill, and falls back to a CLI or local library so the commands still work before any token is configured:
@@ -3293,7 +2475,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 
 ## 1.8.0
 
-
 ### Added
 - **`/create-skill` command.** Scaffold a new skill without leaving the REPL: `/create-skill <name> [: <description>] [--project]` writes a ready-to-edit `SKILL.md` (with frontmatter) to `~/.ur/skills/<name>/` — or `.ur/skills/` with `--project` — refuses to clobber an existing skill, and clears caches so it shows up immediately (alias `/new-skill`).
 - **Game Designer mode.** A new built-in output style (`/output-style`) that makes UR reason like a game designer — core loops, player fantasy, game feel, and tunable balance constants — while it writes working code.
@@ -3303,7 +2484,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 - **`/update-config` no longer crashes** with `Undefined cannot be represented in JSON Schema`. The settings-schema generator now tolerates Zod types with no JSON Schema equivalent (e.g. the `enabledPlugins` union) instead of throwing.
 
 ## 1.7.0
-
 
 ### Added
 - **Adaptive model routing (Ollama).** The agent auto-selects the best installed model per tier — the strongest coder model for the main loop, the smallest fast model for light internal work (titles, classification, session search, hooks). Honors `OLLAMA_MODEL` / `OLLAMA_SMALL_FAST_MODEL`; gated by `UR_OLLAMA_AUTO_ROUTE`.
@@ -3315,7 +2495,6 @@ Top-tier feature release — closes the gaps against 2026's leading agents.
 - New unit tests for routing, context tuning, and keep-alive (including an end-to-end request-body assertion); full suite green.
 
 ## 1.6.0
-
 
 ### Added
 - **Proactive clarification & planning prompts.** The agent now uses the `AskUserQuestion` multiple-choice popup before significant or ambiguous work and at key planning decisions. Options are navigated with arrow keys and submitted; the last "Other" entry always lets you type a custom answer.

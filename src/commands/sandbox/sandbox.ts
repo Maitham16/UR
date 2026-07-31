@@ -99,21 +99,11 @@ export const call: LocalCommandCall = async (args: string) => {
   if (action === 'check') {
     const deps = SandboxManager.checkDependencies()
     const ok = deps.errors.length === 0
-    if (json) {
-      return {
-        type: 'text',
-        value: JSON.stringify({ ok, ...deps }, null, 2),
-        ...(ok ? {} : { exitCode: 1 }),
-      }
-    }
+    if (json) return { type: 'text', value: JSON.stringify({ ok, ...deps }, null, 2) }
     const lines = ['Sandbox dependency check', ok ? 'OK' : 'Missing dependencies:']
     for (const error of deps.errors) lines.push(`  error: ${error}`)
     for (const warning of deps.warnings) lines.push(`  warning: ${warning}`)
-    return {
-      type: 'text',
-      value: lines.join('\n'),
-      ...(ok ? {} : { exitCode: 1 }),
-    }
+    return { type: 'text', value: lines.join('\n') }
   }
 
   if (action === 'init') {
@@ -123,7 +113,7 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (action === 'eval') {
     const command = pos.slice(1).join(' ')
-    if (!command) return { type: 'text', value: usage(), exitCode: 2 }
+    if (!command) return { type: 'text', value: usage() }
     const policy = loadProjectSafetyPolicy(cwd)
     const evaluation = evaluateShellSafetyPolicy(command, cwd)
     const result = {
@@ -145,5 +135,5 @@ export const call: LocalCommandCall = async (args: string) => {
     }
   }
 
-  return { type: 'text', value: usage(), exitCode: 2 }
+  return { type: 'text', value: usage() }
 }

@@ -20,10 +20,6 @@ function getExploreSystemPrompt(): string {
   const grepGuidance = embedded
     ? `- Use \`grep\` via ${BASH_TOOL_NAME} for searching file contents with regex`
     : `- Use ${GREP_TOOL_NAME} for searching file contents with regex`
-  const shellGuidance = embedded
-    ? `- Use ${BASH_TOOL_NAME} ONLY for read-only operations (ls, git status, git log, git diff, find, grep, cat, head, tail)
-- NEVER use ${BASH_TOOL_NAME} for: mkdir, touch, rm, cp, mv, git add, git commit, package installation, redirects, or any file creation/modification`
-    : ''
 
   return `You are a file search specialist for Ur. You excel at thoroughly navigating and exploring codebases.
 
@@ -48,7 +44,8 @@ Guidelines:
 ${globGuidance}
 ${grepGuidance}
 - Use ${FILE_READ_TOOL_NAME} when you know the specific file path you need to read
-${shellGuidance}
+- Use ${BASH_TOOL_NAME} ONLY for read-only operations (ls, git status, git log, git diff, find${embedded ? ', grep' : ''}, cat, head, tail)
+- NEVER use ${BASH_TOOL_NAME} for: mkdir, touch, rm, cp, mv, git add, git commit, npm install, pip install, or any file creation/modification
 - Adapt your search approach based on the thoroughness level specified by the caller
 - Communicate your final report directly as a regular message - do NOT attempt to create files
 
@@ -67,12 +64,6 @@ const EXPLORE_WHEN_TO_USE =
 export const EXPLORE_AGENT: BuiltInAgentDefinition = {
   agentType: 'Explore',
   whenToUse: EXPLORE_WHEN_TO_USE,
-  // Standard builds receive only structurally read-only tools. Ant-native
-  // embedded-search builds need Bash for their wrapped find/grep commands;
-  // toolExecution adds a runtime mutation boundary for that case.
-  tools: hasEmbeddedSearchTools()
-    ? [BASH_TOOL_NAME, FILE_READ_TOOL_NAME]
-    : [GLOB_TOOL_NAME, GREP_TOOL_NAME, FILE_READ_TOOL_NAME],
   disallowedTools: [
     AGENT_TOOL_NAME,
     EXIT_PLAN_MODE_TOOL_NAME,
@@ -85,7 +76,6 @@ export const EXPLORE_AGENT: BuiltInAgentDefinition = {
   // Ants get inherit to use the main agent's model; external users get modelH for speed
   // Note: For ants, getAgentModel() checks tengu_explore_agent GrowthBook flag at runtime
   model: process.env.USER_TYPE === 'ant' ? 'inherit' : 'modelH',
-  permissionMode: 'dontAsk',
   // Explore is a fast read-only search agent — it doesn't need commit/PR/lint
   // rules from UR.md. The main agent has full context and interprets results.
   omitAgentMd: true,

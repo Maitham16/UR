@@ -52,26 +52,6 @@ function packageSmokeEnv(temporaryRoot) {
   }
 }
 
-function parsePackedArtifact(output) {
-  const decoded = JSON.parse(output)
-  const packed = Array.isArray(decoded)
-    ? decoded[0]
-    : decoded && typeof decoded === 'object'
-      ? Object.values(decoded)[0]
-      : undefined
-
-  if (
-    !packed ||
-    typeof packed !== 'object' ||
-    typeof packed.filename !== 'string' ||
-    packed.filename.length === 0
-  ) {
-    throw new Error(`npm pack did not report a tarball: ${output}`)
-  }
-
-  return packed
-}
-
 function packPackage(workDir) {
   const output = execFileSync(
     'npm',
@@ -86,8 +66,10 @@ function packPackage(workDir) {
       },
     },
   )
-  // npm 11 emits an array; npm 12 emits an object keyed by package name.
-  const packed = parsePackedArtifact(output)
+  const packed = JSON.parse(output)[0]
+  if (!packed?.filename) {
+    throw new Error(`npm pack did not report a tarball: ${output}`)
+  }
   return join(workDir, packed.filename)
 }
 
@@ -231,35 +213,6 @@ function main() {
     expectStatus('packed ur doctor --help', doctor, 0)
     if (!doctor.stdout.includes('Usage: ur doctor')) {
       fail('packed ur doctor --help did not print doctor usage')
-    }
-
-    const sdkImport = run(
-      nodeBin,
-      [
-        '--input-type=module',
-        '--eval',
-        "import { parseResultText, UrClient } from 'ur-agent/sdk'; if (parseResultText('{\"result\":\"sdk-ok\"}') !== 'sdk-ok' || parseResultText('[{\"type\":\"result\",\"result\":\"\"}]') !== '' || typeof UrClient !== 'function') process.exit(1); console.log('sdk-ok')",
-      ],
-      { cwd: packageRoot },
-    )
-    expectStatus('packed ur-agent/sdk ESM import', sdkImport, 0)
-    if (sdkImport.stdout.trim() !== 'sdk-ok') {
-      fail(`packed ur-agent/sdk ESM import returned "${sdkImport.stdout.trim()}"`)
-    }
-
-    const sdkRequire = run(
-      nodeBin,
-      [
-        '--eval',
-        "const { parseResultText, UrClient } = require('ur-agent/sdk'); if (parseResultText('{\"result\":\"sdk-ok\"}') !== 'sdk-ok' || parseResultText('[{\"type\":\"result\",\"result\":\"\"}]') !== '' || typeof UrClient !== 'function') process.exit(1); console.log('sdk-ok')",
-      ],
-      { cwd: packageRoot },
-    )
-    expectStatus('packed ur-agent/sdk CommonJS require', sdkRequire, 0)
-    if (sdkRequire.stdout.trim() !== 'sdk-ok') {
-      fail(
-        `packed ur-agent/sdk CommonJS require returned "${sdkRequire.stdout.trim()}"`,
-      )
     }
 
     const providerDoctor = runPackagedBundle(packageRoot, [

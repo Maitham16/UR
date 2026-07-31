@@ -58,20 +58,6 @@ type RunResult = {
   stderr?: string
 }
 
-const SCHEDULER_PLATFORMS = new Set<SchedulerPlatform>([
-  'launchd',
-  'systemd',
-  'cron',
-])
-
-function parsePositiveInteger(
-  value: string | undefined,
-): number | undefined {
-  if (value === undefined) return undefined
-  const parsed = Number(value)
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined
-}
-
 function automationsDir(): string {
   return join(getCwd(), '.ur', 'automations')
 }
@@ -323,27 +309,9 @@ export const call: LocalCommandCall = async (args: string) => {
   }
 
   if (command === 'install') {
-    const platformRaw = option(tokens, '--platform')
-    if (
-      platformRaw !== undefined &&
-      !SCHEDULER_PLATFORMS.has(platformRaw as SchedulerPlatform)
-    ) {
-      return {
-        type: 'text',
-        value: '--platform must be launchd, systemd, or cron.',
-        exitCode: 2,
-      }
-    }
-    const platform = platformRaw as SchedulerPlatform | undefined
+    const platform = option(tokens, '--platform') as SchedulerPlatform | undefined
     const intervalRaw = option(tokens, '--interval')
-    const intervalSec = parsePositiveInteger(intervalRaw)
-    if (intervalRaw !== undefined && intervalSec === undefined) {
-      return {
-        type: 'text',
-        value: '--interval must be a positive integer number of seconds.',
-        exitCode: 2,
-      }
-    }
+    const intervalSec = intervalRaw ? Number(intervalRaw) : undefined
     const result = installScheduler({ cwd: getCwd(), intervalSec }, platform)
     return {
       type: 'text',
@@ -352,18 +320,7 @@ export const call: LocalCommandCall = async (args: string) => {
   }
 
   if (command === 'uninstall') {
-    const platformRaw = option(tokens, '--platform')
-    if (
-      platformRaw !== undefined &&
-      !SCHEDULER_PLATFORMS.has(platformRaw as SchedulerPlatform)
-    ) {
-      return {
-        type: 'text',
-        value: '--platform must be launchd, systemd, or cron.',
-        exitCode: 2,
-      }
-    }
-    const platform = platformRaw as SchedulerPlatform | undefined
+    const platform = option(tokens, '--platform') as SchedulerPlatform | undefined
     const result = uninstallScheduler(getCwd(), platform)
     return {
       type: 'text',
@@ -383,22 +340,10 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (command === 'daemon') {
     const intervalRaw = option(tokens, '--interval')
-    const intervalSec = parsePositiveInteger(intervalRaw) ?? 60
-    if (intervalRaw !== undefined && parsePositiveInteger(intervalRaw) === undefined) {
-      return {
-        type: 'text',
-        value: '--interval must be a positive integer number of seconds.',
-        exitCode: 2,
-      }
-    }
+    const intervalSec = intervalRaw ? Number(intervalRaw) : 60
     const once = hasFlag(tokens, '--once')
     const dryRun = hasFlag(tokens, '--dry-run')
-    const ticks: Array<{
-      tick: number
-      ran: number
-      failed: number
-      at: string
-    }> = []
+    const ticks: Array<{ tick: number; ran: number; at: string }> = []
     await runDaemon({
       cwd: getCwd(),
       intervalSec,
@@ -408,9 +353,7 @@ export const call: LocalCommandCall = async (args: string) => {
         ticks.push(info)
         if (!json) {
           // biome-ignore lint/suspicious/noConsole: daemon heartbeat output
-          console.log(
-            `[${info.at}] tick ${info.tick}: ran ${info.ran} due automation(s), ${info.failed} failed`,
-          )
+          console.log(`[${info.at}] tick ${info.tick}: ran ${info.ran} due automation(s)`)
         }
       },
     })
@@ -421,7 +364,6 @@ export const call: LocalCommandCall = async (args: string) => {
         : once
           ? `Ran one scheduler tick (${ticks[0]?.ran ?? 0} due automation(s)).`
           : 'Scheduler daemon stopped.',
-      ...(ticks.some(tick => tick.failed > 0) ? { exitCode: 1 } : {}),
     }
   }
 
@@ -430,13 +372,12 @@ export const call: LocalCommandCall = async (args: string) => {
     const schedule = option(tokens, '--schedule')
     const prompt = option(tokens, '--prompt')
     if (!name || !schedule || !prompt) {
-      return { type: 'text', value: usage(), exitCode: 2 }
+      return { type: 'text', value: usage() }
     }
     if (!parseCronExpression(schedule) || nextCronRunMs(schedule, Date.now()) === null) {
       return {
         type: 'text',
         value: `Invalid automation schedule: ${schedule}\nExpected a 5-field cron expression with a next run in the next year.`,
-        exitCode: 2,
       }
     }
 
@@ -464,14 +405,10 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (command === 'show') {
     const name = positional[1]
-    if (!name) return { type: 'text', value: usage(), exitCode: 2 }
+    if (!name) return { type: 'text', value: usage() }
     const path = automationPath(name)
     if (!existsSync(path)) {
-      return {
-        type: 'text',
-        value: `Automation not found: ${sanitizeName(name)}`,
-        exitCode: 1,
-      }
+      return { type: 'text', value: `Automation not found: ${sanitizeName(name)}` }
     }
     const raw = readFileSync(path, 'utf-8')
     const parsed = safeParseJSON(raw, false) as AutomationSpec | null
@@ -479,35 +416,20 @@ export const call: LocalCommandCall = async (args: string) => {
       return {
         type: 'text',
         value: JSON.stringify(parsed ? withRuntimeFields(parsed) : raw, null, 2),
-        ...(parsed ? {} : { exitCode: 1 }),
       }
     }
-    return {
-      type: 'text',
-      value: parsed ? formatSpecs([parsed]) : raw,
-      ...(parsed ? {} : { exitCode: 1 }),
-    }
+    return { type: 'text', value: parsed ? formatSpecs([parsed]) : raw }
   }
 
   if (command === 'enable' || command === 'disable') {
     const name = positional[1]
-    if (!name) return { type: 'text', value: usage(), exitCode: 2 }
+    if (!name) return { type: 'text', value: usage() }
     const path = automationPath(name)
     if (!existsSync(path)) {
-      return {
-        type: 'text',
-        value: `Automation not found: ${sanitizeName(name)}`,
-        exitCode: 1,
-      }
+      return { type: 'text', value: `Automation not found: ${sanitizeName(name)}` }
     }
     const parsed = safeParseJSON(readFileSync(path, 'utf-8'), false) as AutomationSpec | null
-    if (!parsed) {
-      return {
-        type: 'text',
-        value: `Automation file is invalid: ${path}`,
-        exitCode: 1,
-      }
-    }
+    if (!parsed) return { type: 'text', value: `Automation file is invalid: ${path}` }
     const updated = { ...parsed, enabled: command === 'enable' }
     updated.nextRunAt = nextRunIso(updated)
     writeSpec(updated)
@@ -518,65 +440,39 @@ export const call: LocalCommandCall = async (args: string) => {
   }
 
   if (command === 'run' || command === 'run-due') {
-    const nowRaw = option(tokens, '--now')
-    const parsedNow = toMs(nowRaw)
-    if (nowRaw !== undefined && parsedNow === null) {
-      return {
-        type: 'text',
-        value: '--now must be a valid ISO date.',
-        exitCode: 2,
-      }
-    }
-    const nowMs = parsedNow ?? Date.now()
+    const nowMs = toMs(option(tokens, '--now')) ?? Date.now()
     const dryRun = hasFlag(tokens, '--dry-run')
     const dueOnly = command === 'run-due'
     const specs =
       command === 'run'
         ? listSpecs().filter(spec => spec.name === sanitizeName(positional[1] ?? ''))
         : listSpecs()
-    if (command === 'run' && !positional[1]) {
-      return { type: 'text', value: usage(), exitCode: 2 }
-    }
     if (command === 'run' && specs.length === 0) {
-      return {
-        type: 'text',
-        value: `Automation not found: ${sanitizeName(positional[1]!)}`,
-        exitCode: 1,
-      }
+      return { type: 'text', value: `Automation not found: ${sanitizeName(positional[1] ?? '')}` }
     }
     const results = await Promise.all(
       specs.map(spec => runSpec(spec, { dryRun, dueOnly, nowMs })),
     )
     const runnable = results.filter(result => !result.skipped)
     const output = dueOnly ? runnable : results
-    const failed = output.some(
-      result =>
-        result.exitCode !== undefined &&
-        result.exitCode !== 0,
-    )
     return {
       type: 'text',
       value: json
         ? JSON.stringify({ results: output }, null, 2)
         : formatRunResults(output),
-      ...(failed ? { exitCode: 1 } : {}),
     }
   }
 
   if (command === 'delete' || command === 'remove') {
     const name = positional[1]
-    if (!name) return { type: 'text', value: usage(), exitCode: 2 }
+    if (!name) return { type: 'text', value: usage() }
     const path = automationPath(name)
     if (!existsSync(path)) {
-      return {
-        type: 'text',
-        value: `Automation not found: ${sanitizeName(name)}`,
-        exitCode: 1,
-      }
+      return { type: 'text', value: `Automation not found: ${sanitizeName(name)}` }
     }
     unlinkSync(path)
     return { type: 'text', value: `Deleted automation ${sanitizeName(name)}` }
   }
 
-  return { type: 'text', value: usage(), exitCode: 2 }
+  return { type: 'text', value: usage() }
 }

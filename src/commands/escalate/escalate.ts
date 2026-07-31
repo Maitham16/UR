@@ -61,16 +61,6 @@ export const call: LocalCommandCall = async (args: string) => {
     const fast = option(tokens, '--fast')
     const oracle = option(tokens, '--oracle')
     const auto = option(tokens, '--auto')
-    if (
-      auto !== undefined &&
-      !['on', 'off', 'true', 'false'].includes(auto.toLowerCase())
-    ) {
-      return {
-        type: 'text',
-        value: '--auto must be on, off, true, or false.',
-        exitCode: 2,
-      }
-    }
     if (fast) next.fast = fast
     if (oracle) next.oracle = oracle
     if (auto) next.autoEscalate = auto !== 'off' && auto !== 'false'
@@ -84,21 +74,11 @@ export const call: LocalCommandCall = async (args: string) => {
   }
 
   const task = freeText(tokens, VALUE_FLAGS)
-  if (!task) return { type: 'text', value: usage(), exitCode: 2 }
+  if (!task) return { type: 'text', value: usage() }
 
   const { models } = await listModelCapabilities()
   const maxTurnsRaw = option(tokens, '--max-turns')
   const maxTurns = maxTurnsRaw ? Number(maxTurnsRaw) : undefined
-  if (
-    maxTurns !== undefined &&
-    (!Number.isSafeInteger(maxTurns) || maxTurns < 1)
-  ) {
-    return {
-      type: 'text',
-      value: '--max-turns must be a positive integer.',
-      exitCode: 2,
-    }
-  }
   // Continual-learning feedback: history of fast-tier failures in this task's
   // category nudges the difficulty up so flaky work escalates sooner.
   const bias = taskDifficultyBias(loadStats(cwd), task)
@@ -133,10 +113,6 @@ export const call: LocalCommandCall = async (args: string) => {
     return { type: 'text', value: formatEscalationResult(result, json) }
   }
 
-  if (action === 'plan') {
-    const plan = planEscalation(task, models, policy, { bias })
-    return { type: 'text', value: formatPlan(plan, json) }
-  }
-
-  return { type: 'text', value: usage(), exitCode: 2 }
+  const plan = planEscalation(task, models, policy, { bias })
+  return { type: 'text', value: formatPlan(plan, json) }
 }

@@ -52,36 +52,6 @@ very code you are editing — be careful, verify, and prefer small reviewable st
   surfaces as "required parameter missing" and traps models in retry loops.
 - Models may emit the same call natively AND as narrated JSON text — dedupe
   by reconciled name + canonical (key-sorted) args before emitting blocks.
-- Never synthesize `AskUserQuestion` from ordinary prose. A rhetorical or
-  enumerated sentence is not reliable structured user intent. Keep genuine
-  provider calls and conservative bare-JSON recovery, then validate the full
-  nested 1–4 question / 2–8 option shape. The sole prose exception is the
-  provider-neutral, end-turn recovery for a complete standalone decision menu:
-  one bold question, 2–8 bold labels with descriptions, and an explicit final
-  selection instruction. It still requires the live schema and an interactive
-  main-agent turn; ambiguity fails closed.
-- Treat an Ask header as a bounded UI chip, not decision content. A safe
-  overlong header may be compacted deterministically to 12 characters; never
-  rewrite or truncate the actual question, choices, descriptions, previews, or
-  selection mode to make an invalid call pass.
-- `AskUserQuestion` request schemas never expose response fields. `answers` and
-  `annotations` are permission-UI output and must pass post-permission
-  completeness checks before the tool can report that the user answered.
-- A `Write` call with no `content` has no recoverable file body. Never copy the
-  preceding assistant prose or invent content; return an actionable validation
-  error and require a new complete structured call.
-- Restore and preserve the v1.65.0 task-first lifecycle for non-trivial
-  state-changing work: complete the available Task V2 or `TodoWrite` setup,
-  inspect success, mark the selected task `in_progress`, inspect success, and
-  only then call a mutating tool or worker. A feature-rich one-file build is
-  not trivial, and task setup must not be batched with the mutation it enables.
-  Bare/simple, coordinator, custom-agent, and override-prompt modes must retain
-  a planner and this contract. Team bootstrap/teardown, shutdown responses,
-  emergency task stop, skill loading, and screenshots use their documented
-  narrow control/read-only classifications instead of deadlocking the gate.
-  An explicitly planner-less custom pool fails closed with configuration-level
-  recovery instead of naming a missing tool; default product modes always
-  provide a planner.
 - If a model doesn't advertise the `tools` capability in `/api/show`, tool
   definitions are silently dropped; the system prompt gets a bare-JSON
   format hint and everything depends on text parsing. Prefer tools-capable

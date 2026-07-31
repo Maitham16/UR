@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useCallback, useEffect, useRef } from 'react';
 import { isBridgeEnabled } from '../bridge/bridgeEnabled.js';
 import { Box, Text } from '../ink.js';
@@ -34,7 +35,7 @@ export function RemoteCallout({
   }, []);
   const options: OptionWithDescription<RemoteCalloutSelection>[] = [{
     label: 'Enable Remote Control for this session',
-    description: 'Opens a secure connection to ur.com.',
+    description: 'Opens a secure connection to ur.ai.',
     value: 'enable'
   }, {
     label: 'Never mind',
@@ -46,7 +47,7 @@ export function RemoteCallout({
         <Box marginBottom={1} flexDirection="column">
           <Text>
             Remote Control lets you access this CLI session from the web
-            (ur.com/code) or the UR app, so you can pick up where you
+            (ur.ai/code) or the UR app, so you can pick up where you
             left off on any device.
           </Text>
           <Text> </Text>

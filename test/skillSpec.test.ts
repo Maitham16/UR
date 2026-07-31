@@ -84,47 +84,6 @@ test('skillToWorkflow compiles a skill with injected arguments and instructions'
   expect(workflow.steps[0]!.prompt).toContain('Process src/main.ts')
 })
 
-test('skillToWorkflow enforces the declared tool pool on every step', () => {
-  const workflow = skillToWorkflow(
-    {
-      version: 1,
-      name: 'bounded',
-      allowedTools: ['Read', 'Grep', 'mcp__docs__search'],
-      steps: [
-        { id: 'inspect', name: 'Inspect', agent: 'worker', prompt: 'Inspect.' },
-        { id: 'verify', name: 'Verify', agent: 'verification', prompt: 'Verify.' },
-      ],
-    },
-    '',
-  )
-  expect(workflow.steps.map(step => step.allowedTools)).toEqual([
-    ['Read', 'Grep', 'mcp__docs__search'],
-    ['Read', 'Grep', 'mcp__docs__search'],
-  ])
-})
-
-test('validateSkillSpec rejects empty, malformed, and duplicate allowed tools', () => {
-  const base = {
-    version: 1 as const,
-    name: 'bounded',
-    steps: [{ id: 'inspect', name: 'Inspect', agent: 'worker', prompt: 'Inspect.' }],
-  }
-  expect(validateSkillSpec({ ...base, allowedTools: [] })).toContain(
-    'skill allowedTools must not be empty',
-  )
-  expect(
-    validateSkillSpec({
-      ...base,
-      allowedTools: ['Read', 'Read', 'bad,tool'],
-    }),
-  ).toEqual(
-    expect.arrayContaining([
-      'duplicate allowed tool "Read"',
-      'invalid allowed tool "bad,tool"',
-    ]),
-  )
-})
-
 test('loadSkillDir and listSkillDirs discover executable skill directories', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'ur-skill-'))
   const skillDir = join(tmp, 'security-review')

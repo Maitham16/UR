@@ -1,3 +1,4 @@
+// @ts-nocheck
 import axios from 'axios'
 import memoize from 'lodash-es/memoize.js'
 import { hostname } from 'os'

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { builtinModules } from 'node:module'
 import ts from 'typescript'
@@ -30,12 +30,11 @@ const PATTERNS = [
 ] as const
 
 function sourceFiles(dir: string, found: string[] = []): string[] {
-  // withFileTypes avoids a statSync (and its file handle) per entry.
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === 'node_modules') continue
-    const full = join(dir, entry.name)
-    if (entry.isDirectory()) sourceFiles(full, found)
-    else if (/\.(ts|tsx|mts|cts)$/.test(entry.name)) found.push(full)
+  for (const entry of readdirSync(dir)) {
+    if (entry === 'node_modules') continue
+    const full = join(dir, entry)
+    if (statSync(full).isDirectory()) sourceFiles(full, found)
+    else if (/\.(ts|tsx|mts|cts)$/.test(entry)) found.push(full)
   }
   return found
 }

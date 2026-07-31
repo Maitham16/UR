@@ -23,7 +23,13 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
-import { ERROR_MESSAGE_USER_ABORT } from '../../services/compact/compact.js'
+import { getAutoCompactThreshold } from '../../services/compact/autoCompact.js'
+import {
+  buildPostCompactMessages,
+  compactConversation,
+  ERROR_MESSAGE_USER_ABORT,
+} from '../../services/compact/compact.js'
+import { resetMicrocompactState } from '../../services/compact/microCompact.js'
 import type { AppState } from '../../state/AppState.js'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { appendTeammateMessage } from '../../tasks/InProcessTeammateTask/InProcessTeammateTask.js'
@@ -54,14 +60,15 @@ import type { PermissionDecision } from '../../types/permissions.js'
 import {
   createAssistantAPIErrorMessage,
   createUserMessage,
-  isCompactBoundaryMessage,
 } from '../../utils/messages.js'
 import { evictTaskOutput } from '../../utils/task/diskOutput.js'
 import { evictTerminalTask } from '../../utils/task/framework.js'
+import { tokenCountWithEstimation } from '../../utils/tokens.js'
 import { createAbortController } from '../abortController.js'
 import { type AgentContext, runWithAgentContext } from '../agentContext.js'
 import { count } from '../array.js'
 import { logForDebugging } from '../debug.js'
+import { cloneFileStateCache } from '../fileStateCache.js'
 import {
   SUBAGENT_REJECT_MESSAGE,
   SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX,
@@ -76,19 +83,10 @@ import { hasPermissionsToUseTool } from '../permissions/permissions.js'
 import { emitTaskTerminatedSdk } from '../sdkEventQueue.js'
 import { sleep } from '../sleep.js'
 import { jsonStringify } from '../slowOperations.js'
+import { asSystemPrompt } from '../systemPromptType.js'
 import { claimTask, listTasks, type Task, updateTask } from '../tasks.js'
 import type { TeammateContext } from '../teammateContext.js'
 import { runWithTeammateContext } from '../teammateContext.js'
-
-export function appendTeammateMirrorMessage(
-  previous: readonly Message[] | undefined,
-  message: Message,
-): Message[] {
-  return appendCappedMessage(
-    isCompactBoundaryMessage(message) ? [] : previous,
-    message,
-  )
-}
 import {
   createIdleNotification,
   getLastPeerDmSummary,
@@ -1070,11 +1068,62 @@ export async function runInProcessTeammate(
       const userMessage = createUserMessage({ content: currentPrompt })
       const promptMessages: Message[] = [userMessage]
 
-      // runAgent() enters the normal query loop below, which owns compaction,
-      // disable flags, exact-boundary behavior, session-memory-first handling,
-      // reactive/collapse modes, and bounded failure recovery. Keeping a second
-      // direct compactConversation path here made teammates ignore that policy.
-      const contextMessages = allMessages
+      // Check if compaction is needed before building context
+      let contextMessages = allMessages
+      const tokenCount = tokenCountWithEstimation(allMessages)
+      if (
+        tokenCount >
+        getAutoCompactThreshold(toolUseContext.options.mainLoopModel)
+      ) {
+        logForDebugging(
+          `[inProcessRunner] ${identity.agentId} compacting history (${tokenCount} tokens)`,
+        )
+        // Create an isolated copy of toolUseContext so that compaction
+        // does not clear the main session's readFileState cache or
+        // trigger the main session's UI callbacks.
+        const isolatedContext: ToolUseContext = {
+          ...toolUseContext,
+          readFileState: cloneFileStateCache(toolUseContext.readFileState),
+          onCompactProgress: undefined,
+          setStreamMode: undefined,
+        }
+        const compactedSummary = await compactConversation(
+          allMessages,
+          isolatedContext,
+          {
+            systemPrompt: asSystemPrompt([]),
+            userContext: {},
+            systemContext: {},
+            toolUseContext: isolatedContext,
+            forkContextMessages: [],
+          },
+          true, // suppressFollowUpQuestions
+          undefined, // customInstructions
+          true, // isAutoCompact
+        )
+        contextMessages = buildPostCompactMessages(compactedSummary)
+        // Reset microcompact state since full compact replaces all
+        // messages — old tool IDs are no longer relevant
+        resetMicrocompactState()
+        // Reset content replacement state — compact replaces all messages
+        // so old tool_use_ids are gone. Stale Map entries are harmless
+        // (UUID keys never match) but accumulate memory over long runs.
+        if (teammateReplacementState) {
+          teammateReplacementState = createContentReplacementState()
+        }
+        // Update allMessages in place with compacted version
+        allMessages.length = 0
+        allMessages.push(...contextMessages)
+
+        // Mirror compaction into task.messages — otherwise the AppState
+        // mirror grows unbounded (500 turns = 500+ messages, 10-50MB).
+        // Replace with the compacted messages, matching allMessages.
+        updateTaskState(
+          taskId,
+          task => ({ ...task, messages: [...contextMessages, userMessage] }),
+          setAppState,
+        )
+      }
 
       // Pass previous messages as context to preserve conversation history
       // allMessages accumulates all previous messages (user + assistant) from prior iterations
@@ -1170,15 +1219,6 @@ export async function runInProcessTeammate(
             }
 
             iterationMessages.push(message)
-            if (isCompactBoundaryMessage(message)) {
-              // query() has replaced the prior history. Drop the old mirror and
-              // replacement IDs too, then retain the boundary and summary
-              // messages yielded from this point forward.
-              allMessages.length = 0
-              if (teammateReplacementState) {
-                teammateReplacementState = createContentReplacementState()
-              }
-            }
             allMessages.push(message)
 
             updateProgressFromMessage(
@@ -1224,10 +1264,7 @@ export async function runInProcessTeammate(
                 return {
                   ...task,
                   progress,
-                  messages: appendTeammateMirrorMessage(
-                    task.messages,
-                    message,
-                  ),
+                  messages: appendCappedMessage(task.messages, message),
                   inProgressToolUseIDs,
                 }
               },

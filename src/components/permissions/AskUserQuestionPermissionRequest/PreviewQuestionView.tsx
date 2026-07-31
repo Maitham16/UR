@@ -12,11 +12,8 @@ import { editPromptInEditor } from '../../../utils/promptEditor.js';
 import { Divider } from '../../design-system/Divider.js';
 import TextInput from '../../TextInput.js';
 import { PreviewBox } from './PreviewBox.js';
-import { getOwnRecordValue } from './prototypeSafeRecord.js';
 import { QuestionNavigationBar } from './QuestionNavigationBar.js';
 import type { QuestionState } from './use-multiple-choice-state.js';
-
-const PREVIEW_OTHER_VALUE = '__other__';
 type Props = {
   question: Question;
   questions: Question[];
@@ -66,11 +63,10 @@ export function PreviewQuestionView({
   const editor = getExternalEditor();
   const editorName = editor ? toIDEDisplayName(editor) : null;
   const questionText = question.question;
-  const questionState = getOwnRecordValue(questionStates, questionText);
+  const questionState = questionStates[questionText];
 
+  // Only real options — no "Other" for preview questions
   const allOptions = question.options;
-  const otherIndex = allOptions.length;
-  const optionRowCount = allOptions.length + 1;
 
   // Track which option is focused (for preview display)
   const [focusedIndex, setFocusedIndex] = useState(0);
@@ -80,31 +76,13 @@ export function PreviewQuestionView({
   if (prevQuestionText.current !== questionText) {
     prevQuestionText.current = questionText;
     const selected = questionState?.selectedValue as string | undefined;
-    const idx = selected === PREVIEW_OTHER_VALUE
-      ? otherIndex
-      : selected
-        ? allOptions.findIndex(opt => opt.label === selected)
-        : -1;
+    const idx = selected ? allOptions.findIndex(opt => opt.label === selected) : -1;
     setFocusedIndex(idx >= 0 ? idx : 0);
   }
   const focusedOption = allOptions[focusedIndex];
-  const isOtherFocused = focusedIndex === otherIndex;
   const selectedValue = questionState?.selectedValue as string | undefined;
   const notesValue = questionState?.textInputValue || '';
-  const otherInputValue = questionState?.otherInputValue || '';
   const handleSelectOption = useCallback((index: number) => {
-    if (index === otherIndex) {
-      setFocusedIndex(index);
-      onUpdateQuestionState(questionText, {
-        selectedValue: PREVIEW_OTHER_VALUE
-      }, false);
-      // Clear any previously selected answer until a genuine custom value is
-      // submitted from the input.
-      onAnswer(questionText, PREVIEW_OTHER_VALUE, '', false);
-      setIsInNotesInput(true);
-      onTextInputFocus(true);
-      return;
-    }
     const option = allOptions[index];
     if (!option) return;
     setFocusedIndex(index);
@@ -112,7 +90,7 @@ export function PreviewQuestionView({
       selectedValue: option.label
     }, false);
     onAnswer(questionText, option.label);
-  }, [allOptions, otherIndex, questionText, onUpdateQuestionState, onAnswer, onTextInputFocus]);
+  }, [allOptions, questionText, onUpdateQuestionState, onAnswer]);
   const handleNavigate = useCallback((direction: 'up' | 'down' | number) => {
     if (isInNotesInput) return;
     let newIndex: number;
@@ -121,22 +99,20 @@ export function PreviewQuestionView({
     } else if (direction === 'up') {
       newIndex = focusedIndex > 0 ? focusedIndex - 1 : focusedIndex;
     } else {
-      newIndex = focusedIndex < optionRowCount - 1 ? focusedIndex + 1 : focusedIndex;
+      newIndex = focusedIndex < allOptions.length - 1 ? focusedIndex + 1 : focusedIndex;
     }
-    if (newIndex >= 0 && newIndex < optionRowCount) {
+    if (newIndex >= 0 && newIndex < allOptions.length) {
       setFocusedIndex(newIndex);
     }
-  }, [focusedIndex, optionRowCount, isInNotesInput]);
+  }, [focusedIndex, allOptions.length, isInNotesInput]);
 
   // Handle ctrl+g to open external editor for notes
   useKeybinding('chat:externalEditor', async () => {
-    const currentValue = isOtherFocused ? otherInputValue : notesValue;
+    const currentValue = questionState?.textInputValue || '';
     const result = await editPromptInEditor(currentValue);
     if (result.content !== null && result.content !== currentValue) {
       onUpdateQuestionState(questionText, {
-        ...(isOtherFocused
-          ? { otherInputValue: result.content }
-          : { textInputValue: result.content })
+        textInputValue: result.content
       }, false);
     }
   }, {
@@ -157,22 +133,15 @@ export function PreviewQuestionView({
     isActive: !isInNotesInput && !isFooterFocused
   });
 
-  // Re-submit a real option after editing its notes. For Other, the typed
-  // value is the answer itself and must be non-empty before advancing.
+  // Re-submit the answer (plain label) when exiting notes input.
+  // Notes are stored in questionStates and collected at submit time via annotations.
   const handleNotesExit = useCallback(() => {
     setIsInNotesInput(false);
     onTextInputFocus(false);
-    if (isOtherFocused) {
-      const customAnswer = otherInputValue.trim();
-      if (customAnswer) {
-        onAnswer(questionText, PREVIEW_OTHER_VALUE, customAnswer);
-      }
-      return;
-    }
-    if (selectedValue && selectedValue !== PREVIEW_OTHER_VALUE) {
+    if (selectedValue) {
       onAnswer(questionText, selectedValue);
     }
-  }, [isOtherFocused, otherInputValue, selectedValue, questionText, onAnswer, onTextInputFocus]);
+  }, [selectedValue, questionText, onAnswer, onTextInputFocus]);
   const handleDownFromPreview = useCallback(() => {
     setIsFooterFocused(true);
   }, []);
@@ -232,7 +201,7 @@ export function PreviewQuestionView({
       }
     } else if (e.key === 'down' || e.ctrl && e.key === 'n') {
       e.preventDefault();
-      if (focusedIndex === optionRowCount - 1) {
+      if (focusedIndex === allOptions.length - 1) {
         // At bottom of options, go to footer
         handleDownFromPreview();
       } else {
@@ -242,13 +211,8 @@ export function PreviewQuestionView({
       e.preventDefault();
       handleSelectOption(focusedIndex);
     } else if (e.key === 'n' && !e.ctrl && !e.meta) {
-      // Press 'n' to focus notes or the custom Other answer.
+      // Press 'n' to focus the notes input
       e.preventDefault();
-      if (isOtherFocused && selectedValue !== PREVIEW_OTHER_VALUE) {
-        onUpdateQuestionState(questionText, {
-          selectedValue: PREVIEW_OTHER_VALUE
-        }, false);
-      }
       setIsInNotesInput(true);
       onTextInputFocus(true);
     } else if (e.key === 'escape') {
@@ -257,15 +221,12 @@ export function PreviewQuestionView({
     } else if (e.key.length === 1 && e.key >= '1' && e.key <= '9') {
       e.preventDefault();
       const idx_0 = parseInt(e.key, 10) - 1;
-      if (idx_0 < optionRowCount) {
+      if (idx_0 < allOptions.length) {
         handleNavigate(idx_0);
       }
     }
-  }, [isFooterFocused, footerIndex, isInPlanMode, isInNotesInput, focusedIndex, optionRowCount, isOtherFocused, selectedValue, questionText, handleUpFromFooter, handleDownFromPreview, handleNavigate, handleSelectOption, handleNotesExit, onRespondToUR, onFinishPlanInterview, onCancel, onTextInputFocus, onUpdateQuestionState]);
-  const previewContent = isOtherFocused
-    ? 'Enter a custom answer below.'
-    : focusedOption?.preview || null;
-  const currentInputValue = isOtherFocused ? otherInputValue : notesValue;
+  }, [isFooterFocused, footerIndex, isInPlanMode, isInNotesInput, focusedIndex, allOptions.length, handleUpFromFooter, handleDownFromPreview, handleNavigate, handleSelectOption, handleNotesExit, onRespondToUR, onFinishPlanInterview, onCancel, onTextInputFocus]);
+  const previewContent = focusedOption?.preview || null;
 
   // The right panel's available width is terminal minus the left panel and gap.
   const LEFT_PANEL_WIDTH = 30;
@@ -314,32 +275,19 @@ export function PreviewQuestionView({
                     {isSelected && <Text color="success"> {figures.tick}</Text>}
                   </Box>;
             })}
-              <Box key={PREVIEW_OTHER_VALUE} flexDirection="row">
-                {isOtherFocused ? <Text color="suggestion">{figures.pointer}</Text> : <Text> </Text>}
-                <Text dimColor> {otherIndex + 1}.</Text>
-                <Text
-                  color={selectedValue === PREVIEW_OTHER_VALUE ? 'success' : isOtherFocused ? 'suggestion' : undefined}
-                  bold={isOtherFocused}
-                >
-                  {' '}Other
-                </Text>
-                {selectedValue === PREVIEW_OTHER_VALUE && <Text color="success"> {figures.tick}</Text>}
-              </Box>
             </Box>
 
-            {/* Right panel: preview plus notes or a custom Other answer */}
+            {/* Right panel: preview + notes */}
             <Box flexDirection="column" flexGrow={1}>
               <PreviewBox content={previewContent || 'No preview available'} maxLines={previewMaxLines} minWidth={minContentWidth} maxWidth={previewMaxWidth} />
               <Box marginTop={1} flexDirection="row" gap={1}>
-                <Text color="suggestion">{isOtherFocused ? 'Answer:' : 'Notes:'}</Text>
-                {isInNotesInput ? <TextInput value={currentInputValue} placeholder={isOtherFocused ? 'Type a custom answer…' : 'Add notes on this design…'} onChange={value => {
+                <Text color="suggestion">Notes:</Text>
+                {isInNotesInput ? <TextInput value={notesValue} placeholder="Add notes on this design…" onChange={value => {
                 onUpdateQuestionState(questionText, {
-                  ...(isOtherFocused
-                    ? { otherInputValue: value }
-                    : { textInputValue: value })
+                  textInputValue: value
                 }, false);
               }} onSubmit={handleNotesExit} onExit={handleNotesExit} focus={true} showCursor={true} columns={60} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} /> : <Text dimColor italic>
-                    {currentInputValue || (isOtherFocused ? 'press Enter to type a custom answer' : 'press n to add notes')}
+                    {notesValue || 'press n to add notes'}
                   </Text>}
               </Box>
             </Box>
@@ -364,7 +312,7 @@ export function PreviewQuestionView({
           <Box marginTop={1}>
             <Text color="inactive" dimColor>
               Enter to select · {figures.arrowUp}/{figures.arrowDown} to
-              navigate · n to edit {isOtherFocused ? 'answer' : 'notes'}
+              navigate · n to add notes
               {questions.length > 1 && <> · Tab to switch questions</>}
               {isInNotesInput && editorName && <> · ctrl+g to edit in {editorName}</>}{' '}
               · Esc to cancel

@@ -9,10 +9,7 @@ const sessionTranscriptModule = feature('KAIROS')
 
 import { APIUserAbortError } from '@urhq-ai/sdk'
 import { markPostCompaction } from 'src/bootstrap/state.js'
-import {
-  getInvokedSkillsForAgent,
-  getSessionId,
-} from '../../bootstrap/state.js'
+import { getInvokedSkillsForAgent } from '../../bootstrap/state.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import type { Tool, ToolUseContext } from '../../Tool.js'
@@ -37,7 +34,6 @@ import type {
 import {
   createAttachmentMessage,
   generateFileAttachment,
-  getAvailableReadOnlyPlanAgentTypes,
   getAgentListingDeltaAttachment,
   getDeferredToolsDeltaAttachment,
   getMcpInstructionsDeltaAttachment,
@@ -83,13 +79,6 @@ import {
 } from '../../utils/sessionStorage.js'
 import { sleep } from '../../utils/sleep.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
-import {
-  getTaskListId,
-  isTodoV2Enabled,
-  listTasks,
-  type Task,
-} from '../../utils/tasks.js'
-import type { TodoList } from '../../utils/todo/types.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js'
@@ -557,11 +546,6 @@ export async function compactConversation(
     if (planAttachment) {
       postCompactFileAttachments.push(planAttachment)
     }
-    const taskStateAttachment =
-      await createTaskStateAttachmentIfNeeded(context)
-    if (taskStateAttachment) {
-      postCompactFileAttachments.push(taskStateAttachment)
-    }
 
     // Add plan mode instructions if currently in plan mode, so the model
     // continues operating in plan mode after compaction
@@ -955,11 +939,6 @@ export async function partialCompactConversation(
     const planAttachment = createPlanAttachmentIfNeeded(context.agentId)
     if (planAttachment) {
       postCompactFileAttachments.push(planAttachment)
-    }
-    const taskStateAttachment =
-      await createTaskStateAttachmentIfNeeded(context)
-    if (taskStateAttachment) {
-      postCompactFileAttachments.push(taskStateAttachment)
     }
 
     // Add plan mode instructions if currently in plan mode
@@ -1510,106 +1489,6 @@ export function createPlanAttachmentIfNeeded(
   })
 }
 
-const POST_COMPACT_MAX_TASKS_TO_RESTORE = 64
-const POST_COMPACT_TASK_STATE_TOKEN_BUDGET = 6_000
-
-/**
- * Restore the persisted task system after compaction.
- *
- * Tool results before the compact boundary are no longer visible to the
- * model. The task store itself remains live, so re-inject a bounded,
- * authoritative snapshot with exact IDs and dependencies. Actionable tasks
- * are selected before terminal history when the store exceeds the bound.
- */
-export async function createTaskStateAttachmentIfNeeded(
-  context: ToolUseContext,
-): Promise<AttachmentMessage | null> {
-  if (isTodoV2Enabled()) {
-    const tasks = await listTasks(getTaskListId())
-    if (tasks.length === 0) {
-      return null
-    }
-
-    const selected = selectPostCompactTasks(
-      tasks,
-      POST_COMPACT_MAX_TASKS_TO_RESTORE,
-      POST_COMPACT_TASK_STATE_TOKEN_BUDGET,
-    )
-    return createAttachmentMessage({
-      type: 'task_reminder',
-      content: selected,
-      itemCount: tasks.length,
-      authoritativeAfterCompact: true,
-    })
-  }
-
-  const todoKey = context.agentId ?? getSessionId()
-  const todos = context.getAppState().todos[todoKey] ?? []
-  if (todos.length === 0) {
-    return null
-  }
-
-  return createAttachmentMessage({
-    type: 'todo_reminder',
-    content: selectPostCompactTodos(
-      todos,
-      POST_COMPACT_MAX_TASKS_TO_RESTORE,
-      POST_COMPACT_TASK_STATE_TOKEN_BUDGET,
-    ),
-    itemCount: todos.length,
-    authoritativeAfterCompact: true,
-  })
-}
-
-export function selectPostCompactTasks(
-  tasks: Task[],
-  limit = POST_COMPACT_MAX_TASKS_TO_RESTORE,
-  tokenBudget = POST_COMPACT_TASK_STATE_TOKEN_BUDGET,
-): Task[] {
-  if (limit <= 0 || tokenBudget <= 0) {
-    return []
-  }
-  const actionable = tasks.filter(
-    task => task.status === 'pending' || task.status === 'in_progress',
-  )
-  const terminal = tasks.filter(
-    task => task.status !== 'pending' && task.status !== 'in_progress',
-  )
-  return selectWithinPostCompactBudget(
-    [...actionable, ...terminal],
-    limit,
-    tokenBudget,
-  )
-}
-
-export function selectPostCompactTodos(
-  todos: TodoList,
-  limit = POST_COMPACT_MAX_TASKS_TO_RESTORE,
-  tokenBudget = POST_COMPACT_TASK_STATE_TOKEN_BUDGET,
-): TodoList {
-  return selectWithinPostCompactBudget(todos, limit, tokenBudget)
-}
-
-function selectWithinPostCompactBudget<T>(
-  items: readonly T[],
-  limit: number,
-  tokenBudget: number,
-): T[] {
-  if (limit <= 0 || tokenBudget <= 0) {
-    return []
-  }
-  const selected: T[] = []
-  let usedTokens = 0
-  for (const item of items) {
-    if (selected.length >= limit) break
-    const itemTokens = roughTokenCountEstimation(jsonStringify(item))
-    if (itemTokens > tokenBudget - usedTokens) continue
-    selected.push(item)
-    usedTokens += itemTokens
-  }
-  return selected
-}
-
 /**
  * Creates an attachment for invoked skills to preserve their content across compaction.
  * Only includes skills scoped to the given agent (or main session when agentId is null/undefined).
@@ -1681,7 +1560,6 @@ export async function createPlanModeAttachmentIfNeeded(
     isSubAgent: !!context.agentId,
     planFilePath,
     planExists,
-    availablePlanAgentTypes: getAvailableReadOnlyPlanAgentTypes(context),
   })
 }
 

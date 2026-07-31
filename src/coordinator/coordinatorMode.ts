@@ -11,11 +11,7 @@ import { FILE_EDIT_TOOL_NAME } from '../tools/FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from '../tools/FileReadTool/prompt.js'
 import { SEND_MESSAGE_TOOL_NAME } from '../tools/SendMessageTool/constants.js'
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from '../tools/SyntheticOutputTool/SyntheticOutputTool.js'
-import { TASK_CREATE_TOOL_NAME } from '../tools/TaskCreateTool/constants.js'
-import { TASK_LIST_TOOL_NAME } from '../tools/TaskListTool/constants.js'
-import { TASK_UPDATE_TOOL_NAME } from '../tools/TaskUpdateTool/constants.js'
 import { TASK_STOP_TOOL_NAME } from '../tools/TaskStopTool/prompt.js'
-import { TODO_WRITE_TOOL_NAME } from '../tools/TodoWriteTool/constants.js'
 import { TEAM_CREATE_TOOL_NAME } from '../tools/TeamCreateTool/constants.js'
 import { TEAM_DELETE_TOOL_NAME } from '../tools/TeamDeleteTool/constants.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
@@ -132,13 +128,11 @@ Every message you send is to the user. Worker results and system notifications a
 ## 2. Your Tools
 
 - **${AGENT_TOOL_NAME}** - Spawn a new worker
-- **${TASK_CREATE_TOOL_NAME}/${TASK_UPDATE_TOOL_NAME}/${TASK_LIST_TOOL_NAME}** (or **${TODO_WRITE_TOOL_NAME}** when shown instead) - Create the outcome graph, start work, and keep status current
 - **${SEND_MESSAGE_TOOL_NAME}** - Continue an existing worker (send a follow-up to its \`to\` agent ID)
 - **${TASK_STOP_TOOL_NAME}** - Stop a running worker
 - **subscribe_pr_activity / unsubscribe_pr_activity** (if available) - Subscribe to GitHub PR events (review comments, CI results). Events arrive as user messages. Merge conflict transitions do NOT arrive — GitHub doesn't webhook \`mergeable_state\` changes, so poll \`gh pr view N --json mergeable\` if tracking conflict status. Call these directly — do not delegate subscription management to workers.
 
 When calling ${AGENT_TOOL_NAME}:
-- Before every worker launch, use the task system shown in your tools. Create one task per cohesive outcome, inspect successful creation, and mark only the tasks launching now in_progress. Do not batch task setup with the Agent call. Built-in read-only Explore/Plan agents in plan mode are the only exception.
 - Do not use one worker to check on another. Workers will notify you when they are done.
 - Do not use workers to trivially report file contents or run commands. Give them higher-level tasks.
 - Do not set the model parameter. Workers need the default model for the substantive tasks you delegate.

@@ -1,5 +1,4 @@
 import { feature } from 'bun:bundle'
-import { getTaskToolGuidance } from '../constants/taskToolGuidance.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -26,19 +25,9 @@ function isProactiveActive_SAFE_TO_CALL_ANYWHERE(): boolean {
   return proactiveModule?.isProactiveActive() ?? false
 }
 
-function getTaskGateContract(
-  toolUseContext: Pick<ToolUseContext, 'options'>,
-): string[] {
-  const guidance = getTaskToolGuidance(
-    new Set(toolUseContext.options.tools.map(tool => tool.name)),
-  )
-  return guidance ? [`# Runtime task-state contract\n${guidance}`] : []
-}
-
 /**
  * Builds the effective system prompt array based on priority:
- * 0. Override system prompt (if set, e.g., via loop mode - replaces product
- *    prompts, while the runtime task-state contract remains attached)
+ * 0. Override system prompt (if set, e.g., via loop mode - REPLACES all other prompts)
  * 1. Coordinator system prompt (if coordinator mode is active)
  * 2. Agent system prompt (if mainThreadAgentDefinition is set)
  *    - In proactive mode: agent prompt is APPENDED to default (agent adds domain
@@ -47,8 +36,7 @@ function getTaskGateContract(
  * 3. Custom system prompt (if specified via --system-prompt)
  * 4. Default system prompt (the standard UR prompt)
  *
- * Plus appendSystemPrompt is always added at the end if specified (except when
- * override is set).
+ * Plus appendSystemPrompt is always added at the end if specified (except when override is set).
  */
 export function buildEffectiveSystemPrompt({
   mainThreadAgentDefinition,
@@ -66,10 +54,7 @@ export function buildEffectiveSystemPrompt({
   overrideSystemPrompt?: string | null
 }): SystemPrompt {
   if (overrideSystemPrompt) {
-    return asSystemPrompt([
-      overrideSystemPrompt,
-      ...getTaskGateContract(toolUseContext),
-    ])
+    return asSystemPrompt([overrideSystemPrompt])
   }
   // Coordinator mode: use coordinator prompt instead of default
   // Use inline env check instead of coordinatorModule to avoid circular
@@ -85,7 +70,6 @@ export function buildEffectiveSystemPrompt({
       require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js')
     return asSystemPrompt([
       getCoordinatorSystemPrompt(),
-      ...getTaskGateContract(toolUseContext),
       ...(appendSystemPrompt ? [appendSystemPrompt] : []),
     ])
   }
@@ -134,9 +118,6 @@ export function buildEffectiveSystemPrompt({
       : customSystemPrompt
         ? [customSystemPrompt]
         : defaultSystemPrompt),
-    ...((agentSystemPrompt || customSystemPrompt)
-      ? getTaskGateContract(toolUseContext)
-      : []),
     ...(appendSystemPrompt ? [appendSystemPrompt] : []),
   ])
 }

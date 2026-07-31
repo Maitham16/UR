@@ -2,7 +2,6 @@
 import { _c } from 'react/compiler-runtime'
 import * as React from 'react'
 import { useEffect, useState } from 'react'
-import { useTerminalSize } from 'src/hooks/useTerminalSize.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -33,10 +32,6 @@ import TextInput from './TextInput.js'
 import { Byline } from './design-system/Byline.js'
 import { KeyboardShortcutHint } from './design-system/KeyboardShortcutHint.js'
 import { Pane } from './design-system/Pane.js'
-import {
-  getProviderApiKeyInputColumns,
-  PROVIDER_API_KEY_LABEL,
-} from './providerApiKeyInputLayout.js'
 import {
   convertEffortValueToLevel,
   type EffortLevel,
@@ -111,13 +106,7 @@ export function ProviderFirstModelPicker({
   const [providerWarning, setProviderWarning] = useState<string | null>(null)
   const [connectingProvider, setConnectingProvider] = useState<ProviderStatusOption | null>(null)
   const [apiKeyInput, setApiKeyInput] = useState('')
-  const [apiKeyCursorOffset, setApiKeyCursorOffset] = useState(0)
   const [connectError, setConnectError] = useState<string | null>(null)
-  const { columns: terminalColumns } = useTerminalSize()
-  const apiKeyInputColumns = getProviderApiKeyInputColumns(
-    terminalColumns,
-    Boolean(isStandaloneCommand),
-  )
 
   const effortValue = useAppState(selectEffortValue)
   const [effort] = useState<EffortLevel | undefined>(
@@ -231,7 +220,6 @@ export function ProviderFirstModelPicker({
           // Add the API key right here, while UR is running, then load models.
           setConnectingProvider(provider)
           setApiKeyInput('')
-          setApiKeyCursorOffset(0)
           setConnectError(null)
           setStep('connect')
           return
@@ -340,7 +328,6 @@ export function ProviderFirstModelPicker({
       return
     }
     setApiKeyInput('')
-    setApiKeyCursorOffset(0)
     setConnectError(null)
     // Selecting the provider triggers live model discovery with the new key.
     setSelectedProvider(connectingProvider)
@@ -349,7 +336,6 @@ export function ProviderFirstModelPicker({
 
   function handleKeyCancel() {
     setApiKeyInput('')
-    setApiKeyCursorOffset(0)
     setConnectingProvider(null)
     setConnectError(null)
     setStep('provider')
@@ -374,20 +360,13 @@ export function ProviderFirstModelPicker({
           )}
         </Box>
         <Box>
-          <Text>{PROVIDER_API_KEY_LABEL}</Text>
+          <Text>{'API key: '}</Text>
           <TextInput
             value={apiKeyInput}
             onChange={setApiKeyInput}
             onSubmit={handleKeySubmit}
             mask="*"
             placeholder="paste key, then Enter"
-            columns={apiKeyInputColumns}
-            cursorOffset={apiKeyCursorOffset}
-            onChangeCursorOffset={setApiKeyCursorOffset}
-            focus
-            showCursor
-            multiline={false}
-            maxVisibleLines={1}
           />
         </Box>
         {connectError && (

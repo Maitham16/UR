@@ -252,7 +252,6 @@ import { getInitializationStatus } from '../lsp/manager.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
 import { CLIENT_REQUEST_ID_HEADER, getURHQClient } from './client.js'
-import { getOllamaModelDefaultTimeoutMs } from './ollama.js'
 import {
   API_ERROR_MESSAGE_PREFIX,
   CUSTOM_OFF_SWITCH_MESSAGE,
@@ -825,10 +824,9 @@ function shouldDeferLspTool(tool: Tool): boolean {
  * Reads API_TIMEOUT_MS when set so slow backends and the streaming path
  * share the same ceiling.
  *
- * Remote sessions and ordinary Ollama Cloud models default to 120s. Remote
- * sessions stay under CCR's container idle-kill (~5min), while cloud-tagged
- * Ollama models use the same model-aware ceiling as their streaming path
- * (Kimi K2.7 gets 300s because large coding turns repeatedly exceeded 120s).
+ * Remote sessions and Ollama Cloud models default to 120s. Remote sessions
+ * stay under CCR's container idle-kill (~5min), while cloud-tagged Ollama
+ * models use the same ceiling as their streaming path.
  *
  * Otherwise defaults to 300s — long enough for slow backends without
  * approaching the API's 10-minute non-streaming boundary.
@@ -847,9 +845,8 @@ export function getNonstreamingFallbackTimeoutMs(
 ): number {
   const override = parseInt(env.API_TIMEOUT_MS || '', 10)
   if (override) return override
-  if (isEnvTruthy(env.UR_CODE_REMOTE)) return 120_000
-  return provider === 'ollama'
-    ? getOllamaModelDefaultTimeoutMs(model)
+  return isEnvTruthy(env.UR_CODE_REMOTE) || isOllamaCloudRuntime(model, provider)
+    ? 120_000
     : 300_000
 }
 

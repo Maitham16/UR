@@ -11,7 +11,7 @@
  * with (the channel's MCP tool, SendUserMessage, or both).
  *
  * feature('KAIROS') || feature('KAIROS_CHANNELS'). Runtime gate tengu_harbor.
- * Requires ur.com OAuth auth — API key users are blocked until
+ * Requires ur.ai OAuth auth — API key users are blocked until
  * console gets a channelsEnabled admin surface. Teams/Enterprise orgs
  * must explicitly opt in via channelsEnabled: true in managed settings.
  */
@@ -178,7 +178,7 @@ export function findChannelEntry(
  * elimination). Gate order: capability → runtime gate (tengu_harbor) →
  * auth (OAuth only) → org policy → session --channels → allowlist.
  * API key users are blocked at the auth layer — channels requires
- * ur.com auth; console orgs have no admin opt-in surface yet.
+ * ur.ai auth; console orgs have no admin opt-in surface yet.
  *
  *   skip      Not a channel server, or managed org hasn't opted in, or
  *             not in session --channels. Connection stays up; handler
@@ -223,7 +223,7 @@ export function gateChannelServer(
     return {
       action: 'skip',
       kind: 'auth',
-      reason: 'channels requires ur.com authentication (run /login)',
+      reason: 'channels requires ur.ai authentication (run /login)',
     }
   }
 

@@ -13,19 +13,11 @@ import {
   updateTaskWithDependencies,
 } from '../../utils/tasks.js'
 import { getAgentName, getTeamName } from '../../utils/teammate.js'
-import {
-  normalizeTaskIdInputs,
-  taskIdInputSchema,
-} from '../taskIdInput.js'
 import { TASK_CREATE_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, getPrompt } from './prompt.js'
 
-const inputSchema = lazySchema(() => {
-  const TaskIdSchema = taskIdInputSchema(
-    'A task dependency ID. Positive integer JSON values are accepted and normalized to strings.',
-  )
-
-  return z.strictObject({
+const inputSchema = lazySchema(() =>
+  z.strictObject({
     subject: z.string().describe('A brief title for the task'),
     description: z.string().describe('What needs to be done'),
     activeForm: z
@@ -39,23 +31,23 @@ const inputSchema = lazySchema(() => {
       .optional()
       .describe('Arbitrary metadata to attach to the task'),
     blocks: z
-      .array(TaskIdSchema)
+      .array(z.string())
       .optional()
       .describe('Task IDs that this task blocks at creation time'),
     blockedBy: z
-      .array(TaskIdSchema)
+      .array(z.string())
       .optional()
       .describe('Task IDs that block this task at creation time'),
     addBlocks: z
-      .array(TaskIdSchema)
+      .array(z.string())
       .optional()
       .describe('Alias for blocks, accepted for compatibility with TaskUpdate'),
     addBlockedBy: z
-      .array(TaskIdSchema)
+      .array(z.string())
       .optional()
       .describe('Alias for blockedBy, accepted for compatibility with TaskUpdate'),
-  })
-})
+  }),
+)
 type InputSchema = ReturnType<typeof inputSchema>
 
 const outputSchema = lazySchema(() =>
@@ -115,18 +107,9 @@ export const TaskCreateTool = buildTool({
     },
     context,
   ) {
-    const initialBlocks = [
-      ...new Set(
-        normalizeTaskIdInputs([...(blocks ?? []), ...(addBlocks ?? [])]) ?? [],
-      ),
-    ]
+    const initialBlocks = [...new Set([...(blocks ?? []), ...(addBlocks ?? [])])]
     const initialBlockedBy = [
-      ...new Set(
-        normalizeTaskIdInputs([
-          ...(blockedBy ?? []),
-          ...(addBlockedBy ?? []),
-        ]) ?? [],
-      ),
+      ...new Set([...(blockedBy ?? []), ...(addBlockedBy ?? [])]),
     ]
     const taskListId = getTaskListId()
     const taskId = await createTask(taskListId, {
@@ -224,11 +207,7 @@ export const TaskCreateTool = buildTool({
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content:
-        `Task #${task.id} created successfully: ${task.subject}\n\n` +
-        `If this is one outcome within non-trivial work, create the remaining ` +
-        `outcome tasks before implementation. Keep one task only when the ` +
-        `work is genuinely atomic.`,
+      content: `Task #${task.id} created successfully: ${task.subject}`,
     }
   },
 } satisfies ToolDef<InputSchema, Output>)

@@ -7,18 +7,12 @@ import {
   isTodoV2Enabled,
   TaskStatusSchema,
 } from '../../utils/tasks.js'
-import {
-  normalizeTaskIdInput,
-  taskIdInputSchema,
-} from '../taskIdInput.js'
 import { TASK_GET_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, PROMPT } from './prompt.js'
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
-    taskId: taskIdInputSchema(
-      'The ID of the task to retrieve. Positive integer JSON values are accepted and normalized to strings.',
-    ),
+    taskId: z.string().describe('The ID of the task to retrieve'),
   }),
 )
 type InputSchema = ReturnType<typeof inputSchema>
@@ -71,13 +65,12 @@ export const TaskGetTool = buildTool({
     return true
   },
   toAutoClassifierInput(input) {
-    return String(input.taskId)
+    return input.taskId
   },
   renderToolUseMessage() {
     return null
   },
-  async call({ taskId: rawTaskId }) {
-    const taskId = normalizeTaskIdInput(rawTaskId)
+  async call({ taskId }) {
     const taskListId = getTaskListId()
 
     const task = await getTask(taskListId, taskId)
