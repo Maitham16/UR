@@ -10,6 +10,7 @@ import {
   deleteTask,
   getTaskListId,
   isTodoV2Enabled,
+  retireCompletedTaskList,
   updateTaskWithDependencies,
 } from '../../utils/tasks.js'
 import { getAgentName, getTeamName } from '../../utils/teammate.js'
@@ -112,6 +113,13 @@ export const TaskCreateTool = buildTool({
       ...new Set([...(blockedBy ?? []), ...(addBlockedBy ?? [])]),
     ]
     const taskListId = getTaskListId()
+    // A finished list is history, not active work. useTasksV2 clears it on a
+    // 5s hide timer, but a create that lands inside that window — or after the
+    // timer was cancelled — appended to the completed list, so the new work
+    // arrived pre-populated with ticked items and the progress count was wrong
+    // from the first task. Retiring it here makes the rule deterministic
+    // instead of timing-dependent.
+    await retireCompletedTaskList(taskListId)
     const taskId = await createTask(taskListId, {
       subject,
       description,

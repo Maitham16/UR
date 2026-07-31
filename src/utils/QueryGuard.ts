@@ -61,6 +61,7 @@ export class QueryGuard {
   reserve(): boolean {
     if (this._status !== 'idle') return false
     this._status = 'dispatching'
+    this._statusSince = this._now()
     this._notify()
     return true
   }
@@ -72,6 +73,7 @@ export class QueryGuard {
   cancelReservation(): void {
     if (this._status !== 'dispatching') return
     this._status = 'idle'
+    this._statusSince = this._now()
     this._notify()
   }
 
@@ -84,6 +86,7 @@ export class QueryGuard {
   tryStart(): number | null {
     if (this._status === 'running') return null
     this._status = 'running'
+    this._statusSince = this._now()
     ++this._generation
     this._notify()
     return this._generation
@@ -98,6 +101,7 @@ export class QueryGuard {
     if (this._generation !== generation) return false
     if (this._status !== 'running') return false
     this._status = 'idle'
+    this._statusSince = this._now()
     this._notify()
     return true
   }
@@ -111,6 +115,7 @@ export class QueryGuard {
   forceEnd(): void {
     if (this._status === 'idle') return
     this._status = 'idle'
+    this._statusSince = this._now()
     ++this._generation
     this._notify()
   }
@@ -121,6 +126,39 @@ export class QueryGuard {
    */
   get isActive(): boolean {
     return this._status !== 'idle'
+  }
+
+  /** Current lifecycle state. Exposed so callers can report accurately. */
+  get status(): 'idle' | 'dispatching' | 'running' {
+    return this._status
+  }
+
+  /** How long the guard has held its current state, in ms. */
+  heldForMs(): number {
+    if (this._status === 'idle') return 0
+    return Math.max(0, this._now() - this._statusSince)
+  }
+
+  /**
+   * True when `dispatching` has outlived any plausible hand-off to tryStart().
+   * `running` is deliberately excluded: a long query is legitimate and is
+   * bounded by the provider request and stream-inactivity timeouts instead.
+   */
+  isDispatchStuck(thresholdMs: number = DISPATCH_STUCK_MS): boolean {
+    return this._status === 'dispatching' && this.heldForMs() >= thresholdMs
+  }
+
+  /**
+   * Release an abandoned reservation. Returns true when something was
+   * released, so the caller can surface an accurate reason rather than
+   * leaving the UI showing work that is not happening.
+   */
+  releaseIfStuck(thresholdMs: number = DISPATCH_STUCK_MS): boolean {
+    if (!this.isDispatchStuck(thresholdMs)) return false
+    this._status = 'idle'
+    this._statusSince = this._now()
+    this._notify()
+    return true
   }
 
   get generation(): number {

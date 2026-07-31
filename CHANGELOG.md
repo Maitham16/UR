@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.75.0
+
+- The UI can no longer stay on "working" for a prompt that is running nowhere.
+  `QueryGuard`'s `dispatching` state — the gap between `reserve()` and
+  `tryStart()` — has no owner: if that chain dies where handlePromptSubmit's
+  `finally` cannot observe it, nothing calls `cancelReservation()`, `isActive`
+  stays true forever, and the queue behind it never drains. The guard now
+  records when it entered a state, and an outstanding reservation older than
+  120s is released and logged. `running` is deliberately excluded — a long
+  query is legitimate and is bounded by the request and stream-inactivity
+  timeouts instead.
+- New work no longer lands in a finished task list. `useTasksV2` clears a fully
+  completed list on a 5s hide timer, so a `TaskCreate` inside that window
+  appended to it: the new list arrived pre-populated with ticked items and the
+  progress count was wrong from the first task. `TaskCreate` now retires a
+  fully completed list before adding, making the rule deterministic rather than
+  timing-dependent. A list with any pending, running, failed or blocked task is
+  left alone, so "add this to the current list" still works.
+
 ## 1.74.0
 
 - Provider API key entry no longer renders one character per line. The field in

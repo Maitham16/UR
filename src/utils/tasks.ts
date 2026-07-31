@@ -169,6 +169,33 @@ export function isTodoV2Enabled(): boolean {
  * Should be called when a new swarm is created to ensure task numbering starts at 1.
  * Uses file locking to prevent race conditions when multiple URs run in parallel.
  */
+/**
+ * Whether every task in a list has finished, so the list represents completed
+ * history rather than active work. An empty list is not "completed".
+ */
+export function isTaskListFullyCompleted(tasks: Task[]): boolean {
+  return tasks.length > 0 && tasks.every(task => task.status === 'completed')
+}
+
+/**
+ * Clear a list that is entirely completed, so the next unit of work starts
+ * fresh instead of inheriting ticked items.
+ *
+ * A list with any pending, running, failed or blocked task is left untouched —
+ * adding to work in progress is legitimate and is what "add this to the current
+ * list" means. Returns true when a list was retired.
+ */
+export async function retireCompletedTaskList(
+  taskListId: string,
+): Promise<boolean> {
+  const tasks = await listTasks(taskListId)
+  if (!isTaskListFullyCompleted(tasks)) {
+    return false
+  }
+  await resetTaskList(taskListId)
+  return true
+}
+
 export async function resetTaskList(taskListId: string): Promise<void> {
   const dir = getTasksDir(taskListId)
   const lockPath = await ensureTaskListLockFile(taskListId)

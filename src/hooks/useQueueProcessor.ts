@@ -4,8 +4,12 @@ import {
   getCommandQueueSnapshot,
   subscribeToCommandQueue,
 } from '../utils/messageQueueManager.js'
-import type { QueryGuard } from '../utils/QueryGuard.js'
+import { DISPATCH_STUCK_MS, type QueryGuard } from '../utils/QueryGuard.js'
 import { processQueueIfReady } from '../utils/queueProcessor.js'
+import { logForDebugging } from '../utils/debug.js'
+
+/** How often to re-check an outstanding reservation. */
+const DISPATCH_STUCK_CHECK_MS = 5_000
 
 type UseQueueProcessorParams = {
   executeQueuedInput: (commands: QueuedCommand[]) => Promise<void>
@@ -44,6 +48,24 @@ export function useQueueProcessor({
     subscribeToCommandQueue,
     getCommandQueueSnapshot,
   )
+
+  // `dispatching` has no owner: it is the gap between reserve() and tryStart().
+  // handlePromptSubmit's finally normally releases it, but if that chain dies
+  // where the finally cannot observe it, isActive stays true and the UI shows
+  // "working" forever for a prompt that is running nowhere — and the queue
+  // behind it never drains. Poll only while a reservation is outstanding, so
+  // there is no timer in the idle case.
+  useEffect(() => {
+    if (queryGuard.status !== 'dispatching') return
+    const timer = setInterval(() => {
+      if (queryGuard.releaseIfStuck()) {
+        logForDebugging(
+          `QueryGuard reservation released after ${DISPATCH_STUCK_MS}ms with no query start; the dispatch chain did not reach onQuery.`,
+        )
+      }
+    }, DISPATCH_STUCK_CHECK_MS)
+    return () => clearInterval(timer)
+  }, [isQueryActive, queryGuard])
 
   useEffect(() => {
     if (isQueryActive) return
