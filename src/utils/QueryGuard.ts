@@ -44,6 +44,8 @@ export const DISPATCH_STUCK_MS = 120_000
 export class QueryGuard {
   private _status: 'idle' | 'dispatching' | 'running' = 'idle'
   private _generation = 0
+  private _reservationGeneration = 0
+  private _reservationAbort: (() => void) | null = null
   private _changed = createSignal()
   /** When the current status was entered. Drives stuck detection. */
   private _statusSince = 0
@@ -58,21 +60,25 @@ export class QueryGuard {
    * Reserve the guard for queue processing. Transitions idle → dispatching.
    * Returns false if not idle (another query or dispatch in progress).
    */
-  reserve(): boolean {
-    if (this._status !== 'idle') return false
+  reserve(onExpired?: () => void): number | null {
+    if (this._status !== 'idle') return null
     this._status = 'dispatching'
+    const token = ++this._reservationGeneration
+    this._reservationAbort = onExpired ?? null
     this._statusSince = this._now()
     this._notify()
-    return true
+    return token
   }
 
   /**
    * Cancel a reservation when processQueueIfReady had nothing to process.
    * Transitions dispatching → idle.
    */
-  cancelReservation(): void {
+  cancelReservation(token?: number): void {
     if (this._status !== 'dispatching') return
+    if (token !== undefined && token !== this._reservationGeneration) return
     this._status = 'idle'
+    this._reservationAbort = null
     this._statusSince = this._now()
     this._notify()
   }
@@ -83,9 +89,17 @@ export class QueryGuard {
    * Accepts transitions from both idle (direct user submit)
    * and dispatching (queue processor path).
    */
-  tryStart(): number | null {
+  tryStart(reservationToken?: number): number | null {
     if (this._status === 'running') return null
+    if (this._status === 'dispatching') {
+      if (reservationToken !== this._reservationGeneration) return null
+    } else if (reservationToken !== undefined) {
+      // The reservation expired or was cancelled while preprocessing. A late
+      // continuation must not start after another prompt has taken ownership.
+      return null
+    }
     this._status = 'running'
+    this._reservationAbort = null
     this._statusSince = this._now()
     ++this._generation
     this._notify()
@@ -117,6 +131,8 @@ export class QueryGuard {
     this._status = 'idle'
     this._statusSince = this._now()
     ++this._generation
+    ++this._reservationGeneration
+    this._reservationAbort = null
     this._notify()
   }
 
@@ -155,9 +171,13 @@ export class QueryGuard {
    */
   releaseIfStuck(thresholdMs: number = DISPATCH_STUCK_MS): boolean {
     if (!this.isDispatchStuck(thresholdMs)) return false
+    const abort = this._reservationAbort
     this._status = 'idle'
+    ++this._reservationGeneration
+    this._reservationAbort = null
     this._statusSince = this._now()
     this._notify()
+    abort?.()
     return true
   }
 

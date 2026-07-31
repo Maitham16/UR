@@ -4,9 +4,11 @@ import {
   readdir,
   readFile,
   rename,
+  rmdir,
   unlink,
   writeFile,
 } from 'fs/promises'
+import type { Dirent } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { join } from 'path'
 import { z } from 'zod/v4'
@@ -75,7 +77,13 @@ export function notifyTasksUpdated(): void {
   }
 }
 
-export const TASK_STATUSES = ['pending', 'in_progress', 'completed'] as const
+export const TASK_STATUSES = [
+  'pending',
+  'in_progress',
+  'completed',
+  'failed',
+  'skipped',
+] as const
 
 export const TaskStatusSchema = lazySchema(() =>
   // 'failed' and 'skipped' are produced by crew/workflow runs and rendered
@@ -103,6 +111,18 @@ export type Task = z.infer<ReturnType<typeof TaskSchema>>
 
 // High water mark file name - stores the maximum task ID ever assigned
 const HIGH_WATER_MARK_FILE = '.highwatermark'
+// Deliberately not a .json suffix: active task readers treat every root-level
+// *.json file as a task snapshot, including the strict inspection path.
+const ACTIVE_GENERATION_FILE = '.active-generation'
+const HISTORY_DIRECTORY = '.history'
+const HISTORY_MANIFEST_FILE = '.manifest.json'
+
+export type TaskListHistoryEntry = {
+  archiveId: string
+  generationId?: string
+  archivedAt: string
+  tasks: Task[]
+}
 
 /**
  * Parse an allocated task ID without accepting a numeric-looking prefix.
@@ -135,6 +155,46 @@ const LOCK_OPTIONS = {
 
 function getHighWaterMarkPath(taskListId: string): string {
   return join(getTasksDir(taskListId), HIGH_WATER_MARK_FILE)
+}
+
+function getActiveGenerationPath(taskListId: string): string {
+  return join(getTasksDir(taskListId), ACTIVE_GENERATION_FILE)
+}
+
+function getTaskHistoryDir(taskListId: string): string {
+  return join(getTasksDir(taskListId), HISTORY_DIRECTORY)
+}
+
+async function readActiveGeneration(
+  taskListId: string,
+): Promise<string | undefined> {
+  try {
+    const parsed: unknown = jsonParse(
+      await readFile(getActiveGenerationPath(taskListId), 'utf-8'),
+    )
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'generationId' in parsed &&
+      typeof parsed.generationId === 'string'
+    ) {
+      return parsed.generationId
+    }
+  } catch {
+    // Missing or malformed metadata is treated as a legacy active list. The
+    // task snapshots themselves remain authoritative and are never discarded.
+  }
+  return undefined
+}
+
+async function writeActiveGeneration(
+  taskListId: string,
+  generationId: string,
+): Promise<void> {
+  await writeFileAtomically(
+    getActiveGenerationPath(taskListId),
+    jsonStringify({ generationId }, null, 2),
+  )
 }
 
 async function readHighWaterMark(taskListId: string): Promise<number> {
@@ -177,23 +237,192 @@ export function isTaskListFullyCompleted(tasks: Task[]): boolean {
   return tasks.length > 0 && tasks.every(task => task.status === 'completed')
 }
 
+type ArchiveManifest = {
+  archiveId: string
+  generationId?: string
+  archivedAt: string
+  taskIds: string[]
+}
+
 /**
- * Clear a list that is entirely completed, so the next unit of work starts
- * fresh instead of inheriting ticked items.
- *
- * A list with any pending, running, failed or blocked task is left untouched —
- * adding to work in progress is legitimate and is what "add this to the current
- * list" means. Returns true when a list was retired.
+ * Move the active snapshots into immutable history while holding the list
+ * lock. Every move is atomic on the same filesystem. If a move or manifest
+ * write fails, completed moves are rolled back before the error is surfaced.
+ */
+async function archiveActiveTaskListUnsafe(
+  taskListId: string,
+  generationId: string | undefined,
+): Promise<TaskListHistoryEntry | undefined> {
+  const tasks = await listTasks(taskListId)
+  if (tasks.length === 0) return undefined
+
+  const highestId = await findHighestTaskIdFromFiles(taskListId)
+  if (highestId > 0) {
+    const currentMark = await readHighWaterMark(taskListId)
+    if (highestId > currentMark) await writeHighWaterMark(taskListId, highestId)
+  }
+
+  const archiveId = `${Date.now().toString(36)}-${randomUUID()}`
+  const archivedAt = new Date().toISOString()
+  const archiveDir = join(getTaskHistoryDir(taskListId), archiveId)
+  await mkdir(archiveDir, { recursive: true })
+
+  const moved: Array<{ from: string; to: string }> = []
+  try {
+    for (const task of tasks) {
+      const from = getTaskPath(taskListId, task.id)
+      const to = join(archiveDir, `${sanitizePathComponent(task.id)}.json`)
+      await rename(from, to)
+      moved.push({ from, to })
+    }
+    const manifest: ArchiveManifest = {
+      archiveId,
+      generationId,
+      archivedAt,
+      taskIds: tasks.map(task => task.id),
+    }
+    await writeFileAtomically(
+      join(archiveDir, HISTORY_MANIFEST_FILE),
+      jsonStringify(manifest, null, 2),
+    )
+    return { archiveId, generationId, archivedAt, tasks }
+  } catch (error) {
+    for (const item of moved.reverse()) {
+      await rename(item.to, item.from).catch(() => undefined)
+    }
+    await unlink(join(archiveDir, HISTORY_MANIFEST_FILE)).catch(() => undefined)
+    await rmdir(archiveDir).catch(() => undefined)
+    throw error
+  }
+}
+
+async function withTaskListLock<T>(
+  taskListId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const lockPath = await ensureTaskListLockFile(taskListId)
+  let release: (() => Promise<void>) | undefined
+  try {
+    release = await lockfile.lock(lockPath, LOCK_OPTIONS)
+    return await operation()
+  } finally {
+    await release?.()
+  }
+}
+
+/**
+ * Establish a fresh active generation for one accepted user prompt. An
+ * explicit append request keeps the current snapshots but still records the
+ * new generation, so parallel TaskCreate calls in that turn cannot retire one
+ * another's work.
+ */
+export async function prepareTaskListForRun(
+  taskListId: string,
+  generationId: string,
+  options: { appendToCurrent?: boolean } = {},
+): Promise<TaskListHistoryEntry | undefined> {
+  const result = await withTaskListLock(taskListId, async () => {
+    const activeGeneration = await readActiveGeneration(taskListId)
+    if (activeGeneration === generationId) {
+      return { changed: false, archived: undefined }
+    }
+
+    const archived = options.appendToCurrent
+      ? undefined
+      : await archiveActiveTaskListUnsafe(taskListId, activeGeneration)
+    await writeActiveGeneration(taskListId, generationId)
+    return { changed: true, archived }
+  })
+  if (result.changed) notifyTasksUpdated()
+  return result.archived
+}
+
+/**
+ * Archive a completed list without deleting it. Retained for callers that
+ * explicitly retire finished work; new prompt generations use
+ * prepareTaskListForRun so incomplete stale work is historical too.
  */
 export async function retireCompletedTaskList(
   taskListId: string,
 ): Promise<boolean> {
-  const tasks = await listTasks(taskListId)
-  if (!isTaskListFullyCompleted(tasks)) {
-    return false
+  const retired = await withTaskListLock(taskListId, async () => {
+    const tasks = await listTasks(taskListId)
+    if (!isTaskListFullyCompleted(tasks)) return false
+    await archiveActiveTaskListUnsafe(
+      taskListId,
+      await readActiveGeneration(taskListId),
+    )
+    await unlink(getActiveGenerationPath(taskListId)).catch(() => undefined)
+    return true
+  })
+  if (retired) notifyTasksUpdated()
+  return retired
+}
+
+/** Read archived task lists without mixing them into active progress. */
+export async function listTaskHistory(
+  taskListId: string,
+): Promise<TaskListHistoryEntry[]> {
+  const historyDir = getTaskHistoryDir(taskListId)
+  let entries: Dirent[]
+  try {
+    entries = await readdir(historyDir, { withFileTypes: true })
+  } catch {
+    return []
   }
-  await resetTaskList(taskListId)
-  return true
+
+  const history = await Promise.all(
+    entries
+      .filter(entry => entry.isDirectory())
+      .map(async (entry): Promise<TaskListHistoryEntry | undefined> => {
+        const archiveDir = join(historyDir, entry.name)
+        try {
+          const manifest = jsonParse(
+            await readFile(join(archiveDir, HISTORY_MANIFEST_FILE), 'utf-8'),
+          ) as Partial<ArchiveManifest>
+          if (
+            manifest.archiveId !== entry.name ||
+            typeof manifest.archivedAt !== 'string' ||
+            !Array.isArray(manifest.taskIds)
+          ) {
+            return undefined
+          }
+          const tasks = await Promise.all(
+            manifest.taskIds.map(async taskId => {
+              if (typeof taskId !== 'string') return undefined
+              const value = migrateLegacyTaskData(
+                jsonParse(
+                  await readFile(
+                    join(archiveDir, `${sanitizePathComponent(taskId)}.json`),
+                    'utf-8',
+                  ),
+                ),
+              )
+              const parsed = TaskSchema().safeParse(value)
+              return parsed.success ? parsed.data : undefined
+            }),
+          )
+          if (tasks.some(task => task === undefined)) return undefined
+          return {
+            archiveId: entry.name,
+            generationId:
+              typeof manifest.generationId === 'string'
+                ? manifest.generationId
+                : undefined,
+            archivedAt: manifest.archivedAt,
+            tasks: tasks as Task[],
+          }
+        } catch (error) {
+          logForDebugging(
+            `[Tasks] Failed to read task history ${entry.name}: ${errorMessage(error)}`,
+          )
+          return undefined
+        }
+      }),
+  )
+  return history
+    .filter((entry): entry is TaskListHistoryEntry => entry !== undefined)
+    .sort((a, b) => a.archivedAt.localeCompare(b.archivedAt))
 }
 
 export async function resetTaskList(taskListId: string): Promise<void> {
@@ -231,6 +460,7 @@ export async function resetTaskList(taskListId: string): Promise<void> {
         }
       }
     }
+    await unlink(getActiveGenerationPath(taskListId)).catch(() => undefined)
     notifyTasksUpdated()
   } finally {
     if (release) {
@@ -359,6 +589,38 @@ export async function createTask(
       await release()
     }
   }
+}
+
+/**
+ * Atomically establish a prompt generation and create its task. This closes
+ * the old listTasks → reset/archive → create TOCTOU window when multiple
+ * independent TaskCreate calls are emitted in one model response.
+ */
+export async function createTaskForRun(
+  taskListId: string,
+  generationId: string,
+  taskData: Omit<Task, 'id'>,
+  options: { appendToCurrent?: boolean } = {},
+): Promise<string> {
+  const id = await withTaskListLock(taskListId, async () => {
+    const activeGeneration = await readActiveGeneration(taskListId)
+    if (activeGeneration !== generationId) {
+      if (!options.appendToCurrent) {
+        await archiveActiveTaskListUnsafe(taskListId, activeGeneration)
+      }
+      await writeActiveGeneration(taskListId, generationId)
+    }
+
+    const highestId = await findHighestTaskId(taskListId)
+    if (highestId >= Number.MAX_SAFE_INTEGER) {
+      throw new Error('Task ID space is exhausted')
+    }
+    const taskId = String(highestId + 1)
+    await writeTaskSnapshotUnsafe(taskListId, { id: taskId, ...taskData })
+    return taskId
+  })
+  notifyTasksUpdated()
+  return id
 }
 
 export async function getTask(

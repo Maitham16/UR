@@ -15,7 +15,7 @@ import { MODEL_ALIASES } from '../../utils/model/aliases.js';
 import { checkmodelO1mAccess, checkmodelS1mAccess } from '../../utils/model/check1mAccess.js';
 import { getDefaultMainLoopModelSetting, ismodelO1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
-import { getActiveProviderSettings, type ProviderId, setProviderModel, validateProviderModelPair } from '../../services/providers/providerRegistry.js';
+import { ensureProviderModelsFresh, getActiveProviderSettings, type ProviderId, setProviderModel, validateProviderModelPair } from '../../services/providers/providerRegistry.js';
 import { getInitialSettings, updateSettingsForSource } from '../../utils/settings/settings.js';
 function ModelPickerWrapper(t0) {
   const $ = _c(17);
@@ -178,24 +178,35 @@ function SetModelAndClose({
         return;
       }
 
-      const providerValidation = validateProviderModelPair(currentProvider, model);
+      const discoverySettings = getInitialSettings();
+      const discovered = await ensureProviderModelsFresh(currentProvider, {
+        settings: discoverySettings,
+        force: true
+      });
+      const providerValidation = validateProviderModelPair(currentProvider, model, {
+        availableModels: discovered.models,
+        settings: discoverySettings
+      });
       if (providerValidation.valid === false) {
         onDone(`Invalid model for current provider:\n  Selected provider: ${currentProvider}\n  Selected model: ${model}\n  Valid models for ${currentProvider}: ${providerValidation.validModels.join(', ') || '(no models discovered)'}\n  Suggested action: Run /model and choose a model from ${currentProvider}${providerValidation.suggestedModel ? `, or run: ur config set model ${providerValidation.suggestedModel}` : ''}\n  Error: ${providerValidation.error}`, {
           display: 'system'
         });
         return;
       }
-      const saved = setProviderModel(currentProvider, model);
+      const saved = setProviderModel(currentProvider, model, {
+        availableModels: discovered.models,
+        modelSource: discovered.source
+      });
       if (!saved.ok) {
         onDone(saved.message, {
           display: 'system'
         });
         return;
       }
-      setModel(model, currentProvider);
+      setModel(model, currentProvider, discovered.warning);
       return;
     }
-    function setModel(modelValue: string | null, provider?: ProviderId): void {
+    function setModel(modelValue: string | null, provider?: ProviderId, warning?: string): void {
       setAppState(prev => ({
         ...prev,
         mainLoopModel: modelValue,
@@ -240,6 +251,9 @@ function SetModelAndClose({
       if (wasFastModeToggledOn === false) {
         // Fast mode was toggled off, show suffix after extra usage billing
         message += ` · Fast mode OFF`;
+      }
+      if (warning) {
+        message += `\nModel refresh: ${warning}`;
       }
       onDone(message);
     }

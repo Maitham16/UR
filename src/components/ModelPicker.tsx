@@ -1,7 +1,7 @@
 // @ts-nocheck
 import capitalize from 'lodash-es/capitalize.js'
 import * as React from 'react'
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { useExitOnCtrlCDWithKeybindings } from 'src/hooks/useExitOnCtrlCDWithKeybindings.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -13,7 +13,8 @@ import {
   isFastModeCooldown,
   isFastModeEnabled,
 } from 'src/utils/fastMode.js'
-import { Box, Text } from '../ink.js'
+import { Box, Text, useInput } from '../ink.js'
+import { TerminalSizeContext } from '../ink/components/TerminalSizeContext.js'
 import { useKeybindings } from '../keybindings/useKeybinding.js'
 import { useAppState, useSetAppState } from '../state/AppState.js'
 import {
@@ -86,6 +87,7 @@ export function ModelPicker({
 }: Props): React.ReactNode {
   const setAppState = useSetAppState()
   const exitState = useExitOnCtrlCDWithKeybindings()
+  const terminalSize = useContext(TerminalSizeContext)
   const initialValue = initial === null ? NO_PREFERENCE : initial
   const [focusedValue, setFocusedValue] = useState(initialValue)
   const isFastMode = useAppState(selectFastMode)
@@ -105,8 +107,10 @@ export function ModelPicker({
   const [thinkingEnabled, setThinkingEnabled] = useState(
     () => appThinkingEnabled ?? shouldEnableThinkingByDefault(),
   )
-  const [providerModelOptions, setProviderModelOptions] = useState<ModelOption[]>([])
+  const [providerModelOptions, setProviderModelOptions] = useState<Array<ModelOption & { disabled?: boolean }>>([])
   const [pickerError, setPickerError] = useState<string | null>(null)
+  const [loadingModels, setLoadingModels] = useState(true)
+  const [modelReloadToken, setModelReloadToken] = useState(0)
   const effectiveSettings = getInitialSettings()
   const currentProvider =
     getActiveProviderSettings(effectiveSettings).active ?? 'ollama'
@@ -114,6 +118,8 @@ export function ModelPicker({
   // Load models for the current provider
   useEffect(() => {
     const controller = new AbortController()
+    setLoadingModels(true)
+    setPickerError(null)
     listModelsForProviderWithSource(currentProvider, {
       settings: effectiveSettings,
       signal: controller.signal,
@@ -124,6 +130,9 @@ export function ModelPicker({
           value: model.id,
           label: model.displayName,
           description: `${model.description} · ${result.source}`,
+          ...(model.supportedParameters !== undefined && !model.supportedParameters.includes('tools')
+            ? { disabled: true }
+            : {}),
         })))
         setPickerError(result.warning ?? null)
       })
@@ -132,8 +141,20 @@ export function ModelPicker({
         setProviderModelOptions([])
         setPickerError(error instanceof Error ? error.message : String(error))
       })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingModels(false)
+      })
     return () => controller.abort()
-  }, [currentProvider, effectiveSettings])
+  }, [currentProvider, modelReloadToken])
+
+  useInput(
+    (input, key) => {
+      if (key.ctrl && (input === 'r' || input === 'R')) {
+        setModelReloadToken(token => token + 1)
+      }
+    },
+    { isActive: !loadingModels },
+  )
 
   const modelOptions = providerModelOptions
 
@@ -162,7 +183,10 @@ export function ModelPicker({
     ? initialValue
     : (selectOptions[0]?.value ?? undefined)
 
-  const visibleCount = Math.min(10, selectOptions.length)
+  const visibleCount = getAdaptiveModelVisibleCount(
+    selectOptions.length,
+    terminalSize?.rows,
+  )
   const hiddenCount = Math.max(0, selectOptions.length - visibleCount)
 
   const focusedModelName = selectOptions.find(
@@ -302,6 +326,9 @@ export function ModelPicker({
             {headerText ??
               'Switch between models for the active provider. Applies to this session and future UR sessions. For other provider-scoped model names, specify with --model.'}
           </Text>
+          <Text dimColor color="subtle">
+            ctrl+r refreshes the live model list for {currentProvider}
+          </Text>
           {sessionModel && (
             <Text dimColor>
               Currently using {modelDisplayString(sessionModel)} for this session
@@ -309,24 +336,35 @@ export function ModelPicker({
             </Text>
           )}
         </Box>
-        <Box flexDirection="column" marginBottom={1}>
-          <Box flexDirection="column">
-            <Select
-              defaultValue={initialValue}
-              defaultFocusValue={initialFocusValue}
-              options={selectOptions}
-              onChange={handleSelect}
-              onFocus={handleFocus}
-              onCancel={onCancel ?? noop}
-              visibleOptionCount={visibleCount}
-            />
+        {loadingModels ? (
+          <Box marginBottom={1}>
+            <Text dimColor>Loading current models...</Text>
           </Box>
-          {hiddenCount > 0 && (
-            <Box paddingLeft={3}>
-              <Text dimColor>and {hiddenCount} more…</Text>
+        ) : selectOptions.length === 0 ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color="error">No current models are available for {currentProvider}.</Text>
+            <Text dimColor>Press ctrl+r to retry.</Text>
+          </Box>
+        ) : (
+          <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column">
+              <Select
+                defaultValue={initialValue}
+                defaultFocusValue={initialFocusValue}
+                options={selectOptions}
+                onChange={handleSelect}
+                onFocus={handleFocus}
+                onCancel={onCancel ?? noop}
+                visibleOptionCount={visibleCount}
+              />
             </Box>
-          )}
-        </Box>
+            {hiddenCount > 0 && (
+              <Box paddingLeft={3}>
+                <Text dimColor>and {hiddenCount} more…</Text>
+              </Box>
+            )}
+          </Box>
+        )}
         <Box marginBottom={1} flexDirection="column">
           {focusedSupportsEffort ? (
             <Text dimColor>
@@ -390,6 +428,15 @@ export function ModelPicker({
 }
 
 function noop() {}
+
+export function getAdaptiveModelVisibleCount(
+  optionCount: number,
+  terminalRows?: number,
+): number {
+  if (!Number.isFinite(optionCount) || optionCount <= 0) return 0
+  const availableRows = Math.max(5, (terminalRows ?? 24) - 16)
+  return Math.min(Math.floor(optionCount), availableRows)
+}
 
 function resolveOptionModel(value?: string): string | undefined {
   if (!value) return undefined

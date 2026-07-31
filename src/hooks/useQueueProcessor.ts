@@ -15,6 +15,7 @@ type UseQueueProcessorParams = {
   executeQueuedInput: (commands: QueuedCommand[]) => Promise<void>
   hasActiveLocalJsxUI: boolean
   queryGuard: QueryGuard
+  reportQueueError: (error: unknown) => void
 }
 
 /**
@@ -33,6 +34,7 @@ export function useQueueProcessor({
   executeQueuedInput,
   hasActiveLocalJsxUI,
   queryGuard,
+  reportQueueError,
 }: UseQueueProcessorParams): void {
   // Subscribe to the query guard. Re-renders when a query starts or ends
   // (or when reserve/cancelReservation transitions dispatching state).
@@ -59,13 +61,13 @@ export function useQueueProcessor({
     if (queryGuard.status !== 'dispatching') return
     const timer = setInterval(() => {
       if (queryGuard.releaseIfStuck()) {
-        logForDebugging(
-          `QueryGuard reservation released after ${DISPATCH_STUCK_MS}ms with no query start; the dispatch chain did not reach onQuery.`,
-        )
+        const message = `Prompt dispatch timed out after ${DISPATCH_STUCK_MS}ms before the model call began; the pending dispatch was cancelled.`
+        logForDebugging(message)
+        reportQueueError(new Error(message))
       }
     }, DISPATCH_STUCK_CHECK_MS)
     return () => clearInterval(timer)
-  }, [isQueryActive, queryGuard])
+  }, [isQueryActive, queryGuard, reportQueueError])
 
   useEffect(() => {
     if (isQueryActive) return
@@ -79,12 +81,17 @@ export function useQueueProcessor({
     // snapshot change), isQueryActive is already true (dispatching) and the
     // guard above returns early. handlePromptSubmit's finally releases the
     // reservation via cancelReservation() (no-op if onQuery already ran end()).
-    processQueueIfReady({ executeInput: executeQueuedInput })
+    const result = processQueueIfReady({ executeInput: executeQueuedInput })
+    // A queue item has already been claimed, so its promise must never be
+    // detached without an observer. Automatic retry is unsafe because a tool
+    // effect may already have occurred before the rejection.
+    void result.completion?.catch(reportQueueError)
   }, [
     queueSnapshot,
     isQueryActive,
     executeQueuedInput,
     hasActiveLocalJsxUI,
     queryGuard,
+    reportQueueError,
   ])
 }

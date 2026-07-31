@@ -39,6 +39,9 @@ import {
   type ToolUseContext,
 } from '../../Tool.js'
 import type { BashToolInput } from '../../tools/BashTool/BashTool.js'
+import { normalizeAskUserQuestionInput } from '../../tools/AskUserQuestionTool/AskUserQuestionTool.js'
+import { describeQuestionPayloadProblems } from '../../tools/AskUserQuestionTool/normalizeQuestions.js'
+import { ASK_USER_QUESTION_TOOL_NAME } from '../../tools/AskUserQuestionTool/prompt.js'
 import { startSpeculativeClassifierCheck } from '../../tools/BashTool/bashPermissions.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
 import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
@@ -885,7 +888,14 @@ async function checkPermissionsAndCallTool(
     // The loop that prompted this guard was `Write` with no arguments,
     // rejected here every time. Without recording it, the guard never counts.
     recordCallFailure(callSig)
-    let errorContent = formatZodValidationError(tool.name, parsedInput.error)
+    const questionProblems =
+      tool.name === ASK_USER_QUESTION_TOOL_NAME
+        ? describeQuestionPayloadProblems(normalizeAskUserQuestionInput(input))
+        : []
+    let errorContent =
+      questionProblems.length > 0
+        ? `${tool.name} input cannot be rendered: ${questionProblems.join(' ')}`
+        : formatZodValidationError(tool.name, parsedInput.error)
 
     const schemaHint = buildSchemaNotSentHint(
       tool,

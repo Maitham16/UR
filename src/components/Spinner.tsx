@@ -189,12 +189,12 @@ function SpinnerWithVerbInner({
 
   // Gather aggregate token stats from all running swarm teammates
   // In spinner-tree mode, skip aggregation (teammates have their own lines in the tree)
-  let teammateTokens = 0;
+  let teammateTokens: number | undefined;
   if (!showSpinnerTree) {
     for (const task_0 of Object.values(tasks)) {
       if (isInProcessTeammateTask(task_0) && task_0.status === 'running') {
-        if (task_0.progress?.tokenCount) {
-          teammateTokens += task_0.progress.tokenCount;
+        if (task_0.progress?.tokenCount !== undefined) {
+          teammateTokens = (teammateTokens ?? 0) + task_0.progress.tokenCount;
         }
       }
     }
@@ -208,7 +208,9 @@ function SpinnerWithVerbInner({
   // Leader token count for TeammateSpinnerTree — read raw (non-animated) from
   // the ref. The tree is only shown when teammates are running; teammate
   // progress updates to s.tasks trigger re-renders that keep this fresh.
-  const leaderTokenCount = Math.round(responseLengthRef.current / 4);
+  // The streaming character count is not a token measurement. Leave leader
+  // usage absent here; provider-reported usage is surfaced after each response.
+  const leaderTokenCount = undefined;
   const defaultColor: keyof Theme = 'ur';
   const defaultShimmerColor = 'urShimmer';
   const messageColor = overrideColor ?? defaultColor;

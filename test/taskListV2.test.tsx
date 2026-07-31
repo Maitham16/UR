@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 import figures from 'figures'
-import { byIdAsc, getTaskIcon } from '../src/components/TaskListV2.js'
+import {
+  byIdAsc,
+  getTaskDisplayStatus,
+  getTaskIcon,
+  getTaskStatusCounts,
+} from '../src/components/TaskListV2.js'
 import type { Task } from '../src/utils/tasks.js'
 
 // Tests the pure display logic of the pinned task panel. An earlier version
@@ -69,6 +74,61 @@ describe('TaskListV2 display logic', () => {
       expect(getTaskIcon('skipped')).toEqual({
         icon: figures.warning,
         color: 'warning',
+      })
+    })
+  })
+
+  describe('status accounting', () => {
+    it('keeps failed and skipped separate from running work', () => {
+      const tasks = [
+        makeTask({ id: '1', status: 'pending' }),
+        makeTask({ id: '2', status: 'in_progress' }),
+        makeTask({ id: '3', status: 'completed' }),
+        makeTask({ id: '4', status: 'failed' }),
+        makeTask({ id: '5', status: 'skipped' }),
+      ]
+
+      expect(getTaskStatusCounts(tasks)).toEqual({
+        pending: 1,
+        in_progress: 1,
+        completed: 1,
+        failed: 1,
+        skipped: 1,
+        blocked: 0,
+      })
+    })
+
+    it('derives blocked from unresolved dependencies without changing storage status', () => {
+      const blocker = makeTask({ id: '1', status: 'in_progress' })
+      const dependent = makeTask({
+        id: '2',
+        status: 'pending',
+        blockedBy: ['1'],
+      })
+      const unresolved = new Set(['1', '2'])
+
+      expect(getTaskDisplayStatus(dependent, unresolved)).toBe('blocked')
+      expect(dependent.status).toBe('pending')
+      expect(getTaskStatusCounts([blocker, dependent])).toEqual({
+        pending: 0,
+        in_progress: 1,
+        completed: 0,
+        failed: 0,
+        skipped: 0,
+        blocked: 1,
+      })
+    })
+
+    it('does not derive blocked when every referenced blocker is resolved', () => {
+      const tasks = [
+        makeTask({ id: '1', status: 'completed' }),
+        makeTask({ id: '2', status: 'pending', blockedBy: ['1'] }),
+      ]
+
+      expect(getTaskStatusCounts(tasks)).toMatchObject({
+        completed: 1,
+        pending: 1,
+        blocked: 0,
       })
     })
   })

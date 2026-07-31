@@ -8,15 +8,12 @@
  *     URI reached every provider. OpenAI rejects unknown keys under
  *     `strict: true`, and Gemini's Schema type (OpenAPI 3.0.3 derived) has no
  *     such field at all.
- *  2. `$ref` / `$defs`. A recursive tool schema emits `{"$ref": "#"}`. Gemini
- *     cannot express a reference, and OpenAI-compatible servers that are not
- *     OpenAI itself (Ollama, vLLM, llama.cpp) frequently fail to resolve one.
- *     References are inlined to a bounded depth instead.
- *  3. Vendor keys nested below the root. `cache_control` and friends were only
+ *  2. Vendor keys nested below the root. `cache_control` and friends were only
  *     deleted at depth 0, so any that appeared inside `properties` survived.
  *
- * Gemini additionally rejects keywords that the other providers accept, so it
- * gets a narrowed dialect. Everything else receives standard JSON Schema.
+ * Local `$ref`/`$defs` are deliberately preserved. OpenAI supports recursive
+ * schemas and Gemini's current `parametersJsonSchema` accepts JSON Schema
+ * references; inlining recursive references changes their meaning.
  *
  * Sources:
  *  - https://ai.google.dev/gemini-api/docs/function-calling
@@ -35,18 +32,15 @@ const VENDOR_KEYS = [
   'eager_input_streaming',
 ] as const
 
-/** Meta keywords that describe the document, not the value. */
-const META_KEYS = ['$schema', '$id', '$anchor', '$comment'] as const
+/** Document-only keywords not accepted inside provider parameter payloads. */
+const META_KEYS = ['$schema', '$comment'] as const
 
 /**
- * Keywords Gemini's Schema type does not accept. `default` and `oneOf` are
- * documented as unsupported; `additionalProperties` and the exclusive bounds
- * are not part of its OpenAPI-derived subset.
+ * Keywords outside Gemini's documented `parametersJsonSchema` subset. Modern
+ * Gemini does support refs, oneOf, additionalProperties, and null types.
  */
 const GEMINI_UNSUPPORTED_KEYS = [
-  'additionalProperties',
   'default',
-  'oneOf',
   'not',
   'exclusiveMinimum',
   'exclusiveMaximum',
@@ -57,20 +51,35 @@ const GEMINI_UNSUPPORTED_KEYS = [
   'unevaluatedProperties',
 ] as const
 
-/** Guard against a reference cycle that inlining cannot terminate. */
-const MAX_INLINE_DEPTH = 8
-
 function isObject(value: unknown): value is JsonSchemaObject {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 /**
  * Resolve a local JSON pointer (`#`, `#/$defs/Name`) against the document
- * root. Returns undefined for anything non-local, which is then dropped rather
- * than forwarded as an unresolvable reference.
+ * root. Local anchors are supported as well. Undefined means the provider
+ * payload would contain an unresolvable or remote reference and is rejected.
  */
 function resolvePointer(root: JsonSchemaObject, ref: string): unknown {
   if (ref === '#') return root
+  if (ref.startsWith('#') && !ref.startsWith('#/')) {
+    const anchor = ref.slice(1)
+    const pending: unknown[] = [root]
+    const seen = new Set<unknown>()
+    while (pending.length > 0) {
+      const current = pending.pop()
+      if (!current || typeof current !== 'object' || seen.has(current)) continue
+      seen.add(current)
+      if (
+        isObject(current) &&
+        (current.$anchor === anchor || current.$id === ref)
+      ) {
+        return current
+      }
+      pending.push(...(Array.isArray(current) ? current : Object.values(current)))
+    }
+    return undefined
+  }
   if (!ref.startsWith('#/')) return undefined
   let current: unknown = root
   for (const rawSegment of ref.slice(2).split('/')) {
@@ -82,8 +91,8 @@ function resolvePointer(root: JsonSchemaObject, ref: string): unknown {
 }
 
 /**
- * Recursively rewrite a schema: strip meta and vendor keys, inline local
- * references, and apply dialect-specific removals.
+ * Recursively rewrite a schema: strip meta/vendor keys and apply only the
+ * provider-specific removals documented for the selected dialect.
  */
 function rewrite(
   node: unknown,
@@ -96,26 +105,6 @@ function rewrite(
   }
   if (!isObject(node)) {
     return node
-  }
-
-  // A reference is replaced by its target so no provider has to resolve it.
-  const ref = node.$ref
-  if (typeof ref === 'string') {
-    if (depth >= MAX_INLINE_DEPTH) {
-      // Cycle guard. An unconstrained object is honest here: it says "some
-      // object" rather than pointing at something the provider cannot follow.
-      return { type: 'object' }
-    }
-    const target = resolvePointer(root, ref)
-    if (isObject(target)) {
-      const { $ref: _dropped, ...siblings } = node
-      const inlined = rewrite(target, root, dialect, depth + 1)
-      return isObject(inlined) ? { ...inlined, ...rewriteEntries(siblings, root, dialect, depth) } : inlined
-    }
-    // Unresolvable (remote or malformed) — drop the reference rather than send
-    // a pointer the provider will reject.
-    const { $ref: _unused, ...rest } = node
-    return rewriteEntries(rest, root, dialect, depth)
   }
 
   return rewriteEntries(node, root, dialect, depth)
@@ -131,42 +120,19 @@ function rewriteEntries(
   for (const [key, value] of Object.entries(node)) {
     if ((VENDOR_KEYS as readonly string[]).includes(key)) continue
     if ((META_KEYS as readonly string[]).includes(key)) continue
-    // $defs exist only to be pointed at; every pointer is now inlined.
-    if (key === '$defs' || key === 'definitions') continue
     if (dialect === 'gemini' && (GEMINI_UNSUPPORTED_KEYS as readonly string[]).includes(key)) {
       continue
     }
     out[key] = rewrite(value, root, dialect, depth)
   }
-  if (dialect === 'gemini') {
-    return applyGeminiNullability(out)
-  }
   return out
-}
-
-/**
- * Zod expresses `T | null` as `anyOf: [T, {type: 'null'}]`. Gemini has no
- * `null` type but does have `nullable`, so the pair is folded into the
- * equivalent it understands instead of being sent as an unusable union.
- */
-function applyGeminiNullability(node: JsonSchemaObject): JsonSchemaObject {
-  const anyOf = node.anyOf
-  if (!Array.isArray(anyOf)) return node
-  const nullBranches = anyOf.filter(b => isObject(b) && b.type === 'null')
-  if (nullBranches.length === 0) return node
-  const rest = anyOf.filter(b => !(isObject(b) && b.type === 'null'))
-  if (rest.length === 1 && isObject(rest[0])) {
-    const { anyOf: _dropped, ...siblings } = node
-    return { ...rest[0], ...siblings, nullable: true }
-  }
-  return { ...node, anyOf: rest, nullable: true }
 }
 
 /**
  * Produce the schema object actually sent to a provider.
  *
- * Always returns a usable object schema; a missing or non-object input becomes
- * an empty parameter list rather than throwing, matching the prior contract.
+ * Preparation is deliberately separate from validation for callers that need
+ * diagnostics. Production adapters use `prepareAndValidateToolSchema`.
  */
 export function prepareToolSchema(
   schema: unknown,
@@ -204,6 +170,8 @@ export function validateToolSchema(
   dialect: SchemaDialect = 'json-schema',
 ): SchemaValidationIssue[] {
   const issues: SchemaValidationIssue[] = []
+  const root = isObject(schema) ? schema : undefined
+  const allowedTypes = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'])
 
   function walk(node: unknown, path: string, depth: number): void {
     if (depth > 64) {
@@ -216,8 +184,10 @@ export function validateToolSchema(
     }
     if (!isObject(node)) return
 
-    if (typeof node.$ref === 'string') {
-      issues.push({ path, message: `unresolved reference "${node.$ref}"` })
+    if (node.$ref !== undefined) {
+      if (typeof node.$ref !== 'string' || !root || resolvePointer(root, node.$ref) === undefined) {
+        issues.push({ path, message: `unresolved reference "${String(node.$ref)}"` })
+      }
     }
     for (const key of META_KEYS) {
       if (key in node) {
@@ -235,20 +205,46 @@ export function validateToolSchema(
           issues.push({ path, message: `"${key}" is not supported by Gemini` })
         }
       }
-      if (node.type === 'null') {
-        issues.push({ path, message: 'Gemini has no null type; use nullable' })
+    }
+
+    if (node.type !== undefined) {
+      const types = Array.isArray(node.type) ? node.type : [node.type]
+      if (
+        types.length === 0 ||
+        types.some(type => typeof type !== 'string' || !allowedTypes.has(type))
+      ) {
+        issues.push({ path, message: '"type" contains an unsupported JSON Schema type' })
       }
     }
 
     if (node.type === 'object' && node.properties !== undefined && !isObject(node.properties)) {
       issues.push({ path, message: '"properties" must be an object' })
     }
+    if (isObject(node.properties)) {
+      for (const [name, propertySchema] of Object.entries(node.properties)) {
+        if (!isObject(propertySchema)) {
+          issues.push({
+            path: path ? `${path}.properties.${name}` : `properties.${name}`,
+            message: 'property schema must be an object',
+          })
+        }
+      }
+    }
     if (node.required !== undefined) {
       if (!Array.isArray(node.required)) {
         issues.push({ path, message: '"required" must be an array' })
-      } else if (isObject(node.properties)) {
+      } else {
+        const names = new Set<string>()
         for (const name of node.required) {
-          if (typeof name === 'string' && !(name in node.properties)) {
+          if (typeof name !== 'string' || name.length === 0) {
+            issues.push({ path, message: 'every "required" entry must be a non-empty string' })
+            continue
+          }
+          if (names.has(name)) {
+            issues.push({ path, message: `required property "${name}" is duplicated` })
+          }
+          names.add(name)
+          if (!isObject(node.properties) || !(name in node.properties)) {
             issues.push({
               path,
               message: `required property "${name}" is not defined in properties`,
@@ -257,11 +253,24 @@ export function validateToolSchema(
         }
       }
     }
-    if (node.type === 'array' && node.items === undefined) {
+    if (node.type === 'array' && node.items === undefined && node.prefixItems === undefined) {
       issues.push({ path, message: 'array schema is missing "items"' })
+    }
+    if (node.items !== undefined && !isObject(node.items)) {
+      issues.push({ path, message: '"items" must be a schema object' })
     }
     if (Array.isArray(node.enum) && node.enum.length === 0) {
       issues.push({ path, message: '"enum" must not be empty' })
+    }
+    for (const keyword of ['anyOf', 'oneOf', 'allOf'] as const) {
+      if (node[keyword] !== undefined && (!Array.isArray(node[keyword]) || node[keyword].length === 0)) {
+        issues.push({ path, message: `"${keyword}" must be a non-empty array` })
+      } else if (
+        Array.isArray(node[keyword]) &&
+        node[keyword].some(branch => !isObject(branch))
+      ) {
+        issues.push({ path, message: `every "${keyword}" branch must be a schema object` })
+      }
     }
 
     for (const [key, value] of Object.entries(node)) {
@@ -273,7 +282,71 @@ export function validateToolSchema(
   if (!isObject(schema)) {
     return [{ path: '', message: 'tool schema must be an object' }]
   }
+  if (schema.type !== 'object') {
+    issues.push({ path: '', message: 'tool parameter schema must have top-level type "object"' })
+  }
   walk(schema, '', 0)
+  return issues
+}
+
+export class ToolSchemaValidationError extends Error {
+  override readonly name = 'ToolSchemaValidationError'
+}
+
+const TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/u
+
+export function assertValidToolName(name: unknown, providerLabel: string): asserts name is string {
+  if (typeof name !== 'string' || !TOOL_NAME_PATTERN.test(name)) {
+    throw new ToolSchemaValidationError(
+      `${providerLabel} tool name "${String(name)}" must match ${TOOL_NAME_PATTERN.source}.`,
+    )
+  }
+}
+
+export function assertUniqueToolNames(names: string[], providerLabel: string): void {
+  const seen = new Set<string>()
+  for (const name of names) {
+    if (seen.has(name)) {
+      throw new ToolSchemaValidationError(`${providerLabel} tool list contains duplicate name "${name}".`)
+    }
+    seen.add(name)
+  }
+}
+
+export function validateOpenAIStrictToolSchema(schema: JsonSchemaObject): SchemaValidationIssue[] {
+  const issues: SchemaValidationIssue[] = []
+
+  function walk(node: unknown, path: string): void {
+    if (Array.isArray(node)) {
+      node.forEach((item, index) => walk(item, `${path}[${index}]`))
+      return
+    }
+    if (!isObject(node)) return
+    if (node.type === 'object' || node.properties !== undefined) {
+      if (node.additionalProperties !== false) {
+        issues.push({ path, message: 'OpenAI strict objects require additionalProperties: false' })
+      }
+      if (isObject(node.properties)) {
+        const propertyNames = Object.keys(node.properties)
+        const required = Array.isArray(node.required)
+          ? node.required.filter((name): name is string => typeof name === 'string')
+          : []
+        const missing = propertyNames.filter(name => !required.includes(name))
+        if (missing.length > 0) {
+          issues.push({
+            path,
+            message: `OpenAI strict requires every property; missing from required: ${missing.join(', ')}`,
+          })
+        }
+      }
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'enum' || key === 'required') continue
+      walk(value, path ? `${path}.${key}` : key)
+    }
+  }
+
+  walk(schema, '')
   return issues
 }
 
@@ -286,14 +359,23 @@ export function prepareAndValidateToolSchema(
   schema: unknown,
   toolName: string,
   dialect: SchemaDialect = 'json-schema',
+  options: { openAIStrict?: boolean } = {},
 ): JsonSchemaObject {
+  if (!isObject(schema)) {
+    throw new ToolSchemaValidationError(
+      `Tool "${toolName}" produced a schema that the provider cannot accept:\n  - <root>: tool schema must be an object`,
+    )
+  }
   const prepared = prepareToolSchema(schema, dialect)
-  const issues = validateToolSchema(prepared, dialect)
+  const issues = [
+    ...validateToolSchema(prepared, dialect),
+    ...(options.openAIStrict ? validateOpenAIStrictToolSchema(prepared) : []),
+  ]
   if (issues.length > 0) {
     const detail = issues
       .map(issue => `  - ${issue.path || '<root>'}: ${issue.message}`)
       .join('\n')
-    throw new Error(
+    throw new ToolSchemaValidationError(
       `Tool "${toolName}" produced a schema that ${dialect === 'gemini' ? 'Gemini' : 'the provider'} cannot accept:\n${detail}`,
     )
   }

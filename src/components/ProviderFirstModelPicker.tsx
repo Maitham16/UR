@@ -7,6 +7,7 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import {
+  clearProviderModelCache,
   listProviders,
   getProviderAccessTypeLabel,
   getProviderStatus,
@@ -106,7 +107,7 @@ export function ProviderFirstModelPicker({
   const [focusedProviderValue, setFocusedProviderValue] = useState<string | null>(null)
   const [focusedModelValue, setFocusedModelValue] = useState<string | null>(null)
   const [providerOptions, setProviderOptions] = useState<ProviderStatusOption[]>([])
-  const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
+  const [modelOptions, setModelOptions] = useState<Array<ModelOption & { disabled?: boolean }>>([])
   const [loadingProviders, setLoadingProviders] = useState(true)
   const [loadingModels, setLoadingModels] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState<ProviderStatusOption | null>(null)
@@ -189,10 +190,13 @@ export function ProviderFirstModelPicker({
           signal: controller.signal,
         })
         if (cancelled) return
-        const options: ModelOption[] = result.models.map(model => ({
+        const options: Array<ModelOption & { disabled?: boolean }> = result.models.map(model => ({
           value: model.id,
           label: model.displayName,
           description: `${model.description} · ${result.source}`,
+          ...(model.supportedParameters !== undefined && !model.supportedParameters.includes('tools')
+            ? { disabled: true }
+            : {}),
         }))
         setModelOptions(options)
         setModelSource(result.source)
@@ -409,6 +413,7 @@ export function ProviderFirstModelPicker({
       setConnectError(saved.message)
       return
     }
+    clearProviderModelCache(connectingProvider.value)
     setApiKeyInput('')
     setApiKeyCursorOffset(0)
     setConnectError(null)
@@ -447,6 +452,7 @@ export function ProviderFirstModelPicker({
         setCredentialNotice(cleared.message)
         return
       }
+      clearProviderModelCache(connectingProvider.value)
       setCredentialNotice(cleared.message)
       setProviderOptions(prev =>
         prev.map(opt =>

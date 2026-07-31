@@ -21,7 +21,6 @@ import {
   TOOL_USE_ID_TAG,
 } from '../constants/xml.js'
 import { type QueryParams, query } from '../query.js'
-import { roughTokenCountEstimation } from '../services/tokenEstimation.js'
 import type { SetAppState } from '../Task.js'
 import { createTaskStateBase } from '../Task.js'
 import type {
@@ -50,7 +49,12 @@ import {
   initTaskOutputAsSymlink,
 } from '../utils/task/diskOutput.js'
 import { registerTask, updateTaskState } from '../utils/task/framework.js'
-import type { LocalAgentTaskState } from './LocalAgentTask/LocalAgentTask.js'
+import {
+  createProgressTracker,
+  getProgressUpdate,
+  type LocalAgentTaskState,
+  updateProgressFromMessage,
+} from './LocalAgentTask/LocalAgentTask.js'
 
 // Main session tasks use LocalAgentTaskState with agentType='main-session'
 export type LocalMainSessionTaskState = LocalAgentTaskState & {
@@ -322,14 +326,6 @@ export function isMainSessionTask(
   )
 }
 
-// Max recent activities to keep for display
-const MAX_RECENT_ACTIVITIES = 5
-
-type ToolActivity = {
-  toolName: string
-  input: Record<string, unknown>
-}
-
 /**
  * Start a fresh background session with the given messages.
  *
@@ -376,9 +372,7 @@ export function startBackgroundSession({
   void runWithAgentContext(agentContext, async () => {
     try {
       const bgMessages: Message[] = [...messages]
-      const recentActivities: ToolActivity[] = []
-      let toolCount = 0
-      let tokenCount = 0
+      const progressTracker = createProgressTracker()
       let lastRecordedUuid: UUID | null = messages.at(-1)?.uuid ?? null
 
       for await (const event of query({
@@ -420,30 +414,18 @@ export function startBackgroundSession({
         lastRecordedUuid = event.uuid
 
         if (event.type === 'assistant') {
-          for (const block of event.message.content) {
-            if (block.type === 'text') {
-              tokenCount += roughTokenCountEstimation(block.text)
-            } else if (block.type === 'tool_use') {
-              toolCount++
-              const activity: ToolActivity = {
-                toolName: block.name,
-                input: block.input as Record<string, unknown>,
-              }
-              recentActivities.push(activity)
-              if (recentActivities.length > MAX_RECENT_ACTIVITIES) {
-                recentActivities.shift()
-              }
-            }
-          }
+          updateProgressFromMessage(progressTracker, event)
         }
+
+        const progress = getProgressUpdate(progressTracker)
 
         setAppState(prev => {
           const task = prev.tasks[taskId]
           if (!task || task.type !== 'local_agent') return prev
           const prevProgress = task.progress
           if (
-            prevProgress?.tokenCount === tokenCount &&
-            prevProgress.toolUseCount === toolCount &&
+            prevProgress?.tokenCount === progress.tokenCount &&
+            prevProgress?.toolUseCount === progress.toolUseCount &&
             task.messages === bgMessages
           ) {
             return prev
@@ -454,14 +436,7 @@ export function startBackgroundSession({
               ...prev.tasks,
               [taskId]: {
                 ...task,
-                progress: {
-                  tokenCount,
-                  toolUseCount: toolCount,
-                  recentActivities:
-                    prevProgress?.toolUseCount === toolCount
-                      ? prevProgress.recentActivities
-                      : [...recentActivities],
-                },
+                progress,
                 messages: bgMessages,
               },
             },

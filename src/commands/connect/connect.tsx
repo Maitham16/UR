@@ -2,8 +2,10 @@ import type { LocalCommandCall } from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import {
   authAliasForProvider,
+  clearProviderModelCache,
   getProviderDefinition,
   launchProviderAuth,
+  ensureProviderModelsFresh,
   PROVIDER_IDS,
   resolveProviderId,
   type ProviderId,
@@ -84,7 +86,12 @@ async function connectProvider(provider: ProviderId, keyFlag?: string): Promise<
     }
     const saved = setProviderApiKey(provider, key)
     if (!saved.ok) return saved.message
-    return `Connected ${def.displayName}. ${saved.message} You can now select it with /model.`
+    clearProviderModelCache(provider)
+    const discovered = await ensureProviderModelsFresh(provider, { force: true })
+    const refresh = discovered.warning
+      ? ` Model refresh: ${discovered.warning}`
+      : ` Refreshed ${discovered.models.length} current models.`
+    return `Connected ${def.displayName}. ${saved.message}${refresh} You can now select it with /model.`
   }
 
   return `${def.displayName} needs a local endpoint, not a login. Set it with: ur config set base_url <url>`
@@ -118,6 +125,7 @@ export const call: LocalCommandCall = async (args: string) => {
       }
     }
     const cleared = clearProviderApiKey(provider)
+    clearProviderModelCache(provider)
     return { type: 'text', value: cleared.message }
   }
 

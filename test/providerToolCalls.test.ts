@@ -6,6 +6,8 @@ import {
 } from '../src/services/api/openaiCompatible.js'
 import { createOpenRouterClient } from '../src/services/api/openrouter.js'
 import { createStandardAPIClient } from '../src/services/api/standardAPI.js'
+import { AskUserQuestionTool } from '../src/tools/AskUserQuestionTool/AskUserQuestionTool.js'
+import { zodToJsonSchema } from '../src/utils/zodToJsonSchema.js'
 
 const sampleTools = [
   {
@@ -18,6 +20,7 @@ const sampleTools = [
         content: { type: 'string' },
       },
       required: ['file_path', 'content'],
+      additionalProperties: false,
     },
     strict: true,
   },
@@ -152,6 +155,47 @@ describe('provider tool-call request and response mapping', () => {
     ])
   })
 
+  test('internal optional tools remain available by downgrading only strict mode', () => {
+    expect(toOpenAITools([
+      {
+        name: 'OptionalInspect',
+        input_schema: {
+          type: 'object',
+          properties: {
+            path: { type: 'string' },
+            limit: { type: 'integer' },
+          },
+          required: ['path'],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+    ])).toEqual([
+      {
+        type: 'function',
+        function: {
+          name: 'OptionalInspect',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string' },
+              limit: { type: 'integer' },
+            },
+            required: ['path'],
+            additionalProperties: false,
+          },
+        },
+      },
+    ])
+  })
+
+  test('duplicate tool definitions fail clearly instead of disappearing', () => {
+    expect(() => toOpenAITools([
+      { name: 'Same', input_schema: { type: 'object', properties: {} } },
+      { name: 'Same', input_schema: { type: 'object', properties: {} } },
+    ])).toThrow(/duplicate name "Same"/)
+  })
+
   test('openai-compatible preserves tools/tool_choice and parses tool_calls', async () => {
     const original = globalThis.fetch
     const seen: any[] = []
@@ -161,7 +205,7 @@ describe('provider tool-call request and response mapping', () => {
         status: 200,
         headers: { 'content-type': 'application/json' },
       })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
     try {
       const client = await createOpenAICompatibleClient({
         baseUrl: 'http://localhost:1234/v1',
@@ -244,6 +288,7 @@ describe('provider tool-call request and response mapping', () => {
         name: 'Edit',
         description: 'Modify a file',
         input_schema: sampleTools[0].input_schema,
+        strict: true,
       },
     ])
     expect(body.tool_choice).toEqual(toolChoice)
@@ -313,7 +358,7 @@ describe('provider tool-call request and response mapping', () => {
           {
             name: 'Edit',
             description: 'Modify a file',
-            parameters: sampleTools[0].input_schema,
+            parametersJsonSchema: sampleTools[0].input_schema,
           },
         ],
       },
@@ -423,6 +468,73 @@ describe('provider tool-call request and response mapping', () => {
       expect((error as Error).name).toBe('ProviderResponseParseError')
       expect((error as Error).message).toContain('tool_calls')
     }
+  })
+
+  test('malformed tool schemas fail before an adapter sends or retries', async () => {
+    const original = globalThis.fetch
+    let requests = 0
+    globalThis.fetch = (async () => {
+      requests++
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    try {
+      const client = await createOpenAICompatibleClient({
+        baseUrl: 'http://localhost:1234/v1',
+        maxRetries: 3,
+      })
+      await expect(
+        client.beta.messages.create({
+          model: 'local-model',
+          messages: userMessages(),
+          max_tokens: 16,
+          tools: [{
+            name: 'BrokenTool',
+            input_schema: {
+              type: 'object',
+              properties: { values: { type: 'array' } },
+            },
+          }],
+        }),
+      ).rejects.toThrow(/BrokenTool[\s\S]*items/)
+      expect(requests).toBe(0)
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  test('Gemini request preserves the actual AskUserQuestion nested schema path', async () => {
+    const post = spyOn(axios, 'post').mockResolvedValue({
+      data: {
+        candidates: [{ content: { parts: [{ text: 'ask' }] }, finishReason: 'STOP' }],
+        usageMetadata: {},
+      },
+      headers: {},
+    })
+    const client = await createStandardAPIClient({
+      providerId: 'gemini-api',
+      apiKey: 'gm-key',
+      maxRetries: 1,
+    })
+    await client.beta.messages.create({
+      model: 'gemini-3.5-flash',
+      messages: userMessages(),
+      max_tokens: 32,
+      tools: [{
+        name: 'AskUserQuestion',
+        description: 'Ask the user',
+        input_schema: zodToJsonSchema(AskUserQuestionTool.inputSchema),
+      }],
+    })
+
+    const [, body] = post.mock.calls[0] as [string, Record<string, any>]
+    const schema = body.tools[0].functionDeclarations[0].parametersJsonSchema
+    const question = schema.properties.questions.items
+    expect(question.required).toEqual(expect.arrayContaining(['question', 'options']))
+    expect(question.properties.question.type).toBe('string')
+    expect(question.properties.options.type).toBe('array')
+    expect(question.properties.options.items.required).toEqual(
+      expect.arrayContaining(['label', 'description']),
+    )
   })
 
   test('OpenAI-family adapters reject duplicate tool call IDs', async () => {

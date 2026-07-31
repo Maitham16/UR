@@ -862,6 +862,25 @@ export function shouldSkipOllamaNonStreamingFallback(
   )
 }
 
+export function isStreamWatchdogEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const setting = env.UR_ENABLE_STREAM_WATCHDOG
+  return setting === undefined || isEnvTruthy(setting)
+}
+
+export function shouldDisableNonStreamingFallback(
+  streamedToolUse: boolean,
+  featureDisabled: boolean,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return (
+    streamedToolUse ||
+    featureDisabled ||
+    isEnvTruthy(env.UR_CODE_DISABLE_NONSTREAMING_FALLBACK)
+  )
+}
+
 /**
  * Helper generator for non-streaming API requests.
  * Encapsulates the common pattern of creating a withRetry generator,
@@ -1797,6 +1816,10 @@ async function* queryModel(
   let ttftMs = 0
   let partialMessage: BetaMessage | undefined = undefined
   const contentBlocks: (BetaContentBlock | ConnectorTextBlock)[] = []
+  // Once a tool block is yielded, upstream streaming execution may have
+  // started an external effect. Retrying the model request after that point
+  // can produce the same tool call twice.
+  let streamedToolUse = false
   let usage: NonNullableUsage = EMPTY_USAGE
   let costUSD = 0
   let stopReason: BetaStopReason | null = null
@@ -1909,9 +1932,7 @@ async function* queryModel(
     // kill hung streams. Without this, a silently dropped connection can hang
     // the session indefinitely since the SDK's request timeout only covers the
     // initial fetch(), not the streaming body.
-    const streamWatchdogEnabled = isEnvTruthy(
-      process.env.UR_ENABLE_STREAM_WATCHDOG,
-    )
+    const streamWatchdogEnabled = isStreamWatchdogEnabled()
     const STREAM_IDLE_TIMEOUT_MS =
       parseInt(process.env.UR_STREAM_IDLE_TIMEOUT_MS || '', 10) || 90_000
     const STREAM_IDLE_WARNING_MS = STREAM_IDLE_TIMEOUT_MS / 2
@@ -2255,6 +2276,12 @@ async function* queryModel(
                 research !== undefined && { research }),
               ...(advisorModel && { advisorModel }),
             }
+            if (
+              contentBlock.type === 'tool_use' ||
+              contentBlock.type === 'server_tool_use'
+            ) {
+              streamedToolUse = true
+            }
             newMessages.push(m)
             yield m
             break
@@ -2522,12 +2549,13 @@ async function* queryModel(
       // execution when streaming tool execution is active: the partial stream
       // starts a tool, then the non-streaming retry produces the same tool_use
       // and runs it again. See inc-4258.
-      const disableFallback =
-        isEnvTruthy(process.env.UR_CODE_DISABLE_NONSTREAMING_FALLBACK) ||
+      const disableFallback = shouldDisableNonStreamingFallback(
+        streamedToolUse,
         getFeatureValue_CACHED_MAY_BE_STALE(
           'tengu_disable_streaming_to_non_streaming_fallback',
           false,
-        )
+        ),
+      )
 
       if (disableFallback) {
         logForDebugging(
@@ -3000,6 +3028,19 @@ export function updateUsage(
         ? partUsage.cache_read_input_tokens
         : usage.cache_read_input_tokens,
     output_tokens: partUsage.output_tokens ?? usage.output_tokens,
+    ...((partUsage.reasoning_tokens ?? usage.reasoning_tokens) !== undefined
+      ? {
+          reasoning_tokens:
+            partUsage.reasoning_tokens ?? usage.reasoning_tokens,
+        }
+      : {}),
+    ...((partUsage.provider_total_tokens ?? usage.provider_total_tokens) !==
+    undefined
+      ? {
+          provider_total_tokens:
+            partUsage.provider_total_tokens ?? usage.provider_total_tokens,
+        }
+      : {}),
     server_tool_use: {
       web_search_requests:
         partUsage.server_tool_use?.web_search_requests ??
@@ -3058,6 +3099,22 @@ export function accumulateUsage(
     cache_read_input_tokens:
       totalUsage.cache_read_input_tokens + messageUsage.cache_read_input_tokens,
     output_tokens: totalUsage.output_tokens + messageUsage.output_tokens,
+    ...(totalUsage.reasoning_tokens !== undefined ||
+    messageUsage.reasoning_tokens !== undefined
+      ? {
+          reasoning_tokens:
+            (totalUsage.reasoning_tokens ?? 0) +
+            (messageUsage.reasoning_tokens ?? 0),
+        }
+      : {}),
+    ...(totalUsage.provider_total_tokens !== undefined ||
+    messageUsage.provider_total_tokens !== undefined
+      ? {
+          provider_total_tokens:
+            (totalUsage.provider_total_tokens ?? 0) +
+            (messageUsage.provider_total_tokens ?? 0),
+        }
+      : {}),
     server_tool_use: {
       web_search_requests:
         totalUsage.server_tool_use.web_search_requests +

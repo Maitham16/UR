@@ -17,8 +17,26 @@ import {
 import {
   getNonstreamingFallbackTimeoutMs,
   isOllamaCloudRuntime,
+  isStreamWatchdogEnabled,
+  shouldDisableNonStreamingFallback,
   shouldSkipOllamaNonStreamingFallback,
 } from '../src/services/api/ur.js'
+
+test('the stream inactivity watchdog is enabled unless explicitly disabled', () => {
+  expect(isStreamWatchdogEnabled({})).toBe(true)
+  expect(isStreamWatchdogEnabled({ UR_ENABLE_STREAM_WATCHDOG: '1' })).toBe(true)
+  expect(isStreamWatchdogEnabled({ UR_ENABLE_STREAM_WATCHDOG: '0' })).toBe(false)
+})
+
+test('a yielded tool call prevents a non-streaming duplicate request', () => {
+  expect(shouldDisableNonStreamingFallback(true, false, {})).toBe(true)
+  expect(shouldDisableNonStreamingFallback(false, false, {})).toBe(false)
+  expect(
+    shouldDisableNonStreamingFallback(false, false, {
+      UR_CODE_DISABLE_NONSTREAMING_FALLBACK: '1',
+    }),
+  ).toBe(true)
+})
 
 test('getOllamaRequestTimeoutMs defaults to five minutes for local Ollama', () => {
   expect(getOllamaRequestTimeoutMs(undefined, {})).toBe(300_000)

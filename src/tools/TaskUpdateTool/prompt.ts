@@ -10,8 +10,9 @@ export const PROMPT = `Use this tool to update a task in the task list.
 - After completion, call TaskList to find the next unblocked task
 
 - ONLY mark a task as completed when you have FULLY accomplished it
-- If you encounter errors, blockers, or cannot finish, keep the task as in_progress
-- When blocked, record the blocking work as a dependency or notify the owner
+- If an error prevents completion, use \`failed\` and state the evidence in the task description or metadata
+- If work is intentionally not applicable or deliberately omitted, use \`skipped\` and record why
+- When blocked, add the blocking task with \`addBlockedBy\`; the UI derives a blocked state while the dependency remains unresolved
 - Never mark a task as completed if:
   - Tests are failing
   - Implementation is partial
@@ -39,7 +40,9 @@ export const PROMPT = `Use this tool to update a task in the task list.
 
 ## Status Workflow
 
-Status progresses: \`pending\` → \`in_progress\` → \`completed\`
+Normal success progresses: \`pending\` → \`in_progress\` → \`completed\`.
+
+Use \`failed\` for attempted work that did not complete, and \`skipped\` for work intentionally not performed. A blocked task remains \`pending\` or \`in_progress\` with unresolved \`blockedBy\` entries; \`blocked\` is a derived display state rather than a writable status.
 
 Use \`deleted\` to permanently remove a task.
 

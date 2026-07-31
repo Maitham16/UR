@@ -15,6 +15,7 @@ import { MessageResponse } from '../../components/MessageResponse.js';
 import { ToolUseLoader } from '../../components/ToolUseLoader.js';
 import { Box, Text } from '../../ink.js';
 import { getDumpPromptsPath } from '../../services/api/dumpPrompts.js';
+import { EMPTY_USAGE } from '../../services/api/emptyUsage.js';
 import { findToolByName, type Tools } from '../../Tool.js';
 import type { Message, ProgressMessage } from '../../types/message.js';
 import type { AgentToolProgress } from '../../types/tools.js';
@@ -22,7 +23,7 @@ import { count } from '../../utils/array.js';
 import { getSearchOrReadFromContent, getSearchReadSummaryText } from '../../utils/collapseReadSearch.js';
 import { getDisplayPath } from '../../utils/file.js';
 import { formatDuration, formatNumber } from '../../utils/format.js';
-import { formatReportedTokens } from '../../utils/tokens.js';
+import { aggregateReportedUsage, formatReportedTokens, getTokenCountFromUsage } from '../../utils/tokens.js';
 import { buildSubagentLookups, createAssistantMessage, EMPTY_LOOKUPS } from '../../utils/messages.js';
 import type { ModelAlias } from '../../utils/model/aliases.js';
 import { getMainLoopModel, parseUserSpecifiedModel, renderModelName } from '../../utils/model/model.js';
@@ -362,7 +363,7 @@ export function renderToolResultMessage(data: Output, progressMessagesForMessage
           </MessageResponse>}
       </Box>;
   }
-  if (data.status !== 'completed') {
+  if (data.status !== 'completed' && data.status !== 'partial') {
     return null;
   }
   const {
@@ -379,11 +380,11 @@ export function renderToolResultMessage(data: Output, progressMessagesForMessage
   // "0 tokens" beside a real tool count states a measurement we do not have.
   const tokenSegment = formatReportedTokens(usage, totalTokens, formatNumber);
   const result = [totalToolUseCount === 1 ? '1 tool use' : `${totalToolUseCount} tool uses`, ...(tokenSegment ? [tokenSegment] : []), formatDuration(totalDurationMs)];
-  const completionMessage = `Done (${result.join(' · ')})`;
+  const completionMessage = `${data.status === 'partial' ? 'Partial' : 'Done'} (${result.join(' · ')})`;
   const finalAssistantMessage = createAssistantMessage({
     content: completionMessage,
     usage: {
-      ...usage,
+      ...(usage ?? EMPTY_USAGE),
       inference_geo: null,
       iterations: null,
       speed: null
@@ -481,12 +482,8 @@ export function renderToolUseProgressMessage(progressMessages: ProgressMessage<P
       const message = msg.data.message;
       return message.message.content.some(content => content.type === 'tool_use');
     });
-    const latestAssistant = progressMessages.findLast((msg): msg is ProgressMessage<AgentToolProgress> => hasProgressMessage(msg.data) && msg.data.message.type === 'assistant');
-    let tokens = null;
-    if (latestAssistant?.data.message.type === 'assistant') {
-      const usage = latestAssistant.data.message.message.usage;
-      tokens = (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + usage.input_tokens + usage.output_tokens;
-    }
+    const usage = aggregateReportedUsage(progressMessages.flatMap(msg => hasProgressMessage(msg.data) ? [msg.data.message] : []));
+    const tokens = usage ? getTokenCountFromUsage(usage) : null;
     return {
       toolUseCount,
       tokens
@@ -640,12 +637,8 @@ function calculateAgentStats(progressMessages: ProgressMessage<Progress>[]): {
     const message = msg.data.message;
     return message.type === 'user' && message.message.content.some(content => content.type === 'tool_result');
   });
-  const latestAssistant = progressMessages.findLast((msg): msg is ProgressMessage<AgentToolProgress> => hasProgressMessage(msg.data) && msg.data.message.type === 'assistant');
-  let tokens = null;
-  if (latestAssistant?.data.message.type === 'assistant') {
-    const usage = latestAssistant.data.message.message.usage;
-    tokens = (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + usage.input_tokens + usage.output_tokens;
-  }
+  const usage = aggregateReportedUsage(progressMessages.flatMap(msg => hasProgressMessage(msg.data) ? [msg.data.message] : []));
+  const tokens = usage ? getTokenCountFromUsage(usage) : null;
   return {
     toolUseCount,
     tokens

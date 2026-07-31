@@ -21,6 +21,7 @@ import { getAgentTranscriptPath } from '../../utils/sessionStorage.js';
 import { evictTaskOutput, getTaskOutputPath, initTaskOutputAsSymlink } from '../../utils/task/diskOutput.js';
 import { PANEL_GRACE_MS, registerTask, updateTaskState } from '../../utils/task/framework.js';
 import { emitTaskProgress } from '../../utils/task/sdkProgress.js';
+import { getTokenCountFromUsage, getTokenUsage, hasReportedTokenUsage } from '../../utils/tokens.js';
 import type { TaskState } from '../types.js';
 export type ToolActivity = {
   toolName: string;
@@ -34,7 +35,7 @@ export type ToolActivity = {
 };
 export type AgentProgress = {
   toolUseCount: number;
-  tokenCount: number;
+  tokenCount?: number;
   lastActivity?: ToolActivity;
   recentActivities?: ToolActivity[];
   summary?: string;
@@ -42,23 +43,22 @@ export type AgentProgress = {
 const MAX_RECENT_ACTIVITIES = 5;
 export type ProgressTracker = {
   toolUseCount: number;
-  // Track input and output separately to avoid double-counting.
-  // input_tokens in UR API is cumulative per turn (includes all previous context),
-  // so we keep the latest value. output_tokens is per-turn, so we sum those.
-  latestInputTokens: number;
-  cumulativeOutputTokens: number;
+  reportedTokenTotal: number;
+  usageReported: boolean;
+  seenUsageResponseIds: Set<string>;
   recentActivities: ToolActivity[];
 };
 export function createProgressTracker(): ProgressTracker {
   return {
     toolUseCount: 0,
-    latestInputTokens: 0,
-    cumulativeOutputTokens: 0,
+    reportedTokenTotal: 0,
+    usageReported: false,
+    seenUsageResponseIds: new Set(),
     recentActivities: []
   };
 }
-export function getTokenCountFromTracker(tracker: ProgressTracker): number {
-  return tracker.latestInputTokens + tracker.cumulativeOutputTokens;
+export function getTokenCountFromTracker(tracker: ProgressTracker): number | undefined {
+  return tracker.usageReported ? tracker.reportedTokenTotal : undefined;
 }
 
 /**
@@ -71,10 +71,13 @@ export function updateProgressFromMessage(tracker: ProgressTracker, message: Mes
   if (message.type !== 'assistant') {
     return;
   }
-  const usage = message.message.usage;
-  // Keep latest input (it's cumulative in the API), sum outputs
-  tracker.latestInputTokens = usage.input_tokens + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0);
-  tracker.cumulativeOutputTokens += usage.output_tokens;
+  const usage = getTokenUsage(message);
+  const responseId = message.message.id ?? message.uuid;
+  if (hasReportedTokenUsage(usage) && !tracker.seenUsageResponseIds.has(responseId)) {
+    tracker.seenUsageResponseIds.add(responseId);
+    tracker.usageReported = true;
+    tracker.reportedTokenTotal += getTokenCountFromUsage(usage!);
+  }
   for (const content of message.message.content) {
     if (content.type === 'tool_use') {
       tracker.toolUseCount++;
@@ -97,9 +100,12 @@ export function updateProgressFromMessage(tracker: ProgressTracker, message: Mes
   }
 }
 export function getProgressUpdate(tracker: ProgressTracker): AgentProgress {
+  const tokenCount = getTokenCountFromTracker(tracker);
   return {
     toolUseCount: tracker.toolUseCount,
-    tokenCount: getTokenCountFromTracker(tracker),
+    ...(tokenCount !== undefined && {
+      tokenCount
+    }),
     lastActivity: tracker.recentActivities.length > 0 ? tracker.recentActivities[tracker.recentActivities.length - 1] : undefined,
     recentActivities: [...tracker.recentActivities]
   };
@@ -215,7 +221,7 @@ export function enqueueAgentNotification({
   setAppState: SetAppState;
   finalMessage?: string;
   usage?: {
-    totalTokens: number;
+    totalTokens?: number;
     toolUses: number;
     durationMs: number;
   };
@@ -249,7 +255,7 @@ export function enqueueAgentNotification({
   const outputPath = getTaskOutputPath(taskId);
   const toolUseIdLine = toolUseId ? `\n<${TOOL_USE_ID_TAG}>${toolUseId}</${TOOL_USE_ID_TAG}>` : '';
   const resultSection = finalMessage ? `\n<result>${finalMessage}</result>` : '';
-  const usageSection = usage ? `\n<usage><total_tokens>${usage.totalTokens}</total_tokens><tool_uses>${usage.toolUses}</tool_uses><duration_ms>${usage.durationMs}</duration_ms></usage>` : '';
+  const usageSection = usage ? `\n<usage>${usage.totalTokens !== undefined ? `<total_tokens>${usage.totalTokens}</total_tokens>` : ''}<tool_uses>${usage.toolUses}</tool_uses><duration_ms>${usage.durationMs}</duration_ms></usage>` : '';
   const worktreeSection = worktreePath ? `\n<${WORKTREE_TAG}><${WORKTREE_PATH_TAG}>${worktreePath}</${WORKTREE_PATH_TAG}>${worktreeBranch ? `<${WORKTREE_BRANCH_TAG}>${worktreeBranch}</${WORKTREE_BRANCH_TAG}>` : ''}</${WORKTREE_TAG}>` : '';
   const message = `<${TASK_NOTIFICATION_TAG}>
 <${TASK_ID_TAG}>${taskId}</${TASK_ID_TAG}>${toolUseIdLine}
@@ -360,7 +366,7 @@ export function updateAgentProgress(taskId: string, progress: AgentProgress, set
  */
 export function updateAgentSummary(taskId: string, summary: string, setAppState: SetAppState): void {
   let captured: {
-    tokenCount: number;
+    tokenCount?: number;
     toolUseCount: number;
     startTime: number;
     toolUseId: string | undefined;
@@ -370,7 +376,7 @@ export function updateAgentSummary(taskId: string, summary: string, setAppState:
       return task;
     }
     captured = {
-      tokenCount: task.progress?.tokenCount ?? 0,
+      tokenCount: task.progress?.tokenCount,
       toolUseCount: task.progress?.toolUseCount ?? 0,
       startTime: task.startTime,
       toolUseId: task.toolUseId
@@ -380,7 +386,9 @@ export function updateAgentSummary(taskId: string, summary: string, setAppState:
       progress: {
         ...task.progress,
         toolUseCount: task.progress?.toolUseCount ?? 0,
-        tokenCount: task.progress?.tokenCount ?? 0,
+        ...(task.progress?.tokenCount !== undefined && {
+          tokenCount: task.progress.tokenCount
+        }),
         summary
       }
     };
@@ -413,10 +421,12 @@ export function updateAgentSummary(taskId: string, summary: string, setAppState:
  */
 export function completeAgentTask(result: AgentToolResult, setAppState: SetAppState): void {
   const taskId = result.agentId;
+  let transitioned = false;
   updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
     if (task.status !== 'running') {
       return task;
     }
+    transitioned = true;
     task.unregisterCleanup?.();
     return {
       ...task,
@@ -429,6 +439,7 @@ export function completeAgentTask(result: AgentToolResult, setAppState: SetAppSt
       selectedAgent: undefined
     };
   });
+  if (!transitioned) return;
   void evictTaskOutput(taskId);
   // The UI toast is handled by AgentTool via enqueueAgentNotification; this
   // additionally fires the user's Notification hooks so external tooling
@@ -444,10 +455,12 @@ export function completeAgentTask(result: AgentToolResult, setAppState: SetAppSt
  * Fail an agent task with error.
  */
 export function failAgentTask(taskId: string, error: string, setAppState: SetAppState): void {
+  let transitioned = false;
   updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
     if (task.status !== 'running') {
       return task;
     }
+    transitioned = true;
     task.unregisterCleanup?.();
     return {
       ...task,
@@ -460,6 +473,7 @@ export function failAgentTask(taskId: string, error: string, setAppState: SetApp
       selectedAgent: undefined
     };
   });
+  if (!transitioned) return;
   void evictTaskOutput(taskId);
   // The UI toast is handled by AgentTool via enqueueAgentNotification; this
   // additionally fires the user's Notification hooks so external tooling

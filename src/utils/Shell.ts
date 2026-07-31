@@ -196,7 +196,7 @@ export async function exec(
     shouldAutoBackground,
     onStdout,
   } = options ?? {}
-  const commandTimeout = timeout || DEFAULT_TIMEOUT
+  const commandTimeout = timeout ?? DEFAULT_TIMEOUT
 
   const provider = await resolveProvider[shellType]()
 
@@ -295,9 +295,9 @@ export async function exec(
   const taskOutput = new TaskOutput(taskId, onProgress ?? null, !usePipeMode)
   await mkdir(getTaskOutputDir(), { recursive: true })
 
-  // In file mode, both stdout and stderr go to the same file fd.
-  // On POSIX, O_APPEND makes each write atomic (seek-to-end + write), so
-  // stdout and stderr are interleaved chronologically without tearing.
+  // In file mode, stdout and stderr go to separate file fds. This preserves
+  // stream identity while retaining the direct-to-disk path for large output.
+  // On POSIX, O_APPEND keeps writes within each stream atomic.
   // On Windows, 'a' mode strips FILE_WRITE_DATA (only grants FILE_APPEND_DATA)
   // via libuv's fs__open. MSYS2/Cygwin probes inherited handles with
   // NtQueryInformationFile(FileAccessInformation) and treats handles without
@@ -308,10 +308,20 @@ export async function exec(
   // SECURITY: O_NOFOLLOW prevents symlink-following attacks from the sandbox.
   // On Windows, use string flags — numeric flags can produce EINVAL through libuv.
   let outputHandle: FileHandle | undefined
+  let stderrHandle: FileHandle | undefined
   if (!usePipeMode) {
     const O_NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0
     outputHandle = await open(
       taskOutput.path,
+      process.platform === 'win32'
+        ? 'w'
+        : fsConstants.O_WRONLY |
+            fsConstants.O_CREAT |
+            fsConstants.O_APPEND |
+            O_NOFOLLOW,
+    )
+    stderrHandle = await open(
+      taskOutput.stderrPath,
       process.platform === 'win32'
         ? 'w'
         : fsConstants.O_WRONLY |
@@ -337,7 +347,7 @@ export async function exec(
       cwd,
       stdio: usePipeMode
         ? ['pipe', 'pipe', 'pipe']
-        : ['pipe', outputHandle?.fd, outputHandle?.fd],
+        : ['pipe', outputHandle?.fd, stderrHandle?.fd],
       // Don't pass the signal - we'll handle termination ourselves with tree-kill
       detached: provider.detached,
       // Prevent visible console window on Windows (no-op on other platforms)
@@ -360,6 +370,13 @@ export async function exec(
     if (outputHandle !== undefined) {
       try {
         await outputHandle.close()
+      } catch {
+        // fd may already be closed by the child; safe to ignore
+      }
+    }
+    if (stderrHandle !== undefined) {
+      try {
+        await stderrHandle.close()
       } catch {
         // fd may already be closed by the child; safe to ignore
       }
@@ -434,6 +451,13 @@ export async function exec(
     if (outputHandle !== undefined) {
       try {
         await outputHandle.close()
+      } catch {
+        // May already be closed
+      }
+    }
+    if (stderrHandle !== undefined) {
+      try {
+        await stderrHandle.close()
       } catch {
         // May already be closed
       }

@@ -9,9 +9,10 @@ import type { PermissionMode } from 'src/utils/permissions/PermissionMode.js';
 import { getIsRemoteMode, getKairosActive, getMainThreadAgentType, getOriginalCwd, getSdkBetas, getSessionId } from '../bootstrap/state.js';
 import { DEFAULT_OUTPUT_STYLE_NAME } from '../constants/outputStyles.js';
 import { useNotifications } from '../context/notifications.js';
-import { getTotalAPIDuration, getTotalCost, getTotalDuration, getTotalInputTokens, getTotalLinesAdded, getTotalLinesRemoved, getTotalOutputTokens } from '../cost-tracker.js';
+import { getTotalAPIDuration, getTotalCacheCreationInputTokens, getTotalCacheReadInputTokens, getTotalCost, getTotalDuration, getTotalInputTokens, getTotalLinesAdded, getTotalLinesRemoved, getTotalOutputTokens } from '../cost-tracker.js';
 import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
 import { type ReadonlySettings, useSettings } from '../hooks/useSettings.js';
+import { useTasksV2 } from '../hooks/useTasksV2.js';
 import { Ansi, Box, Text } from '../ink.js';
 import { TerminalSizeContext } from '../ink/components/TerminalSizeContext.js';
 import { getRawUtilization } from '../services/urAiLimits.js';
@@ -30,7 +31,7 @@ import { getLastAssistantMessage } from '../utils/messages.js';
 import { getRuntimeMainLoopModel, type ModelName, renderModelName } from '../utils/model/model.js';
 import { getCurrentSessionTitle } from '../utils/sessionStorage.js';
 import { buildDefaultStatusBar, statusBarShouldDisplay } from '../utils/statusBar.js';
-import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/tokens.js';
+import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage, getReportedSessionTokenTotal, hasReportedTokenUsage } from '../utils/tokens.js';
 import { getCurrentWorktreeSession } from '../utils/worktree.js';
 import { isVimModeEnabled } from './PromptInput/utils.js';
 export function getEffectiveStatusLineSettings(settings: ReadonlySettings, providerSelection?: ProviderSettings | null): ReadonlySettings {
@@ -200,29 +201,83 @@ type Props = {
   // lastAssistantMessageId is the actual re-render trigger.
   messagesRef: React.RefObject<Message[]>;
   lastAssistantMessageId: string | null;
+  activeTool?: string | null;
   vimMode?: VimMode;
   autoUpdaterResult?: AutoUpdaterResult | null;
   isAutoUpdating?: boolean;
+  isLoading?: boolean;
 };
 export function getLastAssistantMessageId(messages: Message[]): string | null {
   return getLastAssistantMessage(messages)?.uuid ?? null;
 }
+export function getActiveToolName(messages: Message[]): string | null {
+  const completed = new Set<string>();
+  for (const message of messages) {
+    const content = message.type === 'assistant' || message.type === 'user' ? message.message.content : undefined;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (block.type === 'tool_result') completed.add(block.tool_use_id);
+    }
+  }
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex--) {
+    const message = messages[messageIndex];
+    if (message?.type !== 'assistant') continue;
+    for (let blockIndex = message.message.content.length - 1; blockIndex >= 0; blockIndex--) {
+      const block = message.message.content[blockIndex];
+      if (block?.type === 'tool_use' && !completed.has(block.id)) return block.name;
+    }
+  }
+  return null;
+}
+export function shouldUseCustomStatusLine(
+  settings: ReadonlySettings,
+  customStatusReady: boolean,
+  statusLineText: string | undefined
+): boolean {
+  return settings?.statusLine !== undefined && settings?.statusBarFields === undefined && customStatusReady && !!statusLineText;
+}
+export function summarizeStatusTasks(tasks: Array<{
+  id?: string;
+  status: string;
+  subject: string;
+  activeForm?: string;
+  blockedBy?: string[];
+}>) {
+  const activeTask = tasks.find(task => task.status === 'in_progress');
+  const taskById = new Map(tasks.map(task => [task.id, task]));
+  const blocked = tasks.filter(task => task.status === 'pending' && task.blockedBy?.some(id => taskById.get(id)?.status !== 'completed')).length;
+  return {
+    running: tasks.filter(task => task.status === 'in_progress').length,
+    pending: tasks.filter(task => task.status === 'pending').length,
+    completed: tasks.filter(task => task.status === 'completed').length,
+    failed: tasks.filter(task => task.status === 'failed').length,
+    blocked,
+    total: tasks.length,
+    activeTask: activeTask?.activeForm ?? activeTask?.subject ?? null
+  };
+}
 function StatusLineInner({
   messagesRef,
   lastAssistantMessageId,
+  activeTool = null,
   vimMode,
   autoUpdaterResult,
-  isAutoUpdating
+  isAutoUpdating,
+  isLoading = false
 }: Props): React.ReactNode {
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
   const permissionMode = useAppState(s => s.toolPermissionContext.mode);
   const additionalWorkingDirectories = useAppState(s => s.toolPermissionContext.additionalWorkingDirectories);
   const statusLineText = useAppState(s => s.statusLineText);
   const tasks = useAppState(s => s.tasks);
+  const tasksV2 = useTasksV2();
   const setAppState = useSetAppState();
   const settings = useSettings();
   const providerSelection = useAppState(s => s.provider);
   const [branch, setBranch] = useState<string | null>(null);
+  const [runtimeMs, setRuntimeMs] = useState<number | null>(null);
+  const [customStatusReady, setCustomStatusReady] = useState(false);
+  const [customStatusError, setCustomStatusError] = useState<string | null>(null);
   const {
     addNotification
   } = useNotifications();
@@ -236,10 +291,17 @@ function StatusLineInner({
   // and a custom status-line command keeps rendering the previous value.
   const providerRuntimeKey = buildStatusLineRefreshKey(providerRuntime, mainLoopModel);
   const taskValues = Object.values(tasks);
-  const taskRunningCount = taskValues.filter(task => task.status === 'running').length;
-  const taskPendingCount = taskValues.filter(task => task.status === 'pending').length;
-  const taskCompletedCount = taskValues.filter(task => task.status === 'completed').length;
-  const activeTask = taskValues.find(task => task.status === 'running');
+  const taskList = tasksV2 ?? [];
+  const taskSummary = summarizeStatusTasks(taskList);
+  const activeAgentCount = taskValues.filter(task => task.status === 'running' && (task.type === 'local_agent' || task.type === 'remote_agent' || task.type === 'in_process_teammate')).length;
+  const currentMessages = messagesRef.current;
+  const currentUsage = getCurrentUsage(currentMessages);
+  const usageReported = hasReportedTokenUsage(currentUsage as never);
+  const contextPercent = usageReported ? calculateContextPercentages(currentUsage, getContextWindowForModel(mainLoopModel, getSdkBetas(), providerRuntime.provider === 'ollama' ? 'ollama' : 'foundry')).used : null;
+  const trackedSessionTokens = getTotalInputTokens() + getTotalOutputTokens() + getTotalCacheReadInputTokens() + getTotalCacheCreationInputTokens();
+  const totalTokens = trackedSessionTokens > 0 ? trackedSessionTokens : getReportedSessionTokenTotal(currentMessages);
+  const taskAttention = [taskSummary.failed > 0 ? `${taskSummary.failed} failed` : null, taskSummary.blocked > 0 ? `${taskSummary.blocked} blocked` : null].filter(Boolean).join(' · ') || null;
+  const attention = customStatusError ?? taskAttention;
   const terminalSize = React.useContext(TerminalSizeContext);
   const defaultStatusLineText = buildDefaultStatusBar({
     version: MACRO.VERSION,
@@ -254,13 +316,19 @@ function StatusLineInner({
     branch,
     // Running and pending are distinct: a pending task is not consuming
     // anything, and counting it as active overstated progress.
-    taskRunningCount,
-    taskCompletedCount,
-    taskTotalCount: taskValues.length,
-    activeTask: activeTask?.subject ?? activeTask?.description ?? null,
-    state: taskRunningCount > 0 ? 'working' : taskPendingCount > 0 ? 'queued' : null,
+    taskRunningCount: taskSummary.running,
+    taskCompletedCount: taskSummary.completed,
+    taskTotalCount: taskSummary.total,
+    activeTask: taskSummary.activeTask,
+    state: isLoading ? 'working' : activeAgentCount > 0 ? 'agents running' : taskSummary.running > 0 ? 'working' : taskSummary.pending > 0 && taskSummary.pending === taskSummary.blocked ? 'blocked' : taskSummary.pending > 0 ? 'queued' : 'idle',
+    activeAgentCount,
+    activeTool,
+    totalTokens,
+    runtimeMs,
+    contextPercent,
+    attention,
     fieldVisibility: (settings as { statusBarFields?: Record<string, unknown> })?.statusBarFields,
-    columns: terminalSize?.columns,
+    columns: terminalSize?.columns ? Math.max(1, terminalSize.columns - 4) : undefined,
     latestVersion: autoUpdaterResult?.status === 'success' ? null : autoUpdaterResult?.version,
     isCheckingUpdate: isAutoUpdating
   });
@@ -305,6 +373,7 @@ function StatusLineInner({
     if (!settingsRef.current?.statusLine) {
       return;
     }
+    setCustomStatusReady(false);
     // Cancel any in-flight requests
     abortControllerRef.current?.abort();
     const controller = new AbortController();
@@ -325,18 +394,37 @@ function StatusLineInner({
       const statusInput = buildStatusLineCommandInput(permissionModeRef.current, exceeds200kTokens, settingsRef.current, msgs, Array.from(addedDirsRef.current.keys()), mainLoopModelRef.current, vimModeRef.current);
       const text = await executeStatusLineCommand(statusInput, controller.signal, undefined, logResult);
       if (!controller.signal.aborted) {
+        const normalizedText = typeof text === 'string' && text.trim().length > 0 ? text : undefined;
+        setCustomStatusReady(normalizedText !== undefined);
+        setCustomStatusError(normalizedText === undefined ? 'status command unavailable' : null);
         setAppState(prev => {
-          if (prev.statusLineText === text) return prev;
+          if (prev.statusLineText === normalizedText) return prev;
           return {
             ...prev,
-            statusLineText: text
+            statusLineText: normalizedText
           };
         });
       }
-    } catch {
-      // Silently ignore errors in status line updates
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setCustomStatusReady(false);
+      setCustomStatusError('status command failed');
+      logForDebugging(`Status line command failed: ${error}`, {
+        level: 'warn'
+      });
     }
   }, [messagesRef, setAppState]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setRuntimeMs(null);
+      return;
+    }
+    const startedAt = Date.now();
+    setRuntimeMs(null);
+    const timer = setInterval(() => setRuntimeMs(Date.now() - startedAt), 1000);
+    return () => clearInterval(timer);
+  }, [isLoading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -389,7 +477,11 @@ function StatusLineInner({
   const statusLineCommand = effectiveSettings?.statusLine?.command;
   const isFirstSettingsRender = useRef(true);
   useEffect(() => {
-    if (!effectiveSettings?.statusLine) return;
+    if (!effectiveSettings?.statusLine) {
+      setCustomStatusReady(false);
+      setCustomStatusError(null);
+      return;
+    }
     if (isFirstSettingsRender.current) {
       isFirstSettingsRender.current = false;
       return;
@@ -446,7 +538,7 @@ function StatusLineInner({
 
   // Get padding from settings or default to 0
   const paddingX = effectiveSettings?.statusLine?.padding ?? 0;
-  const renderedStatusLineText = effectiveSettings?.statusLine ? statusLineText : defaultStatusLineText;
+  const renderedStatusLineText = shouldUseCustomStatusLine(effectiveSettings, customStatusReady, statusLineText) ? statusLineText : defaultStatusLineText;
 
   // StatusLine must have stable height in fullscreen — the footer is
   // flexShrink:0 so a 0→1 row change when the command finishes steals

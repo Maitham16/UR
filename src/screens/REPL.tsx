@@ -2863,7 +2863,7 @@ export function REPL({
     // Signal that a query turn has completed successfully
     await onTurnComplete?.(messagesRef.current);
   }, [initialMcpClients, resetLoadingState, getToolUseContext, toolPermissionContext, setAppState, customSystemPrompt, onTurnComplete, appendSystemPrompt, canUseTool, mainThreadAgentDefinition, onQueryEvent, sessionTitle, titleDisabled]);
-  const onQuery = useCallback(async (newMessages: MessageType[], abortController: AbortController, shouldQuery: boolean, additionalAllowedTools: string[], mainLoopModelParam: string, onBeforeQueryCallback?: (input: string, newMessages: MessageType[]) => Promise<boolean>, input?: string, effort?: EffortValue): Promise<void> => {
+  const onQuery = useCallback(async (newMessages: MessageType[], abortController: AbortController, shouldQuery: boolean, additionalAllowedTools: string[], mainLoopModelParam: string, onBeforeQueryCallback?: (input: string, newMessages: MessageType[]) => Promise<boolean>, input?: string, effort?: EffortValue, reservationToken?: number): Promise<void> => {
     // If this is a teammate, mark them as active when starting a turn
     if (isAgentSwarmsEnabled()) {
       const teamName = getTeamName();
@@ -2877,7 +2877,7 @@ export function REPL({
     // Concurrent guard via state machine. tryStart() atomically checks
     // and transitions idle→running, returning the generation number.
     // Returns null if already running — no separate check-then-set.
-    const thisGeneration = queryGuard.tryStart();
+    const thisGeneration = queryGuard.tryStart(reservationToken);
     if (thisGeneration === null) {
       logEvent('tengu_concurrent_onquery_detected', {});
 
@@ -3897,10 +3897,19 @@ export function REPL({
       queuedCommands
     });
   }, [queryGuard, commands, setToolJSX, getToolUseContext, messages, mainLoopModel, ideSelection, setUserInputOnProcessing, canUseTool, setAbortController, onQuery, addNotification, setAppState, onBeforeQuery]);
+  const reportQueuedInputError = useCallback((error: unknown) => {
+    addNotification({
+      key: 'prompt-execution-failed',
+      text: `Prompt execution failed: ${error instanceof Error ? error.message : String(error)}. It was not retried automatically to avoid duplicate effects.`,
+      color: 'error',
+      priority: 'immediate'
+    });
+  }, [addNotification]);
   useQueueProcessor({
     executeQueuedInput,
     hasActiveLocalJsxUI: isShowingLocalJSXCommand,
-    queryGuard
+    queryGuard,
+    reportQueueError: reportQueuedInputError
   });
 
   // We'll use the global lastInteractionTime from state.ts

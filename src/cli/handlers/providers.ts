@@ -5,6 +5,7 @@ import {
   formatProviderDoctor,
   formatProviderList,
   formatProviderStatus,
+  ensureProviderModelsFresh,
   getActiveProviderSettings,
   getProviderDefinition,
   listModelsForProviderWithSource,
@@ -119,7 +120,7 @@ export async function providerSelectModelHandler(
   }
 
   const settings = getInitialSettings()
-  const discovered = await listModelsForProviderWithSource(provider, { settings })
+  const discovered = await ensureProviderModelsFresh(provider, { settings, force: true })
   const result = setProviderModel(provider, model, {
     availableModels: discovered.models,
     modelSource: discovered.source,
@@ -193,7 +194,11 @@ export async function configSetHandler(
   if (key === 'model') {
     const settings = getInitialSettings()
     const currentProvider = getActiveProviderSettings(settings).active ?? 'ollama'
-    const validation = validateProviderModelCompatibility(currentProvider, value)
+    const discovered = await ensureProviderModelsFresh(currentProvider, { settings, force: true })
+    const validation = validateProviderModelCompatibility(currentProvider, value, {
+      availableModels: discovered.models,
+      settings,
+    })
     if (validation.valid === false) {
       writeError(`Invalid model for current provider:
   Selected provider: ${currentProvider}
@@ -209,10 +214,16 @@ export async function configSetHandler(
   if (key === 'provider') {
     const settings = getInitialSettings()
     const currentModel = getActiveProviderSettings(settings).model
+    const newProvider = resolveProviderId(value)
+    const discovered = newProvider
+      ? await ensureProviderModelsFresh(newProvider, { settings, force: true })
+      : undefined
     if (currentModel) {
-      const newProvider = resolveProviderId(value)
       if (newProvider) {
-        const validation = validateProviderModelCompatibility(newProvider, currentModel)
+        const validation = validateProviderModelCompatibility(newProvider, currentModel, {
+          availableModels: discovered?.models,
+          settings,
+        })
         if (validation.valid === false) {
           const validModelsStr = validation.validModels.join(', ') || '(uses dynamic discovery)'
           const suggestedModel = validation.suggestedModel ?? '<model-name>'

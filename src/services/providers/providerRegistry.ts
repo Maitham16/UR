@@ -10,6 +10,7 @@ import type { SettingsJson } from '../../utils/settings/types.js'
 import { which } from '../../utils/which.js'
 import {
   describeCacheAge,
+  MODEL_CACHE_TTL_MS,
   parseDiscoveredModels,
   RequestCoalescer,
 } from './modelCatalog.js'
@@ -1781,6 +1782,13 @@ export type ProviderModelDefinition = {
   description: string
   isDefault?: boolean
   isDynamic?: boolean  // For providers that support live model discovery
+  pricing?: 'free' | 'paid' | 'unknown'
+  contextLength?: number
+  outputTokenLimit?: number
+  supportedParameters?: string[]
+  capabilities?: Record<string, unknown>
+  expirationDate?: number
+  deprecated?: boolean
 }
 
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
@@ -1884,10 +1892,28 @@ const cachedModelsWrittenAt = new Map<string, number>()
 /** Collapses concurrent identical discovery requests onto one fetch. */
 const modelDiscoveryCoalescer = new RequestCoalescer<ProviderModelDefinition[]>()
 
+/** Provider catalogue requests are short control-plane calls, not model runs. */
+export const MODEL_DISCOVERY_TIMEOUT_MS = 15_000
+
 export function clearProviderModelCacheForTests(): void {
   cachedModelsByProvider.clear()
   cachedModelsWrittenAt.clear()
   modelDiscoveryCoalescer.clear()
+}
+
+/** Invalidate every cached endpoint for a provider after reconnect/disconnect. */
+export function clearProviderModelCache(providerId: ProviderId | string): void {
+  const provider = resolveProviderId(providerId)
+  if (!provider) return
+  const prefix = `${provider}@`
+  modelDiscoveryCoalescer.cancel(provider)
+  modelDiscoveryCoalescer.cancelPrefix(prefix)
+  for (const key of cachedModelsByProvider.keys()) {
+    if (key === provider || key.startsWith(prefix)) {
+      cachedModelsByProvider.delete(key)
+      cachedModelsWrittenAt.delete(key)
+    }
+  }
 }
 
 /** Number of discovery requests currently in flight. Exposed for tests. */
@@ -2004,9 +2030,24 @@ function providerModelCacheKey(
   provider: ProviderId,
   settings: SettingsJson = getInitialSettings(),
 ): string {
-  if (provider !== 'ollama') return provider
   const definition = getProviderDefinition(provider)
-  return `${provider}@${providerBaseUrl(provider, definition, settings) ?? ''}`
+  let endpoint = providerBaseUrl(provider, definition, settings)
+  if (definition.accessType === 'api' && definition.modelDiscoveryType === 'live') {
+    endpoint = apiModelsRequest(provider, '', settings).url
+  }
+  if (!endpoint) return provider
+  try {
+    const url = new URL(normalizeBaseUrl(endpoint))
+    url.hash = ''
+    url.username = ''
+    url.password = ''
+    url.hostname = url.hostname.toLowerCase()
+    url.pathname = url.pathname.replace(/\/+$/, '') || '/'
+    const canonical = url.toString().replace(/\/$/, '')
+    return `${provider}@${canonical}`
+  } catch {
+    return `${provider}@${endpoint.trim().replace(/\/+$/, '')}`
+  }
 }
 
 function getCachedProviderModels(
@@ -2019,6 +2060,7 @@ function getCachedProviderModels(
 export function cacheProviderModelsForProvider(
   providerId: ProviderId | string,
   models: string[] | ProviderModelDefinition[],
+  settings: SettingsJson = getInitialSettings(),
 ): void {
   const provider = resolveProviderId(providerId)
   if (!provider) {
@@ -2029,12 +2071,64 @@ export function cacheProviderModelsForProvider(
       ? modelDefinitionsFromNames(provider, models as string[], 'cache')
       : (models as ProviderModelDefinition[])
   if (definitions.length > 0) {
-    rememberModels(providerModelCacheKey(provider), definitions)
+    rememberModels(providerModelCacheKey(provider, settings), definitions)
   }
 }
 
 function staticModelsForProvider(provider: ProviderId): ProviderModelDefinition[] {
   return (PROVIDER_MODELS[provider] ?? []).filter(model => !model.isDynamic)
+}
+
+async function withModelDiscoveryTimeout<T>(
+  signal: AbortSignal | undefined,
+  operation: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController()
+  let timedOut = false
+  const relayAbort = () => controller.abort(signal?.reason)
+  if (signal?.aborted) relayAbort()
+  else signal?.addEventListener('abort', relayAbort, { once: true })
+
+  let rejectTimeout: ((error: Error) => void) | undefined
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    rejectTimeout = reject
+  })
+  let rejectCancelled: ((error: Error) => void) | undefined
+  const cancelledPromise = signal
+    ? new Promise<never>((_resolve, reject) => {
+        rejectCancelled = reject
+      })
+    : undefined
+  const rejectOnAbort = () =>
+    rejectCancelled?.(
+      signal?.reason instanceof Error ? signal.reason : new Error('Model discovery cancelled.'),
+    )
+  if (signal?.aborted) rejectOnAbort()
+  else signal?.addEventListener('abort', rejectOnAbort, { once: true })
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+    rejectTimeout?.(
+      new Error(`Model discovery timed out after ${MODEL_DISCOVERY_TIMEOUT_MS}ms.`),
+    )
+  }, MODEL_DISCOVERY_TIMEOUT_MS)
+
+  try {
+    return await Promise.race([
+      operation(controller.signal),
+      timeoutPromise,
+      ...(cancelledPromise ? [cancelledPromise] : []),
+    ])
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`Model discovery timed out after ${MODEL_DISCOVERY_TIMEOUT_MS}ms.`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', relayAbort)
+    signal?.removeEventListener('abort', rejectOnAbort)
+  }
 }
 
 async function discoverLiveModelsForProvider(
@@ -2154,22 +2248,61 @@ function apiModelsRequest(
   }
 }
 
-function parseApiModelIds(provider: ProviderId, body: unknown): string[] {
+function apiModelEntries(provider: ProviderId, body: unknown): Array<Record<string, unknown>> {
   const root = (body ?? {}) as Record<string, unknown>
   if (provider === 'gemini-api') {
     const models = Array.isArray(root.models) ? (root.models as Array<Record<string, unknown>>) : []
-    const names = models
-      .filter(m => {
-        const methods = m.supportedGenerationMethods
+    return models
+      .filter(model => {
+        const methods = model.supportedGenerationMethods
         return !Array.isArray(methods) || methods.includes('generateContent')
       })
-      .map(m => (typeof m.name === 'string' ? m.name.replace(/^models\//, '') : ''))
-      .filter(Boolean)
-    return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+      .flatMap(model => {
+        const id = typeof model.name === 'string' ? model.name.replace(/^models\//, '') : ''
+        if (!id) return []
+        return [{
+          ...model,
+          id,
+          display_name: typeof model.displayName === 'string' ? model.displayName : id,
+        }]
+      })
   }
-  const data = Array.isArray(root.data) ? (root.data as Array<Record<string, unknown>>) : []
-  const names = data.map(m => (typeof m.id === 'string' ? m.id : '')).filter(Boolean)
-  return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+  return Array.isArray(root.data)
+    ? (root.data as Array<Record<string, unknown>>).filter(
+        entry => entry && typeof entry === 'object',
+      )
+    : []
+}
+
+function nextApiModelsPage(
+  provider: ProviderId,
+  body: unknown,
+): { parameter: string; token: string } | undefined {
+  const root = (body ?? {}) as Record<string, unknown>
+  if (provider === 'gemini-api') {
+    const token = typeof root.nextPageToken === 'string' ? root.nextPageToken.trim() : ''
+    return token ? { parameter: 'pageToken', token } : undefined
+  }
+  if (provider === 'anthropic-api' && root.has_more === true) {
+    const token = typeof root.last_id === 'string' ? root.last_id.trim() : ''
+    if (!token) {
+      throw new Error('Anthropic model pagination returned has_more without last_id.')
+    }
+    return { parameter: 'after_id', token }
+  }
+  return undefined
+}
+
+function apiModelsPageUrl(
+  baseUrl: string,
+  provider: ProviderId,
+  next?: { parameter: string; token: string },
+): string {
+  const url = new URL(baseUrl)
+  if (provider === 'gemini-api') url.searchParams.set('pageSize', '1000')
+  if (provider === 'anthropic-api') url.searchParams.set('limit', '1000')
+  if (next) url.searchParams.set(next.parameter, next.token)
+  return url.toString()
 }
 
 async function discoverApiProviderModels(
@@ -2199,31 +2332,52 @@ async function discoverApiProviderModels(
     apiKey,
     options.settings ?? getInitialSettings(),
   )
-  const response = await (options.adapters?.fetch ?? fetch)(url, {
-    method: 'GET',
-    signal: options.signal,
-    headers,
-  })
-  if (!response.ok) {
-    throw new Error(`${url} returned HTTP ${response.status}.`)
-  }
-  const body = await response.json()
-  // Gemini's catalogue needs the supportedGenerationMethods filter, so it keeps
-  // the id-only path. Every other API provider carries a human name, pricing
-  // and context length that the id-only mapping used to discard — which is why
-  // OpenRouter's rotating free tier was invisible in the picker.
-  if (provider === 'gemini-api') {
-    return modelDefinitionsFromNames(provider, parseApiModelIds(provider, body), 'live')
-  }
+  const fetchImpl = options.adapters?.fetch ?? fetch
+  const entries: Array<Record<string, unknown>> = []
+  const seenPageTokens = new Set<string>()
+  let next: { parameter: string; token: string } | undefined
+  do {
+    const pageUrl = apiModelsPageUrl(url, provider, next)
+    const response = await fetchImpl(pageUrl, {
+      method: 'GET',
+      signal: options.signal,
+      headers,
+    })
+    if (!response.ok) {
+      throw new Error(`${pageUrl} returned HTTP ${response.status}.`)
+    }
+    let body: unknown
+    try {
+      body = await response.json()
+    } catch (error) {
+      throw new Error(
+        `${pageUrl} returned malformed JSON: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+    entries.push(...apiModelEntries(provider, body))
+    next = nextApiModelsPage(provider, body)
+    if (next) {
+      const pageKey = `${next.parameter}:${next.token}`
+      if (seenPageTokens.has(pageKey)) {
+        throw new Error(`Model pagination repeated token "${next.token}" for ${provider}.`)
+      }
+      seenPageTokens.add(pageKey)
+    }
+  } while (next)
+
   const providerLabel = getProviderDefinition(provider).displayName
-  const discovered = parseDiscoveredModels(body, providerLabel)
-  if (discovered.length === 0) {
-    return modelDefinitionsFromNames(provider, parseApiModelIds(provider, body), 'live')
-  }
+  const discovered = parseDiscoveredModels({ data: entries }, providerLabel)
   return discovered.map(model => ({
     id: model.id,
     displayName: model.displayName,
     description: model.description,
+    pricing: model.pricing,
+    ...(model.contextLength ? { contextLength: model.contextLength } : {}),
+    ...(model.outputTokenLimit ? { outputTokenLimit: model.outputTokenLimit } : {}),
+    ...(model.supportedParameters ? { supportedParameters: model.supportedParameters } : {}),
+    ...(model.capabilities ? { capabilities: model.capabilities } : {}),
+    ...(model.expirationDate ? { expirationDate: model.expirationDate } : {}),
+    ...(model.deprecated ? { deprecated: true } : {}),
   }))
 }
 
@@ -2262,8 +2416,16 @@ export async function listModelsForProviderWithSource(
   try {
     // Concurrent selections of the same provider share one request instead of
     // issuing a second whose response can land out of order.
-    const liveModels = await modelDiscoveryCoalescer.run(cacheKey, () =>
-      discoverLiveModelsForProvider(provider, options),
+    const liveModels = await modelDiscoveryCoalescer.run(
+      cacheKey,
+      sharedSignal =>
+        withModelDiscoveryTimeout(sharedSignal, boundedSignal =>
+          discoverLiveModelsForProvider(provider, {
+            ...options,
+            signal: boundedSignal,
+          }),
+        ),
+      options.signal,
     )
     if (liveModels.length > 0) {
       rememberModels(cacheKey, liveModels)
@@ -2309,6 +2471,45 @@ export async function listModelsForProviderWithSource(
       warning: `Live model discovery for "${provider}" failed: ${error instanceof Error ? error.message : String(error)}.`,
     }
   }
+}
+
+/**
+ * Runtime freshness gate. A matching endpoint cache inside the short TTL is
+ * reused and labelled as cache; after the TTL one caller refreshes while
+ * concurrent callers share that endpoint-scoped request.
+ */
+export async function ensureProviderModelsFresh(
+  providerId: ProviderId | string,
+  options: {
+    settings?: SettingsJson
+    adapters?: ProviderDoctorAdapters
+    signal?: AbortSignal
+    force?: boolean
+  } = {},
+): Promise<ProviderModelDiscoveryResult> {
+  const provider = resolveProviderId(providerId)
+  if (!provider) return listModelsForProviderWithSource(providerId, options)
+  const definition = getProviderDefinition(provider)
+  if (definition.modelDiscoveryType === 'static') {
+    return listModelsForProviderWithSource(provider, options)
+  }
+  const settings = options.settings ?? getInitialSettings()
+  const key = providerModelCacheKey(provider, settings)
+  const cached = cachedModelsByProvider.get(key) ?? []
+  const age = cachedModelsAgeMs(key)
+  if (!options.force && cached.length > 0 && age !== undefined && age <= MODEL_CACHE_TTL_MS) {
+    return {
+      provider,
+      models: cached,
+      source: 'cache',
+      warning: `Using ${provider} models refreshed ${Math.max(0, Math.floor(age / 1000))}s ago from the matching endpoint.`,
+    }
+  }
+  return listModelsForProviderWithSource(provider, {
+    settings,
+    adapters: options.adapters,
+    signal: options.signal,
+  })
 }
 
 /**
@@ -2386,6 +2587,7 @@ export function validateProviderModelPair(
   options: {
     availableModels?: Array<string | ProviderModelDefinition>
     allowUncachedDynamic?: boolean
+    settings?: SettingsJson
   } = {},
 ): { valid: true } | { valid: false; error: string; validModels: string[]; suggestedModel?: string } {
   const provider = resolveProviderId(providerId)
@@ -2406,11 +2608,18 @@ export function validateProviderModelPair(
     }
   }
 
-  const suppliedModels = (options.availableModels ?? []).map(model =>
-    typeof model === 'string' ? model : model.id,
+  const suppliedDefinitions = (options.availableModels ?? []).map(model =>
+    typeof model === 'string'
+      ? { id: model, displayName: model, description: '' }
+      : model,
   )
-  const cachedModels = getCachedProviderModels(provider).map(model => model.id)
-  const staticModelIds = staticModelsForProvider(provider).map(model => model.id)
+  const cachedDefinitions = getCachedProviderModels(provider, options.settings)
+  const staticDefinitions = staticModelsForProvider(provider)
+  const isAgentCapable = (model: ProviderModelDefinition): boolean =>
+    model.supportedParameters === undefined || model.supportedParameters.includes('tools')
+  const suppliedModels = suppliedDefinitions.filter(isAgentCapable).map(model => model.id)
+  const cachedModels = cachedDefinitions.filter(isAgentCapable).map(model => model.id)
+  const staticModelIds = staticDefinitions.filter(isAgentCapable).map(model => model.id)
   // Live-discovery providers (local/server and now the API providers) are
   // dynamic: their authoritative list comes from the provider, not the curated
   // fallback baked into PROVIDER_MODELS.
@@ -2425,6 +2634,24 @@ export function validateProviderModelPair(
           ? cachedModels
           : staticModelIds
         : Array.from(new Set([...staticModelIds, ...cachedModels]))
+
+  const selectedDefinition = [
+    ...cachedDefinitions,
+    ...suppliedDefinitions,
+    ...staticDefinitions,
+  ].find(model => model.id === modelId)
+  if (
+    selectedDefinition?.supportedParameters !== undefined &&
+    !selectedDefinition.supportedParameters.includes('tools')
+  ) {
+    const defaultModel = getDefaultModelForProvider(provider)
+    return {
+      valid: false,
+      error: `Model "${modelId}" is listed by provider "${provider}" but does not advertise tool calling, which this agent runtime requires. Run /model and choose a model labelled for tool calling.`,
+      validModels: validModelIds,
+      suggestedModel: defaultModel,
+    }
+  }
 
   if (validModelIds.includes(modelId)) {
     return { valid: true }

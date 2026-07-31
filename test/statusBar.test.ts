@@ -6,8 +6,12 @@ import {
 import {
   buildStatusLineRefreshKey,
   buildStatusLineRuntimeFields,
+  getActiveToolName,
   getEffectiveStatusLineSettings,
+  shouldUseCustomStatusLine,
+  summarizeStatusTasks,
 } from '../src/components/StatusLine.js'
+import { stringWidth } from '../src/ink/stringWidth.js'
 import { getProviderRuntimeInfo } from '../src/services/providers/providerRegistry.js'
 
 describe('UR-Nexus status bar', () => {
@@ -67,6 +71,112 @@ describe('UR-Nexus status bar', () => {
         isTTY: false,
       }),
     ).toBe(true)
+  })
+
+  test('remains visible in agent mode', () => {
+    expect(statusBarShouldDisplay({ isKairosActive: true, isTTY: true })).toBe(
+      true,
+    )
+  })
+
+  test('fits CJK and emoji labels by terminal display width', () => {
+    const text = buildDefaultStatusBar({
+      version: '1.0.0',
+      state: 'working',
+      model: '模型-🚀-very-long-model-name',
+      activeTask: '調査中の長いタスク名',
+      columns: 18,
+    })
+
+    expect(stringWidth(text)).toBeLessThanOrEqual(18)
+  })
+
+  test('uses an explicit built-in field selection over stale custom output', () => {
+    expect(
+      shouldUseCustomStatusLine(
+        {
+          statusLine: { type: 'command', command: 'custom-status' },
+          statusBarFields: { model: true },
+        },
+        true,
+        'stale custom text',
+      ),
+    ).toBe(false)
+    expect(
+      shouldUseCustomStatusLine(
+        { statusLine: { type: 'command', command: 'custom-status' } },
+        true,
+        'fresh custom text',
+      ),
+    ).toBe(true)
+    expect(
+      shouldUseCustomStatusLine(
+        { statusLine: { type: 'command', command: 'custom-status' } },
+        false,
+        'stale custom text',
+      ),
+    ).toBe(false)
+  })
+
+  test('reports only unresolved tool activity', () => {
+    const messages = [
+      {
+        type: 'assistant',
+        uuid: 'assistant-1',
+        message: {
+          content: [
+            { type: 'tool_use', id: 'done', name: 'Read', input: {} },
+            { type: 'tool_use', id: 'active', name: 'Bash', input: {} },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'user-1',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 'done', content: '' }],
+        },
+      },
+    ] as never
+
+    expect(getActiveToolName(messages)).toBe('Bash')
+  })
+
+  test('summarizes the TaskV2 list rather than background processes', () => {
+    expect(
+      summarizeStatusTasks([
+        { status: 'completed', subject: 'Inspect' },
+        {
+          status: 'in_progress',
+          subject: 'Implement',
+          activeForm: 'Implementing fixes',
+        },
+        { status: 'pending', subject: 'Verify' },
+        { status: 'failed', subject: 'Package' },
+      ]),
+    ).toEqual({
+      running: 1,
+      pending: 1,
+      completed: 1,
+      failed: 1,
+      blocked: 0,
+      total: 4,
+      activeTask: 'Implementing fixes',
+    })
+  })
+
+  test('marks dependency-waiting tasks as blocked until prerequisites complete', () => {
+    expect(
+      summarizeStatusTasks([
+        { id: '1', status: 'in_progress', subject: 'Build' },
+        {
+          id: '2',
+          status: 'pending',
+          subject: 'Package',
+          blockedBy: ['1'],
+        },
+      ]).blocked,
+    ).toBe(1)
   })
 
   test('uses in-session provider/model over stale persisted settings', () => {

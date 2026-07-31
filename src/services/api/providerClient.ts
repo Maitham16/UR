@@ -9,6 +9,7 @@
 import type { MessageParam } from '@urhq-ai/sdk/resources/index.mjs'
 import {
   DEFAULT_PROVIDER_ID,
+  ensureProviderModelsFresh,
   getActiveProviderSettings,
   getDefaultModelForProvider,
   getProviderAccessTypeLabel,
@@ -286,7 +287,55 @@ export async function createProviderClient(
       throw new Error(`Unsupported provider access type: ${provider.accessType}`)
   }
 
+  await assertFreshRuntimeModel(resolved, options)
   return tagClient(client, resolved)
+}
+
+async function assertFreshRuntimeModel(
+  providerId: ProviderId,
+  options: ProviderClientOptions,
+): Promise<void> {
+  if (!options.model) return
+  const provider = getProviderDefinition(providerId)
+  if (provider.modelDiscoveryType !== 'live') return
+  const settings = getInitialSettings()
+  const env =
+    provider.envKey && options.apiKey
+      ? { ...process.env, [provider.envKey]: options.apiKey }
+      : process.env
+  const discovered = await ensureProviderModelsFresh(providerId, {
+    settings,
+    adapters: {
+      env,
+      ...(options.fetchOverride ? { fetch: options.fetchOverride as typeof fetch } : {}),
+    },
+    signal: options.signal,
+  })
+  if (discovered.source === 'static' && discovered.warning) {
+    throw new Error(
+      formatRuntimeDispatchError({
+        providerId,
+        model: options.model,
+        why: `the current provider model list could not be verified: ${discovered.warning}`,
+        validModels: discovered.models.map(model => model.id),
+      }),
+    )
+  }
+  const validation = validateProviderModelPair(providerId, options.model, {
+    availableModels: discovered.models,
+    settings,
+  })
+  if (validation.valid === false) {
+    throw new Error(
+      formatRuntimeDispatchError({
+        providerId,
+        model: options.model,
+        why: validation.error,
+        validModels: validation.validModels,
+        suggestedModel: validation.suggestedModel,
+      }),
+    )
+  }
 }
 
 function isLoopbackBaseUrl(value: string | undefined): boolean {

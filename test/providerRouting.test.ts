@@ -56,6 +56,35 @@ describe('provider runtime routing', () => {
     })
   })
 
+  test('runtime validates a cold API model against live discovery then reuses the TTL cache', async () => {
+    let discoveryCalls = 0
+    const fetchOverride = (async () => {
+      discoveryCalls++
+      return new Response(JSON.stringify({ data: [{ id: 'gpt-live' }] }))
+    }) as unknown as typeof fetch
+
+    await createProviderClient('openai-api', {
+      apiKey: 'sk-test',
+      model: 'gpt-live',
+      fetchOverride,
+    })
+    await createProviderClient('openai-api', {
+      apiKey: 'sk-test',
+      model: 'gpt-live',
+      fetchOverride,
+    })
+    expect(discoveryCalls).toBe(1)
+  })
+
+  test('runtime rejects a removed model before sending a model request', async () => {
+    await expect(createProviderClient('openai-api', {
+      apiKey: 'sk-test',
+      model: 'gpt-removed',
+      fetchOverride: (async () =>
+        new Response(JSON.stringify({ data: [{ id: 'gpt-current' }] }))) as unknown as typeof fetch,
+    })).rejects.toThrow(/gpt-removed[\s\S]*gpt-current/)
+  })
+
   test('lmstudio provider uses OpenAI-compatible endpoint', async () => {
     cacheProviderModelsForProvider('lmstudio', ['local-model'])
 

@@ -232,23 +232,23 @@ describe('display of reasoning tokens', () => {
   })
 })
 
-describe('OpenRouter usage accounting is requested', () => {
-  test('the usage flag is sent for openrouter and only for openrouter', () => {
+describe('OpenRouter usage accounting follows the current response contract', () => {
+  test('deprecated usage request switches are omitted', () => {
     const params = { model: 'x/y', messages: [], max_tokens: 16 }
     const openrouter = toOpenAICompatibleRequest(params, 'openrouter')
-    expect(openrouter.usage).toEqual({ include: true })
+    expect(openrouter.usage).toBeUndefined()
 
     const openai = toOpenAICompatibleRequest(params, 'openai-compatible')
     expect(openai.usage).toBeUndefined()
   })
 
-  test('streaming requests still ask for usage in the final chunk', () => {
+  test('OpenRouter streaming relies on its mandatory final usage chunk', () => {
     const streamed = toOpenAICompatibleRequest(
       { model: 'x/y', messages: [], max_tokens: 16, stream: true },
       'openrouter',
     )
-    expect(streamed.stream_options).toEqual({ include_usage: true })
-    expect(streamed.usage).toEqual({ include: true })
+    expect(streamed.stream_options).toBeUndefined()
+    expect(streamed.usage).toBeUndefined()
   })
 })
 
@@ -257,6 +257,8 @@ describe('no mapping site bypasses normalisation', () => {
     for (const relative of [
       'src/services/api/openaiCompatible.ts',
       'src/services/api/streamingAdapters.ts',
+      'src/services/api/standardAPI.ts',
+      'src/services/api/openaiResponses.ts',
     ]) {
       const source = readFileSync(path.join(repoRoot, relative), 'utf8')
       // The old lossy shape: reading prompt_tokens straight into a usage literal.

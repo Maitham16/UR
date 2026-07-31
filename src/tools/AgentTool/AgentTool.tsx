@@ -141,8 +141,9 @@ type AgentToolInput = z.infer<ReturnType<typeof baseInputSchema>> & {
 // Output schema - multi-agent spawned schema added dynamically at runtime when enabled
 export const outputSchema = lazySchema(() => {
   const syncOutputSchema = agentToolResultSchema().extend({
-    status: z.literal('completed'),
-    prompt: z.string()
+    status: z.enum(['completed', 'partial']),
+    prompt: z.string(),
+    error: z.string().optional()
   });
   const asyncOutputSchema = z.object({
     status: z.literal('async_launched'),
@@ -686,30 +687,53 @@ export const AgentTool = buildTool({
     };
     if (shouldRunAsync) {
       const asyncAgentId = earlyAgentId;
-      const agentBackgroundTask = registerAsyncAgent({
-        agentId: asyncAgentId,
-        description,
-        prompt,
-        selectedAgent,
-        setAppState: rootSetAppState,
-        // Don't link to parent's abort controller -- background agents should
-        // survive when the user presses ESC to cancel the main thread.
-        // They are killed explicitly via chat:killAgents.
-        toolUseId: toolUseContext.toolUseId
-      });
-
-      // Register name → agentId for SendMessage routing. Post-registerAsyncAgent
-      // so we don't leave a stale entry if spawn fails. Sync agents skipped —
-      // coordinator is blocked, so SendMessage routing doesn't apply.
+      // Claim a requested name atomically. Previously a second live spawn with
+      // the same name overwrote the registry entry and left the first process
+      // running but unreachable through SendMessage.
       if (name) {
+        let collision: string | undefined;
         rootSetAppState(prev => {
           const next = new Map(prev.agentNameRegistry);
+          const existingId = next.get(name);
+          const existingTask = existingId ? prev.tasks[existingId] : undefined;
+          if (existingId && existingTask && (existingTask.status === 'running' || existingTask.status === 'pending')) {
+            collision = existingId;
+            return prev;
+          }
           next.set(name, asAgentId(asyncAgentId));
           return {
             ...prev,
             agentNameRegistry: next
           };
         });
+        if (collision) {
+          throw new Error(`Agent name "${name}" is already in use by active agent ${collision}. Choose a distinct name or continue that agent with SendMessage.`);
+        }
+      }
+
+      let agentBackgroundTask;
+      try {
+        agentBackgroundTask = registerAsyncAgent({
+          agentId: asyncAgentId,
+          description,
+          prompt,
+          selectedAgent,
+          setAppState: rootSetAppState,
+          // Don't link to parent's abort controller -- background agents should
+          // survive when the user presses ESC to cancel the main thread.
+          // They are killed explicitly via chat:killAgents.
+          toolUseId: toolUseContext.toolUseId
+        });
+      } catch (error) {
+        if (name) {
+          rootSetAppState(prev => {
+            if (prev.agentNameRegistry.get(name) !== asAgentId(asyncAgentId)) return prev;
+            const next = new Map(prev.agentNameRegistry);
+            next.delete(name);
+            return { ...prev, agentNameRegistry: next };
+          });
+        }
+        throw error;
       }
 
       // Wrap async agent execution in agent context for analytics attribution
@@ -1176,7 +1200,9 @@ export const AgentTool = buildTool({
                 output_file: '',
                 summary: description,
                 usage: {
-                  total_tokens: progress.tokenCount,
+                  ...(progress.tokenCount !== undefined && {
+                    total_tokens: progress.tokenCount
+                  }),
                   tool_uses: progress.toolUseCount,
                   duration_ms: Date.now() - agentStartTime
                 }
@@ -1253,7 +1279,8 @@ export const AgentTool = buildTool({
         }
         return {
           data: {
-            status: 'completed' as const,
+            status: syncAgentError ? 'partial' as const : 'completed' as const,
+            ...(syncAgentError && { error: errorMessage(syncAgentError) }),
             prompt,
             ...agentResult,
             ...worktreeResult
@@ -1341,7 +1368,7 @@ The agent is now running and will receive instructions via mailbox.`
         }]
       };
     }
-    if (data.status === 'completed') {
+    if (data.status === 'completed' || data.status === 'partial') {
       const worktreeData = data as Record<string, unknown>;
       const worktreeInfoText = worktreeData.worktreePath ? `\nworktreePath: ${worktreeData.worktreePath}\nworktreeBranch: ${worktreeData.worktreeBranch}` : '';
       // If the subagent completes with no content, the tool_result is just the
@@ -1361,16 +1388,18 @@ The agent is now running and will receive instructions via mailbox.`
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
+          ...(data.status === 'partial' && { is_error: true }),
           content: contentOrMarker
         };
       }
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
+        ...(data.status === 'partial' && { is_error: true }),
         content: [...contentOrMarker, {
           type: 'text',
-          text: `agentId: ${data.agentId} (use SendMessage with to: '${data.agentId}' to continue this agent)${worktreeInfoText}
-<usage>total_tokens: ${data.totalTokens}
+          text: `${data.status === 'partial' ? `Subagent stopped after partial progress: ${data.error ?? 'unknown error'}\n` : ''}agentId: ${data.agentId} (use SendMessage with to: '${data.agentId}' to continue this agent)${worktreeInfoText}
+<usage>${data.totalTokens !== undefined ? `total_tokens: ${data.totalTokens}\n` : ''}
 tool_uses: ${data.totalToolUseCount}
 duration_ms: ${data.totalDurationMs}</usage>`
         }]

@@ -388,6 +388,9 @@ function stringField(input: Record<string, unknown>, names: string[]): string {
 }
 
 function normalizeQuestionOption(value: unknown): Record<string, unknown> | null {
+  if (typeof value === 'string' && value.trim()) {
+    return { label: value.trim(), description: value.trim() }
+  }
   const option = objectValue(value)
   if (!option) return null
   const label =
@@ -421,11 +424,20 @@ function normalizeQuestion(value: unknown, index: number): Record<string, unknow
     'message',
     'body',
   ])
-  if (!questionText || !Array.isArray(question.options)) return null
-  const options = question.options
+  const optionValues = [
+    'options',
+    'choices',
+    'values',
+    'items',
+    'alternatives',
+    'candidates',
+    'selections',
+  ].map(key => question[key]).find(Array.isArray)
+  if (!questionText || !optionValues) return null
+  const options = optionValues
     .map(normalizeQuestionOption)
     .filter((option): option is Record<string, unknown> => option !== null)
-  if (options.length < 2 || options.length > 4) return null
+  if (options.length < 2 || options.length > 8) return null
   const header =
     typeof question.header === 'string' && question.header.trim()
       ? question.header.trim().slice(0, 12)

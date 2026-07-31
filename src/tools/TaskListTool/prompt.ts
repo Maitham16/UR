@@ -40,9 +40,9 @@ ${teammateUseCase}- After completing a task, to check for newly unblocked work o
 Returns a summary of each task:
 ${idDescription}
 - **subject**: Brief description of the task
-- **status**: 'pending', 'in_progress', or 'completed'
+- **status**: Persisted state: 'pending', 'in_progress', 'completed', 'failed', or 'skipped'
 - **owner**: Agent ID if assigned, empty if available
-- **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
+- **blockedBy**: List of unresolved task IDs. A pending/in-progress task with entries here is displayed as **blocked**; blocked is derived, not a persisted status.
 
 Use TaskGet with a specific task ID to view full details including description and comments.
 ${teammateWorkflow}`

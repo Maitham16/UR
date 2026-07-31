@@ -31,6 +31,11 @@ import { processUserInput } from './processUserInput/processUserInput.js'
 import type { QueryGuard } from './QueryGuard.js'
 import { queryCheckpoint, startQueryProfile } from './queryProfiler.js'
 import { runWithWorkload } from './workloadContext.js'
+import {
+  getTaskListRunForCommand,
+  runWithTaskListRun,
+} from './taskListRunContext.js'
+import { getTaskListId, prepareTaskListForRun } from './tasks.js'
 
 function exit(): void {
   gracefulShutdownSync(0)
@@ -69,6 +74,7 @@ type BaseExecutionParams = {
     onBeforeQuery?: (input: string, newMessages: Message[]) => Promise<boolean>,
     input?: string,
     effort?: EffortValue,
+    reservationToken?: number,
   ) => Promise<void>
   setAppState: (updater: (prev: AppState) => AppState) => void
   onBeforeQuery?: (input: string, newMessages: Message[]) => Promise<boolean>
@@ -422,6 +428,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
   function makeContext(): ProcessUserInputContext {
     return getToolUseContext(messages, [], abortController, mainLoopModel)
   }
+  let reservationToken: number | undefined
 
   // Wrap in try-finally so the guard is released even if processUserInput
   // throws or onQuery is skipped. onQuery's finally calls queryGuard.end(),
@@ -434,7 +441,12 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     // handlePromptSubmit calls queue (via the isActive check above) instead
     // of starting a second executeUserInput. This call is a no-op if the
     // guard is already in dispatching (legacy queue-processor path).
-    queryGuard.reserve()
+    reservationToken = queryGuard.reserve(() => {
+      abortController.abort('dispatch-timeout')
+    }) ?? undefined
+    if (reservationToken === undefined) {
+      throw new Error('Prompt dispatch could not reserve the active query slot.')
+    }
     queryCheckpoint('query_process_user_input_start')
 
     const newMessages: Message[] = []
@@ -461,6 +473,27 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
         ? firstWorkload
         : undefined
 
+    // A real user prompt owns a fresh task-list generation. Establish it at
+    // execution time (not enqueue time) so queued prompts cannot retire the
+    // list of the turn that is still running. Explicit "add to the current
+    // list" wording is the sole append path.
+    const primaryCommandText =
+      typeof commands[0]?.value === 'string' ? commands[0].value.trim() : ''
+    const primarySlashName = primaryCommandText.startsWith('/')
+      ? primaryCommandText.slice(1).split(/\s/u, 1)[0]
+      : undefined
+    const isPromptSlashCommand =
+      primarySlashName !== undefined &&
+      params.commands.some(
+        command =>
+          command.type === 'prompt' &&
+          (command.name === primarySlashName ||
+            command.aliases?.includes(primarySlashName)),
+      )
+    const taskListRun = getTaskListRunForCommand(commands[0], {
+      allowSlashCommand: isPromptSlashCommand,
+    })
+
     // Wrap the entire turn (processUserInput loop + onQuery) in an
     // AsyncLocalStorage context. This is the ONLY way to correctly
     // propagate workload across await boundaries: void-detached bg agents
@@ -469,7 +502,13 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     // context — isolated from the parent's continuation. A process-global
     // mutable slot would be clobbered at the detached closure's first
     // await by this function's synchronous return path. See state.ts.
-    await runWithWorkload(turnWorkload, async () => {
+    await runWithWorkload(turnWorkload, () =>
+      runWithTaskListRun(taskListRun, async () => {
+      if (taskListRun) {
+        await prepareTaskListForRun(getTaskListId(), taskListRun.generationId, {
+          appendToCurrent: taskListRun.appendToCurrent,
+        })
+      }
       for (let i = 0; i < commands.length; i++) {
         const cmd = commands[i]!
         const isFirst = i === 0
@@ -568,6 +607,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
           shouldCallBeforeQuery ? onBeforeQuery : undefined,
           primaryInput,
           effort,
+          reservationToken,
         )
       } else {
         // Local slash commands that skip messages (e.g., /model, /theme).
@@ -575,7 +615,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
         // the spinner formula checks: (!toolJSX || showSpinner) && isLoading.
         // If we clear toolJSX while the guard is still reserved, spinner briefly
         // shows. The finally below also calls cancelReservation (no-op if idle).
-        queryGuard.cancelReservation()
+        queryGuard.cancelReservation(reservationToken)
         setToolJSX({
           jsx: null,
           shouldHidePromptInput: false,
@@ -593,14 +633,15 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
           params.onInputChange(nextInput)
         }
       }
-    }) // end runWithWorkload — ALS context naturally scoped, no finally needed
+      }),
+    ) // ALS contexts are naturally scoped; no mutable global cleanup needed
   } finally {
     // Safety net: release the guard reservation if processUserInput threw
     // or onQuery was skipped. No-op if onQuery already ran (guard is idle
     // via end(), or running — cancelReservation only acts on dispatching).
     // This is the single source of truth for releasing the reservation;
     // useQueueProcessor no longer needs its own .finally().
-    queryGuard.cancelReservation()
+    queryGuard.cancelReservation(reservationToken)
     // Safety net: clear the placeholder if processUserInput produced no
     // messages or threw — otherwise it would stay visible until the next
     // turn's resetLoadingState. Harmless when onQuery ran: setMessages grew

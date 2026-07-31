@@ -49,7 +49,12 @@ import {
   isProviderToolInput,
   ProviderResponseParseError,
 } from './providerClient.js'
-import { prepareToolSchema } from './toolSchema.js'
+import {
+  assertUniqueToolNames,
+  assertValidToolName,
+  prepareAndValidateToolSchema,
+  ToolSchemaValidationError,
+} from './toolSchema.js'
 
 type OllamaMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -658,23 +663,26 @@ function messagesToOllama(
 }
 
 function toOllamaTools(tools: BetaMessageStreamParams['tools']): OllamaTool[] {
-  if (!tools) {
-    return []
-  }
+  if (tools === undefined || tools === null) return []
+  if (!Array.isArray(tools)) throw new ToolSchemaValidationError('Ollama tools must be an array.')
   const result: OllamaTool[] = []
   for (const tool of tools as BetaToolUnion[]) {
-    if (!('name' in tool) || !('input_schema' in tool)) {
-      continue
+    if (!tool || typeof tool !== 'object' || !('name' in tool) || !('input_schema' in tool)) {
+      throw new ToolSchemaValidationError(
+        'Ollama tool entry is missing required name/input_schema fields.',
+      )
     }
+    assertValidToolName(tool.name, 'Ollama')
     result.push({
       type: 'function',
       function: {
         name: tool.name,
         description: 'description' in tool ? tool.description : undefined,
-        parameters: sanitizeJsonSchema(tool.input_schema),
+        parameters: prepareAndValidateToolSchema(tool.input_schema, tool.name),
       },
     })
   }
+  assertUniqueToolNames(result.map(tool => tool.function.name), 'Ollama')
   return result
 }
 
@@ -693,10 +701,6 @@ function getAvailableToolNames(
 // Delegates to the shared preparation pass: strips meta and vendor keys at
 // every depth (not just the root) and inlines local $ref targets that most
 // providers cannot resolve. See services/api/toolSchema.ts.
-function sanitizeJsonSchema(schema: unknown): Record<string, unknown> {
-  return prepareToolSchema(schema, 'json-schema')
-}
-
 function getOllamaFormat(params: BetaMessageStreamParams): unknown {
   const outputConfig = (params as { output_config?: unknown }).output_config as
     | { format?: { type?: string; schema?: unknown } }

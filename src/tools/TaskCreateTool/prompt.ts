@@ -47,6 +47,7 @@ EXCEPTION: none of the "skip" rules apply when the user explicitly asks for an i
 - **activeForm** (optional): Present continuous form shown in the spinner when the task is in_progress (e.g., "Fixing authentication bug"). If omitted, the spinner shows the subject instead.
 - **blocks** / **addBlocks** (optional): Task IDs this task blocks
 - **blockedBy** / **addBlockedBy** (optional): Task IDs that block this task
+- **addToCurrentList** (optional): Set to \`true\` only when the user explicitly asks to append to the current/existing task list. A normal new prompt starts a fresh list and archives the previous list as history.
 
 All tasks are created with status \`pending\`.
 
@@ -56,5 +57,6 @@ All tasks are created with status \`pending\`.
 - Provide dependencies during creation when known, or use TaskUpdate later to adjust them
 ${teammateTips}- Check TaskList first to avoid creating duplicate tasks
 - Use TaskUpdate, not TaskCreate, for status or ownership changes
+- Do not set \`addToCurrentList\` merely because earlier tasks exist; it is reserved for explicit user intent such as "add this to the current list"
 `
 }

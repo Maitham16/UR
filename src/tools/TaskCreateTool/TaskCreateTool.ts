@@ -7,12 +7,17 @@ import {
 import { lazySchema } from '../../utils/lazySchema.js'
 import {
   createTask,
+  createTaskForRun,
   deleteTask,
   getTaskListId,
   isTodoV2Enabled,
-  retireCompletedTaskList,
+  type Task,
   updateTaskWithDependencies,
 } from '../../utils/tasks.js'
+import {
+  getTaskListRunContext,
+  getTaskListRunFromMessages,
+} from '../../utils/taskListRunContext.js'
 import { getAgentName, getTeamName } from '../../utils/teammate.js'
 import { TASK_CREATE_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, getPrompt } from './prompt.js'
@@ -47,6 +52,12 @@ const inputSchema = lazySchema(() =>
       .array(z.string())
       .optional()
       .describe('Alias for blockedBy, accepted for compatibility with TaskUpdate'),
+    addToCurrentList: z
+      .boolean()
+      .optional()
+      .describe(
+        'Set true only when the user explicitly asks to append to the current task list',
+      ),
   }),
 )
 type InputSchema = ReturnType<typeof inputSchema>
@@ -105,6 +116,7 @@ export const TaskCreateTool = buildTool({
       blockedBy,
       addBlocks,
       addBlockedBy,
+      addToCurrentList,
     },
     context,
   ) {
@@ -113,14 +125,16 @@ export const TaskCreateTool = buildTool({
       ...new Set([...(blockedBy ?? []), ...(addBlockedBy ?? [])]),
     ]
     const taskListId = getTaskListId()
-    // A finished list is history, not active work. useTasksV2 clears it on a
-    // 5s hide timer, but a create that lands inside that window — or after the
-    // timer was cancelled — appended to the completed list, so the new work
-    // arrived pre-populated with ticked items and the progress count was wrong
-    // from the first task. Retiring it here makes the rule deterministic
-    // instead of timing-dependent.
-    await retireCompletedTaskList(taskListId)
-    const taskId = await createTask(taskListId, {
+    // REPL turns carry an async-local generation. Non-interactive main-thread
+    // callers fall back to the latest human message UUID. Subagents without an
+    // inherited turn deliberately append to the shared list rather than
+    // retiring coordinator work.
+    const run =
+      getTaskListRunContext() ??
+      (context.agentId
+        ? undefined
+        : getTaskListRunFromMessages(context.messages ?? []))
+    const taskData: Omit<Task, 'id'> = {
       subject,
       description,
       activeForm,
@@ -132,7 +146,12 @@ export const TaskCreateTool = buildTool({
       blocks: [],
       blockedBy: [],
       metadata,
-    })
+    }
+    const taskId = run
+      ? await createTaskForRun(taskListId, run.generationId, taskData, {
+          appendToCurrent: run.appendToCurrent || addToCurrentList === true,
+        })
+      : await createTask(taskListId, taskData)
 
     const dependencies = [
       ...initialBlocks.map(targetId => ({

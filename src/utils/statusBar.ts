@@ -1,8 +1,10 @@
+import { stringWidth } from '../ink/stringWidth.js'
 import {
   resolveStatusBarFieldVisibility,
   STATUS_BAR_FIELDS,
   type StatusBarFieldId,
 } from './statusBarFields.js'
+import { truncateToWidth } from './truncate.js'
 import { isUpdateAvailable } from './updateNotice.js'
 
 export type StatusBarInput = {
@@ -61,8 +63,8 @@ function formatTokens(total: number): string {
 
 /** Clip a value so one long name cannot consume the whole bar. */
 function clip(value: string, max: number): string {
-  if (max <= 1 || value.length <= max) return value
-  return `${value.slice(0, Math.max(1, max - 1))}…`
+  if (max <= 0) return ''
+  return truncateToWidth(value, max)
 }
 
 export type StatusBarDisplayInput = {
@@ -76,13 +78,12 @@ export type StatusBarDisplayInput = {
 
 export function statusBarShouldDisplay({
   settingsStatusLineConfigured,
-  isKairosActive,
   isTTY,
   isCI,
   term,
   disabled,
 }: StatusBarDisplayInput): boolean {
-  if (isKairosActive || disabled) {
+  if (disabled) {
     return false
   }
   if (settingsStatusLineConfigured) {
@@ -196,8 +197,8 @@ export function buildDefaultStatusBar(input: StatusBarInput): string {
   // has to cut one mid-word and silently lose the fields to its right.
   const kept = [...rendered]
   const width = (parts: typeof kept): number =>
-    parts.reduce((sum, part) => sum + part.text.length, 0) +
-    Math.max(0, parts.length - 1) * SEPARATOR.length
+    parts.reduce((sum, part) => sum + stringWidth(part.text), 0) +
+    Math.max(0, parts.length - 1) * stringWidth(SEPARATOR)
 
   while (kept.length > 1 && width(kept) > columns) {
     let lowestIndex = 0
@@ -210,5 +211,5 @@ export function buildDefaultStatusBar(input: StatusBarInput): string {
   }
 
   const line = kept.map(part => part.text).join(SEPARATOR)
-  return line.length > columns ? clip(line, columns) : line
+  return stringWidth(line) > columns ? clip(line, columns) : line
 }

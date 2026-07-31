@@ -9,7 +9,6 @@ import { useAppState } from '../state/AppState.js';
 import { isInProcessTeammateTask } from '../tasks/InProcessTeammateTask/types.js';
 import { AGENT_COLOR_TO_THEME_COLOR, type AgentColorName } from '../tools/AgentTool/agentColorManager.js';
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
-import { count } from '../utils/array.js';
 import { summarizeRecentActivities } from '../utils/collapseReadSearch.js';
 import { truncateToWidth } from '../utils/format.js';
 import { isTodoV2Enabled, type Task } from '../utils/tasks.js';
@@ -28,6 +27,29 @@ export function byIdAsc(a: Task, b: Task): number {
     return aNum - bNum;
   }
   return a.id.localeCompare(b.id);
+}
+export type TaskDisplayStatus = Task['status'] | 'blocked';
+export type TaskStatusCounts = Record<TaskDisplayStatus, number>;
+export function getTaskDisplayStatus(task: Task, unresolvedTaskIds: ReadonlySet<string>): TaskDisplayStatus {
+  if ((task.status === 'pending' || task.status === 'in_progress') && task.blockedBy.some(id => unresolvedTaskIds.has(id))) {
+    return 'blocked';
+  }
+  return task.status;
+}
+export function getTaskStatusCounts(tasks: readonly Task[], unresolvedIds?: ReadonlySet<string>): TaskStatusCounts {
+  const unresolvedTaskIds = unresolvedIds ?? new Set(tasks.filter(task => task.status !== 'completed').map(task => task.id));
+  const counts: TaskStatusCounts = {
+    pending: 0,
+    in_progress: 0,
+    completed: 0,
+    failed: 0,
+    skipped: 0,
+    blocked: 0
+  };
+  for (const task of tasks) {
+    counts[getTaskDisplayStatus(task, unresolvedTaskIds)]++;
+  }
+  return counts;
 }
 export function TaskListV2({
   tasks,
@@ -127,22 +149,27 @@ export function TaskListV2({
     }
   }
 
-  // Get task counts for display
-  const completedCount = count(tasks, t_3 => t_3.status === 'completed');
-  const pendingCount = count(tasks, t_4 => t_4.status === 'pending');
-  const inProgressCount = tasks.length - completedCount - pendingCount;
   // Unresolved tasks (open or in_progress) block dependent tasks
-  const unresolvedTaskIds = new Set(tasks.filter(t_5 => t_5.status !== 'completed').map(t_6 => t_6.id));
+  const unresolvedTaskIds = new Set(tasks.filter(t_3 => t_3.status !== 'completed').map(t_4 => t_4.id));
+  // Count derived blocked state separately instead of misreporting every
+  // failed/skipped task as "in progress".
+  const statusCounts = getTaskStatusCounts(tasks, unresolvedTaskIds);
+  const completedCount = statusCounts.completed;
+  const pendingCount = statusCounts.pending;
+  const inProgressCount = statusCounts.in_progress;
+  const failedCount = statusCounts.failed;
+  const skippedCount = statusCounts.skipped;
+  const blockedCount = statusCounts.blocked;
 
   // Check if we need to truncate
   const needsTruncation = tasks.length > maxDisplay;
   let visibleTasks: Task[];
   let hiddenTasks: Task[];
   if (needsTruncation) {
-    // Prioritize: recently completed (within 30s), in-progress, pending, older completed
+    // Prioritize recent completions, active/attention states, then older history.
     const recentCompleted: Task[] = [];
     const olderCompleted: Task[] = [];
-    for (const task of tasks.filter(t_7 => t_7.status === 'completed')) {
+    for (const task of tasks.filter(t_5 => t_5.status === 'completed')) {
       const ts_0 = completionTimestampsRef.current.get(task.id);
       if (ts_0 && now - ts_0 < RECENT_COMPLETED_TTL_MS) {
         recentCompleted.push(task);
@@ -152,16 +179,13 @@ export function TaskListV2({
     }
     recentCompleted.sort(byIdAsc);
     olderCompleted.sort(byIdAsc);
-    const inProgress = tasks.filter(t_8 => t_8.status === 'in_progress').sort(byIdAsc);
-    const pending = tasks.filter(t_9 => t_9.status === 'pending').sort((a, b) => {
-      const aBlocked = a.blockedBy.some(id_1 => unresolvedTaskIds.has(id_1));
-      const bBlocked = b.blockedBy.some(id_2 => unresolvedTaskIds.has(id_2));
-      if (aBlocked !== bBlocked) {
-        return aBlocked ? 1 : -1;
-      }
-      return byIdAsc(a, b);
-    });
-    const prioritized = [...recentCompleted, ...inProgress, ...pending, ...olderCompleted];
+    const byDisplayStatus = (status: TaskDisplayStatus) => tasks.filter(task => getTaskDisplayStatus(task, unresolvedTaskIds) === status).sort(byIdAsc);
+    const inProgress = byDisplayStatus('in_progress');
+    const failed = byDisplayStatus('failed');
+    const blocked = byDisplayStatus('blocked');
+    const pending = byDisplayStatus('pending');
+    const skipped = byDisplayStatus('skipped');
+    const prioritized = [...recentCompleted, ...inProgress, ...failed, ...blocked, ...pending, ...skipped, ...olderCompleted];
     visibleTasks = prioritized.slice(0, maxDisplay);
     hiddenTasks = prioritized.slice(maxDisplay);
   } else {
@@ -172,18 +196,13 @@ export function TaskListV2({
   let hiddenSummary = '';
   if (hiddenTasks.length > 0) {
     const parts: string[] = [];
-    const hiddenPending = count(hiddenTasks, t_10 => t_10.status === 'pending');
-    const hiddenInProgress = count(hiddenTasks, t_11 => t_11.status === 'in_progress');
-    const hiddenCompleted = count(hiddenTasks, t_12 => t_12.status === 'completed');
-    if (hiddenInProgress > 0) {
-      parts.push(`${hiddenInProgress} in progress`);
-    }
-    if (hiddenPending > 0) {
-      parts.push(`${hiddenPending} pending`);
-    }
-    if (hiddenCompleted > 0) {
-      parts.push(`${hiddenCompleted} completed`);
-    }
+    const hiddenCounts = getTaskStatusCounts(hiddenTasks, unresolvedTaskIds);
+    if (hiddenCounts.in_progress > 0) parts.push(`${hiddenCounts.in_progress} in progress`);
+    if (hiddenCounts.blocked > 0) parts.push(`${hiddenCounts.blocked} blocked`);
+    if (hiddenCounts.failed > 0) parts.push(`${hiddenCounts.failed} failed`);
+    if (hiddenCounts.pending > 0) parts.push(`${hiddenCounts.pending} pending`);
+    if (hiddenCounts.skipped > 0) parts.push(`${hiddenCounts.skipped} skipped`);
+    if (hiddenCounts.completed > 0) parts.push(`${hiddenCounts.completed} completed`);
     hiddenSummary = ` … +${parts.join(', ')}`;
   }
   const content = <>
@@ -202,8 +221,20 @@ export function TaskListV2({
                 <Text bold>{inProgressCount}</Text>
                 {' in progress, '}
               </>}
+            {blockedCount > 0 && <>
+                <Text bold>{blockedCount}</Text>
+                {' blocked, '}
+              </>}
+            {failedCount > 0 && <>
+                <Text bold>{failedCount}</Text>
+                {' failed, '}
+              </>}
+            {skippedCount > 0 && <>
+                <Text bold>{skippedCount}</Text>
+                {' skipped, '}
+              </>}
             <Text bold>{pendingCount}</Text>
-            {' open)'}
+            {' pending)'}
           </Text>
         </Box>
         {content}

@@ -1,5 +1,51 @@
 # Changelog
 
+## 1.76.0
+
+- Provider catalogues now refresh from each provider's official models API on
+  selection, connection, reconnection, explicit refresh, and cold runtime use.
+  Endpoint-scoped TTL caches, guarded Anthropic/Gemini pagination, OpenRouter
+  pricing/capability metadata, unavailable-model rejection, cancellation-safe
+  request coalescing, and explicit loading/empty/error/retry states prevent a
+  stale or unrelated model list from being presented as current.
+- Tool definitions are prepared and validated before every supported provider
+  request. Local references and definitions remain intact, Gemini receives its
+  current JSON Schema form, malformed roots/nesting/arrays/enums/references and
+  duplicate names fail before network retries, and swarm-only fields are
+  removed from both properties and required lists.
+- Every accepted non-trivial prompt starts a fresh dependency-ordered task-list
+  generation unless the user explicitly asks to extend the active one.
+  Completed and stale generations are archived as history, concurrent task
+  creation is atomic, and pending/running/completed/failed/skipped plus derived
+  blocked states are shown without deleting finished work after five seconds.
+- Queue reservations now have an owner token and observable completion. A
+  prompt is processed as its own turn, dispatch failures are reported, expired
+  reservations cannot start late, and the UI releases a prompt that never
+  reached model execution instead of remaining falsely on working.
+- Bash execution preserves stdout and stderr separately together with the real
+  exit code, signal, duration, command, and working directory. Timeouts request
+  termination, escalate only when needed, wait for terminal process evidence,
+  and distinguish timeout/cancellation/output-limit failures without retrying
+  a command or treating spawn as completion.
+- AskUserQuestion payloads are normalized and validated before rendering,
+  accept common provider aliases and up to eight choices, reject malformed
+  payloads once with field-specific diagnostics, and run serially so duplicate
+  questions cannot race. Existing adaptive continuous-list navigation remains
+  intact for long and narrow views.
+- Token accounting now aggregates unique provider-reported responses across
+  sequential, split, parallel, nested, failed, and retried operations. Tool
+  counts remain separate; unavailable token values are omitted rather than
+  fabricated as zero, while cached, reasoning, and provider-total fields are
+  preserved when reported.
+- The compact status bar is wired to live task, agent, tool, provider/model,
+  runtime, context, update, and attention state. Saved field visibility wins
+  over stale custom output, width handling is Unicode-safe, and rapid or narrow
+  updates drop low-priority duplicates without hiding critical errors.
+- Subagent completion is honest under partial failure: synchronous partial
+  results are marked as errors, asynchronous post-processing failures are
+  attached as warnings after successful work, active names cannot be silently
+  overwritten, and terminal tasks cannot transition from completed to failed.
+
 ## 1.75.0
 
 - The UI can no longer stay on "working" for a prompt that is running nowhere.

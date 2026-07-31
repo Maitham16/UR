@@ -31,8 +31,8 @@ describe('meta and vendor keys never reach a provider', () => {
   })
 })
 
-describe('local references are inlined', () => {
-  test('a recursive zod schema emits $ref and is inlined away', () => {
+describe('local references are preserved and validated', () => {
+  test('a recursive zod schema keeps its reference without expanding forever', () => {
     type N = { name: string; children?: N[] }
     const node: z.ZodType<N> = z.lazy(() =>
       z.object({ name: z.string(), children: z.array(node).optional() }),
@@ -41,20 +41,19 @@ describe('local references are inlined', () => {
     expect(JSON.stringify(emitted)).toContain('$ref')
 
     const prepared = prepareToolSchema(emitted)
-    expect(JSON.stringify(prepared)).not.toContain('$ref')
+    expect(JSON.stringify(prepared)).toContain('$ref')
     expect(validateToolSchema(prepared)).toEqual([])
   })
 
-  test('a $defs pointer is resolved and the $defs block removed', () => {
+  test('a $defs pointer and its definition are preserved', () => {
     const prepared = prepareToolSchema({
       type: 'object',
       $defs: { Inner: { type: 'object', properties: { a: { type: 'string' } } } },
       properties: { one: { $ref: '#/$defs/Inner' } },
     })
-    expect(prepared.$defs).toBeUndefined()
+    expect(prepared.$defs).toBeDefined()
     expect((prepared.properties as any).one).toEqual({
-      type: 'object',
-      properties: { a: { type: 'string' } },
+      $ref: '#/$defs/Inner',
     })
   })
 
@@ -64,16 +63,19 @@ describe('local references are inlined', () => {
       $defs: { Inner: { type: 'string' } },
       properties: { one: { $ref: '#/$defs/Inner', description: 'kept' } },
     })
-    expect((prepared.properties as any).one).toEqual({ type: 'string', description: 'kept' })
+    expect((prepared.properties as any).one).toEqual({
+      $ref: '#/$defs/Inner',
+      description: 'kept',
+    })
   })
 
-  test('an unresolvable reference is dropped, not forwarded', () => {
+  test('an unresolvable reference is preserved and reported clearly', () => {
     const prepared = prepareToolSchema({
       type: 'object',
       properties: { one: { $ref: 'https://example.com/schema.json' } },
     })
-    expect(JSON.stringify(prepared)).not.toContain('$ref')
-    expect(validateToolSchema(prepared)).toEqual([])
+    expect(JSON.stringify(prepared)).toContain('$ref')
+    expect(validateToolSchema(prepared).some(issue => issue.message.includes('unresolved'))).toBe(true)
   })
 
   test('a reference cycle terminates instead of hanging', () => {
@@ -81,7 +83,8 @@ describe('local references are inlined', () => {
       type: 'object',
       properties: { self: { $ref: '#' } },
     })
-    expect(JSON.stringify(prepared)).not.toContain('$ref')
+    expect(JSON.stringify(prepared)).toContain('$ref')
+    expect(validateToolSchema(prepared)).toEqual([])
   })
 })
 
@@ -132,18 +135,18 @@ describe('gemini dialect', () => {
     required: ['name'],
   }
 
-  test('unsupported keywords are removed at every depth', () => {
+  test('only genuinely unsupported keywords are removed at every depth', () => {
     const prepared = prepareToolSchema(source, 'gemini')
     const json = JSON.stringify(prepared)
-    expect(json).not.toContain('additionalProperties')
+    expect(json).toContain('additionalProperties')
     expect(json).not.toContain('$schema')
     expect(json).not.toContain('default')
-    expect(json).not.toContain('oneOf')
+    expect(json).toContain('oneOf')
   })
 
-  test('anyOf with null folds into nullable', () => {
+  test('anyOf with null remains standard JSON Schema', () => {
     const props = prepareToolSchema(source, 'gemini').properties as Record<string, any>
-    expect(props.maybe).toEqual({ type: 'string', nullable: true })
+    expect(props.maybe).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] })
   })
 
   test('supported structure is untouched', () => {
@@ -160,6 +163,17 @@ describe('gemini dialect', () => {
     const prepared = prepareToolSchema(source, 'json-schema')
     expect(prepared.additionalProperties).toBe(false)
     expect((prepared.properties as any).name.default).toBe('x')
+  })
+
+  test('Gemini preserves modern refs and definitions', () => {
+    const prepared = prepareToolSchema({
+      type: 'object',
+      $defs: { Choice: { oneOf: [{ type: 'string' }, { type: 'null' }] } },
+      properties: { choice: { $ref: '#/$defs/Choice' } },
+    }, 'gemini')
+    expect((prepared.properties as any).choice.$ref).toBe('#/$defs/Choice')
+    expect(prepared.$defs).toBeDefined()
+    expect(validateToolSchema(prepared, 'gemini')).toEqual([])
   })
 })
 
@@ -198,6 +212,11 @@ describe('pre-send validation catches malformed output', () => {
     expect(validateToolSchema('nope')[0]!.message).toContain('must be an object')
   })
 
+  test('a non-object top-level parameter schema is rejected', () => {
+    const issues = validateToolSchema({ type: 'string' })
+    expect(issues.some(issue => issue.message.includes('top-level type'))).toBe(true)
+  })
+
   test('a clean schema reports nothing', () => {
     expect(
       validateToolSchema({
@@ -217,6 +236,36 @@ describe('failing clearly instead of retrying blindly', () => {
         'MyTool',
       ),
     ).toThrow(/MyTool[\s\S]*missing "items"[\s\S]*ghost|MyTool[\s\S]*ghost[\s\S]*missing "items"/)
+  })
+
+  test('OpenAI strict schemas require closed objects and every property required', () => {
+    expect(() =>
+      prepareAndValidateToolSchema(
+        { type: 'object', properties: { optional: { type: 'string' } } },
+        'StrictTool',
+        'json-schema',
+        { openAIStrict: true },
+      ),
+    ).toThrow(/additionalProperties[\s\S]*missing from required/)
+  })
+
+  test('OpenAI strict validation preserves valid local definitions and refs', () => {
+    const prepared = prepareAndValidateToolSchema({
+      type: 'object',
+      additionalProperties: false,
+      properties: { node: { $ref: '#/$defs/Node' } },
+      required: ['node'],
+      $defs: {
+        Node: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { value: { type: 'string' } },
+          required: ['value'],
+        },
+      },
+    }, 'RecursiveStrict', 'json-schema', { openAIStrict: true })
+    expect((prepared.properties as any).node.$ref).toBe('#/$defs/Node')
+    expect(prepared.$defs).toBeDefined()
   })
 
   test('a valid schema passes through unchanged in shape', () => {

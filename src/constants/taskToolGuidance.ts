@@ -11,7 +11,7 @@ export function getTaskToolGuidance(
   const canList = enabledTools.has(TASK_LIST_TOOL_NAME)
 
   if (canCreate && canUpdate) {
-    return `Track multi-step work with ${TASK_CREATE_TOOL_NAME} and ${TASK_UPDATE_TOOL_NAME}: create dependency-ordered tasks for the concrete outcomes before implementation; mark one unblocked task in_progress when starting it; mark it completed immediately after implementation and relevant verification succeed; leave blocked or partial work open with its blocker recorded.${canList ? ` Use ${TASK_LIST_TOOL_NAME} to select the next unblocked task.` : ''}`
+    return `For every actionable request with two or more distinct implementation or verification outcomes, you MUST use ${TASK_CREATE_TOOL_NAME} before making changes; do not omit the task list. Create dependency-ordered tasks, one per concrete outcome, and declare independent branches without dependencies so they can run in parallel. A new user request starts a fresh list unless the user explicitly asks to add to the current list. Skip task creation only for a direct answer or genuinely single-step action. Use ${TASK_UPDATE_TOOL_NAME} to mark each unblocked task in_progress when work starts and completed immediately after implementation and relevant verification succeed; use failed for attempted work that did not finish, skipped only for explicitly inapplicable work, and leave dependency-blocked work open with its blocker recorded.${canList ? ` Use ${TASK_LIST_TOOL_NAME} to select the next unblocked task; when all work succeeds, show the final list with every task completed before finishing.` : ''}`
   }
 
   if (canUpdate) {
@@ -19,7 +19,7 @@ export function getTaskToolGuidance(
   }
 
   if (canCreate) {
-    return `For multi-step work, use ${TASK_CREATE_TOOL_NAME} before implementation to record concrete outcomes and their dependency order.`
+    return `For every actionable request with two or more distinct outcomes, you MUST use ${TASK_CREATE_TOOL_NAME} before implementation to record concrete outcomes and their dependency order. A new user request starts a fresh list unless the user explicitly asks to append to the current one; skip the list only for a direct answer or genuinely single-step action.`
   }
 
   if (enabledTools.has(TODO_WRITE_TOOL_NAME)) {

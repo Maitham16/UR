@@ -9,11 +9,9 @@ import {
   isTodoV2Enabled,
   listTasks,
   onTasksUpdated,
-  resetTaskList,
 } from '../utils/tasks.js'
 import { isTeamLead } from '../utils/teammate.js'
 
-const HIDE_DELAY_MS = 5000
 const DEBOUNCE_MS = 50
 const FALLBACK_POLL_MS = 5000 // Fallback in case fs.watch misses events
 
@@ -29,16 +27,10 @@ const FALLBACK_POLL_MS = 5000 // Fallback in case fs.watch misses events
 class TasksV2Store {
   /** Stable array reference; replaced only on fetch. undefined until started. */
   #tasks: Task[] | undefined = undefined
-  /**
-   * Set when the hide timer has elapsed (all tasks completed for >5s), or
-   * when the task list is empty. Starts false so the first fetch runs the
-   * "all completed → schedule 5s hide" path (matches original behavior:
-   * resuming a session with completed tasks shows them briefly).
-   */
+  /** Empty active generations are hidden; completed generations remain visible. */
   #hidden = false
   #watcher: FSWatcher | null = null
   #watchedDir: string | null = null
-  #hideTimer: ReturnType<typeof setTimeout> | null = null
   #debounceTimer: ReturnType<typeof setTimeout> | null = null
   #pollTimer: ReturnType<typeof setTimeout> | null = null
   #unsubscribeTasksUpdated: (() => void) | null = null
@@ -120,20 +112,14 @@ class TasksV2Store {
     )
     this.#tasks = current
 
-    const hasIncomplete = current.some(t => t.status !== 'completed')
+    const hasIncomplete = current.some(
+      t => t.status === 'pending' || t.status === 'in_progress',
+    )
 
-    if (hasIncomplete || current.length === 0) {
-      // Has unresolved tasks (open/in_progress) or empty — reset hide state
-      this.#hidden = current.length === 0
-      this.#clearHideTimer()
-    } else if (this.#hideTimer === null && !this.#hidden) {
-      // All tasks just became completed — schedule clear
-      this.#hideTimer = setTimeout(
-        this.#onHideTimerFired.bind(this, taskListId),
-        HIDE_DELAY_MS,
-      )
-      this.#hideTimer.unref()
-    }
+    // Keep a fully completed list visible until the next real user prompt
+    // archives it. Hiding and deleting after five seconds made the final task
+    // state disappear before users could verify it and destroyed history.
+    this.#hidden = current.length === 0
 
     this.#notify()
 
@@ -151,33 +137,6 @@ class TasksV2Store {
     }
   }
 
-  #onHideTimerFired(scheduledForTaskListId: string): void {
-    this.#hideTimer = null
-    // Bail if the task list ID changed since scheduling (team created/deleted
-    // during the 5s window) — don't reset the wrong list.
-    const currentId = getTaskListId()
-    if (currentId !== scheduledForTaskListId) return
-    // Verify all tasks are still completed before clearing
-    void listTasks(currentId).then(async tasksToCheck => {
-      const allStillCompleted =
-        tasksToCheck.length > 0 &&
-        tasksToCheck.every(t => t.status === 'completed')
-      if (allStillCompleted) {
-        await resetTaskList(currentId)
-        this.#tasks = []
-        this.#hidden = true
-      }
-      this.#notify()
-    })
-  }
-
-  #clearHideTimer(): void {
-    if (this.#hideTimer) {
-      clearTimeout(this.#hideTimer)
-      this.#hideTimer = null
-    }
-  }
-
   /**
    * Tear down the watcher, timers, and in-process subscription. Called when
    * the last subscriber unsubscribes. Preserves #tasks/#hidden cache so a
@@ -189,7 +148,6 @@ class TasksV2Store {
     this.#watchedDir = null
     this.#unsubscribeTasksUpdated?.()
     this.#unsubscribeTasksUpdated = null
-    this.#clearHideTimer()
     if (this.#debounceTimer) clearTimeout(this.#debounceTimer)
     if (this.#pollTimer) clearTimeout(this.#pollTimer)
     this.#debounceTimer = null
@@ -213,7 +171,7 @@ const NOOP_SNAPSHOT = (): undefined => undefined
  * Hook to get the current task list for the persistent UI display.
  * Returns tasks when TodoV2 is enabled, otherwise returns undefined.
  * All hook instances share a single file watcher via TasksV2Store.
- * Hides the list after 5 seconds if there are no open tasks.
+ * Completed tasks remain visible until a later prompt archives the generation.
  */
 export function useTasksV2(): Task[] | undefined {
   const teamContext = useAppState(s => s.teamContext)

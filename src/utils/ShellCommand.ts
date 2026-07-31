@@ -1,5 +1,6 @@
 import type { ChildProcess } from 'child_process'
-import { stat } from 'fs/promises'
+import { stat, unlink } from 'fs/promises'
+import { constants as osConstants } from 'os'
 import type { Readable } from 'stream'
 import treeKill from 'tree-kill'
 import { generateTaskId } from '../Task.js'
@@ -27,6 +28,15 @@ export type ExecResult = {
   outputTaskId?: string
   /** Error message when the command failed before spawning (e.g., deleted cwd). */
   preSpawnError?: string
+  /** Signal that terminated the command, when it did not exit normally. */
+  signal?: NodeJS.Signals
+  /** True only when the configured command deadline initiated termination. */
+  timedOut?: boolean
+  /** Exact wall-clock duration from spawn wrapper creation to terminal result. */
+  durationMs?: number
+  /** Full stderr path when stderr was too large to return inline. */
+  stderrFilePath?: string
+  stderrFileSize?: number
 }
 
 export type ShellCommand = {
@@ -106,9 +116,8 @@ class StreamWrapper {
 /**
  * Implementation of ShellCommand that wraps a child process.
  *
- * For bash commands: both stdout and stderr go to a file fd via
- * stdio[1] and stdio[2] — no JS involvement. Progress is extracted
- * by polling the file tail.
+ * For bash commands: stdout and stderr go to separate file fds — no JS
+ * involvement. Progress is extracted by polling the stdout file tail.
  * For hooks: pipe mode with StreamWrappers for real-time detection.
  */
 class ShellCommandImpl implements ShellCommand {
@@ -120,6 +129,11 @@ class ShellCommandImpl implements ShellCommand {
   #timeoutId: NodeJS.Timeout | null = null
   #sizeWatchdog: NodeJS.Timeout | null = null
   #killedForSize = false
+  #timedOut = false
+  #cancelled = false
+  #terminalSignal: NodeJS.Signals | undefined
+  #startedAt = Date.now()
+  #killEscalation: NodeJS.Timeout | null = null
   #maxOutputBytes: number
   #abortSignal: AbortSignal
   #onTimeoutCallback:
@@ -136,7 +150,8 @@ class ShellCommandImpl implements ShellCommand {
     if (self.#shouldAutoBackground && self.#onTimeoutCallback) {
       self.#onTimeoutCallback(self.background.bind(self))
     } else {
-      self.#doKill(SIGTERM)
+      self.#timedOut = true
+      self.#doKill('SIGTERM')
     }
   }
 
@@ -160,8 +175,8 @@ class ShellCommandImpl implements ShellCommand {
     this.#maxOutputBytes = maxOutputBytes
     this.taskOutput = taskOutput
 
-    // In file mode (bash commands), both stdout and stderr go to the
-    // output file fd — childProcess.stdout/.stderr are both null.
+    // In file mode (bash commands), stdout and stderr go to separate file
+    // descriptors — childProcess.stdout/.stderr are both null.
     // In pipe mode (hooks), wrap streams to funnel data into TaskOutput.
     this.#stderrWrapper = childProcess.stderr
       ? new StreamWrapper(childProcess.stderr, taskOutput, true)
@@ -193,12 +208,9 @@ class ShellCommandImpl implements ShellCommand {
   }
 
   #exitHandler(code: number | null, signal: NodeJS.Signals | null): void {
-    const exitCode =
-      code !== null && code !== undefined
-        ? code
-        : signal === 'SIGTERM'
-          ? 144
-          : 1
+    this.#terminalSignal = signal ?? undefined
+    const signalNumber = signal ? osConstants.signals[signal] : undefined
+    const exitCode = code ?? (typeof signalNumber === 'number' ? 128 + signalNumber : 1)
     this.#resolveExitCode(exitCode)
   }
 
@@ -227,6 +239,10 @@ class ShellCommandImpl implements ShellCommand {
       this.#abortSignal.removeEventListener('abort', boundAbortHandler)
       this.#boundAbortHandler = null
     }
+    if (this.#killEscalation) {
+      clearTimeout(this.#killEscalation)
+      this.#killEscalation = null
+    }
   }
 
   #clearSizeWatchdog(): void {
@@ -238,18 +254,22 @@ class ShellCommandImpl implements ShellCommand {
 
   #startSizeWatchdog(): void {
     this.#sizeWatchdog = setInterval(() => {
-      void stat(this.taskOutput.path).then(
-        s => {
+      void Promise.all([
+        stat(this.taskOutput.path).catch(() => null),
+        stat(this.taskOutput.stderrPath).catch(() => null),
+      ]).then(
+        ([stdoutStat, stderrStat]) => {
           // Bail if the watchdog was cleared while this stat was in flight
           // (process exited on its own) — otherwise we'd mislabel stderr.
           if (
-            s.size > this.#maxOutputBytes &&
+            (stdoutStat?.size ?? 0) + (stderrStat?.size ?? 0) >
+              this.#maxOutputBytes &&
             this.#status === 'backgrounded' &&
             this.#sizeWatchdog !== null
           ) {
             this.#killedForSize = true
             this.#clearSizeWatchdog()
-            this.#doKill(SIGKILL)
+            this.#doKill('SIGKILL')
           }
         },
         () => {
@@ -295,12 +315,23 @@ class ShellCommandImpl implements ShellCommand {
     }
 
     const stdout = await this.taskOutput.getStdout()
+    const fileStderr = await this.taskOutput.getFileStderr()
     const result: ExecResult = {
       code,
       stdout,
-      stderr: this.taskOutput.getStderr(),
-      interrupted: code === SIGKILL,
+      stderr: fileStderr.content,
+      interrupted: this.#cancelled || this.#killedForSize,
       backgroundTaskId: this.#backgroundTaskId,
+      signal: this.#terminalSignal,
+      timedOut: this.#timedOut,
+      durationMs: Date.now() - this.#startedAt,
+    }
+
+    if (!fileStderr.complete) {
+      result.stderrFilePath = this.taskOutput.stderrPath
+      result.stderrFileSize = fileStderr.bytesTotal
+    } else if (this.taskOutput.stdoutToFile) {
+      void unlink(this.taskOutput.stderrPath).catch(() => {})
     }
 
     if (this.taskOutput.stdoutToFile && !this.#backgroundTaskId) {
@@ -320,7 +351,7 @@ class ShellCommandImpl implements ShellCommand {
         `Background command killed: output file exceeded ${MAX_TASK_OUTPUT_BYTES_DISPLAY}`,
         result.stderr,
       )
-    } else if (code === SIGTERM) {
+    } else if (this.#timedOut) {
       result.stderr = prependStderr(
         `Command timed out after ${formatDuration(this.#timeout)}`,
         result.stderr,
@@ -334,16 +365,27 @@ class ShellCommandImpl implements ShellCommand {
     }
   }
 
-  #doKill(code?: number): void {
+  #doKill(signal: NodeJS.Signals = 'SIGKILL'): void {
     this.#status = 'killed'
     if (this.#childProcess.pid) {
-      treeKill(this.#childProcess.pid, 'SIGKILL')
+      treeKill(this.#childProcess.pid, signal)
+      if (signal === 'SIGTERM') {
+        this.#killEscalation = setTimeout(() => {
+          this.#killEscalation = null
+          if (this.#resultResolver && this.#childProcess.pid) {
+            treeKill(this.#childProcess.pid, 'SIGKILL')
+          }
+        }, 1_000)
+        this.#killEscalation.unref()
+      }
+      return
     }
-    this.#resolveExitCode(code ?? SIGKILL)
+    this.#resolveExitCode(signal === 'SIGTERM' ? SIGTERM : SIGKILL)
   }
 
   kill(): void {
-    this.#doKill()
+    this.#cancelled = true
+    this.#doKill('SIGKILL')
   }
 
   background(taskId: string): boolean {
@@ -421,6 +463,7 @@ class AbortedShellCommand implements ShellCommand {
       stdout: '',
       stderr: opts?.stderr ?? 'Command aborted before execution',
       interrupted: true,
+      durationMs: 0,
       backgroundTaskId: opts?.backgroundTaskId,
     })
   }
@@ -453,6 +496,7 @@ export function createFailedCommand(preSpawnError: string): ShellCommand {
       stdout: '',
       stderr: preSpawnError,
       interrupted: false,
+      durationMs: 0,
       preSpawnError,
     }),
     taskOutput,

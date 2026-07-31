@@ -36,7 +36,13 @@ import {
   getGeminiThoughtSignature,
   getStoredGeminiThoughtSignature,
 } from './geminiWire.js'
-import { prepareToolSchema } from './toolSchema.js'
+import {
+  assertUniqueToolNames,
+  assertValidToolName,
+  prepareAndValidateToolSchema,
+  ToolSchemaValidationError,
+} from './toolSchema.js'
+import { normalizeGeminiUsage } from './usageNormalization.js'
 
 const ANTHROPIC_VERSION = '2023-06-01'
 
@@ -336,12 +342,7 @@ function parseAPIResponse(family: string, data: any, fallbackModel: string): any
           hasToolUse(content),
         ),
         stop_sequence: null,
-        usage: {
-          input_tokens: data.usageMetadata?.promptTokenCount ?? 0,
-          output_tokens: data.usageMetadata?.candidatesTokenCount ?? 0,
-          cache_creation_input_tokens: 0,
-          cache_read_input_tokens: 0,
-        },
+        usage: normalizeGeminiUsage(data.usageMetadata),
       }
     }
     default:
@@ -472,26 +473,51 @@ function toAnthropicToolResultBlock(block: any, context: string): any {
 }
 
 function toAnthropicTools(tools: any): any[] {
-  if (!Array.isArray(tools)) return []
-  return tools
-    .filter(tool => typeof tool?.name === 'string' && 'input_schema' in tool)
-    .map(tool => ({
+  if (tools === undefined || tools === null) return []
+  if (!Array.isArray(tools)) {
+    throw new ToolSchemaValidationError('Anthropic tools must be an array.')
+  }
+  const mapped = tools.map(tool => {
+    if (!tool || typeof tool !== 'object' || !('input_schema' in tool)) {
+      throw new ToolSchemaValidationError(
+        'Anthropic tool entry is missing required name/input_schema fields.',
+      )
+    }
+    assertValidToolName(tool.name, 'Anthropic')
+    return {
       name: tool.name,
       ...(tool.description !== undefined && { description: tool.description }),
-      input_schema: sanitizeJsonSchema(tool.input_schema),
-    }))
+      input_schema: prepareAndValidateToolSchema(tool.input_schema, tool.name),
+      ...(tool.strict === true && { strict: true }),
+    }
+  })
+  assertUniqueToolNames(mapped.map(tool => tool.name), 'Anthropic')
+  return mapped
 }
 
 function toGeminiTools(tools: any): any[] {
-  // Gemini's Schema type is OpenAPI 3.0.3 derived: it has no $schema, no $ref,
-  // no additionalProperties, and no null type. Forwarding the Anthropic schema
-  // unchanged sent all four. The gemini dialect strips them and folds
-  // `anyOf: [T, null]` into `nullable: true`.
-  const declarations = toAnthropicTools(tools).map(tool => ({
-    name: tool.name,
-    ...(tool.description !== undefined && { description: tool.description }),
-    parameters: prepareToolSchema(tool.input_schema, 'gemini'),
-  }))
+  if (tools === undefined || tools === null) return []
+  if (!Array.isArray(tools)) {
+    throw new ToolSchemaValidationError('Gemini tools must be an array.')
+  }
+  const declarations = tools.map(tool => {
+    if (!tool || typeof tool !== 'object' || !('input_schema' in tool)) {
+      throw new ToolSchemaValidationError(
+        'Gemini tool entry is missing required name/input_schema fields.',
+      )
+    }
+    assertValidToolName(tool.name, 'Gemini')
+    return {
+      name: tool.name,
+      ...(tool.description !== undefined && { description: tool.description }),
+      parametersJsonSchema: prepareAndValidateToolSchema(
+        tool.input_schema,
+        tool.name,
+        'gemini',
+      ),
+    }
+  })
+  assertUniqueToolNames(declarations.map(tool => tool.name), 'Gemini')
   return declarations.length > 0 ? [{ functionDeclarations: declarations }] : []
 }
 
@@ -766,10 +792,6 @@ function collectToolNamesById(messages: any): Map<string, string> {
 // Delegates to the shared preparation pass: strips meta and vendor keys at
 // every depth (not just the root) and inlines local $ref targets that most
 // providers cannot resolve. See services/api/toolSchema.ts.
-function sanitizeJsonSchema(schema: unknown): Record<string, unknown> {
-  return prepareToolSchema(schema, 'json-schema')
-}
-
 function estimateTokenCount(params: any): number {
   return estimateProviderInputTokens(params)
 }

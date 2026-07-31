@@ -15,5 +15,9 @@ export interface NonNullableUsage {
     ephemeral_1h_input_tokens: number
     ephemeral_5m_input_tokens: number
   }
+  /** Provider-reported reasoning tokens; already included in output_tokens. */
+  reasoning_tokens?: number
+  /** Provider's own total for this response, retained for reconciliation. */
+  provider_total_tokens?: number
   [key: string]: any
 }

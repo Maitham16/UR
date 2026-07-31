@@ -81,7 +81,7 @@ function normalizeQuestionInput(value: unknown, index: number): unknown {
     } : {})
   };
 }
-function normalizeAskUserQuestionInput(value: unknown): unknown {
+export function normalizeAskUserQuestionInput(value: unknown): unknown {
   const input = objectValue(value);
   if (!input) return value;
   const commonFields = {
@@ -255,7 +255,10 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
     return true;
   },
   isConcurrencySafe() {
-    return true;
+    // Each call owns an interactive focus surface. Serializing prevents two
+    // otherwise-independent model calls from rendering duplicate/overlapping
+    // question dialogs and racing their answers.
+    return false;
   },
   isReadOnly() {
     return true;

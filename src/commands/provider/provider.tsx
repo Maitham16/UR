@@ -164,6 +164,7 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
       setSafeProviderConfig,
       validateProviderModelCompatibility,
       getActiveProviderSettings,
+      ensureProviderModelsFresh,
     } = await import('../../services/providers/providerRegistry.js')
     const { getInitialSettings } = await import('../../utils/settings/settings.js')
 
@@ -177,9 +178,13 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
 
     // Validate provider change with current model
     const settings = getInitialSettings()
+    const discovered = await ensureProviderModelsFresh(resolvedProvider, { settings, force: true })
     const currentModel = getActiveProviderSettings(settings).model
     if (currentModel) {
-      const validation = validateProviderModelCompatibility(resolvedProvider, currentModel)
+      const validation = validateProviderModelCompatibility(resolvedProvider, currentModel, {
+        availableModels: discovered.models,
+        settings,
+      })
       if (validation.valid === false) {
         const validModelsStr = validation.validModels.join(', ') || '(uses dynamic discovery)'
         const suggestedModel = validation.suggestedModel ?? 'see available models'
@@ -195,7 +200,10 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
     const result = setSafeProviderConfig('provider', args)
     if (result.ok) {
       const saved = getActiveProviderSettings(getInitialSettings())
-      return <ApplyProviderAndClose provider={saved} message={result.message} onDone={onDone} />
+      const message = discovered.warning
+        ? `${result.message}\nModel refresh: ${discovered.warning}`
+        : result.message
+      return <ApplyProviderAndClose provider={saved} message={message} onDone={onDone} />
     } else {
       onDone(result.message, { display: 'system' })
     }

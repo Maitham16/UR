@@ -12,7 +12,7 @@ export function emitTaskProgress(params: {
   toolUseId: string | undefined
   description: string
   startTime: number
-  totalTokens: number
+  totalTokens?: number
   toolUses: number
   lastToolName?: string
   summary?: string
@@ -25,7 +25,9 @@ export function emitTaskProgress(params: {
     tool_use_id: params.toolUseId,
     description: params.description,
     usage: {
-      total_tokens: params.totalTokens,
+      ...(params.totalTokens !== undefined && {
+        total_tokens: params.totalTokens,
+      }),
       tool_uses: params.toolUses,
       duration_ms: Date.now() - params.startTime,
     },

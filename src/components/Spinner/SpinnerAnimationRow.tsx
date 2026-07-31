@@ -58,7 +58,7 @@ export type SpinnerAnimationRowProps = {
 
   // Teammate-derived (computed by parent from tasks)
   hasRunningTeammates: boolean;
-  teammateTokens: number;
+  teammateTokens?: number;
   foregroundedTeammate: InProcessTeammateTaskState | undefined;
   /** Leader's turn has completed. Suppresses stall-red since responseLengthRef/hasActiveTools track leader state only. */
   leaderIsIdle?: boolean;
@@ -138,34 +138,14 @@ export function SpinnerAnimationRow({
   const glimmerIndex = reducedMotion ? -100 : isStalled ? -100 : mode === 'requesting' ? cyclePosition % cycleLength - 10 : glimmerMessageWidth + 10 - cyclePosition % cycleLength;
   const flashOpacity = reducedMotion ? 0 : mode === 'tool-use' ? (Math.sin(time / 1000 * Math.PI) + 1) / 2 : 0;
 
-  // === Token counter animation (smooth increment, driven by 50ms clock) ===
-  const tokenCounterRef = useRef(currentResponseLength);
-  if (reducedMotion) {
-    tokenCounterRef.current = currentResponseLength;
-  } else {
-    const gap = currentResponseLength - tokenCounterRef.current;
-    if (gap > 0) {
-      let increment;
-      if (gap < 70) {
-        increment = 3;
-      } else if (gap < 200) {
-        increment = Math.max(8, Math.ceil(gap * 0.15));
-      } else {
-        increment = 50;
-      }
-      tokenCounterRef.current = Math.min(tokenCounterRef.current + increment, currentResponseLength);
-    }
-  }
-  const displayedResponseLength = tokenCounterRef.current;
-  const leaderTokens = Math.round(displayedResponseLength / 4);
   const effectiveElapsedMs = hasRunningTeammates ? Math.max(elapsedTimeMs, now - turnStartRef.current) : elapsedTimeMs;
   const timerText = formatDuration(effectiveElapsedMs);
   const timerWidth = stringWidth(timerText);
 
   // === Token count (leader + teammates, or foregrounded teammate) ===
-  const totalTokens = foregroundedTeammate && !foregroundedTeammate.isIdle ? foregroundedTeammate.progress?.tokenCount ?? 0 : leaderTokens + teammateTokens;
-  const tokenCount = formatNumber(totalTokens);
-  const tokensText = hasRunningTeammates ? `${tokenCount} tokens` : `${figures.arrowDown} ${tokenCount} tokens`;
+  const totalTokens = foregroundedTeammate && !foregroundedTeammate.isIdle ? foregroundedTeammate.progress?.tokenCount : teammateTokens;
+  const tokenCount = totalTokens !== undefined ? formatNumber(totalTokens) : null;
+  const tokensText = tokenCount === null ? '' : hasRunningTeammates ? `${tokenCount} tokens` : `${figures.arrowDown} ${tokenCount} tokens`;
   const tokensWidth = stringWidth(tokensText);
 
   // === Thinking text (may shrink to fit) ===
@@ -189,7 +169,7 @@ export function SpinnerAnimationRow({
   const usedAfterThinking = showThinking ? thinkingWidthValue + sep : 0;
   const showTimer = wantsTimerAndTokens && availableSpace > usedAfterThinking + timerWidth;
   const usedAfterTimer = usedAfterThinking + (showTimer ? timerWidth + sep : 0);
-  const showTokens = wantsTimerAndTokens && totalTokens > 0 && availableSpace > usedAfterTimer + tokensWidth;
+  const showTokens = wantsTimerAndTokens && totalTokens !== undefined && totalTokens > 0 && availableSpace > usedAfterTimer + tokensWidth;
   const thinkingOnly = showThinking && thinkingStatus === 'thinking' && !spinnerSuffix && !showTimer && !showTokens && true;
 
   // === Thinking shimmer color (formerly ThinkingShimmerText's own timer) ===

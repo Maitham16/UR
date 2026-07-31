@@ -102,11 +102,13 @@ export const TaskListTool = buildTool({
 
     const lines = tasks.map(task => {
       const owner = task.owner ? ` (${task.owner})` : ''
+      const displayStatus =
+        task.blockedBy.length > 0 ? 'blocked' : task.status
       const blocked =
         task.blockedBy.length > 0
           ? ` [blocked by ${task.blockedBy.map(id => `#${id}`).join(', ')}]`
           : ''
-      return `#${task.id} [${task.status}] ${task.subject}${owner}${blocked}`
+      return `#${task.id} [${displayStatus}] ${task.subject}${owner}${blocked}`
     })
 
     return {

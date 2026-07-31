@@ -127,8 +127,8 @@ export function TeammateSpinnerLine({
 
   // Get stats from progress
   const toolUseCount = teammate.progress?.toolUseCount ?? 0;
-  const tokenCount = teammate.progress?.tokenCount ?? 0;
-  const statsText = ` · ${toolUseCount} tool ${toolUseCount === 1 ? 'use' : 'uses'} · ${formatNumber(tokenCount)} tokens`;
+  const tokenCount = teammate.progress?.tokenCount;
+  const statsText = ` · ${toolUseCount} tool ${toolUseCount === 1 ? 'use' : 'uses'}${tokenCount !== undefined ? ` · ${formatNumber(tokenCount)} tokens` : ''}`;
   const statsWidth = stringWidth(statsText);
   const selectHintText = ` · ${TEAMMATE_SELECT_HINT}`;
   const selectHintWidth = stringWidth(selectHintText);
@@ -216,8 +216,8 @@ export function TeammateSpinnerLine({
         {/* Stats: only shown when selected and terminal is wide enough */}
         {showStats && <Text dimColor>
             {' '}
-            · {toolUseCount} tool {toolUseCount === 1 ? 'use' : 'uses'} ·{' '}
-            {formatNumber(tokenCount)} tokens
+            · {toolUseCount} tool {toolUseCount === 1 ? 'use' : 'uses'}
+            {tokenCount !== undefined && <> · {formatNumber(tokenCount)} tokens</>}
           </Text>}
         {/* Hints: select hint when highlighted, view hint when selected but not foregrounded */}
         {showSelectHint && <Text dimColor> · {TEAMMATE_SELECT_HINT}</Text>}

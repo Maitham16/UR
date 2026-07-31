@@ -26,6 +26,7 @@ import {
   type OpenAIResponseStateMode,
   type OpenAIResponseStateStatus,
 } from './openaiResponsesState.js'
+import { normalizeOpenAIResponsesUsage } from './usageNormalization.js'
 
 export type OpenAIResponsesToolSearchMode = 'off' | 'hosted'
 
@@ -510,12 +511,7 @@ export function parseOpenAIResponsesMessage(data: unknown, fallbackModel: string
         ? 'max_tokens'
         : 'end_turn',
     stop_sequence: null,
-    usage: {
-      input_tokens: response.usage?.input_tokens ?? 0,
-      output_tokens: response.usage?.output_tokens ?? 0,
-      cache_creation_input_tokens: response.usage?.input_tokens_details?.cache_write_tokens ?? 0,
-      cache_read_input_tokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
-    },
+    usage: normalizeOpenAIResponsesUsage(response.usage),
     openai_response_status: response.status,
     openai_response_output: structuredClone(response.output ?? []),
   }

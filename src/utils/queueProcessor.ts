@@ -1,10 +1,5 @@
 import type { QueuedCommand } from '../types/textInputTypes.js'
-import {
-  dequeue,
-  dequeueAllMatching,
-  hasCommandsInQueue,
-  peek,
-} from './messageQueueManager.js'
+import { dequeue, hasCommandsInQueue, peek } from './messageQueueManager.js'
 
 type ProcessQueueParams = {
   executeInput: (commands: QueuedCommand[]) => Promise<void>
@@ -12,6 +7,7 @@ type ProcessQueueParams = {
 
 type ProcessQueueResult = {
   processed: boolean
+  completion?: Promise<void>
 }
 
 /**
@@ -65,25 +61,12 @@ export function processQueueIfReady({
     return { processed: false }
   }
 
-  // Slash commands and bash-mode commands are processed individually.
-  // Bash commands need per-command error isolation, exit codes, and progress UI.
-  if (isSlashCommand(next) || next.mode === 'bash') {
-    const cmd = dequeue(isMainThread)!
-    void executeInput([cmd])
-    return { processed: true }
-  }
-
-  // Drain all non-slash-command items with the same mode at once.
-  const targetMode = next.mode
-  const commands = dequeueAllMatching(
-    cmd => isMainThread(cmd) && !isSlashCommand(cmd) && cmd.mode === targetMode,
-  )
-  if (commands.length === 0) {
-    return { processed: false }
-  }
-
-  void executeInput(commands)
-  return { processed: true }
+  // Every queue item is one execution turn. Draining multiple same-mode user
+  // prompts used to erase task-list boundaries and made one rejection consume
+  // several accepted prompts at once.
+  const cmd = dequeue(isMainThread)
+  if (!cmd) return { processed: false }
+  return { processed: true, completion: executeInput([cmd]) }
 }
 
 /**

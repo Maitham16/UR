@@ -51,6 +51,8 @@ describe('OpenRouter pricing tiers', () => {
   test('any non-zero dimension is paid', () => {
     expect(pricingTierFromOpenRouter({ prompt: '0', completion: '0.0000016' })).toBe('paid')
     expect(pricingTierFromOpenRouter({ prompt: '0.0000004', completion: '0' })).toBe('paid')
+    expect(pricingTierFromOpenRouter({ prompt: '0', completion: '0', request: '0.01' })).toBe('paid')
+    expect(pricingTierFromOpenRouter({ prompt: '0', completion: '0', image: '0.001' })).toBe('paid')
   })
 
   test('absent or unparseable pricing is unknown, never assumed free', () => {
@@ -98,6 +100,21 @@ describe('model entry construction', () => {
     const model = toDiscoveredModel(OPENROUTER_BODY.data[3], 'OpenRouter')
     expect(model?.deprecated).toBe(true)
     expect(model?.description).toContain('deprecated')
+  })
+
+  test('expired OpenRouter entries and tool capability metadata are preserved', () => {
+    const model = toDiscoveredModel({
+      id: 'expired/tool-model',
+      pricing: { prompt: '0', completion: '0', request: '0' },
+      supported_parameters: ['tools', 'temperature'],
+      expiration_date: 1,
+    }, 'OpenRouter')
+    expect(model).toMatchObject({
+      pricing: 'free',
+      deprecated: true,
+      expirationDate: 1,
+      supportedParameters: ['tools', 'temperature'],
+    })
   })
 
   test('unusable entries are dropped rather than rendered blank', () => {
@@ -216,5 +233,20 @@ describe('duplicate request suppression', () => {
     const factory = async () => ++calls
     expect(await coalescer.run('k', factory)).toBe(1)
     expect(await coalescer.run('k', factory)).toBe(2)
+  })
+
+  test('one cancelled subscriber does not abort another subscriber', async () => {
+    const coalescer = new RequestCoalescer<number>()
+    let complete!: (value: number) => void
+    const shared = new Promise<number>(resolve => { complete = resolve })
+    const firstController = new AbortController()
+    const secondController = new AbortController()
+    const first = coalescer.run('k', async () => shared, firstController.signal)
+    const second = coalescer.run('k', async () => shared, secondController.signal)
+
+    firstController.abort(new Error('first cancelled'))
+    await expect(first).rejects.toThrow('first cancelled')
+    complete(7)
+    await expect(second).resolves.toBe(7)
   })
 })

@@ -55,7 +55,10 @@ import {
 } from '../../utils/permissions/yoloClassifier.js'
 import { emitTaskProgress as emitTaskProgressEvent } from '../../utils/task/sdkProgress.js'
 import { isInProcessTeammate } from '../../utils/teammateContext.js'
-import { getTokenCountFromUsage } from '../../utils/tokens.js'
+import {
+  aggregateReportedUsage,
+  getTokenCountFromUsage,
+} from '../../utils/tokens.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../ExitPlanModeTool/constants.js'
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from './constants.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
@@ -234,7 +237,7 @@ export const agentToolResultSchema = lazySchema(() =>
     content: z.array(z.object({ type: z.literal('text'), text: z.string() })),
     totalToolUseCount: z.number(),
     totalDurationMs: z.number(),
-    totalTokens: z.number(),
+    totalTokens: z.number().optional(),
     usage: z.object({
       input_tokens: z.number(),
       output_tokens: z.number(),
@@ -246,14 +249,16 @@ export const agentToolResultSchema = lazySchema(() =>
           web_fetch_requests: z.number(),
         })
         .nullable(),
-      service_tier: z.enum(['standard', 'priority', 'batch']).nullable(),
+      service_tier: z.string().nullable().optional(),
       cache_creation: z
         .object({
           ephemeral_1h_input_tokens: z.number(),
           ephemeral_5m_input_tokens: z.number(),
         })
         .nullable(),
-    }),
+      reasoning_tokens: z.number().optional(),
+      provider_total_tokens: z.number().optional(),
+    }).optional(),
   }),
 )
 
@@ -316,7 +321,8 @@ export function finalizeAgentTool(
     }
   }
 
-  const totalTokens = getTokenCountFromUsage(lastAssistantMessage.message.usage)
+  const usage = aggregateReportedUsage(agentMessages)
+  const totalTokens = usage ? getTokenCountFromUsage(usage) : undefined
   const totalToolUseCount = countToolUses(agentMessages)
 
   logEvent('tengu_agent_tool_completed', {
@@ -329,7 +335,7 @@ export function finalizeAgentTool(
     assistant_message_count: agentMessages.length,
     total_tool_uses: totalToolUseCount,
     duration_ms: Date.now() - startTime,
-    total_tokens: totalTokens,
+    ...(totalTokens !== undefined && { total_tokens: totalTokens }),
     is_built_in_agent: isBuiltInAgent,
     is_async: isAsync,
   })
@@ -350,9 +356,9 @@ export function finalizeAgentTool(
     agentType,
     content,
     totalDurationMs: Date.now() - startTime,
-    totalTokens,
     totalToolUseCount,
-    usage: lastAssistantMessage.message.usage,
+    ...(totalTokens !== undefined && { totalTokens }),
+    ...(usage !== undefined && { usage }),
   }
 }
 
@@ -605,21 +611,34 @@ export async function runAsyncAgentLifecycle({
     let finalMessage = extractTextContent(agentResult.content, '\n')
 
     if (feature('TRANSCRIPT_CLASSIFIER')) {
-      const handoffWarning = await classifyHandoffIfNeeded({
-        agentMessages,
-        tools: toolUseContext.options.tools,
-        toolPermissionContext:
-          toolUseContext.getAppState().toolPermissionContext,
-        abortSignal: abortController.signal,
-        subagentType: metadata.agentType,
-        totalToolUseCount: agentResult.totalToolUseCount,
-      })
-      if (handoffWarning) {
-        finalMessage = `${handoffWarning}\n\n${finalMessage}`
+      try {
+        const handoffWarning = await classifyHandoffIfNeeded({
+          agentMessages,
+          tools: toolUseContext.options.tools,
+          toolPermissionContext:
+            toolUseContext.getAppState().toolPermissionContext,
+          abortSignal: abortController.signal,
+          subagentType: metadata.agentType,
+          totalToolUseCount: agentResult.totalToolUseCount,
+        })
+        if (handoffWarning) {
+          finalMessage = `${handoffWarning}\n\n${finalMessage}`
+        }
+      } catch (error) {
+        const warning = `Result completed, but handoff classification failed: ${errorMessage(error)}`
+        logForDebugging(warning, { level: 'warn' })
+        finalMessage = `${finalMessage}\n\n${warning}`
       }
     }
 
-    const worktreeResult = await getWorktreeResult()
+    let worktreeResult: Record<string, string | undefined> = {}
+    try {
+      worktreeResult = await getWorktreeResult()
+    } catch (error) {
+      const warning = `Result completed, but worktree post-processing failed: ${errorMessage(error)}`
+      logForDebugging(warning, { level: 'warn' })
+      finalMessage = `${finalMessage}\n\n${warning}`
+    }
 
     enqueueAgentNotification({
       taskId,

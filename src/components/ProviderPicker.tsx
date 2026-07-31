@@ -10,6 +10,7 @@ import {
   getProviderAccessTypeLabel,
   getActiveProviderSettings,
   getProviderRuntimeBlockReason,
+  ensureProviderModelsFresh,
   setSafeProviderConfig,
 } from 'src/services/providers/providerRegistry.js'
 import { useSetAppState } from 'src/state/AppState.js'
@@ -61,7 +62,7 @@ export function ProviderPicker({
     setFocusedValue(value)
   }
 
-  function handleSelect(value: string) {
+  async function handleSelect(value: string) {
     logEvent('tengu_provider_command_menu', {
       action: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       from_provider: currentProvider as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -72,6 +73,10 @@ export function ProviderPicker({
     if (runtimeBlock) {
       return
     }
+
+    // Refresh before saving so provider/model compatibility uses the current
+    // endpoint catalogue rather than a hard-coded or unrelated cached list.
+    await ensureProviderModelsFresh(value, { settings: getInitialSettings(), force: true })
 
     const result = setSafeProviderConfig('provider', value)
     if (!result.ok) {

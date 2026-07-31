@@ -73,6 +73,16 @@ export function getTaskOutputPath(taskId: string): string {
   return join(getTaskOutputDir(), `${taskId}.output`)
 }
 
+/**
+ * Get the separate stderr path for a shell task.
+ *
+ * Keeping the two streams in distinct files preserves their meaning without
+ * routing high-volume command output through the JavaScript heap.
+ */
+export function getTaskStderrPath(taskId: string): string {
+  return join(getTaskOutputDir(), `${taskId}.stderr`)
+}
+
 // Tracks fire-and-forget promises (initTaskOutput, initTaskOutputAsSymlink,
 // evictTaskOutput, #drain) so tests can drain before teardown. Prevents the
 // async-ENOENT-after-teardown flake class (#24957, #25065): a voided async

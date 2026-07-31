@@ -20,10 +20,11 @@ function guardWithClock() {
 describe('lifecycle is unchanged', () => {
   test('the normal queue path still reserves, starts and ends', () => {
     const guard = new QueryGuard()
-    expect(guard.reserve()).toBe(true)
+    const reservation = guard.reserve()
+    expect(reservation).not.toBeNull()
     expect(guard.status).toBe('dispatching')
     expect(guard.isActive).toBe(true)
-    const generation = guard.tryStart()
+    const generation = guard.tryStart(reservation!)
     expect(generation).not.toBeNull()
     expect(guard.status).toBe('running')
     expect(guard.end(generation!)).toBe(true)
@@ -41,7 +42,7 @@ describe('lifecycle is unchanged', () => {
   test('reserve is refused while active', () => {
     const guard = new QueryGuard()
     guard.reserve()
-    expect(guard.reserve()).toBe(false)
+    expect(guard.reserve()).toBeNull()
   })
 
   test('a stale end from a cancelled query is ignored', () => {
@@ -94,7 +95,7 @@ describe('an abandoned reservation does not pin the UI to "working"', () => {
     guard.reserve()
     advance(DISPATCH_STUCK_MS)
     guard.releaseIfStuck()
-    expect(guard.reserve()).toBe(true)
+    expect(guard.reserve()).not.toBeNull()
   })
 
   test('a second release is a no-op', () => {
@@ -120,9 +121,9 @@ describe('a legitimately long query is never interrupted', () => {
 
   test('handing off to running resets the held-for clock', () => {
     const { guard, advance } = guardWithClock()
-    guard.reserve()
+    const reservation = guard.reserve()
     advance(DISPATCH_STUCK_MS - 1)
-    guard.tryStart()
+    guard.tryStart(reservation!)
     expect(guard.heldForMs()).toBe(0)
   })
 
@@ -137,6 +138,29 @@ describe('a legitimately long query is never interrupted', () => {
     guard.reserve()
     advance(1_500)
     expect(guard.heldForMs()).toBe(1_500)
+  })
+})
+
+describe('expired reservations cannot start late', () => {
+  test('expiration aborts its owner and invalidates the token', () => {
+    const { guard, advance } = guardWithClock()
+    let aborted = 0
+    const expired = guard.reserve(() => aborted++)!
+    advance(DISPATCH_STUCK_MS)
+    expect(guard.releaseIfStuck()).toBe(true)
+    expect(aborted).toBe(1)
+    expect(guard.tryStart(expired)).toBeNull()
+  })
+
+  test('a stale token cannot take over the next reservation', () => {
+    const { guard, advance } = guardWithClock()
+    const stale = guard.reserve()!
+    advance(DISPATCH_STUCK_MS)
+    guard.releaseIfStuck()
+    const current = guard.reserve()!
+    expect(guard.tryStart(stale)).toBeNull()
+    expect(guard.status).toBe('dispatching')
+    expect(guard.tryStart(current)).not.toBeNull()
   })
 })
 

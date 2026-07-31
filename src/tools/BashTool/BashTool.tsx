@@ -242,7 +242,7 @@ const isBackgroundTasksDisabled =
 isEnvTruthy(process.env.UR_CODE_DISABLE_BACKGROUND_TASKS);
 const fullInputSchema = lazySchema(() => z.strictObject({
   command: z.string().describe('The command to execute'),
-  timeout: semanticNumber(z.number().optional()).describe(`Optional timeout in milliseconds (max ${getMaxTimeoutMs()})`),
+  timeout: semanticNumber(z.number().int().positive().max(getMaxTimeoutMs()).optional()).describe(`Optional timeout in milliseconds (max ${getMaxTimeoutMs()})`),
   description: z.string().optional().describe(`Clear, concise description of what this command does in active voice. Never use words like "complex" or "risk" in the description - just describe what it does.
 
 For simple commands (git, npm, standard CLI tools), keep it brief (5-10 words):
@@ -306,7 +306,15 @@ const outputSchema = lazySchema(() => z.object({
   noOutputExpected: z.boolean().optional().describe('Whether the command is expected to produce no output on success'),
   structuredContent: z.array(z.any()).optional().describe('Structured content blocks'),
   persistedOutputPath: z.string().optional().describe('Path to the persisted full output in tool-results dir (set when output is too large for inline)'),
-  persistedOutputSize: z.number().optional().describe('Total size of the output in bytes (set when output is too large for inline)')
+  persistedOutputSize: z.number().optional().describe('Total size of the output in bytes (set when output is too large for inline)'),
+  persistedStderrPath: z.string().optional().describe('Path to full stderr when it is too large for inline output'),
+  persistedStderrSize: z.number().optional().describe('Total stderr size in bytes when persisted')
+  ,exitCode: z.number().int().optional().describe('Terminal exit code; omitted while a background command is still running')
+  ,durationMs: z.number().nonnegative().optional().describe('Measured command duration in milliseconds when completed')
+  ,command: z.string().optional().describe('The exact command that was executed')
+  ,cwd: z.string().optional().describe('The working directory used to start the command')
+  ,executionState: z.enum(['running', 'completed', 'failed', 'timed_out', 'cancelled']).optional().describe('Actual command lifecycle state')
+  ,signal: z.string().optional().describe('Signal that terminated the command')
 }));
 type OutputSchema = ReturnType<typeof outputSchema>;
 export type Out = z.infer<OutputSchema>;
@@ -683,6 +691,7 @@ export const BashTool = buildTool({
     const preventCwdChanges = !isMainThread;
     const toolUseID = toolUseContext.toolUseId ?? parentMessage?.uuid ?? '';
     const commandStartTime = Date.now();
+    const commandCwd = getCwd();
     let commandOutcomeLogged = false;
     const logCommandOutcome = (exitCode: number, stdout: string, stderr: string, nextAction?: string) => {
       if (commandOutcomeLogged) return;
@@ -699,7 +708,7 @@ export const BashTool = buildTool({
       });
     };
     try {
-      const timeoutMs = input.timeout || getDefaultTimeoutMs();
+      const timeoutMs = input.timeout ?? getDefaultTimeoutMs();
 
       // Lifecycle hook: before command runs
       await executeBeforeCommandHooks(
@@ -766,30 +775,34 @@ export const BashTool = buildTool({
       trackGitOperations(input.command, result.code, result.stdout);
 
       // Lifecycle hook: after command finishes
-      await executeAfterCommandHooks(
-        input.command,
-        'bash',
-        getCwd(),
-        result.code,
-        result.stdout || '',
-        '',
-        toolUseContext,
-        {
-          toolUseID,
-          signal: abortController.signal,
-        },
-      );
+      // A background launch is not command completion. Its completion handler
+      // owns terminal status and notifications; do not fire completion hooks
+      // or report an exit code for the launch itself.
+      if (!result.backgroundTaskId) {
+        await executeAfterCommandHooks(
+          input.command,
+          'bash',
+          getCwd(),
+          result.code,
+          result.stdout || '',
+          result.stderr || '',
+          toolUseContext,
+          {
+            toolUseID,
+            signal: abortController.signal,
+          },
+        );
+      }
 
       const isInterrupt = result.interrupted && abortController.signal.reason === 'interrupt';
 
-      // stderr is interleaved in stdout (merged fd) — result.stdout has both
       stdoutAccumulator.append((result.stdout || '').trimEnd() + EOL);
+      stderrForShellReset = result.stderr || '';
 
       // Interpret the command result using semantic rules
-      interpretationResult = interpretCommandResult(input.command, result.code, result.stdout || '', '');
+      interpretationResult = interpretCommandResult(input.command, result.code, result.stdout || '', result.stderr || '');
 
-      // Check for git index.lock error (stderr is in stdout now)
-      if (result.stdout && result.stdout.includes(".git/index.lock': File exists")) {
+      if (`${result.stdout}\n${result.stderr}`.includes(".git/index.lock': File exists")) {
         logEvent('tengu_git_index_lock_error', {});
       }
       if (interpretationResult.isError && !isInterrupt) {
@@ -801,16 +814,15 @@ export const BashTool = buildTool({
       if (!preventCwdChanges) {
         const appState = getAppState();
         if (resetCwdIfOutsideProject(appState.toolPermissionContext)) {
-          stderrForShellReset = stdErrAppendShellResetMessage('');
+          stderrForShellReset = stdErrAppendShellResetMessage(stderrForShellReset);
         }
       }
 
-      // Annotate output with sandbox violations if any (stderr is in stdout)
-      const outputWithSbFailures = SandboxManager.annotateStderrWithSandboxFailures(input.command, result.stdout || '');
+      const stderrWithSbFailures = SandboxManager.annotateStderrWithSandboxFailures(input.command, result.stderr || '');
       if (result.preSpawnError) {
         logCommandOutcome(
           result.code || 1,
-          outputWithSbFailures,
+          result.stdout || '',
           result.preSpawnError,
           'fix command setup failure before retrying',
         );
@@ -821,20 +833,16 @@ export const BashTool = buildTool({
         const cwd = getCwd();
         recordFailure(cwd, {
           failedCommand: input.command,
-          errorTrace: outputWithSbFailures,
+          errorTrace: stderrWithSbFailures || result.stdout,
         });
-        const hints = formatFailureHints(findSimilarFailures(cwd, input.command, outputWithSbFailures));
-
-        // stderr is merged into stdout (merged fd); outputWithSbFailures
-        // already has the full output. Pass '' for stdout to avoid
-        // duplication in getErrorParts() and processBashCommand.
+        const hints = formatFailureHints(findSimilarFailures(cwd, input.command, stderrWithSbFailures || result.stdout));
         logCommandOutcome(
           result.code,
-          outputWithSbFailures,
-          '',
+          result.stdout || '',
+          stderrWithSbFailures,
           interpretationResult.message ?? defaultNextAction(result.code),
         );
-        throw new ShellError('', outputWithSbFailures + hints, result.code, result.interrupted);
+        throw new ShellError(result.stdout || '', stderrWithSbFailures + hints, result.code, result.interrupted);
       }
       wasInterrupted = result.interrupted;
     } catch (error) {
@@ -885,7 +893,7 @@ export const BashTool = buildTool({
     logEvent('tengu_bash_tool_command_executed', {
       command_type: commandType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       stdout_length: stdout.length,
-      stderr_length: 0,
+      stderr_length: stderrForShellReset.length,
       exit_code: result.code,
       interrupted: wasInterrupted
     });
@@ -902,15 +910,18 @@ export const BashTool = buildTool({
     let strippedStdout = stripEmptyLines(stdout);
 
     // UR hints protocol: CLIs/SDKs gated on URCODE=1 emit a
-    // `<ur-hint />` tag to stderr (merged into stdout here). Scan,
+    // `<ur-hint />` tag to stderr. Scan both streams for compatibility with
+    // older CLIs that wrote the hint to stdout,
     // record for useURCodeHintRecommendation to surface, then strip
     // so the model never sees the tag — a zero-token side channel.
     // Stripping runs unconditionally (subagent output must stay clean too);
     // only the dialog recording is main-thread-only.
     const extracted = extractURCodeHints(strippedStdout, input.command);
     strippedStdout = extracted.stripped;
-    if (isMainThread && extracted.hints.length > 0) {
-      for (const hint of extracted.hints) maybeRecordPluginHint(hint);
+    const stderrHints = extractURCodeHints(stderrForShellReset, input.command);
+    stderrForShellReset = stderrHints.stripped;
+    if (isMainThread && extracted.hints.length + stderrHints.hints.length > 0) {
+      for (const hint of [...extracted.hints, ...stderrHints.hints]) maybeRecordPluginHint(hint);
     }
     // Self-checking command discipline: log every executed shell command
     // with its outcome, reason, and duration for audit/eval/failure memory.
@@ -951,7 +962,15 @@ export const BashTool = buildTool({
       assistantAutoBackgrounded: result.assistantAutoBackgrounded,
       dangerouslyDisableSandbox: 'dangerouslyDisableSandbox' in input ? input.dangerouslyDisableSandbox as boolean | undefined : undefined,
       persistedOutputPath,
-      persistedOutputSize
+      persistedOutputSize,
+      persistedStderrPath: result.stderrFilePath,
+      persistedStderrSize: result.stderrFileSize,
+      exitCode: result.backgroundTaskId ? undefined : result.code,
+      durationMs: result.backgroundTaskId ? undefined : result.durationMs,
+      command: input.command,
+      cwd: commandCwd,
+      executionState: result.backgroundTaskId ? 'running' : result.timedOut ? 'timed_out' : result.interrupted ? 'cancelled' : result.code === 0 ? 'completed' : 'failed',
+      signal: result.signal
     };
     return {
       data
@@ -996,7 +1015,7 @@ async function* runShellCommand({
     timeout,
     run_in_background
   } = input;
-  const timeoutMs = timeout || getDefaultTimeoutMs();
+  const timeoutMs = timeout ?? getDefaultTimeoutMs();
   let fullOutput = '';
   let lastProgressOutput = '';
   let lastTotalLines = 0;

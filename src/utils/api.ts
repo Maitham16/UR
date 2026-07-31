@@ -90,7 +90,7 @@ const SWARM_FIELDS_BY_TOOL: Record<string, string[]> = {
  * Filter swarm-related fields from a tool's input schema.
  * Called at runtime when isAgentSwarmsEnabled() returns false.
  */
-function filterSwarmFieldsFromSchema(
+export function filterSwarmFieldsFromSchema(
   toolName: string,
   schema: URHQ.Tool.InputSchema,
 ): URHQ.Tool.InputSchema {
@@ -108,6 +108,12 @@ function filterSwarmFieldsFromSchema(
       delete filteredProps[field]
     }
     filtered.properties = filteredProps
+  }
+  if (Array.isArray(filtered.required)) {
+    const removed = new Set(fieldsToRemove)
+    filtered.required = filtered.required.filter(
+      (name): name is string => typeof name === 'string' && !removed.has(name),
+    )
   }
 
   return filtered

@@ -77,6 +77,98 @@ export function hasReportedTokenUsage(usage: Usage | null | undefined): boolean 
 }
 
 /**
+ * Sum provider-reported usage across distinct API responses.
+ *
+ * Parallel tool calls can split one response into several assistant records
+ * with the same provider message id. Counting each record would multiply the
+ * same usage block, so response ids are de-duplicated before aggregation.
+ * Missing/all-zero usage is omitted rather than converted into a real zero.
+ */
+export function aggregateReportedUsage(
+  messages: readonly Message[],
+): Usage | undefined {
+  const seenResponseIds = new Set<string>()
+  let aggregate: Record<string, any> | undefined
+  let reportedResponseCount = 0
+  let providerTotalCount = 0
+
+  for (const message of messages) {
+    const usage = getTokenUsage(message)
+    if (!hasReportedTokenUsage(usage)) continue
+
+    const responseId = getAssistantMessageId(message) ?? `message:${message.uuid}`
+    if (seenResponseIds.has(responseId)) continue
+    seenResponseIds.add(responseId)
+    reportedResponseCount++
+
+    if (!aggregate) {
+      aggregate = {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+        server_tool_use: {
+          web_search_requests: 0,
+          web_fetch_requests: 0,
+        },
+        cache_creation: {
+          ephemeral_1h_input_tokens: 0,
+          ephemeral_5m_input_tokens: 0,
+        },
+      }
+    }
+
+    aggregate.input_tokens += usage!.input_tokens ?? 0
+    aggregate.output_tokens += usage!.output_tokens ?? 0
+    aggregate.cache_creation_input_tokens +=
+      usage!.cache_creation_input_tokens ?? 0
+    aggregate.cache_read_input_tokens += usage!.cache_read_input_tokens ?? 0
+    aggregate.server_tool_use.web_search_requests +=
+      usage!.server_tool_use?.web_search_requests ?? 0
+    aggregate.server_tool_use.web_fetch_requests +=
+      usage!.server_tool_use?.web_fetch_requests ?? 0
+    aggregate.cache_creation.ephemeral_1h_input_tokens +=
+      usage!.cache_creation?.ephemeral_1h_input_tokens ?? 0
+    aggregate.cache_creation.ephemeral_5m_input_tokens +=
+      usage!.cache_creation?.ephemeral_5m_input_tokens ?? 0
+
+    const reasoning = (usage as { reasoning_tokens?: unknown }).reasoning_tokens
+    if (typeof reasoning === 'number' && Number.isFinite(reasoning) && reasoning >= 0) {
+      aggregate.reasoning_tokens = (aggregate.reasoning_tokens ?? 0) + reasoning
+    }
+    const providerTotal = (usage as { provider_total_tokens?: unknown })
+      .provider_total_tokens
+    if (
+      typeof providerTotal === 'number' &&
+      Number.isFinite(providerTotal) &&
+      providerTotal >= 0
+    ) {
+      aggregate.provider_total_tokens =
+        (aggregate.provider_total_tokens ?? 0) + providerTotal
+      providerTotalCount++
+    }
+
+    aggregate.service_tier = usage!.service_tier
+    aggregate.inference_geo = (usage as { inference_geo?: unknown }).inference_geo
+    aggregate.speed = (usage as { speed?: unknown }).speed
+  }
+
+  if (!aggregate) return undefined
+  if (providerTotalCount !== reportedResponseCount) {
+    delete aggregate.provider_total_tokens
+  }
+  return aggregate as Usage
+}
+
+/** Exact session total, or null when no provider supplied reliable usage. */
+export function getReportedSessionTokenTotal(
+  messages: readonly Message[],
+): number | null {
+  const usage = aggregateReportedUsage(messages)
+  return usage ? getTokenCountFromUsage(usage) : null
+}
+
+/**
  * Provider-reported reasoning/thinking tokens, when the provider supplied
  * them. Already counted inside output_tokens for OpenAI-shaped providers, so
  * this is for display only and must never be added to a context total.
@@ -101,10 +193,15 @@ export function getReasoningTokens(
  */
 export function formatReportedTokens(
   usage: Usage | null | undefined,
-  totalTokens: number,
+  totalTokens: number | null | undefined,
   format: (n: number) => string,
 ): string | null {
-  if (!hasReportedTokenUsage(usage) || !Number.isFinite(totalTokens) || totalTokens <= 0) {
+  if (
+    !hasReportedTokenUsage(usage) ||
+    typeof totalTokens !== 'number' ||
+    !Number.isFinite(totalTokens) ||
+    totalTokens <= 0
+  ) {
     return null
   }
   const reasoning = getReasoningTokens(usage)

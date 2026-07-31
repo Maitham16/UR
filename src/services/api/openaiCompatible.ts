@@ -5,7 +5,13 @@
 
 import { randomUUID } from 'crypto'
 import { normalizeOpenAIChatUsage } from './usageNormalization.js'
-import { prepareToolSchema } from './toolSchema.js'
+import {
+  assertUniqueToolNames,
+  assertValidToolName,
+  prepareAndValidateToolSchema,
+  ToolSchemaValidationError,
+  validateOpenAIStrictToolSchema,
+} from './toolSchema.js'
 import {
   assertValidProviderToolUses,
   isProviderToolInput,
@@ -155,7 +161,7 @@ export function toOpenAICompatibleRequest(
   params: any,
   providerName = 'openai-compatible',
 ): any {
-  const tools = toOpenAITools(params.tools)
+  const tools = toOpenAITools(params.tools, providerName)
   const responseFormat = toOpenAIResponseFormat(params.output_config?.format)
   const reasoningEffort = toOpenAIReasoningEffort(params)
   return {
@@ -169,11 +175,12 @@ export function toOpenAICompatibleRequest(
     ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
     ...(responseFormat && { response_format: responseFormat }),
     stream: Boolean(params.stream),
-    ...(params.stream ? { stream_options: { include_usage: true } } : {}),
-    // OpenRouter returns no usage block at all unless accounting is requested,
-    // which is why its turns previously reported nothing to attribute.
-    // https://openrouter.ai/docs/use-cases/usage-accounting
-    ...(providerName === 'openrouter' ? { usage: { include: true } } : {}),
+    // OpenRouter now always includes usage in its final streaming chunk; its
+    // former `usage.include` and `stream_options.include_usage` switches are
+    // deprecated no-ops. Other OpenAI-compatible servers still use the latter.
+    ...(params.stream && providerName !== 'openrouter'
+      ? { stream_options: { include_usage: true } }
+      : {}),
     ...(tools.length > 0 ? { tools } : {}),
     ...(params.tool_choice !== undefined
       ? { tool_choice: mapOpenAIToolChoice(params.tool_choice) }
@@ -350,13 +357,13 @@ export function imageBlockToOpenAIContentPart(
   }
 }
 
-export function toOpenAITools(tools: any): any[] {
-  if (!Array.isArray(tools)) return []
-  const result: any[] = []
-  for (const tool of tools) {
-    const mapped = toOpenAITool(tool)
-    if (mapped) result.push(mapped)
+export function toOpenAITools(tools: any, providerName = 'OpenAI'): any[] {
+  if (tools === undefined || tools === null) return []
+  if (!Array.isArray(tools)) {
+    throw new ToolSchemaValidationError(`${providerName} tools must be an array.`)
   }
+  const result = tools.map(tool => toOpenAITool(tool, providerName))
+  assertUniqueToolNames(result.map(tool => tool.function.name), providerName)
   return result
 }
 
@@ -448,12 +455,13 @@ function isOpenAIToolStopReason(reason: string | undefined): boolean {
   return reason === 'tool_calls' || reason === 'function_call' || reason === 'tool_use'
 }
 
-function toOpenAITool(tool: any): any | null {
+function toOpenAITool(tool: any, providerName: string): any {
   if (
     tool?.type === 'function' &&
-    typeof tool.function?.name === 'string' &&
-    tool.function.name.length > 0
+    tool.function
   ) {
+    assertValidToolName(tool.function.name, providerName)
+    const strict = tool.function.strict === true
     return {
       type: 'function',
       function: {
@@ -461,21 +469,42 @@ function toOpenAITool(tool: any): any | null {
         ...(tool.function.description !== undefined && {
           description: tool.function.description,
         }),
-        parameters: sanitizeJsonSchema(tool.function.parameters),
-        ...(tool.function.strict === true && { strict: true }),
+        parameters: prepareAndValidateToolSchema(
+          tool.function.parameters,
+          tool.function.name,
+          'json-schema',
+          { openAIStrict: strict },
+        ),
+        ...(strict && { strict: true }),
       },
     }
   }
-  if (typeof tool?.name !== 'string' || !('input_schema' in tool)) {
-    return null
+  if (!tool || typeof tool !== 'object' || !('input_schema' in tool)) {
+    throw new ToolSchemaValidationError(
+      `${providerName} tool entry is missing required name/input_schema fields.`,
+    )
   }
+  assertValidToolName(tool.name, providerName)
+  const parameters = prepareAndValidateToolSchema(
+    tool.input_schema,
+    tool.name,
+    'json-schema',
+  )
+  // `strict` on the internal tool shape is a capability preference, not an
+  // assertion that every generated schema already satisfies OpenAI's stricter
+  // all-properties-required contract. Keep the valid tool available in normal
+  // function mode when optional fields make strict mode inapplicable. An
+  // explicit OpenAI function-shaped strict definition above still fails
+  // clearly if its declared contract is malformed.
+  const strict =
+    tool.strict === true && validateOpenAIStrictToolSchema(parameters).length === 0
   return {
     type: 'function',
     function: {
       name: tool.name,
       ...(tool.description !== undefined && { description: tool.description }),
-      parameters: sanitizeJsonSchema(tool.input_schema),
-      ...(tool.strict === true && { strict: true }),
+      parameters,
+      ...(strict && { strict: true }),
     },
   }
 }
@@ -738,6 +767,3 @@ function hasToolUse(content: any[]): boolean {
 // Delegates to the shared preparation pass: strips meta and vendor keys at
 // every depth (not just the root) and inlines local $ref targets that most
 // providers cannot resolve. See services/api/toolSchema.ts.
-function sanitizeJsonSchema(schema: unknown): Record<string, unknown> {
-  return prepareToolSchema(schema, 'json-schema')
-}

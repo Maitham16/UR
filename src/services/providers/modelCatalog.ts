@@ -27,6 +27,10 @@ export type DiscoveredModel = {
   description: string
   pricing: ModelPricingTier
   contextLength?: number
+  outputTokenLimit?: number
+  supportedParameters?: string[]
+  capabilities?: Record<string, unknown>
+  expirationDate?: number
   deprecated?: boolean
 }
 
@@ -44,6 +48,23 @@ function asCount(value: unknown): number | undefined {
   return undefined
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function asEpochSeconds(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value)
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const numeric = Number(value)
+    if (Number.isFinite(numeric) && numeric > 0) return Math.floor(numeric)
+    const parsed = Date.parse(value)
+    if (Number.isFinite(parsed)) return Math.floor(parsed / 1000)
+  }
+  return undefined
+}
+
 /**
  * Pricing fields arrive as decimal strings ("0", "0.0000015"). A model counts
  * as free only when every priced dimension is explicitly zero — an absent
@@ -54,13 +75,12 @@ export function pricingTierFromOpenRouter(pricing: unknown): ModelPricingTier {
     return 'unknown'
   }
   const entries = pricing as Record<string, unknown>
-  const dimensions = ['prompt', 'completion']
+  if (entries.prompt === undefined || entries.completion === undefined) {
+    return 'unknown'
+  }
   const values: number[] = []
-  for (const key of dimensions) {
-    const raw = entries[key]
-    if (raw === undefined || raw === null) {
-      return 'unknown'
-    }
+  for (const raw of Object.values(entries)) {
+    if (raw === undefined || raw === null || raw === '') return 'unknown'
     const parsed = typeof raw === 'number' ? raw : Number.parseFloat(String(raw))
     if (!Number.isFinite(parsed)) {
       return 'unknown'
@@ -111,14 +131,36 @@ export function toDiscoveredModel(entry: unknown, providerLabel: string): Discov
 
   const fromPricing = pricingTierFromOpenRouter(raw.pricing)
   const pricing = fromPricing === 'unknown' ? pricingTierFromId(id) : fromPricing
-  const contextLength = asCount(raw.context_length) ?? asCount(raw.contextLength)
-  const humanName = asString(raw.name)
+  const contextLength =
+    asCount(raw.context_length) ??
+    asCount(raw.contextLength) ??
+    asCount(raw.max_input_tokens) ??
+    asCount(raw.inputTokenLimit)
+  const outputTokenLimit = asCount(raw.max_output_tokens) ?? asCount(raw.outputTokenLimit)
+  const humanName = asString(raw.display_name) ?? asString(raw.displayName) ?? asString(raw.name)
+  const supportedParameters = Array.isArray(raw.supported_parameters)
+    ? raw.supported_parameters.filter((value): value is string => typeof value === 'string')
+    : Array.isArray(raw.supportedGenerationMethods)
+      ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string')
+      : undefined
+  const capabilities = isRecord(raw.capabilities) ? raw.capabilities : undefined
+  const expirationDate = asEpochSeconds(raw.expiration_date)
   const deprecated =
-    raw.deprecated === true || /deprecated/i.test(asString(raw.description) ?? '')
+    raw.deprecated === true ||
+    (expirationDate !== undefined && expirationDate <= Math.floor(Date.now() / 1000)) ||
+    /deprecated/i.test(asString(raw.description) ?? '')
+  const expires =
+    expirationDate !== undefined && !deprecated
+      ? `expires ${new Date(expirationDate * 1000).toISOString().slice(0, 10)}`
+      : null
+  const lacksTools =
+    supportedParameters !== undefined && !supportedParameters.includes('tools')
 
   const parts = [
     pricing === 'free' ? 'free' : pricing === 'paid' ? 'paid' : null,
     deprecated ? 'deprecated' : null,
+    expires,
+    lacksTools ? 'no tool calling' : null,
   ].filter(Boolean)
 
   return {
@@ -129,6 +171,10 @@ export function toDiscoveredModel(entry: unknown, providerLabel: string): Discov
     description: `${providerLabel}${parts.length ? ` · ${parts.join(' · ')}` : ''}${formatContext(contextLength)}`,
     pricing,
     ...(contextLength ? { contextLength } : {}),
+    ...(outputTokenLimit ? { outputTokenLimit } : {}),
+    ...(supportedParameters ? { supportedParameters } : {}),
+    ...(capabilities ? { capabilities } : {}),
+    ...(expirationDate ? { expirationDate } : {}),
     ...(deprecated ? { deprecated: true } : {}),
   }
 }
@@ -204,25 +250,106 @@ export function describeCacheAge(ageMs: number, ttlMs = MODEL_CACHE_TTL_MS): str
  * whose response could also arrive out of order.
  */
 export class RequestCoalescer<T> {
-  private readonly inFlight = new Map<string, Promise<T>>()
-
-  run(key: string, factory: () => Promise<T>): Promise<T> {
-    const existing = this.inFlight.get(key)
-    if (existing) {
-      return existing
+  private readonly inFlight = new Map<
+    string,
+    {
+      promise: Promise<T>
+      controller: AbortController
+      subscribers: number
+      hasUncancelledSubscriber: boolean
     }
-    const promise = factory().finally(() => {
-      this.inFlight.delete(key)
+  >()
+
+  run(
+    key: string,
+    factory: (signal: AbortSignal) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    let entry = this.inFlight.get(key)
+    if (!entry) {
+      const controller = new AbortController()
+      const next: {
+        promise: Promise<T>
+        controller: AbortController
+        subscribers: number
+        hasUncancelledSubscriber: boolean
+      } = {
+        controller,
+        subscribers: 0,
+        hasUncancelledSubscriber: false,
+        promise: Promise.resolve(undefined as T),
+      }
+      next.promise = Promise.resolve()
+        .then(() => factory(controller.signal))
+        .finally(() => {
+          if (this.inFlight.get(key) === next) this.inFlight.delete(key)
+        })
+      this.inFlight.set(key, next)
+      entry = next
+    }
+
+    if (!signal) {
+      entry.hasUncancelledSubscriber = true
+      return entry.promise
+    }
+    if (signal.aborted) {
+      return Promise.reject(
+        signal.reason instanceof Error ? signal.reason : new Error('Request cancelled.'),
+      )
+    }
+
+    entry.subscribers++
+    return new Promise<T>((resolve, reject) => {
+      let settled = false
+      const finish = () => {
+        if (settled) return false
+        settled = true
+        signal.removeEventListener('abort', onAbort)
+        entry!.subscribers--
+        if (
+          entry!.subscribers === 0 &&
+          !entry!.hasUncancelledSubscriber &&
+          this.inFlight.get(key) === entry
+        ) {
+          entry!.controller.abort()
+        }
+        return true
+      }
+      const onAbort = () => {
+        if (!finish()) return
+        reject(signal.reason instanceof Error ? signal.reason : new Error('Request cancelled.'))
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
+      entry!.promise.then(
+        value => {
+          if (finish()) resolve(value)
+        },
+        error => {
+          if (finish()) reject(error)
+        },
+      )
     })
-    this.inFlight.set(key, promise)
-    return promise
   }
 
   get size(): number {
     return this.inFlight.size
   }
 
+  cancel(key: string): void {
+    const entry = this.inFlight.get(key)
+    if (!entry) return
+    entry.controller.abort(new Error('Request invalidated.'))
+    this.inFlight.delete(key)
+  }
+
+  cancelPrefix(prefix: string): void {
+    for (const key of this.inFlight.keys()) {
+      if (key.startsWith(prefix)) this.cancel(key)
+    }
+  }
+
   clear(): void {
+    for (const entry of this.inFlight.values()) entry.controller.abort()
     this.inFlight.clear()
   }
 }

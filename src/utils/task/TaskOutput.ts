@@ -4,7 +4,11 @@ import { logForDebugging } from '../debug.js'
 import { readFileRange, tailFile } from '../fsOperations.js'
 import { getMaxOutputLength } from '../shell/outputLimits.js'
 import { safeJoinLines } from '../stringUtils.js'
-import { DiskTaskOutput, getTaskOutputPath } from './diskOutput.js'
+import {
+  DiskTaskOutput,
+  getTaskOutputPath,
+  getTaskStderrPath,
+} from './diskOutput.js'
 
 const DEFAULT_MAX_MEMORY = 8 * 1024 * 1024 // 8MB
 const POLL_INTERVAL_MS = 1000
@@ -21,10 +25,9 @@ type ProgressCallback = (
 /**
  * Single source of truth for a shell command's output.
  *
- * For bash commands (file mode): both stdout and stderr go directly to
- * a file via stdio fds — neither enters JS. Progress is extracted by
- * polling the file tail. getStderr() returns '' since stderr is
- * interleaved in the output file.
+ * For bash commands (file mode): stdout and stderr go directly to separate
+ * files via stdio fds — neither enters JS. Progress is extracted by polling
+ * the stdout file tail.
  *
  * For hooks (pipe mode): data flows through writeStdout()/writeStderr()
  * and is buffered in memory, spilling to disk if it exceeds the limit.
@@ -32,6 +35,7 @@ type ProgressCallback = (
 export class TaskOutput {
   readonly taskId: string
   readonly path: string
+  readonly stderrPath: string
   /** True when stdout goes to a file fd (bypassing JS). False for pipe mode (hooks). */
   readonly stdoutToFile: boolean
   #stdoutBuffer = ''
@@ -63,6 +67,7 @@ export class TaskOutput {
   ) {
     this.taskId = taskId
     this.path = getTaskOutputPath(taskId)
+    this.stderrPath = getTaskStderrPath(taskId)
     this.stdoutToFile = stdoutToFile
     this.#maxMemory = maxMemory
     this.#onProgress = onProgress
@@ -331,6 +336,42 @@ export class TaskOutput {
       return ''
     }
     return this.#stderrBuffer
+  }
+
+  /** Read stderr for a completed file-mode command without merging streams. */
+  async getFileStderr(): Promise<{
+    content: string
+    bytesTotal: number
+    complete: boolean
+  }> {
+    if (!this.stdoutToFile) {
+      return {
+        content: this.getStderr(),
+        bytesTotal: Buffer.byteLength(this.getStderr()),
+        complete: true,
+      }
+    }
+    const maxBytes = getMaxOutputLength()
+    try {
+      const result = await readFileRange(this.stderrPath, 0, maxBytes)
+      if (!result) return { content: '', bytesTotal: 0, complete: true }
+      return {
+        content: result.content,
+        bytesTotal: result.bytesTotal,
+        complete: result.bytesRead >= result.bytesTotal,
+      }
+    } catch (err) {
+      const code =
+        err instanceof Error && 'code' in err ? String(err.code) : 'unknown'
+      logForDebugging(
+        `TaskOutput.getFileStderr: failed to read ${this.stderrPath} (${code}): ${err}`,
+      )
+      return {
+        content: `<bash stderr unavailable: ${this.stderrPath} could not be read (${code})>`,
+        bytesTotal: 0,
+        complete: false,
+      }
+    }
   }
 
   get isOverflowed(): boolean {

@@ -45,6 +45,9 @@ test('canonical task tools receive ordered lifecycle guidance', () => {
   expect(guidance).toContain('in_progress')
   expect(guidance).toContain('completed immediately after')
   expect(guidance).toContain('TaskList')
+  expect(guidance).toContain('MUST use TaskCreate')
+  expect(guidance).toContain('new user request starts a fresh list')
+  expect(guidance).toContain('independent branches')
 })
 
 test('legacy task guidance remains available without masking canonical tools', () => {

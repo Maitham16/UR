@@ -1881,7 +1881,7 @@ export const SDKTaskNotificationMessageSchema = lazySchema(() =>
     summary: z.string(),
     usage: z
       .object({
-        total_tokens: z.number(),
+        total_tokens: z.number().optional(),
         tool_uses: z.number(),
         duration_ms: z.number(),
       })
@@ -1934,7 +1934,7 @@ export const SDKTaskProgressMessageSchema = lazySchema(() =>
     tool_use_id: z.string().optional(),
     description: z.string(),
     usage: z.object({
-      total_tokens: z.number(),
+      total_tokens: z.number().optional(),
       tool_uses: z.number(),
       duration_ms: z.number(),
     }),
