@@ -30,25 +30,14 @@ export type TaskListGateConfig = {
 }
 
 /**
- * Enforcing by default.
+ * Off by default. The user turned this off; it stays off.
  *
- * This was briefly set advisory, on the reasoning that the gate had been
- * hardened to compensate for a TodoWrite prompt that had lost its worked
- * examples — a real cause, fixed in 1.68.0. But the gate is not only planning
- * ceremony. test/toolExecutionFinalInput.test.ts shows it is the final
- * revalidation before a tool runs, and it carries two properties nothing else
- * does:
- *
- *   - A permission handler or hook that rewrites a read-only call into a
- *     mutating one is re-checked after the rewrite, not before it.
- *   - Task state is re-read at execution time, so a plan that disappears while
- *     permission is pending cannot let the mutation through (a TOCTOU race).
- *
- * Eight tests failed the moment enforcement was defaulted off, all of them on
- * those two paths. Turning the gate off to reduce friction also removes them.
+ * Re-enable per project with tasks.requireBeforeChanges.enabled=true. The
+ * classification below is unchanged and still refuses when enabled — only the
+ * default differs.
  */
 export const TASK_LIST_GATE_DEFAULTS: TaskListGateConfig = {
-  enabled: true,
+  enabled: false,
   freeReads: 3,
 }
 
@@ -488,7 +477,21 @@ export function isMutationRequiringTaskList(input: {
   )
 }
 
+/**
+ * Test-only override. The gate is off by default, so tests that assert it
+ * refuses have to turn it on explicitly rather than relying on a default a
+ * user is free to change. Mirrors resetRepeatedFailuresForTesting.
+ */
+let testConfigOverride: TaskListGateConfig | null = null
+
+export function setTaskListGateConfigForTesting(
+  config: TaskListGateConfig | null,
+): void {
+  testConfigOverride = config
+}
+
 export function getTaskListGateConfig(): TaskListGateConfig {
+  if (testConfigOverride) return testConfigOverride
   const configured = (
     getInitialSettings() as {
       tasks?: { requireBeforeChanges?: Partial<TaskListGateConfig> }

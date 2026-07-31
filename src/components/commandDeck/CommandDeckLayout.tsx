@@ -54,22 +54,14 @@ export function CommandDeckLayout({
  * four fields; centre is 5 wordmark rows, tagline, blank, four fields).
  * Rail: separator + two rows.
  */
-export const DECK_ROWS_FULL = 15
-export const DECK_ROWS_COMPACT = 11
-export const RAIL_ROWS = 3
-
-export function fixedRowsFor(columns: number): number {
-  const deckRows = columns >= 120 ? DECK_ROWS_FULL : DECK_ROWS_COMPACT
-  return deckRows + RAIL_ROWS
-}
-
-/**
- * True when the terminal has room for the deck, the rail and at least a few
- * lines of conversation. At 80x24 the full deck would leave almost nothing to
- * scroll, so callers fall back to the compact deck or skip it entirely rather
- * than rendering a shell with no room inside it.
- */
-export function hasRoomForDeck(columns: number, rows: number): boolean {
-  const MIN_MIDDLE_ROWS = 6
-  return rows - fixedRowsFor(columns) >= MIN_MIDDLE_ROWS
-}
+// Re-exported from deckVisibility, which the prompt-input footer also reads to
+// decide whether to suppress its duplicate fields. One definition: if the
+// budget here and the predicate there ever disagreed, a terminal size would
+// exist that shows both status surfaces or neither.
+export {
+  DECK_ROWS_COMPACT,
+  DECK_ROWS_FULL,
+  RAIL_ROWS,
+  fixedRowsFor,
+  hasRoomForDeck,
+} from './deckVisibility.js'

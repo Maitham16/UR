@@ -43,6 +43,18 @@ export type StatusItem = {
 const pct = (value: number | null): string =>
   value === null ? '' : `${Math.round(value)}%`
 
+/**
+ * The app names permission modes in camelCase ("acceptEdits"); the rail shows
+ * words. Splitting here rather than at the call site means any caller can pass
+ * the raw enum and the documented presets still render as specified.
+ */
+export function humanizeMode(mode: string): string {
+  return mode
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+}
+
 export const DEFAULT_STATUS_ITEMS: StatusItem[] = [
   {
     id: 'model',
@@ -76,10 +88,10 @@ export const DEFAULT_STATUS_ITEMS: StatusItem[] = [
     minimumWidth: 7,
     alignment: 'center',
     isVisible: c => c.mode.length > 0,
-    fullRenderer: c => c.mode.toUpperCase(),
+    fullRenderer: c => humanizeMode(c.mode).toUpperCase(),
     // "ACCEPT EDITS" -> "EDITS": keep the distinguishing word, drop the verb.
-    compactRenderer: c => c.mode.toUpperCase().split(' ').at(-1) ?? c.mode,
-    minimalRenderer: c => c.mode.toUpperCase().split(' ').at(-1) ?? c.mode,
+    compactRenderer: c => humanizeMode(c.mode).toUpperCase().split(' ').at(-1) ?? c.mode,
+    minimalRenderer: c => humanizeMode(c.mode).toUpperCase().split(' ').at(-1) ?? c.mode,
     color: 'focus',
     emphasis: true,
   },

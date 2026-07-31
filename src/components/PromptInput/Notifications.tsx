@@ -31,6 +31,7 @@ import { IdeStatusIndicator } from '../IdeStatusIndicator.js';
 import { MemoryUsageIndicator } from '../MemoryUsageIndicator.js';
 import { SentryErrorBoundary } from '../SentryErrorBoundary.js';
 import { TokenWarning } from '../TokenWarning.js';
+import { isDeckRailVisible } from '../commandDeck/deckVisibility.js';
 import { SandboxPromptFooterHint } from './SandboxPromptFooterHint.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -321,7 +322,7 @@ function NotificationContent({
             {tokenUsage} tokens
           </Text>
         </Box>}
-      {!isBriefOnly && <TokenWarning tokenUsage={tokenUsage} model={mainLoopModel} />}
+      {!isBriefOnly && !isDeckRailVisible() && <TokenWarning tokenUsage={tokenUsage} model={mainLoopModel} />}
       {shouldShowAutoUpdater && <AutoUpdaterWrapper verbose={verbose} onAutoUpdaterResult={onAutoUpdaterResult} autoUpdaterResult={autoUpdaterResult} isUpdating={isAutoUpdating} onChangeIsUpdating={onChangeIsUpdating} showSuccessMessage={!isShowingCompactMessage} />}
       {feature('VOICE_MODE') ? voiceEnabled && voiceError && <Box>
               <Text color="error" wrap="truncate">

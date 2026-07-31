@@ -10,15 +10,20 @@ import { getDefaultAppState } from '../src/state/AppStateStore.js'
 import { runToolUse } from '../src/services/tools/toolExecution.js'
 import { EXPLORE_AGENT } from '../src/tools/AgentTool/built-in/exploreAgent.js'
 import { getPlanFilePath } from '../src/utils/plans.js'
+import { setTaskListGateConfigForTesting } from '../src/services/tools/taskListGate.js'
 
 const originalTaskListId = process.env.UR_CODE_TASK_LIST_ID
 
 beforeEach(() => {
   process.env.UR_CODE_TASK_LIST_ID =
     'tool-execution-final-input-gate-regression'
+  // These tests assert the gate refuses. It is off by default, so they enable
+  // it here instead of depending on a default the user controls.
+  setTaskListGateConfigForTesting({ enabled: true, freeReads: 3 })
 })
 
 afterEach(() => {
+  setTaskListGateConfigForTesting(null)
   if (originalTaskListId === undefined) {
     delete process.env.UR_CODE_TASK_LIST_ID
   } else {

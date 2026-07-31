@@ -141,7 +141,7 @@ export function CommandDeck({
               <Text key={metric.label}>
                 <Text color={DECK_PALETTE.muted}>{line.label}</Text>
                 {line.bar ? (
-                  <Text color={DECK_PALETTE[line.color]}>{`${line.bar} `}</Text>
+                  <Text color={DECK_PALETTE[line.barColor]}>{`${line.bar} `}</Text>
                 ) : null}
                 <Text color={DECK_PALETTE[line.color]}>{line.value}</Text>
               </Text>

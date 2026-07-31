@@ -703,15 +703,24 @@ test('disabling it restores advisory behaviour', () => {
   ).toBe(true)
 })
 
-test('the gate enforces by default', () => {
-  // Briefly defaulted to advisory to reduce friction. That also removed the
-  // post-permission revalidation and the TOCTOU re-read in
-  // toolExecutionFinalInput — eight tests failed immediately, all on those two
-  // paths. The friction had a different cause (the TodoWrite prompt losing its
-  // examples, fixed in 1.68.0); this is not the lever for it.
-  expect(TASK_LIST_GATE_DEFAULTS.enabled).toBe(true)
+test('the gate is off by default', () => {
+  // Turned off deliberately. The classification is unchanged and still refuses
+  // when a project sets tasks.requireBeforeChanges.enabled=true.
+  expect(TASK_LIST_GATE_DEFAULTS.enabled).toBe(false)
   expect(TASK_LIST_GATE_DEFAULTS.freeReads).toBeGreaterThan(0)
 })
+
+test('enabling it still refuses an unplanned mutation', () => {
+  const decision = checkTaskListGate({
+    toolName: 'Write',
+    taskCount: 0,
+    readsSoFar: 10,
+    isSubagent: false,
+    config: { enabled: true, freeReads: 3 },
+  })
+  expect(decision.allowed).toBe(false)
+})
+
 
 
 test('the allowance counts tool calls, not conversation length', () => {

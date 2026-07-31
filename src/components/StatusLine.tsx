@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle';
 import * as React from 'react';
+import { isDeckRailVisible } from './commandDeck/deckVisibility.js';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { logEvent } from 'src/services/analytics/index.js';
 import { getProviderRuntimeInfo, type ProviderRuntimeInfo, type ProviderSettings } from 'src/services/providers/providerRegistry.js';
@@ -440,7 +441,9 @@ function StatusLineInner({
 
   // Get padding from settings or default to 0
   const paddingX = effectiveSettings?.statusLine?.padding ?? 0;
-  const renderedStatusLineText = effectiveSettings?.statusLine ? statusLineText : defaultStatusLineText;
+  // The deck rail already shows model, provider, mode, branch and the update
+  // notice. A user-configured statusLine command is theirs and still renders.
+  const renderedStatusLineText = effectiveSettings?.statusLine ? statusLineText : isDeckRailVisible() ? null : defaultStatusLineText;
 
   // StatusLine must have stable height in fullscreen — the footer is
   // flexShrink:0 so a 0→1 row change when the command finishes steals

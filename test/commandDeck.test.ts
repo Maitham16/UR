@@ -237,3 +237,46 @@ test('a terminal too short for the shell is reported, not silently squeezed', as
   expect(hasRoomForDeck(120, 20)).toBe(false)
   expect(hasRoomForDeck(80, 16)).toBe(false)
 })
+
+test('the permission-mode enum renders as words, not as one run-on token', () => {
+  // The app supplies "acceptEdits"; the screenshot showed "ACCEPTEDITS".
+  const enumCtx: StatusContext = { ...ctx, mode: 'acceptEdits' }
+  expect(
+    layoutStatusRow(DEFAULT_STATUS_ITEMS, enumCtx, 160, 'full')
+      .find(r => r.id === 'mode')!.text,
+  ).toBe('ACCEPT EDITS')
+  expect(
+    layoutStatusRow(DEFAULT_STATUS_ITEMS, enumCtx, 100, 'compact')
+      .find(r => r.id === 'mode')!.text,
+  ).toBe('EDITS')
+})
+
+test('metric bars are blue at every level, per the palette rules', () => {
+  for (const percent of [3, 28, 80, 95]) {
+    expect(metricLine({ label: 'CPU', percent }, 24).barColor).toBe('accent')
+  }
+  expect(metricLine({ label: 'CPU', percent: null }, 24).barColor).toBe('muted')
+})
+
+test('the rail and the old footer are never both on screen', async () => {
+  // Both rendering is the duplicate status bar the redesign removed.
+  const { hasRoomForDeck: room, isDeckRailVisible } = await import(
+    '../src/components/commandDeck/deckVisibility.ts'
+  )
+  for (const [columns, rows] of SIZES) {
+    expect(room(columns, rows)).toBe(true)
+  }
+  expect(room(80, 12)).toBe(false)
+  expect(typeof isDeckRailVisible()).toBe('boolean')
+})
+
+test('deckVisibility stays importable from compiler-output footers', () => {
+  // Its whole purpose is to be dependency-free: the footer files are React
+  // Compiler output, and pulling the deck into their module graph is what
+  // flipped a command from hidden to visible last time.
+  const source = readFileSync(
+    'src/components/commandDeck/deckVisibility.ts',
+    'utf8',
+  )
+  expect(source).not.toMatch(/^import /m)
+})

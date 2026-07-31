@@ -2,6 +2,16 @@ import * as React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { Box } from '../../ink.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
+import { useSettings } from '../../hooks/useSettings.js'
+import { useAppState } from '../../state/AppState.js'
+import { getProviderRuntimeInfo } from '../../services/providers/providerRegistry.js'
+import { getCachedBranch } from '../../utils/git/gitFilesystem.js'
+import { getCwd } from '../../utils/cwd.js'
+import { getOriginalCwd } from '../../bootstrap/state.js'
+import { getDisplayPath } from '../../utils/file.js'
+import { calculateContextPercentages, getContextWindowForModel } from '../../utils/context.js'
+import { getCurrentUsage } from '../../utils/tokens.js'
+import { getSdkBetas } from '../../bootstrap/state.js'
 import { CommandDeck } from './CommandDeck.js'
 import { hasRoomForDeck } from './CommandDeckLayout.js'
 import { StatusRail } from './StatusRail.js'
@@ -53,6 +63,8 @@ export type CommandDeckShellProps = {
   /** Session start, for the SESSION field. */
   startedAt?: number
   /** Sampling period for CPU/MEM. */
+  /** Transcript, so the deck can compute context usage itself. */
+  messages?: unknown[]
   metricIntervalMs?: number
   statusItems?: StatusItem[]
   secondRowItems?: StatusItem[]
@@ -89,6 +101,7 @@ export function CommandDeckShell({
   updateVersion = null,
   shortcutHint = 'Shift+Tab cycle',
   startedAt,
+  messages,
   metricIntervalMs = 2000,
   statusItems,
   secondRowItems,
@@ -96,19 +109,44 @@ export function CommandDeckShell({
 }: CommandDeckShellProps): React.ReactNode {
   const { columns, rows } = useTerminalSize()
   const [tick, setTick] = useState(0)
+  const [resolvedBranch, setResolvedBranch] = useState<string | null>(null)
+  const settings = useSettings()
+  const permissionMode = useAppState(s => s.toolPermissionContext.mode)
+  const providerRuntime = getProviderRuntimeInfo(settings)
 
   // process.cwd() is a syscall, not a module import: no registration side
   // effects, which is the whole point of keeping this component inert.
-  const cwd = process.cwd()
-  const folder = cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? cwd
+  const cwd = getCwd()
+  const originalCwd = getOriginalCwd()
+  const folder =
+    originalCwd.split(/[\\/]/).filter(Boolean).at(-1) ?? originalCwd
   const workspaceBasename = workspaceBasenameProp ?? folder
   const repository = repositoryProp ?? folder
-  const workspacePath = workspacePathProp ?? cwd
-  const model = modelProp ?? ''
-  const provider = providerProp ?? ''
-  const branch = branchProp ?? null
-  const mode = modeProp ?? ''
-  const editsEnabled = editsEnabledProp ?? false
+  const workspacePath = workspacePathProp ?? getDisplayPath(cwd)
+  const model = modelProp ?? providerRuntime.model ?? ''
+  const provider = providerProp ?? providerRuntime.providerLabel ?? ''
+  const branch = branchProp ?? resolvedBranch
+  const mode = modeProp ?? permissionMode
+  const editsEnabled = editsEnabledProp ?? permissionMode === 'acceptEdits'
+
+  // Context usage, computed the same way /context and the token warning do.
+  let derivedContextPercent: number | null = contextPercent
+  if (derivedContextPercent === null && Array.isArray(messages) && model) {
+    try {
+      const usage = getCurrentUsage(messages as never)
+      const windowSize = getContextWindowForModel(
+        model as never,
+        getSdkBetas(),
+        providerRuntime.provider === 'ollama' ? 'ollama' : 'foundry',
+      )
+      derivedContextPercent = calculateContextPercentages(
+        usage,
+        windowSize,
+      ).used
+    } catch {
+      derivedContextPercent = null
+    }
+  }
 
   // One timer drives the clock, the session elapsed time and the CPU delta.
   // CPU is only meaningful as a difference between samples, so it has to be
@@ -119,10 +157,26 @@ export function CommandDeckShell({
     return () => clearInterval(timer)
   }, [metricIntervalMs])
 
+  // getCachedBranch is async; resolve into state so the header never renders
+  // "[object Promise]", and re-read each tick so a checkout is picked up.
+  useEffect(() => {
+    let cancelled = false
+    void Promise.resolve(getCachedBranch())
+      .then(v => {
+        if (!cancelled) setResolvedBranch(v || null)
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedBranch(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [tick])
+
   const metrics: Metric[] = useMemo(
-    () => readSystemMetrics(contextPercent),
+    () => readSystemMetrics(derivedContextPercent),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tick, contextPercent],
+    [tick, derivedContextPercent],
   )
 
   const statusContext: StatusContext = {
@@ -130,7 +184,7 @@ export function CommandDeckShell({
     provider,
     mode,
     effort,
-    contextPercent,
+    contextPercent: derivedContextPercent,
     editsEnabled,
     updateVersion,
     shortcutHint,

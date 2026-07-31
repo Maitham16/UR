@@ -31,6 +31,7 @@ import { usePrStatus } from '../../hooks/usePrStatus.js';
 import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js';
 import { Byline } from '../design-system/Byline.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
+import { isDeckRailVisible } from '../commandDeck/deckVisibility.js';
 import { useTasksV2 } from '../../hooks/useTasksV2.js';
 import { formatDuration } from '../../utils/format.js';
 import { VoiceWarmupHint } from './VoiceIndicator.js';
@@ -346,7 +347,7 @@ function ModeIndicator({
   // the local permission mode shown here doesn't reflect the agent's state.
   // Rendered before the tasks pill so a long pill label (e.g. ultraplan URL)
   // doesn't push the mode indicator off-screen.
-  const modePart = currentMode && hasActiveMode && !getIsRemoteMode() ? <Text color={getModeColor(currentMode)} key="mode">
+  const modePart = currentMode && hasActiveMode && !getIsRemoteMode() && !isDeckRailVisible() ? <Text color={getModeColor(currentMode)} key="mode">
         {permissionModeSymbol(currentMode)}{' '}
         {permissionModeTitle(currentMode).toLowerCase()} on
         {shouldShowModeHint && <Text dimColor>

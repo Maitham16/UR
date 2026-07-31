@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.68.19
+
+- Removed the duplicate status footer: the deck rail and the old status bar,
+  token warning and permission-mode hint were all on screen at once, printing
+  model, provider, mode and context usage twice. The three legacy fields now
+  suppress themselves while the rail is up, via a dependency-free predicate so
+  the prompt-input footer's module graph is unchanged.
+- Permission modes render as words in the rail. The app supplies "acceptEdits";
+  the rail was showing "ACCEPTEDITS".
+- Metric bars are blue at every level, per the palette rules. Level is still
+  carried by the value's colour.
+
 ## 1.68.18
 
 - The shell is presentational and imports only ink and useTerminalSize. A first

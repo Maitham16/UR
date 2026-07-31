@@ -62,7 +62,13 @@ export const METRIC_BAR_MIN_WIDTH = METRIC_MIN_WIDTH + 10
 export function metricLine(
   metric: Metric,
   columnWidth: number,
-): { label: string; bar: string; value: string; color: DeckColor } {
+): {
+  label: string
+  bar: string
+  value: string
+  color: DeckColor
+  barColor: DeckColor
+} {
   const barWidth =
     columnWidth >= METRIC_BAR_MIN_WIDTH
       ? Math.min(9, columnWidth - METRIC_MIN_WIDTH - 1)
@@ -72,6 +78,10 @@ export function metricLine(
     bar: renderMetricBar(metric.percent, barWidth),
     value: formatMetricValue(metric.percent),
     color: metricColor(metric.percent),
+    // The spec calls for blue bars. Level is carried by the value's colour, so
+    // encoding it twice would spend the palette's only alert colours on a
+    // decoration and leave three coloured bars competing for attention.
+    barColor: metric.percent === null ? 'muted' : 'accent',
   }
 }
 
