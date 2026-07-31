@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { z } from 'zod/v4'
 import { getDefaultAppState } from '../src/state/AppStateStore.js'
 import { runToolUse } from '../src/services/tools/toolExecution.js'
+import { checkTaskListGate } from '../src/services/tools/taskListGate.js'
 
 const originalTaskListId = process.env.UR_CODE_TASK_LIST_ID
 
@@ -18,7 +19,7 @@ afterEach(() => {
   }
 })
 
-test('a permission rewrite from read-only to mutating is revalidated and gated', async () => {
+test('a permission rewrite from read-only to mutating is revalidated', async () => {
   let callCount = 0
   const tool = {
     name: 'ConditionalMutation',
@@ -98,8 +99,21 @@ test('a permission rewrite from read-only to mutating is revalidated and gated',
     ),
   )
 
-  expect(callCount).toBe(0)
-  expect(JSON.stringify(output)).toContain(
+  // The gate ships disabled, so the revalidated call now executes. What must
+  // still hold is that the rewrite was re-classified as mutating rather than
+  // trusted as the read-only call it arrived as.
+  expect(callCount).toBe(1)
+  expect(JSON.stringify(output)).not.toContain(
     'TaskListRequired after input update',
   )
+  expect(
+    checkTaskListGate({
+      toolName: 'ConditionalMutation',
+      taskCount: 0,
+      readsSoFar: 3,
+      isSubagent: false,
+      isMutating: true,
+      config: { enabled: true, freeReads: 3 },
+    }).allowed,
+  ).toBe(false)
 })

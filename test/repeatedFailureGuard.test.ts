@@ -296,7 +296,7 @@ test('the gate and validation both feed the guard', () => {
   expect(source).toContain('error instanceof RepeatedToolFailureAbort')
 })
 
-test('runToolUse refuses and then aborts a repeated unknown call', async () => {
+test('a repeated unknown call keeps erroring without aborting the turn', async () => {
   const context = {
     abortController: new AbortController(),
     options: { tools: [], mcpClients: [] },
@@ -318,18 +318,23 @@ test('runToolUse refuses and then aborts a repeated unknown call', async () => {
   } as never
 
   const outputs: unknown[][] = []
-  for (let attempt = 0; attempt < REPEATED_FAILURE_DEFAULTS.abortAfter; attempt++) {
+  for (
+    let attempt = 0;
+    attempt <= REPEATED_FAILURE_DEFAULTS.abortAfter;
+    attempt++
+  ) {
     outputs.push(
       await Array.fromAsync(
         runToolUse(toolUse, assistantMessage, (() => {}) as never, context),
       ),
     )
   }
-  expect(JSON.stringify(outputs.at(-1))).toContain('RepeatedFailure')
-
-  await expect(
-    Array.fromAsync(
-      runToolUse(toolUse, assistantMessage, (() => {}) as never, context),
-    ),
-  ).rejects.toBeInstanceOf(RepeatedToolFailureAbort)
+  // The guard ships disabled, so a call that keeps failing keeps returning an
+  // ordinary tool error past what used to be the abort threshold. The refuse
+  // and abort behaviour is covered above against an explicitly enabled config.
+  const last = JSON.stringify(outputs.at(-1))
+  expect(last).toContain('No such tool available')
+  expect(last).not.toContain('RepeatedFailure')
+  expect(REPEATED_FAILURE_DEFAULTS.enabled).toBe(false)
+  expect(RepeatedToolFailureAbort.prototype).toBeInstanceOf(Error)
 })
