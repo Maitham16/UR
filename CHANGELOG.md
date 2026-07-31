@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.76.7
+
+- Reverted to the 1.76.4 behavior and removed the intermediate version surface transitions.
+
 ## 1.76.4
 
 - AskUserQuestion normalizer now strips malformed question entries instead of
