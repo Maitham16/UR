@@ -36,6 +36,7 @@ import {
   getGeminiThoughtSignature,
   getStoredGeminiThoughtSignature,
 } from './geminiWire.js'
+import { prepareToolSchema } from './toolSchema.js'
 
 const ANTHROPIC_VERSION = '2023-06-01'
 
@@ -482,10 +483,14 @@ function toAnthropicTools(tools: any): any[] {
 }
 
 function toGeminiTools(tools: any): any[] {
+  // Gemini's Schema type is OpenAPI 3.0.3 derived: it has no $schema, no $ref,
+  // no additionalProperties, and no null type. Forwarding the Anthropic schema
+  // unchanged sent all four. The gemini dialect strips them and folds
+  // `anyOf: [T, null]` into `nullable: true`.
   const declarations = toAnthropicTools(tools).map(tool => ({
     name: tool.name,
     ...(tool.description !== undefined && { description: tool.description }),
-    parameters: tool.input_schema,
+    parameters: prepareToolSchema(tool.input_schema, 'gemini'),
   }))
   return declarations.length > 0 ? [{ functionDeclarations: declarations }] : []
 }
@@ -758,16 +763,11 @@ function collectToolNamesById(messages: any): Map<string, string> {
   return names
 }
 
+// Delegates to the shared preparation pass: strips meta and vendor keys at
+// every depth (not just the root) and inlines local $ref targets that most
+// providers cannot resolve. See services/api/toolSchema.ts.
 function sanitizeJsonSchema(schema: unknown): Record<string, unknown> {
-  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
-    return { type: 'object', properties: {} }
-  }
-  const clone = JSON.parse(JSON.stringify(schema)) as Record<string, unknown>
-  delete clone.cache_control
-  delete clone.strict
-  delete clone.defer_loading
-  delete clone.eager_input_streaming
-  return clone
+  return prepareToolSchema(schema, 'json-schema')
 }
 
 function estimateTokenCount(params: any): number {

@@ -9,7 +9,6 @@ import { getExternalEditor } from '../../../utils/editor.js';
 import { toIDEDisplayName } from '../../../utils/ide.js';
 import { editPromptInEditor } from '../../../utils/promptEditor.js';
 import { type OptionWithDescription, Select, SelectMulti } from '../../CustomSelect/index.js';
-import { Divider } from '../../design-system/Divider.js';
 import { FilePathLink } from '../../FilePathLink.js';
 import { QuestionNavigationBar } from './QuestionNavigationBar.js';
 import { PreviewQuestionView } from './PreviewQuestionView.js';
@@ -184,9 +183,11 @@ export function QuestionView({
     );
   }
 
+  // A rule above the planning path added a second horizontal line immediately
+  // under the question's own, for no grouping benefit. The dimmed text alone
+  // reads as metadata.
   const planInfo = isInPlanMode && planFilePath && (
     <Box flexDirection="column" gap={0}>
-      <Divider color="inactive" />
       <Text color="inactive">
         Planning: <FilePathLink filePath={planFilePath} />
       </Text>
@@ -256,8 +257,13 @@ export function QuestionView({
           )}
         </Box>
 
+        {/*
+          The footer actions continue the same numbering as the choices above
+          (1..N choices, then N+1 "Chat about this"). A full-width rule between
+          them cut the later entries off from the list they belong to, so the
+          user read them as a detached second group. Spacing alone groups them.
+        */}
         <Box flexDirection="column" marginTop={1}>
-          <Divider color="inactive" />
           <Box flexDirection="row" gap={1}>
             {isFooterFocused && footerIndex === 0 ? (
               <Text color="suggestion">{figures.pointer}</Text>

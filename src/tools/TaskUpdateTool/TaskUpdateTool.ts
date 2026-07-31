@@ -158,6 +158,10 @@ export const TaskUpdateTool = buildTool({
       }
     }
 
+    // A task cannot block itself, and an edge from a node to itself carries no
+    // ordering information. Failing the whole call over one is pure loss: the
+    // status change and every other valid dependency in the same request are
+    // discarded too. Self-edges are dropped and the rest of the update applies.
     const requestedDependencies = [
       ...(addBlocks ?? []).map(targetId => ({
         fromTaskId: taskId,
@@ -169,7 +173,7 @@ export const TaskUpdateTool = buildTool({
         toTaskId: taskId,
         field: 'addBlockedBy',
       })),
-    ]
+    ].filter(edge => edge.fromTaskId !== edge.toTaskId)
     const dependencyValidation = await validateTaskDependencies(
       taskListId,
       requestedDependencies,
@@ -181,6 +185,20 @@ export const TaskUpdateTool = buildTool({
           candidate.fromTaskId === dependency.fromTaskId &&
           candidate.toTaskId === dependency.toTaskId,
       )?.field ?? 'dependency'
+      // A bare reason code left the caller guessing which id was wrong and what
+      // ids exist, so the usual response was to retry the same edge. Name the
+      // missing side and list what is actually available.
+      const known = (await listTasks(taskListId)).map(task => `#${task.id}`)
+      const missing =
+        dependencyValidation.reason === 'task_not_found'
+          ? [dependency.fromTaskId, dependency.toTaskId].filter(
+              id => !known.includes(`#${id}`),
+            )
+          : []
+      const detail =
+        missing.length > 0
+          ? ` (no such task ${missing.map(id => `#${id}`).join(', ')}; existing tasks: ${known.join(', ') || 'none'})`
+          : ''
       return {
         data: {
           success: false,
@@ -189,7 +207,8 @@ export const TaskUpdateTool = buildTool({
           error:
             `Invalid ${field} dependency ` +
             `#${dependency.fromTaskId} -> #${dependency.toTaskId}: ` +
-            dependencyValidation.reason,
+            dependencyValidation.reason +
+            detail,
         },
       }
     }
@@ -334,11 +353,13 @@ export const TaskUpdateTool = buildTool({
       }
     }
 
+    // Self-edges were filtered out of requestedDependencies above; keep the
+    // reported field list consistent with what is actually committed.
     const newBlocks = (addBlocks ?? []).filter(
-      id => !existingTask.blocks.includes(id),
+      id => id !== taskId && !existingTask.blocks.includes(id),
     )
     const newBlockedBy = (addBlockedBy ?? []).filter(
-      id => !existingTask.blockedBy.includes(id),
+      id => id !== taskId && !existingTask.blockedBy.includes(id),
     )
     if (newBlocks.length > 0) updatedFields.push('blocks')
     if (newBlockedBy.length > 0) updatedFields.push('blockedBy')

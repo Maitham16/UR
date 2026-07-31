@@ -26,10 +26,33 @@
  */
 import { createSignal } from './signal.js'
 
+/**
+ * How long `dispatching` may last before it is treated as abandoned.
+ *
+ * `dispatching` is the gap between reserve() and tryStart() — a few synchronous
+ * statements plus the awaits inside processUserInput. It has no owner: if that
+ * chain dies in a way the caller's finally cannot observe (a torn-down React
+ * tree, a rejected microtask, a native crash in an awaited tool), nothing calls
+ * cancelReservation() and `isActive` stays true forever. The UI then shows
+ * "working" indefinitely for a prompt that is not running anywhere.
+ *
+ * Generous by design: a slash command awaiting a slow tool legitimately sits
+ * here for seconds. This is a stuck detector, not a deadline.
+ */
+export const DISPATCH_STUCK_MS = 120_000
+
 export class QueryGuard {
   private _status: 'idle' | 'dispatching' | 'running' = 'idle'
   private _generation = 0
   private _changed = createSignal()
+  /** When the current status was entered. Drives stuck detection. */
+  private _statusSince = 0
+  private _now: () => number = () => Date.now()
+
+  /** Override the clock. Tests only — production always uses Date.now. */
+  setClockForTests(now: () => number): void {
+    this._now = now
+  }
 
   /**
    * Reserve the guard for queue processing. Transitions idle → dispatching.

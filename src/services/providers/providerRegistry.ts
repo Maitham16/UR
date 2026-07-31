@@ -8,6 +8,11 @@ import { getInitialSettings, updateSettingsForSource } from '../../utils/setting
 import type { EditableSettingSource } from '../../utils/settings/constants.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
 import { which } from '../../utils/which.js'
+import {
+  describeCacheAge,
+  parseDiscoveredModels,
+  RequestCoalescer,
+} from './modelCatalog.js'
 
 export const PROVIDER_IDS = [
   'ollama',
@@ -1874,9 +1879,31 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
 }
 
 const cachedModelsByProvider = new Map<string, ProviderModelDefinition[]>()
+/** Wall-clock time each cache entry was written, so age can be reported. */
+const cachedModelsWrittenAt = new Map<string, number>()
+/** Collapses concurrent identical discovery requests onto one fetch. */
+const modelDiscoveryCoalescer = new RequestCoalescer<ProviderModelDefinition[]>()
 
 export function clearProviderModelCacheForTests(): void {
   cachedModelsByProvider.clear()
+  cachedModelsWrittenAt.clear()
+  modelDiscoveryCoalescer.clear()
+}
+
+/** Number of discovery requests currently in flight. Exposed for tests. */
+export function inFlightModelDiscoveryCount(): number {
+  return modelDiscoveryCoalescer.size
+}
+
+function rememberModels(key: string, models: ProviderModelDefinition[]): void {
+  cachedModelsByProvider.set(key, models)
+  cachedModelsWrittenAt.set(key, Date.now())
+}
+
+/** Age of a cache entry in ms, or undefined when nothing is cached. */
+function cachedModelsAgeMs(key: string): number | undefined {
+  const writtenAt = cachedModelsWrittenAt.get(key)
+  return writtenAt === undefined ? undefined : Date.now() - writtenAt
 }
 
 function providerBaseUrl(
@@ -2002,7 +2029,7 @@ export function cacheProviderModelsForProvider(
       ? modelDefinitionsFromNames(provider, models as string[], 'cache')
       : (models as ProviderModelDefinition[])
   if (definitions.length > 0) {
-    cachedModelsByProvider.set(providerModelCacheKey(provider), definitions)
+    rememberModels(providerModelCacheKey(provider), definitions)
   }
 }
 
@@ -2181,7 +2208,23 @@ async function discoverApiProviderModels(
     throw new Error(`${url} returned HTTP ${response.status}.`)
   }
   const body = await response.json()
-  return modelDefinitionsFromNames(provider, parseApiModelIds(provider, body), 'live')
+  // Gemini's catalogue needs the supportedGenerationMethods filter, so it keeps
+  // the id-only path. Every other API provider carries a human name, pricing
+  // and context length that the id-only mapping used to discard — which is why
+  // OpenRouter's rotating free tier was invisible in the picker.
+  if (provider === 'gemini-api') {
+    return modelDefinitionsFromNames(provider, parseApiModelIds(provider, body), 'live')
+  }
+  const providerLabel = getProviderDefinition(provider).displayName
+  const discovered = parseDiscoveredModels(body, providerLabel)
+  if (discovered.length === 0) {
+    return modelDefinitionsFromNames(provider, parseApiModelIds(provider, body), 'live')
+  }
+  return discovered.map(model => ({
+    id: model.id,
+    displayName: model.displayName,
+    description: model.description,
+  }))
 }
 
 export async function listModelsForProviderWithSource(
@@ -2217,9 +2260,13 @@ export async function listModelsForProviderWithSource(
   // that initiated it, never the newly selected host.
   const cacheKey = providerModelCacheKey(provider, cacheSettings)
   try {
-    const liveModels = await discoverLiveModelsForProvider(provider, options)
+    // Concurrent selections of the same provider share one request instead of
+    // issuing a second whose response can land out of order.
+    const liveModels = await modelDiscoveryCoalescer.run(cacheKey, () =>
+      discoverLiveModelsForProvider(provider, options),
+    )
     if (liveModels.length > 0) {
-      cachedModelsByProvider.set(cacheKey, liveModels)
+      rememberModels(cacheKey, liveModels)
       return {
         provider,
         models: liveModels,
@@ -2228,11 +2275,12 @@ export async function listModelsForProviderWithSource(
     }
     const cachedModels = cachedModelsByProvider.get(cacheKey) ?? []
     if (cachedModels.length > 0) {
+      const age = describeCacheAge(cachedModelsAgeMs(cacheKey) ?? 0)
       return {
         provider,
         models: cachedModels,
         source: 'cache',
-        warning: `Live model discovery for "${provider}" returned no models. Showing cached ${provider} models only.`,
+        warning: `Live model discovery for "${provider}" returned no models. Showing cached ${provider} models only${age ? ` (${age})` : ''}.`,
       }
     }
     const staticModels = staticModelsForProvider(provider)
@@ -2245,11 +2293,12 @@ export async function listModelsForProviderWithSource(
   } catch (error) {
     const cachedModels = cachedModelsByProvider.get(cacheKey) ?? []
     if (cachedModels.length > 0) {
+      const age = describeCacheAge(cachedModelsAgeMs(cacheKey) ?? 0)
       return {
         provider,
         models: cachedModels,
         source: 'cache',
-        warning: `Live model discovery for "${provider}" failed: ${error instanceof Error ? error.message : String(error)}. Showing cached ${provider} models only.`,
+        warning: `Live model discovery for "${provider}" failed: ${error instanceof Error ? error.message : String(error)}. Showing cached ${provider} models only${age ? ` (${age})` : ''}.`,
       }
     }
     const staticModels = staticModelsForProvider(provider)

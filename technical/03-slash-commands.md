@@ -228,6 +228,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/keybindings` | local | Open/create the keybindings file | `/keybindings` |
 | `/terminal-setup` | jsx | Configure terminal (Shift+Enter etc.) | `/terminal-setup` |
 | `/statusline` | prompt | Configure the status line | `/statusline show model and git branch` |
+| `/status-bar` | jsx | Choose which fields the built-in status bar shows | `/status-bar` |
 | `/output-style` | jsx | Deprecated → use `/config` | — |
 | `/hooks` | jsx | View hook configurations | `/hooks` |
 | `/help` | jsx | Help and available commands | `/help` |

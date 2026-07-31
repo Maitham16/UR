@@ -118,6 +118,8 @@ export function ProviderFirstModelPicker({
   const [apiKeyCursorOffset, setApiKeyCursorOffset] = useState(0)
   const [connectError, setConnectError] = useState<string | null>(null)
   const [credentialNotice, setCredentialNotice] = useState<string | null>(null)
+  // Bumping this re-runs discovery for the selected provider (the retry state).
+  const [modelReloadToken, setModelReloadToken] = useState(0)
   const terminalSize = useContext(TerminalSizeContext)
   // "API key: " label plus the surrounding pane border.
   const keyInputColumns = Math.max(20, (terminalSize?.columns ?? 80) - 14)
@@ -171,30 +173,50 @@ export function ProviderFirstModelPicker({
   useEffect(() => {
     if (!selectedProvider) return
 
+    // Aborting the controller immediately after awaiting cancelled nothing and
+    // left no way to drop a response for a provider the user had moved away
+    // from. The controller now lives for the effect and is aborted on cleanup.
+    const controller = new AbortController()
+    let cancelled = false
+
     async function loadModels() {
       setLoadingModels(true)
       setModelWarning(null)
       const providerId = selectedProvider.value as ProviderId
-      const controller = new AbortController()
-      const result = await listModelsForProviderWithSource(providerId, {
-        settings: getSettingsForSource('userSettings') ?? undefined,
-        signal: controller.signal,
-      })
-      controller.abort()
-      const options: ModelOption[] = result.models.map(model => ({
-        value: model.id,
-        label: model.displayName,
-        description: `${model.description} · ${result.source}`,
-      }))
-      setModelOptions(options)
-      setModelSource(result.source)
-      setModelWarning(result.warning ?? null)
-
-      setLoadingModels(false)
+      try {
+        const result = await listModelsForProviderWithSource(providerId, {
+          settings: getSettingsForSource('userSettings') ?? undefined,
+          signal: controller.signal,
+        })
+        if (cancelled) return
+        const options: ModelOption[] = result.models.map(model => ({
+          value: model.id,
+          label: model.displayName,
+          description: `${model.description} · ${result.source}`,
+        }))
+        setModelOptions(options)
+        setModelSource(result.source)
+        setModelWarning(result.warning ?? null)
+      } catch (error) {
+        if (cancelled) return
+        // Discovery already degrades to cache/static internally, so reaching
+        // here means the call itself failed. Report it rather than rendering
+        // an empty list that looks like "this provider has no models".
+        setModelOptions([])
+        setModelWarning(
+          `Could not load models: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      } finally {
+        if (!cancelled) setLoadingModels(false)
+      }
     }
 
     loadModels()
-  }, [selectedProvider])
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [selectedProvider, modelReloadToken])
 
   // The key-entry view advertises Esc but the text input owns the key, so the
   // step needs its own listener to actually go back.
@@ -205,6 +227,17 @@ export function ProviderFirstModelPicker({
       }
     },
     { isActive: step === 'connect' },
+  )
+
+  // Ctrl+R re-runs discovery so a transient network failure or a provider that
+  // has just published a model does not require leaving and reopening /model.
+  useInput(
+    (input, key) => {
+      if (key.ctrl && (input === 'r' || input === 'R')) {
+        setModelReloadToken(token => token + 1)
+      }
+    },
+    { isActive: step === 'model' && !loadingModels },
   )
 
   const providerSelectOptions = providerOptions.map(opt => ({
@@ -219,7 +252,12 @@ export function ProviderFirstModelPicker({
   }))
 
   const providerVisibleCount = Math.min(10, providerSelectOptions.length)
-  const modelVisibleCount = Math.min(10, modelSelectOptions.length)
+  // Model catalogues run to hundreds of entries on OpenRouter, so the window
+  // is sized to the terminal instead of a fixed 10.
+  const modelVisibleCount = Math.max(
+    1,
+    Math.min(modelSelectOptions.length, Math.max(5, (terminalSize?.rows ?? 24) - 14)),
+  )
 
   const focusedProvider = providerOptions.find(p => p.value === focusedProviderValue)
   const focusedModel = modelOptions.find(m => m.value === focusedModelValue)
@@ -624,7 +662,7 @@ export function ProviderFirstModelPicker({
             Model source: {modelSource}
           </Text>
           <Text dimColor color="subtle">
-            Press Esc to change provider
+            Esc to change provider · ctrl+r to refresh from {selectedProvider?.label}
           </Text>
         </Box>
 
@@ -678,7 +716,7 @@ export function ProviderFirstModelPicker({
                   No models available for this provider.
                 </Text>
                 <Text dimColor color="subtle">
-                  Run `ur provider doctor {selectedProvider?.value}` to troubleshoot.
+                  Press ctrl+r to retry, or run `ur provider doctor {selectedProvider?.value}` to troubleshoot.
                 </Text>
               </Box>
             )}

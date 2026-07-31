@@ -50,7 +50,21 @@ function packAndExtract(): string {
       },
     },
   )
-  const packed = JSON.parse(packOutput)[0]
+  // `npm pack --json` is documented to emit JSON, but npm writes update
+  // notices ("npm notice New major version of npm available!") into the same
+  // stream on some versions and configurations. Parsing the raw stream then
+  // throws `undefined is not an object (evaluating 'packed.filename')`, which
+  // reports a packaging failure when packaging is fine. Take the JSON array.
+  const start = packOutput.indexOf('[')
+  const end = packOutput.lastIndexOf(']')
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`npm pack --json produced no JSON array:\n${packOutput}`)
+  }
+  const parsed = JSON.parse(packOutput.slice(start, end + 1))
+  const packed = Array.isArray(parsed) ? parsed[0] : undefined
+  if (!packed?.filename) {
+    throw new Error(`npm pack --json returned no filename:\n${packOutput}`)
+  }
   const tarball = join(tmp, packed.filename)
   const extractDir = join(tmp, 'extract')
   execFileSync('mkdir', ['-p', extractDir])

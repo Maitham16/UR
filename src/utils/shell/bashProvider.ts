@@ -181,9 +181,25 @@ export async function createBashShellProvider(
       // When sourcing a file with aliases, they won't be expanded in the same command line
       // because the shell parses the entire line before execution. Using eval after
       // sourcing causes a second parsing pass where aliases are now available for expansion.
+      //
+      // The cwd capture runs from an EXIT trap rather than being chained after
+      // the command with `&&`. Chaining had three consequences:
+      //
+      //  - `pwd -P` never ran after a failing command, so a `cd` preceding a
+      //    non-zero exit was lost and the session silently continued in the
+      //    old directory.
+      //  - on success the shell's exit status became `pwd`'s, so a command
+      //    that removed its own working directory reported failure despite
+      //    having succeeded.
+      //  - a command containing `exit` terminated the shell before the capture
+      //    could run at all.
+      //
+      // An EXIT trap fires on all three paths and does not disturb the exit
+      // status, so the code reported is always the user's command's.
+      commandParts.push(
+        `trap 'pwd -P >| ${quote([shellCwdFilePath])} 2>/dev/null || true' EXIT`,
+      )
       commandParts.push(`eval ${quotedCommand}`)
-      // Use `pwd -P` to get the physical path of the current working directory for consistency with `process.cwd()`
-      commandParts.push(`pwd -P >| ${quote([shellCwdFilePath])}`)
       let commandString = commandParts.join(' && ')
 
       // Apply UR_CODE_SHELL_PREFIX if set

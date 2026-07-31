@@ -12,6 +12,7 @@ import type { Tool } from '../../Tool.js';
 import { buildTool, type ToolDef } from '../../Tool.js';
 import { lazySchema } from '../../utils/lazySchema.js';
 import { ASK_USER_QUESTION_TOOL_CHIP_WIDTH, ASK_USER_QUESTION_TOOL_NAME, ASK_USER_QUESTION_TOOL_PROMPT, DESCRIPTION, PREVIEW_FEATURE_PROMPT } from './prompt.js';
+import { dedupeQuestions } from './normalizeQuestions.js';
 function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -107,13 +108,15 @@ function normalizeAskUserQuestionInput(value: unknown): unknown {
   }
   if (Array.isArray(input.questions)) {
     return {
-      questions: input.questions.map(normalizeQuestionInput),
+      // Duplicates are repaired here rather than rejected by the uniqueness
+      // refinement, which would fail the call and force a retry round trip.
+      questions: dedupeQuestions(input.questions.map(normalizeQuestionInput)),
       ...commonFields
     };
   }
   if (typeof input.question === 'string' && Array.isArray(input.options)) {
     return {
-      questions: [normalizeQuestionInput(input, 0)],
+      questions: dedupeQuestions([normalizeQuestionInput(input, 0)]),
       ...commonFields
     };
   }

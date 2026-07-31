@@ -20,6 +20,7 @@ describe('UR-Nexus status bar', () => {
       mode: 'acceptEdits',
       branch: 'main',
       taskRunningCount: 1,
+      taskCompletedCount: 2,
       taskTotalCount: 3,
       checksStatus: 'tests passed',
     })
@@ -28,15 +29,18 @@ describe('UR-Nexus status bar', () => {
     expect(text).toContain('modelH')
     expect(text).toContain('acceptEdits')
     expect(text).toContain('main')
-    expect(text).toContain('tasks: 1/3 active')
+    // Progress is reported as completed-of-total; the running count is added
+    // only when it says something the ratio does not.
+    expect(text).toContain('2/3 done')
+    expect(text).toContain('1 running')
     expect(text).toContain('tests passed')
     expect(text).not.toContain('UR-Nexus')
     expect(text).not.toContain('v1.25.3')
     expect(text).not.toContain('Auth:')
     expect(text.indexOf('modelH')).toBeLessThan(
-      text.indexOf('tasks: 1/3 active'),
+      text.indexOf('2/3 done'),
     )
-    expect(text.indexOf('tasks: 1/3 active')).toBeLessThan(
+    expect(text.indexOf('2/3 done')).toBeLessThan(
       text.indexOf('Codex CLI'),
     )
   })

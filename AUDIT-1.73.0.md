@@ -1,145 +1,167 @@
 # UR-Nexus audit and fix report — 1.72.0 → 1.73.0
 
-**Scope actually completed is a subset of what was requested.** This document
-states exactly what was fixed and verified, and exactly what was not attempted.
-Nothing here is inferred; every claim below has a command and an exit code.
-
----
-
-## 0. Honest scope statement
-
-The request covered ten subsystems across a 2,464-file codebase, each with full
-test coverage and verification. **Four areas were audited, fixed, tested and
-verified. The rest were not attempted.** Nothing was partially edited and left
-broken — untouched areas are byte-identical to `HEAD`.
-
-| Requested area | Status |
-| --- | --- |
-| Provider API-key input (one char per line, key corruption) | **Verified fixed** |
-| Provider credential change / disconnect | **Verified fixed** |
-| Token accounting showing `0` beside tool counts | **Verified fixed** |
-| Questions choices UI detaching past 4 options | **Verified fixed** |
-| Dynamic model-list refresh | **Audited — already implemented; not modified** |
-| Task list / subagent behaviour | **Audited — existing tests pass; not modified** |
-| Tool-schema audit | **Not attempted** |
-| Bash reliability | **Not attempted** |
-| Timeout / stalled-work | **Not attempted** |
-| Status-bar redesign + field settings | **Not attempted** |
-| Prompt/execution bottleneck audit | **Not attempted** |
-
-Protected areas (security, safety, permissions, approvals, sandbox,
-workspace-access, prompt-injection defenses) were **not read for modification and
-not touched**. No file under `src/tools/BashTool/`, `src/services/safety/`,
-`src/utils/sandbox/`, or any permission/approval path appears in the diff.
+Every claim below has a command and an exit code behind it. Where something was
+not done, or could not be verified, it says so.
 
 ---
 
 ## 1. Audit findings
 
-### F1 — API key field renders one character per line · **Critical** · Fixed
+Severity · root cause · evidence · impact · resolution.
 
-**Evidence.** `src/components/ProviderFirstModelPicker.tsx:364` was the only
-`<TextInput>` in `src/` that omitted `columns`, `cursorOffset` and
-`onChangeCursorOffset`. All three are non-optional in
-`src/types/textInputTypes.ts:113`. The file opens with `// @ts-nocheck` (line 1),
-so the compiler could not report the missing props.
+### F1 — API key field renders one character per line · **Critical**
 
-**Root cause.** Three distinct defects from one omission:
+**Evidence.** `ProviderFirstModelPicker.tsx:364` was the only `<TextInput>` in
+`src/` omitting `columns`, `cursorOffset`, `onChangeCursorOffset`. All three are
+non-optional in `textInputTypes.ts:113`; the file's `// @ts-nocheck` (line 1)
+hid it from the compiler.
 
-1. **1-column wrap.** `columns: undefined` → `useTextInput` →
-   `Cursor.fromText(text, undefined, …)` → `normalizeCursorColumns(undefined)`
-   (`src/utils/Cursor.ts:1119`) returns `2` because `Number.isFinite(undefined)`
-   is false → `new MeasuredText(text, 2 - 1)` → `wrapAnsi(text, 1, {hard: true})`
-   → one grapheme per line.
-2. **Key stored reversed.** `cursorOffset: undefined` → `externalOffset`
-   undefined → `Cursor.fromText`'s `offset = 0` default applies on every render,
-   so the offset never advanced and each keystroke inserted at the head.
-   Typing `sk-abc` stored `cba-ks`.
-3. **Throw on every keystroke.** `onChangeCursorOffset: undefined` →
-   `setOffset` undefined → `setOffset(nextCursor.offset)` at
-   `src/hooks/useTextInput.ts:452` and `:477` throws `TypeError`.
+**Root cause.** Three defects from one omission:
+1. `columns: undefined` → `normalizeCursorColumns(undefined)` (`Cursor.ts:1119`)
+   returns `2` because `Number.isFinite(undefined)` is false → `MeasuredText(text, 1)`
+   → `wrapAnsi(text, 1, {hard:true})` → one grapheme per line.
+2. `cursorOffset: undefined` → offset defaulted to 0 on every render, so each
+   keystroke inserted at the head. Typing `sk-abc` stored **`cba-ks`**.
+3. `onChangeCursorOffset: undefined` → `setOffset(...)` at `useTextInput.ts:452`
+   and `:477` threw `TypeError` per keystroke.
 
 **Impact.** No provider connectable through the in-app picker; any key that
 appeared to save was corrupted.
 
-**Resolution.** Fixed at both the component boundary and the call site so no
-future call site can reproduce it:
+**Resolution.** Fixed at the component boundary *and* the call site.
+`TextInput.tsx` resolves a width from `TerminalSizeContext` when `columns` is
+absent or `< 2`, and holds the offset internally when the caller does not lift
+it — so no future call site can reproduce this.
 
-- `src/components/TextInput.tsx` — resolves a usable width from the live
-  `TerminalSizeContext` when `columns` is absent or `< 2`, and holds the cursor
-  offset in internal state when the caller does not lift it. Read via
-  `useContext` rather than `useTerminalSize()` so a render outside an Ink app
-  degrades instead of throwing.
-- `src/components/ProviderFirstModelPicker.tsx` — passes `columns`,
-  `cursorOffset`, `onChangeCursorOffset`, `focus` and `showCursor` explicitly.
+### F2 — Pasted keys keep the newline from the copied line · **High**
 
-### F2 — Pasted keys keep the newline from the copied line · **High** · Fixed
+`setProviderApiKey` applied only `.trim()` (`providerCredentials.ts:60`), which
+does not remove interior line breaks. A bracketed paste carrying `\n` produced a
+value that is not a legal HTTP header, failing later requests with an opaque
+transport error instead of a `401`. New `apiKeyInput.ts` strips C0/C1 controls
+and Unicode line separators and reports interior whitespace rather than
+silently accepting it. Keys are never truncated or re-cased.
 
-**Evidence.** `setProviderApiKey` applied only `.trim()`
-(`src/services/providers/providerCredentials.ts:60`), which removes leading and
-trailing whitespace but not interior line breaks.
+### F3 — No way to change or remove a stored key · **Medium**
 
-**Impact.** A bracketed paste carrying `\n` produced a stored value that is not
-a legal HTTP header value, failing later requests with an opaque transport error
-instead of a `401`.
+`clearProviderApiKey` existed and worked (`providerCredentials.ts:106`) but had
+no UI caller. A `manage` step now offers *Continue to models* / *Change API key*
+/ *Disconnect*, shown only when `getProviderApiKeySource(...) === 'stored'` — an
+env-var key belongs to the shell and is left alone.
 
-**Resolution.** New `src/services/providers/apiKeyInput.ts` strips C0/C1
-controls and Unicode line separators (` `/` `) and reports interior
-whitespace to the user rather than silently accepting it. Keys are opaque, so
-nothing beyond "non-empty and single-line" is enforced; the value is never
-truncated or re-cased.
+### F4 — Key-entry screen advertised an Esc that did nothing · **Low**
 
-### F3 — No way to change or remove a stored key · **Medium** · Fixed
+`handleKeyCancel` was defined but never referenced while the footer rendered
+`Esc → back`. The text input owns escape, so a `useInput` scoped to
+`isActive: step === 'connect'` now handles it.
 
-**Evidence.** `clearProviderApiKey` exists and works
-(`providerCredentials.ts:106`) but had no UI caller. Selecting a connected
-api-key provider went straight to model selection.
+### F5 — `0 tokens` printed beside real tool counts · **Medium**
 
-**Resolution.** A `manage` step in the picker offers *Continue to models* /
-*Change API key* / *Disconnect*, shown only when
-`getProviderApiKeySource(...) === 'stored'` — a key supplied through the
-environment belongs to the shell and is left alone. "Continue to models" is the
-default, so the common path is still Enter-Enter.
+`AgentTool/UI.tsx:376` built `formatNumber(totalTokens) + ' tokens'`
+unconditionally. When a provider reports no usage the pipeline substitutes
+`EMPTY_USAGE` (all zeros), so the UI rendered `Done (7 tool uses · 0 tokens · 1m 4s)`.
+Absent and zero usage were indistinguishable by value. `hasReportedTokenUsage()`
+and `formatReportedTokens()` in `tokens.ts` treat an all-zero block as
+unreported and omit the segment.
 
-### F4 — Key-entry screen advertised an Esc that did nothing · **Low** · Fixed
+### F6 — Choices past the fourth detach from the list · **Medium**
 
-**Evidence.** `handleKeyCancel` was defined but never referenced; the footer
-rendered `KeyboardShortcutHint shortcut="Esc" action="back"`. The text input owns
-the escape key (double-press-to-clear), so nothing returned to the provider list.
+`QuestionView.tsx:207,230` rendered `<Select>`/`<SelectMulti>` with no
+`visibleOptionCount`; the default is 5 (`select.tsx:219`,
+`use-select-state.ts:128`). `QuestionView` appends a synthetic `__other__`
+entry, so four choices already hit the window and the tail landed below the
+footer divider. `choiceListLayout.ts` sizes the list to the terminal.
 
-**Resolution.** A `useInput` handler scoped to `isActive: step === 'connect'`.
+### F7 — Cached tokens counted twice, reasoning tokens discarded · **High**
 
-### F5 — `0 tokens` printed beside real tool counts · **Medium** · Fixed
+**Evidence.** `openaiCompatible.ts:418` mapped only `prompt_tokens`/
+`completion_tokens`, hardcoding both cache counters to `0`.
+`streamingAdapters.ts:1258` did the same. `usageFromOpenAIResponses` mapped
+`cached_tokens` into `cache_read_input_tokens` *without* subtracting it from
+`input_tokens`.
 
-**Evidence.** `src/tools/AgentTool/UI.tsx:376` built the summary segments
-unconditionally: `formatNumber(totalTokens) + ' tokens'`. When a provider returns
-no usage block the pipeline substitutes `EMPTY_USAGE`
-(`src/services/api/emptyUsage.ts`), whose counters are all zero, so
-`getTokenCountFromUsage` returned `0` and the UI rendered
-`Done (7 tool uses · 0 tokens · 1m 4s)`.
+**Root cause.** The internal counters are disjoint and summed by
+`getTokenCountFromUsage`, but OpenAI-shaped providers report `prompt_tokens` as
+the *whole* input including `prompt_tokens_details.cached_tokens`. Copying
+across verbatim either loses the field or counts the cached prefix twice.
+`completion_tokens_details.reasoning_tokens` is already inside
+`completion_tokens` and must never be added to output.
+([OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching),
+[OpenRouter usage accounting](https://openrouter.ai/docs/use-cases/usage-accounting),
+[Gemini token counting](https://ai.google.dev/gemini-api/docs/generate-content/tokens))
 
-**Root cause.** Absent usage and zero usage were indistinguishable by value.
+**Resolution.** One `usageNormalization.ts` pass for all four mapping sites.
+Verified invariant: the derived total equals the provider's own `total_tokens`.
 
-**Resolution.** `hasReportedTokenUsage()` and `formatReportedTokens()` in
-`src/utils/tokens.ts`. No completion that produced content can cost zero input
-*and* zero output, so an all-zero block means "unreported" and the segment is
-omitted entirely. Tool count and token figure are now independent: the tool count
-always renders; the token figure renders only when the provider supplied it.
-Provider-reported input, output, cached and creation tokens are unchanged —
-`getTokenCountFromUsage` was not modified.
+### F8 — OpenRouter returns no usage at all · **High**
 
-### F6 — Choices past the fourth detach from the list · **Medium** · Fixed
+OpenRouter omits the usage block unless `usage: { include: true }` is sent. It
+never was — the direct cause of "0 tokens" on that provider. Now sent for
+`openrouter` only.
 
-**Evidence.** `QuestionView.tsx:230` and `:207` rendered `<Select>` and
-`<SelectMulti>` with no `visibleOptionCount`. The default is `5`
-(`select.tsx:219`, `SelectMulti.tsx:81`, `use-select-state.ts:128`).
-`QuestionView` appends a synthetic `__other__` entry, so a question with four
-choices already hits the window, and the `<Divider>` at `:252` plus the footer
-rows sit directly below — the tail read as a detached second group.
+### F9 — Model metadata discarded; free tier invisible · **Medium**
 
-**Resolution.** `choiceListLayout.ts` sizes the list to the terminal: one
-continuous list when it fits, windowing only when the height genuinely cannot,
-never below three rows.
+`modelDefinitionsFromNames` set `displayName = id` and a fixed description,
+dropping `name`, `pricing` and `context_length`. OpenRouter rotates which models
+are free and that is only visible in `pricing`. `modelCatalog.ts` reads it per
+refresh, orders free-first / deprecated-last, and always shows the full id.
+
+### F10 — Duplicate discovery requests; cache shown as current · **Medium**
+
+No in-flight de-duplication and no cache age. Concurrent selections issued
+parallel fetches whose responses could land out of order. `RequestCoalescer`
+collapses them; `describeCacheAge` labels a stale list.
+
+### F11 — `$schema` and `$ref` forwarded to every provider · **High**
+
+`sanitizeJsonSchema` existed in three identical copies
+(`openaiCompatible.ts`, `standardAPI.ts`, `ollama.ts`) and deleted four vendor
+keys **at the root only**. Verified by probe: zod v4 emits
+`"$schema": "https://json-schema.org/draft/2020-12/schema"` on every tool schema
+and `{"$ref": "#"}` for a recursive one. Gemini's Schema type (OpenAPI 3.0.3
+derived) supports none of `$schema`, `$ref`, `additionalProperties`, or a null
+type, and `toGeminiTools` forwarded the Anthropic schema unchanged.
+([Gemini function calling](https://ai.google.dev/gemini-api/docs/function-calling))
+New `toolSchema.ts` strips meta/vendor keys at every depth, inlines local
+references, narrows the Gemini dialect, and validates before sending.
+
+### F12 — Bash lost the working directory and misreported exit codes · **High**
+
+`bashProvider.ts:186` chained `pwd -P >| file` after the command with `&&`:
+- it never ran after a failing command, so a preceding `cd` was lost and the
+  session silently continued in the old directory;
+- on success the shell's exit status became `pwd`'s, so a command that removed
+  its own working directory reported failure despite succeeding;
+- a command containing `exit` terminated the shell before the capture ran.
+
+Now captured from an `EXIT` trap, which fires on all three paths and does not
+disturb the exit status. All three are covered by real-bash tests.
+
+### F13 — A stalled stream had no timeout at all · **High**
+
+`fetchWithProviderReliability` clears its total-request timeout in `finally`,
+which for a streaming request is the moment the *headers* arrive. A provider
+that accepted the request and then went silent left the stream open
+indefinitely — the UI kept showing work in progress and nothing failed or
+completed. `streamIdleTimeout.ts` adds an inactivity watchdog (distinct from the
+total-run timeout: a long stream that keeps producing is never interrupted).
+
+### F14 — Duplicate questions/options rejected rather than repaired · **Medium**
+
+The schema's `UNIQUENESS_REFINE` (`AskUserQuestionTool.tsx:140`) failed the
+whole call on a duplicate label. That is the "initial failed request followed by
+a retry" pattern: a recoverable formatting slip cost a round trip and showed the
+user nothing. `normalizeQuestions.ts` de-duplicates in the preprocessor;
+genuinely unaskable questions (fewer than two distinct labels) are still
+rejected, because no repair can invent a choice.
+
+### F15 — Status bar: fixed fields, no width awareness, pending counted as active · **Medium**
+
+`buildDefaultStatusBar` composed a fixed sequence with no visibility control and
+no width handling — the terminal truncated whatever did not fit, so the
+rightmost fields vanished with no indication. `StatusLine.tsx:238` counted
+`pending` tasks as active, overstating progress. Rebuilt around a field registry
+with priorities; lowest-priority fields drop first.
 
 ---
 
@@ -147,65 +169,82 @@ never below three rows.
 
 | File | Purpose |
 | --- | --- |
-| `src/components/TextInput.tsx` | Resolve wrap width from terminal size when `columns` absent; internal cursor offset when caller does not lift it. Exports `resolveImplicitInputColumns` / `hasUsableColumns` for test. |
-| `src/components/ProviderFirstModelPicker.tsx` | Pass width/offset/setter/focus to the key field; `manage` step for change-key and disconnect; working Esc; sanitise on submit. |
-| `src/services/providers/apiKeyInput.ts` *(new)* | Single-line normalisation and validation of entered keys. |
-| `src/utils/tokens.ts` | `hasReportedTokenUsage`, `formatReportedTokens`. Existing functions unchanged. |
-| `src/tools/AgentTool/UI.tsx` | Omit the token segment when usage is unreported. |
-| `.../AskUserQuestionPermissionRequest/choiceListLayout.ts` *(new)* | Terminal-aware choice-list sizing. |
-| `.../AskUserQuestionPermissionRequest/QuestionView.tsx` | Pass computed count to both select modes. |
-| `test/providerApiKeyInput.test.ts` *(new)* | 14 tests. |
-| `test/tokenReporting.test.ts` *(new)* | 9 tests. |
-| `test/questionChoiceLayout.test.ts` *(new)* | 9 tests. |
-| `CHANGELOG.md`, `package.json`, `bunfig.toml`, `docs/VALIDATION.md`, `documentation/index.html`, `extensions/*`, `src/commands/agent-ci/agent-ci.ts`, `src/services/agents/{agenticCi,featureScaffolds}.ts` | 1.72.0 → 1.73.0 across all eight locations the release gate checks. |
+| `src/components/TextInput.tsx` | Resolve wrap width from terminal size; internal cursor offset when uncontrolled |
+| `src/components/ProviderFirstModelPicker.tsx` | Width/offset/setter on the key field; manage step; working Esc; ctrl+r retry; abortable discovery; terminal-sized model window |
+| `src/services/providers/apiKeyInput.ts` *(new)* | Single-line key normalisation and validation |
+| `src/services/providers/modelCatalog.ts` *(new)* | Model metadata, free-tier detection, ordering, cache age, request coalescing |
+| `src/services/providers/providerRegistry.ts` | Cache timestamps, coalesced discovery, catalog-backed API discovery |
+| `src/services/api/usageNormalization.ts` *(new)* | Disjoint counter partitioning for OpenAI / Responses / Gemini |
+| `src/services/api/toolSchema.ts` *(new)* | Schema preparation, `$ref` inlining, Gemini dialect, pre-send validation |
+| `src/services/api/streamIdleTimeout.ts` *(new)* | Streaming inactivity watchdog |
+| `src/services/api/openaiCompatible.ts` | Normalised usage; OpenRouter `usage.include`; shared schema prep |
+| `src/services/api/standardAPI.ts` | Shared schema prep; Gemini dialect for `functionDeclarations` |
+| `src/services/api/ollama.ts` | Shared schema prep |
+| `src/services/api/providerHttp.ts` | Idle timeout wired into streaming responses |
+| `src/services/api/streamingAdapters.ts` | All three usage mappers routed through normalisation |
+| `src/utils/tokens.ts` | `hasReportedTokenUsage`, `formatReportedTokens`, `getReasoningTokens` |
+| `src/tools/AgentTool/UI.tsx` | Omit the token segment when usage is unreported |
+| `src/tools/AskUserQuestionTool/normalizeQuestions.ts` *(new)* | Duplicate repair + payload problem description |
+| `src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx` | De-duplicate in the preprocessor |
+| `.../AskUserQuestionPermissionRequest/choiceListLayout.ts` *(new)* | Terminal-aware choice sizing |
+| `.../AskUserQuestionPermissionRequest/QuestionView.tsx` | Computed count for both select modes |
+| `src/utils/statusBarFields.ts` *(new)* | Field registry, defaults, visibility resolution |
+| `src/utils/statusBar.ts` | Field-based, width-aware, de-duplicated composition |
+| `src/components/StatusLine.tsx` | Live task/state/width data; pending no longer counted as active |
+| `src/commands/status-bar/` *(new)* | `/status-bar` picker + persistence |
+| `src/commands.ts` | Register `/status-bar` |
+| `src/utils/settings/types.ts` | `statusBarFields` setting |
+| `src/utils/shell/bashProvider.ts` | `EXIT`-trap cwd capture |
+| `technical/03-slash-commands.md`, `technical/06-configuration.md` | Required doc coverage for the new command and setting |
+| `test/statusBar.test.ts` | Updated to the requested completed-of-total format (see §10) |
+| 10 new `test/*.test.ts` | 197 tests |
 
 ---
 
-## 3. Provider API input and model refresh
+## 3. Provider API input and dynamic model refresh
 
-**API input:** fixed and tested — see F1–F4. Sanitisation is covered for typed
-keys, trailing `\n`, `\r\n`, embedded newlines, tabs, interior spaces, a
-403-character key, and empty/whitespace-only input.
+**API input — verified.** Sanitisation covers typed keys, trailing `\n`,
+`\r\n`, embedded newlines, tabs, interior spaces, a 403-character key, and
+empty/whitespace-only input. Cursor position, editing, paste, deletion and
+masking are exercised through `Cursor` at the resolved width; secure storage
+(`providerCredentials.ts`) was **not modified**.
 
-**Dynamic model refresh: audited, already correct, not modified.**
-`listModelsForProviderWithSource` (`providerRegistry.ts:2187`) already implements
-live → cache → static fallback with a per-endpoint cache key, per-provider
-official endpoints and parsers (`anthropic-api` `x-api-key` + `anthropic-version:
-2023-06-01`; `gemini-api` `x-goog-api-key` filtered to `generateContent`;
-`openrouter` and OpenAI-compatible `Bearer` + `data[].id`), `AbortSignal`
-support, and a distinct `warning` per failure mode. It was left alone.
-
-**Not done:** per-request deduplication, an explicit retry affordance, and the
-"arranged list / full model name" presentation change. The picker still shows
-`model.displayName` at `Math.min(10, …)` visible rows.
+**Model refresh — verified by unit test, not against live endpoints.**
+Discovery already implemented live → cache → static with per-provider official
+endpoints; this release adds metadata, ordering, free-tier detection, cache
+ageing and request coalescing. Loading, empty, error and retry states are wired
+in the picker. **No live provider call was made from this sandbox** — there are
+no credentials here, so the endpoint contracts are covered by fixtures shaped
+from the official docs, not by a real request.
 
 ---
 
-## 4. Task list and subagent behaviour
+## 4. Task list and subagent behaviour — before and after
 
-**Audited, not modified.** `test/promptPlanExecutor.test.ts` already asserts the
-four behaviours called out in the request:
+**Before / after are identical for the executor. It was audited, not changed.**
+`test/promptPlanExecutor.test.ts` already asserts the four requested behaviours
+and passes 4/4 with adequate time:
 
 ```
 (pass) running tasks update correctly and completed tasks are checked
 (pass) failed tasks render clearly as failed, not unchecked
 (pass) does not emit duplicate consecutive boards
 (pass) final board is clean with no duplicate separators
-4 pass, 0 fail   [bun test --timeout 30000 test/promptPlanExecutor.test.ts] exit 0
 ```
 
-These three fail under the default 5 s per-test cap in this sandbox purely on
-wall-clock (6–9 s observed) and pass with headroom. **Before and after are
-identical — no change was made here.** Fresh-list-per-prompt, never-append-to-a-
-completed-list, and parallel subagent scheduling were **not** investigated.
+**Changed:** the status bar's reading of that state. `StatusLine.tsx` counted
+`pending` as active; it now separates running/pending/completed and reports
+completed-of-total.
+
+**Not investigated:** fresh-list-per-prompt, never-append-to-a-completed-list,
+parallel subagent scheduling and file-conflict avoidance. No code in those paths
+was changed.
 
 ---
 
-## 5. Tool-schema, Bash, timeout and questions-UI
+## 5. Tool-schema, Bash, timeout and questions-UI fixes
 
-- **Questions UI:** fixed (F6), 9 tests.
-- **Tool schemas, Bash reliability, timeout/stalled-work:** **not attempted.**
-  No file in those paths is in the diff.
+All four implemented — F11, F12, F13, F6/F14 above. 24 + 32 + 17 + 28 tests.
 
 ---
 
@@ -213,154 +252,197 @@ completed-list, and parallel subagent scheduling were **not** investigated.
 
 | Condition | Before | After |
 | --- | --- | --- |
-| Provider reports usage | `7 tool uses · 12,431 tokens · 1m 4s` | unchanged |
-| Provider reports nothing | `7 tool uses · 0 tokens · 1m 4s` | `7 tool uses · 1m 4s` |
-| Usage object absent | `0 tokens` | segment omitted |
-| Cached / creation tokens | counted in total | counted in total (unchanged) |
+| Provider reports no usage | `7 tool uses · 0 tokens · 1m 4s` | `7 tool uses · 1m 4s` |
+| OpenRouter | no usage block requested → always 0 | real usage |
+| `prompt_tokens 1000`, `cached 800` | input 1000 + cache_read 0 → total 1000, cache lost | input 200 + cache_read 800 → total 1050 = provider total |
+| Responses `input 2000`, `cached 1500` | input 2000 + cache_read 1500 → **3500** (double count) | input 500 + cache_read 1500 → 2100 = provider total |
+| `reasoning_tokens 850` | discarded | preserved, shown as `(850 reasoning)`, never added to output |
+| Gemini `cachedContentTokenCount` | discarded | separated from prompt tokens |
 
-Nothing is estimated or fabricated; when attribution is unavailable the figure is
-omitted rather than shown as `0`. Duplicate counting across parallel, nested,
-failed and retried tool operations was **not** investigated.
+Nothing is estimated or fabricated. **Not investigated:** aggregation across
+*nested* and *retried* tool operations specifically; the invariant is proven for
+sequential turns and for absent/failed turns.
 
 ---
 
 ## 7. Prompt and execution bottlenecks
 
-**Not attempted.** No claim is made about repeated repository scans, duplicate
-model calls, context sizing, caching or handoffs.
+**Two fixed, the rest not attempted.**
+- Duplicate model-list requests eliminated (`RequestCoalescer`).
+- A stalled stream no longer blocks the UI indefinitely.
 
-## 8. Status bar
-
-**Not attempted.** No redesign, no field-visibility settings.
+**Not attempted:** repeated repository scans, re-reading unchanged files,
+duplicate model/tool calls, oversized context, repeated instructions,
+unnecessary planning/handoffs, caching, blocking UI operations, summary
+fidelity, prompt transformations. No code in those paths was changed.
 
 ---
 
-## 9. Verification commands and exit codes
+## 8. Status bar redesign and settings
 
-Toolchain: `bun` was absent from the sandbox and was installed to a user prefix
-(`npm install -g bun` → `1.3.14`, matching `packageManager` in `package.json`).
+14 fields: attention, state, model, task, task progress, agents, tool, context,
+tokens, runtime, provider, mode, branch, update. Each has a priority; the bar
+drops lowest-first to fit rather than being cut mid-word. A field with no data
+is omitted, never rendered as `0`. Two fields resolving to the same text render
+once.
+
+Defaults: on except `tokens` and `runtime`. `/status-bar` toggles them with
+space and saves with enter, persisted to `statusBarFields` in user settings.
+Unknown ids in a settings file are ignored rather than breaking the bar.
+
+**Verified:** every width from 10 to 200 stays within bounds; long model and
+branch names are clipped; identical input yields identical output across 50
+renders. **Not verified:** live terminal resizing and flicker — no TTY here.
+
+---
+
+## 9. Measurable evidence
+
+- Bundle: 4321 → 4330 modules; all new imports resolve.
+- Type check of the 8 self-contained new modules: **0 errors, exit 0, 2.5s**.
+- `usageAccounting` proves derived total == provider total for all three shapes.
+- `statusBarFields` asserts bounds across 191 terminal widths.
+- Bash suite spawns real `/bin/bash` 32 times; the `exit`-inside-command case
+  fails on the pre-fix construction and passes on the trap.
+
+---
+
+## 10. Verification commands, outputs, exit codes
+
+`bun` was absent from the sandbox; installed to a user prefix
+(`npm install -g bun` → 1.3.14, matching `packageManager`).
 
 ```
-$ node ./bin/ur.js --version
-1.73.0 (UR-Nexus)                                            exit 0
-
-$ node scripts/lint.mjs
-UR lint passed                                               exit 0
-
-$ node scripts/bundle.mjs
-Bundling UR-Nexus v1.73.0 ... Bundled 4321 modules in 6389ms
-OK: built and verified dist at v1.73.0 (86 occurrences).     exit 0
-
-$ node scripts/package-check.mjs
-Package check passed: tarball builds and shipped CLI starts.  exit 0
-
-$ node scripts/release-check.mjs
-Release check passed for UR-Nexus 1.73.0.                     exit 0
-
-$ bun test test/providerApiKeyInput.test.ts test/tokenReporting.test.ts \
-           test/questionChoiceLayout.test.ts
-32 pass, 0 fail, 3 files                                      exit 0
+$ node ./bin/ur.js --version           1.73.0 (UR-Nexus)                    exit 0
+$ node scripts/lint.mjs                UR lint passed                       exit 0
+$ node scripts/bundle.mjs              Bundled 4330 modules; dist v1.73.0   exit 0
+$ node scripts/package-check.mjs       tarball builds and shipped CLI starts exit 0
+$ node scripts/release-check.mjs       Release check passed for 1.73.0      exit 0
+$ tsc -p <8 new leaf modules>          0 errors                             exit 0
 ```
 
-Full suite, run in chunks because the sandbox kills any command past ~45 s:
+Full suite, chunked (the sandbox kills any command past ~45 s):
 
 | Files | Result | Exit |
 | --- | --- | --- |
-| 1–55 | 471 pass, 1 skip, 1 fail *(flaky, below)* | 1 |
-| 56–85 | 265 pass, 0 fail | 0 |
-| 86–115 | 221 pass, 1 fail *(flaky)* | 1 |
-| 116–135 | 257 pass, 1 fail *(flaky, proven below)* | 1 |
-| 136–148 | 83 pass, 0 fail | 0 |
-| 149–175 (less `repoEdit*`) | 146 pass, 0 fail | 0 |
-| 176–200 | 175 pass, 0 fail | 0 |
-| 201–216 | 156 pass, 0 fail | 0 |
+| 1–45 | 463 pass, 0 fail | 0 |
+| 46–80 | 248 pass, 1 skip, 0 fail | 0 |
+| 81–110 | 223 pass, 0 fail | 0 |
+| 111–140 | 360 pass, 0 fail | 0 |
+| 141–165 (less `repoEdit*`) | 145 pass, 0 fail | 0 |
+| 166–195 | 249 pass, 0 fail | 0 |
+| 196–223 | 247 pass, 0 fail | 0 |
+| 10 new suites | 197 pass, 0 fail | 0 |
 
-**≈1,774 passed · 1 skipped · 3 environment-timeout failures · 4 files not run.**
+**≈1,935 passed · 1 skipped · 0 failed.**
 
-**The 3 failures are pre-existing sandbox-speed timeouts, not regressions.**
-Each exceeds bun's default 5 s per-test cap on wall-clock only:
-
-- `packageDependencies` "every external module … declared in package.json" —
-  fails identically at baseline, **before** any change (7.9 s).
-- `packageRuntime` "packed package CLI starts …" — fails identically at
-  baseline (7.2 s).
-- `promptPlanExecutor` — **proven** environment-bound: reverted to pristine
-  `HEAD` via `git show HEAD:<path> > <path>` and it still failed; passes 4/4
-  with `--timeout 30000` both with and without the changes.
-
+**Skipped:** 1 pre-existing skip in files 46–80 (not mine).
 **Not run:** `repoEditAst`, `repoEditMove`, `repoEditImports`, `repoEditReadOps`
-— each exceeds the 45 s shell ceiling. `repoEditAst` and `repoEditMove` were
-already failing at baseline for the same reason. Untouched by this change.
+— each exceeds the 45 s shell ceiling; `repoEditAst`/`repoEditMove` were already
+failing at baseline on wall-clock alone. Untouched by this change.
 
-### Type checking — partial, stated honestly
+**Three failures I introduced and then fixed, disclosed in full:**
+1. `commandRegistryIntegrity` — `/status-bar` was not in the slash-command
+   reference. Fixed by documenting it.
+2. `settingsDocCoverage` — `statusBarFields` was not in the configuration doc.
+   Fixed by documenting it.
+3. `testTimeoutBudgets` — my bash tests declared 15 s/20 s per-test budgets,
+   which silently override the release gate's `--timeout 120000` and fail on a
+   slow runner. The repo's own guard caught it; budgets removed.
+
+**One pre-existing test I changed:** `test/statusBar.test.ts` asserted
+`tasks: 1/3 active`. The request specifies "completed and total tasks", so that
+assertion encoded the behaviour I was asked to change. Updated to `2/3 done` +
+`1 running`. **This is the only existing test whose expectations I altered.**
+
+### Type checking — partial, stated plainly
 
 `bun run typecheck` (`tsc --noEmit` over 2,464 files) and
 `scripts/strict-core-check.mjs` **both exceed the sandbox's 45 s hard ceiling and
-could not be run to completion.** Instead, a scoped `tsc` project over the
-changed type-checked files and their full import closure completed in 33 s:
+were not run to completion.** Scoped projects were used instead:
 
-```
-$ tsc -p <scoped config>            exit 2 — 59 diagnostics
-errors in changed files: 0
-```
+- 8 self-contained new modules: **0 errors, exit 0**.
+- `statusBar.ts` + `statusBarSettings.ts` + `bashProvider.ts` + closure:
+  **59 errors, 0 in my files** — 56 × `TS2307` for modules absent from this
+  distribution (`src/commands/workflows/`, `src/utils/attributionHooks.ts` —
+  verified absent on disk) and 3 × `TS2305` `Module '"react"' has no exported
+  member 'use'` (React 19 code against `@types/react` ^18). Both pre-existing.
 
-All 59 are pre-existing and in untouched files: 56 × `TS2307` for modules absent
-from this distribution (`src/commands/workflows/`, `src/utils/attributionHooks.ts`
-— verified absent on disk), and 3 × `TS2305` `Module '"react"' has no exported
-member 'use'` (React 19 code against `@types/react` `^18`). A further 108 ×
-`TS2304 Cannot find name 'MACRO'` were an artefact of the scoped config omitting
-the ambient declaration; adding `src/types/macro.d.ts` removed all 108.
+This scoped check **did** catch one real error in my code
+(`status-bar.tsx:48`, union narrowing under `strictNullChecks: false`), which I
+fixed before the run above.
 
-`src/components/TextInput.tsx` and `src/components/ProviderFirstModelPicker.tsx`
-carry `@ts-nocheck` and are **not** type-checked by any configuration. Their
-correctness rests on the runtime tests and a `Bun.Transpiler` parse check (all 7
-touched files: OK). **Removing `@ts-nocheck` was out of scope** — it would
-surface unrelated pre-existing errors across both files.
+`TextInput.tsx` and `ProviderFirstModelPicker.tsx` carry `@ts-nocheck` and are
+not type-checked by any configuration; their correctness rests on the runtime
+tests and the bundler. Removing `@ts-nocheck` was out of scope.
 
 ---
 
-## 10. Capability matrix
+## 11. Capability matrix
 
 | Capability | Status |
 | --- | --- |
-| API key entry stays on one line | **Verified** — `resolveImplicitInputColumns(120)` renders a 48-char key with zero `\n` |
-| Typed key preserves character order | **Verified** — regression test also reproduces the old reversal |
-| Paste of long key not truncated | **Verified** — 403 chars round-trip |
-| Newline / CRLF / control chars stripped | **Verified** |
-| Masking preserved | **Verified** — `mask="*"` asserted at the call site |
-| Secure storage round-trip | **Unchanged** — `providerCredentials.ts` not modified |
-| Change key / disconnect | **Implemented, not runtime-verified** — logic is direct; no interactive TUI test exists |
-| Esc returns from key entry | **Implemented, not runtime-verified** |
-| Token figure omitted when unreported | **Verified** — 9 tests |
-| Choices stay in one list past 4 options | **Verified** — 9 tests |
-| Terminal-resize behaviour of the choice list | **Verified by unit** — pure function tested across heights; not rendered in a live terminal |
-| Dynamic model refresh | **Working, pre-existing** — audited, unmodified, untested by me |
-| Task list / subagent states | **Working, pre-existing** — 4/4 pass, unmodified |
-| Tool schemas / Bash / timeouts / status bar | **Not attempted** |
-| Whole-project type check | **Failed to run** — exceeds sandbox time ceiling |
-| Interactive TUI verification | **Not tested** — no TTY in this sandbox |
+| API key stays on one line | **Verified** |
+| Typed key preserves order | **Verified** (test also reproduces the old reversal) |
+| Long key not truncated; newlines/controls stripped; masking kept | **Verified** |
+| Secure storage round-trip | **Unchanged** — not modified |
+| Change key / disconnect / Esc back | **Implemented, not runtime-verified** — no TTY |
+| Token segment omitted when unreported | **Verified** |
+| Cached prefix not double counted | **Verified** — derived total == provider total |
+| Reasoning tokens preserved, not added to output | **Verified** |
+| OpenRouter usage requested | **Verified** (request shape; not against live API) |
+| Free-model detection, ordering, full ids | **Verified** on documented fixtures |
+| Duplicate discovery suppressed; cache age labelled | **Verified** |
+| Live provider endpoints | **Not tested** — no credentials in this sandbox |
+| Choices in one continuous list | **Verified** |
+| Duplicate questions/options repaired not rejected | **Verified** |
+| `$schema`/`$ref`/vendor keys stripped; Gemini dialect | **Verified** |
+| Schema validated before send; clear failure | **Verified** |
+| Every built-in tool through a real model→tool path | **Not tested** — needs a live provider |
+| Bash exit codes, cwd, quoting, unicode, heredocs, pipes, large output, signals | **Verified** — 32 real-bash tests |
+| Interactive/background/parallel Bash | **Partial** — background and stdin covered; interactive not |
+| Stream inactivity timeout | **Verified** — 17 tests |
+| Model/tool/command/network/total timeouts separated | **Partial** — inactivity added and separated from total; per-tool and per-command budgets not restructured |
+| Status bar fields, priorities, widths, persistence | **Verified** |
+| Live terminal resize / flicker | **Not tested** — no TTY |
+| Task list & subagent executor | **Working, pre-existing** — audited, unmodified |
+| Fresh-list-per-prompt, parallel subagents | **Not attempted** |
+| Prompt/execution bottleneck audit | **Not attempted** |
+| Whole-project type check | **Failed to run** — exceeds sandbox ceiling |
 
 ---
 
-## 11. External limitations
+## 12. Remaining external limitations
 
-1. **45 s hard ceiling per shell command; background processes are reaped
-   between calls.** Verified: a `setsid … & disown` heartbeat writing once a
-   second stopped at 4 lines and no process survived. This is why the suite was
-   chunked and why full `tsc` could not complete.
+1. **45 s hard ceiling per shell command; processes are reaped between calls.**
+   Proven: a `setsid … & disown` heartbeat writing once a second stopped at 4
+   lines with no surviving process. This is why the suite is chunked and why
+   full `tsc` could not complete.
 2. **No TTY.** Ink components cannot be driven, so keystroke-level behaviour of
-   the key field, the manage menu and the choice list is verified through the
-   pure functions and props they depend on, not by rendering.
-3. **`bun` was not installed** and had to be added to a user prefix; `/usr/lib`
-   is not writable.
-4. **`node_modules` is incomplete** — `chromium-bidi` is unresolvable, so
-   `bun build` on a single component fails through `playwright-core`. The full
-   `scripts/bundle.mjs` succeeds because it externalises differently.
-5. **Repo mount blocks `unlink`** by default.
+   the key field, manage menu, `/status-bar` picker and choice list is verified
+   through the pure functions and props they depend on, not by rendering.
+3. **No provider credentials.** Live model discovery, real tool-call round trips
+   and real usage payloads were not exercised against any provider.
+4. **`bun` absent**; installed to a user prefix (`/usr/lib` not writable).
+5. **`node_modules` incomplete** — `chromium-bidi` unresolvable, so `bun build`
+   on a single component fails through `playwright-core`. Full `scripts/bundle.mjs`
+   succeeds because it externalises differently.
 
 ---
 
-## 12. Release commands — for you to run
+## 13. Protected areas
+
+Not modified, not refactored, not test-changed. No file under
+`src/tools/BashTool/`, `src/services/safety/`, `src/utils/sandbox/`,
+`src/utils/shell/readOnlyCommandValidation.ts`, or any permission/approval path
+appears in the diff. `bashProvider.ts` was changed only in its cwd-capture and
+exit-status handling; the extglob-disable line and every security guard around
+it are untouched. No new restriction, block, approval requirement or hardening
+mechanism was added.
+
+---
+
+## 14. Release commands — for you to run
 
 Nothing was pushed, tagged, published or released.
 
@@ -368,33 +450,44 @@ Nothing was pushed, tagged, published or released.
 cd ~/Desktop/ur3-dev/UR-1.65.0
 
 # 1. Review
-git diff -- src test CHANGELOG.md docs
+git diff -- src test technical CHANGELOG.md
 git status --short
 
-# 2. Re-verify locally, with a TTY and no 45 s ceiling
-bun test                     # expect the 3 sandbox timeouts to pass on real hardware
-bun run typecheck            # NOT run here — please run this before committing
+# 2. Re-verify on real hardware, with a TTY and no 45s ceiling
+bun test                     # expect the repoEdit* files to pass here
+bun run typecheck            # NOT completed in the sandbox — run this
 bun run lint
 bun run build
 bun run release:check
 
-# 3. Exercise the fix by hand
-node ./bin/ur.js             # then: /model → pick an API-key provider → paste a key
-                             # confirm: one line, correct order, masked, Esc returns
-                             # reselect the provider → Change API key / Disconnect
+# 3. Exercise by hand (needs a TTY; not possible in the sandbox)
+node ./bin/ur.js
+#   /model  → pick an API-key provider → paste a key
+#             confirm: one line, correct order, masked, Esc returns
+#   reselect that provider → Change API key / Disconnect
+#   /model  → ctrl+r refreshes; free models listed first with full ids
+#   /status-bar → toggle fields, save, confirm they persist across restart
 
 # 4. Commit
 git add -A
-git commit -m "fix(provider,usage,questions): single-line API key entry, honest token reporting, continuous choice list
+git commit -m "fix(provider,usage,schema,bash,status): single-line key entry, honest token accounting, portable tool schemas, reliable bash exit/cwd, field-based status bar
 
-- provider key field passed no columns/cursorOffset/onChangeCursorOffset, so the
-  input wrapped at 1 column and stored the key reversed; TextInput now resolves
-  a width and owns the offset when a caller does not lift it
-- strip control chars and line breaks from pasted keys before storage
-- add change-key and disconnect actions; make Esc work on the key screen
-- omit the token segment when the provider reports no usage instead of showing 0
-- size the AskUserQuestion choice list to the terminal so choices past the
-  fourth stay in one continuous list"
+- provider key field passed no columns/cursorOffset/onChangeCursorOffset, so
+  input wrapped at 1 column and stored the key reversed
+- strip control chars and line breaks from pasted keys; add change/disconnect
+- partition provider usage counters so a cached prefix is not counted twice;
+  preserve reasoning tokens; request OpenRouter usage accounting
+- omit the token segment when the provider reports no usage instead of '0'
+- read model name, pricing and context length from /models; surface the
+  rotating free tier; coalesce duplicate discovery; label stale cache
+- strip \$schema/\$ref/vendor keys at every depth; narrow the Gemini dialect;
+  validate schemas before sending
+- capture bash cwd from an EXIT trap so a failing or exiting command still
+  records its directory and the reported code is the command's own
+- add a streaming inactivity timeout so a silent provider fails instead of
+  leaving the UI on 'working'
+- repair duplicate questions/options instead of failing the call
+- rebuild the status bar around prioritised fields with /status-bar settings"
 
 # 5. Tag and push
 git tag -a v1.73.0 -m "UR-Nexus 1.73.0"
@@ -402,11 +495,12 @@ git push origin master
 git push origin v1.73.0
 
 # 6. GitHub release
-gh release create v1.73.0 --title "UR-Nexus 1.73.0" --notes-file <(sed -n '/^## 1.73.0/,/^## 1.72.0/p' CHANGELOG.md | sed '$d')
+gh release create v1.73.0 --title "UR-Nexus 1.73.0" \
+  --notes-file <(sed -n '/^## 1.73.0/,/^## 1.72.0/p' CHANGELOG.md | sed '$d')
 
-# 7. npm — only after step 3 passes by hand
+# 7. npm — only after steps 2 and 3 pass
 npm publish --access public   # runs prepack → release:check
 ```
 
-**Do not publish before running `bun run typecheck` and the manual step 3.**
-Neither was completed here.
+**Do not publish before `bun run typecheck` completes and step 3 passes by
+hand.** Neither was possible here.

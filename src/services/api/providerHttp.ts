@@ -1,5 +1,9 @@
 import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { getInitialSettings } from '../../utils/settings/settings.js'
+import {
+  resolveStreamIdleTimeoutMs,
+  withStreamIdleTimeout,
+} from './streamIdleTimeout.js'
 
 export const DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS = 120_000
 const DEFAULT_PROVIDER_MAX_RETRIES = 3
@@ -264,6 +268,8 @@ export async function fetchWithProviderReliability(
     signal?: AbortSignal
     /** Keep the response body open for SSE/streaming consumers. */
     streaming?: boolean
+    /** Inactivity timeout applied to a streaming body. */
+    idleTimeoutMs?: number
     fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
     failureMessage: (response: Response, body: string) => string
   },
@@ -290,6 +296,19 @@ export async function fetchWithProviderReliability(
         // releasing the timeout so a stalled JSON body cannot hang forever;
         // the original response remains readable by the caller.
         await waitForResponseBody(response, timeout.signal)
+        return response
+      }
+      // A streaming response resolves at the headers, at which point the
+      // total-request timeout above is cleared in `finally`. Without a second,
+      // inactivity-based timer a provider that goes silent mid-stream would
+      // never fail — the UI would show work in progress indefinitely.
+      if (response.body) {
+        const idleMs = resolveStreamIdleTimeoutMs(options.idleTimeoutMs)
+        return new Response(withStreamIdleTimeout(response.body, idleMs), {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        })
       }
       return response
     } catch (error) {

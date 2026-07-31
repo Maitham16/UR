@@ -5,6 +5,7 @@
 
 import { randomUUID } from 'crypto'
 import { normalizeOpenAIChatUsage } from './usageNormalization.js'
+import { prepareToolSchema } from './toolSchema.js'
 import {
   assertValidProviderToolUses,
   isProviderToolInput,
@@ -734,14 +735,9 @@ function hasToolUse(content: any[]): boolean {
   return content.some(block => block?.type === 'tool_use')
 }
 
+// Delegates to the shared preparation pass: strips meta and vendor keys at
+// every depth (not just the root) and inlines local $ref targets that most
+// providers cannot resolve. See services/api/toolSchema.ts.
 function sanitizeJsonSchema(schema: unknown): Record<string, unknown> {
-  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
-    return { type: 'object', properties: {} }
-  }
-  const clone = JSON.parse(JSON.stringify(schema)) as Record<string, unknown>
-  delete clone.cache_control
-  delete clone.strict
-  delete clone.defer_loading
-  delete clone.eager_input_streaming
-  return clone
+  return prepareToolSchema(schema, 'json-schema')
 }

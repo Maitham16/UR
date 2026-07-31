@@ -727,6 +727,14 @@ export const SettingsSchema = lazySchema(() =>
         })
         .optional()
         .describe('Custom status line display configuration'),
+      // Per-field visibility for the built-in status bar. Unknown ids are
+      // ignored at read time, so a file written by another build is safe.
+      statusBarFields: z
+        .record(z.string(), z.boolean())
+        .optional()
+        .describe(
+          'Which built-in status bar fields are shown, keyed by field id. Configure with /status-bar.',
+        ),
       // Enabled plugins using marketplace-first format
       enabledPlugins: z
         .record(

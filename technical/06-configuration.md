@@ -160,6 +160,7 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 ```jsonc
 {
   "statusLine": { "type": "command", "command": "…", "padding": 1 },
+  "statusBarFields": { "model": true, "runtime": false, "tokens": false },
   "theme": "…", "language": "en",
   "spinnerTipsEnabled": true, "spinnerVerbs": { "mode": "…", "verbs": [] },
   "spinnerTipsOverride": { "excludeDefault": false, "tips": [] },

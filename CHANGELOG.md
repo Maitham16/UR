@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.73.0
+## 1.74.0
 
 - Provider API key entry no longer renders one character per line. The field in
   the provider picker omitted `columns`, `cursorOffset` and
@@ -30,6 +30,62 @@
   entries (four choices plus "Other") pushed the tail below the footer divider
   and read as a detached second group. The list is now sized to the terminal
   and only windows when the height genuinely cannot fit it.
+- Cached and reasoning tokens are no longer discarded, and the cached prefix is
+  no longer counted twice. OpenAI-shaped providers report `prompt_tokens` as
+  the whole input including `prompt_tokens_details.cached_tokens`, while the
+  internal counters are disjoint and summed for the context total. Every
+  provider adapter now goes through one normalisation pass that partitions the
+  counters correctly and carries `reasoning_tokens` separately, since it is
+  already inside `completion_tokens`.
+- OpenRouter turns report usage at all. OpenRouter returns no usage block
+  unless `usage: { include: true }` is sent, which it never was — the direct
+  cause of "0 tokens" on that provider.
+- Model lists carry the metadata the provider actually returns. The id-only
+  mapping discarded the human name, context length and pricing, so OpenRouter's
+  rotating free tier was invisible. Free models are detected from pricing
+  (falling back to the `:free` suffix), listed first, and deprecated entries
+  listed last. Concurrent discovery requests for the same provider now share
+  one call, a stale cache reports its age instead of being shown as current,
+  and ctrl+r re-runs discovery from the picker.
+- Tool schemas no longer forward `$schema`, `$defs`/`$ref`, or vendor keys
+  nested below the root. A recursive tool schema emitted `{"$ref": "#"}`, which
+  Gemini cannot express and non-OpenAI compatible servers frequently fail to
+  resolve; references are inlined instead. Gemini receives a narrowed dialect
+  with its unsupported keywords removed and `anyOf: [T, null]` folded into
+  `nullable`. Prepared schemas are validated before sending, so a malformed one
+  fails with a specific message instead of being retried unchanged.
+- Bash reports the command's own exit code and always records its working
+  directory. The `pwd -P` capture was chained after the command with `&&`, so
+  it never ran when the command failed (losing a preceding `cd`), its own
+  failure masked a successful command as failed when the command removed its
+  working directory, and a command containing `exit` terminated the shell
+  before the capture ran. The capture now runs from an `EXIT` trap.
+- A streaming provider that goes silent mid-response now fails with a stated
+  reason. The total-request timeout is cleared once headers arrive, which for a
+  streaming request left no timeout at all — the stream stayed open and the UI
+  showed work in progress indefinitely. An inactivity watchdog aborts after a
+  gap between chunks; a long stream that keeps producing is never interrupted.
+- AskUserQuestion repairs duplicate questions and option labels instead of
+  rejecting them. The uniqueness rule failed the whole call, so a recoverable
+  formatting slip cost a round trip and showed the user nothing.
+- The question view no longer rules a line between the choices and the
+  numbered actions below them. The footer entries continue the same numbering
+  as the choices ("1..N" choices, then "N+1 Chat about this"), so a full-width
+  divider cut them off from the list they belong to and they read as a detached
+  second group. The duplicate rule above the planning path is gone too.
+- `TaskUpdate` no longer fails an entire call because one dependency points at
+  its own task. A self-edge carries no ordering information, so it is dropped
+  and the status change and remaining valid dependencies still apply; the
+  previous behaviour discarded all of them. An unknown dependency target now
+  names the missing id and lists the tasks that do exist, instead of returning
+  a bare `task_not_found` the caller could only retry unchanged.
+- The status bar is field-based and width-aware. Fields are declared with a
+  priority and dropped lowest-first when the terminal is narrow, rather than
+  being cut mid-word with everything to the right silently lost. Task progress
+  reports completed-of-total, pending tasks are no longer counted as active,
+  and a field with nothing to report is omitted rather than rendered as zero.
+  `/status-bar` chooses which fields are shown; the choice persists in
+  `statusBarFields`.
 
 ## 1.72.0
 

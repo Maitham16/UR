@@ -13,6 +13,7 @@ import { getTotalAPIDuration, getTotalCost, getTotalDuration, getTotalInputToken
 import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
 import { type ReadonlySettings, useSettings } from '../hooks/useSettings.js';
 import { Ansi, Box, Text } from '../ink.js';
+import { TerminalSizeContext } from '../ink/components/TerminalSizeContext.js';
 import { getRawUtilization } from '../services/urAiLimits.js';
 import type { Message } from '../types/message.js';
 import type { StatusLineCommandInput } from '../types/statusLine.js';
@@ -235,7 +236,11 @@ function StatusLineInner({
   // and a custom status-line command keeps rendering the previous value.
   const providerRuntimeKey = buildStatusLineRefreshKey(providerRuntime, mainLoopModel);
   const taskValues = Object.values(tasks);
-  const taskRunningCount = taskValues.filter(task => task.status === 'running' || task.status === 'pending').length;
+  const taskRunningCount = taskValues.filter(task => task.status === 'running').length;
+  const taskPendingCount = taskValues.filter(task => task.status === 'pending').length;
+  const taskCompletedCount = taskValues.filter(task => task.status === 'completed').length;
+  const activeTask = taskValues.find(task => task.status === 'running');
+  const terminalSize = React.useContext(TerminalSizeContext);
   const defaultStatusLineText = buildDefaultStatusBar({
     version: MACRO.VERSION,
     providerLabel: providerRuntime.providerLabel,
@@ -247,8 +252,15 @@ function StatusLineInner({
     model: renderModelName(mainLoopModel) || providerRuntime.model || '',
     mode: permissionMode,
     branch,
+    // Running and pending are distinct: a pending task is not consuming
+    // anything, and counting it as active overstated progress.
     taskRunningCount,
+    taskCompletedCount,
     taskTotalCount: taskValues.length,
+    activeTask: activeTask?.subject ?? activeTask?.description ?? null,
+    state: taskRunningCount > 0 ? 'working' : taskPendingCount > 0 ? 'queued' : null,
+    fieldVisibility: (settings as { statusBarFields?: Record<string, unknown> })?.statusBarFields,
+    columns: terminalSize?.columns,
     latestVersion: autoUpdaterResult?.status === 'success' ? null : autoUpdaterResult?.version,
     isCheckingUpdate: isAutoUpdating
   });
