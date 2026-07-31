@@ -478,21 +478,21 @@ function OAuthStatusMessage(t0) {
         }
         let t5;
         if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
-          t5 = <Text>· Amazon Bedrock:{" "}<Link url="https://docs.ur.dev/docs/en/amazon-bedrock">https://docs.ur.dev/docs/en/amazon-bedrock</Link></Text>;
+          t5 = <Text>· Amazon Bedrock:{" "}<Link url="https://docs.ur.com/docs/en/amazon-bedrock">https://docs.ur.com/docs/en/amazon-bedrock</Link></Text>;
           $[16] = t5;
         } else {
           t5 = $[16];
         }
         let t6;
         if ($[17] === Symbol.for("react.memo_cache_sentinel")) {
-          t6 = <Text>· Microsoft Foundry:{" "}<Link url="https://docs.ur.dev/docs/en/microsoft-foundry">https://docs.ur.dev/docs/en/microsoft-foundry</Link></Text>;
+          t6 = <Text>· Microsoft Foundry:{" "}<Link url="https://docs.ur.com/docs/en/microsoft-foundry">https://docs.ur.com/docs/en/microsoft-foundry</Link></Text>;
           $[17] = t6;
         } else {
           t6 = $[17];
         }
         let t7;
         if ($[18] === Symbol.for("react.memo_cache_sentinel")) {
-          t7 = <Box flexDirection="column" marginTop={1}>{t4}{t5}{t6}<Text>· Vertex AI:{" "}<Link url="https://docs.ur.dev/docs/en/google-vertex-ai">https://docs.ur.dev/docs/en/google-vertex-ai</Link></Text></Box>;
+          t7 = <Box flexDirection="column" marginTop={1}>{t4}{t5}{t6}<Text>· Vertex AI:{" "}<Link url="https://docs.ur.com/docs/en/google-vertex-ai">https://docs.ur.com/docs/en/google-vertex-ai</Link></Text></Box>;
           $[18] = t7;
         } else {
           t7 = $[18];

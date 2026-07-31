@@ -130,7 +130,7 @@ export async function authLogin({
 
   const settings = getInitialSettings()
   // forceLoginMethod is a hard constraint (enterprise setting) — matches ConsoleOAuthFlow behavior.
-  // Without it, --console selects Console; --urai (or no flag) selects ur.ai.
+  // Without it, --console selects Console; --urai (or no flag) selects ur.com.
   const loginWithURAi = settings.forceLoginMethod
     ? settings.forceLoginMethod === 'urai'
     : !useConsole
@@ -248,8 +248,8 @@ export async function authStatus(opts: {
   let authMethod: string = 'none'
   if (using3P) {
     authMethod = 'third_party'
-  } else if (authTokenSource === 'ur.ai') {
-    authMethod = 'ur.ai'
+  } else if (authTokenSource === 'ur.com') {
+    authMethod = 'ur.com'
   } else if (authTokenSource === 'apiKeyHelper') {
     authMethod = 'api_key_helper'
   } else if (authTokenSource !== 'none') {
@@ -257,7 +257,7 @@ export async function authStatus(opts: {
   } else if (apiKeySource === 'URHQ_API_KEY' || hasApiKeyEnvVar) {
     authMethod = 'api_key'
   } else if (apiKeySource === '/login managed key') {
-    authMethod = 'ur.ai'
+    authMethod = 'ur.com'
   }
 
   if (opts.text) {
@@ -307,7 +307,7 @@ export async function authStatus(opts: {
     if (resolvedApiKeySource) {
       output.apiKeySource = resolvedApiKeySource
     }
-    if (authMethod === 'ur.ai') {
+    if (authMethod === 'ur.com') {
       output.email = oauthAccount?.emailAddress ?? null
       output.orgId = oauthAccount?.organizationUuid ?? null
       output.orgName = oauthAccount?.organizationName ?? null

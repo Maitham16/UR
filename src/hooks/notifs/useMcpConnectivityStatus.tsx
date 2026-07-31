@@ -43,7 +43,7 @@ export function useMcpConnectivityStatus(t0) {
       if (failedURAiClients.length > 0) {
         addNotification({
           key: "mcp-urai-failed",
-          jsx: <><Text color="error">{failedURAiClients.length} ur.ai{" "}{failedURAiClients.length === 1 ? "connector" : "connectors"}{" "}unavailable</Text><Text dimColor={true}> · /mcp</Text></>,
+          jsx: <><Text color="error">{failedURAiClients.length} ur.com{" "}{failedURAiClients.length === 1 ? "connector" : "connectors"}{" "}unavailable</Text><Text dimColor={true}> · /mcp</Text></>,
           priority: "medium"
         });
       }
@@ -57,7 +57,7 @@ export function useMcpConnectivityStatus(t0) {
       if (needsAuthURAiServers.length > 0) {
         addNotification({
           key: "mcp-urai-needs-auth",
-          jsx: <><Text color="warning">{needsAuthURAiServers.length} ur.ai{" "}{needsAuthURAiServers.length === 1 ? "connector needs" : "connectors need"}{" "}auth</Text><Text dimColor={true}> · /mcp</Text></>,
+          jsx: <><Text color="warning">{needsAuthURAiServers.length} ur.com{" "}{needsAuthURAiServers.length === 1 ? "connector needs" : "connectors need"}{" "}auth</Text><Text dimColor={true}> · /mcp</Text></>,
           priority: "medium"
         });
       }

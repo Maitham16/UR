@@ -24,7 +24,7 @@ async function _temp() {
   if (true && !isURAISubscriber()) {
     return {
       key: "chrome-requires-subscription",
-      jsx: <Text color="error">UR in Chrome requires a ur.ai subscription</Text>,
+      jsx: <Text color="error">UR in Chrome requires a ur.com subscription</Text>,
       priority: "immediate" as const,
       timeoutMs: 5000
     };
@@ -33,7 +33,7 @@ async function _temp() {
   if (!installed && !isRunningOnHomespace()) {
     return {
       key: "chrome-extension-not-detected",
-      jsx: <Text color="warning">Chrome extension not detected · https://ur.ai/chrome to install</Text>,
+      jsx: <Text color="warning">Chrome extension not detected · https://ur.com/chrome to install</Text>,
       priority: "immediate" as const,
       timeoutMs: 3000
     };

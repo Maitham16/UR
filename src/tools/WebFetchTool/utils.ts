@@ -30,7 +30,7 @@ class DomainBlockedError extends Error {
 class DomainCheckFailedError extends Error {
   constructor(domain: string) {
     super(
-      `Unable to verify if domain ${domain} is safe to fetch. This may be due to network restrictions or enterprise security policies blocking ur.ai.`,
+      `Unable to verify if domain ${domain} is safe to fetch. This may be due to network restrictions or enterprise security policies blocking ur.com.`,
     )
     this.name = 'DomainCheckFailedError'
   }
@@ -508,7 +508,7 @@ export async function getURLMarkdownContent(
 
     // Check if the user has opted to skip the blocklist check
     // This is for enterprise customers with restrictive security policies
-    // that prevent outbound connections to ur.ai
+    // that prevent outbound connections to ur.com
     const settings = getSettings_DEPRECATED()
     if (!settings.skipWebFetchPreflight) {
       const checkResult = await checkDomainBlocklist(hostname)

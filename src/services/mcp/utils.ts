@@ -274,7 +274,7 @@ export function describeMcpConfigFilePath(scope: ConfigScope): string {
     case 'enterprise':
       return getEnterpriseMcpFilePath()
     case 'urai':
-      return 'ur.ai'
+      return 'ur.com'
     default:
       return scope
   }
@@ -293,7 +293,7 @@ export function getScopeLabel(scope: ConfigScope): string {
     case 'enterprise':
       return 'Enterprise config (managed by your organization)'
     case 'urai':
-      return 'ur.ai config'
+      return 'ur.com config'
     default:
       return scope
   }
@@ -427,7 +427,7 @@ export function getMcpServerScopeFromToolName(
   // Look up server config
   const serverConfig = getMcpConfigByName(mcpInfo.serverName)
 
-  // Fallback: ur.ai servers have normalized names starting with "ur_ai_"
+  // Fallback: ur.com servers have normalized names starting with "ur_ai_"
   // but aren't in getMcpConfigByName (they're fetched async separately)
   if (!serverConfig && mcpInfo.serverName.startsWith('ur_ai_')) {
     return 'urai'

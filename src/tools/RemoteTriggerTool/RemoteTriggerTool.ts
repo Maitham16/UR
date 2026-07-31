@@ -80,7 +80,7 @@ export const RemoteTriggerTool = buildTool({
     const accessToken = getURAIOAuthTokens()?.accessToken
     if (!accessToken) {
       throw new Error(
-        'Not authenticated with a ur.ai account. Run /login and try again.',
+        'Not authenticated with a ur.com account. Run /login and try again.',
       )
     }
     const orgUUID = await getOrganizationUUID()

@@ -203,7 +203,7 @@ export function desktopQaFixtureJsonSchema(): Record<string, unknown> {
   })
   return {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
-    $id: 'https://ur.dev/schemas/desktop-qa-fixture-v1.json',
+    $id: 'https://ur.com/schemas/desktop-qa-fixture-v1.json',
     title: 'UR desktop QA fixture',
     type: 'object',
     additionalProperties: false,

@@ -102,8 +102,8 @@ export async function runExtraUsage(): Promise<ExtraUsageResult> {
   }
 
   const url = isTeamOrEnterprise
-    ? 'https://ur.ai/admin-settings/usage'
-    : 'https://ur.ai/settings/usage'
+    ? 'https://ur.com/admin-settings/usage'
+    : 'https://ur.com/settings/usage'
 
   try {
     const opened = await openBrowser(url)

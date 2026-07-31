@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.71.0
+
+- Consolidated every UR-branded link onto `ur.com`. 259 references across 106
+  files moved off the retired `ur.ai` and `ur.dev` hostnames. Subdomains and
+  paths are preserved exactly, so `docs.ur.dev/docs/en/sandboxing` became
+  `docs.ur.com/docs/en/sandboxing` and `ur.ai/settings/billing` became
+  `ur.com/settings/billing`. Nothing was flattened to a landing page.
+- Provider, registry and authentication endpoints are untouched, and the
+  rewrite asserts that rather than assuming it: `api.anthropic.com`,
+  `api.openai.com`, `platform.openai.com`, `developers.openai.com`,
+  `ollama.com`, `openrouter.ai`, `registry.npmjs.org`, `googleapis.com`,
+  `huggingface.co`, `modelcontextprotocol.io`, `json-schema.org` and
+  `github.com` all have identical occurrence counts before and after. Anyone
+  connecting to Claude, OpenAI, Ollama or any other provider reaches the same
+  host as before.
+- The substitution is anchored so it cannot match more than it means: a
+  preceding letter, digit or hyphen blocks it, which is what keeps
+  `ur-ai.staging.ant.dev` and hostnames such as `go.dev` and `react.dev`
+  intact. A pattern that matched too broadly is what shipped 1.61.2 through
+  1.64.0 uninstallable.
+- `tipsAreReal` now bans the retired hostnames instead of `ur.com`. It was
+  written when every UR domain was dead, so leaving it would have forbidden
+  links to the current site.
+- The auth token source discriminant follows the domain, from `ur.ai` to
+  `ur.com`. It is computed per session and never persisted, so no stored
+  credential carries the old value.
+
 ## 1.70.0
 
 - Rolled the codebase back to the state shipped as 1.65.6. Everything released

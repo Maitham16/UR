@@ -31,7 +31,7 @@ import {
 import { getChromeSystemPrompt } from './prompt.js'
 import { isChromeExtensionInstalledPortable } from './setupPortable.js'
 
-const CHROME_EXTENSION_RECONNECT_URL = 'https://ur.ai/chrome/reconnect'
+const CHROME_EXTENSION_RECONNECT_URL = 'https://ur.com/chrome/reconnect'
 
 const NATIVE_HOST_IDENTIFIER = 'com.urhq.ur_browser_extension'
 const NATIVE_HOST_MANIFEST_NAME = `${NATIVE_HOST_IDENTIFIER}.json`

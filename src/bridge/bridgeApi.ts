@@ -158,12 +158,12 @@ export function createBridgeApiClient(deps: BridgeApiDeps): BridgeApiClient {
               directory: config.dir,
               branch: config.branch,
               git_repo_url: config.gitRepoUrl,
-              // Advertise session capacity so ur.ai/code can show
+              // Advertise session capacity so ur.com/code can show
               // "2/4 sessions" badges and only block the picker when
               // actually at capacity. Backends that don't yet accept
               // this field will silently ignore it.
               max_sessions: config.maxSessions,
-              // worker_type lets ur.ai filter environments by origin
+              // worker_type lets ur.com filter environments by origin
               // (e.g. assistant picker only shows assistant-mode workers).
               // Desktop cowork app sends "cowork"; we send a distinct value.
               metadata: { worker_type: config.workerType },

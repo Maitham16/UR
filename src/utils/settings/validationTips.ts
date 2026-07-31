@@ -23,7 +23,7 @@ type TipMatcher = {
   tip: ValidationTip
 }
 
-const DOCUMENTATION_BASE = 'https://docs.ur.dev/docs/en'
+const DOCUMENTATION_BASE = 'https://docs.ur.com/docs/en'
 
 const TIP_MATCHERS: TipMatcher[] = [
   {

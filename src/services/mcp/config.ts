@@ -163,7 +163,7 @@ function getServerUrl(config: McpServerConfig): string | null {
 }
 
 /**
- * CCR proxy URL path markers. In remote sessions, ur.ai connectors arrive
+ * CCR proxy URL path markers. In remote sessions, ur.com connectors arrive
  * via --mcp-config with URLs rewritten to route through the CCR/session-ingress
  * SHTTP proxy. The original vendor URL is preserved in the mcp_url query param
  * so the proxy knows where to forward. See api-go/ccr/internal/ccrshared/
@@ -267,11 +267,11 @@ export function dedupPluginMcpServers(
 }
 
 /**
- * Filter ur.ai connectors, dropping any whose signature matches an enabled
+ * Filter ur.com connectors, dropping any whose signature matches an enabled
  * manually-configured server. Manual wins: a user who wrote .mcp.json or ran
  * `ur mcp add` expressed higher intent than a connector toggled in the web UI.
  *
- * Connector keys are `ur.ai <DisplayName>` so they never key-collide with
+ * Connector keys are `ur.com <DisplayName>` so they never key-collide with
  * manual servers in the merge — this content-based check catches the case where
  * both point at the same underlying URL (e.g. `mcp__slack__*` and
  * `mcp__ur_ai_Slack__*` both hitting mcp.slack.com, ~600 chars/turn wasted).
@@ -300,7 +300,7 @@ export function dedupURAiMcpServers(
     const manualDup = sig !== null ? manualSigs.get(sig) : undefined
     if (manualDup !== undefined) {
       logForDebugging(
-        `Suppressing ur.ai connector "${name}": duplicates manually-configured "${manualDup}"`,
+        `Suppressing ur.com connector "${name}": duplicates manually-configured "${manualDup}"`,
       )
       suppressed.push({ name, duplicateOf: manualDup })
       continue
@@ -1061,11 +1061,11 @@ export function getMcpConfigByName(name: string): ScopedMcpServerConfig | null {
 }
 
 /**
- * Get UR MCP configurations (excludes ur.ai servers from the
+ * Get UR MCP configurations (excludes ur.com servers from the
  * returned set — they're fetched separately and merged by callers).
  * This is fast: only local file reads; no awaited network calls on the
  * critical path. The optional extraDedupTargets promise (e.g. the in-flight
- * ur.ai connector fetch) is awaited only after loadAllPluginsCacheOnly() completes,
+ * ur.com connector fetch) is awaited only after loadAllPluginsCacheOnly() completes,
  * so the two overlap rather than serialize.
  * @returns UR server configurations with appropriate scopes
  */
@@ -1252,7 +1252,7 @@ export async function getURCodeMcpConfigs(
 }
 
 /**
- * Get all MCP configurations across all scopes, including ur.ai servers.
+ * Get all MCP configurations across all scopes, including ur.com servers.
  * This may be slow due to network calls - use getURCodeMcpConfigs() for fast startup.
  * @returns All server configurations with appropriate scopes
  */
@@ -1260,12 +1260,12 @@ export async function getAllMcpConfigs(): Promise<{
   servers: Record<string, ScopedMcpServerConfig>
   errors: PluginError[]
 }> {
-  // In enterprise mode, don't load ur.ai servers (enterprise has exclusive control)
+  // In enterprise mode, don't load ur.com servers (enterprise has exclusive control)
   if (doesEnterpriseMcpConfigExist()) {
     return getURCodeMcpConfigs()
   }
 
-  // Kick off the ur.ai fetch before getURCodeMcpConfigs so it overlaps
+  // Kick off the ur.com fetch before getURCodeMcpConfigs so it overlaps
   // with loadAllPluginsCacheOnly() inside. Memoized — the awaited call below is a cache hit.
   const uraiPromise = fetchURAIMcpConfigsIfEligible()
   const { servers: urCodeServers, errors } = await getURCodeMcpConfigs(
@@ -1276,15 +1276,15 @@ export async function getAllMcpConfigs(): Promise<{
     await uraiPromise,
   )
 
-  // Suppress ur.ai connectors that duplicate an enabled manual server.
-  // Keys never collide (`slack` vs `ur.ai Slack`) so the merge below
+  // Suppress ur.com connectors that duplicate an enabled manual server.
+  // Keys never collide (`slack` vs `ur.com Slack`) so the merge below
   // won't catch this — need content-based dedup by URL signature.
   const { servers: dedupedURAi } = dedupURAiMcpServers(
     uraiMcpServers,
     urCodeServers,
   )
 
-  // Merge with ur.ai having lowest precedence
+  // Merge with ur.com having lowest precedence
   const servers = Object.assign({}, dedupedURAi, urCodeServers)
 
   return { servers, errors }
@@ -1360,7 +1360,7 @@ export function parseMcpConfig(params: {
         ...(filePath && { file: filePath }),
         path: `mcpServers.${name}`,
         message: `Windows requires 'cmd /c' wrapper to execute npx`,
-        suggestion: `Change command to "cmd" with args ["/c", "npx", ...]. See: https://docs.ur.dev/docs/en/mcp#configure-mcp-servers`,
+        suggestion: `Change command to "cmd" with args ["/c", "npx", ...]. See: https://docs.ur.com/docs/en/mcp#configure-mcp-servers`,
         mcpErrorMetadata: {
           scope,
           serverName: name,

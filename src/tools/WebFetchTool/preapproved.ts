@@ -13,7 +13,7 @@
 
 export const PREAPPROVED_HOSTS = new Set([
   // UR
-  'docs.ur.dev',
+  'docs.ur.com',
   'modelcontextprotocol.io',
   'github.com/Maitham16',
   'agentskills.io',

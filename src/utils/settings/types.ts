@@ -1053,7 +1053,7 @@ export const SettingsSchema = lazySchema(() =>
               .string()
               .optional()
               .describe(
-                'Display name for the assistant, shown in the ur.ai session list',
+                'Display name for the assistant, shown in the ur.com session list',
               ),
           }
         : {}),

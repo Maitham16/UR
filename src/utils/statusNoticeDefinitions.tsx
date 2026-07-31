@@ -125,13 +125,13 @@ const bothAuthMethodsNotice: StatusNoticeDefinition = {
         <Box flexDirection="column" marginLeft={3}>
           <Text color="warning">
             · Trying to use{' '}
-            {authTokenInfo.source === 'ur.ai' ? 'ur.ai' : authTokenInfo.source}
+            {authTokenInfo.source === 'ur.com' ? 'ur.com' : authTokenInfo.source}
             ?{' '}
             {apiKeySource === 'URHQ_API_KEY' ? 'Unset the URHQ_API_KEY environment variable, or ur /logout then say "No" to the API key approval before login.' : apiKeySource === 'apiKeyHelper' ? 'Unset the apiKeyHelper setting.' : 'ur /logout'}
           </Text>
           <Text color="warning">
             · Trying to use {apiKeySource}?{' '}
-            {authTokenInfo.source === 'ur.ai' ? 'ur /logout to sign out.' : `Unset the ${authTokenInfo.source} environment variable.`}
+            {authTokenInfo.source === 'ur.com' ? 'ur /logout to sign out.' : `Unset the ${authTokenInfo.source} environment variable.`}
           </Text>
         </Box>
       </Box>;

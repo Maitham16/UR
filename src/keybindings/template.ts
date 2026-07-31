@@ -45,7 +45,7 @@ export function generateKeybindingsTemplate(): string {
   // Format as object wrapper with bindings array
   const config = {
     $schema: 'https://www.schemastore.org/ur-keybindings.json',
-    $docs: 'https://docs.ur.dev/docs/en/keybindings',
+    $docs: 'https://docs.ur.com/docs/en/keybindings',
     bindings,
   }
 
