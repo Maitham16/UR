@@ -48,15 +48,33 @@ function normalizeQuestionOptionInput(value: unknown): unknown {
     } : {})
   };
 }
+// The question text accepted eight aliases while the options array accepted
+// exactly one key, so a model that said `choices` failed with *both* fields
+// reported missing — the text was never looked up because the options check
+// bailed first. Per-question options also arrive as a JSON string from small
+// models, which only the top-level single-question form parsed.
+function optionsField(question: Record<string, unknown>): unknown[] | null {
+  for (const name of ['options', 'choices', 'values', 'items', 'alternatives', 'candidates', 'selections']) {
+    const value = question[name];
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = parseToolInputJsonLenient(value);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  }
+  return null;
+}
 function normalizeQuestionInput(value: unknown, index: number): unknown {
   const question = objectValue(value);
-  if (!question || !Array.isArray(question.options)) return value;
+  if (!question) return value;
+  const options = optionsField(question);
+  if (!options) return value;
   const questionText = stringField(question, ['question', 'questionText', 'question_text', 'prompt', 'text', 'title', 'message', 'body']);
   if (!questionText) return value;
   return {
     question: questionText,
     header: typeof question.header === 'string' && question.header.trim() ? question.header.trim().slice(0, ASK_USER_QUESTION_TOOL_CHIP_WIDTH) : headerFromQuestion(questionText, index),
-    options: question.options.map(normalizeQuestionOptionInput),
+    options: options.map(normalizeQuestionOptionInput),
     ...(typeof question.multiSelect === 'boolean' ? {
       multiSelect: question.multiSelect
     } : {})

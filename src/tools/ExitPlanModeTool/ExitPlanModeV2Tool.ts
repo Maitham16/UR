@@ -219,6 +219,12 @@ export const outputSchema = lazySchema(() =>
       .describe(
         'When true, the teammate has sent a plan approval request to the team leader',
       ),
+    alreadyExited: z
+      .boolean()
+      .optional()
+      .describe(
+        'When true, plan mode had already been exited and this call was a no-op',
+      ),
     requestId: z
       .string()
       .optional()
@@ -294,6 +300,14 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
         mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         hasExitedPlanModeInSession: hasExitedPlanModeInSession(),
       })
+      // Calling again right after an approved exit is expected, not a mistake:
+      // the tool stays advertised regardless of mode, so the model echoes it
+      // once the mode has already flipped. Failing that surfaced a red error on
+      // every single plan approval. Treat it as a no-op instead, and keep the
+      // hard failure for a call that never had an exit to echo.
+      if (hasExitedPlanModeInSession()) {
+        return { result: true }
+      }
       return {
         result: false,
         message:
@@ -309,6 +323,17 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     // - If isPlanModeRequired(): sends plan_approval_request to leader
     // - Otherwise: exits plan mode locally (voluntary plan mode)
     if (isTeammate()) {
+      return {
+        behavior: 'allow' as const,
+        updatedInput: input,
+      }
+    }
+
+    // A no-op echo must not re-prompt: the user already answered this once.
+    if (
+      context.getAppState().toolPermissionContext.mode !== 'plan' &&
+      hasExitedPlanModeInSession()
+    ) {
       return {
         behavior: 'allow' as const,
         updatedInput: input,
@@ -336,6 +361,16 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     const inputPlan =
       'plan' in input && typeof input.plan === 'string' ? input.plan : undefined
     const plan = inputPlan ?? getPlan(context.agentId)
+
+    // Already out of plan mode after an approved exit: do no work, and do not
+    // rewrite the plan file, which would clobber it with a stale copy.
+    if (
+      !isTeammate() &&
+      context.getAppState().toolPermissionContext.mode !== 'plan' &&
+      hasExitedPlanModeInSession()
+    ) {
+      return { data: { plan, isAgent, filePath, alreadyExited: true } }
+    }
 
     // Sync disk so VerifyPlanExecution / Read see the edit. Re-snapshot
     // after: the only other persistFileSnapshotIfRemote call (api.ts) runs
@@ -510,9 +545,19 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
       planWasEdited,
       awaitingLeaderApproval,
       requestId,
+      alreadyExited,
     },
     toolUseID,
   ) {
+    if (alreadyExited) {
+      return {
+        type: 'tool_result',
+        content:
+          'Plan mode is already exited — this call did nothing. Continue with the implementation and do not call ExitPlanMode again this turn.',
+        tool_use_id: toolUseID,
+      }
+    }
+
     // Handle teammate awaiting leader approval
     if (awaitingLeaderApproval) {
       return {

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.72.0
+
+- `AskUserQuestion` no longer rejects a well-formed question because the model
+  named the array something else. The question text accepted eight aliases
+  while the options array accepted exactly one key, and the options check ran
+  first — so a model that sent `choices` was told that *both* `question` and
+  `options` were missing, which is what the error reported. `choices`,
+  `values`, `items`, `alternatives`, `candidates` and `selections` are now
+  accepted, and per-question options that arrive as a JSON string are parsed,
+  which previously only happened for the single-question form.
+- Exiting plan mode no longer prints an error every time it is approved. The
+  tool stays advertised regardless of mode, so once the user accepts, the model
+  routinely calls it a second time against a session that is already out of
+  plan mode — and that was answered with "You are not in plan mode". The echo
+  is now a no-op that tells the model to continue, does not re-prompt for
+  approval, and does not rewrite the plan file with a stale copy. A call with
+  no approved exit behind it still fails, since that one is a real mistake.
+
 ## 1.71.0
 
 - Consolidated every UR-branded link onto `ur.com`. 259 references across 106
