@@ -55,7 +55,7 @@ function normalizeQuestionOptionInput(value: unknown): unknown {
 // bailed first. Per-question options also arrive as a JSON string from small
 // models, which only the top-level single-question form parsed.
 function optionsField(question: Record<string, unknown>): unknown[] | null {
-  for (const name of ['options', 'choices', 'values', 'items', 'alternatives', 'candidates', 'selections']) {
+  for (const name of ['options', 'option', 'choices', 'values', 'items', 'alternatives', 'candidates', 'selections']) {
     const value = question[name];
     if (Array.isArray(value)) return value;
     if (typeof value === 'string') {
@@ -114,11 +114,14 @@ export function normalizeAskUserQuestionInput(value: unknown): unknown {
       ...commonFields
     };
   }
-  if (typeof input.question === 'string' && Array.isArray(input.options)) {
-    return {
-      questions: dedupeQuestions([normalizeQuestionInput(input, 0)]),
-      ...commonFields
-    };
+  if (optionsField(input) !== null) {
+    const singleQuestion = normalizeQuestionInput(input, 0);
+    if (singleQuestion !== input) {
+      return {
+        questions: dedupeQuestions([singleQuestion]),
+        ...commonFields
+      };
+    }
   }
   return value;
 }

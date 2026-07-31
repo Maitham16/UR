@@ -173,7 +173,12 @@ export function validateToolSchema(
   const root = isObject(schema) ? schema : undefined
   const allowedTypes = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'])
 
-  function walk(node: unknown, path: string, depth: number): void {
+  function walk(
+    node: unknown,
+    path: string,
+    depth: number,
+    inPropertiesObject = false,
+  ): void {
     if (depth > 64) {
       issues.push({ path, message: 'schema nests deeper than 64 levels' })
       return
@@ -207,7 +212,7 @@ export function validateToolSchema(
       }
     }
 
-    if (node.type !== undefined) {
+    if (!inPropertiesObject && node.type !== undefined) {
       const types = Array.isArray(node.type) ? node.type : [node.type]
       if (
         types.length === 0 ||
@@ -275,7 +280,7 @@ export function validateToolSchema(
 
     for (const [key, value] of Object.entries(node)) {
       if (key === 'enum' || key === 'required') continue
-      walk(value, path ? `${path}.${key}` : key, depth + 1)
+      walk(value, path ? `${path}.${key}` : key, depth + 1, key === 'properties')
     }
   }
 
@@ -285,7 +290,7 @@ export function validateToolSchema(
   if (schema.type !== 'object') {
     issues.push({ path: '', message: 'tool parameter schema must have top-level type "object"' })
   }
-  walk(schema, '', 0)
+  walk(schema, '', 0, false)
   return issues
 }
 

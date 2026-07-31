@@ -54,15 +54,63 @@ import {
   userFacingName,
 } from './UI.js'
 
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function normalizeWriteInput(value: unknown): unknown {
+  const input = objectValue(value)
+  if (!input) return value
+
+  const filePath =
+    typeof input.file_path === 'string'
+      ? input.file_path
+      : input.file_path === undefined && typeof input.filePath === 'string'
+        ? input.filePath
+        : input.file_path === undefined && typeof input.path === 'string'
+          ? input.path
+          : undefined
+
+  const content =
+    typeof input.content === 'string'
+      ? input.content
+      : input.content === undefined && typeof input.text === 'string'
+        ? input.text
+        : input.content === undefined && typeof input.body === 'string'
+          ? input.body
+          : input.content === undefined && typeof input.data === 'string'
+            ? input.data
+            : input.content === undefined && typeof input.value === 'string'
+              ? input.value
+              : undefined
+
+  if (
+    filePath === undefined &&
+    content === undefined
+  ) {
+    return value
+  }
+
+  return {
+    ...(typeof filePath === 'string' ? { file_path: filePath } : {}),
+    ...(typeof content === 'string' ? { content } : {}),
+  }
+}
+
 const inputSchema = lazySchema(() =>
-  z.strictObject({
-    file_path: z
-      .string()
-      .describe(
-        'The absolute path to the file to write (must be absolute, not relative)',
-      ),
-    content: z.string().describe('The content to write to the file'),
-  }),
+  z.preprocess(
+    normalizeWriteInput,
+    z.strictObject({
+      file_path: z
+        .string()
+        .describe(
+          'The absolute path to the file to write (must be absolute, not relative)',
+        ),
+      content: z.string().describe('The content to write to the file'),
+    }),
+  ),
 )
 type InputSchema = ReturnType<typeof inputSchema>
 

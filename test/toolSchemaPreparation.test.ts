@@ -226,6 +226,24 @@ describe('pre-send validation catches malformed output', () => {
       }),
     ).toEqual([])
   })
+
+  test('schemas with reserved property names in properties maps are valid', () => {
+    expect(
+      validateToolSchema({
+        type: 'object',
+        properties: {
+          type: {
+            type: 'string',
+            description: 'File type filter for ripgrep.',
+          },
+          '-n': {
+            type: 'boolean',
+            description: 'Show line numbers.',
+          },
+        },
+      }),
+    ).toEqual([])
+  })
 })
 
 describe('failing clearly instead of retrying blindly', () => {

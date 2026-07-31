@@ -197,6 +197,47 @@ describe('schema accepts payloads that previously required a retry', () => {
     }
   })
 
+  test('top-level prompt + choices aliases are normalized', () => {
+    const result = schema.safeParse({
+      prompt: 'Which deployment target should we use?',
+      choices: ['Lambda', 'Cloud Run'],
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.questions).toEqual([
+        {
+          question: 'Which deployment target should we use?',
+          header: 'deployment',
+          options: [
+            { label: 'Lambda', description: 'Lambda' },
+            { label: 'Cloud Run', description: 'Cloud Run' },
+          ],
+          multiSelect: false,
+        },
+      ])
+    }
+  })
+
+  test('per-question option alias is normalized', () => {
+    const result = schema.safeParse({
+      questions: [
+        {
+          question: 'Which rollout style?',
+          option: [
+            { label: 'Canary', description: 'Gradual users.' },
+            { label: 'Blue/Green' },
+          ],
+        },
+      ],
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.questions[0]!.options).toHaveLength(2)
+      expect(result.data.questions[0]!.options[0]!.label).toBe('Canary')
+      expect(result.data.questions[0]!.options[1]!.label).toBe('Blue/Green')
+    }
+  })
+
   test('previews are preserved through the repair', () => {
     const result = schema.safeParse({
       questions: [

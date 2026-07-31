@@ -140,6 +140,78 @@ test('AskUserQuestion allows up to eight professional clarification options', ()
   expect(parsed.success).toBe(true)
 })
 
+test('AskUserQuestion normalizes top-level choices alias into a single-question form', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    question: 'Which language should this task use?',
+    choices: ['TypeScript', 'Rust'],
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions).toEqual([
+    {
+      question: 'Which language should this task use?',
+      header: 'language',
+      options: [
+        {
+          label: 'TypeScript',
+          description: 'TypeScript',
+        },
+        {
+          label: 'Rust',
+          description: 'Rust',
+        },
+      ],
+      multiSelect: false,
+    },
+  ])
+})
+
+test('AskUserQuestion normalizes top-level prompt alias question and choices alias', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    prompt: 'Which deployment target?',
+    choices: ['Lambda', 'Cloud Run'],
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions[0]).toEqual({
+    question: 'Which deployment target?',
+    header: 'deployment',
+    options: [
+      { label: 'Lambda', description: 'Lambda' },
+      { label: 'Cloud Run', description: 'Cloud Run' },
+    ],
+    multiSelect: false,
+  })
+})
+
+test('AskUserQuestion normalizes per-question option aliases', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    questions: [
+      {
+        question: 'How should we ship?',
+        option: [
+          { label: 'Release', description: 'Ship now' },
+          { label: 'Canary', description: 'Gradual rollout' },
+        ],
+      },
+    ],
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions[0]).toEqual({
+    question: 'How should we ship?',
+    header: 'How',
+    options: [
+      { label: 'Release', description: 'Ship now' },
+      { label: 'Canary', description: 'Gradual rollout' },
+    ],
+    multiSelect: false,
+  })
+})
+
 test('AskUserQuestion infers labels from description-only option objects', () => {
   const parsed = AskUserQuestionTool.inputSchema.safeParse({
     question: 'References or related work to cite?',
