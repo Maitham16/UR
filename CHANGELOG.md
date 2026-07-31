@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.73.0
+
+- Provider API key entry no longer renders one character per line. The field in
+  the provider picker omitted `columns`, `cursorOffset` and
+  `onChangeCursorOffset`; the file carries `@ts-nocheck`, so the compiler could
+  not flag the missing required props. An absent width reached
+  `normalizeCursorColumns`, which floors a non-finite value at 2, leaving a
+  1-column `MeasuredText`. The same omission pinned the cursor at offset 0, so
+  every keystroke inserted at the head and the stored key came out reversed,
+  and the undefined setter threw on each accepted key. `TextInput` now resolves
+  a usable width from the live terminal size and keeps the offset internally
+  when a call site does not lift it, so no future call site can reproduce this.
+- Pasted provider keys are normalised to a single line. A bracketed paste
+  carries the newline that terminated the copied line, which is not legal in an
+  HTTP header value and previously failed later requests with an opaque
+  transport error instead of a 401.
+- The provider picker can now change or remove a stored API key. Selecting a
+  provider whose key UR stores offers "Continue to models", "Change API key"
+  and "Disconnect"; a key supplied through the environment is left alone. The
+  key-entry step's advertised Esc-to-go-back now actually works.
+- Subagent completion summaries no longer print "0 tokens" beside a real tool
+  count. Tool calls and model tokens are separate quantities, and when a
+  provider reports no usage the token segment is omitted rather than rendered
+  as zero. Provider-reported input, output, cached and creation tokens are
+  unchanged.
+- AskUserQuestion keeps every choice in one continuous list. The select
+  components default to a 5-item window, so a question with five or more
+  entries (four choices plus "Other") pushed the tail below the footer divider
+  and read as a detached second group. The list is now sized to the terminal
+  and only windows when the height genuinely cannot fit it.
+
 ## 1.72.0
 
 - `AskUserQuestion` no longer rejects a well-formed question because the model

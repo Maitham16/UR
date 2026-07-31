@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { _c } from 'react/compiler-runtime'
 import * as React from 'react'
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -20,11 +20,20 @@ import {
   getProviderRuntimeBlockReason,
   authAliasForProvider,
 } from 'src/services/providers/providerRegistry.js'
-import { setProviderApiKey } from 'src/services/providers/providerCredentials.js'
+import {
+  clearProviderApiKey,
+  getProviderApiKeySource,
+  setProviderApiKey,
+} from 'src/services/providers/providerCredentials.js'
+import {
+  describeApiKeyProblem,
+  sanitizeApiKeyInput,
+} from 'src/services/providers/apiKeyInput.js'
+import { TerminalSizeContext } from '../ink/components/TerminalSizeContext.js'
 import { useAppState, useSetAppState } from 'src/state/AppState.js'
 import { getSettingsForSource } from 'src/utils/settings/settings.js'
 import type { ModelOption } from 'src/utils/model/modelOptions.js'
-import { Box, Text } from '../ink.js'
+import { Box, Text, useInput } from '../ink.js'
 import { useAppState as useAppStateSelector } from '../state/AppState.js'
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js'
 import { Select } from './CustomSelect/index.js'
@@ -50,7 +59,7 @@ const selectCurrentProvider = (s: { provider?: { active?: string } }) =>
 const selectEffortValue = (s: { effortValue?: unknown }) => s.effortValue
 const selectThinkingEnabled = (s: { thinkingEnabled?: boolean }) => s.thinkingEnabled
 
-type Step = 'provider' | 'connect' | 'model'
+type Step = 'provider' | 'connect' | 'manage' | 'model'
 
 type ProviderStatusOption = {
   value: string
@@ -106,7 +115,12 @@ export function ProviderFirstModelPicker({
   const [providerWarning, setProviderWarning] = useState<string | null>(null)
   const [connectingProvider, setConnectingProvider] = useState<ProviderStatusOption | null>(null)
   const [apiKeyInput, setApiKeyInput] = useState('')
+  const [apiKeyCursorOffset, setApiKeyCursorOffset] = useState(0)
   const [connectError, setConnectError] = useState<string | null>(null)
+  const [credentialNotice, setCredentialNotice] = useState<string | null>(null)
+  const terminalSize = useContext(TerminalSizeContext)
+  // "API key: " label plus the surrounding pane border.
+  const keyInputColumns = Math.max(20, (terminalSize?.columns ?? 80) - 14)
 
   const effortValue = useAppState(selectEffortValue)
   const [effort] = useState<EffortLevel | undefined>(
@@ -182,6 +196,17 @@ export function ProviderFirstModelPicker({
     loadModels()
   }, [selectedProvider])
 
+  // The key-entry view advertises Esc but the text input owns the key, so the
+  // step needs its own listener to actually go back.
+  useInput(
+    (_input, key) => {
+      if (key.escape) {
+        handleKeyCancel()
+      }
+    },
+    { isActive: step === 'connect' },
+  )
+
   const providerSelectOptions = providerOptions.map(opt => ({
     value: opt.value,
     label: opt.label,
@@ -215,11 +240,23 @@ export function ProviderFirstModelPicker({
         setProviderWarning(provider.runtimeBlockedReason)
         return
       }
+      if (provider.status === 'connected' && provider.credentialType === 'api-key') {
+        // A key UR itself stores can be replaced or removed from here. An
+        // env-var key belongs to the shell, so there is nothing to manage.
+        if (getProviderApiKeySource(provider.value) === 'stored') {
+          setConnectingProvider(provider)
+          setCredentialNotice(null)
+          setConnectError(null)
+          setStep('manage')
+          return
+        }
+      }
       if (provider.status !== 'connected') {
         if (provider.credentialType === 'api-key') {
           // Add the API key right here, while UR is running, then load models.
           setConnectingProvider(provider)
           setApiKeyInput('')
+          setApiKeyCursorOffset(0)
           setConnectError(null)
           setStep('connect')
           return
@@ -317,9 +354,16 @@ export function ProviderFirstModelPicker({
 
   function handleKeySubmit() {
     if (!connectingProvider) return
-    const key = apiKeyInput.trim()
+    // Terminals deliver a bracketed paste as one chunk that can carry the
+    // trailing newline from the copied line; a stored key must stay single-line.
+    const key = sanitizeApiKeyInput(apiKeyInput)
     if (!key) {
       setConnectError('Enter your API key (or press Esc to go back).')
+      return
+    }
+    const problem = describeApiKeyProblem(apiKeyInput)
+    if (problem) {
+      setConnectError(problem)
       return
     }
     const saved = setProviderApiKey(connectingProvider.value, key)
@@ -328,7 +372,9 @@ export function ProviderFirstModelPicker({
       return
     }
     setApiKeyInput('')
+    setApiKeyCursorOffset(0)
     setConnectError(null)
+    setCredentialNotice(saved.message)
     // Selecting the provider triggers live model discovery with the new key.
     setSelectedProvider(connectingProvider)
     setStep('model')
@@ -336,9 +382,94 @@ export function ProviderFirstModelPicker({
 
   function handleKeyCancel() {
     setApiKeyInput('')
+    setApiKeyCursorOffset(0)
     setConnectingProvider(null)
     setConnectError(null)
     setStep('provider')
+  }
+
+  function handleManageSelect(action: string) {
+    if (!connectingProvider) return
+    if (action === 'use') {
+      setSelectedProvider(connectingProvider)
+      setStep('model')
+      setFocusedModelValue(null)
+      return
+    }
+    if (action === 'replace') {
+      setApiKeyInput('')
+      setApiKeyCursorOffset(0)
+      setConnectError(null)
+      setStep('connect')
+      return
+    }
+    if (action === 'disconnect') {
+      const cleared = clearProviderApiKey(connectingProvider.value)
+      if (!cleared.ok) {
+        setCredentialNotice(cleared.message)
+        return
+      }
+      setCredentialNotice(cleared.message)
+      setProviderOptions(prev =>
+        prev.map(opt =>
+          opt.value === connectingProvider.value
+            ? { ...opt, status: 'missing', statusLabel: 'No stored API key' }
+            : opt,
+        ),
+      )
+      setConnectingProvider(null)
+      setStep('provider')
+    }
+  }
+
+  function handleManageCancel() {
+    setConnectingProvider(null)
+    setStep('provider')
+  }
+
+  // Credential management for a provider whose key UR stores itself.
+  if (step === 'manage' && connectingProvider) {
+    const manageContent = (
+      <Box flexDirection="column">
+        <Box marginBottom={1} flexDirection="column">
+          <Text color="remember" bold>
+            {connectingProvider.label}
+          </Text>
+          <Text dimColor>
+            Connected with an API key stored by UR. Choose an action, or press Esc to go back.
+          </Text>
+        </Box>
+        <Select
+          defaultValue="use"
+          options={[
+            {
+              value: 'use',
+              label: 'Continue to models',
+              description: 'Keep the stored key and pick a model',
+            },
+            {
+              value: 'replace',
+              label: 'Change API key',
+              description: 'Replace the stored key with a new one',
+            },
+            {
+              value: 'disconnect',
+              label: 'Disconnect',
+              description: 'Remove the stored key from this machine',
+            },
+          ]}
+          onChange={handleManageSelect}
+          onCancel={handleManageCancel}
+          visibleOptionCount={3}
+        />
+        {credentialNotice && (
+          <Box marginTop={1}>
+            <Text dimColor color="subtle">{credentialNotice}</Text>
+          </Box>
+        )}
+      </Box>
+    )
+    return isStandaloneCommand ? <Pane color="permission">{manageContent}</Pane> : manageContent
   }
 
   // API key entry view (add a token from inside UR while it is running).
@@ -367,6 +498,12 @@ export function ProviderFirstModelPicker({
             onSubmit={handleKeySubmit}
             mask="*"
             placeholder="paste key, then Enter"
+            focus={true}
+            showCursor={true}
+            multiline={false}
+            columns={keyInputColumns}
+            cursorOffset={apiKeyCursorOffset}
+            onChangeCursorOffset={setApiKeyCursorOffset}
           />
         </Box>
         {connectError && (

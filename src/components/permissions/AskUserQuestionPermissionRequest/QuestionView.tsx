@@ -1,5 +1,5 @@
 import figures from 'figures';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useMemo, useState } from 'react';
 import type { KeyboardEvent } from '../../../ink/events/keyboard-event.js';
 import { Box, Text } from '../../../ink.js';
 import { useAppState } from '../../../state/AppState.js';
@@ -13,6 +13,8 @@ import { Divider } from '../../design-system/Divider.js';
 import { FilePathLink } from '../../FilePathLink.js';
 import { QuestionNavigationBar } from './QuestionNavigationBar.js';
 import { PreviewQuestionView } from './PreviewQuestionView.js';
+import { visibleChoiceCount } from './choiceListLayout.js';
+import { TerminalSizeContext } from '../../../ink/components/TerminalSizeContext.js';
 import type { QuestionState } from './use-multiple-choice-state.js';
 
 type Props = {
@@ -63,6 +65,7 @@ export function QuestionView({
   onRemoveImage
 }: Props): React.ReactNode {
   const isInPlanMode = useAppState(s => s.toolPermissionContext.mode) === 'plan';
+  const terminalSize = useContext(TerminalSizeContext);
   const [isFooterFocused, setIsFooterFocused] = useState(false);
   const [footerIndex, setFooterIndex] = useState(0);
   const [isOtherFocused, setIsOtherFocused] = useState(false);
@@ -191,6 +194,9 @@ export function QuestionView({
   );
 
   const footerIndexStart = options.length + 1;
+  // Keep every choice in one continuous list instead of the select default's
+  // 5-item window, which pushed later choices past the footer divider.
+  const choiceCount = visibleChoiceCount(options.length, terminalSize?.rows);
 
   return (
     <Box flexDirection="column" marginTop={0} tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
@@ -222,6 +228,7 @@ export function QuestionView({
               onSubmit={onSubmit}
               onDownFromLastItem={handleDownFromLastItem}
               isDisabled={isFooterFocused}
+              visibleOptionCount={choiceCount}
               onImagePaste={onImagePaste}
               pastedContents={pastedContents}
               onRemoveImage={onRemoveImage}
@@ -240,6 +247,7 @@ export function QuestionView({
               onCancel={onCancel}
               onDownFromLastItem={handleDownFromLastItem}
               isDisabled={isFooterFocused}
+              visibleOptionCount={choiceCount}
               layout="compact-vertical"
               onImagePaste={onImagePaste}
               pastedContents={pastedContents}

@@ -4,6 +4,7 @@
  */
 
 import { randomUUID } from 'crypto'
+import { normalizeOpenAIChatUsage } from './usageNormalization.js'
 import {
   assertValidProviderToolUses,
   isProviderToolInput,
@@ -168,6 +169,10 @@ export function toOpenAICompatibleRequest(
     ...(responseFormat && { response_format: responseFormat }),
     stream: Boolean(params.stream),
     ...(params.stream ? { stream_options: { include_usage: true } } : {}),
+    // OpenRouter returns no usage block at all unless accounting is requested,
+    // which is why its turns previously reported nothing to attribute.
+    // https://openrouter.ai/docs/use-cases/usage-accounting
+    ...(providerName === 'openrouter' ? { usage: { include: true } } : {}),
     ...(tools.length > 0 ? { tools } : {}),
     ...(params.tool_choice !== undefined
       ? { tool_choice: mapOpenAIToolChoice(params.tool_choice) }
@@ -415,12 +420,9 @@ export function parseOpenAICompatibleResponse(
     content,
     stop_reason: mapOpenAIStopReason(choice?.finish_reason, includesToolUse),
     stop_sequence: null,
-    usage: {
-      input_tokens: data.usage?.prompt_tokens ?? 0,
-      output_tokens: data.usage?.completion_tokens ?? 0,
-      cache_creation_input_tokens: 0,
-      cache_read_input_tokens: 0,
-    },
+    // Cached and reasoning token details were previously dropped, and the
+    // cached prefix would otherwise be counted twice — see usageNormalization.
+    usage: normalizeOpenAIChatUsage(data.usage),
   }
 }
 

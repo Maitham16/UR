@@ -1,11 +1,12 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle';
 import chalk from 'chalk';
-import React, { useMemo, useRef } from 'react';
+import React, { useContext, useMemo, useRef, useState } from 'react';
 import { useVoiceState } from '../context/voice.js';
 import { useClipboardImageHint } from '../hooks/useClipboardImageHint.js';
 import { useSettings } from '../hooks/useSettings.js';
 import { useTextInput } from '../hooks/useTextInput.js';
+import { TerminalSizeContext } from '../ink/components/TerminalSizeContext.js';
 import { Box, color, useAnimationFrame, useTerminalFocus, useTheme } from '../ink.js';
 import type { BaseTextInputProps } from '../types/textInputTypes.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
@@ -35,9 +36,42 @@ const SILENCE_THRESHOLD = 0.15;
 export type Props = BaseTextInputProps & {
   highlights?: TextHighlight[];
 };
+// Reserve room for the surrounding label/prompt so a caller that omits an
+// explicit width still wraps at something usable rather than the terminal edge.
+const IMPLICIT_WIDTH_GUTTER = 4;
+const IMPLICIT_WIDTH_FALLBACK = 80;
+
+/**
+ * Width used when a call site omits `columns`. Reads the live terminal size
+ * when one is available and degrades to a conventional 80 columns otherwise,
+ * so this never reintroduces the 1-column wrap.
+ */
+export function resolveImplicitInputColumns(terminalColumns: number | undefined): number {
+  const base = Number.isFinite(terminalColumns) && (terminalColumns as number) > 0 ? (terminalColumns as number) : IMPLICIT_WIDTH_FALLBACK;
+  return Math.max(2, Math.floor(base) - IMPLICIT_WIDTH_GUTTER);
+}
+
+/** True when `columns` is usable as a wrap width. */
+export function hasUsableColumns(columns: unknown): boolean {
+  return typeof columns === 'number' && Number.isFinite(columns) && columns >= 2;
+}
 export default function TextInput(props: Props): React.ReactNode {
   const [theme] = useTheme();
   const isTerminalFocused = useTerminalFocus();
+  const terminalSize = useContext(TerminalSizeContext);
+  // `columns` is declared required, but call sites in .tsx files carrying
+  // `@ts-nocheck` can omit it. An absent width reached normalizeCursorColumns(),
+  // which floors non-finite input at 2 and yields a 1-column MeasuredText —
+  // rendering one grapheme per line. Fall back to the live terminal width.
+  const resolvedColumns = hasUsableColumns(props.columns) ? props.columns : resolveImplicitInputColumns(terminalSize?.columns);
+  // Offset is normally lifted into the parent. When a call site omits the
+  // pair, keep it internal: an undefined offset pinned the cursor at 0 (every
+  // keystroke inserted at the head, reversing the value) and an undefined
+  // setter threw on each accepted key.
+  const [internalOffset, setInternalOffset] = useState(0);
+  const hasExternalOffset = typeof props.onChangeCursorOffset === 'function';
+  const resolvedOffset = hasExternalOffset ? props.cursorOffset : internalOffset;
+  const resolvedOnOffsetChange = hasExternalOffset ? props.onChangeCursorOffset : setInternalOffset;
   // Hoisted to mount-time — this component re-renders on every keystroke.
   const accessibilityEnabled = useMemo(() => isEnvTruthy(process.env.UR_CODE_ACCESSIBILITY), []);
   const settings = useSettings();
@@ -107,18 +141,18 @@ export default function TextInput(props: Props): React.ReactNode {
     highlightPastedText: props.highlightPastedText,
     invert,
     themeText: color('text', theme),
-    columns: props.columns,
+    columns: resolvedColumns,
     maxVisibleLines: props.maxVisibleLines,
     onImagePaste: props.onImagePaste,
     disableCursorMovementForUpDownKeys: props.disableCursorMovementForUpDownKeys,
     disableEscapeDoublePress: props.disableEscapeDoublePress,
-    externalOffset: props.cursorOffset,
-    onOffsetChange: props.onChangeCursorOffset,
+    externalOffset: resolvedOffset,
+    onOffsetChange: resolvedOnOffsetChange,
     inputFilter: props.inputFilter,
     inlineGhostText: props.inlineGhostText,
     dim: chalk.dim
   });
   return <Box ref={animRef}>
-      <BaseTextInput inputState={textInputState} terminalFocus={isTerminalFocused} highlights={props.highlights} invert={invert} hidePlaceholderText={isVoiceRecording} {...props} />
+      <BaseTextInput inputState={textInputState} terminalFocus={isTerminalFocused} highlights={props.highlights} invert={invert} hidePlaceholderText={isVoiceRecording} {...props} columns={resolvedColumns} cursorOffset={resolvedOffset} onChangeCursorOffset={resolvedOnOffsetChange} />
     </Box>;
 }

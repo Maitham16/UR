@@ -5,6 +5,11 @@ import {
 } from './providerClient.js'
 import { parseToolInputJsonLenient } from '../../utils/json.js'
 import {
+  normalizeGeminiUsage,
+  normalizeOpenAIChatUsage,
+  normalizeOpenAIResponsesUsage,
+} from './usageNormalization.js'
+import {
   GEMINI_THOUGHT_SIGNATURE,
   getGeminiThoughtSignature,
 } from './geminiWire.js'
@@ -1256,28 +1261,15 @@ function messageText(message: any): string {
 }
 
 function usageFromOpenAI(usage: any): Usage {
-  return normalizeUsage({
-    input_tokens: usage?.prompt_tokens ?? 0,
-    output_tokens: usage?.completion_tokens ?? 0,
-  })
+  return normalizeUsage(normalizeOpenAIChatUsage(usage))
 }
 
 function usageFromOpenAIResponses(usage: any): Usage {
-  return normalizeUsage({
-    input_tokens: usage?.input_tokens ?? 0,
-    output_tokens: usage?.output_tokens ?? 0,
-    cache_creation_input_tokens:
-      usage?.input_tokens_details?.cache_write_tokens ?? 0,
-    cache_read_input_tokens:
-      usage?.input_tokens_details?.cached_tokens ?? 0,
-  })
+  return normalizeUsage(normalizeOpenAIResponsesUsage(usage))
 }
 
 function usageFromGemini(usage: any): Usage {
-  return normalizeUsage({
-    input_tokens: usage?.promptTokenCount ?? 0,
-    output_tokens: usage?.candidatesTokenCount ?? 0,
-  })
+  return normalizeUsage(normalizeGeminiUsage(usage))
 }
 
 function isOpenAIToolStopReason(reason: string | undefined): boolean {

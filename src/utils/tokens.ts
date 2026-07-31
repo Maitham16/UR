@@ -52,6 +52,66 @@ export function getTokenCountFromUsage(usage: Usage): number {
   )
 }
 
+/**
+ * Whether a provider actually reported token usage for a turn.
+ *
+ * Not every provider returns a usage block. When one is absent the pipeline
+ * substitutes EMPTY_USAGE, whose counters are all zero — indistinguishable
+ * from real usage by value alone. No completion that produced content can
+ * cost zero input *and* zero output tokens, so an all-zero block means
+ * "unreported", and callers must omit the figure rather than render `0`.
+ *
+ * Returns false for a missing/!=object usage as well, so callers can pass an
+ * optional usage directly.
+ */
+export function hasReportedTokenUsage(usage: Usage | null | undefined): boolean {
+  if (!usage || typeof usage !== 'object') {
+    return false
+  }
+  const counted =
+    (usage.input_tokens ?? 0) +
+    (usage.cache_creation_input_tokens ?? 0) +
+    (usage.cache_read_input_tokens ?? 0) +
+    (usage.output_tokens ?? 0)
+  return Number.isFinite(counted) && counted > 0
+}
+
+/**
+ * Provider-reported reasoning/thinking tokens, when the provider supplied
+ * them. Already counted inside output_tokens for OpenAI-shaped providers, so
+ * this is for display only and must never be added to a context total.
+ */
+export function getReasoningTokens(
+  usage: Usage | null | undefined,
+): number | undefined {
+  if (!usage || typeof usage !== 'object') {
+    return undefined
+  }
+  const reasoning = (usage as { reasoning_tokens?: unknown }).reasoning_tokens
+  if (typeof reasoning !== 'number' || !Number.isFinite(reasoning) || reasoning <= 0) {
+    return undefined
+  }
+  return Math.floor(reasoning)
+}
+
+/**
+ * Render the token segment of a completion summary, or null when the provider
+ * gave nothing reliable to report. Kept next to the predicate so the display
+ * rule and the availability rule cannot drift apart.
+ */
+export function formatReportedTokens(
+  usage: Usage | null | undefined,
+  totalTokens: number,
+  format: (n: number) => string,
+): string | null {
+  if (!hasReportedTokenUsage(usage) || !Number.isFinite(totalTokens) || totalTokens <= 0) {
+    return null
+  }
+  const reasoning = getReasoningTokens(usage)
+  const base = `${format(totalTokens)} tokens`
+  return reasoning ? `${base} (${format(reasoning)} reasoning)` : base
+}
+
 export function tokenCountFromLastAPIResponse(messages: Message[]): number {
   let i = messages.length - 1
   while (i >= 0) {

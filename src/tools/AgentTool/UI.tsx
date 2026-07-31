@@ -22,6 +22,7 @@ import { count } from '../../utils/array.js';
 import { getSearchOrReadFromContent, getSearchReadSummaryText } from '../../utils/collapseReadSearch.js';
 import { getDisplayPath } from '../../utils/file.js';
 import { formatDuration, formatNumber } from '../../utils/format.js';
+import { formatReportedTokens } from '../../utils/tokens.js';
 import { buildSubagentLookups, createAssistantMessage, EMPTY_LOOKUPS } from '../../utils/messages.js';
 import type { ModelAlias } from '../../utils/model/aliases.js';
 import { getMainLoopModel, parseUserSpecifiedModel, renderModelName } from '../../utils/model/model.js';
@@ -373,7 +374,11 @@ export function renderToolResultMessage(data: Output, progressMessagesForMessage
     content,
     prompt
   } = data;
-  const result = [totalToolUseCount === 1 ? '1 tool use' : `${totalToolUseCount} tool uses`, formatNumber(totalTokens) + ' tokens', formatDuration(totalDurationMs)];
+  // Tool calls and model tokens are separate quantities. When the provider
+  // reports no usage the token segment is omitted entirely — rendering
+  // "0 tokens" beside a real tool count states a measurement we do not have.
+  const tokenSegment = formatReportedTokens(usage, totalTokens, formatNumber);
+  const result = [totalToolUseCount === 1 ? '1 tool use' : `${totalToolUseCount} tool uses`, ...(tokenSegment ? [tokenSegment] : []), formatDuration(totalDurationMs)];
   const completionMessage = `Done (${result.join(' · ')})`;
   const finalAssistantMessage = createAssistantMessage({
     content: completionMessage,
