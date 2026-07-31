@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.69.0
+
+- Rolled the codebase back to the state shipped as 1.65.6. Everything released
+  between 1.65.7 and 1.68.19 is withdrawn from this line. The version number
+  moves forward rather than back so npm and existing installs upgrade cleanly.
+- No functional change relative to 1.65.6. Commit history for the withdrawn
+  releases is retained and any part of it can be reintroduced in a later
+  release.
+
 ## 1.65.6
 
 - Remote sessions no longer reconnect forever when the server repeatedly
