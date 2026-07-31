@@ -66,7 +66,9 @@ function packPackage(workDir) {
       },
     },
   )
-  const packed = JSON.parse(output)[0]
+  // npm <=10 reports an array; npm >=11 reports an object keyed by package name.
+  const report = JSON.parse(output)
+  const packed = Array.isArray(report) ? report[0] : Object.values(report)[0]
   if (!packed?.filename) {
     throw new Error(`npm pack did not report a tarball: ${output}`)
   }

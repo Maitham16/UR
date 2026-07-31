@@ -8,6 +8,12 @@
 - No functional change relative to 1.65.6. Commit history for the withdrawn
   releases is retained and any part of it can be reintroduced in a later
   release.
+- Fixed the packaged-CLI smoke check failing on npm 11 and later. It read the
+  `npm pack --json` report as an array, but npm now returns an object keyed by
+  package name, so a successful pack was reported as "npm pack did not report a
+  tarball" and the release gate failed on every modern npm. Both shapes are now
+  accepted. The check lives in `scripts/`, which is not published, so the
+  released artifact is unaffected.
 
 ## 1.65.6
 
