@@ -75,6 +75,18 @@ export function getDefaultOllamaModel(): ModelName {
 }
 
 export function getSmallFastModel(): ModelName {
+  // In environments where the model is explicitly pinned (e.g. OLLAMA_MODEL
+  // for local deployments), use that session model when available. This keeps
+  // small and fast calls aligned with the selected model and avoids falling back
+  // to a generic model alias that may not be available.
+  if (
+    process.env.OLLAMA_MODEL !== undefined &&
+    process.env.OLLAMA_SMALL_FAST_MODEL === undefined
+  ) {
+    const mainLoopModel = getMainLoopModel()
+    if (mainLoopModel) return mainLoopModel
+  }
+
   if (getAPIProvider() === 'ollama') {
     if (process.env.OLLAMA_SMALL_FAST_MODEL) {
       return process.env.OLLAMA_SMALL_FAST_MODEL

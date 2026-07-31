@@ -24,6 +24,9 @@ export type JsonSchemaObject = Record<string, unknown>
 
 export type SchemaDialect = 'json-schema' | 'gemini'
 
+import { type ZodTypeAny } from 'zod/v4'
+import { zodToJsonSchema } from '../../utils/zodToJsonSchema.js'
+
 /** Provider-private keys that must never be forwarded, at any depth. */
 const VENDOR_KEYS = [
   'cache_control',
@@ -34,6 +37,18 @@ const VENDOR_KEYS = [
 
 /** Document-only keywords not accepted inside provider parameter payloads. */
 const META_KEYS = ['$schema', '$comment'] as const
+
+	function asJsonSchemaCandidate(schema: unknown): unknown {
+	  if (
+	    typeof schema === 'object' &&
+	    schema !== null &&
+	    ('def' in schema || '_def' in schema) &&
+	    typeof (schema as { parse?: unknown }).parse === 'function'
+	  ) {
+	    return zodToJsonSchema(schema as ZodTypeAny)
+	  }
+  return schema
+}
 
 /**
  * Keywords outside Gemini's documented `parametersJsonSchema` subset. Modern
@@ -138,10 +153,11 @@ export function prepareToolSchema(
   schema: unknown,
   dialect: SchemaDialect = 'json-schema',
 ): JsonSchemaObject {
-  if (!isObject(schema)) {
+  const candidate = asJsonSchemaCandidate(schema)
+  if (!isObject(candidate)) {
     return { type: 'object', properties: {} }
   }
-  const root = schema
+  const root = candidate
   const rewritten = rewrite(root, root, dialect, 0)
   const result = isObject(rewritten) ? rewritten : { type: 'object', properties: {} }
   // A function parameter list is an object by definition; some tools omit the

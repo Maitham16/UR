@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.76.3
+
+- AskUserQuestion normalization gained additional malformed-shape recovery so near-miss tool payloads with aliasless question objects, single-key maps, and delimited option text no longer emit repeated renderable-input validation errors.
+- Release metadata was kept in sync with the new patch version.
+
+## 1.76.2
+
+- Release metadata and distributed component versions were synchronized with
+  `1.76.2` so packaging and release checks can complete without version drift.
+
 ## 1.76.0
 
 - Provider catalogues now refresh from each provider's official models API on

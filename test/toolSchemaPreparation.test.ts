@@ -7,6 +7,16 @@ import {
 } from '../src/services/api/toolSchema.js'
 
 describe('meta and vendor keys never reach a provider', () => {
+  test('raw zod schemas are converted to provider JSON Schema', () => {
+    const schema = z.object({ query: z.string() })
+    const prepared = prepareToolSchema(schema)
+    expect(validateToolSchema(prepared)).toEqual([])
+    expect(prepared.type).toBe('object')
+    expect((prepared.properties as Record<string, unknown>).query).toMatchObject({
+      type: 'string',
+    })
+  })
+
   test('$schema emitted by zod is stripped', () => {
     const emitted = toJSONSchema(z.object({ a: z.string() })) as Record<string, unknown>
     expect(emitted.$schema).toBeDefined()

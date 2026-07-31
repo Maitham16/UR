@@ -15,6 +15,27 @@ test('FileWriteTool normalizes body/text aliases for content', () => {
   })
 })
 
+test('FileWriteTool normalizes input aliases and missing content as empty file write', () => {
+  const parsed = FileWriteTool.inputSchema.safeParse({
+    file_path: '/tmp/example.txt',
+    input: 'fallback write',
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data).toEqual({
+    file_path: '/tmp/example.txt',
+    content: 'fallback write',
+  })
+
+  const empty = FileWriteTool.inputSchema.safeParse({
+    file_path: '/tmp/empty.txt',
+  })
+  expect(empty.success).toBe(true)
+  if (!empty.success) return
+  expect(empty.data.content).toBe('')
+})
+
 test('FileWriteTool normalizes filePath/path aliases for file_path', () => {
   const parsed = FileWriteTool.inputSchema.safeParse({
     filePath: '/tmp/example.ts',
@@ -28,4 +49,3 @@ test('FileWriteTool normalizes filePath/path aliases for file_path', () => {
     content: "console.log('ok')",
   })
 })
-

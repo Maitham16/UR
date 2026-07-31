@@ -84,7 +84,11 @@ function normalizeWriteInput(value: unknown): unknown {
             ? input.data
             : input.content === undefined && typeof input.value === 'string'
               ? input.value
-              : undefined
+              : input.content === undefined && typeof input.input === 'string'
+                ? input.input
+                : undefined
+
+  const normalizedContent = content ?? ''
 
   if (
     filePath === undefined &&
@@ -95,7 +99,7 @@ function normalizeWriteInput(value: unknown): unknown {
 
   return {
     ...(typeof filePath === 'string' ? { file_path: filePath } : {}),
-    ...(typeof content === 'string' ? { content } : {}),
+    content: normalizedContent,
   }
 }
 

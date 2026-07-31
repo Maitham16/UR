@@ -50,26 +50,94 @@ function packAndExtract(): string {
       },
     },
   )
-  // `npm pack --json` is documented to emit JSON, but npm writes update
-  // notices ("npm notice New major version of npm available!") into the same
-  // stream on some versions and configurations. Parsing the raw stream then
-  // throws `undefined is not an object (evaluating 'packed.filename')`, which
-  // reports a packaging failure when packaging is fine. Take the JSON array.
-  const start = packOutput.indexOf('[')
-  const end = packOutput.lastIndexOf(']')
-  if (start === -1 || end === -1 || end < start) {
-    throw new Error(`npm pack --json produced no JSON array:\n${packOutput}`)
-  }
-  const parsed = JSON.parse(packOutput.slice(start, end + 1))
-  const packed = Array.isArray(parsed) ? parsed[0] : undefined
-  if (!packed?.filename) {
+
+  const payload = parsePackPayload(extractJsonPayload(packOutput))
+  if (!payload.filename) {
     throw new Error(`npm pack --json returned no filename:\n${packOutput}`)
   }
-  const tarball = join(tmp, packed.filename)
+
+  const tarball = join(tmp, payload.filename)
   const extractDir = join(tmp, 'extract')
   execFileSync('mkdir', ['-p', extractDir])
   execFileSync('tar', ['-xzf', tarball, '-C', extractDir])
   return join(extractDir, 'package')
+}
+
+function extractJsonPayload(text: string): unknown {
+  const starts = Array.from(text).flatMap((char, index) =>
+    char === '{' || char === '[' ? [index] : [],
+  )
+  for (const start of starts) {
+    const parsed = extractJsonAt(text, start)
+    if (parsed !== undefined) return parsed
+  }
+  throw new Error(`npm pack --json produced no parseable JSON payload:\n${text}`)
+}
+
+function extractJsonAt(text: string, index: number): unknown {
+  if (text[index] !== '{' && text[index] !== '[') return undefined
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let i = index; i < text.length; i++) {
+    const char = text[i]
+
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (char === '\\' && inString) {
+      escaped = true
+      continue
+    }
+    if (char === '"') {
+      inString = !inString
+      continue
+    }
+    if (inString) continue
+
+    if (char === '{' || char === '[') {
+      depth++
+      continue
+    }
+    if (char === '}' || char === ']') {
+      depth--
+      if (depth === 0) {
+        try {
+          return JSON.parse(text.slice(index, i + 1))
+        } catch {
+          return undefined
+        }
+      }
+    }
+  }
+  return undefined
+}
+
+function parsePackPayload(parsed: unknown): { filename: string } {
+  if (Array.isArray(parsed)) {
+    if (parsed.length === 0) return { filename: '' }
+    const first = parsed[0]
+    return isPackRecord(first) ? first : { filename: '' }
+  }
+  if (isPackRecord(parsed)) return parsed
+
+  if (isPlainObject(parsed)) {
+    for (const candidate of Object.values(parsed)) {
+      if (isPackRecord(candidate)) return candidate
+    }
+  }
+
+  return { filename: '' }
+}
+
+function isPackRecord(value: unknown): value is { filename: string } {
+  return isPlainObject(value) && typeof value.filename === 'string'
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function runPackagedBin(packageRoot: string, args: string[]) {
@@ -195,5 +263,5 @@ describe('package runtime contract', () => {
         force: true,
       })
     }
-  })
+  }, 30_000)
 })

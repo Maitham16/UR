@@ -1,6 +1,9 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { safeParseJSON } from '../../utils/json.js'
+import { getCanonicalName } from '../../utils/model/model.js'
+import { getAPIProvider } from '../../utils/model/providers.js'
+import { MODEL_COSTS } from '../../utils/modelCost.js'
 import { calculateCostFromTokens } from '../../utils/modelCost.js'
 
 /**
@@ -309,6 +312,13 @@ export type SubagentCost = {
   cacheReadInputTokens: number
   cacheCreationInputTokens: number
   costUSD: number
+  /**
+   * Tracks whether this row has any reliably priced model usage.
+   *
+   * We purposely suppress fabricated estimates for unknown models and local
+   * runtimes so we only show a cost when provider billing is real.
+   */
+  hasReliableCosting?: boolean
 }
 
 export function summarizeSubagentCosts(subagentsDir: string): SubagentCost[] {
@@ -357,9 +367,16 @@ export function summarizeSubagentCosts(subagentsDir: string): SubagentCost[] {
       row.cacheCreationInputTokens += tokens.cacheCreationInputTokens
       const model = message.message?.model ?? null
       row.model ??= model
-      // An unpriced model contributes 0 rather than throwing: a missing price
-      // must not take down the report.
-      if (model) row.costUSD += calculateCostFromTokens(model, tokens)
+      if (
+        model &&
+        getAPIProvider() !== 'ollama' &&
+        Object.prototype.hasOwnProperty.call(MODEL_COSTS, getCanonicalName(model))
+      ) {
+        // Unknown models are common with tool/agent model aliases; we do not
+        // invent a price for them.
+        row.hasReliableCosting = true
+        row.costUSD += calculateCostFromTokens(model, tokens)
+      }
     }
     rows.push(row)
   }
@@ -408,11 +425,10 @@ export function formatSubagentCosts(
       ? `No subagent transcripts in ${searchedDir}.\nEither this session spawned no subagents, or that is not where they were written.`
       : 'No subagent transcripts found for this session.'
   }
-  // calculateUSDCost returns 0 on a local runtime, so on Ollama every row
-  // would price at $0.00. A column of zeroes reads as "this feature is
-  // broken"; tokens are the meaningful unit there, so only show money when
-  // some provider actually billed for it.
-  const billed = rows.some(row => row.costUSD > 0)
+  // Some runtimes and some model names have no reliable cost model; those rows
+  // must not show fabricated "$0.00". Only rows with known pricing emit money.
+  const billed = rows.some((row) => row.costUSD > 0)
+  const total = rows.reduce((sum, row) => sum + row.costUSD, 0)
   // Prefer the human label; fall back to the id when metadata is absent.
   const label = (row: SubagentCost) =>
     row.description || row.agentType || row.agentId
@@ -430,7 +446,6 @@ export function formatSubagentCosts(
   }
   const totalIn = rows.reduce((sum, row) => sum + row.inputTokens, 0)
   const totalOut = rows.reduce((sum, row) => sum + row.outputTokens, 0)
-  const total = rows.reduce((sum, row) => sum + row.costUSD, 0)
   lines.push(
     `  ${'-'.repeat(width)}  ${'-'.repeat(12)}  ${'-'.repeat(12)}`,
     `  ${'total'.padEnd(width)}  ${String(totalIn).padStart(9)} in  ` +

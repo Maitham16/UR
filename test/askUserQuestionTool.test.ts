@@ -212,6 +212,89 @@ test('AskUserQuestion normalizes per-question option aliases', () => {
   })
 })
 
+test('AskUserQuestion normalizes questions provided as single-key objects', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    questions: {
+      'Which runtime should we use?': ['Node', 'Bun', 'Deno'],
+      'Which database should we use?': ['PostgreSQL', 'SQLite'],
+    },
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions).toEqual([
+    {
+      question: 'Which runtime should we use?',
+      header: 'runtime',
+      options: [
+        { label: 'Node', description: 'Node' },
+        { label: 'Bun', description: 'Bun' },
+        { label: 'Deno', description: 'Deno' },
+      ],
+      multiSelect: false,
+    },
+    {
+      question: 'Which database should we use?',
+      header: 'database',
+      options: [
+        { label: 'PostgreSQL', description: 'PostgreSQL' },
+        { label: 'SQLite', description: 'SQLite' },
+      ],
+      multiSelect: false,
+    },
+  ])
+})
+
+test('AskUserQuestion infers option lists from delimited strings in non-array fields', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    questions: [
+      {
+        question: 'Which auth strategy?',
+        choices: 'JWT|Session|OAuth',
+      },
+    ],
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions[0]).toEqual({
+    question: 'Which auth strategy?',
+    header: 'auth',
+    options: [
+      { label: 'JWT', description: 'JWT' },
+      { label: 'Session', description: 'Session' },
+      { label: 'OAuth', description: 'OAuth' },
+    ],
+    multiSelect: false,
+  })
+})
+
+test('AskUserQuestion accepts object-form option lists and q shorthand', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    questions: [
+      {
+        q: 'Which runtime should we use?',
+        options: {
+          fast: 'go run',
+          durable: 'bun run',
+        },
+      },
+    ],
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions[0]).toEqual({
+    question: 'Which runtime should we use?',
+    header: 'runtime',
+    options: [
+      { label: 'go run', description: 'go run' },
+      { label: 'bun run', description: 'bun run' },
+    ],
+    multiSelect: false,
+  })
+})
+
 test('AskUserQuestion infers labels from description-only option objects', () => {
   const parsed = AskUserQuestionTool.inputSchema.safeParse({
     question: 'References or related work to cite?',

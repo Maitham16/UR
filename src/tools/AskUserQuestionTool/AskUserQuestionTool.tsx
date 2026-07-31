@@ -16,11 +16,78 @@ import { dedupeQuestions } from './normalizeQuestions.js';
 function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
+
+const RESERVED_QUESTION_OPTION_KEYS = new Set([
+  'options',
+  'option',
+  'choices',
+  'values',
+  'items',
+  'alternatives',
+  'candidates',
+  'selections',
+])
+
+const RESERVED_QUESTION_KEYS = new Set([
+  'question',
+  'questionText',
+  'question_text',
+  'q',
+  'query',
+  'prompt',
+  'text',
+  'title',
+  'message',
+  'body',
+  'goal',
+  'name',
+  'header',
+  'multiSelect',
+  'metadata',
+])
+
+function parseOptionListText(value: string): string[] | null {
+  const raw = value.trim()
+  if (!raw) return null
+  const hasDelimiter = /[,\n;|]/.test(raw)
+  if (!hasDelimiter) return null
+  const lines = raw
+    .split(/\n/)
+    .flatMap(line => line.split(/[,;|]/))
+    .map(item => item.trim())
+    .map(item => item.replace(/^[\s"'`*[\]{}()<>_–—-]+/, '').replace(/[\s"'`*[\]{}()<>.,;:!?]+$/g, ''))
+    .filter(item => item.length > 0 && item.length <= 80)
+  if (lines.length < 2) return null
+  const unique: string[] = []
+  const seen = new Set<string>()
+  for (const line of lines) {
+    const key = line.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    unique.push(line)
+    if (unique.length > 8) return null
+  }
+  return unique
+}
+
 function headerFromQuestion(question: string, index: number): string {
   const stopWords = new Set(['a', 'about', 'also', 'an', 'are', 'be', 'do', 'does', 'for', 'is', 'or', 'should', 'support', 'that', 'the', 'this', 'to', 'want', 'what', 'which', 'with', 'without', 'you']);
   const word = question.replace(/[^A-Za-z0-9]+/g, ' ').split(/\s+/).find(part => part && !stopWords.has(part.toLowerCase())) ?? `Question ${index + 1}`;
   return word.slice(0, ASK_USER_QUESTION_TOOL_CHIP_WIDTH);
 }
+
+function inferQuestionFromSingleKeyQuestion(question: Record<string, unknown>): {
+  questionText: string
+  options: unknown
+} | null {
+  const entries = Object.entries(question).filter(([key]) => !RESERVED_QUESTION_KEYS.has(key))
+  if (entries.length !== 1) return null
+  const [key, value] = entries[0]!
+  if (RESERVED_QUESTION_OPTION_KEYS.has(key.toLowerCase()) || !key.trim()) return null
+  if (!value) return null
+  return { questionText: key.trim(), options: value }
+}
+
 function stringField(input: Record<string, unknown>, names: string[]): string {
   for (const name of names) {
     const value = input[name];
@@ -28,6 +95,13 @@ function stringField(input: Record<string, unknown>, names: string[]): string {
   }
   return '';
 }
+function objectOptionValues(value: unknown): unknown[] | null {
+  if (!objectValue(value)) return null
+  const values = Object.values(value)
+  if (!Array.isArray(values) || values.length === 0) return null
+  return values
+}
+
 function normalizeQuestionOptionInput(value: unknown): unknown {
   if (typeof value === 'string') {
     const label = value.trim();
@@ -36,10 +110,20 @@ function normalizeQuestionOptionInput(value: unknown): unknown {
       description: label
     } : value;
   }
-  const option = objectValue(value);
-  if (!option) return value;
-  const label = typeof option.label === 'string' && option.label.trim() ? option.label.trim() : typeof option.value === 'string' && option.value.trim() ? option.value.trim() : typeof option.description === 'string' && option.description.trim() ? option.description.trim() : '';
-  const description = typeof option.description === 'string' && option.description.trim() ? option.description.trim() : label;
+  const option = objectValue(value)
+  if (!option) return value
+  const label =
+    (typeof option.label === 'string' && option.label.trim()) ||
+    (typeof option.value === 'string' && option.value.trim()) ||
+    (typeof option.name === 'string' && option.name.trim()) ||
+    (typeof option.text === 'string' && option.text.trim()) ||
+    (typeof option.title === 'string' && option.title.trim()) ||
+    (typeof option.id === 'string' && option.id.trim()) ||
+    (typeof option.description === 'string' && option.description.trim()) ||
+    ''
+  if (!label) return value
+  const description =
+    (typeof option.description === 'string' && option.description.trim()) || label
   if (!label || !description) return value;
   return {
     label,
@@ -55,27 +139,80 @@ function normalizeQuestionOptionInput(value: unknown): unknown {
 // bailed first. Per-question options also arrive as a JSON string from small
 // models, which only the top-level single-question form parsed.
 function optionsField(question: Record<string, unknown>): unknown[] | null {
-  for (const name of ['options', 'option', 'choices', 'values', 'items', 'alternatives', 'candidates', 'selections']) {
+  for (const name of RESERVED_QUESTION_OPTION_KEYS) {
     const value = question[name];
     if (Array.isArray(value)) return value;
     if (typeof value === 'string') {
       const parsed = parseToolInputJsonLenient(value);
       if (Array.isArray(parsed)) return parsed;
+      const objectParsedOptions = objectOptionValues(parsed)
+      if (objectParsedOptions) return objectParsedOptions;
+      const delimited = parseOptionListText(value)
+      if (delimited) return delimited
+    }
+    const objectOptions = objectOptionValues(value)
+    if (objectOptions) return objectOptions
+    if (typeof value === 'string') {
+      const delimited = parseOptionListText(value)
+      if (delimited) return delimited
     }
   }
   return null;
 }
+
+function coerceQuestionValueToOptions(question: Record<string, unknown>): unknown[] | null {
+  for (const [key, value] of Object.entries(question)) {
+    if (RESERVED_QUESTION_KEYS.has(key)) continue
+    if (RESERVED_QUESTION_OPTION_KEYS.has(key.toLowerCase())) continue
+    const options = optionsField({ [key]: value, ...question })
+    if (options) return options
+    if (Array.isArray(value)) return value
+    if (typeof value === 'string') {
+      const parsed = parseToolInputJsonLenient(value)
+      if (Array.isArray(parsed)) return parsed
+      const delimited = parseOptionListText(value)
+      if (delimited) return delimited
+    }
+    const objectOptions = objectOptionValues(value)
+    if (objectOptions) return objectOptions
+  }
+  return null
+}
+
 function normalizeQuestionInput(value: unknown, index: number): unknown {
   const question = objectValue(value);
   if (!question) return value;
   const options = optionsField(question);
-  if (!options) return value;
-  const questionText = stringField(question, ['question', 'questionText', 'question_text', 'prompt', 'text', 'title', 'message', 'body']);
+  const fallbackQuestion = inferQuestionFromSingleKeyQuestion(question);
+  const usedFallback = fallbackQuestion !== null
+  const normalizedQuestionText = usedFallback ? fallbackQuestion!.questionText : undefined
+  const fallbackOptions = usedFallback ? fallbackQuestion!.options : null
+  const effectiveOptions =
+    options ??
+    (fallbackOptions ? coerceQuestionValueToOptions({ ...question, options: fallbackOptions }) : null)
+  if (!effectiveOptions) return value;
+  const questionText = normalizedQuestionText || stringField(question, [
+    'question',
+    'questionText',
+    'question_text',
+    'q',
+    'query',
+    'prompt',
+    'text',
+    'title',
+    'message',
+    'body',
+    'goal',
+    'name',
+  ]);
   if (!questionText) return value;
   return {
     question: questionText,
-    header: typeof question.header === 'string' && question.header.trim() ? question.header.trim().slice(0, ASK_USER_QUESTION_TOOL_CHIP_WIDTH) : headerFromQuestion(questionText, index),
-    options: options.map(normalizeQuestionOptionInput),
+    header:
+      typeof question.header === 'string' && question.header.trim()
+        ? question.header.trim().slice(0, ASK_USER_QUESTION_TOOL_CHIP_WIDTH)
+        : headerFromQuestion(questionText, index),
+    options: effectiveOptions.map(normalizeQuestionOptionInput),
     ...(typeof question.multiSelect === 'boolean' ? {
       multiSelect: question.multiSelect
     } : {})
@@ -100,11 +237,29 @@ export function normalizeAskUserQuestionInput(value: unknown): unknown {
   // the array checks so zod sees the real structure.
   if (typeof input.questions === 'string') {
     const parsed = parseToolInputJsonLenient(input.questions);
-    if (Array.isArray(parsed)) input.questions = parsed;
+    if (Array.isArray(parsed) || objectValue(parsed)) input.questions = parsed as unknown;
   }
   if (typeof input.options === 'string') {
     const parsed = parseToolInputJsonLenient(input.options);
     if (Array.isArray(parsed)) input.options = parsed;
+    if (objectOptionValues(parsed)) input.options = parsed;
+  }
+  if (objectValue(input.questions)) {
+    const map = input.questions
+    const questions = Object.entries(map).map(([questionText, raw], index) => {
+      const entry =
+        typeof raw === 'string' || Array.isArray(raw) || objectValue(raw)
+          ? normalizeQuestionInput({ question: questionText, options: raw }, index)
+          : null
+      return entry
+    })
+    const normalized = dedupeQuestions(questions.filter((entry): entry is Record<string, unknown> => entry !== null && typeof entry === 'object'))
+    if (normalized.length > 0) {
+      return {
+        questions: normalized.slice(0, 4),
+        ...commonFields
+      }
+    }
   }
   if (Array.isArray(input.questions)) {
     return {
