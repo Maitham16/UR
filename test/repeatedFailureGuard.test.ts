@@ -21,22 +21,25 @@ import { runToolUse } from '../src/services/tools/toolExecution.ts'
 
 beforeEach(() => resetRepeatedFailuresForTesting())
 
+// The guard ships disabled; these exercise the mechanism, so they enable it.
+const ENABLED = { ...REPEATED_FAILURE_DEFAULTS, enabled: true }
+
 const SIG = 'Write:{}'
 
 test('a call is allowed until it has failed repeatedly', () => {
-  expect(checkRepeatedFailure(SIG).action).toBe('allow')
+  expect(checkRepeatedFailure(SIG, ENABLED).action).toBe('allow')
   recordCallFailure(SIG)
   recordCallFailure(SIG)
   // Two failures are plausible: a transient error, then a fix that fails the
   // same way. The third is a loop.
-  expect(checkRepeatedFailure(SIG).action).toBe('allow')
+  expect(checkRepeatedFailure(SIG, ENABLED).action).toBe('allow')
   recordCallFailure(SIG)
-  expect(checkRepeatedFailure(SIG).action).toBe('refuse')
+  expect(checkRepeatedFailure(SIG, ENABLED).action).toBe('refuse')
 })
 
 test('the refusal tells the model to change course, not just to stop', () => {
   for (let i = 0; i < REPEATED_FAILURE_DEFAULTS.limit; i++) recordCallFailure(SIG)
-  const decision = checkRepeatedFailure(SIG)
+  const decision = checkRepeatedFailure(SIG, ENABLED)
   const reason = (decision as { reason: string }).reason
   expect(reason).toContain('Do not retry it unchanged')
   expect(reason).toContain('tell the user')
@@ -47,13 +50,13 @@ test('persisting past the refusal aborts the turn', () => {
   for (let i = 0; i < REPEATED_FAILURE_DEFAULTS.abortAfter; i++) {
     recordCallFailure(SIG)
   }
-  expect(checkRepeatedFailure(SIG).action).toBe('abort')
+  expect(checkRepeatedFailure(SIG, ENABLED).action).toBe('abort')
 })
 
 test('refused unchanged attempts advance to the abort threshold', () => {
   const decisions: string[] = []
   for (let attempt = 0; attempt < REPEATED_FAILURE_DEFAULTS.abortAfter; attempt++) {
-    const decision = checkRepeatedFailure(SIG)
+    const decision = checkRepeatedFailure(SIG, ENABLED)
     decisions.push(decision.action)
     if (decision.action === 'abort') break
     // Runtime failures and guard refusals both represent an unchanged failed
@@ -68,7 +71,7 @@ test('refused unchanged attempts advance to the abort threshold', () => {
     'refuse',
     'refuse',
   ])
-  expect(checkRepeatedFailure(SIG).action).toBe('abort')
+  expect(checkRepeatedFailure(SIG, ENABLED).action).toBe('abort')
 })
 
 test('a corrected retry is never penalised', () => {
@@ -77,8 +80,8 @@ test('a corrected retry is never penalised', () => {
   const broken = callSignature('Write', {})
   const fixed = callSignature('Write', { file_path: '/a.ts', content: 'x' })
   for (let i = 0; i < 5; i++) recordCallFailure(broken)
-  expect(checkRepeatedFailure(broken).action).not.toBe('allow')
-  expect(checkRepeatedFailure(fixed).action).toBe('allow')
+  expect(checkRepeatedFailure(broken, ENABLED).action).not.toBe('allow')
+  expect(checkRepeatedFailure(fixed, ENABLED).action).toBe('allow')
 })
 
 test('signatures ignore key order', () => {
@@ -136,9 +139,9 @@ test('large caller-supplied signatures retain threshold compatibility', () => {
   for (let i = 0; i < REPEATED_FAILURE_DEFAULTS.limit; i++) {
     recordCallFailure(legacySignature)
   }
-  expect(checkRepeatedFailure(legacySignature).action).toBe('refuse')
+  expect(checkRepeatedFailure(legacySignature, ENABLED).action).toBe('refuse')
   recordCallSuccess(legacySignature)
-  expect(checkRepeatedFailure(legacySignature).action).toBe('allow')
+  expect(checkRepeatedFailure(legacySignature, ENABLED).action).toBe('allow')
 })
 
 test('canonical digests handle cycles deterministically', () => {
@@ -156,8 +159,8 @@ test('failure histories are isolated by query-chain scope', () => {
   for (let i = 0; i < REPEATED_FAILURE_DEFAULTS.limit; i++) {
     recordCallFailure(firstTurn)
   }
-  expect(checkRepeatedFailure(firstTurn).action).toBe('refuse')
-  expect(checkRepeatedFailure(secondTurn).action).toBe('allow')
+  expect(checkRepeatedFailure(firstTurn, ENABLED).action).toBe('refuse')
+  expect(checkRepeatedFailure(secondTurn, ENABLED).action).toBe('allow')
 })
 
 test('serialization failures do not throw or collapse into one signature', () => {
@@ -200,8 +203,8 @@ test('query cleanup clears only the completed query chain', () => {
   }
 
   expect(clearRepeatedFailuresForQuery('completed-chain')).toBe(1)
-  expect(checkRepeatedFailure(completed).action).toBe('allow')
-  expect(checkRepeatedFailure(active).action).toBe('refuse')
+  expect(checkRepeatedFailure(completed, ENABLED).action).toBe('allow')
+  expect(checkRepeatedFailure(active, ENABLED).action).toBe('refuse')
 })
 
 test('stale failure history expires after the configured TTL', () => {
@@ -213,9 +216,9 @@ test('stale failure history expires after the configured TTL', () => {
   }
 
   now += REPEATED_FAILURE_GUARD_LIMITS.entryTtlMs - 1
-  expect(checkRepeatedFailure(signature).action).toBe('refuse')
+  expect(checkRepeatedFailure(signature, ENABLED).action).toBe('refuse')
   now++
-  expect(checkRepeatedFailure(signature).action).toBe('allow')
+  expect(checkRepeatedFailure(signature, ENABLED).action).toBe('allow')
   expect(recordCallFailure(signature)).toBe(1)
 })
 
@@ -236,10 +239,10 @@ test('one scope cannot retain more than its bounded entry allowance', () => {
     recordCallFailure(newest)
   }
 
-  expect(checkRepeatedFailure(oldest).action).toBe('allow')
+  expect(checkRepeatedFailure(oldest, ENABLED).action).toBe('allow')
   recordCallFailure(newest)
   recordCallFailure(newest)
-  expect(checkRepeatedFailure(newest).action).toBe('refuse')
+  expect(checkRepeatedFailure(newest, ENABLED).action).toBe('refuse')
 })
 
 test('total retained entries are globally bounded across scopes', () => {
@@ -262,17 +265,17 @@ test('total retained entries are globally bounded across scopes', () => {
     recordCallFailure(newest)
   }
 
-  expect(checkRepeatedFailure(oldest).action).toBe('allow')
+  expect(checkRepeatedFailure(oldest, ENABLED).action).toBe('allow')
   recordCallFailure(newest)
   recordCallFailure(newest)
-  expect(checkRepeatedFailure(newest).action).toBe('refuse')
+  expect(checkRepeatedFailure(newest, ENABLED).action).toBe('refuse')
 })
 
 test('success clears the history for that call', () => {
   for (let i = 0; i < REPEATED_FAILURE_DEFAULTS.limit; i++) recordCallFailure(SIG)
-  expect(checkRepeatedFailure(SIG).action).toBe('refuse')
+  expect(checkRepeatedFailure(SIG, ENABLED).action).toBe('refuse')
   recordCallSuccess(SIG)
-  expect(checkRepeatedFailure(SIG).action).toBe('allow')
+  expect(checkRepeatedFailure(SIG, ENABLED).action).toBe('allow')
 })
 
 test('the gate and validation both feed the guard', () => {

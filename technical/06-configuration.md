@@ -72,8 +72,8 @@ restore their session model without showing the picker.
     "activeProfile": "reviewing"        // switch with /permission-profile use <name>
   },
   "agents": {                           // subagent fan-out limits (doc 09)
-    "maxDepth": 3,                      // default 3, hard ceiling 10
-    "maxConcurrent": 20                 // default 20, hard ceiling 100
+    "maxDepth": 10,                     // default 10, hard ceiling 64
+    "maxConcurrent": 100                // default 100, hard ceiling 1000
   },
   "voice": {                            // end-of-turn speech, off by default
     "speakResponses": false,

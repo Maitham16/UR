@@ -23,8 +23,11 @@ export type TaskListGateConfig = {
   freeReads: number
 }
 
+// Off by default: the gate refused legitimate first writes often enough that
+// the friction outweighed the plans it produced. Re-enable per project with
+// tasks.requireBeforeChanges.enabled=true.
 export const TASK_LIST_GATE_DEFAULTS: TaskListGateConfig = {
-  enabled: true,
+  enabled: false,
   freeReads: 3,
 }
 

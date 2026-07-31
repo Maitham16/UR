@@ -42,11 +42,11 @@ spawn several at once. Two limits bound the resulting tree; both are checked in
 
 | Limit | Default | Hard ceiling | Setting |
 |---|---|---|---|
-| Nesting depth | 3 | 10 | `agents.maxDepth` |
-| Concurrent agents | 20 | 100 | `agents.maxConcurrent` |
+| Nesting depth | 10 | 64 | `agents.maxDepth` |
+| Concurrent agents | 100 | 1000 | `agents.maxConcurrent` |
 
 ```json
-{ "agents": { "maxConcurrent": 40, "maxDepth": 4 } }
+{ "agents": { "maxConcurrent": 200, "maxDepth": 12 } }
 ```
 
 Out-of-range, negative and non-numeric values clamp rather than disabling the

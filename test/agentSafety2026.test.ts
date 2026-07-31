@@ -41,7 +41,7 @@ test('nesting is refused past the depth limit', () => {
   registerAgent('b', 'a', 2)
   registerAgent('c', 'b', 3)
   // A depth-3 agent trying to spawn would be depth 4.
-  const decision = canSpawnAgent('c', LIMITS)
+  const decision = canSpawnAgent('c', { maxDepth: 3, maxConcurrent: 20 })
   expect(decision.allowed).toBe(false)
   expect(decision.depth).toBe(4)
   expect(decision.reason).toContain('nesting limit')
@@ -103,7 +103,7 @@ test('limits come from settings but cannot be disabled', () => {
     resolveFanOutLimits({
       agents: { maxDepth: 9999, maxConcurrent: 9999 },
     } as never),
-  ).toEqual({ maxDepth: 10, maxConcurrent: 100 })
+  ).toEqual({ maxDepth: 64, maxConcurrent: 1000 })
   expect(
     resolveFanOutLimits({
       agents: { maxDepth: 'lots', maxConcurrent: null },

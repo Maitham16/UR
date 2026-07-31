@@ -13,8 +13,10 @@
  * with their own budget.
  */
 
-export const DEFAULT_MAX_AGENT_DEPTH = 3
-export const DEFAULT_MAX_CONCURRENT_AGENTS = 20
+// Raised to what were previously the hard ceilings. The governor now only
+// catches a runaway tree, not ordinary fan-out.
+export const DEFAULT_MAX_AGENT_DEPTH = 10
+export const DEFAULT_MAX_CONCURRENT_AGENTS = 100
 
 export type AgentRegistration = {
   agentId: string

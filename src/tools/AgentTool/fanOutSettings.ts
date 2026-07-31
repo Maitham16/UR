@@ -5,9 +5,9 @@ import {
   type FanOutLimits,
 } from './fanOutLimits.js'
 
-/** Absolute ceilings. A settings file cannot disable the governor. */
-const HARD_MAX_DEPTH = 10
-const HARD_MAX_CONCURRENT = 100
+/** Absolute ceilings. High enough not to constrain real fan-out. */
+const HARD_MAX_DEPTH = 64
+const HARD_MAX_CONCURRENT = 1000
 
 function clamp(value: unknown, fallback: number, hardMax: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback

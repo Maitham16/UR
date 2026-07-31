@@ -14,15 +14,17 @@ import { createHash, type Hash } from 'node:crypto'
  * it, and must never be penalised for that.
  */
 export type RepeatedFailureConfig = {
+  /** When false the guard never refuses or aborts, whatever it has recorded. */
+  enabled: boolean
   /** Identical failures tolerated before the call is refused outright. */
   limit: number
   /** Attempts after the limit before the turn is aborted entirely. */
   abortAfter: number
 }
 
+// Off by default; callers that want loop protection pass an enabled config.
 export const REPEATED_FAILURE_DEFAULTS: RepeatedFailureConfig = {
-  // Two genuine retries are plausible — a transient error, then a fix that
-  // happens to fail the same way. A third identical failure is a loop.
+  enabled: false,
   limit: 3,
   abortAfter: 6,
 }
@@ -435,6 +437,7 @@ export function checkRepeatedFailure(
   signature: string,
   config: RepeatedFailureConfig = REPEATED_FAILURE_DEFAULTS,
 ): RepeatDecision {
+  if (!config.enabled) return { action: 'allow' }
   const now = repeatedFailureNow()
   pruneExpiredFailures(now)
   const failures =

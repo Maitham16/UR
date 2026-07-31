@@ -120,3 +120,7 @@ extensions/jetbrains-ur/.gradle/
 extensions/jetbrains-ur/build/
 extensions/jetbrains-ur/.kotlin/
 extensions/jetbrains-ur/.intellijPlatform/
+
+# iCloud/Finder duplicates ("Config 2.tsx"), never source
+* [0-9]
+* [0-9].*

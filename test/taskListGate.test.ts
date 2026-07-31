@@ -196,9 +196,18 @@ test('disabling it restores advisory behaviour', () => {
   ).toBe(true)
 })
 
-test('defaults are on, with room for a trivial request', () => {
-  expect(TASK_LIST_GATE_DEFAULTS.enabled).toBe(true)
+test('the gate ships disabled and blocks nothing by default', () => {
+  expect(TASK_LIST_GATE_DEFAULTS.enabled).toBe(false)
   expect(TASK_LIST_GATE_DEFAULTS.freeReads).toBeGreaterThan(0)
+  expect(
+    checkTaskListGate({
+      toolName: 'Write',
+      taskCount: 0,
+      readsSoFar: 99,
+      isSubagent: false,
+      config: TASK_LIST_GATE_DEFAULTS,
+    }).allowed,
+  ).toBe(true)
 })
 
 test('the allowance counts tool calls, not conversation length', () => {

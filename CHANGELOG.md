@@ -1,19 +1,37 @@
 # Changelog
 
-## 1.69.0
+## 1.70.0
 
 - Rolled the codebase back to the state shipped as 1.65.6. Everything released
   between 1.65.7 and 1.68.19 is withdrawn from this line. The version number
   moves forward rather than back so npm and existing installs upgrade cleanly.
-- No functional change relative to 1.65.6. Commit history for the withdrawn
-  releases is retained and any part of it can be reintroduced in a later
-  release.
+  Commit history for the withdrawn releases is retained and any part of it can
+  be reintroduced later. 1.69.0 was tagged as the rollback point and never
+  published.
+- The task-list gate now ships disabled. It refused the first `Write` of
+  ordinary one-file work often enough that the friction cost more than the
+  plans it produced, and the refusal itself provoked the retry loops 1.65.4 was
+  written to stop. The mechanism is unchanged and returns with
+  `tasks.requireBeforeChanges.enabled=true`.
+- The repeated-failure guard now ships disabled. It was introduced for a 4B
+  model that looped on an identical failing call; on a capable model it mostly
+  fires on legitimate retries and ends the turn. Callers that want loop
+  protection pass an enabled config.
+- Raised the subagent fan-out limits from depth 3 / 20 concurrent to depth 10 /
+  100, with hard ceilings of 64 and 1000. The governor now catches only a
+  runaway tree rather than ordinary fan-out; it is deliberately not removed,
+  because an unbounded tree wedges the host, which is the slowest possible
+  failure.
 - Fixed the packaged-CLI smoke check failing on npm 11 and later. It read the
   `npm pack --json` report as an array, but npm now returns an object keyed by
   package name, so a successful pack was reported as "npm pack did not report a
   tarball" and the release gate failed on every modern npm. Both shapes are now
   accepted. The check lives in `scripts/`, which is not published, so the
   released artifact is unaffected.
+- Unchanged: tool-call validation at the execution boundary still fails closed
+  on unknown tools, duplicate IDs and malformed inputs. It rejects only calls
+  that could not have succeeded, so disabling it would trade clear errors for
+  undefined execution rather than unlocking any capability.
 
 ## 1.65.6
 
