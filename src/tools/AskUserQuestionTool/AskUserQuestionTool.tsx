@@ -17,6 +17,52 @@ function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
+function stringFromUnknown(value: unknown): string {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    const out = String(value).trim()
+    return out
+  }
+  const nested = objectValue(value);
+  if (!nested) return '';
+  const candidates = [
+    'text',
+    'label',
+    'name',
+    'title',
+    'description',
+    'value',
+    'question',
+    'prompt',
+    'query',
+    'body',
+    'goal',
+    'header',
+  ] as const
+  for (const key of candidates) {
+    const candidate = nested[key];
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim()
+    }
+  }
+  const values = Object.values(nested);
+  if (values.length === 1) return stringFromUnknown(values[0]);
+  return '';
+}
+
+function valueByAliases(input: Record<string, unknown>, aliases: string[]): unknown {
+  for (const alias of aliases) {
+    const exact = input[alias];
+    if (exact !== undefined) return exact;
+  }
+  for (const alias of aliases) {
+    const target = alias.toLowerCase();
+    for (const [key, value] of Object.entries(input)) {
+      if (key.toLowerCase() === target) return value;
+    }
+  }
+  return undefined;
+}
+
 const RESERVED_QUESTION_OPTION_KEYS = new Set([
   'options',
   'option',
@@ -26,6 +72,7 @@ const RESERVED_QUESTION_OPTION_KEYS = new Set([
   'alternatives',
   'candidates',
   'selections',
+  'answers',
 ])
 
 const RESERVED_QUESTION_KEYS = new Set([
@@ -90,8 +137,9 @@ function inferQuestionFromSingleKeyQuestion(question: Record<string, unknown>): 
 
 function stringField(input: Record<string, unknown>, names: string[]): string {
   for (const name of names) {
-    const value = input[name];
-    if (typeof value === 'string' && value.trim()) return value.trim();
+    const value = valueByAliases(input, [name]);
+    const candidate = stringFromUnknown(value);
+    if (candidate.length > 0) return candidate;
   }
   return '';
 }
@@ -140,7 +188,7 @@ function normalizeQuestionOptionInput(value: unknown): unknown {
 // models, which only the top-level single-question form parsed.
 function optionsField(question: Record<string, unknown>): unknown[] | null {
   for (const name of RESERVED_QUESTION_OPTION_KEYS) {
-    const value = question[name];
+    const value = valueByAliases(question, [name]);
     if (Array.isArray(value)) return value;
     if (typeof value === 'string') {
       const parsed = parseToolInputJsonLenient(value);
@@ -181,7 +229,7 @@ function coerceQuestionValueToOptions(question: Record<string, unknown>): unknow
 
 function normalizeQuestionInput(value: unknown, index: number): unknown {
   const question = objectValue(value);
-  if (!question) return value;
+  if (!question) return null;
   const options = optionsField(question);
   const fallbackQuestion = inferQuestionFromSingleKeyQuestion(question);
   const usedFallback = fallbackQuestion !== null
@@ -190,7 +238,7 @@ function normalizeQuestionInput(value: unknown, index: number): unknown {
   const effectiveOptions =
     options ??
     (fallbackOptions ? coerceQuestionValueToOptions({ ...question, options: fallbackOptions }) : null)
-  if (!effectiveOptions) return value;
+  if (!effectiveOptions) return null;
   const questionText = normalizedQuestionText || stringField(question, [
     'question',
     'questionText',
@@ -204,8 +252,9 @@ function normalizeQuestionInput(value: unknown, index: number): unknown {
     'body',
     'goal',
     'name',
+    'header',
   ]);
-  if (!questionText) return value;
+  if (!questionText) return null;
   return {
     question: questionText,
     header:
@@ -260,25 +309,34 @@ export function normalizeAskUserQuestionInput(value: unknown): unknown {
         ...commonFields
       }
     }
+    return null;
   }
   if (Array.isArray(input.questions)) {
-    return {
-      // Duplicates are repaired here rather than rejected by the uniqueness
-      // refinement, which would fail the call and force a retry round trip.
-      questions: dedupeQuestions(input.questions.map(normalizeQuestionInput)),
-      ...commonFields
-    };
+    const normalized = input.questions
+      .map((entry, index) => normalizeQuestionInput(entry, index))
+      .filter((entry): entry is Record<string, unknown> => entry !== null && typeof entry === 'object')
+    if (normalized.length > 0) {
+      return {
+        // Duplicates are repaired here rather than rejected by the uniqueness
+        // refinement, which would fail the call and force a retry round trip.
+        questions: dedupeQuestions(normalized),
+        ...commonFields
+      };
+    }
+    return null;
   }
   if (optionsField(input) !== null) {
     const singleQuestion = normalizeQuestionInput(input, 0);
-    if (singleQuestion !== input) {
+    if (singleQuestion && singleQuestion !== input) {
+      // Duplicates are repaired here rather than rejected by the uniqueness
+      // refinement, which would fail the call and force a retry round trip.
       return {
         questions: dedupeQuestions([singleQuestion]),
         ...commonFields
       };
     }
   }
-  return value;
+  return null;
 }
 const questionOptionSchema = lazySchema(() => z.object({
   label: z.string().describe('The choice itself, 1-5 words. Name the option, do not restate the question: for "Which database?" use "PostgreSQL", not "Use PostgreSQL for the database".'),

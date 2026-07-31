@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.76.4
+
+- AskUserQuestion normalizer now strips malformed question entries instead of
+  passing invalid payloads through, and refuses to treat unrecoverable malformed
+  inputs as valid question arrays. This removes repeated `InputValidationError` loops for
+  `questions[n].question` and `questions[n].options` while preserving the
+  successful repair path for mixed valid/malformed payloads.
+
 ## 1.76.3
 
 - AskUserQuestion normalization gained additional malformed-shape recovery so near-miss tool payloads with aliasless question objects, single-key maps, and delimited option text no longer emit repeated renderable-input validation errors.

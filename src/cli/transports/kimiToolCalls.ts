@@ -1,5 +1,6 @@
 import { parseToolInputJsonLenient } from '../../utils/json.js'
 import { randomUUID } from 'node:crypto'
+import { normalizeAskUserQuestionInput as normalizeAskUserQuestionInputTool } from '../../tools/AskUserQuestionTool/AskUserQuestionTool.tsx'
 
 export interface ParsedToolCall {
   id: string
@@ -51,6 +52,90 @@ function parseArgs(raw: string): Record<string, unknown> {
   return parsed as Record<string, unknown>
 }
 
+function normalizeKimiWriteInput(input: Record<string, unknown>): Record<string, unknown> | null {
+  const filePath =
+    typeof input.file_path === 'string'
+      ? input.file_path
+      : typeof input.filePath === 'string'
+        ? input.filePath
+        : typeof input.path === 'string'
+          ? input.path
+          : undefined
+
+  const acceptedFileKeys = new Set(['file_path', 'filePath', 'path'])
+  const contentAliases = [
+    'content',
+    'text',
+    'body',
+    'data',
+    'value',
+    'input',
+  ] as const
+  const content =
+    typeof input.content === 'string'
+      ? input.content
+      : typeof input.text === 'string'
+        ? input.text
+        : typeof input.body === 'string'
+          ? input.body
+          : typeof input.data === 'string'
+            ? input.data
+            : typeof input.value === 'string'
+              ? input.value
+              : typeof input.input === 'string'
+                ? input.input
+                : undefined
+
+  if (filePath === undefined || content === undefined) {
+    return null
+  }
+
+  const allowedKeys = new Set([
+    ...acceptedFileKeys,
+    ...contentAliases,
+  ])
+  const unknownKeys = Object.keys(input).filter(key => !allowedKeys.has(key))
+  if (unknownKeys.length > 2) {
+    return null
+  }
+
+  const normalized: Record<string, unknown> = {
+    file_path: filePath,
+    content,
+  }
+  return normalized
+}
+
+function normalizeKimiAskUserQuestionInput(
+  input: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const normalized = normalizeAskUserQuestionInputTool(input)
+  if (!normalized || typeof normalized !== 'object' || normalized === null || Array.isArray(normalized)) {
+    return null
+  }
+  const questions = (normalized as { questions?: unknown }).questions
+  if (!Array.isArray(questions) || questions.length === 0) {
+    return null
+  }
+  return {
+    ...(normalized as Record<string, unknown>),
+    questions: questions.slice(0, 4),
+  }
+}
+
+function normalizeInlineToolInput(
+  name: string,
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  if (name === 'Write') {
+    return normalizeKimiWriteInput(input) ?? input
+  }
+  if (name === 'AskUserQuestion') {
+    return normalizeKimiAskUserQuestionInput(input) ?? input
+  }
+  return input
+}
+
 export function parseKimiToolCalls(text: string): KimiParseResult {
   if (!text || !text.includes('<|tool_call')) return { text, toolCalls: [] }
   const toolCalls: ParsedToolCall[] = []
@@ -84,7 +169,7 @@ export function parseKimiToolCalls(text: string): KimiParseResult {
     toolCalls.push({
       id: parsedToolCallId('kimi', i++),
       name,
-      input: parseArgs(rawArgs ?? ''),
+      input: normalizeInlineToolInput(name, parseArgs(rawArgs ?? '')),
     })
     return ''
   })
@@ -379,89 +464,10 @@ function headerFromQuestion(question: string, index: number): string {
   return word.slice(0, 12)
 }
 
-function stringField(input: Record<string, unknown>, names: string[]): string {
-  for (const name of names) {
-    const value = input[name]
-    if (typeof value === 'string' && value.trim()) return value.trim()
-  }
-  return ''
-}
-
-function normalizeQuestionOption(value: unknown): Record<string, unknown> | null {
-  if (typeof value === 'string' && value.trim()) {
-    return { label: value.trim(), description: value.trim() }
-  }
-  const option = objectValue(value)
-  if (!option) return null
-  const label =
-    typeof option.label === 'string' && option.label.trim()
-      ? option.label.trim()
-      : typeof option.value === 'string' && option.value.trim()
-        ? option.value.trim()
-        : ''
-  const description =
-    typeof option.description === 'string' && option.description.trim()
-      ? option.description.trim()
-      : label
-  if (!label || !description) return null
-  return {
-    label,
-    description,
-    ...(typeof option.preview === 'string' ? { preview: option.preview } : {}),
-  }
-}
-
-function normalizeQuestion(value: unknown, index: number): Record<string, unknown> | null {
-  const question = objectValue(value)
-  if (!question) return null
-  const questionText = stringField(question, [
-    'question',
-    'questionText',
-    'question_text',
-    'prompt',
-    'text',
-    'title',
-    'message',
-    'body',
-  ])
-  const optionValues = [
-    'options',
-    'choices',
-    'values',
-    'items',
-    'alternatives',
-    'candidates',
-    'selections',
-  ].map(key => question[key]).find(Array.isArray)
-  if (!questionText || !optionValues) return null
-  const options = optionValues
-    .map(normalizeQuestionOption)
-    .filter((option): option is Record<string, unknown> => option !== null)
-  if (options.length < 2 || options.length > 8) return null
-  const header =
-    typeof question.header === 'string' && question.header.trim()
-      ? question.header.trim().slice(0, 12)
-      : headerFromQuestion(questionText, index)
-  return {
-    question: questionText,
-    header,
-    options,
-    ...(typeof question.multiSelect === 'boolean'
-      ? { multiSelect: question.multiSelect }
-      : {}),
-  }
-}
-
-function normalizeAskUserQuestionInput(input: Record<string, unknown>): Record<string, unknown> | null {
-  if (!Array.isArray(input.questions) || input.questions.length < 1 || input.questions.length > 4) {
-    return null
-  }
-  const questions = input.questions.map(normalizeQuestion)
-  if (questions.some(question => question === null)) return null
-  return {
-    questions,
-    ...(objectValue(input.metadata) ? { metadata: input.metadata } : {}),
-  }
+function normalizeAskUserQuestionInput(
+  input: Record<string, unknown>,
+): Record<string, unknown> | null {
+  return normalizeKimiAskUserQuestionInput(input)
 }
 
 function stringArray(value: unknown): string[] | null {
@@ -607,10 +613,14 @@ function maybeBareJsonToolCall(
     if (!hasTool(availableToolNames, name)) {
       return null
     }
+    const normalizedInput =
+      name === 'Write' || name === 'AskUserQuestion'
+        ? normalizeInlineToolInput(name, input.input as Record<string, unknown>)
+        : input.input
     return {
       id: parsedToolCallId('bare', index),
       name,
-      input: input.input as Record<string, unknown>,
+      input: normalizedInput as Record<string, unknown>,
     }
   }
 
@@ -634,15 +644,14 @@ function maybeBareJsonToolCall(
 
   if (
     hasTool(availableToolNames, 'Write') &&
-    hasRequiredKeys(input, ['file_path', 'content']) &&
-    typeof input.file_path === 'string' &&
-    typeof input.content === 'string'
+    normalizeKimiWriteInput(input) !== null
   ) {
     // Strip hallucinated extras (e.g. "encoding") — Write's schema is strict.
+    const normalized = normalizeKimiWriteInput(input)
     return {
       id: parsedToolCallId('bare', index),
       name: 'Write',
-      input: pickKeys(input, ['file_path', 'content']),
+      input: normalized ?? input,
     }
   }
 
@@ -734,7 +743,9 @@ export function looksLikeBareJsonToolCallPrefix(text: string): boolean {
   const trimmed = text.trimStart()
   if (trimmed.startsWith('```')) return true
   if (!trimmed.startsWith('{')) return false
-  return /^\{\s*"(?:tool|input|subject|description|file_path|content|old_string|new_string|replace_all|questions|command|taskId|status|pattern|path|glob)"\s*:/.test(trimmed)
+  return /^\{\s*"(?:tool|input|subject|description|file_path|filePath|path|content|text|body|data|value|old_string|new_string|replace_all|questions|question|questionText|prompt|options|choices|values|items|title|message|command|taskId|status|pattern|glob)"\s*:/.test(
+    trimmed,
+  )
 }
 
 export function parseBareJsonToolCalls(

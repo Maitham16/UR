@@ -140,6 +140,48 @@ test('AskUserQuestion allows up to eight professional clarification options', ()
   expect(parsed.success).toBe(true)
 })
 
+test('AskUserQuestion drops malformed question entries but keeps valid ones', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    questions: [
+      null,
+      { question: 'Which engine?', options: ['Pygame', 'Unity'] },
+      '',
+      { foo: 'bar' },
+      { text: 'Which language?', choices: ['TypeScript', 'Python'] },
+    ],
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions).toEqual([
+    {
+      question: 'Which engine?',
+      header: 'engine',
+      options: [
+        { label: 'Pygame', description: 'Pygame' },
+        { label: 'Unity', description: 'Unity' },
+      ],
+      multiSelect: false,
+    },
+    {
+      question: 'Which language?',
+      header: 'language',
+      options: [
+        { label: 'TypeScript', description: 'TypeScript' },
+        { label: 'Python', description: 'Python' },
+      ],
+      multiSelect: false,
+    },
+  ])
+})
+
+test('AskUserQuestion fails fast when every question entry is malformed', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    questions: [null, '', { foo: 'bar' }],
+  })
+  expect(parsed.success).toBe(false)
+})
+
 test('AskUserQuestion normalizes top-level choices alias into a single-question form', () => {
   const parsed = AskUserQuestionTool.inputSchema.safeParse({
     question: 'Which language should this task use?',
