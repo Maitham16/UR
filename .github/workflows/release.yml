@@ -66,6 +66,7 @@ jobs:
           # embedded version, changelog entry, and registry entry disagree.
           if [ "$tag" != "v$version" ]; then
             echo "::error::Tag $tag does not match package.json version $version" >&2
+            echo "::error::Commit and push the complete version bump before tagging. Use 'bun run release:tag' for preflight, then 'bun run release:tag -- --push'. Never move an existing release tag." >&2
             exit 1
           fi
           if ! grep -q "^## ${version}\$" CHANGELOG.md; then

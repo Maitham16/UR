@@ -2057,6 +2057,42 @@ function getCachedProviderModels(
   return cachedModelsByProvider.get(providerModelCacheKey(provider, settings)) ?? []
 }
 
+/**
+ * Context window a provider reported for a model, in tokens.
+ *
+ * Discovery already captures this — OpenRouter's `context_length`, and the
+ * equivalent field on other providers — and the model picker shows it. It was
+ * never fed back into the context-window resolution, which fell through to a
+ * flat 200K for every non-first-party model. On a model with a smaller window
+ * that meant autocompact never fired before the provider rejected the request;
+ * on a larger one it meant compacting long before it was needed.
+ *
+ * Reads the discovery cache only. No network, no await — the callers are on
+ * the per-turn path.
+ */
+export function getProviderContextLengthForModel(
+  model: string,
+  provider: ProviderId | string =
+    getInitialSettings().provider?.active ?? DEFAULT_PROVIDER_ID,
+  settings: SettingsJson = getInitialSettings(),
+): number | undefined {
+  const providerId = resolveProviderId(provider)
+  if (!providerId) return undefined
+  const wanted = model.trim().toLowerCase()
+  if (!wanted) return undefined
+  const known = [
+    ...getCachedProviderModels(providerId, settings),
+    ...(PROVIDER_MODELS[providerId] ?? []),
+  ]
+  const match =
+    known.find(entry => entry.id.toLowerCase() === wanted) ??
+    known.find(entry => wanted.includes(entry.id.toLowerCase()))
+  const length = match?.contextLength
+  return typeof length === 'number' && Number.isFinite(length) && length > 0
+    ? Math.floor(length)
+    : undefined
+}
+
 export function cacheProviderModelsForProvider(
   providerId: ProviderId | string,
   models: string[] | ProviderModelDefinition[],

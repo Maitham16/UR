@@ -4,6 +4,7 @@
  */
 
 import { randomUUID } from 'crypto'
+import { synthesizeKimiToolCalls } from '../../cli/transports/kimiToolCalls.js'
 import { normalizeOpenAIChatUsage } from './usageNormalization.js'
 import {
   assertUniqueToolNames,
@@ -412,6 +413,15 @@ export function parseOpenAICompatibleResponse(
     choice?.text,
     providerName,
   )
+  // Recover a tool call the model wrote as text instead of emitting through
+  // the structured interface. This repair already ran for Ollama and the
+  // remote transport but never here, so the same model reached through an
+  // OpenAI-compatible endpoint or OpenRouter had the call silently dropped and
+  // the turn did nothing. Only applied when the response carries no real tool
+  // call, so a model that used the interface correctly is never second-guessed.
+  if (!hasToolUse(content)) {
+    synthesizeKimiToolCalls({ message: { content } })
+  }
   const includesToolUse = hasToolUse(content)
   assertValidProviderToolUses(content, `${providerName} response`)
   if (isOpenAIToolStopReason(choice?.finish_reason) && !includesToolUse) {

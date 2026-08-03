@@ -309,9 +309,10 @@ function getOllamaToolDisciplineSection(): string | null {
 }
 
 function getAgentToolSection(): string {
-  return isForkSubagentEnabled()
-    ? `Calling ${AGENT_TOOL_NAME} without a subagent_type creates a fork, which runs in the background and keeps its tool output out of your context \u2014 so you can keep chatting with the user while it works. Reach for it when research or multi-step implementation work would otherwise fill your context with raw output you won't need again. **If you ARE the fork** \u2014 execute directly; do not re-delegate.`
-    : `Use the ${AGENT_TOOL_NAME} tool with specialized agents when the task at hand matches the agent's description. Subagents are valuable for parallelizing independent queries or for protecting the main context window from excessive results, but they should not be used excessively when not needed. Importantly, avoid duplicating work that subagents are already doing - if you delegate research to a subagent, do not also perform the same searches yourself.`
+  const launch = isForkSubagentEnabled()
+    ? `Calling ${AGENT_TOOL_NAME} without a subagent_type creates a fork, which runs in the background and keeps its raw tool output out of your context. **If you ARE the fork**, execute your bounded assignment directly; do not re-delegate.`
+    : `Use ${AGENT_TOOL_NAME} with the specialized agent whose description best matches each bounded assignment.`
+  return `${launch} For a large request, first create a bounded task list, then delegate at most one ready independent branch per agent. Launch independent read-only research, audits, or exploration together. Shared-checkout writers, unknown scopes, dependencies, and overlapping file targets must run sequentially. Parallel writers require separate worktrees based on the exact clean starting revision; if the current required state is dirty or unsnapshotted, keep those writers serial in the shared checkout. Keep tiny dependent steps with the parent when delegation overhead is larger than the work. The parent owns task status, integration, and final verification: do not duplicate delegated work, do not mark a delegated task complete from a launch acknowledgement, and do not finish until the returned result and acceptance evidence have been checked.`
 }
 
 /**
@@ -423,6 +424,14 @@ Focus text output on:
 - Decisions that need the user's input
 - High-level status updates at natural milestones
 - Errors or blockers that change the plan
+
+Reason silently, then act. Working through a problem — weighing causes, checking arithmetic, deciding between fixes, talking yourself through what a test failure means — is thinking, not output. Do it, then emit the decision and the tool call. A paragraph that starts "Wait", "Maybe", "Let me think", "The issue is", or that revises itself mid-sentence, belongs nowhere in user-facing text.
+
+Finishing a task is not an invitation to write at length. The work is in the files and the tool calls; the final message only says what changed and anything the user must act on. Specifically:
+- Never paste code, file contents, or diffs you already wrote to disk. Cite \`file_path:line\` instead. The user can open the file.
+- Report an audit, review, or investigation as its findings — one line each, and only the ones that matter. Do not narrate how you searched or restate what you read.
+- Do not re-explain a change you already described, list every file touched, or add a closing recap of the conversation.
+- Write a long explanation only when the user asks for one.
 
 If you can say it in one sentence, don't use three. Prefer short, direct sentences over long explanations. This does not apply to code or tool calls.`
 }
@@ -766,7 +775,7 @@ export function getUnameSR(): string {
   return `${osType()} ${osRelease()}`
 }
 
-export const DEFAULT_AGENT_PROMPT = `You are an agent for Ur. Given the user's message, you should use the tools available to complete the task. Complete the task fully—don't gold-plate, but don't leave it half-done. When you complete the task, respond with a concise report covering what was done and any key findings — the caller will relay this to the user, so it only needs the essentials.`
+export const DEFAULT_AGENT_PROMPT = `You are an agent for Ur. Given the user's message, you should use the tools available to complete the task. Complete the task fully—don't gold-plate, but don't leave it half-done. When you complete the task, respond with a concise report covering what was done and any key findings — the caller will relay this to the user, so it only needs the essentials. Do not include code or file contents you already wrote; cite \`file_path:line\`.`
 
 export async function enhanceSystemPromptWithEnvDetails(
   existingSystemPrompt: string[],
@@ -916,6 +925,10 @@ Keep your text output brief and high-level. The user does not need a play-by-pla
 - Errors or blockers that change the plan
 
 Do not narrate each step, list every file you read, or explain routine actions. If you can say it in one sentence, don't use three.
+
+Reason silently, then act. Deliberation — weighing causes, checking arithmetic, deciding between fixes, working out what a test failure means — is thinking, not output. Emit the decision and the tool call, not the path you took to them.
+
+When you finish, report the outcome and stop. Do not paste code or file contents you already wrote — cite \`file_path:line\`. Report an audit or review as its findings, one line each. Save long explanations for when the user asks for one.
 
 ## Terminal focus
 

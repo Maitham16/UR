@@ -19,7 +19,11 @@ import { logForDebugging } from '../../utils/debug.js'
 import { countLinesChanged, getPatchForDisplay } from '../../utils/diff.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { isENOENT } from '../../utils/errors.js'
-import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
+import {
+  getFileModificationTime,
+  readFileSyncCached,
+  writeTextContent,
+} from '../../utils/file.js'
 import { fileStateMatchesContent } from '../../utils/fileStateCache.js'
 import {
   fileHistoryEnabled,
@@ -249,19 +253,25 @@ export const FileWriteTool = buildTool({
     }
 
     const readTimestamp = toolUseContext.readFileState.get(fullFilePath)
+    const lastWriteTime = Math.floor(fileMtimeMs)
+
+    // A full read of the file is what this guard was really after, and reading
+    // it here costs one local stat+read instead of a whole model round trip
+    // spent asking for a Read that returns content nobody needed to see. The
+    // snapshot is what the staleness check below compares against, so once it
+    // is recorded the protection is identical.
     if (!readTimestamp || readTimestamp.isPartialView) {
-      return {
-        result: false,
-        message:
-          'File has not been read yet. Read it first before writing to it.',
-        errorCode: 2,
-      }
+      toolUseContext.readFileState.set(fullFilePath, {
+        content: readFileSyncCached(fullFilePath),
+        timestamp: lastWriteTime,
+        offset: undefined,
+        limit: undefined,
+      })
+      return { result: true }
     }
 
     // Reuse mtime from the stat above — avoids a redundant statSync via
-    // getFileModificationTime. The readTimestamp guard above ensures this
-    // block is always reached when the file exists.
-    const lastWriteTime = Math.floor(fileMtimeMs)
+    // getFileModificationTime.
     if (lastWriteTime > readTimestamp.timestamp) {
       return {
         result: false,

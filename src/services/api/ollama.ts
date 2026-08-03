@@ -55,6 +55,7 @@ import {
   prepareAndValidateToolSchema,
   ToolSchemaValidationError,
 } from './toolSchema.js'
+import { DEFAULT_STREAM_IDLE_TIMEOUT_MS } from './streamIdleTimeout.js'
 
 type OllamaMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -130,6 +131,8 @@ type OllamaFetchResult = {
 }
 
 const DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS = 300_000
+/** Header-wait ceiling: prefill and a cold model load both land inside it. */
+const OLLAMA_HEADER_TIMEOUT_MS = 900_000
 const REMOTE_OLLAMA_REQUEST_TIMEOUT_MS = 120_000
 const CLOUD_OLLAMA_REQUEST_TIMEOUT_MS = 120_000
 const OLLAMA_GATEWAY_TIMEOUT_MESSAGE =
@@ -263,10 +266,13 @@ async function fetchOllamaChat(
   options?: RequestOptions,
   baseUrl = getEffectiveOllamaBaseUrl(),
 ): Promise<OllamaFetchResult> {
-  // Match the main API timeout convention. Larger local models can take more
-  // than 30s to load before Ollama returns response headers, especially after
-  // tool-result turns.
-  const timeout = getOllamaRequestTimeoutMs(options, process.env, params.model)
+  // This bounds the wait for response *headers* only — it is cleared in the
+  // `finally` once they arrive, after which the per-chunk deadline takes over.
+  // Prefill for a large prompt happens entirely inside this window, and a
+  // model loading from cold adds to it, so the header wait gets its own
+  // generous ceiling rather than the inactivity budget: a long plan was
+  // aborted before the first byte and reported as a timeout.
+  const timeout = getOllamaHeaderTimeoutMs(options, process.env, params.model)
   const timeoutId =
     timeout > 0
       ? setTimeout(() => controller.abort(), timeout)
@@ -375,6 +381,31 @@ function createLinkedAbortController(options?: RequestOptions): AbortController 
 }
 
 
+/**
+ * Ceiling on the wait for Ollama's response headers.
+ *
+ * Distinct from the inactivity budget that governs the stream once it starts.
+ * Prefill for a large prompt and a cold model load both happen before the
+ * first byte, and neither is idleness — bounding them with the same figure
+ * meant a long plan was aborted before the model had said anything. An
+ * explicit override still wins, so a caller that wants a tight bound keeps it.
+ */
+export function getOllamaHeaderTimeoutMs(
+  options?: RequestOptions,
+  env: Record<string, string | undefined> = process.env,
+  model?: string,
+): number {
+  if (options?.timeoutMs !== undefined || options?.timeout !== undefined) {
+    return getOllamaRequestTimeoutMs(options, env, model)
+  }
+  const override = parseInt(env.API_TIMEOUT_MS || '', 10)
+  if (override > 0) return override
+  return Math.max(
+    OLLAMA_HEADER_TIMEOUT_MS,
+    getOllamaRequestTimeoutMs(options, env, model),
+  )
+}
+
 export function getOllamaRequestTimeoutMs(
   options?: RequestOptions,
   env: Record<string, string | undefined> = process.env,
@@ -396,6 +427,34 @@ export function getOllamaRequestTimeoutMs(
     return CLOUD_OLLAMA_REQUEST_TIMEOUT_MS
   }
   return DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS
+}
+
+/**
+ * Resolve the maximum silent gap inside an already-open Ollama stream.
+ *
+ * Cloud models can spend longer than two minutes in prefill or tool planning,
+ * especially for large contexts. Keep their liveness boundary aligned with
+ * the shared provider watchdog while retaining the shorter remote-session
+ * ceiling and the bounded cloud non-streaming fallback.
+ */
+export function getOllamaStreamIdleTimeoutMs(
+  options?: RequestOptions,
+  env: Record<string, string | undefined> = process.env,
+  model?: string,
+): number {
+  if (options?.timeoutMs !== undefined || options?.timeout !== undefined) {
+    return getOllamaRequestTimeoutMs(options, env, model)
+  }
+
+  const streamOverride = parseInt(env.UR_STREAM_IDLE_TIMEOUT_MS || '', 10)
+  if (streamOverride > 0) return streamOverride
+
+  const apiOverride = parseInt(env.API_TIMEOUT_MS || '', 10)
+  if (apiOverride > 0) return apiOverride
+
+  return isTruthyEnv(env.UR_CODE_REMOTE)
+    ? REMOTE_OLLAMA_REQUEST_TIMEOUT_MS
+    : DEFAULT_STREAM_IDLE_TIMEOUT_MS
 }
 
 export function isOllamaCloudModel(model: string | undefined): boolean {
@@ -993,7 +1052,7 @@ async function* streamURHQEvents(
   for await (const chunk of readOllamaChunks(
     response,
     controller,
-    getOllamaRequestTimeoutMs(options, process.env, params.model),
+    getOllamaStreamIdleTimeoutMs(options, process.env, params.model),
     options,
   )) {
     if (chunk.error) {
@@ -1132,7 +1191,13 @@ async function* readOllamaChunks(
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  const deadline = timeoutMs > 0 ? Date.now() + timeoutMs : Infinity
+  // Rearmed after every chunk, so this bounds silence rather than total
+  // runtime. A local model answering a long prompt can stream well past any
+  // fixed budget; cutting it off mid-answer is a timeout the user cannot act
+  // on, whereas a gap this long means the model really is gone.
+  const nextDeadline = (): number =>
+    timeoutMs > 0 ? Date.now() + timeoutMs : Infinity
+  let deadline = nextDeadline()
   try {
     while (true) {
       const { done, value } = await readWithDeadline(
@@ -1144,6 +1209,7 @@ async function* readOllamaChunks(
       if (done) {
         break
       }
+      deadline = nextDeadline()
       buffer += decoder.decode(value, { stream: true })
       let newlineIndex = buffer.indexOf('\n')
       while (newlineIndex !== -1) {

@@ -697,6 +697,7 @@ export const FileReadTool = buildTool({
           content =
             memoryFileFreshnessPrefix(data) +
             formatFileLines(data.file) +
+            describeUnreadRemainder(data.file) +
             (shouldIncludeFileReadMitigation()
               ? CYBER_RISK_MITIGATION_REMINDER
               : '')
@@ -725,6 +726,29 @@ function pickLineFormatInstruction(): string {
 /** Format file content with line numbers. */
 function formatFileLines(file: { content: string; startLine: number }): string {
   return addLineNumbers(file)
+}
+
+/**
+ * Says so when the returned range stops short of the end of the file.
+ *
+ * The default read stops at 2000 lines, but the result the model saw was just
+ * numbered lines with nothing marking the cutoff — so a partial read was
+ * indistinguishable from a whole file, and concluding "this code isn't here"
+ * from one was a reasonable inference from the evidence given. Grep and Glob
+ * both report their truncation; this brings Read in line. Emitted only when
+ * lines are actually missing, so a complete read costs nothing.
+ */
+function describeUnreadRemainder(file: {
+  startLine: number
+  numLines: number
+  totalLines: number
+}): string {
+  const firstLine = Math.max(1, file.startLine)
+  const lastLine = firstLine + file.numLines - 1
+  if (file.numLines <= 0 || lastLine >= file.totalLines) {
+    return ''
+  }
+  return `\n\n<system-reminder>This is lines ${firstLine}-${lastLine} of ${file.totalLines}. ${file.totalLines - lastLine} lines were not returned — read again with offset ${lastLine + 1} if you need them.</system-reminder>`
 }
 
 export const CYBER_RISK_MITIGATION_REMINDER =

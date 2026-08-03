@@ -512,6 +512,14 @@ export const SettingsSchema = lazySchema(() =>
             .positive()
             .optional()
             .describe('Provider HTTP request timeout in milliseconds. Defaults to 120000.'),
+          streamTimeoutMs: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe(
+              'How long a streaming request may wait for response headers, in milliseconds. Defaults to 900000; mid-stream liveness is governed by the inactivity watchdog.',
+            ),
           commandPath: z
             .string()
             .optional()

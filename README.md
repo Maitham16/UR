@@ -785,6 +785,8 @@ bun run release:check
 bun run package:check
 npm pack --dry-run
 npm publish --dry-run
+bun run release:tag                 # read-only committed/pushed preflight
+bun run release:tag -- --push       # immutable tag; CI publishes the artifact
 ```
 
 `dist/cli.js` is intentionally tracked because GitHub installs use the bundled

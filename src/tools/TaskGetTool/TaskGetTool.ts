@@ -5,6 +5,7 @@ import {
   getTask,
   getTaskListId,
   isTodoV2Enabled,
+  listTasks,
   TaskStatusSchema,
 } from '../../utils/tasks.js'
 import { TASK_GET_TOOL_NAME } from './constants.js'
@@ -29,6 +30,9 @@ const outputSchema = lazySchema(() =>
         blockedBy: z.array(z.string()),
       })
       .nullable(),
+    // Present only when the task was not found, so the caller can correct the
+    // id in one step instead of retrying the same one.
+    availableTaskIds: z.array(z.string()).optional(),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -79,6 +83,7 @@ export const TaskGetTool = buildTool({
       return {
         data: {
           task: null,
+          availableTaskIds: (await listTasks(taskListId)).map(entry => entry.id),
         },
       }
     }
@@ -97,12 +102,19 @@ export const TaskGetTool = buildTool({
     }
   },
   mapToolResultToToolResultBlockParam(content, toolUseID) {
-    const { task } = content as Output
+    const { task, availableTaskIds } = content as Output
     if (!task) {
+      // Naming what exists turns a dead end into a correctable call. A bare
+      // "Task not found" said nothing about whether the id was wrong or the
+      // list had moved on, so the usual response was to retry it unchanged.
+      const known = (availableTaskIds ?? []).map(id => `#${id}`)
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
-        content: 'Task not found',
+        content:
+          known.length > 0
+            ? `Task not found. Existing tasks: ${known.join(', ')}.`
+            : 'Task not found. The task list is empty — create the task before reading it.',
       }
     }
 

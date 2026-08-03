@@ -104,6 +104,7 @@ export async function createStandardAPIClient(options: {
         maxRetries,
         timeoutMs: requestOptions?.timeoutMs,
         signal,
+        streaming: true,
       },
     )
     const requestId = providerRequestId(family, response.headers) ?? `${family}-${randomUUID()}`

@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.76.7 (UR-Nexus)"
+# expected for this release: "1.78.11 (UR-Nexus)"
 ```
 
 ## 0.1 First-workspace model selection (1.45.4)
@@ -49,10 +49,12 @@ bun test test/ollamaTimeout.test.ts
 ```
 
 Expected: the cloud-model timeout, override-precedence, stream-deadline, and
-fallback-suppression cases pass. A model ending in `:cloud` defaults to 120
-seconds for response headers and streaming; a local model retains 300 seconds.
-`API_TIMEOUT_MS` wins over both. When a cloud stream reaches its deliberate
-deadline, the request fails once instead of starting a non-streaming replay.
+fallback-suppression cases pass. Response headers allow 900 seconds; local and
+`:cloud` streams tolerate 300 seconds of silence, while remote sessions retain
+120 seconds. `UR_STREAM_IDLE_TIMEOUT_MS`, `API_TIMEOUT_MS`, and explicit request
+options follow their tested precedence. When a Cloud stream reaches its
+deliberate inactivity deadline, the request fails once instead of starting a
+non-streaming replay.
 
 ### 0.1.2 Single project-gate approval (1.45.6)
 

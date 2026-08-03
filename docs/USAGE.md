@@ -100,11 +100,13 @@ use `ollama.host` in settings if you want plain `ur` to default to a LAN host.
 Models exposed by the chosen Ollama app are valid, including local models and
 Ollama Cloud-backed models.
 
-Ollama Cloud models use a 120-second default bound for both response-header
-waiting and stream consumption. A deliberate stream deadline is returned
-directly instead of being replayed through the non-streaming fallback. Local
-Ollama models keep the five-minute default. Set `API_TIMEOUT_MS` to explicitly
-override either default for the current process.
+Ollama waits up to 15 minutes for response headers so cold loads and long
+prefill are not mistaken for failure. Once streaming begins, local and Cloud
+models use a five-minute *inactivity* watchdog that resets on every chunk; a
+healthy long answer has no total runtime cutoff. Remote/CCR sessions and Cloud
+non-streaming fallback retain a two-minute bound. Set
+`UR_STREAM_IDLE_TIMEOUT_MS` for the stream-silence window or `API_TIMEOUT_MS`
+for an explicit request-wide override.
 
 When project verification requires approval, UR asks once per user turn. The
 same pending compile/test/lint gate is not presented again after the user has
@@ -378,6 +380,58 @@ instead of attempting to mutate the checkout.
 See [Frontier Agent Workflows](FRONTIER_AGENT_FEATURES.md) for the complete
 managed-worker, steering, learned-playbook, cited-memory, Agentic CI,
 trajectory, desktop-QA, side-chat, multi-repository, and arena trust model.
+
+## Large prompts, parallel work, and compact reasoning
+
+UR turns a multi-part prompt into a bounded task graph instead of guessing
+future task IDs. The normal target is 2–8 concrete tasks (hard limit 12): tasks
+are created first, real IDs are captured, and dependencies are then connected
+in dependency order. `ur exec` materializes this graph deterministically; the
+interactive agent follows the same lifecycle and its task/agent tools enforce
+the concurrency boundary.
+
+A work board is seeded immediately. Before the model names concrete work, the
+UI shows a neutral `Planning tasks…` state—not the prompt and not a misleading
+one-task counter. The seed stores no prompt text. If the model creates explicit
+subtasks, its first `TaskCreate` atomically replaces that seed instead of
+duplicating it. A successful simple turn completes the seed automatically.
+Replies such as corrections (including `no` / `still` feedback), approvals,
+and interruptions reuse the current seed or explicit unfinished board. The
+agent reconciles and updates the relevant work rather than starting empty. A
+terminal board is archived only when the next prompt is genuinely new work; a
+corrective follow-up reopens the existing automatic task without renaming it.
+
+Independent read-only tasks can run in parallel. A task that may write to the
+shared checkout is serialized with other possible writers, even when it comes
+from another top-level prompt or crew worker. Parallel writers require explicit
+worktree isolation. Agent worktrees use the exact current commit and require a
+clean source checkout, so uncommitted work is never silently omitted or based
+on an unrelated remote revision.
+
+While the agent works, the `◭ Mashoofing…` row stays visible and its
+parenthesized phase changes with activity: `thinking`, `requesting`,
+`responding`, `preparing tool`, or `working`. Elapsed thinking time and token
+activity continue to appear when available. The active task follows the
+ellipsis—for example, `◭ Mashoofing… · Fixing timeout handling (thinking)`—and
+is truncated or omitted on narrow terminals instead of wrapping the UI.
+
+The normal screen does not mount live assistant drafts. During tool work it
+shows the persistent `Mashoofing` row and compact tool summaries, then presents
+the stable final answer. Completed "I'll inspect..." text paired with a tool
+call is also omitted from the normal projection. Press `ctrl+o` to inspect the
+complete stored trace; verbose diagnostics can expose live text when needed.
+If self-talk is embedded inside a completed answer, UR replaces only that
+region with a slim `Reasoning condensed` rail. All of this is presentation-only:
+session history, exports, and the model's next-turn context retain the original
+text, and no extra model/API call or reduced reasoning budget is involved.
+
+When a provider reports that the context limit was reached despite the normal
+proactive threshold, UR withholds that transient error, runs one emergency
+compaction, and retries the interrupted turn automatically. Oversized images or
+documents are replaced with markers only in the emergency summary request so a
+large Computer screenshot cannot block recovery; the original transcript is
+not rewritten. If that single bounded recovery fails—or automatic compaction
+was explicitly disabled—UR shows the manual `/compact` or `/clear` action.
 
 ## Status bar
 

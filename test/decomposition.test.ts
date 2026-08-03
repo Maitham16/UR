@@ -55,6 +55,42 @@ describe('decomposer', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
+  test('invalid model dependency graphs fall back to bounded deterministic tasks', async () => {
+    const dir = tempDir('ur-decomp-invalid-')
+    const invalidGraphs = [
+      [
+        { id: 't1', goal: 'first', dependsOn: ['missing'] },
+        { id: 't2', goal: 'second' },
+      ],
+      [
+        { id: 'same', goal: 'first' },
+        { id: 'same', goal: 'second' },
+      ],
+      [
+        { id: 't1', goal: 'first', dependsOn: ['t2'] },
+        { id: 't2', goal: 'second', dependsOn: ['t1'] },
+      ],
+    ]
+    try {
+      for (const tasks of invalidGraphs) {
+        const result = await decomposeTask('1. safe first 2. safe second', {
+          cwd: dir,
+          runner: async () => ({
+            output: JSON.stringify({ tasks }),
+            verdict: null,
+            isError: false,
+          }),
+        })
+        expect(result.map(task => task.id)).toEqual(['t1', 't2'])
+        expect(result.every(task => (task.dependsOn ?? []).length === 0)).toBe(
+          true,
+        )
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test('createCrew with decomposed tasks persists metadata', async () => {
     const dir = tempDir('ur-decomp-crew-')
     const tasks = await decomposeTask('1. fix auth 2. add tests', { cwd: dir, dryRun: true })

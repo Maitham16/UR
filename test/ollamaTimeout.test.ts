@@ -4,6 +4,7 @@ import {
   consumePendingProviderNotice,
   createOllamaURHQClient,
   getOllamaRequestTimeoutMs,
+  getOllamaStreamIdleTimeoutMs,
   toOllamaChatRequest,
 } from '../src/services/api/ollama.js'
 import {
@@ -67,6 +68,46 @@ test('getOllamaRequestTimeoutMs uses shorter default for Ollama cloud models', (
   expect(
     getOllamaRequestTimeoutMs(undefined, {}, 'kimi-k2.7-code:cloud'),
   ).toBe(120_000)
+})
+
+test('Ollama cloud stream silence allows large-model prefill and planning', () => {
+  expect(
+    getOllamaStreamIdleTimeoutMs(undefined, {}, 'qwen3.5:397b-cloud'),
+  ).toBe(300_000)
+})
+
+test('Ollama stream idle timeout keeps remote sessions bounded', () => {
+  expect(
+    getOllamaStreamIdleTimeoutMs(
+      undefined,
+      { UR_CODE_REMOTE: '1' },
+      'qwen3.5:397b-cloud',
+    ),
+  ).toBe(120_000)
+})
+
+test('Ollama stream idle timeout honours stream, API, and request overrides', () => {
+  expect(
+    getOllamaStreamIdleTimeoutMs(
+      undefined,
+      { UR_STREAM_IDLE_TIMEOUT_MS: '240000', API_TIMEOUT_MS: '45000' },
+      'qwen3.5:397b-cloud',
+    ),
+  ).toBe(240_000)
+  expect(
+    getOllamaStreamIdleTimeoutMs(
+      undefined,
+      { API_TIMEOUT_MS: '45000' },
+      'qwen3.5:397b-cloud',
+    ),
+  ).toBe(45_000)
+  expect(
+    getOllamaStreamIdleTimeoutMs(
+      { timeoutMs: 12_345 },
+      { UR_STREAM_IDLE_TIMEOUT_MS: '240000', API_TIMEOUT_MS: '45000' },
+      'qwen3.5:397b-cloud',
+    ),
+  ).toBe(12_345)
 })
 
 test('getOllamaRequestTimeoutMs keeps the local-model default', () => {
@@ -455,6 +496,52 @@ test('Ollama stream timeout applies after response headers', async () => {
     const iterator = data[Symbol.asyncIterator]()
     expect((await iterator.next()).value.type).toBe('message_start')
     await expect(iterator.next()).rejects.toThrow('Ollama stream timed out')
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+})
+
+// The deadline bounds silence, not total runtime: a model still emitting
+// tokens must never be cut off for answering a long prompt slowly.
+test('Ollama stream timeout does not cut off a stream that keeps producing', async () => {
+  const previousFetch = globalThis.fetch
+  const encoder = new TextEncoder()
+  const chunks = [
+    { message: { role: 'assistant', content: 'a' }, done: false },
+    { message: { role: 'assistant', content: 'b' }, done: false },
+    { message: { role: 'assistant', content: 'c' }, done: false },
+    { message: { role: 'assistant', content: '' }, done: true, done_reason: 'stop' },
+  ]
+
+  globalThis.fetch = createMockOllamaFetch({
+    capabilities: ['completion'],
+    chatResponse: new Response(
+      new ReadableStream({
+        async start(controller) {
+          for (const chunk of chunks) {
+            // Each gap is under the deadline; their sum is well over it.
+            await new Promise(resolve => setTimeout(resolve, 15))
+            controller.enqueue(encoder.encode(`${JSON.stringify(chunk)}\n`))
+          }
+          controller.close()
+        },
+      }),
+      { status: 200 },
+    ),
+  })
+
+  try {
+    const { data } = await createStreamingOllamaResponse({
+      model: 'slow-but-alive:latest',
+      requestOptions: { timeout: 40 },
+    })
+    let text = ''
+    for await (const event of data) {
+      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+        text += event.delta.text
+      }
+    }
+    expect(text).toBe('abc')
   } finally {
     globalThis.fetch = previousFetch
   }

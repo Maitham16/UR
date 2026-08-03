@@ -230,7 +230,8 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 | `OLLAMA_API_KEY` | Bearer token for Ollama's hosted API. With no host set, also switches the base URL to `https://ollama.com` — a local daemon needs no key, a direct connection does. Allowlisted through the Agentic CI env scrub |
 | `OLLAMA_HOST` / `OLLAMA_BASE_URL` | Explicit Ollama endpoint; always wins over the key-implied cloud default |
 | `OLLAMA_CONTEXT_TOKENS` | Override the detected context window |
-| `OLLAMA_REQUEST_TIMEOUT_MS` | Per-request timeout |
+| `API_TIMEOUT_MS` | Explicit provider request timeout; also overrides Ollama request/stream defaults |
+| `UR_STREAM_IDLE_TIMEOUT_MS` | Maximum silent gap inside an open provider stream (default 300000 ms; rearmed for every chunk) |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` | Provider credentials; also allowlisted for Agentic CI |
 
 ### Core behavior

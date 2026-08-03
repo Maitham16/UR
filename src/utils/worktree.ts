@@ -235,7 +235,7 @@ function worktreePathFor(repoRoot: string, slug: string): string {
 async function getOrCreateWorktree(
   repoRoot: string,
   slug: string,
-  options?: { prNumber?: number },
+  options?: { prNumber?: number; baseRef?: string },
 ): Promise<WorktreeCreateResult> {
   const worktreePath = worktreePathFor(repoRoot, slug)
   const worktreeBranch = worktreeBranchName(slug)
@@ -261,7 +261,10 @@ async function getOrCreateWorktree(
 
   let baseBranch: string
   let baseSha: string | null = null
-  if (options?.prNumber) {
+  if (options?.baseRef) {
+    baseBranch = options.baseRef
+    baseSha = options.baseRef
+  } else if (options?.prNumber) {
     const { code: prFetchCode, stderr: prFetchStderr } =
       await execFileNoThrowWithCwd(
         gitExe(),
@@ -930,8 +933,33 @@ export async function createAgentWorktree(slug: string): Promise<{
     )
   }
 
+  const sourceCwd = getCwd()
+  const status = await execFileNoThrowWithCwd(
+    gitExe(),
+    ['status', '--porcelain', '--untracked-files=normal'],
+    { cwd: sourceCwd },
+  )
+  if (status.code !== 0) {
+    throw new Error('Cannot verify the source checkout before creating an agent worktree.')
+  }
+  if (status.stdout.trim()) {
+    throw new Error(
+      'Cannot create a safe parallel agent worktree from a dirty checkout because uncommitted changes would be missing. Commit or deliberately snapshot the required changes, or keep implementation agents serialized in the shared checkout.',
+    )
+  }
+  const sourceHead = await execFileNoThrowWithCwd(
+    gitExe(),
+    ['rev-parse', 'HEAD'],
+    { cwd: sourceCwd },
+  )
+  if (sourceHead.code !== 0 || !sourceHead.stdout.trim()) {
+    throw new Error('Cannot resolve the current checkout revision for agent isolation.')
+  }
+
   const { worktreePath, worktreeBranch, headCommit, existed } =
-    await getOrCreateWorktree(gitRoot, slug)
+    await getOrCreateWorktree(gitRoot, slug, {
+      baseRef: sourceHead.stdout.trim(),
+    })
 
   if (!existed) {
     logForDebugging(

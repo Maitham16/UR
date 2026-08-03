@@ -179,6 +179,26 @@ export type ExecOptions = {
 }
 
 /**
+ * The task output directory is process-wide and never removed while the
+ * session runs, so creating it once is enough. This used to be an awaited
+ * `mkdir` on the critical path of every single command — a syscall whose
+ * answer could not change after the first one.
+ */
+let taskOutputDirReady: Promise<void> | undefined
+
+function ensureTaskOutputDir(): Promise<void> {
+  taskOutputDirReady ??= mkdir(getTaskOutputDir(), { recursive: true }).then(
+    () => undefined,
+    error => {
+      // Retry on the next command rather than caching a failure forever.
+      taskOutputDirReady = undefined
+      throw error
+    },
+  )
+  return taskOutputDirReady
+}
+
+/**
  * Execute a shell command using the environment snapshot
  * Creates a new shell process for each command execution
  */
@@ -293,7 +313,7 @@ export async function exec(
   const usePipeMode = !!onStdout
   const taskId = generateTaskId('local_bash')
   const taskOutput = new TaskOutput(taskId, onProgress ?? null, !usePipeMode)
-  await mkdir(getTaskOutputDir(), { recursive: true })
+  await ensureTaskOutputDir()
 
   // In file mode, stdout and stderr go to separate file fds. This preserves
   // stream identity while retaining the direct-to-disk path for large output.

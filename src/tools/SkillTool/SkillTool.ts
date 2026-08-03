@@ -401,9 +401,19 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
     // Check if command exists
     const foundCommand = findCommand(normalizedCommandName, commands)
     if (!foundCommand) {
+      // The command list is already in hand, so naming what is invocable costs
+      // nothing and turns a guess into a correction. A bare "Unknown skill"
+      // invited another guess at the name.
+      const invocable = commands
+        .filter(command => command.userInvocable !== false)
+        .map(command => command.name)
+        .sort()
       return {
         result: false,
-        message: `Unknown skill: ${normalizedCommandName}`,
+        message:
+          invocable.length > 0
+            ? `Unknown skill: ${normalizedCommandName}. Available skills: ${invocable.join(', ')}`
+            : `Unknown skill: ${normalizedCommandName}. No skills are available in this session.`,
         errorCode: 2,
       }
     }

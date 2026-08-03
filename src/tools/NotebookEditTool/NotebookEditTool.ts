@@ -1,5 +1,7 @@
 import { feature } from 'bun:bundle'
 import { extname, isAbsolute, resolve } from 'path'
+import { clearDeliveredDiagnosticsForFile } from '../../services/lsp/LSPDiagnosticRegistry.js'
+import { notifyVscodeFileUpdated } from '../../services/mcp/vscodeSdkMcp.js'
 import {
   fileHistoryEnabled,
   fileHistoryTrackEdit,
@@ -281,14 +283,22 @@ export const NotebookEditTool = buildTool({
           if (!notebook.cells[parsedCellIndex]) {
             return {
               result: false,
-              message: `Cell with index ${parsedCellIndex} does not exist in notebook.`,
+              message: `Cell with index ${parsedCellIndex} does not exist in notebook. The notebook has ${notebook.cells.length} cells (valid indices 0-${notebook.cells.length - 1}).`,
               errorCode: 7,
             }
           }
         } else {
+          // The notebook is already parsed, so naming the real ids costs
+          // nothing and saves a re-read to discover them.
+          const known = notebook.cells
+            .map(cell => cell.id)
+            .filter((id): id is string => typeof id === 'string')
           return {
             result: false,
-            message: `Cell with ID "${cell_id}" not found in notebook.`,
+            message:
+              known.length > 0
+                ? `Cell with ID "${cell_id}" not found in notebook. Existing cell IDs: ${known.join(', ')}.`
+                : `Cell with ID "${cell_id}" not found in notebook. Its cells have no IDs — address them by index instead (cell-0 through cell-${notebook.cells.length - 1}).`,
             errorCode: 8,
           }
         }
@@ -435,6 +445,16 @@ export const NotebookEditTool = buildTool({
       const IPYNB_INDENT = 1
       const updatedContent = jsonStringify(notebook, null, IPYNB_INDENT)
       writeTextContent(fullPath, updatedContent, encoding, lineEndings)
+      // Every other writing tool reports its change here, which is what feeds
+      // the editor's inline diff view. Without it a notebook edit was the one
+      // kind of change that never appeared there.
+      notifyVscodeFileUpdated(fullPath, content, updatedContent)
+      // Diagnostics are deduplicated across turns, so an error identical to one
+      // already delivered for this notebook is suppressed. Editing a cell
+      // changes the file exactly as Edit and Write do, and without clearing the
+      // delivered set the model never hears about a problem it just
+      // reintroduced here.
+      clearDeliveredDiagnosticsForFile(`file://${fullPath}`)
       // Update readFileState with post-write mtime (matches FileEditTool/
       // FileWriteTool). offset:undefined breaks FileReadTool's dedup match —
       // without this, Read→NotebookEdit→Read in the same millisecond would

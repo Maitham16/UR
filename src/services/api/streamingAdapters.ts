@@ -276,6 +276,10 @@ async function* streamOpenAIEvents(
   }
 
   for await (const payload of readSSEData(body, options.signal)) {
+    if (payload === SSE_KEEPALIVE) {
+      yield { type: 'ping' }
+      continue
+    }
     if (payload === '[DONE]') {
       sawDone = true
       break
@@ -567,6 +571,10 @@ async function* streamOpenAIResponsesEvents(
   }
 
   for await (const payload of readSSEData(body, options.signal)) {
+    if (payload === SSE_KEEPALIVE) {
+      yield { type: 'ping' }
+      continue
+    }
     if (payload === '[DONE]') break
     const event = parseJSONPayload(payload, `${providerName} SSE event`)
     options.onEvent?.(event)
@@ -740,9 +748,19 @@ async function* streamAnthropicEvents(
   const streamedToolInputs = new Map<number, string>()
 
   for await (const payload of readSSEData(body, options.signal)) {
+    if (payload === SSE_KEEPALIVE) {
+      yield { type: 'ping' }
+      continue
+    }
     if (payload === '[DONE]') break
     const event = parseJSONPayload(payload, `${providerName} SSE event`)
-    if (!event || event.type === 'ping') continue
+    if (!event) continue
+    // Forwarded rather than swallowed: a ping is the provider telling us it is
+    // still working, which is exactly what the inactivity watchdog needs.
+    if (event.type === 'ping') {
+      yield { type: 'ping' }
+      continue
+    }
     throwProviderPayloadError(event, providerName)
     if (!sawMessageStart && event.type !== 'message_start') {
       sawMessageStart = true
@@ -974,6 +992,10 @@ async function* streamGeminiEvents(
   }
 
   for await (const payload of readSSEData(body, options.signal)) {
+    if (payload === SSE_KEEPALIVE) {
+      yield { type: 'ping' }
+      continue
+    }
     if (payload === '[DONE]') break
     const parsed = parseJSONPayload(payload, `${providerName} SSE chunk`)
     const chunks = Array.isArray(parsed) ? parsed : [parsed]
@@ -1100,6 +1122,17 @@ async function* streamGeminiEvents(
   yield { type: 'message_stop' }
 }
 
+/**
+ * Emitted for bytes that carry no data payload — SSE comment keepalives
+ * (OpenRouter's `: OPENROUTER PROCESSING`, nginx's `:`) and partial frames.
+ *
+ * These bytes are proof the provider is alive. Dropping them silently made a
+ * streaming request look frozen to every downstream inactivity watchdog, so a
+ * prompt whose prefill ran long was aborted as a timeout while the provider
+ * was still streaming to us. Callers translate the sentinel into a `ping`.
+ */
+export const SSE_KEEPALIVE = '\u0000ur:sse-keepalive'
+
 async function* readSSEData(
   body: unknown,
   signal?: AbortSignal,
@@ -1107,14 +1140,19 @@ async function* readSSEData(
   let buffer = ''
   for await (const chunk of readTextChunks(body, signal)) {
     buffer += chunk
+    let emitted = false
     while (true) {
       const delimiter = findSSEDelimiter(buffer)
       if (!delimiter) break
       const rawEvent = buffer.slice(0, delimiter.index)
       buffer = buffer.slice(delimiter.index + delimiter.length)
       const data = parseSSEEvent(rawEvent)
-      if (data !== undefined) yield data
+      if (data !== undefined) {
+        emitted = true
+        yield data
+      }
     }
+    if (!emitted) yield SSE_KEEPALIVE
   }
   if (buffer.trim()) {
     const data = parseSSEEvent(buffer)

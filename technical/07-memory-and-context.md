@@ -40,11 +40,20 @@ UR.md / UR.local.md and detects stale/duplicate/conflicting entries.
 ### Automatic learning
 - On by default; disable via `UR_CODE_DISABLE_AUTO_LEARNING=1` or
   `automaticLearningEnabled: false`.
-- ci-loop, arena, escalation, and test-first outcomes are folded into
+- ci-loop, arena, escalation, test-first, executed prompt-plan tasks, and
+  terminal crew tasks are folded into
   `.ur/learning/stats.json` as local JSON. This automatic path uses no model
   calls and no prompt tokens.
-- Learned success rates bias auto model routing and escalation only when there
-  is enough evidence; otherwise static routing is unchanged.
+- Writes are batched, process-locked, private, and atomically renamed. A stale
+  reflection run re-reads and merges the current store before saving, so
+  parallel agents do not erase each other's outcomes. Valid-but-malformed
+  stores normalize to an empty safe shape instead of crashing routing.
+- Learned success rates bias auto model routing and escalation only after at
+  least five outcomes. Selection uses a confidence-adjusted success bound, so
+  a tiny perfect sample does not beat a larger proven record. Otherwise static
+  routing is unchanged.
+- Learning records task category/model outcomes and failure lessons; it does
+  not retrain model weights or blindly replay a previous patch.
 
 ### Semantic memory index
 ```

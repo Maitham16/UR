@@ -23,6 +23,7 @@ import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { stringWidth } from '../ink/stringWidth.js';
 import { getDefaultCharacters, type SpinnerMode } from './Spinner/index.js';
 import { SpinnerAnimationRow } from './Spinner/SpinnerAnimationRow.js';
+import { currentSpinnerTaskLabel } from './Spinner/taskLabel.js';
 import { useSettings } from '../hooks/useSettings.js';
 import { isInProcessTeammateTask } from '../tasks/InProcessTeammateTask/types.js';
 import { isBackgroundTask } from '../tasks/types.js';
@@ -159,15 +160,17 @@ function SpinnerWithVerbInner({
     };
   }, [mode]);
 
-  // Find the current in-progress task and next pending task
-  const currentTodo = tasksV2?.find(task => task.status !== 'pending' && task.status !== 'completed');
+  // Keep the animated verb and current task as separate information: the
+  // activity phrase stays human and stable, while the task label tracks the
+  // board as work advances.
+  const currentTaskLabel = currentSpinnerTaskLabel(tasksV2);
   const nextTask = findNextPendingTask(tasksV2);
 
   // Use useState with initializer to pick a random verb once on mount
   const [randomVerb] = useState(() => sample(getSpinnerVerbs()));
 
   // Leader's own verb (always the leader's, regardless of who is foregrounded)
-  const leaderVerb = overrideMessage ?? currentTodo?.activeForm ?? currentTodo?.subject ?? randomVerb;
+  const leaderVerb = overrideMessage ?? randomVerb;
   const effectiveVerb = foregroundedTeammate && !foregroundedTeammate.isIdle ? foregroundedTeammate.spinnerVerb ?? randomVerb : leaderVerb;
   const message = effectiveVerb + '…';
 
@@ -281,7 +284,7 @@ function SpinnerWithVerbInner({
     }
   }
   return <Box flexDirection="column" width="100%" alignItems="flex-start">
-      <SpinnerAnimationRow mode={mode} reducedMotion={reducedMotion} hasActiveTools={hasActiveTools} responseLengthRef={responseLengthRef} message={message} messageColor={messageColor} shimmerColor={shimmerColor} overrideColor={overrideColor} loadingStartTimeRef={loadingStartTimeRef} totalPausedMsRef={totalPausedMsRef} pauseStartTimeRef={pauseStartTimeRef} spinnerSuffix={spinnerSuffix} verbose={verbose} columns={columns} hasRunningTeammates={hasRunningTeammates} teammateTokens={teammateTokens} foregroundedTeammate={foregroundedTeammate} leaderIsIdle={leaderIsIdle} thinkingStatus={thinkingStatus} effortSuffix={effortSuffix} />
+      <SpinnerAnimationRow mode={mode} reducedMotion={reducedMotion} hasActiveTools={hasActiveTools} responseLengthRef={responseLengthRef} message={message} taskLabel={!foregroundedTeammate ? currentTaskLabel : null} messageColor={messageColor} shimmerColor={shimmerColor} overrideColor={overrideColor} loadingStartTimeRef={loadingStartTimeRef} totalPausedMsRef={totalPausedMsRef} pauseStartTimeRef={pauseStartTimeRef} spinnerSuffix={spinnerSuffix} verbose={verbose} columns={columns} hasRunningTeammates={hasRunningTeammates} teammateTokens={teammateTokens} foregroundedTeammate={foregroundedTeammate} leaderIsIdle={leaderIsIdle} thinkingStatus={thinkingStatus} effortSuffix={effortSuffix} />
       {/* The task list is no longer duplicated here: REPL's fixed bottom
           region renders the pinned TaskListV2 panel during work as well
           (it used to be gated behind !showSpinner). */}

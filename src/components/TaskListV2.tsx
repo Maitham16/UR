@@ -11,7 +11,7 @@ import { AGENT_COLOR_TO_THEME_COLOR, type AgentColorName } from '../tools/AgentT
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
 import { summarizeRecentActivities } from '../utils/collapseReadSearch.js';
 import { truncateToWidth } from '../utils/format.js';
-import { isTodoV2Enabled, type Task } from '../utils/tasks.js';
+import { isAutomaticPromptTask, isTodoV2Enabled, type Task } from '../utils/tasks.js';
 import type { Theme } from '../utils/theme.js';
 import ThemedText from './design-system/ThemedText.js';
 type Props = {
@@ -50,6 +50,9 @@ export function getTaskStatusCounts(tasks: readonly Task[], unresolvedIds?: Read
     counts[getTaskDisplayStatus(task, unresolvedTaskIds)]++;
   }
   return counts;
+}
+export function isTaskPlanningPlaceholder(tasks: readonly Task[]): boolean {
+  return tasks.length === 1 && isAutomaticPromptTask(tasks[0]);
 }
 export function TaskListV2({
   tasks,
@@ -112,6 +115,13 @@ export function TaskListV2({
   }
   if (tasks.length === 0) {
     return null;
+  }
+  // The automatic seed is an internal synchronization primitive, not a
+  // semantic user task. Keep the task surface present while planning without
+  // presenting copied prompt text or a misleading "1 task" counter.
+  if (isTaskPlanningPlaceholder(tasks)) {
+    const planningState = <Text dimColor>{figures.ellipsis} Planning tasks</Text>;
+    return isStandalone ? <Box marginTop={1} marginLeft={2}>{planningState}</Box> : <Box>{planningState}</Box>;
   }
 
   // Build a map of teammate name -> theme color

@@ -166,6 +166,9 @@ function normalizeQuestionOptionInput(value: unknown): unknown {
     (typeof option.name === 'string' && option.name.trim()) ||
     (typeof option.text === 'string' && option.text.trim()) ||
     (typeof option.title === 'string' && option.title.trim()) ||
+    // `header` is this tool's word for a question's category chip, which is
+    // exactly why models reach for it when naming a choice.
+    (typeof option.header === 'string' && option.header.trim()) ||
     (typeof option.id === 'string' && option.id.trim()) ||
     (typeof option.description === 'string' && option.description.trim()) ||
     ''
@@ -225,6 +228,66 @@ function coerceQuestionValueToOptions(question: Record<string, unknown>): unknow
     if (objectOptions) return objectOptions
   }
   return null
+}
+
+/**
+ * True when an entry carries a choice rather than a question: it has option
+ * shape (a label, or a description with no question text) and none of the keys
+ * a question is recognized by.
+ */
+function looksLikeOptionEntry(value: unknown): boolean {
+  if (typeof value === 'string') return value.trim().length > 0
+  const entry = objectValue(value)
+  if (!entry) return false
+  for (const key of Object.keys(entry)) {
+    // `header` is the one question key that is equally an option key: it is
+    // this tool's word for a short label, so a model naming a choice reaches
+    // for it. An entry carrying a header and nothing else question-shaped is a
+    // choice, not a question — a question would have brought its options.
+    if (key === 'header') continue
+    if (RESERVED_QUESTION_KEYS.has(key)) return false
+    if (RESERVED_QUESTION_OPTION_KEYS.has(key.toLowerCase())) return false
+  }
+  return (
+    typeof entry.label === 'string' ||
+    typeof entry.value === 'string' ||
+    typeof entry.header === 'string' ||
+    typeof entry.description === 'string'
+  )
+}
+
+/**
+ * Recovers the common shape where a model flattens one question's choices
+ * straight into `questions`, so six options arrive as six question objects
+ * that each carry a label and a description and no question text at all.
+ *
+ * Everything needed is present — it is nested one level wrong — so the array
+ * is folded back into the options of a single question. Prefer question text
+ * the payload already carries at the top level. If the model omitted it, use a
+ * neutral prompt instead of throwing sixteen field errors and discarding all
+ * eight valid choices; this does not infer any domain-specific intent.
+ */
+function recoverFlattenedOptions(
+  input: Record<string, unknown>,
+  entries: unknown[],
+): unknown | null {
+  if (entries.length < 2 || !entries.every(looksLikeOptionEntry)) return null
+  const questionText =
+    stringField(input, [
+      'question',
+      'questionText',
+      'question_text',
+      'q',
+      'query',
+      'prompt',
+      'text',
+      'title',
+      'message',
+      'body',
+      'goal',
+      'header',
+    ]) || 'Which option should I choose?'
+  return normalizeQuestionInput({ ...input, question: questionText, options: entries }, 0)
 }
 
 function normalizeQuestionInput(value: unknown, index: number): unknown {
@@ -309,7 +372,7 @@ export function normalizeAskUserQuestionInput(value: unknown): unknown {
         ...commonFields
       }
     }
-    return null;
+    return input;
   }
   if (Array.isArray(input.questions)) {
     const normalized = input.questions
@@ -323,7 +386,18 @@ export function normalizeAskUserQuestionInput(value: unknown): unknown {
         ...commonFields
       };
     }
-    return null;
+    // Nothing normalized as a question. Before giving up, check whether the
+    // array is actually one question's option list that the model flattened
+    // a level too high — the shape that produced paired "question must be a
+    // non-empty string / options must be an array" errors for every entry.
+    const recovered = recoverFlattenedOptions(input, input.questions)
+    if (recovered && typeof recovered === 'object') {
+      return {
+        questions: dedupeQuestions([recovered]),
+        ...commonFields
+      };
+    }
+    return input;
   }
   if (optionsField(input) !== null) {
     const singleQuestion = normalizeQuestionInput(input, 0);
@@ -336,7 +410,12 @@ export function normalizeAskUserQuestionInput(value: unknown): unknown {
       };
     }
   }
-  return null;
+  // Repair failed. Hand back what the model actually sent rather than null:
+  // null erases the payload, so validation and the error message that reaches
+  // the model both describe the erasure ("Input must be an object with a
+  // `questions` array") instead of the real defect, and the model has nothing
+  // to correct. Returning the input keeps the diagnosis specific.
+  return input;
 }
 const questionOptionSchema = lazySchema(() => z.object({
   label: z.string().describe('The choice itself, 1-5 words. Name the option, do not restate the question: for "Which database?" use "PostgreSQL", not "Use PostgreSQL for the database".'),

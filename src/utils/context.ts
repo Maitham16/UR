@@ -1,5 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
+import { getProviderContextLengthForModel } from '../services/providers/providerRegistry.js'
 import { isEnvTruthy } from './envUtils.js'
 import { resolveAntModel } from './model/antModels.js'
 import { getModelCapability } from './model/modelCapabilities.js'
@@ -84,6 +85,17 @@ export function getContextWindowForModel(
   // [1m] suffix — explicit client-side opt-in, respected over all detection
   if (has1mContext(model)) {
     return 1_000_000
+  }
+
+  // What the provider itself reported for this model. getModelCapability below
+  // is first-party-only, so without this every third-party model resolved to
+  // the flat default regardless of its real window: too large for a 32K or
+  // 128K model, so autocompact never fired and the provider rejected the turn
+  // instead; too small for a 1M model, so it compacted long before it needed
+  // to. Discovery already captures this and the model picker displays it.
+  const providerContextLength = getProviderContextLengthForModel(model)
+  if (providerContextLength !== undefined) {
+    return providerContextLength
   }
 
   const cap = getModelCapability(model)

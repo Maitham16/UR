@@ -45,7 +45,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.76.7</p>
+          <p class="eyebrow">Version 1.78.11</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -171,8 +171,8 @@ ur config set responses.store false</code></pre>
           </article>
           <article>
             <h3>Ollama Cloud latency bounds</h3>
-            <pre><code>API_TIMEOUT_MS=120000 ur</code></pre>
-            <p>Cloud-tagged Ollama models default to bounded response-header and streaming phases. A stream deadline is surfaced directly instead of starting a non-streaming retry chain. Local models retain their longer default, and <code>API_TIMEOUT_MS</code> remains an explicit override.</p>
+            <pre><code>UR_STREAM_IDLE_TIMEOUT_MS=300000 ur</code></pre>
+            <p>Ollama allows long cold-load headers, then uses a five-minute inactivity watchdog for local and Cloud streams. The timer resets on every chunk, so healthy long answers continue; remote sessions remain shorter, and a Cloud stream timeout is surfaced without starting a duplicate non-streaming retry. <code>UR_STREAM_IDLE_TIMEOUT_MS</code> and <code>API_TIMEOUT_MS</code> remain explicit overrides.</p>
           </article>
         </div>
       </section>

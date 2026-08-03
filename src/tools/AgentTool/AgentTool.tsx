@@ -9,6 +9,7 @@ import { clearInvokedSkillsForAgent, getSdkAgentProgressSummariesEnabled } from 
 import { enhanceSystemPromptWithEnvDetails, getSystemPrompt } from '../../constants/prompts.js';
 import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js';
 import { startAgentSummarization } from '../../services/AgentSummary/agentSummary.js';
+import { isDelegationConcurrencySafe } from '../../services/agents/parallelPolicy.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { clearDumpState } from '../../services/api/dumpPrompts.js';
@@ -284,6 +285,9 @@ export const AgentTool = buildTool({
     // Check if this is a multi-agent spawn request
     // Spawn is triggered when team_name is set (from param or context) and name is provided
     if (teamName && name) {
+      if (isolation || cwd) {
+        throw new Error('Team-spawned agents do not support `isolation` or `cwd` yet. Omit `name` to launch an isolated subagent, or omit isolation/cwd and keep shared-workspace writers serialized.');
+      }
       // Set agent definition color for grouped UI display before spawning
       const agentDef = subagent_type ? toolUseContext.options.agentDefinitions.activeAgents.find(a => a.agentType === subagent_type) : undefined;
       if (agentDef?.color) {
@@ -998,6 +1002,16 @@ export const AgentTool = buildTool({
                       }
                     }
 
+                    // A backgrounded agent that ran out of turns stopped
+                    // mid-task. The notification status has no value for
+                    // "incomplete" — it is neither a failure nor a kill — so
+                    // say so in the message, the same way the handoff warning
+                    // above is surfaced. Without it the notification reads as
+                    // a finished task carrying a truncated answer.
+                    if (agentMessages.some(_ => _.type === 'attachment' && _.attachment?.type === 'max_turns_reached')) {
+                      finalMessage = `Note: this agent stopped after reaching its maximum number of turns, so the result below is incomplete.\n\n${finalMessage}`;
+                    }
+
                     // Clean up worktree before notification so we can include it
                     const worktreeResult = await cleanupWorktreeIfNeeded();
                     enqueueAgentNotification({
@@ -1277,10 +1291,16 @@ export const AgentTool = buildTool({
             }, ...agentResult.content];
           }
         }
+        // An agent that ran out of turns stopped mid-task. Reporting that as
+        // 'completed' told the caller the delegation succeeded and left it
+        // acting on a truncated answer, so it counts as partial like an error
+        // does — and says which, since the two need different follow-ups.
+        const truncatedByMaxTurns = agentMessages.some(_ => _.type === 'attachment' && _.attachment?.type === 'max_turns_reached');
+        const incompleteReason = syncAgentError ? errorMessage(syncAgentError) : truncatedByMaxTurns ? 'Agent stopped after reaching its maximum number of turns; the result is incomplete.' : undefined;
         return {
           data: {
-            status: syncAgentError ? 'partial' as const : 'completed' as const,
-            ...(syncAgentError && { error: errorMessage(syncAgentError) }),
+            status: incompleteReason ? 'partial' as const : 'completed' as const,
+            ...(incompleteReason && { error: incompleteReason }),
             prompt,
             ...agentResult,
             ...worktreeResult
@@ -1301,8 +1321,10 @@ export const AgentTool = buildTool({
     const prefix = tags.length > 0 ? `(${tags.join(', ')}): ` : ': ';
     return `${prefix}${i.prompt}`;
   },
-  isConcurrencySafe() {
-    return true;
+  isConcurrencySafe(input) {
+    // Shared-checkout writers and unknown scopes serialize. Explicitly
+    // read-only work, remote work, and validated worktrees may fan out.
+    return isDelegationConcurrencySafe(input as AgentToolInput);
   },
   userFacingName,
   userFacingNameBackgroundColor,

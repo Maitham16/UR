@@ -46,7 +46,8 @@ test('canonical task tools receive ordered lifecycle guidance', () => {
   expect(guidance).toContain('completed immediately after')
   expect(guidance).toContain('TaskList')
   expect(guidance).toContain('MUST use TaskCreate')
-  expect(guidance).toContain('new user request starts a fresh list')
+  expect(guidance).toContain('If the user interrupts')
+  expect(guidance).toContain('preserve still-relevant work')
   expect(guidance).toContain('independent branches')
 })
 

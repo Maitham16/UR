@@ -98,7 +98,11 @@ export const TaskCreateTool = buildTool({
     return isTodoV2Enabled()
   },
   isConcurrencySafe() {
-    return true
+    // Calls in one model response refer to the consecutive IDs implied by
+    // their emission order. The filesystem allocator itself is locked, but a
+    // parallel batch can acquire that lock in a different order and attach
+    // every dependency to the wrong task (or turn it into a self-edge).
+    return false
   },
   toAutoClassifierInput(input) {
     return input.subject
@@ -150,6 +154,7 @@ export const TaskCreateTool = buildTool({
     const taskId = run
       ? await createTaskForRun(taskListId, run.generationId, taskData, {
           appendToCurrent: run.appendToCurrent || addToCurrentList === true,
+          replaceAutomaticPromptTask: true,
         })
       : await createTask(taskListId, taskData)
 
@@ -164,7 +169,10 @@ export const TaskCreateTool = buildTool({
         toTaskId: taskId,
         field: 'blockedBy',
       })),
-    ]
+      // A self-edge carries no ordering information. Dropping it preserves the
+      // task and its valid dependencies instead of rolling the entire create
+      // back because a model redundantly named the task itself.
+    ].filter(edge => edge.fromTaskId !== edge.toTaskId)
     const dependencyResult = await updateTaskWithDependencies(
       taskListId,
       taskId,

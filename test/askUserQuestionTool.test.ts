@@ -1,5 +1,12 @@
 import { expect, test } from 'bun:test'
-import { AskUserQuestionTool } from '../src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx'
+import {
+  AskUserQuestionTool,
+  normalizeAskUserQuestionInput,
+} from '../src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx'
+import {
+  describeQuestionPayloadProblems,
+  describeQuestionPayloadShape,
+} from '../src/tools/AskUserQuestionTool/normalizeQuestions.js'
 
 test('AskUserQuestion infers missing headers and option descriptions', () => {
   const parsed = AskUserQuestionTool.inputSchema.safeParse({
@@ -180,6 +187,158 @@ test('AskUserQuestion fails fast when every question entry is malformed', () => 
     questions: [null, '', { foo: 'bar' }],
   })
   expect(parsed.success).toBe(false)
+})
+
+// An unrepairable payload must still be reported as what the model sent.
+// Returning null instead erased it, so the model was told its `questions`
+// array was missing when the array was there and one entry lacked options —
+// a diagnosis it could not act on.
+test('AskUserQuestion reports the real defect when repair is impossible', () => {
+  const input = {
+    questions: [{ question: 'What should I do next?', header: 'Next' }],
+  }
+
+  expect(normalizeAskUserQuestionInput(input)).not.toBeNull()
+  expect(describeQuestionPayloadProblems(normalizeAskUserQuestionInput(input))).toEqual([
+    'questions[0].options must be an array.',
+  ])
+  // The shape is reported separately, so the problem list stays a list of
+  // problems and callers can keep asserting its length.
+  expect(
+    describeQuestionPayloadShape(normalizeAskUserQuestionInput(input)),
+  ).toContain('has keys: question, header')
+})
+
+// Models routinely flatten one question's choices straight into `questions`,
+// so six options arrive as six question objects carrying a label and a
+// description and no question text. That produced a paired "question must be a
+// non-empty string / options must be an array" error for every entry.
+test('AskUserQuestion folds flattened option lists back into one question', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    question: 'Which areas should I audit next?',
+    questions: [
+      { label: 'Providers', description: 'Audit every provider adapter' },
+      { label: 'UI', description: 'Audit terminal UI components' },
+      { label: 'Workflows', description: 'Audit workflow execution' },
+      { label: 'Memory', description: 'Audit context and memory' },
+      { label: 'Plugins', description: 'Audit plugin loading' },
+      { label: 'Sessions', description: 'Audit session persistence' },
+    ],
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions).toHaveLength(1)
+  expect(parsed.data.questions[0]!.question).toBe(
+    'Which areas should I audit next?',
+  )
+  // The model's own labels, carried through untouched.
+  expect(parsed.data.questions[0]!.options.map(o => o.label)).toEqual([
+    'Providers',
+    'UI',
+    'Workflows',
+    'Memory',
+    'Plugins',
+    'Sessions',
+  ])
+})
+
+// `header` is this tool's word for a short label, so a model naming a choice
+// reaches for it. Eight options arrived as eight question objects carrying a
+// header and a description — every entry reporting a missing question and
+// missing options, and never a missing header, which is what identified it.
+test('AskUserQuestion folds header-labelled choices back into one question', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    question: 'Which area should I take next?',
+    questions: Array.from({ length: 8 }, (_, i) => ({
+      header: `Area${i + 1}`,
+      description: `Audit area ${i + 1}`,
+    })),
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions).toHaveLength(1)
+  expect(parsed.data.questions[0]!.options).toHaveLength(8)
+  expect(parsed.data.questions[0]!.options[0]).toMatchObject({
+    label: 'Area1',
+    description: 'Audit area 1',
+  })
+})
+
+// Naming what arrived is the one fact that separates an unrepairable payload
+// from a repairable shape the normalizer has not been taught yet.
+test('AskUserQuestion reports the keys it actually received', () => {
+  const normalized = normalizeAskUserQuestionInput({
+    questions: [{ header: 'A', description: 'a' }],
+  })
+
+  expect(describeQuestionPayloadProblems(normalized).length).toBeGreaterThan(0)
+  expect(describeQuestionPayloadShape(normalized)).toContain(
+    'has keys: header, description',
+  )
+})
+
+test('AskUserQuestion recovery never retargets a genuine multi-question payload', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    questions: [
+      {
+        question: 'Which DB?',
+        header: 'DB',
+        options: [
+          { label: 'PG', description: 'x' },
+          { label: 'SQLite', description: 'y' },
+        ],
+      },
+      {
+        question: 'Which language?',
+        header: 'Lang',
+        options: [
+          { label: 'TypeScript', description: 'x' },
+          { label: 'Go', description: 'y' },
+        ],
+      },
+    ],
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions).toHaveLength(2)
+})
+
+test('AskUserQuestion renders flattened choices when question text is omitted', () => {
+  // Exact production failure: eight entries with these three keys produced a
+  // missing-question and missing-options pair for every entry.
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    questions: Array.from({ length: 8 }, (_, index) => ({
+      description: `Description ${index + 1}`,
+      header: `Header ${index + 1}`,
+      label: `Option ${index + 1}`,
+    })),
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions).toHaveLength(1)
+  expect(parsed.data.questions[0]).toMatchObject({
+    question: 'Which option should I choose?',
+    header: 'option',
+  })
+  expect(parsed.data.questions[0]!.options).toHaveLength(8)
+  expect(parsed.data.questions[0]!.options[0]).toEqual({
+    label: 'Option 1',
+    description: 'Description 1',
+  })
+})
+
+test('AskUserQuestion preserves an unrecognized payload shape for diagnosis', () => {
+  for (const input of [{}, { questions: [] }, { questions: 'what next?' }]) {
+    const normalized = normalizeAskUserQuestionInput(input)
+    expect(normalized).not.toBeNull()
+    expect(describeQuestionPayloadProblems(normalized)).toEqual([
+      '`questions` must be a non-empty array.',
+    ])
+  }
 })
 
 test('AskUserQuestion normalizes top-level choices alias into a single-question form', () => {

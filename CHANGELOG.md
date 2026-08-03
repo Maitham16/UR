@@ -1,5 +1,405 @@
 # Changelog
 
+## 1.78.11
+
+- Provider-reported context overflow now triggers one bounded automatic
+  compaction-and-retry in the shipped build instead of immediately showing
+  `Context limit reached`. Emergency summary input replaces image/document
+  payloads with markers so a large Computer screenshot cannot prevent the
+  recovery itself; the original transcript remains unchanged. Automatic
+  recovery still respects the user's disable setting and never recurses inside
+  compact/session-memory workers.
+- The normal screen no longer paints live answer drafts or completed
+  "I'll inspect..." tool preludes. It shows stable tool progress and the final
+  answer instead; the complete provider text remains untouched in transcript
+  history, exports, verbose diagnostics, and future model context. The
+  `◭ Mashoofing…` activity row is now independent from streamed content and
+  remains mounted throughout active work, so hiding narration never hides
+  liveness. Its primary line now includes the live task-board activity after
+  the ellipsis, width-bounded to stay on one row.
+- Ollama Cloud streams now tolerate five minutes of silence during large-model
+  prefill or tool planning instead of failing after two. The deadline still
+  measures inactivity rather than total runtime and remains configurable with
+  `UR_STREAM_IDLE_TIMEOUT_MS`; remote sessions and cloud non-streaming fallback
+  keep their two-minute bounds, and real dead streams still terminate.
+
+- A new work board appears immediately, even before a model emits `TaskCreate`.
+  Its internal seed now renders as a neutral `Planning tasks…` state and never
+  stores or flashes the user's prompt as a task title or description. The first
+  explicit model task atomically replaces that seed, so parallel creation does
+  not duplicate or lose work. Corrective replies—including `no` / `still`
+  feedback—and interruptions resume the existing seed or explicit unfinished
+  board. A successful simple turn completes its seed; an aborted turn leaves it
+  pending for honest recovery.
+- User interruptions no longer archive pending or in-progress tasks into an
+  apparently empty list. The next prompt advances the generation while keeping
+  unfinished work visible and instructs the agent to reconcile, update relevant
+  work, skip superseded work, and continue statuses. Completed terminal lists
+  move to readable history only for genuinely new work; corrective follow-ups
+  reopen the relevant active board.
+- Crew concurrency tests now declare their branches read-only, matching the
+  runtime policy that unknown shared-checkout work serializes. The artifact
+  HTTP integration test also distinguishes a managed sandbox's blanket socket
+  denial from a real occupied-port failure without changing production server
+  behavior.
+
+- Release tags can no longer be created safely from an old commit while a
+  newer version exists only in the working tree. `bun run release:tag` checks
+  that the tree is clean, the package version and newest changelog entry are in
+  `HEAD`, that exact commit is already the remote branch tip, and the version's
+  tag is unused. `--push` then creates and pushes one annotated immutable tag;
+  GitHub Actions owns GitHub Release and npm publication from the verified
+  tarball. Failed stale tags are left as history and the next patch version is
+  used instead of moving a tag.
+
+## 1.78.8
+
+- Long model self-deliberation emitted through the ordinary answer channel is
+  compacted into a slim `Reasoning condensed` rail. The useful summary and
+  result remain visible, `ctrl+o` expands the complete trace, and the original
+  text still stays in session history and model context; this is a cached,
+  linear-time display change, not reasoning truncation.
+- The `◭ Mashoofing…` activity row remains present for the entire live turn.
+  Its parenthesized detail moves through the real phase (`thinking`,
+  `requesting`, `responding`, `preparing tool`, or `working`) and continues to
+  show elapsed thinking time and token activity instead of disappearing
+  between stream states.
+- Large prompts are decomposed into a bounded dependency graph before work is
+  delegated. Natural lowercase follow-ups and semicolon clauses split
+  correctly, natural phrases such as `agents/subagents` are no longer mistaken
+  for paths, and invalid model-produced graphs (missing targets, self-edges,
+  cycles, duplicates, or excessive fan-out) fall back to the deterministic
+  planner instead of reaching the task store.
+- Parallelism now follows the work, not merely the requested worker count.
+  Independent read-only branches may overlap; unknown or shared-checkout
+  mutations serialize across tasks, crews, and concurrent top-level plans.
+  Mutating subagents may overlap only in explicit isolation, whose worktrees
+  start from the exact clean current revision rather than a possibly stale
+  remote branch.
+- Task outcome learning is atomic across processes and records only work that
+  actually executed. Batched prompt-plan and crew outcomes cannot overwrite one
+  another, malformed stores normalize safely, and model routing waits for five
+  observations and compares confidence-adjusted success rather than trusting a
+  tiny perfect sample.
+
+## 1.78.7
+
+- A short approval turn such as `ok`, `proceed`, or `go ahead` keeps the active
+  task generation. It previously looked like a brand-new request, so the plan
+  was archived just before the agent tried to complete its first task; the next
+  dependent creation then failed too because its blocker had disappeared.
+  Whole-message matching keeps real follow-up requests on the fresh-list path.
+- `AskUserQuestion` recovers a flattened option list even when the model omits
+  the outer question text. Eight `{description, header, label}` choices now
+  render under a neutral prompt with every label and description preserved,
+  instead of producing sixteen missing-field errors and showing no dialog.
+- Batched `TaskCreate` calls keep their emitted order, so the consecutive IDs
+  used in dependency fields cannot be reassigned by lock-acquisition order.
+  Forward dependencies now work with the future task on either side of the
+  edge, adopt both reciprocal relationships when that task is created, and
+  participate in cycle detection while still virtual. A redundant self-edge
+  is ignored without deleting the otherwise-valid task. Together these prevent
+  the cascade of `task_not_found` / `self_dependency` errors that left only one
+  task from a multi-task plan.
+- Delegation is the default for independent work rather than something held in
+  reserve. The guidance described subagents as valuable but warned against
+  using them "excessively when not needed", which reads as a reason not to —
+  so a request with several independent parts was worked through one step at a
+  time unless delegation was asked for by name. The test is now whether the
+  parts depend on each other: exploring several areas, researching more than
+  one question, or chasing independent leads is one call per part, issued
+  together so they run at once. Ordered work stays sequential and edits to one
+  file stay with the main agent, since parallel writers conflict.
+- The four tests that pack a tarball or build a TypeScript program carry an
+  explicit budget. They are slow by nature and were running against the default
+  timeout, which passes on an idle machine and fails on a busy one — a budget
+  travels with the test regardless of how the suite is invoked.
+
+## 1.78.5
+
+- A forward task dependency is recognised by its id rather than by the target
+  merely being absent. Ids are allocated as consecutive integers, so a target
+  above the highest one issued is a task still to come and its edge is stored;
+  a non-numeric id, or a number already passed, names a task that will never
+  arrive and stays an error. Without that distinction a typo became a blocker
+  nothing could ever satisfy.
+- `bun test` runs with the same timeout the release gate uses. The script set
+  none, so the default applied and four tests that pack a tarball or build a
+  TypeScript program failed on a busy machine while passing on an idle one —
+  the hardest kind of failure to attribute, and unrelated to anything they
+  assert.
+
+## 1.78.4
+
+- A task may declare a dependency on a task that does not exist yet. A plan
+  written in dependency order arrives as forward references — step 2 says it is
+  blocked by step 8 while the list is still being built — and each of those was
+  refused as `task_not_found`, so most of a plan's structure was discarded at
+  the moment it was created. The read side already handled an unresolved
+  blocker; the write side now stores the edge, and creating the target adopts
+  the matching reverse edge so the pair is linked both ways. Self-dependencies,
+  cycles between existing tasks, and an edge from a task that does not exist
+  are all still refused.
+- Ollama's wait for response headers has its own ceiling, separate from the
+  inactivity budget that governs the stream once it starts. Prefill for a large
+  prompt and a cold model load both happen before the first byte and neither is
+  idleness, so bounding them with the same figure aborted a long request before
+  the model had said anything and reported it as a timeout. An explicit
+  timeout, or `API_TIMEOUT_MS`, still wins.
+
+## 1.78.3
+
+- A `config set` no longer runs in a parallel batch. Writing a setting is a
+  read-modify-write against the settings file: the value is merged into what is
+  on disk and the result written back. Two writes in the same batch both read
+  the pre-write state, so the second silently discarded the first. Reads have
+  no such hazard and still batch.
+- A notebook edit is reported to the editor like every other file change, so it
+  appears in the inline diff view. It was the one kind of edit that never did.
+
+## 1.78.2
+
+- `describeQuestionPayloadProblems` returns only problems again. A description
+  of the payload's shape had been appended to that list, which changed its
+  length and broke callers that count entries. The shape is now returned by a
+  separate `describeQuestionPayloadShape`, and the tool error message joins the
+  two, so the diagnosis is unchanged while the list stays a list of problems.
+- The effective-context-window arithmetic is exposed as a pure function,
+  `computeEffectiveContextWindowSize`, so the reserve cap can be checked
+  without a provider or settings in scope.
+
+## 1.78.1
+
+- Editing a file through Bash or NotebookEdit now clears that file's delivered
+  LSP diagnostics, so errors introduced by the edit reach the model. Diagnostics
+  are deduplicated across turns: one identical to a diagnostic already
+  delivered for the file is suppressed. Edit and Write cleared the delivered
+  set after writing; a `sed` edit through Bash and a notebook cell edit change
+  the file the same way but did not, so a problem reintroduced by either was
+  silently withheld.
+
+## 1.78.0
+
+- The summary reserve is capped as a share of the context window, not just at a
+  flat 20,000 tokens. A model with a small window was left with a negative
+  effective window — every token count above it, so autocompact fired on every
+  turn and never settled. A small window now keeps at least four fifths of
+  itself for the conversation, and the effective size can no longer reach zero
+  for any reported value. Large windows still reserve the flat amount.
+
+## 1.77.9
+
+- Leaked deliberation is collapsed out of the visible transcript. Models
+  without a separate thinking channel emit their reasoning as ordinary
+  assistant text — paragraph after paragraph of "Wait", "Maybe", "Another
+  possibility", each revising the last, before any conclusion. Two rounds of
+  prompt guidance did not hold, so this is handled deterministically instead: a
+  leading run of deliberation is replaced by a one-line note saying how many
+  paragraphs were hidden.
+- Display only. Nothing is deleted and nothing changes on the wire — the
+  transcript, the session file, and the next request all carry the text
+  unchanged, and `--verbose` shows everything. Synthesizing a `thinking` block
+  would have been the natural home for it, but an unsigned one causes an API
+  400 on the following turn.
+- The collapse is deliberately conservative: it needs several deliberation
+  paragraphs, tolerates one bridging sentence between them but not two, always
+  stops before a code fence, list, heading, or quote, never hides the
+  conclusion that follows, and leaves a turn that is *entirely* deliberation
+  untouched rather than rendering it blank.
+
+## 1.77.8
+
+- Auto-compact works again on every provider except the first-party one, where
+  it was the only place it had ever worked. `getModelCapability` is gated to a
+  first-party runtime, so every third-party model — OpenRouter, OpenAI-
+  compatible, LM Studio, vLLM, llama.cpp, and the API providers — fell through
+  to a flat 200,000-token window regardless of its real size. A 128K or 32K
+  model therefore never reached the compaction threshold before the provider
+  rejected the request, which is the "Context limit reached · /compact or
+  /clear to continue" that replaced the automatic compaction; a 1M model
+  compacted long before it needed to.
+- The window each provider reported during model discovery is now used.
+  Discovery already captured it and the model picker already displayed it —
+  only the compaction math never read it. A model the provider reported no
+  window for, or reported a nonsense one for, still falls back to the default
+  rather than trusting the value. The lookup reads the discovery cache only, so
+  it adds no request to the per-turn path.
+
+## 1.77.7
+
+- A missing identifier now names what exists, instead of inviting another
+  guess at the same one. `TaskUpdate` and `TaskGet` answered "Task not found"
+  without saying whether the id was wrong, the list had been archived into a
+  new generation, or the task was deleted — so the usual response was to retry
+  it unchanged. Both now list the existing task ids, or say the list is empty.
+- The same treatment for the two other tools that withheld it: `Skill` lists
+  the invocable skills when a name does not match, and `NotebookEdit` lists the
+  real cell ids, or the valid index range when the notebook's cells have no
+  ids. The MCP resource tools already worked this way; these are now
+  consistent with them.
+
+## 1.77.6
+
+- A request body rejected for its size now takes the prompt-too-long recovery
+  path instead of killing the turn. Ollama fronts the model with a Go HTTP
+  server that rejects an oversized body before the model sees it, reporting
+  `400: http: request body too large` — a message naming neither a prompt nor a
+  token count, so it missed the matcher and none of the compaction-and-retry
+  recovery ran. Proxy and gateway phrasings of the same condition are covered
+  too. An unrelated 400 is not swept in.
+- Deliberation stays out of user-facing text. The prompt asked for brevity but
+  never said that weighing causes, checking arithmetic, and talking through
+  what a test failure means are thinking rather than output — so they were
+  emitted verbatim, at length, mid-task.
+
+## 1.77.5
+
+- A tool call the model writes as text is now recovered for every provider.
+  The repair existed but was wired only into the Ollama provider and the remote
+  transport, so the same model — Kimi, GLM, GPT — reached through OpenRouter or
+  any OpenAI-compatible endpoint had its call silently dropped and the turn did
+  nothing visible. Recovery now runs in `normalizeContentFromAPI`, the single
+  point every provider and both the streaming and non-streaming paths converge
+  on, and it matches against the session's real tool list rather than the
+  hardcoded seven-name set the transport-level repair used.
+- The recovery is applied only when the turn produced no genuine `tool_use`
+  block, so a model that used the structured interface correctly is never
+  second-guessed, prose that merely resembles JSON cannot displace a real call,
+  and a name that is not a live tool is left as text.
+
+## 1.77.4
+
+- AskUserQuestion accepts choices labelled with `header`. `header` is this
+  tool's word for a short category label, so a model naming a choice reaches
+  for it — and eight options then arrived as eight question objects, each
+  reporting a missing question and missing options and never a missing header,
+  which is what identified the shape. `header` is now read as an option label
+  and no longer disqualifies an entry from being recognised as a choice.
+- A payload that still cannot be repaired reports the keys it actually
+  received. Listing only the missing fields said nothing about what arrived,
+  which is the one fact that separates an unrepairable payload from a shape the
+  normalizer has not been taught yet.
+
+## 1.77.3
+
+- Read says when it did not return the whole file. It stops at 2000 lines by
+  default, but the result was only numbered lines with nothing marking the
+  cutoff, so a partial read was indistinguishable from a complete one and
+  concluding "this code is not in the file" from one was a reasonable inference
+  from what the model was shown. A truncated read now reports the range it
+  returned, how many lines were left, and the offset to resume from — the same
+  signal Grep and Glob already gave. A complete read, the final page of a
+  paginated read, and an empty read all stay silent, so nothing is added to the
+  common case.
+
+## 1.77.2
+
+- Git commit and pull-request guidance is no longer sent outside a git
+  repository. `shouldIncludeGitInstructions` consulted only the environment
+  variable and the setting, so roughly 9KB rode in the system prompt on every
+  turn even in workspaces with no `.git` — instructions the model could not act
+  on. The repository check uses the memoized synchronous `findGitRoot` already
+  relied on for permission checks and prompt building, so it costs nothing. The
+  environment variable and setting still win when either is set explicitly.
+
+## 1.77.1
+
+- Finishing a task no longer produces a long write-up. Both output-efficiency
+  sections said "be concise" but neither addressed what actually ran long, so
+  the rules are now specific: never paste code or file contents already written
+  to disk (cite `file_path:line`), report an audit or review as its findings
+  one line each, no closing recap of the conversation, and long explanations
+  only when the user asks for one. Subagent reports carry the same rule, since
+  their output is relayed verbatim.
+
+## 1.77.0
+
+- Edit no longer demands a prior Read. A matching `old_string` is checked
+  against the bytes on disk, which is exactly what "has this been read?" and
+  "has it changed since?" were asking — and stronger, since a stale snapshot
+  cannot survive a match against fresh content. The verified content is
+  recorded so the write path and later staleness checks work from it. This
+  removes a full model round trip from the most common mutating call. A
+  genuinely absent `old_string` is still refused, and now says the file has not
+  been read so the model knows to read it.
+- Write no longer refuses an unread existing file. It reads and records the
+  file itself — one local read instead of a round trip spent asking for content
+  nobody needed to see — and the "modified since read" check is unchanged, now
+  working from that recorded baseline.
+- Bash no longer issues a `mkdir` syscall on the critical path of every
+  command. The task output directory is process-wide and cannot change after
+  the first one, so it is created once; a failure is not cached, so the next
+  command retries.
+
+## 1.76.11
+
+- AskUserQuestion recovers the payload shape where a model flattens one
+  question's choices straight into `questions`, so six options arrived as six
+  question objects carrying a label and a description and no question text.
+  Every entry reported "question must be a non-empty string" and "options must
+  be an array". The array is folded back into the options of a single question
+  using the question text the payload already carries. A genuine
+  multi-question payload is never retargeted, and with no question text
+  anywhere the payload is still reported rather than given an invented
+  question.
+
+## 1.76.10
+
+- `npm publish` builds before it validates. `prepack` ran `release:check`
+  against whatever `dist/` happened to be on disk, so publishing straight after
+  a version bump always failed on a bundle that predated it — which is exactly
+  how 1.76.9 failed to publish. It now runs `build && release:check`, so the
+  check validates the artifact that actually ships.
+- A backgrounded subagent that exhausts its turn budget says so in its
+  completion notification instead of presenting a truncated result as a
+  finished one. The notification status has no value for "incomplete", so the
+  notice is carried in the message, matching how the handoff warning is
+  surfaced on the same path.
+
+## 1.76.9
+
+- Crew fan-out no longer abandons sibling workers when one throws. Both paths
+  passed raw worker promises to `Promise.race`/`Promise.all`, so the first
+  throw propagated while every other worker kept running unawaited, leaking
+  worktrees and child processes and turning a second failure into an unhandled
+  rejection. Failures are collected and rethrown once all workers finish.
+- `bunfig.toml` and the JetBrains `build.gradle.kts` are bumped with every
+  other surface; both were left behind by an earlier hand-edited bump.
+- `packageSmoke` no longer declares a 30s per-test budget that silently
+  overrode the release gate's own timeout, and the OpenAI Responses usage test
+  no longer asserts the double-counted `input_tokens` that the usage-accounting
+  invariants forbid.
+
+## 1.76.8
+
+- Streaming requests no longer time out while the provider is still working.
+  SSE comment keepalives (OpenRouter's `: OPENROUTER PROCESSING`) and provider
+  `ping` events were dropped by the SSE readers, so the inactivity watchdog saw
+  a frozen stream while bytes were arriving and aborted it as `Request timed
+  out`. They now surface as pings that rearm the watchdog.
+- Streaming requests get their own header-wait ceiling
+  (`provider.streamTimeoutMs` / `UR_STREAM_REQUEST_TIMEOUT_MS`, default 15
+  minutes) instead of sharing the 120s non-streaming timeout, which cut off long
+  prompts during queueing and prefill. Idle thresholds raised to 300s.
+- The Ollama stream deadline is rearmed per chunk, so it bounds silence rather
+  than total runtime; a local model answering a long prompt is no longer killed
+  mid-answer.
+- Edit resolves `old_string` against blocks the model re-indented, `Read`
+  line-number gutters copied into the string, and non-breaking/zero-width
+  character differences. `new_string` is re-indented to the file's depth. A
+  failed match now names the line where the block diverges instead of echoing
+  the string back.
+- AskUserQuestion no longer replaces an unrepairable payload with `null`, which
+  made every failure report a missing `questions` array regardless of the real
+  defect.
+- Concurrent tool and subagent fan-out closes every generator it started when a
+  consumer aborts or a sibling throws; previously their `finally` blocks never
+  ran, leaving subprocesses and streams alive after the batch reported done.
+- Both tool executors read one concurrency resolver, so
+  `UR_CODE_MAX_TOOL_USE_CONCURRENCY` and `UR_MAX_CONCURRENT_TOOLS` apply on
+  either path instead of whichever executor happened to be active.
+- A subagent that exhausts its turn budget reports `partial` with the reason
+  rather than `completed` with a truncated result.
 ## 1.76.7
 
 - Reverted to the 1.76.4 behavior and removed the intermediate version surface transitions.

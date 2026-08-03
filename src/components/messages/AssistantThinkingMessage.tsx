@@ -20,6 +20,12 @@ type Props = {
   hideInTranscript?: boolean
 }
 
+type StreamingProps = {
+  thinking: string
+  isTranscriptMode: boolean
+  verbose: boolean
+}
+
 /**
  * Renders a thinking block. Deliberately styled as the model's internal
  * monologue — dim, italic, labeled, and (when expanded) fenced behind a
@@ -79,4 +85,35 @@ export function AssistantThinkingMessage({
       </Box>
     </Box>
   )
+}
+
+/**
+ * Live thinking follows the same disclosure rule as finalized thinking. The
+ * normal screen already has the persistent Mashoofing activity row, so raw
+ * provider reasoning is only rendered when the user explicitly opens the
+ * transcript or enables verbose diagnostics.
+ */
+export function StreamingAssistantThinkingMessage({
+  thinking,
+  isTranscriptMode,
+  verbose,
+}: StreamingProps): React.ReactNode {
+  if (!shouldShowStreamingThinking(isTranscriptMode, verbose)) return null
+
+  return (
+    <AssistantThinkingMessage
+      param={{ type: 'thinking', thinking }}
+      addMargin={false}
+      isTranscriptMode={isTranscriptMode}
+      verbose={verbose}
+      hideInTranscript={false}
+    />
+  )
+}
+
+export function shouldShowStreamingThinking(
+  isTranscriptMode: boolean,
+  verbose: boolean,
+): boolean {
+  return isTranscriptMode || verbose
 }

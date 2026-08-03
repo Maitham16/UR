@@ -8,15 +8,27 @@ import { type MessageUpdateLazy, runToolUse } from './toolExecution.js'
 const DEFAULT_MAX_TOOL_USE_CONCURRENCY = 10
 const HARD_MAX_TOOL_USE_CONCURRENCY = 32
 
+/**
+ * How many concurrency-safe tools may run at once.
+ *
+ * Both executors — the batched orchestrator here and StreamingToolExecutor —
+ * ask this one function, because they answer the same user-visible question.
+ * They previously carried separate constants and separate environment
+ * variables, so tuning parallelism worked or silently did nothing depending on
+ * which executor happened to be active. UR_MAX_CONCURRENT_TOOLS is honoured as
+ * an alias so existing setups keep working.
+ */
 export function getMaxToolUseConcurrency(): number {
-  const configured = Number.parseInt(
-    process.env.UR_CODE_MAX_TOOL_USE_CONCURRENCY ?? '',
-    10,
-  )
-  if (!Number.isFinite(configured) || configured < 1) {
-    return DEFAULT_MAX_TOOL_USE_CONCURRENCY
+  for (const raw of [
+    process.env.UR_CODE_MAX_TOOL_USE_CONCURRENCY,
+    process.env.UR_MAX_CONCURRENT_TOOLS,
+  ]) {
+    const configured = Number.parseInt(raw ?? '', 10)
+    if (Number.isFinite(configured) && configured >= 1) {
+      return Math.min(configured, HARD_MAX_TOOL_USE_CONCURRENCY)
+    }
   }
-  return Math.min(configured, HARD_MAX_TOOL_USE_CONCURRENCY)
+  return DEFAULT_MAX_TOOL_USE_CONCURRENCY
 }
 
 export type MessageUpdate = {

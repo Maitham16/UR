@@ -116,6 +116,19 @@ const HIGH_WATER_MARK_FILE = '.highwatermark'
 const ACTIVE_GENERATION_FILE = '.active-generation'
 const HISTORY_DIRECTORY = '.history'
 const HISTORY_MANIFEST_FILE = '.manifest.json'
+const AUTOMATIC_PROMPT_TASK_KEY = 'urAutomaticPromptTask'
+const AUTOMATIC_PROMPT_GENERATION_KEY = 'urPromptGeneration'
+export const AUTOMATIC_PROMPT_TASK_SUBJECT = 'Preparing task plan'
+export const AUTOMATIC_PROMPT_TASK_DESCRIPTION =
+  'Temporary placeholder while the agent creates concrete tasks.'
+export const AUTOMATIC_PROMPT_TASK_ACTIVE_FORM = 'Planning requested work'
+
+/** True only for the internal placeholder shown before semantic tasks exist. */
+export function isAutomaticPromptTask(
+  task: Pick<Task, 'metadata'>,
+): boolean {
+  return task.metadata?.[AUTOMATIC_PROMPT_TASK_KEY] === true
+}
 
 export type TaskListHistoryEntry = {
   archiveId: string
@@ -310,6 +323,36 @@ async function withTaskListLock<T>(
   }
 }
 
+function hasUnfinishedWork(tasks: readonly Task[]): boolean {
+  return tasks.some(
+    task => task.status === 'pending' || task.status === 'in_progress',
+  )
+}
+
+/**
+ * Move the list to a new prompt generation without losing interrupted work.
+ * A list is archived only after it has no pending/in-progress tasks. This
+ * makes a user message received mid-run an update to the visible board instead
+ * of silently moving the work to history.
+ */
+async function establishTaskListGenerationUnsafe(
+  taskListId: string,
+  generationId: string,
+  options: { appendToCurrent?: boolean } = {},
+): Promise<{ changed: boolean; archived?: TaskListHistoryEntry }> {
+  const activeGeneration = await readActiveGeneration(taskListId)
+  if (activeGeneration === generationId) return { changed: false }
+
+  const activeTasks = await listTasks(taskListId)
+  const keepCurrent =
+    options.appendToCurrent === true || hasUnfinishedWork(activeTasks)
+  const archived = keepCurrent
+    ? undefined
+    : await archiveActiveTaskListUnsafe(taskListId, activeGeneration)
+  await writeActiveGeneration(taskListId, generationId)
+  return { changed: true, archived }
+}
+
 /**
  * Establish a fresh active generation for one accepted user prompt. An
  * explicit append request keeps the current snapshots but still records the
@@ -322,16 +365,11 @@ export async function prepareTaskListForRun(
   options: { appendToCurrent?: boolean } = {},
 ): Promise<TaskListHistoryEntry | undefined> {
   const result = await withTaskListLock(taskListId, async () => {
-    const activeGeneration = await readActiveGeneration(taskListId)
-    if (activeGeneration === generationId) {
-      return { changed: false, archived: undefined }
-    }
-
-    const archived = options.appendToCurrent
-      ? undefined
-      : await archiveActiveTaskListUnsafe(taskListId, activeGeneration)
-    await writeActiveGeneration(taskListId, generationId)
-    return { changed: true, archived }
+    return establishTaskListGenerationUnsafe(
+      taskListId,
+      generationId,
+      options,
+    )
   })
   if (result.changed) notifyTasksUpdated()
   return result.archived
@@ -580,7 +618,11 @@ export async function createTask(
       throw new Error('Task ID space is exhausted')
     }
     const id = String(highestId + 1)
-    const task: Task = { id, ...taskData }
+    const task = adoptForwardTaskDependencies(
+      id,
+      taskData,
+      await listTasks(taskListId),
+    )
     await writeTaskSnapshotUnsafe(taskListId, task)
     notifyTasksUpdated()
     return id
@@ -600,27 +642,165 @@ export async function createTaskForRun(
   taskListId: string,
   generationId: string,
   taskData: Omit<Task, 'id'>,
-  options: { appendToCurrent?: boolean } = {},
+  options: {
+    appendToCurrent?: boolean
+    replaceAutomaticPromptTask?: boolean
+  } = {},
 ): Promise<string> {
   const id = await withTaskListLock(taskListId, async () => {
-    const activeGeneration = await readActiveGeneration(taskListId)
-    if (activeGeneration !== generationId) {
-      if (!options.appendToCurrent) {
-        await archiveActiveTaskListUnsafe(taskListId, activeGeneration)
+    await establishTaskListGenerationUnsafe(taskListId, generationId, options)
+
+    const existingTasks = await listTasks(taskListId)
+    if (options.replaceAutomaticPromptTask) {
+      const automaticTask = existingTasks.find(
+        task =>
+          task.metadata?.[AUTOMATIC_PROMPT_TASK_KEY] === true &&
+          task.metadata?.[AUTOMATIC_PROMPT_GENERATION_KEY] === generationId,
+      )
+      if (automaticTask) {
+        const replacement = adoptForwardTaskDependencies(
+          automaticTask.id,
+          taskData,
+          existingTasks.filter(task => task.id !== automaticTask.id),
+        )
+        await writeTaskSnapshotUnsafe(taskListId, replacement)
+        return automaticTask.id
       }
-      await writeActiveGeneration(taskListId, generationId)
     }
 
-    const highestId = await findHighestTaskId(taskListId)
-    if (highestId >= Number.MAX_SAFE_INTEGER) {
-      throw new Error('Task ID space is exhausted')
-    }
-    const taskId = String(highestId + 1)
-    await writeTaskSnapshotUnsafe(taskListId, { id: taskId, ...taskData })
-    return taskId
+    return allocateTaskSnapshotUnsafe(taskListId, taskData, existingTasks)
   })
   notifyTasksUpdated()
   return id
+}
+
+/**
+ * Seed a new board, or resume its existing automatic seed after interruption.
+ * An unfinished explicit board is left alone: follow-up prose must not become
+ * a duplicate task title merely because the user replied.
+ */
+export async function createAutomaticPromptTaskForRun(
+  taskListId: string,
+  generationId: string,
+  _prompt: string,
+  options: { reuseExistingBoard?: boolean } = {},
+): Promise<string | undefined> {
+  const taskId = await withTaskListLock(taskListId, async () => {
+    await establishTaskListGenerationUnsafe(taskListId, generationId, {
+      appendToCurrent: options.reuseExistingBoard,
+    })
+    const existingTasks = await listTasks(taskListId)
+    const resumableAutomaticTask = existingTasks.findLast(
+      task =>
+        task.metadata?.[AUTOMATIC_PROMPT_TASK_KEY] === true &&
+        (task.status === 'pending' ||
+          task.status === 'in_progress' ||
+          options.reuseExistingBoard === true),
+    )
+    if (resumableAutomaticTask) {
+      await writeTaskSnapshotUnsafe(taskListId, {
+        ...resumableAutomaticTask,
+        // Sanitize seeds written by older builds that copied the user prompt.
+        subject: AUTOMATIC_PROMPT_TASK_SUBJECT,
+        description: AUTOMATIC_PROMPT_TASK_DESCRIPTION,
+        activeForm: AUTOMATIC_PROMPT_TASK_ACTIVE_FORM,
+        status: 'in_progress',
+        metadata: {
+          ...resumableAutomaticTask.metadata,
+          [AUTOMATIC_PROMPT_TASK_KEY]: true,
+          [AUTOMATIC_PROMPT_GENERATION_KEY]: generationId,
+        },
+      })
+      return resumableAutomaticTask.id
+    }
+
+    if (
+      hasUnfinishedWork(existingTasks) ||
+      (options.reuseExistingBoard === true && existingTasks.length > 0)
+    ) {
+      return undefined
+    }
+
+    return allocateTaskSnapshotUnsafe(taskListId, {
+      // Never copy user prose into a task title. The model replaces this
+      // neutral placeholder atomically with its first concrete TaskCreate.
+      subject: AUTOMATIC_PROMPT_TASK_SUBJECT,
+      description: AUTOMATIC_PROMPT_TASK_DESCRIPTION,
+      activeForm: AUTOMATIC_PROMPT_TASK_ACTIVE_FORM,
+      status: 'in_progress',
+      owner: undefined,
+      blocks: [],
+      blockedBy: [],
+      metadata: {
+        [AUTOMATIC_PROMPT_TASK_KEY]: true,
+        [AUTOMATIC_PROMPT_GENERATION_KEY]: generationId,
+      },
+    }, existingTasks)
+  })
+  notifyTasksUpdated()
+  return taskId
+}
+
+/** Update only a seed that the model did not replace with explicit subtasks. */
+export async function finalizeAutomaticPromptTask(
+  taskListId: string,
+  taskId: string,
+  generationId: string,
+  status: 'pending' | 'completed' | 'failed',
+): Promise<boolean> {
+  const task = await getTask(taskListId, taskId)
+  if (
+    task?.metadata?.[AUTOMATIC_PROMPT_TASK_KEY] !== true ||
+    task.metadata?.[AUTOMATIC_PROMPT_GENERATION_KEY] !== generationId
+  ) {
+    return false
+  }
+  return (await updateTask(taskListId, taskId, { status })) !== null
+}
+
+/**
+ * Complete the missing half of edges that referenced an ID before allocation.
+ *
+ * An earlier task can either block this task (`earlier.blocks` contains id) or
+ * be blocked by it (`earlier.blockedBy` contains id). The existing snapshot is
+ * already the durable half of that edge; creation supplies the reciprocal half
+ * so all graph readers see the same relationship once both endpoints exist.
+ */
+function adoptForwardTaskDependencies(
+  id: string,
+  taskData: Omit<Task, 'id'>,
+  existingTasks: readonly Task[],
+): Task {
+  const adoptedBlocks = existingTasks
+    .filter(existing => existing.blockedBy.includes(id))
+    .map(existing => existing.id)
+  const adoptedBlockedBy = existingTasks
+    .filter(existing => existing.blocks.includes(id))
+    .map(existing => existing.id)
+
+  return {
+    id,
+    ...taskData,
+    blocks: [...new Set([...taskData.blocks, ...adoptedBlocks])],
+    blockedBy: [
+      ...new Set([...taskData.blockedBy, ...adoptedBlockedBy]),
+    ],
+  }
+}
+
+async function allocateTaskSnapshotUnsafe(
+  taskListId: string,
+  taskData: Omit<Task, 'id'>,
+  existingTasks: readonly Task[],
+): Promise<string> {
+  const highestId = await findHighestTaskId(taskListId)
+  if (highestId >= Number.MAX_SAFE_INTEGER) {
+    throw new Error('Task ID space is exhausted')
+  }
+  const taskId = String(highestId + 1)
+  const task = adoptForwardTaskDependencies(taskId, taskData, existingTasks)
+  await writeTaskSnapshotUnsafe(taskListId, task)
+  return taskId
 }
 
 export async function getTask(
@@ -976,7 +1156,7 @@ function cloneTask(task: Task): Task {
   }
 }
 
-function validateTaskDependencyInSnapshot(
+export function validateTaskDependencyInSnapshot(
   tasks: Task[],
   fromTaskId: string,
   toTaskId: string,
@@ -988,10 +1168,49 @@ function validateTaskDependencyInSnapshot(
   const byId = new Map(tasks.map(task => [task.id, task]))
   const fromTask = byId.get(fromTaskId)
   const toTask = byId.get(toTaskId)
-  if (!fromTask || !toTask) {
+  // A dependency on a task that does not exist *yet* is a forward reference,
+  // which is how a plan arrives while the list is still being built. Either
+  // endpoint can be the future task: `blocks` makes it the target, while
+  // `blockedBy` makes it the source. Rejecting the latter was the reason a
+  // perfectly ordinary `blockedBy: ["8"]` still failed after forward targets
+  // had supposedly been enabled.
+  //
+  // IDs are allocated as consecutive integers, so a missing endpoint above
+  // the highest one issued can still arrive. A missing ID at or below that
+  // point is deleted/stale, and a non-numeric ID is a typo. At least one side
+  // must exist so there is a task snapshot on which to persist the pending
+  // half-edge.
+  const highestIssued = tasks.reduce((highest, task) => {
+    const numeric = parseNumericTaskId(task.id)
+    return numeric === null ? highest : Math.max(highest, numeric)
+  }, 0)
+  const isFutureId = (id: string): boolean => {
+    const numeric = parseNumericTaskId(id)
+    return numeric !== null && numeric > highestIssued
+  }
+  if (!fromTask && !toTask) {
     return { valid: false, reason: 'task_not_found' }
   }
-  if (fromTask.blocks.includes(toTaskId)) {
+  if ((!fromTask && !isFutureId(fromTaskId)) ||
+      (!toTask && !isFutureId(toTaskId))) {
+    return { valid: false, reason: 'task_not_found' }
+  }
+
+  // Build the conceptual graph, including virtual nodes named by pending
+  // half-edges. Looking only at existing `blocks` misses an edge stored as
+  // `blockedBy` on its existing target and can admit a cycle that becomes real
+  // as soon as the future task is created.
+  const adjacency = new Map<string, Set<string>>()
+  const addEdge = (from: string, to: string): void => {
+    const targets = adjacency.get(from) ?? new Set<string>()
+    targets.add(to)
+    adjacency.set(from, targets)
+  }
+  for (const task of tasks) {
+    for (const target of task.blocks) addEdge(task.id, target)
+    for (const blocker of task.blockedBy) addEdge(blocker, task.id)
+  }
+  if (adjacency.get(fromTaskId)?.has(toTaskId)) {
     return { valid: true }
   }
 
@@ -1005,8 +1224,7 @@ function validateTaskDependencyInSnapshot(
     }
     if (visited.has(currentId)) continue
     visited.add(currentId)
-    const current = byId.get(currentId)
-    if (current) pending.push(...current.blocks)
+    pending.push(...(adjacency.get(currentId) ?? []))
   }
   return { valid: true }
 }
@@ -1038,12 +1256,14 @@ function applyTaskDependenciesToSnapshot(
       }
     }
 
-    const fromTask = byId.get(dependency.fromTaskId)!
-    const toTask = byId.get(dependency.toTaskId)!
-    if (!fromTask.blocks.includes(dependency.toTaskId)) {
+    const fromTask = byId.get(dependency.fromTaskId)
+    const toTask = byId.get(dependency.toTaskId)
+    // A forward edge has only one persisted endpoint. Creation of the missing
+    // task adopts the reciprocal side through adoptForwardTaskDependencies.
+    if (fromTask && !fromTask.blocks.includes(dependency.toTaskId)) {
       fromTask.blocks.push(dependency.toTaskId)
     }
-    if (!toTask.blockedBy.includes(dependency.fromTaskId)) {
+    if (toTask && !toTask.blockedBy.includes(dependency.fromTaskId)) {
       toTask.blockedBy.push(dependency.fromTaskId)
     }
   }
@@ -1101,28 +1321,6 @@ export async function updateTaskWithDependencies(
     const initialById = new Map(initialTasks.map(task => [task.id, task]))
     if (!initialById.has(taskId)) {
       return { success: false, reason: 'task_not_found' }
-    }
-
-    const referencedTaskIds = new Set([
-      taskId,
-      ...dependencies.flatMap(dependency => [
-        dependency.fromTaskId,
-        dependency.toTaskId,
-      ]),
-    ])
-    for (const referencedTaskId of referencedTaskIds) {
-      if (!initialById.has(referencedTaskId)) {
-        const dependency = dependencies.find(
-          edge =>
-            edge.fromTaskId === referencedTaskId ||
-            edge.toTaskId === referencedTaskId,
-        )
-        return {
-          success: false,
-          reason: 'task_not_found',
-          dependency,
-        }
-      }
     }
 
     // Lock the full snapshot. A cycle can traverse tasks not named directly

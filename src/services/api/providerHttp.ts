@@ -6,6 +6,18 @@ import {
 } from './streamIdleTimeout.js'
 
 export const DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS = 120_000
+
+/**
+ * Streaming requests get their own, much larger ceiling.
+ *
+ * The transport timeout only covers the wait for response headers — once the
+ * body starts, liveness is enforced by the inactivity watchdog instead. A long
+ * or complex prompt can legitimately spend minutes in the provider's queue and
+ * prefill before the first byte, and 120s was cutting those requests off while
+ * the provider was still working. This bounds that wait without shortening it
+ * to something a real request can hit.
+ */
+export const DEFAULT_PROVIDER_STREAM_TIMEOUT_MS = 900_000
 const DEFAULT_PROVIDER_MAX_RETRIES = 3
 const DEFAULT_RETRY_BASE_DELAY_MS = 250
 
@@ -86,6 +98,23 @@ export function getProviderRequestTimeoutMs(override?: unknown): number {
     parsePositiveInteger(process.env.UR_API_TIMEOUT_MS) ??
     parsePositiveInteger(getInitialSettings().provider?.timeoutMs) ??
     DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS
+  )
+}
+
+/**
+ * Header-wait ceiling for streaming requests. An explicit override always
+ * wins; otherwise this never resolves below the non-streaming ceiling, so
+ * raising API_TIMEOUT_MS still raises both.
+ */
+export function getProviderStreamTimeoutMs(override?: unknown): number {
+  const explicit =
+    parsePositiveInteger(override) ??
+    parsePositiveInteger(process.env.UR_STREAM_REQUEST_TIMEOUT_MS) ??
+    parsePositiveInteger(getInitialSettings().provider?.streamTimeoutMs)
+  if (explicit !== undefined) return explicit
+  return Math.max(
+    DEFAULT_PROVIDER_STREAM_TIMEOUT_MS,
+    getProviderRequestTimeoutMs(),
   )
 }
 
@@ -274,7 +303,9 @@ export async function fetchWithProviderReliability(
     failureMessage: (response: Response, body: string) => string
   },
 ): Promise<Response> {
-  const timeoutMs = getProviderRequestTimeoutMs(options.timeoutMs)
+  const timeoutMs = options.streaming
+    ? getProviderStreamTimeoutMs(options.timeoutMs)
+    : getProviderRequestTimeoutMs(options.timeoutMs)
   const fetchImpl = options.fetch ?? fetch
   return withProviderRetry(async () => {
     const timeout = createTimeoutSignal(options.signal, timeoutMs)
@@ -326,9 +357,17 @@ export async function axiosPostWithProviderReliability<T = unknown>(
   url: string,
   body: unknown,
   config: AxiosRequestConfig,
-  options: { maxRetries?: number; timeoutMs?: number; signal?: AbortSignal } = {},
+  options: {
+    maxRetries?: number
+    timeoutMs?: number
+    signal?: AbortSignal
+    /** Use the streaming header-wait ceiling instead of the request ceiling. */
+    streaming?: boolean
+  } = {},
 ): Promise<AxiosResponse<T>> {
-  const timeout = getProviderRequestTimeoutMs(options.timeoutMs)
+  const timeout = options.streaming
+    ? getProviderStreamTimeoutMs(options.timeoutMs)
+    : getProviderRequestTimeoutMs(options.timeoutMs)
   return withProviderRetry(
     () =>
       axios.post<T>(url, body, {

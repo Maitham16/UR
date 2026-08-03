@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle'
 import type { BetaUsage as Usage } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
+import { parseTextToolCalls } from '../cli/transports/kimiToolCalls.js'
 import type {
   ContentBlock,
   ContentBlockParam,
@@ -2654,6 +2655,66 @@ export function mergeUserContentBlocks(
 
 // Sometimes the API returns empty messages (eg. "\n\n"). We need to filter these out,
 // otherwise they will give an API error when we send them to the API next time we call query().
+/**
+ * Recover a tool call the model wrote as text instead of emitting through the
+ * structured interface.
+ *
+ * This repair existed but was wired only into the Ollama provider and the
+ * remote transport, so the same model reached through an OpenAI-compatible
+ * endpoint or OpenRouter had its call silently dropped and the turn did
+ * nothing visible. Every provider and both the streaming and non-streaming
+ * paths converge on normalizeContentFromAPI, so this is the one place that
+ * covers all of them — and the real tool list is in scope here, which is
+ * stricter than the hardcoded name set the transport-level repair used.
+ *
+ * Applied only when the turn produced no genuine tool_use block, so a model
+ * that used the interface correctly is never second-guessed, and prose that
+ * merely resembles JSON cannot displace a real call.
+ */
+function recoverTextEmittedToolCalls(
+  contentBlocks: BetaMessage['content'],
+  tools: Tools,
+): BetaMessage['content'] {
+  const blocks = contentBlocks as Array<Record<string, unknown>>
+  if (blocks.some(block => block?.type === 'tool_use')) {
+    return contentBlocks
+  }
+  const availableToolNames = new Set(tools.map(tool => tool.name))
+  if (availableToolNames.size === 0) {
+    return contentBlocks
+  }
+
+  const recovered: Array<Record<string, unknown>> = []
+  let changed = false
+  for (const block of blocks) {
+    if (block?.type !== 'text' || typeof block.text !== 'string') {
+      recovered.push(block)
+      continue
+    }
+    const { text, toolCalls } = parseTextToolCalls(block.text, {
+      availableToolNames,
+      parseBareJsonToolCalls: true,
+    })
+    if (toolCalls.length === 0) {
+      recovered.push(block)
+      continue
+    }
+    changed = true
+    if (text.trim()) {
+      recovered.push({ ...block, text })
+    }
+    for (const call of toolCalls) {
+      recovered.push({
+        type: 'tool_use',
+        id: call.id,
+        name: call.name,
+        input: call.input,
+      })
+    }
+  }
+  return changed ? (recovered as BetaMessage['content']) : contentBlocks
+}
+
 export function normalizeContentFromAPI(
   contentBlocks: BetaMessage['content'],
   tools: Tools,
@@ -2662,6 +2723,7 @@ export function normalizeContentFromAPI(
   if (!contentBlocks) {
     return []
   }
+  contentBlocks = recoverTextEmittedToolCalls(contentBlocks, tools)
   return contentBlocks.map(_contentBlock => {
     const contentBlock = _contentBlock as any
     switch (contentBlock.type) {

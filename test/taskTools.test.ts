@@ -11,6 +11,10 @@ test('task tools are available without ToolSearch preloading', () => {
   expect(TaskListTool.shouldDefer).toBe(false)
 })
 
+test('TaskCreate calls execute in emission order', () => {
+  expect(TaskCreateTool.isConcurrencySafe({} as never)).toBe(false)
+})
+
 test('TaskCreate accepts dependency fields used by TaskUpdate', () => {
   const parsed = TaskCreateTool.inputSchema.safeParse({
     subject: 'Patch task creation',

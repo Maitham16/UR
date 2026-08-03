@@ -12,7 +12,15 @@
  * no Ollama and no model call. Mirrors Letta/MemGPT skill-learning and Reflexion.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { safeParseJSON } from '../../utils/json.js'
@@ -25,6 +33,7 @@ import {
   type HeadlessRunner,
 } from './headlessAgent.js'
 import { routeIntent } from './intentRouter.js'
+import { lockSync } from '../../utils/lockfile.js'
 
 export type Tally = { pass: number; fail: number }
 
@@ -72,9 +81,14 @@ export function foldOutcomes(stats: LearnStats, outcomes: Outcome[]): LearnStats
   const next: LearnStats = {
     ...stats,
     seen: [...stats.seen],
-    models: { ...stats.models },
-    categories: { ...stats.categories },
-    modelByCategory: { ...stats.modelByCategory },
+    models: cloneTallies(stats.models),
+    categories: cloneTallies(stats.categories),
+    modelByCategory: Object.fromEntries(
+      Object.entries(stats.modelByCategory).map(([model, categories]) => [
+        model,
+        cloneTallies(categories),
+      ]),
+    ),
     lessons: [...stats.lessons],
   }
   const seen = new Set(next.seen)
@@ -91,6 +105,12 @@ export function foldOutcomes(stats: LearnStats, outcomes: Outcome[]): LearnStats
   }
   next.updatedAt = new Date().toISOString()
   return next
+}
+
+function cloneTallies(record: Record<string, Tally>): Record<string, Tally> {
+  return Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [key, { ...value }]),
+  )
 }
 
 const TEST_PASS_RE = /^passed$/i
@@ -187,16 +207,35 @@ export function successRate(
 export function bestModelForCategory(
   stats: LearnStats,
   category: string,
-  minSamples = 3,
+  minSamples = 5,
 ): { model: string; rate: number } | null {
-  let best: { model: string; rate: number } | null = null
+  let best: { model: string; rate: number; confidence: number } | null = null
   for (const [model, byCat] of Object.entries(stats.modelByCategory)) {
     const t = byCat[category]
     if (!t || t.pass + t.fail < minSamples) continue
     const r = t.pass / (t.pass + t.fail)
-    if (!best || r > best.rate) best = { model, rate: r }
+    const confidence = wilsonLowerBound(t.pass, t.pass + t.fail)
+    if (
+      !best ||
+      confidence > best.confidence ||
+      (confidence === best.confidence &&
+        (r > best.rate || (r === best.rate && model < best.model)))
+    ) {
+      best = { model, rate: r, confidence }
+    }
   }
-  return best
+  return best ? { model: best.model, rate: best.rate } : null
+}
+
+function wilsonLowerBound(successes: number, samples: number): number {
+  if (samples <= 0) return 0
+  const z = 1.96
+  const rate = successes / samples
+  const zSquared = z * z
+  return (
+    rate + zSquared / (2 * samples) -
+    z * Math.sqrt((rate * (1 - rate) + zSquared / (4 * samples)) / samples)
+  ) / (1 + zSquared / samples)
 }
 
 /**
@@ -225,17 +264,127 @@ function statsPath(cwd: string): string {
   return join(learningDir(cwd), 'stats.json')
 }
 
+function learningLockPath(cwd: string): string {
+  return join(learningDir(cwd), 'stats.mutation-lock')
+}
+
+const learningLockWaitArray = new Int32Array(new SharedArrayBuffer(4))
+
+function withLearningLock<T>(cwd: string, operation: () => T): T {
+  mkdirSync(learningDir(cwd), { recursive: true })
+  const path = learningLockPath(cwd)
+  writeFileSync(path, '', { flag: 'a', mode: 0o600 })
+  let lastError: unknown
+  for (let attempt = 0; attempt < 21; attempt++) {
+    try {
+      const release = lockSync(path, { realpath: false, stale: 30_000 })
+      try {
+        return operation()
+      } finally {
+        release()
+      }
+    } catch (error) {
+      lastError = error
+      if (
+        (error as NodeJS.ErrnoException).code !== 'ELOCKED' ||
+        attempt === 20
+      ) {
+        throw error
+      }
+      Atomics.wait(
+        learningLockWaitArray,
+        0,
+        0,
+        Math.min(100, 10 + attempt * 5),
+      )
+    }
+  }
+  throw lastError
+}
+
+function asTally(value: unknown): Tally | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const tally = value as Record<string, unknown>
+  if (
+    typeof tally.pass !== 'number' ||
+    !Number.isSafeInteger(tally.pass) ||
+    tally.pass < 0 ||
+    typeof tally.fail !== 'number' ||
+    !Number.isSafeInteger(tally.fail) ||
+    tally.fail < 0
+  ) {
+    return null
+  }
+  return { pass: tally.pass, fail: tally.fail }
+}
+
+function normalizeTallies(value: unknown): Record<string, Tally> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const normalized: Record<string, Tally> = {}
+  for (const [key, candidate] of Object.entries(value)) {
+    const tally = asTally(candidate)
+    if (tally) normalized[key] = tally
+  }
+  return normalized
+}
+
+function normalizeStats(value: unknown): LearnStats {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return emptyStats()
+  }
+  const record = value as Record<string, unknown>
+  const modelByCategory: LearnStats['modelByCategory'] = {}
+  if (
+    record.modelByCategory &&
+    typeof record.modelByCategory === 'object' &&
+    !Array.isArray(record.modelByCategory)
+  ) {
+    for (const [model, categories] of Object.entries(
+      record.modelByCategory,
+    )) {
+      modelByCategory[model] = normalizeTallies(categories)
+    }
+  }
+  return {
+    version: 1,
+    updatedAt:
+      typeof record.updatedAt === 'string'
+        ? record.updatedAt
+        : new Date(0).toISOString(),
+    seen: Array.isArray(record.seen)
+      ? [...new Set(record.seen.filter(value => typeof value === 'string'))]
+      : [],
+    models: normalizeTallies(record.models),
+    categories: normalizeTallies(record.categories),
+    modelByCategory,
+    lessons: Array.isArray(record.lessons)
+      ? [...new Set(record.lessons.filter(value => typeof value === 'string'))]
+      : [],
+  }
+}
+
 export function loadStats(cwd: string): LearnStats {
   const path = statsPath(cwd)
   if (!existsSync(path)) return emptyStats()
-  const parsed = safeParseJSON(readFileSync(path, 'utf-8'), false)
-  if (!parsed || typeof parsed !== 'object') return emptyStats()
-  return { ...emptyStats(), ...(parsed as LearnStats) }
+  try {
+    return normalizeStats(safeParseJSON(readFileSync(path, 'utf-8'), false))
+  } catch {
+    return emptyStats()
+  }
 }
 
 export function saveStats(cwd: string, stats: LearnStats): void {
   mkdirSync(learningDir(cwd), { recursive: true })
-  writeFileSync(statsPath(cwd), `${JSON.stringify(stats, null, 2)}\n`)
+  const destination = statsPath(cwd)
+  const temporary = `${destination}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    writeFileSync(temporary, `${JSON.stringify(normalizeStats(stats), null, 2)}\n`, {
+      mode: 0o600,
+    })
+    renameSync(temporary, destination)
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary)
+  }
 }
 
 export function isAutomaticLearningEnabled(): boolean {
@@ -263,11 +412,30 @@ export function recordOutcome(
     detail?: string
   },
 ): void {
+  recordOutcomes(cwd, [input])
+}
+
+export function recordOutcomes(
+  cwd: string,
+  inputs: Array<{
+    id: string
+    task: string
+    model: string | null
+    pass: boolean
+    detail?: string
+  }>,
+): void {
   if (!isAutomaticLearningEnabled()) {
     return
   }
+  if (inputs.length === 0) return
   try {
-    saveStats(cwd, foldOutcomes(loadStats(cwd), [outcomeFromRun(input)]))
+    withLearningLock(cwd, () => {
+      saveStats(
+        cwd,
+        foldOutcomes(loadStats(cwd), inputs.map(outcomeFromRun)),
+      )
+    })
   } catch {
     // best-effort: a broken learning store must not fail the run
   }
@@ -288,7 +456,7 @@ export function learnedModelForTask(
   const best = bestModelForCategory(
     stats,
     categoryFromText(task),
-    options.minSamples ?? 3,
+    options.minSamples ?? 5,
   )
   if (!best) return null
   return best.rate >= (options.minRate ?? 0.6) ? best.model : null
@@ -360,7 +528,16 @@ export async function runLearn(options: LearnOptions): Promise<LearnResult> {
     stats = { ...stats, lessons: [...stats.lessons, ...newLessons.filter(l => !existing.has(l))] }
   }
 
-  if (!options.dryRun) saveStats(options.cwd, stats)
+  if (!options.dryRun) {
+    stats = withLearningLock(options.cwd, () => {
+      const current = loadStats(options.cwd)
+      const merged = foldOutcomes(current, mined)
+      const lessons = [...new Set([...merged.lessons, ...newLessons])]
+      const next = { ...merged, lessons }
+      saveStats(options.cwd, next)
+      return next
+    })
+  }
   return { stats, newOutcomes: fresh.length, newLessons }
 }
 

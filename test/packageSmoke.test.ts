@@ -263,5 +263,9 @@ describe('package runtime contract', () => {
         force: true,
       })
     }
-  }, 30_000)
+    // No per-test budget: this packs the tarball and spawns the CLI five
+    // times, so it is slow by nature and the 30s budget it used to declare
+    // silently overrode the gate's own timeout — red on a slow runner with
+    // every assertion passing. It inherits the gate timeout instead.
+  }, 120_000)
 })

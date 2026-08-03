@@ -67,6 +67,7 @@ import { SkillImprovementSurvey } from '../components/SkillImprovementSurvey.js'
 import { useSkillImprovementSurvey } from '../hooks/useSkillImprovementSurvey.js';
 import { useMoreRight } from '../moreright/useMoreRight.js';
 import { SpinnerWithVerb, BriefIdleStatus, type SpinnerMode } from '../components/Spinner.js';
+import { shouldShowActivityRow } from '../components/Spinner/activityVisibility.js';
 import { getSystemPrompt } from '../constants/prompts.js';
 import { buildEffectiveSystemPrompt } from '../utils/systemPrompt.js';
 import { getSystemContext, getUserContext } from '../context.js';
@@ -1677,20 +1678,16 @@ export function REPL({
     setInputValue,
     setToolJSX
   });
-  const showSpinner = (!toolJSX || toolJSX.showSpinner === true) && toolUseConfirmQueue.length === 0 && promptQueue.length === 0 && (
-  // Show spinner during input processing, API call, while teammates are running,
-  // or while pending task notifications are queued (prevents spinner bounce between consecutive notifications)
-  isLoading || userInputOnProcessing || hasRunningTeammates ||
-  // Keep spinner visible while task notifications are queued for processing.
-  // Without this, the spinner briefly disappears between consecutive notifications
-  // (e.g., multiple background agents completing in rapid succession) because
-  // isLoading goes false momentarily between processing each one.
-  getCommandQueueLength() > 0) &&
-  // Hide spinner when waiting for leader to approve permission request
-  !pendingWorkerRequest && !onlySleepToolActive && (
-  // Hide spinner when streaming text is visible (the text IS the feedback),
-  // but keep it when isBriefOnly suppresses the streaming text display
-  !visibleStreamingText || isBriefOnly);
+  const showSpinner = shouldShowActivityRow({
+    toolAllowsActivity: !toolJSX || toolJSX.showSpinner === true,
+    hasBlockingPrompt: toolUseConfirmQueue.length > 0 || promptQueue.length > 0,
+    // Keep the row mounted during input processing, an API call, teammate work,
+    // or queued task notifications. Streaming text is deliberately not part of
+    // this decision: content and liveness are separate UI surfaces.
+    hasActiveWork: Boolean(isLoading || userInputOnProcessing || hasRunningTeammates || getCommandQueueLength() > 0),
+    pendingWorkerRequest: Boolean(pendingWorkerRequest),
+    onlySleepToolActive
+  });
 
   // Check if any permission or ask question prompt is currently visible
   // This is used to prevent the survey from opening while prompts are active

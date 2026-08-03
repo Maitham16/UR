@@ -790,17 +790,12 @@ export async function* runAgent({
         // Handle max turns reached signal from query.ts
         if (message.attachment.type === 'max_turns_reached') {
           logForDebugging(
-            `[Agent
-: $
-{
-  agentDefinition.agentType
-}
-] Reached max turns limit ($
-{
-  message.attachment.maxTurns
-}
-)`,
+            `[Agent: ${agentDefinition.agentType}] Reached max turns limit (${message.attachment.maxTurns})`,
           )
+          // Yield before breaking. Swallowing this left the parent holding a
+          // truncated result with nothing marking it as truncated, so a
+          // subagent that ran out of turns mid-task read as one that finished.
+          yield message
           break
         }
         yield message

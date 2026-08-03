@@ -13,6 +13,7 @@ import {
 import { runWithCwdOverride } from '../src/utils/cwd.js'
 import type { StartBackgroundTaskResult } from '../src/services/agents/backgroundRunner.js'
 import type { TaskExecutionEvent } from '../src/services/promptPlanning/index.js'
+import { loadStats } from '../src/services/agents/learning.js'
 
 function tempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -474,6 +475,56 @@ describe('ur exec command', () => {
       expect(maxActive).toBe(1)
       expect(results[0]!.plannedRun?.finished).toBe(2)
       expect(results[0]!.plannedRun?.maxAgentsUsed).toBe(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('separate top-level plans share one read-write execution gate', async () => {
+    const dir = tempDir('ur-exec-cross-plan-gate-')
+    try {
+      const measure = async (prompts: string[]): Promise<number> => {
+        let active = 0
+        let maxActive = 0
+        await runExecPool(prompts, {
+          cwd: dir,
+          concurrency: 2,
+          planning: { taskPlanning: true, maxAgents: 2 },
+          executePlannedTask: async () => {
+            active += 1
+            maxActive = Math.max(maxActive, active)
+            await Bun.sleep(15)
+            active -= 1
+            return { ok: true, output: 'done', commandsRun: ['true'] }
+          },
+        })
+        return maxActive
+      }
+
+      expect(await measure(['Update parser', 'Update renderer'])).toBe(1)
+      expect(await measure(['Inspect parser', 'Review renderer'])).toBe(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('planned execution teaches only tasks that actually ran', async () => {
+    const dir = tempDir('ur-exec-learning-')
+    try {
+      await runExecPool(['Implement parser. then verify parser'], {
+        cwd: dir,
+        concurrency: 1,
+        model: 'test-model',
+        planning: { taskPlanning: true },
+        executePlannedTask: async task =>
+          task.id === 'task-1'
+            ? { ok: false, error: 'implementation failed' }
+            : { ok: true, output: 'must not run', commandsRun: ['true'] },
+      })
+
+      const stats = loadStats(dir)
+      expect(stats.seen).toHaveLength(1)
+      expect(stats.models['test-model']).toEqual({ pass: 0, fail: 1 })
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

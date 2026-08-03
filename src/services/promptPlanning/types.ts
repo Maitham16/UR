@@ -140,6 +140,8 @@ export type RunPromptPlanOptions = {
   cwd: string
   config?: Partial<PromptPlanningConfig>
   executeTask: TaskExecutor
+  /** Optional cross-plan gate. Its callback must cover execution evidence snapshots. */
+  executionGate?: <T>(task: NexusTask, execute: () => Promise<T>) => Promise<T>
   onEvent?: (event: TaskExecutionEvent) => void
 }
 

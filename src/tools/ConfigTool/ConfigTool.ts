@@ -84,8 +84,14 @@ export const ConfigTool = buildTool({
     return 'Config'
   },
   shouldDefer: true,
-  isConcurrencySafe() {
-    return true
+  isConcurrencySafe(input: Input) {
+    // A write is read-modify-write against the settings file: the value is
+    // merged into what is on disk and the result written back. Two of those in
+    // the same parallel batch both read the pre-write state, so the second
+    // silently discards the first. Reads have no such hazard, so they still
+    // batch — this mirrors how Bash derives concurrency safety from whether
+    // the call mutates.
+    return input.value === undefined
   },
   isReadOnly(input: Input) {
     return input.value === undefined

@@ -325,6 +325,80 @@ describe('crew', () => {
     expect(spec && crewProgress(spec).done).toBe(3)
   })
 
+  test('runCrew serializes shared-checkout writers but parallelizes read-only tasks', async () => {
+    const cwd = tmp()
+    const runAndMeasure = async (name: string, goal: string): Promise<number> => {
+      createCrew(cwd, name, goal)
+      let active = 0
+      let maxActive = 0
+      await runCrew(name, {
+        cwd,
+        workers: 2,
+        runnerFor: () => async () => {
+          active += 1
+          maxActive = Math.max(maxActive, active)
+          await Bun.sleep(15)
+          active -= 1
+          return { output: 'VERDICT: PASS', verdict: 'PASS', isError: false }
+        },
+      })
+      return maxActive
+    }
+
+    expect(
+      await runAndMeasure(
+        'writers',
+        '1. Implement parser\n2. Update documentation',
+      ),
+    ).toBe(1)
+    expect(
+      await runAndMeasure(
+        'readers',
+        '1. Inspect parser\n2. Review documentation',
+      ),
+    ).toBe(2)
+  })
+
+  // A throwing worker used to reject straight out of Promise.race/Promise.all,
+  // leaving its siblings running with nobody awaiting them. The error must
+  // still reach the caller, but only once every worker has finished.
+  //
+  // A throwing *runner* is caught and recorded as a failed task, so it cannot
+  // exercise this. onEvent is the real uncaught path — a UI callback raising
+  // mid-run — and it fires synchronously on claim, before the worker's first
+  // await, so the first worker rejects while the second is still mid-task.
+  test('runCrew does not abandon sibling workers when one throws', async () => {
+    const cwd = tmp()
+    createCrew(
+      cwd,
+      'throwing',
+      '1. Inspect alpha\n2. Inspect beta\n3. Inspect gamma\n4. Inspect delta',
+    )
+    let finished = 0
+    let thrown = false
+
+    const run = runCrew('throwing', {
+      cwd,
+      workers: 2,
+      onEvent: event => {
+        if (event.kind === 'claim' && !thrown) {
+          thrown = true
+          throw new Error('worker exploded')
+        }
+      },
+      runnerFor: () => async () => {
+        await new Promise(resolve => setTimeout(resolve, 20))
+        finished += 1
+        return { output: 'ok VERDICT: PASS', verdict: 'PASS', isError: false }
+      },
+    })
+
+    await expect(run).rejects.toThrow('worker exploded')
+    // The surviving worker ran its tasks to completion before the failure
+    // surfaced. Abandoning it would leave this at zero.
+    expect(finished).toBeGreaterThan(0)
+  })
+
   test('runCrew marks FAIL verdicts as failed', async () => {
     const cwd = tmp()
     createCrew(cwd, 'bad', 'only task')

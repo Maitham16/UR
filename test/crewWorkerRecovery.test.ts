@@ -49,8 +49,8 @@ describe('crew worker scheduling and recovery', () => {
     try {
       createCrew(cwd, 'parallel', 'parallel work', {
         decomposed: [
-          decomposed('left', 'left side'),
-          decomposed('right', 'right side'),
+          decomposed('left', 'Inspect left side'),
+          decomposed('right', 'Inspect right side'),
         ],
       })
       let active = 0

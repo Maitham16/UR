@@ -33,9 +33,15 @@ import { queryCheckpoint, startQueryProfile } from './queryProfiler.js'
 import { runWithWorkload } from './workloadContext.js'
 import {
   getTaskListRunForCommand,
+  requestsContinueCurrentTaskList,
   runWithTaskListRun,
 } from './taskListRunContext.js'
-import { getTaskListId, prepareTaskListForRun } from './tasks.js'
+import {
+  createAutomaticPromptTaskForRun,
+  finalizeAutomaticPromptTask,
+  getTaskListId,
+  prepareTaskListForRun,
+} from './tasks.js'
 
 function exit(): void {
   gracefulShutdownSync(0)
@@ -429,6 +435,10 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     return getToolUseContext(messages, [], abortController, mainLoopModel)
   }
   let reservationToken: number | undefined
+  let automaticPromptTask:
+    | { taskListId: string; taskId: string; generationId: string }
+    | undefined
+  let automaticPromptTaskFinalized = false
 
   // Wrap in try-finally so the guard is released even if processUserInput
   // throws or onQuery is skipped. onQuery's finally calls queryGuard.end(),
@@ -505,9 +515,25 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     await runWithWorkload(turnWorkload, () =>
       runWithTaskListRun(taskListRun, async () => {
       if (taskListRun) {
-        await prepareTaskListForRun(getTaskListId(), taskListRun.generationId, {
+        const taskListId = getTaskListId()
+        await prepareTaskListForRun(taskListId, taskListRun.generationId, {
           appendToCurrent: taskListRun.appendToCurrent,
         })
+        if (!requestsContinueCurrentTaskList(primaryCommandText)) {
+          const taskId = await createAutomaticPromptTaskForRun(
+            taskListId,
+            taskListRun.generationId,
+            primaryCommandText,
+            { reuseExistingBoard: taskListRun.appendToCurrent },
+          )
+          if (taskId) {
+            automaticPromptTask = {
+              taskListId,
+              taskId,
+              generationId: taskListRun.generationId,
+            }
+          }
+        }
       }
       for (let i = 0; i < commands.length; i++) {
         const cmd = commands[i]!
@@ -596,19 +622,42 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
             ? primaryCmd.value
             : undefined
         const shouldCallBeforeQuery = primaryMode === 'prompt'
-        await onQuery(
-          newMessages,
-          abortController,
-          shouldQuery,
-          allowedTools ?? [],
-          model
-            ? resolveSkillModelOverride(model, mainLoopModel)
-            : mainLoopModel,
-          shouldCallBeforeQuery ? onBeforeQuery : undefined,
-          primaryInput,
-          effort,
-          reservationToken,
-        )
+        let querySucceeded = false
+        try {
+          await onQuery(
+            newMessages,
+            abortController,
+            shouldQuery,
+            allowedTools ?? [],
+            model
+              ? resolveSkillModelOverride(model, mainLoopModel)
+              : mainLoopModel,
+            shouldCallBeforeQuery ? onBeforeQuery : undefined,
+            primaryInput,
+            effort,
+            reservationToken,
+          )
+          querySucceeded = true
+        } finally {
+          if (automaticPromptTask) {
+            const status = abortController.signal.aborted
+              ? 'pending'
+              : querySucceeded
+                ? 'completed'
+                : 'failed'
+            await finalizeAutomaticPromptTask(
+              automaticPromptTask.taskListId,
+              automaticPromptTask.taskId,
+              automaticPromptTask.generationId,
+              status,
+            ).catch(error =>
+              logForDebugging(
+                `[Tasks] Failed to finalize automatic prompt task: ${String(error)}`,
+              ),
+            )
+            automaticPromptTaskFinalized = true
+          }
+        }
       } else {
         // Local slash commands that skip messages (e.g., /model, /theme).
         // Release the guard BEFORE clearing toolJSX to prevent spinner flash —
@@ -636,6 +685,18 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
       }),
     ) // ALS contexts are naturally scoped; no mutable global cleanup needed
   } finally {
+    if (automaticPromptTask && !automaticPromptTaskFinalized) {
+      await finalizeAutomaticPromptTask(
+        automaticPromptTask.taskListId,
+        automaticPromptTask.taskId,
+        automaticPromptTask.generationId,
+        abortController.signal.aborted ? 'pending' : 'failed',
+      ).catch(error =>
+        logForDebugging(
+          `[Tasks] Failed to recover automatic prompt task: ${String(error)}`,
+        ),
+      )
+    }
     // Safety net: release the guard reservation if processUserInput threw
     // or onQuery was skipped. No-op if onQuery already ran (guard is idle
     // via end(), or running — cancelReservation only acts on dispatching).

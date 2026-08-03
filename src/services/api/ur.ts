@@ -1933,8 +1933,12 @@ async function* queryModel(
     // the session indefinitely since the SDK's request timeout only covers the
     // initial fetch(), not the streaming body.
     const streamWatchdogEnabled = isStreamWatchdogEnabled()
+    // Inactivity, not total runtime: every chunk (including provider pings)
+    // rearms it, so a stream that keeps producing is never cut off. The
+    // threshold is a genuine-hang threshold, and 90s was below what a large
+    // prompt's prefill can legitimately take.
     const STREAM_IDLE_TIMEOUT_MS =
-      parseInt(process.env.UR_STREAM_IDLE_TIMEOUT_MS || '', 10) || 90_000
+      parseInt(process.env.UR_STREAM_IDLE_TIMEOUT_MS || '', 10) || 300_000
     const STREAM_IDLE_WARNING_MS = STREAM_IDLE_TIMEOUT_MS / 2
     let streamIdleAborted = false
     // performance.now() snapshot when watchdog fires, for measuring abort propagation delay
@@ -2000,6 +2004,12 @@ async function* queryModel(
       for await (const _part of stream) {
         const part = _part as any
         resetStreamIdleTimer()
+        // A ping carries no content — it exists to prove the provider is still
+        // there. Resetting the watchdog above is its whole job; counting it as
+        // an output chunk would corrupt the stall and TTFT metrics.
+        if (part?.type === 'ping') {
+          continue
+        }
         const outputChunkAt = performance.now()
         if (previousOutputChunkAt !== undefined) {
           recordGenAiOutputChunkMetric({

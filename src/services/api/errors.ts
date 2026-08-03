@@ -75,6 +75,24 @@ export function isPromptTooLongMessage(msg: AssistantMessage): boolean {
 }
 
 /**
+ * True for a server rejecting the request body by size rather than by token
+ * count. Ollama fronts the model with a Go HTTP server whose limit produces
+ * `400: http: request body too large`, and OpenAI-compatible servers behind a
+ * proxy report the same condition as a payload-size error. None of these name
+ * a prompt or a token count, so the prompt-too-long matcher missed them and no
+ * recovery ran, even though shrinking the conversation is exactly the fix.
+ */
+export function isOversizedRequestBodyMessage(rawMessage: string): boolean {
+  const text = rawMessage.toLowerCase()
+  return (
+    text.includes('request body too large') ||
+    text.includes('request entity too large') ||
+    text.includes('payload too large') ||
+    text.includes('body size limit')
+  )
+}
+
+/**
  * Parse actual/limit token counts from a raw prompt-too-long API error
  * message like "prompt is too long: 137500 tokens > 135000 maximum".
  * The raw string may be wrapped in SDK prefixes or JSON envelopes, or
@@ -566,9 +584,17 @@ export function getAssistantMessageFromError(
 
   // Handle prompt too long errors (Vertex returns 413, direct API returns 400)
   // Use case-insensitive check since Vertex returns "Prompt is too long" (capitalized)
+  //
+  // Ollama's HTTP server rejects an oversized body before the model sees it,
+  // with a Go-level `400: http: request body too large` that names neither a
+  // prompt nor a token count. Left unrecognised it surfaced as a bare API
+  // error and none of the prompt-too-long recovery ran, so the turn simply
+  // died where every other provider would have compacted and retried. It is
+  // the same condition, so it takes the same path.
   if (
     error instanceof Error &&
-    error.message.toLowerCase().includes('prompt is too long')
+    (error.message.toLowerCase().includes('prompt is too long') ||
+      isOversizedRequestBodyMessage(error.message))
   ) {
     // Content stays generic (UI matches on exact string). The raw error with
     // token counts goes into errorDetails — reactive compact's retry loop

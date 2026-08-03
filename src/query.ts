@@ -9,6 +9,7 @@ import { FallbackTriggeredError } from './services/api/withRetry.js'
 import {
   calculateTokenWarningState,
   isAutoCompactEnabled,
+  shouldAttemptAutomaticContextRecovery,
   type AutoCompactTrackingState,
 } from './services/compact/autoCompact.js'
 import { buildPostCompactMessages } from './services/compact/compact.js'
@@ -708,10 +709,18 @@ async function* queryLoop(
     // it predates the experiment and is already the control-arm baseline.
     const mediaRecoveryEnabled =
       reactiveCompact?.isReactiveCompactEnabled() ?? false
+    const universalContextRecoveryEnabled =
+      shouldAttemptAutomaticContextRecovery({
+        autoCompactEnabled: isAutoCompactEnabled(),
+        querySource,
+        hasAttempted: hasAttemptedReactiveCompact,
+        nativeRecoveryAvailable: reactiveCompact !== null,
+      })
     if (
       !compactionResult &&
       querySource !== 'compact' &&
       querySource !== 'session_memory' &&
+      !isAutoCompactEnabled() &&
       !(
         reactiveCompact?.isReactiveCompactEnabled() && isAutoCompactEnabled()
       ) &&
@@ -892,6 +901,12 @@ async function* queryLoop(
               }
             }
             if (reactiveCompact?.isWithheldPromptTooLong(message)) {
+              withheld = true
+            }
+            if (
+              universalContextRecoveryEnabled &&
+              isPromptTooLongMessage(message)
+            ) {
               withheld = true
             }
             if (
@@ -1198,6 +1213,61 @@ async function* queryLoop(
             continue
           }
         }
+      }
+      if (isWithheld413 && universalContextRecoveryEnabled) {
+        const recovery = await deps.autocompact(
+          messagesForQuery,
+          toolUseContext,
+          {
+            systemPrompt,
+            userContext,
+            systemContext,
+            toolUseContext,
+            forkContextMessages: messagesForQuery,
+          },
+          querySource,
+          tracking,
+          snipTokensFreed,
+          'context_limit',
+        )
+
+        if (recovery.compactionResult) {
+          if (params.taskBudget) {
+            const preCompactContext =
+              finalContextTokensFromLastResponse(messagesForQuery)
+            taskBudgetRemaining = Math.max(
+              0,
+              (taskBudgetRemaining ?? params.taskBudget.total) -
+                preCompactContext,
+            )
+          }
+
+          const postCompactMessages = buildPostCompactMessages(
+            recovery.compactionResult,
+          )
+          for (const msg of postCompactMessages) {
+            yield msg
+          }
+          state = {
+            messages: postCompactMessages,
+            toolUseContext,
+            autoCompactTracking: undefined,
+            maxOutputTokensRecoveryCount,
+            hasAttemptedReactiveCompact: true,
+            maxOutputTokensOverride: undefined,
+            pendingToolUseSummary: undefined,
+            stopHookActive: undefined,
+            turnCount,
+            transition: { reason: 'reactive_compact_retry' },
+          }
+          continue
+        }
+
+        // The one bounded emergency compaction failed. Surface the original
+        // provider error so the user can still choose /compact or /clear.
+        yield lastMessage
+        void executeStopFailureHooks(lastMessage, toolUseContext)
+        return { reason: 'prompt_too_long' }
       }
       if ((isWithheld413 || isWithheldMedia) && reactiveCompact) {
         const compacted = await reactiveCompact.tryReactiveCompact({

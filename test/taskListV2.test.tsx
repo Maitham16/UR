@@ -5,6 +5,7 @@ import {
   getTaskDisplayStatus,
   getTaskIcon,
   getTaskStatusCounts,
+  isTaskPlanningPlaceholder,
 } from '../src/components/TaskListV2.js'
 import type { Task } from '../src/utils/tasks.js'
 
@@ -29,6 +30,19 @@ function makeTask(overrides: Partial<Task> & { id: string }): Task {
 }
 
 describe('TaskListV2 display logic', () => {
+  it('recognizes an automatic seed as planning state instead of a user task', () => {
+    expect(
+      isTaskPlanningPlaceholder([
+        makeTask({
+          id: '1',
+          status: 'in_progress',
+          metadata: { urAutomaticPromptTask: true },
+        }),
+      ]),
+    ).toBe(true)
+    expect(isTaskPlanningPlaceholder([makeTask({ id: '1' })])).toBe(false)
+  })
+
   describe('byIdAsc', () => {
     it('sorts numeric ids numerically, not lexicographically', () => {
       const tasks = [makeTask({ id: '10' }), makeTask({ id: '2' }), makeTask({ id: '1' })]

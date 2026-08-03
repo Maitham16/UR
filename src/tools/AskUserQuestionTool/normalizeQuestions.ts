@@ -124,3 +124,30 @@ export function describeQuestionPayloadProblems(value: unknown): string[] {
   })
   return problems
 }
+
+/**
+ * Names what the payload actually contained.
+ *
+ * Kept separate from the problem list, which describes only what is wrong and
+ * whose length callers assert on. Reporting the missing fields alone said
+ * nothing about what arrived instead, which is the one fact that distinguishes
+ * an unrepairable payload from a shape the normalizer has not been taught yet.
+ */
+export function describeQuestionPayloadShape(value: unknown): string {
+  if (!isRecord(value)) {
+    return `Received ${Array.isArray(value) ? 'an array' : typeof value}.`
+  }
+  const questions = value.questions
+  if (!Array.isArray(questions)) {
+    return `Received an object with keys: ${Object.keys(value).join(', ') || '(none)'}.`
+  }
+  const shapes = questions
+    .slice(0, 3)
+    .map((question, index) =>
+      isRecord(question)
+        ? `questions[${index}] has keys: ${Object.keys(question).join(', ') || '(none)'}`
+        : `questions[${index}] is ${Array.isArray(question) ? 'an array' : typeof question}`,
+    )
+    .join('; ')
+  return shapes ? `Received ${shapes}.` : ''
+}

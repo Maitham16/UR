@@ -57,6 +57,20 @@ test('foldOutcomes is idempotent on repeated keys', () => {
   expect(stats.models.m1).toEqual({ pass: 1, fail: 0 })
 })
 
+test('foldOutcomes does not mutate prior stats or nested tallies', () => {
+  const before = foldOutcomes(emptyStats(), [
+    { key: 'first', category: 'coding', model: 'm1', pass: true, detail: '' },
+  ])
+  const snapshot = structuredClone(before)
+  const after = foldOutcomes(before, [
+    { key: 'second', category: 'coding', model: 'm1', pass: false, detail: '' },
+  ])
+
+  expect(before).toEqual(snapshot)
+  expect(after.models.m1).toEqual({ pass: 1, fail: 1 })
+  expect(after.modelByCategory.m1?.coding).toEqual({ pass: 1, fail: 1 })
+})
+
 test('successRate and bestModelForCategory respect the sample floor', () => {
   let stats = emptyStats()
   stats = foldOutcomes(stats, [
@@ -65,9 +79,11 @@ test('successRate and bestModelForCategory respect the sample floor', () => {
     { key: '3', category: 'coding', model: 'oracle', pass: true, detail: '' },
     { key: '4', category: 'coding', model: 'oracle', pass: true, detail: '' },
     { key: '5', category: 'coding', model: 'oracle', pass: true, detail: '' },
+    { key: '6', category: 'coding', model: 'oracle', pass: true, detail: '' },
+    { key: '7', category: 'coding', model: 'oracle', pass: true, detail: '' },
   ])
   expect(successRate(stats, { category: 'coding', model: 'fast' })).toBe(0.5)
-  // fast has only 2 samples (< default 3); oracle has 3 at 100% -> wins.
+  // fast has only 2 samples (< default 5); oracle has 5 at 100% -> wins.
   expect(bestModelForCategory(stats, 'coding')).toEqual({ model: 'oracle', rate: 1 })
 })
 

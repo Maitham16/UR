@@ -7,6 +7,7 @@ import { BLACK_CIRCLE } from '../../constants/figures.js';
 import { Box, NoSelect, Text } from '../../ink.js';
 import { API_ERROR_MESSAGE_PREFIX, API_TIMEOUT_ERROR_MESSAGE, CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE, CUSTOM_OFF_SWITCH_MESSAGE, INVALID_API_KEY_ERROR_MESSAGE, INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL, ORG_DISABLED_ERROR_MESSAGE_ENV_KEY, ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH, PROMPT_TOO_LONG_ERROR_MESSAGE, startsWithApiErrorPrefix, TOKEN_REVOKED_ERROR_MESSAGE } from '../../services/api/errors.js';
 import { isEmptyMessageText, NO_RESPONSE_REQUESTED } from '../../utils/messages.js';
+import { describeCollapsedDeliberation, splitDeliberationRegion } from '../../utils/deliberationText.js';
 import { stripSystemReminders } from '../../utils/systemReminderFilter.js';
 import { getUpgradeMessage } from '../../utils/model/contextWindowUpgradeCheck.js';
 import { getDefaultmodelSModel, renderModelName } from '../../utils/model/model.js';
@@ -46,7 +47,7 @@ function InvalidApiKeyMessage() {
   return t1;
 }
 export function AssistantTextMessage(t0) {
-  const $ = _c(34);
+  const $ = _c(39);
   const {
     param: t1,
     addMargin,
@@ -60,7 +61,28 @@ export function AssistantTextMessage(t0) {
   // Strip any echoed <system-reminder> blocks before rendering. Reminders
   // are injected by the verifier as user messages; the model is told not to
   // echo them, but the filter is defense in depth.
-  const text = stripSystemReminders(rawText);
+  let strippedText;
+  if ($[34] !== rawText) {
+    strippedText = stripSystemReminders(rawText);
+    $[34] = rawText;
+    $[35] = strippedText;
+  } else {
+    strippedText = $[35];
+  }
+  // Models without a thinking channel emit their reasoning as ordinary text.
+  // Collapse a leading run of it so the answer is not buried; --verbose shows
+  // everything. Display only — the transcript and the next request are
+  // unchanged, so nothing is lost.
+  let text;
+  if ($[36] !== strippedText || $[37] !== verbose) {
+    const split = verbose ? null : splitDeliberationRegion(strippedText);
+    text = split && split.deliberation ? [split.before, describeCollapsedDeliberation(split.deliberation), split.after].filter(Boolean).join('\n\n') : strippedText;
+    $[36] = strippedText;
+    $[37] = verbose;
+    $[38] = text;
+  } else {
+    text = $[38];
+  }
   const isSelected = useContext(MessageActionsSelectedContext);
   if (isEmptyMessageText(text)) {
     return null;

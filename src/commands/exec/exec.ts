@@ -9,6 +9,7 @@ import type {
 } from '../../services/agents/backgroundRunner.js'
 import {
   decomposePrompt,
+  isClearlyReadOnlyTask,
   renderTaskBoard,
   resolvePromptPlanningConfig,
   runPromptPlan,
@@ -22,6 +23,7 @@ import {
   type TaskExecutor,
   type VerificationIssue,
 } from '../../services/promptPlanning/index.js'
+import { recordOutcomes } from '../../services/agents/learning.js'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { gitExe } from '../../utils/git.js'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -588,6 +590,7 @@ async function runPromptPlans(
 ): Promise<ExecPoolResult[]> {
   const config = resolvePromptPlanningConfig(opts.planning)
   const executeTask = opts.executePlannedTask ?? defaultPlannedTaskExecutor(opts)
+  const executionGate = createSharedWorkspaceExecutionGate()
   const results: ExecPoolResult[] = new Array(prompts.length)
   let nextIndex = 0
   const workers = Array.from(
@@ -604,6 +607,7 @@ async function runPromptPlans(
           cwd: opts.cwd,
           config,
           executeTask,
+          executionGate,
           onEvent: event => {
             if (event.type === 'board') {
               boardHistory.push(event.board)
@@ -612,6 +616,20 @@ async function runPromptPlans(
             opts.onPlanningEvent?.(event)
           },
         })
+        recordOutcomes(
+          opts.cwd,
+          run.taskResults
+            .filter(record => record.execution !== undefined)
+            .map(record => ({
+              id: `exec:${plan.id}:${record.taskId}`,
+              task: record.task.input.prompt,
+              model: opts.model ?? null,
+              pass:
+                record.task.status === 'finished' &&
+                record.postVerification?.ok === true,
+              detail: `planned task ${record.task.status}: ${record.task.title}`,
+            })),
+        )
         const completedPlan = { ...plan, tasks: run.tasks }
         const taskBoard = config.showTaskBoard
           ? renderTaskBoard(completedPlan, { maxAgents: run.maxAgentsAllowed })
@@ -638,6 +656,47 @@ async function runPromptPlans(
   )
   await Promise.all(workers)
   return results
+}
+
+function createSharedWorkspaceExecutionGate(): NonNullable<
+  Parameters<typeof runPromptPlan>[1]['executionGate']
+> {
+  type Request = {
+    readOnly: boolean
+    start: () => void
+  }
+  const queue: Request[] = []
+  let activeReaders = 0
+  let writerActive = false
+
+  const pump = (): void => {
+    if (writerActive || queue.length === 0) return
+    if (!queue[0]!.readOnly) {
+      if (activeReaders > 0) return
+      writerActive = true
+      queue.shift()!.start()
+      return
+    }
+    while (queue[0]?.readOnly && !writerActive) {
+      activeReaders += 1
+      queue.shift()!.start()
+    }
+  }
+
+  return async <T>(task: NexusTask, execute: () => Promise<T>): Promise<T> => {
+    const readOnly = isClearlyReadOnlyTask(task)
+    await new Promise<void>(resolve => {
+      queue.push({ readOnly, start: resolve })
+      pump()
+    })
+    try {
+      return await execute()
+    } finally {
+      if (readOnly) activeReaders -= 1
+      else writerActive = false
+      pump()
+    }
+  }
 }
 
 export async function runExecPool(

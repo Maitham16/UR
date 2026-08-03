@@ -20,6 +20,7 @@ import {
   type CompactionResult,
   compactConversation,
   ERROR_MESSAGE_USER_ABORT,
+  stripImagesFromMessages,
   type RecompactionInfo,
 } from './compact.js'
 import { runPostCompactCleanup } from './postCompactCleanup.js'
@@ -29,12 +30,39 @@ import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
 // Based on p99.99 of compact summary output being 17,387 tokens.
 const MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000
 
+/**
+ * Ceiling on the summary reserve as a share of the context window, so a small
+ * window keeps most of itself for the conversation instead of being consumed
+ * by headroom it cannot afford.
+ */
+const MAX_SUMMARY_RESERVE_SHARE = 0.2
+
 // Returns the context window size minus the max output tokens for the model
-export function getEffectiveContextWindowSize(model: string): number {
+/**
+ * Context left for the conversation once headroom for the summary is set
+ * aside.
+ *
+ * The reserve is capped as a share of the window as well as at a flat ceiling.
+ * The flat figure alone was safe only while every window was large; a small
+ * window would be left with a negative result — every token count above it, so
+ * autocompact would fire on every turn and never settle.
+ *
+ * Pure, so the arithmetic can be checked without a provider or settings in
+ * scope.
+ */
+export function computeEffectiveContextWindowSize(
+  contextWindow: number,
+  maxOutputTokens: number,
+): number {
   const reservedTokensForSummary = Math.min(
-    getMaxOutputTokensForModel(model),
+    maxOutputTokens,
     MAX_OUTPUT_TOKENS_FOR_SUMMARY,
+    Math.floor(contextWindow * MAX_SUMMARY_RESERVE_SHARE),
   )
+  return Math.max(contextWindow - reservedTokensForSummary, 1)
+}
+
+export function getEffectiveContextWindowSize(model: string): number {
   let contextWindow = getContextWindowForModel(model, getSdkBetas())
 
   const autoCompactWindow = process.env.UR_CODE_AUTO_COMPACT_WINDOW
@@ -45,7 +73,10 @@ export function getEffectiveContextWindowSize(model: string): number {
     }
   }
 
-  return contextWindow - reservedTokensForSummary
+  return computeEffectiveContextWindowSize(
+    contextWindow,
+    getMaxOutputTokensForModel(model),
+  )
 }
 
 export type AutoCompactTrackingState = {
@@ -68,6 +99,44 @@ export const MANUAL_COMPACT_BUFFER_TOKENS = 3_000
 // BQ 2026-03-10: 1,279 sessions had 50+ consecutive failures (up to 3,272)
 // in a single session, wasting ~250K API calls/day globally.
 const MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3
+
+export type AutoCompactTrigger = 'threshold' | 'context_limit'
+
+export function shouldAttemptAutomaticContextRecovery({
+  autoCompactEnabled,
+  querySource,
+  hasAttempted,
+  nativeRecoveryAvailable,
+}: {
+  autoCompactEnabled: boolean
+  querySource: QuerySource | undefined
+  hasAttempted: boolean
+  nativeRecoveryAvailable: boolean
+}): boolean {
+  return (
+    autoCompactEnabled &&
+    !hasAttempted &&
+    !nativeRecoveryAvailable &&
+    querySource !== 'compact' &&
+    querySource !== 'session_memory'
+  )
+}
+
+export function prepareContextLimitCompaction(
+  messages: Message[],
+  cacheSafeParams: CacheSafeParams,
+): { messages: Message[]; cacheSafeParams: CacheSafeParams } {
+  const strippedMessages = stripImagesFromMessages(messages)
+  return {
+    messages: strippedMessages,
+    cacheSafeParams: {
+      ...cacheSafeParams,
+      forkContextMessages: stripImagesFromMessages(
+        cacheSafeParams.forkContextMessages,
+      ),
+    },
+  }
+}
 
 export function getAutoCompactThreshold(model: string): number {
   const effectiveContextWindow = getEffectiveContextWindowSize(model)
@@ -261,6 +330,7 @@ export async function autoCompactIfNeeded(
   querySource?: QuerySource,
   tracking?: AutoCompactTrackingState,
   snipTokensFreed?: number,
+  trigger: AutoCompactTrigger = 'threshold',
 ): Promise<{
   wasCompacted: boolean
   compactionResult?: CompactionResult
@@ -274,6 +344,7 @@ export async function autoCompactIfNeeded(
   // Without this, sessions where context is irrecoverably over the limit
   // hammer the API with doomed compaction attempts on every turn.
   if (
+    trigger === 'threshold' &&
     tracking?.consecutiveFailures !== undefined &&
     tracking.consecutiveFailures >= MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES
   ) {
@@ -281,16 +352,23 @@ export async function autoCompactIfNeeded(
   }
 
   const model = toolUseContext.options.mainLoopModel
-  const shouldCompact = await shouldAutoCompact(
-    messages,
-    model,
-    querySource,
-    snipTokensFreed,
-  )
+  const shouldCompact =
+    trigger === 'context_limit' ||
+    (await shouldAutoCompact(
+      messages,
+      model,
+      querySource,
+      snipTokensFreed,
+    ))
 
   if (!shouldCompact) {
     return { wasCompacted: false }
   }
+
+  const recoveryInput =
+    trigger === 'context_limit'
+      ? prepareContextLimitCompaction(messages, cacheSafeParams)
+      : { messages, cacheSafeParams }
 
   const recompactionInfo: RecompactionInfo = {
     isRecompactionInChain: tracking?.compacted === true,
@@ -302,7 +380,7 @@ export async function autoCompactIfNeeded(
 
   // EXPERIMENT: Try session memory compaction first
   const sessionMemoryResult = await trySessionMemoryCompaction(
-    messages,
+    recoveryInput.messages,
     toolUseContext.agentId,
     recompactionInfo.autoCompactThreshold,
   )
@@ -327,9 +405,9 @@ export async function autoCompactIfNeeded(
 
   try {
     const compactionResult = await compactConversation(
-      messages,
+      recoveryInput.messages,
       toolUseContext,
-      cacheSafeParams,
+      recoveryInput.cacheSafeParams,
       true, // Suppress user questions for autocompact
       undefined, // No custom instructions for autocompact
       true, // isAutoCompact

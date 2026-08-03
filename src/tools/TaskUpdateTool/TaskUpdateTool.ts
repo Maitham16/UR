@@ -148,12 +148,21 @@ export const TaskUpdateTool = buildTool({
     // Check if task exists
     const existingTask = await getTask(taskListId, taskId)
     if (!existingTask) {
+      // A bare "Task not found" left the caller guessing whether the id was
+      // wrong, the list had been archived into a new generation, or the task
+      // was deleted — so the usual response was to retry the same id. The
+      // dependency path below already names what exists; this one now does
+      // too, which is the difference between one corrected call and a loop.
+      const known = (await listTasks(taskListId)).map(task => `#${task.id}`)
       return {
         data: {
           success: false,
           taskId,
           updatedFields: [],
-          error: 'Task not found',
+          error:
+            known.length > 0
+              ? `Task #${taskId} not found. Existing tasks: ${known.join(', ')}.`
+              : `Task #${taskId} not found. The task list is empty — create the task before updating it.`,
         },
       }
     }

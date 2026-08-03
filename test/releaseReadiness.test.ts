@@ -155,6 +155,7 @@ test('release workflow downloads artifacts with permission and keeps prereleases
   expect(workflow).toContain('--tag "$NPM_TAG"')
   expect(workflow).toContain('bun test --timeout 120000')
   expect(workflow).not.toContain('--parallel=4')
+  expect(workflow).toContain("bun run release:tag -- --push")
 })
 
 test('package smoke configurations are cleaned with the package-check work directory', () => {

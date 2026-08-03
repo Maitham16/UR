@@ -30,6 +30,8 @@ import { makeCliStepRunner, makeDryRunner } from './cliStepRunner.js'
 import type { StepRunner, Verdict } from './executor.js'
 import type { WorkflowStep } from './workflows.js'
 import type { DecomposedTask } from './decomposer.js'
+import { recordOutcomes } from './learning.js'
+import { isClearlyReadOnlyWork } from './parallelPolicy.js'
 
 export type CrewTaskStatus = 'todo' | 'claimed' | 'done' | 'failed' | 'blocked'
 
@@ -67,6 +69,10 @@ export type CrewSpec = {
   createdAt: string
   updatedAt: string
   tasks: CrewTask[]
+}
+
+function isCrewTaskReadOnly(task: CrewTask): boolean {
+  return isClearlyReadOnlyWork(task.title)
 }
 
 export function crewDir(cwd: string): string {
@@ -297,6 +303,10 @@ function claimNextTaskUnlocked(
   name: string,
   worker: string,
   maxAttempts = Number.MAX_SAFE_INTEGER,
+  policy: {
+    serializeSharedMutations?: boolean
+    isolatedWrites?: boolean
+  } = {},
 ): CrewTask | null {
   const spec = loadCrew(cwd, name)
   if (!spec) return null
@@ -337,10 +347,17 @@ function claimNextTaskUnlocked(
     }
   }
 
+  const activeClaims = spec.tasks.filter(item => item.status === 'claimed')
   const task = spec.tasks.find(
     item =>
       item.status === 'todo' &&
-      (item.dependsOn ?? []).every(dep => byId.get(dep)?.status === 'done'),
+      (item.dependsOn ?? []).every(dep => byId.get(dep)?.status === 'done') &&
+      (!policy.serializeSharedMutations ||
+        policy.isolatedWrites ||
+        activeClaims.every(
+          active =>
+            isCrewTaskReadOnly(item) && isCrewTaskReadOnly(active),
+        )),
   )
 
   // No claimed prerequisite and no runnable task means the remaining dependency
@@ -382,9 +399,13 @@ export function claimNextTask(
   name: string,
   worker: string,
   maxAttempts = Number.MAX_SAFE_INTEGER,
+  policy: {
+    serializeSharedMutations?: boolean
+    isolatedWrites?: boolean
+  } = {},
 ): CrewTask | null {
   return withCrewLock(cwd, name, () =>
-    claimNextTaskUnlocked(cwd, name, worker, maxAttempts),
+    claimNextTaskUnlocked(cwd, name, worker, maxAttempts, policy),
   )
 }
 
@@ -730,7 +751,12 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
     let cancellationEmitted = false
 
     while (!options.signal?.aborted) {
-      let task = claimNextTask(cwd, name, workerId, maxAttempts)
+      let task = claimNextTask(cwd, name, workerId, maxAttempts, {
+        serializeSharedMutations: true,
+        isolatedWrites:
+          options.dryRun === true ||
+          (options.worktrees === true && !options.runnerFor),
+      })
       if (!task) break
       options.onEvent?.({
         kind: 'claim',
@@ -903,6 +929,20 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
     return count
   }
 
+  // A worker can throw — a corrupt crew file, a failed worktree setup, a
+  // throwing onEvent callback. Racing or Promise.all-ing raw worker promises
+  // meant the first throw propagated immediately and left every sibling
+  // running with nobody awaiting it: their worktrees and child processes
+  // outlived the run, and a second worker failing afterwards surfaced as an
+  // unhandled rejection. Failures are collected instead, and rethrown once
+  // every worker has actually finished.
+  const workerFailures: unknown[] = []
+  const track = (promise: Promise<number>): Promise<number> =>
+    promise.catch(error => {
+      workerFailures.push(error)
+      return 0
+    })
+
   let spawned = 0
   if (options.dynamic) {
     // Dynamic fan-out (Claude Code "Dynamic Workflows" pattern): scale the
@@ -930,7 +970,9 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
       while (active.size < governor && runnableCount() > 0) {
         spawned += 1
         const id = `w${spawned}`
-        const p = worker(id).finally(() => active.delete(p))
+        const p: Promise<number> = track(worker(id)).finally(() =>
+          active.delete(p),
+        )
         active.add(p)
       }
       if (active.size === 0) {
@@ -938,7 +980,7 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
         // dependencies into terminal blocked tasks.
         if (todoCount() > 0) {
           spawned += 1
-          await worker(`w${spawned}`)
+          await track(worker(`w${spawned}`))
           continue
         }
         break
@@ -950,10 +992,30 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
   } else {
     spawned = workerCount
     const workerIds = Array.from({ length: workerCount }, (_, i) => `w${i + 1}`)
-    await Promise.all(workerIds.map(worker))
+    await Promise.all(workerIds.map(id => track(worker(id))))
+  }
+
+  // Surfaced only now, so the caller still sees the failure but no worker was
+  // abandoned mid-task to produce it.
+  if (workerFailures.length > 0) {
+    throw workerFailures[0]
   }
 
   const finalSpec = loadCrew(cwd, name) ?? baseSpec
+  if (!options.dryRun) {
+    recordOutcomes(
+      cwd,
+      finalSpec.tasks
+        .filter(task => task.status === 'done' || task.status === 'failed')
+        .map(task => ({
+          id: `crew:${baseSpec.createdAt}:${task.id}:attempt-${task.attempts ?? 1}`,
+          task: task.title,
+          model: null,
+          pass: task.status === 'done' && task.verdict !== 'FAIL',
+          detail: `crew ${name} ${task.status}: ${task.title}`,
+        })),
+    )
+  }
   return { name, workers: spawned, progress: crewProgress(finalSpec), handled }
 }
 

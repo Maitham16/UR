@@ -85,6 +85,7 @@ export async function createOpenRouterClient(
         maxRetries,
         timeoutMs: requestOptions?.timeoutMs,
         signal,
+        streaming: true,
       },
     )
     const requestId = response.headers?.['x-request-id'] ?? `openrouter-${randomUUID()}`

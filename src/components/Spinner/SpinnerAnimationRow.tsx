@@ -9,6 +9,7 @@ import { formatDuration, formatNumber } from '../../utils/format.js';
 import { toInkColor } from '../../utils/ink.js';
 import type { Theme } from '../../utils/theme.js';
 import { Byline } from '../design-system/Byline.js';
+import { fitSpinnerTaskLabel } from './taskLabel.js';
 import { GlimmerMessage } from './GlimmerMessage.js';
 import { SpinnerGlyph } from './SpinnerGlyph.js';
 import type { SpinnerMode } from './types.js';
@@ -17,6 +18,23 @@ import { interpolateColor, toRGBColor } from './utils.js';
 const SEP_WIDTH = stringWidth(' · ');
 const THINKING_BARE_WIDTH = stringWidth('thinking');
 const SHOW_TOKENS_AFTER_MS = 30_000;
+
+export function spinnerActivityStatus(mode: SpinnerMode): string {
+  switch (String(mode)) {
+    case 'thinking':
+      return 'thinking';
+    case 'requesting':
+      return 'requesting';
+    case 'responding':
+      return 'responding';
+    case 'tool-input':
+      return 'preparing tool';
+    case 'tool-use':
+      return 'working';
+    default:
+      return 'working';
+  }
+}
 
 // Thinking shimmer constants. Previously lived in a separate ThinkingShimmerText
 // component with its own useAnimationFrame(50) — inlined here to reuse our
@@ -42,6 +60,7 @@ export type SpinnerAnimationRowProps = {
 
   // Message (stable within a turn)
   message: string;
+  taskLabel?: string | null;
   messageColor: keyof Theme;
   shimmerColor: keyof Theme;
   overrideColor?: keyof Theme | null;
@@ -84,6 +103,7 @@ export function SpinnerAnimationRow({
   hasActiveTools,
   responseLengthRef,
   message,
+  taskLabel,
   messageColor,
   shimmerColor,
   overrideColor,
@@ -149,16 +169,25 @@ export function SpinnerAnimationRow({
   const tokensWidth = stringWidth(tokensText);
 
   // === Thinking text (may shrink to fit) ===
-  let thinkingText = thinkingStatus === 'thinking' ? `thinking${effortSuffix}` : typeof thinkingStatus === 'number' ? `thought for ${Math.max(1, Math.round(thinkingStatus / 1000))}s` : null;
+  let thinkingText = thinkingStatus === 'thinking' ? `thinking${effortSuffix}` : typeof thinkingStatus === 'number' ? `thought for ${Math.max(1, Math.round(thinkingStatus / 1000))}s` : spinnerActivityStatus(mode);
   let thinkingWidthValue = thinkingText ? stringWidth(thinkingText) : 0;
 
   // === Progressive width gating ===
   const messageWidth = glimmerMessageWidth + 2;
   const sep = SEP_WIDTH;
-  const wantsThinking = thinkingStatus !== null;
+  // Reserve the always-visible phase before fitting the task. Task labels are
+  // capped and disappear only on genuinely narrow terminals, never wrapping
+  // the hot activity row into a noisy second line.
+  const taskWidthBudget = columns - messageWidth - thinkingWidthValue - 9;
+  const visibleTaskLabel = fitSpinnerTaskLabel(taskLabel, taskWidthBudget);
+  const taskSegmentWidth = visibleTaskLabel ? sep + stringWidth(visibleTaskLabel) : 0;
+  // The parenthesized live-status area never disappears while the spinner is
+  // active. It transitions between phase, thought duration, elapsed time, and
+  // token information while the triangle + verb remain the primary line.
+  const wantsThinking = true;
   const wantsTimerAndTokens = verbose || hasRunningTeammates || effectiveElapsedMs > SHOW_TOKENS_AFTER_MS;
-  const availableSpace = columns - messageWidth - 5;
-  let showThinking = wantsThinking && availableSpace > thinkingWidthValue;
+  const availableSpace = columns - messageWidth - taskSegmentWidth - 5;
+  let showThinking = wantsThinking;
   if (!showThinking && wantsThinking && thinkingStatus === 'thinking' && effortSuffix) {
     if (availableSpace > THINKING_BARE_WIDTH) {
       thinkingText = 'thinking';
@@ -190,7 +219,7 @@ export function SpinnerAnimationRow({
           </Box>] : []), ...(showThinking && thinkingText ? [thinkingStatus === 'thinking' && !reducedMotion ? <Text key="thinking" color={thinkingShimmerColor}>
               {thinkingOnly ? `(${thinkingText})` : thinkingText}
             </Text> : <Text dimColor key="thinking">
-              {thinkingText}
+              {thinkingOnly ? `(${thinkingText})` : thinkingText}
             </Text>] : [])];
   const status = foregroundedTeammate && !foregroundedTeammate.isIdle ? <>
         <Text dimColor>(esc to interrupt </Text>
@@ -206,6 +235,7 @@ export function SpinnerAnimationRow({
   return <Box ref={viewportRef} flexDirection="row" flexWrap="wrap" marginTop={1} width="100%">
       <SpinnerGlyph frame={frame} messageColor={messageColor} stalledIntensity={overrideColor ? 0 : stalledIntensity} reducedMotion={reducedMotion} time={time} />
       <GlimmerMessage message={message} mode={mode} messageColor={messageColor} glimmerIndex={glimmerIndex} flashOpacity={flashOpacity} shimmerColor={shimmerColor} stalledIntensity={overrideColor ? 0 : stalledIntensity} />
+      {visibleTaskLabel && <Text dimColor>{`· ${visibleTaskLabel} `}</Text>}
       {status}
     </Box>;
 }

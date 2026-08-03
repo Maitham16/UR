@@ -32,6 +32,24 @@ const CREATE_TARGET_PATTERN =
 const STANDALONE_DIRECTIVE_PATTERN =
   /^(?:then|after|once|next|finally|before|verify|validate|test|run|create|add|update|fix|implement|build|bump|publish|report|summari[sz]e)\b/i
 const MAX_PLANNED_TASKS = 12
+const PATH_ROOT_HINTS = new Set([
+  'app',
+  'apps',
+  'bin',
+  'config',
+  'docs',
+  'documentation',
+  'examples',
+  'lib',
+  'packages',
+  'plugins',
+  'public',
+  'scripts',
+  'src',
+  'test',
+  'tests',
+  'technical',
+])
 
 function compact(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
@@ -59,7 +77,18 @@ export function extractReferencedFiles(text: string): string[] {
     const value = match[1]
     if (!value) continue
     if (value.includes('://')) continue
-    paths.push(value.replace(/[),.;:]+$/g, ''))
+    const candidate = value.replace(/[),.;:]+$/g, '')
+    const firstSegment = candidate.replace(/^\.{0,2}\//, '').split('/')[0]
+    const looksLikePath =
+      candidate.startsWith('.') ||
+      candidate.includes('.') ||
+      /^(?:README|CHANGELOG|RELEASE|SECURITY|CONTRIBUTING|QUALITY|LICENSE)$/i.test(
+        candidate,
+      ) ||
+      (firstSegment !== undefined && PATH_ROOT_HINTS.has(firstSegment))
+    // Natural-language slash pairs such as "agents/subagents" are not file
+    // targets. Extensionless paths remain supported under common repo roots.
+    if (looksLikePath) paths.push(candidate)
   }
   for (const match of text.matchAll(ABSOLUTE_PATH_PATTERN)) {
     const value = match[1]
@@ -129,7 +158,17 @@ function splitLongPrompt(prompt: string): string[] {
   if (bulletSegments.length > 0) return boundTaskCount(bulletSegments)
 
   const trimmed = compact(prompt)
-  if (trimmed.length < 220 && !/[;\n]/.test(prompt)) return [trimmed]
+  const hasInlineDirectiveBoundary =
+    /[.!?]\s+(?=(?:then|after|once|next|finally|before|verify|validate|test|run|create|add|update|fix|implement|build|bump|publish|report|summari[sz]e)\b)/i.test(
+      trimmed,
+    )
+  if (
+    trimmed.length < 220 &&
+    !/[;\n]/.test(prompt) &&
+    !hasInlineDirectiveBoundary
+  ) {
+    return [trimmed]
+  }
 
   const lines = prompt
     .split(/\r?\n+/)
@@ -137,8 +176,16 @@ function splitLongPrompt(prompt: string): string[] {
     .filter(Boolean)
   if (lines.length >= 2) return boundTaskCount(lines)
 
+  const semicolonSegments = trimmed
+    .split(/\s*;\s*/)
+    .map(compact)
+    .filter(Boolean)
+  if (semicolonSegments.length >= 2) {
+    return boundTaskCount(semicolonSegments)
+  }
+
   const sentenceSegments = trimmed
-    .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+    .split(/(?<=[.!?])\s+(?=[A-Za-z0-9])/)
     .map(compact)
     .filter(Boolean)
   if (sentenceSegments.length >= 2) return boundTaskCount(sentenceSegments)

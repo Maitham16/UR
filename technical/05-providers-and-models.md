@@ -106,15 +106,15 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   retrieve/poll/cancel, WebSocket continuation, compaction, deferred tool
   search, and bounded private cursor state. Compacted context persistence
   requires a 32-byte `UR_OPENAI_RESPONSES_STATE_KEY`.
-- `ollama.ts` selects timeouts from explicit request options, then
-  `API_TIMEOUT_MS`, then runtime defaults. `:cloud` models and remote sessions
-  use 120 seconds; local models use 300 seconds. The same model-aware value is
-  applied while waiting for `/api/chat` response headers and as the absolute
-  deadline in `readOllamaChunks`.
+- `ollama.ts` allows 900 seconds for `/api/chat` response headers so cold loads
+  and large prefills can start. Once headers arrive, `readOllamaChunks` applies
+  a rearmed inactivity deadline: 300 seconds for local and `:cloud` models,
+  120 seconds in remote/CCR sessions. Explicit request options win, followed
+  by `UR_STREAM_IDLE_TIMEOUT_MS`, then `API_TIMEOUT_MS`.
 - `ur.ts` identifies an Ollama Cloud runtime from both the selected provider and
   the `:cloud` suffix. It disables shared automatic request retries for that
-  route, applies the same 120-second bound to any permitted non-streaming
-  fallback, and skips fallback entirely when the Ollama stream deadline itself
+  route, applies a 120-second bound to any permitted non-streaming fallback,
+  and skips fallback entirely when the Ollama stream inactivity deadline itself
   caused the failure. Explicit `API_TIMEOUT_MS` remains authoritative.
 
 ## Capability-aware routing

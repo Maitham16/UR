@@ -14,7 +14,7 @@
  * keeps producing tokens is never interrupted, however long it runs.
  */
 
-export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 60_000
+export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300_000
 
 export class StreamIdleTimeoutError extends Error {
   readonly isStreamIdleTimeout = true

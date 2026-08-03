@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -9,6 +9,7 @@ import {
   learnedModelForTask,
   loadStats,
   recordOutcome,
+  recordOutcomes,
 } from '../src/services/agents/learning.js'
 import { resolveModelForTask } from '../src/services/agents/modelRouter.js'
 import type { ModelCapability } from '../src/commands/model-doctor/model-doctor.js'
@@ -57,6 +58,87 @@ describe('recordOutcome', () => {
       recordOutcome('/dev/null/x', { id: 'r', task: 't', model: null, pass: true }),
     ).not.toThrow()
   })
+
+  test('batch records task outcomes atomically and idempotently', () => {
+    const dir = tempDir('ur-learn-batch-')
+    try {
+      const outcomes = [
+        { id: 'a', task: 'inspect parser', model: 'm1', pass: true },
+        { id: 'b', task: 'inspect renderer', model: 'm1', pass: false },
+      ]
+      recordOutcomes(dir, outcomes)
+      recordOutcomes(dir, outcomes)
+      expect(loadStats(dir).models.m1).toEqual({ pass: 1, fail: 1 })
+      expect(
+        readdirSync(join(dir, '.ur', 'learning')).some(file =>
+          file.endsWith('.tmp'),
+        ),
+      ).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('parallel processes do not lose task outcomes', async () => {
+    const dir = tempDir('ur-learn-parallel-')
+    try {
+      const moduleUrl = new URL(
+        '../src/services/agents/learning.ts',
+        import.meta.url,
+      ).href
+      const children = Array.from({ length: 8 }, (_, index) =>
+        Bun.spawn(
+          [
+            process.execPath,
+            '-e',
+            `import { recordOutcome } from ${JSON.stringify(moduleUrl)}; recordOutcome(process.env.LEARN_TEST_CWD, { id: 'child-${index}', task: 'inspect parser', model: 'm1', pass: true });`,
+          ],
+          {
+            env: { ...process.env, LEARN_TEST_CWD: dir },
+            stdout: 'pipe',
+            stderr: 'pipe',
+          },
+        ),
+      )
+      const results = await Promise.all(
+        children.map(async child => ({
+          code: await child.exited,
+          stderr: await new Response(child.stderr).text(),
+        })),
+      )
+      expect(results.every(result => result.code === 0), JSON.stringify(results)).toBe(
+        true,
+      )
+      expect(loadStats(dir).models.m1).toEqual({ pass: 8, fail: 0 })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('malformed valid JSON is normalized before learned routing', () => {
+    const dir = tempDir('ur-learn-malformed-')
+    try {
+      const learningDir = join(dir, '.ur', 'learning')
+      mkdirSync(learningDir, { recursive: true })
+      writeFileSync(
+        join(learningDir, 'stats.json'),
+        JSON.stringify({
+          version: 1,
+          seen: ['ok', 42],
+          models: { broken: null, valid: { pass: 2, fail: 1 } },
+          categories: null,
+          modelByCategory: null,
+          lessons: ['keep evidence', false],
+        }),
+      )
+      const stats = loadStats(dir)
+      expect(stats.models).toEqual({ valid: { pass: 2, fail: 1 } })
+      expect(stats.modelByCategory).toEqual({})
+      expect(() => learnedModelForTask(stats, 'inspect parser')).not.toThrow()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('learnedModelForTask', () => {
@@ -97,7 +179,7 @@ describe('resolveModelForTask learned routing', () => {
   test('auto prefers the learned best model when evidence is solid', () => {
     const dir = tempDir('ur-learn-route-')
     try {
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 5; i++) {
         recordOutcome(dir, { id: `w${i}`, task: 'run the unit tests', model: 'small-coder', pass: true })
       }
       const resolved = resolveModelForTask('run the unit tests', 'auto', pool, localModels, { cwd: dir })

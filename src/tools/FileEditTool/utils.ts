@@ -68,12 +68,87 @@ export function stripTrailingWhitespace(str: string): string {
 }
 
 /**
+ * Whitespace and formatting characters that survive a round trip through a
+ * model but are not the ASCII characters actually in the file: non-breaking
+ * and typographic spaces, zero-width joiners, and the BOM. A model that
+ * reproduces a line containing one of these almost always emits a plain
+ * space (or nothing), which is enough to defeat an exact match.
+ *
+ * EXOTIC_SPACES covers U+00A0, U+1680, U+2000-U+200A, U+202F, U+205F, U+3000.
+ * ZERO_WIDTH covers U+200B-U+200D, U+2060, U+FEFF.
+ */
+const EXOTIC_SPACES = /[   -   　]/g
+const ZERO_WIDTH = /[​-‍⁠﻿]/g
+
+/**
+ * Folds characters that differ between the file and the model's copy without
+ * differing to a reader. Used only to decide *whether* a region matches — the
+ * text handed back for replacement is always the file's own bytes.
+ */
+function foldInvisibleChars(line: string): string {
+  return line
+    .normalize('NFC')
+    .replace(EXOTIC_SPACES, ' ')
+    .replace(ZERO_WIDTH, '')
+}
+
+/**
  * Normalizes a line for fuzzy matching: strips trailing whitespace and
  * converts tabs to a canonical 4-space width so tab/space indentation
  * differences don't block matching.
  */
 function normalizeLineForMatch(line: string): string {
-  return line.replaceAll('\t', '    ').replace(/\s+$/, '')
+  return foldInvisibleChars(line).replaceAll('\t', '    ').replace(/\s+$/, '')
+}
+
+/** Normalized line content with its indentation removed. */
+function lineBody(line: string): string {
+  return normalizeLineForMatch(line).trimStart()
+}
+
+/** Indent width of a normalized line in columns, tabs counted as 4. */
+function indentWidth(line: string): number {
+  const normalized = normalizeLineForMatch(line)
+  return normalized.length - normalized.trimStart().length
+}
+
+/**
+ * Re-indents every line of `text` by `columns`, which may be negative.
+ *
+ * Needed when old_string matched a block the file indents differently: the
+ * replacement has to land at the file's depth, not the model's, or the edit
+ * silently corrupts the block it just fixed.
+ */
+export function shiftIndentation(text: string, columns: number): string {
+  if (columns === 0) return text
+  return text
+    .split('\n')
+    .map(line => {
+      if (line.trim() === '') return line
+      if (columns > 0) return ' '.repeat(columns) + line
+      const removable = line.length - line.trimStart().length
+      return line.slice(Math.min(-columns, removable))
+    })
+    .join('\n')
+}
+
+/**
+ * Read renders files as `   12→code` (or `12\tcode`). Models routinely copy a
+ * region straight out of that render into old_string, prefixes and all, which
+ * can never match the file. Detect a fully-prefixed block and recover the
+ * source text; a block where only some lines carry a prefix is left alone,
+ * since that is more likely to be real content than a copy artifact.
+ */
+const LINE_NUMBER_PREFIX = /^\s*\d+[→\t]/
+
+function stripLineNumberPrefixes(searchString: string): string | null {
+  const lines = searchString.split('\n')
+  const meaningful = lines.filter(line => line.trim() !== '')
+  if (meaningful.length === 0) return null
+  if (!meaningful.every(line => LINE_NUMBER_PREFIX.test(line))) return null
+  return lines
+    .map(line => line.replace(LINE_NUMBER_PREFIX, ''))
+    .join('\n')
 }
 
 /**
@@ -127,6 +202,131 @@ function findActualStringWhitespaceTolerant(
 }
 
 /**
+ * Matches a block the file indents differently than the model wrote it.
+ *
+ * Only a *uniform* shift is accepted: every line of the candidate must sit the
+ * same number of columns from the search block's corresponding line, and the
+ * line bodies must be identical. A block that has been re-indented wholesale
+ * satisfies this; unrelated code that merely shares one line does not, so the
+ * relaxation cannot silently retarget an edit.
+ */
+function findActualStringIndentTolerant(
+  fileContent: string,
+  searchString: string,
+): EditTarget | null {
+  const searchLines = searchString.split('\n')
+  const fileLines = fileContent.split('\n')
+  if (searchLines.length === 0 || searchLines.length > fileLines.length) {
+    return null
+  }
+
+  const searchBodies = searchLines.map(lineBody)
+  const firstBody = searchBodies[0]!
+  // An all-blank or single-blank-line search has no distinguishing content;
+  // shifting it could match anywhere.
+  if (searchBodies.every(body => body === '')) return null
+
+  for (let start = 0; start <= fileLines.length - searchLines.length; start++) {
+    if (lineBody(fileLines[start]!) !== firstBody) continue
+
+    let shift: number | null = null
+    let match = true
+    for (let j = 0; j < searchLines.length; j++) {
+      const fileLine = fileLines[start + j]!
+      const searchBody = searchBodies[j]!
+      if (lineBody(fileLine) !== searchBody) {
+        match = false
+        break
+      }
+      // Blank lines carry no indentation to compare.
+      if (searchBody === '') continue
+      const lineShift = indentWidth(fileLine) - indentWidth(searchLines[j]!)
+      if (shift === null) {
+        shift = lineShift
+      } else if (shift !== lineShift) {
+        match = false
+        break
+      }
+    }
+
+    if (match && shift !== null && shift !== 0) {
+      return {
+        actual: fileLines.slice(start, start + searchLines.length).join('\n'),
+        indentShift: shift,
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Where an edit should land, plus how far the file's copy is indented relative
+ * to the string the model supplied.
+ */
+export type EditTarget = {
+  /** The exact text in the file, safe to hand to String.replace. */
+  actual: string
+  /** Columns to shift new_string by so it lands at the file's depth. */
+  indentShift: number
+}
+
+/**
+ * Locates the region of `fileContent` that `searchString` refers to.
+ *
+ * The cascade runs strictest first and stops at the first hit, so an exact
+ * match is never overridden by a looser one. Every step returns the file's own
+ * text, so the result is always safe to pass to String.replace.
+ */
+export function findEditTarget(
+  fileContent: string,
+  searchString: string,
+): EditTarget | null {
+  // 1. Exact.
+  if (fileContent.includes(searchString)) {
+    return { actual: searchString, indentShift: 0 }
+  }
+
+  // 2. Curly vs straight quotes.
+  const normalizedSearch = normalizeQuotes(searchString)
+  const normalizedFile = normalizeQuotes(fileContent)
+  const searchIndex = normalizedFile.indexOf(normalizedSearch)
+  if (searchIndex !== -1) {
+    return {
+      actual: fileContent.substring(
+        searchIndex,
+        searchIndex + searchString.length,
+      ),
+      indentShift: 0,
+    }
+  }
+
+  // 3. Trailing whitespace, tabs vs spaces, and invisible characters.
+  const whitespaceMatch = findActualStringWhitespaceTolerant(
+    fileContent,
+    searchString,
+  )
+  if (whitespaceMatch !== null) {
+    return { actual: whitespaceMatch, indentShift: 0 }
+  }
+
+  // 4. The whole block re-indented.
+  const indentMatch = findActualStringIndentTolerant(fileContent, searchString)
+  if (indentMatch !== null) {
+    return indentMatch
+  }
+
+  // 5. Read's line-number gutter copied into old_string. Retry the cascade on
+  //    the recovered source text rather than duplicating each step above.
+  const withoutPrefixes = stripLineNumberPrefixes(searchString)
+  if (withoutPrefixes !== null && withoutPrefixes !== searchString) {
+    return findEditTarget(fileContent, withoutPrefixes)
+  }
+
+  return null
+}
+
+/**
  * Finds the actual string in the file content that matches the search string,
  * accounting for quote normalization and whitespace differences.
  * @param fileContent The file content to search in
@@ -137,24 +337,66 @@ export function findActualString(
   fileContent: string,
   searchString: string,
 ): string | null {
-  // First try exact match
-  if (fileContent.includes(searchString)) {
-    return searchString
+  return findEditTarget(fileContent, searchString)?.actual ?? null
+}
+
+/**
+ * Explains a failed match in terms of the file, so the retry can be aimed
+ * instead of guessed. Falls back to a plain statement when the search string
+ * shares nothing with the file.
+ */
+export function describeEditMatchFailure(
+  fileContent: string,
+  searchString: string,
+): string {
+  const searchLines = searchString.split('\n')
+  const firstSearchLine = searchLines.find(line => line.trim() !== '')
+  if (firstSearchLine === undefined) {
+    return 'String to replace not found in file. The string is blank.'
   }
 
-  // Try with normalized quotes
-  const normalizedSearch = normalizeQuotes(searchString)
-  const normalizedFile = normalizeQuotes(fileContent)
+  const fileLines = fileContent.split('\n')
+  const anchorBody = lineBody(firstSearchLine)
+  const anchors = fileLines
+    .map((line, index) => ({ line, index }))
+    .filter(entry => lineBody(entry.line) === anchorBody)
 
-  const searchIndex = normalizedFile.indexOf(normalizedSearch)
-  if (searchIndex !== -1) {
-    // Find the actual string in the file that matches
-    return fileContent.substring(searchIndex, searchIndex + searchString.length)
+  if (anchors.length === 0) {
+    return (
+      'String to replace not found in file. No line in the file matches its ' +
+      `first line: ${JSON.stringify(firstSearchLine.trim())}. Read the file ` +
+      'again and copy the target text from the current contents.'
+    )
   }
 
-  // Try whitespace-tolerant line-by-line matching (trailing whitespace,
-  // tab/space indentation differences)
-  return findActualStringWhitespaceTolerant(fileContent, searchString)
+  // The first line exists, so the block diverges somewhere after it. Point at
+  // the divergence rather than making the model diff the whole region.
+  const anchor = anchors[0]!
+  const offset = searchLines.indexOf(firstSearchLine)
+  const details = anchors
+    .slice(0, 3)
+    .map(entry => {
+      const start = entry.index - offset
+      for (let j = 0; j < searchLines.length; j++) {
+        const fileLine = fileLines[start + j]
+        if (fileLine === undefined) {
+          return `line ${entry.index + 1}: the file ends before the string does`
+        }
+        if (lineBody(fileLine) !== lineBody(searchLines[j]!)) {
+          return (
+            `line ${start + j + 1}: file has ${JSON.stringify(fileLine)}, ` +
+            `string has ${JSON.stringify(searchLines[j]!)}`
+          )
+        }
+      }
+      return `line ${entry.index + 1}: matches`
+    })
+    .join('; ')
+
+  return (
+    `String to replace not found in file. Its first line appears at line ` +
+    `${anchor.index + 1}, but the block diverges — ${details}.`
+  )
 }
 
 /**

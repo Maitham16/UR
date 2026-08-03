@@ -30,16 +30,36 @@ bin/ur.js  →  dist/cli.js (bundled from src/entrypoints/cli.tsx)
    status line, and dialog launchers (`src/screens/`, `src/components/`, vendored Ink fork in
    `src/ink/`). Input supports vim mode (`src/vim`), custom keybindings (`src/keybindings`),
    paste/image handling, `!` shell mode, `#` memory notes, and `/` command typeahead.
-   Visual language: thinking blocks render dim/italic labeled "model reasoning to itself"
-   (left-bordered when expanded via ctrl+o); user-facing answers carry an accent-colored ⏺
-   marker; the live task panel (TaskListV2) is pinned in the fixed bottom region above the
-   prompt — visible while the agent works, statuses updating in real time (ctrl+T toggles).
+   Visual language: provider thinking stays private on the normal screen and renders as
+   dim/italic, left-bordered diagnostics only in transcript or verbose mode. Live ordinary
+   assistant drafts are not mounted on the normal screen, and completed text blocks paired
+   with a tool call are treated as work preludes and omitted there. Completed self-talk that
+   is part of an answer renders as a one-line `Reasoning condensed` rail. These transformations
+   are display-only: the stored message, exported transcript, and next-turn model context stay
+   unchanged. User-facing final answers carry an accent-colored ⏺ marker. The
+   `◭ Mashoofing…` activity row stays mounted through thinking, request, response, tool
+   preparation, and tool execution. It appends the current in-progress task from the task
+   board after the ellipsis, then parenthesized detail derived from the live phase; both are
+   width-gated to keep the activity surface on one line.
+   The task panel (TaskListV2) is pinned in the fixed bottom region above the prompt —
+   visible while the agent works, statuses updating in real time (ctrl+T toggles). A real
+   prompt creates an automatic in-progress seed only when there is no unfinished board. That
+   seed contains no prompt prose and renders as a neutral `Planning tasks…` state rather than a
+   task/count; the first explicit TaskCreate replaces it atomically. Generation rollover
+   preserves and resumes pending/in-progress snapshots after interruption. Corrective replies,
+   including `no` / `still` feedback, reuse the prior board rather than becoming task titles;
+   terminal boards archive when genuinely new work begins.
 2. **QueryEngine** (`src/QueryEngine.ts`) — orchestrates a turn: builds the system prompt,
    assembles the tool pool (`src/tools.ts:assembleToolPool` — built-ins + MCP, deny-rule
    filtered, sorted for prompt-cache stability), streams the model response, dispatches tool
    calls through the permission layer (`src/utils/permissions/`), runs hooks
    (`src/utils/hooks/`), tracks cost (`src/cost-tracker.ts`), and persists history
-   (`src/history.ts`).
+   (`src/history.ts`). It also owns bounded context recovery. Proactive compaction normally
+   runs before the request; if a
+   provider still rejects the live request for context size, the external build withholds
+   that transient error, makes one media-stripped summary attempt, installs the compact
+   boundary, and retries. Original messages remain in transcript storage and a second
+   overflow surfaces normally rather than looping.
 3. **query.ts** — the low-level provider-agnostic model call (native Anthropic/OpenAI/Gemini/
    Ollama/OpenAI-compatible streaming; `src/services/providers/` decides the backend).
 4. **Context management** — auto-compaction (`src/services/compact/`), context collapse

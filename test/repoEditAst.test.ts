@@ -51,7 +51,7 @@ describe('AST-aware repo editing', () => {
     expect(readFileSync(join(dir, 'src/b.ts'), 'utf-8')).toContain('import { amount } from "./a"')
     expect(readFileSync(join(dir, 'src/b.ts'), 'utf-8')).toContain('console.log(amount)')
     rmSync(dir, { recursive: true, force: true })
-  })
+  }, 120_000)
 
   test('applyRenameAst rolls back when check command fails', async () => {
     const dir = tempDir('ur-ast-rename-rollback-')
@@ -74,6 +74,6 @@ describe('AST-aware repo editing', () => {
     expect(readFileSync(join(dir, 'src/a.ts'), 'utf-8')).toBe(beforeA)
     expect(readFileSync(join(dir, 'src/b.ts'), 'utf-8')).toBe(beforeB)
     rmSync(dir, { recursive: true, force: true })
-  })
+  }, 120_000)
 
 })

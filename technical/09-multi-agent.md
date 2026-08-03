@@ -88,6 +88,28 @@ regardless of the configured limit.
 `src/services/agents/intentRouter.ts` does the task classification;
 `decomposer.ts` splits goals into tasks; `delegation.ts` hands tasks to workers.
 
+### Prompt decomposition and concurrency policy
+
+Prompt planning produces 2–8 bounded tasks in the normal case and never more
+than 12. Deterministic splitting understands numbered/nested lists, semicolons,
+and directive-led sentence boundaries. Model-generated decompositions are
+accepted only when IDs and goals are non-empty and unique, every dependency
+exists, there are no self-edges or cycles, and the size limit is respected;
+otherwise `decomposer.ts` falls back to deterministic tasks.
+
+The interactive lifecycle creates tasks before referring to their real IDs.
+Task guidance forbids guessed/self/forward IDs, then connects dependencies with
+`TaskUpdate` and validates the final graph. This keeps model ordering mistakes
+away from the task-store API even though the store remains defensive.
+
+`parallelPolicy.ts` is deliberately conservative. Explicitly read-only work may
+overlap. Unknown or mutating work in a shared checkout does not. The same
+read/write rule is used by Agent tool concurrency, crew claims, prompt-plan
+execution, and the cross-plan execution gate in `ur exec`. A mutation is
+parallel-safe only with explicit worktree or remote isolation. Local agent
+worktrees are created from the exact current `HEAD`, and creation fails if the
+source checkout is dirty so a worker cannot silently lose uncommitted state.
+
 ## Background agents (`/bg`, `ur bg`)
 
 Detached local agents managed by `src/services/agents/backgroundRunner.ts`:
@@ -111,6 +133,10 @@ A lead agent decomposes a goal into a task board; worker subagents claim and exe
 /crew run cleanup --dynamic --max-workers 8   # scale workers to the board (governor-capped)
 /crew show cleanup · /crew reset cleanup · /crew delete cleanup
 ```
+
+The worker count is a ceiling, not permission for conflicting work. Read-only
+claims can fill it; shared-checkout writers are claimed one at a time. Terminal
+non-dry-run crew results are recorded in the local learning store.
 
 ## Arena (`/arena`) — best-of-N with a judge
 

@@ -20,6 +20,7 @@ It also helps the user understand the progress of the task and overall progress 
 
 Use this tool proactively in these scenarios:
 
+- Every actionable implementation request, including one-step changes
 - Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
 - Non-trivial and complex tasks - Tasks that require careful planning or multiple operations${teammateContext}
 - Plan mode - When using plan mode, create a task list to track the work
@@ -31,12 +32,9 @@ Use this tool proactively in these scenarios:
 ## When NOT to Use This Tool
 
 Skip using this tool when:
-- There is only a single, straightforward task
-- The task is trivial and tracking it provides no organizational benefit
-- The task can be completed in less than 3 trivial steps
 - The task is purely conversational or informational
 
-NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+NOTE: a single actionable change still gets one visible task. Only requests with no work to perform skip task creation.
 
 EXCEPTION: none of the "skip" rules apply when the user explicitly asks for an item to be added to the task list ("add to your tasks …"). An explicit request always wins — create the task.
 
@@ -45,18 +43,20 @@ EXCEPTION: none of the "skip" rules apply when the user explicitly asks for an i
 - **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")
 - **description**: What needs to be done
 - **activeForm** (optional): Present continuous form shown in the spinner when the task is in_progress (e.g., "Fixing authentication bug"). If omitted, the spinner shows the subject instead.
-- **blocks** / **addBlocks** (optional): Task IDs this task blocks
-- **blockedBy** / **addBlockedBy** (optional): Task IDs that block this task
-- **addToCurrentList** (optional): Set to \`true\` only when the user explicitly asks to append to the current/existing task list. A normal new prompt starts a fresh list and archives the previous list as history.
+- **blocks** / **addBlocks** (optional): Existing task IDs this task blocks
+- **blockedBy** / **addBlockedBy** (optional): Existing task IDs that block this task
+- **addToCurrentList** (optional): Set to \`true\` when the user explicitly asks to append to the current/existing task list. A new prompt archives the previous list only when it has no pending or in-progress work; an interruption preserves active work for reconciliation.
 
 All tasks are created with status \`pending\`.
 
 ## Tips
 
 - Create tasks with clear, specific subjects that describe the outcome
-- Provide dependencies during creation when known, or use TaskUpdate later to adjust them
+- Never guess task IDs or reference a task that has not been created yet. For a multi-task plan, create tasks without forward edges, wait for their real IDs, then use TaskUpdate to add dependency edges.
+- A task can depend only on an existing different task; never add a self-dependency.
 ${teammateTips}- Check TaskList first to avoid creating duplicate tasks
 - Use TaskUpdate, not TaskCreate, for status or ownership changes
-- Do not set \`addToCurrentList\` merely because earlier tasks exist; it is reserved for explicit user intent such as "add this to the current list"
+- After an interruption, call TaskList, keep relevant active work, add/update the new requirement, and mark superseded tasks skipped
+- Do not set \`addToCurrentList\` merely because earlier tasks exist; runtime already preserves interrupted work, while this flag is reserved for explicit user intent such as "add this to the current list"
 `
 }

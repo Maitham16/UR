@@ -10,6 +10,7 @@ import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
 import type { AssistantMessage, Message } from '../../types/message.js'
 import { createChildAbortController } from '../../utils/abortController.js'
 import { runToolUse } from './toolExecution.js'
+import { getMaxToolUseConcurrency } from './toolOrchestration.js'
 
 type MessageUpdate = {
   message?: Message
@@ -20,10 +21,6 @@ type RunToolUse = typeof runToolUse
 
 type ToolStatus = 'queued' | 'executing' | 'completed' | 'yielded'
 
-// Default cap on concurrently-executing read-safe tools. Matches the
-// "up to 8 parallel calls" guidance in the system prompt. Configurable
-// via UR_MAX_CONCURRENT_TOOLS.
-const MAX_CONCURRENT_TOOLS = 8
 
 type TrackedTool = {
   id: string
@@ -165,21 +162,19 @@ export class StreamingToolExecutor {
   /**
    * Check if a tool can execute based on current concurrency state.
    *
-   * Caps simultaneous concurrent-safe tools to MAX_CONCURRENT_TOOLS so a
-   * burst of N parallel reads doesn't exhaust FDs / memory. Override via
-   * UR_MAX_CONCURRENT_TOOLS (clamped to [1, 32]).
+   * Caps simultaneous concurrent-safe tools so a burst of N parallel reads
+   * doesn't exhaust FDs / memory. The cap comes from the shared resolver, so
+   * it is the same number the batched orchestrator uses and responds to the
+   * same settings — this path used to carry its own constant and read only
+   * UR_MAX_CONCURRENT_TOOLS, so tuning parallelism took effect or silently
+   * did nothing depending on which executor was active.
    */
   private canExecuteTool(isConcurrencySafe: boolean): boolean {
     const executingTools = this.tools.filter(t => t.status === 'executing')
     if (executingTools.length === 0) return true
     if (!isConcurrencySafe) return false
     if (!executingTools.every(t => t.isConcurrencySafe)) return false
-    const envCap = Number(process.env.UR_MAX_CONCURRENT_TOOLS)
-    const cap =
-      Number.isFinite(envCap) && envCap >= 1
-        ? Math.min(Math.floor(envCap), 32)
-        : MAX_CONCURRENT_TOOLS
-    return executingTools.length < cap
+    return executingTools.length < getMaxToolUseConcurrency()
   }
 
   /**

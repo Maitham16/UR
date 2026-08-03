@@ -12,10 +12,12 @@ import { createOpenAICompatibleClient } from '../src/services/api/openaiCompatib
 import { createStandardAPIClient } from '../src/services/api/standardAPI.js'
 import {
   DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+  DEFAULT_PROVIDER_STREAM_TIMEOUT_MS,
   ProviderHTTPError,
   ProviderTimeoutError,
   fetchWithProviderReliability,
   getProviderRequestTimeoutMs,
+  getProviderStreamTimeoutMs,
   isRetryableProviderError,
   normalizeOpenAICompatibleBaseUrl,
 } from '../src/services/api/providerHttp.js'
@@ -165,6 +167,34 @@ describe('provider timeout, retry, and base URL reliability', () => {
     delete process.env.API_TIMEOUT_MS
     process.env.UR_API_TIMEOUT_MS = '44000'
     expect(getProviderRequestTimeoutMs()).toBe(44_000)
+  })
+
+  test('streaming requests wait far longer for headers than non-streaming ones', () => {
+    delete process.env.API_TIMEOUT_MS
+    delete process.env.UR_API_TIMEOUT_MS
+    delete process.env.UR_STREAM_REQUEST_TIMEOUT_MS
+    expect(getProviderStreamTimeoutMs()).toBe(DEFAULT_PROVIDER_STREAM_TIMEOUT_MS)
+    expect(DEFAULT_PROVIDER_STREAM_TIMEOUT_MS).toBeGreaterThan(
+      DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+    )
+  })
+
+  test('a raised request timeout also raises the streaming ceiling', () => {
+    delete process.env.UR_STREAM_REQUEST_TIMEOUT_MS
+    process.env.API_TIMEOUT_MS = String(DEFAULT_PROVIDER_STREAM_TIMEOUT_MS * 2)
+    expect(getProviderStreamTimeoutMs()).toBe(
+      DEFAULT_PROVIDER_STREAM_TIMEOUT_MS * 2,
+    )
+    delete process.env.API_TIMEOUT_MS
+  })
+
+  test('an explicit streaming override wins over both defaults', () => {
+    delete process.env.API_TIMEOUT_MS
+    delete process.env.UR_API_TIMEOUT_MS
+    process.env.UR_STREAM_REQUEST_TIMEOUT_MS = '7000'
+    expect(getProviderStreamTimeoutMs()).toBe(7_000)
+    expect(getProviderStreamTimeoutMs(9_000)).toBe(9_000)
+    delete process.env.UR_STREAM_REQUEST_TIMEOUT_MS
   })
 
   test('provider timeout can be overridden by settings', () => {

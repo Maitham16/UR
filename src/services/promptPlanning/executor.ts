@@ -22,6 +22,7 @@ import {
   validateAfterExecution,
   validateBeforeExecution,
 } from './validation.js'
+import { isClearlyReadOnlyWork } from '../agents/parallelPolicy.js'
 
 function cloneTasks(tasks: NexusTask[]): NexusTask[] {
   return tasks.map(task => ({
@@ -47,17 +48,9 @@ type BoardEmissionState = {
 
 type TaskRecords = Map<NexusTask, TaskRunRecord>
 
-const READ_ONLY_TASK_PATTERN =
-  /^\s*(?:analy[sz]e|audit|compare|explain|inspect|list|plan|read|review)\b/i
-const MUTATING_TASK_PATTERN =
-  /\b(?:add|address|apply|build|bump|changes?|correct|create|delete|deploy|edit|enhance|execute|export|fix|format|generate|harden|implement|improve|install|modify|move|optimi[sz]e|patch|publish|refactor|remove|rename|repair|resolve|run|save|scaffold|update|write)\b/i
-
-function isClearlyReadOnlyTask(task: NexusTask): boolean {
+export function isClearlyReadOnlyTask(task: NexusTask): boolean {
   const description = `${task.title}\n${task.description}\n${task.input.prompt}`
-  return (
-    READ_ONLY_TASK_PATTERN.test(description) &&
-    !MUTATING_TASK_PATTERN.test(description)
-  )
+  return isClearlyReadOnlyWork(description)
 }
 
 function canonicalLockKey(cwd: string, value: string): string {
@@ -688,20 +681,28 @@ async function runOneTask(
     config,
     boardState,
   )
-  const workspaceBefore = captureWorkspaceFileState(options.cwd)
-
+  let workspaceBefore: ReturnType<typeof captureWorkspaceFileState>
+  let workspaceAfter: ReturnType<typeof captureWorkspaceFileState>
   let result: TaskExecutionResult
-  try {
-    result = normalizeExecutionResult(await options.executeTask(task))
-  } catch (error) {
-    result = {
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
+  const executeWithEvidence = async (): Promise<void> => {
+    workspaceBefore = captureWorkspaceFileState(options.cwd)
+    try {
+      result = normalizeExecutionResult(await options.executeTask(task))
+    } catch (error) {
+      result = {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
     }
+    workspaceAfter = captureWorkspaceFileState(options.cwd)
   }
-  const workspaceAfter = captureWorkspaceFileState(options.cwd)
+  if (options.executionGate) {
+    await options.executionGate(task, executeWithEvidence)
+  } else {
+    await executeWithEvidence()
+  }
   const actualChangedFiles = unique([
-    ...diffWorkspaceFileState(workspaceBefore, workspaceAfter),
+    ...diffWorkspaceFileState(workspaceBefore!, workspaceAfter!),
     ...(result.observedChangedFiles ?? []),
   ])
   const observed = observedCommands(result)

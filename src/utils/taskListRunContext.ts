@@ -76,6 +76,73 @@ export function requestsAppendToCurrentTaskList(input: string): boolean {
   )
 }
 
+/**
+ * Recognize a turn that authorizes work already planned rather than starting a
+ * new request.
+ *
+ * Planning-only responses often end at the user boundary even when the user
+ * asked the agent to continue automatically. A short `ok`/`proceed` reply is
+ * therefore a continuation of the active task generation. Treating it as a
+ * fresh generation archived the plan immediately before the model tried to
+ * update it. Keep this deliberately narrow and whole-message anchored so a
+ * new request such as "continue improving the parser" still starts fresh.
+ */
+export function requestsContinueCurrentTaskList(input: string): boolean {
+  const normalized = input
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?]+$/gu, '')
+    .trim()
+  if (!normalized || normalized.length > 80) return false
+
+  return (
+    /^(?:ok(?:ay)?|yes|yep|yup|sure|approved|i approve|looks good|sounds good)$/u.test(
+      normalized,
+    ) ||
+    /^(?:please\s+)?(?:continue|proceed|go ahead|carry on|do it|start(?: now)?|begin implementation|start implementation)$/u.test(
+      normalized,
+    ) ||
+    /^(?:ok(?:ay)?|yes|sure|approved|i approve)[, ]+(?:please\s+)?(?:continue|proceed|go ahead|carry on|do it|start(?: now)?|begin implementation|start implementation)$/u.test(
+      normalized,
+    )
+  )
+}
+
+/**
+ * Recognize corrective follow-ups that refer to the work already on screen.
+ * These are not new project tasks; they revise the active result. Keep the
+ * patterns anchored to conversational references so a standalone new request
+ * still starts a fresh generation.
+ */
+export function requestsRevisionOfCurrentTaskList(input: string): boolean {
+  const normalized = input.replace(/\s+/gu, ' ').trim().toLowerCase()
+  if (!normalized || normalized.length > 500) return false
+
+  return (
+    /^(?:no|also|and|but|actually|instead|still|again|not yet|(?:it|this|that)\s+still)\b/u.test(
+      normalized,
+    ) ||
+    /\b(?:why did (?:you|u)|i (?:said|asked|meant)|you (?:removed|deleted|changed|forgot|missed))\b/u.test(
+      normalized,
+    ) ||
+    /^(?:please\s+)?(?:fix|change|update|restore|keep|remove|add)\s+(?:it|that|this)\b/u.test(
+      normalized,
+    ) ||
+    /^(?:please\s+)?(?:do not|don't)\s+(?:remove|delete|change|replace|forget)\b/u.test(
+      normalized,
+    )
+  )
+}
+
+function shouldKeepCurrentTaskList(input: string): boolean {
+  return (
+    requestsAppendToCurrentTaskList(input) ||
+    requestsContinueCurrentTaskList(input) ||
+    requestsRevisionOfCurrentTaskList(input)
+  )
+}
+
 /** Return a generation only for a real user prompt, not meta/task output. */
 export function getTaskListRunForCommand(
   command: QueuedCommand | undefined,
@@ -92,7 +159,7 @@ export function getTaskListRunForCommand(
   }
   return {
     generationId: String(command.uuid ?? randomUUID()),
-    appendToCurrent: requestsAppendToCurrentTaskList(text),
+    appendToCurrent: shouldKeepCurrentTaskList(text),
   }
 }
 
@@ -109,6 +176,6 @@ export function getTaskListRunFromMessages(
   }
   return {
     generationId: message.uuid,
-    appendToCurrent: requestsAppendToCurrentTaskList(textFromMessage(message)),
+    appendToCurrent: shouldKeepCurrentTaskList(textFromMessage(message)),
   }
 }

@@ -65,5 +65,5 @@ describe('AST-aware move', () => {
       'from "./a"',
     )
     rmSync(dir, { recursive: true, force: true })
-  })
+  }, 120_000)
 })

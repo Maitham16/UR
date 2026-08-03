@@ -7,7 +7,7 @@ export {
   diffWorkspaceFileState,
   type WorkspaceFileState,
 } from './evidence.js'
-export { runPromptPlan } from './executor.js'
+export { isClearlyReadOnlyTask, runPromptPlan } from './executor.js'
 export { decomposePrompt, extractReferencedFiles } from './planner.js'
 export { progressSummary, renderTaskBoard } from './taskBoard.js'
 export type {

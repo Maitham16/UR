@@ -86,14 +86,34 @@ Do not publish if the package version already exists on npm.
 
 ## Publish
 
-Only after every check passes and the working tree is clean:
+GitHub Actions publishes the exact tarball that passes the release workflow.
+Do not run `npm publish` separately and do not create a tag before the release
+commit is on the remote branch.
+
+Only after every check passes, commit the complete release and push it:
 
 ```bash
 git add .
 git commit -m "chore: polish UR-Nexus production release"
 git push origin master
-npm publish
 ```
 
+Wait for the `Test Production` workflow on that commit to pass. Then use the
+guarded tag command; its default mode is a read-only preflight:
+
+```bash
+bun run release:tag
+bun run release:tag -- --push
+```
+
+The command refuses to tag a dirty tree, an uncommitted version, a commit that
+is not yet the remote branch tip, a mismatched changelog, or a local/remote tag
+that already exists. `--push` creates one annotated immutable tag pointing at
+the verified commit. That tag starts `.github/workflows/release.yml`, which
+rebuilds and verifies the package, publishes the GitHub Release, and publishes
+the same verified tarball to npm.
+
+If a tag was accidentally pushed from the wrong commit, keep it as failed
+release history and bump to a fresh patch version. Do not move a published tag.
 If the remote default branch is not `master`, push the checked-out release
-branch instead.
+branch instead; the tag command verifies that branch by name.

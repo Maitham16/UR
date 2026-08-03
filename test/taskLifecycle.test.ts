@@ -102,6 +102,66 @@ describe('task dependency and completion lifecycle', () => {
     ])
   })
 
+  test('TaskCreate stores and adopts both directions of forward dependencies', async () => {
+    const blocksFuture = await TaskCreateTool.call(
+      {
+        subject: 'blocks future',
+        description: 'blocks future',
+        blocks: ['3'],
+      },
+      toolContext(),
+    )
+    const blockedByFuture = await TaskCreateTool.call(
+      {
+        subject: 'blocked by future',
+        description: 'blocked by future',
+        blockedBy: ['3'],
+      },
+      toolContext(),
+    )
+    const future = await TaskCreateTool.call(
+      {
+        subject: 'future endpoint',
+        description: 'future endpoint',
+      },
+      toolContext(),
+    )
+
+    expect(blocksFuture.data.task.id).toBe('1')
+    expect(blockedByFuture.data.task.id).toBe('2')
+    expect(future.data.task.id).toBe('3')
+    expect(await getTask(taskListId, '1')).toMatchObject({
+      blocks: ['3'],
+      blockedBy: [],
+    })
+    expect(await getTask(taskListId, '2')).toMatchObject({
+      blocks: [],
+      blockedBy: ['3'],
+    })
+    expect(await getTask(taskListId, '3')).toMatchObject({
+      blocks: ['2'],
+      blockedBy: ['1'],
+    })
+  })
+
+  test('TaskCreate drops a self-dependency without deleting the task', async () => {
+    const result = await TaskCreateTool.call(
+      {
+        subject: 'keep me',
+        description: 'keep me',
+        blocks: ['1'],
+        blockedBy: ['1'],
+      },
+      toolContext(),
+    )
+
+    expect(result.data.task.id).toBe('1')
+    expect(await getTask(taskListId, '1')).toMatchObject({
+      blocks: [],
+      blockedBy: [],
+    })
+  })
+
   test('TaskCreate preflights every dependency before writing any edge', async () => {
     const prerequisite = await createBareTask('prerequisite')
 

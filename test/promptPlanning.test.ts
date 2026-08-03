@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   decomposePrompt,
+  extractReferencedFiles,
   captureWorkspaceFileState,
   diffWorkspaceFileState,
   renderTaskBoard,
@@ -78,6 +79,33 @@ describe('prompt planning', () => {
     expect(plan.tasks[0]?.fileTargets).toEqual(['README'])
     expect(plan.tasks[0]?.riskLevel).toBe('low')
     expect(plan.tasks[0]?.approvalRequired).toBe(false)
+  })
+
+  test('natural prose splits lowercase follow-ups and semicolon clauses', () => {
+    const sentencePlan = decomposePrompt(
+      'Implement the parser. then update the documentation. finally run tests.',
+    )
+    expect(sentencePlan.tasks).toHaveLength(3)
+    expect(sentencePlan.tasks[1]?.dependencies).toEqual(['task-1'])
+    expect(sentencePlan.tasks[2]?.dependencies).toEqual([
+      'task-1',
+      'task-2',
+    ])
+
+    const semicolonPlan = decomposePrompt(
+      'Inspect the parser; review the renderer; finally report findings',
+    )
+    expect(semicolonPlan.tasks).toHaveLength(3)
+  })
+
+  test('natural slash phrases are not mistaken for repository paths', () => {
+    const plan = decomposePrompt(
+      'Assign agents/subagents to independent research tasks',
+    )
+    expect(plan.tasks[0]?.fileTargets).toEqual([])
+    expect(extractReferencedFiles('Inspect src/agents/worker.ts')).toEqual([
+      'src/agents/worker.ts',
+    ])
   })
 
   test('long prompt becomes multiple dependent tasks when ordering is explicit', () => {

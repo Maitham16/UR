@@ -73,9 +73,11 @@ import {
 } from './UI.js'
 import {
   areFileEditsInputsEquivalent,
-  findActualString,
+  describeEditMatchFailure,
+  findEditTarget,
   getPatchForEdit,
   preserveQuoteStyle,
+  shiftIndentation,
 } from './utils.js'
 import {
   executeBeforeEditHooks,
@@ -279,50 +281,48 @@ export const FileEditTool = buildTool({
     }
 
     const readTimestamp = toolUseContext.readFileState.get(fullFilePath)
-    if (!readTimestamp || readTimestamp.isPartialView) {
-      return {
-        result: false,
-        behavior: 'ask',
-        message:
-          'File has not been read yet. Read it first before writing to it.',
-        meta: {
-          isFilePathAbsolute: String(isAbsolute(file_path)),
-        },
-        errorCode: 6,
-      }
-    }
-
-    // Check if file exists and get its last modified time
-    if (readTimestamp) {
-      const lastWriteTime = getFileModificationTime(fullFilePath)
-      if (
-        lastWriteTime > readTimestamp.timestamp ||
-        !fileStateMatchesContent(fileContent, readTimestamp)
-      ) {
-        return {
-          result: false,
-          behavior: 'ask',
-          message:
-            'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
-          errorCode: 7,
-        }
-      }
-    }
-
     const file = fileContent
 
-    // Use findActualString to handle quote normalization
-    const actualOldString = findActualString(file, old_string)
+    // Resolve the edit target, tolerating quote, whitespace, and indentation
+    // differences between the model's copy and the file
+    const editTarget = findEditTarget(file, old_string)
+    const actualOldString = editTarget?.actual ?? null
     if (!actualOldString) {
       return {
         result: false,
         behavior: 'ask',
-        message: `String to replace not found in file.\nString: ${old_string}`,
+        // Name where the file diverges instead of echoing the string back: a
+        // bare "not found" gives the model nothing to correct, so it retries
+        // the same edit.
+        message:
+          readTimestamp === undefined
+            ? `${describeEditMatchFailure(file, old_string)} This file has not been read in this session — read it and copy the target text from the result.`
+            : describeEditMatchFailure(file, old_string),
         meta: {
           isFilePathAbsolute: String(isAbsolute(file_path)),
         },
         errorCode: 8,
       }
+    }
+
+    // old_string was resolved against the file as it is on disk right now, so
+    // the model demonstrably has the current content — which is the entire
+    // question "has this been read?" and "has it changed since?" were asking.
+    // Requiring a prior Read on top of that match cost a whole round trip and
+    // protected nothing, and a stale snapshot cannot survive a match against
+    // fresh bytes. Record the verified content so the write path and any later
+    // staleness check work from it.
+    if (
+      readTimestamp === undefined ||
+      readTimestamp.isPartialView ||
+      !fileStateMatchesContent(file, readTimestamp)
+    ) {
+      toolUseContext.readFileState.set(fullFilePath, {
+        content: file,
+        timestamp: getFileModificationTime(fullFilePath),
+        offset: undefined,
+        limit: undefined,
+      })
     }
 
     const matches = file.split(actualOldString).length - 1
@@ -346,10 +346,16 @@ export const FileEditTool = buildTool({
       fullFilePath,
       file,
       () => {
-        // Simulate the edit to get the final content using the exact same logic as the tool
+        // Simulate the edit to get the final content using the exact same logic
+        // as the tool, including the indentation shift call() will apply — a
+        // simulation that skipped it would validate content that never ships.
+        const simulatedNewString = shiftIndentation(
+          new_string,
+          editTarget?.indentShift ?? 0,
+        )
         return replace_all
-          ? file.replaceAll(actualOldString, new_string)
-          : file.replace(actualOldString, new_string)
+          ? file.replaceAll(actualOldString, simulatedNewString)
+          : file.replace(actualOldString, simulatedNewString)
       },
     )
 
@@ -451,24 +457,30 @@ export const FileEditTool = buildTool({
     if (fileExists) {
       const lastWriteTime = getFileModificationTime(absoluteFilePath)
       const lastRead = readFileState.get(absoluteFilePath)
+      // Only a snapshot that disagrees with the bytes on disk means the file
+      // moved under us. A missing snapshot does not: validateInput reaches
+      // here having already matched old_string against these same bytes, and
+      // the patch below fails loudly if they stop matching. Treating "absent"
+      // as "modified" turned a resolved edit into a mandatory re-read.
       if (
-        !lastRead ||
-        lastWriteTime > lastRead.timestamp ||
-        !fileStateMatchesContent(originalFileContents, lastRead)
+        lastRead &&
+        (lastWriteTime > lastRead.timestamp ||
+          !fileStateMatchesContent(originalFileContents, lastRead))
       ) {
         throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
       }
     }
 
-    // 3. Use findActualString to handle quote normalization
-    let actualOldString =
-      findActualString(originalFileContents, old_string) || old_string
+    // 3. Resolve what the model's old_string refers to in the file, tolerating
+    //    quote style, whitespace, and indentation differences
+    const target = findEditTarget(originalFileContents, old_string)
+    let actualOldString = target?.actual ?? old_string
 
-    // Preserve curly quotes in new_string when the file uses them
-    let actualNewString = preserveQuoteStyle(
-      old_string,
-      actualOldString,
-      new_string,
+    // Preserve curly quotes in new_string when the file uses them, and land the
+    // replacement at the file's indentation rather than the model's
+    let actualNewString = shiftIndentation(
+      preserveQuoteStyle(old_string, actualOldString, new_string),
+      target?.indentShift ?? 0,
     )
 
     // 4.5 Lifecycle hooks around file edits

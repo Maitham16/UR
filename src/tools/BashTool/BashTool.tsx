@@ -63,6 +63,7 @@ import { checkReadOnlyConstraints } from './readOnlyValidation.js';
 import { parseSedEditCommand } from './sedEditParser.js';
 import { shouldUseSandbox } from './shouldUseSandbox.js';
 import { BASH_TOOL_NAME } from './toolName.js';
+import { clearDeliveredDiagnosticsForFile } from '../../services/lsp/LSPDiagnosticRegistry.js';
 import { BackgroundHint, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseQueuedMessage } from './UI.js';
 import { buildImageToolResult, isImageOutput, resetCwdIfOutsideProject, resizeShellImageOutput, stdErrAppendShellResetMessage, stripEmptyLines } from './utils.js';
 const EOL = '\n';
@@ -423,6 +424,12 @@ async function applySedEdit(simulatedEdit: {
 
   // Notify VS Code about the file change
   notifyVscodeFileUpdated(absoluteFilePath, originalContent, newContent);
+
+  // Diagnostics are deduplicated across turns, so an error identical to one
+  // already delivered for this file is suppressed. A sed edit changes the file
+  // exactly as Edit and Write do, and without clearing the delivered set the
+  // model never hears about a problem it just reintroduced here.
+  clearDeliveredDiagnosticsForFile(`file://${absoluteFilePath}`);
 
   // Update read timestamp to invalidate stale writes
   toolUseContext.readFileState.set(absoluteFilePath, {

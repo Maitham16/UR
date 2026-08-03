@@ -198,8 +198,12 @@ describe('OpenAI Responses request and response mapping', () => {
         input: { path: 'b.ts' },
       },
     ])
+    // OpenAI reports input_tokens as the whole prompt, with the cached and
+    // cache-written portions broken out inside it. The normalizer subtracts
+    // them so the four fields sum to the provider total exactly; expecting the
+    // raw 4 here asserted the double count that usageAccounting forbids.
     expect(message.usage).toEqual({
-      input_tokens: 4,
+      input_tokens: 1,
       output_tokens: 2,
       cache_creation_input_tokens: 2,
       cache_read_input_tokens: 1,

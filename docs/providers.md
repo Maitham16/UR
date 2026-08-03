@@ -462,12 +462,14 @@ Local/server providers use their normal endpoints:
 - llama.cpp server mode: `http://localhost:8080/v1`
 - vLLM server mode: `http://localhost:8000/v1`
 
-Ollama models whose names end in `:cloud` use a 120-second default for the
-response-header phase and a 120-second total stream deadline. UR does not
-automatically replay a cloud request after that stream deadline, preventing a
-bounded failure from expanding into the shared non-streaming fallback and
-retry chain. Local Ollama models retain the five-minute default. A positive
-`API_TIMEOUT_MS` or explicit request timeout overrides these defaults.
+Ollama allows up to 15 minutes for response headers so a cold model load or
+large prefill can begin. After headers, local and `:cloud` models use a
+five-minute stream *inactivity* deadline that resets whenever bytes arrive;
+remote/CCR sessions use two minutes. UR does not automatically replay a Cloud
+request after that deadline, preventing a bounded failure from expanding into
+the non-streaming fallback and retry chain; Cloud non-streaming fallback itself
+remains bounded at two minutes. `UR_STREAM_IDLE_TIMEOUT_MS`, `API_TIMEOUT_MS`,
+or an explicit request timeout can override the applicable default.
 
 ## Optional Live Provider Smoke
 

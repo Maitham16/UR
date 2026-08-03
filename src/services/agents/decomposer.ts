@@ -48,6 +48,8 @@ export type DecomposeOptions = {
   dryRun?: boolean
 }
 
+const MAX_DECOMPOSED_TASKS = 12
+
 const HIGH_RISK_KEYWORDS =
   /\b(auth|authoriz|credential|secret|token|password|encrypt|hash|ssl|tls|sandbox|shell|bash|rm\b|drop|delete|migrate|security|vulnerab|exploit|injection|race|deadlock|concurren|distributed)\b/i
 
@@ -98,6 +100,85 @@ function inferTests(goal: string): string[] {
   return tests
 }
 
+function validatedModelTasks(value: unknown): DecomposedTask[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null
+  if (value.length > MAX_DECOMPOSED_TASKS) return null
+
+  const raw = value as Array<Record<string, unknown>>
+  const ids = new Set<string>()
+  for (const task of raw) {
+    if (!task || typeof task !== 'object' || Array.isArray(task)) return null
+    if (typeof task.id !== 'string' || !task.id.trim() || ids.has(task.id)) {
+      return null
+    }
+    if (typeof task.goal !== 'string' || !task.goal.trim()) return null
+    ids.add(task.id)
+  }
+
+  const dependencies = new Map<string, string[]>()
+  for (const task of raw) {
+    const taskId = task.id as string
+    const values = task.dependsOn === undefined ? [] : task.dependsOn
+    if (
+      !Array.isArray(values) ||
+      values.some(
+        dependency =>
+          typeof dependency !== 'string' ||
+          dependency === taskId ||
+          !ids.has(dependency),
+      )
+    ) {
+      return null
+    }
+    dependencies.set(taskId, [...new Set(values as string[])])
+  }
+
+  const visiting = new Set<string>()
+  const visited = new Set<string>()
+  const visit = (id: string): boolean => {
+    if (visiting.has(id)) return false
+    if (visited.has(id)) return true
+    visiting.add(id)
+    for (const dependency of dependencies.get(id) ?? []) {
+      if (!visit(dependency)) return false
+    }
+    visiting.delete(id)
+    visited.add(id)
+    return true
+  }
+  if ([...ids].some(id => !visit(id))) return null
+
+  return raw.map(task => {
+    const goal = (task.goal as string).trim()
+    const filesTouched = Array.isArray(task.filesTouched)
+      ? task.filesTouched.filter(
+          (file): file is string => typeof file === 'string' && file.trim() !== '',
+        )
+      : []
+    const testsRequired = Array.isArray(task.testsRequired)
+      ? task.testsRequired.filter(
+          (test): test is string => typeof test === 'string' && test.trim() !== '',
+        )
+      : []
+    const risk =
+      task.risk === 'low' || task.risk === 'medium' || task.risk === 'high'
+        ? task.risk
+        : riskLevelFromKeywords(goal, filesTouched)
+    return {
+      id: task.id as string,
+      goal,
+      dependsOn: dependencies.get(task.id as string),
+      filesTouched,
+      risk,
+      testsRequired: testsRequired.length > 0 ? testsRequired : inferTests(goal),
+      rollbackPoint:
+        typeof task.rollbackPoint === 'string' && task.rollbackPoint.trim()
+          ? task.rollbackPoint
+          : 'HEAD',
+    }
+  })
+}
+
 function decomposePrompt(goal: string): string {
   return [
     'Decompose the following engineering goal into atomic subtasks.',
@@ -145,17 +226,19 @@ export async function decomposeTask(goal: string, options: DecomposeOptions): Pr
   })
 
   const parsed = safeParseJSON(out.output, false)
-  if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { tasks?: unknown }).tasks)) {
-    const tasks = (parsed as { tasks: DecomposedTask[] }).tasks
+  if (parsed && typeof parsed === 'object') {
+    const tasks = validatedModelTasks((parsed as { tasks?: unknown }).tasks)
+    if (!tasks) return deterministicDecomposition(goal, rollbackPoint)
     return tasks.map(t => ({
       ...t,
-      dependsOn: Array.isArray(t.dependsOn)
-        ? [...new Set(t.dependsOn.filter(dep => typeof dep === 'string' && dep !== t.id))]
-        : [],
-      rollbackPoint: t.rollbackPoint ?? rollbackPoint,
-      filesTouched: Array.isArray(t.filesTouched) ? t.filesTouched : [],
-      testsRequired: Array.isArray(t.testsRequired) ? t.testsRequired : inferTests(t.goal),
-      risk: ['low', 'medium', 'high'].includes(t.risk) ? t.risk : riskLevelFromKeywords(t.goal, t.filesTouched),
+      dependsOn: t.dependsOn ?? [],
+      rollbackPoint:
+        !t.rollbackPoint || t.rollbackPoint === 'HEAD'
+          ? rollbackPoint
+          : t.rollbackPoint,
+      filesTouched: t.filesTouched,
+      testsRequired: t.testsRequired,
+      risk: t.risk,
     }))
   }
 
