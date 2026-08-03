@@ -90,6 +90,12 @@ GitHub Actions publishes the exact tarball that passes the release workflow.
 Do not run `npm publish` separately and do not create a tag before the release
 commit is on the remote branch.
 
+The repository secret `NPM_TOKEN` must be configured before tagging a version
+that is not already published. The workflow checks this before it creates the
+GitHub Release, preventing a partial GitHub-only release from being reported as
+successful. Treat a failed credential preflight as a release blocker; configure
+the secret and re-run the same immutable tag rather than publishing manually.
+
 Only after every check passes, commit the complete release and push it:
 
 ```bash

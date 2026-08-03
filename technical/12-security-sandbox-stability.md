@@ -171,6 +171,15 @@ the marker is cleared with the rest of the verifier turn state.
 `/claim-ledger add --claim "p99 < 200ms" --source bench:latest` records
 claim-to-source provenance; `validate` checks all claims still resolve.
 
+## Release publication integrity
+
+The tag workflow verifies and packs once, then publishes that exact tarball to
+GitHub and npm. Its `publish-preflight` job checks `NPM_TOKEN` before the GitHub
+Release job when the package version is not already registered. Both publish
+jobs depend on the preflight, and a missing token fails closed instead of
+leaving a successful-looking partial release. The guarded local tag command
+still requires a clean, pushed release commit and never moves an existing tag.
+
 ## Privacy
 
 `/privacy-settings` UI; `--offline` kills telemetry; `feedbackSurveyRate`, analytics in

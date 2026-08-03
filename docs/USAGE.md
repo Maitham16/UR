@@ -394,7 +394,9 @@ A work board is seeded immediately. Before the model names concrete work, the
 UI shows a neutral `Planning tasks…` state—not the prompt and not a misleading
 one-task counter. The seed stores no prompt text. If the model creates explicit
 subtasks, its first `TaskCreate` atomically replaces that seed instead of
-duplicating it. A successful simple turn completes the seed automatically.
+duplicating it. A successful simple turn completes the seed automatically and
+its terminal placeholder disappears from the task panel and status bar. The
+snapshot remains available internally so a corrective follow-up can reopen it.
 Replies such as corrections (including `no` / `still` feedback), approvals,
 and interruptions reuse the current seed or explicit unfinished board. The
 agent reconciles and updates the relevant work rather than starting empty. A

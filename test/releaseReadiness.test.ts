@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { compare } from 'semver'
 
@@ -145,8 +145,21 @@ test('release workflow downloads artifacts with permission and keeps prereleases
     workflow.indexOf('  github-release:'),
     workflow.indexOf('  npm-publish:'),
   )
+  const publishPreflight = workflow.slice(
+    workflow.indexOf('  publish-preflight:'),
+    workflow.indexOf('  github-release:'),
+  )
   const npmPublish = workflow.slice(workflow.indexOf('  npm-publish:'))
 
+  expect(publishPreflight).toContain('needs: verify')
+  expect(publishPreflight).toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}')
+  expect(publishPreflight).toContain('ALREADY_PUBLISHED: ${{ needs.verify.outputs.already-on-npm }}')
+  expect(publishPreflight).toContain('exit 1')
+  expect(githubRelease).toContain('needs: [verify, publish-preflight]')
+  expect(npmPublish).toContain('needs: [verify, publish-preflight, github-release]')
+  expect(npmPublish.indexOf('if [ "$ALREADY_PUBLISHED" = "true" ]')).toBeLessThan(
+    npmPublish.indexOf('if [ -z "${NODE_AUTH_TOKEN:-}" ]'),
+  )
   expect(githubRelease).toContain('actions: read')
   expect(npmPublish).toContain('actions: read')
   expect(workflow).toContain('npm_tag=latest')
@@ -156,6 +169,28 @@ test('release workflow downloads artifacts with permission and keeps prereleases
   expect(workflow).toContain('bun test --timeout 120000')
   expect(workflow).not.toContain('--parallel=4')
   expect(workflow).toContain("bun run release:tag -- --push")
+})
+
+test('active checkout excludes superseded release evidence and design leftovers', () => {
+  const packageJson = JSON.parse(
+    readFileSync(join(REPO, 'package.json'), 'utf8'),
+  ) as { version: string }
+  const obsoletePaths = [
+    'AUDIT-1.73.0.md',
+    'IDE_INTEGRATION_ARCHITECTURE.md',
+    'benchmarks/results/1.37.2',
+  ]
+
+  for (const relativePath of obsoletePaths) {
+    expect(existsSync(join(REPO, relativePath)), relativePath).toBe(false)
+  }
+
+  const resultVersions = readdirSync(join(REPO, 'benchmarks', 'results'), {
+    withFileTypes: true,
+  })
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+  expect(resultVersions.every(version => version === packageJson.version)).toBe(true)
 })
 
 test('package smoke configurations are cleaned with the package-check work directory', () => {

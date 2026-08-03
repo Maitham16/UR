@@ -108,7 +108,7 @@ describe('benchmark report generator', () => {
     expect(report.reproduction.command).toContain('ur eval run provider-routing')
   })
 
-  test('generated reports and the checked-in template validate against the benchmark schema', () => {
+  test('generated reports validate against the benchmark schema', () => {
     const validate = benchmarkSchemaValidator()
     const report = buildBenchmarkReport(sampleEvalReport(), {
       version: '1.37.2',
@@ -121,14 +121,6 @@ describe('benchmark report generator', () => {
       bunVersion: '1.3.14',
     })
     expect(validate(report)).toBe(true)
-
-    const template = JSON.parse(
-      readFileSync(
-        join(repoRoot, 'benchmarks', 'results', '1.37.2', 'TEMPLATE.json'),
-        'utf8',
-      ),
-    )
-    expect(validate(template)).toBe(true)
   })
 
   test('benchmark-report script writes schema-valid structured output', () => {

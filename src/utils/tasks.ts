@@ -130,6 +130,23 @@ export function isAutomaticPromptTask(
   return task.metadata?.[AUTOMATIC_PROMPT_TASK_KEY] === true
 }
 
+/**
+ * Automatic prompt tasks are synchronization placeholders, not completed
+ * work. Keep an unfinished placeholder visible while the model is planning or
+ * while an interrupted turn can resume it, then remove it from every active
+ * task surface once it reaches a terminal state. The snapshot remains on disk
+ * so a corrective follow-up can atomically reopen the same generation.
+ */
+export function isTaskVisibleInActiveBoard(
+  task: Pick<Task, 'status' | 'metadata'>,
+): boolean {
+  return (
+    !isAutomaticPromptTask(task) ||
+    task.status === 'pending' ||
+    task.status === 'in_progress'
+  )
+}
+
 export type TaskListHistoryEntry = {
   archiveId: string
   generationId?: string

@@ -143,7 +143,10 @@ npm run benchmark:smoke | benchmark:local | benchmark:compare | benchmark:report
 npm run benchmark:swe-bench-lite | benchmark:terminal-bench | benchmark:aider-polyglot
 ```
 Results are stored under `benchmarks/results/<version>/` against
-`benchmarks/result.schema.json`.
+`benchmarks/result.schema.json`. The active checkout retains only the package
+version's result directory; historical result files belong to their immutable
+release tag. This prevents old snapshots from being mistaken for current
+evidence while keeping the complete record recoverable from Git history.
 
 ## Learning loop
 

@@ -6,6 +6,7 @@ import type { Task } from '../utils/tasks.js'
 import {
   getTaskListId,
   getTasksDir,
+  isTaskVisibleInActiveBoard,
   isTodoV2Enabled,
   listTasks,
   onTasksUpdated,
@@ -108,7 +109,7 @@ class TasksV2Store {
     // leaderTeamName) — point the watcher at the current dir.
     this.#rewatch(getTasksDir(taskListId))
     const current = (await listTasks(taskListId)).filter(
-      t => !t.metadata?._internal,
+      t => !t.metadata?._internal && isTaskVisibleInActiveBoard(t),
     )
     this.#tasks = current
 

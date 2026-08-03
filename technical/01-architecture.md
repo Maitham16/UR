@@ -48,7 +48,8 @@ bin/ur.js  →  dist/cli.js (bundled from src/entrypoints/cli.tsx)
    task/count; the first explicit TaskCreate replaces it atomically. Generation rollover
    preserves and resumes pending/in-progress snapshots after interruption. Corrective replies,
    including `no` / `still` feedback, reuse the prior board rather than becoming task titles;
-   terminal boards archive when genuinely new work begins.
+   terminal automatic seeds are filtered from active UI and status counts while remaining
+   reopenable, and terminal boards archive when genuinely new work begins.
 2. **QueryEngine** (`src/QueryEngine.ts`) — orchestrates a turn: builds the system prompt,
    assembles the tool pool (`src/tools.ts:assembleToolPool` — built-ins + MCP, deny-rule
    filtered, sorted for prompt-cache stability), streams the model response, dispatches tool

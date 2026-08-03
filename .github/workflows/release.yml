@@ -165,8 +165,24 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  github-release:
+  publish-preflight:
     needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require npm publishing credentials
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          ALREADY_PUBLISHED: ${{ needs.verify.outputs.already-on-npm }}
+        run: |
+          set -euo pipefail
+          if [ "$ALREADY_PUBLISHED" != "true" ] && [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::NPM_TOKEN is not configured; refusing to create a partial GitHub-only release." >&2
+            exit 1
+          fi
+
+  github-release:
+    needs: [verify, publish-preflight]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -223,7 +239,7 @@ jobs:
           fi
 
   npm-publish:
-    needs: [verify, github-release]
+    needs: [verify, publish-preflight, github-release]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -261,14 +277,13 @@ jobs:
           NPM_TAG: ${{ needs.verify.outputs.npm-tag }}
         run: |
           set -euo pipefail
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::warning::NPM_TOKEN is not set; skipping npm publish. \
-          Add the secret to publish automatically."
-            exit 0
-          fi
           if [ "$ALREADY_PUBLISHED" = "true" ]; then
             echo "::notice::ur-agent@$VERSION is already on npm; nothing to publish."
             exit 0
+          fi
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::NPM_TOKEN is not set; refusing to report a successful unpublished release." >&2
+            exit 1
           fi
           # Publish the exact artifact the gate verified, not a fresh pack.
           npm publish dist-release/ur-agent-"$VERSION".tgz \

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { evaluateShellSafetyPolicy } from '../src/services/safety/projectSafety.ts'
 import { safetyMatrixCases } from './safety-matrix-cases.mjs'
@@ -94,6 +94,12 @@ function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Bun may preserve a relative argv[1] for `bun run`, while import.meta.url is
+// always absolute. Comparing canonical filesystem paths keeps direct execution
+// working without running main() when this module is imported by tests.
+if (
+  process.argv[1] &&
+  resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])
+) {
   main()
 }

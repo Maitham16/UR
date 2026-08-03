@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.78.12
+
+- Completed or failed automatic `Planning tasks` seeds no longer remain in the
+  task panel or status bar after a simple turn finishes. Pending and
+  in-progress seeds remain visible for honest interruption recovery, while the
+  terminal snapshot stays internal so a corrective follow-up can reopen it
+  without turning the user's reply into a task title.
+- The active checkout now keeps benchmark evidence only for its current
+  package version. Superseded 1.37.2 result snapshots, an obsolete release
+  audit, and a superseded root IDE design draft were removed; the benchmark
+  guide now derives comparison paths from `package.json`. Historical evidence
+  remains available from immutable Git tags and releases instead of being
+  duplicated in the current tree.
+- Release publication now preflights `NPM_TOKEN` before creating a GitHub
+  Release whenever the version is not already on npm. A missing credential
+  fails the workflow explicitly instead of reporting success after publishing
+  only half of the release, and release-readiness tests lock in the dependency
+  ordering.
+- Repository maintenance removed stale generated archives, caches, logs,
+  duplicate/FUSE/Finder files, abandoned worktree records, redundant local
+  helper branches, and unreachable Git objects. Remote branches, tags, and all
+  reachable history are preserved. The safety-matrix executable guard now
+  compares canonical paths, so `bun run safety:matrix -- --check` still runs
+  under Bun when `argv[1]` is relative, and benchmark schema tests no longer
+  depend on a deleted historical placeholder.
+
 ## 1.78.11
 
 - Provider-reported context overflow now triggers one bounded automatic

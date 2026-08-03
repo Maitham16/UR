@@ -11,7 +11,7 @@ import { AGENT_COLOR_TO_THEME_COLOR, type AgentColorName } from '../tools/AgentT
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
 import { summarizeRecentActivities } from '../utils/collapseReadSearch.js';
 import { truncateToWidth } from '../utils/format.js';
-import { isAutomaticPromptTask, isTodoV2Enabled, type Task } from '../utils/tasks.js';
+import { isAutomaticPromptTask, isTaskVisibleInActiveBoard, isTodoV2Enabled, type Task } from '../utils/tasks.js';
 import type { Theme } from '../utils/theme.js';
 import ThemedText from './design-system/ThemedText.js';
 type Props = {
@@ -52,7 +52,7 @@ export function getTaskStatusCounts(tasks: readonly Task[], unresolvedIds?: Read
   return counts;
 }
 export function isTaskPlanningPlaceholder(tasks: readonly Task[]): boolean {
-  return tasks.length === 1 && isAutomaticPromptTask(tasks[0]);
+  return tasks.length === 1 && isAutomaticPromptTask(tasks[0]) && isTaskVisibleInActiveBoard(tasks[0]);
 }
 export function TaskListV2({
   tasks,
@@ -114,6 +114,12 @@ export function TaskListV2({
     return null;
   }
   if (tasks.length === 0) {
+    return null;
+  }
+  // A successful or failed simple turn leaves its automatic seed available
+  // for corrective follow-ups, but that internal terminal snapshot must never
+  // linger as "Planning tasks" (or count as completed user work) in the UI.
+  if (tasks.every(task => !isTaskVisibleInActiveBoard(task))) {
     return null;
   }
   // The automatic seed is an internal synchronization primitive, not a

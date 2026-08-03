@@ -60,9 +60,13 @@ Compare two local reports:
 
 ```sh
 bun run benchmark:compare -- \
-  benchmarks/results/1.37.2/local-smoke.json \
-  benchmarks/results/1.37.2/local-regression.json
+  benchmarks/results/$(node -p "require('./package.json').version")/local-smoke.json \
+  benchmarks/results/$(node -p "require('./package.json').version")/local-regression.json
 ```
+
+Only results for the current package version belong in the active checkout.
+Published historical results remain available through their immutable Git
+tags and releases instead of accumulating as stale workspace snapshots.
 
 Run a UR eval suite and save the report:
 
@@ -110,8 +114,8 @@ bun run benchmark:report -- \
 
 Provider routing, tool-use, and sandbox safety reports should use the matching
 category when the eval suite or test harness is intentionally exercising that
-surface. Do not copy `TEMPLATE.json` as a result without replacing placeholders
-with output from a real run.
+surface. Every checked-in result must come from a real run; placeholder reports
+do not belong in `benchmarks/results/`.
 
 ## Optional External Integrations
 

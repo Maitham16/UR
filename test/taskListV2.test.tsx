@@ -7,6 +7,7 @@ import {
   getTaskStatusCounts,
   isTaskPlanningPlaceholder,
 } from '../src/components/TaskListV2.js'
+import { isTaskVisibleInActiveBoard } from '../src/utils/tasks.js'
 import type { Task } from '../src/utils/tasks.js'
 
 // Tests the pure display logic of the pinned task panel. An earlier version
@@ -41,6 +42,31 @@ describe('TaskListV2 display logic', () => {
       ]),
     ).toBe(true)
     expect(isTaskPlanningPlaceholder([makeTask({ id: '1' })])).toBe(false)
+  })
+
+  it('hides a terminal automatic seed while retaining active recovery seeds', () => {
+    const metadata = { urAutomaticPromptTask: true }
+
+    expect(
+      isTaskVisibleInActiveBoard(
+        makeTask({ id: '1', status: 'in_progress', metadata }),
+      ),
+    ).toBe(true)
+    expect(
+      isTaskVisibleInActiveBoard(
+        makeTask({ id: '1', status: 'pending', metadata }),
+      ),
+    ).toBe(true)
+    expect(
+      isTaskVisibleInActiveBoard(
+        makeTask({ id: '1', status: 'completed', metadata }),
+      ),
+    ).toBe(false)
+    expect(
+      isTaskPlanningPlaceholder([
+        makeTask({ id: '1', status: 'completed', metadata }),
+      ]),
+    ).toBe(false)
   })
 
   describe('byIdAsc', () => {
