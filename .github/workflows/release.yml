@@ -286,6 +286,9 @@ jobs:
             exit 1
           fi
           # Publish the exact artifact the gate verified, not a fresh pack.
-          npm publish dist-release/ur-agent-"$VERSION".tgz \
+          # The leading ./ is required. Without it, npm treats the
+          # slash-containing value as GitHub shorthand and attempts an SSH
+          # clone instead of publishing the downloaded local tarball.
+          npm publish ./dist-release/ur-agent-"$VERSION".tgz \
             --access public \
             --tag "$NPM_TAG"

@@ -160,6 +160,12 @@ test('release workflow downloads artifacts with permission and keeps prereleases
   expect(npmPublish.indexOf('if [ "$ALREADY_PUBLISHED" = "true" ]')).toBeLessThan(
     npmPublish.indexOf('if [ -z "${NODE_AUTH_TOKEN:-}" ]'),
   )
+  expect(npmPublish).toContain(
+    'npm publish ./dist-release/ur-agent-"$VERSION".tgz',
+  )
+  expect(npmPublish).not.toContain(
+    'npm publish dist-release/ur-agent-"$VERSION".tgz',
+  )
   expect(githubRelease).toContain('actions: read')
   expect(npmPublish).toContain('actions: read')
   expect(workflow).toContain('npm_tag=latest')

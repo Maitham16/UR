@@ -95,6 +95,9 @@ that is not already published. The workflow checks this before it creates the
 GitHub Release, preventing a partial GitHub-only release from being reported as
 successful. Treat a failed credential preflight as a release blocker; configure
 the secret and re-run the same immutable tag rather than publishing manually.
+The npm publish step uses `./dist-release/<tarball>.tgz`: the explicit relative
+path marker prevents npm from interpreting the artifact name as GitHub
+`owner/repository` shorthand.
 
 Only after every check passes, commit the complete release and push it:
 

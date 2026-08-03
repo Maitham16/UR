@@ -179,6 +179,9 @@ Release job when the package version is not already registered. Both publish
 jobs depend on the preflight, and a missing token fails closed instead of
 leaving a successful-looking partial release. The guarded local tag command
 still requires a clean, pushed release commit and never moves an existing tag.
+Publication passes the verified artifact as an explicit `./dist-release/...`
+path; without the `./`, npm's package-spec parser treats the slash-containing
+value as GitHub shorthand and tries an unrelated SSH clone.
 
 ## Privacy
 

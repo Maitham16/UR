@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.78.13
+
+- The release workflow now publishes its downloaded tarball with an explicit
+  `./dist-release/...` filesystem path. npm interpreted the previous bare
+  `dist-release/...` value as GitHub shorthand and attempted to clone
+  `github.com/dist-release/ur-agent-<version>.tgz` over SSH even though the
+  verified artifact existed. A release-readiness regression assertion prevents
+  the local-path prefix from being removed again.
+
 ## 1.78.12
 
 - Completed or failed automatic `Planning tasks` seeds no longer remain in the

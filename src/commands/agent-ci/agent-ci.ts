@@ -20,7 +20,7 @@ function value(tokens: string[], flag: string): string | undefined {
 }
 
 function cliVersion(): string {
-  return typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.78.12'
+  return typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.78.13'
 }
 
 function workflowPath(cwd: string): string {
