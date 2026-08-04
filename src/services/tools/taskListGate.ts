@@ -1,4 +1,5 @@
 import { getInitialSettings } from '../../utils/settings/settings.js'
+import { isAutomaticPromptTask } from '../../utils/tasks.js'
 
 /**
  * Requires a task list before the agent changes anything.
@@ -108,6 +109,7 @@ export function countActionableTasksForGate(
   return tasks.filter(
     task =>
       !task.metadata?._internal &&
+      !isAutomaticPromptTask(task) &&
       (task.status === 'pending' || task.status === 'in_progress'),
   ).length
 }

@@ -117,11 +117,6 @@ const ACTIVE_GENERATION_FILE = '.active-generation'
 const HISTORY_DIRECTORY = '.history'
 const HISTORY_MANIFEST_FILE = '.manifest.json'
 const AUTOMATIC_PROMPT_TASK_KEY = 'urAutomaticPromptTask'
-const AUTOMATIC_PROMPT_GENERATION_KEY = 'urPromptGeneration'
-export const AUTOMATIC_PROMPT_TASK_SUBJECT = 'Preparing task plan'
-export const AUTOMATIC_PROMPT_TASK_DESCRIPTION =
-  'Temporary placeholder while the agent creates concrete tasks.'
-export const AUTOMATIC_PROMPT_TASK_ACTIVE_FORM = 'Planning requested work'
 
 /** True only for the internal placeholder shown before semantic tasks exist. */
 export function isAutomaticPromptTask(
@@ -131,20 +126,14 @@ export function isAutomaticPromptTask(
 }
 
 /**
- * Automatic prompt tasks are synchronization placeholders, not completed
- * work. Keep an unfinished placeholder visible while the model is planning or
- * while an interrupted turn can resume it, then remove it from every active
- * task surface once it reaches a terminal state. The snapshot remains on disk
- * so a corrective follow-up can atomically reopen the same generation.
+ * Automatic prompt tasks were synchronization placeholders created by builds
+ * through 1.78.13. They were never semantic user work, so current builds hide
+ * them immediately and remove their snapshots at the next generation boundary.
  */
 export function isTaskVisibleInActiveBoard(
-  task: Pick<Task, 'status' | 'metadata'>,
+  task: Pick<Task, 'metadata'>,
 ): boolean {
-  return (
-    !isAutomaticPromptTask(task) ||
-    task.status === 'pending' ||
-    task.status === 'in_progress'
-  )
+  return !isAutomaticPromptTask(task)
 }
 
 export type TaskListHistoryEntry = {
@@ -342,8 +331,57 @@ async function withTaskListLock<T>(
 
 function hasUnfinishedWork(tasks: readonly Task[]): boolean {
   return tasks.some(
-    task => task.status === 'pending' || task.status === 'in_progress',
+    task =>
+      !isAutomaticPromptTask(task) &&
+      (task.status === 'pending' || task.status === 'in_progress'),
   )
+}
+
+/**
+ * Remove non-semantic planning placeholders left by older builds while the
+ * task-list lock is held. Preserve the ID high-water mark and clean any
+ * defensive dependency references so migration cannot create dangling edges.
+ */
+async function removeLegacyAutomaticPromptTasksUnsafe(
+  taskListId: string,
+  tasks: readonly Task[],
+): Promise<{ tasks: Task[]; removed: boolean }> {
+  const automaticTasks = tasks.filter(isAutomaticPromptTask)
+  if (automaticTasks.length === 0) {
+    return { tasks: [...tasks], removed: false }
+  }
+
+  const highestAutomaticId = automaticTasks.reduce((highest, task) => {
+    const numeric = parseNumericTaskId(task.id)
+    return numeric === null ? highest : Math.max(highest, numeric)
+  }, 0)
+  if (highestAutomaticId > 0) {
+    const currentMark = await readHighWaterMark(taskListId)
+    if (highestAutomaticId > currentMark) {
+      await writeHighWaterMark(taskListId, highestAutomaticId)
+    }
+  }
+
+  const removedIds = new Set(automaticTasks.map(task => task.id))
+  const remaining: Task[] = []
+  for (const task of tasks) {
+    if (removedIds.has(task.id)) continue
+    const blocks = task.blocks.filter(id => !removedIds.has(id))
+    const blockedBy = task.blockedBy.filter(id => !removedIds.has(id))
+    const cleaned =
+      blocks.length === task.blocks.length &&
+      blockedBy.length === task.blockedBy.length
+        ? task
+        : { ...task, blocks, blockedBy }
+    if (cleaned !== task) {
+      await writeTaskSnapshotUnsafe(taskListId, cleaned)
+    }
+    remaining.push(cleaned)
+  }
+  for (const task of automaticTasks) {
+    await unlink(getTaskPath(taskListId, task.id)).catch(() => undefined)
+  }
+  return { tasks: remaining, removed: true }
 }
 
 /**
@@ -358,9 +396,15 @@ async function establishTaskListGenerationUnsafe(
   options: { appendToCurrent?: boolean } = {},
 ): Promise<{ changed: boolean; archived?: TaskListHistoryEntry }> {
   const activeGeneration = await readActiveGeneration(taskListId)
-  if (activeGeneration === generationId) return { changed: false }
+  const legacyCleanup = await removeLegacyAutomaticPromptTasksUnsafe(
+    taskListId,
+    await listTasks(taskListId),
+  )
+  if (activeGeneration === generationId) {
+    return { changed: legacyCleanup.removed }
+  }
 
-  const activeTasks = await listTasks(taskListId)
+  const activeTasks = legacyCleanup.tasks
   const keepCurrent =
     options.appendToCurrent === true || hasUnfinishedWork(activeTasks)
   const archived = keepCurrent
@@ -661,118 +705,19 @@ export async function createTaskForRun(
   taskData: Omit<Task, 'id'>,
   options: {
     appendToCurrent?: boolean
-    replaceAutomaticPromptTask?: boolean
   } = {},
 ): Promise<string> {
   const id = await withTaskListLock(taskListId, async () => {
     await establishTaskListGenerationUnsafe(taskListId, generationId, options)
 
-    const existingTasks = await listTasks(taskListId)
-    if (options.replaceAutomaticPromptTask) {
-      const automaticTask = existingTasks.find(
-        task =>
-          task.metadata?.[AUTOMATIC_PROMPT_TASK_KEY] === true &&
-          task.metadata?.[AUTOMATIC_PROMPT_GENERATION_KEY] === generationId,
-      )
-      if (automaticTask) {
-        const replacement = adoptForwardTaskDependencies(
-          automaticTask.id,
-          taskData,
-          existingTasks.filter(task => task.id !== automaticTask.id),
-        )
-        await writeTaskSnapshotUnsafe(taskListId, replacement)
-        return automaticTask.id
-      }
-    }
-
-    return allocateTaskSnapshotUnsafe(taskListId, taskData, existingTasks)
+    return allocateTaskSnapshotUnsafe(
+      taskListId,
+      taskData,
+      await listTasks(taskListId),
+    )
   })
   notifyTasksUpdated()
   return id
-}
-
-/**
- * Seed a new board, or resume its existing automatic seed after interruption.
- * An unfinished explicit board is left alone: follow-up prose must not become
- * a duplicate task title merely because the user replied.
- */
-export async function createAutomaticPromptTaskForRun(
-  taskListId: string,
-  generationId: string,
-  _prompt: string,
-  options: { reuseExistingBoard?: boolean } = {},
-): Promise<string | undefined> {
-  const taskId = await withTaskListLock(taskListId, async () => {
-    await establishTaskListGenerationUnsafe(taskListId, generationId, {
-      appendToCurrent: options.reuseExistingBoard,
-    })
-    const existingTasks = await listTasks(taskListId)
-    const resumableAutomaticTask = existingTasks.findLast(
-      task =>
-        task.metadata?.[AUTOMATIC_PROMPT_TASK_KEY] === true &&
-        (task.status === 'pending' ||
-          task.status === 'in_progress' ||
-          options.reuseExistingBoard === true),
-    )
-    if (resumableAutomaticTask) {
-      await writeTaskSnapshotUnsafe(taskListId, {
-        ...resumableAutomaticTask,
-        // Sanitize seeds written by older builds that copied the user prompt.
-        subject: AUTOMATIC_PROMPT_TASK_SUBJECT,
-        description: AUTOMATIC_PROMPT_TASK_DESCRIPTION,
-        activeForm: AUTOMATIC_PROMPT_TASK_ACTIVE_FORM,
-        status: 'in_progress',
-        metadata: {
-          ...resumableAutomaticTask.metadata,
-          [AUTOMATIC_PROMPT_TASK_KEY]: true,
-          [AUTOMATIC_PROMPT_GENERATION_KEY]: generationId,
-        },
-      })
-      return resumableAutomaticTask.id
-    }
-
-    if (
-      hasUnfinishedWork(existingTasks) ||
-      (options.reuseExistingBoard === true && existingTasks.length > 0)
-    ) {
-      return undefined
-    }
-
-    return allocateTaskSnapshotUnsafe(taskListId, {
-      // Never copy user prose into a task title. The model replaces this
-      // neutral placeholder atomically with its first concrete TaskCreate.
-      subject: AUTOMATIC_PROMPT_TASK_SUBJECT,
-      description: AUTOMATIC_PROMPT_TASK_DESCRIPTION,
-      activeForm: AUTOMATIC_PROMPT_TASK_ACTIVE_FORM,
-      status: 'in_progress',
-      owner: undefined,
-      blocks: [],
-      blockedBy: [],
-      metadata: {
-        [AUTOMATIC_PROMPT_TASK_KEY]: true,
-        [AUTOMATIC_PROMPT_GENERATION_KEY]: generationId,
-      },
-    }, existingTasks)
-  })
-  notifyTasksUpdated()
-  return taskId
-}
-
-/** Update only a seed that the model did not replace with explicit subtasks. */
-export async function finalizeAutomaticPromptTask(
-  taskListId: string,
-  taskId: string,
-  generationId: string,
-  status: 'pending' | 'completed' | 'failed',
-): Promise<boolean> {
-  const task = await getTask(taskListId, taskId)
-  if (
-    task?.metadata?.[AUTOMATIC_PROMPT_TASK_KEY] !== true ||
-    task.metadata?.[AUTOMATIC_PROMPT_GENERATION_KEY] !== generationId
-  ) {
-    return false
-  }
-  return (await updateTask(taskListId, taskId, { status })) !== null
 }
 
 /**

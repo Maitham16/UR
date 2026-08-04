@@ -154,7 +154,6 @@ export const TaskCreateTool = buildTool({
     const taskId = run
       ? await createTaskForRun(taskListId, run.generationId, taskData, {
           appendToCurrent: run.appendToCurrent || addToCurrentList === true,
-          replaceAutomaticPromptTask: true,
         })
       : await createTask(taskListId, taskData)
 

@@ -3,6 +3,7 @@ import { buildTool, type ToolDef } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import {
   getTaskListId,
+  isAutomaticPromptTask,
   isTodoV2Enabled,
   listTasks,
   TaskStatusSchema,
@@ -66,7 +67,7 @@ export const TaskListTool = buildTool({
     const taskListId = getTaskListId()
 
     const allTasks = (await listTasks(taskListId)).filter(
-      t => !t.metadata?._internal,
+      t => !t.metadata?._internal && !isAutomaticPromptTask(t),
     )
 
     // Keep only blockers that both still exist and remain unresolved. Deleted

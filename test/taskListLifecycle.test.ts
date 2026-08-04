@@ -12,14 +12,9 @@ import {
   requestsRevisionOfCurrentTaskList,
 } from '../src/utils/taskListRunContext.js'
 import {
-  AUTOMATIC_PROMPT_TASK_ACTIVE_FORM,
-  AUTOMATIC_PROMPT_TASK_DESCRIPTION,
-  AUTOMATIC_PROMPT_TASK_SUBJECT,
   blockTask,
-  createAutomaticPromptTaskForRun,
   createTask,
   createTaskForRun,
-  finalizeAutomaticPromptTask,
   getTask,
   isTaskListFullyCompleted,
   listTaskHistory,
@@ -134,143 +129,58 @@ describe('persistent task-list generations', () => {
     expect(await listTaskHistory(taskListId)).toEqual([])
   })
 
-  test('an interruption resumes the visible seed instead of echoing the reply as a task', async () => {
+  test('starting a prompt generation does not fabricate a planning task', async () => {
     await prepareTaskListForRun(taskListId, 'first-run')
-    const first = await createAutomaticPromptTaskForRun(
-      taskListId,
-      'first-run',
-      'Implement the parser fix',
-    )
-    expect(first).toBeDefined()
-    expect(await getTask(taskListId, first!)).toMatchObject({
-      subject: AUTOMATIC_PROMPT_TASK_SUBJECT,
-      description: AUTOMATIC_PROMPT_TASK_DESCRIPTION,
-      activeForm: AUTOMATIC_PROMPT_TASK_ACTIVE_FORM,
-      status: 'in_progress',
-    })
-    expect(JSON.stringify(await getTask(taskListId, first!))).not.toContain(
-      'Implement the parser fix',
-    )
-
-    await prepareTaskListForRun(taskListId, 'interruption-run')
-    const interruption = await createAutomaticPromptTaskForRun(
-      taskListId,
-      'interruption-run',
-      'Also update the task board after interruptions',
-    )
-
-    expect(interruption).toBe(first)
-    expect((await listTasks(taskListId)).map(item => item.id)).toEqual([first])
-    expect((await listTasks(taskListId))[0]).toMatchObject({
-      subject: AUTOMATIC_PROMPT_TASK_SUBJECT,
-      status: 'in_progress',
-    })
-    expect(JSON.stringify(await listTasks(taskListId))).not.toContain(
-      'Also update the task board after interruptions',
-    )
+    expect(await listTasks(taskListId)).toEqual([])
     expect(await listTaskHistory(taskListId)).toEqual([])
-    expect(
-      await finalizeAutomaticPromptTask(
-        taskListId,
-        first!,
-        'first-run',
-        'pending',
-      ),
-    ).toBe(false)
-    expect(
-      await finalizeAutomaticPromptTask(
-        taskListId,
-        first!,
-        'interruption-run',
-        'pending',
-      ),
-    ).toBe(true)
-    expect((await getTask(taskListId, first!))?.status).toBe('pending')
   })
 
-  test('a follow-up does not add an automatic task to an unfinished explicit board', async () => {
+  test('a follow-up preserves an unfinished explicit board without adding a placeholder', async () => {
     const explicit = await createBareTask('Implement the parser fix')
     await prepareTaskListForRun(taskListId, 'follow-up-run')
 
-    expect(
-      await createAutomaticPromptTaskForRun(
-        taskListId,
-        'follow-up-run',
-        'Why did you remove it? I said fix it.',
-      ),
-    ).toBeUndefined()
     expect((await listTasks(taskListId)).map(item => item.id)).toEqual([
       explicit,
     ])
   })
 
-  test('a corrective reply reopens the prior automatic task without renaming it', async () => {
-    await prepareTaskListForRun(taskListId, 'first-run')
-    const original = await createAutomaticPromptTaskForRun(
-      taskListId,
-      'first-run',
-      'Fix the game bug',
-    )
-    expect(original).toBeDefined()
-    await finalizeAutomaticPromptTask(
-      taskListId,
-      original!,
-      'first-run',
-      'completed',
-    )
-
-    const followUp = getTaskListRunForCommand({
-      value: 'why did u remove it i said fix it',
-      mode: 'prompt',
-      uuid: 'revision-run' as never,
-    })!
-    expect(followUp.appendToCurrent).toBe(true)
-    await prepareTaskListForRun(taskListId, followUp.generationId, {
-      appendToCurrent: followUp.appendToCurrent,
-    })
-    const resumed = await createAutomaticPromptTaskForRun(
-      taskListId,
-      followUp.generationId,
-      'why did u remove it i said fix it',
-      { reuseExistingBoard: true },
-    )
-
-    expect(resumed).toBe(original)
-    expect(await getTask(taskListId, original!)).toMatchObject({
-      subject: AUTOMATIC_PROMPT_TASK_SUBJECT,
+  test('a new generation removes legacy automatic placeholders without reusing their ids', async () => {
+    const legacy = await createTask(taskListId, {
+      ...newTask('Preparing task plan'),
       status: 'in_progress',
+      metadata: {
+        urAutomaticPromptTask: true,
+        urPromptGeneration: 'old-run',
+      },
     })
+    expect(legacy).toBe('1')
+
+    await prepareTaskListForRun(taskListId, 'new-run')
+
+    expect(await listTasks(taskListId)).toEqual([])
+    expect(await listTaskHistory(taskListId)).toEqual([])
+    expect(
+      await createTaskForRun(
+        taskListId,
+        'new-run',
+        newTask('Fix release workflow'),
+      ),
+    ).toBe('2')
   })
 
-  test('the first explicit model task atomically replaces its automatic seed', async () => {
-    await prepareTaskListForRun(taskListId, 'model-run')
-    const seed = await createAutomaticPromptTaskForRun(
-      taskListId,
-      'model-run',
-      'Fix and verify the release',
-    )
-    const explicit = await createTaskForRun(
-      taskListId,
-      'model-run',
-      newTask('Fix release workflow'),
-      { replaceAutomaticPromptTask: true },
-    )
-
-    expect(explicit).toBe(seed)
-    expect(await listTasks(taskListId)).toHaveLength(1)
-    expect(await getTask(taskListId, explicit)).toMatchObject({
-      subject: 'Fix release workflow',
-      status: 'pending',
+  test('legacy placeholder migration preserves real interrupted tasks', async () => {
+    await createTask(taskListId, {
+      ...newTask('Preparing task plan'),
+      status: 'in_progress',
+      metadata: { urAutomaticPromptTask: true },
     })
-    expect(
-      await finalizeAutomaticPromptTask(
-        taskListId,
-        seed,
-        'model-run',
-        'completed',
-      ),
-    ).toBe(false)
-    expect((await getTask(taskListId, explicit))?.status).toBe('pending')
+    const explicit = await createBareTask('Implement the parser fix')
+
+    await prepareTaskListForRun(taskListId, 'recovery-run')
+
+    expect((await listTasks(taskListId)).map(item => item.id)).toEqual([
+      explicit,
+    ])
   })
 
   test('explicit append keeps the active list and binds the whole run', async () => {
@@ -495,7 +405,7 @@ describe('task tool status guidance', () => {
     expect(taskUpdatePrompt).toContain('derived display state')
   })
 
-  test('documents automatic interruption preservation and explicit append intent', () => {
+  test('documents explicit-board interruption preservation and append intent', () => {
     const createPrompt = getTaskCreatePrompt()
     expect(createPrompt).toContain('**addToCurrentList**')
     expect(createPrompt).toContain('an interruption preserves active work')

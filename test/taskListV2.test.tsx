@@ -5,7 +5,6 @@ import {
   getTaskDisplayStatus,
   getTaskIcon,
   getTaskStatusCounts,
-  isTaskPlanningPlaceholder,
 } from '../src/components/TaskListV2.js'
 import { isTaskVisibleInActiveBoard } from '../src/utils/tasks.js'
 import type { Task } from '../src/utils/tasks.js'
@@ -31,42 +30,15 @@ function makeTask(overrides: Partial<Task> & { id: string }): Task {
 }
 
 describe('TaskListV2 display logic', () => {
-  it('recognizes an automatic seed as planning state instead of a user task', () => {
-    expect(
-      isTaskPlanningPlaceholder([
-        makeTask({
-          id: '1',
-          status: 'in_progress',
-          metadata: { urAutomaticPromptTask: true },
-        }),
-      ]),
-    ).toBe(true)
-    expect(isTaskPlanningPlaceholder([makeTask({ id: '1' })])).toBe(false)
-  })
-
-  it('hides a terminal automatic seed while retaining active recovery seeds', () => {
+  it('hides every legacy automatic seed regardless of status', () => {
     const metadata = { urAutomaticPromptTask: true }
 
-    expect(
-      isTaskVisibleInActiveBoard(
-        makeTask({ id: '1', status: 'in_progress', metadata }),
-      ),
-    ).toBe(true)
-    expect(
-      isTaskVisibleInActiveBoard(
-        makeTask({ id: '1', status: 'pending', metadata }),
-      ),
-    ).toBe(true)
-    expect(
-      isTaskVisibleInActiveBoard(
-        makeTask({ id: '1', status: 'completed', metadata }),
-      ),
-    ).toBe(false)
-    expect(
-      isTaskPlanningPlaceholder([
-        makeTask({ id: '1', status: 'completed', metadata }),
-      ]),
-    ).toBe(false)
+    for (const status of ['pending', 'in_progress', 'completed'] as const) {
+      expect(
+        isTaskVisibleInActiveBoard(makeTask({ id: '1', status, metadata })),
+      ).toBe(false)
+    }
+    expect(isTaskVisibleInActiveBoard(makeTask({ id: '2' }))).toBe(true)
   })
 
   describe('byIdAsc', () => {

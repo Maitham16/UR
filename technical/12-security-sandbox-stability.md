@@ -183,6 +183,12 @@ Publication passes the verified artifact as an explicit `./dist-release/...`
 path; without the `./`, npm's package-spec parser treats the slash-containing
 value as GitHub shorthand and tries an unrelated SSH clone.
 
+Release preflight also runs `bun audit` against the exact lockfile. Security
+overrides keep transitive parser, HTTP, and address-classification packages on
+patched floors even when their parents allow older vulnerable ranges. A new
+registry advisory therefore blocks publication until both `package.json` and
+`bun.lock` resolve cleanly; the audit is not converted into a warning.
+
 ## Privacy
 
 `/privacy-settings` UI; `--offline` kills telemetry; `feedbackSurveyRate`, analytics in

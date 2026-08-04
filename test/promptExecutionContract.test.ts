@@ -49,6 +49,9 @@ test('canonical task tools receive ordered lifecycle guidance', () => {
   expect(guidance).toContain('If the user interrupts')
   expect(guidance).toContain('preserve still-relevant work')
   expect(guidance).toContain('independent branches')
+  expect(guidance).toContain('direct one-step change')
+  expect(guidance).toContain('never copy the raw user prompt')
+  expect(guidance).not.toContain('For every actionable request')
 })
 
 test('legacy task guidance remains available without masking canonical tools', () => {
@@ -143,6 +146,15 @@ test('task tool prompts use one unambiguous lifecycle vocabulary', () => {
   )
   expect(createPrompt).not.toContain('After receiving new instructions')
   expect(createPrompt).toContain('Use TaskUpdate, not TaskCreate')
+  expect(createPrompt).toContain(
+    'Do not create a task merely because a user sent a message',
+  )
+  expect(createPrompt).toContain(
+    'never copy the raw prompt into a task title',
+  )
+  expect(createPrompt).not.toContain(
+    'Every actionable implementation request',
+  )
   expect(updatePrompt).not.toContain('Mark tasks as resolved')
   expect(updatePrompt).toContain('next unblocked task')
 })

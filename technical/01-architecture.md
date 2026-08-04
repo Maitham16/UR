@@ -42,14 +42,15 @@ bin/ur.js  →  dist/cli.js (bundled from src/entrypoints/cli.tsx)
    board after the ellipsis, then parenthesized detail derived from the live phase; both are
    width-gated to keep the activity surface on one line.
    The task panel (TaskListV2) is pinned in the fixed bottom region above the prompt —
-   visible while the agent works, statuses updating in real time (ctrl+T toggles). A real
-   prompt creates an automatic in-progress seed only when there is no unfinished board. That
-   seed contains no prompt prose and renders as a neutral `Planning tasks…` state rather than a
-   task/count; the first explicit TaskCreate replaces it atomically. Generation rollover
-   preserves and resumes pending/in-progress snapshots after interruption. Corrective replies,
-   including `no` / `still` feedback, reuse the prior board rather than becoming task titles;
-   terminal automatic seeds are filtered from active UI and status counts while remaining
-   reopenable, and terminal boards archive when genuinely new work begins.
+   visible while the agent works, statuses updating in real time (ctrl+T toggles). A prompt
+   establishes a generation boundary but does not fabricate a planning task. The panel appears
+   only after the model creates concrete tasks for genuinely multi-step, dependent, delegated,
+   or explicitly requested tracked work. Direct one-step changes, informational replies,
+   acknowledgements, and small corrections therefore keep the task surface quiet. Generation
+   rollover preserves pending/in-progress snapshots after interruption; corrective replies,
+   including `no` / `still` feedback, update relevant work rather than becoming new task titles.
+   Legacy automatic placeholders from builds through 1.78.13 are hidden immediately and
+   removed safely at the next generation boundary without reusing their task IDs.
 2. **QueryEngine** (`src/QueryEngine.ts`) — orchestrates a turn: builds the system prompt,
    assembles the tool pool (`src/tools.ts:assembleToolPool` — built-ins + MCP, deny-rule
    filtered, sorted for prompt-cache stability), streams the model response, dispatches tool

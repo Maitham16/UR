@@ -3,10 +3,10 @@
   "template": false,
   "agent": {
     "name": "ur-nexus",
-    "version": "1.78.13",
-    "commit": "72e1b3dcd12c3ab68c971c39f05ca828fead3e6a"
+    "version": "1.78.14",
+    "commit": "c5b38cddc1079fe1d0141e9a168a61b017c3ef96"
   },
-  "date": "2026-08-03T03:50:07.488Z",
+  "date": "2026-08-04T01:58:49.583Z",
   "benchmark": {
     "name": "local-smoke",
     "category": "internal-regression",
@@ -20,7 +20,7 @@
       "arch": "arm64",
       "node": "v26.5.1",
       "bun": "1.3.14",
-      "cwd": "/Users/maith/Desktop/UR Agent/UR-1.78.11"
+      "cwd": "/Users/maith/Desktop/ur3-dev/UR-1.78.11"
     }
   },
   "results": {
@@ -33,7 +33,7 @@
         "name": "simple file edit task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 48,
+        "wallTimeMs": 33,
         "failureCategory": null
       },
       {
@@ -41,7 +41,7 @@
         "name": "failing test repair task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 409,
+        "wallTimeMs": 225,
         "failureCategory": null
       },
       {
@@ -49,7 +49,7 @@
         "name": "provider routing task",
         "category": "provider-routing",
         "passed": true,
-        "wallTimeMs": 347,
+        "wallTimeMs": 252,
         "failureCategory": null
       },
       {
@@ -57,7 +57,7 @@
         "name": "sandbox denial task",
         "category": "sandbox-safety",
         "passed": true,
-        "wallTimeMs": 934,
+        "wallTimeMs": 729,
         "failureCategory": null
       },
       {
@@ -65,7 +65,7 @@
         "name": "tool-call parsing task",
         "category": "tool-use",
         "passed": true,
-        "wallTimeMs": 263,
+        "wallTimeMs": 208,
         "failureCategory": null
       },
       {
@@ -73,13 +73,13 @@
         "name": "multi-step coding task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 8920,
+        "wallTimeMs": 9015,
         "failureCategory": null
       }
     ],
     "failedTasks": [],
     "failureCategories": {},
-    "wallTimeMs": 10922,
+    "wallTimeMs": 10463,
     "tokenUsage": null,
     "costUSD": null
   },

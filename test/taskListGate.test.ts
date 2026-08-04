@@ -131,6 +131,10 @@ test('terminal and internal tasks do not permanently bypass the gate', () => {
       { status: 'failed' },
       { status: 'skipped' },
       { status: 'pending', metadata: { _internal: true } },
+      {
+        status: 'in_progress',
+        metadata: { urAutomaticPromptTask: true },
+      },
     ]),
   ).toBe(0)
   expect(

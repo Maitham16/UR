@@ -48,7 +48,7 @@ users don't call tools directly.
 | Tool | Purpose | Example request |
 |---|---|---|
 | `TodoWrite` | Maintain the session todo list | (agent tracks multi-step work) |
-| `TaskCreate` / `TaskGet` / `TaskUpdate` / `TaskList` | Structured task list v2 (dependencies, statuses), with a prompt-free neutral planning seed that is replaced by concrete model tasks and resumed/reconciled across replies and interruptions — replaces TodoWrite when `todo v2` enabled | "Track these five subtasks" |
+| `TaskCreate` / `TaskGet` / `TaskUpdate` / `TaskList` | Structured task list v2 (dependencies, statuses) for concrete multi-step, dependent, delegated, or explicitly requested work; no synthetic task is created merely because the user sent a prompt, and explicit boards are resumed/reconciled across replies and interruptions — replaces TodoWrite when `todo v2` enabled | "Track these five subtasks" |
 | `EnterPlanMode` / `ExitPlanMode` | Enter/leave plan mode; plan approval flow | "Plan first, then implement" |
 | `AskUserQuestion` | Multiple-choice questions to the user | (agent asks when blocked on a decision) |
 | `TaskOutput` / `TaskStop` | Read output of / stop a background task | "Kill the dev server you started" |

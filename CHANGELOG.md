@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.78.14
+
+- Interactive prompts no longer create the synthetic `Planning requested work`
+  task before the model understands the request. The task surface stays quiet
+  for conversation, one-step changes, acknowledgements, and small corrections;
+  concrete task boards remain available for multi-step, dependent, delegated,
+  or explicitly tracked work. Existing explicit tasks still survive
+  interruptions, while legacy automatic placeholders are hidden immediately
+  and removed at the next generation boundary without reusing their IDs.
+- Task guidance no longer demands one task for every actionable message. Large
+  prompts still decompose into bounded outcome-based tasks, and follow-ups
+  update relevant tracked work instead of copying the user's reply into a new
+  task title.
+- Security dependency floors now include patched `fast-uri`, `hono`,
+  `ip-address`, `undici`, `@hono/node-server`, and MCP SDK releases after new
+  registry advisories made the prior lockfile fail the release audit.
+
 ## 1.78.13
 
 - The release workflow now publishes its downloaded tarball with an explicit
