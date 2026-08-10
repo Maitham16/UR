@@ -45,7 +45,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.78.14</p>
+          <p class="eyebrow">Version 1.79.0</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -84,7 +84,15 @@
           </article>
           <article>
             <strong>Reliable repo editing</strong>
-            <span><code>ur repo-edit</code> indexes files and symbols, plans AST-aware renames, previews patches, and rolls back failed multi-file applies.</span>
+            <span><code>ur repo-edit</code> maps compiler/graph change impact, indexes files and symbols, plans AST-aware edits, previews patches, and rolls back failed multi-file applies.</span>
+          </article>
+          <article>
+            <strong>Evidence-backed research</strong>
+            <span><code>ur research</code> persists sanitized sources, cited findings, open questions, independent corroboration checks, and reviewable reports.</span>
+          </article>
+          <article>
+            <strong>Professional 3D workflows</strong>
+            <span><code>ur design3d</code> automates Blender, OpenSCAD, Autodesk 3ds Max, and reviewed custom DCC/CAD applications with dry-run plans, bounded builds, inspection, and glTF validation.</span>
           </article>
           <article>
             <strong>Test-first execution</strong>
@@ -92,7 +100,7 @@
           </article>
           <article>
             <strong>Deterministic commands</strong>
-            <span>The external runtime exposes 150 commands and 217 unique slash tokens; registry tests reject ambiguous names, broken loaders, and undocumented visible commands.</span>
+            <span>The external runtime exposes 172 commands and 253 unique slash tokens; registry tests reject ambiguous names, broken loaders, and undocumented visible commands.</span>
           </article>
           <article>
             <strong>Safety and context</strong>
@@ -328,9 +336,28 @@ ur workflow run release --live --concurrency 2</code></pre>
               <li>Apply transactionally with a validation command that triggers rollback on failure.</li>
             </ol>
             <pre><code>ur repo-edit index
+ur repo-edit impact checkoutTotal --depth 5
 ur repo-edit search checkoutTotal
 ur repo-edit preview rename oldName --to newName
 ur repo-edit apply rename oldName --to newName --check "bun test"</code></pre>
+          </article>
+
+          <article>
+            <h3>Research with a verifiable evidence map</h3>
+            <pre><code>ur research init landscape --question "Which capabilities shipped?"
+ur research source landscape --url https://example.com/spec --title "Primary source"
+ur research finding landscape --text "A capability shipped." --cite S1
+ur research verify landscape
+ur research report landscape --out docs/research/landscape.md</code></pre>
+          </article>
+
+          <article>
+            <h3>Build a reproducible 3D project</h3>
+            <pre><code>ur design3d doctor
+ur design3d init product --engine blender --units mm --format glb
+ur design3d init studio --engine 3dsmax --units cm --format max
+ur design3d build design3d/product --dry-run
+ur design3d validate design3d/product</code></pre>
           </article>
 
           <article>
@@ -569,8 +596,10 @@ ur mcp serve-http --port 8976
 ur skill verify &lt;name-or-directory&gt;
 ur ag-ui serve --help
 ur plugin list
+ur plugin search git
+ur plugin show github@ur-plugins-official
 ur plugin install &lt;plugin&gt;</code></pre>
-            <p>The opt-in stateless MCP HTTP adapter exposes negotiated Tasks and Apps. Portable skills load from native and cross-client roots with strict validation and Ed25519 provenance. AG-UI provides a bounded, opt-in frontend stream. Treat MCP servers and plugins as trusted code.</p>
+            <p>The opt-in stateless MCP HTTP adapter exposes negotiated Tasks and Apps. Portable skills load from native and cross-client roots with strict validation and Ed25519 provenance. Plugin search provides ranked cross-catalog discovery with provenance and capability metadata. AG-UI provides a bounded, opt-in frontend stream. Treat MCP servers and plugins as trusted code.</p>
           </article>
           <article>
             <h3>IDE inline diffs</h3>

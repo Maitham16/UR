@@ -4471,6 +4471,32 @@ async function run(): Promise<CommanderCommand> {
     await pluginListHandler(options);
   });
 
+  // Search all configured plugin catalogs with deterministic relevance ranking.
+  pluginCmd.command('search [query]').alias('find').description('Search configured plugin catalogs').option('--capability <name>', 'Filter by capability (commands, agents, mcp-tools, skills, templates, validators, language-adapters, lsp-servers, hooks)').option('--installed', 'Show only installed plugins').option('--json', 'Output structured JSON').option('--limit <count>', 'Maximum results to return (1-100)', '20').option('--marketplace <name>', 'Search only one marketplace').addOption(coworkOption()).action(async (query: string | undefined, options: {
+    capability?: string;
+    installed?: boolean;
+    json?: boolean;
+    limit?: string;
+    marketplace?: string;
+    cowork?: boolean;
+  }) => {
+    const {
+      pluginSearchHandler
+    } = await import('./cli/handlers/plugins.js');
+    await pluginSearchHandler(query, options);
+  });
+
+  // Show one exact plugin with catalog provenance and capability metadata.
+  pluginCmd.command('show <plugin>').alias('info').description('Show plugin details and installation status').option('--json', 'Output structured JSON').addOption(coworkOption()).action(async (plugin: string, options: {
+    json?: boolean;
+    cowork?: boolean;
+  }) => {
+    const {
+      pluginShowHandler
+    } = await import('./cli/handlers/plugins.js');
+    await pluginShowHandler(plugin, options);
+  });
+
   // Plugin doctor command
   pluginCmd.command('doctor').description('Validate plugin manifests and report declared components and capabilities').option('--json', 'Output as JSON').option('--path <dir>', 'Also scan a specific plugin or plugins directory').action(async (options: {
     json?: boolean;
@@ -5212,13 +5238,52 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, ...query.map(quoteLocalCommandArg), opts.graph ? '--graph' : undefined, opts.repo ? '--repo' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/code-index/code-index.js'), args);
   });
-  program.command('repo-edit [action] [rest...]').alias('repoedit').alias('reliable-edit').description('Reliable repo editing: indexed search, AST-aware rename plans, patch previews, and rollback-safe apply').option('--to <identifier>', 'New identifier for rename operations').option('--check <cmd>', 'Validation command to run after apply; failures rollback touched files').option('--json', 'Output as JSON').action(async (action: string | undefined, rest: string[] = [], opts: {
+  program.command('repo-edit [action] [rest...]').alias('repoedit').alias('reliable-edit').description('Reliable repo editing: indexed search, AST-aware refactors, change-impact plans, patch previews, and rollback-safe apply').option('--to <identifier>', 'New identifier or target file for edit operations').option('--check <cmd>', 'Validation command to run after apply; failures rollback touched files').option('--file <path>', 'Source file or symbol location').option('--engine <engine>', 'AST engine: ts, lsp, or treesitter').option('--depth <n>', 'Dependency depth for impact analysis (1-10)').option('--apply', 'Apply a previewed move/import operation').option('--preview', 'Preview without applying').option('--skip-diagnostics', 'Skip compiler diagnostics around the edit').option('--json', 'Output as JSON').action(async (action: string | undefined, rest: string[] = [], opts: {
     to?: string;
     check?: string;
+    file?: string;
+    engine?: string;
+    depth?: string;
+    apply?: boolean;
+    preview?: boolean;
+    skipDiagnostics?: boolean;
     json?: boolean;
   }) => {
-    const args = [action ? quoteLocalCommandArg(action) : undefined, ...rest.map(quoteLocalCommandArg), opts.to ? `--to ${quoteLocalCommandArg(opts.to)}` : undefined, opts.check ? `--check ${quoteLocalCommandArg(opts.check)}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const args = [action ? quoteLocalCommandArg(action) : undefined, ...rest.map(quoteLocalCommandArg), localCommandOption('--to', opts.to), localCommandOption('--check', opts.check), localCommandOption('--file', opts.file), localCommandOption('--engine', opts.engine), localCommandOption('--depth', opts.depth), opts.apply ? '--apply' : undefined, opts.preview ? '--preview' : undefined, opts.skipDiagnostics ? '--skip-diagnostics' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/repo-edit/repo-edit.js'), args);
+  });
+  program.command('research [action] [id]').alias('deep-research').description('Build source-backed research workspaces with corroboration checks and reports').option('--question <text>', 'Research question for init').option('--url <url>', 'Source URL').option('--title <title>', 'Source title').option('--publisher <name>', 'Source publisher or organization').option('--published <date>', 'Source publication date').option('--notes <text>', 'Source notes').option('--text <text>', 'Finding or open-question text').option('--cite <ids>', 'Comma-separated source ids, such as S1,S2').option('--confidence <level>', 'Finding confidence: low, medium, or high').option('--status <status>', 'Finding status: supported, contested, or open').option('--out <path>', 'Write a Markdown report inside the workspace').option('--json', 'Output as JSON').action(async (action: string | undefined, id: string | undefined, opts: {
+    question?: string;
+    url?: string;
+    title?: string;
+    publisher?: string;
+    published?: string;
+    notes?: string;
+    text?: string;
+    cite?: string;
+    confidence?: string;
+    status?: string;
+    out?: string;
+    json?: boolean;
+  }) => {
+    const args = [action ? quoteLocalCommandArg(action) : undefined, id ? quoteLocalCommandArg(id) : undefined, localCommandOption('--question', opts.question), localCommandOption('--url', opts.url), localCommandOption('--title', opts.title), localCommandOption('--publisher', opts.publisher), localCommandOption('--published', opts.published), localCommandOption('--notes', opts.notes), localCommandOption('--text', opts.text), localCommandOption('--cite', opts.cite), localCommandOption('--confidence', opts.confidence), localCommandOption('--status', opts.status), localCommandOption('--out', opts.out), opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/research/research.js'), args);
+  });
+  program.command('design3d [action] [target]').alias('3d').alias('3d-design').description('Create and automate Blender, OpenSCAD, Autodesk 3ds Max, and custom 3D app projects').option('--engine <engine>', 'blender, openscad, 3dsmax, or custom').option('--units <units>', 'mm, cm, m, or in').option('--format <format>', 'glb, gltf, stl, obj, blend, max, fbx, 3ds, step, or 3mf').option('--executable <path>', 'Executable for a custom 3D app adapter').option('--adapter-arg <arg>', 'Repeatable custom adapter argument', collectLocalCommandOption, []).option('--timeout <seconds>', 'Build timeout from 1 to 3600 seconds').option('--dry-run', 'Validate and show argv without launching the 3D app').option('--force', 'Replace an existing scaffold or output').option('--allow-custom', 'Run a reviewed custom application adapter').option('--internal-only', 'Skip an installed external Khronos glTF validator').option('--json', 'Output as JSON').action(async (action: string | undefined, target: string | undefined, opts: {
+    engine?: string;
+    units?: string;
+    format?: string;
+    executable?: string;
+    adapterArg?: string[];
+    timeout?: string;
+    dryRun?: boolean;
+    force?: boolean;
+    allowCustom?: boolean;
+    internalOnly?: boolean;
+    json?: boolean;
+  }) => {
+    const args = [action ? quoteLocalCommandArg(action) : undefined, target ? quoteLocalCommandArg(target) : undefined, localCommandOption('--engine', opts.engine), localCommandOption('--units', opts.units), localCommandOption('--format', opts.format), localCommandOption('--executable', opts.executable), ...(opts.adapterArg ?? []).map(value => `--adapter-arg ${quoteLocalCommandArg(value)}`), localCommandOption('--timeout', opts.timeout), opts.dryRun ? '--dry-run' : undefined, opts.force ? '--force' : undefined, opts.allowCustom ? '--allow-custom' : undefined, opts.internalOnly ? '--internal-only' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    await runLocalTextCommand(() => import('./commands/design3d/design3d.js'), args);
   });
   program.command('ide [action] [rest...]').description('Manage IDE integrations and inline diff bundles').option('--title <title>', 'Title for captured inline diff bundle').option('--base <ref>', 'Capture branch diff from this base ref').option('--staged', 'Capture staged changes instead of unstaged changes').option('--feedback <text>', 'Comment text for an IDE diff bundle').option('--file <path>', 'File path for an inline diff comment').option('--line <line>', 'Line number for an inline diff comment').option('--json', 'Output as JSON').action(async (action: string | undefined, rest: string[] = [], opts: {
     title?: string;

@@ -31,9 +31,15 @@ const featureGroups = [
   },
   {
     title: 'Reliable repo editing',
-    tags: ['index', 'AST', 'preview', 'rollback'],
-    text: 'File and symbol indexing, indexed search, AST-aware JavaScript/TypeScript identifier rename plans, patch previews before writes, and rollback-safe multi-file apply.',
-    commands: ['ur repo-edit index', 'ur repo-edit search', 'ur repo-edit preview rename', 'ur repo-edit apply rename --check'],
+    tags: ['index', 'AST', 'impact', 'preview', 'rollback'],
+    text: 'Compiler/graph change-impact maps, file and symbol indexing, AST-aware JavaScript/TypeScript edits, patch previews before writes, and rollback-safe multi-file apply.',
+    commands: ['ur repo-edit impact', 'ur repo-edit index', 'ur repo-edit search', 'ur repo-edit preview rename', 'ur repo-edit apply rename --check'],
+  },
+  {
+    title: 'Professional 3D and DCC/CAD',
+    tags: ['Blender', 'OpenSCAD', '3ds Max', 'glTF'],
+    text: 'Unit-aware parametric projects, installed-app discovery, shell-free reviewed custom adapters, bounded builds, common 3D format inspection, and optional Khronos glTF validation for Blender, OpenSCAD, 3ds Max, Maya, FreeCAD, Houdini, Cinema 4D, and Rhino workflows.',
+    commands: ['ur design3d doctor', 'ur design3d init', 'ur design3d build --dry-run', 'ur design3d validate'],
   },
   {
     title: 'Automation and triggers',
@@ -44,8 +50,8 @@ const featureGroups = [
   {
     title: 'Knowledge and memory',
     tags: ['retrieval', 'provenance', 'citations'],
-    text: 'Durable memory, semantic memory, curated knowledge sources, lexical or embedding retrieval, digest-validated file/run citations, explicitly unverifiable user/web citations, claim ledgers, and research graph primitives.',
-    commands: ['ur knowledge', 'ur semantic-memory', 'ur context-pack remember --cite-file', 'ur context-pack memory revalidate', 'ur claim-ledger'],
+    text: 'Durable memory, source-backed research workspaces, independent corroboration checks, semantic memory, curated knowledge sources, lexical or embedding retrieval, digest-validated citations, claim ledgers, and research graph primitives.',
+    commands: ['ur research', '/research-pro', 'ur knowledge', 'ur semantic-memory', 'ur context-pack remember --cite-file', 'ur context-pack memory revalidate', 'ur claim-ledger'],
   },
   {
     title: 'Evaluation and verification',
@@ -362,11 +368,18 @@ const commands = [
     examples: ['ur pattern list', 'ur pattern show peer', 'ur pattern run peer "Implement and review auth"', 'ur pattern run concurrent "Audit docs" --execute --dry-run'],
   },
   {
+    name: 'design3d',
+    category: 'Media',
+    aliases: ['three-d', 'design-3d'],
+    summary: 'Create, plan, build, inspect, and validate Blender, OpenSCAD, Autodesk 3ds Max, and reviewed custom DCC/CAD projects.',
+    examples: ['ur design3d doctor', 'ur design3d init product --engine blender --units mm --format glb', 'ur design3d init studio --engine 3dsmax --units cm --format max', 'ur design3d build design3d/product --dry-run', 'ur design3d validate design3d/product'],
+  },
+  {
     name: 'plugin',
     category: 'Interop',
     aliases: ['plugins'],
     summary: 'Manage UR plugins and marketplaces for MCP tools, skills, templates, validators, language adapters, LSP servers, agents, hooks, output styles, and commands.',
-    examples: ['ur plugin list', 'ur plugin install hello@ur-plugins-official', 'ur plugin install engineering-discipline@ur-plugins-official', 'ur plugin update <plugin>', 'ur plugin disable <plugin>'],
+    examples: ['ur plugin search git', 'ur plugin search --capability skills --json', 'ur plugin show github@ur-plugins-official', 'ur plugin list', 'ur plugin install hello@ur-plugins-official', 'ur plugin update <plugin>'],
   },
   {
     name: 'provider',
@@ -379,8 +392,15 @@ const commands = [
     name: 'repo-edit',
     category: 'Delivery',
     aliases: ['repoedit', 'reliable-edit'],
-    summary: 'Reliable repo editing with a local file/symbol index, AST-aware JS/TS rename plans, patch previews, and rollback-safe multi-file apply.',
-    examples: ['ur repo-edit index', 'ur repo-edit search checkoutTotal', 'ur repo-edit plan rename oldName --to newName', 'ur repo-edit preview rename oldName --to newName', 'ur repo-edit apply rename oldName --to newName --check "bun test"'],
+    summary: 'Reliable repo editing with compiler/graph impact analysis, a local file/symbol index, AST-aware JS/TS plans, patch previews, and rollback-safe multi-file apply.',
+    examples: ['ur repo-edit impact checkoutTotal', 'ur repo-edit index', 'ur repo-edit search checkoutTotal', 'ur repo-edit plan rename oldName --to newName', 'ur repo-edit preview rename oldName --to newName', 'ur repo-edit apply rename oldName --to newName --check "bun test"'],
+  },
+  {
+    name: 'research',
+    category: 'Knowledge',
+    aliases: ['deep-research'],
+    summary: 'Build source-backed research workspaces with sanitized sources, cited findings, open questions, corroboration verification, and Markdown reports.',
+    examples: ['ur research init landscape --question "What changed?"', 'ur research source landscape --url https://example.com --title "Primary source"', 'ur research finding landscape --text "A feature shipped." --cite S1', 'ur research verify landscape', 'ur research report landscape --out docs/research/landscape.md'],
   },
   {
     name: 'role-mode',
@@ -537,8 +557,8 @@ const slashGroups = [
   },
   {
     title: 'Media and research',
-    items: ['/research', '/paper', '/cite', '/image', '/video', '/youtube', '/browser', '/chrome'],
-    text: 'Handle research notes, citations, multimodal files, browser workflows, and video metadata/transcripts.',
+    items: ['/research', '/research-pro', '/dcc-design', '/design3d', '/paper', '/cite', '/image', '/video', '/youtube', '/browser', '/chrome'],
+    text: 'Build evidence-backed research reports, automate professional 3D/DCC/CAD projects, manage citations and multimodal files, and run browser/video workflows.',
   },
   {
     title: 'Preferences and environment',

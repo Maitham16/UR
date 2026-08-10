@@ -46,7 +46,15 @@ handing work off to other tools or agents when needed.
   `ur workspace`, `ur test-first`, `ur ci-loop`, `ur bg`, `ur workflow`,
   `ur crew`, and `ur automation` for structured work beyond a single chat turn.
 - **Reliable repo editing.** Use `ur repo-edit` for indexed search,
-  AST-aware rename plans, patch previews, and rollback-safe multi-file apply.
+  compiler/graph change-impact maps, AST-aware rename plans, patch previews,
+  and rollback-safe multi-file apply.
+- **Evidence-backed research.** Use `ur research` to persist sanitized sources,
+  cited findings, open questions, independent-corroboration checks, and
+  reviewable Markdown reports instead of relying on an unstructured note list.
+- **Professional 3D workflows.** Use `ur design3d` for scriptable Blender,
+  OpenSCAD, Autodesk 3ds Max, and reviewed custom DCC/CAD app pipelines with
+  real-world units, dry-run argv, bounded builds, format inspection, and glTF
+  validation.
 - **Permission and context control.** Use `ur safety` and `ur context-pack` to
   inspect command risk, initialize project safety policy, summarize repository
   architecture, and preserve task decisions, constraints, commands, diffs,
@@ -403,7 +411,9 @@ as first-class subcommands in the shipped CLI.
 | `ur crew` | Run dependency-aware worker subagents over a shared task board; independent tasks fan out, while bounded retries require isolated worktrees. |
 | `ur pattern` | Run multi-agent collaboration patterns (PEER, DOE, concurrent, handoff, debate, parallel); `--execute` runs them as a workflow. |
 | `ur goal` | Track long-horizon objectives that persist across sessions. |
-| `ur repo-edit` | Build a repo edit index, plan AST-aware renames, preview patches, and apply with rollback. |
+| `ur repo-edit` | Build a repo edit index, map symbol/file blast radius and verification targets, plan AST-aware edits, preview patches, and apply with rollback. |
+| `ur research` | Create source-backed research workspaces, add cited findings/open questions, verify corroboration, and emit Markdown reports. |
+| `ur design3d` | Discover 3D apps and create, plan, build, inspect, or validate Blender, OpenSCAD, 3ds Max, and custom DCC/CAD projects. |
 | `ur code-index` | Build, query, or watch a local semantic code index using Ollama embeddings; `ur code-index repo` adds files/symbols/calls/tests/docs/configs. |
 | `ur semantic-memory` | Build and search a project-local memory index. |
 | `ur memory retention` | Configure and apply local memory retention policies (TTL, max entries, decay). |
@@ -538,6 +548,9 @@ validator, and Markdown language-adapter metadata.
 
 ```sh
 ur plugin list
+ur plugin search git
+ur plugin search --capability skills --json
+ur plugin show github@ur-plugins-official
 ur plugin doctor
 ur plugin install engineering-discipline@ur-plugins-official
 ur plugin install hello@ur-plugins-official
@@ -545,9 +558,15 @@ ur plugin update <plugin>
 ur plugin disable <plugin>
 ```
 
-`ur plugin doctor` validates every installed, project, and bundled plugin
-manifest and reports its declared components and capability surface, so you can
-review what a plugin touches before enabling it.
+`ur plugin search` discovers plugins across managed, personal, workspace,
+implicit, built-in, and session catalogs. Results use deterministic relevance
+ranking, show catalog/source provenance and installation state, support
+capability/marketplace/installed filters, and remain available as structured
+JSON for scripts. `ur plugin show` prints one plugin's complete discovery
+metadata and an exact install command. `ur plugin doctor` validates every
+installed, project, and bundled plugin manifest and reports its declared
+components and capability surface, so you can review what a plugin touches
+before enabling it.
 
 The npm package includes `README.md`, `QUALITY.md`, `docs/`, `documentation/`,
 and `plugins/`, so the npm package page and installed artifact both carry the
@@ -606,6 +625,17 @@ ur desktop-qa validate .ur/desktop-qa/fixtures/smoke.json
 ur automation create nightly --schedule "0 9 * * 1-5" --prompt "Review open tasks"
 ur repo-edit preview rename oldName --to newName
 ur repo-edit apply rename oldName --to newName --check "bun test"
+ur repo-edit impact checkoutTotal --depth 5
+ur research init agent-landscape --question "Which capabilities shipped in 2026?"
+ur research source agent-landscape --url https://example.com/spec --title "Primary specification"
+ur research finding agent-landscape --text "The feature shipped." --cite S1,S2 --confidence high
+ur research verify agent-landscape
+ur research report agent-landscape --out docs/research/agent-landscape.md
+ur design3d doctor
+ur design3d init product-shot --engine blender --units mm --format glb
+ur design3d init studio-scene --engine 3dsmax --units cm --format max
+ur design3d build design3d/product-shot --dry-run
+ur design3d validate design3d/product-shot
 ur code-index search "where is the rate limiter configured"
 ur code-index repo build
 ur code-index repo search "rate limiter"

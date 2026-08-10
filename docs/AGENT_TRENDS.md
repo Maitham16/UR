@@ -2,7 +2,7 @@
 
 UR is a provider-flexible, local-first terminal coding agent. This page tracks
 how UR maps to current agent-platform trends and where future work should go
-next. The factual comparison below is a **2026-07-26 research snapshot**; run
+next. The factual comparison below is a **2026-08-10 research snapshot**; run
 `ur agent-trends` for the versioned machine-readable report and re-check the
 linked primary sources before acting on prerelease standards.
 
@@ -17,6 +17,9 @@ ur ag-ui serve --help
 ur agent-features
 ur agent-features init
 ur agent-templates install
+ur plugin search git
+ur plugin search --capability skills --json
+ur plugin show github@ur-plugins-official
 ur model-doctor
 ur automation create nightly --schedule "0 9 * * 1-5" --prompt "Review open tasks"
 ur automation run-due
@@ -26,6 +29,12 @@ ur repo-edit index
 ur repo-edit search checkoutTotal
 ur repo-edit preview rename oldName --to newName
 ur repo-edit apply rename oldName --to newName --check "bun test"
+ur repo-edit impact checkoutTotal --depth 5
+ur research init agent-landscape --question "What capabilities shipped recently?"
+ur research verify agent-landscape
+ur design3d doctor
+ur design3d init studio-scene --engine 3dsmax --units cm --format max
+ur design3d build design3d/studio-scene --dry-run
 ur agent-task pr --create --dry-run
 ur a2a serve --dry-run
 ur semantic-memory build
@@ -84,6 +93,10 @@ Inside an interactive session:
 | Multi-agent orchestration | Covered | built-in planning, exploration, verification, and general-purpose agents; custom agents | Document reusable team patterns and role selection |
 | Long-term memory | Partial | Existing retrieval plus a provenance-rich SHA-256 task-memory chain, file/run/user/web citations, freshness resolution, private atomic writes, quarantine, and rollback | Extend citation/deletion/integrity guarantees to semantic, embedding, and legacy stores |
 | Portable Agent Skills | Covered | Native and `.agents/skills/` project/user discovery, strict validation, deterministic tree/permission digests, Ed25519 signing, trusted keys, and invocation-time integrity checks | Require registry attestations and dependency review before community one-command installation |
+| Cross-catalog plugin discovery | Covered | `ur plugin search/show` searches managed, personal, workspace, implicit, built-in, session, and installed-only sources with deterministic relevance, provenance, capability/status filters, bounded output, secret-redacted sources, graceful catalog failures, and JSON automation | Add signed registry attestations and explicit remote-catalog freshness metadata before recommending unattended installation |
+| Evidence-backed deep research | Covered | `ur research` persists sanitized sources, cited supported/contested/open findings, unresolved questions, independent corroboration warnings, SHA-256 project digests, and workspace-confined Markdown reports; `/research-pro` directs primary-source and disconfirming-evidence collection | Add authenticated source-refresh timestamps and optional archival snapshots without duplicating third-party content by default |
+| Compiler/graph change-impact planning | Covered | `ur repo-edit impact` combines TypeScript compiler references, imported-alias resolution, direct/transitive import dependents, definitions, tests, docs, config, risk reasons, and detected verification commands | Extend exact binding-aware impact to installed LSP languages beyond JavaScript/TypeScript |
+| Professional 3D and DCC/CAD workflows | Covered | `ur design3d` scaffolds and automates Blender, OpenSCAD, and Autodesk 3ds Max; discovers Maya, FreeCAD, Houdini, Cinema 4D, and Rhino; gates shell-free custom adapters; inspects common assets; and invokes Khronos glTF validation when available | Add native headless validators per optional DCC adapter and rendered visual-regression fixtures without pretending structural checks are visual review |
 | Semantic codebase retrieval | Covered | local embedding-based code index (`ur code-index`), opt-in `CodeSearch` tool, incremental re-index, auto-reindex watcher, Ollama embeddings | Add richer symbol-aware ranking |
 | Reliable repo editing | Covered | `ur repo-edit` builds a file/symbol index, performs AST-aware JS/TS identifier rename planning, previews patches before writing, and applies multi-file edits transactionally with rollback on syntax or check failure | Extend AST edits beyond identifier rename into import moves and signature-aware refactors |
 | Permission and safety policy | Covered | `ur safety`, `.ur/safety-policy.json`, pre-Bash safety evaluation, read/write/execute/network command classes, destructive-command approval, sandbox recommendations, and secret exfiltration denial | Record sandbox attestation in every risky command's evidence trail |
@@ -196,6 +209,13 @@ Professional answer requirements:
 
 ## References
 
+- OpenAI ChatGPT and Codex changelog (Agent Plugin catalogs and search): https://developers.openai.com/codex/changelog
+- Gemini CLI release notes (tool-registry discovery): https://github.com/google-gemini/gemini-cli/blob/main/docs/changelogs/index.md
+- TypeScript Project References and compiler structure: https://www.typescriptlang.org/docs/handbook/project-references
+- Blender command-line arguments: https://docs.blender.org/manual/en/latest/advanced/command_line/arguments.html
+- OpenSCAD command-line environment: https://files.openscad.org/documentation/manual/Using_OpenSCAD_in_a_command_line_environment.html
+- Autodesk 3ds Max command-line MAXScript: https://help.autodesk.com/cloudhelp/2024/ENU/MAXScript-Help/files/MAXScript-Introduction/General-MAXScript-Topics/GUID-A04C0E75-F82A-41AC-92E8-D7CB1D797430.html
+- Khronos glTF 2.0 specification and validator: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html and https://github.com/KhronosGroup/glTF-Validator
 - OpenAI Responses background mode: https://developers.openai.com/api/docs/guides/background
 - OpenAI Responses WebSocket mode: https://developers.openai.com/api/docs/guides/websocket-mode
 - OpenAI Responses compaction: https://developers.openai.com/api/docs/guides/compaction

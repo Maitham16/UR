@@ -7,8 +7,8 @@
 UR plans, reads files, edits, and can run tests. Safety + stability:
 
 - Repo-wide identifier refactors can use `ur repo-edit`: build an index,
-  preview the AST-aware patch, then apply with a check command that rolls back
-  touched files on failure.
+  map compiler/graph change impact, preview the AST-aware patch, then apply
+  with a check command that rolls back touched files on failure.
 - Stack-aware quality loops can use `ur test-first`: detect compile/test/lint
   commands, store failed command traces, and install the same commands as
   after-edit verifier gates.
@@ -26,6 +26,7 @@ UR plans, reads files, edits, and can run tests. Safety + stability:
 
 ```sh
 ur repo-edit index
+ur repo-edit impact healthHandler --depth 5
 ur repo-edit preview rename oldName --to newName
 ur repo-edit apply rename oldName --to newName --check "bun test"
 ur test-first detect

@@ -19,12 +19,14 @@ import {
   findUnusedAst,
   formatMovePlanAst,
   formatOrganizeImportsPlanAst,
+  formatReadPlanAst,
   formatRenamePlanAst,
   planMoveAst,
   planOrganizeImportsAst,
   planRenameAst,
 } from '../../services/repoEditing/ast/repoEditAst.js'
 import { formatWorkspaceEditAsPatch } from '../../services/repoEditing/ast/workspaceEdit.js'
+import { analyzeChangeImpact, formatChangeImpact } from '../../services/repoEditing/changeImpact.js'
 
 function usage(): string {
   return [
@@ -39,6 +41,7 @@ function usage(): string {
     '  ur repo-edit organize-imports [--file <path>] [--check <cmd>] [--json]',
     '  ur repo-edit unused [--file <path>] [--json]',
     '  ur repo-edit callers <symbol> [--file <path>] [--json]',
+    '  ur repo-edit impact <symbol-or-file> [--depth <1-10>] [--json]',
     '',
     'Rename operations are AST-aware for JavaScript and TypeScript files:',
     'identifier nodes are changed, while comments and strings are not.',
@@ -54,7 +57,7 @@ function option(tokens: string[], name: string): string | undefined {
 
 function positionals(tokens: string[]): string[] {
   const values: string[] = []
-  const flagsWithValue = new Set(['--to', '--check', '--file', '--engine'])
+  const flagsWithValue = new Set(['--to', '--check', '--file', '--engine', '--depth'])
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]
     if (flagsWithValue.has(token)) {
@@ -277,7 +280,7 @@ export const call: LocalCommandCall = async (args: string) => {
     if (action === 'unused') {
       const file = option(tokens, '--file')
       const plan = await findUnusedAst({ root, file })
-      return { type: 'text', value: json ? JSON.stringify({ plan }, null, 2) : plan.description }
+      return { type: 'text', value: json ? JSON.stringify({ plan }, null, 2) : formatReadPlanAst(plan) }
     }
 
     if (action === 'callers') {
@@ -286,7 +289,19 @@ export const call: LocalCommandCall = async (args: string) => {
       const file = option(tokens, '--file')
       const location = parseSymbolLocation(symbol)
       const plan = await findCallersAst({ root, symbol: location.name, file })
-      return { type: 'text', value: json ? JSON.stringify({ plan }, null, 2) : plan.description }
+      return { type: 'text', value: json ? JSON.stringify({ plan }, null, 2) : formatReadPlanAst(plan) }
+    }
+
+    if (action === 'impact') {
+      const target = positionals(tokens)[1]
+      if (!target) return { type: 'text', value: usage() }
+      const depthValue = option(tokens, '--depth')
+      const depth = depthValue === undefined ? undefined : Number(depthValue)
+      if (depth !== undefined && (!Number.isSafeInteger(depth) || depth < 1 || depth > 10)) {
+        return { type: 'text', value: 'impact --depth must be an integer between 1 and 10' }
+      }
+      const report = await analyzeChangeImpact(root, target, { maxDepth: depth })
+      return { type: 'text', value: json ? JSON.stringify({ report }, null, 2) : formatChangeImpact(report) }
     }
 
     if (action === 'plan' || action === 'preview') {

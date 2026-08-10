@@ -77,6 +77,8 @@ export type EditPlan = {
   edits: WorkspaceEdit
   affectedFiles: string[]
   description: string
+  /** Compiler/LSP references returned by read-only analysis operations. */
+  references?: SymbolRef[]
   diagnosticsBefore: DiagnosticSnapshot
   diagnosticsAfter?: DiagnosticSnapshot
 }

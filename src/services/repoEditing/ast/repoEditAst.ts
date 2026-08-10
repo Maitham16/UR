@@ -114,6 +114,7 @@ function createReadPlan(kind: Extract<EditPlan['kind'], 'unused' | 'callers'>, d
     edits: { edits: [] },
     affectedFiles: [...new Set(refs.map(r => r.file))],
     description,
+    references: refs,
     diagnosticsBefore,
   }
 }
@@ -419,10 +420,9 @@ export function formatOrganizeImportsPlanAst(plan: EditPlan): string {
 }
 
 export function formatReadPlanAst(plan: EditPlan): string {
-  const lines = [plan.description, '']
-  for (const file of plan.affectedFiles) {
-    const refs = []
-    // Read-only plans don't store refs; callers can render the JSON plan.
-  }
+  const references = plan.references ?? []
+  const lines = [plan.description, `${references.length} reference(s) across ${plan.affectedFiles.length} file(s).`, '']
+  for (const ref of references) lines.push(`${ref.file}:${ref.line}:${ref.column} ${ref.kind} ${ref.name}`)
+  if (references.length === 0) lines.push('No references found.')
   return lines.join('\n')
 }

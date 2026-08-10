@@ -277,7 +277,10 @@ UR includes slash commands and CLI subcommands for common workflows:
   allowed user-facing application
 - `ur plugin ...` to manage plugins and marketplaces. Marketplace plugins can
   add MCP tools, commands, executable skills, templates, validators, language
-  adapters, LSP servers, agents, hooks, and output styles.
+  adapters, LSP servers, agents, hooks, and output styles. Use
+  `ur plugin search [query]` for ranked cross-catalog discovery and
+  `ur plugin show <name@marketplace>` to inspect provenance and capabilities
+  before installation.
 - `ur agents` to list configured agents
 - `ur agent-trends` to inspect coverage for current agent technology trends
 - `ur a2a card` to print UR's Agent Card metadata for A2A discovery
@@ -291,7 +294,12 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur workspace ...` to coordinate dependency-aware changes across repositories
 - `ur learn playbooks ...` to mine and explicitly approve reusable workflows
 - `/btw ...` to create or continue private durable tool-free side chats
-- `ur repo-edit ...` to index the repo, plan AST-aware renames, preview patches, and apply with rollback
+- `ur repo-edit ...` to index the repo, map compiler/graph change impact, plan AST-aware edits, preview patches, and apply with rollback
+- `ur research ...` to create evidence-backed workspaces with sanitized sources,
+  cited findings, open questions, corroboration checks, and Markdown reports
+- `ur design3d ...` to discover installed DCC/CAD apps and create, plan, build,
+  inspect, or validate Blender, OpenSCAD, Autodesk 3ds Max, and reviewed custom
+  application projects
 - `ur safety ...` to inspect project shell safety policy and preview command risk
 - `ur context-pack ...` to summarize architecture and persist project memory (decisions, constraints, commands, diffs, architecture, preferences, attempts, accepted, rejected)
 - `ur code-index watch` to keep the local semantic code index fresh
@@ -508,6 +516,18 @@ ur repo-edit index
 ur repo-edit plan rename oldName --to newName
 ur repo-edit preview rename oldName --to newName
 ur repo-edit apply rename oldName --to newName --check "bun test"
+ur repo-edit impact checkoutTotal --depth 5
+ur research init current-tools --question "What changed in current coding agents?"
+ur research source current-tools --url https://example.com/changelog --title "Official changelog"
+ur research finding current-tools --text "Tool discovery shipped." --cite S1
+ur research verify current-tools
+ur research report current-tools --out docs/research/current-tools.md
+ur design3d doctor
+ur design3d init web-model --engine blender --units m --format glb
+ur design3d init printable-part --engine openscad --units mm --format stl
+ur design3d init max-scene --engine 3dsmax --units cm --format max
+ur design3d build design3d/web-model --dry-run
+ur design3d validate design3d/web-model
 ur ide diff capture --title "Working tree review"
 ur eval bench list
 ur eval run starter --dry-run --json

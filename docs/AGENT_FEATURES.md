@@ -9,6 +9,15 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.79.0 Additions
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Cross-catalog plugin discovery | `ur plugin search\|show`, `src/utils/plugins/pluginDiscovery.ts` | Deterministic ranked discovery across managed, personal, workspace, implicit, built-in, session, and installed catalogs with source/scope provenance, capability/status filters, secret redaction, graceful catalog degradation, and JSON output. |
+| Evidence-backed deep research | `ur research init\|source\|finding\|question\|verify\|report`, `/research-pro`, `.ur/research/projects/` | Atomic source-backed projects, sanitized URLs, cited/contested/open findings, independent-publisher checks for high confidence, durable open questions, SHA-256 state digests, workspace-confined Markdown reports, and a primary-source research workflow. |
+| Compiler/graph change impact | `ur repo-edit impact`, `src/services/repoEditing/changeImpact.ts` | Combines compiler-resolved callers, import-graph dependents, definitions, focused tests, related docs/config, risk reasons, and detected package verification commands before editing. Imported aliases resolve correctly and read-only AST results retain exact references. |
+| Professional 3D and DCC/CAD automation | `ur design3d`, `/dcc-design`, `src/services/design3d/design3d.ts` | Parametric Blender Python, OpenSCAD, and 3ds Max MAXScript scaffolds; discovery for Maya, FreeCAD, Houdini, Cinema 4D, Rhino, and Khronos validation; shell-free reviewed custom adapters; bounded build execution; workspace confinement; and GLB/glTF/STL/OBJ/BLEND/MAX inspection. |
+
 ## v1.49.0 Additions
 
 - Signed A2A Agent Cards. An Agent Card is discovery metadata served over plain
@@ -245,7 +254,7 @@ automatically changes the active provider.
 
 | Addition | Surface | What it adds |
 | --- | --- | --- |
-| Plugin marketplace capability surfaces | `.ur-plugin/marketplace.json`, `src/utils/plugins/schemas.ts`, `plugins/core/engineering-discipline/` | Marketplace entries can advertise MCP tools, executable skills, templates, validators, language adapters, LSP servers, hooks, agents, and commands. The `engineering-discipline` reference plugin ships a command, reproducible-release skill, release-verifier template, release-gate validator, and Markdown adapter metadata. |
+| Plugin marketplace capability surfaces | `.ur-plugin/marketplace.json`, `src/utils/plugins/schemas.ts`, `src/utils/plugins/pluginDiscovery.ts`, `plugins/core/engineering-discipline/` | Marketplace entries can advertise MCP tools, executable skills, templates, validators, language adapters, LSP servers, hooks, agents, and commands. `ur plugin search/show` adds deterministic cross-catalog discovery, scope/source provenance, installed/enabled state, capability filters, JSON output, and graceful per-catalog failure reporting. The `engineering-discipline` reference plugin demonstrates the extension contract. |
 | Autonomous engineering workflow identity | `README.md`, `documentation/`, `plugins/core/engineering-discipline/skills/reproducible-release` | Positions UR as an autonomous engineering workflow engine: plan, execute, test, verify, document, benchmark, and reproduce, with command evidence and rollback discipline as the product promise. |
 | Release readiness guard | `.github/workflows/test.yml`, `test/releaseReadiness.test.ts` | Asserts production bundle, release, package, and global-install checks run only after the Bun test step succeeds in GitHub CI. |
 

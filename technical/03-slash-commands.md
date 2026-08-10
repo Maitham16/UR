@@ -125,7 +125,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/verify` | prompt | Spawn the verification subagent on current state | `/verify` |
 | `/diff` | jsx | View uncommitted changes and per-turn diffs | `/diff` |
 | `/pr-comments` | prompt | Fetch comments from a GitHub PR | `/pr-comments` |
-| `/repo-edit index\|search\|rename\|move\|organize-imports\|unused\|callers` (`/reliable-edit`) | local | Indexed search, compiler-API rename, patch previews, rollback-safe apply | `/repo-edit rename getUser --to fetchUser --check "bun test"` |
+| `/repo-edit index\|search\|rename\|move\|organize-imports\|unused\|callers\|impact` (`/reliable-edit`) | local | Compiler/graph change-impact mapping, indexed search, compiler-API edits, patch previews, rollback-safe apply | `/repo-edit impact getUser --depth 5` |
 | `/code-index build\|watch\|search\|status\|repo` (`/codeindex`) | local | Local semantic code index (embeddings via Ollama) | `/code-index search "retry with backoff"` |
 | `/guardrails list\|init\|validate\|check` (`/guardrail`) | local | Declarative I/O guardrails: regex/contains/PII/LLM rules with tripwires | `/guardrails check "email me at x@y.z" --phase output` |
 | `/claim-ledger add\|list\|validate` (`/claims`) | local | Claim-to-source provenance ledger | `/claim-ledger add --claim "p99 < 200ms" --source bench:latest` |
@@ -166,7 +166,8 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 
 | Command | Type | What it does | Example |
 |---|---|---|---|
-| `/research [note]` | local | Add/list research notes | `/research vector DBs comparison started` |
+| `/research init\|source\|finding\|question\|list\|show\|verify\|report` (`/deep-research`) | local | Source-backed research projects with URL sanitization, cited findings, open questions, corroboration checks, and Markdown reports; unrecognized text remains a legacy note | `/research verify vector-databases` |
+| `/design3d doctor\|init\|plan\|build\|inspect\|validate` (`/three-d`, `/design-3d`) | local | Reproducible Blender, OpenSCAD, 3ds Max, and reviewed custom DCC/CAD app pipelines | `/design3d init product --engine blender --units mm --format glb` |
 | `/paper [title or path]` | local | Add/list research papers | `/paper attention-is-all-you-need.pdf` |
 | `/cite [citation]` | local | Add/list citations | `/cite Vaswani et al. 2017` |
 | `/graph [entity] [text]` | local | Research graph of papers/claims/methods/datasets | `/graph claim "RoPE beats ALiBi at 128k"` |
@@ -260,6 +261,8 @@ Registered in `src/skills/bundled/` at startup:
 | `/debug` | Enable/read the current session debug log and diagnose runtime issues | `/debug provider request stalled` |
 | `/debug-v2` (`/debug2`, `/bugfix`) | Reproduce, root-cause, and fix a bug in an isolated worktree; ask before the full suite and keep publishing explicit | `/debug-v2 login 500s when password has emoji` |
 | `/refactor` | Safe, test-backed refactor in a worktree; ask before the full suite and keep publishing explicit | `/refactor extract retry logic into a helper` |
+| `/research-pro` (`/evidence-research`) | Current primary-source research with a durable evidence workspace, disconfirming evidence, and corroboration verification | `/research-pro compare current coding-agent plugin systems` |
+| `/dcc-design` (`/professional-3d`) | Unit-aware 3D/DCC/CAD workflow for Blender, OpenSCAD, 3ds Max, and reviewed app adapters with build and format validation | `/dcc-design create a dimensioned glTF product enclosure` |
 | `/benchmark` (`/bench`, `/perf`) | Add/run benchmarks in a worktree; ask before the full sequence and keep publishing explicit | `/benchmark the JSON parser hot path` |
 | `/dockerize` | Add Dockerfile, compose, health checks, and .dockerignore in a worktree; keep publishing explicit | `/dockerize` |
 | `/security-review` | Audit code in a worktree, fix low-risk issues, and report findings without publishing | `/security-review` |

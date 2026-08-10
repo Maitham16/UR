@@ -99,6 +99,8 @@ isolated to that plugin.
 
 ```sh
 ur plugin list [--json]          # installed plugins
+ur plugin search [query]         # ranked discovery across configured catalogs
+ur plugin show <name-or-id>      # provenance, capabilities, status, install hint
 ur plugin doctor [--json]        # validate manifests + capability report
 ur plugin validate <path>        # validate a single manifest
 ur plugin install <name>         # install from a marketplace
@@ -108,6 +110,39 @@ ur plugin uninstall <name>
 ```
 
 Disabled plugins are not loaded. Enable/disable state persists in user settings.
+
+## Discover plugins
+
+Search is read-only and covers every configured marketplace plus installed,
+built-in, and `--plugin-dir` session plugins. Marketplace declaration scope is
+reported as managed, personal, workspace, or implicit; source kind identifies
+whether its catalog came from GitHub, git, URL, npm, a directory, a file, or
+settings. Broken catalogs do not hide healthy results and are reported as
+bounded warnings.
+
+```sh
+ur plugin search
+ur plugin search git
+ur plugin search review --capability validators
+ur plugin search --marketplace ur-plugins-official --limit 50
+ur plugin search --installed
+ur plugin search mcp --json
+ur plugin show obsidian@ur-plugins-official
+ur plugin show obsidian --json
+```
+
+Queries use case-insensitive AND-token matching over plugin ID, name,
+marketplace, category, tags, capabilities, and description. Exact IDs and names
+rank first, followed by name, tag, category, capability, marketplace, and
+description matches. Ties are deterministic. The default result limit is 20
+and the maximum is 100. Unqualified names must resolve to exactly one catalog;
+when two catalogs contain the same name, `plugin show` requires the full
+`name@marketplace` ID.
+
+Discovery never installs or enables a plugin. Source URLs have embedded HTTP
+credentials redacted before display. Use the exact install command printed in
+the search/detail output after reviewing the plugin's provenance and capability
+surface.
 
 ## Permissions
 
@@ -126,4 +161,3 @@ before enabling it.
   (field path + message).
 - **Command not found after install:** ensure the manifest `commands` path
   points at existing markdown files; re-run `ur plugin doctor`.
-

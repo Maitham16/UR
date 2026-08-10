@@ -508,7 +508,7 @@ export function tsFindCallers(
         return
       }
       const symbol = ctx.checker.getSymbolAtLocation(callName)
-      if (!symbol || !collectRelatedSymbols(ctx, targetSymbol!).has(symbol)) {
+      if (!symbol || !symbolsRelated(ctx, targetSymbol!, symbol)) {
         ts.forEachChild(node, visit)
         return
       }

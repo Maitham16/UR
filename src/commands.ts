@@ -114,6 +114,7 @@ import codeIndex from './commands/code-index/index.js'
 import repoEdit from './commands/repo-edit/index.js'
 import forget from './commands/forget/index.js'
 import research from './commands/research/index.js'
+import design3d from './commands/design3d/index.js'
 import paper from './commands/paper/index.js'
 import cite from './commands/cite/index.js'
 import readCmd from './commands/read/index.js'
@@ -440,6 +441,7 @@ const COMMANDS = memoize((): Command[] => [
   repoEdit,
   forget,
   research,
+  design3d,
   paper,
   cite,
   readCmd,

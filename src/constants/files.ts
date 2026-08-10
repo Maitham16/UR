@@ -102,6 +102,10 @@ export const BINARY_EXTENSIONS = new Set([
   '.blend',
   '.3ds',
   '.max',
+  '.glb',
+  '.stl',
+  '.fbx',
+  '.3mf',
   // Flash
   '.swf',
   '.fla',

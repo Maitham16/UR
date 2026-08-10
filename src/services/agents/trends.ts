@@ -89,7 +89,7 @@ export type A2AV1AgentCard = {
 }
 
 const urVersion = MACRO.VERSION
-const researchSnapshotDate = '2026-07-15'
+const researchSnapshotDate = '2026-08-10'
 
 const coverage: TrendCoverage[] = [
   {
@@ -281,6 +281,86 @@ const coverage: TrendCoverage[] = [
     ],
     professionalNextStep:
       'Require registry provenance attestations and dependency review before enabling one-command installation from community skill registries.',
+  },
+  {
+    id: 'plugin-discovery',
+    name: 'Cross-catalog plugin discovery',
+    status: 'covered',
+    summary:
+      'UR searches managed, personal, workspace, implicit, built-in, session, and installed-only plugin sources with deterministic relevance ranking and explicit provenance.',
+    evidence: [
+      'ur plugin search [query] with capability, marketplace, installed-only, limit, and JSON filters',
+      'ur plugin show <name-or-id> with ambiguity handling and an exact install hint',
+      'catalog failures degrade independently; HTTP source credentials are redacted',
+      'installed and enabled state is merged without duplicating marketplace entries',
+    ],
+    references: [
+      'https://developers.openai.com/codex/changelog',
+      'https://github.com/google-gemini/gemini-cli/blob/main/docs/changelogs/index.md',
+    ],
+    professionalNextStep:
+      'Add signed registry attestations and explicit remote-catalog freshness metadata before recommending unattended installation.',
+  },
+  {
+    id: 'evidence-research',
+    name: 'Evidence-backed deep research',
+    status: 'covered',
+    summary:
+      'UR turns research into a durable source-backed workspace with sanitized URLs, atomic findings, open and contested evidence, independent corroboration checks, state digests, and reviewable reports.',
+    evidence: [
+      'ur research init|source|finding|question|show|verify|report',
+      '.ur/research/projects/<id>.json with atomic private writes and SHA-256 state digests',
+      'high-confidence supported findings warn unless two independent publishers are cited',
+      '/research-pro directs primary-source, current-date, negative-evidence, and citation discipline',
+    ],
+    references: [
+      'https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/tools.md',
+      'https://github.com/google-gemini/gemini-cli/blob/main/docs/changelogs/index.md',
+    ],
+    professionalNextStep:
+      'Add authenticated source-refresh timestamps and optional user-controlled archival snapshots without persisting fetched third-party content by default.',
+  },
+  {
+    id: 'change-impact',
+    name: 'Compiler and graph change-impact planning',
+    status: 'covered',
+    summary:
+      'UR maps a symbol or file to compiler-resolved callers, direct and transitive import dependents, definitions, focused tests, documentation, configuration, risk reasons, and detected verification scripts before editing.',
+    evidence: [
+      'ur repo-edit impact <symbol-or-file> --depth <1-10>',
+      'TypeScript imported aliases resolve on both sides of the symbol binding',
+      'read-only callers and unused results retain exact file/line/column references',
+      'offline code graph and repository indexes provide language-neutral blast-radius context',
+    ],
+    references: [
+      'https://www.typescriptlang.org/dev/typescript-vfs/',
+      'https://www.typescriptlang.org/docs/handbook/project-references',
+    ],
+    professionalNextStep:
+      'Use installed language servers for exact cross-file impact in Python, Rust, Go, and other adapter languages.',
+  },
+  {
+    id: 'design3d',
+    name: 'Professional 3D and DCC/CAD workflows',
+    status: 'covered',
+    summary:
+      'UR creates reproducible, unit-aware Blender, OpenSCAD, and Autodesk 3ds Max projects and safely adapts other installed 3D applications through reviewed shell-free argv manifests.',
+    evidence: [
+      'ur design3d doctor|init|plan|build|inspect|validate',
+      'Blender Python, OpenSCAD, and 3ds Max MAXScript parametric scaffolds',
+      'discovery for Maya, FreeCAD, Houdini, Cinema 4D, Rhino, and Khronos glTF Validator',
+      'workspace-confined inputs/outputs, bounded execution, custom-adapter approval, and GLB/glTF/STL/OBJ/BLEND/MAX inspection',
+      '/dcc-design applies units, scale, format, manufacturing, native-app, and interoperability verification rules',
+    ],
+    references: [
+      'https://docs.blender.org/manual/en/latest/advanced/command_line/arguments.html',
+      'https://files.openscad.org/documentation/manual/Using_OpenSCAD_in_a_command_line_environment.html',
+      'https://help.autodesk.com/cloudhelp/2024/ENU/MAXScript-Help/files/MAXScript-Introduction/General-MAXScript-Topics/GUID-A04C0E75-F82A-41AC-92E8-D7CB1D797430.html',
+      'https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html',
+      'https://github.com/KhronosGroup/glTF-Validator',
+    ],
+    professionalNextStep:
+      'Add opt-in native validators for more DCC/CAD adapters and rendered visual-regression fixtures while keeping structural and visual validation claims distinct.',
   },
   {
     id: 'browser-computer-use',
@@ -537,7 +617,7 @@ const priorityRoadmap = [
   'Memory unification: apply provenance chains, quarantine, rollback, and deletion proofs to legacy, team, semantic, and embedding-backed stores.',
   'Trajectory eval gates: grade tool choice, handoffs, policy compliance, recovery, and outcome quality in CI with versioned category history.',
   'Community supply chain: registry attestations, dependency review, revocation, and update transparency for installable skills and plugins.',
-  'Claim provenance: map final-answer claims to WebSearch/WebFetch/MCP source URLs and show them in trace/evidence output.',
+  'Research refresh: reopen authenticated citations and record explicit refresh timestamps without duplicating third-party source bodies by default.',
   'Windows OS-sandbox parity for the agent shell (macOS Seatbelt and Linux bubblewrap already ship).',
 ]
 

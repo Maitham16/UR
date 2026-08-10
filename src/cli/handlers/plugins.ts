@@ -36,12 +36,23 @@ import {
 } from '../../utils/plugins/marketplaceHelpers.js'
 import {
   addMarketplaceSource,
+  getMarketplaceDeclaringSource,
   loadKnownMarketplacesConfig,
   refreshAllMarketplaces,
   refreshMarketplace,
   removeMarketplaceSource,
   saveMarketplaceToSettings,
 } from '../../utils/plugins/marketplaceManager.js'
+import {
+  formatPluginDetail,
+  formatPluginDiscoveryReport,
+  MAX_PLUGIN_SEARCH_LIMIT,
+  PLUGIN_DISCOVERY_CAPABILITIES,
+  searchPluginInventory,
+  type PluginCatalogScope,
+  type PluginDiscoveryCapability,
+  type PluginDiscoveryInput,
+} from '../../utils/plugins/pluginDiscovery.js'
 import { loadPluginMcpServers } from '../../utils/plugins/mcpPluginIntegration.js'
 import { parseMarketplaceInput } from '../../utils/plugins/parseMarketplaceInput.js'
 import {
@@ -50,7 +61,9 @@ import {
 } from '../../utils/plugins/pluginIdentifier.js'
 import { formatPluginDoctor, runPluginDoctor } from '../../utils/plugins/pluginDoctor.js'
 import { loadAllPlugins } from '../../utils/plugins/pluginLoader.js'
+import { checkEnabledPlugins } from '../../utils/plugins/pluginStartupCheck.js'
 import type { PluginSource } from '../../utils/plugins/schemas.js'
+import { getSettingsForSource } from '../../utils/settings/settings.js'
 import {
   type ValidationResult,
   validateManifest,
@@ -69,6 +82,79 @@ export { VALID_INSTALLABLE_SCOPES, VALID_UPDATE_SCOPES }
 export function handleMarketplaceError(error: unknown, action: string): never {
   logError(error)
   cliError(`${figures.cross} Failed to ${action}: ${errorMessage(error)}`)
+}
+
+function discoveryCatalogScope(name: string): PluginCatalogScope {
+  if (getSettingsForSource('policySettings')?.extraKnownMarketplaces?.[name]) {
+    return 'managed'
+  }
+  const declaringSource = getMarketplaceDeclaringSource(name)
+  if (declaringSource === 'userSettings') return 'personal'
+  if (
+    declaringSource === 'projectSettings' ||
+    declaringSource === 'localSettings'
+  ) {
+    return 'workspace'
+  }
+  return 'implicit'
+}
+
+async function loadPluginDiscoveryInput(): Promise<PluginDiscoveryInput> {
+  const [config, enabledPluginIds, loaded] = await Promise.all([
+    loadKnownMarketplacesConfig(),
+    checkEnabledPlugins(),
+    loadAllPlugins(),
+  ])
+  const { marketplaces, failures } =
+    await loadMarketplacesWithGracefulDegradation(config)
+  const installed = loadInstalledPluginsV2().plugins
+
+  return {
+    catalogs: marketplaces.flatMap(({ name, config: catalogConfig, data }) =>
+      data
+        ? [
+            {
+              name,
+              scope: discoveryCatalogScope(name),
+              sourceKind: catalogConfig.source.source,
+              owner: data.owner.name,
+              entries: data.plugins,
+            },
+          ]
+        : [],
+    ),
+    installed,
+    enabledPluginIds,
+    loadedPlugins: [...loaded.enabled, ...loaded.disabled],
+    failures: failures.map(failure => ({
+      catalog: failure.name,
+      error: failure.error,
+    })),
+  }
+}
+
+function parsePluginSearchLimit(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined
+  if (!/^\d+$/.test(value)) {
+    throw new Error(
+      `Plugin search limit must be an integer between 1 and ${MAX_PLUGIN_SEARCH_LIMIT}`,
+    )
+  }
+  return Number(value)
+}
+
+function parsePluginCapability(
+  value: string | undefined,
+): PluginDiscoveryCapability | undefined {
+  if (value === undefined) return undefined
+  if (
+    !(PLUGIN_DISCOVERY_CAPABILITIES as readonly string[]).includes(value)
+  ) {
+    throw new Error(
+      `Unknown plugin capability '${value}'. Expected one of: ${PLUGIN_DISCOVERY_CAPABILITIES.join(', ')}`,
+    )
+  }
+  return value as PluginDiscoveryCapability
 }
 
 function printValidationResult(result: ValidationResult): void {
@@ -471,6 +557,75 @@ export async function pluginListHandler(options: {
   }
 
   cliOk()
+}
+
+export async function pluginSearchHandler(
+  query: string | undefined,
+  options: {
+    json?: boolean
+    capability?: string
+    marketplace?: string
+    installed?: boolean
+    limit?: string
+    cowork?: boolean
+  },
+): Promise<void> {
+  if (options.cowork) setUseCoworkPlugins(true)
+  try {
+    const report = searchPluginInventory(await loadPluginDiscoveryInput(), {
+      query,
+      capability: parsePluginCapability(options.capability),
+      marketplace: options.marketplace,
+      installedOnly: options.installed,
+      limit: parsePluginSearchLimit(options.limit),
+    })
+    cliOk(
+      options.json
+        ? jsonStringify(report, null, 2)
+        : formatPluginDiscoveryReport(report),
+    )
+  } catch (error) {
+    handleMarketplaceError(error, 'search plugins')
+  }
+}
+
+export async function pluginShowHandler(
+  pluginReference: string,
+  options: { json?: boolean; cowork?: boolean },
+): Promise<void> {
+  if (options.cowork) setUseCoworkPlugins(true)
+  try {
+    const report = searchPluginInventory(await loadPluginDiscoveryInput(), {
+      query: pluginReference,
+      limit: MAX_PLUGIN_SEARCH_LIMIT,
+    })
+    const reference = pluginReference.toLocaleLowerCase('en-US')
+    const exactId = report.results.find(
+      plugin => plugin.pluginId.toLocaleLowerCase('en-US') === reference,
+    )
+    const exactNames = report.results.filter(
+      plugin => plugin.name.toLocaleLowerCase('en-US') === reference,
+    )
+    const plugin = exactId ?? (exactNames.length === 1 ? exactNames[0] : undefined)
+
+    if (!plugin && exactNames.length > 1) {
+      cliError(
+        `${figures.cross} Plugin name '${pluginReference}' is ambiguous. Use a full ID: ${exactNames.map(item => item.pluginId).join(', ')}`,
+      )
+    }
+    if (!plugin) {
+      cliError(
+        `${figures.cross} Plugin '${pluginReference}' was not found. Run \`ur plugin search ${pluginReference}\` to browse matches.`,
+      )
+    }
+    cliOk(
+      options.json
+        ? jsonStringify(plugin, null, 2)
+        : formatPluginDetail(plugin),
+    )
+  } catch (error) {
+    handleMarketplaceError(error, 'show plugin')
+  }
 }
 
 // marketplace add (lines 5433–5487)

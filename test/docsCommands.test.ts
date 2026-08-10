@@ -111,11 +111,11 @@ describe('documentation commands and links', () => {
 
   test('static documentation site has one card for every shipped CLI command', () => {
     const names = staticSiteCommandNames()
-    expect(names).toHaveLength(59) // `ur`, `ur -p`, and 57 shipped subcommands
+    expect(names).toHaveLength(61) // `ur`, `ur -p`, and 59 shipped subcommands
     expect(new Set(names).size).toBe(names.length)
 
     const commandNames = names.filter(name => name !== 'ur' && name !== 'ur -p')
-    expect(commandNames).toHaveLength(57)
+    expect(commandNames).toHaveLength(59)
     for (const name of commandNames) expect(commands.has(name)).toBe(true)
     for (const required of ['audit', 'cloud', 'recipe', 'thread', 'wiki']) {
       expect(commandNames).toContain(required)

@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.79.0
+
+- Plugin discovery now searches managed, personal, workspace, implicit,
+  built-in, session, and installed catalogs with deterministic relevance,
+  provenance, capability/status filters, secret-redacted source metadata,
+  exact detail views, graceful per-catalog failure handling, and structured
+  JSON through `ur plugin search` and `ur plugin show`.
+- Research is now evidence-backed rather than a notes-only surface. `ur
+  research` creates durable workspaces, records sanitized sources and atomic
+  findings, tracks open questions and contested evidence, requires citations,
+  warns when high-confidence claims lack independent corroboration, and emits
+  verified Markdown reports. The bundled `research-pro` workflow steers the
+  agent through current primary-source research and disconfirming evidence.
+- Coding change planning now combines TypeScript compiler-resolved callers,
+  import-graph blast radius, definitions, focused tests, related docs/config,
+  risk reasons, and detected verification scripts through `ur repo-edit
+  impact`. Read-only caller/unused results retain exact references, and
+  imported-alias caller resolution now compares both sides of the binding.
+- `ur design3d` adds reproducible Blender Python, OpenSCAD, and Autodesk 3ds
+  Max MAXScript projects plus an explicitly reviewed, shell-free adapter for
+  Maya, FreeCAD, Houdini, Cinema 4D, Rhino, and other DCC/CAD applications.
+  It discovers installed apps, validates workspace-confined manifests, plans
+  fixed argv, gates custom execution, builds with bounded time/output, inspects
+  GLB/glTF/STL/OBJ/BLEND/MAX assets, and uses the Khronos glTF Validator when
+  installed. The bundled `dcc-design` workflow adds unit, scale, parametric,
+  interoperability, manufacturing, and native-application verification rules.
+
 ## 1.78.14
 
 - Interactive prompts no longer create the synthetic `Planning requested work`

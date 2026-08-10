@@ -540,16 +540,39 @@ runtime, and output controls use the `UR_AG_UI_*` prefix. Unsupported client
 tools, multimodal/encrypted input, interrupts, and unimplemented transports are
 rejected rather than silently ignored. See the [AG-UI Guide](AG_UI.md).
 
+## Research and 3D Project State
+
+`ur research` stores private, atomic project ledgers under
+`.ur/research/projects/<id>.json`. Source URLs are restricted to HTTP(S),
+embedded credentials and common secret query parameters are removed, input
+sizes/counts are bounded, and `report --out` may write only inside the current
+workspace. High-confidence supported findings warn unless they cite two
+independent publishers.
+
+`ur design3d init` writes reviewable source plus `design3d.json` under
+`design3d/<name>/`. Source and output paths are confined to that project.
+Blender, OpenSCAD, and 3ds Max use fixed native argv; custom DCC/CAD adapters
+receive separate argv values, never a shell string, and require
+`--allow-custom` after a dry-run review. Builds are time/output bounded and
+refuse to replace existing output without `--force`.
+
 ## Plugins and Skills
 
 Plugins can add commands, tools, and skills:
 
 ```sh
 ur plugin list
+ur plugin search [query] [--capability <name>] [--marketplace <name>] [--installed] [--json]
+ur plugin show <name-or-name@marketplace> [--json]
 ur plugin install <plugin>
 ur plugin update <plugin>
 ur plugin disable <plugin>
 ```
+
+Search reads all configured catalogs with graceful per-catalog failure handling,
+uses deterministic relevance ranking, and labels each result with catalog scope,
+source kind, capabilities, and installed/enabled state. It does not install,
+update, or enable anything.
 
 Skills can be stored in `.ur/skills/` for project-specific workflows or in
 `~/.ur/skills/` for personal workflows. UR also discovers the cross-client

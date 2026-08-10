@@ -18,6 +18,8 @@ import { registerSkillifySkill } from './skillify.js'
 import { registerStuckSkill } from './stuck.js'
 import { registerUpdateConfigSkill } from './updateConfig.js'
 import { registerVerifySkill } from './verify.js'
+import { registerDeepResearchSkill } from './deepResearch.js'
+import { registerDesign3dSkill } from './design3d.js'
 
 /**
  * Initialize all bundled skills.
@@ -46,6 +48,8 @@ export function initBundledSkills(): void {
   registerSimplifySkill()
   registerBatchSkill()
   registerStuckSkill()
+  registerDeepResearchSkill()
+  registerDesign3dSkill()
   if (feature('KAIROS') || feature('KAIROS_DREAM')) {
     /* eslint-disable @typescript-eslint/no-require-imports */
     const { registerDreamSkill } = require('./dream.js')

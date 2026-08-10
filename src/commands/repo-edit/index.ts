@@ -7,7 +7,7 @@ const repoEdit = {
   description:
     'Reliable repo editing: indexed search, binding-aware rename via TypeScript compiler API, patch previews, and rollback-safe apply',
   argumentHint:
-    'index|search <query>|plan/preview/apply rename <from> --to <to>|rename <from> --to <to> [--file <path>] [--engine ts|lsp|treesitter] [--check <cmd>] [--json]|move <symbol> --to <target> --file <source> [--check <cmd>] [--json]|organize-imports [--file <path>] [--check <cmd>] [--json]|unused [--file <path>] [--json]|callers <symbol> [--file <path>] [--json]',
+    'index|search <query>|plan/preview/apply rename <from> --to <to>|rename <from> --to <to> [--file <path>] [--engine ts|lsp|treesitter] [--check <cmd>] [--json]|move <symbol> --to <target> --file <source> [--check <cmd>] [--json]|organize-imports [--file <path>] [--check <cmd>] [--json]|unused [--file <path>] [--json]|callers <symbol> [--file <path>] [--json]|impact <symbol-or-file> [--depth <1-10>] [--json]',
   supportsNonInteractive: true,
   load: () => import('./repo-edit.js'),
 } satisfies Command

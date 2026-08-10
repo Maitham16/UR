@@ -12,9 +12,10 @@ Perform a safe refactoring in an isolated worktree. Preserve behavior and add or
 
 ## Plan
 
-1. State the refactoring goal and the smallest surface you will touch.
-2. Identify the verification commands (tests, typecheck, lint) that must pass before and after the change.
-3. If the refactor touches exported APIs or shared behavior, note migration impact.
+1. Run \`ur repo-edit impact <symbol-or-file>\` to map definitions, compiler-resolved references, dependency blast radius, focused tests, docs, configuration, and verification commands.
+2. State the refactoring goal and the smallest surface you will touch.
+3. Identify the verification commands (tests, typecheck, lint) that must pass before and after the change.
+4. If the refactor touches exported APIs or shared behavior, note migration impact.
 
 ## Execute
 
