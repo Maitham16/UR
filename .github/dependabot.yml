@@ -14,6 +14,20 @@ updates:
         update-types:
           - minor
           - patch
+        # These packages have shipped API/type breaks in nominally compatible
+        # updates. Keep them out of broad batches until their migrations are
+        # deliberately implemented and reviewed together.
+        exclude-patterns:
+          - "@alcalzone/ansi-tokenize"
+          - "@types/react"
+          - "@types/react-reconciler"
+    ignore:
+      - dependency-name: "@alcalzone/ansi-tokenize"
+        versions: [">=0.2.0"]
+      - dependency-name: "@types/react"
+        versions: [">=19.0.0"]
+      - dependency-name: "@types/react-reconciler"
+        versions: [">=0.29.0"]
 
   - package-ecosystem: github-actions
     directory: /

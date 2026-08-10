@@ -1,8 +1,8 @@
 name: Release
 
-# Turns a pushed tag into a production release: verify, publish a GitHub
-# Release with notes from CHANGELOG.md, then publish the verified tarball to
-# npm. Nothing here trusts the tag alone — the version it encodes must match
+# Turns a pushed tag into a production release: verify the tag and artifact,
+# publish that tarball to npm with OIDC, then publish the GitHub Release with notes
+# from CHANGELOG.md. Nothing here trusts the tag alone — its version must match
 # package.json, and the artifact that ships is the one that passed the gate.
 
 on:
@@ -53,6 +53,7 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
 
       - name: Resolve and guard version
         id: resolve
@@ -165,24 +166,10 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  publish-preflight:
-    needs: verify
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Require npm publishing credentials
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          ALREADY_PUBLISHED: ${{ needs.verify.outputs.already-on-npm }}
-        run: |
-          set -euo pipefail
-          if [ "$ALREADY_PUBLISHED" != "true" ] && [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::error::NPM_TOKEN is not configured; refusing to create a partial GitHub-only release." >&2
-            exit 1
-          fi
-
   github-release:
-    needs: [verify, publish-preflight]
+    # npm must succeed first. A registry authentication failure must never
+    # create another partial GitHub-only release.
+    needs: [verify, npm-publish]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -239,12 +226,15 @@ jobs:
           fi
 
   npm-publish:
-    needs: [verify, publish-preflight, github-release]
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       actions: read
       contents: read
+      # npm exchanges GitHub's short-lived OIDC identity for publish access.
+      # This avoids long-lived tokens and interactive 2FA/OTP failures.
+      id-token: write
     steps:
       - name: Checkout tag
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -258,6 +248,7 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
 
       - name: Download verified tarball
         env:
@@ -271,7 +262,6 @@ jobs:
 
       - name: Publish to npm
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ needs.verify.outputs.version }}
           ALREADY_PUBLISHED: ${{ needs.verify.outputs.already-on-npm }}
           NPM_TAG: ${{ needs.verify.outputs.npm-tag }}
@@ -281,8 +271,8 @@ jobs:
             echo "::notice::ur-agent@$VERSION is already on npm; nothing to publish."
             exit 0
           fi
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::error::NPM_TOKEN is not set; refusing to report a successful unpublished release." >&2
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::GitHub OIDC is unavailable; npm trusted publishing requires id-token: write." >&2
             exit 1
           fi
           # Publish the exact artifact the gate verified, not a fresh pack.

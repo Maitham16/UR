@@ -90,14 +90,30 @@ GitHub Actions publishes the exact tarball that passes the release workflow.
 Do not run `npm publish` separately and do not create a tag before the release
 commit is on the remote branch.
 
-The repository secret `NPM_TOKEN` must be configured before tagging a version
-that is not already published. The workflow checks this before it creates the
-GitHub Release, preventing a partial GitHub-only release from being reported as
-successful. Treat a failed credential preflight as a release blocker; configure
-the secret and re-run the same immutable tag rather than publishing manually.
+Configure npm trusted publishing for package `ur-agent` before tagging a version
+that is not already published. In npm package settings, select GitHub Actions
+with owner `Maitham16`, repository `UR`, workflow `release.yml`, no environment,
+and allow `npm publish`. The publish job uses GitHub OIDC (`id-token: write`), so
+it needs no long-lived `NPM_TOKEN` and cannot stall on interactive 2FA. The
+GitHub Release waits for npm publication, preventing a registry authentication
+failure from creating a new partial GitHub-only release. Treat a failed publish
+as a release blocker; fix trusted-publisher configuration and dispatch the same
+immutable tag rather than publishing manually.
 The npm publish step uses `./dist-release/<tarball>.tgz`: the explicit relative
 path marker prevents npm from interpreting the artifact name as GitHub
 `owner/repository` shorthand.
+
+If an immutable tag failed only during publication, fix the trusted-publisher
+configuration and retry that tag through the default branch workflow:
+
+```bash
+gh workflow run release.yml -f tag=v$(node -p "require('./package.json').version")
+```
+
+Do not move or recreate the tag. Once OIDC publication succeeds, the workflow
+updates or creates the matching GitHub Release from the verified tarball.
+After a successful migration, remove the obsolete `NPM_TOKEN` repository secret
+and revoke that npm token so CI has no dormant long-lived publish credential.
 
 Only after every check passes, commit the complete release and push it:
 

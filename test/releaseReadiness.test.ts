@@ -145,21 +145,16 @@ test('release workflow downloads artifacts with permission and keeps prereleases
     workflow.indexOf('  github-release:'),
     workflow.indexOf('  npm-publish:'),
   )
-  const publishPreflight = workflow.slice(
-    workflow.indexOf('  publish-preflight:'),
-    workflow.indexOf('  github-release:'),
-  )
   const npmPublish = workflow.slice(workflow.indexOf('  npm-publish:'))
 
-  expect(publishPreflight).toContain('needs: verify')
-  expect(publishPreflight).toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}')
-  expect(publishPreflight).toContain('ALREADY_PUBLISHED: ${{ needs.verify.outputs.already-on-npm }}')
-  expect(publishPreflight).toContain('exit 1')
-  expect(githubRelease).toContain('needs: [verify, publish-preflight]')
-  expect(npmPublish).toContain('needs: [verify, publish-preflight, github-release]')
-  expect(npmPublish.indexOf('if [ "$ALREADY_PUBLISHED" = "true" ]')).toBeLessThan(
-    npmPublish.indexOf('if [ -z "${NODE_AUTH_TOKEN:-}" ]'),
-  )
+  expect(workflow).not.toContain('  publish-preflight:')
+  expect(githubRelease).toContain('needs: [verify, npm-publish]')
+  expect(npmPublish).toContain('needs: verify')
+  expect(npmPublish).toContain('id-token: write')
+  expect(npmPublish).not.toContain('NODE_AUTH_TOKEN')
+  expect(npmPublish).not.toContain('secrets.NPM_TOKEN')
+  expect(npmPublish).toContain('ACTIONS_ID_TOKEN_REQUEST_URL')
+  expect(npmPublish).toContain('ACTIONS_ID_TOKEN_REQUEST_TOKEN')
   expect(npmPublish).toContain(
     'npm publish ./dist-release/ur-agent-"$VERSION".tgz',
   )
@@ -225,6 +220,10 @@ test('Dependabot monitors every shipped dependency ecosystem', () => {
   expect(dependabot).toContain('/extensions/vscode-ur-inline-diffs')
   expect(dependabot).toContain('package-ecosystem: gradle')
   expect(dependabot).toContain('/extensions/jetbrains-ur')
+  expect(dependabot).toContain('exclude-patterns:')
+  expect(dependabot).toContain('dependency-name: "@alcalzone/ansi-tokenize"')
+  expect(dependabot).toContain('dependency-name: "@types/react"')
+  expect(dependabot).toContain('dependency-name: "@types/react-reconciler"')
 })
 
 test('A2A fast startup preserves every advertised authentication option', () => {
