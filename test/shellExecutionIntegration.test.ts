@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import { existsSync, rmSync } from 'node:fs'
 import { exec } from '../src/utils/Shell.js'
+import { getTaskOutputDir } from '../src/utils/task/diskOutput.js'
 
 async function run(command: string, timeout = 5_000) {
   const controller = new AbortController()
@@ -35,5 +37,21 @@ describe('production Shell execution', () => {
     expect(result.signal).toBeDefined()
     expect(result.code).toBeGreaterThanOrEqual(128)
     expect(result.stderr).toContain('timed out')
+  })
+
+  test('recreates a reclaimed task output directory without restarting', async () => {
+    const first = await run("printf 'first'")
+    expect(first.stdout).toBe('first')
+
+    const taskOutputDir = getTaskOutputDir()
+    expect(existsSync(taskOutputDir)).toBe(true)
+    rmSync(taskOutputDir, { recursive: true, force: true })
+    expect(existsSync(taskOutputDir)).toBe(false)
+
+    const recovered = await run("printf 'recovered'")
+    expect(recovered.stdout).toBe('recovered')
+    expect(recovered.stderr).toBe('')
+    expect(recovered.code).toBe(0)
+    expect(existsSync(taskOutputDir)).toBe(true)
   })
 })

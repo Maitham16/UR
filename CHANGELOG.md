@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.79.1
+
+- Bash execution now survives external cleanup of its session task-output
+  directory. UR ensures the directory before every launch, opens stdout and
+  stderr as one recoverable pair, and recreates/retries once on `ENOENT`
+  instead of leaving every later Bash call broken until restart.
+- Unix temp storage now defaults to the platform directory returned by
+  `os.tmpdir()` instead of assuming `/tmp` exists. This keeps task output,
+  sandbox temp files, and permission allowlists aligned on macOS systems where
+  `/tmp` is a missing or dangling compatibility symlink. A production-shell
+  regression test deletes the live task directory between commands and proves
+  that the next command completes with intact stdout, stderr, and exit status.
+
 ## 1.79.0
 
 - Plugin discovery now searches managed, personal, workspace, implicit,

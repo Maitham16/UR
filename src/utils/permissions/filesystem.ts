@@ -332,9 +332,10 @@ export function getURTempDirName(): string {
 
 /**
  * Returns the UR temp directory path with symlinks resolved.
- * Uses TMPDIR env var if set, otherwise:
- * - On Unix: /tmp/ur-{uid}/ (resolved to /private/tmp/ur-{uid}/ on macOS)
- * - On Windows: {tmpdir}/ur/ (e.g., C:\Users\{user}\AppData\Local\Temp\ur\)
+ * Uses UR_CODE_TMPDIR if set, otherwise the platform temp directory returned by
+ * os.tmpdir(). On macOS this is normally the user's private
+ * /var/folders/.../T directory; it remains usable even when the conventional
+ * /tmp -> /private/tmp compatibility symlink is absent or temporarily broken.
  * This is a per-user temporary directory used by UR for all temp files.
  *
  * NOTE: We resolve symlinks to ensure this path matches the resolved paths used
@@ -342,12 +343,11 @@ export function getURTempDirName(): string {
  * resolution, paths like /tmp/ur-{uid}/... wouldn't match /private/tmp/ur-{uid}/...
  */
 // Memoized: called per-tool from permission checks (yoloClassifier, sandbox-adapter)
-// and per-turn from BashTool prompt. Inputs (UR_CODE_TMPDIR env + platform) are
-// fixed at startup, and the realpath of the system tmp dir does not change mid-session.
+// and per-turn from BashTool prompt. Inputs (UR_CODE_TMPDIR + os.tmpdir()) are
+// fixed at startup, and the realpath of the system temp dir does not change
+// mid-session.
 export const getURTempDir = memoize(function getURTempDir(): string {
-  const baseTmpDir =
-    process.env.UR_CODE_TMPDIR ||
-    (getPlatform() === 'windows' ? tmpdir() : '/tmp')
+  const baseTmpDir = process.env.UR_CODE_TMPDIR || tmpdir()
 
   // Resolve symlinks in the base temp directory (e.g., /tmp -> /private/tmp on macOS)
   // This ensures the path matches resolved paths in permission checks

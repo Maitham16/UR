@@ -189,6 +189,24 @@ patched floors even when their parents allow older vulnerable ranges. A new
 registry advisory therefore blocks publication until both `package.json` and
 `bun.lock` resolve cleanly; the audit is not converted into a warning.
 
+## Shell task-output resilience
+
+`src/utils/Shell.ts` writes Bash stdout and stderr to separate files beneath
+the per-session directory returned by `getTaskOutputDir()`. The directory is
+temporary external state, so UR does not cache a successful `mkdir`: every
+launch ensures it exists. The two output handles are opened as a recoverable
+pair; if the directory disappears between creation and either open, UR closes
+any orphaned handle, recreates the directory, and retries once.
+
+`src/utils/permissions/filesystem.ts` derives the shared per-user root from
+`UR_CODE_TMPDIR` when explicitly configured and otherwise from `os.tmpdir()`.
+The same resolved root feeds task output, sandbox environment setup, and the
+filesystem permission allowlist. This avoids depending on `/tmp`, which may be
+a dangling compatibility symlink on macOS. Regression coverage removes the
+live task-output directory between two production-shell commands and requires
+the second command to preserve stdout, stderr, and exit status without a
+session restart.
+
 ## Privacy
 
 `/privacy-settings` UI; `--offline` kills telemetry; `feedbackSurveyRate`, analytics in

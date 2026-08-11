@@ -56,6 +56,20 @@ ur config set provider ollama
 ur provider status
 ```
 
+### Every Bash call fails with `ENOENT .../tasks/<id>.output`
+
+- Likely cause: the operating system or a cleanup process reclaimed UR's
+  session task-output directory, or the conventional Unix `/tmp` path is
+  unavailable. The command itself never started; identical failure from
+  `echo ok` distinguishes this harness failure from an application error.
+- Fix: upgrade to UR 1.79.1 or newer. UR now uses `os.tmpdir()`, ensures the
+  output directory for every launch, and automatically recreates and retries
+  when it disappears. Restarting an older session is only a temporary
+  workaround.
+- Verification: start a new UR session and ask it to run `echo ok` through
+  Bash. A successful result confirms the harness; `/design3d doctor` alone
+  validates the local slash command but does not exercise Bash execution.
+
 ## Providers and models
 
 ### Provider selected but the model is unavailable

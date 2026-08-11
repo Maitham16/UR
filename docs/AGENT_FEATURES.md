@@ -9,6 +9,12 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.79.1 Addition
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Self-healing Bash task output | `src/utils/Shell.ts`, `src/utils/permissions/filesystem.ts`, `test/shellExecutionIntegration.test.ts` | Uses the platform temp directory instead of assuming `/tmp`, aligns sandbox and permission roots, re-ensures temporary output storage for every launch, and atomically retries stdout/stderr creation after external directory cleanup so Bash recovers without restarting UR. |
+
 ## v1.79.0 Additions
 
 | Addition | Surface | What it adds |

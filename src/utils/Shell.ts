@@ -3,7 +3,6 @@ import { constants as fsConstants, readFileSync, unlinkSync } from 'fs'
 import { type FileHandle, mkdir, open, realpath } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { isAbsolute, resolve } from 'path'
-import { join as posixJoin } from 'path/posix'
 import { logEvent } from 'src/services/analytics/index.js'
 import { evaluateShellSafetyPolicy } from 'src/services/safety/projectSafety.js'
 import {
@@ -31,7 +30,7 @@ export type { ExecResult } from './ShellCommand.js'
 
 import { accessSync } from 'fs'
 import { onCwdChangedForHooks } from './hooks/fileChangedWatcher.js'
-import { getURTempDirName } from './permissions/filesystem.js'
+import { getURTempDir } from './permissions/filesystem.js'
 import { getPlatform } from './platform.js'
 import {
   SandboxManager,
@@ -179,23 +178,67 @@ export type ExecOptions = {
 }
 
 /**
- * The task output directory is process-wide and never removed while the
- * session runs, so creating it once is enough. This used to be an awaited
- * `mkdir` on the critical path of every single command — a syscall whose
- * answer could not change after the first one.
+ * Ensure the task output directory exists immediately before opening output
+ * files. Temporary directories are externally reclaimable: the OS, a cleanup
+ * utility, or another process can remove one while a long-lived UR session is
+ * still running. Caching a successful mkdir therefore turns every later Bash
+ * call into ENOENT until UR restarts.
  */
-let taskOutputDirReady: Promise<void> | undefined
-
 function ensureTaskOutputDir(): Promise<void> {
-  taskOutputDirReady ??= mkdir(getTaskOutputDir(), { recursive: true }).then(
+  return mkdir(getTaskOutputDir(), { recursive: true, mode: 0o700 }).then(
     () => undefined,
-    error => {
-      // Retry on the next command rather than caching a failure forever.
-      taskOutputDirReady = undefined
-      throw error
-    },
   )
-  return taskOutputDirReady
+}
+
+/**
+ * Open stdout and stderr as one recoverable operation. If the temp directory
+ * disappears between mkdir and open (or between the two opens), close any
+ * orphaned handle, recreate the directory, and retry the pair once.
+ */
+async function openTaskOutputHandles(
+  taskOutput: TaskOutput,
+): Promise<{ outputHandle: FileHandle; stderrHandle: FileHandle }> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await ensureTaskOutputDir()
+    let outputHandle: FileHandle | undefined
+    try {
+      outputHandle = await open(
+        taskOutput.path,
+        process.platform === 'win32'
+          ? 'w'
+          : fsConstants.O_WRONLY |
+              fsConstants.O_CREAT |
+              fsConstants.O_APPEND |
+              (fsConstants.O_NOFOLLOW ?? 0),
+      )
+      const stderrHandle = await open(
+        taskOutput.stderrPath,
+        process.platform === 'win32'
+          ? 'w'
+          : fsConstants.O_WRONLY |
+              fsConstants.O_CREAT |
+              fsConstants.O_APPEND |
+              (fsConstants.O_NOFOLLOW ?? 0),
+      )
+      return { outputHandle, stderrHandle }
+    } catch (error) {
+      if (outputHandle !== undefined) {
+        try {
+          await outputHandle.close()
+        } catch {
+          // The failed open path owns this handle; a close failure is secondary.
+        }
+      }
+      if (!isENOENT(error) || attempt === 1) {
+        throw error
+      }
+      logForDebugging(
+        `Task output directory disappeared during shell launch; recreating ${getTaskOutputDir()}`,
+      )
+    }
+  }
+
+  throw new Error('Failed to open task output files')
 }
 
 /**
@@ -224,11 +267,9 @@ export async function exec(
     .toString(16)
     .padStart(4, '0')
 
-  // Sandbox temp directory - use per-user directory name to prevent multi-user permission conflicts
-  const sandboxTmpDir = posixJoin(
-    process.env.UR_CODE_TMPDIR || '/tmp',
-    getURTempDirName(),
-  )
+  // Use the same resolved per-user temp root as task output and sandbox policy.
+  // os.tmpdir() remains valid on macOS even if /tmp is a dangling symlink.
+  const sandboxTmpDir = getURTempDir()
 
   const { commandString: builtCommand, cwdFilePath } =
     await provider.buildExecCommand(command, {
@@ -313,7 +354,6 @@ export async function exec(
   const usePipeMode = !!onStdout
   const taskId = generateTaskId('local_bash')
   const taskOutput = new TaskOutput(taskId, onProgress ?? null, !usePipeMode)
-  await ensureTaskOutputDir()
 
   // In file mode, stdout and stderr go to separate file fds. This preserves
   // stream identity while retaining the direct-to-disk path for large output.
@@ -330,25 +370,9 @@ export async function exec(
   let outputHandle: FileHandle | undefined
   let stderrHandle: FileHandle | undefined
   if (!usePipeMode) {
-    const O_NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0
-    outputHandle = await open(
-      taskOutput.path,
-      process.platform === 'win32'
-        ? 'w'
-        : fsConstants.O_WRONLY |
-            fsConstants.O_CREAT |
-            fsConstants.O_APPEND |
-            O_NOFOLLOW,
-    )
-    stderrHandle = await open(
-      taskOutput.stderrPath,
-      process.platform === 'win32'
-        ? 'w'
-        : fsConstants.O_WRONLY |
-            fsConstants.O_CREAT |
-            fsConstants.O_APPEND |
-            O_NOFOLLOW,
-    )
+    const handles = await openTaskOutputHandles(taskOutput)
+    outputHandle = handles.outputHandle
+    stderrHandle = handles.stderrHandle
   }
 
   try {
