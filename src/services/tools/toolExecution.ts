@@ -121,6 +121,10 @@ import {
   processToolResultBlock,
 } from '../../utils/toolResultStorage.js'
 import {
+  getTaskListRunContext,
+  getTaskListRunFromMessages,
+} from '../../utils/taskListRunContext.js'
+import {
   extractDiscoveredToolNames,
   isToolSearchEnabledOptimistic,
   isToolSearchToolAvailable,
@@ -1037,6 +1041,11 @@ async function checkPermissionsAndCallTool(
     // Classification failures must not become a bypass.
     isMutating = true
   }
+  const taskListRun =
+    getTaskListRunContext() ??
+    (toolUseContext.agentId
+      ? undefined
+      : getTaskListRunFromMessages(toolUseContext.messages ?? []))
   const gate = checkTaskListGate({
     toolName: tool.name,
     taskCount: await countTasksForGate(),
@@ -1050,6 +1059,11 @@ async function checkPermissionsAndCallTool(
     ),
     isSubagent: Boolean(toolUseContext.agentId),
     isMutating,
+    requiresTaskList: taskListRun?.requiresTaskList,
+    requirementReason: taskListRun?.requirementReason,
+    taskListWriterAvailable: toolUseContext.options.tools.some(
+      candidate => candidate.name === 'TaskCreate',
+    ),
   })
   if (gate.allowed === false) {
     // Counts toward the repeat guard: a model that answers the gate by
@@ -1669,6 +1683,11 @@ async function checkPermissionsAndCallTool(
       ),
       isSubagent: Boolean(toolUseContext.agentId),
       isMutating: finalIsMutating,
+      requiresTaskList: taskListRun?.requiresTaskList,
+      requirementReason: taskListRun?.requirementReason,
+      taskListWriterAvailable: toolUseContext.options.tools.some(
+        candidate => candidate.name === 'TaskCreate',
+      ),
     })
     if (finalGate.allowed === false) {
       recordCallFailure(callSig)

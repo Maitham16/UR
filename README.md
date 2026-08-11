@@ -81,6 +81,13 @@ useful. Each task records id, order, title, description, status, dependencies,
 assigned logical agent role, input, expected output, verification criteria, file
 targets, risk level, and whether approval is required.
 
+Inside the interactive agent, task tracking uses a strict-hybrid default:
+atomic low-risk work stays direct, while multi-outcome, sequenced, planned,
+delegated, project-sized, and high-risk lifecycle work must create a visible
+task before the first mutation. Reads stay unrestricted. Configure the gate
+with `tasks.requireBeforeChanges`; `enabled=false` makes it advisory and
+`freeReads=0` requires a task before every mutation.
+
 During real `ur exec` runs the task board streams when a task status changes,
 then appears again in the final report. Quiet/non-interactive runs can suppress
 streaming while preserving the final board. Public status labels are

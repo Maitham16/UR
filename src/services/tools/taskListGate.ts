@@ -10,25 +10,25 @@ import { isAutomaticPromptTask } from '../../utils/tasks.js'
  * track of what it has and has not done, and starts describing work instead of
  * doing it.
  *
- * So this is a gate, not a reminder. Reads stay open, and a short initial
- * allowance keeps one-shot work lightweight. Once that allowance is consumed,
- * mutations require a plan; delegation and child mutations always require one.
+ * So this is a gate, not a reminder. Reads stay open. A deterministic turn
+ * classifier keeps atomic work direct and requires tracking for substantial or
+ * risky work; delegation and child mutations always require a parent task.
  */
 export type TaskListGateConfig = {
   enabled: boolean
   /**
-   * Tool calls allowed before ordinary mutations require a plan. Zero would
-   * force a task list for every one-shot edit, which trains users to disable
-   * the gate. Delegation and child mutations do not consume this allowance.
+   * Compatibility allowance used only when turn complexity is unavailable.
+   * Zero explicitly forces a task list before every mutation. Delegation and
+   * classified multi-step turns never consume this allowance.
    */
   freeReads: number
 }
 
-// Off by default: the gate refused legitimate first writes often enough that
-// the friction outweighed the plans it produced. Re-enable per project with
-// tasks.requireBeforeChanges.enabled=true.
+// Strict hybrid by default: classified multi-step/risky turns are enforced,
+// while a positively classified atomic turn stays direct. Callers without a
+// turn classification retain the bounded compatibility allowance.
 export const TASK_LIST_GATE_DEFAULTS: TaskListGateConfig = {
-  enabled: false,
+  enabled: true,
   freeReads: 3,
 }
 
@@ -137,30 +137,59 @@ export function checkTaskListGate(input: {
    * The name set above is only a conservative fallback for direct callers.
    */
   isMutating?: boolean
+  /** Deterministic classification of the active user turn. */
+  requiresTaskList?: boolean
+  /** Human-readable classifier reason included in recovery guidance. */
+  requirementReason?: string
+  /** False when the current tool profile cannot satisfy this gate. */
+  taskListWriterAvailable?: boolean
   config?: TaskListGateConfig
 }): GateDecision {
   const config = input.config ?? getTaskListGateConfig()
   if (!config.enabled) return { allowed: true }
+  // Tool profiles may intentionally omit TaskCreate. Never install a gate the
+  // active profile has no way to satisfy.
+  if (input.taskListWriterAvailable === false) return { allowed: true }
   if (isTaskListGateExempt(input.toolName)) return { allowed: true }
   const isMutating = input.isMutating ?? isMutatingTool(input.toolName)
   if (!isMutating) return { allowed: true }
   if (input.taskCount !== null && input.taskCount > 0) {
     return { allowed: true }
   }
+
+  const inherentlyRequiresTaskList =
+    input.isSubagent || ALWAYS_REQUIRE_PLAN_TOOLS.has(input.toolName)
+  const classifiedRequirement = input.requiresTaskList === true
+  const forceEveryMutation = config.freeReads === 0
+  const unclassifiedAllowanceExpired =
+    input.requiresTaskList === undefined && input.readsSoFar >= config.freeReads
+  const gateRequired =
+    inherentlyRequiresTaskList ||
+    classifiedRequirement ||
+    forceEveryMutation ||
+    unclassifiedAllowanceExpired
+  const requirementContext = input.requirementReason
+    ? ` This turn requires task tracking because it contains ${input.requirementReason}.`
+    : ''
+
+  // A missing/corrupt task store cannot prove whether an actionable task
+  // exists. Keep the established fail-closed behavior for every mutation.
   if (input.taskCount === null) {
     return {
       allowed: false,
       reason:
         `The task list could not be read, so ${input.toolName} was not allowed ` +
-        `to change state without a verifiable plan. Retry TaskList or ` +
+        `to change state without a verifiable plan.${requirementContext} Retry TaskList or ` +
         `TaskCreate, then retry this call. Disable with ` +
         `tasks.requireBeforeChanges.enabled=false in settings.`,
     }
   }
-  if (
-    input.isSubagent ||
-    ALWAYS_REQUIRE_PLAN_TOOLS.has(input.toolName)
-  ) {
+
+  // A turn positively classified as one atomic action remains direct no
+  // matter how much read-only investigation preceded its mutation. This is
+  // the distinction the old call-count-only gate could not make.
+  if (!gateRequired) return { allowed: true }
+  if (inherentlyRequiresTaskList) {
     return {
       allowed: false,
       reason:
@@ -169,11 +198,11 @@ export function checkTaskListGate(input: {
         `Disable with tasks.requireBeforeChanges.enabled=false in settings.`,
     }
   }
-  if (input.readsSoFar < config.freeReads) return { allowed: true }
   return {
     allowed: false,
     reason:
       `No task list exists, and ${input.toolName} changes the workspace. ` +
+      `${requirementContext.trim()}${requirementContext ? ' ' : ''}` +
       `Call TaskCreate first with the steps you intend to take, then retry ` +
       `this call. Reads are unrestricted, so investigate as much as you need ` +
       `before writing the list. ` +

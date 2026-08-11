@@ -54,7 +54,7 @@ test('a permission rewrite from read-only to mutating is revalidated', async () 
       commands: [],
       debug: false,
       mainLoopModel: 'test-model',
-      tools: [tool],
+      tools: [tool, { name: 'TaskCreate' }],
       verbose: false,
       thinkingConfig: { type: 'disabled' },
       mcpClients: [],
@@ -99,11 +99,11 @@ test('a permission rewrite from read-only to mutating is revalidated', async () 
     ),
   )
 
-  // The gate ships disabled, so the revalidated call now executes. What must
-  // still hold is that the rewrite was re-classified as mutating rather than
-  // trusted as the read-only call it arrived as.
-  expect(callCount).toBe(1)
-  expect(JSON.stringify(output)).not.toContain(
+  // The strict-hybrid gate ships enabled. Because this legacy-style context
+  // has no user-turn classification and exhausted its compatibility
+  // allowance, the mutating rewrite must be blocked before execution.
+  expect(callCount).toBe(0)
+  expect(JSON.stringify(output)).toContain(
     'TaskListRequired after input update',
   )
   expect(

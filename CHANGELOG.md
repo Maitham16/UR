@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.80.3
+
+- Restored visible task planning with a strict-hybrid default. Atomic,
+  low-risk requests still execute directly; requests with multiple outcomes,
+  sequencing, plan mode, delegation, project-sized work, or release/security/
+  migration/production risk must create an actionable task before the first
+  mutation. Read-only investigation remains unrestricted.
+- The task gate now uses deterministic user-turn classification instead of
+  treating conversation length as complexity. It fails closed when task state
+  is unreadable, rechecks permission-rewritten tool input, preserves active
+  interrupted boards, and never deadlocks a custom tool profile that omits
+  `TaskCreate`.
+- Operators can keep task tracking advisory with
+  `tasks.requireBeforeChanges.enabled=false`, or set `freeReads=0` to require a
+  task before every mutation. Approve All remains unchanged.
+
 ## 1.80.2
 
 - Repaired repeated `AskUserQuestion` validation loops when a model emits one

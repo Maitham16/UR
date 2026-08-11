@@ -60,17 +60,47 @@ test('an existing task list opens the gate', () => {
 })
 
 test('a trivial one-shot edit is not gated', () => {
-  // freeReads exists so a single-step request does not demand ceremony, which
-  // is what would train the user to disable this.
+  // Positive atomic classification is authoritative even after extensive
+  // investigation, so one-step work never becomes ceremonial by call count.
   expect(
     checkTaskListGate({
       toolName: 'Edit',
       taskCount: 0,
-      readsSoFar: 1,
+      readsSoFar: 99,
       isSubagent: false,
+      requiresTaskList: false,
       config: CONFIG,
     }).allowed,
   ).toBe(true)
+})
+
+test('classified multi-outcome work is gated before its first mutation', () => {
+  const decision = checkTaskListGate({
+    toolName: 'Edit',
+    taskCount: 0,
+    readsSoFar: 0,
+    isSubagent: false,
+    requiresTaskList: true,
+    requirementReason: 'multiple requested outcomes',
+    config: CONFIG,
+  })
+  expect(decision.allowed).toBe(false)
+  expect((decision as { reason: string }).reason).toContain(
+    'multiple requested outcomes',
+  )
+})
+
+test('freeReads zero intentionally gates even atomic work', () => {
+  expect(
+    checkTaskListGate({
+      toolName: 'Write',
+      taskCount: 0,
+      readsSoFar: 0,
+      isSubagent: false,
+      requiresTaskList: false,
+      config: { enabled: true, freeReads: 0 },
+    }).allowed,
+  ).toBe(false)
 })
 
 test('subagents must be bound to an actionable parent task before mutation', () => {
@@ -200,8 +230,22 @@ test('disabling it restores advisory behaviour', () => {
   ).toBe(true)
 })
 
-test('the gate ships disabled and blocks nothing by default', () => {
-  expect(TASK_LIST_GATE_DEFAULTS.enabled).toBe(false)
+test('a tool profile without TaskCreate cannot deadlock on the gate', () => {
+  expect(
+    checkTaskListGate({
+      toolName: 'Write',
+      taskCount: 0,
+      readsSoFar: 99,
+      isSubagent: false,
+      requiresTaskList: true,
+      taskListWriterAvailable: false,
+      config: CONFIG,
+    }).allowed,
+  ).toBe(true)
+})
+
+test('the gate ships with strict-hybrid enforcement by default', () => {
+  expect(TASK_LIST_GATE_DEFAULTS.enabled).toBe(true)
   expect(TASK_LIST_GATE_DEFAULTS.freeReads).toBeGreaterThan(0)
   expect(
     checkTaskListGate({
@@ -209,9 +253,20 @@ test('the gate ships disabled and blocks nothing by default', () => {
       taskCount: 0,
       readsSoFar: 99,
       isSubagent: false,
+      requiresTaskList: false,
       config: TASK_LIST_GATE_DEFAULTS,
     }).allowed,
   ).toBe(true)
+  expect(
+    checkTaskListGate({
+      toolName: 'Write',
+      taskCount: 0,
+      readsSoFar: 0,
+      isSubagent: false,
+      requiresTaskList: true,
+      config: TASK_LIST_GATE_DEFAULTS,
+    }).allowed,
+  ).toBe(false)
 })
 
 test('the allowance counts tool calls, not conversation length', () => {

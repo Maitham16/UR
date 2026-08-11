@@ -3,10 +3,10 @@
   "template": false,
   "agent": {
     "name": "ur-nexus",
-    "version": "1.80.2",
-    "commit": "96a35da2b931dc2ae2e5f0063a3ef1cfef69b60c"
+    "version": "1.80.3",
+    "commit": "59a665c3bad6f697d53076ffbea2a491331a01b8"
   },
-  "date": "2026-08-11T06:36:57.517Z",
+  "date": "2026-08-11T13:02:41.748Z",
   "benchmark": {
     "name": "local-regression",
     "category": "internal-regression",
@@ -33,7 +33,7 @@
         "name": "simple file edit task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 30,
+        "wallTimeMs": 32,
         "failureCategory": null
       },
       {
@@ -41,7 +41,7 @@
         "name": "repository edit apply task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 709,
+        "wallTimeMs": 717,
         "failureCategory": null
       },
       {
@@ -49,7 +49,7 @@
         "name": "repository AST edit task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 9299,
+        "wallTimeMs": 8909,
         "failureCategory": null
       },
       {
@@ -57,7 +57,7 @@
         "name": "repository import edit task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 4860,
+        "wallTimeMs": 4881,
         "failureCategory": null
       },
       {
@@ -65,7 +65,7 @@
         "name": "repository move edit task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 6791,
+        "wallTimeMs": 6591,
         "failureCategory": null
       },
       {
@@ -73,7 +73,7 @@
         "name": "failing test repair task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 202,
+        "wallTimeMs": 198,
         "failureCategory": null
       },
       {
@@ -81,7 +81,7 @@
         "name": "provider routing task",
         "category": "provider-routing",
         "passed": true,
-        "wallTimeMs": 220,
+        "wallTimeMs": 212,
         "failureCategory": null
       },
       {
@@ -89,7 +89,7 @@
         "name": "provider reliability task",
         "category": "provider-routing",
         "passed": true,
-        "wallTimeMs": 188,
+        "wallTimeMs": 189,
         "failureCategory": null
       },
       {
@@ -97,7 +97,7 @@
         "name": "provider streaming task",
         "category": "provider-routing",
         "passed": true,
-        "wallTimeMs": 196,
+        "wallTimeMs": 194,
         "failureCategory": null
       },
       {
@@ -105,7 +105,7 @@
         "name": "provider tool-call task",
         "category": "tool-use",
         "passed": true,
-        "wallTimeMs": 178,
+        "wallTimeMs": 176,
         "failureCategory": null
       },
       {
@@ -121,7 +121,7 @@
         "name": "sandbox denial task",
         "category": "sandbox-safety",
         "passed": true,
-        "wallTimeMs": 623,
+        "wallTimeMs": 614,
         "failureCategory": null
       },
       {
@@ -137,7 +137,7 @@
         "name": "sandbox adapter task",
         "category": "sandbox-safety",
         "passed": true,
-        "wallTimeMs": 553,
+        "wallTimeMs": 541,
         "failureCategory": null
       },
       {
@@ -145,7 +145,7 @@
         "name": "sandbox profile task",
         "category": "sandbox-safety",
         "passed": true,
-        "wallTimeMs": 62,
+        "wallTimeMs": 60,
         "failureCategory": null
       },
       {
@@ -153,7 +153,7 @@
         "name": "release hygiene task",
         "category": "internal-regression",
         "passed": true,
-        "wallTimeMs": 68,
+        "wallTimeMs": 60,
         "failureCategory": null
       },
       {
@@ -161,7 +161,7 @@
         "name": "benchmark schema validation task",
         "category": "internal-regression",
         "passed": true,
-        "wallTimeMs": 213,
+        "wallTimeMs": 209,
         "failureCategory": null
       },
       {
@@ -169,7 +169,7 @@
         "name": "eval comparison task",
         "category": "internal-regression",
         "passed": true,
-        "wallTimeMs": 95,
+        "wallTimeMs": 94,
         "failureCategory": null
       },
       {
@@ -177,7 +177,7 @@
         "name": "tool-call parsing task",
         "category": "tool-use",
         "passed": true,
-        "wallTimeMs": 172,
+        "wallTimeMs": 169,
         "failureCategory": null
       },
       {
@@ -185,13 +185,13 @@
         "name": "multi-step code modification task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 990,
+        "wallTimeMs": 952,
         "failureCategory": null
       }
     ],
     "failedTasks": [],
     "failureCategories": {},
-    "wallTimeMs": 25709,
+    "wallTimeMs": 25057,
     "tokenUsage": null,
     "costUSD": null
   },

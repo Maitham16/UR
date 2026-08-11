@@ -20,9 +20,11 @@ It also helps the user understand the progress of the task and overall progress 
 
 Use this tool proactively in these scenarios:
 
-- Complex multi-step tasks - When a request requires 3 or more distinct steps or actions
+- Multi-outcome work - When a request has 2 or more distinct requested outcomes, deliverables, or sequenced actions
 - Non-trivial and complex tasks - Tasks that require careful planning or multiple operations${teammateContext}
 - Multiple independently verifiable outcomes, dependency ordering, delegation, or parallel work
+- High-risk lifecycle work - Releases, publishing, deployment, migrations, security, credentials, permissions, sandboxing, or production changes
+- Project-sized builds, integrations, workflows, refactors, and audits
 - Plan mode - When using plan mode, create a task list to track the work
 - User explicitly requests todo list - When the user directly asks you to use the todo list
 - User asks to queue work - When the user says "add to your tasks", "add this to your task list", "put this on the list", "queue this up", or anything similar, IMMEDIATELY call this tool with that request — even if you are in the middle of other work and even if the item sounds small. The user is watching the live task panel and expects the item to appear there right away. Acknowledge briefly and continue what you were doing unless asked to switch.
@@ -33,7 +35,7 @@ Use this tool proactively in these scenarios:
 
 Skip using this tool when:
 - The task is purely conversational or informational
-- The request is one direct, low-risk action that can be completed and verified as one operation
+- The request is one genuinely atomic, low-risk action with one outcome that can be completed and verified directly
 - The user sends a short acknowledgement, correction, or clarification that does not add a distinct outcome to an existing board
 
 Do not create a task merely because a user sent a message or because the request is actionable. Task subjects must describe concrete outcomes chosen after understanding the work; never copy the raw prompt into a task title.

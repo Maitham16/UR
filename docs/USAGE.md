@@ -428,6 +428,33 @@ in dependency order. `ur exec` materializes this graph deterministically; the
 interactive agent follows the same lifecycle and its task/agent tools enforce
 the concurrency boundary.
 
+Interactive work uses a strict-hybrid task policy by default. One atomic,
+low-risk outcome can be implemented directly. Before the first mutation, UR
+requires a visible task for requests with two or more outcomes, enumerated or
+sequenced work, plan mode, delegation, dependencies, project-sized work, and
+release, publishing, deployment, migration, security, credential, permission,
+sandbox, or production risk. Read-only inspection never needs a task, so the
+agent can understand the repository before it creates the board. A custom tool
+profile without `TaskCreate` remains usable and does not deadlock.
+
+The default can be tuned in `.ur/settings.json` or user settings:
+
+```json
+{
+  "tasks": {
+    "requireBeforeChanges": {
+      "enabled": true,
+      "freeReads": 3
+    }
+  }
+}
+```
+
+Set `enabled` to `false` for advisory task tracking. Set `freeReads` to `0` for
+the fully strict policy that requires a task before every mutation, including
+an atomic change. The positive atomic classification otherwise stays direct
+regardless of how many read-only tools were needed.
+
 A user prompt does not create a placeholder task. The task panel stays quiet
 for informational conversation, direct one-step changes, acknowledgements, and
 small corrections. For genuinely multi-step work, multiple independently

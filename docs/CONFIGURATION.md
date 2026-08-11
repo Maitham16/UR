@@ -17,6 +17,31 @@ Start UR with `--screen-reader`, set `UR_SCREEN_READER=1`, or use
 edits, and reduced animation. `vimEscape` accepts 2–8 printable non-whitespace
 characters or `off`.
 
+## Interactive task planning
+
+UR uses strict-hybrid task tracking by default: one atomic, low-risk outcome
+can proceed directly, while multi-outcome, sequenced, planned, delegated,
+project-sized, release, migration, security, sandbox, and production work must
+create a visible task before the first mutation. Read-only investigation is
+never blocked.
+
+```jsonc
+{
+  "tasks": {
+    "requireBeforeChanges": {
+      "enabled": true,
+      "freeReads": 3
+    }
+  }
+}
+```
+
+`freeReads` is a compatibility allowance for non-interactive integrations that
+do not carry a classified user turn; it is not a limit on investigation. Set
+it to `0` to require a task before every mutation. Set `enabled` to `false` to
+return to advisory task tracking. Profiles that omit `TaskCreate` are not
+gated, because they could not satisfy the requirement.
+
 ## Model Providers
 
 UR-Nexus supports official provider access paths only:

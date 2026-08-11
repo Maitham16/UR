@@ -84,6 +84,12 @@ restore their session model without showing the picker.
     "suggestMinConfidence": 0.75
   },
   "sandbox": { /* SandboxSettingsSchema — OS sandbox for shell commands */ },
+  "tasks": {
+    "requireBeforeChanges": {
+      "enabled": true,                // strict hybrid; false = advisory
+      "freeReads": 3                  // 0 = task before every mutation
+    }
+  },
   "autoMode": { "allow": [], "soft_deny": [], "deny": [] },
   "useAutoModeDuringPlan": false, "disableAutoMode": false,
   "skipDangerousModePermissionPrompt": false,
@@ -113,6 +119,15 @@ Permission modes:
 - `acceptEdits`: auto-approve safe in-workspace file edits and safe commands.
 - `autoApprove`: auto-approve command/tool permission approvals, while
   user-input dialogs still ask and explicit denials remain enforced.
+
+Task tracking is independent from permission approval. The default
+strict-hybrid classifier requires a visible task before the first mutation for
+multiple outcomes, sequencing, plan mode, delegation, project-sized changes,
+and release/security/migration/production risk. A positively classified atomic
+low-risk request stays direct even after extensive reads. `freeReads` applies
+only when an integration does not expose a classifiable user turn; zero forces
+tracking for every mutation. Profiles without `TaskCreate` bypass this gate so
+they remain operable.
 
 ### Hooks
 ```jsonc

@@ -9,6 +9,12 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.80.3 Addition
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Strict-hybrid task planning | Interactive `TaskCreate` lifecycle, `tasks.requireBeforeChanges` | Keeps atomic low-risk work direct, but requires a visible actionable task before mutation for multi-outcome, sequenced, planned, delegated, project-sized, and high-risk lifecycle work. Reads stay open, custom profiles without `TaskCreate` cannot deadlock, and operators retain advisory and fully strict modes. |
+
 ## v1.80.0 Additions
 
 | Addition | Surface | What it adds |

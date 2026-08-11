@@ -10,6 +10,7 @@ import {
   requestsAppendToCurrentTaskList,
   requestsContinueCurrentTaskList,
   requestsRevisionOfCurrentTaskList,
+  taskListRequirementReason,
 } from '../src/utils/taskListRunContext.js'
 import {
   blockTask,
@@ -360,14 +361,23 @@ describe('append-current intent', () => {
         mode: 'prompt',
         uuid: 'prompt-run' as never,
       }),
-    ).toEqual({ generationId: 'prompt-run', appendToCurrent: true })
+    ).toEqual({
+      generationId: 'prompt-run',
+      appendToCurrent: true,
+      requiresTaskList: true,
+      requirementReason: 'explicit task tracking request',
+    })
     expect(
       getTaskListRunForCommand({
         value: 'ok',
         mode: 'prompt',
         uuid: 'approval-run' as never,
       }),
-    ).toEqual({ generationId: 'approval-run', appendToCurrent: true })
+    ).toEqual({
+      generationId: 'approval-run',
+      appendToCurrent: true,
+      requiresTaskList: false,
+    })
     expect(
       getTaskListRunForCommand({ value: '/model', mode: 'prompt' }),
     ).toBeUndefined()
@@ -376,7 +386,11 @@ describe('append-current intent', () => {
         { value: '/review changes', mode: 'prompt', uuid: 'review-run' as never },
         { allowSlashCommand: true },
       ),
-    ).toEqual({ generationId: 'review-run', appendToCurrent: false })
+    ).toEqual({
+      generationId: 'review-run',
+      appendToCurrent: false,
+      requiresTaskList: false,
+    })
     expect(
       getTaskListRunForCommand({
         value: 'background tick',
@@ -384,6 +398,72 @@ describe('append-current intent', () => {
         isMeta: true,
       }),
     ).toBeUndefined()
+  })
+})
+
+describe('strict-hybrid task classification', () => {
+  test('keeps genuinely atomic and informational turns direct', () => {
+    for (const input of [
+      'Fix the typo in README.md.',
+      'Change the button color to red.',
+      'Explain how the task list works.',
+      'fix it please',
+      '```text\n1. build the app\n2. release it\n```\nExplain this example.',
+    ]) {
+      expect(taskListRequirementReason(input)).toBeUndefined()
+    }
+  })
+
+  test('recognizes explicit tracking and planning workflows', () => {
+    expect(taskListRequirementReason('Add this to your tasks')).toBe(
+      'explicit task tracking request',
+    )
+    expect(taskListRequirementReason('/plan implement OAuth')).toBe(
+      'planning workflow',
+    )
+  })
+
+  test('recognizes delegation and high-risk lifecycle work', () => {
+    expect(
+      taskListRequirementReason('Use two subagents in parallel to inspect this'),
+    ).toBe('delegation or parallel agent work')
+    expect(taskListRequirementReason('Release this version')).toBe(
+      'release, security, migration, or production risk',
+    )
+    expect(taskListRequirementReason('Fix the sandbox permissions')).toBe(
+      'release, security, migration, or production risk',
+    )
+  })
+
+  test('recognizes multiple outcomes and project-sized work', () => {
+    for (const input of [
+      'Fix the parser and update the tests.',
+      '- Repair the parser\n- Document the behavior',
+      'Repair the parser\nDocument the behavior',
+      'Update the code, tests, and technical docs.',
+    ]) {
+      expect(taskListRequirementReason(input)).toBe(
+        'multiple requested outcomes',
+      )
+    }
+    expect(taskListRequirementReason('Build a portfolio website')).toBe(
+      'large project scope',
+    )
+  })
+
+  test('honors an explicit no-task request', () => {
+    expect(
+      taskListRequirementReason(
+        "Don't use a task list; update the code and release it.",
+      ),
+    ).toBeUndefined()
+  })
+
+  test('uses length only as a final detailed-work signal', () => {
+    const detailed = `Implement the requested change. ${'Relevant context. '.repeat(45)}`
+    expect(taskListRequirementReason(detailed)).toBe(
+      'detailed multi-step request',
+    )
   })
 })
 
@@ -410,5 +490,7 @@ describe('task tool status guidance', () => {
     expect(createPrompt).toContain('**addToCurrentList**')
     expect(createPrompt).toContain('an interruption preserves active work')
     expect(createPrompt).toContain('After an interruption, call TaskList')
+    expect(createPrompt).toContain('2 or more distinct requested outcomes')
+    expect(createPrompt).toContain('High-risk lifecycle work')
   })
 })

@@ -434,8 +434,9 @@ export const SettingsSchema = lazySchema(() =>
             .optional()
             .describe(
               'Require a task list before any tool that changes the workspace (Edit, Write, Bash, ...). ' +
-                'Reads are never blocked, so the agent can investigate before planning; freeReads is how many ' +
-                'tool calls may run before the gate applies at all. Set enabled=false to make the task list advisory again.',
+                'The default strict-hybrid policy enforces classified multi-step, risky, delegated, and release work ' +
+                'while allowing positively classified atomic changes to proceed directly. Reads are never blocked. ' +
+                'Set freeReads=0 to require a task before every mutation, or enabled=false to make task tracking advisory.',
             ),
         })
         .optional()

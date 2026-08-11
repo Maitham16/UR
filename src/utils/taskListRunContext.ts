@@ -7,7 +7,18 @@ import { isHumanTurn } from './messagePredicates.js'
 export type TaskListRunContext = {
   generationId: string
   appendToCurrent: boolean
+  requiresTaskList: boolean
+  requirementReason?: TaskListRequirementReason
 }
+
+export type TaskListRequirementReason =
+  | 'explicit task tracking request'
+  | 'planning workflow'
+  | 'delegation or parallel agent work'
+  | 'release, security, migration, or production risk'
+  | 'multiple requested outcomes'
+  | 'large project scope'
+  | 'detailed multi-step request'
 
 const taskListRunStorage = new AsyncLocalStorage<{
   run: TaskListRunContext | undefined
@@ -143,6 +154,134 @@ function shouldKeepCurrentTaskList(input: string): boolean {
   )
 }
 
+const ACTION_WORD =
+  String.raw`(?:add(?:ed|ing|s)?|audit(?:ed|ing|s)?|build(?:ing|s)?|built|bump(?:ed|ing|s)?|chang(?:e|ed|es|ing)|clean(?:ed|ing|s)?|creat(?:e|ed|es|ing)|debug(?:ged|ging|s)?|delet(?:e|ed|es|ing)|deploy(?:ed|ing|s)?|design(?:ed|ing|s)?|document(?:ed|ing|s)?|fix(?:ed|es|ing)?|implement(?:ed|ing|s)?|integrat(?:e|ed|es|ing)|migrat(?:e|ed|es|ing)|publish(?:ed|es|ing)?|push(?:ed|es|ing)?|refactor(?:ed|ing|s)?|releas(?:e|ed|es|ing)|remov(?:e|ed|es|ing)|renam(?:e|ed|es|ing)|repair(?:ed|ing|s)?|research(?:ed|es|ing)?|review(?:ed|ing|s)?|secur(?:e|ed|es|ing)|test(?:ed|ing|s)?|updat(?:e|ed|es|ing)|upgrad(?:e|ed|es|ing)|verif(?:y|ied|ies|ying)|writ(?:e|es|ing)|wrote)`
+
+const ACTION_RE = new RegExp(String.raw`\b${ACTION_WORD}\b`, 'giu')
+const SEQUENCED_ACTION_RE = new RegExp(
+  String.raw`\b${ACTION_WORD}\b[^.!?\n]{0,180}(?:\band\b|\bthen\b|\balso\b|\bplus\b|;|\n)[^.!?\n]{0,100}\b${ACTION_WORD}\b`,
+  'iu',
+)
+
+function withoutCode(input: string): string {
+  return input
+    .replace(/```[\s\S]*?```/gu, ' ')
+    .replace(/`[^`\n]*`/gu, ' ')
+}
+
+function proseOnly(input: string): string {
+  return withoutCode(input)
+    .replace(/\s+/gu, ' ')
+    .trim()
+}
+
+/**
+ * Decide whether this user turn needs a visible task list before mutation.
+ *
+ * This is intentionally a conservative structural classifier, not an LLM
+ * guess. It recognizes explicit tracking, delegation, high-risk lifecycle
+ * work, enumerated/sequenced outcomes, and clearly project-sized requests.
+ * A single low-risk action remains direct even after extensive read-only
+ * investigation.
+ */
+export function taskListRequirementReason(
+  input: string,
+): TaskListRequirementReason | undefined {
+  const text = proseOnly(input)
+  if (!text) return undefined
+
+  const optsOut =
+    /\b(?:do not|don't)\s+(?:(?:create|make|maintain|show|start|use)\s+)?(?:a\s+)?(?:task|todo)(?:\s+(?:list|board))?\b/iu.test(
+      text,
+    ) ||
+    /\bwithout\s+(?:(?:creating|making|maintaining|showing|starting|using)\s+)?(?:a\s+)?(?:task|todo)(?:\s+(?:list|board))?\b/iu.test(
+      text,
+    ) ||
+    /\b(?:skip|no)\s+(?:the\s+|a\s+)?(?:task|todo)(?:\s+(?:list|board))?\b/iu.test(
+      text,
+    )
+  if (optsOut) return undefined
+
+  if (
+    /\b(?:create|make|maintain|show|start|use|keep|track|add|append|put|queue)\b[^.!?]{0,100}\b(?:task|todo)\s+(?:list|board)\b/iu.test(
+      text,
+    ) ||
+    /\b(?:add|append|put|queue)\s+(?:this|it)?\s*(?:to|on)?\s*(?:my|the|your)?\s*(?:tasks?|todos?)\b/iu.test(
+      text,
+    ) ||
+    /\b(?:add|append|put|queue)\s+(?:this|it)\s+(?:to|on)\s+(?:the\s+|your\s+|my\s+)?(?:current|existing)\s+list\b/iu.test(
+      text,
+    ) ||
+    /\b(?:create|make|use|track)\s+(?:the\s+|a\s+|your\s+)?(?:tasks?|todos?)\b/iu.test(
+      text,
+    ) ||
+    /\b(?:tasks?|todos?)\s+first\b/iu.test(text)
+  ) {
+    return 'explicit task tracking request'
+  }
+
+  if (
+    /^\/plan(?:\s|$)/iu.test(text) ||
+    /\b(?:enter|start|use|switch\s+to)\s+plan\s+mode\b/iu.test(text) ||
+    /\bplan\s+(?:this|the\s+work|first)\b/iu.test(text)
+  ) {
+    return 'planning workflow'
+  }
+
+  if (
+    /\b(?:delegate|delegation|sub[ -]?agents?|parallel\s+agents?|agent\s+team|team\s+of\s+agents?|fan[ -]?out)\b/iu.test(
+      text,
+    )
+  ) {
+    return 'delegation or parallel agent work'
+  }
+
+  const hasAction = new RegExp(String.raw`\b${ACTION_WORD}\b`, 'iu').test(text)
+  if (
+    hasAction &&
+    /\b(?:publish|release|deploy|production|migrat(?:e|ion)|database\s+schema|credentials?|secrets?|permissions?|sandbox|security|authentication|authorization|payments?|billing|version\s+bump|git\s+tag)\b/iu.test(
+      text,
+    )
+  ) {
+    return 'release, security, migration, or production risk'
+  }
+
+  const structuralText = withoutCode(input)
+  const enumeratedItems = structuralText.match(
+    /(?:^|\n)\s*(?:[-*+]\s+|\d+[.)]\s+)\S/gu,
+  )
+  const actionLines = structuralText
+    .split(/\r?\n/gu)
+    .filter(line => new RegExp(String.raw`\b${ACTION_WORD}\b`, 'iu').test(line))
+  if (
+    (enumeratedItems?.length ?? 0) >= 2 ||
+    actionLines.length >= 2 ||
+    SEQUENCED_ACTION_RE.test(text)
+  ) {
+    return 'multiple requested outcomes'
+  }
+
+  const targetList = new RegExp(
+    String.raw`\b${ACTION_WORD}\b[^.!?]{0,120}\b(?:docs?|tests?|code|implementation|configuration|config|workflow|release notes?|technical docs?|readme|ui|api|cli|database|schema|sandbox|permissions?)\b[^.!?]{0,80}(?:,|\band\b|\bplus\b)[^.!?]{0,80}\b(?:docs?|tests?|code|implementation|configuration|config|workflow|release notes?|technical docs?|readme|ui|api|cli|database|schema|sandbox|permissions?)\b`,
+    'iu',
+  )
+  if (targetList.test(text)) return 'multiple requested outcomes'
+
+  const projectScope =
+    /\b(?:app|application|agent|system|platform|website|dashboard|service|integration|workflow|codebase|project|plugin|extension|3d\s+(?:scene|design|pipeline))\b/iu
+  const projectAction =
+    /\b(?:build(?:ing|s)?|built|creat(?:e|ed|es|ing)|design(?:ed|ing|s)?|implement(?:ed|ing|s)?|integrat(?:e|ed|es|ing)|refactor(?:ed|ing|s)?|rewrit(?:e|ing|ten)|overhaul(?:ed|ing|s)?|audit(?:ed|ing|s)?|research(?:ed|es|ing)?)\b/iu
+  if (projectScope.test(text) && projectAction.test(text)) {
+    return 'large project scope'
+  }
+
+  ACTION_RE.lastIndex = 0
+  if (text.length >= 600 && ACTION_RE.test(text)) {
+    return 'detailed multi-step request'
+  }
+  return undefined
+}
+
 /** Return a generation only for a real user prompt, not meta/task output. */
 export function getTaskListRunForCommand(
   command: QueuedCommand | undefined,
@@ -157,9 +296,12 @@ export function getTaskListRunForCommand(
   ) {
     return undefined
   }
+  const requirementReason = taskListRequirementReason(text)
   return {
     generationId: String(command.uuid ?? randomUUID()),
     appendToCurrent: shouldKeepCurrentTaskList(text),
+    requiresTaskList: requirementReason !== undefined,
+    ...(requirementReason ? { requirementReason } : {}),
   }
 }
 
@@ -174,8 +316,12 @@ export function getTaskListRunFromMessages(
   if (!message || typeof message.uuid !== 'string' || !message.uuid) {
     return undefined
   }
+  const text = textFromMessage(message)
+  const requirementReason = taskListRequirementReason(text)
   return {
     generationId: message.uuid,
-    appendToCurrent: shouldKeepCurrentTaskList(textFromMessage(message)),
+    appendToCurrent: shouldKeepCurrentTaskList(text),
+    requiresTaskList: requirementReason !== undefined,
+    ...(requirementReason ? { requirementReason } : {}),
   }
 }
