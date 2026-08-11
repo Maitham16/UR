@@ -9,9 +9,10 @@
  * first occurrence does not, so it is dropped here and validation sees a clean
  * payload.
  *
- * Only genuinely unrecoverable input is left for the schema to reject: a
- * question with fewer than two distinct options is not askable, and no repair
- * can invent one.
+ * A question with one concrete option is recovered without inventing a second
+ * domain answer: UR adds a neutral rejection choice so the user can accept the
+ * suggestion or ask for something different. Zero-option questions remain
+ * unrecoverable and are left for the schema to reject.
  */
 
 type UnknownRecord = Record<string, unknown>
@@ -76,6 +77,42 @@ export function dedupeQuestions(questions: unknown[]): unknown[] {
     })
   }
   return out
+}
+
+/**
+ * Keep a model's only concrete suggestion while making the decision
+ * renderable. The added choice is deliberately domain-neutral: it rejects the
+ * suggestion so the agent can ask differently. UR never fabricates another
+ * design, library, path, or implementation choice.
+ */
+export function repairSingleOptionQuestions(questions: unknown[]): unknown[] {
+  return dedupeQuestions(questions).map(question => {
+    if (!isRecord(question) || !Array.isArray(question.options)) return question
+    if (question.options.length !== 1) return question
+
+    const onlyOption = question.options[0]
+    if (!isRecord(onlyOption) || typeof onlyOption.label !== 'string') {
+      return question
+    }
+    const onlyLabel = duplicateKey(onlyOption.label)
+    if (!onlyLabel) return question
+
+    const fallbackLabels = ['Different answer', 'Reject suggestion']
+    const fallbackLabel = fallbackLabels.find(
+      label => duplicateKey(label) !== onlyLabel,
+    )!
+    return {
+      ...question,
+      options: [
+        onlyOption,
+        {
+          label: fallbackLabel,
+          description:
+            'Reject the suggested option so the agent can ask for a different answer.',
+        },
+      ],
+    }
+  })
 }
 
 /**

@@ -243,6 +243,61 @@ test('AskUserQuestion folds flattened option lists back into one question', () =
   ])
 })
 
+test('AskUserQuestion repairs a single flattened choice into a rejectable decision', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    questions: [
+      {
+        description: 'Use a complete reel with the film strip wound around it.',
+        header: 'Film reel',
+        label: 'Full 8mm film reel',
+      },
+    ],
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions).toEqual([
+    {
+      question: 'Which option should I choose?',
+      header: 'option',
+      options: [
+        {
+          label: 'Full 8mm film reel',
+          description: 'Use a complete reel with the film strip wound around it.',
+        },
+        {
+          label: 'Different answer',
+          description:
+            'Reject the suggested option so the agent can ask for a different answer.',
+        },
+      ],
+      multiSelect: false,
+    },
+  ])
+})
+
+test('AskUserQuestion repairs a declared question left with one distinct choice', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
+    questions: [
+      {
+        question: 'Which reel design should I build?',
+        header: 'Reel design',
+        options: [
+          { label: 'Full reel', description: 'Build the complete wound reel.' },
+          { label: 'full reel', description: 'Duplicate model suggestion.' },
+        ],
+      },
+    ],
+  })
+
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions[0]!.options.map(option => option.label)).toEqual([
+    'Full reel',
+    'Different answer',
+  ])
+})
+
 // `header` is this tool's word for a short label, so a model naming a choice
 // reaches for it. Eight options arrived as eight question objects carrying a
 // header and a description — every entry reporting a missing question and
@@ -266,17 +321,17 @@ test('AskUserQuestion folds header-labelled choices back into one question', () 
   })
 })
 
-// Naming what arrived is the one fact that separates an unrepairable payload
-// from a repairable shape the normalizer has not been taught yet.
-test('AskUserQuestion reports the keys it actually received', () => {
-  const normalized = normalizeAskUserQuestionInput({
+test('AskUserQuestion repairs a header-and-description suggestion', () => {
+  const parsed = AskUserQuestionTool.inputSchema.safeParse({
     questions: [{ header: 'A', description: 'a' }],
   })
 
-  expect(describeQuestionPayloadProblems(normalized).length).toBeGreaterThan(0)
-  expect(describeQuestionPayloadShape(normalized)).toContain(
-    'has keys: header, description',
-  )
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions[0]!.options.map(option => option.label)).toEqual([
+    'A',
+    'Different answer',
+  ])
 })
 
 test('AskUserQuestion recovery never retargets a genuine multi-question payload', () => {
@@ -533,11 +588,16 @@ test('AskUserQuestion rejects unbounded clarification option lists', () => {
   expect(parsed.success).toBe(false)
 })
 
-test('AskUserQuestion still rejects duplicate inferred option labels', () => {
+test('AskUserQuestion turns duplicate-only inferred options into a rejectable decision', () => {
   const parsed = AskUserQuestionTool.inputSchema.safeParse({
-    question: 'Which duplicate option should fail?',
+    question: 'Which duplicate option should I use?',
     options: ['Same', 'Same'],
   })
 
-  expect(parsed.success).toBe(false)
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions[0]!.options.map(option => option.label)).toEqual([
+    'Same',
+    'Different answer',
+  ])
 })

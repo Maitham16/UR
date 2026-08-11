@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.80.2
+
+- Repaired repeated `AskUserQuestion` validation loops when a model emits one
+  flattened `{label, header, description}` suggestion, one ordinary option, or
+  duplicate-only options. UR preserves the model's suggestion and adds only a
+  neutral `Different answer` rejection path; it never fabricates a second
+  domain choice or selects an answer for the user. Zero-option questions still
+  fail closed.
+
 ## 1.80.1
 
 - Removed the complete unreachable `ultraplan` implementation after its public

@@ -170,10 +170,22 @@ describe('schema accepts payloads that previously required a retry', () => {
     }
   })
 
-  test('a genuinely unaskable question is still rejected', () => {
-    // Repair must not manufacture a second choice.
+  test('a single suggestion gains a neutral rejection choice', () => {
     const result = schema.safeParse({
       questions: [question('What should I do?', ['Only one'])],
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.questions[0]!.options.map(option => option.label)).toEqual([
+        'Only one',
+        'Different answer',
+      ])
+    }
+  })
+
+  test('a zero-option question is still rejected rather than fabricated', () => {
+    const result = schema.safeParse({
+      questions: [question('What should I do?', [])],
     })
     expect(result.success).toBe(false)
   })

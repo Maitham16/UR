@@ -12,7 +12,7 @@ import type { Tool } from '../../Tool.js';
 import { buildTool, type ToolDef } from '../../Tool.js';
 import { lazySchema } from '../../utils/lazySchema.js';
 import { ASK_USER_QUESTION_TOOL_CHIP_WIDTH, ASK_USER_QUESTION_TOOL_NAME, ASK_USER_QUESTION_TOOL_PROMPT, DESCRIPTION, PREVIEW_FEATURE_PROMPT } from './prompt.js';
-import { dedupeQuestions } from './normalizeQuestions.js';
+import { repairSingleOptionQuestions } from './normalizeQuestions.js';
 function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -258,20 +258,20 @@ function looksLikeOptionEntry(value: unknown): boolean {
 
 /**
  * Recovers the common shape where a model flattens one question's choices
- * straight into `questions`, so six options arrive as six question objects
- * that each carry a label and a description and no question text at all.
+ * straight into `questions`, so options arrive as question objects that each
+ * carry a label and a description and no question text at all.
  *
  * Everything needed is present — it is nested one level wrong — so the array
  * is folded back into the options of a single question. Prefer question text
  * the payload already carries at the top level. If the model omitted it, use a
- * neutral prompt instead of throwing sixteen field errors and discarding all
- * eight valid choices; this does not infer any domain-specific intent.
+ * neutral prompt instead of throwing field errors and discarding valid
+ * choices; this does not infer any domain-specific intent.
  */
 function recoverFlattenedOptions(
   input: Record<string, unknown>,
   entries: unknown[],
 ): unknown | null {
-  if (entries.length < 2 || !entries.every(looksLikeOptionEntry)) return null
+  if (entries.length < 1 || !entries.every(looksLikeOptionEntry)) return null
   const questionText =
     stringField(input, [
       'question',
@@ -365,7 +365,7 @@ export function normalizeAskUserQuestionInput(value: unknown): unknown {
           : null
       return entry
     })
-    const normalized = dedupeQuestions(questions.filter((entry): entry is Record<string, unknown> => entry !== null && typeof entry === 'object'))
+    const normalized = repairSingleOptionQuestions(questions.filter((entry): entry is Record<string, unknown> => entry !== null && typeof entry === 'object'))
     if (normalized.length > 0) {
       return {
         questions: normalized.slice(0, 4),
@@ -382,7 +382,7 @@ export function normalizeAskUserQuestionInput(value: unknown): unknown {
       return {
         // Duplicates are repaired here rather than rejected by the uniqueness
         // refinement, which would fail the call and force a retry round trip.
-        questions: dedupeQuestions(normalized),
+        questions: repairSingleOptionQuestions(normalized),
         ...commonFields
       };
     }
@@ -393,7 +393,7 @@ export function normalizeAskUserQuestionInput(value: unknown): unknown {
     const recovered = recoverFlattenedOptions(input, input.questions)
     if (recovered && typeof recovered === 'object') {
       return {
-        questions: dedupeQuestions([recovered]),
+        questions: repairSingleOptionQuestions([recovered]),
         ...commonFields
       };
     }
@@ -405,7 +405,7 @@ export function normalizeAskUserQuestionInput(value: unknown): unknown {
       // Duplicates are repaired here rather than rejected by the uniqueness
       // refinement, which would fail the call and force a retry round trip.
       return {
-        questions: dedupeQuestions([singleQuestion]),
+        questions: repairSingleOptionQuestions([singleQuestion]),
         ...commonFields
       };
     }

@@ -50,7 +50,9 @@ application. Use Blender locally, or run the 3ds Max project on a Windows host.
 
 When UR needs a focused clarification, it uses the `AskUserQuestion` dialog.
 Professional clarification prompts can provide up to eight concrete options;
-UR also accepts custom "Other" answers when the dialog includes one.
+UR also accepts custom "Other" answers. If a model supplies only one concrete
+suggestion, UR keeps it and adds a neutral `Different answer` rejection path
+instead of showing an internal validation error or inventing another choice.
 
 ## Print Mode
 
