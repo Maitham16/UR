@@ -5,7 +5,7 @@ import {
 } from '../src/skills/bundledSkills.js'
 import { registerBenchmarkSkill } from '../src/skills/bundled/benchmark.js'
 import { registerBatchSkill } from '../src/skills/bundled/batch.js'
-import { registerFixBugSkill } from '../src/skills/bundled/debug-v2.js'
+import { registerFixBugSkill } from '../src/skills/bundled/fix-bug.js'
 import { registerDockerizeSkill } from '../src/skills/bundled/dockerize.js'
 import { registerLatexPaperSkill } from '../src/skills/bundled/latex-paper.js'
 import { registerPaperImplementationSkill } from '../src/skills/bundled/paper-implementation.js'

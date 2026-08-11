@@ -735,7 +735,6 @@ export async function teleportToRemote(options: {
   description?: string;
   model?: string;
   permissionMode?: PermissionMode;
-  ultraplan?: boolean;
   signal: AbortSignal;
   useDefaultEnvironment?: boolean;
   /**
@@ -1128,8 +1127,7 @@ export async function teleportToRemote(options: {
           request_id: `set-mode-${randomUUID()}`,
           request: {
             subtype: 'set_permission_mode',
-            mode: options.permissionMode,
-            ultraplan: options.ultraplan
+            mode: options.permissionMode
           }
         }
       });
@@ -1150,7 +1148,7 @@ export async function teleportToRemote(options: {
       });
     }
     const requestBody = {
-      title: options.ultraplan ? `ultraplan: ${sessionTitle}` : sessionTitle,
+      title: sessionTitle,
       events,
       session_context: sessionContext,
       environment_id: environmentId

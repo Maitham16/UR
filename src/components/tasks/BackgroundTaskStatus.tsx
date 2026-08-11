@@ -8,7 +8,7 @@ import { stringWidth } from 'src/ink/stringWidth.js';
 import { useAppState, useSetAppState } from 'src/state/AppState.js';
 import { enterTeammateView, exitTeammateView } from 'src/state/teammateViewHelpers.js';
 import { isPanelAgentTask } from 'src/tasks/LocalAgentTask/LocalAgentTask.js';
-import { getPillLabel, pillNeedsCta } from 'src/tasks/pillLabel.js';
+import { getPillLabel } from 'src/tasks/pillLabel.js';
 import { type BackgroundTaskState, isBackgroundTask, type TaskState } from 'src/tasks/types.js';
 import { calculateHorizontalScrollWindow } from 'src/utils/horizontalScroll.js';
 import { Box, Text } from '../../ink.js';
@@ -214,24 +214,7 @@ export function BackgroundTaskStatus(t0) {
   } else {
     t9 = $[42];
   }
-  let t10;
-  if ($[43] !== runningTasks) {
-    t10 = pillNeedsCta(runningTasks) && <Text dimColor={true}> · {figures.arrowDown} to view</Text>;
-    $[43] = runningTasks;
-    $[44] = t10;
-  } else {
-    t10 = $[44];
-  }
-  let t11;
-  if ($[45] !== t10 || $[46] !== t9) {
-    t11 = <>{t9}{t10}</>;
-    $[45] = t10;
-    $[46] = t9;
-    $[47] = t11;
-  } else {
-    t11 = $[47];
-  }
-  return t11;
+  return t9;
 }
 function _temp1(pill_0, i_0) {
   const pillText = `@${pill_0.name}`;

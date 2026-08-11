@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.80.1
+
+- Removed the complete unreachable `ultraplan` implementation after its public
+  command was disabled: stale task types, pills, metadata, polling, prompt
+  routing, and UI state can no longer create a half-supported workflow. The
+  active `ultrareview` workflow remains supported and unchanged.
+- Renamed the `/fix-bug` source module and test from their obsolete `debug-v2`
+  filenames, without changing the public command contract.
+- Recorded the retracted Agent-to-Agent version finding: UR deliberately serves
+  truthful legacy 0.3 and modern v1 cards through negotiation, so no protocol
+  behavior was changed.
+- “Approve all”/`autoApprove` remains supported and unchanged.
+
 ## 1.80.0
 
 - Sandbox security now supports trusted-source-only credential masking and

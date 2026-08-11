@@ -1,6 +1,7 @@
 # UR Gap Analysis — 2026-08-11 Implemented Release Audit
 
-Baseline audited: `ur-agent@1.79.1`, commit `6faed11`. Release target: `1.80.0`.
+Baseline audited: `ur-agent@1.79.1`, commit `6faed11`. Implemented in
+`1.80.0`; stale-feature cleanup completed in `1.80.1`.
 Primary references were rechecked before implementation: Claude Code
 2.1.221–2.1.224, the final Model Context Protocol specification dated
 2026-07-28, and the Agent2Agent 1.0 release.
@@ -34,16 +35,19 @@ unchanged. UR does not add automated approval delegation.
 
 - `roots/list` was not absent. UR already served the initial working directory;
   this release extends it to added directories and change notifications.
-- The old and modern Agent-to-Agent cards are separate negotiated compatibility
-  representations. The old card’s version is truthful and must not be relabeled.
+- Retracted finding: the old and modern Agent-to-Agent cards are separate,
+  negotiated compatibility representations selected by `a2aServer.ts`. The
+  legacy card’s `protocolVersion: 0.3.0` is truthful; the v1 card is produced
+  separately by `a2aV1.ts` and signed independently. No code fix was required.
 - gRPC transport and AP2 payments are optional integrations, not correctness
   requirements for UR’s local coding-agent surface. Shipping either without a
   real transport consumer, payment policy, credential model, and end-to-end
   conformance suite would add attack surface without useful capability, so they
   are deliberately omitted.
-- Anthropic removed `ultraplan` in Claude Code 2.1.222. UR’s registered command
-  was also permanently disabled, so the registration was removed as dead public
-  weight. Shared remote-planning internals used by active features remain.
+- Anthropic removed `ultraplan` in Claude Code 2.1.222. UR’s command was already
+  unregistered and permanently disabled, so 1.80.1 removes its unreachable
+  command, task state, pills, metadata, polling, and UI. The active
+  `ultrareview` workflow remains available with its own keyword helper.
 - `EndConversation`, managed-gateway spend UX, `/dataviz`, and automated
   approval delegation remain intentionally omitted. They either duplicate
   existing controls, are content rather than capability, or weaken the explicit

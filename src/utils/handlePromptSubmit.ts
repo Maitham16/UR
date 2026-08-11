@@ -518,7 +518,6 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
         const isFirst = i === 0
         const result = await processUserInput({
           input: cmd.value,
-          preExpansionInput: cmd.preExpansionValue,
           mode: cmd.mode,
           setToolJSX,
           context: makeContext(),
