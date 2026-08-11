@@ -9,6 +9,18 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.80.0 Additions
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Credential-safe sandbox | `sandbox.credentials`, `sandbox.network.strictAllowlist`, `sandbox.network.tlsTerminate` | Masked file/environment credentials, JWT claims, AWS/SigV4 handling, strict unattended egress, trusted-source-only policy, and trailing-slash deny regression coverage. |
+| Permission parser hardening | `Tool(parameter:value)`, Bash/PowerShell checks | Parameter-aware wildcard rules, zsh conditional command detection, visible hidden characters, and quoted PowerShell path validation. |
+| Accessible terminal | `--screen-reader`, `/config screenReader=true` | Append-only plain output, edit announcements, and reduced animation. |
+| Current agent protocols | `ur mcp serve-web`, roots notifications, `input_required` | Final tool-input continuation results, compatibility roots, added-directory notifications, Tasks, and Apps under one professionally named web surface. |
+| Bounded observable delegation | `--forward-subagent-text`, session budgets, OpenTelemetry | Nested-agent text correlation, WebSearch session limits, advisory spawn warnings, assistant response events, and workflow/run correlation. |
+| Session and input ergonomics | `/session`, `ur session`, `/config key=value`, `DirectoryAdded`, `vimEscape` | Explicit archive/restore, direct settings, directory automation, and Vim insert escape sequences. |
+| Command cleanup | `/fix-bug`, command registry integrity | Replaces the versioned debug-skill name, removes no-op command registrations and duplicate 3D aliases, and rejects version jargon in public command descriptions. |
+
 ## v1.79.1 Addition
 
 | Addition | Surface | What it adds |
@@ -97,7 +109,7 @@ trust boundaries.
 - ACP stdio now implements durable list/load/delete/resume/close, bounded exact
   history replay, modes, configuration options, and available commands in
   addition to streaming prompts, permission requests, MCP servers, and roots.
-- `ur mcp serve-http` exposes the opt-in stateless MCP 2026 compatibility
+- `ur mcp serve-web` exposes the opt-in stateless Model Context Protocol
   surface with Tasks and a self-contained Apps resource. It is loopback-only
   without authentication and enforces request metadata, capability negotiation,
   owner isolation, limits, private persistence, and corrupt-state quarantine.
@@ -243,7 +255,7 @@ automatically changes the active provider.
 | Deterministic slash registry | `src/commands.ts`, `test/commandRegistryIntegrity.test.ts` | Resolves bundled, plugin, project, workflow, and built-in commands by explicit source priority; rejects duplicate canonical tokens, removes only conflicting aliases, validates every lazy loader, and keeps the technical command catalog complete. |
 | Unified sandbox command | `/sandbox [status\|check\|init\|eval\|exclude]` | One interactive slash command now owns both the settings UI and text subcommands; the shell-facing `ur sandbox` implementation is shared rather than separately registered. |
 | Actionable CI cwd handling | `ur ci-loop --cwd <path>` | Reports the absolute execution directory, retains assertion and stack context, and stops "No tests found" after one attempt without wasting a fix-agent run. |
-| Explicit worktree completion | `/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`, `/batch` | Keeps changes local, asks before the final full suite, and never commits, pushes, or opens a PR unless separately requested. |
+| Explicit worktree completion | `/fix-bug`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`, `/batch` | Keeps changes local, asks before the final full suite, and never commits, pushes, or opens a PR unless separately requested. |
 
 ## v1.25.x Additions
 
@@ -305,8 +317,8 @@ components instead of one giant prompt.
 | Addition | Surface | What it adds |
 | --- | --- | --- |
 | Agent skill runner | `src/services/agents/agentSkillRunner.ts` | Reusable isolated-worktree wrapper that polls to completion; PR creation is available only with explicit `createPr: true`. |
-| Worktree slash skills | `/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`, `/batch` | Bundled slash skills keep changes local, run focused checks, ask before the final full suite, and never publish automatically. |
-| Agent templates | `ur agent-templates install` | Adds `debug-v2`, `refactor`, `paper-implementation`, `benchmark`, `security-review`, `dockerize`, and `latex-paper` reusable agent templates under `.ur/agents/`. |
+| Worktree slash skills | `/fix-bug`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`, `/batch` | Bundled slash skills keep changes local, run focused checks, ask before the final full suite, and never publish automatically. |
+| Agent templates | `ur agent-templates install` | Adds `bug-fixer`, `refactor`, `paper-implementation`, `benchmark`, `security-review`, `dockerize`, and `latex-paper` reusable agent templates under `.ur/agents/`. |
 | Worktree command | `ur worktree list\|status\|clean` | Inspect and clean up UR agent worktrees created by `ur bg` or slash skills. |
 
 ## v1.20.0 Additions
@@ -331,7 +343,7 @@ while keeping them project-local and manifest-backed:
 | --- | --- | --- |
 | Agent | `ur`, `ur agents`, `ur crew`, `ur bg`, `ur agent-templates` | `.ur/agents/`, `AGENTS.md`, `UR.md` |
 | Rules | `ur context-pack scan`, `ur safety`, `/guardrails`, `/hooks` | `AGENTS.md`, `UR.md`, `.cursor/rules/*.mdc`, `.cursorrules`, `.ur/safety-policy.json`, `.ur/guardrails.json`, `.ur/hooks.json` |
-| MCP | `ur mcp`, stdio mode, opt-in MCP 2026 HTTP Tasks/Apps, tools/resources | `.mcp.json`, `.ur/mcp/`, plugin manifests |
+| Model Context Protocol | `ur mcp`, standard-input mode, opt-in web Tasks/Apps, tools/resources | `.mcp.json`, `.ur/mcp/`, plugin manifests |
 | Skills | `/skills`, `/create-skill`, `ur skill verify\|sign\|keygen`, bundled/plugin skills | `.ur/skills/`, `.agents/skills/`, user skills, plugin skill folders, trusted key store |
 | CLI | `ur --help`, `ur -p`, `ur exec`, `ur acp`, workflow subcommands | `package.json` scripts, `.ur/project-manifest.json`, `.ur/verify.json` |
 | Models | `/model`, `ur model-doctor`, model router, Ollama discovery | Ollama endpoint, settings, `OLLAMA_MODEL`, model metadata cache |

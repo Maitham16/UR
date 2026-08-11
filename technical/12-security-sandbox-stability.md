@@ -9,7 +9,9 @@ Source of truth: `src/utils/permissions/`, `src/utils/sandbox/`, `src/services/s
 Every tool call is checked (doc 04 §Permission model):
 - Rules: `allow` / `ask` / `deny` lists in settings `permissions`, `--allowedTools` /
   `--disallowedTools`, or the `/permissions` UI. Syntax `Tool` or `Tool(specifier)`
-  (`Bash(git:*)`, `Edit(src/**)`, `mcp__server__tool`).
+  (`Bash(git:*)`, `Edit(src/**)`, `mcp__server__tool`). Parameter-aware rules
+  use `Tool(parameter:value)` with wildcards, for example `Agent(model:opus)`
+  or `Bash(timeout:*)`.
 - Modes: `permissions.defaultMode` / `--permission-mode`:
   `default`, `plan`, `acceptEdits`, `autoApprove`. `autoApprove` skips
   command/tool approval prompts while preserving user-input dialogs.
@@ -40,6 +42,39 @@ profiles. Paths are canonicalized through existing parents. Selective domain
 policies fail closed to blocked network access when the compatibility runtime
 cannot enforce domain-level filtering; bare-repository cleanup removes only a
 signature-verified repository created during the command.
+
+Credential and egress controls are accepted only from user, command-line, or
+managed policy settings; repository-local settings cannot inject credentials
+or weaken the boundary. A minimal user-settings example is:
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "network": {
+      "allowedDomains": ["api.example.com"],
+      "strictAllowlist": true,
+      "tlsTerminate": {}
+    },
+    "credentials": {
+      "envVars": [
+        { "name": "API_TOKEN", "mode": "mask", "injectHosts": ["api.example.com"] }
+      ]
+    }
+  }
+}
+```
+
+Files and environment variables support `deny` or `mask`, regex extraction,
+JWT decoding with selected `maskClaims`, host-scoped injection, AWS key pairs,
+and SigV4 request rewriting. TLS termination uses an ephemeral per-session CA
+unless a trusted CA pair is configured. `strictAllowlist` denies unknown hosts
+without an interactive prompt, which makes unattended runs deterministic.
+
+The permission display renders tabs, control characters, zero-width code
+points, and bidirectional controls visibly. Bash analysis includes commands
+hidden in zsh `[[ ... ]]` conditionals; PowerShell path parsing rejects quoted
+path ambiguity. These checks do not change `autoApprove`/“Approve all”.
 
 ### Deny-default profiles
 

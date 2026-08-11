@@ -176,6 +176,8 @@ export type ToolUseContext = {
     querySource?: QuerySource
     /** Optional callback to get the latest tools (e.g., after MCP servers connect mid-query) */
     refreshTools?: () => Tools
+    /** Forward completed nested-agent assistant messages to stream-json. */
+    forwardSubagentText?: boolean
   }
   abortController: AbortController
   readFileState: FileStateCache

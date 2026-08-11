@@ -18,9 +18,11 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | `--output-format <fmt>` | `text`, `json`, `stream-json` (with `-p`) | `ur -p "hi" --output-format json` |
 | `--include-partial-messages` | Stream partial chunks (needs `-p` + `stream-json`) | — |
 | `--include-hook-events` | Emit hook lifecycle events in stream output | — |
+| `--forward-subagent-text` | Emit completed nested-agent text with parent tool correlation (needs `-p` + `stream-json`) | — |
 | `--replay-user-messages` | Echo stdin user messages back on stdout (stream-json in/out) | — |
 | `--bare` | Minimal mode: no hooks/LSP/plugins/auto-memory/UR.md; local Ollama only; sets `UR_CODE_SIMPLE=1` | `ur --bare` |
 | `--offline` | Local-first: no cloud APIs, telemetry, auto-update, remote control | `ur --offline` |
+| `--screen-reader` | Append-only accessible output, text-edit announcements, and reduced animation | `ur --screen-reader` |
 | `--model <model>` | Session model (e.g. an Ollama tag) | `ur --model qwen2.5-coder:7b` |
 | `--fallback-model <model>` | Auto-fallback when primary is overloaded (with `-p`) | — |
 | `--agent <agent>` | Run as a named agent config | `ur --agent reviewer` |
@@ -69,6 +71,9 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | `ur doctor` | Installation health check | `ur doctor` |
 | `ur log` / `ur error` | Show logs / recent errors | — |
 | `ur export` | Export conversation data | — |
+| `ur session list` | List resumable and archived local conversations | `ur session list` |
+| `ur session archive <id>` | Archive a conversation so resume/fork cannot select it | `ur session archive 6f9…` |
+| `ur session unarchive <id>` | Restore an archived conversation | `ur session unarchive 6f9…` |
 
 ### Model / provider
 | Command | Purpose | Example |
@@ -91,7 +96,7 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | `ur mcp add-from-ur-desktop` | Import servers from UR Desktop | — |
 | `ur mcp list / get <name> / remove <name>` | Inspect and remove servers | `ur mcp get fs` |
 | `ur mcp serve` | Run UR itself as an MCP server (exposes UR tools) | `ur mcp serve` |
-| `ur mcp serve-http` | Run the opt-in stateless MCP 2026 HTTP adapter with Tasks/Apps | `UR_MCP_HTTP_TOKEN=… ur mcp serve-http` |
+| `ur mcp serve-web` | Run the secure stateless Model Context Protocol web server with Tasks/Apps | `UR_MCP_HTTP_TOKEN=… ur mcp serve-web` |
 | `ur mcp reset-project-choices` | Reset approved/rejected `.mcp.json` prompts | — |
 
 ### Agent & automation (headless)
@@ -120,11 +125,11 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 ### Servers & integration endpoints
 | Command | Purpose | Example |
 |---|---|---|
-| `ur a2a serve` | Negotiated A2A v1 JSON-RPC/HTTP+JSON plus stable v0.3 and UR compatibility routes | `UR_A2A_TOKEN=… ur a2a serve --port 8765` |
+| `ur a2a serve` | Negotiated Agent-to-Agent server with automatic client compatibility | `UR_A2A_TOKEN=… ur a2a serve --port 8765` |
 | `ur a2a card` | Print the A2A agent card | `ur a2a card --a2a-base-url https://host` |
 | `ur a2a token mint / verify <token>` | Mint/verify A2A tokens | — |
 | `ur ag-ui serve` | Secure AG-UI HTTP/SSE adapter with capability discovery | `ur ag-ui serve --allow-origin https://app.example` |
-| `ur acp stdio` | Native ACP v1 with durable lifecycle/replay, modes, config, commands, permissions, MCP, and streaming | `ur acp stdio` |
+| `ur acp stdio` | Standard Agent Client Protocol editor connection with durable lifecycle/replay, modes, permissions, tools, and streaming | `ur acp stdio` |
 | `ur acp serve / stop / status` | UR HTTP compatibility API used by the bundled IDE extensions | `ur acp serve --port 9100` |
 | `ur server` | Direct-connect HTTP session server (`--port`, `--host`, `--auth-token`, `--unix`, `--workspace`, `--idle-timeout`, `--max-sessions`, `--permission-mode`) | `ur server --port 8080 --auth-token t0k3n` |
 | `ur ssh <host> [dir]` | Run UR against a remote host over SSH | `ur ssh devbox ~/repo` |

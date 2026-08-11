@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.80.0
+
+- Sandbox security now supports trusted-source-only credential masking and
+  injection, regex/JWT masking, AWS credential pairs, SigV4 rewriting,
+  TLS-terminating egress, denied domains, and a strict network allowlist.
+  Trailing-slash deny paths are regression-tested. Project settings cannot
+  enable credential injection or weaken these boundaries.
+- Permission rules now match tool input parameters with wildcards, including
+  `Agent(model:opus)` and `Bash(timeout:*)`. Bash and PowerShell approval checks
+  detect commands hidden in zsh conditionals, display tabs/control/zero-width/
+  bidirectional characters visibly, and reject quoted-path ambiguity.
+- Screen-reader mode adds append-only plain-text output, edit announcements,
+  reduced animation, `--screen-reader`, `UR_SCREEN_READER`, and
+  `/config screenReader=true`. Vim users can set an insert-mode escape sequence
+  such as `/config editor=vim vimEscape=jj`.
+- Model Context Protocol tools can return final `input_required` continuations;
+  older elicitation remains compatible. Roots now include authorized added
+  directories and emit change notifications. The stateless Tasks/Apps command
+  is now clearly named `ur mcp serve-web`.
+- WebSearch has an atomic per-session budget (200 by default), subagent spawn
+  totals warn without breaking long runs, and `--forward-subagent-text` exposes
+  nested agent answers in stream JSON with parent tool-use correlation.
+- OpenTelemetry adds privacy-safe assistant-response events, message/request/
+  tool correlation, and workflow name/run identity without enabling content
+  capture.
+- `/config key=value`, the `DirectoryAdded` hook, `/session
+  status|list|archive|unarchive`, and matching `ur session` commands add direct
+  automation and conversation lifecycle control. Archived conversations remain
+  unavailable to resume/fork until explicitly restored.
+- Public command cleanup renamed `/debug-v2` to `/fix-bug`, removed the no-op
+  `/output-style` and dormant `/ultraplan` registrations, removed redundant 3D
+  aliases, expanded protocol help text, and added registry assertions against
+  version jargon. “Approve all”/`autoApprove` remains supported and unchanged.
+- Research, coding-impact analysis, Blender/OpenSCAD/3ds Max/custom-app 3D
+  pipelines, and the self-healing task-output fix from 1.79.x remain fully
+  documented and covered by the release suite.
+
 ## 1.79.1
 
 - Bash execution now survives external cleanup of its session task-output

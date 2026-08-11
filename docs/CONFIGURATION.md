@@ -2,6 +2,21 @@
 
 UR reads configuration from CLI flags, environment variables, and project or user settings files.
 
+Inside an interactive UR session, `/config` opens the settings panel and
+`/config key=value` applies common settings directly:
+
+```text
+/config thinking=false screenReader=true reducedMotion=true
+/config editor=vim vimEscape=jj
+/config verbose=true autoCompact=false
+/config --help
+```
+
+Start UR with `--screen-reader`, set `UR_SCREEN_READER=1`, or use
+`/config screenReader=true` for append-only plain-text output, announced text
+edits, and reduced animation. `vimEscape` accepts 2–8 printable non-whitespace
+characters or `off`.
+
 ## Model Providers
 
 UR-Nexus supports official provider access paths only:
@@ -427,6 +442,32 @@ This sandbox covers UR-run Bash/File tool commands only. For subscription CLI
 providers, it does not extend to actions the external CLI performs internally
 — see [Provider Guide](providers.md).
 
+Security-sensitive sandbox proxy and credential settings are accepted only
+from user, flag, or managed-policy settings. Project settings cannot opt into
+credential injection. Example user settings:
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "network": {
+      "allowedDomains": ["api.example.com"],
+      "strictAllowlist": true,
+      "tlsTerminate": {}
+    },
+    "credentials": {
+      "envVars": [
+        { "name": "API_TOKEN", "mode": "mask", "injectHosts": ["api.example.com"] }
+      ]
+    }
+  }
+}
+```
+
+Credential entries support `deny` or `mask`, regex extraction, JWT claim
+masking, host-scoped injection, AWS key pairs, and SigV4 rewriting. Unknown
+destinations are rejected without prompting when `strictAllowlist` is true.
+
 ## Project Context Pack
 
 `ur context-pack` writes durable architecture context and task memory:
@@ -480,7 +521,7 @@ ur mcp get <name>
 ur mcp add-json <name> '<json>'
 ur mcp remove <name>
 ur mcp serve
-UR_MCP_HTTP_TOKEN='<secret>' ur mcp serve-http --port 8976
+UR_MCP_HTTP_TOKEN='<secret>' ur mcp serve-web --port 8976
 ```
 
 MCP servers may execute code or access external services. Only enable servers you trust, and keep credentials out of committed config.
@@ -492,7 +533,7 @@ adjusted with `UR_MCP_MAX_CALLS_PER_MINUTE`,
 `UR_MCP_MAX_CONCURRENT_CALLS`, `UR_MCP_TOOL_TIMEOUT_MS`,
 `UR_MCP_MAX_INPUT_CHARS`, and `UR_MCP_MAX_OUTPUT_CHARS`.
 
-`serve-http` is a separate, opt-in MCP 2026-07-28 compatibility surface at
+`serve-web` is the separate, opt-in stateless Model Context Protocol web surface at
 `POST /mcp`. It is stateless at the transport layer and exposes capability-
 negotiated Tasks and a self-contained overview App backed by UR's real MCP
 tool registry. Every call must supply matching protocol/method/name metadata.

@@ -1914,6 +1914,15 @@ async function checkPermissionsAndCallTool(
 
     void logOTelEvent('tool_result', {
       tool_name: sanitizeToolNameForAnalytics(tool.name),
+      tool_use_id: toolUseID,
+      tool_source: tool.isMcp ? 'mcp' : tool.isLsp ? 'lsp' : 'built_in',
+      ...(assistantMessage.uuid && {
+        'message.uuid': assistantMessage.uuid,
+      }),
+      ...(requestId && { request_id: requestId }),
+      ...(assistantMessage.clientRequestId && {
+        client_request_id: assistantMessage.clientRequestId,
+      }),
       success: 'true',
       duration_ms: String(durationMs),
       ...(Object.keys(toolParameters).length > 0 && {
@@ -2197,7 +2206,15 @@ async function checkPermissionsAndCallTool(
 
       void logOTelEvent('tool_result', {
         tool_name: sanitizeToolNameForAnalytics(tool.name),
-        use_id: toolUseID,
+        tool_use_id: toolUseID,
+        tool_source: tool.isMcp ? 'mcp' : tool.isLsp ? 'lsp' : 'built_in',
+        ...(assistantMessage.uuid && {
+          'message.uuid': assistantMessage.uuid,
+        }),
+        ...(requestId && { request_id: requestId }),
+        ...(assistantMessage.clientRequestId && {
+          client_request_id: assistantMessage.clientRequestId,
+        }),
         success: 'false',
         duration_ms: String(durationMs),
         error: errorMessage(error),

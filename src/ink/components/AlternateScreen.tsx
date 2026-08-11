@@ -4,6 +4,7 @@ import instances from '../instances.js';
 import { DISABLE_MOUSE_TRACKING, ENABLE_MOUSE_TRACKING, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN } from '../termio/dec.js';
 import { TerminalWriteContext } from '../useTerminalNotification.js';
 import Box from './Box.js';
+import { isScreenReaderMode } from '../../utils/screenReader.js';
 import { TerminalSizeContext } from './TerminalSizeContext.js';
 type Props = PropsWithChildren<{
   /** Enable SGR mouse tracking (wheel + click/drag). Default true. */
@@ -47,6 +48,7 @@ export function AlternateScreen(t0) {
       if (!writeRaw) {
         return;
       }
+      if (isScreenReaderMode()) return;
       writeRaw(ENTER_ALT_SCREEN + "\x1B[2J\x1B[H" + (mouseTracking ? ENABLE_MOUSE_TRACKING : ""));
       ink?.setAltScreenActive(true, mouseTracking);
       return () => {

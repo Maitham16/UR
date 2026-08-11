@@ -438,16 +438,16 @@ as first-class subcommands in the shipped CLI.
 | `ur auth gemini` | Use the official Gemini CLI login flow where supported. |
 | `ur auth antigravity` | Use the official Antigravity CLI login flow where supported. |
 | `ur config set` | Persist safe non-secret provider settings such as provider, model, base URL, command path, and fallback. |
-| `ur mcp` | Configure MCP servers, expose fail-closed built-in tools over stdio, or run the opt-in stateless MCP 2026 HTTP adapter with Tasks and Apps. |
+| `ur mcp` | Configure Model Context Protocol servers, expose fail-closed built-in tools over standard input/output, or run the secure stateless web server with Tasks and Apps. |
 | `ur skill` | Initialize, run, strictly verify, Ed25519-sign, and create trusted signing keys for portable skills. |
 | `ur ag-ui serve` | Start the secure AG-UI HTTP/SSE adapter for user-facing applications with truthful capability discovery. |
 | `ur plugin` | Install, update, enable, disable, and validate UR plugins that can add MCP tools, skills, templates, validators, language adapters, LSP servers, agents, hooks, output styles, and commands. |
 | `ur role-mode` | Install built-in Architect, Code, Debug, and Ask role modes. |
-| `ur acp` | Run official-SDK ACP v1 over stdio, or manage the separate UR HTTP JSON-RPC server. |
+| `ur acp` | Connect editors through the Agent Client Protocol, or manage the separate UR HTTP JSON-RPC server. |
 | `ur exec` | Run one or more prompts in non-interactive mode with optional concurrency. |
 | `ur ide diff` | Capture editor-readable inline diff bundles. |
-| `ur a2a card` | Print the v0.3 Agent Card preview; the live server negotiates a separate strict v1 card. |
-| `ur a2a serve` | Start opt-in A2A v0.3 plus v1 JSON-RPC/HTTP+JSON bindings and the separate UR compatibility task API. |
+| `ur a2a card` | Print Agent-to-Agent discovery metadata. |
+| `ur a2a serve` | Start the negotiated Agent-to-Agent server with automatic client compatibility. |
 | `ur sdk` | Show programmatic headless usage and scaffold SDK examples. |
 | `ur trigger` | Parse a GitHub/Slack webhook payload and optionally launch a headless UR run. |
 | `ur agent-templates` | List or install reusable project agent templates. |
@@ -531,7 +531,7 @@ setup, supported features, and limitations.
 New slash skills run agentic work in isolated git worktrees and leave changes
 local for review. They ask before the final full verification suite and do not
 commit, push, or create PRs unless explicitly requested:
-`/debug-v2`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`.
+`/fix-bug`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`.
 Install matching agent templates with `ur agent-templates install`.
 
 New built-in tools (exposed through MCP and the UR HTTP compatibility API): GitHub, API, Browser, Docker, TestRunner, Database. File-system and terminal tools are already built in (FileRead, FileEdit, FileWrite, Glob, Grep, Bash, PowerShell).
@@ -644,7 +644,7 @@ ur skill run security-review "src/auth.ts"
 ur skill verify security-review --require-trusted
 ur skill keygen release --out ~/.ur/keys/release.pem
 ur skill sign security-review --key ~/.ur/keys/release.pem --key-id release
-UR_MCP_HTTP_TOKEN='<secret>' ur mcp serve-http --port 8976
+UR_MCP_HTTP_TOKEN='<secret>' ur mcp serve-web --port 8976
 ur artifacts capture-tests --command "bun test"
 ur artifacts serve --port 4180
 ur agent-task pr --create --dry-run

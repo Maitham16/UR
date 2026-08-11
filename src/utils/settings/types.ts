@@ -1123,6 +1123,12 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Reduce or disable animations for accessibility (spinner shimmer, flash effects, etc.)',
         ),
+      screenReaderMode: z
+        .boolean()
+        .optional()
+        .describe(
+          'Use append-only plain-text terminal rendering and announce text insertions and deletions for screen readers',
+        ),
       autoMemoryEnabled: z
         .boolean()
         .optional()

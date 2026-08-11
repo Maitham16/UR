@@ -229,6 +229,8 @@ export type GlobalConfig = {
   oauthAccount?: AccountInfo
   iterm2KeyBindingInstalled?: boolean // Legacy - keeping for backward compatibility
   editorMode?: EditorMode
+  /** Printable sequence that leaves Vim INSERT mode, for example "jj". */
+  vimInsertModeEscapeSequence?: string
   bypassPermissionsModeAccepted?: boolean
   hasUsedBackslashReturn?: boolean
   autoCompactEnabled: boolean // Controls whether auto-compact is enabled
@@ -593,6 +595,7 @@ function createDefaultGlobalConfig(): GlobalConfig {
     preferredNotifChannel: 'auto',
     verbose: false,
     editorMode: 'normal',
+    vimInsertModeEscapeSequence: undefined,
     autoCompactEnabled: true,
     compactionAutoThreshold: undefined,
     codeIndexAutoReindex: false,
@@ -640,6 +643,7 @@ export const GLOBAL_CONFIG_KEYS = [
   'preferredNotifChannel',
   'shiftEnterKeyBindingInstalled',
   'editorMode',
+  'vimInsertModeEscapeSequence',
   'hasUsedBackslashReturn',
   'autoCompactEnabled',
   'compactionAutoThreshold',

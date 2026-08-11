@@ -3,7 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { getOriginalCwd, setOriginalCwd } from '../src/bootstrap/state.js'
-import { SandboxManager } from '../src/utils/sandbox/sandbox-adapter.js'
+import {
+  SandboxManager,
+  SandboxRuntimeConfigSchema,
+} from '../src/utils/sandbox/sandbox-adapter.js'
 import { SandboxManager as BaseSandboxManager } from '../src/utils/sandbox/sandboxRuntimeCompat.js'
 import { resetSettingsCache } from '../src/utils/settings/settingsCache.js'
 import { updateSettingsForSource } from '../src/utils/settings/settings.js'
@@ -38,6 +41,17 @@ describe('sandbox-adapter (direct regression coverage)', () => {
     if (error) throw error
     resetSettingsCache()
   }
+
+  test('official validation rejects masked credentials without safe TLS substitution', () => {
+    const result = SandboxRuntimeConfigSchema.safeParse({
+      network: { allowedDomains: ['api.example.com'], deniedDomains: [] },
+      filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
+      credentials: {
+        envVars: [{ name: 'EXAMPLE_TOKEN', mode: 'mask' }],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
 
   async function withAvailableBaseSandbox<T>(run: () => T | Promise<T>): Promise<T> {
     const platformSpy = spyOn(BaseSandboxManager, 'isSupportedPlatform').mockReturnValue(true)
@@ -123,8 +137,17 @@ describe('sandbox-adapter (direct regression coverage)', () => {
   test('wrapWithSandbox forwards network/filesystem customConfig to the base runtime unchanged', async () => {
     setSandboxSettings({ enabled: false }) // skip the initializationPromise gate entirely
     const customConfig = {
-      network: { blockAll: true, allowedDomains: ['example.com'], deniedDomains: ['evil.invalid'] },
-      filesystem: { allowWrite: ['/tmp/allowed'], denyWrite: ['/tmp/denied'] },
+      network: {
+        allowedDomains: ['example.com'],
+        deniedDomains: ['evil.invalid'],
+        strictAllowlist: true,
+      },
+      filesystem: {
+        allowRead: [],
+        denyRead: [],
+        allowWrite: ['/tmp/allowed'],
+        denyWrite: ['/tmp/denied'],
+      },
     }
     const wrapSpy = spyOn(BaseSandboxManager, 'wrapWithSandbox')
     try {

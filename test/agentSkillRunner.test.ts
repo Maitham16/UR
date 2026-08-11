@@ -170,7 +170,7 @@ describe('agentSkillRunner', () => {
     try {
       const first = await runAgentSkill({
         cwd: dir,
-        skill: 'debug-v2',
+        skill: 'fix-bug',
         prompt: 'fix parser bug',
         dryRun: true,
         pollMs: 50,

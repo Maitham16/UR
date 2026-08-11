@@ -59,6 +59,8 @@ export interface BaseMessage {
   origin?: MessageOrigin | string
   timestamp?: number | string
   requestId?: string
+  /** Client-generated request ID, used to correlate timeouts and retries. */
+  clientRequestId?: string
   subtype?: string
   apiError?: any
   errorDetails?: string

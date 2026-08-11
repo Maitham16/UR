@@ -15,6 +15,10 @@ import { getMainLoopModel, getSmallFastModel } from '../../utils/model/model.js'
 import { getRuleByContentsForTool } from '../../utils/permissions/permissions.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
+import {
+  getWebSearchBudgetSnapshot,
+  reserveWebSearchBudget,
+} from '../../utils/sessionBudgets.js'
 import { getWebSearchPrompt, WEB_SEARCH_TOOL_NAME } from './prompt.js'
 import {
   getToolUseSummary,
@@ -82,13 +86,16 @@ export type { WebSearchProgress } from '../../types/tools.js'
 
 import type { WebSearchProgress } from '../../types/tools.js'
 
-function makeToolSchema(input: Input): BetaWebSearchTool20250305 {
+function makeToolSchema(
+  input: Input,
+  maxUses: number,
+): BetaWebSearchTool20250305 {
   return {
     type: 'web_search_20250305',
     name: 'web_search',
     allowed_domains: input.allowed_domains,
     blocked_domains: input.blocked_domains,
-    max_uses: 8, // Hardcoded to 8 searches maximum
+    max_uses: maxUses,
   }
 }
 
@@ -216,6 +223,18 @@ export const WebSearchTool = buildTool({
     const permissionContext = appState.toolPermissionContext
     const ruleContent = input.query
 
+    const budget = getWebSearchBudgetSnapshot()
+    if (budget.remaining === 0) {
+      return {
+        behavior: 'deny',
+        message: `Web search session budget exhausted (${budget.used}/${budget.limit}). Set UR_MAX_WEB_SEARCHES_PER_SESSION to a larger positive integer or "unlimited" for trusted long-running sessions.`,
+        decisionReason: {
+          type: 'other',
+          reason: 'Per-session web search budget exhausted',
+        },
+      }
+    }
+
     const denyRule = getRuleByContentsForTool(
       permissionContext,
       WebSearchTool,
@@ -310,7 +329,13 @@ export const WebSearchTool = buildTool({
     const userMessage = createUserMessage({
       content: 'Perform a web search for the query: ' + query,
     })
-    const toolSchema = makeToolSchema(input)
+    const budget = reserveWebSearchBudget(8)
+    if (budget.granted === 0) {
+      throw new Error(
+        `Web search session budget exhausted (${budget.limit} searches).`,
+      )
+    }
+    const toolSchema = makeToolSchema(input, budget.granted)
 
     const usemodelH = getFeatureValue_CACHED_MAY_BE_STALE(
       'tengu_plum_vx3',
@@ -349,7 +374,9 @@ export const WebSearchTool = buildTool({
     let progressCounter = 0
     const toolUseQueries = new Map() // Map of tool_use_id to query
 
-    for await (const event of queryStream) {
+    let actualSearches = 0
+    try {
+      for await (const event of queryStream) {
       if (event.type === 'assistant') {
         allContentBlocks.push(...event.message.content)
         continue
@@ -420,6 +447,7 @@ export const WebSearchTool = buildTool({
       ) {
         const contentBlock = event.event.content_block
         if (contentBlock && contentBlock.type === 'web_search_tool_result') {
+          actualSearches++
           // Get the actual query that was used for this search
           const toolUseId = contentBlock.tool_use_id
           const actualQuery = toolUseQueries.get(toolUseId) || query
@@ -438,6 +466,12 @@ export const WebSearchTool = buildTool({
           }
         }
       }
+      }
+    } finally {
+      // A started WebSearch invocation consumes at least one unit even when
+      // the provider fails before emitting a result block. Refunding every
+      // failed attempt would let a retry loop bypass the session ceiling.
+      budget.finalize(Math.max(1, actualSearches))
     }
 
     // Process the final result

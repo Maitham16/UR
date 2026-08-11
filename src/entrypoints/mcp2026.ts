@@ -5,6 +5,8 @@ import { createMCPServer } from './mcp.js'
 import { createLinkedTransportPair } from '../services/mcp/InProcessTransport.js'
 import {
   MCP_2026_PROTOCOL_VERSION,
+  MCP_HEADER_MISMATCH,
+  MCP_UNSUPPORTED_PROTOCOL_VERSION,
   Mcp2026Error,
   Mcp2026Runtime,
   mcp2026HttpStatus,
@@ -177,14 +179,14 @@ function validateRequestEnvelope(
   if (!headerMethod || headerMethod !== method) {
     throw rpcError(
       requestId(payload),
-      -32001,
+      MCP_HEADER_MISMATCH,
       `Header mismatch: Mcp-Method must exactly match '${method}'`,
     )
   }
   if (request.headers.has('mcp-session-id')) {
     throw rpcError(
       requestId(payload),
-      -32001,
+      MCP_HEADER_MISMATCH,
       `Mcp-Session-Id was removed in MCP ${MCP_2026_PROTOCOL_VERSION}`,
     )
   }
@@ -213,7 +215,7 @@ function validateRequestEnvelope(
     ) {
       throw rpcError(
         requestId(payload),
-        -32001,
+        MCP_HEADER_MISMATCH,
         `Header mismatch: Mcp-Name must exactly match params.${nameField}`,
       )
     }
@@ -222,14 +224,14 @@ function validateRequestEnvelope(
   if (!protocolHeader) {
     throw rpcError(
       requestId(payload),
-      -32001,
+      MCP_HEADER_MISMATCH,
       'MCP-Protocol-Version header is required',
     )
   }
   if (protocolHeader !== MCP_2026_PROTOCOL_VERSION) {
     throw rpcError(
       requestId(payload),
-      -32004,
+      MCP_UNSUPPORTED_PROTOCOL_VERSION,
       `Unsupported MCP protocol version '${protocolHeader}'`,
       {
         supported: [MCP_2026_PROTOCOL_VERSION],
@@ -244,7 +246,7 @@ function validateRequestEnvelope(
   if (meta['io.modelcontextprotocol/protocolVersion'] !== protocolHeader) {
     throw rpcError(
       requestId(payload),
-      -32001,
+      MCP_HEADER_MISMATCH,
       'Header mismatch: MCP-Protocol-Version must match params._meta protocolVersion',
     )
   }
@@ -318,9 +320,13 @@ export async function createUrMcp2026Runtime(options: {
           tools: listed.tools as unknown as Mcp2026Tool[],
         }
       },
-      callTool: async (name, args, signal) => {
+      callTool: async (name, args, signal, roundTrip) => {
         return (await client.callTool(
-          { name, arguments: args },
+          {
+            name,
+            arguments: args,
+            ...roundTrip,
+          } as Parameters<typeof client.callTool>[0],
           undefined,
           {
             signal,

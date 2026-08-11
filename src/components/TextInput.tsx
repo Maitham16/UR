@@ -10,6 +10,7 @@ import { TerminalSizeContext } from '../ink/components/TerminalSizeContext.js';
 import { Box, color, useAnimationFrame, useTerminalFocus, useTheme } from '../ink.js';
 import type { BaseTextInputProps } from '../types/textInputTypes.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
+import { isScreenReaderMode } from '../utils/screenReader.js';
 import type { TextHighlight } from '../utils/textHighlighting.js';
 import { BaseTextInput } from './BaseTextInput.js';
 import { hueToRgb } from './Spinner/utils.js';
@@ -75,7 +76,7 @@ export default function TextInput(props: Props): React.ReactNode {
   // Hoisted to mount-time — this component re-renders on every keystroke.
   const accessibilityEnabled = useMemo(() => isEnvTruthy(process.env.UR_CODE_ACCESSIBILITY), []);
   const settings = useSettings();
-  const reducedMotion = settings.prefersReducedMotion ?? false;
+  const reducedMotion = (settings.prefersReducedMotion ?? false) || isScreenReaderMode();
   const voiceState = feature('VOICE_MODE') ?
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   useVoiceState(s => s.voiceState) : 'idle' as const;

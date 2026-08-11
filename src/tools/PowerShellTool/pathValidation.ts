@@ -1016,14 +1016,47 @@ function validatePath(
   toolPermissionContext: ToolPermissionContext,
   operationType: FileOperationType,
 ): ResolvedPathCheckResult {
-  // Remove surrounding quotes if present
-  const cleanPath = expandTilde(filePath.replace(/^['"]|['"]$/g, ''))
+  // Remove only a MATCHING pair of surrounding quotes. Independently removing
+  // the first and last quote lets malformed/mixed quoting describe a different
+  // path to the validator than PowerShell opens at runtime.
+  const wrapperMatch = filePath.match(/^(['"])([\s\S]*)\1$/)
+  const cleanPath = expandTilde(wrapperMatch?.[2] ?? filePath)
 
   // SECURITY: PowerShell Core normalizes backslashes to forward slashes on all
   // platforms, but path.resolve on Linux/Mac treats them as literal characters.
   // Normalize before resolution so traversal patterns like dir\..\..\etc\shadow
   // are correctly detected.
   const normalizedPath = cleanPath.replace(/\\/g, '/')
+
+  // PowerShell permits quote characters to participate in adjacent-string
+  // expressions and, on POSIX, in literal filenames. If a quote remains after
+  // removing a balanced outer wrapper, fail closed: the static path and the
+  // runtime path may diverge. Preserve deny precedence by trying the
+  // conservative quote-stripped path before falling back to an approval.
+  if (normalizedPath.includes("'") || normalizedPath.includes('"')) {
+    const denyHit = checkDenyRuleForGuessedPath(
+      normalizedPath.replace(/['"]/g, ''),
+      cwd,
+      toolPermissionContext,
+      operationType,
+    )
+    if (denyHit) {
+      return {
+        allowed: false,
+        resolvedPath: denyHit.resolvedPath,
+        decisionReason: { type: 'rule', rule: denyHit.rule },
+      }
+    }
+    return {
+      allowed: false,
+      resolvedPath: normalizedPath,
+      decisionReason: {
+        type: 'other',
+        reason:
+          'Quote characters inside PowerShell paths cannot be statically validated and require manual approval',
+      },
+    }
+  }
 
   // SECURITY: Backtick (`) is PowerShell's escape character. It is a no-op in
   // many positions (e.g., `/ === /) but defeats Node.js path checks like

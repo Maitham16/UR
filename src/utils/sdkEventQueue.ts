@@ -2,6 +2,7 @@ import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
 import { getIsNonInteractiveSession, getSessionId } from '../bootstrap/state.js'
 import type { SdkWorkflowProgress } from '../types/tools.js'
+import type { InnerMessage } from '../types/message.js'
 
 type TaskStartedEvent = {
   type: 'system'
@@ -65,11 +66,18 @@ type SessionStateChangedEvent = {
   state: 'idle' | 'running' | 'requires_action'
 }
 
+type ForwardedSubagentMessageEvent = {
+  type: 'assistant'
+  message: InnerMessage
+  parent_tool_use_id: string
+}
+
 export type SdkEvent =
   | TaskStartedEvent
   | TaskProgressEvent
   | TaskNotificationSdkEvent
   | SessionStateChangedEvent
+  | ForwardedSubagentMessageEvent
 
 const MAX_QUEUE_SIZE = 1000
 const queue: SdkEvent[] = []
@@ -84,6 +92,18 @@ export function enqueueSdkEvent(event: SdkEvent): void {
     queue.shift()
   }
   queue.push(event)
+}
+
+export function enqueueForwardedSubagentMessage(
+  message: InnerMessage,
+  parentToolUseId: string | undefined,
+): void {
+  if (!parentToolUseId) return
+  enqueueSdkEvent({
+    type: 'assistant',
+    message,
+    parent_tool_use_id: parentToolUseId,
+  })
 }
 
 export function drainSdkEvents(): Array<

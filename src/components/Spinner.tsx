@@ -9,6 +9,7 @@ import { feature } from 'bun:bundle';
 import { getKairosActive, getUserMsgOptIn } from '../bootstrap/state.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
+import { isScreenReaderMode } from '../utils/screenReader.js';
 import { count } from '../utils/array.js';
 import sample from 'lodash-es/sample.js';
 import { formatDuration, formatNumber, formatSecondsShort } from '../utils/format.js';
@@ -98,7 +99,7 @@ function SpinnerWithVerbInner({
   leaderIsIdle = false
 }: Props): React.ReactNode {
   const settings = useSettings();
-  const reducedMotion = settings.prefersReducedMotion ?? false;
+  const reducedMotion = (settings.prefersReducedMotion ?? false) || isScreenReaderMode();
 
   // NOTE: useAnimationFrame(50) lives in SpinnerAnimationRow, not here.
   // This component only re-renders when props or app state change —
@@ -325,7 +326,7 @@ function BriefSpinner(t0) {
     overrideMessage
   } = t0;
   const settings = useSettings();
-  const reducedMotion = settings.prefersReducedMotion ?? false;
+  const reducedMotion = (settings.prefersReducedMotion ?? false) || isScreenReaderMode();
   const [randomVerb] = useState(_temp4);
   const verb = overrideMessage ?? randomVerb;
   const connStatus = useAppState(_temp5);
@@ -512,7 +513,7 @@ function _temp7(s) {
 export function Spinner() {
   const $ = _c(8);
   const settings = useSettings();
-  const reducedMotion = settings.prefersReducedMotion ?? false;
+  const reducedMotion = (settings.prefersReducedMotion ?? false) || isScreenReaderMode();
   const [ref, time] = useAnimationFrame(reducedMotion ? null : 120);
   if (reducedMotion) {
     let t0;

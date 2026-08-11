@@ -7,6 +7,7 @@ import { useSettings } from '../../hooks/useSettings.js';
 import { Text, useAnimationFrame } from '../../ink.js';
 import { count } from '../../utils/array.js';
 import { getRainbowColor } from '../../utils/thinking.js';
+import { isScreenReaderMode } from '../../utils/screenReader.js';
 const TICK_MS = 80;
 type ReviewStage = NonNullable<NonNullable<RemoteAgentTaskState['reviewProgress']>['stage']>;
 
@@ -90,7 +91,7 @@ function ReviewRainbowLine(t0) {
     session
   } = t0;
   const settings = useSettings();
-  const reducedMotion = settings.prefersReducedMotion ?? false;
+  const reducedMotion = (settings.prefersReducedMotion ?? false) || isScreenReaderMode();
   const p = session.reviewProgress;
   const running = session.status === "running";
   const [, time] = useAnimationFrame(running && !reducedMotion ? TICK_MS : null);

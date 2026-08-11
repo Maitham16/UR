@@ -151,6 +151,10 @@ export const syncHookResponseSchema = lazySchema(() =>
             .optional(),
         }),
         z.object({
+          hookEventName: z.literal('DirectoryAdded'),
+          additionalContext: z.string().optional(),
+        }),
+        z.object({
           hookEventName: z.literal('FileChanged'),
           watchPaths: z
             .array(z.string())

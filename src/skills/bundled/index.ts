@@ -3,7 +3,7 @@ import { shouldAutoEnableURInChrome } from 'src/utils/urInChrome/setup.js'
 import { registerBatchSkill } from './batch.js'
 import { registerURInChromeSkill } from './urInChrome.js'
 import { registerDebugSkill } from './debug.js'
-import { registerDebugV2Skill } from './debug-v2.js'
+import { registerFixBugSkill } from './debug-v2.js'
 import { registerRefactorSkill } from './refactor.js'
 import { registerPaperImplementationSkill } from './paper-implementation.js'
 import { registerBenchmarkSkill } from './benchmark.js'
@@ -35,7 +35,7 @@ export function initBundledSkills(): void {
   registerKeybindingsSkill()
   registerVerifySkill()
   registerDebugSkill()
-  registerDebugV2Skill()
+  registerFixBugSkill()
   registerRefactorSkill()
   registerPaperImplementationSkill()
   registerBenchmarkSkill()

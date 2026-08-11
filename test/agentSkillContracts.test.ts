@@ -5,7 +5,7 @@ import {
 } from '../src/skills/bundledSkills.js'
 import { registerBenchmarkSkill } from '../src/skills/bundled/benchmark.js'
 import { registerBatchSkill } from '../src/skills/bundled/batch.js'
-import { registerDebugV2Skill } from '../src/skills/bundled/debug-v2.js'
+import { registerFixBugSkill } from '../src/skills/bundled/debug-v2.js'
 import { registerDockerizeSkill } from '../src/skills/bundled/dockerize.js'
 import { registerLatexPaperSkill } from '../src/skills/bundled/latex-paper.js'
 import { registerPaperImplementationSkill } from '../src/skills/bundled/paper-implementation.js'
@@ -14,7 +14,7 @@ import { registerSecurityReviewSkill } from '../src/skills/bundled/security-revi
 
 const WORKTREE_AGENT_SKILLS = [
   { name: 'batch', register: registerBatchSkill },
-  { name: 'debug-v2', register: registerDebugV2Skill },
+  { name: 'fix-bug', register: registerFixBugSkill },
   { name: 'refactor', register: registerRefactorSkill },
   { name: 'paper-implementation', register: registerPaperImplementationSkill },
   { name: 'benchmark', register: registerBenchmarkSkill },

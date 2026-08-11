@@ -11,6 +11,7 @@ import type { Tool } from '../../Tool.js';
 import type { ProgressMessage } from '../../types/message.js';
 import type { PowerShellProgress } from '../../types/tools.js';
 import type { ThemeName } from '../../utils/theme.js';
+import { formatCommandForDisplay } from '../../utils/shell/visibleCommand.js';
 import type { Out, PowerShellToolInput } from './PowerShellTool.js';
 
 // Constants for command display
@@ -29,7 +30,7 @@ export function renderToolUseMessage(input: Partial<PowerShellToolInput>, {
   if (!command) {
     return null;
   }
-  const displayCommand = command;
+  const displayCommand = formatCommandForDisplay(command);
   if (!verbose) {
     const lines = displayCommand.split('\n');
     const needsLineTruncation = lines.length > MAX_COMMAND_DISPLAY_LINES;

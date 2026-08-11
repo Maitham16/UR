@@ -58,9 +58,12 @@ execFileSync(
     '--define',
     'MACRO.VERSION_CHANGELOG=""',
     // Shipped feature flags (bun:bundle): voice mode and the computer-use
-    // MCP server are part of the supported surface as of 1.45.
+    // MCP server are part of the supported surface as of 1.45. The structured
+    // Bash parser is security-critical: production permission checks must not
+    // fall back to the legacy regex/shell-quote path.
     '--feature=VOICE_MODE',
     '--feature=CHICAGO_MCP',
+    '--feature=TREE_SITTER_BASH',
   ],
   { cwd: root, stdio: 'inherit' },
 )

@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useSettings } from '../../hooks/useSettings.js';
 import { Box, Text, useAnimationFrame } from '../../ink.js';
 import { interpolateColor, toRGBColor } from '../Spinner/utils.js';
+import { isScreenReaderMode } from '../../utils/screenReader.js';
 type Props = {
   voiceState: 'idle' | 'recording' | 'processing';
 };
@@ -92,7 +93,7 @@ export function VoiceWarmupHint() {
 function ProcessingShimmer() {
   const $ = _c(8);
   const settings = useSettings();
-  const reducedMotion = settings.prefersReducedMotion ?? false;
+  const reducedMotion = (settings.prefersReducedMotion ?? false) || isScreenReaderMode();
   const [ref, time] = useAnimationFrame(reducedMotion ? null : 50);
   if (reducedMotion) {
     let t0;

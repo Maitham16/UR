@@ -9,6 +9,7 @@ import type {
   NetworkHostPattern,
   NetworkRestrictionConfig,
   SandboxAskCallback,
+  CredentialsConfig,
   SandboxDependencyCheck,
   SandboxRuntimeConfig,
   SandboxViolationEvent,
@@ -161,6 +162,77 @@ function shouldAllowManagedReadPathsOnly(): boolean {
   )
 }
 
+const TRUSTED_SANDBOX_SECURITY_SOURCES = [
+  'userSettings',
+  'flagSettings',
+  'policySettings',
+] as const satisfies readonly SettingSource[]
+
+/**
+ * Security-sensitive proxy settings are deliberately ignored from project
+ * and local settings. A repository must not be able to opt itself into
+ * credential injection or weaken a user/administrator boundary merely by
+ * being opened.
+ */
+function trustedSandboxNetworkSetting<
+  K extends 'strictAllowlist' | 'tlsTerminate',
+>(key: K): unknown {
+  let value: unknown
+  for (const source of TRUSTED_SANDBOX_SECURITY_SOURCES) {
+    const candidate = getSettingsForSource(source)?.sandbox?.network?.[key]
+    if (candidate !== undefined) value = candidate
+  }
+  return value as never
+}
+
+function dedupeLastBy<T>(values: T[], identity: (value: T) => string): T[] {
+  const merged = new Map<string, T>()
+  for (const value of values) merged.set(identity(value), value)
+  return [...merged.values()]
+}
+
+function trustedCredentialsConfig(): CredentialsConfig | undefined {
+  const configs = TRUSTED_SANDBOX_SECURITY_SOURCES.flatMap(source => {
+    const value = getSettingsForSource(source)?.sandbox?.credentials
+    return value === undefined ? [] : [{ source, value }]
+  })
+  if (configs.length === 0) return undefined
+
+  const files = dedupeLastBy(
+    configs.flatMap(({ source, value }) =>
+      (value.files ?? []).map(entry => ({
+        ...entry,
+        path: resolveSandboxFilesystemPath(entry.path, source),
+      }))),
+    value => value.path,
+  )
+  const envVars = dedupeLastBy(
+    configs.flatMap(({ value }) => value.envVars ?? []),
+    value => value.name,
+  )
+  const awsPairs = dedupeLastBy(
+    configs.flatMap(({ value }) => value.awsPairs ?? []),
+    value => `${value.accessKeyIdVar}\0${value.secretAccessKeyVar}`,
+  )
+
+  let allowPlaintextInject: boolean | undefined
+  let sigv4: CredentialsConfig['sigv4']
+  for (const { value } of configs) {
+    if (value.allowPlaintextInject !== undefined) {
+      allowPlaintextInject = value.allowPlaintextInject
+    }
+    if (value.sigv4 !== undefined) sigv4 = value.sigv4
+  }
+
+  return {
+    ...(files.length > 0 ? { files } : {}),
+    ...(envVars.length > 0 ? { envVars } : {}),
+    ...(awsPairs.length > 0 ? { awsPairs } : {}),
+    ...(allowPlaintextInject !== undefined ? { allowPlaintextInject } : {}),
+    ...(sigv4 !== undefined ? { sigv4 } : {}),
+  }
+}
+
 /**
  * Convert UR settings format to SandboxRuntimeConfig format
  * (Function exported for testing)
@@ -215,6 +287,9 @@ export function convertToSandboxRuntimeConfig(
     ) {
       deniedDomains.push(rule.ruleContent.substring('domain:'.length))
     }
+  }
+  for (const domain of settings.sandbox?.network?.deniedDomains || []) {
+    deniedDomains.push(domain)
   }
 
   // Extract filesystem paths from Edit and Read rules
@@ -348,16 +423,22 @@ export function convertToSandboxRuntimeConfig(
     argv0,
   }
 
-  return {
+  return SandboxRuntimeConfigSchema.parse({
     network: {
       allowedDomains,
       deniedDomains,
+      strictAllowlist:
+        trustedSandboxNetworkSetting('strictAllowlist') === true,
       allowUnixSockets: settings.sandbox?.network?.allowUnixSockets,
       allowAllUnixSockets: settings.sandbox?.network?.allowAllUnixSockets,
       allowLocalBinding: settings.sandbox?.network?.allowLocalBinding,
       httpProxyPort: settings.sandbox?.network?.httpProxyPort,
       socksProxyPort: settings.sandbox?.network?.socksProxyPort,
+      tlsTerminate: trustedSandboxNetworkSetting('tlsTerminate') as
+        | NonNullable<SandboxRuntimeConfig['network']>['tlsTerminate']
+        | undefined,
     },
+    credentials: trustedCredentialsConfig(),
     filesystem: {
       denyRead,
       allowRead,
@@ -369,7 +450,7 @@ export function convertToSandboxRuntimeConfig(
     enableWeakerNetworkIsolation:
       settings.sandbox?.enableWeakerNetworkIsolation,
     ripgrep: ripgrepConfig,
-  }
+  })
 }
 
 // ============================================================================
@@ -797,14 +878,24 @@ async function initialize(
       const runtimeConfig = convertToSandboxRuntimeConfig(settings)
 
       // Log monitor is automatically enabled for macOS
-      await BaseSandboxManager.initialize(runtimeConfig, wrappedCallback)
+      await BaseSandboxManager.initialize(runtimeConfig, wrappedCallback, true)
 
       // Subscribe to settings changes to update sandbox config dynamically
       settingsSubscriptionCleanup = settingsChangeDetector.subscribe(() => {
-        const settings = getSettings_DEPRECATED()
-        const newConfig = convertToSandboxRuntimeConfig(settings)
-        BaseSandboxManager.updateConfig(newConfig)
-        logForDebugging('Sandbox configuration updated from settings change')
+        try {
+          const settings = getSettings_DEPRECATED()
+          const newConfig = convertToSandboxRuntimeConfig(settings)
+          BaseSandboxManager.updateConfig(newConfig)
+          logForDebugging('Sandbox configuration updated from settings change')
+        } catch (error) {
+          // Keep the last validated boundary active. Applying only the
+          // well-formed portion of an unsafe credential/proxy update could
+          // expose a real secret or silently loosen the network policy.
+          logForDebugging(
+            `Rejected invalid sandbox configuration update: ${errorMessage(error)}`,
+            { level: 'error' },
+          )
+        }
       })
     } catch (error) {
       // Clear the promise on error so initialization can be retried
@@ -933,9 +1024,9 @@ export interface ISandboxManager {
   getSocksProxyPort(): number | undefined
   getLinuxHttpSocketPath(): string | undefined
   getLinuxSocksSocketPath(): string | undefined
-  // Real runtime always resolves Promise<void> (see sandboxRuntimeCompat.ts);
-  // the sole caller (execHttpHook.ts) discards the resolved value.
-  waitForNetworkInitialization(): Promise<void>
+  // The boolean reports whether the network proxy became ready. The sole
+  // current caller waits for readiness and does not otherwise consume it.
+  waitForNetworkInitialization(): Promise<boolean>
   wrapWithSandbox(
     command: string,
     binShell?: string,

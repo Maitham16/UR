@@ -385,6 +385,7 @@ export const HOOK_EVENTS = [
   'WorktreeRemove',
   'InstructionsLoaded',
   'CwdChanged',
+  'DirectoryAdded',
   'FileChanged',
   'BeforeEdit',
   'AfterEdit',
@@ -746,6 +747,16 @@ export const CwdChangedHookInputSchema = lazySchema(() =>
   ),
 )
 
+export const DirectoryAddedHookInputSchema = lazySchema(() =>
+  BaseHookInputSchema().and(
+    z.object({
+      hook_event_name: z.literal('DirectoryAdded'),
+      directory_path: z.string(),
+      scope: z.enum(['session', 'local']),
+    }),
+  ),
+)
+
 export const FileChangedHookInputSchema = lazySchema(() =>
   BaseHookInputSchema().and(
     z.object({
@@ -884,6 +895,7 @@ export const HookInputSchema = lazySchema(() =>
     WorktreeCreateHookInputSchema(),
     WorktreeRemoveHookInputSchema(),
     CwdChangedHookInputSchema(),
+    DirectoryAddedHookInputSchema(),
     FileChangedHookInputSchema(),
     BeforeEditHookInputSchema(),
     AfterEditHookInputSchema(),
@@ -995,6 +1007,13 @@ export const CwdChangedHookSpecificOutputSchema = lazySchema(() =>
   }),
 )
 
+export const DirectoryAddedHookSpecificOutputSchema = lazySchema(() =>
+  z.object({
+    hookEventName: z.literal('DirectoryAdded'),
+    additionalContext: z.string().optional(),
+  }),
+)
+
 export const FileChangedHookSpecificOutputSchema = lazySchema(() =>
   z.object({
     hookEventName: z.literal('FileChanged'),
@@ -1025,6 +1044,7 @@ export const SyncHookJSONOutputSchema = lazySchema(() =>
         ElicitationHookSpecificOutputSchema(),
         ElicitationResultHookSpecificOutputSchema(),
         CwdChangedHookSpecificOutputSchema(),
+        DirectoryAddedHookSpecificOutputSchema(),
         FileChangedHookSpecificOutputSchema(),
         WorktreeCreateHookSpecificOutputSchema(),
         BeforeEditHookSpecificOutputSchema(),

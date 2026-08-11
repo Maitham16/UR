@@ -36,5 +36,11 @@ export const permissionRuleValueSchema = lazySchema(() =>
   z.object({
     toolName: z.string(),
     ruleContent: z.string().optional(),
+    ruleParameter: z
+      .object({
+        name: z.string(),
+        valuePattern: z.string(),
+      })
+      .optional(),
   }),
 )

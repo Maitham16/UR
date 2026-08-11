@@ -34,7 +34,7 @@ export function registerMcpAddCommand(mcp: Command): void {
   mcp
     .command('add <name> <commandOrUrl> [args...]')
     .description(
-      'Add an MCP server to UR.\n\n' +
+      'Add a Model Context Protocol tool server to UR.\n\n' +
         'Examples:\n' +
         '  # Add HTTP server:\n' +
         '  ur mcp add --transport http sentry https://mcp.sentry.dev/mcp\n\n' +

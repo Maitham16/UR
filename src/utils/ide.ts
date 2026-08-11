@@ -1225,6 +1225,7 @@ export async function isVSCodeInstalled(): Promise<boolean> {
 
 // Cache for IDE detection results
 let cachedRunningIDEs: IdeType[] | null = null
+const IDE_PROCESS_DETECTION_TIMEOUT_MS = 2_000
 
 /**
  * Internal implementation of IDE detection.
@@ -1238,7 +1239,11 @@ async function detectRunningIDEsImpl(): Promise<IdeType[]> {
       // On macOS, use ps with process name matching
       const result = await execa(
         'ps aux | grep -E "Visual Studio Code|Code Helper|Cursor Helper|Windsurf Helper|IntelliJ IDEA|PyCharm|WebStorm|PhpStorm|RubyMine|CLion|GoLand|Rider|DataGrip|AppCode|DataSpell|Aqua|Gateway|Fleet|Android Studio" | grep -v grep',
-        { shell: true, reject: false },
+        {
+          shell: true,
+          reject: false,
+          timeout: IDE_PROCESS_DETECTION_TIMEOUT_MS,
+        },
       )
       const stdout = result.stdout ?? ''
       for (const [ide, config] of Object.entries(supportedIdeConfigs)) {
@@ -1253,7 +1258,11 @@ async function detectRunningIDEsImpl(): Promise<IdeType[]> {
       // On Windows, use tasklist with findstr for multiple patterns
       const result = await execa(
         'tasklist | findstr /I "Code.exe Cursor.exe Windsurf.exe idea64.exe pycharm64.exe webstorm64.exe phpstorm64.exe rubymine64.exe clion64.exe goland64.exe rider64.exe datagrip64.exe appcode.exe dataspell64.exe aqua64.exe gateway64.exe fleet.exe studio64.exe"',
-        { shell: true, reject: false },
+        {
+          shell: true,
+          reject: false,
+          timeout: IDE_PROCESS_DETECTION_TIMEOUT_MS,
+        },
       )
       const stdout = result.stdout ?? ''
 
@@ -1271,7 +1280,11 @@ async function detectRunningIDEsImpl(): Promise<IdeType[]> {
       // On Linux, use ps with process name matching
       const result = await execa(
         'ps aux | grep -E "code|cursor|windsurf|idea|pycharm|webstorm|phpstorm|rubymine|clion|goland|rider|datagrip|dataspell|aqua|gateway|fleet|android-studio" | grep -v grep',
-        { shell: true, reject: false },
+        {
+          shell: true,
+          reject: false,
+          timeout: IDE_PROCESS_DETECTION_TIMEOUT_MS,
+        },
       )
       const stdout = result.stdout ?? ''
 

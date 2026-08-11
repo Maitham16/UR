@@ -127,9 +127,26 @@ export function permissionRuleValueFromString(
     return { toolName: normalizeLegacyToolName(toolName) }
   }
 
-  // Unescape the content
+  // Unescape the content. Preserve it for every tool-specific matcher, and
+  // additionally recognize the generic `Tool(parameter:value)` form. This is
+  // intentionally additive: WebFetch(domain:...) and existing Bash prefix
+  // rules continue receiving their original ruleContent.
   const ruleContent = unescapeRuleContent(rawContent)
-  return { toolName: normalizeLegacyToolName(toolName), ruleContent }
+  const parameterMatch = ruleContent.match(
+    /^([A-Za-z_][A-Za-z0-9_.-]*):(.+)$/s,
+  )
+  return {
+    toolName: normalizeLegacyToolName(toolName),
+    ruleContent,
+    ...(parameterMatch
+      ? {
+          ruleParameter: {
+            name: parameterMatch[1]!,
+            valuePattern: parameterMatch[2]!,
+          },
+        }
+      : {}),
+  }
 }
 
 /**

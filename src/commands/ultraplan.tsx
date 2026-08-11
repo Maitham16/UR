@@ -1,13 +1,11 @@
 import { readFileSync } from 'fs';
 import { REMOTE_CONTROL_DISCONNECTED_MSG } from '../bridge/types.js';
-import type { Command } from '../commands.js';
 import { DIAMOND_OPEN } from '../constants/figures.js';
 import { getRemoteSessionUrl } from '../constants/product.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../services/analytics/index.js';
 import type { AppState } from '../state/AppStateStore.js';
 import { checkRemoteAgentEligibility, formatPreconditionError, RemoteAgentTask, type RemoteAgentTaskState, registerRemoteAgentTask } from '../tasks/RemoteAgentTask/RemoteAgentTask.js';
-import type { LocalJSXCommandCall } from '../types/command.js';
 import { logForDebugging } from '../utils/debug.js';
 import { errorMessage } from '../utils/errors.js';
 import { logError } from '../utils/log.js';
@@ -22,7 +20,6 @@ import { pollForApprovedExitPlanMode, UltraplanPollError } from '../utils/ultrap
 
 // Multi-agent exploration is slow; 30min timeout.
 const ULTRAPLAN_TIMEOUT_MS = 30 * 60 * 1000;
-export const CCR_TERMS_URL = 'https://docs.ur.com/docs/en/ur-on-the-web';
 
 // CCR runs against the first-party API — use the canonical ID, not the
 // provider-specific string getModelStrings() would return (which may be a
@@ -38,8 +35,8 @@ function getUltraplanModel(): string {
 // while the model still sees full text.
 // Phrasing deliberately avoids the feature name because
 // the remote CCR CLI runs keyword detection on raw input before
-// any tag stripping, and a bare "ultraplan" in the prompt would self-trigger as
-// /ultraplan, which is filtered out of headless mode as "Unknown skill"
+// any tag stripping, and the legacy feature keyword in the prompt would
+// self-trigger even though its former slash command is no longer registered.
 //
 // Bundler inlines .txt as a string; the test runner wraps it as {default}.
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -223,8 +220,8 @@ export async function stopUltraplan(taskId: string, sessionId: string, setAppSta
 }
 
 /**
- * Shared entry for the slash command, keyword trigger, and the plan-approval
- * dialog's "Ultraplan" button. When seedPlan is present (dialog path), it is
+ * Shared entry for the keyword trigger and the plan-approval dialog's
+ * "Ultraplan" button. When seedPlan is present (dialog path), it is
  * prepended as a draft to refine; blurb may be empty in that case.
  *
  * Resolves immediately with the user-facing message. Eligibility check,
@@ -268,11 +265,7 @@ export async function launchUltraplan(opts: {
     return buildAlreadyActiveMessage(active);
   }
   if (!blurb && !seedPlan) {
-    // No event — bare /ultraplan is a usage query, not an attempt.
-    return [
-    // Rendered via <Markdown>; raw <message> is tokenized as HTML
-    // and dropped. Backslash-escape the brackets.
-    'Usage: /ultraplan \\<prompt\\>, or include "ultraplan" anywhere', 'in your prompt', '', 'Advanced multi-agent plan mode with our most powerful model', '(modelO). Runs in UR on the web. When the plan is ready,', 'you can execute it in the web session or send it back here.', 'Terminal stays free while the remote plans.', 'Requires /login.', '', `Terms: ${CCR_TERMS_URL}`].join('\n');
+    return 'Advanced remote planning needs a prompt or an approved draft plan.';
   }
 
   // Set synchronously before the detached flow to prevent duplicate launches
@@ -408,63 +401,3 @@ async function launchDetached(opts: {
     } : prev);
   }
 }
-const call: LocalJSXCommandCall = async (onDone, context, args) => {
-  const blurb = args.trim();
-
-  // Bare /ultraplan (no args, no seed plan) just shows usage — no dialog.
-  if (!blurb) {
-    const msg = await launchUltraplan({
-      blurb,
-      getAppState: context.getAppState,
-      setAppState: context.setAppState,
-      signal: context.abortController.signal
-    });
-    onDone(msg, {
-      display: 'system'
-    });
-    return null;
-  }
-
-  // Guard matches launchUltraplan's own check — showing the dialog when a
-  // session is already active or launching would waste the user's click and set
-  // hasSeenUltraplanTerms before the launch fails.
-  const {
-    ultraplanSessionUrl: active,
-    ultraplanLaunching
-  } = context.getAppState();
-  if (active || ultraplanLaunching) {
-    logEvent('tengu_ultraplan_create_failed', {
-      reason: (active ? 'already_polling' : 'already_launching') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-    });
-    onDone(buildAlreadyActiveMessage(active), {
-      display: 'system'
-    });
-    return null;
-  }
-
-  // Mount the pre-launch dialog via focusedInputDialog (bottom region, like
-  // permission dialogs) rather than returning JSX (transcript area, anchors
-  // at top of scrollback). REPL.tsx handles launch/clear/cancel on choice.
-  context.setAppState(prev => ({
-    ...prev,
-    ultraplanLaunchPending: {
-      blurb
-    }
-  }));
-  // 'skip' suppresses the (no content) echo — the dialog's choice handler
-  // adds the real /ultraplan echo + launch confirmation.
-  onDone(undefined, {
-    display: 'skip'
-  });
-  return null;
-};
-export default {
-  type: 'local-jsx',
-  name: 'ultraplan',
-  description: `~10–30 min · UR on the web drafts an advanced plan you can edit and approve. See ${CCR_TERMS_URL}`,
-  argumentHint: '<prompt>',
-  isEnabled: () => false,
-  load: () => Promise.resolve({
-    call
-  })
-} satisfies Command;

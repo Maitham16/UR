@@ -53,6 +53,12 @@ describe('command registry integrity', () => {
       const owners = new Map<string, string>()
       for (const command of commands) {
         expect(command.description.trim()).not.toBe('')
+        if (!command.isHidden) {
+          expect(command.name).not.toMatch(/(?:^|-)v\d+(?:-|$)/iu)
+          expect(command.description).not.toMatch(
+            /\b(?:v1|v2|mcp2026|deprecated)\b/iu,
+          )
+        }
 
         const tokens = [
           command.name,

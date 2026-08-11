@@ -58,9 +58,11 @@ describe('OpenTelemetry GenAI semantic conventions', () => {
       'gen_ai.tool.name': 'Read',
       'gen_ai.tool.call.id': 'call_1',
     })
-    expect(genAiWorkflowAttributes('release-validation')).toEqual({
+    expect(genAiWorkflowAttributes('release-validation', 'run-123')).toEqual({
       'gen_ai.operation.name': 'invoke_workflow',
       'gen_ai.workflow.name': 'release-validation',
+      'workflow.name': 'release-validation',
+      'workflow.run_id': 'run-123',
     })
   })
 

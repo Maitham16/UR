@@ -41,6 +41,19 @@ test('seatbelt profile escapes quotes/backslashes in paths', () => {
   expect(profile).toContain('pa\\"th')
 })
 
+test('filesystem deny paths normalize trailing slashes identically', () => {
+  const withoutSlash = buildSeatbeltProfile('/work/project', {
+    denyNetwork: false,
+    denyRead: ['/work/project/.aws'],
+  })
+  const withSlash = buildSeatbeltProfile('/work/project', {
+    denyNetwork: false,
+    denyRead: ['/work/project/.aws/'],
+  })
+  expect(withSlash).toBe(withoutSlash)
+  expect(withSlash).toContain('(subpath "/work/project/.aws")')
+})
+
 test('bwrap argv binds the workspace read-write over a read-only root', () => {
   const argv = buildBwrapArgv('/work/project', { denyNetwork: false })
   const joined = argv.join(' ')
@@ -63,7 +76,7 @@ test('sandbox runtime exposes real network, filesystem, and violation state', ()
     network: {
       allowedDomains: ['registry.npmjs.org'],
       deniedDomains: ['example.invalid'],
-      blockAll: true,
+      strictAllowlist: true,
     },
     filesystem: {
       allowRead: ['/work/project'],
@@ -77,27 +90,22 @@ test('sandbox runtime exposes real network, filesystem, and violation state', ()
   expect(SandboxManager.getNetworkRestrictionConfig()).toEqual({
     allowedHosts: ['registry.npmjs.org'],
     deniedHosts: ['example.invalid'],
-    blockAll: true,
   })
-  expect(SandboxManager.getFsWriteConfig()).toEqual({
-    allowOnly: ['/work/project'],
-    denyWithinAllow: ['/work/project/.git'],
-  })
+  const fsWrite = SandboxManager.getFsWriteConfig()
+  expect(fsWrite.allowOnly).toContain('/work/project')
+  expect(fsWrite.denyWithinAllow).toContain('/work/project/.git')
   expect(SandboxManager.getFsReadConfig()).toEqual({
-    allowOnly: ['/work/project'],
     denyOnly: ['/work/project/.env'],
-    allowWithinDeny: [],
+    allowWithinDeny: ['/work/project'],
   })
   expect(SandboxManager.getIgnoreViolations()).toEqual({
     network: ['localhost'],
   })
 
-  store.record({
+  store.addViolation({
     command: 'curl https://example.invalid',
     line: 'network access denied',
-    reason: 'network blocked by policy',
-    policyDecision: 'deny',
-    sandboxMode: 'required',
+    timestamp: new Date(),
   })
   expect(store.getTotalCount()).toBe(1)
   expect(store.getViolations()[0]?.command).toBe('curl https://example.invalid')

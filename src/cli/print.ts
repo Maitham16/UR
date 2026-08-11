@@ -491,6 +491,7 @@ export async function runHeadless(
     sdkUrl: string | undefined
     replayUserMessages: boolean | undefined
     includePartialMessages: boolean | undefined
+    forwardSubagentText: boolean | undefined
     forkSession: boolean | undefined
     rewindFiles: string | undefined
     enableAuthStatus: boolean | undefined
@@ -1031,6 +1032,7 @@ function runHeadlessStreaming(
     fallbackModel: string | undefined
     replayUserMessages?: boolean | undefined
     includePartialMessages?: boolean | undefined
+    forwardSubagentText?: boolean | undefined
     enableAuthStatus?: boolean | undefined
     agent?: string | undefined
     setSDKStatus?: (status: SDKStatus) => void
@@ -2218,6 +2220,7 @@ function runHeadlessStreaming(
               abortController,
               replayUserMessages: options.replayUserMessages,
               includePartialMessages: options.includePartialMessages,
+              forwardSubagentText: options.forwardSubagentText,
               handleElicitation: (serverName, params, elicitSignal) =>
                 structuredIO.handleElicitation(
                   serverName,

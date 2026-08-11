@@ -102,8 +102,10 @@ Fan-out limits clamp rather than disable: out-of-range, negative and
 non-numeric values fall back to the default or the ceiling, so a settings file
 cannot switch the governor off.
 
-Rule syntax: `ToolName` (blanket) or `ToolName(specifier)` — e.g. `Bash(npm run *)`,
-`Edit(src/**)`, `mcp__server__tool`. Managed via `/permissions` UI as well.
+Rule syntax: `ToolName` (blanket), `ToolName(specifier)`, or
+`ToolName(parameter:value)` — e.g. `Bash(npm run *)`, `Edit(src/**)`,
+`Agent(model:opus)`, `Bash(timeout:*)`, `mcp__server__tool`. Managed via
+`/permissions` UI as well.
 
 Permission modes:
 - `default`: normal permission checks; operations that need review ask first.
@@ -132,7 +134,7 @@ Hook events (`src/entrypoints/sdk/coreTypes.ts:HOOK_EVENTS`): `PreToolUse`, `Pos
 `Stop`, `StopFailure`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact`,
 `PermissionRequest`, `PermissionDenied`, `Setup`, `TeammateIdle`, `TaskCreated`,
 `TaskCompleted`, `Elicitation`, `ElicitationResult`, `ConfigChange`, `WorktreeCreate`,
-`WorktreeRemove`, `InstructionsLoaded`, `CwdChanged`, `FileChanged`, `BeforeEdit`,
+`WorktreeRemove`, `InstructionsLoaded`, `CwdChanged`, `DirectoryAdded`, `FileChanged`, `BeforeEdit`,
 `AfterEdit`, `BeforeCommand`, `AfterCommand`, `BeforeCommit`, `OnFailure`.
 Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 `execAgentHook.ts` — run a model prompt or subagent as the hook). View with `/hooks`.
@@ -167,6 +169,7 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
   "syntaxHighlightingDisabled": false,
   "terminalTitleFromRename": true,
   "prefersReducedMotion": false,
+  "screenReaderMode": false,
   "outputStyle": "…",                 // output style name (src/outputStyles)
   "promptSuggestionEnabled": true,
   "showClearContextOnPlanAccept": true,
@@ -254,7 +257,7 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 | `UR_CODE_INDEX=1` | Semantic code index + CodeSearch tool |
 | `ENABLE_LSP_TOOL=1` | LSP tool |
 | `UR_CODE_SYNTAX_HIGHLIGHT=0` | Disable syntax highlighting |
-| `UR_CODE_ACCESSIBILITY=1` | Accessibility rendering |
+| `UR_SCREEN_READER=1` | Append-only accessible rendering, text-edit announcements, and reduced motion |
 | `UR_CODE_SHELL_PREFIX` | Prefix every shell command |
 | `UR_CODE_PRESET_PREFIX` | Prompt preset prefix |
 | `UR_CODE_TAGS` | Session tags |
@@ -276,8 +279,8 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 ### Protocol, skill, and telemetry controls
 | Variable | Effect |
 |---|---|
-| `UR_MCP_HTTP_TOKEN` / `UR_MCP_HTTP_*` | Authenticate and bound the opt-in stateless MCP 2026 Tasks/Apps server |
-| `UR_A2A_TOKEN` / `UR_A2A_DELEGATION_SECRET` / `UR_A2A_*` | Authenticate, scope, and bound A2A v0.3/v1 serving |
+| `UR_MCP_HTTP_TOKEN` / `UR_MCP_HTTP_*` | Authenticate and bound the opt-in stateless Model Context Protocol web server with Tasks and Apps |
+| `UR_A2A_TOKEN` / `UR_A2A_DELEGATION_SECRET` / `UR_A2A_*` | Authenticate, scope, and bound Agent-to-Agent compatibility serving |
 | `UR_ACP_STDIO_*` | Bound ACP durable sessions, prompts, output, and runtime |
 | `UR_SKILLS_STRICT_SPEC=true` | Reject file skills that violate the Agent Skills specification |
 | `UR_SKILLS_REQUIRE_TRUSTED_SIGNATURE=true` | Require a trusted Ed25519 skill signature at load and invocation |
@@ -302,8 +305,8 @@ global + command-scoped bindings; see `useGlobalKeybindings.tsx` / `useCommandKe
 ## Output styles
 
 `outputStyle` setting selects a style; custom styles load from an output-styles directory
-(`src/outputStyles/loadOutputStylesDir.ts`). `/output-style` is deprecated in favor of
-`/config`. Built-in styles (`src/constants/outputStyles.ts`) include Explanatory,
+(`src/outputStyles/loadOutputStylesDir.ts`). Change it through the professional
+`/config` settings surface. Built-in styles (`src/constants/outputStyles.ts`) include Explanatory,
 Concise, JSON-strict (every response a parseable JSON object), Debug-verbose
 (hypothesis-driven diagnostics), and Release-notes (changelog tone).
 

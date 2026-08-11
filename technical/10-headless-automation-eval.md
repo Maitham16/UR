@@ -12,11 +12,20 @@ Source of truth: `src/main.tsx` (print mode);
 ur -p "summarize the failing tests"
 ur -p "…" --output-format json          # structured result
 ur -p "…" --output-format stream-json   # streaming events (add --include-partial-messages)
+ur -p "…" --output-format stream-json --forward-subagent-text
 cat prompts.jsonl | ur -p --input-format stream-json --output-format stream-json --replay-user-messages
 ur -p "…" --max-turns 5 --fallback-model llama3.3 --no-session-persistence
 ```
 The trust dialog is skipped in `-p` — only run it in directories you trust.
 Hook lifecycle events can be included with `--include-hook-events`.
+`--forward-subagent-text` adds completed text from nested agents at every depth,
+with the parent tool-use ID needed to reconstruct delegation in CI logs.
+
+WebSearch is capped at 200 provider searches per session by default. Set
+`UR_MAX_WEB_SEARCHES_PER_SESSION` to a positive integer, or to `unlimited` only
+for a trusted long-running session. Subagent spawning never hard-fails at a
+session total; `UR_SUBAGENT_SPAWN_ADVISORY_PER_SESSION` controls the warning
+threshold (100 by default).
 
 ## Batch execution (`/exec`, `ur exec`)
 

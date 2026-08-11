@@ -20,6 +20,7 @@ import {
   yankPop,
 } from '../utils/Cursor.js'
 import { isFullscreenEnvEnabled } from '../utils/fullscreen.js'
+import { announceScreenReaderEdit } from '../utils/screenReader.js'
 import type { ImageDimensions } from '../utils/imageResizer.js'
 import { useDoublePress } from './useDoublePress.js'
 
@@ -473,6 +474,7 @@ export function useTextInput({
       if (!cursor.equals(nextCursor)) {
         if (cursor.text !== nextCursor.text) {
           onChange(nextCursor.text)
+          announceScreenReaderEdit(cursor.text, nextCursor.text)
         }
         setOffset(nextCursor.offset)
       }

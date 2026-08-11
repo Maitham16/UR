@@ -24,6 +24,25 @@ Sessions can be named at start (`ur -n "spike"`) or renamed later (`/rename`), a
 (`/tag experiments`) for search. `terminalTitleFromRename` mirrors the name into the
 terminal title.
 
+## Archive and restore
+
+Archived sessions are moved into a private per-project archive and disappear
+from resume and fork discovery until explicitly restored:
+
+```sh
+/session list
+/session archive                    # archive this session and exit
+/session archive <session-id>       # archive another conversation
+/session unarchive <session-id>
+ur session list
+ur session archive <session-id>
+ur session unarchive <session-id>
+```
+
+The transcript is moved last during restore and first during archive, with
+rollback on partial archive failure. Subagent transcripts and session metadata
+move with the conversation.
+
 Transcript appends use a single-flight per-file drain. Concurrent appends are
 batched without overlapping writes; a disk failure rejects the affected batch
 and is surfaced by `flush()` instead of dropping entries or hanging waiters.

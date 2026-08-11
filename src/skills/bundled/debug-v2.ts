@@ -37,10 +37,9 @@ Reproduce, root-cause, and fix the described bug in an isolated worktree. Produc
 Return a concise summary: branch name, root cause, files changed, regression evidence, and diff summary.
 `
 
-export function registerDebugV2Skill(): void {
+export function registerFixBugSkill(): void {
   registerBundledSkill({
-    name: 'debug-v2',
-    aliases: ['debug2', 'bugfix'],
+    name: 'fix-bug',
     description:
       'Reproduce, root-cause, and fix a bug in an isolated worktree with a regression test.',
     allowedTools: [AGENT_TOOL_NAME, 'Read', 'Grep', 'Glob', 'Edit', 'Bash', 'TestRunner', 'AskUserQuestion'],

@@ -39,6 +39,7 @@ import { CURSOR_HOME, cursorMove, cursorPosition, DISABLE_KITTY_KEYBOARD, DISABL
 import { DBP, DFE, DISABLE_MOUSE_TRACKING, ENABLE_MOUSE_TRACKING, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, SHOW_CURSOR } from './termio/dec.js';
 import { CLEAR_ITERM2_PROGRESS, CLEAR_TAB_STATUS, setClipboard, supportsTabStatus, wrapForMultiplexer } from './termio/osc.js';
 import { TerminalWriteProvider } from './useTerminalNotification.js';
+import { consumeScreenReaderAnnouncements, diffScreenReaderText, screenToPlainText } from '../utils/screenReader.js';
 
 // Alt-screen: renderer.ts sets cursor.visible = !isTTY || screen.height===0,
 // which is always false in alt-screen (TTY + content fills screen).
@@ -73,6 +74,7 @@ export type Options = {
   patchConsole: boolean;
   waitUntilExit?: () => Promise<void>;
   onFrame?: (event: FrameEvent) => void;
+  screenReaderMode?: boolean;
 };
 export default class Ink {
   private readonly log: LogUpdate;
@@ -100,6 +102,7 @@ export default class Ink {
   private frontFrame: Frame;
   private backFrame: Frame;
   private lastPoolResetTime = performance.now();
+  private lastScreenReaderText = '';
   private drainTimer: ReturnType<typeof setTimeout> | null = null;
   private lastYogaCounters: {
     ms: number;
@@ -741,7 +744,15 @@ export default class Ink {
       }
     }
     const tWrite = performance.now();
-    writeDiffToTerminal(this.terminal, optimized, this.altScreenActive && !SYNC_OUTPUT_SUPPORTED);
+    if (this.options.screenReaderMode) {
+      const announcements = consumeScreenReaderAnnouncements();
+      const nextText = screenToPlainText(frame.screen);
+      const accessibleOutput = announcements.length > 0 ? `${announcements.join('\n')}\n` : diffScreenReaderText(this.lastScreenReaderText, nextText);
+      this.lastScreenReaderText = nextText;
+      if (accessibleOutput) this.options.stdout.write(accessibleOutput);
+    } else {
+      writeDiffToTerminal(this.terminal, optimized, this.altScreenActive && !SYNC_OUTPUT_SUPPORTED);
+    }
     const writeMs = performance.now() - tWrite;
 
     // Update blit safety for the NEXT frame. The frame just rendered
@@ -878,6 +889,11 @@ export default class Ink {
   }
   get isAltScreenActive(): boolean {
     return this.altScreenActive;
+  }
+  setScreenReaderMode(active: boolean): void {
+    this.options.screenReaderMode = active;
+    this.lastScreenReaderText = '';
+    this.repaint();
   }
 
   /**
@@ -1474,8 +1490,10 @@ export default class Ink {
 
     // Non-TTY environments don't handle erasing ansi escapes well, so it's better to
     // only render last frame of non-static output
-    const diff = this.log.renderPreviousOutput_DEPRECATED(this.frontFrame);
-    writeDiffToTerminal(this.terminal, optimize(diff));
+    if (!this.options.screenReaderMode) {
+      const diff = this.log.renderPreviousOutput_DEPRECATED(this.frontFrame);
+      writeDiffToTerminal(this.terminal, optimize(diff));
+    }
 
     // Clean up terminal modes synchronously before process exit.
     // React's componentWillUnmount won't run in time when process.exit() is called,

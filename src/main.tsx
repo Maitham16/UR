@@ -542,7 +542,7 @@ function initializeEntrypoint(isNonInteractive: boolean): void {
 
   // Check for MCP serve command (handle flags before mcp serve, e.g., --debug mcp serve)
   const mcpIndex = cliArgs.indexOf('mcp');
-  if (mcpIndex !== -1 && ['serve', 'serve-http'].includes(cliArgs[mcpIndex + 1] ?? '')) {
+  if (mcpIndex !== -1 && ['serve', 'serve-web'].includes(cliArgs[mcpIndex + 1] ?? '')) {
     process.env.UR_CODE_ENTRYPOINT = 'mcp';
     return;
   }
@@ -992,12 +992,12 @@ async function run(): Promise<CommanderCommand> {
   program.name('ur').description(`UR-Nexus — autonomous engineering workflow engine (plan, execute, test, verify, document, benchmark, reproduce). Starts an interactive session by default; use -p/--print for non-interactive output.`).argument('[prompt]', 'Your prompt', String)
   // Subcommands inherit helpOption via commander's copyInheritedSettings —
   // setting it once here covers mcp, plugin, auth, and all other subcommands.
-  .helpOption('-h, --help', 'Display help for command').option('-d, --debug [filter]', 'Enable debug mode with optional category filtering (e.g., "api,hooks" or "!1p,!file")', (_value: string | true) => {
+  .helpOption('-h, --help', 'Display help for command').option('--screen-reader', 'Use append-only plain-text output and announce text edits for screen readers').option('-d, --debug [filter]', 'Enable debug mode with optional category filtering (e.g., "api,hooks" or "!1p,!file")', (_value: string | true) => {
     // If value is provided, it will be the filter string
     // If not provided but flag is present, value will be true
     // The actual filtering is handled in debug.ts by parsing process.argv
     return true;
-  }).addOption(new Option('--debug-to-stderr', 'Enable debug mode (to stderr)').argParser(Boolean).hideHelp()).option('--debug-file <path>', 'Write debug logs to a specific file path (implicitly enables debug mode)', () => true).option('--verbose', 'Override verbose mode setting from config', () => true).option('-p, --print', 'Print response and exit (useful for pipes). Note: The workspace trust dialog is skipped when UR is run with the -p mode. Only use this flag in directories you trust.', () => true).option('--bare', 'Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, and UR.md auto-discovery. Sets UR_CODE_SIMPLE=1. Model execution always uses the local Ollama backend. Skills still resolve via /skill-name. Explicitly provide context via: --system-prompt[-file], --append-system-prompt[-file], --add-dir (UR.md dirs), --mcp-config, --settings, --agents, --plugin-dir.', () => true).addOption(new Option('--init', 'Run Setup hooks with init trigger, then continue').hideHelp()).addOption(new Option('--init-only', 'Run Setup and SessionStart:startup hooks, then exit').hideHelp()).addOption(new Option('--maintenance', 'Run Setup hooks with maintenance trigger, then continue').hideHelp()).addOption(new Option('--output-format <format>', 'Output format (only works with --print): "text" (default), "json" (single result), or "stream-json" (realtime streaming)').choices(['text', 'json', 'stream-json'])).addOption(new Option('--json-schema <schema>', 'JSON Schema for structured output validation. ' + 'Example: {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}').argParser(String)).option('--include-hook-events', 'Include all hook lifecycle events in the output stream (only works with --output-format=stream-json)', () => true).option('--include-partial-messages', 'Include partial message chunks as they arrive (only works with --print and --output-format=stream-json)', () => true).addOption(new Option('--input-format <format>', 'Input format (only works with --print): "text" (default), or "stream-json" (realtime streaming input)').choices(['text', 'stream-json'])).option('--mcp-debug', '[DEPRECATED. Use --debug instead] Enable MCP debug mode (shows MCP server errors)', () => true).option('--dangerously-skip-permissions', 'Bypass all permission checks. Recommended only for sandboxes with no internet access.', () => true).option('--allow-dangerously-skip-permissions', 'Enable bypassing all permission checks as an option, without it being enabled by default. Recommended only for sandboxes with no internet access.', () => true).addOption(new Option('--thinking <mode>', 'Thinking mode: enabled (equivalent to adaptive), disabled').choices(['enabled', 'adaptive', 'disabled']).hideHelp()).addOption(new Option('--max-thinking-tokens <tokens>', '[DEPRECATED. Use --thinking instead for newer models] Maximum number of thinking tokens (only works with --print)').argParser(Number).hideHelp()).addOption(new Option('--max-turns <turns>', 'Maximum number of agentic turns in non-interactive mode. This will early exit the conversation after the specified number of turns. (only works with --print)').argParser(Number).hideHelp()).addOption(new Option('--max-budget-usd <amount>', 'Maximum dollar amount to spend on API calls (only works with --print)').argParser(value => {
+  }).addOption(new Option('--debug-to-stderr', 'Enable debug mode (to stderr)').argParser(Boolean).hideHelp()).option('--debug-file <path>', 'Write debug logs to a specific file path (implicitly enables debug mode)', () => true).option('--verbose', 'Override verbose mode setting from config', () => true).option('-p, --print', 'Print response and exit (useful for pipes). Note: The workspace trust dialog is skipped when UR is run with the -p mode. Only use this flag in directories you trust.', () => true).option('--bare', 'Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, and UR.md auto-discovery. Sets UR_CODE_SIMPLE=1. Model execution always uses the local Ollama backend. Skills still resolve via /skill-name. Explicitly provide context via: --system-prompt[-file], --append-system-prompt[-file], --add-dir (UR.md dirs), --mcp-config, --settings, --agents, --plugin-dir.', () => true).addOption(new Option('--init', 'Run Setup hooks with init trigger, then continue').hideHelp()).addOption(new Option('--init-only', 'Run Setup and SessionStart:startup hooks, then exit').hideHelp()).addOption(new Option('--maintenance', 'Run Setup hooks with maintenance trigger, then continue').hideHelp()).addOption(new Option('--output-format <format>', 'Output format (only works with --print): "text" (default), "json" (single result), or "stream-json" (realtime streaming)').choices(['text', 'json', 'stream-json'])).addOption(new Option('--json-schema <schema>', 'JSON Schema for structured output validation. ' + 'Example: {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}').argParser(String)).option('--include-hook-events', 'Include all hook lifecycle events in the output stream (only works with --output-format=stream-json)', () => true).option('--include-partial-messages', 'Include partial message chunks as they arrive (only works with --print and --output-format=stream-json)', () => true).option('--forward-subagent-text', 'Forward completed nested-agent assistant messages in stream-json output', () => true).addOption(new Option('--input-format <format>', 'Input format (only works with --print): "text" (default), or "stream-json" (realtime streaming input)').choices(['text', 'stream-json'])).option('--dangerously-skip-permissions', 'Bypass all permission checks. Recommended only for sandboxes with no internet access.', () => true).option('--allow-dangerously-skip-permissions', 'Enable bypassing all permission checks as an option, without it being enabled by default. Recommended only for sandboxes with no internet access.', () => true).addOption(new Option('--thinking <mode>', 'Thinking mode: enabled (equivalent to adaptive), disabled').choices(['enabled', 'adaptive', 'disabled']).hideHelp()).addOption(new Option('--max-thinking-tokens <tokens>', '[DEPRECATED. Use --thinking instead for newer models] Maximum number of thinking tokens (only works with --print)').argParser(Number).hideHelp()).addOption(new Option('--max-turns <turns>', 'Maximum number of agentic turns in non-interactive mode. This will early exit the conversation after the specified number of turns. (only works with --print)').argParser(Number).hideHelp()).addOption(new Option('--max-budget-usd <amount>', 'Maximum dollar amount to spend on API calls (only works with --print)').argParser(value => {
     const amount = Number(value);
     if (isNaN(amount) || amount <= 0) {
       throw new Error('--max-budget-usd must be a positive number greater than 0');
@@ -1032,6 +1032,11 @@ async function run(): Promise<CommanderCommand> {
   // --plugin-dir takes exactly one arg; repeat the flag for multiple dirs.
   .option('--plugin-dir <path>', 'Load plugins from a directory for this session only (repeatable: --plugin-dir A --plugin-dir B)', (val: string, prev: string[]) => [...prev, val], [] as string[]).option('--disable-slash-commands', 'Disable all skills', () => true).option('--chrome', 'Enable UR in Chrome integration').option('--no-chrome', 'Disable UR in Chrome integration').option('--file <specs...>', 'File resources to download at startup. Format: file_id:relative_path (e.g., --file file_abc:doc.txt file_def:img.png)').action(async (prompt, options) => {
     profileCheckpoint('action_handler_start');
+
+    if ((options as { screenReader?: boolean }).screenReader || getInitialSettings().screenReaderMode) {
+      const { enableScreenReaderMode } = await import('./utils/screenReader.js');
+      enableScreenReaderMode();
+    }
 
     // --bare = one-switch minimal mode. Sets SIMPLE so all the existing
     // gates fire (UR.md, skills, hooks inside executeHooks, agent
@@ -1139,7 +1144,8 @@ async function run(): Promise<CommanderCommand> {
       ide = false,
       sessionId,
       includeHookEvents,
-      includePartialMessages
+      includePartialMessages,
+      forwardSubagentText
     } = options;
     if (options.prefill) {
       seedEarlyInput(options.prefill);
@@ -1260,6 +1266,7 @@ async function run(): Promise<CommanderCommand> {
 
     // Allow env var to enable partial messages (used by sandbox gateway for baku)
     const effectiveIncludePartialMessages = includePartialMessages || isEnvTruthy(process.env.UR_CODE_INCLUDE_PARTIAL_MESSAGES);
+    const effectiveForwardSubagentText = forwardSubagentText || isEnvTruthy(process.env.UR_FORWARD_SUBAGENT_TEXT);
 
     // Enable all hook event types when explicitly requested via SDK option
     // or when running in UR_CODE_REMOTE mode (CCR needs them).
@@ -1890,6 +1897,13 @@ async function run(): Promise<CommanderCommand> {
     if (effectiveIncludePartialMessages) {
       if (!isNonInteractiveSession || outputFormat !== 'stream-json') {
         writeToStderr(`Error: --include-partial-messages requires --print and --output-format=stream-json.`);
+        process.exit(1);
+      }
+    }
+
+    if (effectiveForwardSubagentText) {
+      if (!isNonInteractiveSession || outputFormat !== 'stream-json') {
+        writeToStderr(`Error: --forward-subagent-text requires --print and --output-format=stream-json.`);
         process.exit(1);
       }
     }
@@ -2998,6 +3012,7 @@ async function run(): Promise<CommanderCommand> {
         sdkUrl,
         replayUserMessages: effectiveReplayUserMessages,
         includePartialMessages: effectiveIncludePartialMessages,
+        forwardSubagentText: effectiveForwardSubagentText,
         forkSession: options.forkSession || false,
         resumeSessionAt: options.resumeSessionAt || undefined,
         rewindFiles: options.rewindFiles,
@@ -4065,10 +4080,45 @@ async function run(): Promise<CommanderCommand> {
     });
   });
 
+  // ur session
+
+  const sessionCli = program.command('session').description('List, archive, and restore local conversation sessions').configureHelp(createSortedHelpConfig());
+  sessionCli.command('list').description('List resumable and archived conversations').option('--json', 'Output structured JSON').action(async ({
+    json
+  }: {
+    json?: boolean;
+  }) => {
+    const [{ listArchivedSessions }, { getSessionIdFromLog, loadAllProjectsMessageLogs }] = await Promise.all([import('./utils/sessionArchive.js'), import('./utils/sessionStorage.js')]);
+    const [active, archived] = await Promise.all([loadAllProjectsMessageLogs(), listArchivedSessions()]);
+    const result = {
+      resumable: active.map(log => ({
+        sessionId: getSessionIdFromLog(log),
+        title: log.customTitle || log.summary || log.firstPrompt || '(conversation)',
+        modified: log.modified.toISOString(),
+        projectPath: log.projectPath
+      })),
+      archived
+    };
+    process.stdout.write(json ? `${JSON.stringify(result, null, 2)}\n` : [`Resumable conversations: ${result.resumable.length}`, ...result.resumable.map(item => `  ${item.sessionId}  ${item.title.replace(/\s+/gu, ' ').slice(0, 80)}`), `Archived conversations: ${archived.length}`, ...archived.map(item => `  ${item.sessionId}  archived ${item.archivedAt}`)].join('\n') + '\n');
+  });
+  sessionCli.command('archive <session-id>').description('Archive a conversation so it cannot be resumed or forked').action(async (sessionId: string) => {
+    const [{ archiveSession }, { getSessionIdFromLog, loadAllProjectsMessageLogs }] = await Promise.all([import('./utils/sessionArchive.js'), import('./utils/sessionStorage.js')]);
+    const logs = await loadAllProjectsMessageLogs();
+    const log = logs.find(item => getSessionIdFromLog(item) === sessionId);
+    if (!log?.fullPath) throw new Error(`Session ${sessionId} was not found`);
+    await archiveSession(sessionId, log.fullPath);
+    process.stdout.write(`Archived session ${sessionId}.\n`);
+  });
+  sessionCli.command('unarchive <session-id>').description('Restore an archived conversation so it can be resumed again').action(async (sessionId: string) => {
+    const { unarchiveSession } = await import('./utils/sessionArchive.js');
+    await unarchiveSession(sessionId);
+    process.stdout.write(`Restored session ${sessionId}. Resume it with: ur --resume ${sessionId}\n`);
+  });
+
   // ur mcp
 
-  const mcp = program.command('mcp').description('Configure and manage MCP servers').configureHelp(createSortedHelpConfig()).enablePositionalOptions();
-  mcp.command('serve').description(`Start the UR MCP server`).option('-d, --debug', 'Enable debug mode', () => true).option('--verbose', 'Override verbose mode setting from config', () => true).action(async ({
+  const mcp = program.command('mcp').description('Configure Model Context Protocol tool servers and connections').configureHelp(createSortedHelpConfig()).enablePositionalOptions();
+  mcp.command('serve').description(`Start the Model Context Protocol server over standard input/output`).option('-d, --debug', 'Enable debug mode', () => true).option('--verbose', 'Override verbose mode setting from config', () => true).action(async ({
     debug,
     verbose
   }: {
@@ -4083,7 +4133,7 @@ async function run(): Promise<CommanderCommand> {
       verbose
     });
   });
-  mcp.command('serve-http').description('Start the opt-in stateless MCP 2026 HTTP server with Tasks and Apps').option('--host <host>', 'Host interface to bind', '127.0.0.1').option('--port <port>', 'TCP port to bind', '8976').option('--allow-origin <origins...>', 'Exact browser origins allowed by CORS').option('-d, --debug', 'Enable debug mode', () => true).option('--verbose', 'Override verbose mode setting from config', () => true).action(async ({
+  mcp.command('serve-web').description('Start the secure stateless web server with Tasks and interactive Apps').option('--host <host>', 'Host interface to bind', '127.0.0.1').option('--port <port>', 'TCP port to bind', '8976').option('--allow-origin <origins...>', 'Exact browser origins allowed by CORS').option('-d, --debug', 'Enable debug mode', () => true).option('--verbose', 'Override verbose mode setting from config', () => true).action(async ({
     host,
     port,
     allowOrigin,
@@ -4113,7 +4163,7 @@ async function run(): Promise<CommanderCommand> {
   if (isXaaEnabled()) {
     registerMcpXaaIdpCommand(mcp);
   }
-  mcp.command('remove <name>').description('Remove an MCP server').option('-s, --scope <scope>', 'Configuration scope (local, user, or project) - if not specified, removes from whichever scope it exists in').action(async (name: string, options: {
+  mcp.command('remove <name>').description('Remove a Model Context Protocol tool server').option('-s, --scope <scope>', 'Configuration scope (local, user, or project) - if not specified, removes from whichever scope it exists in').action(async (name: string, options: {
     scope?: string;
   }) => {
     const {
@@ -4121,19 +4171,19 @@ async function run(): Promise<CommanderCommand> {
     } = await import('./cli/handlers/mcp.js');
     await mcpRemoveHandler(name, options);
   });
-  mcp.command('list').description('List configured MCP servers. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.').action(async () => {
+  mcp.command('list').description('List configured Model Context Protocol tool servers. Note: The workspace trust dialog is skipped and standard-input servers from .mcp.json are started for health checks. Only use this command in directories you trust.').action(async () => {
     const {
       mcpListHandler
     } = await import('./cli/handlers/mcp.js');
     await mcpListHandler();
   });
-  mcp.command('get <name>').description('Get details about an MCP server. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.').action(async (name: string) => {
+  mcp.command('get <name>').description('Show details about a Model Context Protocol tool server. Note: The workspace trust dialog is skipped and standard-input servers from .mcp.json are started for health checks. Only use this command in directories you trust.').action(async (name: string) => {
     const {
       mcpGetHandler
     } = await import('./cli/handlers/mcp.js');
     await mcpGetHandler(name);
   });
-  mcp.command('add-json <name> <json>').description('Add an MCP server (stdio or SSE) with a JSON string').option('-s, --scope <scope>', 'Configuration scope (local, user, or project)', 'local').option('--client-secret', 'Prompt for OAuth client secret (or set MCP_CLIENT_SECRET env var)').action(async (name: string, json: string, options: {
+  mcp.command('add-json <name> <json>').description('Add a Model Context Protocol tool server from a JSON configuration').option('-s, --scope <scope>', 'Configuration scope (local, user, or project)', 'local').option('--client-secret', 'Prompt for OAuth client secret (or set MCP_CLIENT_SECRET env var)').action(async (name: string, json: string, options: {
     scope?: string;
     clientSecret?: true;
   }) => {
@@ -4142,7 +4192,7 @@ async function run(): Promise<CommanderCommand> {
     } = await import('./cli/handlers/mcp.js');
     await mcpAddJsonHandler(name, json, options);
   });
-  mcp.command('add-from-ur-desktop').description('Import MCP servers from UR Desktop (Mac and WSL only)').option('-s, --scope <scope>', 'Configuration scope (local, user, or project)', 'local').action(async (options: {
+  mcp.command('add-from-ur-desktop').description('Import Model Context Protocol tool servers from UR Desktop (Mac and WSL only)').option('-s, --scope <scope>', 'Configuration scope (local, user, or project)', 'local').action(async (options: {
     scope?: string;
   }) => {
     const {
@@ -5269,7 +5319,7 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, id ? quoteLocalCommandArg(id) : undefined, localCommandOption('--question', opts.question), localCommandOption('--url', opts.url), localCommandOption('--title', opts.title), localCommandOption('--publisher', opts.publisher), localCommandOption('--published', opts.published), localCommandOption('--notes', opts.notes), localCommandOption('--text', opts.text), localCommandOption('--cite', opts.cite), localCommandOption('--confidence', opts.confidence), localCommandOption('--status', opts.status), localCommandOption('--out', opts.out), opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/research/research.js'), args);
   });
-  program.command('design3d [action] [target]').alias('3d').alias('3d-design').description('Create and automate Blender, OpenSCAD, Autodesk 3ds Max, and custom 3D app projects').option('--engine <engine>', 'blender, openscad, 3dsmax, or custom').option('--units <units>', 'mm, cm, m, or in').option('--format <format>', 'glb, gltf, stl, obj, blend, max, fbx, 3ds, step, or 3mf').option('--executable <path>', 'Executable for a custom 3D app adapter').option('--adapter-arg <arg>', 'Repeatable custom adapter argument', collectLocalCommandOption, []).option('--timeout <seconds>', 'Build timeout from 1 to 3600 seconds').option('--dry-run', 'Validate and show argv without launching the 3D app').option('--force', 'Replace an existing scaffold or output').option('--allow-custom', 'Run a reviewed custom application adapter').option('--internal-only', 'Skip an installed external Khronos glTF validator').option('--json', 'Output as JSON').action(async (action: string | undefined, target: string | undefined, opts: {
+  program.command('design3d [action] [target]').description('Create and automate Blender, OpenSCAD, Autodesk 3ds Max, and custom 3D app projects').option('--engine <engine>', 'blender, openscad, 3dsmax, or custom').option('--units <units>', 'mm, cm, m, or in').option('--format <format>', 'glb, gltf, stl, obj, blend, max, fbx, 3ds, step, or 3mf').option('--executable <path>', 'Executable for a custom 3D app adapter').option('--adapter-arg <arg>', 'Repeatable custom adapter argument', collectLocalCommandOption, []).option('--timeout <seconds>', 'Build timeout from 1 to 3600 seconds').option('--dry-run', 'Validate and show argv without launching the 3D app').option('--force', 'Replace an existing scaffold or output').option('--allow-custom', 'Run a reviewed custom application adapter').option('--internal-only', 'Skip an installed external Khronos glTF validator').option('--json', 'Output as JSON').action(async (action: string | undefined, target: string | undefined, opts: {
     engine?: string;
     units?: string;
     format?: string;
@@ -5324,7 +5374,7 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, opts.force ? '--force' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/role-mode/role-mode.js'), args);
   });
-  const a2a = program.command('a2a').description('A2A interoperability utilities (stable v0.3 binding)').configureHelp(createSortedHelpConfig());
+  const a2a = program.command('a2a').description('Agent-to-Agent interoperability, discovery, and delegation utilities').configureHelp(createSortedHelpConfig());
   a2a.command('card').description('Print an A2A Agent Card preview').option('--base-url <url>', 'Base URL to use for the Agent Card endpoint').option('--compact', 'Output compact JSON').action(async (opts: {
     baseUrl?: string;
     compact?: boolean;
@@ -5338,7 +5388,7 @@ async function run(): Promise<CommanderCommand> {
     }, !opts.compact));
     process.exit(0);
   });
-  a2a.command('serve').description('Start negotiated A2A v1 JSON-RPC/HTTP+JSON, stable v0.3 JSON-RPC, and UR compatibility routes').option('--host <host>', 'Host to bind', '127.0.0.1').option('--port <port>', 'Port to bind', '8765').option('--public-base-url <url>', 'External HTTP(S) base URL advertised by the Agent Card').option('--token <token>', 'Static bearer token (prefer UR_A2A_TOKEN; argv may be visible)').option('--delegation-secret <secret>', 'HMAC verification secret (prefer UR_A2A_DELEGATION_SECRET; argv may be visible)').option('--audience <id>', 'Agent id that delegation tokens must target', 'ur-nexus').option('--dry-run', 'Return spawned UR command without executing prompts').action(async (opts: {
+  a2a.command('serve').description('Start the negotiated Agent-to-Agent server with automatic client compatibility').option('--host <host>', 'Host to bind', '127.0.0.1').option('--port <port>', 'Port to bind', '8765').option('--public-base-url <url>', 'External HTTP(S) base URL advertised by the Agent Card').option('--token <token>', 'Static bearer token (prefer UR_A2A_TOKEN; argv may be visible)').option('--delegation-secret <secret>', 'HMAC verification secret (prefer UR_A2A_DELEGATION_SECRET; argv may be visible)').option('--audience <id>', 'Agent id that delegation tokens must target', 'ur-nexus').option('--dry-run', 'Return spawned UR command without executing prompts').action(async (opts: {
     host?: string;
     port?: string;
     publicBaseUrl?: string;
@@ -5456,7 +5506,7 @@ async function run(): Promise<CommanderCommand> {
       cwd: process.cwd()
     });
   });
-  acp.command('stdio').description('Run the official-SDK-backed ACP v1 stdio agent for editors').action(async () => {
+  acp.command('stdio').description('Run the standard Agent Client Protocol connection for editors').action(async () => {
     const { startAcpStdioAgent } = await import('./services/agents/acpStdio.js');
     await startAcpStdioAgent({ cwd: process.cwd() });
   });

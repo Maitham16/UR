@@ -3,6 +3,7 @@ import { ReadStream } from 'tty'
 import type { RenderOptions } from '../ink.js'
 import { isEnvTruthy } from './envUtils.js'
 import { logError } from './log.js'
+import { isScreenReaderMode } from './screenReader.js'
 
 // Cached stdin override - computed once per process
 let cachedStdinOverride: ReadStream | undefined | null = null
@@ -69,7 +70,10 @@ export function getBaseRenderOptions(
   exitOnCtrlC: boolean = false,
 ): RenderOptions {
   const stdin = getStdinOverride()
-  const options: RenderOptions = { exitOnCtrlC }
+  const options: RenderOptions = {
+    exitOnCtrlC,
+    screenReaderMode: isScreenReaderMode(),
+  }
   if (stdin) {
     options.stdin = stdin
   }

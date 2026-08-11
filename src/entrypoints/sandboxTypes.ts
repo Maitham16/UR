@@ -15,6 +15,18 @@ export const SandboxNetworkConfigSchema = lazySchema(() =>
   z
     .object({
       allowedDomains: z.array(z.string()).optional(),
+      deniedDomains: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Domains that are always blocked, even when an allow pattern also matches.',
+        ),
+      strictAllowlist: z
+        .boolean()
+        .optional()
+        .describe(
+          'Deny destinations outside allowedDomains without prompting. Project and local settings cannot enable or disable this security boundary.',
+        ),
       allowManagedDomainsOnly: z
         .boolean()
         .optional()
@@ -37,8 +49,83 @@ export const SandboxNetworkConfigSchema = lazySchema(() =>
       allowLocalBinding: z.boolean().optional(),
       httpProxyPort: z.number().optional(),
       socksProxyPort: z.number().optional(),
+      tlsTerminate: z
+        .object({
+          caCertPath: z.string().optional(),
+          caKeyPath: z.string().optional(),
+          excludeDomains: z.array(z.string()).optional(),
+          extraCaCertPaths: z.array(z.string()).optional(),
+        })
+        .refine(
+          value =>
+            (value.caCertPath === undefined) ===
+            (value.caKeyPath === undefined),
+          {
+            message:
+              'caCertPath and caKeyPath must be configured together',
+          },
+        )
+        .optional()
+        .describe(
+          'Terminate TLS in the sandbox proxy so masked credentials can be substituted safely. An ephemeral per-session CA is generated when no CA pair is supplied.',
+        ),
     })
     .optional(),
+)
+
+const CredentialModeSchema = z.enum(['deny', 'mask'])
+const ExtractNoMatchSchema = z.enum(['warn', 'deny', 'error'])
+
+const CredentialFileConfigSchema = z.object({
+  path: z.string().min(1),
+  mode: CredentialModeSchema,
+  extract: z.string().optional(),
+  onExtractNoMatch: ExtractNoMatchSchema.optional(),
+  decode: z.literal('jwt').optional(),
+  maskClaims: z.array(z.string().min(1)).min(1).optional(),
+  maskDuplicates: z.boolean().optional(),
+  injectHosts: z.array(z.string()).optional(),
+})
+
+const CredentialEnvVarConfigSchema = z.object({
+  name: z
+    .string()
+    .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Invalid environment variable name'),
+  mode: CredentialModeSchema,
+  extract: z.string().optional(),
+  onExtractNoMatch: ExtractNoMatchSchema.optional(),
+  decode: z.literal('jwt').optional(),
+  maskClaims: z.array(z.string().min(1)).min(1).optional(),
+  injectHosts: z.array(z.string()).optional(),
+})
+
+export const SandboxCredentialsConfigSchema = lazySchema(() =>
+  z
+    .object({
+      files: z.array(CredentialFileConfigSchema).optional(),
+      envVars: z.array(CredentialEnvVarConfigSchema).optional(),
+      allowPlaintextInject: z.boolean().optional(),
+      awsPairs: z
+        .array(
+          z
+            .object({
+              accessKeyIdVar: z.string(),
+              secretAccessKeyVar: z.string(),
+              sessionTokenVar: z.string().optional(),
+            })
+            .strict(),
+        )
+        .optional(),
+      sigv4: z
+        .object({
+          streaming: z.enum(['deny', 'passthrough']).optional(),
+          presigned: z.enum(['deny', 'passthrough']).optional(),
+          sigv4a: z.enum(['deny', 'passthrough']).optional(),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict(),
 )
 
 /**
@@ -120,6 +207,7 @@ export const SandboxSettingsSchema = lazySchema(() =>
         ),
       network: SandboxNetworkConfigSchema(),
       filesystem: SandboxFilesystemConfigSchema(),
+      credentials: SandboxCredentialsConfigSchema().optional(),
       ignoreViolations: z.record(z.string(), z.array(z.string())).optional(),
       enableWeakerNestedSandbox: z.boolean().optional(),
       enableWeakerNetworkIsolation: z
@@ -150,6 +238,9 @@ export type SandboxNetworkConfig = NonNullable<
 >
 export type SandboxFilesystemConfig = NonNullable<
   z.infer<ReturnType<typeof SandboxFilesystemConfigSchema>>
+>
+export type SandboxCredentialsConfig = NonNullable<
+  z.infer<ReturnType<typeof SandboxCredentialsConfigSchema>>
 >
 export type SandboxIgnoreViolations = NonNullable<
   SandboxSettings['ignoreViolations']

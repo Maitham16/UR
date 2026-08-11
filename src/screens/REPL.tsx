@@ -34,6 +34,7 @@ import { asSessionId, asAgentId } from '../types/ids.js';
 import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
+import { isScreenReaderMode } from '../utils/screenReader.js';
 import { formatTokens, truncateToWidth } from '../utils/format.js';
 import { consumeEarlyInput } from '../utils/earlyInput.js';
 import { setMemberActive } from '../utils/swarm/teamHelpers.js';
@@ -299,8 +300,6 @@ const EMPTY_MCP_CLIENTS: MCPServerConnection[] = [];
 // Declared here as permissive any so external builds typecheck without
 // requiring the gated module to exist.
 const UltraplanChoiceDialog: any = () => null
-const UltraplanLaunchDialog: any = () => null
-const launchUltraplan: any = async () => undefined
 
 // Stable stub for useAssistantHistory's non-KAIROS branch — avoids a new
 // function identity each render, which would break composedOnScroll's memo.
@@ -644,7 +643,6 @@ export function REPL({
   const workerSandboxPermissions = useAppState(s => s.workerSandboxPermissions);
   const elicitation = useAppState(s => s.elicitation);
   const ultraplanPendingChoice = useAppState(s => s.ultraplanPendingChoice);
-  const ultraplanLaunchPending = useAppState(s => s.ultraplanLaunchPending);
   const viewingAgentTaskId = useAppState(s => s.viewingAgentTaskId);
   const setAppState = useSetAppState();
 
@@ -1468,7 +1466,7 @@ export function REPL({
   // throttle batches rapid updates). Cleared on message arrival (messages.ts)
   // so displayedMessages switches from deferredMessages to messages atomically.
   const [streamingText, setStreamingText] = useState<string | null>(null);
-  const reducedMotion = useAppState(s => s.settings.prefersReducedMotion) ?? false;
+  const reducedMotion = (useAppState(s => s.settings.prefersReducedMotion) ?? false) || isScreenReaderMode();
   const showStreamingText = !reducedMotion && !hasCursorUpViewportYankBug();
   const onStreamingText = useCallback((f: (current: string | null) => string | null) => {
     if (!showStreamingText) return;
@@ -2040,7 +2038,6 @@ export function REPL({
     if (allowDialogsWithAnimation && showingCostDialog) return 'cost';
     if (allowDialogsWithAnimation && idleReturnPending) return 'idle-return';
     if (feature('ULTRAPLAN') && allowDialogsWithAnimation && !isLoading && ultraplanPendingChoice) return 'ultraplan-choice';
-    if (feature('ULTRAPLAN') && allowDialogsWithAnimation && !isLoading && ultraplanLaunchPending) return 'ultraplan-launch';
 
     // Onboarding dialogs (special conditions)
     if (allowDialogsWithAnimation && showIdeOnboarding) return 'ide-onboarding';
@@ -4870,46 +4867,6 @@ export function REPL({
                 {focusedInputDialog === 'desktop-upsell' && <DesktopUpsellStartup onDone={() => setShowDesktopUpsellStartup(false)} />}
 
                 {feature('ULTRAPLAN') ? focusedInputDialog === 'ultraplan-choice' && ultraplanPendingChoice && <UltraplanChoiceDialog plan={ultraplanPendingChoice.plan} sessionId={ultraplanPendingChoice.sessionId} taskId={ultraplanPendingChoice.taskId} setMessages={setMessages} readFileState={readFileState.current} getAppState={() => store.getState()} setConversationId={setConversationId} /> : null}
-
-                {feature('ULTRAPLAN') ? focusedInputDialog === 'ultraplan-launch' && ultraplanLaunchPending && <UltraplanLaunchDialog onChoice={(choice, opts) => {
-            const blurb = ultraplanLaunchPending.blurb;
-            setAppState(prev => prev.ultraplanLaunchPending ? {
-              ...prev,
-              ultraplanLaunchPending: undefined
-            } : prev);
-            if (choice === 'cancel') return;
-            // Command's onDone used display:'skip', so add the
-            // echo here — gives immediate feedback before the
-            // ~5s teleportToRemote resolves.
-            setMessages(prev => [...prev, createCommandInputMessage(formatCommandInputTags('ultraplan', blurb))]);
-            const appendStdout = (msg: string) => setMessages(prev => [...prev, createCommandInputMessage(`<${LOCAL_COMMAND_STDOUT_TAG}>${escapeXml(msg)}</${LOCAL_COMMAND_STDOUT_TAG}>`)]);
-            // Defer the second message if a query is mid-turn
-            // so it lands after the assistant reply, not
-            // between the user's prompt and the reply.
-            const appendWhenIdle = (msg: string) => {
-              if (!queryGuard.isActive) {
-                appendStdout(msg);
-                return;
-              }
-              const unsub = queryGuard.subscribe(() => {
-                if (queryGuard.isActive) return;
-                unsub();
-                // Skip if the user stopped ultraplan while we
-                // were waiting — avoids a stale "Monitoring
-                // <url>" message for a session that's gone.
-                if (!store.getState().ultraplanSessionUrl) return;
-                appendStdout(msg);
-              });
-            };
-            void launchUltraplan({
-              blurb,
-              getAppState: () => store.getState(),
-              setAppState,
-              signal: createAbortController().signal,
-              disconnectedBridge: opts?.disconnectedBridge,
-              onSessionReady: appendWhenIdle
-            }).then(appendStdout).catch(logError);
-          }} /> : null}
 
                 {mrRender()}
 

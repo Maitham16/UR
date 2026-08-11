@@ -121,7 +121,7 @@ const coverage: TrendCoverage[] = [
       'ur mcp list/get/add-json/remove',
       'src/services/mcp/*',
       'MCP tools run through the same permission and evidence path as built-in tools',
-      'ur mcp serve-http exposes strict request metadata and the real UR tool registry',
+      'ur mcp serve-web exposes strict request metadata and the real UR tool registry',
     ],
     references: ['https://modelcontextprotocol.io/docs/getting-started/intro'],
     professionalNextStep:
@@ -136,7 +136,7 @@ const coverage: TrendCoverage[] = [
     evidence: [
       'tasks/create|get|update|cancel with owner isolation and corruption quarantine',
       'MCP Apps resource metadata, CSP, permissions, and capability negotiation',
-      'Tasks and Apps are advertised only by ur mcp serve-http',
+      'Tasks and Apps are advertised only by ur mcp serve-web',
     ],
     references: [
       'https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/',

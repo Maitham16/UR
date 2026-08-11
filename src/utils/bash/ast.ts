@@ -897,8 +897,10 @@ function collectCommands(
   if (node.type === 'test_command') {
     // `[[ EXPR ]]` or `[ EXPR ]` — conditional test. Evaluates to true/false
     // based on file tests (-f, -d), string comparisons (==, !=), etc.
-    // No code execution (no command_substitution inside — that would be a
-    // child and we'd recurse into it via walkArgument and reject it).
+    // Executable expansions are rejected by walkTestExpr. Some zsh-compatible
+    // regular-expression nodes flatten $(...), backticks, or process
+    // substitution into leaf text rather than child nodes, so the regex leaf
+    // itself is checked as well.
     // Push as a synthetic command with argv[0]='[[' so permission rules
     // can match — `Bash([[ :*)` would be unusual but legal.
     // Walk arguments to validate (no cmdsub/expansion inside operands).
@@ -992,10 +994,14 @@ function walkTestExpr(
       argv.push(node.text)
       return null
     case 'regex':
-    case 'extglob_pattern':
       // RHS of =~ or ==/!= in [[ ]]. Pattern text only — no code execution.
-      // Parser emits these as leaf nodes with no children (any $(...) or ${...}
-      // inside the pattern is a sibling, not a child, and is walked separately).
+      // zsh can execute substitutions embedded in this leaf. The pure parser
+      // intentionally mirrors tree-sitter's flat regex node, so fail closed
+      // when executable syntax survives as text instead of a child node.
+      if (/\$\(|`|[<>]\(/.test(node.text)) return tooComplex(node)
+      argv.push(node.text)
+      return null
+    case 'extglob_pattern':
       argv.push(node.text)
       return null
     default: {

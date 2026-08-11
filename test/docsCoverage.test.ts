@@ -11,9 +11,16 @@ describe('documentation coverage', () => {
     const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8')
 
     expect(features).toContain('## Core Agent Primitives')
-    for (const primitive of ['Agent', 'Rules', 'MCP', 'Skills', 'CLI', 'Models']) {
-      expect(features).toContain(`| ${primitive} |`)
-      expect(readme).toContain(primitive)
+    for (const [tableLabel, readmeLabel] of [
+      ['Agent', 'Agent'],
+      ['Rules', 'Rules'],
+      ['Model Context Protocol', 'Model Context Protocol'],
+      ['Skills', 'Skills'],
+      ['CLI', 'CLI'],
+      ['Models', 'Models'],
+    ]) {
+      expect(features).toContain(`| ${tableLabel} |`)
+      expect(readme).toContain(readmeLabel)
     }
     expect(features).toContain('.cursor/rules/*.mdc')
     expect(features).toContain('.mcp.json')

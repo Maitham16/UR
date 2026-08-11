@@ -113,7 +113,7 @@ export async function mcpServeHttpHandler({
       verbose: verbose ?? false
     });
   } catch (error) {
-    cliError(`Error: Failed to start MCP 2026 HTTP server: ${error}`);
+    cliError(`Error: Failed to start Model Context Protocol web server: ${error}`);
   }
 }
 

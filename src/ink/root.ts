@@ -41,6 +41,8 @@ export type RenderOptions = {
    * Called after each frame render with timing and flicker information.
    */
   onFrame?: (event: FrameEvent) => void
+  /** Emit append-only plain text suitable for terminal screen readers. */
+  screenReaderMode?: boolean
 }
 
 export type Instance = {
@@ -133,6 +135,7 @@ export async function createRoot({
   exitOnCtrlC = true,
   patchConsole = true,
   onFrame,
+  screenReaderMode,
 }: RenderOptions = {}): Promise<Root> {
   // See wrappedRender — preserve microtask boundary from the old WASM await.
   await Promise.resolve()
@@ -143,6 +146,7 @@ export async function createRoot({
     exitOnCtrlC,
     patchConsole,
     onFrame,
+    screenReaderMode,
   })
 
   // Register in the instances map so that code that looks up the Ink
@@ -154,6 +158,11 @@ export async function createRoot({
     unmount: () => instance.unmount(),
     waitUntilExit: () => instance.waitUntilExit(),
   }
+}
+
+/** Toggle accessible rendering for the active interactive root. */
+export function setScreenReaderRendering(active: boolean): void {
+  instances.get(process.stdout)?.setScreenReaderMode(active)
 }
 
 const getOptions = (

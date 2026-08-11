@@ -49,6 +49,7 @@ import {
 } from '../../utils/messages.js'
 import type { PermissionMode } from '../../utils/permissions/PermissionMode.js'
 import { permissionRuleValueFromString } from '../../utils/permissions/permissionRuleParser.js'
+import { enqueueForwardedSubagentMessage } from '../../utils/sdkEventQueue.js'
 import {
   buildTranscriptForClassifier,
   classifyYoloAction,
@@ -559,6 +560,16 @@ export async function runAsyncAgentLifecycle({
       : undefined
     for await (const message of makeStream(onCacheSafeParams)) {
       agentMessages.push(message)
+      if (
+        toolUseContext.options.forwardSubagentText &&
+        message.type === 'assistant' &&
+        message.message
+      ) {
+        enqueueForwardedSubagentMessage(
+          message.message,
+          toolUseContext.toolUseId,
+        )
+      }
       // Append immediately when UI holds the task (retain). Bootstrap reads
       // disk in parallel and UUID-merges the prefix — disk-write-before-yield
       // means live is always a suffix of disk, so merge is order-correct.

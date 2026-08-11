@@ -5,17 +5,17 @@ import {
   registerBundledSkill,
   type BundledSkillDefinition,
 } from '../src/skills/bundledSkills.js'
-import { registerDebugV2Skill } from '../src/skills/bundled/debug-v2.js'
+import { registerFixBugSkill } from '../src/skills/bundled/debug-v2.js'
 
-describe('/debug-v2 bundled skill', () => {
+describe('/fix-bug bundled skill', () => {
   test('registers with required fields and asks before final verification without auto-PR', async () => {
     clearBundledSkills()
-    registerDebugV2Skill()
+    registerFixBugSkill()
     const skills = getBundledSkills()
     expect(skills).toHaveLength(1)
     const skill = skills[0]!
-    expect(skill.name).toBe('debug-v2')
-    expect(skill.aliases).toContain('debug2')
+    expect(skill.name).toBe('fix-bug')
+    expect(skill.aliases).toBeUndefined()
     expect(skill.userInvocable).toBe(true)
     expect((skill as Extract<typeof skill, { type: 'prompt' }>).allowedTools).toContain('Agent')
 

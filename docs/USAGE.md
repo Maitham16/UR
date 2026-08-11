@@ -25,7 +25,28 @@ ur --add-dir ../other-project
 ur --permission-mode ask
 ur --continue
 ur --resume
+ur --screen-reader
 ```
+
+Useful commands from inside UR:
+
+```text
+/config thinking=false screenReader=true
+/config editor=vim vimEscape=jj
+/session list
+/session archive
+/session unarchive <session-id>
+/fix-bug describe the failure and reproduction steps
+/research init current-tools --question "What changed?"
+/design3d doctor
+/design3d init product-shot --engine blender --units mm --format blend
+/design3d init studio-scene --engine 3dsmax --units cm --format max
+```
+
+`/design3d doctor` reports installed applications. `MISSING` means that optional
+application is not installed or is not on `PATH`; it is not a UR failure. On
+macOS, Autodesk 3ds Max is expected to be missing because it is a Windows
+application. Use Blender locally, or run the 3ds Max project on a Windows host.
 
 When UR needs a focused clarification, it uses the `AskUserQuestion` dialog.
 Professional clarification prompts can provide up to eight concrete options;
@@ -49,7 +70,12 @@ Output formats:
 ur -p --output-format text "explain src/main.tsx"
 ur -p --output-format json "return a JSON summary of this repo"
 ur -p --output-format stream-json "stream progress while answering"
+ur -p --output-format stream-json --forward-subagent-text "delegate and stream nested results"
 ```
+
+WebSearch allows 200 provider searches per session by default. Set
+`UR_MAX_WEB_SEARCHES_PER_SESSION` to another positive integer, or to
+`unlimited` only for a trusted long-running job.
 
 Structured output can be validated with a JSON schema:
 
@@ -264,6 +290,8 @@ hooks:
 ```
 
 Hooks are advisory by default. A `BeforeEdit`/`BeforeCommand`/`BeforeCommit` hook can block the action by returning `{"decision":"block","reason":"..."}` or exit code 2. `AfterEdit` and `OnFailure` hooks can return `{"hookSpecificOutput":{"hookEventName":"...","memory":{"kind":"accepted","text":"..."}}}` to append project memory automatically.
+`DirectoryAdded` fires after `/add-dir` authorizes and adds a directory, so
+plugins and project automation can initialize directory-specific state.
 
 ## Commands
 
@@ -272,7 +300,7 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `/help` or `ur --help` for command discovery
 - `ur connect ...` to connect provider accounts (subscription login or stored API key)
 - `ur mcp ...` to configure MCP servers, run the stdio server, or start the
-  opt-in stateless MCP 2026 Tasks/Apps adapter with `ur mcp serve-http`
+  opt-in stateless Model Context Protocol Tasks/Apps server with `ur mcp serve-web`
 - `ur ag-ui serve` to expose the secure AG-UI HTTP/SSE adapter to an explicitly
   allowed user-facing application
 - `ur plugin ...` to manage plugins and marketplaces. Marketplace plugins can
@@ -319,7 +347,7 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur artifacts ...` to capture reviewable diffs, test runs, notes, feedback,
   and bounded non-symlink attachments with safe download headers/MIME fallback
 - `ur ide diff ...` to capture editor-readable inline diff bundles
-- `ur acp stdio` for the official-SDK ACP v1 editor transport with durable
+- `ur acp stdio` for the standard Agent Client Protocol editor transport with durable
   list/load/delete/resume, modes, config options, and commands; and
   `ur acp serve|stop|status` for the separate UR HTTP JSON-RPC API
 - `ur exec ...` to run prompts in non-interactive mode with optional concurrency
@@ -372,7 +400,7 @@ UR includes slash commands and CLI subcommands for common workflows:
   money column is omitted rather than printing a wall of `$0.00`. Add `--json`
   for the raw rows.
 - `ur role-mode ...` to install built-in Architect, Code, Debug, and Ask role modes
-- `ur a2a ...` for negotiated v1 JSON-RPC/HTTP+JSON, the stable v0.3 SDK
+- `ur a2a ...` for a negotiated Agent-to-Agent server with automatic compatibility
   binding, scoped delegation tokens, durable protocol state, and separate UR
   compatibility task routes
 - `ur sdk ...` to scaffold TS/Python headless SDK examples
@@ -501,7 +529,7 @@ ur context-pack remember --decision "Keep streaming" --cite-file src/parser.ts -
 ur context-pack memory verify
 ur context-pack memory revalidate
 ur context-pack compress
-UR_MCP_HTTP_TOKEN='<secret>' ur mcp serve-http --port 8976
+UR_MCP_HTTP_TOKEN='<secret>' ur mcp serve-web --port 8976
 ur acp serve --port 8123
 ur exec "add tests for the parser" --concurrency 4 --json
 ur ci-loop --command "bun test" --cwd . --dry-run

@@ -16,6 +16,7 @@ import { env } from '../../utils/env.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { getDisplayPath } from '../../utils/file.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
+import { formatCommandForDisplay } from '../../utils/shell/visibleCommand.js';
 import type { ThemeName } from '../../utils/theme.js';
 import type { BashProgress, BashToolInput, Out } from './BashTool.js';
 import BashToolResultMessage from './BashToolResultMessage.js';
@@ -101,8 +102,9 @@ export function renderToolUseMessage(input: Partial<BashToolInput>, {
   if (sedInfo) {
     return verbose ? sedInfo.filePath : getDisplayPath(sedInfo.filePath);
   }
+  const displayCommand = formatCommandForDisplay(command);
   if (!verbose) {
-    const lines = command.split('\n');
+    const lines = displayCommand.split('\n');
     if (isFullscreenEnvEnabled()) {
       const label = extractBashCommentLabel(command);
       if (label) {
@@ -110,9 +112,9 @@ export function renderToolUseMessage(input: Partial<BashToolInput>, {
       }
     }
     const needsLineTruncation = lines.length > MAX_COMMAND_DISPLAY_LINES;
-    const needsCharTruncation = command.length > MAX_COMMAND_DISPLAY_CHARS;
+    const needsCharTruncation = displayCommand.length > MAX_COMMAND_DISPLAY_CHARS;
     if (needsLineTruncation || needsCharTruncation) {
-      let truncated = command;
+      let truncated = displayCommand;
 
       // First truncate by lines if needed
       if (needsLineTruncation) {
@@ -126,7 +128,7 @@ export function renderToolUseMessage(input: Partial<BashToolInput>, {
       return <Text>{truncated.trim()}…</Text>;
     }
   }
-  return command;
+  return displayCommand;
 }
 export function renderToolUseProgressMessage(progressMessagesForMessage: ProgressMessage<BashProgress>[], {
   verbose,

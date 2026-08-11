@@ -224,6 +224,7 @@ export type WorktreeCreateHookInput = HookInputBase
 export type WorktreeRemoveHookInput = HookInputBase
 export type InstructionsLoadedHookInput = HookInputBase
 export type CwdChangedHookInput = HookInputBase
+export type DirectoryAddedHookInput = HookInputBase
 export type FileChangedHookInput = HookInputBase
 export type BeforeEditHookInput = HookInputBase
 export type AfterEditHookInput = HookInputBase

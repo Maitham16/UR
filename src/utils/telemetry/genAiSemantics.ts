@@ -171,7 +171,10 @@ export function genAiAgentAttributes(): Attributes {
   }
 }
 
-export function genAiWorkflowAttributes(workflowName?: string): Attributes {
+export function genAiWorkflowAttributes(
+  workflowName?: string,
+  workflowRunId?: string,
+): Attributes {
   const attributes: Attributes = {
     'gen_ai.operation.name': GEN_AI_OPERATION_INVOKE_WORKFLOW,
   }
@@ -182,12 +185,24 @@ export function genAiWorkflowAttributes(workflowName?: string): Attributes {
     !/[\u0000-\u001f\u007f]/u.test(normalized)
   ) {
     attributes['gen_ai.workflow.name'] = normalized
+    attributes['workflow.name'] = normalized
+  }
+  const normalizedRunId = workflowRunId?.trim()
+  if (
+    normalizedRunId &&
+    normalizedRunId.length <= 256 &&
+    !/[\u0000-\u001f\u007f]/u.test(normalizedRunId)
+  ) {
+    attributes['workflow.run_id'] = normalizedRunId
   }
   return attributes
 }
 
-export function startGenAiWorkflowSpan(workflowName?: string): Span {
-  const attributes = genAiWorkflowAttributes(workflowName)
+export function startGenAiWorkflowSpan(
+  workflowName?: string,
+  workflowRunId?: string,
+): Span {
+  const attributes = genAiWorkflowAttributes(workflowName, workflowRunId)
   const name =
     typeof attributes['gen_ai.workflow.name'] === 'string'
       ? `invoke_workflow ${attributes['gen_ai.workflow.name']}`

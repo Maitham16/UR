@@ -2,7 +2,7 @@
 
 UR is a provider-flexible, local-first terminal coding agent. This page tracks
 how UR maps to current agent-platform trends and where future work should go
-next. The factual comparison below is a **2026-08-10 research snapshot**; run
+next. The factual comparison below is a **2026-08-11 research snapshot**; run
 `ur agent-trends` for the versioned machine-readable report and re-check the
 linked primary sources before acting on prerelease standards.
 
@@ -80,8 +80,8 @@ Inside an interactive session:
 | Trend | UR status | Current coverage | Professional next step |
 | --- | --- | --- | --- |
 | Provider-flexible, local-first runtime | Covered | Local Ollama; direct OpenAI, Anthropic, Gemini, OpenRouter, and OpenAI-compatible APIs; authenticated subscription-CLI adapters; explicit provider selection | Normalize capability discovery across providers and make automatic per-step routing opt-in |
-| MCP tool ecosystem | Covered | `ur mcp`, MCP OAuth/XAA/elicitation, fail-closed bounded stdio tools, and the opt-in stateless MCP 2026 HTTP adapter | Track the final 2026 spec/SDK and add independent-client fixtures before promoting the adapter |
-| MCP Tasks and MCP Apps | Covered | Negotiated Tasks lifecycle, owner-isolated durable state, and a self-contained Apps resource through `ur mcp serve-http` | Reconcile final extension schemas and broaden client interoperability tests |
+| Model Context Protocol ecosystem | Covered | `ur mcp`, OAuth/XAA, fail-closed bounded tools, final `input_required` continuation, all workspace roots with change notifications, and the opt-in stateless web server | Broaden independent-client interoperability fixtures |
+| Protocol Tasks and Apps | Covered | Negotiated Tasks lifecycle, owner-isolated durable state, and a self-contained Apps resource through `ur mcp serve-web` | Broaden independent-client interoperability fixtures |
 | A2A / Agent Card interoperability | Covered | Stable-SDK v0.3 plus strict v1 ProtoJSON JSON-RPC/HTTP+JSON, negotiated cards, tenant isolation, durable artifacts, and TCK coverage | Adopt the stable v1 SDK when released; add signed-card verification and streaming only with truthful end-to-end tests |
 | AG-UI agent-to-frontend interoperability | Covered | Official-schema HTTP/SSE adapter, truthful capabilities, ordered state/text/tool events, cancellation, exact CORS, bounded requests/output, and loopback-or-bearer security | Add independent frontend fixtures before advertising optional interrupts, binary/WebSocket transport, or client tools |
 | Durable workflows and checkpoints | Covered | resume, rewind, steerable `ur bg`/managed-cloud runs, optional worktrees/PRs, cron/workflow internals, file restore, and resumable multi-repo DAG state | Add authenticated cross-machine checkpoint replication |
@@ -104,10 +104,10 @@ Inside an interactive session:
 | AGENTS.md interoperability | Covered | `AGENTS.md` loaded as runtime project context (before `UR.md`), plus imported by the `/init` command | Keep aligned as the AGENTS.md spec evolves |
 | Browser and computer-use workflows | Covered | `/browser`, `/chrome`, Playwright-aware tasks, plus bounded Electron desktop fixtures with assertions, teardown, masked screenshots, and optional raw video/trace only when selector redaction is disabled | Add OS-native non-Electron fixtures behind equally testable drivers |
 | Provenance and citations | Partial | WebFetch source URLs, `/cite`, `/graph`, `/trace`, evidence ledgers, and task-memory citations with digest freshness | Add authenticated reopening for user citations and explicit network refresh for web/MCP citations |
-| Evals and observability | Covered | isolated eval worktrees, redacted structured trajectories, policy/outcome/cost/duration CI gates, reliability reports, dashboards, benchmark adapters, and OpenTelemetry | Publish opt-in signed versioned pass-rate snapshots by category |
-| Standard GenAI telemetry | Covered | Explicit OTLP/console exporters; GenAI inference, agent/workflow, tool, memory, token, cache, response, latency, streaming time-to-first-chunk/inter-output-chunk, and error semantics; content off by default | Add trajectory policy graders and cross-provider dashboards without increasing content capture/cardinality |
+| Evals and observability | Covered | isolated eval worktrees, redacted structured trajectories, policy/outcome/cost/duration CI gates, dashboards, nested-agent stream forwarding, and correlated OpenTelemetry assistant/workflow/tool events | Publish opt-in signed versioned pass-rate snapshots by category |
+| Standard GenAI telemetry | Covered | Explicit OTLP/console exporters; privacy-safe assistant response, message/request/tool correlation, workflow run identity, inference, token, cache, response, latency, streaming, and error semantics; content off by default | Add trajectory policy graders and cross-provider dashboards without increasing content capture/cardinality |
 | Test-first execution | Covered | `ur test-first` detects compile/test/lint commands, stores failure traces, retries through a fix agent, and installs detected commands into `.ur/verify.json` for edit-time gates | Add per-package command plans for large monorepos |
-| Security and prompt-injection resistance | Covered | allow/ask/deny permissions, shell safety analysis, secret scan, untrusted web-content guidance, OS-level execution sandbox (macOS Seatbelt, Linux bubblewrap) | Continuously test web/MCP/repository/skill/memory injection, confused-deputy, and tool-abuse cases |
+| Security and prompt-injection resistance | Covered | parameter-aware allow/ask/deny permissions, hardened Bash/PowerShell approval parsing, credential masking, TLS proxying, strict egress, secret scan, untrusted-content framing, and OS sandboxing | Continuously test web/protocol/repository/skill/memory injection, confused-deputy, and tool-abuse cases |
 | Agent identity and delegated authorization | Covered | MCP OAuth/XAA helpers, issuer-minted A2A bearer/delegation tokens, subject/audience/expiry/skill binding, local trust boundaries, permission rules | Keep delegated scopes narrow and auditable; HMAC child-token narrowing remains issuer-side |
 | Multimodal workflows | Partial | `/image`, `/video`, `/youtube`, `/voice`, browser workflows | Add model-aware multimodal capability reporting for local Ollama setups |
 | Spec-driven development | Covered | `ur spec` scaffolds requirements/design/tasks under `.ur/specs/`, tracks phase/approvals, and runs the Spec Kit / Kiro task list one task at a time | Add bidirectional sync with an external `specs/` directory |
@@ -157,10 +157,11 @@ The server refuses unauthenticated off-loopback binds and requires
 `--public-base-url` for wildcard binds so discovery never advertises
 `0.0.0.0`. Prefer `UR_A2A_TOKEN` and `UR_A2A_DELEGATION_SECRET` over argv
 secrets. Request size, prompt size, output size, submission rate, concurrent
-submissions, and active tasks are bounded by `UR_A2A_*` settings. UR's v1
-compatibility layer is covered by the official TCK while the JavaScript SDK's
-v1 line remains prerelease; the stable v0.3 path therefore stays available
-during the negotiated migration.
+submissions, and active tasks are bounded by `UR_A2A_*` settings. UR's
+final-protocol compatibility layer is covered by the official TCK. The
+official JavaScript SDK's matching binding remains alpha, so UR keeps the
+stable older SDK binding as a separately negotiated compatibility path rather
+than relabeling or silently translating it.
 
 ## Model Runtime Position
 
@@ -171,26 +172,31 @@ and model selection are explicit, credentials are resolved through the
 credential layer, and the optional fallback setting is diagnostic advice rather
 than an automatic provider switch.
 
-## v1.48 Frontier Priorities
+## 1.80 Frontier Priorities
 
-The `1.48.0` work closes the managed-worker, steering, learned-playbook,
-cited-memory, Agentic CI, trajectory-grading, desktop-QA, durable-side-chat,
-multi-repository, and model-judge gaps from the 2026-07-26 scan. The remaining
-ordered backlog keeps prerelease protocols opt-in and focuses on evidence and
-trust:
+The final Model Context Protocol release is implemented, including Tasks,
+Apps, multi-round-trip tool input, roots compatibility, and strict request
+metadata. Agent-to-Agent 1.0 JSON-RPC and HTTP+JSON remain separately
+negotiated from the older stable JavaScript SDK binding. The current backlog
+focuses on proven interoperability and narrow trust boundaries:
 
-1. Adopt final MCP 2026 and stable A2A v1 SDK artifacts when published, while
-   preserving dual-stack negotiation and independent-client fixtures.
-2. Add A2A signed-card verification, streaming/resubscription, and push only
-   with authenticated end-to-end conformance tests.
-3. Extend task-memory citations, deletion proofs, quarantine, and rollback to
+1. Broaden independent-client fixtures for final Model Context Protocol and
+   Agent-to-Agent requests before adding more advertised protocol surface.
+2. Adopt a stable official Agent-to-Agent JavaScript binding when one exists.
+   Add gRPC only for a real transport consumer with TLS/authentication and TCK
+   coverage; do not advertise it from the Agent Card before that proof exists.
+3. Keep AP2 payments outside the coding agent until UR has an explicitly
+   authorized commerce use case, mandate/signature policy, credential model,
+   and end-to-end payment conformance suite.
+4. Extend task-memory citations, deletion proofs, quarantine, and rollback to
    every semantic, embedding-backed, and legacy memory store.
-4. Publish opt-in, signed, versioned trajectory/outcome pass-rate snapshots and
+5. Publish opt-in, signed, versioned trajectory/outcome pass-rate snapshots and
    calibrate model-judge agreement without capturing prompt/tool content.
-5. Require registry attestations, dependency review, revocation, and update
+6. Require registry attestations, dependency review, revocation, and update
    transparency before one-command community skill/plugin installation.
-6. Reopen authenticated user citations, explicitly refresh web/MCP citations,
-   enforce final claim-to-source links, and complete Windows OS-sandbox parity.
+7. Reopen authenticated user citations, explicitly refresh web/protocol
+   citations, enforce final claim-to-source links, and complete Windows
+   OS-sandbox parity.
 
 ## Source And Trust Policy
 
@@ -222,7 +228,7 @@ Professional answer requirements:
 - OpenAI deferred tool search: https://developers.openai.com/api/docs/guides/tools-tool-search
 - OpenAI agent evals: https://developers.openai.com/api/docs/guides/agent-evals
 - Model Context Protocol: https://modelcontextprotocol.io/docs/getting-started/intro
-- MCP 2026-07-28 release candidate: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+- Final Model Context Protocol 2026-07-28 release: https://blog.modelcontextprotocol.io/posts/2026-07-28/
 - MCP Tasks extension: https://tasks.extensions.modelcontextprotocol.io/
 - MCP Apps extension: https://apps.extensions.modelcontextprotocol.io/
 - ACP v1 schema: https://agentclientprotocol.com/protocol/v1/schema

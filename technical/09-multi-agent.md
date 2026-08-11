@@ -162,7 +162,7 @@ ur -w feature-x             # session in a fresh git worktree (+ --tmux for pane
 `EnterWorktree` / `ExitWorktree` tools let the model move itself into isolation mid-turn
 (worktree mode). Worktree settings: `worktree.symlinkDirectories`, `worktree.sparsePaths`.
 
-Bundled worktree skills (`/debug-v2`, `/refactor`, `/security-review`,
+Bundled worktree skills (`/fix-bug`, `/refactor`, `/security-review`,
 `/dockerize`, `/paper-implementation`, `/latex-paper`, `/benchmark`, `/batch`)
 leave changes local. They run focused checks while working, ask before the final
 full verification suite, and never commit, push, or open a PR unless the user

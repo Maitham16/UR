@@ -407,6 +407,7 @@ function logAPISuccess({
   attempt,
   ttftMs,
   requestId,
+  clientRequestId,
   stopReason,
   costUSD,
   didFallBackToNonStreaming,
@@ -433,6 +434,7 @@ function logAPISuccess({
   attempt: number
   ttftMs: number | null
   requestId: string | null
+  clientRequestId?: string
   stopReason: BetaStopReason | null
   costUSD: number
   didFallBackToNonStreaming: boolean
@@ -490,6 +492,9 @@ function logAPISuccess({
     provider: getAPIProviderForStatsig(),
     requestId:
       (requestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS) ??
+      undefined,
+    clientRequestId:
+      (clientRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS) ??
       undefined,
     ...(invocation
       ? {
@@ -590,6 +595,7 @@ export function logAPISuccessAndDuration({
   messageCount,
   messageTokens,
   requestId,
+  clientRequestId,
   stopReason,
   didFallBackToNonStreaming,
   querySource,
@@ -616,6 +622,7 @@ export function logAPISuccessAndDuration({
   messageCount: number
   messageTokens: number
   requestId: string | null
+  clientRequestId?: string
   stopReason: BetaStopReason | null
   didFallBackToNonStreaming: boolean
   querySource: string
@@ -699,6 +706,7 @@ export function logAPISuccessAndDuration({
     attempt,
     ttftMs,
     requestId,
+    clientRequestId,
     stopReason,
     costUSD,
     didFallBackToNonStreaming,
@@ -725,6 +733,20 @@ export function logAPISuccessAndDuration({
     cost_usd: String(costUSD),
     duration_ms: String(durationMs),
     speed: fastMode ? 'fast' : 'normal',
+    ...(requestId && { request_id: requestId }),
+    ...(clientRequestId && { client_request_id: clientRequestId }),
+    query_source: querySource,
+  })
+
+  const responseMessage = newMessages?.at(-1)
+  void logOTelEvent('assistant_response', {
+    model,
+    ...(responseMessage?.uuid && { 'message.uuid': responseMessage.uuid }),
+    ...(requestId && { request_id: requestId }),
+    ...(clientRequestId && { client_request_id: clientRequestId }),
+    query_source: querySource,
+    ...(stopReason && { stop_reason: stopReason }),
+    has_tool_call: String(Boolean(toolUseContentLengths)),
   })
 
   // Extract model output, thinking output, and tool call flag when beta tracing is enabled

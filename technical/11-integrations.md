@@ -37,7 +37,7 @@ ur mcp reset-project-choices        # re-prompt for .mcp.json approvals
 | Surface | Start | Protocol |
 |---|---|---|
 | MCP server | `ur mcp serve` | exposes UR tools over MCP (stdio) |
-| MCP 2026 HTTP | `UR_MCP_HTTP_TOKEN=… ur mcp serve-http` | opt-in stateless `/mcp` adapter with negotiated Tasks and Apps |
+| MCP web server | `UR_MCP_HTTP_TOKEN=… ur mcp serve-web` | opt-in stateless `/mcp` adapter with negotiated Tasks and Apps |
 | ACP stdio agent | `ur acp stdio` | Stable ACP v1 via the official SDK: durable list/load/delete/resume/close, exact replay, modes, config, commands, permissions, MCP, streaming |
 | UR HTTP agent API | `UR_ACP_TOKEN=… ur acp serve`; `/acp` | UR-specific HTTP JSON-RPC for scripts, tools/tasks, and the experimental JetBrains plugin; not an ACP binding |
 | A2A server | `UR_A2A_TOKEN=… ur a2a serve --port 8765` | negotiated strict v1 JSON-RPC/HTTP+JSON, stable-SDK v0.3 at `/a2a/jsonrpc`, and separate UR compatibility routes under `/a2a/tasks` |
@@ -53,10 +53,15 @@ Operators can tune those bounds with `UR_MCP_MAX_CALLS_PER_MINUTE`,
 `UR_MCP_MAX_CONCURRENT_CALLS`, `UR_MCP_TOOL_TIMEOUT_MS`,
 `UR_MCP_MAX_INPUT_CHARS`, and `UR_MCP_MAX_OUTPUT_CHARS`.
 
-`ur mcp serve-http` requires matching protocol/method/name request metadata,
+`ur mcp serve-web` requires matching protocol/method/name request metadata,
 uses the real UR MCP registry, and applies bearer auth, exact CORS origins,
 owner-isolated durable tasks, rate/concurrency/runtime limits, private atomic
 persistence, and corrupt-state quarantine. Its limits use `UR_MCP_HTTP_*`.
+Tool calls can return `input_required` with a bounded continuation state when
+more user input is needed. Older elicitation remains supported for compatible
+clients. `roots/list` contains the initial workspace and every authorized
+directory added with `/add-dir`; connected clients receive
+`notifications/roots/list_changed` when that set changes.
 
 `ur ag-ui serve` binds to loopback by default and requires `UR_AG_UI_TOKEN`
 off-loopback. Browser origins are exact allow-list entries. Adapter runs are

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Box, Text, useAnimationFrame } from '../../ink.js';
 import { getInitialSettings } from '../../utils/settings/settings.js';
+import { isScreenReaderMode } from '../../utils/screenReader.js';
 import { hueToRgb, toRGBColor } from '../Spinner/utils.js';
 import { UR_HOUSE } from '../../constants/figures.js';
 
@@ -16,7 +17,7 @@ export function AnimatedUrHouse({
   char?: string;
 }): React.ReactNode {
   const [reducedMotion] = useState(
-    () => getInitialSettings().prefersReducedMotion ?? false,
+    () => (getInitialSettings().prefersReducedMotion ?? false) || isScreenReaderMode(),
   );
   const [done, setDone] = useState(reducedMotion);
   const startTimeRef = useRef<number | null>(null);

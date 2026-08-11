@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react'
 import type { Key } from '../ink.js'
 import type { VimInputState, VimMode } from '../types/textInputTypes.js'
 import { Cursor } from '../utils/Cursor.js'
+import { getGlobalConfig } from '../utils/config.js'
 import { lastGrapheme } from '../utils/intl.js'
 import {
   executeIndent,
@@ -23,6 +24,10 @@ import {
   type RecordedChange,
   type VimState,
 } from '../vim/types.js'
+import {
+  advanceInsertModeEscapeSequence,
+  isValidVimEscapeSequence,
+} from '../vim/insertModeRemap.js'
 import { type UseTextInputProps, useTextInput } from './useTextInput.js'
 
 type UseVimInputProps = Omit<UseTextInputProps, 'inputFilter'> & {
@@ -34,6 +39,7 @@ type UseVimInputProps = Omit<UseTextInputProps, 'inputFilter'> & {
 export function useVimInput(props: UseVimInputProps): VimInputState {
   const vimStateRef = React.useRef<VimState>(createInitialVimState())
   const [mode, setMode] = useState<VimMode>('INSERT')
+  const insertRemapBufferRef = React.useRef('')
 
   const persistentRef = React.useRef<PersistentState>(
     createInitialPersistentState(),
@@ -58,7 +64,7 @@ export function useVimInput(props: UseVimInputProps): VimInputState {
     [textInput, onModeChange],
   )
 
-  const switchToNormalMode = useCallback((): void => {
+  const switchToNormalMode = useCallback((offsetOverride?: number, valueOverride?: string): void => {
     const current = vimStateRef.current
     if (current.mode === 'INSERT' && current.insertedText) {
       persistentRef.current.lastChange = {
@@ -69,11 +75,15 @@ export function useVimInput(props: UseVimInputProps): VimInputState {
 
     // Vim behavior: move cursor left by 1 when exiting insert mode
     // (unless at beginning of line or at offset 0)
-    const offset = textInput.offset
-    if (offset > 0 && props.value[offset - 1] !== '\n') {
+    const offset = offsetOverride ?? textInput.offset
+    const value = valueOverride ?? props.value
+    if (offset > 0 && value[offset - 1] !== '\n') {
       textInput.setOffset(offset - 1)
+    } else if (offsetOverride !== undefined) {
+      textInput.setOffset(offset)
     }
 
+    insertRemapBufferRef.current = ''
     vimStateRef.current = { mode: 'NORMAL', command: { type: 'idle' } }
     setMode('NORMAL')
     onModeChange?.('NORMAL')
@@ -207,6 +217,51 @@ export function useVimInput(props: UseVimInputProps): VimInputState {
     }
 
     if (state.mode === 'INSERT') {
+      const escapeSequence = getGlobalConfig().vimInsertModeEscapeSequence
+      const isPlainText =
+        input.length > 0 &&
+        !key.backspace &&
+        !key.delete &&
+        !key.meta &&
+        !key.tab &&
+        !key.upArrow &&
+        !key.downArrow &&
+        !key.leftArrow &&
+        !key.rightArrow
+      if (escapeSequence && isValidVimEscapeSequence(escapeSequence) && isPlainText) {
+        const remap = advanceInsertModeEscapeSequence(
+          insertRemapBufferRef.current,
+          input,
+          escapeSequence,
+        )
+        insertRemapBufferRef.current = remap.buffer
+        if (remap.matched) {
+          const removeFromExisting = remap.removeFromExisting ?? 0
+          const insertBeforeEscape = remap.insertBeforeEscape ?? ''
+          const start = Math.max(0, textInput.offset - removeFromExisting)
+          const nextValue =
+            props.value.slice(0, start) +
+            insertBeforeEscape +
+            props.value.slice(textInput.offset)
+          const nextOffset = start + insertBeforeEscape.length
+          props.onChange(nextValue)
+          if (state.insertedText) {
+            vimStateRef.current = {
+              mode: 'INSERT',
+              insertedText:
+                state.insertedText.slice(
+                  0,
+                  Math.max(0, state.insertedText.length - removeFromExisting),
+                ) + insertBeforeEscape,
+            }
+          }
+          switchToNormalMode(nextOffset, nextValue)
+          return
+        }
+      } else if (key.backspace || key.delete || !isPlainText) {
+        insertRemapBufferRef.current = ''
+      }
+
       // Track inserted text for dot-repeat
       if (key.backspace || key.delete) {
         if (state.insertedText.length > 0) {
@@ -297,6 +352,7 @@ export function useVimInput(props: UseVimInputProps): VimInputState {
   const setModeExternal = useCallback(
     (newMode: VimMode) => {
       if (newMode === 'INSERT') {
+        insertRemapBufferRef.current = ''
         vimStateRef.current = { mode: 'INSERT', insertedText: '' }
       } else {
         vimStateRef.current = { mode: 'NORMAL', command: { type: 'idle' } }

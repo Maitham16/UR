@@ -395,7 +395,11 @@ export async function gracefulShutdown(
     getAppState?: () => AppState
     setAppState?: (f: (prev: AppState) => AppState) => void
     /** Printed to stderr after alt-screen exit, before forceExit. */
-    finalMessage?: string
+    finalMessage?: string | ((finalizerError?: unknown) => string)
+    /** Runs after session persistence and SessionEnd hooks, immediately before exit. */
+    finalizeSession?: () => Promise<void>
+    /** Suppress the resume hint when the finalizer intentionally removes the session. */
+    skipResumeHint?: boolean
   },
 ): Promise<void> {
   if (shutdownInProgress) {
@@ -417,7 +421,7 @@ export async function gracefulShutdown(
   failsafeTimer = setTimeout(
     code => {
       cleanupTerminalModes()
-      printResumeHint()
+      if (!options?.skipResumeHint) printResumeHint()
       forceExit(code)
     },
     Math.max(5000, sessionEndTimeoutMs + 3500),
@@ -434,7 +438,7 @@ export async function gracefulShutdown(
   // hint would only appear after cleanup functions, hooks, and analytics
   // flush — which can take several seconds.
   cleanupTerminalModes()
-  printResumeHint()
+  if (!options?.skipResumeHint) printResumeHint()
 
   // Flush session data first — this is the most critical cleanup. If the
   // terminal is dead (SIGHUP, SSH disconnect), hooks and analytics may hang
@@ -479,6 +483,19 @@ export async function gracefulShutdown(
     // Ignore SessionEnd hook exceptions (including AbortError on timeout)
   }
 
+  // Commands such as `session archive` must run only after transcript cleanup
+  // has flushed. Running this earlier can race the append stream and recreate
+  // a supposedly archived transcript at its original location.
+  let finalizerError: unknown
+  if (options?.finalizeSession) {
+    try {
+      await options.finalizeSession()
+    } catch (error) {
+      finalizerError = error
+      logForDebugging(`Session finalizer failed: ${error}`, { level: 'error' })
+    }
+  }
+
   // Log startup perf before analytics shutdown flushes/cancels timers
   try {
     profileReport()
@@ -512,14 +529,18 @@ export async function gracefulShutdown(
 
   if (options?.finalMessage) {
     try {
+      const message =
+        typeof options.finalMessage === 'function'
+          ? options.finalMessage(finalizerError)
+          : options.finalMessage
       // eslint-disable-next-line custom-rules/no-sync-fs -- must flush before forceExit
-      writeSync(2, options.finalMessage + '\n')
+      writeSync(2, message + '\n')
     } catch {
       // stderr may be closed (e.g., SSH disconnect). Ignore write errors.
     }
   }
 
-  forceExit(exitCode)
+  forceExit(finalizerError === undefined ? exitCode : 1)
 }
 
 class CleanupTimeoutError extends Error {

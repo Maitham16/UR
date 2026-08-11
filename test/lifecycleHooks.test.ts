@@ -10,6 +10,7 @@ import {
   AfterCommandHookInputSchema,
   BeforeCommitHookInputSchema,
   OnFailureHookInputSchema,
+  DirectoryAddedHookInputSchema,
 } from '../src/entrypoints/sdk/coreSchemas.js'
 import { getDefaultAppState } from '../src/state/AppStateStore.js'
 import { getSessionId } from '../src/bootstrap/state.js'
@@ -48,7 +49,7 @@ function makeToolUseContext() {
 }
 
 describe('lifecycle hooks', () => {
-  it('HOOK_EVENTS includes the six new lifecycle events', () => {
+  it('HOOK_EVENTS includes the lifecycle and directory events', () => {
     for (const event of [
       'BeforeEdit',
       'AfterEdit',
@@ -56,6 +57,7 @@ describe('lifecycle hooks', () => {
       'AfterCommand',
       'BeforeCommit',
       'OnFailure',
+      'DirectoryAdded',
     ]) {
       expect(HOOK_EVENTS as readonly string[]).toContain(event)
     }
@@ -120,6 +122,15 @@ describe('lifecycle hooks', () => {
         hook_event_name: 'OnFailure',
         error: 'oops',
         stage: 'tool',
+      }).success,
+    ).toBe(true)
+
+    expect(
+      DirectoryAddedHookInputSchema().safeParse({
+        ...base,
+        hook_event_name: 'DirectoryAdded',
+        directory_path: '/tmp/other-project',
+        scope: 'session',
       }).success,
     ).toBe(true)
   })

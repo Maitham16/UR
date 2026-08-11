@@ -96,6 +96,7 @@ import type {
   TaskCompletedHookInput,
   ConfigChangeHookInput,
   CwdChangedHookInput,
+  DirectoryAddedHookInput,
   FileChangedHookInput,
   InstructionsLoadedHookInput,
   UserPromptSubmitHookInput,
@@ -4280,6 +4281,24 @@ export function executeCwdChangedHooks(
     hook_event_name: 'CwdChanged',
     old_cwd: oldCwd,
     new_cwd: newCwd,
+  }
+  return executeEnvHooks(hookInput, timeoutMs)
+}
+
+export function executeDirectoryAddedHooks(
+  directoryPath: string,
+  scope: 'session' | 'local',
+  timeoutMs: number = TOOL_HOOK_EXECUTION_TIMEOUT_MS,
+): Promise<{
+  results: HookOutsideReplResult[]
+  watchPaths: string[]
+  systemMessages: string[]
+}> {
+  const hookInput: DirectoryAddedHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'DirectoryAdded',
+    directory_path: directoryPath,
+    scope,
   }
   return executeEnvHooks(hookInput, timeoutMs)
 }

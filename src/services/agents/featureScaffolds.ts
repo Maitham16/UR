@@ -373,7 +373,7 @@ Read the review comment, CI failure, or requested change. Make the smallest cohe
 Keep only facts that will help future sessions: stable decisions, project conventions, recurring failures, and important owner preferences. Remove stale or duplicated details. Prefer short, dated entries when the fact may expire.`,
   },
   {
-    name: 'debug-v2',
+    name: 'bug-fixer',
     description:
       'Use when reproducing, root-causing, and fixing a bug in an isolated worktree with a regression test and PR.',
     color: 'red',
@@ -759,7 +759,7 @@ runner; \`ur trigger\` is the inbound parser that decides what to run.
     root: 'project',
     content: compileAgenticCiWorkflow('default', {
       packageVersion:
-        typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.79.1',
+        typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.80.0',
     }),
   },
   {

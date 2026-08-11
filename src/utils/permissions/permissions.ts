@@ -269,6 +269,86 @@ function toolMatchesRule(
   )
 }
 
+function valueAtParameterPath(
+  input: Record<string, unknown>,
+  path: string,
+): { found: boolean; value: unknown } {
+  let value: unknown = input
+  for (const segment of path.split('.')) {
+    if (
+      value === null ||
+      typeof value !== 'object' ||
+      !Object.prototype.hasOwnProperty.call(value, segment)
+    ) {
+      return { found: false, value: undefined }
+    }
+    value = (value as Record<string, unknown>)[segment]
+  }
+  return { found: true, value }
+}
+
+function parameterValueString(value: unknown): string | null {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  if (value === null) return 'null'
+  try {
+    return JSON.stringify(value) ?? null
+  } catch {
+    return null
+  }
+}
+
+function wildcardValueMatches(pattern: string, value: string): boolean {
+  if (pattern === '*') return true
+  const expression = pattern
+    .split('*')
+    .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*')
+  return new RegExp(`^${expression}$`, 'u').test(value)
+}
+
+function parameterRuleMatches(
+  tool: Pick<Tool, 'name' | 'mcpInfo'>,
+  input: Record<string, unknown>,
+  rule: PermissionRule,
+): boolean {
+  const parameter = rule.ruleValue.ruleParameter
+  if (!parameter) return false
+
+  // Reuse the canonical/legacy/MCP name matching logic without letting the
+  // content-bearing rule be mistaken for a whole-tool rule.
+  const nameOnlyRule: PermissionRule = {
+    ...rule,
+    ruleValue: { toolName: rule.ruleValue.toolName },
+  }
+  if (!toolMatchesRule(tool, nameOnlyRule)) return false
+
+  const candidate = valueAtParameterPath(input, parameter.name)
+  if (!candidate.found) return false
+  const serialized = parameterValueString(candidate.value)
+  return (
+    serialized !== null &&
+    wildcardValueMatches(parameter.valuePattern, serialized)
+  )
+}
+
+export function getParameterRuleForToolInput(
+  context: ToolPermissionContext,
+  tool: Pick<Tool, 'name' | 'mcpInfo'>,
+  input: Record<string, unknown>,
+  behavior: PermissionBehavior,
+): PermissionRule | null {
+  const rules =
+    behavior === 'deny'
+      ? getDenyRules(context)
+      : behavior === 'ask'
+        ? getAskRules(context)
+        : getAllowRules(context)
+  return rules.find(rule => parameterRuleMatches(tool, input, rule)) ?? null
+}
+
 /**
  * Check if the entire tool is listed in the always allow rules
  * For example, this finds "Bash" but not "Bash(prefix:*)" for BashTool
@@ -1105,6 +1185,20 @@ export async function checkRuleBasedPermissions(
     }
   }
 
+  const parameterDenyRule = getParameterRuleForToolInput(
+    appState.toolPermissionContext,
+    tool,
+    input,
+    'deny',
+  )
+  if (parameterDenyRule) {
+    return {
+      behavior: 'deny',
+      decisionReason: { type: 'rule', rule: parameterDenyRule },
+      message: `Permission to use ${tool.name} with this input has been denied.`,
+    }
+  }
+
   // 1b. Entire tool has an ask rule
   const askRule = getAskRuleForTool(appState.toolPermissionContext, tool)
   if (askRule) {
@@ -1125,6 +1219,23 @@ export async function checkRuleBasedPermissions(
       }
     }
     // Fall through to let tool.checkPermissions handle command-specific rules
+  }
+
+  const parameterAskRule = getParameterRuleForToolInput(
+    appState.toolPermissionContext,
+    tool,
+    input,
+    'ask',
+  )
+  if (parameterAskRule) {
+    return {
+      behavior: 'ask',
+      decisionReason: { type: 'rule', rule: parameterAskRule },
+      message: createPermissionRequestMessage(tool.name, {
+        type: 'rule',
+        rule: parameterAskRule,
+      }),
+    }
   }
 
   // 1c. Tool-specific permission check (e.g. bash subcommand rules)
@@ -1197,6 +1308,20 @@ async function hasPermissionsToUseToolInner(
     }
   }
 
+  const parameterDenyRule = getParameterRuleForToolInput(
+    appState.toolPermissionContext,
+    tool,
+    input,
+    'deny',
+  )
+  if (parameterDenyRule) {
+    return {
+      behavior: 'deny',
+      decisionReason: { type: 'rule', rule: parameterDenyRule },
+      message: `Permission to use ${tool.name} with this input has been denied.`,
+    }
+  }
+
   // 1b. Check if the entire tool should always ask for permission
   const askRule = getAskRuleForTool(appState.toolPermissionContext, tool)
   if (askRule) {
@@ -1220,6 +1345,23 @@ async function hasPermissionsToUseToolInner(
       }
     }
     // Fall through to let Bash's checkPermissions handle command-specific rules
+  }
+
+  const parameterAskRule = getParameterRuleForToolInput(
+    appState.toolPermissionContext,
+    tool,
+    input,
+    'ask',
+  )
+  if (parameterAskRule) {
+    return {
+      behavior: 'ask',
+      decisionReason: { type: 'rule', rule: parameterAskRule },
+      message: createPermissionRequestMessage(tool.name, {
+        type: 'rule',
+        rule: parameterAskRule,
+      }),
+    }
   }
 
   // 1c. Ask the tool implementation for a permission result
@@ -1310,6 +1452,20 @@ async function hasPermissionsToUseToolInner(
         type: 'rule',
         rule: alwaysAllowedRule,
       },
+    }
+  }
+
+  const parameterAllowRule = getParameterRuleForToolInput(
+    appState.toolPermissionContext,
+    tool,
+    input,
+    'allow',
+  )
+  if (parameterAllowRule) {
+    return {
+      behavior: 'allow',
+      updatedInput: getUpdatedInputOrFallback(toolPermissionResult, input),
+      decisionReason: { type: 'rule', rule: parameterAllowRule },
     }
   }
 

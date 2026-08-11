@@ -30,12 +30,13 @@ import { getAgentModel } from '../../utils/model/agent.js';
 import { permissionModeSchema } from '../../utils/permissions/PermissionMode.js';
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js';
 import { filterDeniedAgents, getDenyRuleForAgent } from '../../utils/permissions/permissions.js';
-import { enqueueSdkEvent } from '../../utils/sdkEventQueue.js';
+import { enqueueForwardedSubagentMessage, enqueueSdkEvent } from '../../utils/sdkEventQueue.js';
 import { writeAgentMetadata } from '../../utils/sessionStorage.js';
 import { sleep } from '../../utils/sleep.js';
 import { buildEffectiveSystemPrompt } from '../../utils/systemPrompt.js';
 import { asSystemPrompt } from '../../utils/systemPromptType.js';
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js';
+import { recordSubagentSpawn } from '../../utils/sessionBudgets.js';
 import { getParentSessionId, isTeammate } from '../../utils/teammate.js';
 import { isInProcessTeammate } from '../../utils/teammateContext.js';
 import { teleportToRemote } from '../../utils/teleport.js';
@@ -260,6 +261,19 @@ export const AgentTool = buildTool({
     // In-process teammates get a no-op setAppState; setAppStateForTasks
     // reaches the root store so task registration/progress/kill stay visible.
     const rootSetAppState = toolUseContext.setAppStateForTasks ?? toolUseContext.setAppState;
+
+    // Session spawn budgets are deliberately advisory. Long-running sessions
+    // continue to work; operators receive periodic visibility instead of a
+    // fatal cap that strands legitimate delegated work.
+    const spawnBudget = recordSubagentSpawn();
+    if (spawnBudget.shouldWarn) {
+      toolUseContext.addNotification?.({
+        key: 'subagent-session-budget-advisory',
+        priority: 'medium',
+        timeoutMs: 12_000,
+        text: `This session has launched ${spawnBudget.count} subagents (advisory threshold: ${spawnBudget.advisoryLimit}). UR will continue; review the run if this growth is unexpected.`
+      });
+    }
 
     // Check if user is trying to use agent teams without access
     if (team_name && !isAgentSwarmsEnabled()) {
@@ -968,6 +982,9 @@ export const AgentTool = buildTool({
                       } : undefined
                     })) {
                       agentMessages.push(msg);
+                      if (toolUseContext.options.forwardSubagentText && msg.type === 'assistant' && msg.message) {
+                        enqueueForwardedSubagentMessage(msg.message, toolUseContext.toolUseId);
+                      }
 
                       // Track progress for backgrounded agents
                       updateProgressFromMessage(tracker, msg, resolveActivity2, toolUseContext.options.tools);
@@ -1137,6 +1154,9 @@ export const AgentTool = buildTool({
               const contentLength = getAssistantMessageContentLength(message);
               if (contentLength > 0) {
                 toolUseContext.setResponseLength(len => len + contentLength);
+              }
+              if (toolUseContext.options.forwardSubagentText && message.message) {
+                enqueueForwardedSubagentMessage(message.message, toolUseContext.toolUseId);
               }
             }
             const normalizedNew = normalizeMessages([message]);

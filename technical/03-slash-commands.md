@@ -30,7 +30,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/copy` | jsx | Copy the last response to the clipboard | `/copy` |
 | `/btw <question>` | jsx | Quick side question without derailing the main thread | `/btw what does SIGPIPE mean?` |
 | `/exit` (`/quit`) | jsx | Exit the REPL | `/exit` |
-| `/session` (`/remote`) | jsx | Show remote session URL + QR code | `/session` |
+| `/session status\|list\|archive\|unarchive [id]` | jsx | View, archive, and restore local conversations; archiving the current session exits cleanly | `/session archive` |
 | `/desktop` (`/app`) | jsx | Continue this session in UR Desktop | `/desktop` |
 | `/summary` | internal | Summarize conversation (internal builds) | — |
 
@@ -167,7 +167,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | Command | Type | What it does | Example |
 |---|---|---|---|
 | `/research init\|source\|finding\|question\|list\|show\|verify\|report` (`/deep-research`) | local | Source-backed research projects with URL sanitization, cited findings, open questions, corroboration checks, and Markdown reports; unrecognized text remains a legacy note | `/research verify vector-databases` |
-| `/design3d doctor\|init\|plan\|build\|inspect\|validate` (`/three-d`, `/design-3d`) | local | Reproducible Blender, OpenSCAD, 3ds Max, and reviewed custom DCC/CAD app pipelines | `/design3d init product --engine blender --units mm --format glb` |
+| `/design3d doctor\|init\|plan\|build\|inspect\|validate` | local | Reproducible Blender, OpenSCAD, 3ds Max, and reviewed custom DCC/CAD app pipelines | `/design3d init product --engine blender --units mm --format glb` |
 | `/paper [title or path]` | local | Add/list research papers | `/paper attention-is-all-you-need.pdf` |
 | `/cite [citation]` | local | Add/list citations | `/cite Vaswani et al. 2017` |
 | `/graph [entity] [text]` | local | Research graph of papers/claims/methods/datasets | `/graph claim "RoPE beats ALiBi at 128k"` |
@@ -186,7 +186,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 
 | Command | Type | What it does | Example |
 |---|---|---|---|
-| `/mcp [enable\|disable [server]]` | jsx | Manage MCP servers interactively | `/mcp` |
+| `/mcp [enable\|disable [server]]` | jsx | Manage Model Context Protocol servers interactively | `/mcp` |
 | `/plugin` (`/plugins`, `/marketplace`) | jsx | Manage installed and marketplace plugins | `/plugin` |
 | `/reload-plugins` | local | Activate pending plugin changes in the current session | `/reload-plugins` |
 | `/ide open\|status\|doctor\|config <editor>\|diff …` | jsx | IDE integrations, inline diff bundles | `/ide status` |
@@ -222,7 +222,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 
 | Command | Type | What it does | Example |
 |---|---|---|---|
-| `/config` (`/settings`) | jsx | Open the config panel | `/config` |
+| `/config [key=value ...]` (`/settings`) | jsx | Open settings or update named settings directly | `/config screenReader=true vimEscape=jj` |
 | `/theme` | jsx | Change color theme | `/theme` |
 | `/color <color\|default>` | jsx | Prompt-bar color for this session | `/color magenta` |
 | `/vim` | local | Toggle Vim editing mode | `/vim` |
@@ -230,7 +230,6 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/terminal-setup` | jsx | Configure terminal (Shift+Enter etc.) | `/terminal-setup` |
 | `/statusline` | prompt | Configure the status line | `/statusline show model and git branch` |
 | `/status-bar` | jsx | Choose which fields the built-in status bar shows | `/status-bar` |
-| `/output-style` | jsx | Deprecated → use `/config` | — |
 | `/hooks` | jsx | View hook configurations | `/hooks` |
 | `/help` | jsx | Help and available commands | `/help` |
 | `/feedback [report]` (`/bug`) | jsx | Submit feedback | `/feedback` |
@@ -259,7 +258,7 @@ Registered in `src/skills/bundled/` at startup:
 |---|---|---|
 | `/batch` | Research + plan a large change, then execute across 5–30 parallel local worktrees; asks before final integration tests and does not publish | `/batch migrate all API handlers to zod validation` |
 | `/debug` | Enable/read the current session debug log and diagnose runtime issues | `/debug provider request stalled` |
-| `/debug-v2` (`/debug2`, `/bugfix`) | Reproduce, root-cause, and fix a bug in an isolated worktree; ask before the full suite and keep publishing explicit | `/debug-v2 login 500s when password has emoji` |
+| `/fix-bug` | Reproduce, root-cause, and fix a bug in an isolated worktree; ask before the full suite and keep publishing explicit | `/fix-bug login 500s when password has emoji` |
 | `/refactor` | Safe, test-backed refactor in a worktree; ask before the full suite and keep publishing explicit | `/refactor extract retry logic into a helper` |
 | `/research-pro` (`/evidence-research`) | Current primary-source research with a durable evidence workspace, disconfirming evidence, and corroboration verification | `/research-pro compare current coding-agent plugin systems` |
 | `/dcc-design` (`/professional-3d`) | Unit-aware 3D/DCC/CAD workflow for Blender, OpenSCAD, 3ds Max, and reviewed app adapters with build and format validation | `/dcc-design create a dimensioned glTF product enclosure` |
@@ -286,7 +285,7 @@ Registered in `src/skills/bundled/` at startup:
 
 `/backfill-sessions`, `/break-cache`, `/bughunter`, `/commit`, `/commit-push-pr`, `/ctx_viz`,
 `/good-ur`, `/issue`, `/init-verifiers`, `/force-snip`, `/mock-limits`, `/bridge-kick`,
-`/version`, `/ultraplan`, `/subscribe-pr`, `/reset-limits`, `/onboarding`, `/share`,
+`/version`, `/subscribe-pr`, `/reset-limits`, `/onboarding`, `/share`,
 `/summary`, `/teleport`, `/ant-trace`, `/perf-issue`, `/env`, `/oauth-refresh`,
 `/debug-tool-call`, `/autofix-pr`.
 

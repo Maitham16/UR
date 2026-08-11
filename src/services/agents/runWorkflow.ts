@@ -125,7 +125,7 @@ export async function runWorkflowSpec(
 ): Promise<ExecResult> {
   let span: ReturnType<typeof startGenAiWorkflowSpan> | undefined
   try {
-    span = startGenAiWorkflowSpan(spec.name)
+    span = startGenAiWorkflowSpan(spec.name, getSessionId())
   } catch {
     // Observability is optional and cannot prevent a workflow from running.
   }

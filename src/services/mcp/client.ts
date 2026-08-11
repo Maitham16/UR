@@ -41,7 +41,7 @@ import mapValues from 'lodash-es/mapValues.js'
 import memoize from 'lodash-es/memoize.js'
 import zipObject from 'lodash-es/zipObject.js'
 import pMap from 'p-map'
-import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
+import { getSessionId } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
 import { getOauthConfig } from '../../constants/oauth.js'
 import { PRODUCT_URL } from '../../constants/product.js'
@@ -88,6 +88,10 @@ import {
 } from '../../utils/mcpValidation.js'
 import { WebSocketTransport } from '../../utils/mcpWebSocketTransport.js'
 import { memoizeWithLRU } from '../../utils/memoize.js'
+import {
+  listMcpRoots,
+  registerMcpRootsClient,
+} from './mcpRoots.js'
 import { getWebSocketTLSOptions } from '../../utils/mtls.js'
 import {
   getProxyFetchOptions,
@@ -1004,13 +1008,7 @@ export const connectToServer = memoize(
 
       client.setRequestHandler(ListRootsRequestSchema, async () => {
         logMCPDebug(name, `Received ListRoots request from server`)
-        return {
-          roots: [
-            {
-              uri: `file://${getOriginalCwd()}`,
-            },
-          ],
-        }
+        return { roots: listMcpRoots() }
       })
 
       // Add a timeout to connection attempts to prevent tests from hanging indefinitely
@@ -1151,6 +1149,7 @@ export const connectToServer = memoize(
       }
 
       const capabilities = client.getServerCapabilities()
+      const unregisterRootsClient = registerMcpRootsClient(client)
       const serverVersion = client.getServerVersion()
       const rawInstructions = client.getInstructions()
       let instructions = rawInstructions
@@ -1368,6 +1367,7 @@ export const connectToServer = memoize(
 
       // Enhanced close handler with connection drop context
       client.onclose = () => {
+        unregisterRootsClient()
         const uptime = Date.now() - connectionStartTime
         const transportType = serverRef.type ?? 'unknown'
 
@@ -1398,6 +1398,7 @@ export const connectToServer = memoize(
       }
 
       const cleanup = async () => {
+        unregisterRootsClient()
         // In-process servers (e.g. Chrome MCP) don't have child processes or stderr
         if (inProcessServer) {
           try {

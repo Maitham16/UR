@@ -71,6 +71,15 @@ export type PermissionRuleSource =
 export type PermissionRuleValue = {
   toolName: string
   ruleContent?: string
+  /**
+   * Structured input-field matcher parsed from `Tool(parameter:value)`.
+   * `ruleContent` is retained as well so existing tool-specific rule
+   * implementations remain backward compatible.
+   */
+  ruleParameter?: {
+    name: string
+    valuePattern: string
+  }
 }
 
 /**

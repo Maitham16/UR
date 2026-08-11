@@ -13,7 +13,10 @@ import {
   MCP_2026_PROTOCOL_VERSION,
   MCP_APP_MIME_TYPE,
   MCP_APPS_EXTENSION,
+  MCP_HEADER_MISMATCH,
+  MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
   MCP_TASKS_EXTENSION,
+  MCP_UNSUPPORTED_PROTOCOL_VERSION,
   Mcp2026Runtime,
   UR_MCP_APP_URI,
   UR_MCP_ASYNC_TOOL,
@@ -51,6 +54,9 @@ function backend(
 
 const noCapabilities = {}
 const allCapabilities = {
+  elicitation: {},
+  roots: {},
+  sampling: {},
   extensions: {
     [MCP_TASKS_EXTENSION]: {},
     [MCP_APPS_EXTENSION]: { mimeTypes: [MCP_APP_MIME_TYPE] },
@@ -193,7 +199,7 @@ describe('MCP 2026 stateless runtime', () => {
       rpc('resources/read', { uri: UR_MCP_APP_URI }),
       context('owner', noCapabilities),
     )
-    expect(denied.error?.code).toBe(-32003)
+    expect(denied.error?.code).toBe(MCP_MISSING_REQUIRED_CLIENT_CAPABILITY)
   })
 
   test('creates durable extension tasks, isolates owners, and completes', async () => {
@@ -281,7 +287,9 @@ describe('MCP 2026 stateless runtime', () => {
       }),
       context('owner', noCapabilities),
     )
-    expect(missingCapability.error?.code).toBe(-32003)
+    expect(missingCapability.error?.code).toBe(
+      MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
+    )
 
     const created = await runtime.handle(
       rpc('tools/call', {
@@ -295,7 +303,9 @@ describe('MCP 2026 stateless runtime', () => {
       rpc('tasks/get', { taskId }),
       context('owner', noCapabilities),
     )
-    expect(missingReadCapability.error?.code).toBe(-32003)
+    expect(missingReadCapability.error?.code).toBe(
+      MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
+    )
     const cancel = await runtime.handle(
       rpc('tasks/cancel', { taskId }),
       context(),
@@ -338,6 +348,117 @@ describe('MCP 2026 stateless runtime', () => {
     expect(fetched.result?.status).toBe('completed')
     expect(fetched.result?.result.isError).toBe(true)
     expect(fetched.result?.error).toBeUndefined()
+  })
+
+  test('round-trips input_required requests and opaque request state', async () => {
+    let calls = 0
+    const runtime = new Mcp2026Runtime({
+      cwd: cwd(),
+      version: '1.47.0',
+      backend: backend(async (_name, _args, _signal, roundTrip) => {
+        calls++
+        if (calls === 1) {
+          expect(roundTrip).toEqual({})
+          return {
+            resultType: 'input_required',
+            inputRequests: {
+              credentials: {
+                method: 'elicitation/create',
+                params: {
+                  mode: 'form',
+                  message: 'Provide a test value.',
+                  requestedSchema: {
+                    type: 'object',
+                    properties: { value: { type: 'string' } },
+                    required: ['value'],
+                  },
+                },
+              },
+            },
+            requestState: 'opaque-server-state',
+          }
+        }
+        expect(roundTrip).toEqual({
+          inputResponses: {
+            credentials: {
+              action: 'accept',
+              content: { value: 'approved' },
+            },
+          },
+          requestState: 'opaque-server-state',
+        })
+        return { content: [{ type: 'text', text: 'continued' }] }
+      }),
+    })
+
+    const requested = await runtime.handle(
+      rpc('tools/call', { name: 'echo', arguments: {} }),
+      context(),
+    )
+    expect(requested.result).toMatchObject({
+      resultType: 'input_required',
+      requestState: 'opaque-server-state',
+      inputRequests: {
+        credentials: { method: 'elicitation/create' },
+      },
+    })
+
+    const continued = await runtime.handle(
+      rpc('tools/call', {
+        name: 'echo',
+        arguments: {},
+        inputResponses: {
+          credentials: {
+            action: 'accept',
+            content: { value: 'approved' },
+          },
+        },
+        requestState: 'opaque-server-state',
+      }),
+      context(),
+    )
+    expect(continued.result).toEqual({
+      resultType: 'complete',
+      content: [{ type: 'text', text: 'continued' }],
+    })
+  })
+
+  test('requires client capabilities for input_required requests', async () => {
+    const runtime = new Mcp2026Runtime({
+      cwd: cwd(),
+      version: '1.47.0',
+      backend: backend(async () => ({
+        resultType: 'input_required',
+        inputRequests: {
+          answer: {
+            method: 'sampling/createMessage',
+            params: { messages: [] },
+          },
+        },
+      })),
+    })
+    const missing = await runtime.handle(
+      rpc('tools/call', { name: 'echo', arguments: {} }),
+      context('owner', noCapabilities),
+    )
+    expect(missing.error).toMatchObject({
+      code: MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
+      data: { requiredCapabilities: { sampling: {} } },
+    })
+  })
+
+  test('rejects malformed input_required results from servers', async () => {
+    const runtime = new Mcp2026Runtime({
+      cwd: cwd(),
+      version: '1.47.0',
+      backend: backend(async () => ({ resultType: 'input_required' })),
+    })
+    const malformed = await runtime.handle(
+      rpc('tools/call', { name: 'echo', arguments: {} }),
+      context(),
+    )
+    expect(malformed.error?.code).toBe(-32603)
+    expect(malformed.error?.message).toContain('input_required')
   })
 
   test('rejects removed handshake methods', async () => {
@@ -389,14 +510,14 @@ describe('MCP 2026 HTTP transport', () => {
       httpRequest('tools/list', {}, { mcpMethod: 'resources/list' }),
     )
     expect(mismatch.status).toBe(400)
-    expect((await json(mismatch)).error.code).toBe(-32001)
+    expect((await json(mismatch)).error.code).toBe(MCP_HEADER_MISMATCH)
 
     const unsupported = await handler(
       httpRequest('tools/list', {}, { version: '2099-01-01' }),
     )
     const unsupportedBody = await json(unsupported)
     expect(unsupported.status).toBe(400)
-    expect(unsupportedBody.error.code).toBe(-32004)
+    expect(unsupportedBody.error.code).toBe(MCP_UNSUPPORTED_PROTOCOL_VERSION)
     expect(unsupportedBody.error.data.supported).toEqual([
       MCP_2026_PROTOCOL_VERSION,
     ])
@@ -404,7 +525,7 @@ describe('MCP 2026 HTTP transport', () => {
     const legacySession = await handler(
       httpRequest('tools/list', {}, { sessionId: 'legacy-session' }),
     )
-    expect((await json(legacySession)).error.code).toBe(-32001)
+    expect((await json(legacySession)).error.code).toBe(MCP_HEADER_MISMATCH)
 
     const created = await runtime.handle(
       rpc('tools/call', {
@@ -418,7 +539,7 @@ describe('MCP 2026 HTTP transport', () => {
       httpRequest('tasks/get', { taskId }),
     )
     expect(missingTaskName.status).toBe(400)
-    expect((await json(missingTaskName)).error.code).toBe(-32001)
+    expect((await json(missingTaskName)).error.code).toBe(MCP_HEADER_MISMATCH)
     const routedTask = await handler(
       httpRequest('tasks/get', { taskId }, { mcpName: taskId }),
     )
@@ -471,7 +592,7 @@ describe('MCP 2026 HTTP transport', () => {
         },
       ),
     )
-    expect((await json(nameMismatch)).error.code).toBe(-32001)
+    expect((await json(nameMismatch)).error.code).toBe(MCP_HEADER_MISMATCH)
 
     const allowed = await handler(
       httpRequest(
@@ -538,7 +659,7 @@ describe('MCP 2026 HTTP transport', () => {
       httpRequest('tools/call', params, { mcpName: 'route' }),
     )
     expect(missing.status).toBe(400)
-    expect((await json(missing)).error.code).toBe(-32001)
+    expect((await json(missing)).error.code).toBe(MCP_HEADER_MISMATCH)
     expect(calls).toBe(0)
 
     const malformed = await handler(
@@ -550,7 +671,7 @@ describe('MCP 2026 HTTP transport', () => {
         },
       }),
     )
-    expect((await json(malformed)).error.code).toBe(-32001)
+    expect((await json(malformed)).error.code).toBe(MCP_HEADER_MISMATCH)
     expect(calls).toBe(0)
 
     const valid = await handler(
@@ -575,7 +696,7 @@ describe('MCP 2026 HTTP transport', () => {
         },
       ),
     )
-    expect((await json(extra)).error.code).toBe(-32001)
+    expect((await json(extra)).error.code).toBe(MCP_HEADER_MISMATCH)
     expect(calls).toBe(1)
   })
 

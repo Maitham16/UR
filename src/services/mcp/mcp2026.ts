@@ -23,6 +23,9 @@ export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app'
 export const UR_MCP_APP_URI = 'ui://ur-agent/overview.html'
 export const UR_MCP_OVERVIEW_TOOL = 'ur.agent.overview'
 export const UR_MCP_ASYNC_TOOL = 'ur.async.call'
+export const MCP_HEADER_MISMATCH = -32020
+export const MCP_MISSING_REQUIRED_CLIENT_CAPABILITY = -32021
+export const MCP_UNSUPPORTED_PROTOCOL_VERSION = -32022
 
 const TASK_MANIFEST_VERSION = 1
 const MAX_TASKS = 1_000
@@ -60,7 +63,10 @@ export type Mcp2026Tool = {
 }
 
 export type Mcp2026ToolResult = {
-  content: unknown[]
+  resultType?: 'complete' | 'input_required' | string
+  content?: unknown[]
+  inputRequests?: Record<string, Record<string, unknown>>
+  requestState?: string
   structuredContent?: Record<string, unknown>
   isError?: boolean
   _meta?: Record<string, unknown>
@@ -73,6 +79,10 @@ export type Mcp2026ToolBackend = {
     name: string,
     args: Record<string, unknown>,
     signal: AbortSignal,
+    roundTrip?: {
+      inputResponses?: Record<string, unknown>
+      requestState?: string
+    },
   ) => Promise<Mcp2026ToolResult>
 }
 
@@ -602,6 +612,87 @@ function completeResult(
   return { resultType: 'complete', ...value }
 }
 
+function inputRequiredResult(
+  value: Record<string, unknown>,
+  clientCapabilities: Record<string, unknown>,
+): Record<string, unknown> {
+  const requestState = value.requestState
+  if (
+    requestState !== undefined &&
+    (typeof requestState !== 'string' ||
+      requestState.length === 0 ||
+      requestState.length > 1_000_000 ||
+      requestState.includes('\0'))
+  ) {
+    throw new Mcp2026Error(
+      -32603,
+      'MCP server returned an invalid input_required requestState',
+    )
+  }
+
+  let inputRequests: Record<string, Record<string, unknown>> | undefined
+  if (value.inputRequests !== undefined) {
+    inputRequests = cloneBoundedRecord(
+      value.inputRequests,
+      'inputRequests',
+      1_000_000,
+    ) as Record<string, Record<string, unknown>>
+    const entries = Object.entries(inputRequests)
+    if (entries.length === 0 || entries.length > 64) {
+      throw new Mcp2026Error(
+        -32603,
+        'MCP server returned an invalid number of input requests',
+      )
+    }
+    for (const [key, request] of entries) {
+      safeString(key, 'input request key', 256)
+      if (!isRecord(request)) {
+        throw new Mcp2026Error(-32603, 'MCP input request must be an object')
+      }
+      const method = safeString(request.method, 'input request method', 256)
+      if (request.params !== undefined && !isRecord(request.params)) {
+        throw new Mcp2026Error(
+          -32603,
+          'MCP input request params must be an object',
+        )
+      }
+      const capability =
+        method === 'elicitation/create'
+          ? 'elicitation'
+          : method === 'sampling/createMessage'
+            ? 'sampling'
+            : method === 'roots/list'
+              ? 'roots'
+              : undefined
+      if (!capability) {
+        throw new Mcp2026Error(
+          -32603,
+          `MCP server returned unsupported input request method '${method}'`,
+        )
+      }
+      if (!isRecord(clientCapabilities[capability])) {
+        throw new Mcp2026Error(
+          MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
+          'Missing required client capability',
+          { requiredCapabilities: { [capability]: {} } },
+        )
+      }
+    }
+  }
+  if (!inputRequests && requestState === undefined) {
+    throw new Mcp2026Error(
+      -32603,
+      'MCP input_required result must include inputRequests or requestState',
+    )
+  }
+  return {
+    resultType: 'input_required',
+    ...(inputRequests ? { inputRequests } : {}),
+    ...(requestState !== undefined ? { requestState } : {}),
+    ...(isRecord(value._meta) ? { _meta: value._meta } : {}),
+  }
+}
+
 function overviewTool(withApp: boolean): Mcp2026Tool {
   return {
     name: UR_MCP_OVERVIEW_TOOL,
@@ -772,7 +863,7 @@ export class Mcp2026Runtime {
       ) > MAX_CUSTOM_HEADER_BYTES
     ) {
       throw new Mcp2026Error(
-        -32001,
+        MCP_HEADER_MISMATCH,
         'Header mismatch: MCP custom header limits were exceeded',
       )
     }
@@ -782,7 +873,7 @@ export class Mcp2026Runtime {
     if (!tool) {
       if (customHeaders.length > 0) {
         throw new Mcp2026Error(
-          -32001,
+          MCP_HEADER_MISMATCH,
           'Header mismatch: custom headers were supplied for an unknown tool',
         )
       }
@@ -798,7 +889,7 @@ export class Mcp2026Runtime {
       )
     ) {
       throw new Mcp2026Error(
-        -32001,
+        MCP_HEADER_MISMATCH,
         'Header mismatch: an unadvertised Mcp-Param header was supplied',
       )
     }
@@ -809,7 +900,7 @@ export class Mcp2026Runtime {
       if (!argument.present || argument.value === null) {
         if (supplied) {
           throw new Mcp2026Error(
-            -32001,
+            MCP_HEADER_MISMATCH,
             `Header mismatch: ${header} must be omitted when its argument is absent or null`,
           )
         }
@@ -817,7 +908,7 @@ export class Mcp2026Runtime {
       }
       if (!supplied) {
         throw new Mcp2026Error(
-          -32001,
+          MCP_HEADER_MISMATCH,
           `Header mismatch: ${header} is required`,
         )
       }
@@ -825,7 +916,7 @@ export class Mcp2026Runtime {
       const decoded = decodeMcpHeaderValue(headers.get(header) ?? '')
       if (expected === undefined || decoded === undefined || decoded !== expected) {
         throw new Mcp2026Error(
-          -32001,
+          MCP_HEADER_MISMATCH,
           `Header mismatch: ${header} does not match its tool argument`,
         )
       }
@@ -834,7 +925,7 @@ export class Mcp2026Runtime {
 
   #requireTasks(context: Mcp2026RequestContext): void {
     if (supportsTasks(context.clientCapabilities)) return
-    throw new Mcp2026Error(-32003, 'Missing required client capability', {
+    throw new Mcp2026Error(MCP_MISSING_REQUIRED_CLIENT_CAPABILITY, 'Missing required client capability', {
       requiredCapabilities: {
         extensions: { [MCP_TASKS_EXTENSION]: {} },
       },
@@ -1079,13 +1170,30 @@ export class Mcp2026Runtime {
             if (!tools.some(tool => tool.name === name)) {
               throw new Mcp2026Error(-32602, `Tool '${name}' was not found`)
             }
-            result = completeResult(
-              cloneBoundedRecord(
-                await this.#backend.callTool(name, args, context.signal),
-                'tool result',
-                MAX_TASK_RESULT_BYTES,
-              ),
+            const inputResponses =
+              params.inputResponses === undefined
+                ? undefined
+                : cloneBoundedRecord(
+                    params.inputResponses,
+                    'inputResponses',
+                    1_000_000,
+                  )
+            const requestState =
+              params.requestState === undefined
+                ? undefined
+                : safeString(params.requestState, 'requestState', 1_000_000)
+            const toolResult = cloneBoundedRecord(
+              await this.#backend.callTool(name, args, context.signal, {
+                ...(inputResponses ? { inputResponses } : {}),
+                ...(requestState ? { requestState } : {}),
+              }),
+              'tool result',
+              MAX_TASK_RESULT_BYTES,
             )
+            result =
+              toolResult.resultType === 'input_required'
+                ? inputRequiredResult(toolResult, context.clientCapabilities)
+                : completeResult(toolResult)
           }
           break
         }
@@ -1114,7 +1222,7 @@ export class Mcp2026Runtime {
           }
           if (!supportsApps(context.clientCapabilities)) {
             throw new Mcp2026Error(
-              -32003,
+              MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
               'Missing required client capability',
               {
                 requiredCapabilities: {

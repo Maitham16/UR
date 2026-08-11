@@ -325,7 +325,13 @@ export async function exec(
     const sandboxPolicy = evaluateShellSafetyPolicy(command, cwd)
     const sandboxConfig: Partial<SandboxRuntimeConfig> | undefined =
       sandboxPolicy.permissions.includes('network')
-        ? { network: { blockAll: true } }
+        ? {
+            network: {
+              allowedDomains: [],
+              deniedDomains: ['*'],
+              strictAllowlist: true,
+            },
+          }
         : undefined
     commandString = await SandboxManager.wrapWithSandbox(
       commandString,

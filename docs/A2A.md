@@ -12,10 +12,11 @@ surfaces:
 | UR compatibility API | `/a2a/tasks` and `/a2a/tasks/:id` | UR-specific REST-style background-task controls; not an A2A REST binding |
 
 The two protocol versions deliberately use separate schemas and handlers. The
-stable SDK remains pinned for v0.3; UR's dependency-free v1 compatibility layer
-translates strict v1 messages and tasks onto the same bounded durable execution
-engine. It is covered by UR tests and the official A2A TCK, but does not claim
-certification by the prerelease JavaScript SDK.
+stable SDK remains pinned for the older binding; UR's dependency-free final
+protocol compatibility layer translates strict messages and tasks onto the
+same bounded durable execution engine. It is covered by UR tests and the
+official A2A TCK. UR does not claim a gRPC interface or certification by the
+alpha JavaScript SDK binding.
 
 ## Start the server
 

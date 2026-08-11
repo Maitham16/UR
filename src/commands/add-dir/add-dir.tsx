@@ -11,6 +11,8 @@ import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { applyPermissionUpdate, persistPermissionUpdate } from '../../utils/permissions/PermissionUpdate.js';
 import type { PermissionUpdateDestination } from '../../utils/permissions/PermissionUpdateSchema.js';
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
+import { notifyMcpRootsListChanged } from '../../services/mcp/mcpRoots.js';
+import { executeDirectoryAddedHooks } from '../../utils/hooks.js';
 import { addDirHelpMessage, validateDirectoryForWorkspace } from './validation.js';
 function AddDirError(t0) {
   const $ = _c(10);
@@ -90,8 +92,10 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
     const currentDirs = getAdditionalDirectoriesForAgentMd();
     if (!currentDirs.includes(path)) {
       setAdditionalDirectoriesForAgentMd([...currentDirs, path]);
+      await notifyMcpRootsListChanged();
     }
     SandboxManager.refreshConfig();
+    const hookResult = await executeDirectoryAddedHooks(path, remember ? 'local' : 'session');
     let message: string;
     if (remember) {
       try {
@@ -102,6 +106,9 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
       }
     } else {
       message = `Added ${chalk.bold(path)} as a working directory for this session`;
+    }
+    if (hookResult.systemMessages.length > 0) {
+      message += `\n${hookResult.systemMessages.join('\n')}`;
     }
     const messageWithHint = `${message} ${chalk.dim('· /permissions to manage')}`;
     onDone(messageWithHint);

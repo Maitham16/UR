@@ -183,9 +183,6 @@ const clearSkillIndexCache = feature('EXPERIMENTAL_SKILL_SEARCH')
 const subscribePr = feature('KAIROS_GITHUB_WEBHOOKS')
   ? require('./commands/subscribe-pr.js').default
   : null
-const ultraplan = feature('ULTRAPLAN')
-  ? require('./commands/ultraplan.js').default
-  : null
 const torch = feature('TORCH') ? require('./commands/torch.js').default : null
 const peersCmd = feature('UDS_INBOX')
   ? (
@@ -250,7 +247,6 @@ import modelDoctor from './commands/model-doctor/index.js'
 import provider from './commands/provider/index.js'
 import localFirst from './commands/local-first/index.js'
 import tag from './commands/tag/index.js'
-import outputStyle from './commands/output-style/index.js'
 import remoteEnv from './commands/remote-env/index.js'
 import upgrade from './commands/upgrade/index.js'
 import {
@@ -305,7 +301,6 @@ export const INTERNAL_ONLY_COMMANDS = [
   ...(forceSnip ? [forceSnip] : []),
   bridgeKick,
   version,
-  ...(ultraplan ? [ultraplan] : []),
   ...(subscribePr ? [subscribePr] : []),
   agentsPlatform,
 ].filter(Boolean)
@@ -347,7 +342,6 @@ const COMMANDS = memoize((): Command[] => [
   modelDoctor,
   provider,
   localFirst,
-  outputStyle,
   remoteEnv,
   plugin,
   pr_comments,
@@ -810,7 +804,7 @@ export const getSlashCommandToolSkills = memoize(
  * 2. Preserving local-only commands in REPL's handleRemoteInit after CCR filters
  */
 export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
-  session, // Shows QR code / URL for remote session
+  session, // Shows and manages local/remote session state
   exit, // Exit the TUI
   clear, // Clear screen
   help, // Show help
