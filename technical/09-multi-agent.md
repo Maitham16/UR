@@ -28,8 +28,14 @@ Custom agents:
   `/role-mode install architect|code|debug|ask` installs the four classic role modes as
   scoped agents.
 
-Read-only agents (Explore/Plan) intentionally omit the UR.md hierarchy from their context
-(token saving, see `loadAgentsDir.ts`).
+Read-only agents (`Explore`/`Plan`) intentionally omit the UR.md hierarchy from
+their context (token saving, see `loadAgentsDir.ts`) and run with plan-mode
+permissions. During main-session plan mode, only the shipped definitions may be
+spawned before a visible task exists. The task gate rejects custom overrides,
+general-purpose or nested delegation, named/team workers, and worktree creation
+until an actionable parent task exists. The final tool input is checked again
+after permission hooks, preventing an allowed read-only spawn from being
+rewritten into write-capable delegation.
 
 Inspection: `/agent-inspect` reconstructs a per-subagent timeline (spawns, prompts,
 results, verdicts, tools, tokens) from the session or a transcript file.

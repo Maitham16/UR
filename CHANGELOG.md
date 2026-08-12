@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.80.6
+
+- Fixed Plan Mode's failed-first research delegation. UR's shipped read-only
+  `Explore` and `Plan` agents can now run before implementation tasks exist, as
+  the plan workflow already instructs, without emitting `TaskListRequired`.
+- Kept the exception deliberately narrow: the active definition must be the
+  built-in plan-permission agent, called by the main session without a name,
+  team, worktree, or nested parent. Custom overrides and every write-capable
+  delegation still require an actionable task, and rewritten tool inputs are
+  revalidated immediately before execution. Approve All remains unchanged.
+
 ## 1.80.5
 
 - Fixed the plan-mode/task-tracking deadlock introduced by the strict task

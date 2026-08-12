@@ -47,6 +47,10 @@ import {
 import { ASK_USER_QUESTION_TOOL_NAME } from '../../tools/AskUserQuestionTool/prompt.js'
 import { startSpeculativeClassifierCheck } from '../../tools/BashTool/bashPermissions.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
+import {
+  AGENT_TOOL_NAME,
+  LEGACY_AGENT_TOOL_NAME,
+} from '../../tools/AgentTool/constants.js'
 import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from '../../tools/FileReadTool/prompt.js'
 import { FILE_WRITE_TOOL_NAME } from '../../tools/FileWriteTool/prompt.js'
@@ -143,6 +147,8 @@ import {
   recordCallSuccess,
   RepeatedToolFailureAbort,
 } from './repeatedFailureGuard.js'
+
+const READ_ONLY_PLANNING_AGENT_TYPES = new Set(['Explore', 'Plan'])
 
 /**
  * How many tasks exist for this session.
@@ -243,6 +249,53 @@ export function isCurrentPlanFileMutation(
   } catch {
     return false
   }
+}
+
+/**
+ * Plan mode explicitly asks the main agent to delegate read-only discovery to
+ * the shipped Explore and Plan agents before implementation tasks exist. Keep
+ * that path open without weakening ordinary delegation: custom overrides,
+ * nested agents, teammate spawns, and worktree creation still require a real
+ * parent task. The child tool gate independently blocks any mutating command.
+ */
+export function isReadOnlyPlanningDelegation(
+  toolName: string,
+  input: unknown,
+  context: ToolUseContext,
+): boolean {
+  if (
+    context.agentId ||
+    context.getAppState().toolPermissionContext.mode !== 'plan' ||
+    (toolName !== AGENT_TOOL_NAME && toolName !== LEGACY_AGENT_TOOL_NAME) ||
+    !input ||
+    typeof input !== 'object' ||
+    Array.isArray(input)
+  ) {
+    return false
+  }
+
+  const delegation = input as {
+    subagent_type?: unknown
+    name?: unknown
+    team_name?: unknown
+    isolation?: unknown
+  }
+  if (
+    typeof delegation.subagent_type !== 'string' ||
+    !READ_ONLY_PLANNING_AGENT_TYPES.has(delegation.subagent_type) ||
+    delegation.name !== undefined ||
+    delegation.team_name !== undefined ||
+    delegation.isolation !== undefined
+  ) {
+    return false
+  }
+
+  return context.options.agentDefinitions.activeAgents.some(
+    agent =>
+      agent.agentType === delegation.subagent_type &&
+      agent.source === 'built-in' &&
+      agent.permissionMode === 'plan',
+  )
 }
 
 function getStopHookInfo(attachment: unknown): StopHookInfo | null {
@@ -1091,6 +1144,11 @@ async function checkPermissionsAndCallTool(
       parsedInput.data,
       toolUseContext,
     ),
+    isReadOnlyPlanningDelegation: isReadOnlyPlanningDelegation(
+      tool.name,
+      parsedInput.data,
+      toolUseContext,
+    ),
     taskListWriterAvailable: toolUseContext.options.tools.some(
       candidate => candidate.name === 'TaskCreate',
     ),
@@ -1716,6 +1774,11 @@ async function checkPermissionsAndCallTool(
       requiresTaskList: taskListRun?.requiresTaskList,
       requirementReason: taskListRun?.requirementReason,
       isPlanningArtifact: isCurrentPlanFileMutation(
+        tool.name,
+        finalParsedInput.data,
+        toolUseContext,
+      ),
+      isReadOnlyPlanningDelegation: isReadOnlyPlanningDelegation(
         tool.name,
         finalParsedInput.data,
         toolUseContext,

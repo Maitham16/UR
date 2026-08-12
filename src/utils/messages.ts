@@ -3333,7 +3333,7 @@ function getPlanModeV2Instructions(attachment: {
     ? `A plan file already exists at ${attachment.planFilePath}. You can read it and make incremental edits using the ${FileEditTool.name} tool.`
     : `No plan file exists yet. You should create your plan at ${attachment.planFilePath} using the ${FileWriteTool.name} tool.`
 
-  const content = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. TaskCreate, TaskUpdate, TaskList, and TaskGet are also allowed for visible task tracking. This supercedes any other instructions you have received.
+  const content = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. TaskCreate, TaskUpdate, TaskList, and TaskGet are also allowed for visible task tracking. Before tasks exist, only UR's shipped read-only ${EXPLORE_AGENT.agentType} and ${PLAN_AGENT.agentType} agents may be delegated to; custom, general-purpose, nested, team, and worktree agents still require an actionable parent task. This supercedes any other instructions you have received.
 
 ## Plan File Info:
 ${planFileInfo}
@@ -3438,7 +3438,7 @@ function getPlanModeInterviewInstructions(attachment: {
     ? `A plan file already exists at ${attachment.planFilePath}. You can read it and make incremental edits using the ${FileEditTool.name} tool.`
     : `No plan file exists yet. You should create your plan at ${attachment.planFilePath} using the ${FileWriteTool.name} tool.`
 
-  const content = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. TaskCreate, TaskUpdate, TaskList, and TaskGet are also allowed for visible task tracking. This supercedes any other instructions you have received.
+  const content = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. TaskCreate, TaskUpdate, TaskList, and TaskGet are also allowed for visible task tracking.${areExplorePlanAgentsEnabled() ? ` Before tasks exist, only UR's shipped read-only ${EXPLORE_AGENT.agentType} and ${PLAN_AGENT.agentType} agents may be delegated to; custom, general-purpose, nested, team, and worktree agents still require an actionable parent task.` : ''} This supercedes any other instructions you have received.
 
 ## Plan File Info:
 ${planFileInfo}

@@ -183,6 +183,8 @@ test('plan mode creates visible tasks before implementation', () => {
   for (const text of [source, prompt]) {
     expect(text).toContain('TaskCreate')
     expect(text).toContain('visible implementation tasks')
+    expect(text).toContain('shipped read-only Explore')
+    expect(text).toContain('actionable parent task')
   }
   expect(source).toContain(
     'ExitPlanMode guarantees visible implementation tasks before coding begins',

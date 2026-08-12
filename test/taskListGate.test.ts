@@ -7,9 +7,12 @@ import {
   isMutatingTool,
 } from '../src/services/tools/taskListGate.ts'
 import { AgentTool } from '../src/tools/AgentTool/AgentTool.tsx'
+import { EXPLORE_AGENT } from '../src/tools/AgentTool/built-in/exploreAgent.ts'
+import { PLAN_AGENT } from '../src/tools/AgentTool/built-in/planAgent.ts'
 import {
   countToolCallsBeforeCurrent,
   isCurrentPlanFileMutation,
+  isReadOnlyPlanningDelegation,
 } from '../src/services/tools/toolExecution.ts'
 import { getPlanFilePath } from '../src/utils/plans.ts'
 
@@ -169,6 +172,114 @@ test('the active plan artifact and approval transition cannot deadlock on task t
       config: CONFIG,
     }).allowed,
   ).toBe(true)
+})
+
+test('plan mode permits only shipped read-only planning agents before tasks exist', () => {
+  const context = {
+    options: {
+      agentDefinitions: {
+        activeAgents: [
+          { agentType: 'Explore', source: 'built-in', permissionMode: 'plan' },
+          { agentType: 'Plan', source: 'built-in', permissionMode: 'plan' },
+          { agentType: 'general-purpose', source: 'built-in' },
+        ],
+      },
+    },
+    getAppState: () => ({
+      toolPermissionContext: { mode: 'plan' },
+    }),
+  }
+
+  for (const subagent_type of ['Explore', 'Plan']) {
+    expect(
+      isReadOnlyPlanningDelegation(
+        'Agent',
+        { subagent_type, description: 'Read only', prompt: 'Research' },
+        context as never,
+      ),
+    ).toBe(true)
+    expect(
+      checkTaskListGate({
+        toolName: 'Agent',
+        taskCount: 0,
+        readsSoFar: 0,
+        isSubagent: false,
+        isMutating: true,
+        requiresTaskList: true,
+        isReadOnlyPlanningDelegation: true,
+        config: CONFIG,
+      }).allowed,
+    ).toBe(true)
+  }
+
+  expect(EXPLORE_AGENT.permissionMode).toBe('plan')
+  expect(PLAN_AGENT.permissionMode).toBe('plan')
+
+  for (const unsafeInput of [
+    { subagent_type: 'general-purpose' },
+    { subagent_type: 'Explore', name: 'researcher' },
+    { subagent_type: 'Explore', team_name: 'research-team' },
+    { subagent_type: 'Explore', isolation: 'worktree' },
+    {},
+  ]) {
+    expect(
+      isReadOnlyPlanningDelegation('Agent', unsafeInput, context as never),
+    ).toBe(false)
+  }
+
+  const customOverrideContext = {
+    ...context,
+    options: {
+      agentDefinitions: {
+        activeAgents: [{ agentType: 'Explore', source: 'projectSettings' }],
+      },
+    },
+  }
+  expect(
+    isReadOnlyPlanningDelegation(
+      'Agent',
+      { subagent_type: 'Explore' },
+      customOverrideContext as never,
+    ),
+  ).toBe(false)
+
+  const writableBuiltInContext = {
+    ...context,
+    options: {
+      agentDefinitions: {
+        activeAgents: [{ agentType: 'Explore', source: 'built-in' }],
+      },
+    },
+  }
+  expect(
+    isReadOnlyPlanningDelegation(
+      'Agent',
+      { subagent_type: 'Explore' },
+      writableBuiltInContext as never,
+    ),
+  ).toBe(false)
+
+  const nestedContext = { ...context, agentId: 'child-agent' }
+  expect(
+    isReadOnlyPlanningDelegation(
+      'Agent',
+      { subagent_type: 'Explore' },
+      nestedContext as never,
+    ),
+  ).toBe(false)
+
+  // The exception is only for the parent spawn. A child mutation without a
+  // parent task remains blocked by the ordinary subagent gate.
+  expect(
+    checkTaskListGate({
+      toolName: 'Bash',
+      taskCount: 0,
+      readsSoFar: 0,
+      isSubagent: true,
+      isMutating: true,
+      config: CONFIG,
+    }).allowed,
+  ).toBe(false)
 })
 
 test('freeReads zero intentionally gates even atomic work', () => {

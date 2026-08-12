@@ -9,6 +9,12 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.80.6 Addition
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Read-only planning delegation | Plan mode, `Agent`, strict-hybrid task gate | Lets the shipped `Explore` and `Plan` agents research before implementation tasks exist, eliminating failed-first delegation while retaining plan permissions and task requirements for every custom, write-capable, nested, team, or worktree agent. |
+
 ## v1.80.5 Addition
 
 | Addition | Surface | What it adds |

@@ -73,6 +73,9 @@ export const EXPLORE_AGENT: BuiltInAgentDefinition = {
   ],
   source: 'built-in',
   baseDir: 'built-in',
+  // Enforce the read-only contract mechanically as well as in the prompt.
+  // This prevents a Bash mutation even if an unrelated task already exists.
+  permissionMode: 'plan',
   // Ants get inherit to use the main agent's model; external users get modelH for speed
   // Note: For ants, getAgentModel() checks tengu_explore_agent GrowthBook flag at runtime
   model: process.env.USER_TYPE === 'ant' ? 'inherit' : 'modelH',

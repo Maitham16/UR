@@ -470,11 +470,16 @@ older builds are hidden and removed at the next prompt boundary.
 
 Plan mode has one narrow exception to the mutation gate: UR may write or edit
 the exact plan file for the active session while the rest of the workspace
-remains read-only. When the user approves the plan, `ExitPlanMode` preserves
-any existing actionable board or creates a bounded set of professional,
-deduplicated implementation tasks plus a verification task that depends on
-them. Implementation therefore starts with visible tracking without requiring
-the model or user to recover from a circular `TaskListRequired` error.
+remains read-only. The main session may also delegate early research to UR's
+shipped `Explore` and `Plan` agents before tasks exist. Those two definitions
+are mechanically held in plan permission mode; custom overrides,
+general-purpose agents, nested agents, team workers, and worktree agents still
+require an actionable parent task. When the user approves the plan,
+`ExitPlanMode` preserves any existing actionable board or creates a bounded set
+of professional, deduplicated implementation tasks plus a verification task
+that depends on them. Implementation therefore starts with visible tracking
+without requiring the model or user to recover from a circular
+`TaskListRequired` error.
 
 Independent read-only tasks can run in parallel. A task that may write to the
 shared checkout is serialized with other possible writers, even when it comes

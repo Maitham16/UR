@@ -84,6 +84,8 @@ export const PLAN_AGENT: BuiltInAgentDefinition = {
   source: 'built-in',
   tools: EXPLORE_AGENT.tools,
   baseDir: 'built-in',
+  // Enforce the read-only contract mechanically as well as in the prompt.
+  permissionMode: 'plan',
   model: 'inherit',
   // Plan is read-only and can Read UR.md directly if it needs conventions.
   // Dropping it from context saves tokens without blocking access.

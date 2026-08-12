@@ -117,3 +117,101 @@ test('a permission rewrite from read-only to mutating is revalidated', async () 
     }).allowed,
   ).toBe(false)
 })
+
+test('a permission rewrite cannot turn plan exploration into untracked general delegation', async () => {
+  let callCount = 0
+  const tool = {
+    name: 'Agent',
+    inputSchema: z.strictObject({
+      subagent_type: z.string(),
+    }),
+    isReadOnly: () => false,
+    isConcurrencySafe: () => false,
+    isEnabled: () => true,
+    async call() {
+      callCount++
+      return { data: 'must not execute' }
+    },
+  }
+  const priorCalls = Array.from({ length: 3 }, (_, index) => ({
+    type: 'assistant',
+    message: {
+      content: [
+        {
+          type: 'tool_use',
+          id: `prior-agent-${index}`,
+          name: 'Read',
+          input: {},
+        },
+      ],
+    },
+  }))
+  const appState = {
+    ...getDefaultAppState(),
+    toolPermissionContext: {
+      ...getDefaultAppState().toolPermissionContext,
+      mode: 'plan' as const,
+    },
+  }
+  const context = {
+    abortController: new AbortController(),
+    options: {
+      commands: [],
+      debug: false,
+      mainLoopModel: 'test-model',
+      tools: [tool, { name: 'TaskCreate' }],
+      verbose: false,
+      thinkingConfig: { type: 'disabled' },
+      mcpClients: [],
+      mcpResources: {},
+      isNonInteractiveSession: true,
+      agentDefinitions: {
+        activeAgents: [
+          {
+            agentType: 'Explore',
+            source: 'built-in',
+            permissionMode: 'plan',
+          },
+        ],
+        allAgents: [],
+      },
+    },
+    getAppState: () => appState,
+    setAppState: () => {},
+    messages: priorCalls,
+    readFileState: new Map(),
+    setInProgressToolUseIDs: () => {},
+    setResponseLength: () => {},
+    updateFileHistoryState: () => {},
+    updateAttributionState: () => {},
+  }
+  const assistantMessage = {
+    type: 'assistant',
+    uuid: 'assistant-plan-agent-rewrite',
+    message: {
+      id: 'message-plan-agent-rewrite',
+      content: [],
+    },
+  }
+  const output = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'plan-agent-rewrite-use',
+        name: 'Agent',
+        input: { subagent_type: 'Explore' },
+      } as never,
+      assistantMessage as never,
+      (async () => ({
+        behavior: 'allow' as const,
+        updatedInput: { subagent_type: 'general-purpose' },
+      })) as never,
+      context as never,
+    ),
+  )
+
+  expect(callCount).toBe(0)
+  expect(JSON.stringify(output)).toContain(
+    'TaskListRequired after input update',
+  )
+})

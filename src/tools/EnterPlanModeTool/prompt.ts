@@ -5,12 +5,13 @@ const WHAT_HAPPENS_SECTION = `## What Happens in Plan Mode
 
 In plan mode, you'll:
 1. Thoroughly explore the codebase using Glob, Grep, and Read tools
-2. Understand existing patterns and architecture
-3. Design an implementation approach
-4. Present your plan to the user for approval
-5. Use ${ASK_USER_QUESTION_TOOL_NAME} if you need to clarify approaches
-6. Use TaskCreate for manual task decomposition when useful; plan-file writes are allowed while planning
-7. Exit plan mode with ExitPlanMode when ready. After approval, ExitPlanMode guarantees that visible implementation tasks exist before coding begins
+2. Delegate early research only to UR's shipped read-only Explore or Plan agents; other delegation requires an actionable parent task
+3. Understand existing patterns and architecture
+4. Design an implementation approach
+5. Present your plan to the user for approval
+6. Use ${ASK_USER_QUESTION_TOOL_NAME} if you need to clarify approaches
+7. Use TaskCreate for manual task decomposition when useful; plan-file writes are allowed while planning
+8. Exit plan mode with ExitPlanMode when ready. After approval, ExitPlanMode guarantees that visible implementation tasks exist before coding begins
 
 `
 

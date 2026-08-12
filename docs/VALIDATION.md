@@ -19,7 +19,19 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.80.5 (UR-Nexus)"
+# expected for this release: "1.80.6 (UR-Nexus)"
+```
+
+### 0.0 Plan research delegation starts cleanly (1.80.6)
+
+Start an interactive session with task enforcement enabled and ask UR to plan a
+change that requires codebase research. Before any task exists, built-in
+`Explore` and `Plan` agent calls should initialize without `TaskListRequired`.
+Custom or general-purpose agents should remain blocked until they have an
+actionable parent task. The deterministic regressions are:
+
+```sh
+bun test test/taskListGate.test.ts test/toolExecutionFinalInput.test.ts
 ```
 
 ### 0.0.1 Plan approval creates visible tasks (1.80.5)

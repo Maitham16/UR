@@ -85,16 +85,20 @@ ur provider status
 
 ### Plan mode says `TaskListRequired`
 
-- Likely cause on UR 1.80.3–1.80.4: the strict task gate treated the session's
-  own plan-file update as a project mutation, creating a circular requirement
-  for tasks before the plan could be finalized.
-- Fix: upgrade to UR 1.80.5 or newer. The exact active plan file is allowed
-  during plan mode, and approved plans are synchronized into visible
+- Likely cause on UR 1.80.3–1.80.5: the strict task gate treated either the
+  active plan file or early read-only research delegation as an untracked
+  project mutation, creating a circular requirement before planning finished.
+- Fix: upgrade to UR 1.80.6 or newer. The exact active plan file and main-thread
+  delegation to UR's shipped read-only `Explore` and `Plan` agents are allowed
+  before tasks exist. Approved plans are synchronized into visible
   implementation and verification tasks before the first project mutation.
-  Other files remain protected. Existing actionable tasks are preserved.
+  Other files and write-capable delegation remain protected. Existing
+  actionable tasks are preserved.
 - If the message names a project file rather than the active plan file, it is
-  expected: create the requested tasks or finish and approve the plan first.
-  Disabling `tasks.requireBeforeChanges` is no longer needed for plan mode.
+  expected. It is also expected for custom/general-purpose/nested/team/worktree
+  agents without a parent task: create the requested tasks or finish and
+  approve the plan first. Disabling `tasks.requireBeforeChanges` is no longer
+  needed for normal plan mode.
 
 ## Providers and models
 
