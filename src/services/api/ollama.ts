@@ -1296,6 +1296,7 @@ function ollamaResponseToURHQMessage(
     ? parseTextToolCalls(rawText, {
         availableToolNames,
         parseBareJsonToolCalls: true,
+        preserveUnavailableToolCalls: true,
       })
     : { text: rawText, toolCalls: [] }
   const text = parsedText.text
@@ -1427,9 +1428,13 @@ function normalizeOllamaToolUses(
     }
     const name = reconcileToolName(rawName, availableToolNames)
     if (!availableToolNames.has(name)) {
-      throw new ProviderResponseParseError(
-        `${context} returned unavailable tool "${name}"`,
-        { rawName, availableToolNames: [...availableToolNames] },
+      // Keep a well-formed but unavailable name as a normal tool_use. UR's
+      // execution layer is the authority for the active profile and returns a
+      // guarded, recoverable tool_result without ever executing the call. A
+      // provider parse exception here used to abort the parent agent turn.
+      logForDebugging(
+        `${context} preserved unavailable tool "${name}" for guarded rejection`,
+        { level: 'warn' },
       )
     }
     const key = `${name}\u0000${toolArgsKey(input)}`

@@ -149,8 +149,8 @@ export function checkTaskListGate(input: {
   taskListWriterAvailable?: boolean
   /** Exact current-session plan file write/edit while plan mode is active. */
   isPlanningArtifact?: boolean
-  /** Built-in read-only Explore/Plan delegation from the main plan session. */
-  isReadOnlyPlanningDelegation?: boolean
+  /** Shipped read-only Explore/Plan delegation from the main session. */
+  isReadOnlyBuiltInDelegation?: boolean
   config?: TaskListGateConfig
 }): GateDecision {
   const config = input.config ?? getTaskListGateConfig()
@@ -160,7 +160,7 @@ export function checkTaskListGate(input: {
   if (input.taskListWriterAvailable === false) return { allowed: true }
   if (isTaskListGateExempt(input.toolName)) return { allowed: true }
   if (input.isPlanningArtifact === true) return { allowed: true }
-  if (input.isReadOnlyPlanningDelegation === true) return { allowed: true }
+  if (input.isReadOnlyBuiltInDelegation === true) return { allowed: true }
   const isMutating = input.isMutating ?? isMutatingTool(input.toolName)
   if (!isMutating) return { allowed: true }
   if (input.taskCount !== null && input.taskCount > 0) {

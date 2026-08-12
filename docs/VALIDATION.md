@@ -19,22 +19,37 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.80.6 (UR-Nexus)"
+# expected for this release: "1.80.7 (UR-Nexus)"
 ```
 
-### 0.0 Plan research delegation starts cleanly (1.80.6)
+### 0.0 Read-only research delegation starts cleanly (1.80.7)
 
-Start an interactive session with task enforcement enabled and ask UR to plan a
-change that requires codebase research. Before any task exists, built-in
-`Explore` and `Plan` agent calls should initialize without `TaskListRequired`.
-Custom or general-purpose agents should remain blocked until they have an
-actionable parent task. The deterministic regressions are:
+Start an interactive session with task enforcement enabled and ask UR to
+research a change, both normally and from Plan Mode. Before any task exists,
+built-in `Explore` and `Plan` agent calls should initialize without
+`TaskListRequired`. Their workers remain read-only even when the parent uses
+Accept Edits or Approve All. Custom or general-purpose agents should remain
+blocked until they have an actionable parent task. The deterministic
+regressions are:
 
 ```sh
 bun test test/taskListGate.test.ts test/toolExecutionFinalInput.test.ts
 ```
 
-### 0.0.1 Plan approval creates visible tasks (1.80.5)
+### 0.0.1 Unavailable Ollama tools recover (1.80.7)
+
+With an Ollama model, ask for research that mentions WebSearch. If WebSearch is
+not in the active profile, UR should reject that call safely and the agent
+should continue with available tools or its useful partial result. It must not
+end the parent turn with `Ollama response returned unavailable tool`. Native
+and text-form, streaming and non-streaming regressions are covered by:
+
+```sh
+bun test test/ollamaToolCalls.test.ts test/kimiToolCalls.test.ts \
+  test/repeatedFailureGuard.test.ts test/streamingToolExecutor.test.ts
+```
+
+### 0.0.2 Plan approval creates visible tasks (1.80.5)
 
 Start an interactive session with task enforcement enabled, ask for a
 multi-file change, and let the agent enter plan mode. Expected lifecycle:

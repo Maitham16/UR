@@ -513,6 +513,24 @@ test('Kimi markup is rejected when its tool is unavailable', () => {
   ).toThrow('unavailable tool')
 })
 
+test('provider recovery can preserve unavailable Kimi tool calls', () => {
+  const result = parseTextToolCalls(
+    '<|tool_call_begin|>functions.WebSearch:0<|tool_call_argument_begin|>{"query":"current sandbox guidance"}<|tool_call_end|>',
+    {
+      availableToolNames: new Set(['Read']),
+      preserveUnavailableToolCalls: true,
+    },
+  )
+
+  expect(result.text).toBe('')
+  expect(result.toolCalls).toMatchObject([
+    {
+      name: 'WebSearch',
+      input: { query: 'current sandbox guidance' },
+    },
+  ])
+})
+
 const ASK = new Set(['AskUserQuestion'])
 
 function labels(call: ReturnType<typeof parseClarifyingQuestions>) {

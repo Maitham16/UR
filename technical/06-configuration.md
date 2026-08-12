@@ -127,10 +127,11 @@ and release/security/migration/production risk. A positively classified atomic
 low-risk request stays direct even after extensive reads. `freeReads` applies
 only when an integration does not expose a classifiable user turn; zero forces
 tracking for every mutation. Profiles without `TaskCreate` bypass this gate so
-they remain operable. In main-session plan mode, the shipped read-only
-`Explore` and `Plan` definitions are the only delegation allowed before tasks
-exist. They run with plan permissions, while custom, general-purpose, nested,
-team, and worktree delegation still requires an actionable parent task.
+they remain operable. From the main session in any permission mode, the shipped
+read-only `Explore` and `Plan` definitions are the only delegation allowed
+before tasks exist. They are forced into plan permissions even when the parent
+uses Accept Edits or Approve All, while custom, general-purpose, nested, team,
+and worktree delegation still requires an actionable parent task.
 
 ### Hooks
 ```jsonc

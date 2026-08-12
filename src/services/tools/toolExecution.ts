@@ -51,6 +51,7 @@ import {
   AGENT_TOOL_NAME,
   LEGACY_AGENT_TOOL_NAME,
 } from '../../tools/AgentTool/constants.js'
+import { isShippedReadOnlyAgentDefinition } from '../../tools/AgentTool/readOnlyAgents.js'
 import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from '../../tools/FileReadTool/prompt.js'
 import { FILE_WRITE_TOOL_NAME } from '../../tools/FileWriteTool/prompt.js'
@@ -61,7 +62,6 @@ import {
   isDeferredTool,
   TOOL_SEARCH_TOOL_NAME,
 } from '../../tools/ToolSearchTool/prompt.js'
-import { getAllBaseTools } from '../../tools.js'
 import type { HookProgress } from '../../types/hooks.js'
 import type {
   AssistantMessage,
@@ -148,7 +148,11 @@ import {
   RepeatedToolFailureAbort,
 } from './repeatedFailureGuard.js'
 
-const READ_ONLY_PLANNING_AGENT_TYPES = new Set(['Explore', 'Plan'])
+const UNKNOWN_TOOL_REPEAT_POLICY = {
+  enabled: true,
+  limit: 1,
+  abortAfter: 3,
+} as const
 
 /**
  * How many tasks exist for this session.
@@ -252,20 +256,19 @@ export function isCurrentPlanFileMutation(
 }
 
 /**
- * Plan mode explicitly asks the main agent to delegate read-only discovery to
- * the shipped Explore and Plan agents before implementation tasks exist. Keep
- * that path open without weakening ordinary delegation: custom overrides,
- * nested agents, teammate spawns, and worktree creation still require a real
- * parent task. The child tool gate independently blocks any mutating command.
+ * Read-only investigation must stay open before implementation tasks exist.
+ * Keep shipped Explore/Plan delegation available from the main session without
+ * weakening ordinary delegation: custom overrides, nested agents, teammate
+ * spawns, and worktree creation still require a real parent task. Their worker
+ * permission mode is independently forced to plan/read-only.
  */
-export function isReadOnlyPlanningDelegation(
+export function isReadOnlyBuiltInDelegation(
   toolName: string,
   input: unknown,
   context: ToolUseContext,
 ): boolean {
   if (
     context.agentId ||
-    context.getAppState().toolPermissionContext.mode !== 'plan' ||
     (toolName !== AGENT_TOOL_NAME && toolName !== LEGACY_AGENT_TOOL_NAME) ||
     !input ||
     typeof input !== 'object' ||
@@ -282,7 +285,6 @@ export function isReadOnlyPlanningDelegation(
   }
   if (
     typeof delegation.subagent_type !== 'string' ||
-    !READ_ONLY_PLANNING_AGENT_TYPES.has(delegation.subagent_type) ||
     delegation.name !== undefined ||
     delegation.team_name !== undefined ||
     delegation.isolation !== undefined
@@ -293,8 +295,7 @@ export function isReadOnlyPlanningDelegation(
   return context.options.agentDefinitions.activeAgents.some(
     agent =>
       agent.agentType === delegation.subagent_type &&
-      agent.source === 'built-in' &&
-      agent.permissionMode === 'plan',
+      isShippedReadOnlyAgentDefinition(agent),
   )
 }
 
@@ -557,19 +558,12 @@ export async function* runToolUse(
   toolUseContext: ToolUseContext,
 ): AsyncGenerator<MessageUpdateLazy, void> {
   const toolName = toolUse.name
-  // First try to find in the available tools (what the model sees)
-  let tool = findToolByName(toolUseContext.options.tools, toolName)
-
-  // If not found, check if it's a deprecated tool being called by alias
-  // (e.g., old transcripts calling "KillShell" which is now an alias for "TaskStop")
-  // Only fall back for tools where the name matches an alias, not the primary name
-  if (!tool) {
-    const fallbackTool = findToolByName(getAllBaseTools(), toolName)
-    // Only use fallback if the tool was found via alias (deprecated name)
-    if (fallbackTool && fallbackTool.aliases?.includes(toolName)) {
-      tool = fallbackTool
-    }
-  }
+  // Resolve only inside the active profile. findToolByName already recognizes
+  // aliases on active tools, so a resumed `KillShell` call still maps to
+  // TaskStop when TaskStop is available. Looking in the global registry here
+  // would let a provider call an alias for a tool intentionally removed from
+  // this agent's profile.
+  const tool = findToolByName(toolUseContext.options.tools, toolName)
   const messageId = assistantMessage.message?.id
   if (typeof messageId !== 'string' || messageId.length === 0) {
     throw new Error(
@@ -593,7 +587,7 @@ export async function* runToolUse(
       toolUse.input,
       repeatedFailureScope(toolUseContext, messageId),
     )
-    const repeat = checkRepeatedFailure(callSig)
+    const repeat = checkRepeatedFailure(callSig, UNKNOWN_TOOL_REPEAT_POLICY)
     if (repeat.action === 'abort') {
       throw new RepeatedToolFailureAbort(
         `Repeated tool failure: ${repeat.reason}`,
@@ -645,17 +639,21 @@ export async function* runToolUse(
       }),
       ...mcpToolDetailsForAnalytics(toolName, mcpServerType, mcpServerBaseUrl),
     })
+    const unavailableMessage =
+      `Tool "${toolName}" is not available in this agent's active tool ` +
+      `profile. Do not retry this tool unchanged. Continue with an available ` +
+      `tool, or return the useful partial result so the parent agent can proceed.`
     yield {
       message: createUserMessage({
         content: [
           {
             type: 'tool_result',
-            content: `<tool_use_error>Error: No such tool available: ${toolName}</tool_use_error>`,
+            content: `<tool_use_error>UnavailableTool: ${unavailableMessage}</tool_use_error>`,
             is_error: true,
             tool_use_id: toolUse.id,
           },
         ],
-        toolUseResult: `Error: No such tool available: ${toolName}`,
+        toolUseResult: `UnavailableTool: ${unavailableMessage}`,
         sourceToolAssistantUUID: assistantMessage.uuid,
       }),
     }
@@ -1144,7 +1142,7 @@ async function checkPermissionsAndCallTool(
       parsedInput.data,
       toolUseContext,
     ),
-    isReadOnlyPlanningDelegation: isReadOnlyPlanningDelegation(
+    isReadOnlyBuiltInDelegation: isReadOnlyBuiltInDelegation(
       tool.name,
       parsedInput.data,
       toolUseContext,
@@ -1778,7 +1776,7 @@ async function checkPermissionsAndCallTool(
         finalParsedInput.data,
         toolUseContext,
       ),
-      isReadOnlyPlanningDelegation: isReadOnlyPlanningDelegation(
+      isReadOnlyBuiltInDelegation: isReadOnlyBuiltInDelegation(
         tool.name,
         finalParsedInput.data,
         toolUseContext,

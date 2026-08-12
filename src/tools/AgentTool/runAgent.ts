@@ -84,6 +84,7 @@ import type { ContentReplacementState } from '../../utils/toolResultStorage.js'
 import { createAgentId } from '../../utils/uuid.js'
 import { resolveAgentTools } from './agentToolUtils.js'
 import { type AgentDefinition, isBuiltInAgent } from './loadAgentsDir.js'
+import { shouldApplyAgentDefinitionPermissionMode } from './readOnlyAgents.js'
 
 /**
  * Initialize agent-specific MCP servers
@@ -427,21 +428,22 @@ export async function* runAgent({
       : baseSystemContext
 
   // Override permission mode if agent defines one
-  // However, don't override if parent is in bypassPermissions or acceptEdits mode - those should always take precedence
+  // Shipped Explore/Plan definitions are an enforced read-only boundary. For
+  // other agents, parent bypassPermissions/acceptEdits still take precedence.
   // For async agents, also set shouldAvoidPermissionPrompts since they can't show UI
   const agentPermissionMode = agentDefinition.permissionMode
   const agentGetAppState = () => {
     const state = toolUseContext.getAppState()
     let toolPermissionContext = state.toolPermissionContext
 
-    // Override permission mode if agent defines one (unless parent is bypassPermissions, acceptEdits, or auto)
+    // Override permission mode if the shipped read-only contract requires it,
+    // or for ordinary definitions unless the parent mode takes precedence.
     if (
       agentPermissionMode &&
-      state.toolPermissionContext.mode !== 'bypassPermissions' &&
-      state.toolPermissionContext.mode !== 'acceptEdits' &&
-      !(
-        feature('TRANSCRIPT_CLASSIFIER') &&
-        state.toolPermissionContext.mode === 'auto'
+      shouldApplyAgentDefinitionPermissionMode(
+        agentDefinition,
+        state.toolPermissionContext.mode,
+        feature('TRANSCRIPT_CLASSIFIER'),
       )
     ) {
       toolPermissionContext = {

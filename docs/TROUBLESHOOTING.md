@@ -83,14 +83,17 @@ ur provider status
   different source. Timeouts, `408`, `409`, `425`, `429`, and `5xx` responses
   remain retryable because they may be transient.
 
-### Plan mode says `TaskListRequired`
+### A built-in research agent says `TaskListRequired`
 
 - Likely cause on UR 1.80.3–1.80.5: the strict task gate treated either the
   active plan file or early read-only research delegation as an untracked
   project mutation, creating a circular requirement before planning finished.
-- Fix: upgrade to UR 1.80.6 or newer. The exact active plan file and main-thread
-  delegation to UR's shipped read-only `Explore` and `Plan` agents are allowed
-  before tasks exist. Approved plans are synchronized into visible
+- UR 1.80.6 fixed this inside Plan Mode. UR 1.80.7 extends the same safe rule to
+  ordinary main-session research: upgrade to 1.80.7 or newer. The exact active
+  plan file and main-thread delegation to UR's shipped read-only `Explore` and
+  `Plan` agents are allowed before tasks exist. The child is forced into plan
+  permissions even if the parent uses Accept Edits or Approve All. Approved
+  plans are synchronized into visible
   implementation and verification tasks before the first project mutation.
   Other files and write-capable delegation remain protected. Existing
   actionable tasks are preserved.
@@ -99,6 +102,20 @@ ur provider status
   agents without a parent task: create the requested tasks or finish and
   approve the plan first. Disabling `tasks.requireBeforeChanges` is no longer
   needed for normal plan mode.
+
+### Ollama stops with `unavailable tool "WebSearch"`
+
+- Cause on UR 1.80.6 and older: a local model requested a provider-hosted tool
+  that was not present in its active tool profile. The Ollama adapter treated
+  the valid but unavailable tool name as a fatal provider-response error, so
+  the parent could not receive the research agents' remaining useful results.
+- Fix: upgrade to UR 1.80.7 or newer. UR now returns a recoverable
+  `UnavailableTool` result without executing the call. The agent is instructed
+  to use an available alternative or return its partial result, and repeated
+  identical unavailable calls are bounded. This applies to native and
+  text-form calls in streaming and non-streaming Ollama responses.
+- `WebSearch` is still not fabricated for a model or profile that does not have
+  it. Malformed tool names and malformed arguments still fail closed.
 
 ## Providers and models
 

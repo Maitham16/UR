@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.80.7
+
+- Fixed Ollama runs stopping with `response returned unavailable tool
+  "WebSearch"`. Syntactically valid but unavailable native and text-form calls
+  now reach UR's guarded executor, which returns a recoverable result without
+  executing the tool and tells the model to use an available alternative or
+  return useful partial work. Identical retries are bounded; malformed names
+  and arguments still fail closed.
+- Extended task-free read-only research beyond Plan Mode. The main session may
+  launch UR's exact shipped `Explore` and `Plan` agents before tasks exist in
+  every permission mode, and those workers are forced into plan permissions
+  even when the parent uses Accept Edits or Approve All. Custom, write-capable,
+  nested, team, and worktree agents still require an actionable parent task.
+- Removed the global deprecated-alias fallback from tool execution. Aliases
+  continue to work for tools present in the active profile, but can no longer
+  revive a tool deliberately omitted from a worker. Approve All itself remains
+  supported and unchanged.
+
 ## 1.80.6
 
 - Fixed Plan Mode's failed-first research delegation. UR's shipped read-only

@@ -12,8 +12,12 @@ import { PLAN_AGENT } from '../src/tools/AgentTool/built-in/planAgent.ts'
 import {
   countToolCallsBeforeCurrent,
   isCurrentPlanFileMutation,
-  isReadOnlyPlanningDelegation,
+  isReadOnlyBuiltInDelegation,
 } from '../src/services/tools/toolExecution.ts'
+import {
+  isShippedReadOnlyAgentDefinition,
+  shouldApplyAgentDefinitionPermissionMode,
+} from '../src/tools/AgentTool/readOnlyAgents.ts'
 import { getPlanFilePath } from '../src/utils/plans.ts'
 
 // The system prompt already asked for a task list on multi-step work and the
@@ -174,7 +178,7 @@ test('the active plan artifact and approval transition cannot deadlock on task t
   ).toBe(true)
 })
 
-test('plan mode permits only shipped read-only planning agents before tasks exist', () => {
+test('the main session permits only shipped read-only agents before tasks exist', () => {
   const context = {
     options: {
       agentDefinitions: {
@@ -191,13 +195,18 @@ test('plan mode permits only shipped read-only planning agents before tasks exis
   }
 
   for (const subagent_type of ['Explore', 'Plan']) {
-    expect(
-      isReadOnlyPlanningDelegation(
-        'Agent',
-        { subagent_type, description: 'Read only', prompt: 'Research' },
-        context as never,
-      ),
-    ).toBe(true)
+    for (const mode of ['default', 'plan', 'acceptEdits', 'bypassPermissions']) {
+      expect(
+        isReadOnlyBuiltInDelegation(
+          'Agent',
+          { subagent_type, description: 'Read only', prompt: 'Research' },
+          {
+            ...context,
+            getAppState: () => ({ toolPermissionContext: { mode } }),
+          } as never,
+        ),
+      ).toBe(true)
+    }
     expect(
       checkTaskListGate({
         toolName: 'Agent',
@@ -206,7 +215,7 @@ test('plan mode permits only shipped read-only planning agents before tasks exis
         isSubagent: false,
         isMutating: true,
         requiresTaskList: true,
-        isReadOnlyPlanningDelegation: true,
+        isReadOnlyBuiltInDelegation: true,
         config: CONFIG,
       }).allowed,
     ).toBe(true)
@@ -214,6 +223,34 @@ test('plan mode permits only shipped read-only planning agents before tasks exis
 
   expect(EXPLORE_AGENT.permissionMode).toBe('plan')
   expect(PLAN_AGENT.permissionMode).toBe('plan')
+  expect(isShippedReadOnlyAgentDefinition(EXPLORE_AGENT)).toBe(true)
+  expect(isShippedReadOnlyAgentDefinition(PLAN_AGENT)).toBe(true)
+  for (const parentMode of [
+    'default',
+    'plan',
+    'acceptEdits',
+    'bypassPermissions',
+    'auto',
+  ]) {
+    expect(
+      shouldApplyAgentDefinitionPermissionMode(
+        EXPLORE_AGENT,
+        parentMode,
+        true,
+      ),
+    ).toBe(true)
+  }
+  expect(
+    shouldApplyAgentDefinitionPermissionMode(
+      {
+        agentType: 'general-purpose',
+        source: 'built-in',
+        permissionMode: 'plan',
+      },
+      'acceptEdits',
+      true,
+    ),
+  ).toBe(false)
 
   for (const unsafeInput of [
     { subagent_type: 'general-purpose' },
@@ -223,7 +260,7 @@ test('plan mode permits only shipped read-only planning agents before tasks exis
     {},
   ]) {
     expect(
-      isReadOnlyPlanningDelegation('Agent', unsafeInput, context as never),
+      isReadOnlyBuiltInDelegation('Agent', unsafeInput, context as never),
     ).toBe(false)
   }
 
@@ -236,7 +273,7 @@ test('plan mode permits only shipped read-only planning agents before tasks exis
     },
   }
   expect(
-    isReadOnlyPlanningDelegation(
+    isReadOnlyBuiltInDelegation(
       'Agent',
       { subagent_type: 'Explore' },
       customOverrideContext as never,
@@ -252,7 +289,7 @@ test('plan mode permits only shipped read-only planning agents before tasks exis
     },
   }
   expect(
-    isReadOnlyPlanningDelegation(
+    isReadOnlyBuiltInDelegation(
       'Agent',
       { subagent_type: 'Explore' },
       writableBuiltInContext as never,
@@ -261,7 +298,7 @@ test('plan mode permits only shipped read-only planning agents before tasks exis
 
   const nestedContext = { ...context, agentId: 'child-agent' }
   expect(
-    isReadOnlyPlanningDelegation(
+    isReadOnlyBuiltInDelegation(
       'Agent',
       { subagent_type: 'Explore' },
       nestedContext as never,

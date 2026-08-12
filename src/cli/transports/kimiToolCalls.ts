@@ -18,6 +18,13 @@ type ToolNameCollection = ReadonlySet<string> | string[]
 export interface TextToolCallParseOptions {
   availableToolNames?: ToolNameCollection
   parseBareJsonToolCalls?: boolean
+  /**
+   * Preserve a syntactically valid named call even when the active profile
+   * does not expose that tool. The execution layer will reject it with a
+   * recoverable tool_result. Provider adapters use this so a local model's
+   * hallucinated tool name cannot abort the whole response before recovery.
+   */
+  preserveUnavailableToolCalls?: boolean
 }
 
 const SECTION_RE = /<\|tool_calls_section_begin\|>([\s\S]*?)<\|tool_calls_section_end\|>/g
@@ -811,6 +818,9 @@ export function parseTextToolCalls(
     if (!options.availableToolNames) return call
     const name = reconcileToolName(call.name, options.availableToolNames)
     if (!hasTool(options.availableToolNames, name)) {
+      if (options.preserveUnavailableToolCalls) {
+        return name === call.name ? call : { ...call, name }
+      }
       throw new KimiToolCallParseError(
         `Kimi returned unavailable tool "${name}"`,
       )

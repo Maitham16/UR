@@ -9,6 +9,13 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.80.7 Additions
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Recoverable local-model tool mismatch | Ollama native/text calls, streaming/non-streaming execution | Converts a valid call to a tool absent from the active profile into a safe `UnavailableTool` result instead of aborting the provider turn. Identical retries are bounded and omitted tools cannot be revived through legacy aliases. |
+| Task-free read-only research | `Agent`, strict-hybrid task gate | Lets the main session launch the exact shipped `Explore` and `Plan` definitions before tasks exist in every parent permission mode, while forcing those children into plan permissions and keeping all custom or write-capable delegation gated. |
+
 ## v1.80.6 Addition
 
 | Addition | Surface | What it adds |

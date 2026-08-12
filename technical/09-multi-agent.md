@@ -30,12 +30,13 @@ Custom agents:
 
 Read-only agents (`Explore`/`Plan`) intentionally omit the UR.md hierarchy from
 their context (token saving, see `loadAgentsDir.ts`) and run with plan-mode
-permissions. During main-session plan mode, only the shipped definitions may be
-spawned before a visible task exists. The task gate rejects custom overrides,
-general-purpose or nested delegation, named/team workers, and worktree creation
-until an actionable parent task exists. The final tool input is checked again
-after permission hooks, preventing an allowed read-only spawn from being
-rewritten into write-capable delegation.
+permissions. From the main session in any permission mode, only the shipped
+definitions may be spawned before a visible task exists; their plan permission
+mode overrides Accept Edits and Approve All on the parent. The task gate rejects
+custom overrides, general-purpose or nested delegation, named/team workers, and
+worktree creation until an actionable parent task exists. The final tool input
+is checked again after permission hooks, preventing an allowed read-only spawn
+from being rewritten into write-capable delegation.
 
 Inspection: `/agent-inspect` reconstructs a per-subagent timeline (spawns, prompts,
 results, verdicts, tools, tokens) from the session or a transcript file.

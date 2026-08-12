@@ -510,32 +510,71 @@ test('Ollama rejects malformed Kimi arguments instead of emitting empty input', 
   }
 })
 
-test('Ollama rejects unknown and whitespace-only structured tool names', async () => {
-  for (const rawName of ['DefinitelyNotAvailable', '   ']) {
-    for (const mode of ['non-streaming', 'streaming'] as const) {
-      await expect(
-        runOllamaFixture(
-          `invalid-name-${rawName.trim() || 'whitespace'}-${mode}`,
-          mode,
+test('Ollama preserves unavailable structured tools for guarded recovery', async () => {
+  for (const mode of ['non-streaming', 'streaming'] as const) {
+    const result = await runOllamaFixture(`unavailable-tool-${mode}`, mode, {
+      capabilities: ['tools'],
+      message: {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
           {
-            capabilities: ['tools'],
-            message: {
-              role: 'assistant',
-              content: '',
-              tool_calls: [
-                {
-                  function: {
-                    name: rawName,
-                    arguments: {},
-                  },
-                },
-              ],
+            function: {
+              name: 'WebSearch',
+              arguments: { query: 'sandboxing best practices' },
             },
-            tools: [OLLAMA_AUDIT_TOOLS[2]!],
           },
-        ),
-      ).rejects.toThrow()
+        ],
+      },
+      tools: [OLLAMA_AUDIT_TOOLS[2]!],
+    })
+    const [call] = toolUsesFromResult(mode, result)
+    expect(call?.name).toBe('WebSearch')
+    if (mode === 'non-streaming') {
+      expect(call?.input).toEqual({ query: 'sandboxing best practices' })
+    } else {
+      expect(streamedToolInputs(result)[0]?.input).toEqual({
+        query: 'sandboxing best practices',
+      })
     }
+  }
+})
+
+test('Ollama preserves unavailable text-form tools for guarded recovery', async () => {
+  const markup =
+    '<|tool_call_begin|>functions.WebSearch:0<|tool_call_argument_begin|>' +
+    '{"query":"delegation observability"}<|tool_call_end|>'
+  for (const mode of ['non-streaming', 'streaming'] as const) {
+    const result = await runOllamaFixture(`unavailable-text-tool-${mode}`, mode, {
+      capabilities: [],
+      message: { role: 'assistant', content: markup },
+      tools: [OLLAMA_AUDIT_TOOLS[2]!],
+    })
+    const [call] = toolUsesFromResult(mode, result)
+    expect(call?.name).toBe('WebSearch')
+    if (mode === 'non-streaming') {
+      expect(call?.input).toEqual({ query: 'delegation observability' })
+    } else {
+      expect(streamedToolInputs(result)[0]?.input).toEqual({
+        query: 'delegation observability',
+      })
+    }
+  }
+})
+
+test('Ollama still rejects a structured tool call without a name', async () => {
+  for (const mode of ['non-streaming', 'streaming'] as const) {
+    await expect(
+      runOllamaFixture(`blank-tool-name-${mode}`, mode, {
+        capabilities: ['tools'],
+        message: {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ function: { name: '   ', arguments: {} } }],
+        },
+        tools: [OLLAMA_AUDIT_TOOLS[2]!],
+      }),
+    ).rejects.toThrow('missing a function name')
   }
 })
 

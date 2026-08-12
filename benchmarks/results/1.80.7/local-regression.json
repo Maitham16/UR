@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 1,
+  "template": false,
+  "agent": {
+    "name": "ur-nexus",
+    "version": "1.80.7",
+    "commit": "10fccbc4a2d618b6b17b1c5a2009a28ffb3a20fe"
+  },
+  "date": "2026-08-12T07:00:47.866Z",
+  "benchmark": {
+    "name": "local-regression",
+    "category": "internal-regression",
+    "taskCount": 20
+  },
+  "runtime": {
+    "provider": "local-regression",
+    "model": "none",
+    "environment": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "node": "v26.7.0",
+      "bun": "1.3.14",
+      "cwd": "/Users/maith/Desktop/ur3-dev/UR-1.78.11"
+    }
+  },
+  "results": {
+    "passed": 20,
+    "failed": 0,
+    "passRate": 1,
+    "taskResults": [
+      {
+        "id": "simple-file-edit",
+        "name": "simple file edit task",
+        "category": "terminal-coding",
+        "passed": true,
+        "wallTimeMs": 31,
+        "failureCategory": null
+      },
+      {
+        "id": "repo-edit-apply",
+        "name": "repository edit apply task",
+        "category": "terminal-coding",
+        "passed": true,
+        "wallTimeMs": 647,
+        "failureCategory": null
+      },
+      {
+        "id": "repo-edit-ast",
+        "name": "repository AST edit task",
+        "category": "terminal-coding",
+        "passed": true,
+        "wallTimeMs": 6888,
+        "failureCategory": null
+      },
+      {
+        "id": "repo-edit-imports",
+        "name": "repository import edit task",
+        "category": "terminal-coding",
+        "passed": true,
+        "wallTimeMs": 4832,
+        "failureCategory": null
+      },
+      {
+        "id": "repo-edit-move",
+        "name": "repository move edit task",
+        "category": "terminal-coding",
+        "passed": true,
+        "wallTimeMs": 6757,
+        "failureCategory": null
+      },
+      {
+        "id": "failing-test-repair",
+        "name": "failing test repair task",
+        "category": "terminal-coding",
+        "passed": true,
+        "wallTimeMs": 207,
+        "failureCategory": null
+      },
+      {
+        "id": "provider-routing",
+        "name": "provider routing task",
+        "category": "provider-routing",
+        "passed": true,
+        "wallTimeMs": 213,
+        "failureCategory": null
+      },
+      {
+        "id": "provider-reliability",
+        "name": "provider reliability task",
+        "category": "provider-routing",
+        "passed": true,
+        "wallTimeMs": 195,
+        "failureCategory": null
+      },
+      {
+        "id": "provider-streaming",
+        "name": "provider streaming task",
+        "category": "provider-routing",
+        "passed": true,
+        "wallTimeMs": 198,
+        "failureCategory": null
+      },
+      {
+        "id": "provider-tool-calls",
+        "name": "provider tool-call task",
+        "category": "tool-use",
+        "passed": true,
+        "wallTimeMs": 182,
+        "failureCategory": null
+      },
+      {
+        "id": "provider-multimodal",
+        "name": "provider multimodal mapping task",
+        "category": "provider-routing",
+        "passed": true,
+        "wallTimeMs": 186,
+        "failureCategory": null
+      },
+      {
+        "id": "sandbox-policy",
+        "name": "sandbox denial task",
+        "category": "sandbox-safety",
+        "passed": true,
+        "wallTimeMs": 629,
+        "failureCategory": null
+      },
+      {
+        "id": "safety-matrix",
+        "name": "safety matrix proof task",
+        "category": "sandbox-safety",
+        "passed": true,
+        "wallTimeMs": 83,
+        "failureCategory": null
+      },
+      {
+        "id": "sandbox-adapter",
+        "name": "sandbox adapter task",
+        "category": "sandbox-safety",
+        "passed": true,
+        "wallTimeMs": 542,
+        "failureCategory": null
+      },
+      {
+        "id": "sandbox-profile",
+        "name": "sandbox profile task",
+        "category": "sandbox-safety",
+        "passed": true,
+        "wallTimeMs": 61,
+        "failureCategory": null
+      },
+      {
+        "id": "release-hygiene",
+        "name": "release hygiene task",
+        "category": "internal-regression",
+        "passed": true,
+        "wallTimeMs": 63,
+        "failureCategory": null
+      },
+      {
+        "id": "benchmark-schema",
+        "name": "benchmark schema validation task",
+        "category": "internal-regression",
+        "passed": true,
+        "wallTimeMs": 216,
+        "failureCategory": null
+      },
+      {
+        "id": "eval-compare",
+        "name": "eval comparison task",
+        "category": "internal-regression",
+        "passed": true,
+        "wallTimeMs": 97,
+        "failureCategory": null
+      },
+      {
+        "id": "tool-call-parsing",
+        "name": "tool-call parsing task",
+        "category": "tool-use",
+        "passed": true,
+        "wallTimeMs": 174,
+        "failureCategory": null
+      },
+      {
+        "id": "multi-step-code-modification",
+        "name": "multi-step code modification task",
+        "category": "terminal-coding",
+        "passed": true,
+        "wallTimeMs": 1010,
+        "failureCategory": null
+      }
+    ],
+    "failedTasks": [],
+    "failureCategories": {},
+    "wallTimeMs": 23212,
+    "tokenUsage": null,
+    "costUSD": null
+  },
+  "reproduction": {
+    "command": "bun run benchmark:local",
+    "inputReport": null,
+    "generatedBy": "scripts/benchmark-report.mjs"
+  }
+}

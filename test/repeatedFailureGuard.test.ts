@@ -296,7 +296,7 @@ test('the gate and validation both feed the guard', () => {
   expect(source).toContain('error instanceof RepeatedToolFailureAbort')
 })
 
-test('a repeated unknown call keeps erroring without aborting the turn', async () => {
+test('an unavailable tool is recoverable once and then bounded', async () => {
   const context = {
     abortController: new AbortController(),
     options: { tools: [], mcpClients: [] },
@@ -317,24 +317,52 @@ test('a repeated unknown call keeps erroring without aborting the turn', async (
     input: { nested: { value: 1 } },
   } as never
 
-  const outputs: unknown[][] = []
-  for (
-    let attempt = 0;
-    attempt <= REPEATED_FAILURE_DEFAULTS.abortAfter;
-    attempt++
-  ) {
-    outputs.push(
-      await Array.fromAsync(
-        runToolUse(toolUse, assistantMessage, (() => {}) as never, context),
-      ),
-    )
-  }
-  // The guard ships disabled, so a call that keeps failing keeps returning an
-  // ordinary tool error past what used to be the abort threshold. The refuse
-  // and abort behaviour is covered above against an explicitly enabled config.
-  const last = JSON.stringify(outputs.at(-1))
-  expect(last).toContain('No such tool available')
-  expect(last).not.toContain('RepeatedFailure')
+  const first = await Array.fromAsync(
+    runToolUse(toolUse, assistantMessage, (() => {}) as never, context),
+  )
+  expect(JSON.stringify(first)).toContain('UnavailableTool')
+  expect(JSON.stringify(first)).toContain('Do not retry this tool unchanged')
+
+  const second = await Array.fromAsync(
+    runToolUse(toolUse, assistantMessage, (() => {}) as never, context),
+  )
+  expect(JSON.stringify(second)).toContain('RepeatedFailure')
+
+  await Array.fromAsync(
+    runToolUse(toolUse, assistantMessage, (() => {}) as never, context),
+  )
+  await expect(
+    Array.fromAsync(
+      runToolUse(toolUse, assistantMessage, (() => {}) as never, context),
+    ),
+  ).rejects.toThrow('Repeated tool failure')
   expect(REPEATED_FAILURE_DEFAULTS.enabled).toBe(false)
   expect(RepeatedToolFailureAbort.prototype).toBeInstanceOf(Error)
+})
+
+test('an alias cannot revive a tool omitted from the active profile', async () => {
+  const output = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'omitted-alias-call',
+        name: 'KillShell',
+        input: { shell_id: 'task-that-must-not-be-touched' },
+      } as never,
+      {
+        type: 'assistant',
+        uuid: 'assistant-omitted-alias',
+        message: { id: 'message-omitted-alias', content: [] },
+      } as never,
+      (() => {}) as never,
+      {
+        abortController: new AbortController(),
+        options: { tools: [], mcpClients: [] },
+        queryTracking: { chainId: 'omitted-alias', depth: 0 },
+      } as never,
+    ),
+  )
+
+  expect(JSON.stringify(output)).toContain('UnavailableTool')
+  expect(JSON.stringify(output)).toContain('KillShell')
 })
