@@ -173,3 +173,16 @@ test('delegation guidance requires scoped tasks and independent evidence', () =>
     "outputs should generally be trusted",
   )
 })
+
+test('plan mode creates visible tasks before implementation', () => {
+  const source = readFileSync(
+    'src/tools/EnterPlanModeTool/EnterPlanModeTool.ts',
+    'utf8',
+  )
+  const prompt = readFileSync('src/tools/EnterPlanModeTool/prompt.ts', 'utf8')
+  for (const text of [source, prompt]) {
+    expect(text).toContain('TaskCreate')
+    expect(text).toContain('visible implementation tasks')
+  }
+  expect(source).toContain('updating a plan does not create the task list')
+})

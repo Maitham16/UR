@@ -96,7 +96,7 @@ export const EnterPlanModeTool: Tool<InputSchema, Output> = buildTool({
     return {
       data: {
         message:
-          'Entered plan mode. You should now focus on exploring the codebase and designing an implementation approach.',
+          'Entered plan mode. Explore the codebase, design the approach, and create the visible implementation tasks with TaskCreate before attempting any workspace changes.',
       },
     }
   },
@@ -113,7 +113,8 @@ In plan mode, you should:
 3. Consider multiple approaches and their trade-offs
 4. Use AskUserQuestion if you need to clarify the approach
 5. Design a concrete implementation strategy
-6. When ready, use ExitPlanMode to present your plan for approval
+6. If TaskCreate is available, create the visible implementation tasks before ExitPlanMode; updating a plan does not create the task list
+7. When ready, use ExitPlanMode to present your plan for approval
 
 Remember: DO NOT write or edit any files yet. This is a read-only exploration and planning phase.`
 

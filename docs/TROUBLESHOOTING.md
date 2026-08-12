@@ -70,6 +70,27 @@ ur provider status
   Bash. A successful result confirms the harness; `/design3d doctor` alone
   validates the local slash command but does not exercise Bash execution.
 
+### Fetch repeatedly reports `404`
+
+- Likely cause: the page moved or the model generated a stale URL. A successful
+  fetch from another page proves the network path is working; retrying the same
+  missing URL cannot change its HTTP status.
+- Fix: upgrade to UR 1.80.4 or newer. WebFetch now records permanent 4xx
+  failures by normalized URL, independent of its hidden summarization prompt.
+  It refuses another network request for that URL and stops the turn if the
+  model keeps retrying. Alternating between two dead URLs is bounded as well.
+- Recovery: use WebSearch, fetch the site’s parent/index page, or choose a
+  different source. Timeouts, `408`, `409`, `425`, `429`, and `5xx` responses
+  remain retryable because they may be transient.
+
+### Plan mode says `TaskListRequired`
+
+- Likely cause: the agent entered or updated plan mode but did not create the
+  visible implementation tasks. A plan and a task list have separate roles.
+- Fix: call `TaskCreate` for the concrete outcomes before the first workspace
+  mutation. Do not disable `tasks.requireBeforeChanges` merely to bypass this
+  recovery message; the gate is preventing untracked implementation.
+
 ## Providers and models
 
 ### Provider selected but the model is unavailable

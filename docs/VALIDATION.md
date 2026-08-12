@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.80.3 (UR-Nexus)"
+# expected for this release: "1.80.4 (UR-Nexus)"
 ```
 
 ## 0.1 First-workspace model selection (1.45.4)
@@ -315,6 +315,15 @@ the arguments. Don't try anything else.
 Expected: after the 3rd identical Bash call, the agent receives a "stop
 repeating the same call" reminder and switches strategy (or asks for
 clarification).
+
+### 3.1 Permanent WebFetch loop stops
+
+Ask the agent to fetch one known-missing public URL repeatedly while changing
+the WebFetch prompt. Expected: the first request reports the permanent HTTP
+4xx response, the next is refused without network I/O, and another unchanged
+attempt stops the turn. Repeat with two missing URLs in alternating order; the
+same bounded behavior applies independently to both. A `429` or `5xx` fixture
+must remain retryable.
 
 ## 4. Project gate from `.ur/verify.json`
 

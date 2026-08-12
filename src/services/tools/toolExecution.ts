@@ -2147,6 +2147,12 @@ async function checkPermissionsAndCallTool(
     })
     endToolSpan()
 
+    // Tool-specific circuit breakers use the same terminal abort type as the
+    // generic guard. Preserve it through the inner execution boundary so the
+    // outer query loop stops instead of converting it to another retryable
+    // tool_result.
+    if (error instanceof RepeatedToolFailureAbort) throw error
+
     // Handle MCP auth errors by updating the client status to 'needs-auth'
     // This updates the /mcp display to show the server needs re-authorization
     if (error instanceof McpAuthError) {

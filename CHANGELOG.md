@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.80.4
+
+- Stopped runaway WebFetch loops on permanent HTTP 4xx responses. Failures are
+  keyed by normalized URL rather than the hidden summarization prompt, so
+  changing prompts or alternating between two dead links cannot bypass the
+  circuit breaker. The first repeated URL is refused without another network
+  request; continued repetition stops the turn.
+- WebFetch now distinguishes permanent client errors from transient timeouts,
+  conflicts, early-data responses, rate limits, and server failures. Permanent
+  errors direct the agent to WebSearch, a parent/index page, or another source;
+  transient failures remain retryable. URL identities are hashed, bounded,
+  scoped to the active query, and cleared when that query completes.
+- Plan mode now explicitly creates visible implementation tasks with
+  `TaskCreate` before workspace changes. Task-gate recovery clarifies that
+  entering or updating a plan is not a substitute for the task list. Approve
+  All remains unchanged.
+
 ## 1.80.3
 
 - Restored visible task planning with a strict-hybrid default. Atomic,

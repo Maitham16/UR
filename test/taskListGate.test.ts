@@ -90,6 +90,23 @@ test('classified multi-outcome work is gated before its first mutation', () => {
   )
 })
 
+test('plan-mode recovery distinguishes a plan from visible tasks', () => {
+  const decision = checkTaskListGate({
+    toolName: 'Write',
+    taskCount: 0,
+    readsSoFar: 0,
+    isSubagent: false,
+    requiresTaskList: true,
+    requirementReason: 'planning workflow',
+    config: CONFIG,
+  })
+  expect(decision.allowed).toBe(false)
+  expect((decision as { reason: string }).reason).toContain(
+    'plan updates do not create the visible task list',
+  )
+  expect((decision as { reason: string }).reason).toContain('TaskCreate')
+})
+
 test('freeReads zero intentionally gates even atomic work', () => {
   expect(
     checkTaskListGate({

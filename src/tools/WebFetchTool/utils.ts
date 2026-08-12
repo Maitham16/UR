@@ -56,6 +56,26 @@ export class UnsafeUrlError extends Error {
   }
 }
 
+/** A deterministic HTTP client error that retrying the same URL cannot fix. */
+export class PermanentWebFetchHttpError extends Error {
+  constructor(public readonly status: number) {
+    super(
+      `WebFetch received permanent HTTP ${status}. Do not retry this URL unchanged, even with a different prompt. Use WebSearch, fetch a parent/index page, or choose another source.`,
+    )
+    this.name = 'PermanentWebFetchHttpError'
+    Object.setPrototypeOf(this, new.target.prototype)
+  }
+}
+
+/** Excludes client responses that are commonly transient or state-dependent. */
+export function isPermanentWebFetchStatus(status: number): boolean {
+  return (
+    status >= 400 &&
+    status < 500 &&
+    ![408, 409, 425, 429].includes(status)
+  )
+}
+
 // Cache for storing fetched URL content
 type CacheEntry = {
   bytes: number
@@ -448,6 +468,14 @@ export async function getWithPermittedRedirects(
     ) {
       const hostname = new URL(url).hostname
       throw new EgressBlockedError(hostname)
+    }
+
+    if (
+      axios.isAxiosError(error) &&
+      error.response &&
+      isPermanentWebFetchStatus(error.response.status)
+    ) {
+      throw new PermanentWebFetchHttpError(error.response.status)
     }
 
     throw error

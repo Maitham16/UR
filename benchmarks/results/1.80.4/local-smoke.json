@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "template": false,
+  "agent": {
+    "name": "ur-nexus",
+    "version": "1.80.4",
+    "commit": "2c1b5d026f0b43da204953800b88c522c1ca5aff"
+  },
+  "date": "2026-08-12T01:18:15.199Z",
+  "benchmark": {
+    "name": "local-smoke",
+    "category": "internal-regression",
+    "taskCount": 6
+  },
+  "runtime": {
+    "provider": "local-regression",
+    "model": "none",
+    "environment": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "node": "v26.7.0",
+      "bun": "1.3.14",
+      "cwd": "/Users/maith/Desktop/ur3-dev/UR-1.78.11"
+    }
+  },
+  "results": {
+    "passed": 6,
+    "failed": 0,
+    "passRate": 1,
+    "taskResults": [
+      {
+        "id": "simple-file-edit",
+        "name": "simple file edit task",
+        "category": "terminal-coding",
+        "passed": true,
+        "wallTimeMs": 29,
+        "failureCategory": null
+      },
+      {
+        "id": "failing-test-repair",
+        "name": "failing test repair task",
+        "category": "terminal-coding",
+        "passed": true,
+        "wallTimeMs": 213,
+        "failureCategory": null
+      },
+      {
+        "id": "provider-routing",
+        "name": "provider routing task",
+        "category": "provider-routing",
+        "passed": true,
+        "wallTimeMs": 232,
+        "failureCategory": null
+      },
+      {
+        "id": "sandbox-denial",
+        "name": "sandbox denial task",
+        "category": "sandbox-safety",
+        "passed": true,
+        "wallTimeMs": 632,
+        "failureCategory": null
+      },
+      {
+        "id": "tool-call-parsing",
+        "name": "tool-call parsing task",
+        "category": "tool-use",
+        "passed": true,
+        "wallTimeMs": 197,
+        "failureCategory": null
+      },
+      {
+        "id": "multi-step-coding",
+        "name": "multi-step coding task",
+        "category": "terminal-coding",
+        "passed": true,
+        "wallTimeMs": 8344,
+        "failureCategory": null
+      }
+    ],
+    "failedTasks": [],
+    "failureCategories": {},
+    "wallTimeMs": 9648,
+    "tokenUsage": null,
+    "costUSD": null
+  },
+  "reproduction": {
+    "command": "bun run benchmark:smoke",
+    "inputReport": null,
+    "generatedBy": "scripts/benchmark-report.mjs"
+  }
+}

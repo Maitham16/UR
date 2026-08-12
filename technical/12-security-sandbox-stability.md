@@ -109,6 +109,14 @@ passes through, so no fetch route can bypass it. WebSearch's citation reminder
 is appended *outside* the boundary: it is UR's own instruction, and wrapping it
 would label it as untrusted data.
 
+WebFetch also has a narrow permanent-failure circuit breaker. Deterministic
+HTTP 4xx responses other than `408`, `409`, `425`, and `429` are keyed by a
+hashed normalized URL, not by the summarization prompt. One permanent response
+opens the circuit for that URL within the active query; the next request is
+refused without network I/O, and continued repetition aborts the turn. Query
+cleanup removes the history. Timeouts, rate limits, and 5xx responses are not
+recorded by this breaker, preserving legitimate recovery attempts.
+
 The nonce matters. A fixed `</untrusted-content>` marker is forgeable — text
 containing the closing tag escapes the fence and the remainder is read as
 instruction. Binding the boundary to a random per-call id means breaking out

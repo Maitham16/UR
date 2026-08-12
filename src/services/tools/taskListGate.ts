@@ -171,6 +171,10 @@ export function checkTaskListGate(input: {
   const requirementContext = input.requirementReason
     ? ` This turn requires task tracking because it contains ${input.requirementReason}.`
     : ''
+  const planningRecovery =
+    input.requirementReason === 'planning workflow'
+      ? ' EnterPlanMode and plan updates do not create the visible task list.'
+      : ''
 
   // A missing/corrupt task store cannot prove whether an actionable task
   // exists. Keep the established fail-closed behavior for every mutation.
@@ -179,7 +183,7 @@ export function checkTaskListGate(input: {
       allowed: false,
       reason:
         `The task list could not be read, so ${input.toolName} was not allowed ` +
-        `to change state without a verifiable plan.${requirementContext} Retry TaskList or ` +
+        `to change state without a verifiable plan.${requirementContext}${planningRecovery} Retry TaskList or ` +
         `TaskCreate, then retry this call. Disable with ` +
         `tasks.requireBeforeChanges.enabled=false in settings.`,
     }
@@ -203,6 +207,7 @@ export function checkTaskListGate(input: {
     reason:
       `No task list exists, and ${input.toolName} changes the workspace. ` +
       `${requirementContext.trim()}${requirementContext ? ' ' : ''}` +
+      `${planningRecovery.trim()}${planningRecovery ? ' ' : ''}` +
       `Call TaskCreate first with the steps you intend to take, then retry ` +
       `this call. Reads are unrestricted, so investigate as much as you need ` +
       `before writing the list. ` +

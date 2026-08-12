@@ -9,6 +9,13 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.80.4 Additions
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Permanent-link circuit breaker | `WebFetch` | Stops repeat and alternating loops over dead 4xx URLs without disabling legitimate retries for transient network or server failures. URL identities are prompt-independent, hashed, bounded, and query-scoped. |
+| Plan/task recovery | `EnterPlanMode`, `TaskCreate` gate | Makes the distinction between an implementation plan and visible executable tasks explicit before workspace mutation. |
+
 ## v1.80.3 Addition
 
 | Addition | Surface | What it adds |

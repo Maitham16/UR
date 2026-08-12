@@ -9,6 +9,10 @@ import { getRuleByContentsForTool } from '../../utils/permissions/permissions.js
 import { isPreapprovedHost } from './preapproved.js'
 import { DESCRIPTION, WEB_FETCH_TOOL_NAME } from './prompt.js'
 import {
+  webFetchPermanentFailureScope,
+  withWebFetchPermanentFailureCircuit,
+} from './permanentFailureCircuit.js'
+import {
   getToolUseSummary,
   renderToolResultMessage,
   renderToolUseMessage,
@@ -212,11 +216,16 @@ ${DESCRIPTION}`
   renderToolResultMessage,
   async call(
     { url, prompt },
-    { abortController, options: { isNonInteractiveSession } },
+    context,
   ) {
     const start = Date.now()
+    const { abortController, options: { isNonInteractiveSession } } = context
 
-    const response = await getURLMarkdownContent(url, abortController)
+    const response = await withWebFetchPermanentFailureCircuit(
+      url,
+      webFetchPermanentFailureScope(context),
+      () => getURLMarkdownContent(url, abortController),
+    )
 
     // Check if we got a redirect to a different host
     if ('type' in response && response.type === 'redirect') {
