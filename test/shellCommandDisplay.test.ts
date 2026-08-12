@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import { formatCommandForDisplay } from '../src/utils/shell/visibleCommand.js'
 
 describe('shell command display hardening', () => {
@@ -17,6 +18,16 @@ describe('shell command display hardening', () => {
   it('preserves ordinary Unicode and line breaks', () => {
     expect(formatCommandForDisplay('printf "مرحبا 🐦"\necho done')).toBe(
       'printf "مرحبا 🐦"\necho done',
+    )
+  })
+
+  it('sanitizes the background-shell detail surface before truncating', () => {
+    const source = readFileSync(
+      'src/components/tasks/ShellDetailDialog.tsx',
+      'utf8',
+    )
+    expect(source).toContain(
+      'truncateToWidth(formatCommandForDisplay(shell.command), 280)',
     )
   })
 })

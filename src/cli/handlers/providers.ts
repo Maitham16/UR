@@ -168,24 +168,28 @@ export async function providerAuthHandler(
   process.exit(result.ok ? 0 : 1)
 }
 
-export async function configSetHandler(
+export const PROVIDER_CONFIG_KEYS = [
+  'provider',
+  'provider.fallback',
+  'provider.command_path',
+  'openai_transport',
+  'responses.store',
+  'responses.compact_threshold',
+  'responses.tool_search',
+  'model',
+  'base_url',
+] as const
+
+export type ProviderConfigKey = (typeof PROVIDER_CONFIG_KEYS)[number]
+
+export async function providerConfigSetHandler(
   key: string,
   values: string | string[],
 ): Promise<void> {
   const value = Array.isArray(values) ? values.join(' ') : values
-  if (
-    key !== 'provider' &&
-    key !== 'provider.fallback' &&
-    key !== 'provider.command_path' &&
-    key !== 'openai_transport' &&
-    key !== 'responses.store' &&
-    key !== 'responses.compact_threshold' &&
-    key !== 'responses.tool_search' &&
-    key !== 'model' &&
-    key !== 'base_url'
-  ) {
+  if (!PROVIDER_CONFIG_KEYS.includes(key as ProviderConfigKey)) {
     writeError(
-      `Unsupported config key "${key}". Supported: provider, provider.fallback, provider.command_path, openai_transport, responses.store, responses.compact_threshold, responses.tool_search, model, base_url`,
+      `Unsupported provider config key "${key}". Supported: ${PROVIDER_CONFIG_KEYS.join(', ')}`,
     )
     process.exit(1)
   }
@@ -236,7 +240,7 @@ export async function configSetHandler(
     }
   }
 
-  const result = setSafeProviderConfig(key, value)
+  const result = setSafeProviderConfig(key as ProviderConfigKey, value)
   if (result.ok) {
     writeOutput(result.message)
     process.exit(0)

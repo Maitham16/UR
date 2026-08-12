@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import {
   buildA2AAgentCard,
+  buildA2AV1AgentCard,
   buildAgentTrendReport,
+  formatA2AV1AgentCard,
   formatAgentTrendReport,
 } from '../src/services/agents/trends.js'
 
@@ -20,6 +22,19 @@ describe('agent trend coverage', () => {
     expect(card.capabilities.streaming).toBe(false)
     expect(card.skills.map(skill => skill.id)).toContain('coding-agent')
     expect(card.skills.map(skill => skill.id)).toContain('mcp-agent')
+  })
+
+  test('exports the current A2A 1.0 Agent Card for CLI preview', () => {
+    const card = buildA2AV1AgentCard({ baseUrl: 'https://example.com/root/' })
+
+    expect(card.supportedInterfaces[0]).toMatchObject({
+      url: 'https://example.com/root',
+      protocolVersion: '1.0',
+    })
+    const formatted = JSON.parse(
+      formatA2AV1AgentCard({ baseUrl: 'https://example.com' }),
+    ) as { supportedInterfaces: Array<{ protocolVersion: string }> }
+    expect(formatted.supportedInterfaces[0]?.protocolVersion).toBe('1.0')
   })
 
   test('reports every tracked modern agent trend', () => {

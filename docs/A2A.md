@@ -53,6 +53,14 @@ Inspect the live card:
 curl -s http://127.0.0.1:8765/.well-known/agent-card.json
 ```
 
+Preview either card without starting the server:
+
+```sh
+ur a2a card --v1                         # current A2A 1.0 card
+ur a2a card                              # legacy 0.3 compatibility card
+ur a2a card --v1 --base-url https://agent.example.com
+```
+
 Without a version header, discovery returns the v1 ProtoJSON card with
 `supportedInterfaces` for JSON-RPC, HTTP+JSON, and the legacy v0.3 binding. Use
 `A2A-Version: 0.3` to retrieve the standalone v0.3 SDK card. Both cards report

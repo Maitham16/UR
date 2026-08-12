@@ -444,7 +444,7 @@ as first-class subcommands in the shipped CLI.
 | `ur auth claude` | Launch the official Claude Code login flow. |
 | `ur auth gemini` | Use the official Gemini CLI login flow where supported. |
 | `ur auth antigravity` | Use the official Antigravity CLI login flow where supported. |
-| `ur config set` | Persist safe non-secret provider settings such as provider, model, base URL, command path, and fallback. |
+| `ur config set|get|list` | Set or inspect validated non-secret agent, accessibility, editor, and provider settings. |
 | `ur mcp` | Configure Model Context Protocol servers, expose fail-closed built-in tools over standard input/output, or run the secure stateless web server with Tasks and Apps. |
 | `ur skill` | Initialize, run, strictly verify, Ed25519-sign, and create trusted signing keys for portable skills. |
 | `ur ag-ui serve` | Start the secure AG-UI HTTP/SSE adapter for user-facing applications with truthful capability discovery. |
@@ -453,7 +453,7 @@ as first-class subcommands in the shipped CLI.
 | `ur acp` | Connect editors through the Agent Client Protocol, or manage the separate UR HTTP JSON-RPC server. |
 | `ur exec` | Run one or more prompts in non-interactive mode with optional concurrency. |
 | `ur ide diff` | Capture editor-readable inline diff bundles. |
-| `ur a2a card` | Print Agent-to-Agent discovery metadata. |
+| `ur a2a card` | Print legacy Agent-to-Agent discovery metadata; add `--v1` to preview the current A2A 1.0 card. |
 | `ur a2a serve` | Start the negotiated Agent-to-Agent server with automatic client compatibility. |
 | `ur sdk` | Show programmatic headless usage and scaffold SDK examples. |
 | `ur trigger` | Parse a GitHub/Slack webhook payload and optionally launch a headless UR run. |

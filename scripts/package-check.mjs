@@ -217,6 +217,45 @@ function main() {
       fail('packed ur doctor --help did not print doctor usage')
     }
 
+    const configList = runPackagedBin(packageRoot, [
+      'config',
+      'list',
+      '--json',
+    ])
+    expectStatus('packed config list', configList, 0)
+    try {
+      const keys = JSON.parse(configList.stdout).map(entry => entry.key)
+      if (!keys.includes('screenReader') || !keys.includes('vimEscape')) {
+        fail('packed config list is missing accessibility or editor settings')
+      }
+    } catch (error) {
+      fail(
+        `packed config list did not return JSON: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
+
+    const currentA2ACard = runPackagedBin(packageRoot, [
+      'a2a',
+      'card',
+      '--v1',
+      '--compact',
+    ])
+    expectStatus('packed current A2A card', currentA2ACard, 0)
+    try {
+      const card = JSON.parse(currentA2ACard.stdout)
+      if (card.supportedInterfaces?.[0]?.protocolVersion !== '1.0') {
+        fail('packed current A2A card does not advertise protocol version 1.0')
+      }
+    } catch (error) {
+      fail(
+        `packed current A2A card did not return JSON: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
+
     const providerDoctor = runPackagedBundle(packageRoot, [
       'provider',
       'doctor',

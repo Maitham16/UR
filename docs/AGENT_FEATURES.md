@@ -15,6 +15,8 @@ spec as the durable source of truth and command evidence as the success gate.
 | --- | --- | --- |
 | Permanent-link circuit breaker | `WebFetch` | Stops repeat and alternating loops over dead 4xx URLs without disabling legitimate retries for transient network or server failures. URL identities are prompt-independent, hashed, bounded, and query-scoped. |
 | Plan/task recovery | `EnterPlanMode`, `TaskCreate` gate | Makes the distinction between an implementation plan and visible executable tasks explicit before workspace mutation. |
+| Safe CLI parity | `ur config set|get|list`, `ur a2a card --v1`, `ur session status` | Makes accessibility/editor configuration, current Agent Card preview, and conversation inspection available to scripts without weakening compatibility defaults. |
+| Complete command display hardening | Background shell details | Escapes deceptive control, invisible, and bidirectional characters before truncation. |
 
 ## v1.80.3 Addition
 

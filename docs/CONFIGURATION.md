@@ -17,6 +17,22 @@ Start UR with `--screen-reader`, set `UR_SCREEN_READER=1`, or use
 edits, and reduced animation. `vimEscape` accepts 2–8 printable non-whitespace
 characters or `off`.
 
+The same settings are available without starting the interactive interface,
+which is useful for CI setup and accessibility-first startup:
+
+```sh
+ur config set screenReader true
+ur config set reducedMotion true
+ur config set editor vim
+ur config set vimEscape jj
+ur config get screenReader
+ur config list --json
+```
+
+`ur config get` and `list` expose only the validated, non-secret settings that
+`ur config set` accepts. Screen-reader and reduced-motion values use the local
+workspace settings source; editor and Vim escape preferences are global.
+
 ## Interactive task planning
 
 UR uses strict-hybrid task tracking by default: one atomic, low-risk outcome

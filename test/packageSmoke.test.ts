@@ -238,6 +238,28 @@ describe('package runtime contract', () => {
       expect(doctorHelp.status).toBe(0)
       expect(doctorHelp.stdout).toContain('Usage: ur doctor')
 
+      const configList = runPackagedBin(packageRoot, [
+        'config',
+        'list',
+        '--json',
+      ])
+      expect(configList.status).toBe(0)
+      expect(
+        JSON.parse(configList.stdout).map((entry: { key: string }) => entry.key),
+      ).toContain('screenReader')
+
+      const currentA2ACard = runPackagedBin(packageRoot, [
+        'a2a',
+        'card',
+        '--v1',
+        '--compact',
+      ])
+      expect(currentA2ACard.status).toBe(0)
+      expect(
+        JSON.parse(currentA2ACard.stdout).supportedInterfaces[0]
+          .protocolVersion,
+      ).toBe('1.0')
+
       const providerDoctor = runPackagedBundle(packageRoot, [
         'provider',
         'doctor',
@@ -263,7 +285,7 @@ describe('package runtime contract', () => {
         force: true,
       })
     }
-    // No per-test budget: this packs the tarball and spawns the CLI five
+    // No per-test budget: this packs the tarball and spawns the CLI several
     // times, so it is slow by nature and the 30s budget it used to declare
     // silently overrode the gate's own timeout — red on a slow runner with
     // every assertion passing. It inherits the gate timeout instead.

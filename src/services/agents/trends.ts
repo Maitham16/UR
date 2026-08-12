@@ -894,3 +894,10 @@ export function formatA2AAgentCard(
 ): string {
   return JSON.stringify(buildA2AAgentCard(options), null, pretty ? 2 : 0)
 }
+
+export function formatA2AV1AgentCard(
+  options: A2AAgentCardOptions = {},
+  pretty = true,
+): string {
+  return JSON.stringify(buildA2AV1AgentCard(options), null, pretty ? 2 : 0)
+}

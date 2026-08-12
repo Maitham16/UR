@@ -71,8 +71,9 @@ and SigV4 request rewriting. TLS termination uses an ephemeral per-session CA
 unless a trusted CA pair is configured. `strictAllowlist` denies unknown hosts
 without an interactive prompt, which makes unattended runs deterministic.
 
-The permission display renders tabs, control characters, zero-width code
-points, and bidirectional controls visibly. Bash analysis includes commands
+The permission display and background-shell detail dialog render tabs, control
+characters, zero-width code points, and bidirectional controls visibly before
+truncation. Bash analysis includes commands
 hidden in zsh `[[ ... ]]` conditionals; PowerShell path parsing rejects quoted
 path ambiguity. These checks do not change `autoApprove`/“Approve all”.
 

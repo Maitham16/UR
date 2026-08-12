@@ -313,7 +313,8 @@ UR includes slash commands and CLI subcommands for common workflows:
   before installation.
 - `ur agents` to list configured agents
 - `ur agent-trends` to inspect coverage for current agent technology trends
-- `ur a2a card` to print UR's Agent Card metadata for A2A discovery
+- `ur a2a card` to print legacy Agent Card metadata, or
+  `ur a2a card --v1` to preview the current A2A 1.0 card
 - `ur bg ...` to run and idempotently steer detached local background agents
   with optional worktrees and PRs
 - `ur cloud ...` to run, synchronize, steer, and cancel local or managed

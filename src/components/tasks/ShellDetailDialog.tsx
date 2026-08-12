@@ -11,6 +11,7 @@ import type { LocalShellTaskState } from '../../tasks/LocalShellTask/guards.js';
 import { formatDuration, formatFileSize, truncateToWidth } from '../../utils/format.js';
 import { tailFile } from '../../utils/fsOperations.js';
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js';
+import { formatCommandForDisplay } from '../../utils/shell/visibleCommand.js';
 import { Byline } from '../design-system/Byline.js';
 import { Dialog } from '../design-system/Dialog.js';
 import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js';
@@ -155,7 +156,7 @@ export function ShellDetailDialog(t0) {
   const isMonitor = shell.kind === "monitor";
   let t8;
   if ($[17] !== shell.command) {
-    t8 = truncateToWidth(shell.command, 280);
+    t8 = truncateToWidth(formatCommandForDisplay(shell.command), 280);
     $[17] = shell.command;
     $[18] = t8;
   } else {

@@ -12,6 +12,7 @@ linked primary sources before acting on prerelease standards.
 ur agent-trends
 ur agent-trends --json
 ur a2a card
+ur a2a card --v1
 ur a2a card --base-url https://example.com
 ur ag-ui serve --help
 ur agent-features

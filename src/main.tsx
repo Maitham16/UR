@@ -4082,7 +4082,15 @@ async function run(): Promise<CommanderCommand> {
 
   // ur session
 
-  const sessionCli = program.command('session').description('List, archive, and restore local conversation sessions').configureHelp(createSortedHelpConfig());
+  const sessionCli = program.command('session').description('Inspect, list, archive, and restore local conversation sessions').configureHelp(createSortedHelpConfig());
+  sessionCli.command('status [session-id]').description('Show a session, or the latest resumable session for this project').option('--json', 'Output structured JSON').action(async (sessionId: string | undefined, options: {
+    json?: boolean;
+  }) => {
+    const {
+      sessionStatusHandler
+    } = await import('./cli/handlers/session.js');
+    await sessionStatusHandler(sessionId, options);
+  });
   sessionCli.command('list').description('List resumable and archived conversations').option('--json', 'Output structured JSON').action(async ({
     json
   }: {
@@ -4473,11 +4481,27 @@ async function run(): Promise<CommanderCommand> {
 
   // ur config
   const configCmd = program.command('config').description('Manage safe UR-Nexus settings').configureHelp(createSortedHelpConfig());
-  configCmd.command('set <key> <value...>').description('Set a safe non-secret setting: provider, provider.fallback, provider.command_path, model, or base_url').action(async (key: string, value: string[]) => {
+  configCmd.command('set <key> <value...>').description('Set a validated agent, accessibility, editor, or provider setting').action(async (key: string, value: string[]) => {
     const {
       configSetHandler
-    } = await import('./cli/handlers/providers.js');
+    } = await import('./cli/handlers/config.js');
     await configSetHandler(key, value);
+  });
+  configCmd.command('get <key>').description('Show one effective safe setting').option('--json', 'Output structured JSON').action(async (key: string, options: {
+    json?: boolean;
+  }) => {
+    const {
+      configGetHandler
+    } = await import('./cli/handlers/config.js');
+    configGetHandler(key, options);
+  });
+  configCmd.command('list').description('List effective safe settings and their current values').option('--json', 'Output structured JSON').action(async (options: {
+    json?: boolean;
+  }) => {
+    const {
+      configListHandler
+    } = await import('./cli/handlers/config.js');
+    configListHandler(options);
   });
 
   // Connect command - same implementation as the /connect slash command
@@ -5375,15 +5399,17 @@ async function run(): Promise<CommanderCommand> {
     await runLocalTextCommand(() => import('./commands/role-mode/role-mode.js'), args);
   });
   const a2a = program.command('a2a').description('Agent-to-Agent interoperability, discovery, and delegation utilities').configureHelp(createSortedHelpConfig());
-  a2a.command('card').description('Print an A2A Agent Card preview').option('--base-url <url>', 'Base URL to use for the Agent Card endpoint').option('--compact', 'Output compact JSON').action(async (opts: {
+  a2a.command('card').description('Print an A2A Agent Card preview').option('--base-url <url>', 'Base URL to use for the Agent Card endpoint').option('--v1', 'Print the current A2A 1.0 Agent Card instead of the legacy 0.3 card').option('--compact', 'Output compact JSON').action(async (opts: {
     baseUrl?: string;
+    v1?: boolean;
     compact?: boolean;
   }) => {
     const {
-      formatA2AAgentCard
+      formatA2AAgentCard,
+      formatA2AV1AgentCard
     } = await import('./services/agents/trends.js');
     // biome-ignore lint/suspicious/noConsole:: CLI command output
-    console.log(formatA2AAgentCard({
+    console.log((opts.v1 ? formatA2AV1AgentCard : formatA2AAgentCard)({
       baseUrl: opts.baseUrl
     }, !opts.compact));
     process.exit(0);

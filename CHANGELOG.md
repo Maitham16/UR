@@ -16,6 +16,16 @@
   `TaskCreate` before workspace changes. Task-gate recovery clarifies that
   entering or updating a plan is not a substitute for the task list. Approve
   All remains unchanged.
+- Completed shell-command display hardening in the background-task detail
+  dialog. Tabs, control bytes, invisible characters, and bidirectional controls
+  are made explicit before width truncation, matching Bash and PowerShell.
+- Unified prompt and standalone configuration assignments. `ur config set`
+  now supports accessibility, thinking, output, compaction, and Vim/editor
+  settings; `ur config get` and `ur config list` expose effective safe values
+  for automation without hand-editing JSON.
+- Added `ur a2a card --v1` to preview the existing current A2A 1.0 Agent Card,
+  plus `ur session status [session-id]` to inspect an explicit conversation or
+  the latest resumable conversation for the current project.
 
 ## 1.80.3
 

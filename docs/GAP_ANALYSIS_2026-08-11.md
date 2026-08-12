@@ -26,7 +26,7 @@ unchanged. UR does not add automated approval delegation.
 | Accessibility | Added `--screen-reader`, `screenReaderMode`, append-only plain-text rendering, edit announcements, and reduced animation. |
 | In-session configuration | Added `/config key=value`, including thinking, screen reader, reduced motion, verbose output, auto-compaction, editor mode, and Vim escape sequence. |
 | Directory automation | Added the `DirectoryAdded` hook and roots-change notification after `/add-dir`. |
-| Session lifecycle | Added `/session status|list|archive|unarchive` and `ur session list|archive|unarchive`. Archived sessions cannot appear in resume/fork discovery until restored. |
+| Session lifecycle | Added `/session status|list|archive|unarchive` and `ur session status|list|archive|unarchive`. Archived sessions cannot appear in resume/fork discovery until restored. |
 | Vim input | Added `vimEscape=<sequence>`; for example, `/config editor=vim vimEscape=jj`. |
 | Telemetry | Added privacy-safe `assistant_response` events, message/request/tool correlation, and workflow name/run identifiers. |
 | Command quality | Removed the no-op `/output-style` command and dormant `/ultraplan` registration, renamed `/debug-v2` to `/fix-bug`, removed duplicate 3D aliases, expanded protocol names in help, and added registry checks against public version jargon. |

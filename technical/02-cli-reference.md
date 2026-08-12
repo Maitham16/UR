@@ -71,6 +71,7 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | `ur doctor` | Installation health check | `ur doctor` |
 | `ur log` / `ur error` | Show logs / recent errors | — |
 | `ur export` | Export conversation data | — |
+| `ur session status [id]` | Inspect an explicit session, or the latest resumable session for the current project | `ur session status --json` |
 | `ur session list` | List resumable and archived local conversations | `ur session list` |
 | `ur session archive <id>` | Archive a conversation so resume/fork cannot select it | `ur session archive 6f9…` |
 | `ur session unarchive <id>` | Restore an archived conversation | `ur session unarchive 6f9…` |
@@ -126,7 +127,7 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | Command | Purpose | Example |
 |---|---|---|
 | `ur a2a serve` | Negotiated Agent-to-Agent server with automatic client compatibility | `UR_A2A_TOKEN=… ur a2a serve --port 8765` |
-| `ur a2a card` | Print the A2A agent card | `ur a2a card --a2a-base-url https://host` |
+| `ur a2a card` | Print the legacy A2A card; `--v1` previews the current A2A 1.0 card | `ur a2a card --v1 --base-url https://host` |
 | `ur a2a token mint / verify <token>` | Mint/verify A2A tokens | — |
 | `ur ag-ui serve` | Secure AG-UI HTTP/SSE adapter with capability discovery | `ur ag-ui serve --allow-origin https://app.example` |
 | `ur acp stdio` | Standard Agent Client Protocol editor connection with durable lifecycle/replay, modes, permissions, tools, and streaming | `ur acp stdio` |

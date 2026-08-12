@@ -35,6 +35,8 @@ from resume and fork discovery until explicitly restored:
 /session archive <session-id>       # archive another conversation
 /session unarchive <session-id>
 ur session list
+ur session status                    # latest resumable session for this project
+ur session status <session-id>       # explicit resumable or archived session
 ur session archive <session-id>
 ur session unarchive <session-id>
 ```

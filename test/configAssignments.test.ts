@@ -2,7 +2,9 @@ import { describe, expect, test } from 'bun:test'
 import {
   CONFIG_ASSIGNMENT_HELP,
   parseConfigAssignments,
+  resolveConfigAssignmentKey,
 } from '../src/commands/config/configAssignments.js'
+import { listCliConfigEntries } from '../src/cli/handlers/config.js'
 
 describe('/config assignments', () => {
   test('parses clear, case-insensitive key=value assignments', () => {
@@ -34,5 +36,18 @@ describe('/config assignments', () => {
     expect(CONFIG_ASSIGNMENT_HELP).toContain('/config <key>=<value>')
     expect(CONFIG_ASSIGNMENT_HELP).toContain('screenReader')
     expect(CONFIG_ASSIGNMENT_HELP).not.toMatch(/mcp2026|v1|v2/i)
+  })
+
+  test('shares accessibility and editor keys with the standalone CLI', () => {
+    expect(resolveConfigAssignmentKey('screen-reader')).toBe('screenReader')
+    expect(resolveConfigAssignmentKey('vimEscape')).toBe('vimEscape')
+
+    const entries = listCliConfigEntries()
+    const keys = entries.map(entry => entry.key)
+    expect(keys).toContain('screenReader')
+    expect(keys).toContain('vimEscape')
+    expect(keys).toContain('provider')
+    expect(keys).toContain('responses.tool_search')
+    expect(new Set(keys).size).toBe(keys.length)
   })
 })
