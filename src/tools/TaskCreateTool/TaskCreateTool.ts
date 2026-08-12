@@ -1,5 +1,5 @@
 import { z } from 'zod/v4'
-import { buildTool, type ToolDef } from '../../Tool.js'
+import { buildTool, type ToolDef, type ToolUseContext } from '../../Tool.js'
 import {
   executeTaskCreatedHooks,
   getTaskCreatedHookMessage,
@@ -61,6 +61,7 @@ const inputSchema = lazySchema(() =>
   }),
 )
 type InputSchema = ReturnType<typeof inputSchema>
+export type TaskCreateInput = z.infer<InputSchema>
 
 const outputSchema = lazySchema(() =>
   z.object({
@@ -73,6 +74,127 @@ const outputSchema = lazySchema(() =>
 type OutputSchema = ReturnType<typeof outputSchema>
 
 export type Output = z.infer<OutputSchema>
+
+/**
+ * Create one semantic task through the canonical lifecycle. Plan approval uses
+ * this same path so synchronized tasks retain generation handling, hooks, and
+ * immediate UI refresh instead of becoming a second task implementation.
+ */
+export async function createTaskFromInput(
+  {
+    subject,
+    description,
+    activeForm,
+    metadata,
+    blocks,
+    blockedBy,
+    addBlocks,
+    addBlockedBy,
+    addToCurrentList,
+  }: TaskCreateInput,
+  context: ToolUseContext,
+): Promise<{ id: string; subject: string }> {
+  const initialBlocks = [...new Set([...(blocks ?? []), ...(addBlocks ?? [])])]
+  const initialBlockedBy = [
+    ...new Set([...(blockedBy ?? []), ...(addBlockedBy ?? [])]),
+  ]
+  const taskListId = getTaskListId()
+  // REPL turns carry an async-local generation. Non-interactive main-thread
+  // callers fall back to the latest human message UUID. Subagents without an
+  // inherited turn deliberately append to the shared list rather than
+  // retiring coordinator work.
+  const run =
+    getTaskListRunContext() ??
+    (context.agentId
+      ? undefined
+      : getTaskListRunFromMessages(context.messages ?? []))
+  const taskData: Omit<Task, 'id'> = {
+    subject,
+    description,
+    activeForm,
+    status: 'pending',
+    owner: undefined,
+    // Relationships are written through updateTaskWithDependencies below so
+    // both tasks keep reciprocal blocks/blockedBy edges.
+    blocks: [],
+    blockedBy: [],
+    metadata,
+  }
+  const taskId = run
+    ? await createTaskForRun(taskListId, run.generationId, taskData, {
+        appendToCurrent: run.appendToCurrent || addToCurrentList === true,
+      })
+    : await createTask(taskListId, taskData)
+
+  const dependencies = [
+    ...initialBlocks.map(targetId => ({
+      fromTaskId: taskId,
+      toTaskId: targetId,
+      field: 'blocks',
+    })),
+    ...initialBlockedBy.map(blockerId => ({
+      fromTaskId: blockerId,
+      toTaskId: taskId,
+      field: 'blockedBy',
+    })),
+  ].filter(edge => edge.fromTaskId !== edge.toTaskId)
+  const dependencyResult = await updateTaskWithDependencies(
+    taskListId,
+    taskId,
+    {},
+    dependencies,
+  )
+  if (dependencyResult.success === false) {
+    const dependency = dependencyResult.dependency
+    await deleteTask(taskListId, taskId)
+    if (dependency) {
+      const field =
+        dependencies.find(
+          candidate =>
+            candidate.fromTaskId === dependency.fromTaskId &&
+            candidate.toTaskId === dependency.toTaskId,
+        )?.field ?? 'dependency'
+      throw new Error(
+        `Invalid ${field} dependency ` +
+          `#${dependency.fromTaskId} -> #${dependency.toTaskId}: ` +
+          dependencyResult.reason,
+      )
+    }
+    throw new Error(
+      `Failed to create task dependencies: ${dependencyResult.reason}`,
+    )
+  }
+
+  const blockingErrors: string[] = []
+  const generator = executeTaskCreatedHooks(
+    taskId,
+    subject,
+    description,
+    getAgentName(),
+    getTeamName(),
+    undefined,
+    context?.abortController?.signal,
+    undefined,
+    context,
+  )
+  for await (const result of generator) {
+    if (result.blockingError) {
+      blockingErrors.push(getTaskCreatedHookMessage(result.blockingError))
+    }
+  }
+
+  if (blockingErrors.length > 0) {
+    await deleteTask(taskListId, taskId)
+    throw new Error(blockingErrors.join('\n'))
+  }
+
+  context.setAppState(prev =>
+    prev.expandedView === 'tasks'
+      ? prev
+      : { ...prev, expandedView: 'tasks' as const },
+  )
+  return { id: taskId, subject }
+}
 
 export const TaskCreateTool = buildTool({
   name: TASK_CREATE_TOOL_NAME,
@@ -111,128 +233,14 @@ export const TaskCreateTool = buildTool({
     return null
   },
   async call(
-    {
-      subject,
-      description,
-      activeForm,
-      metadata,
-      blocks,
-      blockedBy,
-      addBlocks,
-      addBlockedBy,
-      addToCurrentList,
-    },
+    input,
     context,
   ) {
-    const initialBlocks = [...new Set([...(blocks ?? []), ...(addBlocks ?? [])])]
-    const initialBlockedBy = [
-      ...new Set([...(blockedBy ?? []), ...(addBlockedBy ?? [])]),
-    ]
-    const taskListId = getTaskListId()
-    // REPL turns carry an async-local generation. Non-interactive main-thread
-    // callers fall back to the latest human message UUID. Subagents without an
-    // inherited turn deliberately append to the shared list rather than
-    // retiring coordinator work.
-    const run =
-      getTaskListRunContext() ??
-      (context.agentId
-        ? undefined
-        : getTaskListRunFromMessages(context.messages ?? []))
-    const taskData: Omit<Task, 'id'> = {
-      subject,
-      description,
-      activeForm,
-      status: 'pending',
-      owner: undefined,
-      // Relationships are written through blockTask below so both tasks keep
-      // reciprocal blocks/blockedBy edges. Storing only this side produced
-      // contradictory TaskGet, TaskList and claim behaviour.
-      blocks: [],
-      blockedBy: [],
-      metadata,
-    }
-    const taskId = run
-      ? await createTaskForRun(taskListId, run.generationId, taskData, {
-          appendToCurrent: run.appendToCurrent || addToCurrentList === true,
-        })
-      : await createTask(taskListId, taskData)
-
-    const dependencies = [
-      ...initialBlocks.map(targetId => ({
-        fromTaskId: taskId,
-        toTaskId: targetId,
-        field: 'blocks',
-      })),
-      ...initialBlockedBy.map(blockerId => ({
-        fromTaskId: blockerId,
-        toTaskId: taskId,
-        field: 'blockedBy',
-      })),
-      // A self-edge carries no ordering information. Dropping it preserves the
-      // task and its valid dependencies instead of rolling the entire create
-      // back because a model redundantly named the task itself.
-    ].filter(edge => edge.fromTaskId !== edge.toTaskId)
-    const dependencyResult = await updateTaskWithDependencies(
-      taskListId,
-      taskId,
-      {},
-      dependencies,
-    )
-    if (dependencyResult.success === false) {
-      const dependency = dependencyResult.dependency
-      await deleteTask(taskListId, taskId)
-      if (dependency) {
-        const field = dependencies.find(
-          candidate =>
-            candidate.fromTaskId === dependency.fromTaskId &&
-            candidate.toTaskId === dependency.toTaskId,
-        )?.field ?? 'dependency'
-        throw new Error(
-          `Invalid ${field} dependency ` +
-            `#${dependency.fromTaskId} -> #${dependency.toTaskId}: ` +
-            dependencyResult.reason,
-        )
-      }
-      throw new Error(
-        `Failed to create task dependencies: ${dependencyResult.reason}`,
-      )
-    }
-
-    const blockingErrors: string[] = []
-    const generator = executeTaskCreatedHooks(
-      taskId,
-      subject,
-      description,
-      getAgentName(),
-      getTeamName(),
-      undefined,
-      context?.abortController?.signal,
-      undefined,
-      context,
-    )
-    for await (const result of generator) {
-      if (result.blockingError) {
-        blockingErrors.push(getTaskCreatedHookMessage(result.blockingError))
-      }
-    }
-
-    if (blockingErrors.length > 0) {
-      await deleteTask(taskListId, taskId)
-      throw new Error(blockingErrors.join('\n'))
-    }
-
-    // Auto-expand task list when creating tasks
-    context.setAppState(prev => {
-      if (prev.expandedView === 'tasks') return prev
-      return { ...prev, expandedView: 'tasks' as const }
-    })
+    const task = await createTaskFromInput(input, context)
 
     return {
       data: {
-        task: {
-          id: taskId,
-          subject,
-        },
+        task,
       },
     }
   },

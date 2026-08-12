@@ -9,6 +9,12 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.80.5 Addition
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Plan-to-task synchronization | `Write`/`Edit` plan artifact, `ExitPlanMode`, canonical `TaskCreate` lifecycle | Removes the circular task-gate failure while keeping project mutations protected. Approval preserves an existing actionable board or creates bounded, deduplicated implementation tasks and a dependent verification task before coding begins. |
+
 ## v1.80.4 Additions
 
 | Addition | Surface | What it adds |

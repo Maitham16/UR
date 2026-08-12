@@ -7,9 +7,12 @@ export const EXIT_PLAN_MODE_V2_TOOL_PROMPT = `Use this tool when you are in plan
 
 ## How This Tool Works
 - You should have already written your plan to the plan file specified in the plan mode system message
+- Writing or editing that exact plan file is allowed without an existing task list
+- TaskCreate, TaskUpdate, TaskList, and TaskGet remain available during planning
 - This tool does NOT take the plan content as a parameter - it will read the plan from the file you wrote
 - This tool simply signals that you're done planning and ready for the user to review and approve
 - The user will see the contents of your plan file when they review it
+- After approval, this tool preserves any existing visible tasks or creates a bounded implementation and verification task list before coding begins
 
 ## When to Use This Tool
 IMPORTANT: Only use this tool when the task requires planning the implementation steps of a task that requires writing code. For research tasks where you're gathering information, searching files, reading files or in general trying to understand the codebase - do NOT use this tool.

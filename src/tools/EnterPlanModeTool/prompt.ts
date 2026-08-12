@@ -9,8 +9,8 @@ In plan mode, you'll:
 3. Design an implementation approach
 4. Present your plan to the user for approval
 5. Use ${ASK_USER_QUESTION_TOOL_NAME} if you need to clarify approaches
-6. Create the visible implementation tasks with TaskCreate when that tool is available; updating a plan is not a substitute for the task list
-7. Exit plan mode with ExitPlanMode when ready to implement
+6. Use TaskCreate for manual task decomposition when useful; plan-file writes are allowed while planning
+7. Exit plan mode with ExitPlanMode when ready. After approval, ExitPlanMode guarantees that visible implementation tasks exist before coding begins
 
 `
 

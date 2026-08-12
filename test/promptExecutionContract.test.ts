@@ -184,5 +184,13 @@ test('plan mode creates visible tasks before implementation', () => {
     expect(text).toContain('TaskCreate')
     expect(text).toContain('visible implementation tasks')
   }
-  expect(source).toContain('updating a plan does not create the task list')
+  expect(source).toContain(
+    'ExitPlanMode guarantees visible implementation tasks before coding begins',
+  )
+  const exitSource = readFileSync(
+    'src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts',
+    'utf8',
+  )
+  expect(exitSource).toContain('ensureApprovedPlanTasks')
+  expect(exitSource).toContain('synchronizedTaskIds')
 })

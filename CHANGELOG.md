@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.80.5
+
+- Fixed the plan-mode/task-tracking deadlock introduced by the strict task
+  gate. Writing or editing only the active session plan file is now allowed
+  during plan mode, while project files remain protected and read-only.
+- Plan approval now guarantees a visible execution board before coding starts.
+  Existing actionable tasks are preserved; otherwise UR derives a bounded,
+  deduplicated set of implementation tasks plus a dependent verification task
+  through the canonical `TaskCreate` lifecycle.
+- `ExitPlanMode` can no longer be blocked for lacking the tasks it is
+  responsible for synchronizing. Plan prompts and recovery documentation now
+  describe the same lifecycle. Approve All remains unchanged.
+
 ## 1.80.4
 
 - Stopped runaway WebFetch loops on permanent HTTP 4xx responses. Failures are

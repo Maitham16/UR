@@ -59,6 +59,10 @@ const GATE_EXEMPT_TOOLS = new Set([
   'TaskList',
   'TaskGet',
   'TodoWrite',
+  // Exiting plan mode is the transition that synchronizes an approved plan
+  // into visible implementation tasks. Blocking it for not having those
+  // tasks yet creates a circular dependency.
+  'ExitPlanMode',
 ])
 
 const ALWAYS_REQUIRE_PLAN_TOOLS = new Set([
@@ -143,6 +147,8 @@ export function checkTaskListGate(input: {
   requirementReason?: string
   /** False when the current tool profile cannot satisfy this gate. */
   taskListWriterAvailable?: boolean
+  /** Exact current-session plan file write/edit while plan mode is active. */
+  isPlanningArtifact?: boolean
   config?: TaskListGateConfig
 }): GateDecision {
   const config = input.config ?? getTaskListGateConfig()
@@ -151,6 +157,7 @@ export function checkTaskListGate(input: {
   // active profile has no way to satisfy.
   if (input.taskListWriterAvailable === false) return { allowed: true }
   if (isTaskListGateExempt(input.toolName)) return { allowed: true }
+  if (input.isPlanningArtifact === true) return { allowed: true }
   const isMutating = input.isMutating ?? isMutatingTool(input.toolName)
   if (!isMutating) return { allowed: true }
   if (input.taskCount !== null && input.taskCount > 0) {

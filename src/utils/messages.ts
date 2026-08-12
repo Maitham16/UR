@@ -3333,7 +3333,7 @@ function getPlanModeV2Instructions(attachment: {
     ? `A plan file already exists at ${attachment.planFilePath}. You can read it and make incremental edits using the ${FileEditTool.name} tool.`
     : `No plan file exists yet. You should create your plan at ${attachment.planFilePath} using the ${FileWriteTool.name} tool.`
 
-  const content = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
+  const content = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. TaskCreate, TaskUpdate, TaskList, and TaskGet are also allowed for visible task tracking. This supercedes any other instructions you have received.
 
 ## Plan File Info:
 ${planFileInfo}
@@ -3394,6 +3394,7 @@ ${getPlanPhase4Section()}
 
 ### Phase 5: Call ${ExitPlanModeV2Tool.name}
 At the very end of your turn, once you have asked the user questions and are happy with your final plan file - you should always call ${ExitPlanModeV2Tool.name} to indicate to the user that you are done planning.
+Plan-file writes do not require an existing task list. You may create semantic tasks manually with TaskCreate, but do not block on that: after user approval, ${ExitPlanModeV2Tool.name} guarantees visible implementation and verification tasks exist before coding starts.
 This is critical - your turn should only end with either using the ${ASK_USER_QUESTION_TOOL_NAME} tool OR calling ${ExitPlanModeV2Tool.name}. Do not stop unless it's for these 2 reasons
 
 **Important:** Use ${ASK_USER_QUESTION_TOOL_NAME} ONLY to clarify requirements or choose between approaches. Use ${ExitPlanModeV2Tool.name} to request plan approval. Do NOT ask about plan approval in any other way - no text questions, no AskUserQuestion. Phrases like "Is this plan okay?", "Should I proceed?", "How does this plan look?", "Any changes before we start?", or similar MUST use ${ExitPlanModeV2Tool.name}.
@@ -3437,7 +3438,7 @@ function getPlanModeInterviewInstructions(attachment: {
     ? `A plan file already exists at ${attachment.planFilePath}. You can read it and make incremental edits using the ${FileEditTool.name} tool.`
     : `No plan file exists yet. You should create your plan at ${attachment.planFilePath} using the ${FileWriteTool.name} tool.`
 
-  const content = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
+  const content = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. TaskCreate, TaskUpdate, TaskList, and TaskGet are also allowed for visible task tracking. This supercedes any other instructions you have received.
 
 ## Plan File Info:
 ${planFileInfo}
@@ -3476,7 +3477,7 @@ Your plan file should be divided into clear sections using markdown headers, bas
 
 ### When to Converge
 
-Your plan is ready when you've addressed all ambiguities and it covers: what to change, which files to modify, what existing code to reuse (with file paths), and how to verify the changes. Call ${ExitPlanModeV2Tool.name} when the plan is ready for approval.
+Your plan is ready when you've addressed all ambiguities and it covers: what to change, which files to modify, what existing code to reuse (with file paths), and how to verify the changes. Plan-file writes do not require an existing task list. You may use TaskCreate for manual decomposition; after approval, ${ExitPlanModeV2Tool.name} guarantees visible implementation and verification tasks before coding begins. Call ${ExitPlanModeV2Tool.name} when the plan is ready for approval.
 
 ### Ending Your Turn
 
@@ -3498,7 +3499,7 @@ function getPlanModeV2SparseInstructions(attachment: {
     ? 'Follow iterative workflow: explore codebase, interview user, write to plan incrementally.'
     : 'Follow 5-phase workflow.'
 
-  const content = `Plan mode still active (see full instructions earlier in conversation). Read-only except plan file (${attachment.planFilePath}). ${workflowDescription} End turns with ${ASK_USER_QUESTION_TOOL_NAME} (for clarifications) or ${ExitPlanModeV2Tool.name} (for plan approval). Never ask about plan approval via text or AskUserQuestion.`
+  const content = `Plan mode still active (see full instructions earlier in conversation). Read-only except plan file (${attachment.planFilePath}) and visible task tracking tools. Plan-file writes do not require existing tasks; after approval, ${ExitPlanModeV2Tool.name} guarantees tasks exist before implementation. ${workflowDescription} End turns with ${ASK_USER_QUESTION_TOOL_NAME} (for clarifications) or ${ExitPlanModeV2Tool.name} (for plan approval). Never ask about plan approval via text or AskUserQuestion.`
 
   return wrapMessagesInSystemReminder([
     createUserMessage({ content, isMeta: true }),
@@ -3948,6 +3949,8 @@ You are returning to plan mode after having previously exited it. A plan file ex
    - **Same task, continuing**: If this is explicitly a continuation or refinement of the exact same task, modify the existing plan while cleaning up outdated or irrelevant sections
 4. Continue on with the plan process and most importantly you should always edit the plan file one way or the other before calling ${ExitPlanModeV2Tool.name}
 
+Writing the exact plan file is allowed without an existing task list. After approval, ${ExitPlanModeV2Tool.name} guarantees visible implementation tasks exist before workspace implementation begins.
+
 Treat this as a fresh planning session. Do not assume the existing plan is relevant without evaluating it first.`
 
       return wrapMessagesInSystemReminder([
@@ -3960,7 +3963,7 @@ Treat this as a fresh planning session. Do not assume the existing plan is relev
         : ''
       const content = `## Exited Plan Mode
 
-You have exited plan mode. You can now make edits, run tools, and take actions.${planReference}`
+You have exited plan mode. The visible task list is ready; begin with the first unblocked task and keep statuses current. You can now make edits, run tools, and take actions.${planReference}`
 
       return wrapMessagesInSystemReminder([
         createUserMessage({ content, isMeta: true }),

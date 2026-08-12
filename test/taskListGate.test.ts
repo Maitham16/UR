@@ -7,7 +7,11 @@ import {
   isMutatingTool,
 } from '../src/services/tools/taskListGate.ts'
 import { AgentTool } from '../src/tools/AgentTool/AgentTool.tsx'
-import { countToolCallsBeforeCurrent } from '../src/services/tools/toolExecution.ts'
+import {
+  countToolCallsBeforeCurrent,
+  isCurrentPlanFileMutation,
+} from '../src/services/tools/toolExecution.ts'
+import { getPlanFilePath } from '../src/utils/plans.ts'
 
 // The system prompt already asked for a task list on multi-step work and the
 // agent still edited files, ran commands and reported completion with no plan
@@ -105,6 +109,66 @@ test('plan-mode recovery distinguishes a plan from visible tasks', () => {
     'plan updates do not create the visible task list',
   )
   expect((decision as { reason: string }).reason).toContain('TaskCreate')
+})
+
+test('the active plan artifact and approval transition cannot deadlock on task tracking', () => {
+  const planPath = getPlanFilePath()
+  const planContext = {
+    getAppState: () => ({
+      toolPermissionContext: { mode: 'plan' },
+    }),
+  } as never
+  const defaultContext = {
+    getAppState: () => ({
+      toolPermissionContext: { mode: 'default' },
+    }),
+  } as never
+
+  expect(
+    isCurrentPlanFileMutation(
+      'Write',
+      { file_path: planPath },
+      planContext,
+    ),
+  ).toBe(true)
+  expect(
+    isCurrentPlanFileMutation(
+      'Edit',
+      { file_path: `${planPath}.other` },
+      planContext,
+    ),
+  ).toBe(false)
+  expect(
+    isCurrentPlanFileMutation(
+      'Write',
+      { file_path: planPath },
+      defaultContext,
+    ),
+  ).toBe(false)
+
+  expect(
+    checkTaskListGate({
+      toolName: 'Write',
+      taskCount: 0,
+      readsSoFar: 99,
+      isSubagent: false,
+      isMutating: true,
+      requiresTaskList: true,
+      isPlanningArtifact: true,
+      config: CONFIG,
+    }).allowed,
+  ).toBe(true)
+  expect(
+    checkTaskListGate({
+      toolName: 'ExitPlanMode',
+      taskCount: 0,
+      readsSoFar: 99,
+      isSubagent: false,
+      isMutating: true,
+      requiresTaskList: true,
+      config: CONFIG,
+    }).allowed,
+  ).toBe(true)
 })
 
 test('freeReads zero intentionally gates even atomic work', () => {

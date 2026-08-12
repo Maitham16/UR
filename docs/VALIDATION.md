@@ -19,7 +19,23 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.80.4 (UR-Nexus)"
+# expected for this release: "1.80.5 (UR-Nexus)"
+```
+
+### 0.0.1 Plan approval creates visible tasks (1.80.5)
+
+Start an interactive session with task enforcement enabled, ask for a
+multi-file change, and let the agent enter plan mode. Expected lifecycle:
+
+1. Updating the displayed plan succeeds without `TaskListRequired`.
+2. Approving `ExitPlanMode` creates or preserves visible implementation tasks.
+3. A verification task is blocked by the implementation tasks.
+4. The first project edit proceeds and task statuses stay visible.
+
+The deterministic regression is:
+
+```sh
+bun test test/taskListGate.test.ts test/planModeTaskSync.test.ts
 ```
 
 ## 0.1 First-workspace model selection (1.45.4)

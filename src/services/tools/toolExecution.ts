@@ -99,6 +99,8 @@ import {
   stopSessionActivity,
 } from '../../utils/sessionActivity.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
+import { getPlanFilePath } from '../../utils/plans.js'
+import { expandPath } from '../../utils/path.js'
 import { Stream } from '../../utils/stream.js'
 import { logOTelEvent } from '../../utils/telemetry/events.js'
 import {
@@ -217,6 +219,29 @@ async function countTasksForGate(): Promise<number | null> {
     return countActionableTasksForGate(inspection.tasks)
   } catch {
     return null
+  }
+}
+
+export function isCurrentPlanFileMutation(
+  toolName: string,
+  input: unknown,
+  context: ToolUseContext,
+): boolean {
+  if (
+    context.getAppState().toolPermissionContext.mode !== 'plan' ||
+    (toolName !== FILE_WRITE_TOOL_NAME && toolName !== FILE_EDIT_TOOL_NAME) ||
+    !input ||
+    typeof input !== 'object' ||
+    Array.isArray(input)
+  ) {
+    return false
+  }
+  const filePath = (input as { file_path?: unknown }).file_path
+  if (typeof filePath !== 'string') return false
+  try {
+    return expandPath(filePath) === expandPath(getPlanFilePath(context.agentId))
+  } catch {
+    return false
   }
 }
 
@@ -1061,6 +1086,11 @@ async function checkPermissionsAndCallTool(
     isMutating,
     requiresTaskList: taskListRun?.requiresTaskList,
     requirementReason: taskListRun?.requirementReason,
+    isPlanningArtifact: isCurrentPlanFileMutation(
+      tool.name,
+      parsedInput.data,
+      toolUseContext,
+    ),
     taskListWriterAvailable: toolUseContext.options.tools.some(
       candidate => candidate.name === 'TaskCreate',
     ),
@@ -1685,6 +1715,11 @@ async function checkPermissionsAndCallTool(
       isMutating: finalIsMutating,
       requiresTaskList: taskListRun?.requiresTaskList,
       requirementReason: taskListRun?.requirementReason,
+      isPlanningArtifact: isCurrentPlanFileMutation(
+        tool.name,
+        finalParsedInput.data,
+        toolUseContext,
+      ),
       taskListWriterAvailable: toolUseContext.options.tools.some(
         candidate => candidate.name === 'TaskCreate',
       ),

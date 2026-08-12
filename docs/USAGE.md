@@ -468,6 +468,14 @@ empty or adding the reply as another task. A terminal board is archived only
 when the next prompt is genuinely new work. Legacy automatic placeholders from
 older builds are hidden and removed at the next prompt boundary.
 
+Plan mode has one narrow exception to the mutation gate: UR may write or edit
+the exact plan file for the active session while the rest of the workspace
+remains read-only. When the user approves the plan, `ExitPlanMode` preserves
+any existing actionable board or creates a bounded set of professional,
+deduplicated implementation tasks plus a verification task that depends on
+them. Implementation therefore starts with visible tracking without requiring
+the model or user to recover from a circular `TaskListRequired` error.
+
 Independent read-only tasks can run in parallel. A task that may write to the
 shared checkout is serialized with other possible writers, even when it comes
 from another top-level prompt or crew worker. Parallel writers require explicit

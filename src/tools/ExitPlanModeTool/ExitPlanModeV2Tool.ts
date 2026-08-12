@@ -42,6 +42,7 @@ import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
 import { TEAM_CREATE_TOOL_NAME } from '../TeamCreateTool/constants.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from './constants.js'
 import { EXIT_PLAN_MODE_V2_TOOL_PROMPT } from './prompt.js'
+import { ensureApprovedPlanTasks } from './planTaskSync.js'
 import {
   renderToolResultMessage,
   renderToolUseMessage,
@@ -229,6 +230,12 @@ export const outputSchema = lazySchema(() =>
       .string()
       .optional()
       .describe('Unique identifier for the plan approval request'),
+    synchronizedTaskIds: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Visible task IDs created from the approved plan when none existed',
+      ),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -432,6 +439,14 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
       }
     }
 
+    // The approval boundary is the authoritative moment to turn a plan into
+    // work. If the model already created semantic tasks, preserve them. If it
+    // only wrote the plan file, create a bounded implementation/verification
+    // board now so the first code edit cannot trip TaskListRequired.
+    const synchronizedTaskIds = isAgent
+      ? []
+      : await ensureApprovedPlanTasks(plan, filePath, context)
+
     // Note: Background verification hook is registered in REPL.tsx AFTER context clear
     // via registerPlanVerificationHook(). Registering here would be cleared during context clear.
 
@@ -533,6 +548,7 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
         filePath,
         hasTaskTool: hasTaskTool || undefined,
         planWasEdited: inputPlan !== undefined || undefined,
+        synchronizedTaskIds,
       },
     }
   },
@@ -546,6 +562,7 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
       awaitingLeaderApproval,
       requestId,
       alreadyExited,
+      synchronizedTaskIds,
     },
     toolUseID,
   ) {
@@ -600,6 +617,10 @@ Request ID: ${requestId}`,
     const teamHint = hasTaskTool
       ? `\n\nIf this plan can be broken down into multiple independent tasks, consider using the ${TEAM_CREATE_TOOL_NAME} tool to create a team and parallelize the work.`
       : ''
+    const taskHint =
+      synchronizedTaskIds && synchronizedTaskIds.length > 0
+        ? `\n\nVisible implementation tasks are ready: ${synchronizedTaskIds.map(id => `#${id}`).join(', ')}. Start the first unblocked task and keep their statuses current.`
+        : '\n\nUse the existing visible task list and keep its statuses current while implementing.'
 
     // Always include the approved plan so downstream consumers receive the
     // exact content the user accepted.
@@ -610,7 +631,7 @@ Request ID: ${requestId}`,
 
     return {
       type: 'tool_result',
-      content: `User has approved your plan. You can now start coding. Start with updating your todo list if applicable
+      content: `User has approved your plan. You can now start coding.${taskHint}
 
 Your plan has been saved to: ${filePath}
 You can refer back to it if needed during implementation.${teamHint}
