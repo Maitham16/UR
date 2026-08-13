@@ -11,9 +11,15 @@ import { VERIFICATION_AGENT } from './built-in/verificationAgent.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 
 export function areExplorePlanAgentsEnabled(): boolean {
+  // Explore and Plan are core UR capabilities for external users. They are
+  // also the mechanically read-only target used by the task-free research
+  // compatibility path, so compiling them out turns an otherwise valid
+  // research delegation into TaskListRequired. Anthropic-internal builds may
+  // retain their experiment; public, local, API, and subscription-CLI builds
+  // must be deterministic.
+  if (process.env.USER_TYPE !== 'ant') return true
+
   if (feature('BUILTIN_EXPLORE_PLAN_AGENTS')) {
-    // 3P default: true — Bedrock/Vertex keep agents enabled (matches pre-experiment
-    // external behavior). A/B test treatment sets false to measure impact of removal.
     return getFeatureValue_CACHED_MAY_BE_STALE('tengu_amber_stoat', true)
   }
   return false

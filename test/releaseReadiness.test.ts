@@ -71,6 +71,26 @@ test('release gate audits the Bun lockfile used by shipped builds', () => {
   expect(releaseCheck).toContain("execFileSync('bun', ['audit']")
 })
 
+test('development and release bundles ship the core Explore and Plan registry', () => {
+  const bundle = readFileSync(join(REPO, 'scripts', 'bundle.mjs'), 'utf8')
+  const developmentPlugin = readFileSync(
+    join(REPO, 'plugins', 'bunBundleDev.ts'),
+    'utf8',
+  )
+  const registry = readFileSync(
+    join(REPO, 'src', 'tools', 'AgentTool', 'builtInAgents.ts'),
+    'utf8',
+  )
+
+  expect(bundle).toContain("'--feature=BUILTIN_EXPLORE_PLAN_AGENTS'")
+  expect(bundle).toContain(
+    'dist/cli.js does not ship the core Explore/Plan agent registry',
+  )
+  expect(developmentPlugin).toContain("'BUILTIN_EXPLORE_PLAN_AGENTS'")
+  expect(registry).toContain("process.env.USER_TYPE !== 'ant'")
+  expect(registry).toContain('agents.push(EXPLORE_AGENT, PLAN_AGENT)')
+})
+
 test('strict-core cannot report unchecked files as type-safe', () => {
   const strictConfig = JSON.parse(
     readFileSync(join(REPO, 'tsconfig.strict-core.json'), 'utf8'),

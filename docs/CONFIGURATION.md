@@ -58,7 +58,8 @@ it to `0` to require a task before every mutation. Set `enabled` to `false` to
 return to advisory task tracking. Profiles that omit `TaskCreate` are not
 gated, because they could not satisfy the requirement. The main session may
 launch UR's shipped `Explore` and `Plan` agents before a task exists in any
-permission mode. These exact built-in definitions are forced read-only; custom,
+permission mode. These core definitions are always registered in public builds
+and are forced read-only; custom,
 write-capable, nested, named/team, and worktree delegation still requires an
 actionable parent task. As provider-independent compatibility, an unnamed
 main-session `general-purpose` call is reduced to the shipped Explore definition

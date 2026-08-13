@@ -129,7 +129,8 @@ only when an integration does not expose a classifiable user turn; zero forces
 tracking for every mutation. Profiles without `TaskCreate` bypass this gate so
 they remain operable. From the main session in any permission mode, the shipped
 read-only `Explore` and `Plan` definitions are the only delegation allowed
-before tasks exist. They are forced into plan permissions even when the parent
+before tasks exist. Public builds register both deterministically; they are
+forced into plan permissions even when the parent
 uses Accept Edits or Approve All, while custom, general-purpose, nested, team,
 and worktree delegation still requires an actionable parent task. One
 capability-reducing compatibility rule runs before the gate: an unnamed

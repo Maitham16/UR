@@ -19,10 +19,10 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.80.9 (UR-Nexus)"
+# expected for this release: "1.80.10 (UR-Nexus)"
 ```
 
-### 0.0 Read-only research delegation starts cleanly (1.80.9)
+### 0.0 Read-only research delegation starts cleanly (1.80.10)
 
 Start an interactive session with task enforcement enabled and ask UR to
 research a change, both normally and from Plan Mode. Before any task exists,
@@ -30,6 +30,11 @@ built-in `Explore` and `Plan` agent calls should initialize without
 `TaskListRequired`. Their workers remain read-only even when the parent uses
 Accept Edits or Approve All. Custom agents and ordinary general-purpose agents
 should remain blocked until they have an actionable parent task.
+
+The installed public bundle must list both core definitions in its active
+built-in registry; a correct research classifier without those definitions is
+not a passing state. Development and release builds must both enable
+`BUILTIN_EXPLORE_PLAN_AGENTS`.
 
 Repeat with multiple available model families. A model may correctly emit
 `subagent_type: "Explore"`; if it instead emits `general-purpose` with an

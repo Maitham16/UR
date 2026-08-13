@@ -3,6 +3,7 @@ import { z } from 'zod/v4'
 import { getDefaultAppState } from '../src/state/AppStateStore.js'
 import { runToolUse } from '../src/services/tools/toolExecution.js'
 import { checkTaskListGate } from '../src/services/tools/taskListGate.js'
+import { getBuiltInAgents } from '../src/tools/AgentTool/builtInAgents.js'
 
 const originalTaskListId = process.env.UR_CODE_TASK_LIST_ID
 
@@ -249,15 +250,8 @@ test('a provider brief that preserves research-only intent starts as protected E
       mcpResources: {},
       isNonInteractiveSession: true,
       agentDefinitions: {
-        activeAgents: [
-          {
-            agentType: 'Explore',
-            source: 'built-in',
-            permissionMode: 'plan',
-          },
-          { agentType: 'general-purpose', source: 'built-in' },
-        ],
-        allAgents: [],
+        activeAgents: getBuiltInAgents(),
+        allAgents: getBuiltInAgents(),
       },
     },
     getAppState: () => getDefaultAppState(),

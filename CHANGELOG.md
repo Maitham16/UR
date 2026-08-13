@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.80.10
+
+- Fixed the underlying cause of task-free research still returning
+  `TaskListRequired` in the published CLI: the public bundle compiled the
+  shipped `Explore` and `Plan` definitions out of the active agent registry.
+  Research classification was correct, but there was no protected worker to
+  receive the capability-reduced call.
+- Made `Explore` and `Plan` deterministic core agents for public, local, API,
+  and subscription-CLI use, aligned the development and release feature sets,
+  and added tests against the real built-in registry plus the bundle script.
+  Anthropic-internal experimentation remains isolated to internal builds.
+  Write-capable delegation, task enforcement, and Approve All are unchanged.
+
 ## 1.80.9
 
 - Fixed the remaining provider-independent `TaskListRequired` failure for

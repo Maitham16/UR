@@ -64,6 +64,8 @@ execFileSync(
     '--feature=VOICE_MODE',
     '--feature=CHICAGO_MCP',
     '--feature=TREE_SITTER_BASH',
+    // Explore and Plan are core public agents, not an optional experiment.
+    '--feature=BUILTIN_EXPLORE_PLAN_AGENTS',
   ],
   { cwd: root, stdio: 'inherit' },
 )
@@ -90,6 +92,25 @@ const hits = dist.split(version).length - 1
 if (hits === 0) {
   console.error(
     `\nFAILED: dist/cli.js does not contain version ${version} — the build did not inject MACRO.VERSION.`,
+  )
+  process.exit(1)
+}
+
+// Task-free research depends on these definitions existing in the actual
+// shipped bundle, not merely in source. This catches a missing Bun feature or
+// dead-code elimination before a package can pass unit tests and still ship a
+// registry with no safe research target.
+const registryStart = dist.indexOf(
+  'function areExplorePlanAgentsEnabled()',
+)
+const registryChunk =
+  registryStart >= 0 ? dist.slice(registryStart, registryStart + 1_500) : ''
+if (
+  !registryChunk.includes('return true') ||
+  !registryChunk.includes('agents.push(EXPLORE_AGENT, PLAN_AGENT)')
+) {
+  console.error(
+    '\nFAILED: dist/cli.js does not ship the core Explore/Plan agent registry.',
   )
   process.exit(1)
 }

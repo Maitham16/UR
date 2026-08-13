@@ -30,7 +30,9 @@ Custom agents:
 
 Read-only agents (`Explore`/`Plan`) intentionally omit the UR.md hierarchy from
 their context (token saving, see `loadAgentsDir.ts`) and run with plan-mode
-permissions. From the main session in any permission mode, only the shipped
+permissions. Public development and release builds register both as core
+agents; only Anthropic-internal builds retain the historical experiment flag.
+From the main session in any permission mode, only the shipped
 definitions may be spawned before a visible task exists; their plan permission
 mode overrides Accept Edits and Approve All on the parent. The task gate rejects
 custom overrides, general-purpose or nested delegation, named/team workers, and

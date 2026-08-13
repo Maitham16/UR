@@ -113,6 +113,10 @@ ur provider status
   shape without relying on a specific model name. Prompts that also direct
   implementation, testing, command execution, or file changes remain blocked
   until an actionable task exists.
+- If the same failure persists on 1.80.9, upgrade to 1.80.10. The 1.80.9 public
+  bundle could still compile the protected `Explore` and `Plan` registry entries
+  out, leaving the correct routing decision with no read-only destination.
+  Version 1.80.10 makes both core agents deterministic in public builds.
 
 ### Ollama stops with `unavailable tool "WebSearch"`
 

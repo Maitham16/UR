@@ -9,6 +9,12 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.80.10 Addition
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Deterministic read-only agent registry | Public bundle, development runtime, `Agent` gate | Ships the protected `Explore` and `Plan` definitions in every public runtime so task-free research always has a real read-only destination. Tests now exercise the real registry and verify the release feature flag. |
+
 ## v1.80.9 Addition
 
 | Addition | Surface | What it adds |

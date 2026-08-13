@@ -15,6 +15,9 @@ import { plugin } from 'bun'
 
 const enabledFlags = new Set([
   'TREE_SITTER_BASH',
+  // Explore/Plan are a supported public capability and the safe target for
+  // task-free read-only delegation. Keep development aligned with bundles.
+  'BUILTIN_EXPLORE_PLAN_AGENTS',
   ...(process.env.FEATURE_FLAGS ?? '').split(',').filter(Boolean),
 ])
 

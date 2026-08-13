@@ -10,6 +10,10 @@ import { AgentTool } from '../src/tools/AgentTool/AgentTool.tsx'
 import { EXPLORE_AGENT } from '../src/tools/AgentTool/built-in/exploreAgent.ts'
 import { PLAN_AGENT } from '../src/tools/AgentTool/built-in/planAgent.ts'
 import {
+  areExplorePlanAgentsEnabled,
+  getBuiltInAgents,
+} from '../src/tools/AgentTool/builtInAgents.ts'
+import {
   countToolCallsBeforeCurrent,
   isCurrentPlanFileMutation,
   isReadOnlyBuiltInDelegation,
@@ -318,6 +322,19 @@ test('the main session permits only shipped read-only agents before tasks exist'
       config: CONFIG,
     }).allowed,
   ).toBe(false)
+})
+
+test('the public built-in registry always ships the read-only research agents', () => {
+  expect(areExplorePlanAgentsEnabled()).toBe(true)
+  const builtIns = getBuiltInAgents()
+
+  for (const expected of [EXPLORE_AGENT, PLAN_AGENT]) {
+    const active = builtIns.find(agent => agent.agentType === expected.agentType)
+    expect(active).toBeDefined()
+    expect(active?.source).toBe('built-in')
+    expect(active?.permissionMode).toBe('plan')
+    expect(active && isShippedReadOnlyAgentDefinition(active)).toBe(true)
+  }
 })
 
 test('provider-independent read-only research briefs downgrade safely to Explore', () => {
