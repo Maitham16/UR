@@ -216,7 +216,7 @@ test('a permission rewrite cannot turn plan exploration into untracked general d
   )
 })
 
-test('the observed general-purpose read-only research call starts as protected Explore without tasks', async () => {
+test('a provider brief that preserves research-only intent starts as protected Explore without tasks', async () => {
   let callCount = 0
   let executedInput: Record<string, unknown> | undefined
   const tool = {
@@ -269,8 +269,10 @@ test('the observed general-purpose read-only research call starts as protected E
     updateFileHistoryState: () => {},
     updateAttributionState: () => {},
   }
+  // Exact failure class observed from providers that preserve the requested
+  // research work but omit the caller's explicit "read-only" wording.
   const prompt =
-    'You are a read-only research agent. Investigate professional HTML5 Canvas architecture. Do not modify files.'
+    'Research professional HTML5 Canvas game architecture and performance best practices. Focus on game loop patterns, Canvas rendering optimization, delta time handling, and Web Audio. Use available tools. Return a concise report with specific techniques, code patterns, and authoritative sources cited.'
   const output = await Array.fromAsync(
     runToolUse(
       {

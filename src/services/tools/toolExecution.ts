@@ -933,9 +933,10 @@ async function checkPermissionsAndCallTool(
     }
   }
 
-  // Several model families select general-purpose despite explicitly writing
-  // a read-only research brief. Downgrade that exact main-session shape to the
-  // shipped Explore definition before task gating. This is capability
+  // Several model families select general-purpose for a research-only brief;
+  // some also omit the caller's explicit "read-only" wording. Downgrade that
+  // constrained main-session shape to the shipped Explore definition before
+  // task gating. This is capability
   // reduction, not a text-based permission grant: Explore is mechanically
   // plan/read-only and omits editing tools. Later hook/permission rewrites are
   // independently revalidated against the final task gate below.

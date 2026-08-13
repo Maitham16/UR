@@ -352,8 +352,33 @@ test('provider-independent read-only research briefs downgrade safely to Explore
     ),
   ).toMatchObject({ subagent_type: 'Explore' })
 
+  // Observed provider payload: the caller explicitly requested read-only
+  // workers, but the model preserved only a research/report brief in the tool
+  // input. Research-only intent is enough because Explore is a strict
+  // capability reduction.
+  expect(
+    normalizeReadOnlyResearchDelegation(
+      {
+        description: 'Research Canvas game architecture',
+        subagent_type: 'general-purpose',
+        prompt:
+          'Research professional HTML5 Canvas game architecture and performance best practices. Focus on game loops, rendering optimization, and Web Audio. Use available tools and return a concise report with authoritative sources cited.',
+      },
+      agents,
+      false,
+    ),
+  ).toMatchObject({ subagent_type: 'Explore' })
+
   for (const unsafe of [
     { ...observedProviderInput, prompt: 'Research and implement the game.' },
+    {
+      ...observedProviderInput,
+      prompt: 'Research the architecture. Then build the complete game.',
+    },
+    {
+      ...observedProviderInput,
+      prompt: 'Analyze the bug; fix it and run the tests.',
+    },
     { ...observedProviderInput, name: 'researcher' },
     { ...observedProviderInput, team_name: 'research' },
     { ...observedProviderInput, isolation: 'worktree' },

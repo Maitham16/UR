@@ -19,10 +19,10 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.80.8 (UR-Nexus)"
+# expected for this release: "1.80.9 (UR-Nexus)"
 ```
 
-### 0.0 Read-only research delegation starts cleanly (1.80.8)
+### 0.0 Read-only research delegation starts cleanly (1.80.9)
 
 Start an interactive session with task enforcement enabled and ask UR to
 research a change, both normally and from Plan Mode. Before any task exists,
@@ -33,10 +33,10 @@ should remain blocked until they have an actionable parent task.
 
 Repeat with multiple available model families. A model may correctly emit
 `subagent_type: "Explore"`; if it instead emits `general-purpose` with an
-explicit read-only research/no-file-write brief, UR must safely reduce it to
-Explore and start without a failed `TaskListRequired` attempt. A
-general-purpose implementation brief must remain blocked. The deterministic
-regressions are:
+explicit read-only brief or a pure research/report-only brief, UR must safely
+reduce it to Explore and start without a failed `TaskListRequired` attempt. A
+brief that also requests implementation, tests, command execution, or file
+changes must remain blocked. The deterministic regressions are:
 
 ```sh
 bun test test/taskListGate.test.ts test/toolExecutionFinalInput.test.ts

@@ -9,6 +9,12 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.80.9 Addition
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Research-only intent recovery | Shared Agent execution gate | Handles providers that retain a pure research/report brief but omit the caller's “read-only” wording. The call is reduced to shipped Explore capabilities; any implementation or mutation directive remains task-gated. |
+
 ## v1.80.8 Addition
 
 | Addition | Surface | What it adds |

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.80.9
+
+- Fixed the remaining provider-independent `TaskListRequired` failure for
+  research fan-out. Some models preserved the research/report-only brief but
+  dropped the caller's explicit “read-only” wording while still selecting
+  `general-purpose`. UR now recognizes that constrained shape and reduces it
+  to the mechanically read-only shipped `Explore` worker before task gating.
+- Kept the boundary fail-closed for any prompt that directs implementation,
+  building, file changes, command execution, testing, installation, commits,
+  deployment, or other mutation. Custom definitions, nested workers,
+  names/teams, worktrees, and cwd overrides remain excluded. Approve All is
+  unchanged.
+
 ## 1.80.8
 
 - Fixed provider-independent failed-first research delegation. Several model

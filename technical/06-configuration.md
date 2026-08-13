@@ -133,9 +133,11 @@ before tasks exist. They are forced into plan permissions even when the parent
 uses Accept Edits or Approve All, while custom, general-purpose, nested, team,
 and worktree delegation still requires an actionable parent task. One
 capability-reducing compatibility rule runs before the gate: an unnamed
-main-session `general-purpose` call with an explicit read-only research and
-no-file-write contract becomes the shipped Explore agent. The rule excludes
-custom definitions, nesting, names/teams, worktrees, and cwd overrides.
+main-session `general-purpose` call becomes the shipped Explore agent when its
+brief is explicitly read-only research or unambiguously research/report-only.
+Implementation, test, command-execution, installation, and workspace-mutation
+directives keep the call gated. The rule excludes custom definitions, nesting,
+names/teams, worktrees, and cwd overrides.
 
 ### Hooks
 ```jsonc

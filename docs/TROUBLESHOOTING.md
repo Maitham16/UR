@@ -108,6 +108,11 @@ ur provider status
   UR 1.80.8 routes that narrow contract to the protected Explore worker before
   the gate. A real general-purpose or implementation worker is still expected
   to require a task.
+- If the model preserved only the research/report instructions and omitted the
+  words “read-only,” upgrade to 1.80.9. UR recognizes that remaining provider
+  shape without relying on a specific model name. Prompts that also direct
+  implementation, testing, command execution, or file changes remain blocked
+  until an actionable task exists.
 
 ### Ollama stops with `unavailable tool "WebSearch"`
 

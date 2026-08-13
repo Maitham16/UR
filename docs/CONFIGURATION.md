@@ -61,9 +61,11 @@ launch UR's shipped `Explore` and `Plan` agents before a task exists in any
 permission mode. These exact built-in definitions are forced read-only; custom,
 write-capable, nested, named/team, and worktree delegation still requires an
 actionable parent task. As provider-independent compatibility, an unnamed
-main-session `general-purpose` call whose own prompt explicitly declares both
-research intent and no file writes is reduced to the shipped Explore definition
-before the gate. It never receives general-purpose tools through this path.
+main-session `general-purpose` call is reduced to the shipped Explore definition
+when its brief is explicitly read-only research or is unambiguously limited to
+research and reporting. Any implementation, test, command-execution,
+installation, or workspace-mutation directive keeps the call gated. It never
+receives general-purpose tools through this path.
 
 ## Model Providers
 
