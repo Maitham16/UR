@@ -3,6 +3,18 @@ const SHIPPED_READ_ONLY_AGENT_TYPES: ReadonlySet<string> = new Set([
   'Plan',
 ])
 
+const READ_ONLY_RESEARCH_MARKER =
+  /\bread[\s-]?only\b|\b(?:do not|don't|must not|never)\s+(?:modify|write|edit|create|change)\s+(?:any\s+)?(?:code\s+)?files?\b|\bno\s+(?:file|workspace)\s+(?:changes|modifications)\b/i
+const RESEARCH_INTENT_MARKER =
+  /\b(?:research|investigat\w*|explor\w*|analy[sz]\w*|audit\w*)\b/i
+
+type DelegationInput = Record<string, unknown>
+type ReadOnlyAgentDefinition = {
+  agentType: string
+  source: string
+  permissionMode?: string
+}
+
 /**
  * Security boundary for task-free research delegation. Agent names alone are
  * insufficient because project/user definitions can override built-ins.
@@ -19,6 +31,45 @@ export function isShippedReadOnlyAgentDefinition(agent: {
     agent.source === 'built-in' &&
     agent.permissionMode === 'plan'
   )
+}
+
+/**
+ * Some models select `general-purpose` even while explicitly briefing it as a
+ * read-only research worker. Honor that narrower contract by downgrading the
+ * call to the shipped Explore agent before task gating and permission hooks.
+ * This can only remove capabilities; it never grants a custom or write-capable
+ * worker task-free access.
+ *
+ * Named/team/worktree/cwd/nested delegation stays outside this compatibility
+ * path. Returning the original object by identity makes non-matches explicit.
+ */
+export function normalizeReadOnlyResearchDelegation(
+  input: DelegationInput,
+  activeAgents: readonly ReadOnlyAgentDefinition[],
+  isNestedAgent: boolean,
+): DelegationInput {
+  if (
+    isNestedAgent ||
+    input.subagent_type !== 'general-purpose' ||
+    input.name !== undefined ||
+    input.team_name !== undefined ||
+    input.isolation !== undefined ||
+    input.cwd !== undefined ||
+    typeof input.prompt !== 'string' ||
+    !READ_ONLY_RESEARCH_MARKER.test(input.prompt) ||
+    !RESEARCH_INTENT_MARKER.test(input.prompt)
+  ) {
+    return input
+  }
+
+  const exploreAgent = activeAgents.find(
+    agent =>
+      agent.agentType === 'Explore' &&
+      isShippedReadOnlyAgentDefinition(agent),
+  )
+  if (!exploreAgent) return input
+
+  return { ...input, subagent_type: exploreAgent.agentType }
 }
 
 /**

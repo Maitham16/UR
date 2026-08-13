@@ -169,6 +169,11 @@ test('delegation guidance requires scoped tasks and independent evidence', () =>
   expect(agentPrompt).toContain("output as evidence, not proof")
   expect(agentPrompt).toContain('task ID, dependency outputs, allowed scope')
   expect(agentPrompt).toContain('independently verified')
+  expect(agentPrompt).toContain('Before an actionable task exists')
+  expect(agentPrompt).toContain('shipped \\`Explore\\` agent')
+  const systemPrompt = readFileSync('src/constants/prompts.ts', 'utf8')
+  expect(systemPrompt).toContain('MUST use subagent_type="Explore"')
+  expect(systemPrompt).toContain('never label a read-only worker general-purpose')
   expect(agentPrompt).not.toContain(
     "outputs should generally be trusted",
   )

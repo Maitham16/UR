@@ -215,3 +215,94 @@ test('a permission rewrite cannot turn plan exploration into untracked general d
     'TaskListRequired after input update',
   )
 })
+
+test('the observed general-purpose read-only research call starts as protected Explore without tasks', async () => {
+  let callCount = 0
+  let executedInput: Record<string, unknown> | undefined
+  const tool = {
+    name: 'Agent',
+    inputSchema: z.strictObject({
+      description: z.string(),
+      prompt: z.string(),
+      subagent_type: z.string(),
+      run_in_background: z.boolean().optional(),
+    }),
+    isReadOnly: () => false,
+    isConcurrencySafe: () => false,
+    isEnabled: () => true,
+    async call(input: Record<string, unknown>) {
+      callCount++
+      executedInput = input
+      return { data: 'research started' }
+    },
+  }
+  const context = {
+    abortController: new AbortController(),
+    options: {
+      commands: [],
+      debug: false,
+      mainLoopModel: 'test-model',
+      tools: [tool, { name: 'TaskCreate' }],
+      verbose: false,
+      thinkingConfig: { type: 'disabled' },
+      mcpClients: [],
+      mcpResources: {},
+      isNonInteractiveSession: true,
+      agentDefinitions: {
+        activeAgents: [
+          {
+            agentType: 'Explore',
+            source: 'built-in',
+            permissionMode: 'plan',
+          },
+          { agentType: 'general-purpose', source: 'built-in' },
+        ],
+        allAgents: [],
+      },
+    },
+    getAppState: () => getDefaultAppState(),
+    setAppState: () => {},
+    messages: [],
+    readFileState: new Map(),
+    setInProgressToolUseIDs: () => {},
+    setResponseLength: () => {},
+    updateFileHistoryState: () => {},
+    updateAttributionState: () => {},
+  }
+  const prompt =
+    'You are a read-only research agent. Investigate professional HTML5 Canvas architecture. Do not modify files.'
+  const output = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'provider-independent-research-use',
+        name: 'Agent',
+        input: {
+          description: 'Research Canvas game architecture',
+          subagent_type: 'general-purpose',
+          prompt,
+          run_in_background: true,
+        },
+      } as never,
+      {
+        type: 'assistant',
+        uuid: 'assistant-provider-independent-research',
+        message: {
+          id: 'message-provider-independent-research',
+          content: [],
+        },
+      } as never,
+      (async () => ({ behavior: 'allow' as const })) as never,
+      context as never,
+    ),
+  )
+
+  expect(callCount).toBe(1)
+  expect(executedInput).toEqual({
+    description: 'Research Canvas game architecture',
+    subagent_type: 'Explore',
+    prompt,
+    run_in_background: true,
+  })
+  expect(JSON.stringify(output)).not.toContain('TaskListRequired')
+})

@@ -9,6 +9,12 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.80.8 Addition
+
+| Addition | Surface | What it adds |
+| --- | --- | --- |
+| Provider-independent research routing | Shared Agent prompt and execution gate | Directs every model family to use the shipped `Explore` worker for task-free read-only research. If a model still labels an explicitly read-only research brief `general-purpose`, UR reduces it to protected Explore capabilities before task gating; write-capable and custom delegation remains gated. |
+
 ## v1.80.7 Additions
 
 | Addition | Surface | What it adds |

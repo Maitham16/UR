@@ -63,7 +63,7 @@ the tool pool, and are not supported user-facing tools.
 
 | Tool | Purpose | Example request |
 |---|---|---|
-| `Agent` | Spawn a subagent (built-in types: `general-purpose`, `Explore`, `Plan`, `verification`, `statusline-setup`, `ur-code-guide`, plus user agents from `/agents` and `.ur/agents/`). From the main session in any permission mode, only the shipped read-only `Explore`/`Plan` definitions can run before an actionable task exists; their plan permissions override the parent. All write-capable, custom, nested, team, and worktree delegation remains gated | "Use a subagent to survey how errors are handled repo-wide" |
+| `Agent` | Spawn a subagent (built-in types: `general-purpose`, `Explore`, `Plan`, `verification`, `statusline-setup`, `ur-code-guide`, plus user agents from `/agents` and `.ur/agents/`). From the main session in any permission mode, only the shipped read-only `Explore`/`Plan` definitions can run before an actionable task exists; their plan permissions override the parent. A provider that mislabels an explicit read-only research/no-write brief as `general-purpose` is reduced to shipped Explore before gating. All write-capable, custom, nested, named/team, worktree, and cwd delegation remains gated | "Use a subagent to survey how errors are handled repo-wide" |
 | `SendMessage` | Message another running agent/teammate | (agent coordination) |
 | `TeamCreate` / `TeamDelete` | Create/remove agent teams (swarm mode, `isAgentSwarmsEnabled`) | "Spin up a team for this migration" |
 | `Skill` | Invoke a skill programmatically (model-triggered skills) | "Use the dockerize skill" |

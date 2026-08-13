@@ -19,17 +19,23 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.80.7 (UR-Nexus)"
+# expected for this release: "1.80.8 (UR-Nexus)"
 ```
 
-### 0.0 Read-only research delegation starts cleanly (1.80.7)
+### 0.0 Read-only research delegation starts cleanly (1.80.8)
 
 Start an interactive session with task enforcement enabled and ask UR to
 research a change, both normally and from Plan Mode. Before any task exists,
 built-in `Explore` and `Plan` agent calls should initialize without
 `TaskListRequired`. Their workers remain read-only even when the parent uses
-Accept Edits or Approve All. Custom or general-purpose agents should remain
-blocked until they have an actionable parent task. The deterministic
+Accept Edits or Approve All. Custom agents and ordinary general-purpose agents
+should remain blocked until they have an actionable parent task.
+
+Repeat with multiple available model families. A model may correctly emit
+`subagent_type: "Explore"`; if it instead emits `general-purpose` with an
+explicit read-only research/no-file-write brief, UR must safely reduce it to
+Explore and start without a failed `TaskListRequired` attempt. A
+general-purpose implementation brief must remain blocked. The deterministic
 regressions are:
 
 ```sh

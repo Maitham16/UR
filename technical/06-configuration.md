@@ -131,7 +131,11 @@ they remain operable. From the main session in any permission mode, the shipped
 read-only `Explore` and `Plan` definitions are the only delegation allowed
 before tasks exist. They are forced into plan permissions even when the parent
 uses Accept Edits or Approve All, while custom, general-purpose, nested, team,
-and worktree delegation still requires an actionable parent task.
+and worktree delegation still requires an actionable parent task. One
+capability-reducing compatibility rule runs before the gate: an unnamed
+main-session `general-purpose` call with an explicit read-only research and
+no-file-write contract becomes the shipped Explore agent. The rule excludes
+custom definitions, nesting, names/teams, worktrees, and cwd overrides.
 
 ### Hooks
 ```jsonc

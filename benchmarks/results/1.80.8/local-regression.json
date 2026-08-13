@@ -3,10 +3,10 @@
   "template": false,
   "agent": {
     "name": "ur-nexus",
-    "version": "1.80.7",
-    "commit": "10fccbc4a2d618b6b17b1c5a2009a28ffb3a20fe"
+    "version": "1.80.8",
+    "commit": "9175b14886b9e61863f30d007d811105c5123533"
   },
-  "date": "2026-08-12T07:00:47.866Z",
+  "date": "2026-08-12T20:30:06.031Z",
   "benchmark": {
     "name": "local-regression",
     "category": "internal-regression",
@@ -33,7 +33,7 @@
         "name": "simple file edit task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 31,
+        "wallTimeMs": 28,
         "failureCategory": null
       },
       {
@@ -41,7 +41,7 @@
         "name": "repository edit apply task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 647,
+        "wallTimeMs": 617,
         "failureCategory": null
       },
       {
@@ -49,7 +49,7 @@
         "name": "repository AST edit task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 6888,
+        "wallTimeMs": 6735,
         "failureCategory": null
       },
       {
@@ -57,7 +57,7 @@
         "name": "repository import edit task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 4832,
+        "wallTimeMs": 4917,
         "failureCategory": null
       },
       {
@@ -65,7 +65,7 @@
         "name": "repository move edit task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 6757,
+        "wallTimeMs": 6686,
         "failureCategory": null
       },
       {
@@ -73,7 +73,7 @@
         "name": "failing test repair task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 207,
+        "wallTimeMs": 204,
         "failureCategory": null
       },
       {
@@ -81,7 +81,7 @@
         "name": "provider routing task",
         "category": "provider-routing",
         "passed": true,
-        "wallTimeMs": 213,
+        "wallTimeMs": 206,
         "failureCategory": null
       },
       {
@@ -89,7 +89,7 @@
         "name": "provider reliability task",
         "category": "provider-routing",
         "passed": true,
-        "wallTimeMs": 195,
+        "wallTimeMs": 191,
         "failureCategory": null
       },
       {
@@ -97,7 +97,7 @@
         "name": "provider streaming task",
         "category": "provider-routing",
         "passed": true,
-        "wallTimeMs": 198,
+        "wallTimeMs": 192,
         "failureCategory": null
       },
       {
@@ -105,7 +105,7 @@
         "name": "provider tool-call task",
         "category": "tool-use",
         "passed": true,
-        "wallTimeMs": 182,
+        "wallTimeMs": 176,
         "failureCategory": null
       },
       {
@@ -113,7 +113,7 @@
         "name": "provider multimodal mapping task",
         "category": "provider-routing",
         "passed": true,
-        "wallTimeMs": 186,
+        "wallTimeMs": 179,
         "failureCategory": null
       },
       {
@@ -121,7 +121,7 @@
         "name": "sandbox denial task",
         "category": "sandbox-safety",
         "passed": true,
-        "wallTimeMs": 629,
+        "wallTimeMs": 596,
         "failureCategory": null
       },
       {
@@ -129,7 +129,7 @@
         "name": "safety matrix proof task",
         "category": "sandbox-safety",
         "passed": true,
-        "wallTimeMs": 83,
+        "wallTimeMs": 82,
         "failureCategory": null
       },
       {
@@ -137,7 +137,7 @@
         "name": "sandbox adapter task",
         "category": "sandbox-safety",
         "passed": true,
-        "wallTimeMs": 542,
+        "wallTimeMs": 550,
         "failureCategory": null
       },
       {
@@ -145,7 +145,7 @@
         "name": "sandbox profile task",
         "category": "sandbox-safety",
         "passed": true,
-        "wallTimeMs": 61,
+        "wallTimeMs": 60,
         "failureCategory": null
       },
       {
@@ -153,7 +153,7 @@
         "name": "release hygiene task",
         "category": "internal-regression",
         "passed": true,
-        "wallTimeMs": 63,
+        "wallTimeMs": 59,
         "failureCategory": null
       },
       {
@@ -161,7 +161,7 @@
         "name": "benchmark schema validation task",
         "category": "internal-regression",
         "passed": true,
-        "wallTimeMs": 216,
+        "wallTimeMs": 211,
         "failureCategory": null
       },
       {
@@ -169,7 +169,7 @@
         "name": "eval comparison task",
         "category": "internal-regression",
         "passed": true,
-        "wallTimeMs": 97,
+        "wallTimeMs": 105,
         "failureCategory": null
       },
       {
@@ -177,7 +177,7 @@
         "name": "tool-call parsing task",
         "category": "tool-use",
         "passed": true,
-        "wallTimeMs": 174,
+        "wallTimeMs": 172,
         "failureCategory": null
       },
       {
@@ -185,13 +185,13 @@
         "name": "multi-step code modification task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 1010,
+        "wallTimeMs": 967,
         "failureCategory": null
       }
     ],
     "failedTasks": [],
     "failureCategories": {},
-    "wallTimeMs": 23212,
+    "wallTimeMs": 22934,
     "tokenUsage": null,
     "costUSD": null
   },

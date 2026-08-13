@@ -102,6 +102,12 @@ ur provider status
   agents without a parent task: create the requested tasks or finish and
   approve the plan first. Disabling `tasks.requireBeforeChanges` is no longer
   needed for normal plan mode.
+- If an API, local, or subscription-CLI model still returns this error for an
+  explicitly read-only research brief on 1.80.7, upgrade to 1.80.8. Some models
+  emitted `subagent_type: "general-purpose"` despite the read-only instruction.
+  UR 1.80.8 routes that narrow contract to the protected Explore worker before
+  the gate. A real general-purpose or implementation worker is still expected
+  to require a task.
 
 ### Ollama stops with `unavailable tool "WebSearch"`
 

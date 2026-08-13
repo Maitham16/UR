@@ -36,7 +36,11 @@ mode overrides Accept Edits and Approve All on the parent. The task gate rejects
 custom overrides, general-purpose or nested delegation, named/team workers, and
 worktree creation until an actionable parent task exists. The final tool input
 is checked again after permission hooks, preventing an allowed read-only spawn
-from being rewritten into write-capable delegation.
+from being rewritten into write-capable delegation. Provider-independent
+compatibility happens before this gate: if a model labels an unnamed
+main-session brief `general-purpose` while explicitly declaring research intent
+and no file writes, UR downgrades it to the shipped Explore definition. This is
+capability reduction only and cannot unlock a custom or write-capable worker.
 
 Inspection: `/agent-inspect` reconstructs a per-subagent timeline (spawns, prompts,
 results, verdicts, tools, tokens) from the session or a transcript file.

@@ -473,9 +473,12 @@ the exact plan file for the active session while the rest of the workspace
 remains read-only. In any permission mode, the main session may delegate early
 research to UR's shipped `Explore` and `Plan` agents before tasks exist. Those
 two definitions are mechanically forced into plan permission mode even when
-the parent is in Accept Edits or Approve All. Custom overrides, general-purpose
-agents, nested agents, team workers, and worktree agents still require an
-actionable parent task. When the user approves the plan,
+the parent is in Accept Edits or Approve All. Models are instructed to select
+`subagent_type="Explore"` for this work. If a provider still labels an explicit
+read-only research brief `general-purpose`, UR reduces that main-session call
+to the shipped Explore definition before gating. Ordinary general-purpose
+work, custom overrides, nested agents, named/team workers, worktrees, and cwd
+overrides still require an actionable parent task. When the user approves the plan,
 `ExitPlanMode` preserves any existing actionable board or creates a bounded set
 of professional, deduplicated implementation tasks plus a verification task
 that depends on them. Implementation therefore starts with visible tracking

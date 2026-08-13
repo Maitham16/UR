@@ -16,6 +16,7 @@ import {
 } from '../src/services/tools/toolExecution.ts'
 import {
   isShippedReadOnlyAgentDefinition,
+  normalizeReadOnlyResearchDelegation,
   shouldApplyAgentDefinitionPermissionMode,
 } from '../src/tools/AgentTool/readOnlyAgents.ts'
 import { getPlanFilePath } from '../src/utils/plans.ts'
@@ -317,6 +318,65 @@ test('the main session permits only shipped read-only agents before tasks exist'
       config: CONFIG,
     }).allowed,
   ).toBe(false)
+})
+
+test('provider-independent read-only research briefs downgrade safely to Explore', () => {
+  const agents = [
+    { agentType: 'Explore', source: 'built-in', permissionMode: 'plan' },
+    { agentType: 'general-purpose', source: 'built-in' },
+  ]
+  const observedProviderInput = {
+    description: 'Research Canvas game architecture',
+    subagent_type: 'general-purpose',
+    prompt:
+      'You are a read-only research agent. Investigate professional Canvas architecture. Do not modify files.',
+    run_in_background: true,
+  }
+
+  expect(
+    normalizeReadOnlyResearchDelegation(
+      observedProviderInput,
+      agents,
+      false,
+    ),
+  ).toEqual({ ...observedProviderInput, subagent_type: 'Explore' })
+  expect(
+    normalizeReadOnlyResearchDelegation(
+      {
+        ...observedProviderInput,
+        prompt:
+          'This is a RESEARCH task only. Investigate the sources; do not write any code files.',
+      },
+      agents,
+      false,
+    ),
+  ).toMatchObject({ subagent_type: 'Explore' })
+
+  for (const unsafe of [
+    { ...observedProviderInput, prompt: 'Research and implement the game.' },
+    { ...observedProviderInput, name: 'researcher' },
+    { ...observedProviderInput, team_name: 'research' },
+    { ...observedProviderInput, isolation: 'worktree' },
+    { ...observedProviderInput, cwd: '/tmp/research' },
+  ]) {
+    expect(
+      normalizeReadOnlyResearchDelegation(unsafe, agents, false),
+    ).toBe(unsafe)
+  }
+  expect(
+    normalizeReadOnlyResearchDelegation(
+      observedProviderInput,
+      agents,
+      true,
+    ),
+  ).toBe(observedProviderInput)
+  expect(
+    normalizeReadOnlyResearchDelegation(
+      observedProviderInput,
+      [{ agentType: 'Explore', source: 'project', permissionMode: 'plan' }],
+      false,
+    ),
+  ).toBe(observedProviderInput)
 })
 
 test('freeReads zero intentionally gates even atomic work', () => {

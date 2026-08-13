@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.80.8
+
+- Fixed provider-independent failed-first research delegation. Several model
+  families selected `general-purpose` even when their own worker brief said
+  read-only research, causing `TaskListRequired` before the research could
+  start. UR now safely downgrades that exact main-session contract to its
+  mechanically read-only shipped `Explore` agent before task gating.
+- Strengthened the shared Agent prompt and Explore description so models choose
+  `subagent_type="Explore"` directly for task-free research. The compatibility
+  downgrade also recognizes “research task only; do not write files” wording.
+- Kept the boundary fail-closed: implementation prompts, custom definitions,
+  nested workers, named/team agents, worktrees, cwd overrides, and every other
+  general-purpose call still require an actionable task. Permission and hook
+  rewrites are revalidated before execution. Approve All remains unchanged.
+
 ## 1.80.7
 
 - Fixed Ollama runs stopping with `response returned unavailable tool

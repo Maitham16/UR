@@ -83,7 +83,7 @@ export async function getPrompt(
 ## When to fork
 
 Fork yourself (omit \`subagent_type\`) when the intermediate tool output isn't worth keeping in your context. The criterion is qualitative \u2014 "will I need this output again" \u2014 not task size.
-- **Research**: fork open-ended questions. If research can be broken into independent questions, launch parallel forks in one message. A fork beats a fresh subagent for this \u2014 it inherits context and shares your cache.
+- **Research after tasks exist**: fork open-ended questions when inherited context is valuable. Before an actionable task exists, use the shipped \`Explore\` agent instead; a fork or general-purpose agent is write-capable and will be task-gated. If research can be broken into independent questions, launch parallel \`Explore\` agents in one message.
 - **Implementation**: fork only a bounded branch with explicit file scope. Parallel implementation forks must use isolated worktrees based on the exact clean starting revision; otherwise keep shared-checkout writers sequential. Do research before jumping to implementation.
 
 Forks are cheap because they share your prompt cache. Don't set \`model\` on a fork \u2014 a different model can't reuse the parent's cache. Pass a short \`name\` (one or two words, lowercase) so the user can see the fork in the teams panel and steer it mid-run.

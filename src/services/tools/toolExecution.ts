@@ -51,7 +51,10 @@ import {
   AGENT_TOOL_NAME,
   LEGACY_AGENT_TOOL_NAME,
 } from '../../tools/AgentTool/constants.js'
-import { isShippedReadOnlyAgentDefinition } from '../../tools/AgentTool/readOnlyAgents.js'
+import {
+  isShippedReadOnlyAgentDefinition,
+  normalizeReadOnlyResearchDelegation,
+} from '../../tools/AgentTool/readOnlyAgents.js'
 import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from '../../tools/FileReadTool/prompt.js'
 import { FILE_WRITE_TOOL_NAME } from '../../tools/FileWriteTool/prompt.js'
@@ -929,6 +932,31 @@ async function checkPermissionsAndCallTool(
       }
     }
   }
+
+  // Several model families select general-purpose despite explicitly writing
+  // a read-only research brief. Downgrade that exact main-session shape to the
+  // shipped Explore definition before task gating. This is capability
+  // reduction, not a text-based permission grant: Explore is mechanically
+  // plan/read-only and omits editing tools. Later hook/permission rewrites are
+  // independently revalidated against the final task gate below.
+  if (
+    parsedInput.success &&
+    (tool.name === AGENT_TOOL_NAME || tool.name === LEGACY_AGENT_TOOL_NAME)
+  ) {
+    const normalizedDelegation = normalizeReadOnlyResearchDelegation(
+      parsedInput.data as Record<string, unknown>,
+      toolUseContext.options.agentDefinitions.activeAgents,
+      Boolean(toolUseContext.agentId),
+    )
+    if (normalizedDelegation !== parsedInput.data) {
+      input = normalizedDelegation as typeof input
+      parsedInput = tool.inputSchema.safeParse(input)
+      logEvent('tengu_agent_read_only_research_normalized', {
+        toolName: sanitizeToolNameForAnalytics(tool.name),
+      })
+    }
+  }
+
   // Break a loop before anything else. A model that cannot recover from a
   // refusal will repeat the same malformed call indefinitely, and every other
   // check here would keep rejecting it politely forever.
