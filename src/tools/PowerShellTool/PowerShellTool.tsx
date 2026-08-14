@@ -7,6 +7,7 @@ import type { AppState } from 'src/state/AppState.js';
 import { z } from 'zod/v4';
 import { getKairosActive } from '../../bootstrap/state.js';
 import { TOOL_SUMMARY_MAX_LENGTH } from '../../constants/toolLimits.js';
+import { evaluateRedteamShellCommand } from '../../security/redteamShellGate.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import type { SetToolJSXFn, Tool, ToolCallProgress, ValidationResult } from '../../Tool.js';
 import { buildTool, type ToolDef } from '../../Tool.js';
@@ -379,6 +380,15 @@ export const PowerShellTool = buildTool({
     };
   },
   async checkPermissions(input: PowerShellToolInput, context: Parameters<Tool['checkPermissions']>[1]): Promise<PermissionResult> {
+    const redteamScopeVerdict = evaluateRedteamShellCommand(input.command, getCwd());
+    if (redteamScopeVerdict?.allow === false) {
+      const reason = redteamScopeVerdict.reason ?? 'command is outside the approved redteam scope';
+      return {
+        behavior: 'deny',
+        message: `UR redteam scope blocked this command: ${reason}.`,
+        decisionReason: { type: 'other', reason }
+      };
+    }
     return await powershellToolHasPermission(input, context);
   },
   renderToolUseMessage,

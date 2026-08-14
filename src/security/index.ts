@@ -13,5 +13,11 @@ export { scanWorkspace, type AttackSurface } from "./attackSurface.ts";
 export { FindingStore, formatFinding, severityRank } from "./findings.ts";
 export { toMarkdown, toJson, toCsv, toSarif } from "./reports.ts";
 export { detectSecurityTools, type ToolStatus } from "./doctor.ts";
-export { securityPrompt, SECURITY_BOUNDARY, SECURITY_MODES } from "./prompt.ts";
+export { securityPrompt, SECURITY_BOUNDARY, REDTEAM_BOUNDARY, SECURITY_MODES } from "./prompt.ts";
+export {
+  activateRedteamMode,
+  deactivateRedteamMode,
+  isRedteamModeActive,
+  REDTEAM_WARNING,
+} from "./redteamMode.ts";
 export { handleSecurityCommand } from "./commands.ts";

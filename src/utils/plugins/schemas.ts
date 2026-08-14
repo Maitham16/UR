@@ -313,6 +313,12 @@ const PluginManifestMetadataSchema = lazySchema(() =>
       .describe(
         'Plugins that must be enabled for this plugin to function. Bare names (no "@marketplace") are resolved against the declaring plugin\'s own marketplace.',
       ),
+    requiredMode: z
+      .enum(['redteam'])
+      .optional()
+      .describe(
+        'UR runtime mode required before this plugin\'s commands and skills can be invoked.',
+      ),
   }),
 )
 

@@ -3,7 +3,7 @@
   "template": false,
   "agent": {
     "name": "ur-nexus",
-    "version": "1.80.10",
+    "version": "1.81.0",
     "commit": "380a4ea7eada9360b68929f18d832f5a89f44fbd"
   },
   "date": "2026-08-13T01:01:48.885Z",

@@ -38,10 +38,17 @@ Useful commands from inside UR:
 /session unarchive <session-id>
 /fix-bug describe the failure and reproduction steps
 /research init current-tools --question "What changed?"
+/mode redteam
 /design3d doctor
 /design3d init product-shot --engine blender --units mm --format blend
 /design3d init studio-scene --engine 3dsmax --units cm --format max
 ```
+
+`/mode redteam` is a session-only security-research policy mode. Its first use
+shows a mandatory warning and requires `/mode redteam --accept-risk`. It removes
+UR's topic-level security restrictions while retaining target scope, tool
+permissions, sandboxing, action approvals, and audit evidence. It cannot change
+the selected provider/model's own policy. See [Redteam mode](REDTEAM.md).
 
 `/design3d doctor` reports installed applications. `MISSING` means that optional
 application is not installed or is not on `PATH`; it is not a UR failure. On

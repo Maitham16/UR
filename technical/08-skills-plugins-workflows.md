@@ -138,6 +138,13 @@ ur --plugin-dir ./dev-plugin               # session-only plugin load
 Settings: `enabledPlugins`, `pluginConfigs`, `extraKnownMarketplaces`,
 `strictKnownMarketplaces`, `blockedMarketplaces`, `strictPluginOnlyCustomization`.
 
+Manifests may declare `requiredMode: "redteam"`. The plugin loader attaches a
+dynamic `isEnabled` gate to every contributed prompt command and skill and
+rechecks the mode inside invocation. This is intentionally narrower than a
+permission mode: it exposes the content only while redteam is active and never
+auto-approves tools. `plugins/core/reverse-skills/` is the reference
+implementation and uses only UR manifests, paths, scope, and tool contracts.
+
 ## Local helper tools (`/toolsmith`)
 
 Scaffolds a small custom tool under `.ur/tools/<name>/` in python/bash/node/go/rust; UR

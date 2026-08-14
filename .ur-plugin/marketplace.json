@@ -5,7 +5,7 @@
     "url": "https://github.com/Maitham16/UR"
   },
   "metadata": {
-    "version": "0.5.0",
+    "version": "0.6.0",
     "description": "First-party plugins for UR-AGENT. This marketplace is hosted in the same repository as the agent itself and advertises plugin capability surfaces for commands, MCP tools, skills, templates, validators, and language adapters."
   },
   "plugins": [
@@ -128,6 +128,14 @@
       "category": "quality",
       "tags": ["workflow", "ci", "release", "validator", "template", "language-adapter"],
       "capabilities": ["commands", "skills", "templates", "validators", "language-adapters", "lsp-servers"]
+    },
+    {
+      "name": "reverse-skills",
+      "source": "./plugins/core/reverse-skills",
+      "description": "UR-exclusive reverse engineering and red-team research skills, runtime-gated to redteam mode with scope and execution controls.",
+      "category": "security",
+      "tags": ["redteam", "reverse-engineering", "malware-analysis", "exploit-development", "forensics"],
+      "capabilities": ["commands", "skills"]
     }
   ]
 }

@@ -74,6 +74,12 @@ rather than a JS entry point.
 | `lspServers` | object | LSP servers for language adapters. |
 | `languageAdapters` | object | Language → engine/LSP metadata. |
 | `dependencies` | object | Other plugins that must be enabled. |
+| `requiredMode` | `"redteam"` | Runtime-gate every command/skill in the plugin to an active UR mode. |
+
+`requiredMode` is enforced both during command discovery and again at
+invocation, so a command loaded earlier cannot run after the user leaves the
+mode. It is a capability gate, not a permission grant: all ordinary tool,
+sandbox, scope, and approval checks still run.
 
 Validate a manifest strictly at any time:
 
@@ -152,6 +158,9 @@ servers are launched only when the plugin is enabled, and network marketplace
 installs are always explicit user actions gated by plugin policy. `ur plugin
 doctor` surfaces the capability surface so you can review what a plugin touches
 before enabling it.
+
+The first-party `reverse-skills` plugin demonstrates a mode-gated skill pack.
+It is available only in `/mode redteam`; see [Redteam mode](REDTEAM.md).
 
 ## Troubleshooting
 

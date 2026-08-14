@@ -12,9 +12,14 @@ export class FindingStore {
   private findings: Finding[] = [];
 
   constructor(cwd: string) {
-    this.file = join(cwd, ".309", "security", "findings.json");
+    this.file = join(cwd, ".ur", "security", "findings.json");
+    const legacyFile = join(cwd, ".309", "security", "findings.json");
     try {
-      if (fs.existsSync(this.file)) this.findings = JSON.parse(fs.readFileSync(this.file, "utf8")) as Finding[];
+      const source = fs.existsSync(this.file) ? this.file : fs.existsSync(legacyFile) ? legacyFile : null;
+      if (source) {
+        this.findings = JSON.parse(fs.readFileSync(source, "utf8")) as Finding[];
+        if (source === legacyFile) this.persist();
+      }
     } catch {
       this.findings = [];
     }

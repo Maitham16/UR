@@ -1,0 +1,12 @@
+Reverse Skills for UR contains an adaptation of methods and documentation from:
+
+  reverse-skill
+  https://github.com/zhaoxuya520/reverse-skill
+  upstream commit 289c24b1617411a16b1e8d3032cce0f2fe52911d
+  Copyright (c) 2026 zhaoxuya520
+  Licensed under the MIT License.
+
+The UR adaptation reorganizes the material into UR-native skills, replaces
+cross-client bootstrap behavior with UR scope and permission controls, and
+excludes separately licensed components. No endorsement by the upstream author
+is implied.

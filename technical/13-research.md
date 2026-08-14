@@ -10,6 +10,10 @@ Source of truth: `src/services/research/researchWorkspace.ts`,
 /mode research      # switch the agent's working mode (also: code, debug, browser, image, video, data)
 ```
 
+Security research uses the distinct session-only `/mode redteam`; it has a
+mandatory warning and preserves operational controls. See doc 12 and
+`docs/REDTEAM.md`.
+
 ## Evidence-backed research workspaces
 
 ```sh

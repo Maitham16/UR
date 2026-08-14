@@ -1,0 +1,15 @@
+{
+  "name": "reverse-skills",
+  "version": "1.0.0",
+  "description": "UR-native reverse engineering and red-team research workflows, available exclusively in UR redteam mode.",
+  "author": {
+    "name": "UR maintainers",
+    "url": "https://github.com/Maitham16/UR"
+  },
+  "homepage": "https://github.com/Maitham16/UR/tree/master/plugins/core/reverse-skills",
+  "repository": "https://github.com/Maitham16/UR",
+  "license": "MIT",
+  "keywords": ["redteam", "reverse-engineering", "malware", "exploit-development", "security-research"],
+  "requiredMode": "redteam",
+  "skills": "./skills"
+}

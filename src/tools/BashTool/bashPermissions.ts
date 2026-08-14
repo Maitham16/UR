@@ -2,6 +2,7 @@ import { feature } from 'bun:bundle'
 import { APIUserAbortError } from '@urhq-ai/sdk'
 import type { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { evaluateRedteamShellCommand } from '../../security/redteamShellGate.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -1699,6 +1700,19 @@ export async function bashToolHasPermission(
     getCommandSubcommandPrefix,
 ): Promise<PermissionResult> {
   let appState = context.getAppState()
+
+  const redteamScopeVerdict = evaluateRedteamShellCommand(
+    input.command,
+    getCwd(),
+  )
+  if (redteamScopeVerdict?.allow === false) {
+    const reason = redteamScopeVerdict.reason ?? 'command is outside the approved redteam scope'
+    return {
+      behavior: 'deny',
+      message: `UR redteam scope blocked this command: ${reason}.`,
+      decisionReason: { type: 'other', reason },
+    }
+  }
 
   // 0. AST-based security parse. This replaces both tryParseShellCommand
   // (the shell-quote pre-check) and the bashCommandIsSafe misparsing gate.

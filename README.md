@@ -114,6 +114,14 @@ available, and the approval decision in task evidence. Security-research prompts
 need scoped targets and authorization confirmation; local/lab/test targets are
 preferred unless the user confirms authorized external scope.
 
+Authorized researchers can explicitly activate `/mode redteam`. The first use
+shows a mandatory risk warning; `/mode redteam --accept-risk` acknowledges it
+and enables UR's unrestricted security-research prompt policy for the current
+session only. UR's scope, permissions, sandbox, approvals, and audit controls
+remain enforced, and the selected model/provider keeps its own policies. The
+bundled UR-native `reverse-skills` plugin is runtime-gated to this mode. See the
+[Redteam Mode Guide](docs/REDTEAM.md).
+
 Outside-workspace reads are allowed when requested or clearly required, and the
 outside path is recorded in the task board/evidence. Modifying or deleting
 outside-workspace files requires approval before execution.
@@ -560,6 +568,7 @@ ur plugin search --capability skills --json
 ur plugin show github@ur-plugins-official
 ur plugin doctor
 ur plugin install engineering-discipline@ur-plugins-official
+ur plugin install reverse-skills@ur-plugins-official
 ur plugin install hello@ur-plugins-official
 ur plugin update <plugin>
 ur plugin disable <plugin>

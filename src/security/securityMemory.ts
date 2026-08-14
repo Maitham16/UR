@@ -21,9 +21,11 @@ export type SecurityTable = (typeof SECURITY_TABLES)[number];
 /** JSON-backed security memory, one collection per table. */
 export class SecurityMemory {
   private readonly dir: string;
+  private readonly legacyDir: string;
 
   constructor(cwd: string) {
-    this.dir = join(cwd, ".309", "security", "db");
+    this.dir = join(cwd, ".ur", "security", "db");
+    this.legacyDir = join(cwd, ".309", "security", "db");
   }
 
   private file(t: SecurityTable): string {
@@ -33,6 +35,8 @@ export class SecurityMemory {
   all(t: SecurityTable): Array<Record<string, unknown>> {
     try {
       if (fs.existsSync(this.file(t))) return JSON.parse(fs.readFileSync(this.file(t), "utf8")) as Array<Record<string, unknown>>;
+      const legacy = join(this.legacyDir, `${t}.json`);
+      if (fs.existsSync(legacy)) return JSON.parse(fs.readFileSync(legacy, "utf8")) as Array<Record<string, unknown>>;
     } catch {
       /* ignore */
     }

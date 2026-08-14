@@ -1,6 +1,7 @@
 import memoize from 'lodash-es/memoize.js'
 import { basename, dirname, join } from 'path'
 import { getInlinePlugins, getSessionId } from '../../bootstrap/state.js'
+import { isRedteamModeActive } from '../../security/redteamMode.js'
 import type { Command } from '../../types/command.js'
 import { getPluginErrorMessage } from '../../types/plugin.js'
 import {
@@ -301,6 +302,8 @@ function createPluginCommand(
       type: 'prompt',
       name: commandName,
       description,
+      isEnabled: () =>
+        pluginManifest.requiredMode !== 'redteam' || isRedteamModeActive(),
       hasUserSpecifiedDescription: validatedDescription !== null,
       allowedTools,
       argumentHint,
@@ -324,6 +327,17 @@ function createPluginCommand(
         return displayName || commandName
       },
       async getPromptForCommand(args, context) {
+        if (
+          pluginManifest.requiredMode === 'redteam' &&
+          !isRedteamModeActive()
+        ) {
+          return [
+            {
+              type: 'text',
+              text: `This plugin is available only in UR redteam mode. Run /mode redteam and acknowledge the warning before invoking /${commandName}.`,
+            },
+          ]
+        }
         // For skills from skills/ directory, include base directory
         let finalContent = config.isSkillMode
           ? `Base directory for this skill: ${dirname(file.filePath)}\n\n${content}`

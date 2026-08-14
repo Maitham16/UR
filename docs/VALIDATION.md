@@ -19,10 +19,35 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.80.10 (UR-Nexus)"
+# expected for this release: "1.81.0 (UR-Nexus)"
 ```
 
-### 0.0 Read-only research delegation starts cleanly (1.80.10)
+### 0.0 Redteam mode and Reverse Skills (1.81.0)
+
+```sh
+bun test test/redteamMode.test.ts test/marketplaceTree.test.ts test/settingsDocCoverage.test.ts
+node ./bin/ur.js plugin validate plugins/core/reverse-skills
+```
+
+The tests verify session-dynamic UR policy, the mandatory warning contract,
+topic classification only changing in redteam, current-session scope approval,
+active-tool target enforcement, `.ur/security/` persistence, marketplace
+integrity, settings documentation, and the plugin's `requiredMode` manifest.
+
+Manual interactive check:
+
+```text
+/mode redteam
+/mode redteam --accept-risk
+/mode
+/mode redteam off
+```
+
+The first command must warn without activating; acknowledgement activates only
+the current session; status must show `redteam (session only)`; leaving the mode
+must restore the default UR policy.
+
+### 0.1 Read-only research delegation starts cleanly (1.80.10)
 
 Start an interactive session with task enforcement enabled and ask UR to
 research a change, both normally and from Plan Mode. Before any task exists,

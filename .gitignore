@@ -62,6 +62,7 @@ yarn.lock
 # UR local state that should stay machine-specific
 UR.local.md
 .ur/context/
+.ur/security/
 .ur/plans/
 .ur/settings.local.json
 .ur/*.local.json

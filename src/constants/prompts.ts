@@ -99,7 +99,7 @@ const skillSearchFeatureCheck = feature('EXPERIMENTAL_SKILL_SEARCH')
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import type { OutputStyleConfig } from './outputStyles.js'
-import { CYBER_RISK_INSTRUCTION } from './cyberRiskInstruction.js'
+import { getCyberRiskInstruction } from './cyberRiskInstruction.js'
 import { EXECUTION_CONTRACT_SECTION } from './executionContract.js'
 import { getTaskToolGuidance } from './taskToolGuidance.js'
 
@@ -173,7 +173,6 @@ function getSimpleIntroSection(
   return `
 You are UR, an interactive agent that helps users ${outputStyleConfig !== null ? 'according to your "Output Style" below, which describes how you should respond to user queries.' : 'with software engineering tasks.'} Use the instructions below and the tools available to you to assist the user.
 
-${CYBER_RISK_INSTRUCTION}
 IMPORTANT: You must NEVER generate or guess URLs for the user unless you are confident that the URLs are for helping the user with programming. You may use URLs provided by the user in their messages or local files.`
 }
 
@@ -460,6 +459,7 @@ export async function getSystemPrompt(
   if (isEnvTruthy(process.env.UR_CODE_SIMPLE)) {
     return [
       `You are UR, an AI coding agent.\n\nCWD: ${getCwd()}\nDate: ${getSessionStartDate()}`,
+      getCyberRiskInstruction(),
       EXECUTION_CONTRACT_SECTION,
       `# Tool discipline
 Use the available Read, Edit, and Bash tools to perform work. Inspect relevant content before editing, prefer the narrowest tool, and treat a tool call as successful only after reading its result.`,
@@ -482,9 +482,8 @@ Use the available Read, Edit, and Bash tools to perform work. Inspect relevant c
   ) {
     logForDebugging(`[SystemPrompt] path=simple-proactive`)
     return [
-      `\nYou are UR, an autonomous agent. Use the available tools to do useful work.
-
-${CYBER_RISK_INSTRUCTION}`,
+      `\nYou are UR, an autonomous agent. Use the available tools to do useful work.`,
+      getCyberRiskInstruction(),
       EXECUTION_CONTRACT_SECTION,
       getSystemRemindersSection(),
       await loadMemoryPrompt(),
@@ -503,6 +502,11 @@ ${CYBER_RISK_INSTRUCTION}`,
   }
 
   const dynamicSections = [
+    DANGEROUS_uncachedSystemPromptSection(
+      'cyber_policy',
+      () => getCyberRiskInstruction(),
+      'redteam mode can change between turns',
+    ),
     systemPromptSection('session_guidance', () =>
       getSessionSpecificGuidanceSection(enabledTools, skillToolCommands),
     ),

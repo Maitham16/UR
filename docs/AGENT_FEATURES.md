@@ -9,6 +9,21 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.81.0 Addition
+
+- UR now provides an explicit `/mode redteam` for authorized researchers. A
+  versioned warning must be acknowledged, activation lasts only for the current
+  session, and UR's topic-level security restrictions are replaced dynamically
+  without changing provider/model policy.
+- Engagement scope, permissions, sandboxing, approvals, and evidence remain
+  active. Scope approval is session-bound, and recognized active security tools
+  are blocked at Bash/PowerShell permission entry when targets or parameters are
+  outside it.
+- The official `reverse-skills` plugin adds UR-native reverse engineering,
+  exploit development, malware/EDR, application, platform/radio, forensics,
+  LLM-security, and reporting workflows. Its `requiredMode: "redteam"` manifest
+  gate is enforced during discovery and invocation.
+
 ## v1.80.10 Addition
 
 | Addition | Surface | What it adds |

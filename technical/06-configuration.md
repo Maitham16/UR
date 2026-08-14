@@ -50,11 +50,18 @@ restore their session model without showing the picker.
   "offline": false,
   "effortLevel": "high",
   "fastMode": false, "fastModePerSessionOptIn": false,
+  "redteamWarningAcceptedVersion": 1,
+  "redteamWarningAcceptedAt": "2026-08-14T12:00:00.000Z",
   "advisorModel": "…",
   "alwaysThinkingEnabled": false, "showThinkingSummaries": true,
   "availableModels": [], "modelOverrides": {}
 }
 ```
+
+The two `redteamWarning*` fields only record that the user saw a particular
+warning revision. They do not activate redteam mode, approve a target, relax a
+permission, or override provider/model policy. Redteam activation and scope
+approval are held in memory and expire with the session.
 
 ### Permissions & safety
 ```jsonc

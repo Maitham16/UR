@@ -62,7 +62,7 @@ export function auditTerraform(text: string, asset: string): Finding[] {
   return apply(TF_RULES, text, asset, "iac");
 }
 
-const SKIP = new Set(["node_modules", ".git", "dist", "coverage", ".309"]);
+const SKIP = new Set(["node_modules", ".git", "dist", "coverage", ".309", ".ur"]);
 
 export function auditIaC(root: string): Finding[] {
   const out: Finding[] = [];

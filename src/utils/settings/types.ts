@@ -914,6 +914,21 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'When true, fast mode does not persist across sessions. Each session starts with fast mode off.',
         ),
+      redteamWarningAcceptedVersion: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'Version of the redteam risk warning acknowledged by the user. This does not activate redteam mode or authorize a target.',
+        ),
+      redteamWarningAcceptedAt: z
+        .string()
+        .datetime()
+        .optional()
+        .describe(
+          'Timestamp of the most recent redteam risk-warning acknowledgement.',
+        ),
       promptSuggestionEnabled: z
         .boolean()
         .optional()

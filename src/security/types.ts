@@ -19,6 +19,7 @@ export type RiskLevel = "low" | "medium" | "high" | "critical";
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
 
 export type SecurityMode =
+  | "redteam"
   | "security"
   | "audit"
   | "blue-team"
@@ -40,6 +41,7 @@ export interface Scope {
   evidencePath: string;
   approved: boolean;
   approvalNote?: string;
+  approvalSessionId?: string;
   createdAt: string;
 }
 

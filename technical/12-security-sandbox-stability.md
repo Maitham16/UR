@@ -177,6 +177,35 @@ and roll back if verification fails. The skill runs focused checks, asks before
 the final full verification suite, and never commits, pushes, or opens a PR
 without a separate explicit request.
 
+### Redteam research policy mode
+
+`/mode redteam` is deliberately separate from permission modes and from the
+persisted working-mode file. The first activation emits a versioned mandatory
+warning; `/mode redteam --accept-risk` stores only the acknowledgement and
+activates the mode in the current session. A new session starts inactive.
+
+While active, `getCyberRiskInstruction()` replaces UR's default topic-level
+security restriction with a dynamic, uncached research policy. The FileRead
+malware reminder changes consistently, and `classifyRequest()` treats risky
+research categories as dual-use instead of prompt-level refusals. This affects
+UR policy only; the provider/model remains independent.
+
+Operational controls are not bypassed. `ScopeStore` binds approval to the
+current session ID. `redteamShellGate.ts` sits ahead of Bash and PowerShell
+permission resolution and denies recognized active security tools without an
+approved scope or when their host, port, tool, or intensity is outside it.
+The gate also applies the scope's per-minute command rate and ignores common
+script/output filenames when extracting target hosts.
+Normal permission rules, project safety checks, sandboxing, hooks, and secrets
+handling then continue in their usual order. Security state lives in
+`.ur/security/`; legacy `.309/security/` records migrate on read.
+
+The official `reverse-skills` plugin declares `requiredMode: "redteam"`; plugin
+commands are dynamically disabled outside the mode and rechecked at invocation.
+Its UR-native adaptation retains upstream MIT attribution while excluding the
+GPL CTF subtree, external AGPL services, client bootstrap scripts, and
+machine-specific configuration.
+
 ## Devcontainer execution target (`/devcontainer`, alias `/exec-target`)
 
 Opt-in reproducible container target (`.ur/devcontainer.json`): run commands and

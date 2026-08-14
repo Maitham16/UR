@@ -12,7 +12,7 @@ export interface AttackSurface {
   summary: string;
 }
 
-const SKIP = new Set(["node_modules", ".git", "dist", "coverage", ".309"]);
+const SKIP = new Set(["node_modules", ".git", "dist", "coverage", ".309", ".ur"]);
 
 /** Static attack-surface map of a local codebase (no network, no execution). */
 export function scanWorkspace(root: string, maxFiles = 2000): AttackSurface {

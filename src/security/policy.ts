@@ -1,7 +1,7 @@
 import type { SecurityMode, SecurityToolPolicy } from "./types.ts";
 
-const ALL: SecurityMode[] = ["security", "audit", "blue-team", "purple-team", "pentest-lab", "hardening", "incident-response", "secure-code"];
-const LAB: SecurityMode[] = ["pentest-lab", "purple-team"];
+const ALL: SecurityMode[] = ["redteam", "security", "audit", "blue-team", "purple-team", "pentest-lab", "hardening", "incident-response", "secure-code"];
+const LAB: SecurityMode[] = ["redteam", "pentest-lab", "purple-team"];
 
 /**
  * Catalog of security tools with safety policy. Passive tools run inside the

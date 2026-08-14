@@ -1,4 +1,5 @@
 import type { RequestClass } from "./types.ts";
+import { isRedteamModeActive } from "./redteamMode.ts";
 
 export interface Classification {
   cls: RequestClass;
@@ -34,6 +35,20 @@ const DEFENSIVE = /\b(audit|harden|hardening|secure|security review|code review|
  */
 export function classifyRequest(text: string): Classification {
   const reasons: string[] = [];
+
+  if (isRedteamModeActive()) {
+    if (DEFENSIVE.test(text)) {
+      return { cls: "defensive", reasons: ["defensive research in redteam mode"] };
+    }
+    if (ALWAYS_UNSAFE.some(([, re]) => re.test(text)) || UNAUTHORIZED.test(text) || OFFENSIVE_TOOLING.test(text)) {
+      return {
+        cls: "dual_use",
+        category: "redteam_research",
+        reasons: ["UR topic-level restrictions are disabled in redteam mode; operational scope is enforced separately"],
+      };
+    }
+    return { cls: "defensive", reasons: ["redteam mode active; no operational target inferred"] };
+  }
 
   for (const [category, re] of ALWAYS_UNSAFE) {
     if (re.test(text)) {

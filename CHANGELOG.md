@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.81.0
+
+- Added `/mode redteam`, a warning-gated, session-only UR policy mode for
+  complete authorized security research. The mode changes UR's dynamic system
+  and file-analysis guidance without claiming to override the selected
+  provider/model's independent policies.
+- Kept operational controls intact: security scope approval is now bound to the
+  current session, active Bash and PowerShell security tools are blocked outside
+  approved hosts/ports/tools/intensity, and security state moved to the
+  gitignored `.ur/security/` with legacy `.309/security/` migration.
+- Added the first-party `reverse-skills` plugin, an UR-native adaptation of the
+  MIT-licensed `zhaoxuya520/reverse-skill` research methodology. Plugin commands
+  and skills declare `requiredMode: "redteam"` and are disabled outside it;
+  cross-client bootstrap code and separately licensed components are excluded.
+- Documented activation, warnings, provider boundaries, manifest gating, scope
+  behavior, provenance, and the full research capability map, with regression
+  tests for policy switching, classification, scope enforcement, storage, and
+  manifest validation.
+
 ## 1.80.10
 
 - Fixed the underlying cause of task-free research still returning

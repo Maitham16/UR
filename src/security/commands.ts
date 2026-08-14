@@ -26,7 +26,7 @@ import { listPlaybooks, showPlaybook } from "./playbooks.ts";
 import { secureApi, secureCi, secureDeploy, secureDesign, secureDocker } from "./coach.ts";
 import type { Finding, Intensity, SecurityMode, TargetType } from "./types.ts";
 
-const SKIP = new Set(["node_modules", ".git", "dist", "coverage", ".309"]);
+const SKIP = new Set(["node_modules", ".git", "dist", "coverage", ".309", ".ur"]);
 
 function resolveInside(cwd: string, p: string): string | null {
   const root = fs.realpathSync(cwd);
@@ -61,9 +61,9 @@ function collect(target: string, exts: RegExp): string[] {
   return out;
 }
 
-const HELP = `309 security commands:
-  /mode <security|audit|blue-team|purple-team|pentest-lab|hardening|incident-response|secure-code>
-  /scope show | set local | set <type> <target> | add-target <host> | allow-port <n> | deny-target <host> | intensity <level> | approve | clear
+const HELP = `UR security commands:
+  /mode <redteam|security|audit|blue-team|purple-team|pentest-lab|hardening|incident-response|secure-code>
+  /scope show | set local | set <type> <target> | add-target <host> | allow-port <n> | allow-tool <name> | deny-target <host> | intensity <level> | rate <n> | approve | clear
   /security status | rules | classify <text> | safe-alternative <text>
   /security scan | code <path> | secrets <path> | attack-surface | dependencies
   /security report [markdown|json|sarif|csv] | findings
@@ -72,7 +72,10 @@ Active/destructive tools (nmap, sqlmap, hydra, metasploit, ...) are detected and
 
 function readMode(cwd: string): SecurityMode {
   try {
-    const m = fs.readFileSync(path.join(cwd, ".309", "security", "mode"), "utf8").trim();
+    const current = path.join(cwd, ".ur", "security", "mode");
+    const legacy = path.join(cwd, ".309", "security", "mode");
+    const file = fs.existsSync(current) ? current : legacy;
+    const m = fs.readFileSync(file, "utf8").trim();
     if ((SECURITY_MODES as string[]).includes(m)) return m as SecurityMode;
   } catch {
     /* default */
@@ -81,8 +84,8 @@ function readMode(cwd: string): SecurityMode {
 }
 
 function writeMode(cwd: string, m: SecurityMode): void {
-  fs.mkdirSync(path.join(cwd, ".309", "security"), { recursive: true });
-  fs.writeFileSync(path.join(cwd, ".309", "security", "mode"), m);
+  fs.mkdirSync(path.join(cwd, ".ur", "security"), { recursive: true });
+  fs.writeFileSync(path.join(cwd, ".ur", "security", "mode"), m);
 }
 
 export async function handleSecurityCommand(tokens: string[], cwd: string): Promise<string> {
@@ -110,6 +113,8 @@ export async function handleSecurityCommand(tokens: string[], cwd: string): Prom
 
   if (head === "scope") {
     const s = scope.get();
+    const targetTypes: TargetType[] = ["local-workspace", "local-machine", "lab-vm", "owned-server", "owned-network", "ctf-lab", "third-party-authorized"];
+    const intensities: Intensity[] = ["passive", "safe", "normal", "aggressive-lab-only"];
     switch (sub) {
       case "":
       case "show":
@@ -119,7 +124,7 @@ export async function handleSecurityCommand(tokens: string[], cwd: string): Prom
           scope.setLocal();
           return "scope = local workspace (localhost only)";
         }
-        if (!rest[1]) return "usage: /scope set <type> <target>";
+        if (!rest[1] || !targetTypes.includes(rest[0] as TargetType)) return `usage: /scope set <${targetTypes.join("|")}> <target>`;
         scope.setTarget(rest[1], rest[0] as TargetType);
         return `scope target = ${rest[1]} (${rest[0]}). Not approved yet — run /scope approve.`;
       case "add-target":
@@ -129,11 +134,25 @@ export async function handleSecurityCommand(tokens: string[], cwd: string): Prom
         scope.denyTarget(rest[0] ?? "");
         return `denied host: ${rest[0]}`;
       case "allow-port":
+        if (!s) return "set a scope first";
+        if (!Number.isInteger(Number(rest[0])) || Number(rest[0]) < 1 || Number(rest[0]) > 65535) return "port must be an integer from 1 to 65535";
         scope.allowPort(Number(rest[0]));
         return `allowed port: ${rest[0]}`;
+      case "allow-tool":
+        if (!s) return "set a scope first";
+        if (!rest[0]) return "usage: /scope allow-tool <name>";
+        scope.allowTool(rest[0]);
+        return `allowed tool: ${rest[0]}`;
       case "intensity":
-        scope.setIntensity((rest[0] as Intensity) ?? "passive");
+        if (!s) return "set a scope first";
+        if (!intensities.includes(rest[0] as Intensity)) return `intensity must be one of: ${intensities.join(", ")}`;
+        scope.setIntensity(rest[0] as Intensity);
         return `intensity = ${rest[0]}`;
+      case "rate":
+        if (!s) return "set a scope first";
+        if (!Number.isInteger(Number(rest[0])) || Number(rest[0]) < 1 || Number(rest[0]) > 600) return "rate must be an integer from 1 to 600 commands per minute";
+        scope.setRateLimit(Number(rest[0]));
+        return `rate limit = ${rest[0]} command(s) per minute`;
       case "approve":
         if (!s) return "set a scope first";
         scope.approve(rest.join(" "));

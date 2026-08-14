@@ -74,8 +74,8 @@ const featureGroups = [
   {
     title: 'Security and operations',
     tags: ['sandbox', 'scope', 'diagnostics', 'policy'],
-    text: 'Permission modes, project safety policy, allow/deny tool lists, optional OS sandboxing, diagnostic commands, security scope, threat modeling, hardening, and vulnerability checks.',
-    commands: ['ur safety', 'ur doctor', '/sandbox', '/scope', '/security', '/vuln'],
+    text: 'Permission modes, project safety policy, allow/deny tool lists, optional OS sandboxing, diagnostic commands, security scope, and a warning-gated, session-only redteam research policy that leaves provider/model policy independent.',
+    commands: ['ur safety', 'ur doctor', '/sandbox', '/mode redteam', '/scope', '/security', '/vuln'],
   },
 ];
 
@@ -552,8 +552,8 @@ const slashGroups = [
   },
   {
     title: 'Security operations',
-    items: ['/safety', '/security', '/scope', '/threat-model', '/compliance', '/lab', '/playbook', '/kali', '/harden', '/vuln', '/ir'],
-    text: 'Read-only security workflows, test scope definition, threat modeling, hardening, vulnerability checks, and incident response.',
+    items: ['/safety', '/mode redteam', '/security', '/scope', '/threat-model', '/compliance', '/lab', '/playbook', '/kali', '/harden', '/vuln', '/ir'],
+    text: 'Read-only security workflows plus a warning-gated, session-only redteam research policy. Redteam keeps scope, permissions, sandboxing, approvals, evidence, and provider/model policy independent.',
   },
   {
     title: 'Media and research',
