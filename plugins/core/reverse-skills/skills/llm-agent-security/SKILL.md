@@ -1,7 +1,7 @@
 ---
 name: llm-agent-security
 description: Test LLM and agent systems for prompt injection, tool abuse, memory poisoning, data leakage, unsafe autonomy, identity failures, and model or skill supply-chain risks.
-allowed-tools: Read Grep Glob Bash Edit Write WebFetch WebSearch
+allowed-tools: Read Grep Glob Bash Edit Write WebFetch WebSearch TaskCreate TaskList TaskUpdate
 ---
 
 # LLM and agent security

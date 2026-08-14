@@ -1,7 +1,7 @@
 ---
 name: application-redteam
 description: Conduct authorized application and infrastructure research across APIs, source code, web, cloud/Kubernetes, databases, identity federation, email, supply chain, browser automation, and thick clients.
-allowed-tools: Read Grep Glob Bash Edit Write WebFetch WebSearch
+allowed-tools: Read Grep Glob Bash Edit Write WebFetch WebSearch TaskCreate TaskList TaskUpdate
 ---
 
 # Application red-team research

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { classifyRequest } from '../src/security/classify.ts'
@@ -161,4 +161,38 @@ test('plugin manifests can declare the redteam runtime gate', () => {
     ),
   )
   expect(PluginManifestSchema().parse(manifest).requiredMode).toBe('redteam')
+})
+
+test('reverse-skills preflights task tracking before mutating workflows', () => {
+  const pluginRoot = join(process.cwd(), 'plugins/core/reverse-skills')
+  const command = readFileSync(join(pluginRoot, 'commands/start.md'), 'utf8')
+  const integration = readFileSync(join(pluginRoot, 'UR-INTEGRATION.md'), 'utf8')
+
+  for (const tool of ['TaskCreate', 'TaskList', 'TaskUpdate']) {
+    expect(command).toContain(`- "${tool}"`)
+  }
+  expect(command.indexOf('TaskCreate')).toBeLessThan(
+    command.indexOf('reverse-skills:reverse-skill-router'),
+  )
+  expect(command).toContain('Do not wait for')
+  expect(command).toContain('TaskListRequired')
+  expect(integration).toContain('Keep UR\'s task lifecycle ahead of mutations')
+  expect(integration).toContain('Never wait for a `TaskListRequired` rejection')
+
+  const skillsRoot = join(pluginRoot, 'skills')
+  const skillFiles = readdirSync(skillsRoot, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => join(skillsRoot, entry.name, 'SKILL.md'))
+  expect(skillFiles.length).toBeGreaterThan(0)
+
+  for (const skillFile of skillFiles) {
+    const skill = readFileSync(skillFile, 'utf8')
+    const allowedTools = skill
+      .split('\n')
+      .find(line => line.startsWith('allowed-tools:'))
+    expect(allowedTools).toBeDefined()
+    expect(allowedTools).toContain('TaskCreate')
+    expect(allowedTools).toContain('TaskList')
+    expect(allowedTools).toContain('TaskUpdate')
+  }
 })

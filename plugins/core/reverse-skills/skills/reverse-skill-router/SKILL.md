@@ -1,7 +1,7 @@
 ---
 name: reverse-skill-router
 description: Route an authorized reverse engineering or red-team research task to the correct UR specialist skill. Use when a task spans domains or its best entrypoint is unclear.
-allowed-tools: Read Grep Glob Bash
+allowed-tools: Read Grep Glob Bash Skill TaskCreate TaskList TaskUpdate
 ---
 
 # Reverse Skills router

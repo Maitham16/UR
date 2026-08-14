@@ -1,7 +1,7 @@
 ---
 name: forensics-threat-hunting
 description: Perform disk, memory, packet, and log forensics; build timelines and IOCs; create YARA/Sigma detections; and conduct evidence-driven threat hunts.
-allowed-tools: Read Grep Glob Bash Edit Write
+allowed-tools: Read Grep Glob Bash Edit Write TaskCreate TaskList TaskUpdate
 ---
 
 # Forensics and threat hunting

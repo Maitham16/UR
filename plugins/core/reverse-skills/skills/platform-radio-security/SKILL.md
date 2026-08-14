@@ -1,7 +1,7 @@
 ---
 name: platform-radio-security
 description: Research mobile apps, firmware, embedded hardware, OT/ICS systems, Wi-Fi, wireless, and SDR/radio targets in owned or explicitly authorized labs.
-allowed-tools: Read Grep Glob Bash Edit Write
+allowed-tools: Read Grep Glob Bash Edit Write TaskCreate TaskList TaskUpdate
 ---
 
 # Platform, device, and radio security

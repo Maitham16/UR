@@ -12,6 +12,12 @@ The integration is UR-only:
 
 Start with `/reverse-skills:start <task>` (or invoke the `reverse-skills:reverse-skill-router` skill directly). The router selects one or more specialist skills covering binary reverse engineering, exploitation, application testing, malware/EDR research, platform and radio security, forensics, LLM security, and evidence/reporting.
 
+For multi-outcome or workspace-changing research, the command and every
+specialist skill expose UR's task tools and require an actionable task board
+before Bash, edits, writes, or delegation. This keeps the normal
+`tasks.requireBeforeChanges` protection enabled without a failed-first
+`TaskListRequired` retry.
+
 ## Provenance
 
 The adaptation is based on upstream commit `289c24b1617411a16b1e8d3032cce0f2fe52911d` (MIT). UR excludes the upstream GPL CTF orchestrator, external AGPL services, client-specific bootstrap scripts, field journals, and machine-specific configuration. See `NOTICE` and `UPSTREAM-LICENSE`.

@@ -47,7 +47,14 @@ describe('command registry integrity', () => {
     clearCommandsCache()
 
     try {
-      const commands = await getCommands(process.cwd())
+      // User-installed marketplace plugins are intentionally namespaced with
+      // colons and vary by machine. Their manifests have separate validation;
+      // this registry invariant covers the deterministic shipped core.
+      const commands = (await getCommands(process.cwd())).filter(
+        command =>
+          command.type !== 'prompt' ||
+          (command.source !== 'plugin' && command.source !== 'mcp'),
+      )
       expect(commands.length).toBeGreaterThan(100)
 
       const owners = new Map<string, string>()

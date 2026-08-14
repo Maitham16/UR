@@ -61,4 +61,10 @@ Install/enable it from the official marketplace if it is not already enabled, ac
 /reverse-skills:start <research task>
 ```
 
+The command preflights UR's visible task lifecycle for multi-outcome or
+workspace-changing work. It creates an actionable board before Bash, edits,
+writes, or delegation, so `tasks.requireBeforeChanges` remains enabled without
+surfacing a failed-first `TaskListRequired` tool call. Direct specialist-skill
+invocations follow the same contract.
+
 Review [the plugin README](../plugins/core/reverse-skills/README.md) for its capability map and provenance.

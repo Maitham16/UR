@@ -1,6 +1,6 @@
 {
   "name": "reverse-skills",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "UR-native reverse engineering and red-team research workflows, available exclusively in UR redteam mode.",
   "author": {
     "name": "UR maintainers",

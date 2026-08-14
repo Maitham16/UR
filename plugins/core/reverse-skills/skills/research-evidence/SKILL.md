@@ -1,7 +1,7 @@
 ---
 name: research-evidence
 description: Establish scope, review case integrity, preserve evidence-to-finding traceability, generate security diagrams, and produce reproducible technical reports.
-allowed-tools: Read Grep Glob Bash Edit Write
+allowed-tools: Read Grep Glob Bash Edit Write TaskCreate TaskList TaskUpdate
 ---
 
 # Research evidence and reporting

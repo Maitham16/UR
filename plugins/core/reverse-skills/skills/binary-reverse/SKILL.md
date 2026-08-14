@@ -1,7 +1,7 @@
 ---
 name: binary-reverse
 description: Reverse compiled, managed, packed, obfuscated, browser, bytecode, VM, or protocol artifacts using static and dynamic analysis. Covers IDA, Ghidra, radare2, .NET, Go/Rust, macOS, JavaScript, browser extensions, binary diffing, and protocol reconstruction.
-allowed-tools: Read Grep Glob Bash Edit Write
+allowed-tools: Read Grep Glob Bash Edit Write TaskCreate TaskList TaskUpdate
 ---
 
 # Binary reverse engineering

@@ -15,6 +15,12 @@ import { Verifier } from '../src/services/verifier'
 const TURN = '00000000-0000-0000-0000-000000000001'
 const NEXT_TURN = '00000000-0000-0000-0000-000000000002'
 
+function createVerifier(
+  options: ConstructorParameters<typeof Verifier>[0],
+): Verifier {
+  return new Verifier({ ...options, pluginValidators: [] })
+}
+
 function fakeToolUse(name: string, input: any, id = 'tu_1') {
   return { type: 'tool_use', id, name, input } as any
 }
@@ -284,7 +290,7 @@ describe('Verifier integration', () => {
   test('rejects overall completion while actionable tasks remain', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({
+      const v = createVerifier({
         cwd,
         getActionableTasks: async () => [
           {
@@ -321,7 +327,7 @@ describe('Verifier integration', () => {
   test('allows an evidenced completion when no actionable tasks remain', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({
+      const v = createVerifier({
         cwd,
         getActionableTasks: async () => [],
       })
@@ -343,7 +349,7 @@ describe('Verifier integration', () => {
   test('fails closed when task completion state cannot be verified', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({
+      const v = createVerifier({
         cwd,
         getActionableTasks: async () => {
           throw new Error('corrupt task snapshot')
@@ -369,7 +375,7 @@ describe('Verifier integration', () => {
   test('passes when the agent claimed work and actually did it', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN)
       v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/x' }), true)
       const r = await v.checkTurn(TURN, 'I created the file.', true)
@@ -382,7 +388,7 @@ describe('Verifier integration', () => {
   test('PowerShell success satisfies a command run claim', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN)
       v.recordToolCall(
         TURN,
@@ -399,7 +405,7 @@ describe('Verifier integration', () => {
   test('failed PowerShell does not satisfy a command run claim', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN)
       v.recordToolCall(
         TURN,
@@ -419,7 +425,7 @@ describe('Verifier integration', () => {
   test('rejects when the agent claims work but never wrote anything', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN)
       const r = await v.checkTurn(TURN, 'I created the file.', false)
       expect(r.ok).toBe(false)
@@ -432,7 +438,7 @@ describe('Verifier integration', () => {
   test('rejects when the agent promises to write but ends without a tool call', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN)
       const r = await v.checkTurn(TURN, 'Let me create index.html now.', false)
       expect(r.ok).toBe(false)
@@ -445,7 +451,7 @@ describe('Verifier integration', () => {
   test('rejects an empty turn', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN)
       const r = await v.checkTurn(TURN, '', false)
       expect(r.ok).toBe(false)
@@ -458,7 +464,7 @@ describe('Verifier integration', () => {
   test('bail-out after maxRejectionsPerTurn so the agent does not loop forever', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd, maxRejectionsPerTurn: 2 })
+      const v = createVerifier({ cwd, maxRejectionsPerTurn: 2 })
       v.beginTurn(TURN)
       // First two empty turns rejected
       expect((await v.checkTurn(TURN, '', false)).ok).toBe(false)
@@ -478,7 +484,7 @@ describe('Verifier integration', () => {
         join(cwd, '.ur', 'verify.json'),
         JSON.stringify({ afterEdit: ['false'] }),
       )
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN)
       v.recordToolCall(
         TURN,
@@ -501,7 +507,7 @@ describe('Verifier integration', () => {
         join(cwd, '.ur', 'verify.json'),
         JSON.stringify({ afterEdit: ['true'] }),
       )
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN)
       v.recordToolCall(
         TURN,
@@ -523,7 +529,7 @@ describe('Verifier integration', () => {
         join(cwd, '.ur', 'verify.json'),
         JSON.stringify({ afterEdit: ['bun test'] }),
       )
-      const v = new Verifier({ cwd, askBeforeGates: true })
+      const v = createVerifier({ cwd, askBeforeGates: true })
       v.beginTurn(TURN)
       v.recordToolCall(
         TURN,
@@ -564,7 +570,7 @@ describe('Verifier integration', () => {
         test: appendGateScript('test'),
         lint: appendGateScript('lint'),
       })
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN)
       v.recordToolCall(
         TURN,
@@ -589,7 +595,7 @@ describe('Verifier integration', () => {
         test: appendGateScript('test'),
         lint: appendGateScript('lint'),
       })
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN)
       v.recordToolCall(
         TURN,
@@ -620,7 +626,7 @@ describe('Verifier integration', () => {
         join(cwd, '.ur', 'verify.json'),
         JSON.stringify({ afterEdit: ['true'] }),
       )
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN)
       v.recordToolCall(
         TURN,
@@ -645,7 +651,7 @@ describe('Verifier integration', () => {
         join(cwd, '.ur', 'verify.json'),
         JSON.stringify({ ignorePatterns: ['docs/**'] }),
       )
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN)
       v.recordToolCall(
         TURN,
@@ -666,7 +672,7 @@ describe('Verifier L2 subagent nudge', () => {
     const prev = process.env.UR_VERIFIER_AUTO_SUBAGENT
     delete process.env.UR_VERIFIER_AUTO_SUBAGENT
     try {
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN, 'please fix bug X')
       v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a.ts' }), true)
       expect(v.shouldNudgeSubagent(TURN, false)).toBeNull()
@@ -681,7 +687,7 @@ describe('Verifier L2 subagent nudge', () => {
     const prev = process.env.UR_VERIFIER_AUTO_SUBAGENT
     process.env.UR_VERIFIER_AUTO_SUBAGENT = '1'
     try {
-      const v = new Verifier({ cwd })
+      const v = createVerifier({ cwd })
       v.beginTurn(TURN, 'please fix bug X')
       v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a.ts' }), true)
       expect(v.shouldNudgeSubagent(TURN, false)).not.toBeNull()
@@ -695,7 +701,7 @@ describe('Verifier L2 subagent nudge', () => {
   test('nudges once when the turn modified files and no tool call is queued', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd, enableSubagentNudge: true })
+      const v = createVerifier({ cwd, enableSubagentNudge: true })
       v.beginTurn(TURN, 'please fix bug X')
       v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a.ts' }), true)
       const nudge = v.shouldNudgeSubagent(TURN, false)
@@ -714,7 +720,7 @@ describe('Verifier L2 subagent nudge', () => {
   test('does not nudge when the turn still has tool calls queued', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd, enableSubagentNudge: true })
+      const v = createVerifier({ cwd, enableSubagentNudge: true })
       v.beginTurn(TURN)
       v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a' }), true)
       expect(v.shouldNudgeSubagent(TURN, true)).toBeNull()
@@ -726,7 +732,7 @@ describe('Verifier L2 subagent nudge', () => {
   test('does not nudge for read-only turns', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd, enableSubagentNudge: true })
+      const v = createVerifier({ cwd, enableSubagentNudge: true })
       v.beginTurn(TURN)
       v.recordToolCall(TURN, fakeToolUse('Read', { file_path: '/a' }), true)
       v.recordToolCall(TURN, fakeToolUse('Grep', { pattern: 'x' }, 'tu_2'), true)
@@ -739,7 +745,7 @@ describe('Verifier L2 subagent nudge', () => {
   test('respects enableSubagentNudge=false', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd, enableSubagentNudge: false })
+      const v = createVerifier({ cwd, enableSubagentNudge: false })
       v.beginTurn(TURN)
       v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a' }), true)
       expect(v.shouldNudgeSubagent(TURN, false)).toBeNull()
@@ -751,7 +757,7 @@ describe('Verifier L2 subagent nudge', () => {
   test('nudge resets after endTurn so the next turn can nudge again', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd, enableSubagentNudge: true })
+      const v = createVerifier({ cwd, enableSubagentNudge: true })
       v.beginTurn(TURN)
       v.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a' }), true)
       v.markSubagentNudged(TURN)
@@ -769,7 +775,7 @@ describe('Verifier mode', () => {
   test('mode=off skips all checks and disables the nudge', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'ur-verifier-'))
     try {
-      const v = new Verifier({ cwd, mode: 'off' })
+      const v = createVerifier({ cwd, mode: 'off' })
       v.beginTurn(TURN)
       // Lying about work in off mode passes
       const r = await v.checkTurn(TURN, 'I created the file.', false)
@@ -793,7 +799,7 @@ describe('Verifier mode', () => {
         join(cwd, '.ur', 'verify.json'),
         JSON.stringify({ afterEdit: ['false'] }),
       )
-      const v = new Verifier({ cwd, mode: 'loose' })
+      const v = createVerifier({ cwd, mode: 'loose' })
       v.beginTurn(TURN)
       // Lying about work — done-claim is OFF in loose, this passes
       const lyingResult = await v.checkTurn(TURN, 'I created the file.', false)
@@ -820,13 +826,13 @@ describe('Verifier mode', () => {
     delete process.env.UR_VERIFIER_AUTO_SUBAGENT
     try {
       // Default (opt-in off): loose does not auto-spawn the subagent.
-      const off = new Verifier({ cwd, mode: 'loose' })
+      const off = createVerifier({ cwd, mode: 'loose' })
       off.beginTurn(TURN, 'fix bug X')
       off.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a' }), true)
       expect(off.shouldNudgeSubagent(TURN, false)).toBeNull()
 
       // Unlike mode=off, loose still permits L2 when explicitly enabled.
-      const on = new Verifier({ cwd, mode: 'loose', enableSubagentNudge: true })
+      const on = createVerifier({ cwd, mode: 'loose', enableSubagentNudge: true })
       on.beginTurn(TURN, 'fix bug X')
       on.recordToolCall(TURN, fakeToolUse('Write', { file_path: '/a' }), true)
       expect(on.shouldNudgeSubagent(TURN, false)).not.toBeNull()

@@ -80,6 +80,8 @@ export type VerifierOptions = {
   getActionableTasks?: () => Promise<
     Array<Pick<Task, 'id' | 'subject' | 'status'>>
   >
+  /** Test/embedding override that prevents ambient user plugins affecting a run. */
+  pluginValidators?: PluginValidator[]
 }
 
 export type CheckResult = { ok: true } | { ok: false; reminder: string }
@@ -116,7 +118,10 @@ export class Verifier {
     this.maxRejections = options.maxRejectionsPerTurn ?? DEFAULT_MAX_REJECTIONS_PER_TURN
     this.loops = new LoopDetector(options.repeatThreshold)
     this.configPromise = loadVerifyConfig(options.cwd)
-    this.pluginValidatorsPromise = loadPluginValidators()
+    this.pluginValidatorsPromise =
+      options.pluginValidators === undefined
+        ? loadPluginValidators()
+        : Promise.resolve(options.pluginValidators)
     this.mode = resolveMode(options.mode)
     this.askBeforeGatesOverride = options.askBeforeGates
     this.getActionableTasks =

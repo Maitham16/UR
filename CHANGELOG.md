@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.81.1
+
+- Preflighted UR task tracking in `/reverse-skills:start` and every bundled
+  reverse-security skill before mutating, multi-outcome workflows. The plugin
+  now creates and advances an actionable task board instead of first tripping
+  `TaskListRequired`, while keeping `tasks.requireBeforeChanges` enabled.
+- Made verifier and command-registry tests independent of globally installed
+  plugins, so release checks remain reproducible when marketplace validators
+  and namespaced commands are enabled on the developer machine.
+
 ## 1.81.0
 
 - Added `/mode redteam`, a warning-gated, session-only UR policy mode for
