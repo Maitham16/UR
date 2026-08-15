@@ -241,10 +241,14 @@ export function formatRuntimeDispatchError({
   suggestedModel?: string
 }): string {
   const provider = resolveProviderId(providerId) ?? String(providerId)
-  const valid =
-    validModels?.length
-      ? validModels.join(', ')
-      : getValidModelIdsForProvider(provider).join(', ') || '(no models discovered)'
+  const discoveredModels = validModels?.length
+    ? validModels
+    : getValidModelIdsForProvider(provider)
+  const visibleModels = discoveredModels.slice(0, 8)
+  const hiddenCount = discoveredModels.length - visibleModels.length
+  const valid = discoveredModels.length
+    ? `${visibleModels.join(', ')}${hiddenCount > 0 ? `, … and ${hiddenCount} more` : ''}`
+    : '(no models discovered)'
   const suggestion =
     suggestedModel ??
     getDefaultModelForProvider(provider) ??

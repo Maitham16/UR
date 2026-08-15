@@ -75,6 +75,12 @@ const outputSchema = lazySchema(() =>
     durationSeconds: z
       .number()
       .describe('Time taken to complete the search operation'),
+    searchCount: z
+      .number()
+      .int()
+      .nonnegative()
+      .optional()
+      .describe('Provider-reported number of web searches performed'),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -103,6 +109,7 @@ function makeOutputFromSearchResponse(
   result: BetaContentBlock[],
   query: string,
   durationSeconds: number,
+  searchCount?: number,
 ): Output {
   // The result is a sequence of these blocks:
   // - text to start -- always?
@@ -162,6 +169,7 @@ function makeOutputFromSearchResponse(
     query,
     results,
     durationSeconds,
+    ...(searchCount !== undefined ? { searchCount } : {}),
   }
 }
 
@@ -327,7 +335,9 @@ export const WebSearchTool = buildTool({
     const startTime = performance.now()
     const { query } = input
     const userMessage = createUserMessage({
-      content: 'Perform a web search for the query: ' + query,
+      content:
+        'You MUST use the provided web search tool at least once. Perform a web search for the query: ' +
+        query,
     })
     const budget = reserveWebSearchBudget(8)
     if (budget.granted === 0) {
@@ -355,7 +365,9 @@ export const WebSearchTool = buildTool({
       signal: context.abortController.signal,
       options: {
         getToolPermissionContext: async () => appState.toolPermissionContext,
-        model: usemodelH ? getSmallFastModel() : context.options.mainLoopModel,
+        model: usemodelH
+          ? getSmallFastModel(appState.provider)
+          : context.options.mainLoopModel,
         toolChoice: usemodelH ? { type: 'tool', name: 'web_search' } : undefined,
         isNonInteractiveSession: context.options.isNonInteractiveSession,
         hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
@@ -380,6 +392,10 @@ export const WebSearchTool = buildTool({
       for await (const event of queryStream) {
       if (event.type === 'assistant') {
         allContentBlocks.push(...event.message.content)
+        actualSearches = Math.max(
+          actualSearches,
+          event.message.usage?.server_tool_use?.web_search_requests ?? 0,
+        )
         continue
       }
 
@@ -483,7 +499,13 @@ export const WebSearchTool = buildTool({
       allContentBlocks,
       query,
       durationSeconds,
+      actualSearches,
     )
+    if (actualSearches === 0) {
+      throw new Error(
+        'The selected provider returned text without performing a web search. Retry with a model that supports OpenRouter web search or switch providers.',
+      )
+    }
     return { data }
   },
   mapToolResultToToolResultBlockParam(output, toolUseID) {

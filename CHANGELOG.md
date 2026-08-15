@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.81.3
+
+- Brightened the welcome-screen UR wordmark with a polished three-tone finish:
+  luminous faces, top-left specular highlights, dimensional orange edges, and
+  a fully illuminated tagline. The screen-reader rendering remains unchanged.
+- Rebuilt the OpenRouter `/model` experience around its live catalog: concise
+  FREE/PAID, context, tool, and reasoning badges; visible live/cache status;
+  professional navigation hints; and working Left/Right effort controls in the
+  provider-first picker that UR actually opens.
+- Kept Claude, OpenAI, Gemini, and OpenRouter API-key entry on one aligned,
+  responsive row. Secrets remain masked and are still stored through UR's OS
+  keychain flow rather than settings files.
+- Fixed WebFetch and WebSearch auxiliary requests selecting the internal
+  `modelH` placeholder instead of the active external-provider model. OpenRouter
+  WebSearch now uses its native server-tool contract, preserves provider search
+  usage, rejects false zero-search successes, and reports large model catalogs
+  concisely instead of flooding the terminal.
+
 ## 1.81.2
 
 - Fixed `/effort max` being acknowledged as `max` while OpenRouter requests,

@@ -143,6 +143,12 @@ incompatible saved model instead of silently carrying it across providers. The
 saved provider/model pair controls the runtime backend for the next agent
 request; Ollama is only used when `ollama` is the selected provider.
 
+In the model step, Up/Down browses, Left/Right changes the focused model's
+supported effort level, Enter confirms, Ctrl+R refreshes the catalog, and Esc
+returns to providers. OpenRouter entries show pricing tier, context size,
+tool/reasoning capability, and live/cache catalog status. API-provider secret
+entry stays on one masked row and stores the value through the keychain flow.
+
 The same provider-first picker is mandatory on the first interactive run in a
 workspace with no model in `.ur/settings.json` or `.ur/settings.local.json`.
 The result is validated and written to the gitignored local settings file.

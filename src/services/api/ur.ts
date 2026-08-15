@@ -3419,7 +3419,7 @@ export async function querymodelH({
         signal,
         options: {
           ...options,
-          model: getSmallFastModel(),
+          model: getSmallFastModel(options.providerSettings),
           enablePromptCaching: options.enablePromptCaching ?? false,
           outputFormat,
           async getToolPermissionContext() {

@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.81.2 (UR-Nexus)"
+# expected for this release: "1.81.3 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -70,6 +70,28 @@ changes must remain blocked. The deterministic regressions are:
 
 ```sh
 bun test test/taskListGate.test.ts test/toolExecutionFinalInput.test.ts
+```
+
+### 0.0.0 OpenRouter research routing and provider UI (1.81.3)
+
+Connect OpenRouter, run `/model`, select OpenRouter, and verify that its model
+step shows catalog freshness plus pricing/context/tool/reasoning details. Focus
+a reasoning model and press Left/Right; the displayed effort must change and
+the confirmed value must match the status line. Open the OpenAI API or Claude
+API connection flow and verify the masked `API key` label and entry remain on
+one horizontal row.
+
+Then ask UR to research a current topic with WebSearch and WebFetch. Expected:
+the auxiliary request stays on the active OpenRouter model, no `modelH` error
+appears, a real provider search count is shown, and a response that did not
+perform a search fails clearly instead of saying `Did 0 searches`.
+
+Deterministic coverage:
+
+```sh
+bun test test/providerPickerPresentation.test.ts \
+  test/secondaryModelFallback.test.ts test/providerToolCalls.test.ts \
+  test/usageAccounting.test.ts test/providerRouting.test.ts
 ```
 
 ### 0.0.1 Unavailable Ollama tools recover (1.80.7)

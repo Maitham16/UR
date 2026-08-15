@@ -2636,7 +2636,11 @@ export function formatInvalidProviderModelMessage(
   suggestedModel?: string,
 ): string {
   const provider = resolveProviderId(providerId) ?? String(providerId)
-  const validList = validModels.length > 0 ? validModels.join(', ') : '(no models discovered)'
+  const visibleModels = validModels.slice(0, 8)
+  const hiddenCount = validModels.length - visibleModels.length
+  const validList = validModels.length > 0
+    ? `${visibleModels.join(', ')}${hiddenCount > 0 ? `, … and ${hiddenCount} more` : ''}`
+    : '(no models discovered)'
   const suggested = suggestedModel ?? validModels[0] ?? '<valid-model>'
   return `Model "${modelId}" is not available for provider "${provider}". Valid models for ${provider}: ${validList}. Run /model and choose a model from ${provider}, or run: ur config set model ${suggested}`
 }

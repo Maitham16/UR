@@ -353,6 +353,12 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    their curated model list because the official CLIs expose no models API. The
    generic `subscription` entry is an internal placeholder hidden from listings.
 
+   In the model catalog, use **Up/Down** to browse and **Left/Right** to change
+   the focused model's effort before pressing Enter. OpenRouter additionally
+   shows FREE/PAID tier, context size, tool/reasoning support, and whether its
+   catalog is live or cached. API-key entry is masked, aligned on one row, and
+   stored through the OS keychain flow.
+
 Model lists never cross providers: OpenAI API, Claude API, Gemini API,
 OpenRouter, Ollama, and OpenAI-compatible local/server endpoints are separate
 access paths. API keys, local runtimes, and subscription logins are not

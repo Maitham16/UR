@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   createProviderClient,
+  formatRuntimeDispatchError,
   resolveActiveProviderModel,
   sendModelRequest,
   streamModelResponse,
@@ -29,6 +30,20 @@ afterEach(() => {
 })
 
 describe('provider runtime routing', () => {
+  test('dispatch errors summarize large provider catalogs', () => {
+    const message = formatRuntimeDispatchError({
+      providerId: 'openrouter',
+      model: 'missing/model',
+      why: 'model is unavailable',
+      validModels: Array.from({ length: 40 }, (_, index) => `vendor/model-${index}`),
+      suggestedModel: 'vendor/model-0',
+    })
+    expect(message).toContain('vendor/model-0')
+    expect(message).toContain('… and 32 more')
+    expect(message).not.toContain('vendor/model-39')
+    expect(message.length).toBeLessThan(500)
+  })
+
   test('a live session provider selection outranks stale settings during dispatch', async () => {
     const model = 'qwen/qwen3.8-max'
     const client = await getURHQClient({

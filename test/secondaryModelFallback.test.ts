@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { afterEach, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
 // A live run exposed this: WebFetch fetched example.com fine (559 bytes, 200
@@ -7,6 +7,12 @@ import { readFileSync } from 'node:fs'
 // was returned as the fetch result, so the evidence ledger recorded an API
 // error as the content of example.com and --check against real page text
 // correctly found nothing. Two separate defects in one line of output.
+
+afterEach(() => {
+  delete process.env.OLLAMA_MODEL
+  delete process.env.OLLAMA_SMALL_FAST_MODEL
+  delete process.env.URHQ_SMALL_FAST_MODEL
+})
 
 test('the small-fast fallback uses the session model, not a compiled default', async () => {
   // getDefaultOllamaModel() returns qwen2.5-coder:7b when routing is off or no
@@ -18,6 +24,22 @@ test('the small-fast fallback uses the session model, not a compiled default', a
   )
   expect(getSmallFastModel()).toBe(getMainLoopModel())
   expect(getSmallFastModel()).not.toBe('qwen2.5-coder:7b')
+})
+
+test('external provider secondary calls use the selected live model', async () => {
+  const { getSmallFastModel } = await import('../src/utils/model/model.ts')
+  expect(
+    getSmallFastModel({
+      active: 'openrouter',
+      model: 'qwen/qwen3.8-max',
+    }),
+  ).toBe('qwen/qwen3.8-max')
+  expect(
+    getSmallFastModel({
+      active: 'openai-api',
+      model: 'gpt-5.4',
+    }),
+  ).toBe('gpt-5.4')
 })
 
 test('a failed summarisation throws instead of posing as the page', () => {

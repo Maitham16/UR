@@ -7,6 +7,7 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import { querymodelH } from '../../services/api/ur.js'
+import type { ProviderSettings } from '../../services/providers/providerRegistry.js'
 import { AbortError } from '../../utils/errors.js'
 import { getWebFetchUserAgent } from '../../utils/http.js'
 import { logError } from '../../utils/log.js'
@@ -647,6 +648,7 @@ export async function applyPromptToMarkdown(
   signal: AbortSignal,
   isNonInteractiveSession: boolean,
   isPreapprovedDomain: boolean,
+  providerSettings?: Readonly<ProviderSettings>,
 ): Promise<string> {
   // Truncate content to avoid "Prompt is too long" errors from the secondary model
   const truncatedContent =
@@ -670,6 +672,7 @@ export async function applyPromptToMarkdown(
       isNonInteractiveSession,
       hasAppendSystemPrompt: false,
       mcpTools: [],
+      providerSettings,
     },
   })
 

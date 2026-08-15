@@ -163,6 +163,24 @@ and active-work spinner all show the same applied UR effort level. Providers
 that cannot apply a requested level report the actual downgraded level instead
 of confirming a value they did not use.
 
+The provider-first `/model` picker supports the same control directly: use
+Left/Right to move through the effort levels advertised by the focused model,
+then Enter to apply the model and effort together. OpenRouter's live catalog
+shows pricing tier, context size, tool capability, reasoning capability, and
+whether the list came from the live endpoint or cache. API-key entry for
+OpenAI, Claude, Gemini, and OpenRouter is a single aligned masked row; the key
+is stored in the OS keychain flow and is never written to settings.
+
+### Provider-aware research calls
+
+WebFetch summarization and WebSearch use the active session provider/model pair
+unless `URHQ_SMALL_FAST_MODEL` explicitly selects a secondary model. This
+prevents an OpenRouter session from dispatching auxiliary research through an
+unavailable internal alias or a stale Ollama model. On OpenRouter, WebSearch is
+sent as the native `openrouter:web_search` server tool and the provider's
+reported search count is preserved. A response that performs no search is an
+error, not a successful `Did 0 searches` result.
+
 ## Runtime provider routing
 
 When you select a UR-native provider and model, every agent request is routed
@@ -210,8 +228,10 @@ You see all configured providers with:
 
 After selecting a provider:
 - Only models from that provider are shown
-- Each model shows its description
+- Each model shows its concise capabilities; OpenRouter includes pricing,
+  context size, tool support, and reasoning support
 - Model source is displayed: `live` (dynamic discovery), `cache` (fallback), or `static` (predefined)
+- Left/Right changes effort for the focused model; Up/Down browses and Enter confirms
 - Press Esc to go back and change provider
 
 **Confirmation**

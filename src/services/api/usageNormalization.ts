@@ -44,6 +44,11 @@ export type NormalizedUsage = {
    * papered over.
    */
   provider_total_tokens?: number
+  /** Provider-side tools invoked while producing this response. */
+  server_tool_use?: {
+    web_search_requests: number
+    web_fetch_requests: number
+  }
 }
 
 /** Coerce an untrusted numeric field to a non-negative integer. */
@@ -89,7 +94,8 @@ export function normalizeOpenAIChatUsage(usage: unknown): NormalizedUsage {
   const cacheRead = count(promptDetails.cached_tokens)
   const cacheWrite = count(promptDetails.cache_write_tokens)
 
-  return withOptionalFields(
+  return {
+    ...withOptionalFields(
     {
       input_tokens: remainder(promptTokens, cacheRead, cacheWrite),
       output_tokens: count(u.completion_tokens),
@@ -98,7 +104,12 @@ export function normalizeOpenAIChatUsage(usage: unknown): NormalizedUsage {
     },
     count(completionDetails.reasoning_tokens),
     count(u.total_tokens),
-  )
+    ),
+    server_tool_use: {
+      web_search_requests: count(u.server_tool_use?.web_search_requests),
+      web_fetch_requests: count(u.server_tool_use?.web_fetch_requests),
+    },
+  }
 }
 
 /**

@@ -2,12 +2,17 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 import axios from 'axios'
 import {
   createOpenAICompatibleClient,
+  toOpenAICompatibleRequest,
   toOpenAITools,
 } from '../src/services/api/openaiCompatible.js'
 import { createOpenRouterClient } from '../src/services/api/openrouter.js'
 import { createStandardAPIClient } from '../src/services/api/standardAPI.js'
 import { AskUserQuestionTool } from '../src/tools/AskUserQuestionTool/AskUserQuestionTool.js'
 import { zodToJsonSchema } from '../src/utils/zodToJsonSchema.js'
+import {
+  collectOpenRouterUrlCitations,
+  formatOpenRouterCitations,
+} from '../src/services/api/openRouterCitations.js'
 
 const sampleTools = [
   {
@@ -194,6 +199,68 @@ describe('provider tool-call request and response mapping', () => {
       { name: 'Same', input_schema: { type: 'object', properties: {} } },
       { name: 'Same', input_schema: { type: 'object', properties: {} } },
     ])).toThrow(/duplicate name "Same"/)
+  })
+
+  test('OpenRouter receives its native server-side web search contract', () => {
+    const request = toOpenAICompatibleRequest(
+      {
+        model: 'qwen/qwen3.8-max',
+        messages: userMessages(),
+        tools: [
+          {
+            type: 'web_search_20250305',
+            name: 'web_search',
+            max_uses: 4,
+            allowed_domains: ['developer.mozilla.org'],
+          },
+        ],
+        tool_choice: { type: 'tool', name: 'web_search' },
+      },
+      'openrouter',
+    )
+
+    expect(request.tools).toEqual([
+      {
+        type: 'openrouter:web_search',
+        parameters: {
+          max_uses: 4,
+          allowed_domains: ['developer.mozilla.org'],
+        },
+      },
+    ])
+    // OpenRouter server tools are selected by the model; Anthropic's named
+    // function tool_choice shape is not valid for this tool type.
+    expect(request.tool_choice).toBeUndefined()
+  })
+
+  test('OpenRouter citation annotations become deduplicated Markdown sources', () => {
+    const annotations = [
+      {
+        type: 'url_citation',
+        url_citation: {
+          url: 'https://developer.mozilla.org/example',
+          title: 'MDN [reference]',
+        },
+      },
+      {
+        type: 'url_citation',
+        url_citation: {
+          url: 'https://developer.mozilla.org/example',
+          title: 'duplicate',
+        },
+      },
+      {
+        type: 'url_citation',
+        url_citation: { url: 'javascript:alert(1)', title: 'unsafe' },
+      },
+    ]
+    expect(
+      formatOpenRouterCitations(
+        collectOpenRouterUrlCitations(annotations),
+      ),
+    ).toBe(
+      '\n\nSources:\n- [MDN reference](https://developer.mozilla.org/example)',
+    )
   })
 
   test('openai-compatible preserves tools/tool_choice and parses tool_calls', async () => {

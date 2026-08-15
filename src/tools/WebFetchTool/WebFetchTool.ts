@@ -288,6 +288,7 @@ To complete your request, I need to fetch content from the redirected URL. Pleas
         abortController.signal,
         isNonInteractiveSession,
         isPreapproved,
+        context.getAppState().provider,
       )
     }
 

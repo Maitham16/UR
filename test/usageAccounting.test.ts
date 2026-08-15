@@ -73,6 +73,18 @@ describe('OpenAI / OpenRouter chat usage', () => {
     expect(u.reasoning_tokens).toBeUndefined()
   })
 
+  test('OpenRouter server-side web search usage is preserved', () => {
+    const u = normalizeOpenAIChatUsage({
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      server_tool_use: { web_search_requests: 2 },
+    })
+    expect(u.server_tool_use).toEqual({
+      web_search_requests: 2,
+      web_fetch_requests: 0,
+    })
+  })
+
   test('an absent usage block yields all zeros, not NaN', () => {
     for (const input of [undefined, null, {}, 'nonsense', 42]) {
       const u = normalizeOpenAIChatUsage(input)

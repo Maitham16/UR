@@ -31,6 +31,10 @@ import {
   fetchWithProviderReliability,
   normalizeOpenAICompatibleBaseUrl,
 } from './providerHttp.js'
+import {
+  collectOpenRouterUrlCitations,
+  formatOpenRouterCitations,
+} from './openRouterCitations.js'
 
 type URHQClient = {
   beta: { messages: any }
@@ -180,6 +184,12 @@ export function toOpenAICompatibleRequest(
       : undefined
   const compatibleReasoningEffort =
     reasoningEffort === 'max' ? 'high' : reasoningEffort
+  const openRouterServerSearch =
+    providerName === 'openrouter' &&
+    tools.some(tool => tool?.type === 'openrouter:web_search')
+  const toolChoice = openRouterServerSearch
+    ? undefined
+    : mapOpenAIToolChoice(params.tool_choice)
   return {
     model: params.model,
     messages: toOpenAIMessages(params, providerName),
@@ -202,9 +212,7 @@ export function toOpenAICompatibleRequest(
       ? { stream_options: { include_usage: true } }
       : {}),
     ...(tools.length > 0 ? { tools } : {}),
-    ...(params.tool_choice !== undefined
-      ? { tool_choice: mapOpenAIToolChoice(params.tool_choice) }
-      : {}),
+    ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
   }
 }
 
@@ -389,7 +397,12 @@ export function toOpenAITools(tools: any, providerName = 'OpenAI'): any[] {
     throw new ToolSchemaValidationError(`${providerName} tools must be an array.`)
   }
   const result = tools.map(tool => toOpenAITool(tool, providerName))
-  assertUniqueToolNames(result.map(tool => tool.function.name), providerName)
+  assertUniqueToolNames(
+    result
+      .filter(tool => tool?.type === 'function')
+      .map(tool => tool.function.name),
+    providerName,
+  )
   return result
 }
 
@@ -491,6 +504,22 @@ function isOpenAIToolStopReason(reason: string | undefined): boolean {
 }
 
 function toOpenAITool(tool: any, providerName: string): any {
+  if (providerName === 'openrouter' && tool?.type === 'web_search_20250305') {
+    return {
+      type: 'openrouter:web_search',
+      parameters: {
+        ...(Number.isInteger(tool.max_uses) && tool.max_uses > 0
+          ? { max_uses: tool.max_uses }
+          : {}),
+        ...(Array.isArray(tool.allowed_domains) && tool.allowed_domains.length > 0
+          ? { allowed_domains: tool.allowed_domains }
+          : {}),
+        ...(Array.isArray(tool.blocked_domains) && tool.blocked_domains.length > 0
+          ? { excluded_domains: tool.blocked_domains }
+          : {}),
+      },
+    }
+  }
   if (
     tool?.type === 'function' &&
     tool.function
@@ -683,7 +712,10 @@ function parseOpenAIMessageContent(
   if (reasoning.length > 0) {
     content.push({ type: 'thinking', thinking: reasoning })
   }
-  const text = openAIMessageText(message?.content, legacyText)
+  const citationText = formatOpenRouterCitations(
+    collectOpenRouterUrlCitations(message?.annotations),
+  )
+  const text = openAIMessageText(message?.content, legacyText) + citationText
   if (text.length > 0) {
     content.push({ type: 'text', text })
   }

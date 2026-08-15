@@ -292,6 +292,38 @@ describe('provider real streaming', () => {
     expect(events.at(-1).type).toBe('message_stop')
   })
 
+  test('OpenRouter streams web-search citations and search usage', async () => {
+    const post = spyOn(axios, 'post').mockResolvedValue({
+      data: sse([
+        'data: {"id":"or_search","model":"qwen/qwen3.8-max","choices":[{"delta":{"content":"Canvas guidance","annotations":[{"type":"url_citation","url_citation":{"url":"https://developer.mozilla.org/canvas","title":"MDN Canvas"}}]},"index":0}]}\n\n',
+        'data: {"id":"or_search","model":"qwen/qwen3.8-max","choices":[{"delta":{},"index":0,"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"server_tool_use":{"web_search_requests":1}}}\n\n',
+        'data: [DONE]\n\n',
+      ]),
+      headers: { 'x-request-id': 'req-openrouter-search' },
+    })
+    const client = await createOpenRouterClient({
+      apiKey: 'sk-or',
+      maxRetries: 1,
+    })
+
+    const { data } = await client.beta.messages.create({
+      model: 'qwen/qwen3.8-max',
+      messages: userMessages(),
+      max_tokens: 32,
+      stream: true,
+    }).withResponse()
+    const events = await collect(data)
+
+    expect(textDeltas(events).join('')).toContain(
+      '[MDN Canvas](https://developer.mozilla.org/canvas)',
+    )
+    expect(
+      events.find(event => event.type === 'message_delta')?.usage
+        .server_tool_use.web_search_requests,
+    ).toBe(1)
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+
   test('standard Anthropic passes through streaming text and tool_use events', async () => {
     const post = spyOn(axios, 'post').mockResolvedValue({
       data: sse([

@@ -14,6 +14,7 @@ import {
   type ProviderId,
   type ProviderDefinition,
   type ProviderConnectionStatus,
+  type ProviderModelDefinition,
   type ProviderModelSource,
   listModelsForProviderWithSource,
   setProviderModel,
@@ -32,7 +33,10 @@ import {
 } from 'src/services/providers/apiKeyInput.js'
 import { TerminalSizeContext } from '../ink/components/TerminalSizeContext.js'
 import { useAppState, useSetAppState } from 'src/state/AppState.js'
-import { getSettingsForSource } from 'src/utils/settings/settings.js'
+import {
+  getSettingsForSource,
+  updateSettingsForSource,
+} from 'src/utils/settings/settings.js'
 import type { ModelOption } from 'src/utils/model/modelOptions.js'
 import { Box, Text, useInput } from '../ink.js'
 import { useAppState as useAppStateSelector } from '../state/AppState.js'
@@ -45,7 +49,10 @@ import { Pane } from './design-system/Pane.js'
 import {
   convertEffortValueToLevel,
   type EffortLevel,
+  getDefaultEffortForModel,
   modelSupportsEffort,
+  modelSupportsMaxEffort,
+  toPersistableEffort,
 } from '../utils/effort.js'
 import {
   parseUserSpecifiedModel,
@@ -54,6 +61,7 @@ import {
   shouldEnableThinkingByDefault,
 } from '../utils/thinking.js'
 import { resolveActiveProviderModel } from '../services/api/providerClient.js'
+import { effortLevelToSymbol } from './EffortIndicator.js'
 
 const selectCurrentProvider = (s: { provider?: { active?: string } }) =>
   s.provider?.active ?? 'ollama'
@@ -122,13 +130,15 @@ export function ProviderFirstModelPicker({
   // Bumping this re-runs discovery for the selected provider (the retry state).
   const [modelReloadToken, setModelReloadToken] = useState(0)
   const terminalSize = useContext(TerminalSizeContext)
-  // "API key: " label plus the surrounding pane border.
-  const keyInputColumns = Math.max(20, (terminalSize?.columns ?? 80) - 14)
+  // Keep the label and masked secret on one stable row. The old 20-column
+  // minimum could exceed a narrow pane and render one character per line.
+  const keyInputColumns = getProviderKeyInputColumns(terminalSize?.columns)
 
   const effortValue = useAppState(selectEffortValue)
-  const [effort] = useState<EffortLevel | undefined>(
+  const [effort, setEffort] = useState<EffortLevel | undefined>(
     effortValue !== undefined ? convertEffortValueToLevel(effortValue) : undefined,
   )
+  const [hasToggledEffort, setHasToggledEffort] = useState(false)
   const appThinkingEnabled = useAppState(selectThinkingEnabled)
   const hasToggledThinking = false
   const [thinkingEnabled] = useState(
@@ -193,7 +203,15 @@ export function ProviderFirstModelPicker({
         const options: Array<ModelOption & { disabled?: boolean }> = result.models.map(model => ({
           value: model.id,
           label: model.displayName,
-          description: `${model.description} · ${result.source}`,
+          description: formatProviderModelDescription(
+            model,
+            result.source,
+            providerId,
+          ),
+          pricing: model.pricing,
+          contextLength: model.contextLength,
+          supportedParameters: model.supportedParameters,
+          reasoning: model.reasoning,
           ...(model.supportedParameters !== undefined && !model.supportedParameters.includes('tools')
             ? { disabled: true }
             : {}),
@@ -265,6 +283,24 @@ export function ProviderFirstModelPicker({
 
   const focusedProvider = providerOptions.find(p => p.value === focusedProviderValue)
   const focusedModel = modelOptions.find(m => m.value === focusedModelValue)
+  const focusedResolvedModel = focusedModel
+    ? parseUserSpecifiedModel(focusedModel.value)
+    : undefined
+  const focusedSupportsEffort = focusedResolvedModel
+    ? modelSupportsEffort(focusedResolvedModel)
+    : false
+  const focusedSupportsMax = focusedResolvedModel
+    ? modelSupportsMaxEffort(focusedResolvedModel)
+    : false
+  const focusedDefaultEffort = focusedResolvedModel
+    ? convertEffortValueToLevel(
+        getDefaultEffortForModel(focusedResolvedModel) ?? 'high',
+      )
+    : 'high'
+  const displayedEffort =
+    effort === 'max' && !focusedSupportsMax
+      ? 'high'
+      : effort ?? focusedDefaultEffort
 
   function handleProviderFocus(value: string) {
     setFocusedProviderValue(value)
@@ -274,6 +310,32 @@ export function ProviderFirstModelPicker({
   function handleModelFocus(value: string) {
     setFocusedModelValue(value)
   }
+
+  function handleCycleEffort(direction: 'left' | 'right') {
+    if (!focusedSupportsEffort) return
+    setEffort(previous =>
+      cycleProviderPickerEffort(
+        previous ?? focusedDefaultEffort,
+        direction,
+        focusedSupportsMax,
+      ),
+    )
+    setHasToggledEffort(true)
+  }
+
+  useInput(
+    (_input, key, event) => {
+      if (!key.leftArrow && !key.rightArrow) return
+      handleCycleEffort(key.rightArrow ? 'right' : 'left')
+      event.stopImmediatePropagation()
+    },
+    {
+      isActive:
+        step === 'model' &&
+        !loadingModels &&
+        focusedSupportsEffort,
+    },
+  )
 
   function handleProviderSelect(value: string) {
     const provider = providerOptions.find(p => p.value === value)
@@ -366,6 +428,15 @@ export function ProviderFirstModelPicker({
       }
     }
 
+    if (hasToggledEffort) {
+      const persistable = effort ? toPersistableEffort(effort) : undefined
+      if (persistable !== undefined) {
+        updateSettingsForSource('userSettings', {
+          effortLevel: persistable,
+        })
+      }
+    }
+
     // Update app state
     setAppState(prev => ({
       ...prev,
@@ -374,11 +445,11 @@ export function ProviderFirstModelPicker({
         active: selectedProvider?.value,
         model: value,
       },
-      effortValue: effort,
+      ...(hasToggledEffort ? { effortValue: effort } : {}),
       ...(hasToggledThinking ? { thinkingEnabled } : {}),
     }))
 
-    onSelect(value, effort, selectedProvider ? {
+    onSelect(value, hasToggledEffort ? effort : undefined, selectedProvider ? {
       providerId: selectedProvider.value as ProviderId,
       providerName: selectedProvider.label,
       accessType: selectedProvider.accessType,
@@ -534,21 +605,25 @@ export function ProviderFirstModelPicker({
             </Text>
           )}
         </Box>
-        <Box>
-          <Text>{'API key: '}</Text>
-          <TextInput
-            value={apiKeyInput}
-            onChange={setApiKeyInput}
-            onSubmit={handleKeySubmit}
-            mask="*"
-            placeholder="paste key, then Enter"
-            focus={true}
-            showCursor={true}
-            multiline={false}
-            columns={keyInputColumns}
-            cursorOffset={apiKeyCursorOffset}
-            onChangeCursorOffset={setApiKeyCursorOffset}
-          />
+        <Box width="100%" flexDirection="row">
+          <Box width={12} flexShrink={0}>
+            <Text bold color="subtle">API key</Text>
+          </Box>
+          <Box flexGrow={1}>
+            <TextInput
+              value={apiKeyInput}
+              onChange={setApiKeyInput}
+              onSubmit={handleKeySubmit}
+              mask="*"
+              placeholder="paste key, then Enter"
+              focus={true}
+              showCursor={true}
+              multiline={false}
+              columns={keyInputColumns}
+              cursorOffset={apiKeyCursorOffset}
+              onChangeCursorOffset={setApiKeyCursorOffset}
+            />
+          </Box>
         </Box>
         {connectError && (
           <Box marginTop={1}>
@@ -659,16 +734,23 @@ export function ProviderFirstModelPicker({
       <Box flexDirection="column">
         <Box marginBottom={1} flexDirection="column">
           <Text color="remember" bold>
-            Select model
+            {selectedProvider?.value === 'openrouter'
+              ? 'OpenRouter model catalog'
+              : 'Select model'}
           </Text>
           <Text dimColor>
-            Showing models for {selectedProvider?.label} ({selectedProvider?.accessType})
+            {selectedProvider?.value === 'openrouter'
+              ? `${modelOptions.length} current models from your OpenRouter account`
+              : `Showing models for ${selectedProvider?.label} (${selectedProvider?.accessType})`}
+          </Text>
+          <Text color={modelSource === 'live' ? 'success' : 'subtle'}>
+            {formatModelSourceLabel(modelSource)}
+            <Text dimColor color="subtle">
+              {' '}· agent-capable models can be selected
+            </Text>
           </Text>
           <Text dimColor color="subtle">
-            Model source: {modelSource}
-          </Text>
-          <Text dimColor color="subtle">
-            Esc to change provider · ctrl+r to refresh from {selectedProvider?.label}
+            ↑↓ browse · Enter select · ←→ effort · Ctrl+R refresh · Esc providers
           </Text>
         </Box>
 
@@ -694,15 +776,21 @@ export function ProviderFirstModelPicker({
 
             {focusedModel && (
               <Box marginBottom={1} flexDirection="column">
+                <Text bold color="text">
+                  {focusedModel.label}
+                </Text>
                 <Text dimColor>
-                  {focusedModel.label} · {focusedModel.description}
+                  {focusedModel.description}
                 </Text>
-                <Text dimColor color="subtle">
-                  Source: {modelSource}
-                </Text>
-                {modelSupportsEffort(parseUserSpecifiedModel(focusedModel.value)) && (
-                  <Text dimColor>
-                    ← → to adjust effort
+                {focusedSupportsEffort && (
+                  <Text>
+                    <Text color="ur">
+                      {effortLevelToSymbol(displayedEffort)}{' '}
+                      {displayedEffort.toUpperCase()}
+                    </Text>
+                    <Text dimColor color="subtle">
+                      {' '}effort · use ← → to adjust
+                    </Text>
                   </Text>
                 )}
               </Box>
@@ -747,3 +835,64 @@ export function ProviderFirstModelPicker({
 }
 
 function noop() {}
+
+export function getProviderKeyInputColumns(terminalColumns?: number): number {
+  const columns =
+    Number.isFinite(terminalColumns) && (terminalColumns as number) > 0
+      ? Math.floor(terminalColumns as number)
+      : 80
+  return Math.max(8, columns - 20)
+}
+
+export function cycleProviderPickerEffort(
+  current: EffortLevel,
+  direction: 'left' | 'right',
+  includeMax: boolean,
+): EffortLevel {
+  const levels: EffortLevel[] = includeMax
+    ? ['low', 'medium', 'high', 'max']
+    : ['low', 'medium', 'high']
+  const index = levels.indexOf(current)
+  const currentIndex = index >= 0 ? index : levels.indexOf('high')
+  const delta = direction === 'right' ? 1 : -1
+  return levels[(currentIndex + delta + levels.length) % levels.length]!
+}
+
+export function formatModelSourceLabel(source: ProviderModelSource): string {
+  if (source === 'live') return '● LIVE CATALOG'
+  if (source === 'cache') return '◐ CACHED CATALOG'
+  return '○ BUILT-IN CATALOG'
+}
+
+export function formatProviderModelDescription(
+  model: ProviderModelDefinition,
+  source: ProviderModelSource,
+  providerId: ProviderId,
+): string {
+  if (providerId !== 'openrouter') {
+    return `${model.description} · ${source}`
+  }
+
+  const details: string[] = []
+  if (model.pricing === 'free') details.push('FREE')
+  else if (model.pricing === 'paid') details.push('PAID')
+  if (model.contextLength) {
+    details.push(
+      model.contextLength >= 1_000_000
+        ? `${Math.round(model.contextLength / 1_000_000)}M context`
+        : `${Math.round(model.contextLength / 1_000)}K context`,
+    )
+  }
+  if (model.supportedParameters?.includes('tools')) details.push('tools')
+  else if (model.supportedParameters) details.push('chat only')
+  if (
+    model.reasoning ||
+    model.supportedParameters?.some(
+      parameter =>
+        parameter === 'reasoning' || parameter === 'reasoning_effort',
+    )
+  ) {
+    details.push('reasoning')
+  }
+  return details.length > 0 ? details.join(' · ') : model.description
+}

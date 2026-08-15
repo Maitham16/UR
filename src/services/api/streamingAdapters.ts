@@ -13,6 +13,11 @@ import {
   GEMINI_THOUGHT_SIGNATURE,
   getGeminiThoughtSignature,
 } from './geminiWire.js'
+import {
+  collectOpenRouterUrlCitations,
+  formatOpenRouterCitations,
+  type OpenRouterUrlCitation,
+} from './openRouterCitations.js'
 export { getProviderRequestTimeoutMs } from './providerHttp.js'
 
 type Usage = {
@@ -20,6 +25,10 @@ type Usage = {
   output_tokens: number
   cache_creation_input_tokens: number
   cache_read_input_tokens: number
+  server_tool_use?: {
+    web_search_requests: number
+    web_fetch_requests: number
+  }
 }
 
 type StreamOptions = {
@@ -177,6 +186,7 @@ async function* streamOpenAIEvents(
   let finishReason: string | undefined
   let usage = EMPTY_USAGE
   const emittedToolIds = new Set<string>()
+  const urlCitations = new Map<string, OpenRouterUrlCitation>()
   const toolStates = new Map<number, {
     blockIndex?: number
     id?: string
@@ -291,6 +301,11 @@ async function* streamOpenAIEvents(
     }
     for (const choice of chunk?.choices ?? []) {
       const delta = choice?.delta ?? {}
+      for (const citation of collectOpenRouterUrlCitations(
+        delta.annotations ?? choice?.message?.annotations,
+      )) {
+        urlCitations.set(citation.url, citation)
+      }
       const reasoning =
         typeof delta.reasoning_content === 'string'
           ? delta.reasoning_content
@@ -394,6 +409,15 @@ async function* streamOpenAIEvents(
     }
   }
 
+  const citationText = formatOpenRouterCitations(urlCitations.values())
+  if (citationText) {
+    for (const event of ensureText()) yield event
+    yield {
+      type: 'content_block_delta',
+      index: activeTextIndex,
+      delta: { type: 'text_delta', text: citationText },
+    }
+  }
   for (const event of stopText()) yield event
   for (const event of stopThinking()) yield event
   for (const [index, state] of toolStates.entries()) {

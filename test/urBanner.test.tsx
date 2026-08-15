@@ -4,6 +4,7 @@ import {
   URBanner,
   UR_WORDMARK_ROWS,
   UR_WORDMARK_TAGLINE,
+  getURWordmarkGlyphTone,
 } from '../src/components/LogoV2/URBanner.js'
 import { stringWidth } from '../src/ink/stringWidth.js'
 import { renderToString } from '../src/utils/staticRender.js'
@@ -20,10 +21,17 @@ describe('UR welcome wordmark', () => {
     expect(UR_WORDMARK_TAGLINE).toBe('THE AUTONOMOUS AGENT')
   })
 
+  test('uses a bright face, specular highlight, and darker dimensional edge', () => {
+    expect(getURWordmarkGlyphTone('█', 0, 0)).toBe('warningShimmer')
+    expect(getURWordmarkGlyphTone('█', 4, 2)).toBe('urShimmer')
+    expect(getURWordmarkGlyphTone('╗', 0, 2)).toBe('ur')
+    expect(getURWordmarkGlyphTone(' ', 0, 3)).toBeUndefined()
+  })
+
   test('renders cleanly as a centered terminal component', async () => {
     const rendered = await renderToString(<URBanner />, 80)
 
     expect(rendered).toContain('██╗   ██╗  ██████╗')
-    expect(rendered).toContain('◆ THE AUTONOMOUS AGENT ◆')
+    expect(rendered).toContain('✦ THE AUTONOMOUS AGENT ✦')
   })
 })

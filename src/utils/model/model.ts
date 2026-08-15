@@ -41,6 +41,7 @@ import {
 import {
   getActiveProviderSettings,
   getDefaultModelForProvider,
+  type ProviderSettings,
 } from '../../services/providers/providerRegistry.js'
 
 export type ModelShortName = string
@@ -74,12 +75,17 @@ export function getDefaultOllamaModel(): ModelName {
   return DEFAULT_OLLAMA_MODEL
 }
 
-export function getSmallFastModel(): ModelName {
+export function getSmallFastModel(
+  providerSettings?: Readonly<ProviderSettings>,
+): ModelName {
+  const activeProvider = providerSettings?.active ?? getActiveProviderSettings().active
+
   // In environments where the model is explicitly pinned (e.g. OLLAMA_MODEL
   // for local deployments), use that session model when available. This keeps
   // small and fast calls aligned with the selected model and avoids falling back
   // to a generic model alias that may not be available.
   if (
+    activeProvider === 'ollama' &&
     process.env.OLLAMA_MODEL !== undefined &&
     process.env.OLLAMA_SMALL_FAST_MODEL === undefined
   ) {
@@ -87,7 +93,7 @@ export function getSmallFastModel(): ModelName {
     if (mainLoopModel) return mainLoopModel
   }
 
-  if (getAPIProvider() === 'ollama') {
+  if (activeProvider === 'ollama' || (!activeProvider && getAPIProvider() === 'ollama')) {
     if (process.env.OLLAMA_SMALL_FAST_MODEL) {
       return process.env.OLLAMA_SMALL_FAST_MODEL
     }
@@ -112,7 +118,17 @@ export function getSmallFastModel(): ModelName {
     if (sessionModel) return sessionModel
     return getDefaultOllamaModel()
   }
-  return process.env.URHQ_SMALL_FAST_MODEL || getDefaultmodelHModel()
+  if (process.env.URHQ_SMALL_FAST_MODEL) {
+    return process.env.URHQ_SMALL_FAST_MODEL
+  }
+
+  // External provider catalogs do not share a universal "small" alias. The
+  // session model is already discovered and validated for the selected
+  // provider, while modelH is only an internal placeholder in public builds.
+  // Reuse the selected model unless the operator explicitly configured a
+  // secondary model above.
+  const selectedModel = providerSettings?.model ?? getMainLoopModel()
+  return selectedModel || getDefaultmodelHModel()
 }
 
 export function isNonCustommodelOModel(model: ModelName): boolean {
