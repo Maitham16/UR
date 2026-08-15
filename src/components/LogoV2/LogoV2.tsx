@@ -73,6 +73,7 @@ export function LogoV2() {
   const showOverageCreditUpsell = useShowOverageCreditUpsell();
   const agent = useAppState(_temp);
   const effortValue = useAppState(_temp2);
+  const effortProvider = useAppState(s => s.provider.active);
   const config = getGlobalConfig();
   let changelog;
   try {
@@ -167,7 +168,7 @@ export function LogoV2() {
     agentName: agentNameFromSettings
   } = getLogoDisplayData();
   const agentName = agent ?? agentNameFromSettings;
-  const effortSuffix = getEffortSuffix(model, effortValue);
+  const effortSuffix = getEffortSuffix(model, effortValue, effortProvider);
   const t9 = fullModelDisplayName + effortSuffix;
   let t10;
   if ($[13] !== t9) {

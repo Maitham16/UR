@@ -1,6 +1,7 @@
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/index.js'
 import {
   getProviderFamily,
+  getProviderReasoningCapabilitiesForModel,
   getRuntimeProviderId,
   type ProviderFamily,
   type ProviderId,
@@ -31,6 +32,13 @@ export function getRuntimeProvider(): ProviderId {
 
 export function getRuntimeProviderFamily(): ProviderFamily {
   return getProviderFamily(getRuntimeProviderId())
+}
+
+export function getRuntimeModelReasoningCapabilities(
+  model: string,
+  provider: ProviderId = getRuntimeProviderId(),
+) {
+  return getProviderReasoningCapabilitiesForModel(model, provider)
 }
 
 // Legacy deployment enum used by first-party URHQ request shaping (betas, 1M

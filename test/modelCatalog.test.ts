@@ -5,6 +5,7 @@ import {
   MODEL_CACHE_TTL_MS,
   orderModels,
   parseDiscoveredModels,
+  parseModelReasoningCapabilities,
   pricingTierFromId,
   pricingTierFromOpenRouter,
   RequestCoalescer,
@@ -114,6 +115,32 @@ describe('model entry construction', () => {
       deprecated: true,
       expirationDate: 1,
       supportedParameters: ['tools', 'temperature'],
+    })
+  })
+
+  test('OpenRouter reasoning effort metadata is normalized and preserved', () => {
+    const model = toDiscoveredModel({
+      id: 'qwen/qwen3.8-max',
+      supported_parameters: ['reasoning', 'reasoning_effort', 'tools'],
+      reasoning: {
+        mandatory: true,
+        default_enabled: true,
+        supported_efforts: ['XHIGH', 'high', 'medium', 'low', 'minimal', 'XHIGH'],
+        default_effort: 'XHIGH',
+      },
+    }, 'OpenRouter')
+
+    expect(model?.reasoning).toEqual({
+      mandatory: true,
+      defaultEnabled: true,
+      supportedEfforts: ['xhigh', 'high', 'medium', 'low', 'minimal'],
+      defaultEffort: 'xhigh',
+    })
+  })
+
+  test('null supported efforts preserves the gateway accepts-all contract', () => {
+    expect(parseModelReasoningCapabilities({ supported_efforts: null })).toEqual({
+      supportedEfforts: null,
     })
   })
 

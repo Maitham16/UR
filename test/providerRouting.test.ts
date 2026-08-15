@@ -6,6 +6,7 @@ import {
   streamModelResponse,
   validateProviderRuntime,
 } from '../src/services/api/providerClient.js'
+import { getURHQClient } from '../src/services/api/client.js'
 import {
   cacheProviderModelsForProvider,
   clearProviderModelCacheForTests,
@@ -28,6 +29,23 @@ afterEach(() => {
 })
 
 describe('provider runtime routing', () => {
+  test('a live session provider selection outranks stale settings during dispatch', async () => {
+    const model = 'qwen/qwen3.8-max'
+    const client = await getURHQClient({
+      apiKey: 'test-openrouter-key',
+      maxRetries: 0,
+      model,
+      providerSettings: { active: 'openrouter', model },
+      fetchOverride: async () =>
+        new Response(JSON.stringify({ data: [{ id: model }] })),
+      source: 'provider-routing-regression',
+    })
+
+    expect((client as { __urProviderId?: string }).__urProviderId).toBe(
+      'openrouter',
+    )
+  })
+
   test('ollama provider uses Ollama client', async () => {
     cacheProviderModelsForProvider('ollama', ['llama3'])
 

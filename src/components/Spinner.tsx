@@ -184,7 +184,8 @@ function SpinnerWithVerbInner({
     };
   }, [mode]);
   const effortValue = useAppState(s_4 => s_4.effortValue);
-  const effortSuffix = getEffortSuffix(getMainLoopModel(), effortValue);
+  const effortProvider = useAppState(s_4 => s_4.provider.active);
+  const effortSuffix = getEffortSuffix(getMainLoopModel(), effortValue, effortProvider);
 
   // Check if any running in-process teammates exist (needed for both modes)
   const runningTeammates = getAllInProcessTeammateTasks(tasks).filter(t => t.status === 'running');

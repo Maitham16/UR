@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.81.2
+
+- Fixed `/effort max` being acknowledged as `max` while OpenRouter requests,
+  the spinner, and the status indicator still used `high`. UR now preserves
+  provider reasoning metadata, treats `max` as the model's highest capability,
+  and translates it to the correct OpenRouter wire value (including `xhigh`).
+- Made the live provider/model selection authoritative for the next request and
+  removed the duplicate `/model` settings write, preventing a newly selected
+  OpenRouter model from being dispatched through stale Ollama settings.
+- Bounded deterministic duplicate Edit, Write, and NotebookEdit failures. After
+  two unchanged failures UR tells the model to reread the target and rebuild a
+  unique edit; continued identical calls stop the turn instead of looping.
+- Replaced the sparse welcome-screen block mark with a balanced outlined UR
+  wordmark and branded tagline, while keeping a concise plain-text rendering in
+  screen-reader mode.
+
 ## 1.81.1
 
 - Preflighted UR task tracking in `/reverse-skills:start` and every bundled

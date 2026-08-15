@@ -55,13 +55,17 @@ function ModelPickerWrapper(t0) {
       setAppState(prev => ({
         ...prev,
         mainLoopModel: model,
-        mainLoopModelForSession: null
+        mainLoopModelForSession: null,
+        ...(model && metadata
+          ? {
+              provider: {
+                ...prev.provider,
+                active: metadata.providerId,
+                model,
+              },
+            }
+          : {})
       }));
-      if (model && metadata) {
-        setProviderModel(metadata.providerId, model, {
-          modelSource: metadata.modelSource
-        });
-      }
       let message = metadata ? `Selected provider: ${chalk.bold(metadata.providerName)} (${metadata.accessType})\nSelected model: ${chalk.bold(renderModelLabel(model))}\nModel source: ${metadata.modelSource}\nRuntime backend: ${metadata.runtimeBackend}` : `Set model to ${chalk.bold(renderModelLabel(model))}`;
       if (effort !== undefined) {
         message = message + ` with ${chalk.bold(effort)} effort`;

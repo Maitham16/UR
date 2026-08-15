@@ -20,6 +20,8 @@ export type RepeatedFailureConfig = {
   limit: number
   /** Attempts after the limit before the turn is aborted entirely. */
   abortAfter: number
+  /** Optional tool-specific recovery instruction appended to a refusal. */
+  recoveryHint?: string
 }
 
 // Off by default; callers that want loop protection pass an enabled config.
@@ -451,13 +453,16 @@ export function checkRepeatedFailure(
     }
   }
   if (failures >= config.limit) {
+    const recoveryHint = config.recoveryHint
+      ? ` ${config.recoveryHint.trim()}`
+      : ''
     return {
       action: 'refuse',
       reason:
         `This exact call has already failed ${failures} times with the same ` +
         `arguments, so it will fail again. Do not retry it unchanged. Either ` +
         `fix the arguments, use a different tool, or tell the user what is ` +
-        `blocking you and stop.`,
+        `blocking you and stop.${recoveryHint}`,
     }
   }
   return { action: 'allow' }

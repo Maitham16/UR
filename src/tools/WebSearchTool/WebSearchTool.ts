@@ -365,6 +365,7 @@ export const WebSearchTool = buildTool({
         mcpTools: [],
         agentId: context.agentId,
         effortValue: appState.effortValue,
+        providerSettings: appState.provider,
       },
     })
 

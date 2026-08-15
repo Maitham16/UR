@@ -10,6 +10,7 @@ import {
   getDisplayedEffortLevel,
   modelSupportsEffort,
 } from '../utils/effort.js'
+import type { ProviderId } from '../services/providers/providerRegistry.js'
 
 /**
  * Build the text for the effort-changed notification, e.g. "◐ medium · /effort".
@@ -18,9 +19,10 @@ import {
 export function getEffortNotificationText(
   effortValue: EffortValue | undefined,
   model: string,
+  provider?: ProviderId,
 ): string | undefined {
-  if (!modelSupportsEffort(model)) return undefined
-  const level = getDisplayedEffortLevel(model, effortValue)
+  if (!modelSupportsEffort(model, provider)) return undefined
+  const level = getDisplayedEffortLevel(model, effortValue, provider)
   return `${effortLevelToSymbol(level)} ${level} · /effort`
 }
 

@@ -5,6 +5,10 @@
 
 import { randomUUID } from 'crypto'
 import { synthesizeKimiToolCalls } from '../../cli/transports/kimiToolCalls.js'
+import {
+  type EffortLevel,
+  toOpenRouterReasoningEffort,
+} from '../../utils/effort.js'
 import { normalizeOpenAIChatUsage } from './usageNormalization.js'
 import {
   assertUniqueToolNames,
@@ -165,6 +169,17 @@ export function toOpenAICompatibleRequest(
   const tools = toOpenAITools(params.tools, providerName)
   const responseFormat = toOpenAIResponseFormat(params.output_config?.format)
   const reasoningEffort = toOpenAIReasoningEffort(params)
+  const openRouterReasoning =
+    providerName === 'openrouter' && reasoningEffort
+      ? {
+          effort: toOpenRouterReasoningEffort(
+            String(params.model ?? ''),
+            reasoningEffort,
+          ),
+        }
+      : undefined
+  const compatibleReasoningEffort =
+    reasoningEffort === 'max' ? 'high' : reasoningEffort
   return {
     model: params.model,
     messages: toOpenAIMessages(params, providerName),
@@ -173,7 +188,11 @@ export function toOpenAICompatibleRequest(
     ...(params.top_p !== undefined && { top_p: params.top_p }),
     ...(params.stop_sequences?.length > 0 && { stop: params.stop_sequences }),
     ...(params.metadata !== undefined && { metadata: params.metadata }),
-    ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
+    ...(openRouterReasoning
+      ? { reasoning: openRouterReasoning }
+      : compatibleReasoningEffort
+        ? { reasoning_effort: compatibleReasoningEffort }
+        : {}),
     ...(responseFormat && { response_format: responseFormat }),
     stream: Boolean(params.stream),
     // OpenRouter now always includes usage in its final streaming chunk; its
@@ -201,10 +220,16 @@ function toOpenAIResponseFormat(format: any): any | undefined {
   }
 }
 
-function toOpenAIReasoningEffort(params: any): 'low' | 'medium' | 'high' | undefined {
+function toOpenAIReasoningEffort(params: any): EffortLevel | undefined {
   const requested = params.output_config?.effort
-  if (requested === 'low' || requested === 'medium' || requested === 'high') return requested
-  if (requested === 'max') return 'high'
+  if (
+    requested === 'low' ||
+    requested === 'medium' ||
+    requested === 'high' ||
+    requested === 'max'
+  ) {
+    return requested
+  }
   if (params.thinking?.type === 'adaptive') return 'medium'
   if (params.thinking?.type !== 'enabled') return undefined
   const budget = Number(params.thinking.budget_tokens ?? 0)

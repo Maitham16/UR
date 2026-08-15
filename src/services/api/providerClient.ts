@@ -152,6 +152,8 @@ export type ProviderClientOptions = {
   apiKey?: string
   maxRetries?: number
   model?: string
+  /** Session-authoritative settings captured with the request. */
+  settings?: SettingsJson
   signal?: AbortSignal
   fetchOverride?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   source?: string
@@ -298,7 +300,7 @@ async function assertFreshRuntimeModel(
   if (!options.model) return
   const provider = getProviderDefinition(providerId)
   if (provider.modelDiscoveryType !== 'live') return
-  const settings = getInitialSettings()
+  const settings = options.settings ?? getInitialSettings()
   const env =
     provider.envKey && options.apiKey
       ? { ...process.env, [provider.envKey]: options.apiKey }
@@ -403,7 +405,7 @@ async function createLocalProviderClient(
     )
   }
   const { createOllamaURHQClient } = await import('./ollama.js')
-  const settings = getInitialSettings()
+  const settings = options.settings ?? getInitialSettings()
   const baseUrlOverride = resolveProviderBaseUrl(providerId, settings)
   return createOllamaURHQClient({ baseUrlOverride }) as ProviderMessageClient
 }
@@ -412,7 +414,7 @@ async function createOpenAICompatibleProviderClient(
   providerId: ProviderId,
   options: ProviderClientOptions = {},
 ): Promise<ProviderMessageClient> {
-  const settings = getInitialSettings()
+  const settings = options.settings ?? getInitialSettings()
   const providerSettings = getActiveProviderSettings(settings)
   const provider = getProviderDefinition(providerId)
   const baseUrl =
@@ -442,7 +444,7 @@ async function createSubscriptionClient(
   if (runtimeBlock) {
     throw new Error(runtimeBlock)
   }
-  const settings = getInitialSettings()
+  const settings = options.settings ?? getInitialSettings()
   const providerSettings = getActiveProviderSettings(settings)
   const { which } = await import('../../utils/which.js')
   let commandPath = providerSettings.commandPath ?? null
@@ -470,7 +472,7 @@ async function createAPIClient(
   options: ProviderClientOptions = {},
 ): Promise<ProviderMessageClient> {
   const provider = getProviderDefinition(providerId)
-  const settings = getInitialSettings()
+  const settings = options.settings ?? getInitialSettings()
   const providerSettings = getActiveProviderSettings(settings)
   const apiKey = options.apiKey ?? getProviderApiKey(providerId)
 
@@ -529,7 +531,10 @@ async function createAPIClient(
 export async function getActiveProviderClient(
   options: ProviderClientOptions = {},
 ): Promise<ProviderMessageClient> {
-  const runtime = resolveActiveProviderModel({ model: options.model })
+  const runtime = resolveActiveProviderModel({
+    settings: options.settings,
+    model: options.model,
+  })
   return createProviderClient(runtime.providerId, {
     ...options,
     model: runtime.model,

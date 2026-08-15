@@ -12,7 +12,10 @@ import {
   resetRepeatedFailuresForTesting,
   setRepeatedFailureClockForTesting,
 } from '../src/services/tools/repeatedFailureGuard.ts'
-import { runToolUse } from '../src/services/tools/toolExecution.ts'
+import {
+  getToolRepeatedFailurePolicy,
+  runToolUse,
+} from '../src/services/tools/toolExecution.ts'
 
 // A 4B model refused once by the task-list gate replied by emitting `Write`
 // with no arguments, over and over, plus `Computer(type 0 chars)`. Nothing
@@ -82,6 +85,31 @@ test('a corrected retry is never penalised', () => {
   for (let i = 0; i < 5; i++) recordCallFailure(broken)
   expect(checkRepeatedFailure(broken, ENABLED).action).not.toBe('allow')
   expect(checkRepeatedFailure(fixed, ENABLED).action).toBe('allow')
+})
+
+test('unchanged code edits are bounded and receive a concrete recovery path', () => {
+  const policy = getToolRepeatedFailurePolicy('Edit')
+  const broken = callSignature('Edit', {
+    file_path: '/game.html',
+    old_string: 'stale HUD block',
+    new_string: 'new HUD block',
+  })
+  const corrected = callSignature('Edit', {
+    file_path: '/game.html',
+    old_string: 'exact current HUD block',
+    new_string: 'new HUD block',
+  })
+
+  expect(policy).toMatchObject({ enabled: true, limit: 2, abortAfter: 3 })
+  recordCallFailure(broken)
+  recordCallFailure(broken)
+  const refusal = checkRepeatedFailure(broken, policy)
+  expect(refusal.action).toBe('refuse')
+  expect((refusal as { reason: string }).reason).toContain(
+    'Read the current target again',
+  )
+  expect(checkRepeatedFailure(corrected, policy).action).toBe('allow')
+  expect(getToolRepeatedFailurePolicy('Bash').enabled).toBe(false)
 })
 
 test('signatures ignore key order', () => {
@@ -294,6 +322,7 @@ test('the gate and validation both feed the guard', () => {
   )
   expect(source).toContain('recordCallSuccess(callSig)')
   expect(source).toContain('error instanceof RepeatedToolFailureAbort')
+  expect(source).toContain('getToolRepeatedFailurePolicy(tool.name)')
 })
 
 test('an unavailable tool is recoverable once and then bounded', async () => {

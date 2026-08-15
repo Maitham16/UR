@@ -5,6 +5,9 @@ import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEve
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, isEffortLevel, toPersistableEffort } from '../../utils/effort.js';
+import { ensureProviderModelsFresh, getProviderReasoningCapabilitiesForModel } from '../../services/providers/providerRegistry.js';
+import { getMainLoopModel } from '../../utils/model/model.js';
+import { getRuntimeProvider } from '../../utils/model/providers.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
 const COMMON_HELP_ARGS = ['help', '-h', '--help'];
 type EffortCommandResult = {
@@ -13,7 +16,7 @@ type EffortCommandResult = {
     value: EffortValue | undefined;
   };
 };
-function setEffortValue(effortValue: EffortValue): EffortCommandResult {
+function setEffortValue(effortValue: EffortValue, model?: string): EffortCommandResult {
   const persistable = toPersistableEffort(effortValue);
   if (persistable !== undefined) {
     const result = updateSettingsForSource('userSettings', {
@@ -52,6 +55,15 @@ function setEffortValue(effortValue: EffortValue): EffortCommandResult {
   }
   const description = getEffortValueDescription(effortValue);
   const suffix = persistable !== undefined ? '' : ' (this session only)';
+  const appliedLevel = model ? getDisplayedEffortLevel(model, effortValue) : effortValue;
+  if (typeof effortValue === 'string' && appliedLevel !== effortValue) {
+    return {
+      message: `Requested effort level ${effortValue}${suffix}, but ${model} advertises up to ${appliedLevel}; applied ${appliedLevel}: ${getEffortValueDescription(appliedLevel)}`,
+      effortUpdate: {
+        value: effortValue
+      }
+    };
+  }
   return {
     message: `Set effort level to ${effortValue}${suffix}: ${description}`,
     effortUpdate: {
@@ -66,6 +78,12 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
     const level = getDisplayedEffortLevel(model, appStateEffort);
     return {
       message: `Effort level: auto (currently ${level})`
+    };
+  }
+  const appliedLevel = getDisplayedEffortLevel(model, appStateEffort);
+  if (typeof effectiveValue === 'string' && appliedLevel !== effectiveValue) {
+    return {
+      message: `Requested effort: ${effectiveValue}; applied effort for ${model}: ${appliedLevel} (${getEffortValueDescription(appliedLevel)})`
     };
   }
   const description = getEffortValueDescription(effectiveValue);
@@ -104,7 +122,7 @@ function unsetEffortLevel(): EffortCommandResult {
     }
   };
 }
-export function executeEffort(args: string): EffortCommandResult {
+export function executeEffort(args: string, model?: string): EffortCommandResult {
   const normalized = args.toLowerCase();
   if (normalized === 'auto' || normalized === 'unset') {
     return unsetEffortLevel();
@@ -114,7 +132,7 @@ export function executeEffort(args: string): EffortCommandResult {
       message: `Invalid argument: ${args}. Valid options are: low, medium, high, max, auto`
     };
   }
-  return setEffortValue(normalized);
+  return setEffortValue(normalized, model);
 }
 function ShowCurrentEffort(t0) {
   const {
@@ -177,6 +195,14 @@ export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, arg
   if (!args || args === 'current' || args === 'status') {
     return <ShowCurrentEffort onDone={onDone} />;
   }
-  const result = executeEffort(args);
+  const model = getMainLoopModel();
+  const runtimeProvider = getRuntimeProvider();
+  if (args.toLowerCase() === 'max' && runtimeProvider === 'openrouter' && !getProviderReasoningCapabilitiesForModel(model, runtimeProvider)) {
+    // A saved OpenRouter model can be used before /model has populated the
+    // in-memory catalogue. Refresh once so `max` maps to the model's real
+    // highest effort (often `xhigh`) rather than being guessed as `high`.
+    await ensureProviderModelsFresh(runtimeProvider).catch(() => undefined);
+  }
+  const result = executeEffort(args, model);
   return <ApplyEffortAndClose result={result} onDone={onDone} />;
 }

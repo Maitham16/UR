@@ -3,10 +3,15 @@ import { isUltrathinkEnabled } from './thinking.js'
 import { getInitialSettings } from './settings/settings.js'
 import { isProSubscriber, isMaxSubscriber, isTeamSubscriber } from './auth.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
-import { getAPIProvider } from './model/providers.js'
+import {
+  getAPIProvider,
+  getRuntimeProvider,
+  getRuntimeModelReasoningCapabilities,
+} from './model/providers.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getAntModelOverrideConfig, resolveAntModel } from './model/antModels.js'
+import type { ProviderId } from '../services/providers/providerRegistry.js'
 export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
 
 export const EFFORT_LEVELS = [
@@ -18,13 +23,26 @@ export const EFFORT_LEVELS = [
 
 export type EffortValue = EffortLevel | number
 
-export function modelSupportsEffort(model: string): boolean {
+export function modelSupportsEffort(
+  model: string,
+  provider: ProviderId = getRuntimeProvider(),
+): boolean {
   if (isEnvTruthy(process.env.UR_CODE_ALWAYS_ENABLE_EFFORT)) {
     return true
   }
   const supported3P = get3PModelCapabilityOverride(model, 'effort')
   if (supported3P !== undefined) {
     return supported3P
+  }
+  const discovered = getRuntimeModelReasoningCapabilities(model, provider)
+  if (discovered?.supportedEfforts === null) return true
+  if (discovered?.supportedEfforts !== undefined) {
+    return discovered.supportedEfforts.some(effort => effort !== 'none')
+  }
+  if (discovered && provider === 'openrouter') {
+    // OpenRouter's unified reasoning API accepts effort even when a model
+    // advertises reasoning support without enumerating named effort levels.
+    return true
   }
   void model
   // Ollama: effort maps onto the wire's `think` parameter. The adapter probes
@@ -35,15 +53,63 @@ export function modelSupportsEffort(model: string): boolean {
   return getAPIProvider() === 'ollama'
 }
 
-export function modelSupportsMaxEffort(model: string): boolean {
+export function modelSupportsMaxEffort(
+  model: string,
+  provider: ProviderId = getRuntimeProvider(),
+): boolean {
   const supported3P = get3PModelCapabilityOverride(model, 'max_effort')
   if (supported3P !== undefined) {
     return supported3P
+  }
+  const discovered = getRuntimeModelReasoningCapabilities(model, provider)
+  if (discovered?.supportedEfforts === null) return true
+  if (discovered?.supportedEfforts !== undefined) {
+    // `max` is UR's provider-neutral request for the model's highest setting.
+    // OpenRouter maps it to the nearest supported wire value (for example
+    // xhigh on Qwen or high on a high-only model).
+    return (
+      provider === 'openrouter' ||
+      discovered.supportedEfforts.some(
+        effort => effort === 'max' || effort === 'xhigh',
+      )
+    )
+  }
+  if (discovered && provider === 'openrouter') {
+    return true
   }
   if (process.env.USER_TYPE === 'ant' && resolveAntModel(model)) {
     return true
   }
   return false
+}
+
+export type OpenRouterReasoningEffort =
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+
+/**
+ * Translate UR's provider-neutral effort vocabulary to the highest truthful
+ * OpenRouter value advertised by the selected model. In UR, `max` means the
+ * model's maximum capability; several models (including Qwen3.8 Max) call that
+ * wire value `xhigh` rather than `max`.
+ */
+export function toOpenRouterReasoningEffort(
+  model: string,
+  effort: EffortLevel,
+): OpenRouterReasoningEffort {
+  const supported = getRuntimeModelReasoningCapabilities(
+    model,
+    'openrouter',
+  )?.supportedEfforts
+  if (effort !== 'max') return effort
+  if (supported === null || supported === undefined) return 'max'
+  if (supported.includes('max')) return 'max'
+  if (supported.includes('xhigh')) return 'xhigh'
+  return 'high'
 }
 
 export function isEffortLevel(value: string): value is EffortLevel {
@@ -134,6 +200,7 @@ export function getEffortEnvOverride(): EffortValue | null | undefined {
 export function resolveAppliedEffort(
   model: string,
   appStateEffortValue: EffortValue | undefined,
+  provider: ProviderId = getRuntimeProvider(),
 ): EffortValue | undefined {
   const envOverride = getEffortEnvOverride()
   if (envOverride === null) {
@@ -142,7 +209,7 @@ export function resolveAppliedEffort(
   const resolved =
     envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
   // API rejects 'max' on models without max-effort support; downgrade to 'high'.
-  if (resolved === 'max' && !modelSupportsMaxEffort(model)) {
+  if (resolved === 'max' && !modelSupportsMaxEffort(model, provider)) {
     return 'high'
   }
   return resolved
@@ -156,8 +223,10 @@ export function resolveAppliedEffort(
 export function getDisplayedEffortLevel(
   model: string,
   appStateEffort: EffortValue | undefined,
+  provider: ProviderId = getRuntimeProvider(),
 ): EffortLevel {
-  const resolved = resolveAppliedEffort(model, appStateEffort) ?? 'high'
+  const resolved =
+    resolveAppliedEffort(model, appStateEffort, provider) ?? 'high'
   return convertEffortValueToLevel(resolved)
 }
 
@@ -170,9 +239,10 @@ export function getDisplayedEffortLevel(
 export function getEffortSuffix(
   model: string,
   effortValue: EffortValue | undefined,
+  provider: ProviderId = getRuntimeProvider(),
 ): string {
   if (effortValue === undefined) return ''
-  const resolved = resolveAppliedEffort(model, effortValue)
+  const resolved = resolveAppliedEffort(model, effortValue, provider)
   if (resolved === undefined) return ''
   return ` with ${convertEffortValueToLevel(resolved)} effort`
 }

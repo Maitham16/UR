@@ -13,6 +13,7 @@ import {
   MODEL_CACHE_TTL_MS,
   parseDiscoveredModels,
   RequestCoalescer,
+  type ModelReasoningCapabilities,
 } from './modelCatalog.js'
 
 export const PROVIDER_IDS = [
@@ -1787,6 +1788,7 @@ export type ProviderModelDefinition = {
   outputTokenLimit?: number
   supportedParameters?: string[]
   capabilities?: Record<string, unknown>
+  reasoning?: ModelReasoningCapabilities
   expirationDate?: number
   deprecated?: boolean
 }
@@ -2091,6 +2093,31 @@ export function getProviderContextLengthForModel(
   return typeof length === 'number' && Number.isFinite(length) && length > 0
     ? Math.floor(length)
     : undefined
+}
+
+/**
+ * Return live reasoning metadata for the active provider/model without doing
+ * network I/O. OpenRouter publishes this in `/models`; keeping it beside the
+ * cached model definition lets effort selection and request shaping share one
+ * authoritative capability record.
+ */
+export function getProviderReasoningCapabilitiesForModel(
+  model: string,
+  provider: ProviderId | string = getRuntimeProviderId(),
+  settings: SettingsJson = getInitialSettings(),
+): ModelReasoningCapabilities | undefined {
+  const providerId = resolveProviderId(provider)
+  if (!providerId) return undefined
+  const wanted = model.trim().toLowerCase()
+  if (!wanted) return undefined
+  const known = [
+    ...getCachedProviderModels(providerId, settings),
+    ...(PROVIDER_MODELS[providerId] ?? []),
+  ]
+  const match =
+    known.find(entry => entry.id.toLowerCase() === wanted) ??
+    known.find(entry => wanted.includes(entry.id.toLowerCase()))
+  return match?.reasoning
 }
 
 export function cacheProviderModelsForProvider(
@@ -2412,6 +2439,7 @@ async function discoverApiProviderModels(
     ...(model.outputTokenLimit ? { outputTokenLimit: model.outputTokenLimit } : {}),
     ...(model.supportedParameters ? { supportedParameters: model.supportedParameters } : {}),
     ...(model.capabilities ? { capabilities: model.capabilities } : {}),
+    ...(model.reasoning ? { reasoning: model.reasoning } : {}),
     ...(model.expirationDate ? { expirationDate: model.expirationDate } : {}),
     ...(model.deprecated ? { deprecated: true } : {}),
   }))

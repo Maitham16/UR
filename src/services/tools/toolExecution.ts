@@ -148,6 +148,8 @@ import {
   checkRepeatedFailure,
   recordCallFailure,
   recordCallSuccess,
+  REPEATED_FAILURE_DEFAULTS,
+  type RepeatedFailureConfig,
   RepeatedToolFailureAbort,
 } from './repeatedFailureGuard.js'
 
@@ -156,6 +158,29 @@ const UNKNOWN_TOOL_REPEAT_POLICY = {
   limit: 1,
   abortAfter: 3,
 } as const
+
+const CODE_EDIT_REPEAT_POLICY = {
+  enabled: true,
+  limit: 2,
+  abortAfter: 3,
+  recoveryHint:
+    'Read the current target again, then rebuild the edit from the exact current content and use a unique anchor (or replace_all only when every match is intended).',
+} as const satisfies RepeatedFailureConfig
+
+/**
+ * Code-edit failures are deterministic for unchanged file content and input.
+ * Bound only these mutating tools; corrected retries receive a new signature
+ * and remain unrestricted, while unrelated tools retain their existing policy.
+ */
+export function getToolRepeatedFailurePolicy(
+  toolName: string,
+): RepeatedFailureConfig {
+  return toolName === FILE_EDIT_TOOL_NAME ||
+    toolName === FILE_WRITE_TOOL_NAME ||
+    toolName === NOTEBOOK_EDIT_TOOL_NAME
+    ? CODE_EDIT_REPEAT_POLICY
+    : REPEATED_FAILURE_DEFAULTS
+}
 
 /**
  * How many tasks exist for this session.
@@ -966,7 +991,10 @@ async function checkPermissionsAndCallTool(
     input,
     repeatedFailureScope(toolUseContext, messageId),
   )
-  const repeat = checkRepeatedFailure(callSig)
+  const repeat = checkRepeatedFailure(
+    callSig,
+    getToolRepeatedFailurePolicy(tool.name),
+  )
   if (repeat.action !== 'allow') {
     logEvent('tengu_repeated_failure_guard', {
       toolName: sanitizeToolNameForAnalytics(tool.name),

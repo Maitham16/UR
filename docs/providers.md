@@ -146,6 +146,23 @@ OpenAI-compatible, OpenRouter, local, or subscription-CLI providers.
 
 UR-Nexus shows providers first, then only models available for the selected provider. This prevents incompatible model/provider pairs and keeps API-key, local/server, subscription, and external app bridge model lists separate. The generic `subscription` entry has no models unless a real independent subscription runtime is configured; UR does not list fake subscription models.
 
+The interactive selection is also the authority for the current session: the
+next main, compact, or web-search request uses the provider/model pair captured
+in live app state while the same validated pair is persisted once to local
+settings. A stale settings snapshot cannot combine a newly selected model with
+the previous provider.
+
+### Reasoning effort
+
+Use `/effort low|medium|high|max|auto` inside UR. `max` is provider-neutral and
+means the selected model's highest reasoning capability. For OpenRouter, UR
+preserves the live `/models` reasoning metadata and sends the unified
+`reasoning.effort` request, translating `max` to the model's advertised wire
+value such as `xhigh` or `high`. The command confirmation, status indicator,
+and active-work spinner all show the same applied UR effort level. Providers
+that cannot apply a requested level report the actual downgraded level instead
+of confirming a value they did not use.
+
 ## Runtime provider routing
 
 When you select a UR-native provider and model, every agent request is routed

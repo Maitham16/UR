@@ -20,6 +20,19 @@
 
 export type ModelPricingTier = 'free' | 'paid' | 'unknown'
 
+export type ModelReasoningCapabilities = {
+  /**
+   * Provider-advertised effort values. `null` means the gateway accepts every
+   * normalized effort value; `undefined` means it did not advertise effort
+   * selection at all.
+   */
+  supportedEfforts?: string[] | null
+  defaultEffort?: string
+  defaultEnabled?: boolean
+  mandatory?: boolean
+  supportsMaxTokens?: boolean
+}
+
 export type DiscoveredModel = {
   id: string
   /** Provider-supplied human name, falling back to the id. */
@@ -30,6 +43,7 @@ export type DiscoveredModel = {
   outputTokenLimit?: number
   supportedParameters?: string[]
   capabilities?: Record<string, unknown>
+  reasoning?: ModelReasoningCapabilities
   expirationDate?: number
   deprecated?: boolean
 }
@@ -50,6 +64,56 @@ function asCount(value: unknown): number | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+/** Normalize OpenRouter's per-model `reasoning` discovery block. */
+export function parseModelReasoningCapabilities(
+  value: unknown,
+): ModelReasoningCapabilities | undefined {
+  if (!isRecord(value)) return undefined
+
+  const supportedEfforts =
+    value.supported_efforts === null
+      ? null
+      : Array.isArray(value.supported_efforts)
+        ? Array.from(
+            new Set(
+              value.supported_efforts
+                .filter((entry): entry is string => typeof entry === 'string')
+                .map(entry => entry.trim().toLowerCase())
+                .filter(Boolean),
+            ),
+          )
+        : undefined
+  const defaultEffort = asString(value.default_effort)?.toLowerCase()
+  const defaultEnabled =
+    typeof value.default_enabled === 'boolean'
+      ? value.default_enabled
+      : undefined
+  const mandatory =
+    typeof value.mandatory === 'boolean' ? value.mandatory : undefined
+  const supportsMaxTokens =
+    typeof value.supports_max_tokens === 'boolean'
+      ? value.supports_max_tokens
+      : undefined
+
+  if (
+    supportedEfforts === undefined &&
+    defaultEffort === undefined &&
+    defaultEnabled === undefined &&
+    mandatory === undefined &&
+    supportsMaxTokens === undefined
+  ) {
+    return undefined
+  }
+
+  return {
+    ...(supportedEfforts !== undefined ? { supportedEfforts } : {}),
+    ...(defaultEffort !== undefined ? { defaultEffort } : {}),
+    ...(defaultEnabled !== undefined ? { defaultEnabled } : {}),
+    ...(mandatory !== undefined ? { mandatory } : {}),
+    ...(supportsMaxTokens !== undefined ? { supportsMaxTokens } : {}),
+  }
 }
 
 function asEpochSeconds(value: unknown): number | undefined {
@@ -144,6 +208,7 @@ export function toDiscoveredModel(entry: unknown, providerLabel: string): Discov
       ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string')
       : undefined
   const capabilities = isRecord(raw.capabilities) ? raw.capabilities : undefined
+  const reasoning = parseModelReasoningCapabilities(raw.reasoning)
   const expirationDate = asEpochSeconds(raw.expiration_date)
   const deprecated =
     raw.deprecated === true ||
@@ -174,6 +239,7 @@ export function toDiscoveredModel(entry: unknown, providerLabel: string): Discov
     ...(outputTokenLimit ? { outputTokenLimit } : {}),
     ...(supportedParameters ? { supportedParameters } : {}),
     ...(capabilities ? { capabilities } : {}),
+    ...(reasoning ? { reasoning } : {}),
     ...(expirationDate ? { expirationDate } : {}),
     ...(deprecated ? { deprecated: true } : {}),
   }

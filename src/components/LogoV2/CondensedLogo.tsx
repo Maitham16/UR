@@ -22,6 +22,7 @@ export function CondensedLogo() {
   } = useTerminalSize();
   const agent = useAppState(_temp);
   const effortValue = useAppState(_temp2);
+  const effortProvider = useAppState(s => s.provider.active);
   const model = useMainLoopModel();
   const modelDisplayName = renderModelSetting(model);
   const {
@@ -74,7 +75,7 @@ export function CondensedLogo() {
     textWidth
   } = getCondensedLogoLayout(columns);
   const truncatedVersion = truncate(version, Math.max(textWidth - 4, 1));
-  const effortSuffix = getEffortSuffix(model, effortValue);
+  const effortSuffix = getEffortSuffix(model, effortValue, effortProvider);
   const {
     shouldSplit,
     truncatedModel,

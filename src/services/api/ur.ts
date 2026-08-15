@@ -250,6 +250,7 @@ import {
 } from '../compact/microCompact.js'
 import { getInitializationStatus } from '../lsp/manager.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
+import type { ProviderSettings } from '../providers/providerRegistry.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
 import { CLIENT_REQUEST_ID_HEADER, getURHQClient } from './client.js'
 import {
@@ -718,6 +719,8 @@ export type Options = {
   skipCacheWrite?: boolean
   temperatureOverride?: number
   effortValue?: EffortValue
+  /** Provider/model selection captured from AppState for this request. */
+  providerSettings?: Readonly<ProviderSettings>
   mcpTools: Tools
   hasPendingMcpServers?: boolean
   queryTracking?: QueryChainTracking
@@ -891,6 +894,7 @@ export async function* executeNonStreamingRequest(
     model: string
     fetchOverride?: Options['fetchOverride']
     source: string
+    providerSettings?: Options['providerSettings']
   },
   retryOptions: {
     model: string
@@ -918,6 +922,7 @@ export async function* executeNonStreamingRequest(
         model: clientOptions.model,
         fetchOverride: clientOptions.fetchOverride,
         source: clientOptions.source,
+        providerSettings: clientOptions.providerSettings,
       }),
     async (urhq, attempt, context) => {
       const start = Date.now()
@@ -1508,7 +1513,11 @@ async function* queryModel(
     }
   }
 
-  const effort = resolveAppliedEffort(options.model, options.effortValue)
+  const effort = resolveAppliedEffort(
+    options.model,
+    options.effortValue,
+    options.providerSettings?.active,
+  )
 
   if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
     // Exclude defer_loading tools from the hash -- the API strips them from the
@@ -1840,6 +1849,7 @@ async function* queryModel(
           model: options.model,
           fetchOverride: options.fetchOverride,
           source: options.querySource,
+          providerSettings: options.providerSettings,
         }),
       async (urhq, attempt, context) => {
         attemptNumber = attempt
@@ -2643,7 +2653,11 @@ async function* queryModel(
           : 'other') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
       const result = yield* executeNonStreamingRequest(
-        { model: options.model, source: options.querySource },
+        {
+          model: options.model,
+          source: options.querySource,
+          providerSettings: options.providerSettings,
+        },
         {
           model: options.model,
           fallbackModel: options.fallbackModel,
@@ -2743,7 +2757,11 @@ async function* queryModel(
       try {
         // Fall back to non-streaming mode
         const result = yield* executeNonStreamingRequest(
-          { model: options.model, source: options.querySource },
+          {
+            model: options.model,
+            source: options.querySource,
+            providerSettings: options.providerSettings,
+          },
           {
             model: options.model,
             fallbackModel: options.fallbackModel,
