@@ -211,7 +211,13 @@ test('active checkout excludes superseded release evidence and design leftovers'
   })
     .filter(entry => entry.isDirectory())
     .map(entry => entry.name)
-  expect(resultVersions.every(version => version === packageJson.version)).toBe(true)
+  const staleVersions = resultVersions.filter(
+    version => version !== packageJson.version,
+  )
+  expect(
+    staleVersions,
+    `benchmark evidence must match ${packageJson.version}; stale directories: ${staleVersions.join(', ') || 'none'}`,
+  ).toEqual([])
 })
 
 test('package smoke configurations are cleaned with the package-check work directory', () => {
