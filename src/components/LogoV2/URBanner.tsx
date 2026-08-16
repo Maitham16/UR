@@ -18,42 +18,14 @@ export const UR_WORDMARK_ROWS = [
 
 export const UR_WORDMARK_TAGLINE = 'THE AUTONOMOUS AGENT'
 
-type WordmarkTone = 'ur' | 'urShimmer' | 'warningShimmer' | undefined
-
-// A small top-left specular pass gives the solid faces a polished highlight
-// without relying on animation, gradients, or terminal-specific transparency.
-const SPECULAR_GLYPHS = new Set([
-  '0:0',
-  '0:1',
-  '0:6',
-  '0:7',
-  '0:11',
-  '0:12',
-  '0:13',
-  '0:14',
-  '0:15',
-  '0:16',
-  '1:0',
-  '1:6',
-  '1:11',
-  '1:15',
-  '2:0',
-  '2:6',
-  '2:11',
-])
+type WordmarkTone = 'ur' | undefined
 
 export function getURWordmarkGlyphTone(
   glyph: string,
-  row: number,
-  column: number,
+  _row: number,
+  _column: number,
 ): WordmarkTone {
-  if (glyph === '█') {
-    return SPECULAR_GLYPHS.has(`${row}:${column}`)
-      ? 'warningShimmer'
-      : 'urShimmer'
-  }
-  if ('╗║╔╝╚═'.includes(glyph)) return 'ur'
-  return undefined
+  return glyph === ' ' ? undefined : 'ur'
 }
 
 export function URBanner(): React.ReactNode {
@@ -76,9 +48,7 @@ export function URBanner(): React.ReactNode {
         </Text>
       ))}
       <Text bold>
-        <Text color="warningShimmer">✦</Text>
-        <Text color="urShimmer"> {UR_WORDMARK_TAGLINE} </Text>
-        <Text color="warningShimmer">✦</Text>
+        <Text color="ur">✦ {UR_WORDMARK_TAGLINE} ✦</Text>
       </Text>
     </Box>
   )

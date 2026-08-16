@@ -21,10 +21,11 @@ describe('UR welcome wordmark', () => {
     expect(UR_WORDMARK_TAGLINE).toBe('THE AUTONOMOUS AGENT')
   })
 
-  test('uses a bright face, specular highlight, and darker dimensional edge', () => {
-    expect(getURWordmarkGlyphTone('█', 0, 0)).toBe('warningShimmer')
-    expect(getURWordmarkGlyphTone('█', 4, 2)).toBe('urShimmer')
+  test('uses the same UR brand color as the house and welcome frame', () => {
+    expect(getURWordmarkGlyphTone('█', 0, 0)).toBe('ur')
+    expect(getURWordmarkGlyphTone('█', 4, 2)).toBe('ur')
     expect(getURWordmarkGlyphTone('╗', 0, 2)).toBe('ur')
+    expect(getURWordmarkGlyphTone('═', 5, 4)).toBe('ur')
     expect(getURWordmarkGlyphTone(' ', 0, 3)).toBeUndefined()
   })
 

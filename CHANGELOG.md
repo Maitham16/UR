@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.81.4
+
+- Unified the welcome-screen UR wordmark, outlined depth, decorative marks,
+  house, divider, and outer frame on the same theme-aware UR brand color. This
+  removes the muddy olive/brown appearance caused by mixing three palette
+  colors while preserving the wordmark geometry and screen-reader output.
+
 ## 1.81.3
 
 - Brightened the welcome-screen UR wordmark with a polished three-tone finish:
