@@ -8,6 +8,7 @@ import {
 import {
   buildProviderModelLabels,
   compactModelDisplayName,
+  fullProviderModelDisplayName,
 } from '../src/utils/model/modelPresentation.js'
 
 describe('provider-first model picker presentation', () => {
@@ -58,5 +59,17 @@ describe('provider-first model picker presentation', () => {
     expect(labels.get('vendor-a/shared-model')).toBe('shared-model · vendor-a')
     expect(labels.get('vendor-b/shared-model')).toBe('shared-model · vendor-b')
     expect(labels.get('openai/gpt-5.5')).toBe('gpt-5.5')
+  })
+
+  test('focused OpenRouter details retain the complete untruncated ID', () => {
+    const model = {
+      id: 'nvidia/nemotron-3.5-content-safety:free',
+      displayName: 'nemotron-3.5-content-safety:f…',
+    }
+
+    expect(fullProviderModelDisplayName('openrouter', model)).toBe(model.id)
+    expect(fullProviderModelDisplayName('openai-api', model)).toBe(
+      model.displayName,
+    )
   })
 })

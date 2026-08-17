@@ -114,6 +114,12 @@ available, and the approval decision in task evidence. Security-research prompts
 need scoped targets and authorization confirmation; local/lab/test targets are
 preferred unless the user confirms authorized external scope.
 
+Reading source code does not attach a blanket modification refusal. UR evaluates
+the actual behavior and requested intent, so ordinary games, websites, apps,
+and developer tools can be analyzed and improved normally. Genuine malicious
+or unauthorized activity remains subject to UR's security and operational
+boundaries.
+
 Authorized researchers can explicitly activate `/mode redteam`. The first use
 shows a mandatory risk warning; `/mode redteam --accept-risk` acknowledges it
 and enables UR's unrestricted security-research prompt policy for the current
@@ -356,8 +362,9 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    In the model catalog, use **Up/Down** to browse and **Left/Right** to change
    the focused model's effort before pressing Enter. OpenRouter additionally
    shows compact model names, FREE/PAID tier, context size, tool/reasoning
-   support, and the exact ID for the focused entry. Its catalog is fetched
-   fresh every time it opens and never falls back to a stale cached list.
+   support, and the full untruncated ID immediately below the focused entry.
+   Its catalog is fetched fresh every time it opens and never falls back to a
+   stale cached list.
    API-key entry is masked, aligned on one row, and stored through the OS
    keychain flow.
 

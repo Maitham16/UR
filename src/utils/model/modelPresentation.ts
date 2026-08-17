@@ -22,6 +22,14 @@ type PresentableModel = {
   displayName: string
 }
 
+/** Full, untruncated identity for the focused picker detail. */
+export function fullProviderModelDisplayName(
+  providerId: string,
+  model: PresentableModel,
+): string {
+  return providerId === 'openrouter' ? model.id : model.displayName
+}
+
 /**
  * OpenRouter's full IDs remain the option values, but compact labels prevent
  * the catalogue from becoming wider than the terminal. Duplicate leaf names

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.81.6
+
+- Restored the original clean welcome house without a shadow. The full adaptive
+  startup UI is now the default at every terminal size; its responsive stacking
+  and wordmark fallbacks handle resizing. The small-house condensed UI appears
+  only when explicitly requested with `UR_CODE_COMPACT_LOGO=1`.
+- Replaced the large UR wordmark with the supplied 16-line letterform in UR's
+  existing theme-aware brand color. It responds to terminal width and height,
+  falling back to the prior compact mark and then plain `UR` so resized or
+  narrow windows never overflow.
+- Kept OpenRouter catalog rows concise while showing the focused model's full,
+  untruncated provider/model ID immediately below the list on both picker
+  surfaces. Request routing continues to use that exact ID.
+- Removed the blanket file-read system reminder that told models to refuse all
+  code improvements. Reading ordinary games, websites, applications, and tools
+  no longer blocks requested edits; UR's normal authorization, malware, secret,
+  sandbox, and destructive-action safeguards remain enforced where relevant.
+
 ## 1.81.5
 
 - Matched the UR welcome wordmark to the house and frame's bright, theme-aware

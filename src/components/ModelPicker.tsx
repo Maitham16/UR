@@ -53,7 +53,10 @@ import { Byline } from './design-system/Byline.js'
 import { KeyboardShortcutHint } from './design-system/KeyboardShortcutHint.js'
 import { Pane } from './design-system/Pane.js'
 import { effortLevelToSymbol } from './EffortIndicator.js'
-import { buildProviderModelLabels } from '../utils/model/modelPresentation.js'
+import {
+  buildProviderModelLabels,
+  fullProviderModelDisplayName,
+} from '../utils/model/modelPresentation.js'
 
 export type Props = {
   initial: string | null
@@ -198,6 +201,9 @@ export function ModelPicker({
   const focusedModelName = selectOptions.find(
     opt => opt.value === focusedValue,
   )?.label
+  const focusedModelOption = selectOptions.find(
+    opt => opt.value === focusedValue,
+  )
   const focusedModel = resolveOptionModel(focusedValue)
   const focusedSupportsEffort = focusedModel
     ? modelSupportsEffort(focusedModel)
@@ -367,6 +373,19 @@ export function ModelPicker({
             {hiddenCount > 0 && (
               <Box paddingLeft={3}>
                 <Text dimColor>and {hiddenCount} more…</Text>
+              </Box>
+            )}
+            {focusedModelOption && focusedValue !== NO_PREFERENCE && (
+              <Box paddingLeft={3} marginTop={1} flexDirection="column">
+                <Text dimColor color="subtle">
+                  Focused model · full name
+                </Text>
+                <Text bold color="text">
+                  {fullProviderModelDisplayName(currentProvider, {
+                    id: focusedModelOption.value,
+                    displayName: String(focusedModelOption.label),
+                  })}
+                </Text>
               </Box>
             )}
           </Box>

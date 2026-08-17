@@ -27,6 +27,7 @@ import {
 import {
   calculateLayoutDimensions,
   getCondensedLogoLayout,
+  shouldUseCondensedLogo,
 } from '../src/utils/logoV2Utils.js'
 import { compactModelDisplayName } from '../src/utils/model/modelPresentation.js'
 
@@ -119,6 +120,14 @@ describe('terminal UI narrow-layout safety', () => {
       textWidth: 8,
     })
     expect(calculateLayoutDimensions(3, 'compact', 20).totalWidth).toBe(1)
+  })
+
+  test('full adaptive startup UI is default and compact mode is explicit', () => {
+    expect(shouldUseCondensedLogo(false, false, false, false)).toBe(false)
+    expect(shouldUseCondensedLogo(false, false, true, false)).toBe(true)
+    expect(shouldUseCondensedLogo(false, false, true, true)).toBe(false)
+    expect(shouldUseCondensedLogo(true, false, true, false)).toBe(false)
+    expect(shouldUseCondensedLogo(false, true, true, false)).toBe(false)
   })
 
   test('startup chrome drops provider prefixes from long model IDs', () => {

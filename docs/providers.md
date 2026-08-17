@@ -167,9 +167,9 @@ The provider-first `/model` picker supports the same control directly: use
 Left/Right to move through the effort levels advertised by the focused model,
 then Enter to apply the model and effort together. OpenRouter's live catalog
 shows pricing tier, context size, tool capability, reasoning capability, and
-the exact model ID for the focused entry. Opening the OpenRouter catalog always
-fetches the current `/models` endpoint and never substitutes a cached list when
-that refresh fails. API-key entry for
+the full, untruncated model ID immediately below the focused entry. Opening the
+OpenRouter catalog always fetches the current `/models` endpoint and never
+substitutes a cached list when that refresh fails. API-key entry for
 OpenAI, Claude, Gemini, and OpenRouter is a single aligned masked row; the key
 is stored in the OS keychain flow and is never written to settings.
 

@@ -34,8 +34,19 @@ export type CondensedLogoLayout = {
   textWidth: number
 }
 
+export function shouldUseCondensedLogo(
+  hasReleaseNotes: boolean,
+  showOnboarding: boolean,
+  compactRequested: boolean,
+  forceFull: boolean,
+): boolean {
+  return (
+    compactRequested && !forceFull && !hasReleaseNotes && !showOnboarding
+  )
+}
+
 /**
- * The small house mark and row gap consume 15 cells. Stack the mark above the
+ * The house mark and row gap consume up to 15 cells. Stack the mark above the
  * text before that reservation would leave an unusably narrow text column,
  * and omit the mark when even the artwork cannot fit.
  */

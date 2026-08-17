@@ -5,11 +5,11 @@ import * as React from 'react';
 import { Box, Text, color } from '../../ink.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { stringWidth } from '../../ink/stringWidth.js';
-import { getLayoutMode, calculateLayoutDimensions, calculateOptimalLeftWidth, formatWelcomeMessage, truncatePath, getRecentActivitySync, getRecentReleaseNotesSync, getLogoDisplayData } from '../../utils/logoV2Utils.js';
+import { getLayoutMode, calculateLayoutDimensions, calculateOptimalLeftWidth, formatWelcomeMessage, truncatePath, getRecentActivitySync, getRecentReleaseNotesSync, getLogoDisplayData, shouldUseCondensedLogo } from '../../utils/logoV2Utils.js';
 import { truncate } from '../../utils/format.js';
 import { getDisplayPath } from '../../utils/file.js';
 import { URBanner } from './URBanner.js';
-import { UrHouse } from './UrHouse.js';
+import { AUTOMATIC_HOUSE_SIZE, UrHouse } from './UrHouse.js';
 import { FeedColumn } from './FeedColumn.js';
 import { createRecentActivityFeed, createWhatsNewFeed, createProjectOnboardingFeed, createGuestPassesFeed } from './feedConfigs.js';
 import { getGlobalConfig, saveGlobalConfig } from 'src/utils/config.js';
@@ -52,7 +52,8 @@ export function LogoV2() {
   const activities = getRecentActivitySync();
   const username = getGlobalConfig().oauthAccount?.displayName ?? "";
   const {
-    columns
+    columns,
+    rows
   } = useTerminalSize();
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -119,7 +120,7 @@ export function LogoV2() {
   useEffect(t2, t3);
   let t4;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = !hasReleaseNotes && !showOnboarding && !isEnvTruthy(process.env.UR_CODE_FORCE_FULL_LOGO);
+    t4 = shouldUseCondensedLogo(hasReleaseNotes, showOnboarding, isEnvTruthy(process.env.UR_CODE_COMPACT_LOGO), isEnvTruthy(process.env.UR_CODE_FORCE_FULL_LOGO));
     $[5] = t4;
   } else {
     t4 = $[5];
@@ -180,7 +181,7 @@ export function LogoV2() {
     t10 = $[14];
   }
   const modelDisplayName = t10;
-  if (!hasReleaseNotes && !showOnboarding && !isEnvTruthy(process.env.UR_CODE_FORCE_FULL_LOGO)) {
+  if (isCondensedMode) {
     let t11;
     let t12;
     let t13;
@@ -283,7 +284,7 @@ export function LogoV2() {
     }
     let t12;
     if ($[34] === Symbol.for("react.memo_cache_sentinel")) {
-      t12 = <Box marginY={1}><UrHouse size="small" /></Box>;
+      t12 = <Box marginY={1}><UrHouse size={AUTOMATIC_HOUSE_SIZE} /></Box>;
       $[34] = t12;
     } else {
       t12 = $[34];
@@ -374,7 +375,7 @@ export function LogoV2() {
   }
   let t19;
   if ($[48] === Symbol.for("react.memo_cache_sentinel")) {
-    t19 = <Box marginY={1}><UrHouse size="large" /></Box>;
+    t19 = <Box marginY={1}><UrHouse size={AUTOMATIC_HOUSE_SIZE} /></Box>;
     $[48] = t19;
   } else {
     t19 = $[48];
@@ -422,7 +423,7 @@ export function LogoV2() {
   } else {
     t24 = $[61];
   }
-  const t25 = layoutMode === "horizontal" && <Box width={rightWidth} alignItems="center" justifyContent="center"><URBanner /></Box>;
+  const t25 = layoutMode === "horizontal" && <Box width={rightWidth} alignItems="center" justifyContent="center"><URBanner availableWidth={rightWidth} availableHeight={Math.max(1, rows - 4)} /></Box>;
   let t26;
   if ($[62] !== T2 || $[63] !== t15 || $[64] !== t23 || $[65] !== t24 || $[66] !== t25) {
     t26 = <T2 flexDirection={t15} paddingX={t16} gap={t17}>{t23}{t24}{t25}</T2>;

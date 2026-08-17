@@ -9,6 +9,23 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.81.6 Addition
+
+- File reads no longer inject a blanket instruction that blocks all code
+  improvements. Benign games, websites, applications, and developer tools can
+  be modified normally; UR continues to apply authorization, secret handling,
+  sandbox, destructive-action, and genuine malware safeguards based on actual
+  behavior and intent.
+- OpenRouter keeps compact catalog rows while repeating the focused model's
+  complete provider/model ID immediately below the list.
+- The welcome screen uses the original clean house mark without a shadow. The
+  full adaptive layout is the default at every terminal size; the small-house
+  condensed layout is explicit-only through
+  `UR_CODE_COMPACT_LOGO=1`.
+- The full welcome pane uses a 16-line UR wordmark in the active UR theme color
+  and automatically switches to compact and minimal marks as terminal width or
+  height decreases.
+
 ## v1.81.0 Addition
 
 - UR now provides an explicit `/mode redteam` for authorized researchers. A

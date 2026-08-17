@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { executeEffort } from '../src/commands/effort/effort.js'
 import { toOpenAICompatibleRequest } from '../src/services/api/openaiCompatible.js'
 import {
@@ -22,17 +22,7 @@ const MODEL = 'qwen/qwen3.8-max'
 const previousConfigDir = process.env.UR_CONFIG_DIR
 const configDir = mkdtempSync(join(tmpdir(), 'ur-openrouter-effort-'))
 
-beforeAll(() => {
-  process.env.UR_CONFIG_DIR = configDir
-  mkdirSync(configDir, { recursive: true })
-  writeFileSync(
-    join(configDir, 'settings.json'),
-    JSON.stringify({
-      provider: { active: 'openrouter', model: MODEL },
-      model: MODEL,
-    }),
-  )
-  resetSettingsCache()
+function seedOpenRouterReasoningModels(): void {
   cacheProviderModelsForProvider('openrouter', [
     {
       id: MODEL,
@@ -54,7 +44,22 @@ beforeAll(() => {
       reasoning: { supportedEfforts: ['high', 'low'] },
     },
   ])
+}
+
+beforeAll(() => {
+  process.env.UR_CONFIG_DIR = configDir
+  mkdirSync(configDir, { recursive: true })
+  writeFileSync(
+    join(configDir, 'settings.json'),
+    JSON.stringify({
+      provider: { active: 'openrouter', model: MODEL },
+      model: MODEL,
+    }),
+  )
+  resetSettingsCache()
 })
+
+beforeEach(seedOpenRouterReasoningModels)
 
 afterAll(() => {
   clearProviderModelCacheForTests()
@@ -76,10 +81,10 @@ describe('OpenRouter model-aware effort', () => {
   })
 
   test('UR max resolves to Qwen highest effort instead of silently becoming high', () => {
-    expect(modelSupportsEffort(MODEL)).toBe(true)
-    expect(modelSupportsMaxEffort(MODEL)).toBe(true)
-    expect(resolveAppliedEffort(MODEL, 'max')).toBe('max')
-    expect(getDisplayedEffortLevel(MODEL, 'max')).toBe('max')
+    expect(modelSupportsEffort(MODEL, 'openrouter')).toBe(true)
+    expect(modelSupportsMaxEffort(MODEL, 'openrouter')).toBe(true)
+    expect(resolveAppliedEffort(MODEL, 'max', 'openrouter')).toBe('max')
+    expect(getDisplayedEffortLevel(MODEL, 'max', 'openrouter')).toBe('max')
     expect(toOpenRouterReasoningEffort(MODEL, 'max')).toBe('xhigh')
     expect(executeEffort('max', MODEL).message).toContain(
       'Set effort level to max',
@@ -102,9 +107,9 @@ describe('OpenRouter model-aware effort', () => {
 
   test('max remains the user-facing intent while OpenRouter maps a high-only model', () => {
     const model = 'vendor/high-only'
-    expect(modelSupportsMaxEffort(model)).toBe(true)
-    expect(resolveAppliedEffort(model, 'max')).toBe('max')
-    expect(getDisplayedEffortLevel(model, 'max')).toBe('max')
+    expect(modelSupportsMaxEffort(model, 'openrouter')).toBe(true)
+    expect(resolveAppliedEffort(model, 'max', 'openrouter')).toBe('max')
+    expect(getDisplayedEffortLevel(model, 'max', 'openrouter')).toBe('max')
     expect(toOpenRouterReasoningEffort(model, 'max')).toBe('high')
     expect(executeEffort('max', model).message).toContain(
       'Set effort level to max',

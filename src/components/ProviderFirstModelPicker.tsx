@@ -62,7 +62,10 @@ import {
 } from '../utils/thinking.js'
 import { resolveActiveProviderModel } from '../services/api/providerClient.js'
 import { effortLevelToSymbol } from './EffortIndicator.js'
-import { buildProviderModelLabels } from '../utils/model/modelPresentation.js'
+import {
+  buildProviderModelLabels,
+  fullProviderModelDisplayName,
+} from '../utils/model/modelPresentation.js'
 
 const selectCurrentProvider = (s: { provider?: { active?: string } }) =>
   s.provider?.active ?? 'ollama'
@@ -779,14 +782,18 @@ export function ProviderFirstModelPicker({
 
             {focusedModel && (
               <Box marginBottom={1} flexDirection="column">
-                <Text bold color="text">
-                  {focusedModel.label}
+                <Text dimColor color="subtle">
+                  Focused model · full name
                 </Text>
-                {selectedProvider?.value === 'openrouter' && (
-                  <Text dimColor color="subtle">
-                    ID: {focusedModel.value}
-                  </Text>
-                )}
+                <Text bold color="text">
+                  {fullProviderModelDisplayName(
+                    selectedProvider?.value ?? '',
+                    {
+                      id: focusedModel.value,
+                      displayName: focusedModel.label,
+                    },
+                  )}
+                </Text>
                 <Text dimColor>
                   {focusedModel.description}
                 </Text>

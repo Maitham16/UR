@@ -29,7 +29,6 @@ import {
 import type { ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { getCwd } from '../../utils/cwd.js'
-import { isRedteamModeActive } from '../../security/redteamMode.js'
 import { getURConfigHomeDir, isEnvTruthy } from '../../utils/envUtils.js'
 import { getErrnoCode, isENOENT } from '../../utils/errors.js'
 import {
@@ -54,7 +53,6 @@ import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
 import { isAutoMemFile } from '../../utils/memoryFileDetection.js'
 import { createUserMessage } from '../../utils/messages.js'
-import { getCanonicalName, getMainLoopModel } from '../../utils/model/model.js'
 import {
   mapNotebookCellsToToolResult,
   readNotebook,
@@ -410,9 +408,9 @@ export const FileReadTool = buildTool({
   renderToolResultMessage,
   // UI.tsx:140 — ALL types render summary chrome only: "Read N lines",
   // "Read image (42KB)". Never the content itself. The model-facing
-  // serialization (below) sends content + CYBER_RISK_MITIGATION_REMINDER
-  // + line prefixes; UI shows none of it. Nothing to index. Caught by
-  // the render-fidelity test when this initially claimed file.content.
+  // serialization (below) sends content + line prefixes; UI shows none of it.
+  // Nothing to index. Caught by the render-fidelity test when this initially
+  // claimed file.content.
   extractSearchText() {
     return ''
   },
@@ -698,10 +696,7 @@ export const FileReadTool = buildTool({
           content =
             memoryFileFreshnessPrefix(data) +
             formatFileLines(data.file) +
-            describeUnreadRemainder(data.file) +
-            (shouldIncludeFileReadMitigation()
-              ? getFileReadSecurityReminder()
-              : '')
+            describeUnreadRemainder(data.file)
         } else {
           // Determine the appropriate warning message
           content =
@@ -750,25 +745,6 @@ function describeUnreadRemainder(file: {
     return ''
   }
   return `\n\n<system-reminder>This is lines ${firstLine}-${lastLine} of ${file.totalLines}. ${file.totalLines - lastLine} lines were not returned — read again with offset ${lastLine + 1} if you need them.</system-reminder>`
-}
-
-export const CYBER_RISK_MITIGATION_REMINDER =
-  '\n\n<system-reminder>\nWhenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.\n</system-reminder>\n'
-
-export const REDTEAM_FILE_READ_REMINDER =
-  '\n\n<system-reminder>\nUR redteam mode is active. You may analyze, modify, build, and test security-research code, including malware and exploits. Keep operational actions within the approved target scope and continue to honor tool permissions, sandboxing, and action confirmations. The selected model/provider may apply separate policies.\n</system-reminder>\n'
-
-const MITIGATION_EXEMPT_MODELS = new Set<string>()
-
-function shouldIncludeFileReadMitigation(): boolean {
-  const shortName = getCanonicalName(getMainLoopModel())
-  return !MITIGATION_EXEMPT_MODELS.has(shortName)
-}
-
-function getFileReadSecurityReminder(): string {
-  return isRedteamModeActive()
-    ? REDTEAM_FILE_READ_REMINDER
-    : CYBER_RISK_MITIGATION_REMINDER
 }
 
 /**
