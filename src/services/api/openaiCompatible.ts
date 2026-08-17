@@ -57,10 +57,12 @@ export async function createOpenAICompatibleClient(
     baseUrl: string
     apiKey?: string
     maxRetries?: number
+    providerId?: string
   },
 ): Promise<URHQClient> {
   const endpoint = normalizeOpenAICompatibleBaseUrl(options.baseUrl)
   const maxRetries = options.maxRetries
+  const providerId = options.providerId ?? 'openai-compatible'
 
   async function doRequest(params: any, requestOptions?: any) {
     const response = await fetchWithProviderReliability(
@@ -74,7 +76,7 @@ export async function createOpenAICompatibleClient(
             : {}),
           ...(requestOptions?.headers ?? {}),
         },
-        body: JSON.stringify(toOpenAICompatibleRequest(params)),
+        body: JSON.stringify(toOpenAICompatibleRequest(params, providerId)),
       },
       {
         maxRetries,
@@ -106,7 +108,9 @@ export async function createOpenAICompatibleClient(
             : {}),
           ...(requestOptions?.headers ?? {}),
         },
-        body: JSON.stringify(toOpenAICompatibleRequest({ ...params, stream: true })),
+        body: JSON.stringify(
+          toOpenAICompatibleRequest({ ...params, stream: true }, providerId),
+        ),
       },
       {
         maxRetries,
@@ -182,8 +186,7 @@ export function toOpenAICompatibleRequest(
           ),
         }
       : undefined
-  const compatibleReasoningEffort =
-    reasoningEffort === 'max' ? 'high' : reasoningEffort
+  const compatibleReasoningEffort = reasoningEffort
   const openRouterServerSearch =
     providerName === 'openrouter' &&
     tools.some(tool => tool?.type === 'openrouter:web_search')
@@ -231,9 +234,11 @@ function toOpenAIResponseFormat(format: any): any | undefined {
 function toOpenAIReasoningEffort(params: any): EffortLevel | undefined {
   const requested = params.output_config?.effort
   if (
+    requested === 'minimal' ||
     requested === 'low' ||
     requested === 'medium' ||
     requested === 'high' ||
+    requested === 'xhigh' ||
     requested === 'max'
   ) {
     return requested

@@ -436,6 +436,7 @@ async function createOpenAICompatibleProviderClient(
     baseUrl,
     apiKey,
     maxRetries: options.maxRetries ?? 3,
+    providerId,
   }) as ProviderMessageClient
 }
 

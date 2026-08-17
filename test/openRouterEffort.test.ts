@@ -11,6 +11,7 @@ import {
 } from '../src/services/providers/providerRegistry.js'
 import {
   getDisplayedEffortLevel,
+  getSupportedEffortLevelsForModel,
   modelSupportsEffort,
   modelSupportsMaxEffort,
   resolveAppliedEffort,
@@ -42,6 +43,13 @@ function seedOpenRouterReasoningModels(): void {
       description: 'High-only reasoning model',
       supportedParameters: ['reasoning', 'tools'],
       reasoning: { supportedEfforts: ['high', 'low'] },
+    },
+    {
+      id: 'vendor/max-native',
+      displayName: 'vendor/max-native',
+      description: 'Native max reasoning model',
+      supportedParameters: ['reasoning', 'tools'],
+      reasoning: { supportedEfforts: ['low', 'high', 'max'] },
     },
   ])
 }
@@ -83,11 +91,18 @@ describe('OpenRouter model-aware effort', () => {
   test('UR max resolves to Qwen highest effort instead of silently becoming high', () => {
     expect(modelSupportsEffort(MODEL, 'openrouter')).toBe(true)
     expect(modelSupportsMaxEffort(MODEL, 'openrouter')).toBe(true)
-    expect(resolveAppliedEffort(MODEL, 'max', 'openrouter')).toBe('max')
-    expect(getDisplayedEffortLevel(MODEL, 'max', 'openrouter')).toBe('max')
+    expect(getSupportedEffortLevelsForModel(MODEL, 'openrouter')).toEqual([
+      'minimal',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ])
+    expect(resolveAppliedEffort(MODEL, 'max', 'openrouter')).toBe('xhigh')
+    expect(getDisplayedEffortLevel(MODEL, 'max', 'openrouter')).toBe('xhigh')
     expect(toOpenRouterReasoningEffort(MODEL, 'max')).toBe('xhigh')
-    expect(executeEffort('max', MODEL).message).toContain(
-      'Set effort level to max',
+    expect(executeEffort('max', MODEL, 'openrouter').message).toContain(
+      'Requested max (this session only); applied xhigh',
     )
   })
 
@@ -105,14 +120,44 @@ describe('OpenRouter model-aware effort', () => {
     expect(request.reasoning_effort).toBeUndefined()
   })
 
-  test('max remains the user-facing intent while OpenRouter maps a high-only model', () => {
+  test('max maps to the exact ceiling of a high-only model', () => {
     const model = 'vendor/high-only'
     expect(modelSupportsMaxEffort(model, 'openrouter')).toBe(true)
+    expect(resolveAppliedEffort(model, 'max', 'openrouter')).toBe('high')
+    expect(getDisplayedEffortLevel(model, 'max', 'openrouter')).toBe('high')
+    expect(toOpenRouterReasoningEffort(model, 'max')).toBe('high')
+    expect(executeEffort('max', model, 'openrouter').message).toContain(
+      'applied high',
+    )
+  })
+
+  test('a provider-native max remains max on the wire and in the UI', () => {
+    const model = 'vendor/max-native'
     expect(resolveAppliedEffort(model, 'max', 'openrouter')).toBe('max')
     expect(getDisplayedEffortLevel(model, 'max', 'openrouter')).toBe('max')
-    expect(toOpenRouterReasoningEffort(model, 'max')).toBe('high')
-    expect(executeEffort('max', model).message).toContain(
-      'Set effort level to max',
-    )
+    expect(toOpenRouterReasoningEffort(model, 'max')).toBe('max')
+  })
+
+  test('OpenAI-compatible servers receive the already-resolved exact value', () => {
+    expect(
+      toOpenAICompatibleRequest(
+        {
+          model: 'local/reasoner',
+          messages: [],
+          output_config: { effort: 'xhigh' },
+        },
+        'llama.cpp',
+      ).reasoning_effort,
+    ).toBe('xhigh')
+    expect(
+      toOpenAICompatibleRequest(
+        {
+          model: 'local/reasoner',
+          messages: [],
+          output_config: { effort: 'max' },
+        },
+        'llama.cpp',
+      ).reasoning_effort,
+    ).toBe('max')
   })
 })

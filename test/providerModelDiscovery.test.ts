@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   clearProviderModelCacheForTests,
+  ensureProviderReasoningCapabilitiesForModel,
+  getProviderReasoningCapabilitiesForModel,
   getProviderRuntimeBlockReason,
   listModelsForProviderWithSource,
   listProviders,
@@ -229,6 +231,119 @@ describe('API provider live model discovery', () => {
     })
     expect(result.source).toBe('static')
     expect(result.warning ?? '').toContain('401')
+  })
+})
+
+describe('OpenAI-compatible reasoning discovery', () => {
+  test('preserves provider-authored reasoning metadata from /v1/models', async () => {
+    const settings = {
+      provider: {
+        active: 'llama.cpp' as const,
+        baseUrl: 'http://cluster.local:8080/v1',
+      },
+    }
+    const result = await listModelsForProviderWithSource('llama.cpp', {
+      settings,
+      adapters: {
+        fetch: fetchReturning({
+          data: [
+            {
+              id: 'reasoner.gguf',
+              reasoning: {
+                supported_efforts: ['low', 'high', 'xhigh'],
+                default_effort: 'high',
+              },
+            },
+          ],
+        }),
+      },
+    })
+
+    expect(result.models[0]?.reasoning).toEqual({
+      supportedEfforts: ['low', 'high', 'xhigh'],
+      defaultEffort: 'high',
+    })
+    expect(
+      getProviderReasoningCapabilitiesForModel(
+        'reasoner.gguf',
+        'llama.cpp',
+        settings,
+      ),
+    ).toEqual({
+      supportedEfforts: ['low', 'high', 'xhigh'],
+      defaultEffort: 'high',
+    })
+  })
+
+  test('queries focused llama.cpp models through /props and caches the template capability', async () => {
+    const settings = {
+      provider: {
+        active: 'llama.cpp' as const,
+        baseUrl: 'http://cluster.local:8080/v1',
+      },
+    }
+    await listModelsForProviderWithSource('llama.cpp', {
+      settings,
+      adapters: { fetch: fetchReturning({ data: [{ id: 'cluster-model' }] }) },
+    })
+
+    const seen: string[] = []
+    const reasoning = await ensureProviderReasoningCapabilitiesForModel(
+      'llama.cpp',
+      'cluster-model',
+      {
+        settings,
+        adapters: {
+          fetch: (async input => {
+            seen.push(String(input))
+            return new Response(
+              JSON.stringify({
+                chat_template_caps: { supports_reasoning_effort: true },
+              }),
+            )
+          }) as typeof fetch,
+        },
+      },
+    )
+
+    expect(reasoning).toEqual({ supportedEfforts: null })
+    expect(seen).toHaveLength(1)
+    const propsUrl = new URL(seen[0]!)
+    expect(propsUrl.pathname).toBe('/props')
+    expect(propsUrl.searchParams.get('model')).toBe('cluster-model')
+    expect(
+      getProviderReasoningCapabilitiesForModel(
+        'cluster-model',
+        'llama.cpp',
+        settings,
+      ),
+    ).toEqual({ supportedEfforts: null })
+  })
+
+  test('does not invent graded effort when llama.cpp rejects it', async () => {
+    const settings = {
+      provider: {
+        active: 'llama.cpp' as const,
+        baseUrl: 'http://cluster.local:8080/v1',
+      },
+    }
+    await listModelsForProviderWithSource('llama.cpp', {
+      settings,
+      adapters: { fetch: fetchReturning({ data: [{ id: 'plain-model' }] }) },
+    })
+    const reasoning = await ensureProviderReasoningCapabilitiesForModel(
+      'llama.cpp',
+      'plain-model',
+      {
+        settings,
+        adapters: {
+          fetch: fetchReturning({
+            chat_template_caps: { supports_reasoning_effort: false },
+          }),
+        },
+      },
+    )
+    expect(reasoning).toEqual({ supportedEfforts: [] })
   })
 })
 

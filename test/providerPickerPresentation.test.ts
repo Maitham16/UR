@@ -13,11 +13,12 @@ import {
 
 describe('provider-first model picker presentation', () => {
   test('Left and Right cycle every supported effort without losing max', () => {
-    expect(cycleProviderPickerEffort('high', 'right', true)).toBe('max')
-    expect(cycleProviderPickerEffort('max', 'right', true)).toBe('low')
-    expect(cycleProviderPickerEffort('low', 'left', true)).toBe('max')
-    expect(cycleProviderPickerEffort('high', 'right', false)).toBe('low')
-    expect(cycleProviderPickerEffort('max', 'right', false)).toBe('low')
+    const extended = ['minimal', 'low', 'high', 'xhigh'] as const
+    expect(cycleProviderPickerEffort('high', 'right', extended)).toBe('xhigh')
+    expect(cycleProviderPickerEffort('xhigh', 'right', extended)).toBe('minimal')
+    expect(cycleProviderPickerEffort('minimal', 'left', extended)).toBe('xhigh')
+    expect(cycleProviderPickerEffort('high', 'right', ['low', 'high'])).toBe('low')
+    expect(cycleProviderPickerEffort('high', 'right', ['high'])).toBe('high')
   })
 
   test('API key entry stays wide enough without exceeding narrow panes', () => {

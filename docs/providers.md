@@ -154,14 +154,16 @@ the previous provider.
 
 ### Reasoning effort
 
-Use `/effort low|medium|high|max|auto` inside UR. `max` is provider-neutral and
-means the selected model's highest reasoning capability. For OpenRouter, UR
-preserves the live `/models` reasoning metadata and sends the unified
-`reasoning.effort` request, translating `max` to the model's advertised wire
-value such as `xhigh` or `high`. The command confirmation, status indicator,
-and active-work spinner all show the same applied UR effort level. Providers
-that cannot apply a requested level report the actual downgraded level instead
-of confirming a value they did not use.
+Use `/effort minimal|low|medium|high|xhigh|max|auto` inside UR. UR normalizes
+the exact graded levels advertised for the active provider/model pair. `max`
+is provider-neutral and means the selected model's real ceiling: it therefore
+displays and sends `max`, `xhigh`, or `high` according to that model's contract.
+For OpenRouter, UR preserves the live `/models` reasoning metadata and sends
+the unified `reasoning.effort` request. OpenAI-compatible servers receive the
+resolved value as `reasoning_effort`. The command confirmation, status
+indicator, active-work spinner, SDK settings response, and provider request all
+use the same resolved value. If a provider advertises only boolean thinking,
+UR does not invent a graded effort selector.
 
 The provider-first `/model` picker supports the same control directly: use
 Left/Right to move through the effort levels advertised by the focused model,
@@ -172,6 +174,14 @@ OpenRouter catalog always fetches the current `/models` endpoint and never
 substitutes a cached list when that refresh fails. API-key entry for
 OpenAI, Claude, Gemini, and OpenRouter is a single aligned masked row; the key
 is stored in the OS keychain flow and is never written to settings.
+
+For llama.cpp, `/v1/models` metadata is preserved when the server supplies it.
+Because stock llama.cpp exposes chat-template effort support per loaded model,
+UR also resolves the model currently under the Up/Down cursor through
+`/props?model=<id>`. Left/Right is enabled only after that focused template
+advertises `supports_reasoning_effort`; the selected value is then sent
+unchanged in `reasoning_effort`. This works with llama.cpp router/cluster mode
+and does not assume that port 8080 limits UR to one worker.
 
 ### Provider-aware research calls
 
@@ -236,7 +246,9 @@ After selecting a provider:
 - Model source is displayed: `live` (dynamic discovery), `cache` (fallback), or `static` (predefined)
 - OpenRouter is fresh-only in this picker: every opening fetches `/models`, and
   a failed refresh is reported instead of showing stale cached entries
-- Left/Right changes effort for the focused model; Up/Down browses and Enter confirms
+- Up/Down changes the focused model and immediately switches to that model's
+  provider-advertised effort list; Left/Right cycles only those exact levels;
+  Enter confirms both
 - Press Esc to go back and change provider
 
 **Confirmation**

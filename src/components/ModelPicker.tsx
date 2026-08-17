@@ -21,8 +21,9 @@ import {
   convertEffortValueToLevel,
   type EffortLevel,
   getDefaultEffortForModel,
+  getSupportedEffortLevelsForModel,
   modelSupportsEffort,
-  modelSupportsMaxEffort,
+  resolveProviderEffortLevel,
   resolvePickerEffortPersistence,
   toPersistableEffort,
 } from '../utils/effort.js'
@@ -44,6 +45,7 @@ import {
 } from '../utils/thinking.js'
 import {
   getActiveProviderSettings,
+  ensureProviderReasoningCapabilitiesForModel,
   listModelsForProviderWithSource,
   validateProviderModelPair,
 } from '../services/providers/providerRegistry.js'
@@ -115,6 +117,8 @@ export function ModelPicker({
   const [pickerError, setPickerError] = useState<string | null>(null)
   const [loadingModels, setLoadingModels] = useState(true)
   const [modelReloadToken, setModelReloadToken] = useState(0)
+  const [effortCapabilityLoading, setEffortCapabilityLoading] = useState(false)
+  const [effortCapabilityWarning, setEffortCapabilityWarning] = useState<string | null>(null)
   const effectiveSettings = getInitialSettings()
   const currentProvider =
     getActiveProviderSettings(effectiveSettings).active ?? 'ollama'
@@ -139,6 +143,7 @@ export function ModelPicker({
           value: model.id,
           label: modelLabels.get(model.id) ?? model.displayName,
           description: `${model.description} · ${result.source}`,
+          reasoning: model.reasoning,
           ...(model.supportedParameters !== undefined && !model.supportedParameters.includes('tools')
             ? { disabled: true }
             : {}),
@@ -155,6 +160,65 @@ export function ModelPicker({
       })
     return () => controller.abort()
   }, [currentProvider, modelReloadToken])
+
+  // llama.cpp publishes the selected chat template's reasoning-effort support
+  // on /props. Resolve the model under the arrow cursor, not the active model,
+  // so Left/Right always receives that focused model's exact level list.
+  useEffect(() => {
+    if (currentProvider !== 'llama.cpp' || !focusedValue) {
+      setEffortCapabilityLoading(false)
+      setEffortCapabilityWarning(null)
+      return
+    }
+    const focused = providerModelOptions.find(
+      model => model.value === focusedValue,
+    )
+    if (!focused || focused.reasoning !== undefined) {
+      setEffortCapabilityLoading(false)
+      setEffortCapabilityWarning(null)
+      return
+    }
+
+    const controller = new AbortController()
+    let cancelled = false
+    const timer = setTimeout(() => {
+      setEffortCapabilityLoading(true)
+      setEffortCapabilityWarning(null)
+      void ensureProviderReasoningCapabilitiesForModel(
+        currentProvider,
+        focusedValue,
+        {
+          settings: effectiveSettings,
+          signal: controller.signal,
+        },
+      )
+        .then(reasoning => {
+          if (cancelled) return
+          setProviderModelOptions(previous =>
+            previous.map(model =>
+              model.value === focusedValue
+                ? { ...model, reasoning: reasoning ?? { supportedEfforts: [] } }
+                : model,
+            ),
+          )
+        })
+        .catch(error => {
+          if (cancelled || controller.signal.aborted) return
+          setEffortCapabilityWarning(
+            `Could not verify effort levels: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        })
+        .finally(() => {
+          if (!cancelled) setEffortCapabilityLoading(false)
+        })
+    }, 180)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [currentProvider, focusedValue, providerModelOptions])
 
   useInput(
     (input, key) => {
@@ -205,22 +269,31 @@ export function ModelPicker({
     opt => opt.value === focusedValue,
   )
   const focusedModel = resolveOptionModel(focusedValue)
+  const focusedEffortLevels = focusedModel
+    ? getSupportedEffortLevelsForModel(focusedModel, currentProvider)
+    : []
   const focusedSupportsEffort = focusedModel
-    ? modelSupportsEffort(focusedModel)
-    : false
-  const focusedSupportsMax = focusedModel
-    ? modelSupportsMaxEffort(focusedModel)
+    ? modelSupportsEffort(focusedModel, currentProvider)
     : false
   const focusedSupportsThinking = focusedModel
     ? modelSupportsThinking(focusedModel)
     : false
-  const focusedDefaultEffort = getDefaultEffortLevelForOption(focusedValue)
-  const displayEffort = effort === 'max' && !focusedSupportsMax ? 'high' : effort
+  const focusedDefaultEffort = getDefaultEffortLevelForOption(
+    focusedValue,
+    currentProvider,
+  )
+  const displayEffort = focusedModel
+    ? resolveProviderEffortLevel(
+        focusedModel,
+        effort ?? focusedDefaultEffort,
+        currentProvider,
+      ) ?? focusedDefaultEffort
+    : focusedDefaultEffort
 
   const handleFocus = (value: string) => {
     setFocusedValue(value)
     if (!hasToggledEffort && effortValue === undefined) {
-      setEffort(getDefaultEffortLevelForOption(value))
+      setEffort(getDefaultEffortLevelForOption(value, currentProvider))
     }
   }
 
@@ -230,9 +303,15 @@ export function ModelPicker({
     }
     setEffort(prev =>
       cycleEffortLevel(
-        prev ?? focusedDefaultEffort,
+        (focusedModel
+          ? resolveProviderEffortLevel(
+              focusedModel,
+              prev ?? focusedDefaultEffort,
+              currentProvider,
+            )
+          : undefined) ?? focusedDefaultEffort,
         direction,
-        focusedSupportsMax,
+        focusedEffortLevels,
       ),
     )
     setHasToggledEffort(true)
@@ -256,8 +335,13 @@ export function ModelPicker({
   )
 
   function handleSelect(value: string) {
+    const selectedModel = resolveOptionModel(value)
+    const selectedEffort =
+      hasToggledEffort && selectedModel && effort
+        ? resolveProviderEffortLevel(selectedModel, effort, currentProvider)
+        : undefined
     logEvent('tengu_model_command_menu_effort', {
-      effort: effort as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      effort: selectedEffort as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
     if (value !== NO_PREFERENCE) {
       const validation = validateProviderModelPair(currentProvider, value, {
@@ -270,8 +354,8 @@ export function ModelPicker({
     }
     if (!skipSettingsWrite) {
       const effortLevel = resolvePickerEffortPersistence(
-        effort,
-        getDefaultEffortLevelForOption(value),
+        hasToggledEffort ? selectedEffort : effort,
+        getDefaultEffortLevelForOption(value, currentProvider),
         getSettingsForSource('userSettings')?.effortLevel,
         hasToggledEffort,
       )
@@ -296,11 +380,6 @@ export function ModelPicker({
         ...(hasToggledThinking ? { thinkingEnabled } : {}),
       }))
     }
-    const selectedModel = resolveOptionModel(value)
-    const selectedEffort =
-      hasToggledEffort && selectedModel && modelSupportsEffort(selectedModel)
-        ? effort
-        : undefined
     if (value === NO_PREFERENCE) {
       onSelect(null, selectedEffort)
       return
@@ -392,17 +471,26 @@ export function ModelPicker({
         )}
         <Box marginBottom={1} flexDirection="column">
           {focusedSupportsEffort ? (
-            <Text dimColor>
-              <EffortLevelIndicator effort={displayEffort} />{' '}
-              {capitalize(displayEffort)} effort
-              {displayEffort === focusedDefaultEffort ? ' (default)' : ''}{' '}
-              <Text color="subtle">← → to adjust</Text>
-            </Text>
+            <>
+              <Text dimColor>
+                <EffortLevelIndicator effort={displayEffort} />{' '}
+                {capitalize(displayEffort)} effort
+                {displayEffort === focusedDefaultEffort ? ' (default)' : ''}{' '}
+                <Text color="subtle">← → to adjust</Text>
+              </Text>
+              <Text dimColor color="subtle">
+                Provider levels: {focusedEffortLevels.join(' · ')}
+              </Text>
+            </>
           ) : (
             <Text color="subtle">
               <EffortLevelIndicator effort={undefined} /> Effort not supported
               {focusedModelName ? ` for ${focusedModelName}` : ''}
+              {effortCapabilityLoading ? ' · checking provider…' : ''}
             </Text>
+          )}
+          {effortCapabilityWarning && (
+            <Text color="warning">{effortCapabilityWarning}</Text>
           )}
           {focusedSupportsThinking ? (
             <Text dimColor>
@@ -482,11 +570,10 @@ function EffortLevelIndicator({
 function cycleEffortLevel(
   current: EffortLevel,
   direction: 'left' | 'right',
-  includeMax: boolean,
+  supportedLevels: readonly EffortLevel[],
 ): EffortLevel {
-  const levels: EffortLevel[] = includeMax
-    ? ['low', 'medium', 'high', 'max']
-    : ['low', 'medium', 'high']
+  const levels =
+    supportedLevels.length > 0 ? [...supportedLevels] : [current]
   const idx = levels.indexOf(current)
   const currentIndex = idx !== -1 ? idx : levels.indexOf('high')
   if (direction === 'right') {
@@ -495,10 +582,21 @@ function cycleEffortLevel(
   return levels[(currentIndex - 1 + levels.length) % levels.length]!
 }
 
-function getDefaultEffortLevelForOption(value?: string): EffortLevel {
+function getDefaultEffortLevelForOption(
+  value?: string,
+  provider = getActiveProviderSettings(getInitialSettings()).active ?? 'ollama',
+): EffortLevel {
   const resolved = resolveOptionModel(value) ?? getDefaultMainLoopModel()
-  const defaultValue = getDefaultEffortForModel(resolved)
-  return defaultValue !== undefined
-    ? convertEffortValueToLevel(defaultValue)
-    : 'high'
+  const levels = getSupportedEffortLevelsForModel(resolved, provider)
+  const defaultValue = getDefaultEffortForModel(resolved, provider)
+  if (defaultValue !== undefined) {
+    return (
+      resolveProviderEffortLevel(
+        resolved,
+        convertEffortValueToLevel(defaultValue),
+        provider,
+      ) ?? 'high'
+    )
+  }
+  return levels.includes('high') ? 'high' : levels.at(-1) ?? 'high'
 }

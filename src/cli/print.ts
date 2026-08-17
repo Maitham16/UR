@@ -193,7 +193,7 @@ import { getLastCacheSafeParams } from 'src/utils/forkedAgent.js'
 import { getAccountInformation } from 'src/utils/auth.js'
 import { OAuthService } from 'src/services/oauth/index.js'
 import { installOAuthTokens } from 'src/cli/handlers/auth.js'
-import { getAPIProvider } from 'src/utils/model/providers.js'
+import { getAPIProvider, getRuntimeProvider } from 'src/utils/model/providers.js'
 import type { HookCallbackMatcher } from 'src/types/hooks.js'
 import { AwsAuthStatusManager } from 'src/utils/awsAuthStatusManager.js'
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
@@ -275,9 +275,8 @@ import {
 } from 'src/utils/model/model.js'
 import { getModelOptions } from 'src/utils/model/modelOptions.js'
 import {
+  getSupportedEffortLevelsForModel,
   modelSupportsEffort,
-  modelSupportsMaxEffort,
-  EFFORT_LEVELS,
   resolveAppliedEffort,
 } from 'src/utils/effort.js'
 import { modelSupportsAdaptiveThinking } from 'src/utils/thinking.js'
@@ -1226,13 +1225,18 @@ function runHeadlessStreaming(
   }
 
   const modelOptions = getModelOptions()
+  const runtimeProvider = getRuntimeProvider()
   const modelInfos = modelOptions.map(option => {
     const modelId = option.value === null ? 'default' : option.value
     const resolvedModel =
       modelId === 'default'
         ? getDefaultMainLoopModel()
         : parseUserSpecifiedModel(modelId)
-    const hasEffort = modelSupportsEffort(resolvedModel)
+    const supportedEffortLevels = getSupportedEffortLevelsForModel(
+      resolvedModel,
+      runtimeProvider,
+    )
+    const hasEffort = supportedEffortLevels.length > 0
     const hasAdaptiveThinking = modelSupportsAdaptiveThinking(resolvedModel)
     const hasFastMode = isFastModeSupportedByModel(option.value)
     const hasAutoMode = modelSupportsAutoMode(resolvedModel)
@@ -1242,9 +1246,7 @@ function runHeadlessStreaming(
       description: option.description,
       ...(hasEffort && {
         supportsEffort: true,
-        supportedEffortLevels: modelSupportsMaxEffort(resolvedModel)
-          ? [...EFFORT_LEVELS]
-          : EFFORT_LEVELS.filter(l => l !== 'max'),
+        supportedEffortLevels,
       }),
       ...(hasAdaptiveThinking && { supportsAdaptiveThinking: true }),
       ...(hasFastMode && { supportsFastMode: true }),
@@ -3790,10 +3792,11 @@ function runHeadlessStreaming(
         } else if (message.request.subtype === 'get_settings') {
           const currentAppState = getAppState()
           const model = getMainLoopModel()
+          const provider = getRuntimeProvider()
           // modelSupportsEffort gate matches ur.ts — applied.effort must
           // mirror what actually goes to the API, not just what's configured.
-          const effort = modelSupportsEffort(model)
-            ? resolveAppliedEffort(model, currentAppState.effortValue)
+          const effort = modelSupportsEffort(model, provider)
+            ? resolveAppliedEffort(model, currentAppState.effortValue, provider)
             : undefined
           sendControlResponseSuccess(message, {
             ...getSettingsWithSources(),

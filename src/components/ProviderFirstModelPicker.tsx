@@ -21,6 +21,7 @@ import {
   validateProviderModelPair,
   getProviderRuntimeBlockReason,
   authAliasForProvider,
+  ensureProviderReasoningCapabilitiesForModel,
 } from 'src/services/providers/providerRegistry.js'
 import {
   clearProviderApiKey,
@@ -34,7 +35,7 @@ import {
 import { TerminalSizeContext } from '../ink/components/TerminalSizeContext.js'
 import { useAppState, useSetAppState } from 'src/state/AppState.js'
 import {
-  getSettingsForSource,
+  getInitialSettings,
   updateSettingsForSource,
 } from 'src/utils/settings/settings.js'
 import type { ModelOption } from 'src/utils/model/modelOptions.js'
@@ -50,8 +51,9 @@ import {
   convertEffortValueToLevel,
   type EffortLevel,
   getDefaultEffortForModel,
+  getSupportedEffortLevelsForModel,
   modelSupportsEffort,
-  modelSupportsMaxEffort,
+  resolveProviderEffortLevel,
   toPersistableEffort,
 } from '../utils/effort.js'
 import {
@@ -131,6 +133,8 @@ export function ProviderFirstModelPicker({
   const [apiKeyCursorOffset, setApiKeyCursorOffset] = useState(0)
   const [connectError, setConnectError] = useState<string | null>(null)
   const [credentialNotice, setCredentialNotice] = useState<string | null>(null)
+  const [effortCapabilityLoading, setEffortCapabilityLoading] = useState(false)
+  const [effortCapabilityWarning, setEffortCapabilityWarning] = useState<string | null>(null)
   // Bumping this re-runs discovery for the selected provider (the retry state).
   const [modelReloadToken, setModelReloadToken] = useState(0)
   const terminalSize = useContext(TerminalSizeContext)
@@ -154,12 +158,12 @@ export function ProviderFirstModelPicker({
     async function loadProviderStatus() {
       setLoadingProviders(true)
       const providers = listProviders({ includeExternalAppBridges: true })
-      const settings = getSettingsForSource('userSettings')
+      const settings = getInitialSettings()
 
       const options: ProviderStatusOption[] = await Promise.all(
         providers.map(async provider => {
           const status = await getProviderStatus(provider.id, {
-            settings: settings ?? undefined,
+            settings,
           })
           const accessType = getProviderAccessTypeLabel(provider)
 
@@ -200,7 +204,7 @@ export function ProviderFirstModelPicker({
       const providerId = selectedProvider.value as ProviderId
       try {
         const result = await listModelsForProviderWithSource(providerId, {
-          settings: getSettingsForSource('userSettings') ?? undefined,
+          settings: getInitialSettings(),
           signal: controller.signal,
           freshOnly: providerId === 'openrouter',
         })
@@ -245,6 +249,66 @@ export function ProviderFirstModelPicker({
       controller.abort()
     }
   }, [selectedProvider, modelReloadToken])
+
+  // llama.cpp publishes graded-effort support per loaded chat template on
+  // /props, not in the ordinary /v1/models row. Resolve only the focused model
+  // so arrow browsing stays truthful without eagerly loading a whole cluster.
+  useEffect(() => {
+    if (
+      selectedProvider?.value !== 'llama.cpp' ||
+      !focusedModelValue
+    ) {
+      setEffortCapabilityLoading(false)
+      setEffortCapabilityWarning(null)
+      return
+    }
+    const focused = modelOptions.find(model => model.value === focusedModelValue)
+    if (!focused || focused.reasoning !== undefined) {
+      setEffortCapabilityLoading(false)
+      setEffortCapabilityWarning(null)
+      return
+    }
+
+    const controller = new AbortController()
+    let cancelled = false
+    const timer = setTimeout(() => {
+      setEffortCapabilityLoading(true)
+      setEffortCapabilityWarning(null)
+      void ensureProviderReasoningCapabilitiesForModel(
+        'llama.cpp',
+        focusedModelValue,
+        {
+          settings: getInitialSettings(),
+          signal: controller.signal,
+        },
+      )
+        .then(reasoning => {
+          if (cancelled) return
+          setModelOptions(previous =>
+            previous.map(model =>
+              model.value === focusedModelValue
+                ? { ...model, reasoning: reasoning ?? { supportedEfforts: [] } }
+                : model,
+            ),
+          )
+        })
+        .catch(error => {
+          if (cancelled || controller.signal.aborted) return
+          setEffortCapabilityWarning(
+            `Could not verify effort levels: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        })
+        .finally(() => {
+          if (!cancelled) setEffortCapabilityLoading(false)
+        })
+    }, 180)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [selectedProvider?.value, focusedModelValue, modelOptions])
 
   // The key-entry view advertises Esc but the text input owns the key, so the
   // step needs its own listener to actually go back.
@@ -292,21 +356,33 @@ export function ProviderFirstModelPicker({
   const focusedResolvedModel = focusedModel
     ? parseUserSpecifiedModel(focusedModel.value)
     : undefined
+  const focusedProviderId = selectedProvider?.value as ProviderId | undefined
+  const focusedEffortLevels =
+    focusedResolvedModel && focusedProviderId
+      ? getSupportedEffortLevelsForModel(
+          focusedResolvedModel,
+          focusedProviderId,
+        )
+      : []
   const focusedSupportsEffort = focusedResolvedModel
-    ? modelSupportsEffort(focusedResolvedModel)
-    : false
-  const focusedSupportsMax = focusedResolvedModel
-    ? modelSupportsMaxEffort(focusedResolvedModel)
+    ? modelSupportsEffort(focusedResolvedModel, focusedProviderId)
     : false
   const focusedDefaultEffort = focusedResolvedModel
     ? convertEffortValueToLevel(
-        getDefaultEffortForModel(focusedResolvedModel) ?? 'high',
+        getDefaultEffortForModel(focusedResolvedModel, focusedProviderId) ??
+          (focusedEffortLevels.includes('high')
+            ? 'high'
+            : focusedEffortLevels.at(-1)) ??
+          'high',
       )
     : 'high'
-  const displayedEffort =
-    effort === 'max' && !focusedSupportsMax
-      ? 'high'
-      : effort ?? focusedDefaultEffort
+  const displayedEffort = focusedResolvedModel
+    ? resolveProviderEffortLevel(
+        focusedResolvedModel,
+        effort ?? focusedDefaultEffort,
+        focusedProviderId,
+      ) ?? focusedDefaultEffort
+    : focusedDefaultEffort
 
   function handleProviderFocus(value: string) {
     setFocusedProviderValue(value)
@@ -321,9 +397,13 @@ export function ProviderFirstModelPicker({
     if (!focusedSupportsEffort) return
     setEffort(previous =>
       cycleProviderPickerEffort(
-        previous ?? focusedDefaultEffort,
+        resolveProviderEffortLevel(
+          focusedResolvedModel!,
+          previous ?? focusedDefaultEffort,
+          focusedProviderId,
+        ) ?? focusedDefaultEffort,
         direction,
-        focusedSupportsMax,
+        focusedEffortLevels,
       ),
     )
     setHasToggledEffort(true)
@@ -385,8 +465,18 @@ export function ProviderFirstModelPicker({
   }
 
   function handleModelSelect(value: string) {
+    const selectedProviderId = selectedProvider?.value as ProviderId | undefined
+    const selectedResolvedModel = parseUserSpecifiedModel(value)
+    const selectedEffort =
+      hasToggledEffort && selectedProviderId && effort
+        ? resolveProviderEffortLevel(
+            selectedResolvedModel,
+            effort,
+            selectedProviderId,
+          )
+        : undefined
     logEvent('tengu_model_command_menu_effort', {
-      effort: effort as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      effort: selectedEffort as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       provider: selectedProvider?.value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       model: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       source: modelSource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -435,7 +525,9 @@ export function ProviderFirstModelPicker({
     }
 
     if (hasToggledEffort) {
-      const persistable = effort ? toPersistableEffort(effort) : undefined
+      const persistable = selectedEffort
+        ? toPersistableEffort(selectedEffort)
+        : undefined
       if (persistable !== undefined) {
         updateSettingsForSource('userSettings', {
           effortLevel: persistable,
@@ -451,11 +543,11 @@ export function ProviderFirstModelPicker({
         active: selectedProvider?.value,
         model: value,
       },
-      ...(hasToggledEffort ? { effortValue: effort } : {}),
+      ...(hasToggledEffort ? { effortValue: selectedEffort } : {}),
       ...(hasToggledThinking ? { thinkingEnabled } : {}),
     }))
 
-    onSelect(value, hasToggledEffort ? effort : undefined, selectedProvider ? {
+    onSelect(value, selectedEffort, selectedProvider ? {
       providerId: selectedProvider.value as ProviderId,
       providerName: selectedProvider.label,
       accessType: selectedProvider.accessType,
@@ -798,14 +890,34 @@ export function ProviderFirstModelPicker({
                   {focusedModel.description}
                 </Text>
                 {focusedSupportsEffort && (
-                  <Text>
-                    <Text color="ur">
-                      {effortLevelToSymbol(displayedEffort)}{' '}
-                      {displayedEffort.toUpperCase()}
+                  <Box flexDirection="column">
+                    <Text>
+                      <Text color="ur">
+                        {effortLevelToSymbol(displayedEffort)}{' '}
+                        {displayedEffort.toUpperCase()}
+                      </Text>
+                      <Text dimColor color="subtle">
+                        {' '}provider effort · use ← → to adjust
+                      </Text>
                     </Text>
                     <Text dimColor color="subtle">
-                      {' '}effort · use ← → to adjust
+                      Provider levels: {focusedEffortLevels.join(' · ')}
                     </Text>
+                  </Box>
+                )}
+                {!focusedSupportsEffort && effortCapabilityLoading && (
+                  <Text dimColor color="subtle">
+                    Checking this model's provider effort levels…
+                  </Text>
+                )}
+                {!focusedSupportsEffort && !effortCapabilityLoading && (
+                  <Text dimColor color="subtle">
+                    Graded effort not advertised for this model.
+                  </Text>
+                )}
+                {effortCapabilityWarning && (
+                  <Text dimColor color="error">
+                    {effortCapabilityWarning}
                   </Text>
                 )}
               </Box>
@@ -862,11 +974,9 @@ export function getProviderKeyInputColumns(terminalColumns?: number): number {
 export function cycleProviderPickerEffort(
   current: EffortLevel,
   direction: 'left' | 'right',
-  includeMax: boolean,
+  supportedLevels: readonly EffortLevel[],
 ): EffortLevel {
-  const levels: EffortLevel[] = includeMax
-    ? ['low', 'medium', 'high', 'max']
-    : ['low', 'medium', 'high']
+  const levels = supportedLevels.length > 0 ? [...supportedLevels] : [current]
   const index = levels.indexOf(current)
   const currentIndex = index >= 0 ? index : levels.indexOf('high')
   const delta = direction === 'right' ? 1 : -1

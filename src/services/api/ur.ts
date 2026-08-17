@@ -42,7 +42,7 @@ function isProviderStreamHandle(value: unknown): value is ProviderStreamHandle {
   )
 }
 
-import { getAPIProvider, isBedrockRuntime, isFirstPartyRuntime, isFirstPartyURHQBaseUrl } from 'src/utils/model/providers.js'
+import { getAPIProvider, getRuntimeProvider, isBedrockRuntime, isFirstPartyRuntime, isFirstPartyURHQBaseUrl } from 'src/utils/model/providers.js'
 import {
   getAttributionHeader,
   getCLISyspromptPrefix,
@@ -467,8 +467,9 @@ function configureEffortParams(
   extraBodyParams: Record<string, unknown>,
   betas: string[],
   model: string,
+  provider: NonNullable<ProviderSettings['active']> = getRuntimeProvider(),
 ): void {
-  if (!modelSupportsEffort(model) || 'effort' in outputConfig) {
+  if (!modelSupportsEffort(model, provider) || 'effort' in outputConfig) {
     return
   }
 
@@ -1629,6 +1630,7 @@ async function* queryModel(
       extraBodyParams,
       betasParams,
       options.model,
+      options.providerSettings?.active,
     )
 
     configureTaskBudgetParams(

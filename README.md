@@ -359,8 +359,13 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    their curated model list because the official CLIs expose no models API. The
    generic `subscription` entry is an internal placeholder hidden from listings.
 
-   In the model catalog, use **Up/Down** to browse and **Left/Right** to change
-   the focused model's effort before pressing Enter. OpenRouter additionally
+   In the model catalog, use **Up/Down** to browse. The effort row updates to
+   the focused model's exact provider-advertised levels; use **Left/Right** to
+   cycle only those levels before pressing Enter. A generic `max` request is
+   resolved visibly to that model's actual `max`, `xhigh`, or `high` ceiling,
+   and the resolved value is the value sent to the provider. llama.cpp models
+   are checked lazily through their model-scoped `/props` capability while the
+   cursor moves. OpenRouter additionally
    shows compact model names, FREE/PAID tier, context size, tool/reasoning
    support, and the full untruncated ID immediately below the focused entry.
    Its catalog is fetched fresh every time it opens and never falls back to a

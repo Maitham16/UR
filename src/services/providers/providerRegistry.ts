@@ -12,7 +12,9 @@ import {
   describeCacheAge,
   MODEL_CACHE_TTL_MS,
   parseDiscoveredModels,
+  parseModelReasoningCapabilities,
   RequestCoalescer,
+  type DiscoveredModel,
   type ModelReasoningCapabilities,
 } from './modelCatalog.js'
 
@@ -2028,6 +2030,24 @@ function modelDefinitionsFromNames(
   }))
 }
 
+function modelDefinitionsFromDiscovered(
+  models: DiscoveredModel[],
+): ProviderModelDefinition[] {
+  return models.map(model => ({
+    id: model.id,
+    displayName: model.displayName,
+    description: model.description,
+    pricing: model.pricing,
+    ...(model.contextLength ? { contextLength: model.contextLength } : {}),
+    ...(model.outputTokenLimit ? { outputTokenLimit: model.outputTokenLimit } : {}),
+    ...(model.supportedParameters ? { supportedParameters: model.supportedParameters } : {}),
+    ...(model.capabilities ? { capabilities: model.capabilities } : {}),
+    ...(model.reasoning ? { reasoning: model.reasoning } : {}),
+    ...(model.expirationDate ? { expirationDate: model.expirationDate } : {}),
+    ...(model.deprecated ? { deprecated: true } : {}),
+  }))
+}
+
 function providerModelCacheKey(
   provider: ProviderId,
   settings: SettingsJson = getInitialSettings(),
@@ -2118,6 +2138,142 @@ export function getProviderReasoningCapabilitiesForModel(
     known.find(entry => entry.id.toLowerCase() === wanted) ??
     known.find(entry => wanted.includes(entry.id.toLowerCase()))
   return match?.reasoning
+}
+
+function providerPropsUrl(baseUrl: string, model: string): string {
+  const url = new URL(normalizeBaseUrl(baseUrl))
+  url.hash = ''
+  url.search = ''
+  let path = url.pathname.replace(/\/+$/, '')
+  path = path.replace(/\/(?:v\d+(?:beta)?|api\/v\d+)$/i, '')
+  path = path.replace(/\/(?:chat\/completions|models|props)$/i, '')
+  url.pathname = `${path}/props`
+  url.searchParams.set('model', model)
+  return url.toString()
+}
+
+function reasoningCapabilitiesFromProps(
+  value: unknown,
+): ModelReasoningCapabilities | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const root = value as Record<string, unknown>
+  const explicit =
+    parseModelReasoningCapabilities(root.reasoning) ??
+    parseModelReasoningCapabilities(
+      root.meta && typeof root.meta === 'object'
+        ? (root.meta as Record<string, unknown>).reasoning
+        : undefined,
+    ) ??
+    parseModelReasoningCapabilities({
+      supported_efforts: root.supported_efforts,
+      default_effort: root.default_effort,
+    })
+  if (explicit) return explicit
+
+  const caps =
+    root.chat_template_caps && typeof root.chat_template_caps === 'object'
+      ? (root.chat_template_caps as Record<string, unknown>)
+      : undefined
+  if (caps?.supports_reasoning_effort === true) {
+    // llama.cpp documents the accepted normalized vocabulary globally and
+    // exposes this per-template capability through /props. `null` is UR's
+    // existing "accepts every normalized effort" representation.
+    return { supportedEfforts: null }
+  }
+  if (caps?.supports_reasoning_effort === false) {
+    return { supportedEfforts: [] }
+  }
+  return undefined
+}
+
+function rememberProviderModelReasoning(
+  provider: ProviderId,
+  model: string,
+  reasoning: ModelReasoningCapabilities,
+  settings: SettingsJson,
+): void {
+  const key = providerModelCacheKey(provider, settings)
+  const existing = cachedModelsByProvider.get(key) ?? []
+  const wanted = model.trim().toLowerCase()
+  let found = false
+  const updated = existing.map(entry => {
+    if (entry.id.toLowerCase() !== wanted) return entry
+    found = true
+    return { ...entry, reasoning }
+  })
+  if (!found) {
+    updated.push({
+      id: model,
+      displayName: model,
+      description: `Discovered from ${getProviderDefinition(provider).displayName}`,
+      reasoning,
+    })
+  }
+  rememberModels(key, updated)
+}
+
+/**
+ * Load the focused model's provider-authored reasoning contract.
+ * llama.cpp exposes the decisive per-template signal through /props rather
+ * than /v1/models, so this is intentionally lazy and model-scoped.
+ */
+export async function ensureProviderReasoningCapabilitiesForModel(
+  providerId: ProviderId | string,
+  model: string,
+  options: {
+    settings?: SettingsJson
+    adapters?: ProviderDoctorAdapters
+    signal?: AbortSignal
+  } = {},
+): Promise<ModelReasoningCapabilities | undefined> {
+  const provider = resolveProviderId(providerId)
+  if (!provider) return undefined
+  const settings = options.settings ?? getInitialSettings()
+  const cached = getProviderReasoningCapabilitiesForModel(
+    model,
+    provider,
+    settings,
+  )
+  if (cached !== undefined) return cached
+
+  if (provider !== 'llama.cpp') {
+    await ensureProviderModelsFresh(provider, options)
+    return getProviderReasoningCapabilitiesForModel(model, provider, settings)
+  }
+
+  const definition = getProviderDefinition(provider)
+  const baseUrl = providerBaseUrl(provider, definition, settings)
+  if (!baseUrl) return undefined
+  const env = options.adapters?.env ?? process.env
+  const fetchImpl = options.adapters?.fetch ?? fetch
+  let apiKey = definition.envKey ? env[definition.envKey] : undefined
+  if (!apiKey) {
+    try {
+      const credentials = await import('./providerCredentials.js')
+      apiKey = credentials.getProviderApiKey(provider, { env })
+    } catch {
+      // Local llama.cpp endpoints normally require no key.
+    }
+  }
+  const response = await fetchImpl(providerPropsUrl(baseUrl, model), {
+    method: 'GET',
+    signal: options.signal,
+    ...(apiKey
+      ? { headers: { Authorization: `Bearer ${apiKey}` } }
+      : {}),
+  })
+  if (!response.ok) {
+    throw new Error(`llama.cpp /props returned HTTP ${response.status}.`)
+  }
+  const reasoning = reasoningCapabilitiesFromProps(
+    await response.json().catch(() => null),
+  )
+  if (reasoning) {
+    rememberProviderModelReasoning(provider, model, reasoning, settings)
+  }
+  return reasoning
 }
 
 export function cacheProviderModelsForProvider(
@@ -2257,9 +2413,12 @@ async function discoverLiveModelsForProvider(
     }
     reachedOk = true
     const body = await response.json().catch(() => null)
-    const names = parseOpenAICompatibleModelNames(body)
-    if (names.length > 0) {
-      return modelDefinitionsFromNames(provider, names, 'live')
+    const discovered = parseDiscoveredModels(
+      body,
+      getProviderDefinition(provider).displayName,
+    )
+    if (discovered.length > 0) {
+      return modelDefinitionsFromDiscovered(discovered)
     }
   }
   if (!reachedOk && lastError) {
@@ -2429,20 +2588,9 @@ async function discoverApiProviderModels(
   } while (next)
 
   const providerLabel = getProviderDefinition(provider).displayName
-  const discovered = parseDiscoveredModels({ data: entries }, providerLabel)
-  return discovered.map(model => ({
-    id: model.id,
-    displayName: model.displayName,
-    description: model.description,
-    pricing: model.pricing,
-    ...(model.contextLength ? { contextLength: model.contextLength } : {}),
-    ...(model.outputTokenLimit ? { outputTokenLimit: model.outputTokenLimit } : {}),
-    ...(model.supportedParameters ? { supportedParameters: model.supportedParameters } : {}),
-    ...(model.capabilities ? { capabilities: model.capabilities } : {}),
-    ...(model.reasoning ? { reasoning: model.reasoning } : {}),
-    ...(model.expirationDate ? { expirationDate: model.expirationDate } : {}),
-    ...(model.deprecated ? { deprecated: true } : {}),
-  }))
+  return modelDefinitionsFromDiscovered(
+    parseDiscoveredModels({ data: entries }, providerLabel),
+  )
 }
 
 export async function listModelsForProviderWithSource(

@@ -4,7 +4,6 @@ import { getInitialSettings } from './settings/settings.js'
 import { isProSubscriber, isMaxSubscriber, isTeamSubscriber } from './auth.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import {
-  getAPIProvider,
   getRuntimeProvider,
   getRuntimeModelReasoningCapabilities,
 } from './model/providers.js'
@@ -12,45 +11,128 @@ import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getAntModelOverrideConfig, resolveAntModel } from './model/antModels.js'
 import type { ProviderId } from '../services/providers/providerRegistry.js'
-export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
+/**
+ * Normalized graded-reasoning values understood by UR provider adapters.
+ * `max` is also the provider-neutral "use this model's ceiling" request; when
+ * a provider calls that ceiling `xhigh` or `high`, resolution returns that
+ * exact wire value before the request is serialized.
+ */
+export type EffortLevel =
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
 
 export const EFFORT_LEVELS = [
+  'minimal',
   'low',
   'medium',
   'high',
+  'xhigh',
   'max',
 ] as const satisfies readonly EffortLevel[]
 
 export type EffortValue = EffortLevel | number
 
+const OLLAMA_GRADED_THINK_MODEL_RE = /gpt-oss/i
+
+export function normalizeEffortLevels(
+  values: readonly string[],
+): EffortLevel[] {
+  const advertised = new Set(
+    values
+      .map(value => value.trim().toLowerCase())
+      .filter(isEffortLevel),
+  )
+  return EFFORT_LEVELS.filter(level => advertised.has(level))
+}
+
+/**
+ * Exact selectable levels for a provider/model pair.
+ *
+ * An empty array deliberately means "no verified graded effort contract".
+ * Boolean thinking is not presented as graded effort. `null` in provider
+ * metadata means the endpoint accepts every normalized level.
+ */
+export function getSupportedEffortLevelsForModel(
+  model: string,
+  provider: ProviderId = getRuntimeProvider(),
+): EffortLevel[] {
+  if (isEnvTruthy(process.env.UR_CODE_ALWAYS_ENABLE_EFFORT)) {
+    return [...EFFORT_LEVELS]
+  }
+
+  const supported3P = get3PModelCapabilityOverride(model, 'effort')
+  if (supported3P === false) return []
+  const supportsExtendedEffort =
+    get3PModelCapabilityOverride(model, 'max_effort') !== false
+  const applyOverrides = (levels: readonly EffortLevel[]): EffortLevel[] =>
+    supportsExtendedEffort
+      ? [...levels]
+      : levels.filter(level => level !== 'xhigh' && level !== 'max')
+
+  const discovered = getRuntimeModelReasoningCapabilities(model, provider)
+  if (discovered?.supportedEfforts === null) {
+    return applyOverrides(EFFORT_LEVELS)
+  }
+  if (discovered?.supportedEfforts !== undefined) {
+    return applyOverrides(normalizeEffortLevels(discovered.supportedEfforts))
+  }
+  if (discovered && provider === 'openrouter') {
+    // OpenRouter's unified reasoning API accepts normalized effort values even
+    // when the model entry omits a finite list.
+    return applyOverrides(EFFORT_LEVELS)
+  }
+
+  // Ollama exposes boolean thinking for most models. Only families with a
+  // verified graded `think` wire contract get a graded selector.
+  if (provider === 'ollama' && OLLAMA_GRADED_THINK_MODEL_RE.test(model)) {
+    return ['low', 'medium', 'high']
+  }
+
+  if (supported3P === true) {
+    return get3PModelCapabilityOverride(model, 'max_effort') === true
+      ? [...EFFORT_LEVELS]
+      : ['low', 'medium', 'high']
+  }
+  if (process.env.USER_TYPE === 'ant' && resolveAntModel(model)) {
+    return applyOverrides(EFFORT_LEVELS)
+  }
+  return []
+}
+
+export function getHighestSupportedEffortLevel(
+  model: string,
+  provider: ProviderId = getRuntimeProvider(),
+): EffortLevel | undefined {
+  return getSupportedEffortLevelsForModel(model, provider).at(-1)
+}
+
+/** Resolve an explicit request to the closest value the model advertises. */
+export function resolveProviderEffortLevel(
+  model: string,
+  requested: EffortLevel,
+  provider: ProviderId = getRuntimeProvider(),
+): EffortLevel | undefined {
+  const supported = getSupportedEffortLevelsForModel(model, provider)
+  if (supported.length === 0) return undefined
+  if (requested === 'max') return supported.at(-1)
+  if (supported.includes(requested)) return requested
+
+  const requestedIndex = EFFORT_LEVELS.indexOf(requested)
+  const notHigher = supported.filter(
+    level => EFFORT_LEVELS.indexOf(level) <= requestedIndex,
+  )
+  return notHigher.at(-1) ?? supported[0]
+}
+
 export function modelSupportsEffort(
   model: string,
   provider: ProviderId = getRuntimeProvider(),
 ): boolean {
-  if (isEnvTruthy(process.env.UR_CODE_ALWAYS_ENABLE_EFFORT)) {
-    return true
-  }
-  const supported3P = get3PModelCapabilityOverride(model, 'effort')
-  if (supported3P !== undefined) {
-    return supported3P
-  }
-  const discovered = getRuntimeModelReasoningCapabilities(model, provider)
-  if (discovered?.supportedEfforts === null) return true
-  if (discovered?.supportedEfforts !== undefined) {
-    return discovered.supportedEfforts.some(effort => effort !== 'none')
-  }
-  if (discovered && provider === 'openrouter') {
-    // OpenRouter's unified reasoning API accepts effort even when a model
-    // advertises reasoning support without enumerating named effort levels.
-    return true
-  }
-  void model
-  // Ollama: effort maps onto the wire's `think` parameter. The adapter probes
-  // /api/show and degrades to boolean thinking when the model has no graded
-  // support, so advertising effort here cannot produce an invalid request.
-  // The old gate compared against 'firstParty', which getAPIProvider() never
-  // returns, so --effort was silently ignored everywhere.
-  return getAPIProvider() === 'ollama'
+  return getSupportedEffortLevelsForModel(model, provider).length > 0
 }
 
 export function modelSupportsMaxEffort(
@@ -61,26 +143,9 @@ export function modelSupportsMaxEffort(
   if (supported3P !== undefined) {
     return supported3P
   }
-  const discovered = getRuntimeModelReasoningCapabilities(model, provider)
-  if (discovered?.supportedEfforts === null) return true
-  if (discovered?.supportedEfforts !== undefined) {
-    // `max` is UR's provider-neutral request for the model's highest setting.
-    // OpenRouter maps it to the nearest supported wire value (for example
-    // xhigh on Qwen or high on a high-only model).
-    return (
-      provider === 'openrouter' ||
-      discovered.supportedEfforts.some(
-        effort => effort === 'max' || effort === 'xhigh',
-      )
-    )
-  }
-  if (discovered && provider === 'openrouter') {
-    return true
-  }
-  if (process.env.USER_TYPE === 'ant' && resolveAntModel(model)) {
-    return true
-  }
-  return false
+  // `max` is a provider-neutral request for the model's highest advertised
+  // value, so every genuinely graded model can honor it without fabrication.
+  return modelSupportsEffort(model, provider)
 }
 
 export type OpenRouterReasoningEffort =
@@ -101,15 +166,10 @@ export function toOpenRouterReasoningEffort(
   model: string,
   effort: EffortLevel,
 ): OpenRouterReasoningEffort {
-  const supported = getRuntimeModelReasoningCapabilities(
-    model,
-    'openrouter',
-  )?.supportedEfforts
-  if (effort !== 'max') return effort
-  if (supported === null || supported === undefined) return 'max'
-  if (supported.includes('max')) return 'max'
-  if (supported.includes('xhigh')) return 'xhigh'
-  return 'high'
+  return (
+    resolveProviderEffortLevel(model, effort, 'openrouter') ??
+    (effort === 'max' ? 'high' : effort)
+  )
 }
 
 export function isEffortLevel(value: string): value is EffortLevel {
@@ -135,15 +195,22 @@ export function parseEffortValue(value: unknown): EffortValue | undefined {
 }
 
 /**
- * Numeric values are model-default only and not persisted.
- * 'max' is session-scoped for external users (ants can persist it).
+ * Numeric values are model-default only and not persisted. Exact provider
+ * levels persist; provider-neutral `max` remains session-scoped for external
+ * users (ants can persist it).
  * Write sites call this before saving to settings so the Zod schema
  * (which only accepts string levels) never rejects a write.
  */
 export function toPersistableEffort(
   value: EffortValue | undefined,
 ): EffortLevel | undefined {
-  if (value === 'low' || value === 'medium' || value === 'high') {
+  if (
+    value === 'minimal' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh'
+  ) {
     return value
   }
   if (value === 'max' && process.env.USER_TYPE === 'ant') {
@@ -207,17 +274,14 @@ export function resolveAppliedEffort(
     return undefined
   }
   const resolved =
-    envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
-  // API rejects 'max' on models without max-effort support; downgrade to 'high'.
-  if (resolved === 'max' && !modelSupportsMaxEffort(model, provider)) {
-    return 'high'
-  }
-  return resolved
+    envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model, provider)
+  if (resolved === undefined || typeof resolved === 'number') return resolved
+  return resolveProviderEffortLevel(model, resolved, provider)
 }
 
 /**
- * Resolve the effort level to show the user. Wraps resolveAppliedEffort
- * with the 'high' fallback (what the API uses when no effort param is sent).
+ * Resolve the effort level to show the user. Wraps resolveAppliedEffort with
+ * a conservative high fallback when no effort parameter is sent.
  * Single source of truth for the status bar and /effort output (CC-1088).
  */
 export function getDisplayedEffortLevel(
@@ -233,8 +297,8 @@ export function getDisplayedEffortLevel(
 /**
  * Build the ` with {level} effort` suffix shown in Logo/Spinner.
  * Returns empty string if the user hasn't explicitly set an effort value.
- * Delegates to resolveAppliedEffort() so the displayed level matches what
- * the API actually receives (including max→high clamp for non-modelO models).
+ * Delegates to resolveAppliedEffort() so the displayed level matches what the
+ * API actually receives (including max→xhigh/high provider resolution).
  */
 export function getEffortSuffix(
   model: string,
@@ -275,12 +339,16 @@ export function convertEffortValueToLevel(value: EffortValue): EffortLevel {
  */
 export function getEffortLevelDescription(level: EffortLevel): string {
   switch (level) {
+    case 'minimal':
+      return 'Minimal reasoning for the lowest latency and cost'
     case 'low':
       return 'Quick, straightforward implementation with minimal overhead'
     case 'medium':
       return 'Balanced approach with standard implementation and testing'
     case 'high':
       return 'Comprehensive implementation with extensive testing and documentation'
+    case 'xhigh':
+      return 'Extended reasoning above high where the provider supports it'
     case 'max':
       return 'Maximum capability with deepest reasoning'
   }
@@ -330,7 +398,16 @@ export function getmodelODefaultEffortConfig(): modelODefaultEffortConfig {
 // @[MODEL LAUNCH]: Update the default effort levels for new models
 export function getDefaultEffortForModel(
   model: string,
+  provider: ProviderId = getRuntimeProvider(),
 ): EffortValue | undefined {
+  const providerDefault = getRuntimeModelReasoningCapabilities(
+    model,
+    provider,
+  )?.defaultEffort
+  if (providerDefault && isEffortLevel(providerDefault)) {
+    return resolveProviderEffortLevel(model, providerDefault, provider)
+  }
+
   if (process.env.USER_TYPE === 'ant') {
     const config = getAntModelOverrideConfig()
     const isDefaultModel =
@@ -356,7 +433,7 @@ export function getDefaultEffortForModel(
   // the model launch DRI and research. Default effort is a sensitive setting
   // that can greatly affect model quality and bashing.
 
-  if (modelSupportsEffort(model)) {
+  if (modelSupportsEffort(model, provider)) {
     if (isProSubscriber()) {
       return 'medium'
     }
@@ -369,7 +446,7 @@ export function getDefaultEffortForModel(
   }
 
   // When ultrathink feature is on, default effort to medium (ultrathink bumps to high)
-  if (isUltrathinkEnabled() && modelSupportsEffort(model)) {
+  if (isUltrathinkEnabled() && modelSupportsEffort(model, provider)) {
     return 'medium'
   }
 

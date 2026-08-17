@@ -156,10 +156,16 @@ function structuredTextConfig(outputConfig: any): Record<string, unknown> | unde
 
 function reasoningConfig(params: any): Record<string, unknown> | undefined {
   const requested = params.output_config?.effort
-  if (requested === 'low' || requested === 'medium' || requested === 'high') {
+  if (
+    requested === 'minimal' ||
+    requested === 'low' ||
+    requested === 'medium' ||
+    requested === 'high' ||
+    requested === 'xhigh' ||
+    requested === 'max'
+  ) {
     return { effort: requested }
   }
-  if (requested === 'max') return { effort: 'high' }
   if (params.thinking?.type === 'adaptive') return { effort: 'medium' }
   if (params.thinking?.type !== 'enabled') return undefined
   const budget = Number(params.thinking?.budget_tokens ?? 0)

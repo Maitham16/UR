@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.81.7
+
+- Made reasoning effort a real provider/model capability instead of a cosmetic
+  selector. UR now preserves exact `minimal`, `low`, `medium`, `high`, `xhigh`,
+  and `max` levels advertised by the provider and sends the selected value on
+  the provider request.
+- Made `/effort max` resolve to the selected model's actual ceiling. A
+  high-only model receives `high`, an xhigh model receives `xhigh`, and a model
+  with native max support receives `max`; `/effort status` and the status bar
+  report that same applied value.
+- Updated both model pickers so Up/Down refreshes the focused model's exact
+  effort list and Left/Right cycles only through supported levels. Models that
+  do not advertise graded reasoning no longer receive invented capabilities.
+- Added model-scoped llama.cpp reasoning discovery through `/props`, retained
+  rich OpenAI-compatible model metadata, and cached the result per endpoint and
+  model so clustered local deployments use their real capabilities.
+- Extended the CLI, SDK schemas, documentation, and regression coverage for
+  exact effort levels and provider wire serialization.
+
 ## 1.81.6
 
 - Restored the original clean welcome house without a shadow. The full adaptive
