@@ -146,7 +146,9 @@ request; Ollama is only used when `ollama` is the selected provider.
 In the model step, Up/Down browses, Left/Right changes the focused model's
 supported effort level, Enter confirms, Ctrl+R refreshes the catalog, and Esc
 returns to providers. OpenRouter entries show pricing tier, context size,
-tool/reasoning capability, and live/cache catalog status. API-provider secret
+tool/reasoning capability, compact names, and the exact ID for the focused
+entry. Its catalog is fetched fresh whenever opened; a failed refresh never
+silently displays cached entries. API-provider secret
 entry stays on one masked row and stores the value through the keychain flow.
 
 The same provider-first picker is mandatory on the first interactive run in a

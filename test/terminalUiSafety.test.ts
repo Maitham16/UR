@@ -28,6 +28,7 @@ import {
   calculateLayoutDimensions,
   getCondensedLogoLayout,
 } from '../src/utils/logoV2Utils.js'
+import { compactModelDisplayName } from '../src/utils/model/modelPresentation.js'
 
 function dividerText(parts: DividerParts): string {
   return parts.title === undefined
@@ -118,6 +119,14 @@ describe('terminal UI narrow-layout safety', () => {
       textWidth: 8,
     })
     expect(calculateLayoutDimensions(3, 'compact', 20).totalWidth).toBe(1)
+  })
+
+  test('startup chrome drops provider prefixes from long model IDs', () => {
+    expect(
+      compactModelDisplayName('dots-studio/dots-3-note-preview'),
+    ).toBe('dots-3-note-preview')
+    expect(compactModelDisplayName('openai/gpt-5.5')).toBe('gpt-5.5')
+    expect(compactModelDisplayName('local-model')).toBe('local-model')
   })
 })
 

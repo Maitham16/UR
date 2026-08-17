@@ -2451,6 +2451,8 @@ export async function listModelsForProviderWithSource(
     settings?: SettingsJson
     adapters?: ProviderDoctorAdapters
     signal?: AbortSignal
+    /** Require a newly fetched catalog and never substitute stale entries. */
+    freshOnly?: boolean
   } = {},
 ): Promise<ProviderModelDiscoveryResult> {
   const provider = resolveProviderId(providerId)
@@ -2499,6 +2501,14 @@ export async function listModelsForProviderWithSource(
         source: 'live',
       }
     }
+    if (options.freshOnly) {
+      return {
+        provider,
+        models: [],
+        source: 'live',
+        warning: `Live model discovery for "${provider}" returned no models. No cached catalog was shown.`,
+      }
+    }
     const cachedModels = cachedModelsByProvider.get(cacheKey) ?? []
     if (cachedModels.length > 0) {
       const age = describeCacheAge(cachedModelsAgeMs(cacheKey) ?? 0)
@@ -2517,6 +2527,14 @@ export async function listModelsForProviderWithSource(
       warning: `Live model discovery for "${provider}" returned no models.`,
     }
   } catch (error) {
+    if (options.freshOnly) {
+      return {
+        provider,
+        models: [],
+        source: 'live',
+        warning: `Live model discovery for "${provider}" failed: ${error instanceof Error ? error.message : String(error)}. No cached catalog was shown.`,
+      }
+    }
     const cachedModels = cachedModelsByProvider.get(cacheKey) ?? []
     if (cachedModels.length > 0) {
       const age = describeCacheAge(cachedModelsAgeMs(cacheKey) ?? 0)

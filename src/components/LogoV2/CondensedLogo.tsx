@@ -11,6 +11,7 @@ import { getEffortSuffix } from '../../utils/effort.js';
 import { truncate } from '../../utils/format.js';
 import { formatModelAndBilling, getCondensedLogoLayout, getLogoDisplayData, truncatePath } from '../../utils/logoV2Utils.js';
 import { renderModelSetting } from '../../utils/model/model.js';
+import { compactModelDisplayName } from '../../utils/model/modelPresentation.js';
 import { OffscreenFreeze } from '../OffscreenFreeze.js';
 import { UrHouse } from './UrHouse.js';
 import { GuestPassesUpsell, incrementGuestPassesSeenCount, useShowGuestPassesUpsell } from './GuestPassesUpsell.js';
@@ -24,7 +25,7 @@ export function CondensedLogo() {
   const effortValue = useAppState(_temp2);
   const effortProvider = useAppState(s => s.provider.active);
   const model = useMainLoopModel();
-  const modelDisplayName = renderModelSetting(model);
+  const modelDisplayName = compactModelDisplayName(renderModelSetting(model));
   const {
     version,
     cwd,

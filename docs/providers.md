@@ -167,7 +167,9 @@ The provider-first `/model` picker supports the same control directly: use
 Left/Right to move through the effort levels advertised by the focused model,
 then Enter to apply the model and effort together. OpenRouter's live catalog
 shows pricing tier, context size, tool capability, reasoning capability, and
-whether the list came from the live endpoint or cache. API-key entry for
+the exact model ID for the focused entry. Opening the OpenRouter catalog always
+fetches the current `/models` endpoint and never substitutes a cached list when
+that refresh fails. API-key entry for
 OpenAI, Claude, Gemini, and OpenRouter is a single aligned masked row; the key
 is stored in the OS keychain flow and is never written to settings.
 
@@ -229,8 +231,11 @@ You see all configured providers with:
 After selecting a provider:
 - Only models from that provider are shown
 - Each model shows its concise capabilities; OpenRouter includes pricing,
-  context size, tool support, and reasoning support
+  context size, tool support, and reasoning support. Its list uses compact
+  model names; focus an entry to see the exact provider/model ID
 - Model source is displayed: `live` (dynamic discovery), `cache` (fallback), or `static` (predefined)
+- OpenRouter is fresh-only in this picker: every opening fetches `/models`, and
+  a failed refresh is reported instead of showing stale cached entries
 - Left/Right changes effort for the focused model; Up/Down browses and Enter confirms
 - Press Esc to go back and change provider
 
@@ -290,7 +295,8 @@ ur config set provider anthropic-api
 
 | Provider type | Model discovery | Source label |
 | --- | --- | --- |
-| API providers (openai-api, anthropic-api, gemini-api, openrouter) | Live discovery from the provider's `/models` endpoint using your connected key (curated fallback until connected) | live |
+| API providers (openai-api, anthropic-api, gemini-api) | Live discovery from the provider's `/models` endpoint using your connected key (curated fallback until connected) | live |
+| OpenRouter | Fresh `/models` discovery every time its picker opens; no cached-list fallback in the picker | live |
 | Local/server providers (ollama, lmstudio, llama.cpp, vllm) | Dynamic discovery from the selected provider endpoint | live |
 | OpenAI-compatible | Dynamic discovery from configured endpoint | live |
 | Subscription CLIs (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Curated list (the official CLIs expose no models API); first-class in `/model`, dispatched via the official CLI. External CLI behavior depends on the vendor CLI. Log in with `ur auth <provider>` | static |

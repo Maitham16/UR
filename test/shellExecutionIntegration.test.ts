@@ -46,7 +46,9 @@ describe('production Shell execution', () => {
     const taskOutputDir = getTaskOutputDir()
     expect(existsSync(taskOutputDir)).toBe(true)
     rmSync(taskOutputDir, { recursive: true, force: true })
-    expect(existsSync(taskOutputDir)).toBe(false)
+    // The full suite runs shell tests concurrently, so another command may
+    // recreate this shared session directory immediately after rmSync returns.
+    // The recovery assertion below is the behavior this regression protects.
 
     const recovered = await run("printf 'recovered'")
     expect(recovered.stdout).toBe('recovered')

@@ -140,6 +140,42 @@ describe('API provider live model discovery', () => {
     expect(result.models.map(m => m.id)).toContain('openai/gpt-5.5')
   })
 
+  test('OpenRouter fresh-only discovery fetches every time and never shows stale fallback', async () => {
+    let calls = 0
+    const fetchCatalog = (async () => {
+      calls++
+      return new Response(
+        JSON.stringify({ data: [{ id: `vendor/live-model-${calls}` }] }),
+      )
+    }) as unknown as typeof fetch
+    const options = {
+      freshOnly: true,
+      adapters: {
+        env: { OPENROUTER_API_KEY: 'or' },
+        fetch: fetchCatalog,
+      },
+    } as const
+
+    const first = await listModelsForProviderWithSource('openrouter', options)
+    const second = await listModelsForProviderWithSource('openrouter', options)
+    expect(calls).toBe(2)
+    expect(first.models.map(model => model.id)).toEqual(['vendor/live-model-1'])
+    expect(second.models.map(model => model.id)).toEqual(['vendor/live-model-2'])
+
+    const failed = await listModelsForProviderWithSource('openrouter', {
+      freshOnly: true,
+      adapters: {
+        env: { OPENROUTER_API_KEY: 'or' },
+        fetch: (async () => {
+          throw new Error('offline')
+        }) as unknown as typeof fetch,
+      },
+    })
+    expect(failed.models).toEqual([])
+    expect(failed.source).toBe('live')
+    expect(failed.warning).toContain('No cached catalog was shown')
+  })
+
   test('OpenRouter models that explicitly lack tools are described and not selectable', async () => {
     const result = await listModelsForProviderWithSource('openrouter', {
       adapters: {

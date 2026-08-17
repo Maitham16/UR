@@ -355,9 +355,11 @@ In the interactive app, `/model` is a two-step, provider-first picker:
 
    In the model catalog, use **Up/Down** to browse and **Left/Right** to change
    the focused model's effort before pressing Enter. OpenRouter additionally
-   shows FREE/PAID tier, context size, tool/reasoning support, and whether its
-   catalog is live or cached. API-key entry is masked, aligned on one row, and
-   stored through the OS keychain flow.
+   shows compact model names, FREE/PAID tier, context size, tool/reasoning
+   support, and the exact ID for the focused entry. Its catalog is fetched
+   fresh every time it opens and never falls back to a stale cached list.
+   API-key entry is masked, aligned on one row, and stored through the OS
+   keychain flow.
 
 Model lists never cross providers: OpenAI API, Claude API, Gemini API,
 OpenRouter, Ollama, and OpenAI-compatible local/server endpoints are separate

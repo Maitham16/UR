@@ -28,6 +28,7 @@ import { EmergencyTip } from './EmergencyTip.js';
 import { VoiceModeNotice } from './VoiceModeNotice.js';
 import { modelO1mMergeNotice } from './modelO1mMergeNotice.js';
 import { feature } from 'bun:bundle';
+import { compactModelDisplayName } from '../../utils/model/modelPresentation.js';
 
 // Conditional require so ChannelsNotice.tsx tree-shakes when both flags are
 // false. A module-scope helper component inside a feature() ternary does NOT
@@ -160,7 +161,7 @@ export function LogoV2() {
   }
   useEffect(t7, t8);
   const model = useMainLoopModel();
-  const fullModelDisplayName = renderModelSetting(model);
+  const fullModelDisplayName = compactModelDisplayName(renderModelSetting(model));
   const {
     version,
     cwd,

@@ -18,16 +18,6 @@ export const UR_WORDMARK_ROWS = [
 
 export const UR_WORDMARK_TAGLINE = 'THE AUTONOMOUS AGENT'
 
-type WordmarkTone = 'ur' | undefined
-
-export function getURWordmarkGlyphTone(
-  glyph: string,
-  _row: number,
-  _column: number,
-): WordmarkTone {
-  return glyph === ' ' ? undefined : 'ur'
-}
-
 export function URBanner(): React.ReactNode {
   if (isScreenReaderMode()) {
     return <Text>UR — the autonomous agent</Text>
@@ -36,19 +26,12 @@ export function URBanner(): React.ReactNode {
   return (
     <Box flexDirection="column" alignItems="center">
       {UR_WORDMARK_ROWS.map((row, i) => (
-        <Text key={i} bold>
-          {[...row].map((glyph, column) => (
-            <Text
-              key={`${i}:${column}`}
-              color={getURWordmarkGlyphTone(glyph, i, column)}
-            >
-              {glyph}
-            </Text>
-          ))}
+        <Text key={i} color="ur">
+          {row}
         </Text>
       ))}
-      <Text bold>
-        <Text color="ur">✦ {UR_WORDMARK_TAGLINE} ✦</Text>
+      <Text color="ur">
+        ✦ {UR_WORDMARK_TAGLINE} ✦
       </Text>
     </Box>
   )

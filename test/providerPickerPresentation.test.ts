@@ -5,6 +5,10 @@ import {
   formatProviderModelDescription,
   getProviderKeyInputColumns,
 } from '../src/components/ProviderFirstModelPicker.js'
+import {
+  buildProviderModelLabels,
+  compactModelDisplayName,
+} from '../src/utils/model/modelPresentation.js'
 
 describe('provider-first model picker presentation', () => {
   test('Left and Right cycle every supported effort without losing max', () => {
@@ -39,5 +43,20 @@ describe('provider-first model picker presentation', () => {
     ).toBe('FREE · 131K context · tools · reasoning')
     expect(formatModelSourceLabel('live')).toBe('● LIVE CATALOG')
     expect(formatModelSourceLabel('cache')).toBe('◐ CACHED CATALOG')
+  })
+
+  test('OpenRouter labels stay compact while duplicate names remain clear', () => {
+    expect(compactModelDisplayName('dots-studio/dots-3-note-preview')).toBe(
+      'dots-3-note-preview',
+    )
+    const labels = buildProviderModelLabels('openrouter', [
+      { id: 'vendor-a/shared-model', displayName: 'A very long human name' },
+      { id: 'vendor-b/shared-model', displayName: 'Another long human name' },
+      { id: 'openai/gpt-5.5', displayName: 'openai/gpt-5.5 (GPT 5.5)' },
+    ])
+
+    expect(labels.get('vendor-a/shared-model')).toBe('shared-model · vendor-a')
+    expect(labels.get('vendor-b/shared-model')).toBe('shared-model · vendor-b')
+    expect(labels.get('openai/gpt-5.5')).toBe('gpt-5.5')
   })
 })

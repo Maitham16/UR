@@ -53,6 +53,7 @@ import { Byline } from './design-system/Byline.js'
 import { KeyboardShortcutHint } from './design-system/KeyboardShortcutHint.js'
 import { Pane } from './design-system/Pane.js'
 import { effortLevelToSymbol } from './EffortIndicator.js'
+import { buildProviderModelLabels } from '../utils/model/modelPresentation.js'
 
 export type Props = {
   initial: string | null
@@ -123,12 +124,17 @@ export function ModelPicker({
     listModelsForProviderWithSource(currentProvider, {
       settings: effectiveSettings,
       signal: controller.signal,
+      freshOnly: currentProvider === 'openrouter',
     })
       .then(result => {
         if (controller.signal.aborted) return
+        const modelLabels = buildProviderModelLabels(
+          currentProvider,
+          result.models,
+        )
         setProviderModelOptions(result.models.map(model => ({
           value: model.id,
-          label: model.displayName,
+          label: modelLabels.get(model.id) ?? model.displayName,
           description: `${model.description} · ${result.source}`,
           ...(model.supportedParameters !== undefined && !model.supportedParameters.includes('tools')
             ? { disabled: true }

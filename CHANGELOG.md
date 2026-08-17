@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.81.5
+
+- Matched the UR welcome wordmark to the house and frame's bright, theme-aware
+  accent by applying the brand color directly to each rendered row. Added a
+  restrained dim drop shadow around the large house without changing its
+  established geometry or screen-reader output.
+- Made OpenRouter model discovery fresh-only whenever the model catalog opens.
+  UR now fetches the current catalog on every visit and reports refresh errors
+  instead of silently showing stale cached entries.
+- Shortened OpenRouter model labels and startup model chrome to their useful
+  model names while preserving the complete provider/model ID for requests and
+  showing it on the focused catalog entry. Duplicate short names retain a clear
+  vendor suffix.
+- Stabilized the production-shell recovery regression under concurrent test
+  execution while continuing to verify that reclaimed task-output directories
+  are recreated without restarting UR.
+
 ## 1.81.4
 
 - Unified the welcome-screen UR wordmark, outlined depth, decorative marks,

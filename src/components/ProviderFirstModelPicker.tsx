@@ -62,6 +62,7 @@ import {
 } from '../utils/thinking.js'
 import { resolveActiveProviderModel } from '../services/api/providerClient.js'
 import { effortLevelToSymbol } from './EffortIndicator.js'
+import { buildProviderModelLabels } from '../utils/model/modelPresentation.js'
 
 const selectCurrentProvider = (s: { provider?: { active?: string } }) =>
   s.provider?.active ?? 'ollama'
@@ -198,11 +199,13 @@ export function ProviderFirstModelPicker({
         const result = await listModelsForProviderWithSource(providerId, {
           settings: getSettingsForSource('userSettings') ?? undefined,
           signal: controller.signal,
+          freshOnly: providerId === 'openrouter',
         })
         if (cancelled) return
+        const modelLabels = buildProviderModelLabels(providerId, result.models)
         const options: Array<ModelOption & { disabled?: boolean }> = result.models.map(model => ({
           value: model.id,
-          label: model.displayName,
+          label: modelLabels.get(model.id) ?? model.displayName,
           description: formatProviderModelDescription(
             model,
             result.source,
@@ -740,7 +743,7 @@ export function ProviderFirstModelPicker({
           </Text>
           <Text dimColor>
             {selectedProvider?.value === 'openrouter'
-              ? `${modelOptions.length} current models from your OpenRouter account`
+              ? `${modelOptions.length} models · fetched fresh whenever this catalog opens`
               : `Showing models for ${selectedProvider?.label} (${selectedProvider?.accessType})`}
           </Text>
           <Text color={modelSource === 'live' ? 'success' : 'subtle'}>
@@ -779,6 +782,11 @@ export function ProviderFirstModelPicker({
                 <Text bold color="text">
                   {focusedModel.label}
                 </Text>
+                {selectedProvider?.value === 'openrouter' && (
+                  <Text dimColor color="subtle">
+                    ID: {focusedModel.value}
+                  </Text>
+                )}
                 <Text dimColor>
                   {focusedModel.description}
                 </Text>
