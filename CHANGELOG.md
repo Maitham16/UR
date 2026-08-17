@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.81.8
+
+- Made reasoning effort provider- and model-accurate across the model picker,
+  `/effort`, the status bar, SDK, and outbound API requests. Up/Down now loads
+  the focused model's exact levels, Left/Right cycles only those levels, and
+  `max` resolves to the model's real `high`, `xhigh`, or `max` ceiling.
+- Added model-scoped llama.cpp reasoning discovery through `/props`, preserved
+  rich OpenAI-compatible capability metadata, and stopped presenting invented
+  graded levels when a provider does not advertise them.
+- Regenerated version-matched smoke and regression benchmark evidence (6/6 and
+  20/20 passed) so the release-readiness gate rejects no stale prior-release
+  artifacts.
+
 ## 1.81.7
 
 - Made reasoning effort a real provider/model capability instead of a cosmetic
