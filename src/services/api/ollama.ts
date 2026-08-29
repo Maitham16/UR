@@ -26,6 +26,7 @@ import {
   computeOllamaNumCtx,
   getOllamaKeepAlive,
   getOllamaNumCtxOverride,
+  MIN_CHAT_NUM_CTX,
 } from '../../utils/model/ollamaTuning.js'
 import {
   looksLikeBareJsonToolCallPrefix,
@@ -567,16 +568,26 @@ export function toOllamaChatRequest(
   if (typeof params.max_tokens === 'number') {
     options.num_predict = params.max_tokens
   }
+  const estimatedPromptTokens = estimateInputTokens(params)
+  const maxTokens =
+    typeof params.max_tokens === 'number' ? params.max_tokens : undefined
+  const isLightweightChat =
+    tools.length === 0 &&
+    (maxTokens ?? Number.POSITIVE_INFINITY) <= 1_024 &&
+    estimatedPromptTokens <= 4_096
   const numCtx = computeOllamaNumCtx({
     modelContextLength: getOllamaContextLengthForModel(params.model, baseUrl),
-    estimatedPromptTokens: estimateInputTokens(params),
-    maxTokens:
-      typeof params.max_tokens === 'number' ? params.max_tokens : undefined,
+    estimatedPromptTokens,
+    maxTokens,
     override: getOllamaNumCtxOverride(),
+    ...(isLightweightChat ? { minCtx: MIN_CHAT_NUM_CTX } : {}),
   })
   if (numCtx !== undefined) {
     options.num_ctx = numCtx
   }
+  logForDebugging(
+    `Ollama request sizing: ~${estimatedPromptTokens} input tokens, ${maxTokens ?? 'default'} output tokens, ${tools.length} tools, num_ctx=${numCtx ?? 'server-default'}`,
+  )
   if (Object.keys(options).length > 0) {
     request.options = options
   }

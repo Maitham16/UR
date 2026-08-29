@@ -36,7 +36,6 @@ import { getCachedOllamaModelNames } from './ollamaModels.js'
 import {
   isOllamaAutoRouteEnabled,
   pickBestCoderModel,
-  pickSmallFastModel,
 } from './ollamaRouter.js'
 import {
   getActiveProviderSettings,
@@ -52,11 +51,9 @@ const DEFAULT_OLLAMA_MODEL = 'qwen2.5-coder:7b'
 // Adaptive routing picks are memoized so the session model stays stable once
 // the installed-model list has been discovered.
 let memoizedRoutedDefaultModel: string | undefined
-let memoizedRoutedFastModel: string | undefined
 
 export function __resetOllamaRouteMemoForTests(): void {
   memoizedRoutedDefaultModel = undefined
-  memoizedRoutedFastModel = undefined
 }
 
 export function getDefaultOllamaModel(): ModelName {
@@ -97,23 +94,11 @@ export function getSmallFastModel(
     if (process.env.OLLAMA_SMALL_FAST_MODEL) {
       return process.env.OLLAMA_SMALL_FAST_MODEL
     }
-    if (isOllamaAutoRouteEnabled()) {
-      if (memoizedRoutedFastModel) return memoizedRoutedFastModel
-      const routed = pickSmallFastModel(getCachedOllamaModelNames())
-      if (routed) {
-        memoizedRoutedFastModel = routed
-        return routed
-      }
-    }
-    // Fall back to the model the session is actually using, not the compiled
-    // default. getDefaultOllamaModel() returns qwen2.5-coder:7b when routing
-    // is off or no model list has been discovered, and a user running
-    // kimi-k2.7-code:cloud does not have that pulled — so every secondary
-    // query (WebFetch summarisation, classifiers) failed with "Model
-    // qwen2.5-coder:7b is not available for provider ollama", and WebFetch
-    // then handed that error text back as if it were the fetched page.
-    // A fallback to something the user may not have installed is a guaranteed
-    // failure; the session model is guaranteed to exist.
+    // Reuse the session model by default. Automatically selecting a second
+    // installed model forces Ollama to load another set of weights and often
+    // evict the warm main model, turning a "small-fast" helper into minutes of
+    // device churn. Operators who know both models fit can still opt in with
+    // OLLAMA_SMALL_FAST_MODEL.
     const sessionModel = getMainLoopModel()
     if (sessionModel) return sessionModel
     return getDefaultOllamaModel()

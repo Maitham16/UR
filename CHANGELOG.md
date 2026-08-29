@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.81.10
+
+- Reduced provider latency and memory pressure without removing the complete
+  system prompt or tool set from real agent work. Self-hosted Ollama, vLLM,
+  LM Studio, llama.cpp, and OpenAI-compatible requests now reserve a realistic
+  4K output turn, resume automatically if it is exhausted, and keep a stable
+  prompt prefix so local/server prefix caches can be reused across sessions.
+- Added a safe lightweight path for exact greetings on every runnable provider.
+  These turns send no irrelevant repository tools, use a 1K output budget, and
+  use an 8K Ollama context; coding, media, structured-output, custom-prompt,
+  and ongoing agent turns retain their full quality-bearing context.
+- Prevented Ollama helper calls from automatically loading a second installed
+  model and evicting the warm session model. A separate helper model remains
+  available through the explicit `OLLAMA_SMALL_FAST_MODEL` override.
+- Added adaptive recovery for vLLM's OpenAI-compatible context-overflow errors,
+  including wrapped/multiline and comma-formatted token counts, and fixed the
+  retry calculation so thinking budgets can never produce another oversized
+  request.
+- Applied provider-discovered completion limits to request sizing, including
+  OpenRouter's live `max_output_tokens`, so defaults and explicit overrides are
+  validated against the selected model's real limit.
+
 ## 1.81.9
 
 - Restored the previous compact six-row UR wordmark as the primary welcome

@@ -225,7 +225,7 @@ test('Ollama chat requests omit think when the model does not advertise thinking
   }
 })
 
-test('Ollama chat requests set num_ctx and keep_alive for warm, full-context runs', async () => {
+test('small tool-free Ollama chat uses a compact warm context', async () => {
   const previousFetch = globalThis.fetch
   let requestBody: Record<string, any> | undefined
 
@@ -244,7 +244,7 @@ test('Ollama chat requests set num_ctx and keep_alive for warm, full-context run
       // consume the stream so body parsing runs
     }
     expect(requestBody?.keep_alive).toBe('30m')
-    expect(requestBody?.options?.num_ctx).toBe(32768)
+    expect(requestBody?.options?.num_ctx).toBe(8192)
   } finally {
     globalThis.fetch = previousFetch
   }
@@ -303,7 +303,7 @@ test('an Ollama client uses context metadata from its captured endpoint', async 
     }
 
     expect(seen).toEqual([`${hostA}/api/show`, `${hostA}/api/chat`])
-    expect(requestBody?.options?.num_ctx).toBe(16_384)
+    expect(requestBody?.options?.num_ctx).toBe(8_192)
     expect(
       getOllamaContextLengthForModel('endpoint-context-test:latest', hostA),
     ).toBe(16_384)

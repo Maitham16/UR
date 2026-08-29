@@ -2116,6 +2116,35 @@ export function getProviderContextLengthForModel(
 }
 
 /**
+ * Maximum completion size reported by the provider for a model, in tokens.
+ *
+ * OpenRouter and other live catalogues already expose this metadata. Applying
+ * it to request validation prevents UR from asking a model for more output
+ * than the provider accepts. Reads the in-memory discovery cache only.
+ */
+export function getProviderOutputTokenLimitForModel(
+  model: string,
+  provider: ProviderId | string = getRuntimeProviderId(),
+  settings: SettingsJson = getInitialSettings(),
+): number | undefined {
+  const providerId = resolveProviderId(provider)
+  if (!providerId) return undefined
+  const wanted = model.trim().toLowerCase()
+  if (!wanted) return undefined
+  const known = [
+    ...getCachedProviderModels(providerId, settings),
+    ...(PROVIDER_MODELS[providerId] ?? []),
+  ]
+  const match =
+    known.find(entry => entry.id.toLowerCase() === wanted) ??
+    known.find(entry => wanted.includes(entry.id.toLowerCase()))
+  const limit = match?.outputTokenLimit
+  return typeof limit === 'number' && Number.isFinite(limit) && limit > 0
+    ? Math.floor(limit)
+    : undefined
+}
+
+/**
  * Return live reasoning metadata for the active provider/model without doing
  * network I/O. OpenRouter publishes this in `/models`; keeping it beside the
  * cached model definition lets effort selection and request shaping share one

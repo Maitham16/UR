@@ -4,10 +4,17 @@ import {
   getOllamaKeepAlive,
   getOllamaNumCtxOverride,
   MIN_AGENT_NUM_CTX,
+  MIN_CHAT_NUM_CTX,
 } from '../src/utils/model/ollamaTuning.js'
 
 test('num_ctx floors at the agent minimum for small prompts', () => {
   expect(computeOllamaNumCtx({})).toBe(MIN_AGENT_NUM_CTX)
+})
+
+test('lightweight chat can use a smaller stable context bucket', () => {
+  expect(computeOllamaNumCtx({ minCtx: MIN_CHAT_NUM_CTX })).toBe(
+    MIN_CHAT_NUM_CTX,
+  )
 })
 
 test('num_ctx never exceeds the model context window', () => {
@@ -18,6 +25,15 @@ test('num_ctx grows in coarse buckets as the prompt grows', () => {
   expect(
     computeOllamaNumCtx({ estimatedPromptTokens: 60000, maxTokens: 4096 }),
   ).toBe(65536)
+})
+
+test('a full local agent turn fits the stable 32K bucket with a 4K reserve', () => {
+  expect(
+    computeOllamaNumCtx({
+      estimatedPromptTokens: 27_615,
+      maxTokens: 4_096,
+    }),
+  ).toBe(32_768)
 })
 
 test('num_ctx caps a large prompt to the model window', () => {

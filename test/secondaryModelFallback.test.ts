@@ -26,6 +26,15 @@ test('the small-fast fallback uses the session model, not a compiled default', a
   expect(getSmallFastModel()).not.toBe('qwen2.5-coder:7b')
 })
 
+test('Ollama secondary calls do not auto-load another installed model', async () => {
+  process.env.OLLAMA_MODEL = 'main-session-model:latest'
+  const { getSmallFastModel } = await import('../src/utils/model/model.ts')
+  expect(getSmallFastModel()).toBe('main-session-model:latest')
+
+  process.env.OLLAMA_SMALL_FAST_MODEL = 'explicit-helper-model:latest'
+  expect(getSmallFastModel()).toBe('explicit-helper-model:latest')
+})
+
 test('external provider secondary calls use the selected live model', async () => {
   const { getSmallFastModel } = await import('../src/utils/model/model.ts')
   expect(

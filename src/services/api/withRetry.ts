@@ -413,11 +413,15 @@ export async function* withRetry<T>(
             (retryContext.thinkingConfig.type === 'enabled'
               ? retryContext.thinkingConfig.budgetTokens
               : 0) + 1
-          const adjustedMaxTokens = Math.max(
-            FLOOR_OUTPUT_TOKENS,
-            availableContext,
-            minRequired,
-          )
+          if (minRequired > availableContext) {
+            logError(
+              new Error(
+                `thinking budget requires ${minRequired} tokens but only ${availableContext} output tokens fit in the context window`,
+              ),
+            )
+            throw error
+          }
+          const adjustedMaxTokens = availableContext
           retryContext.maxTokensOverride = adjustedMaxTokens
 
           logEvent('tengu_max_tokens_context_overflow_adjustment', {
@@ -563,34 +567,31 @@ export function parseMaxTokensContextOverflowError(error: APIError):
     return undefined
   }
 
-  if (
-    !error.message.includes(
-      'input length and `max_tokens` exceed context limit',
-    )
-  ) {
+  // URHQ/Anthropic-style format:
+  // "input length and `max_tokens` exceed context limit: 188059 + 20000 > 200000"
+  const arithmeticMatch = error.message.match(
+    /input length and `max_tokens` exceed context limit:\s*([\d,]+)\s*\+\s*([\d,]+)\s*>\s*([\d,]+)/i,
+  )
+
+  // vLLM OpenAI-compatible format (line breaks and "at least" vary):
+  // "maximum context length is 50000 tokens ... requested 32000 output
+  // tokens and your prompt contains at least 18001 input tokens"
+  const vllmMatch = error.message.match(
+    /maximum context length is\s+([\d,]+)\s+tokens[\s\S]*?requested\s+([\d,]+)\s+output tokens[\s\S]*?prompt contains(?:\s+at least)?\s+([\d,]+)\s+input tokens/i,
+  )
+
+  const rawInputTokens = arithmeticMatch?.[1] ?? vllmMatch?.[3]
+  const rawMaxTokens = arithmeticMatch?.[2] ?? vllmMatch?.[2]
+  const rawContextLimit = arithmeticMatch?.[3] ?? vllmMatch?.[1]
+  if (!rawInputTokens || !rawMaxTokens || !rawContextLimit) {
     return undefined
   }
 
-  // Example format: "input length and `max_tokens` exceed context limit: 188059 + 20000 > 200000"
-  const regex =
-    /input length and `max_tokens` exceed context limit: (\d+) \+ (\d+) > (\d+)/
-  const match = error.message.match(regex)
-
-  if (!match || match.length !== 4) {
-    return undefined
-  }
-
-  if (!match[1] || !match[2] || !match[3]) {
-    logError(
-      new Error(
-        'Unable to parse max_tokens from max_tokens exceed context limit error message',
-      ),
-    )
-    return undefined
-  }
-  const inputTokens = parseInt(match[1], 10)
-  const maxTokens = parseInt(match[2], 10)
-  const contextLimit = parseInt(match[3], 10)
+  const parseTokenCount = (value: string): number =>
+    Number.parseInt(value.replaceAll(',', ''), 10)
+  const inputTokens = parseTokenCount(rawInputTokens)
+  const maxTokens = parseTokenCount(rawMaxTokens)
+  const contextLimit = parseTokenCount(rawContextLimit)
 
   if (isNaN(inputTokens) || isNaN(maxTokens) || isNaN(contextLimit)) {
     return undefined

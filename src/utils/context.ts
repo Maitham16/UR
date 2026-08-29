@@ -1,11 +1,16 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
-import { getProviderContextLengthForModel } from '../services/providers/providerRegistry.js'
+import {
+  getProviderContextLengthForModel,
+  getProviderOutputTokenLimitForModel,
+  type ProviderId,
+} from '../services/providers/providerRegistry.js'
 import { isEnvTruthy } from './envUtils.js'
 import { resolveAntModel } from './model/antModels.js'
 import { getModelCapability } from './model/modelCapabilities.js'
 import { getOllamaContextLengthForModel } from './model/ollamaModels.js'
 import { getAPIProvider, type APIProvider } from './model/providers.js'
+import type { SettingsJson } from './settings/types.js'
 
 // Model context window size (200k tokens for all models right now)
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -171,7 +176,11 @@ export function calculateContextPercentages(
 /**
  * Returns the model's default and upper limit for max output tokens.
  */
-export function getModelMaxOutputTokens(model: string): {
+export function getModelMaxOutputTokens(
+  model: string,
+  provider?: ProviderId | string,
+  settings?: SettingsJson,
+): {
   default: number
   upperLimit: number
 } {
@@ -190,6 +199,19 @@ export function getModelMaxOutputTokens(model: string): {
   const cap = getModelCapability(model)
   if (cap?.max_tokens && cap.max_tokens >= 4_096) {
     upperLimit = cap.max_tokens
+    defaultTokens = Math.min(defaultTokens, upperLimit)
+  }
+
+  // Live provider catalogues (notably OpenRouter) publish a separate maximum
+  // completion size. Respect it for defaults, explicit env validation, compact
+  // reserves, and every other caller of this shared capability function.
+  const providerOutputLimit = getProviderOutputTokenLimitForModel(
+    model,
+    provider,
+    settings,
+  )
+  if (providerOutputLimit !== undefined) {
+    upperLimit = Math.min(upperLimit, providerOutputLimit)
     defaultTokens = Math.min(defaultTokens, upperLimit)
   }
 

@@ -4,7 +4,9 @@ import {
   cacheProviderModelsForProvider,
   clearProviderModelCacheForTests,
   getProviderContextLengthForModel,
+  getProviderOutputTokenLimitForModel,
 } from '../src/services/providers/providerRegistry.js'
+import { getModelMaxOutputTokens } from '../src/utils/context.js'
 import type { SettingsJson } from '../src/utils/settings/types.js'
 
 // Explicit settings so the model cache key is derived deterministically rather
@@ -17,7 +19,11 @@ afterEach(() => {
   clearProviderModelCacheForTests()
 })
 
-function cache(id: string, contextLength?: number): void {
+function cache(
+  id: string,
+  contextLength?: number,
+  outputTokenLimit?: number,
+): void {
   cacheProviderModelsForProvider(
     'openrouter',
     [
@@ -26,6 +32,7 @@ function cache(id: string, contextLength?: number): void {
         displayName: id,
         description: '',
         ...(contextLength === undefined ? {} : { contextLength }),
+        ...(outputTokenLimit === undefined ? {} : { outputTokenLimit }),
       },
     ],
     SETTINGS,
@@ -66,6 +73,46 @@ describe('the window a provider reported can be read back', () => {
   test('an unknown model reports nothing', () => {
     expect(
       getProviderContextLengthForModel('never/seen', 'openrouter', SETTINGS),
+    ).toBeUndefined()
+  })
+})
+
+describe('the output limit a provider reported can be read back', () => {
+  test('a reported output limit is returned', () => {
+    cache('openai/gpt-example', 128_000, 16_384)
+    expect(
+      getProviderOutputTokenLimitForModel(
+        'openai/gpt-example',
+        'openrouter',
+        SETTINGS,
+      ),
+    ).toBe(16_384)
+    expect(
+      getModelMaxOutputTokens(
+        'openai/gpt-example',
+        'openrouter',
+        SETTINGS,
+      ),
+    ).toEqual({ default: 16_384, upperLimit: 16_384 })
+  })
+
+  test('missing and invalid output limits are not guessed', () => {
+    cache('silent/model', 128_000)
+    expect(
+      getProviderOutputTokenLimitForModel(
+        'silent/model',
+        'openrouter',
+        SETTINGS,
+      ),
+    ).toBeUndefined()
+
+    cache('bad/model', 128_000, 0)
+    expect(
+      getProviderOutputTokenLimitForModel(
+        'bad/model',
+        'openrouter',
+        SETTINGS,
+      ),
     ).toBeUndefined()
   })
 })

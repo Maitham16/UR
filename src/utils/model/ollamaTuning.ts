@@ -2,11 +2,22 @@
 // Pure and side-effect free so it can be unit tested with injected env.
 
 export const MIN_AGENT_NUM_CTX = 32768
+export const MIN_CHAT_NUM_CTX = 8192
 export const DEFAULT_OLLAMA_KEEP_ALIVE = '30m'
 
 // Coarse num_ctx buckets. Bucketing keeps num_ctx stable across turns so Ollama
 // does not reallocate its KV cache (and lose the warm model) every request.
-const NUM_CTX_BUCKETS = [32768, 49152, 65536, 98304, 131072, 196608, 262144]
+const NUM_CTX_BUCKETS = [
+  8192,
+  16384,
+  32768,
+  49152,
+  65536,
+  98304,
+  131072,
+  196608,
+  262144,
+]
 
 const OUTPUT_HEADROOM_TOKENS = 4096
 
