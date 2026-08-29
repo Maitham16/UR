@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.81.9
+
+- Restored the previous compact six-row UR wordmark as the primary welcome
+  logo while retaining the minimal `UR` fallback for narrow terminals. The
+  original house artwork, theme-aware brand color, screen-reader text, and
+  responsive layout remain intact.
+
 ## 1.81.8
 
 - Made reasoning effort provider- and model-accurate across the model picker,
