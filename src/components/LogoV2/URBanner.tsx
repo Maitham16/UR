@@ -3,25 +3,6 @@ import { Box, Text } from '../../ink.js'
 import { isScreenReaderMode } from '../../utils/screenReader.js'
 
 export const UR_WORDMARK_ROWS = [
-  'UUUUUUUU     UUUUUUUURRRRRRRRRRRRRRRRR   ',
-  'U::::::U     U::::::UR::::::::::::::::R  ',
-  'U::::::U     U::::::UR::::::RRRRRR:::::R ',
-  'UU:::::U     U:::::UURR:::::R     R:::::R',
-  ' U:::::U     U:::::U   R::::R     R:::::R',
-  ' U:::::D     D:::::U   R::::R     R:::::R',
-  ' U:::::D     D:::::U   R::::RRRRRR:::::R ',
-  ' U:::::D     D:::::U   R:::::::::::::RR  ',
-  ' U:::::D     D:::::U   R::::RRRRRR:::::R ',
-  ' U:::::D     D:::::U   R::::R     R:::::R',
-  ' U:::::D     D:::::U   R::::R     R:::::R',
-  ' U::::::U   U::::::U   R::::R     R:::::R',
-  ' U:::::::UUU:::::::U RR:::::R     R:::::R',
-  '  UU:::::::::::::UU  R::::::R     R:::::R',
-  '    UU:::::::::UU    R::::::R     R:::::R',
-  '      UUUUUUUUU      RRRRRRRR     RRRRRRR',
-] as const
-
-export const COMPACT_UR_WORDMARK_ROWS = [
   '██╗   ██╗  ██████╗ ',
   '██║   ██║  ██╔══██╗',
   '██║   ██║  ██████╔╝',
@@ -30,15 +11,16 @@ export const COMPACT_UR_WORDMARK_ROWS = [
   ' ╚═════╝   ╚═╝  ╚═╝',
 ] as const
 
+export const COMPACT_UR_WORDMARK_ROWS = UR_WORDMARK_ROWS
+
 export const UR_WORDMARK_TAGLINE = 'THE AUTONOMOUS AGENT'
 
-export type URWordmarkVariant = 'full' | 'compact' | 'minimal'
+export type URWordmarkVariant = 'compact' | 'minimal'
 
 export function getResponsiveURWordmarkVariant(
   availableWidth = Number.POSITIVE_INFINITY,
   availableHeight = Number.POSITIVE_INFINITY,
 ): URWordmarkVariant {
-  if (availableWidth >= 41 && availableHeight >= 22) return 'full'
   if (availableWidth >= 20 && availableHeight >= 8) return 'compact'
   return 'minimal'
 }
@@ -61,11 +43,7 @@ export function URBanner({
     availableHeight,
   )
   const rows =
-    variant === 'full'
-      ? UR_WORDMARK_ROWS
-      : variant === 'compact'
-        ? COMPACT_UR_WORDMARK_ROWS
-        : (['UR'] as const)
+    variant === 'compact' ? UR_WORDMARK_ROWS : (['UR'] as const)
   const showTagline = variant !== 'minimal'
   const decorateTagline = (availableWidth ?? Number.POSITIVE_INFINITY) >= 24
 

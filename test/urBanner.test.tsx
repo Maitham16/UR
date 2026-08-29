@@ -17,19 +17,15 @@ import { renderToString } from '../src/utils/staticRender.js'
 
 describe('UR welcome wordmark', () => {
   test('uses a balanced, fixed-width professional mark', () => {
-    expect(UR_WORDMARK_ROWS).toHaveLength(16)
-    expect(new Set(UR_WORDMARK_ROWS.map(stringWidth))).toEqual(new Set([41]))
-    expect(UR_WORDMARK_ROWS[0]).toBe(
-      'UUUUUUUU     UUUUUUUURRRRRRRRRRRRRRRRR   ',
-    )
-    expect(UR_WORDMARK_ROWS.at(-1)).toBe(
-      '      UUUUUUUUU      RRRRRRRR     RRRRRRR',
-    )
+    expect(UR_WORDMARK_ROWS).toHaveLength(6)
+    expect(new Set(UR_WORDMARK_ROWS.map(stringWidth))).toEqual(new Set([19]))
+    expect(UR_WORDMARK_ROWS[0]).toBe('██╗   ██╗  ██████╗ ')
+    expect(UR_WORDMARK_ROWS.at(-1)).toBe(' ╚═════╝   ╚═╝  ╚═╝')
   })
 
   test('adapts the wordmark to terminal width and height', () => {
-    expect(getResponsiveURWordmarkVariant(80, 30)).toBe('full')
-    expect(getResponsiveURWordmarkVariant(41, 22)).toBe('full')
+    expect(getResponsiveURWordmarkVariant(80, 30)).toBe('compact')
+    expect(getResponsiveURWordmarkVariant(41, 22)).toBe('compact')
     expect(getResponsiveURWordmarkVariant(40, 22)).toBe('compact')
     expect(getResponsiveURWordmarkVariant(80, 12)).toBe('compact')
     expect(getResponsiveURWordmarkVariant(19, 30)).toBe('minimal')
@@ -50,7 +46,7 @@ describe('UR welcome wordmark', () => {
       throw new Error('expected URBanner to return a React element')
     }
     const rows = React.Children.toArray(banner.props.children)
-    expect(rows).toHaveLength(17)
+    expect(rows).toHaveLength(7)
     for (const row of rows) {
       expect(React.isValidElement(row)).toBe(true)
       if (React.isValidElement<{ color?: string }>(row)) {
@@ -62,7 +58,7 @@ describe('UR welcome wordmark', () => {
   test('renders cleanly as a centered terminal component', async () => {
     const rendered = await renderToString(<URBanner />, 80)
 
-    expect(rendered).toContain('UUUUUUUU     UUUUUUUURRRRRRRRRRRRRRRRR')
+    expect(rendered).toContain('██╗   ██╗  ██████╗')
     expect(rendered).toContain('✦ THE AUTONOMOUS AGENT ✦')
   })
 
