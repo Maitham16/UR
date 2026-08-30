@@ -137,6 +137,9 @@ test('release gate keeps npm, documentation, and IDE versions synchronized', () 
   expect(releaseCheck).toContain(
     "'src/services/agents/featureScaffolds.ts'",
   )
+  expect(releaseCheck).toContain(
+    "'src/services/agents/trends.ts'",
+  )
 })
 
 test('changelog starts at the package version and remains newest-first', () => {

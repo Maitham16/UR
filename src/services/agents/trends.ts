@@ -88,7 +88,8 @@ export type A2AV1AgentCard = {
   signatures: A2AAgentCardSignature[]
 }
 
-const urVersion = MACRO.VERSION
+const urVersion =
+  typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.82.1'
 const researchSnapshotDate = '2026-08-10'
 
 const coverage: TrendCoverage[] = [

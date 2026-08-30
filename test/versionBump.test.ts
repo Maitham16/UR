@@ -45,6 +45,8 @@ function writeFixture(root: string, version: string): void {
       `typeof MACRO !== 'undefined' ? MACRO.VERSION : '${version}'\n`,
     'src/services/agents/featureScaffolds.ts':
       `typeof MACRO !== 'undefined' ? MACRO.VERSION : '${version}'\n`,
+    'src/services/agents/trends.ts':
+      `typeof MACRO !== 'undefined' ? MACRO.VERSION : '${version}'\n`,
   }
 
   for (const [path, value] of Object.entries(jsonFiles)) {
@@ -98,6 +100,7 @@ test('version bump moves every surface from one prerelease to another', () => {
       'src/commands/agent-ci/agent-ci.ts',
       'src/services/agents/agenticCi.ts',
       'src/services/agents/featureScaffolds.ts',
+      'src/services/agents/trends.ts',
     ]) {
       expect(readFileSync(join(root, path), 'utf8'), path).toContain(
         '2.0.0-beta.2',

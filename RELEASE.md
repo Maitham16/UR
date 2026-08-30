@@ -72,7 +72,8 @@ Version bump checklist (all versioned release surfaces must move together):
 5. `extensions/jetbrains-ur/build.gradle.kts` `version`
 6. The `MACRO.VERSION` fallbacks in `src/commands/agent-ci/agent-ci.ts`,
    `src/services/agents/agenticCi.ts`, and
-   `src/services/agents/featureScaffolds.ts`
+   `src/services/agents/featureScaffolds.ts`, and
+   `src/services/agents/trends.ts`
 7. Add a `CHANGELOG.md` entry, then run `bun run build` so `dist/cli.js`
    embeds the new version (`bun run release:check` verifies all of this).
 

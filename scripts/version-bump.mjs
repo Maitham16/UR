@@ -67,6 +67,10 @@ const TEXT_FILES = [
     file: 'src/services/agents/featureScaffolds.ts',
     pattern: new RegExp(`(MACRO\\.VERSION : ')${SEMVER_SOURCE}(')`),
   },
+  {
+    file: 'src/services/agents/trends.ts',
+    pattern: new RegExp(`(MACRO\\.VERSION : ')${SEMVER_SOURCE}(')`),
+  },
 ]
 
 const updates = []

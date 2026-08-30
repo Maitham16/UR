@@ -97,6 +97,7 @@ const versionFallbackFiles = [
   'src/commands/agent-ci/agent-ci.ts',
   'src/services/agents/agenticCi.ts',
   'src/services/agents/featureScaffolds.ts',
+  'src/services/agents/trends.ts',
 ]
 for (const file of versionFallbackFiles) {
   if (!read(file).includes(`MACRO.VERSION : '${version}'`)) {
