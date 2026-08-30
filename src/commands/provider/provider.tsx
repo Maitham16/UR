@@ -13,6 +13,7 @@ import {
   type ProviderSettings,
 } from '../../services/providers/providerRegistry.js'
 import { useSettings } from '../../hooks/useSettings.js'
+import { getInitialSettings as getCurrentSettings } from '../../utils/settings/settings.js'
 
 function ApplyProviderAndClose({
   provider,
@@ -77,9 +78,7 @@ function ProviderPickerWrapper({
       to_provider: resolvedProvider as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
 
-    const newProviderRuntime = getProviderRuntimeInfo({
-      provider: { active: resolvedProvider },
-    })
+    const newProviderRuntime = getProviderRuntimeInfo(getCurrentSettings())
 
     let message = `Set provider to ${chalk.bold(newProviderRuntime.providerLabel)}`
 

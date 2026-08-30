@@ -114,7 +114,7 @@ type OllamaChatRequest = {
   model: string
   messages: OllamaMessage[]
   stream: boolean
-  think?: boolean | 'high' | 'medium' | 'low'
+  think?: boolean | 'high' | 'medium' | 'low' | 'max'
   tools?: OllamaTool[]
   keep_alive?: string | number
   options?: {
@@ -782,10 +782,6 @@ function getOllamaFormat(params: BetaMessageStreamParams): unknown {
   return undefined
 }
 
-// Models whose `think` accepts graded levels rather than a boolean. Sending a
-// level to a boolean-only model is a 400, so levels are opt-in by family.
-const LEVELED_THINK_MODEL_RE = /gpt-oss/i
-
 function getOllamaThink(
   params: BetaMessageStreamParams,
   capabilities: OllamaModelCapabilities | null,
@@ -795,9 +791,9 @@ function getOllamaThink(
   if (capabilities && !supportsThinking) {
     return undefined
   }
-  // --effort lands in output_config.effort. Map it onto the wire: a graded
-  // level where the family supports one ('max' clamps to the wire's ceiling),
-  // otherwise treat any requested effort as "reasoning on".
+  // --effort lands in output_config.effort. Current Ollama accepts graded
+  // values for thinking-capable models. GPT-OSS is the documented exception:
+  // its ceiling is high, so provider-neutral max clamps to high.
   const effort = (
     params as { output_config?: { effort?: unknown } }
   ).output_config?.effort
@@ -805,9 +801,9 @@ function getOllamaThink(
   if (
     (effort === 'low' || effort === 'medium' || effort === 'high' ||
       effort === 'max') &&
-    LEVELED_THINK_MODEL_RE.test(model)
+    supportsThinking
   ) {
-    return effort === 'max' ? 'high' : effort
+    return effort === 'max' && /gpt[-_]?oss/i.test(model) ? 'high' : effort
   }
   if (thinking && thinking.type !== 'disabled') {
     return true

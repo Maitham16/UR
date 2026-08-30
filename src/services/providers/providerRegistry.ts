@@ -93,6 +93,7 @@ export type ProviderSettings = {
   active?: ProviderId
   model?: string
   baseUrl?: string
+  baseUrls?: Partial<Record<ProviderId, string>>
   commandPath?: string
   fallback?: ProviderId | 'disabled'
   openaiTransport?: 'chat-completions' | 'responses'
@@ -655,6 +656,28 @@ export function getProviderDefinition(id: ProviderId): ProviderDefinition {
   return PROVIDERS[id]
 }
 
+/**
+ * Return only the URL explicitly configured for one provider. `baseUrl` is
+ * retained as a read-only compatibility path for settings written before
+ * provider-scoped URLs existed; once `baseUrls` is present it cannot leak that
+ * legacy value into a different provider.
+ */
+export function getScopedProviderBaseUrl(
+  provider: ProviderId,
+  settings: SettingsJson | null = getInitialSettings(),
+): string | undefined {
+  const configured = (settings ?? {}).provider ?? {}
+  if (provider === 'subscription') return undefined
+  const scoped = configured.baseUrls?.[provider]
+  if (scoped) return scoped
+  if (configured.baseUrls !== undefined) return undefined
+
+  const active = configured.active
+    ? resolveProviderId(configured.active) ?? DEFAULT_PROVIDER_ID
+    : DEFAULT_PROVIDER_ID
+  return active === provider ? configured.baseUrl : undefined
+}
+
 export function getActiveProviderSettings(settings: SettingsJson | null = getInitialSettings()): ProviderSettings {
   const effectiveSettings = settings ?? {}
   const configured = effectiveSettings.provider ?? {}
@@ -670,7 +693,8 @@ export function getActiveProviderSettings(settings: SettingsJson | null = getIni
   return {
     active,
     model: configured.model ?? (configured.active ? undefined : effectiveSettings.model),
-    baseUrl: configured.baseUrl,
+    baseUrl: getScopedProviderBaseUrl(active, effectiveSettings),
+    baseUrls: configured.baseUrls,
     commandPath: configured.commandPath,
     fallback,
   }
@@ -875,6 +899,38 @@ function normalizeBaseUrl(value: string): string {
   return withScheme.replace(/\/$/, '')
 }
 
+/**
+ * Build the endpoint portion of a provider switch. The first switch made from
+ * legacy settings migrates the old active provider's URL into the scoped map.
+ * The legacy field remains a mirror of the newly active provider for older
+ * consumers, but runtime resolution always prefers `baseUrls`.
+ */
+function endpointSettingsForProviderSwitch(
+  settings: SettingsJson,
+  nextProvider: ProviderId,
+): Pick<ProviderSettings, 'baseUrl' | 'baseUrls'> {
+  const configured = settings.provider ?? {}
+  const currentProvider = getActiveProviderSettings(settings).active ?? DEFAULT_PROVIDER_ID
+  const baseUrls: Partial<Record<ProviderId, string>> = {}
+
+  if (configured.baseUrls === undefined && configured.baseUrl) {
+    baseUrls[currentProvider] = configured.baseUrl
+  }
+
+  const nextBaseUrl =
+    (nextProvider === 'subscription'
+      ? undefined
+      : configured.baseUrls?.[nextProvider]) ??
+    (configured.baseUrls === undefined && currentProvider === nextProvider
+      ? configured.baseUrl
+      : undefined)
+
+  return {
+    baseUrl: nextBaseUrl,
+    baseUrls,
+  }
+}
+
 export function setSafeProviderConfig(
   key:
     | 'provider'
@@ -923,7 +979,7 @@ export function setSafeProviderConfig(
       const currentModel = getActiveProviderSettings(currentSettings).model
       const nextProviderSettings: ProviderSettings = {
         active: provider,
-        baseUrl: undefined,
+        ...endpointSettingsForProviderSwitch(currentSettings, provider),
         commandPath: undefined,
       }
       let invalidated = false
@@ -1012,7 +1068,16 @@ export function setSafeProviderConfig(
       }
       settings = { provider: { model: trimmed }, model: trimmed } as SettingsJson
     } else {
-      settings = { provider: { baseUrl: normalizeBaseUrl(trimmed) } } as SettingsJson
+      const currentSettings = getInitialSettings()
+      const currentProvider =
+        getActiveProviderSettings(currentSettings).active ?? DEFAULT_PROVIDER_ID
+      const baseUrl = normalizeBaseUrl(trimmed)
+      settings = {
+        provider: {
+          baseUrl,
+          baseUrls: { [currentProvider]: baseUrl },
+        },
+      } as SettingsJson
     }
   } catch (error) {
     return {
@@ -1172,7 +1237,12 @@ async function checkEndpoint(
       ? [endpointUrl(baseUrl, 'ollama')]
       : openAiCompatibleModelUrls(baseUrl)
   const env = adapters.env ?? process.env
-  let apiKey = definition.envKey ? env[definition.envKey] : undefined
+  let apiKey =
+    definition.id === 'ollama'
+      ? env.OLLAMA_API_KEY
+      : definition.envKey
+        ? env[definition.envKey]
+        : undefined
   if (!apiKey && definition.credentialType === 'openai-compatible-endpoint') {
     try {
       const credentials = await import('./providerCredentials.js')
@@ -1484,6 +1554,7 @@ export async function doctorProvider(
   const settingsForProvider: ProviderSettings = {
     ...providerSettings,
     active,
+    baseUrl: providerBaseUrl(active, definition, allSettings),
   }
   const result: ProviderDoctorResult = {
     provider: active,
@@ -1838,6 +1909,22 @@ export type ProviderModelDefinition = {
   deprecated?: boolean
 }
 
+const EFFORT_LOW_MEDIUM_HIGH: ModelReasoningCapabilities = {
+  supportedEfforts: ['low', 'medium', 'high'],
+}
+const EFFORT_LOW_MEDIUM_HIGH_XHIGH: ModelReasoningCapabilities = {
+  supportedEfforts: ['low', 'medium', 'high', 'xhigh'],
+}
+const EFFORT_LOW_MEDIUM_HIGH_MAX: ModelReasoningCapabilities = {
+  supportedEfforts: ['low', 'medium', 'high', 'max'],
+}
+const EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX: ModelReasoningCapabilities = {
+  supportedEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+}
+const GEMINI_MINIMAL_TO_HIGH: ModelReasoningCapabilities = {
+  supportedEfforts: ['minimal', 'low', 'medium', 'high'],
+}
+
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   // Generic subscription entry. No models are listed because this build has no
   // independent subscription backend. External app bridges keep their own
@@ -1873,33 +1960,33 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   ],
   // OpenAI API - direct API access with OPENAI_API_KEY
   'openai-api': [
-    { id: 'gpt-5.5', displayName: 'GPT-5.5', description: 'Latest OpenAI model', isDefault: true },
-    { id: 'gpt-5.4', displayName: 'GPT-5.4', description: 'Advanced reasoning and coding' },
-    { id: 'gpt-5.4-mini', displayName: 'GPT-5.4 Mini', description: 'Fast, efficient variant' },
+    { id: 'gpt-5.5', displayName: 'GPT-5.5', description: 'Latest OpenAI model', isDefault: true, reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH, defaultEffort: 'medium' } },
+    { id: 'gpt-5.4', displayName: 'GPT-5.4', description: 'Advanced reasoning and coding', reasoning: EFFORT_LOW_MEDIUM_HIGH_XHIGH },
+    { id: 'gpt-5.4-mini', displayName: 'GPT-5.4 Mini', description: 'Fast, efficient variant', reasoning: EFFORT_LOW_MEDIUM_HIGH_XHIGH },
     { id: 'gpt-4o', displayName: 'GPT-4o', description: 'Previous generation flagship' },
     { id: 'gpt-4o-mini', displayName: 'GPT-4o Mini', description: 'Fast GPT-4o variant' },
-    { id: 'o1', displayName: 'o1', description: 'Deep reasoning model' },
-    { id: 'o3-mini', displayName: 'o3-mini', description: 'Fast reasoning model' },
+    { id: 'o1', displayName: 'o1', description: 'Deep reasoning model', reasoning: EFFORT_LOW_MEDIUM_HIGH },
+    { id: 'o3-mini', displayName: 'o3-mini', description: 'Fast reasoning model', reasoning: EFFORT_LOW_MEDIUM_HIGH },
   ],
   // Anthropic API - direct API access with ANTHROPIC_API_KEY
   'anthropic-api': [
-    { id: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: 'Balanced performance and speed', isDefault: true },
-    { id: 'claude-opus-4-8', displayName: 'Claude Opus 4.8', description: 'Most powerful Claude model' },
-    { id: 'claude-opus-4-7', displayName: 'Claude Opus 4.7', description: 'High-end reasoning' },
-    { id: 'claude-opus-4-6', displayName: 'Claude Opus 4.6', description: 'Advanced problem solving' },
-    { id: 'claude-opus-4-5', displayName: 'Claude Opus 4.5', description: 'Previous Opus generation' },
-    { id: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6', description: 'Fast Sonnet variant' },
+    { id: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: 'Balanced performance and speed', isDefault: true, reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
+    { id: 'claude-opus-4-8', displayName: 'Claude Opus 4.8', description: 'Most powerful Claude model', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
+    { id: 'claude-opus-4-7', displayName: 'Claude Opus 4.7', description: 'High-end reasoning', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
+    { id: 'claude-opus-4-6', displayName: 'Claude Opus 4.6', description: 'Advanced problem solving', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_MAX, defaultEffort: 'high' } },
+    { id: 'claude-opus-4-5', displayName: 'Claude Opus 4.5', description: 'Previous Opus generation', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH, defaultEffort: 'high' } },
+    { id: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6', description: 'Fast Sonnet variant', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_MAX, defaultEffort: 'high' } },
     { id: 'claude-sonnet-4-5', displayName: 'Claude Sonnet 4.5', description: 'Previous Sonnet generation' },
     { id: 'claude-haiku-4-5', displayName: 'Claude Haiku 4.5', description: 'Fastest Claude model' },
   ],
   // Google Gemini API - direct API access with GEMINI_API_KEY
   'gemini-api': [
-    { id: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Most intelligent for agentic tasks', isDefault: true },
-    { id: 'gemini-3.1-pro', displayName: 'Gemini 3.1 Pro', description: 'Advanced problem solving (preview)' },
-    { id: 'gemini-3.1-flash-lite', displayName: 'Gemini 3.1 Flash Lite', description: 'Budget-friendly performance' },
-    { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Complex reasoning and coding' },
-    { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', description: 'Low-latency tasks' },
-    { id: 'gemini-2.5-flash-lite', displayName: 'Gemini 2.5 Flash Lite', description: 'Fastest Gemini model' },
+    { id: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Most intelligent for agentic tasks', isDefault: true, reasoning: { ...GEMINI_MINIMAL_TO_HIGH, defaultEffort: 'medium' } },
+    { id: 'gemini-3.1-pro', displayName: 'Gemini 3.1 Pro', description: 'Advanced problem solving (preview)', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH, defaultEffort: 'high' } },
+    { id: 'gemini-3.1-flash-lite', displayName: 'Gemini 3.1 Flash Lite', description: 'Budget-friendly performance', reasoning: { ...GEMINI_MINIMAL_TO_HIGH, defaultEffort: 'minimal' } },
+    { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Complex reasoning and coding', reasoning: EFFORT_LOW_MEDIUM_HIGH },
+    { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', description: 'Low-latency tasks', reasoning: EFFORT_LOW_MEDIUM_HIGH },
+    { id: 'gemini-2.5-flash-lite', displayName: 'Gemini 2.5 Flash Lite', description: 'Fastest Gemini model', reasoning: EFFORT_LOW_MEDIUM_HIGH },
   ],
   // OpenRouter - multi-provider router (openai/*, anthropic/*, google/*, etc.)
   'openrouter': [
@@ -1998,13 +2085,8 @@ function providerBaseUrl(
       return sessionHost
     }
   }
-  const providerSettings = getActiveProviderSettings(settings)
-  if (
-    providerSettings.active === provider &&
-    providerSettings.baseUrl
-  ) {
-    return providerSettings.baseUrl
-  }
+  const configuredBaseUrl = getScopedProviderBaseUrl(provider, settings)
+  if (configuredBaseUrl) return configuredBaseUrl
   if (provider === 'ollama') {
     return getOllamaBaseUrl(process.env, settings)
   }
@@ -2079,20 +2161,29 @@ function modelDefinitionsFromNames(
 
 function modelDefinitionsFromDiscovered(
   models: DiscoveredModel[],
+  provider?: ProviderId,
 ): ProviderModelDefinition[] {
-  return models.map(model => ({
-    id: model.id,
-    displayName: model.displayName,
-    description: model.description,
-    pricing: model.pricing,
-    ...(model.contextLength ? { contextLength: model.contextLength } : {}),
-    ...(model.outputTokenLimit ? { outputTokenLimit: model.outputTokenLimit } : {}),
-    ...(model.supportedParameters ? { supportedParameters: model.supportedParameters } : {}),
-    ...(model.capabilities ? { capabilities: model.capabilities } : {}),
-    ...(model.reasoning ? { reasoning: model.reasoning } : {}),
-    ...(model.expirationDate ? { expirationDate: model.expirationDate } : {}),
-    ...(model.deprecated ? { deprecated: true } : {}),
-  }))
+  const staticModels = provider ? PROVIDER_MODELS[provider] ?? [] : []
+  return models.map(model => {
+    const curated = staticModels.find(
+      entry => entry.id.toLowerCase() === model.id.toLowerCase(),
+    )
+    return {
+      id: model.id,
+      displayName: model.displayName,
+      description: model.description,
+      pricing: model.pricing,
+      ...(model.contextLength ? { contextLength: model.contextLength } : {}),
+      ...(model.outputTokenLimit ? { outputTokenLimit: model.outputTokenLimit } : {}),
+      ...(model.supportedParameters ? { supportedParameters: model.supportedParameters } : {}),
+      ...(model.capabilities ? { capabilities: model.capabilities } : {}),
+      ...(model.reasoning ?? curated?.reasoning
+        ? { reasoning: model.reasoning ?? curated?.reasoning }
+        : {}),
+      ...(model.expirationDate ? { expirationDate: model.expirationDate } : {}),
+      ...(model.deprecated ? { deprecated: true } : {}),
+    }
+  })
 }
 
 function providerModelCacheKey(
@@ -2228,6 +2319,59 @@ function providerPropsUrl(baseUrl: string, model: string): string {
   return url.toString()
 }
 
+function ollamaShowUrl(baseUrl: string): string {
+  const url = new URL(endpointUrl(baseUrl, 'ollama'))
+  url.pathname = url.pathname.replace(/\/tags\/?$/i, '/show')
+  return url.toString()
+}
+
+function reasoningCapabilitiesFromOllamaShow(
+  model: string,
+  value: unknown,
+): ModelReasoningCapabilities | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const root = value as Record<string, unknown>
+  const explicit = parseModelReasoningCapabilities(root.reasoning)
+  if (explicit) return explicit
+
+  const capabilities = Array.isArray(root.capabilities)
+    ? root.capabilities
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map(entry => entry.trim().toLowerCase())
+    : undefined
+  if (!capabilities) return undefined
+  if (!capabilities.includes('thinking')) return { supportedEfforts: [] }
+
+  const details =
+    root.details && typeof root.details === 'object'
+      ? (root.details as Record<string, unknown>)
+      : {}
+  const identity = [model, details.family, details.parent_model]
+    .filter((entry): entry is string => typeof entry === 'string')
+    .join(' ')
+
+  // GPT-OSS is Ollama's documented exception: it accepts only this three-step
+  // ladder and rejects booleans/max. Kimi K3 publishes low/high/max natively.
+  if (/gpt[-_]?oss/i.test(identity)) {
+    return {
+      supportedEfforts: ['low', 'medium', 'high'],
+      defaultEffort: 'medium',
+    }
+  }
+  if (/kimi[-_]?k3/i.test(identity)) {
+    return {
+      supportedEfforts: ['low', 'high', 'max'],
+      defaultEffort: 'max',
+    }
+  }
+
+  // Ollama's current native chat contract accepts low/medium/high/max for
+  // thinking-capable models, with max requesting the model's highest level.
+  return { supportedEfforts: ['low', 'medium', 'high', 'max'] }
+}
+
 function reasoningCapabilitiesFromProps(
   value: unknown,
 ): ModelReasoningCapabilities | undefined {
@@ -2291,9 +2435,10 @@ function rememberProviderModelReasoning(
 }
 
 /**
- * Load the focused model's provider-authored reasoning contract.
- * llama.cpp exposes the decisive per-template signal through /props rather
- * than /v1/models, so this is intentionally lazy and model-scoped.
+ * Load the focused model's provider-authored reasoning contract. llama.cpp
+ * exposes it through /props and Ollama exposes the thinking capability through
+ * /api/show rather than their list endpoints, so both checks are lazy and
+ * model-scoped.
  */
 export async function ensureProviderReasoningCapabilitiesForModel(
   providerId: ProviderId | string,
@@ -2314,7 +2459,7 @@ export async function ensureProviderReasoningCapabilitiesForModel(
   )
   if (cached !== undefined) return cached
 
-  if (provider !== 'llama.cpp') {
+  if (provider !== 'llama.cpp' && provider !== 'ollama') {
     await ensureProviderModelsFresh(provider, options)
     return getProviderReasoningCapabilitiesForModel(model, provider, settings)
   }
@@ -2324,7 +2469,12 @@ export async function ensureProviderReasoningCapabilitiesForModel(
   if (!baseUrl) return undefined
   const env = options.adapters?.env ?? process.env
   const fetchImpl = options.adapters?.fetch ?? fetch
-  let apiKey = definition.envKey ? env[definition.envKey] : undefined
+  let apiKey =
+    provider === 'ollama'
+      ? env.OLLAMA_API_KEY
+      : definition.envKey
+        ? env[definition.envKey]
+        : undefined
   if (!apiKey) {
     try {
       const credentials = await import('./providerCredentials.js')
@@ -2333,19 +2483,36 @@ export async function ensureProviderReasoningCapabilitiesForModel(
       // Local llama.cpp endpoints normally require no key.
     }
   }
-  const response = await fetchImpl(providerPropsUrl(baseUrl, model), {
-    method: 'GET',
-    signal: options.signal,
-    ...(apiKey
-      ? { headers: { Authorization: `Bearer ${apiKey}` } }
-      : {}),
-  })
-  if (!response.ok) {
-    throw new Error(`llama.cpp /props returned HTTP ${response.status}.`)
-  }
-  const reasoning = reasoningCapabilitiesFromProps(
-    await response.json().catch(() => null),
+  const response = await fetchImpl(
+    provider === 'ollama'
+      ? ollamaShowUrl(baseUrl)
+      : providerPropsUrl(baseUrl, model),
+    {
+      method: provider === 'ollama' ? 'POST' : 'GET',
+      signal: options.signal,
+      ...(provider === 'ollama'
+        ? {
+            headers: {
+              'Content-Type': 'application/json',
+              ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+            },
+            body: JSON.stringify({ model }),
+          }
+        : apiKey
+          ? { headers: { Authorization: `Bearer ${apiKey}` } }
+          : {}),
+    },
   )
+  if (!response.ok) {
+    throw new Error(
+      `${provider === 'ollama' ? 'Ollama /api/show' : 'llama.cpp /props'} returned HTTP ${response.status}.`,
+    )
+  }
+  const body = await response.json().catch(() => null)
+  const reasoning =
+    provider === 'ollama'
+      ? reasoningCapabilitiesFromOllamaShow(model, body)
+      : reasoningCapabilitiesFromProps(body)
   if (reasoning) {
     rememberProviderModelReasoning(provider, model, reasoning, settings)
   }
@@ -2494,7 +2661,7 @@ async function discoverLiveModelsForProvider(
       getProviderDefinition(provider).displayName,
     )
     if (discovered.length > 0) {
-      return modelDefinitionsFromDiscovered(discovered)
+      return modelDefinitionsFromDiscovered(discovered, provider)
     }
   }
   if (!reachedOk && lastError) {
@@ -2508,8 +2675,7 @@ function apiModelsRequest(
   apiKey: string,
   settings: SettingsJson,
 ): { url: string; headers: Record<string, string> } {
-  const configured = getActiveProviderSettings(settings)
-  const configuredBase = configured.active === provider ? configured.baseUrl : undefined
+  const configuredBase = getScopedProviderBaseUrl(provider, settings)
   const modelsUrl = (baseUrl: string, version: string): string => {
     const url = new URL(normalizeBaseUrl(baseUrl))
     url.hash = ''
@@ -2666,6 +2832,7 @@ async function discoverApiProviderModels(
   const providerLabel = getProviderDefinition(provider).displayName
   return modelDefinitionsFromDiscovered(
     parseDiscoveredModels({ data: entries }, providerLabel),
+    provider,
   )
 }
 
@@ -3020,10 +3187,12 @@ export function setProviderModel(
     }
   }
   const source = options.source ?? 'localSettings'
+  const currentSettings = getInitialSettings()
   const result = updateSettingsForSource(source, {
     provider: {
       active: provider,
       model: modelId,
+      ...endpointSettingsForProviderSwitch(currentSettings, provider),
     },
     model: modelId,
   } as SettingsJson)

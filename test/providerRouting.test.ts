@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   createProviderClient,
   formatRuntimeDispatchError,
+  resolveProviderBaseUrl,
   resolveActiveProviderModel,
   sendModelRequest,
   streamModelResponse,
@@ -30,6 +31,31 @@ afterEach(() => {
 })
 
 describe('provider runtime routing', () => {
+  test('resolves a saved endpoint for a provider that is not currently active', () => {
+    const settings = {
+      provider: {
+        active: 'ollama',
+        baseUrl: 'http://ollama-box:11434',
+        baseUrls: {
+          ollama: 'http://ollama-box:11434',
+          vllm: 'http://vllm-box:8000/v1',
+          'llama.cpp': 'http://llama-box:8080/v1',
+          unsloth: 'http://unsloth-box:8888/v1',
+        },
+      },
+    } as const
+
+    expect(resolveProviderBaseUrl('vllm', settings as never)).toBe(
+      'http://vllm-box:8000/v1',
+    )
+    expect(resolveProviderBaseUrl('llama.cpp', settings as never)).toBe(
+      'http://llama-box:8080/v1',
+    )
+    expect(resolveProviderBaseUrl('unsloth', settings as never)).toBe(
+      'http://unsloth-box:8888/v1',
+    )
+  })
+
   test('dispatch errors summarize large provider catalogs', () => {
     const message = formatRuntimeDispatchError({
       providerId: 'openrouter',

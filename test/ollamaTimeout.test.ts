@@ -200,6 +200,41 @@ test('Ollama chat requests enable thinking when the model advertises it', async 
   }
 })
 
+test('Ollama sends the selected graded effort for thinking-capable models', () => {
+  const capabilities = new Set(['completion', 'thinking', 'tools'])
+  const kimi = toOllamaChatRequest(
+    {
+      model: 'kimi-k3:cloud',
+      messages: [],
+      output_config: { effort: 'max' },
+    } as never,
+    false,
+    capabilities,
+  )
+  const qwen = toOllamaChatRequest(
+    {
+      model: 'qwen3:latest',
+      messages: [],
+      output_config: { effort: 'medium' },
+    } as never,
+    false,
+    capabilities,
+  )
+  const gptOss = toOllamaChatRequest(
+    {
+      model: 'gpt-oss:20b',
+      messages: [],
+      output_config: { effort: 'max' },
+    } as never,
+    false,
+    capabilities,
+  )
+
+  expect(kimi.think).toBe('max')
+  expect(qwen.think).toBe('medium')
+  expect(gptOss.think).toBe('high')
+})
+
 test('Ollama chat requests omit think when the model does not advertise thinking', async () => {
   const previousFetch = globalThis.fetch
   let requestBody: Record<string, unknown> | undefined

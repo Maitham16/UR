@@ -235,6 +235,7 @@ function buildAPIRequest(family: string, params: any): any {
     }
     case 'google': {
       const tools = toGeminiTools(params.tools)
+      const thinkingConfig = toGeminiThinkingConfig(params)
       return {
         contents: toGeminiContents(params),
         ...(geminiSystemInstruction(params) && {
@@ -253,17 +254,39 @@ function buildAPIRequest(family: string, params: any): any {
             responseMimeType: 'application/json',
             responseSchema: params.output_config.format.schema,
           }),
-          ...(params.thinking?.type !== undefined && {
-            thinkingConfig: params.thinking.type === 'enabled'
-              ? { thinkingBudget: params.thinking.budget_tokens }
-              : { includeThoughts: params.thinking.type !== 'disabled' },
-          }),
+          ...(thinkingConfig ? { thinkingConfig } : {}),
         },
       }
     }
     default:
       return params
   }
+}
+
+function toGeminiThinkingConfig(
+  params: any,
+): Record<string, unknown> | undefined {
+  const effort = params.output_config?.effort
+  if (
+    effort === 'minimal' ||
+    effort === 'low' ||
+    effort === 'medium' ||
+    effort === 'high'
+  ) {
+    return { thinkingLevel: effort }
+  }
+  // Provider-aware effort resolution normally clamps these before this
+  // adapter. Keep direct client calls safe as well.
+  if (effort === 'xhigh' || effort === 'max') {
+    return { thinkingLevel: 'high' }
+  }
+  if (params.thinking?.type === 'enabled') {
+    return { thinkingBudget: params.thinking.budget_tokens }
+  }
+  if (params.thinking?.type !== undefined) {
+    return { includeThoughts: params.thinking.type !== 'disabled' }
+  }
+  return undefined
 }
 
 function providerRequestId(family: string, headers: any): string | undefined {

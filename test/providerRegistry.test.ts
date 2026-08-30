@@ -939,6 +939,86 @@ describe('provider-scoped model listing', () => {
     }
   })
 
+  test('each provider keeps its own base URL across provider and model switches', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ur-provider-endpoints-'))
+    try {
+      resetStateForTests()
+      setOriginalCwd(dir)
+      setCwdState(dir)
+      resetSettingsCache()
+
+      expect(setSafeProviderConfig('provider', 'ollama').ok).toBe(true)
+      expect(setSafeProviderConfig('base_url', 'http://ollama-box:11434').ok).toBe(true)
+      expect(setSafeProviderConfig('provider', 'vllm').ok).toBe(true)
+      expect(setSafeProviderConfig('base_url', 'http://vllm-box:8000/v1').ok).toBe(true)
+      expect(setSafeProviderConfig('provider', 'llama.cpp').ok).toBe(true)
+      expect(setSafeProviderConfig('base_url', 'http://llama-box:8080/v1').ok).toBe(true)
+      expect(setSafeProviderConfig('provider', 'unsloth').ok).toBe(true)
+      expect(setSafeProviderConfig('base_url', 'http://unsloth-box:8888/v1').ok).toBe(true)
+
+      expect(
+        setProviderModel('vllm', 'vllm-model', {
+          availableModels: ['vllm-model'],
+        }).ok,
+      ).toBe(true)
+      expect(getActiveProviderSettings().baseUrl).toBe('http://vllm-box:8000/v1')
+
+      expect(
+        setProviderModel('ollama', 'ollama-model', {
+          availableModels: ['ollama-model'],
+        }).ok,
+      ).toBe(true)
+      expect(getActiveProviderSettings().baseUrl).toBe('http://ollama-box:11434')
+
+      expect(setSafeProviderConfig('provider', 'llama.cpp').ok).toBe(true)
+      expect(getActiveProviderSettings().baseUrl).toBe('http://llama-box:8080/v1')
+      expect(setSafeProviderConfig('provider', 'unsloth').ok).toBe(true)
+      expect(getActiveProviderSettings().baseUrl).toBe('http://unsloth-box:8888/v1')
+
+      const saved = JSON.parse(
+        readFileSync(join(dir, '.ur', 'settings.local.json'), 'utf8'),
+      )
+      expect(saved.provider.baseUrls).toEqual({
+        ollama: 'http://ollama-box:11434',
+        vllm: 'http://vllm-box:8000/v1',
+        'llama.cpp': 'http://llama-box:8080/v1',
+        unsloth: 'http://unsloth-box:8888/v1',
+      })
+      expect(saved.provider.baseUrl).toBe('http://unsloth-box:8888/v1')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      resetStateForTests()
+      resetSettingsCache()
+    }
+  })
+
+  test('legacy base_url migrates to the provider-scoped map on first switch', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ur-provider-endpoint-migration-'))
+    try {
+      resetStateForTests()
+      setOriginalCwd(dir)
+      setCwdState(dir)
+      resetSettingsCache()
+      updateSettingsForSource('localSettings', {
+        provider: {
+          active: 'vllm',
+          baseUrl: 'http://legacy-vllm:8000/v1',
+        },
+      })
+
+      expect(setSafeProviderConfig('provider', 'ollama').ok).toBe(true)
+      expect(getActiveProviderSettings().baseUrl).toBeUndefined()
+      expect(setSafeProviderConfig('provider', 'vllm').ok).toBe(true)
+      expect(getActiveProviderSettings().baseUrl).toBe(
+        'http://legacy-vllm:8000/v1',
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      resetStateForTests()
+      resetSettingsCache()
+    }
+  })
+
   test('OpenAI Responses transport settings are explicit, validated, and privacy-first', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ur-provider-responses-config-'))
     try {

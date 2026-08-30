@@ -222,6 +222,11 @@ Unsloth defaults to `http://localhost:8888/v1`, requires its Studio API key,
 and is inference-only: UR does not manage Unsloth and disables its server-side
 tools while retaining standard function calls inside UR's guarded tool loop.
 
+UR stores `base_url` per provider. You can set different addresses for
+Ollama, llama.cpp, vLLM, and Unsloth once, then switch providers without
+re-entering any of them. `ur config get base_url` always reports the address
+for the currently active provider.
+
 Use `/model` in an interactive session to select provider first and model
 second. OpenAI API, Claude API, Gemini API, OpenRouter, Ollama, and
 OpenAI-compatible endpoints stay separate; a subscription login does not grant

@@ -295,6 +295,12 @@ ur config set provider.fallback ollama
 guidance. UR never switches providers automatically: inspect the failure and
 select the recovery provider explicitly with `ur config set provider <id>`.
 
+`base_url` belongs to the provider that is active when it is set. UR remembers
+each provider's address independently, so switching among Ollama, LM Studio,
+llama.cpp, vLLM, Unsloth, or another compatible endpoint restores that
+provider's last URL automatically. Existing single-URL settings are migrated
+to the previously active provider on the first switch.
+
 OpenAI API traffic uses Chat Completions by default. The Responses transport is
 an explicit, provider-scoped opt-in with privacy-conscious defaults:
 
@@ -367,7 +373,9 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    resolved visibly to that model's actual `max`, `xhigh`, or `high` ceiling,
    and the resolved value is the value sent to the provider. llama.cpp models
    are checked lazily through their model-scoped `/props` capability while the
-   cursor moves. OpenRouter additionally
+   cursor moves. Ollama models are checked through `/api/show`; Kimi K3 exposes
+   `low`, `high`, and `max`, and the chosen level is sent through Ollama's
+   native `think` field. OpenRouter additionally
    shows compact model names, FREE/PAID tier, context size, tool/reasoning
    support, and the full untruncated ID immediately below the focused entry.
    Its catalog is fetched fresh every time it opens and never falls back to a

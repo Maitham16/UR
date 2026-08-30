@@ -36,7 +36,14 @@ describe('Unsloth provider-only integration', () => {
     })
     expect(
       SettingsSchema().safeParse({
-        provider: { active: 'unsloth', model: 'local-model' },
+        provider: {
+          active: 'unsloth',
+          model: 'local-model',
+          baseUrls: {
+            ollama: 'http://localhost:11434',
+            unsloth: 'http://localhost:8888/v1',
+          },
+        },
       }).success,
     ).toBe(true)
   })

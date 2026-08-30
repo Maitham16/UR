@@ -12,6 +12,7 @@ import {
   ensureProviderModelsFresh,
   getActiveProviderSettings,
   getDefaultModelForProvider,
+  getScopedProviderBaseUrl,
   getProviderAccessTypeLabel,
   getProviderDefinition,
   getProviderRuntimeBlockReason,
@@ -359,9 +360,7 @@ export function resolveProviderBaseUrl(
   settings: SettingsJson = getInitialSettings(),
 ): string | undefined {
   const definition = getProviderDefinition(providerId)
-  const active = getActiveProviderSettings(settings)
-  const configuredBaseUrl =
-    active.active === providerId ? active.baseUrl : undefined
+  const configuredBaseUrl = getScopedProviderBaseUrl(providerId, settings)
   if (providerId === 'ollama') {
     return (
       getOllamaSessionOverride() ??
@@ -421,10 +420,7 @@ async function createOpenAICompatibleProviderClient(
   const settings = options.settings ?? getInitialSettings()
   const providerSettings = getActiveProviderSettings(settings)
   const provider = getProviderDefinition(providerId)
-  const baseUrl =
-    providerSettings.active === providerId
-      ? providerSettings.baseUrl ?? provider.defaultBaseUrl
-      : provider.defaultBaseUrl
+  const baseUrl = resolveProviderBaseUrl(providerId, settings)
   if (!baseUrl) {
     throw new Error(
       `Provider "${providerId}" requires a base URL. Run: ur config set base_url <url>`,
@@ -514,7 +510,7 @@ async function createAPIClient(
     } = await import('./openaiResponsesState.js')
     return await createOpenAIResponsesClient({
       apiKey: apiKey!,
-      baseUrl: providerSettings.baseUrl ?? provider.defaultBaseUrl,
+      baseUrl: resolveProviderBaseUrl(providerId, settings),
       maxRetries: options.maxRetries ?? 3,
       model: options.model,
       store: providerSettings.responses?.store ?? false,
@@ -529,10 +525,7 @@ async function createAPIClient(
   return await createStandardAPIClient({
     providerId,
     apiKey,
-    baseUrl:
-      providerSettings.active === providerId
-        ? providerSettings.baseUrl ?? provider.defaultBaseUrl
-        : provider.defaultBaseUrl,
+    baseUrl: resolveProviderBaseUrl(providerId, settings),
     maxRetries: options.maxRetries ?? 3,
     model: options.model,
   }) as ProviderMessageClient
@@ -565,8 +558,7 @@ export async function validateProviderRuntime(
   }
   const settings = getInitialSettings()
   const providerSettings = getActiveProviderSettings(settings)
-  const scopedBaseUrl =
-    providerSettings.active === resolved ? providerSettings.baseUrl : undefined
+  const scopedBaseUrl = resolveProviderBaseUrl(resolved, settings)
 
   switch (provider.accessType) {
     case 'local':

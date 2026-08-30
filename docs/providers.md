@@ -138,6 +138,11 @@ The fallback setting is a recovery hint for `ur provider doctor`; it does not
 route a failed request to another provider. Review the failure and use
 `ur config set provider <id>` to switch explicitly.
 
+`base_url` is stored for the provider that is active when the command runs.
+Each provider retains its own address across `/provider`, `/model`, and CLI
+switches. The legacy single `provider.baseUrl` field remains readable and is
+migrated to the previously active provider on the first switch.
+
 OpenAI API uses Chat Completions by default. `openai_transport responses` is an
 explicit opt-in to the native Responses adapter; it defaults to `store=false`
 and supports semantic streaming, background polling/cancellation, WebSocket
@@ -166,6 +171,17 @@ resolved value as `reasoning_effort`. The command confirmation, status
 indicator, active-work spinner, SDK settings response, and provider request all
 use the same resolved value. If a provider advertises only boolean thinking,
 UR does not invent a graded effort selector.
+
+For Ollama, UR lazily reads the focused model's `/api/show` capabilities and
+sends the selected level through native `think`. Kimi K3 uses
+`low|high|max`; GPT-OSS uses `low|medium|high`; other models advertising
+`thinking` use Ollama's current `low|medium|high|max` contract. Direct OpenAI,
+Anthropic, and Gemini models use curated model-specific ladders from their
+official documentation; live discovery rows are merged with those contracts.
+See [Ollama thinking](https://docs.ollama.com/capabilities/thinking),
+[OpenAI model guidance](https://developers.openai.com/api/docs/guides/latest-model),
+[Claude effort](https://platform.claude.com/docs/en/build-with-claude/effort),
+and [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking).
 
 The provider-first `/model` picker supports the same control directly: use
 Left/Right to move through the effort levels advertised by the focused model,

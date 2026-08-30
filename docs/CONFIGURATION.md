@@ -144,6 +144,11 @@ incompatible saved model instead of silently carrying it across providers. The
 saved provider/model pair controls the runtime backend for the next agent
 request; Ollama is only used when `ollama` is the selected provider.
 
+The configured `base_url` is provider-scoped. Setting an address while vLLM is
+active does not replace the saved Ollama, llama.cpp, or Unsloth address;
+returning to any provider restores its own URL. Legacy `provider.baseUrl`
+settings are migrated to the old active provider when the first switch occurs.
+
 In the model step, Up/Down browses, Left/Right changes the focused model's
 supported effort level, Enter confirms, Ctrl+R refreshes the catalog, and Esc
 returns to providers. OpenRouter entries show pricing tier, context size,
@@ -151,6 +156,9 @@ tool/reasoning capability, compact names, and the exact ID for the focused
 entry. Its catalog is fetched fresh whenever opened; a failed refresh never
 silently displays cached entries. API-provider secret
 entry stays on one masked row and stores the value through the keychain flow.
+Ollama and llama.cpp capabilities are loaded lazily for the focused model from
+`/api/show` and `/props`, respectively, so the arrow selector reflects the
+actual model rather than a provider-wide guess.
 
 The same provider-first picker is mandatory on the first interactive run in a
 workspace with no model in `.ur/settings.json` or `.ur/settings.local.json`.

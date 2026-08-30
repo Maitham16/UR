@@ -507,7 +507,11 @@ export const SettingsSchema = lazySchema(() =>
           baseUrl: z
             .string()
             .optional()
-            .describe('Provider base URL without embedded credentials'),
+            .describe('Legacy base URL for the active provider without embedded credentials'),
+          baseUrls: z
+            .partialRecord(z.enum(PROVIDER_SETTING_IDS), z.string())
+            .optional()
+            .describe('Base URLs saved independently for each provider without embedded credentials'),
           timeoutMs: z
             .number()
             .int()

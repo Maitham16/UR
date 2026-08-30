@@ -44,6 +44,10 @@ describe('API provider live model discovery', () => {
     })
     expect(result.source).toBe('live')
     expect(result.models.map(m => m.id)).toEqual(['gpt-4o', 'gpt-5.5', 'o3-mini']) // sorted, real
+    expect(result.models.find(m => m.id === 'gpt-5.5')?.reasoning).toEqual({
+      supportedEfforts: ['low', 'medium', 'high', 'xhigh'],
+      defaultEffort: 'medium',
+    })
   })
 
   test('anthropic-api discovers models (Anthropic-native data[].id)', async () => {
@@ -235,6 +239,74 @@ describe('API provider live model discovery', () => {
 })
 
 describe('OpenAI-compatible reasoning discovery', () => {
+  test('queries focused Ollama models through /api/show and caches exact effort levels', async () => {
+    const settings = { provider: { active: 'ollama' as const } }
+    const seen: Array<{ url: string; method?: string; body?: string }> = []
+    const reasoning = await ensureProviderReasoningCapabilitiesForModel(
+      'ollama',
+      'kimi-k3:cloud',
+      {
+        settings,
+        adapters: {
+          fetch: (async (input, init) => {
+            seen.push({
+              url: String(input),
+              method: init?.method,
+              body: typeof init?.body === 'string' ? init.body : undefined,
+            })
+            return new Response(
+              JSON.stringify({
+                capabilities: ['vision', 'thinking', 'completion', 'tools'],
+                details: { family: 'kimi-k3', parent_model: 'kimi-k3' },
+              }),
+            )
+          }) as typeof fetch,
+        },
+      },
+    )
+
+    expect(reasoning).toEqual({
+      supportedEfforts: ['low', 'high', 'max'],
+      defaultEffort: 'max',
+    })
+    expect(seen).toEqual([
+      {
+        url: 'http://localhost:11434/api/show',
+        method: 'POST',
+        body: JSON.stringify({ model: 'kimi-k3:cloud' }),
+      },
+    ])
+    expect(
+      getProviderReasoningCapabilitiesForModel(
+        'kimi-k3:cloud',
+        'ollama',
+        settings,
+      ),
+    ).toEqual(reasoning)
+  })
+
+  test('uses Ollama documented effort ladders without inventing thinking support', async () => {
+    const settings = { provider: { active: 'ollama' as const } }
+    const show = async (model: string, capabilities: string[]) =>
+      ensureProviderReasoningCapabilitiesForModel('ollama', model, {
+        settings,
+        adapters: {
+          fetch: fetchReturning({ capabilities }),
+        },
+      })
+
+    expect(await show('gpt-oss:20b', ['completion', 'thinking'])).toEqual({
+      supportedEfforts: ['low', 'medium', 'high'],
+      defaultEffort: 'medium',
+    })
+    expect(await show('qwen3:latest', ['completion', 'thinking'])).toEqual({
+      supportedEfforts: ['low', 'medium', 'high', 'max'],
+    })
+    expect(await show('llama3:latest', ['completion', 'tools'])).toEqual({
+      supportedEfforts: [],
+    })
+  })
+
   test('preserves provider-authored reasoning metadata from /v1/models', async () => {
     const settings = {
       provider: {

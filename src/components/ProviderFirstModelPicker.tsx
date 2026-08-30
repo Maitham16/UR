@@ -8,6 +8,7 @@ import {
 } from 'src/services/analytics/index.js'
 import {
   clearProviderModelCache,
+  getActiveProviderSettings,
   listProviders,
   getProviderAccessTypeLabel,
   getProviderStatus,
@@ -250,12 +251,13 @@ export function ProviderFirstModelPicker({
     }
   }, [selectedProvider, modelReloadToken])
 
-  // llama.cpp publishes graded-effort support per loaded chat template on
-  // /props, not in the ordinary /v1/models row. Resolve only the focused model
-  // so arrow browsing stays truthful without eagerly loading a whole cluster.
+  // llama.cpp and Ollama publish decisive reasoning capabilities outside their
+  // ordinary model-list rows. Resolve only the focused model so arrow browsing
+  // stays truthful without eagerly probing a whole local or cloud catalogue.
   useEffect(() => {
+    const capabilityProvider = selectedProvider?.value
     if (
-      selectedProvider?.value !== 'llama.cpp' ||
+      (capabilityProvider !== 'llama.cpp' && capabilityProvider !== 'ollama') ||
       !focusedModelValue
     ) {
       setEffortCapabilityLoading(false)
@@ -275,7 +277,7 @@ export function ProviderFirstModelPicker({
       setEffortCapabilityLoading(true)
       setEffortCapabilityWarning(null)
       void ensureProviderReasoningCapabilitiesForModel(
-        'llama.cpp',
+        capabilityProvider,
         focusedModelValue,
         {
           settings: getInitialSettings(),
@@ -495,6 +497,7 @@ export function ProviderFirstModelPicker({
 
     // Update provider and model in settings only after the scoped pair validates.
     let runtimeBackend: string | undefined
+    let savedProviderSettings
     if (selectedProvider) {
       try {
         const runtime = resolveActiveProviderModel({
@@ -522,6 +525,7 @@ export function ProviderFirstModelPicker({
         setModelWarning(saveResult.message)
         return
       }
+      savedProviderSettings = getActiveProviderSettings(getInitialSettings())
     }
 
     if (hasToggledEffort) {
@@ -540,8 +544,10 @@ export function ProviderFirstModelPicker({
       ...prev,
       provider: {
         ...(prev.provider ?? {}),
-        active: selectedProvider?.value,
-        model: value,
+        ...(savedProviderSettings ?? {
+          active: selectedProvider?.value,
+          model: value,
+        }),
       },
       ...(hasToggledEffort ? { effortValue: selectedEffort } : {}),
       ...(hasToggledThinking ? { thinkingEnabled } : {}),

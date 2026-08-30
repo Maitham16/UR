@@ -12,6 +12,7 @@ import {
   doctorProvider,
   getActiveProviderSettings,
   getProviderDefinition,
+  getScopedProviderBaseUrl,
   resolveProviderId,
   type ProviderId,
 } from './providerRegistry.js'
@@ -128,8 +129,7 @@ export async function getProviderConnection(
 
 export function getConfiguredBaseUrl(provider: ProviderId): string | undefined {
   const allSettings = getInitialSettings()
-  const settings = getActiveProviderSettings(allSettings)
-  const scoped = settings.active === provider ? settings.baseUrl : undefined
+  const scoped = getScopedProviderBaseUrl(provider, allSettings)
   if (provider === 'ollama') {
     return (
       getOllamaSessionOverride() ??

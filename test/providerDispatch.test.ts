@@ -423,6 +423,7 @@ describe('standard API wire formats', () => {
       system: 'be terse',
       messages: userMessages(),
       max_tokens: 32,
+      output_config: { effort: 'max' },
     })
     const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
     expect(url).toBe('https://api.anthropic.com/v1/messages')
@@ -431,6 +432,7 @@ describe('standard API wire formats', () => {
     expect(config.headers.Authorization).toBeUndefined()
     expect(body.system).toBe('be terse')
     expect(body.messages).toEqual(userMessages())
+    expect(body.output_config).toEqual({ effort: 'max' })
     expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('hi from claude')
   })
 
@@ -451,11 +453,15 @@ describe('standard API wire formats', () => {
       model: 'gemini-3.5-flash',
       messages: userMessages(),
       max_tokens: 32,
+      output_config: { effort: 'medium' },
     })
     const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
     expect(url).toContain('/models/gemini-3.5-flash:generateContent')
     expect(config.headers['x-goog-api-key']).toBe('gm-key')
     expect(body.contents[0].parts[0].text).toBe('hello')
+    expect(body.generationConfig.thinkingConfig).toEqual({
+      thinkingLevel: 'medium',
+    })
     expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('hi from gemini')
   })
 
@@ -478,10 +484,12 @@ describe('standard API wire formats', () => {
       model: 'gpt-5.5',
       messages: userMessages(),
       max_tokens: 32,
+      output_config: { effort: 'xhigh' },
     })
-    const [url, , config] = post.mock.calls[0]
+    const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
     expect(url).toBe('https://api.openai.com/v1/chat/completions')
     expect(config.headers.Authorization).toBe('Bearer sk-openai')
+    expect(body.reasoning_effort).toBe('xhigh')
     expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('hi from openai')
   })
 })

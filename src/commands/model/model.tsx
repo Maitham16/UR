@@ -211,6 +211,9 @@ function SetModelAndClose({
       return;
     }
     function setModel(modelValue: string | null, provider?: ProviderId, warning?: string): void {
+      const savedProvider = provider
+        ? getActiveProviderSettings(getInitialSettings())
+        : undefined;
       setAppState(prev => ({
         ...prev,
         mainLoopModel: modelValue,
@@ -219,7 +222,8 @@ function SetModelAndClose({
           ? {
               provider: {
                 ...(prev.provider ?? {}),
-                active: provider,
+                ...savedProvider,
+                active: savedProvider?.active ?? provider,
                 model: modelValue ?? undefined,
               },
             }

@@ -19,6 +19,8 @@ describe('provider-first model picker presentation', () => {
     expect(cycleProviderPickerEffort('minimal', 'left', extended)).toBe('xhigh')
     expect(cycleProviderPickerEffort('high', 'right', ['low', 'high'])).toBe('low')
     expect(cycleProviderPickerEffort('high', 'right', ['high'])).toBe('high')
+    expect(cycleProviderPickerEffort('high', 'right', ['low', 'high', 'max'])).toBe('max')
+    expect(cycleProviderPickerEffort('low', 'left', ['low', 'high', 'max'])).toBe('max')
   })
 
   test('API key entry stays wide enough without exceeding narrow panes', () => {

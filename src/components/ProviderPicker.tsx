@@ -89,8 +89,8 @@ export function ProviderPicker({
       ...prev,
       provider: {
         ...(prev.provider ?? {}),
+        ...saved,
         active: saved.active ?? value,
-        model: saved.model,
       },
     }))
 

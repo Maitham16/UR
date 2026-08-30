@@ -231,6 +231,10 @@ ur config set base_url http://localhost:11434
 ur provider doctor
 ```
 
+Addresses are saved per provider. If the doctor probes an unexpected URL,
+select that provider first and run `ur config get base_url`; changing vLLM's
+address no longer overwrites Ollama, llama.cpp, or Unsloth.
+
 ## Sessions and workflows
 
 ### No visible progress in scripts
