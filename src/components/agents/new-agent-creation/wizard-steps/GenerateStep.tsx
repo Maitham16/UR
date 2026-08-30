@@ -14,7 +14,9 @@ import { useWizard } from '../../../wizard/index.js';
 import { WizardDialogLayout } from '../../../wizard/WizardDialogLayout.js';
 import { generateAgent } from '../../generateAgent.js';
 import type { AgentWizardData } from '../types.js';
-export function GenerateStep(): ReactNode {
+import type { Tools } from '../../../../Tool.js';
+type Props = { tools: Tools };
+export function GenerateStep({ tools }: Props): ReactNode {
   const {
     updateWizardData,
     goBack,
@@ -92,11 +94,17 @@ export function GenerateStep(): ReactNode {
     const controller = createAbortController();
     abortControllerRef.current = controller;
     try {
-      const generated = await generateAgent(trimmedPrompt, model, [], controller.signal);
+      const generated = await generateAgent(trimmedPrompt, model, [], controller.signal, tools.map(tool => tool.name));
       updateWizardData({
         agentType: generated.identifier,
         whenToUse: generated.whenToUse,
         systemPrompt: generated.systemPrompt,
+        selectedTools: generated.tools,
+        generatedDisallowedTools: generated.disallowedTools,
+        generatedPermissionMode: generated.permissionMode,
+        generatedMaxTurns: generated.maxTurns,
+        generatedBackground: generated.background,
+        generatedMemory: generated.memory ?? undefined,
         generatedAgent: generated,
         isGenerating: false,
         wasGenerated: true

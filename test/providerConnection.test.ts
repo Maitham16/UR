@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import type { SecureStorage } from '../src/utils/secureStorage/types.js'
 import { setProviderApiKey } from '../src/services/providers/providerCredentials.js'
-import { getApiConnectionState } from '../src/services/providers/providerConnection.js'
+import {
+  getApiConnectionState,
+  getProviderConnection,
+} from '../src/services/providers/providerConnection.js'
 
 function memoryStorage(): SecureStorage {
   let data: Record<string, unknown> | null = {}
@@ -37,5 +40,29 @@ describe('API provider connection state', () => {
     const conn = getApiConnectionState('openai-api', { storage, env: {} })
     expect(conn.state).toBe('connected')
     expect(conn.keySource).toBe('stored')
+  })
+
+  test('Unsloth requires its key even though it is a local/server provider', async () => {
+    const storage = memoryStorage()
+    const missing = await getProviderConnection('unsloth', {
+      credentials: { storage, env: {} },
+    })
+    expect(missing).toMatchObject({
+      state: 'needs-key',
+      keySource: 'none',
+      detail: 'run: ur connect unsloth',
+    })
+
+    const connected = await getProviderConnection('unsloth', {
+      credentials: {
+        storage,
+        env: { UNSLOTH_API_KEY: 'studio-key' },
+      },
+    })
+    expect(connected).toMatchObject({
+      state: 'connected',
+      keySource: 'env',
+    })
+    expect(connected.detail).toContain('http://localhost:8888/v1')
   })
 })

@@ -25,6 +25,7 @@ import {
   getStatsStore,
 } from '../../bootstrap/state.js'
 import { getCwd } from '../../utils/cwd.js'
+import { checkUntrustedActionGate } from '../../security/untrustedActionGate.js'
 import { stripUnrecognizedKeys } from '../../utils/toolInputSanitize.js'
 import {
   buildCodeEditToolAttributes,
@@ -1440,6 +1441,18 @@ async function checkPermissionsAndCallTool(
   const permissionMode = toolUseContext.getAppState().toolPermissionContext.mode
   const permissionStart = Date.now()
 
+  // Provenance is an enforcement input, not prompt decoration. A hook cannot
+  // silently approve an action derived from recently detected hostile content,
+  // and a leaked privileged canary is always denied.
+  const provenanceDecision = checkUntrustedActionGate(tool, processedInput)
+  if (
+    provenanceDecision &&
+    (provenanceDecision.behavior === 'deny' ||
+      hookPermissionResult?.behavior !== 'deny')
+  ) {
+    hookPermissionResult = provenanceDecision
+  }
+
   const resolved = await resolveHookPermissionDecision(
     hookPermissionResult,
     tool,
@@ -1757,6 +1770,35 @@ async function checkPermissionsAndCallTool(
     callInput,
     repeatedFailureScope(toolUseContext, messageId),
   )
+  // Permission UIs and hooks can rewrite an already-approved input. Re-run the
+  // non-approvable canary invariant on the exact validated call so no rewrite
+  // can smuggle privileged prompt material across the tool boundary. The
+  // suspicious-source approval is intentionally not repeated after the user
+  // has already approved it above.
+  const finalProvenanceDecision = checkUntrustedActionGate(
+    tool,
+    finalParsedInput.data,
+    { evidence: [] },
+  )
+  if (finalProvenanceDecision?.behavior === 'deny') {
+    recordCallFailure(callSig)
+    finishPreExecutionRejection()
+    resultingMessages.push({
+      message: createUserMessage({
+        content: [
+          {
+            type: 'tool_result',
+            content: `<tool_use_error>${finalProvenanceDecision.message}</tool_use_error>`,
+            is_error: true,
+            tool_use_id: toolUseID,
+          },
+        ],
+        toolUseResult: `Error: ${finalProvenanceDecision.message}`,
+        sourceToolAssistantUUID: assistantMessage.uuid,
+      }),
+    })
+    return resultingMessages
+  }
   const finalRepeat = checkRepeatedFailure(callSig)
   if (finalRepeat.action === 'abort') {
     finishPreExecutionRejection()

@@ -266,6 +266,23 @@ export function buildProjectContextManifest(cwd: string): ProjectContextManifest
   }
 }
 
+/**
+ * Stable, high-signal subset for fresh-agent handoffs. Excludes generatedAt so
+ * identical project state preserves the prompt cache, and excludes prose that
+ * is already in the platform kernel.
+ */
+export function formatProjectContextManifestForAgent(cwd: string): string {
+  const manifest = buildProjectContextManifest(cwd)
+  return JSON.stringify({
+    version: manifest.version,
+    project: manifest.project,
+    instructionFiles: manifest.instructionFiles,
+    manifests: manifest.manifests,
+    commands: manifest.commands,
+    constraints: manifest.constraints,
+  })
+}
+
 export function writeProjectContextManifest(cwd: string): ProjectContextManifest {
   const manifest = buildProjectContextManifest(cwd)
   mkdirSync(dirname(projectManifestPath(cwd)), { recursive: true })

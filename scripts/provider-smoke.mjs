@@ -32,6 +32,20 @@ const providers = [
       }),
   },
   {
+    id: 'unsloth',
+    required: ['UNSLOTH_API_KEY', 'UNSLOTH_MODEL'],
+    model: process.env.UNSLOTH_MODEL,
+    endpoint: () => process.env.UNSLOTH_BASE_URL ?? 'http://localhost:8888/v1',
+    toolCallsSupported: true,
+    create: () =>
+      createOpenAICompatibleClient({
+        baseUrl: process.env.UNSLOTH_BASE_URL ?? 'http://localhost:8888/v1',
+        apiKey: process.env.UNSLOTH_API_KEY,
+        maxRetries,
+        providerId: 'unsloth',
+      }),
+  },
+  {
     id: 'openrouter',
     required: ['OPENROUTER_API_KEY', 'OPENROUTER_MODEL'],
     model: process.env.OPENROUTER_MODEL,

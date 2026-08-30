@@ -41,6 +41,7 @@ multimodal input, external CLI boundary, and sandbox scope:
 | LM Studio | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:lmstudio` | local OpenAI-compatible server |
 | llama.cpp | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:llama.cpp` | local OpenAI-compatible server |
 | vLLM | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:vllm` | OpenAI-compatible server |
+| Unsloth | local/server | UR-native | no | yes | yes | model-dependent | UR Bash/File sandbox | `openai-compatible:unsloth` | authenticated user-run Unsloth Studio endpoint (`UNSLOTH_API_KEY`) |
 | Codex CLI | subscription | subscription-cli | yes | no | no | no† | UR-run tools/output only† | `subscription-cli:codex` | official Codex CLI login |
 | Claude Code | subscription | subscription-cli | yes | no | no | no† | UR-run tools/output only† | `subscription-cli:claude-code` | official Claude Code CLI login |
 | Gemini CLI | subscription | subscription-cli | yes | no | no | no† | UR-run tools/output only† | `subscription-cli:gemini` | official Gemini Code Assist login |
@@ -122,6 +123,7 @@ ur config set provider anthropic-api
 ur config set provider gemini-api
 ur config set provider openrouter
 ur config set provider openai-compatible
+ur config set provider unsloth
 ur config set model <model>
 ur provider select-model <provider> <model> --json
 ur config set base_url <url>
@@ -309,7 +311,7 @@ ur config set provider anthropic-api
 | --- | --- | --- |
 | API providers (openai-api, anthropic-api, gemini-api) | Live discovery from the provider's `/models` endpoint using your connected key (curated fallback until connected) | live |
 | OpenRouter | Fresh `/models` discovery every time its picker opens; no cached-list fallback in the picker | live |
-| Local/server providers (ollama, lmstudio, llama.cpp, vllm) | Dynamic discovery from the selected provider endpoint | live |
+| Local/server providers (ollama, lmstudio, llama.cpp, vllm, unsloth) | Dynamic discovery from the selected provider endpoint | live |
 | OpenAI-compatible | Dynamic discovery from configured endpoint | live |
 | Subscription CLIs (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Curated list (the official CLIs expose no models API); first-class in `/model`, dispatched via the official CLI. External CLI behavior depends on the vendor CLI. Log in with `ur auth <provider>` | static |
 
@@ -332,6 +334,7 @@ ur config set provider anthropic-api
 - `lmstudio` — LM Studio OpenAI-compatible server
 - `llama.cpp` — llama.cpp server mode
 - `vllm` — vLLM server
+- `unsloth` — authenticated Unsloth Studio server; UR uses it for inference only
 
 **Important:**
 - A ChatGPT/Claude/Gemini subscription does NOT give API access
@@ -462,6 +465,7 @@ Provider config and doctor commands accept canonical IDs and common aliases:
 | `lmstudio` | `LM Studio`, `lm-studio` |
 | `llama.cpp` | `llama cpp`, `llamacpp`, `llama-cpp` |
 | `vllm` | `vllm server` |
+| `unsloth` | `Unsloth Studio`, `unsloth server`, `unsloth local` |
 
 `ur provider doctor` checks the selected provider. It reports installed/missing
 CLIs, official login status where available, API key presence for API providers,
@@ -496,6 +500,7 @@ OPENAI_COMPATIBLE_API_KEY=...
 ANTHROPIC_API_KEY=...
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
+UNSLOTH_API_KEY=...
 ```
 
 OpenAI-compatible endpoints can point at local or cloud endpoints:
@@ -516,6 +521,32 @@ Local/server providers use their normal endpoints:
 - LM Studio: `http://localhost:1234/v1`
 - llama.cpp server mode: `http://localhost:8080/v1`
 - vLLM server mode: `http://localhost:8000/v1`
+- Unsloth Studio: `http://localhost:8888/v1`
+
+### Unsloth provider-only mode
+
+UR connects to a user-run Unsloth Studio inference server through its official
+OpenAI-compatible API. It does not import the Unsloth Python package, launch or
+update Studio, train or convert models, manage GPUs, or load a model. Start and
+load Unsloth separately, then connect the generated Studio key:
+
+```sh
+ur config set provider unsloth
+echo "$UNSLOTH_API_KEY" | ur connect unsloth
+ur provider doctor unsloth
+ur provider models unsloth --json
+# choose one of the discovered model IDs with /model
+```
+
+The default endpoint is `http://localhost:8888/v1`; override it with
+`ur config set base_url <url>`. Authentication is mandatory. Every Unsloth
+request sets `enable_tools: false`, including streaming requests. The model may
+still return standard OpenAI function calls, but execution remains exclusively
+inside UR's provenance gate, permissions, sandbox, and verifier. This prevents
+Unsloth Studio's optional server-side web/code tools from becoming a second,
+uncontrolled agent runtime. See the official
+[Unsloth Studio announcement](https://github.com/unslothai/unsloth/discussions/5285)
+and [Unsloth repository](https://github.com/unslothai/unsloth).
 
 Ollama allows up to 15 minutes for response headers so a cold model load or
 large prefill can begin. After headers, local and `:cloud` models use a

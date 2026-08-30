@@ -68,6 +68,7 @@ describe('provider registry legal access paths', () => {
     expect(resolveProviderId('agy')).toBe('antigravity-cli')
     expect(resolveProviderId('LM Studio')).toBe('lmstudio')
     expect(resolveProviderId('llama cpp')).toBe('llama.cpp')
+    expect(resolveProviderId('Unsloth Studio')).toBe('unsloth')
     expect(resolveProviderId('not-a-provider')).toBeNull()
   })
 
@@ -99,6 +100,7 @@ describe('provider registry legal access paths', () => {
     const openai = providers.find(provider => provider.id === 'openai-api')
     const ollama = providers.find(provider => provider.id === 'ollama')
     const llama = providers.find(provider => provider.id === 'llama.cpp')
+    const unsloth = providers.find(provider => provider.id === 'unsloth')
 
     expect(openai?.accessType).toBe('api')
     expect(openai?.credentialType).toBe('api-key')
@@ -106,6 +108,17 @@ describe('provider registry legal access paths', () => {
     expect(ollama?.credentialType).toBe('local-runtime')
     expect(llama?.accessType).toBe('server')
     expect(llama?.credentialType).toBe('openai-compatible-endpoint')
+    expect(unsloth).toMatchObject({
+      accessType: 'server',
+      credentialType: 'openai-compatible-endpoint',
+      runtimeKind: 'ur-native',
+      providerKind: 'ur-native',
+      supportsNativeToolCalls: true,
+      supportsNativeStreaming: true,
+      envKey: 'UNSLOTH_API_KEY',
+      requiresApiKey: true,
+      defaultBaseUrl: 'http://localhost:8888/v1',
+    })
   })
 
   test('API and subscription providers are metadata-distinct', () => {

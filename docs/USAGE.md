@@ -162,6 +162,7 @@ ur config set provider anthropic-api
 ur config set provider gemini-api
 ur config set provider openrouter
 ur config set provider openai-compatible
+ur config set provider unsloth
 ur config set model <model>
 ur config set base_url <url>
 ur config set provider.fallback ollama
@@ -206,17 +207,20 @@ kind, external CLI usage, native tool/streaming support, and the boundary text.
 
 Provider values accept canonical IDs and common aliases. For example,
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
-`lmstudio`, `llama.cpp`, and `vllm` are UR-native runtime providers, and
+`lmstudio`, `llama.cpp`, `vllm`, and `unsloth` are UR-native runtime providers, and
 `codex-cli` (`chatgpt`), `claude-code-cli` (`claude`), `gemini-cli` (`gemini`),
 and `antigravity-cli` (`agy`) are subscription CLI providers.
 
 API modes are explicit. Keys are read from a key stored via
 `ur connect <provider>` (OS keychain) or from the environment variables
 `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, and
-`OPENROUTER_API_KEY`. Subscription CLIs are optional, never required
+`OPENROUTER_API_KEY`, and `UNSLOTH_API_KEY`. Subscription CLIs are optional, never required
 dependencies, and never used as a silent fallback. UR-Nexus never scrapes
 browser sessions, extracts OAuth tokens, or bypasses provider restrictions.
 OpenAI-compatible local or cloud endpoints use `base_url` plus `model`.
+Unsloth defaults to `http://localhost:8888/v1`, requires its Studio API key,
+and is inference-only: UR does not manage Unsloth and disables its server-side
+tools while retaining standard function calls inside UR's guarded tool loop.
 
 Use `/model` in an interactive session to select provider first and model
 second. OpenAI API, Claude API, Gemini API, OpenRouter, Ollama, and

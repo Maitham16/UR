@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.82.1
+
+- Added a mandatory execution/trust kernel to every main, custom, and subagent
+  prompt; repository files, tool output, recalled memory, and MCP instructions
+  are now explicitly provenance-wrapped as untrusted evidence rather than
+  authority. A per-process canary, presentation-boundary redaction, and a final
+  post-hook input check prevent hidden-instruction and canary exfiltration.
+- Added provenance-aware authorization for suspicious evidence, regression-safe
+  prompt optimization, exact prompt/tool/context/model fingerprints, stronger
+  deterministic eval fixtures, hidden behavior checks, and least-privilege
+  generated agent specifications with explicit tools, permissions, turn limits,
+  and evaluation cases.
+- Added Unsloth as an authenticated, provider-only OpenAI-compatible runtime
+  with live model discovery, native streaming, and standard function calls.
+  UR never manages Unsloth and forces `enable_tools: false` so all execution
+  remains inside UR's permission, sandbox, provenance, and verifier boundary.
+
 ## 1.82.0
 
 - Restored the complete UR agent prompt, conversation history, tools, and

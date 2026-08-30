@@ -431,6 +431,11 @@ async function createOpenAICompatibleProviderClient(
     )
   }
   const apiKey = options.apiKey ?? getProviderApiKey(providerId)
+  if (provider.requiresApiKey && !apiKey) {
+    throw new Error(
+      `Provider "${providerId}" is selected with model "${options.model ?? providerSettings.model ?? 'unknown'}", but it is not connected: no stored API key and ${provider.envKey ?? 'the provider API key'} is not set. Connect once with: ur connect ${providerId}${provider.envKey ? ` (or set ${provider.envKey})` : ''}. Run: ur provider doctor ${providerId}`,
+    )
+  }
   const { createOpenAICompatibleClient } = await import('./openaiCompatible.js')
   return await createOpenAICompatibleClient({
     baseUrl,

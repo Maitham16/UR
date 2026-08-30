@@ -7,6 +7,7 @@ import { getQuerySourceForAgent } from 'src/utils/promptCategory.js';
 import { z } from 'zod/v4';
 import { clearInvokedSkillsForAgent, getSdkAgentProgressSummariesEnabled } from '../../bootstrap/state.js';
 import { enhanceSystemPromptWithEnvDetails, getSystemPrompt } from '../../constants/prompts.js';
+import { ensureExecutionContract, SUBAGENT_ASSIGNMENT_CONTRACT_SECTION } from '../../constants/executionContract.js';
 import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js';
 import { startAgentSummarization } from '../../services/AgentSummary/agentSummary.js';
 import { isDelegationConcurrencySafe } from '../../services/agents/parallelPolicy.js';
@@ -551,7 +552,7 @@ export const AgentTool = buildTool({
         }
 
         // Apply environment details enhancement
-        enhancedSystemPrompt = await enhanceSystemPromptWithEnvDetails([agentPrompt], resolvedAgentModel, additionalWorkingDirectories);
+        enhancedSystemPrompt = await enhanceSystemPromptWithEnvDetails(ensureExecutionContract([SUBAGENT_ASSIGNMENT_CONTRACT_SECTION, agentPrompt]), resolvedAgentModel, additionalWorkingDirectories);
       } catch (error) {
         logForDebugging(`Failed to get system prompt for agent ${selectedAgent.agentType}: ${errorMessage(error)}`);
       }

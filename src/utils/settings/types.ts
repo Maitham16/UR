@@ -285,6 +285,7 @@ const PROVIDER_SETTING_IDS = [
   'lmstudio',
   'llama.cpp',
   'vllm',
+  'unsloth',
 ] as const
 
 const NonSecretPreferenceSchema = z.union([

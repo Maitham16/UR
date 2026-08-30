@@ -196,6 +196,11 @@ export function toOpenAICompatibleRequest(
   return {
     model: params.model,
     messages: toOpenAIMessages(params, providerName),
+    // Unsloth Studio can execute server-side web/code tools by default. UR is
+    // the sole tool runtime for this provider integration: Unsloth performs
+    // inference only, while every tool call stays inside UR's permission,
+    // sandbox, provenance, and verifier boundary.
+    ...(providerName === 'unsloth' ? { enable_tools: false } : {}),
     max_tokens: params.max_tokens,
     ...(params.temperature !== undefined && { temperature: params.temperature }),
     ...(params.top_p !== undefined && { top_p: params.top_p }),

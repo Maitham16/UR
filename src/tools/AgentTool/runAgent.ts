@@ -12,11 +12,17 @@ import {
   DEFAULT_AGENT_PROMPT,
   enhanceSystemPromptWithEnvDetails,
 } from '../../constants/prompts.js'
+import {
+  ensureExecutionContract,
+  SUBAGENT_ASSIGNMENT_CONTRACT_SECTION,
+} from '../../constants/executionContract.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import { getSystemContext, getUserContext } from '../../context.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { query } from '../../query.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { formatProjectContextManifestForAgent } from '../../services/context/projectContextManifest.js'
+import { wrapUntrustedStable } from '../../security/promptInjection.js'
 import { getDumpPromptsPath } from '../../services/api/dumpPrompts.js'
 import { cleanupAgentTracking } from '../../services/api/promptCacheBreakDetection.js'
 import {
@@ -411,9 +417,19 @@ export async function* runAgent({
     getFeatureValue_CACHED_MAY_BE_STALE('tengu_slim_subagent_agentmd', true)
   const { urMd: _omittedAgentMd, ...userContextNoAgentMd } =
     baseUserContext
-  const resolvedUserContext = shouldOmitAgentMd
+  const selectedUserContext = shouldOmitAgentMd
     ? userContextNoAgentMd
     : baseUserContext
+  const resolvedUserContext =
+    !override?.userContext && !useExactTools
+      ? {
+          ...selectedUserContext,
+          projectContextManifest: wrapUntrustedStable(
+            formatProjectContextManifestForAgent(getCwd()),
+            'project-context-manifest',
+          ).wrapped,
+        }
+      : selectedUserContext
 
   // Explore/Plan are read-only search agents — the parent-session-start
   // gitStatus (up to 40KB, explicitly labeled stale) is dead weight. If they
@@ -931,7 +947,10 @@ async function getAgentSystemPrompt(
   const enabledToolNames = new Set(resolvedTools.map(t => t.name))
   try {
     const agentPrompt = agentDefinition.getSystemPrompt({ toolUseContext })
-    const prompts = [agentPrompt]
+    const prompts = ensureExecutionContract([
+      SUBAGENT_ASSIGNMENT_CONTRACT_SECTION,
+      agentPrompt,
+    ])
 
     return await enhanceSystemPromptWithEnvDetails(
       prompts,
@@ -941,7 +960,10 @@ async function getAgentSystemPrompt(
     )
   } catch (_error) {
     return enhanceSystemPromptWithEnvDetails(
-      [DEFAULT_AGENT_PROMPT],
+      ensureExecutionContract([
+        SUBAGENT_ASSIGNMENT_CONTRACT_SECTION,
+        DEFAULT_AGENT_PROMPT,
+      ]),
       resolvedAgentModel,
       additionalWorkingDirectories,
       enabledToolNames,

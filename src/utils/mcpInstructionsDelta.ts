@@ -6,6 +6,7 @@ import type {
 } from '../services/mcp/types.js'
 import type { Message } from '../types/message.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
+import { wrapUntrustedStable } from '../security/promptInjection.js'
 
 export type McpInstructionsDelta = {
   /** Server names — for stateless-scan reconstruction. */
@@ -78,17 +79,24 @@ export function getMcpInstructionsDelta(
   // have both: server-authored instructions + a client-side block appended.
   const blocks = new Map<string, string>()
   for (const c of connected) {
-    if (c.instructions) blocks.set(c.name, `## ${c.name}\n${c.instructions}`)
+    if (c.instructions) {
+      blocks.set(
+        c.name,
+        wrapUntrustedStable(
+          `Server: ${c.name}\n${c.instructions}`,
+          `mcp-server-instructions:${c.name}`,
+        ).wrapped,
+      )
+    }
   }
   for (const ci of clientSideInstructions) {
     if (!connectedNames.has(ci.serverName)) continue
     const existing = blocks.get(ci.serverName)
-    blocks.set(
-      ci.serverName,
-      existing
-        ? `${existing}\n\n${ci.block}`
-        : `## ${ci.serverName}\n${ci.block}`,
-    )
+    const advisory = wrapUntrustedStable(
+      `Server: ${ci.serverName}\n${ci.block}`,
+      `mcp-client-advisory:${ci.serverName}`,
+    ).wrapped
+    blocks.set(ci.serverName, existing ? `${existing}\n\n${advisory}` : advisory)
   }
 
   const added: Array<{ name: string; block: string }> = []

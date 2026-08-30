@@ -10,6 +10,7 @@ import {
 } from '../../tools/AgentTool/loadAgentsDir.js'
 import { getCwd } from '../../utils/cwd.js'
 import type { EffortValue } from '../../utils/effort.js'
+import type { PermissionMode } from '../../types/permissions.js'
 import { getURConfigHomeDir } from '../../utils/envUtils.js'
 import { getErrnoCode } from '../../utils/errors.js'
 import { AGENT_PATHS } from './types.js'
@@ -26,6 +27,10 @@ export function formatAgentAsMarkdown(
   model?: string,
   memory?: AgentMemoryScope,
   effort?: EffortValue,
+  permissionMode?: PermissionMode,
+  maxTurns?: number,
+  background?: boolean,
+  disallowedTools?: string[],
 ): string {
   // For YAML double-quoted strings, we need to escape:
   // - Backslashes: \ -> \\
@@ -44,10 +49,18 @@ export function formatAgentAsMarkdown(
   const effortLine = effort !== undefined ? `\neffort: ${effort}` : ''
   const colorLine = color ? `\ncolor: ${color}` : ''
   const memoryLine = memory ? `\nmemory: ${memory}` : ''
+  const permissionModeLine = permissionMode
+    ? `\npermissionMode: ${permissionMode}`
+    : ''
+  const maxTurnsLine = maxTurns ? `\nmaxTurns: ${maxTurns}` : ''
+  const backgroundLine = background ? '\nbackground: true' : ''
+  const disallowedToolsLine = disallowedTools?.length
+    ? `\ndisallowedTools: ${disallowedTools.join(', ')}`
+    : ''
 
   return `---
 name: ${agentType}
-description: "${escapedWhenToUse}"${toolsLine}${modelLine}${effortLine}${colorLine}${memoryLine}
+description: "${escapedWhenToUse}"${toolsLine}${disallowedToolsLine}${modelLine}${effortLine}${permissionModeLine}${maxTurnsLine}${backgroundLine}${colorLine}${memoryLine}
 ---
 
 ${systemPrompt}
@@ -174,6 +187,10 @@ export async function saveAgentToFile(
   model?: string,
   memory?: AgentMemoryScope,
   effort?: EffortValue,
+  permissionMode?: PermissionMode,
+  maxTurns?: number,
+  background?: boolean,
+  disallowedTools?: string[],
 ): Promise<void> {
   if (source === 'built-in') {
     throw new Error('Cannot save built-in agents')
@@ -191,6 +208,10 @@ export async function saveAgentToFile(
     model,
     memory,
     effort,
+    permissionMode,
+    maxTurns,
+    background,
+    disallowedTools,
   )
   try {
     await writeFileAndFlush(filePath, content, checkExists ? 'wx' : 'w')
@@ -230,6 +251,10 @@ export async function updateAgentFile(
     newModel,
     newMemory,
     newEffort,
+    agent.permissionMode,
+    agent.maxTurns,
+    agent.background,
+    agent.disallowedTools,
   )
 
   await writeFileAndFlush(filePath, content)

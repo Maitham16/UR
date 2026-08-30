@@ -284,6 +284,7 @@ ur config set provider openai-api
 ur config set provider anthropic-api
 ur config set provider gemini-api
 ur config set provider openrouter
+ur config set provider unsloth
 ur config set model qwen2.5-coder:7b
 ur provider select-model ollama qwen2.5-coder:7b --json
 ur config set base_url http://localhost:11434
@@ -314,7 +315,7 @@ to the default with `ur config set openai_transport chat-completions`.
 
 Provider config accepts canonical IDs and common aliases. Examples:
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
-`lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, and the subscription CLIs
+`lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, `unsloth` (`Unsloth Studio`), and the subscription CLIs
 `codex-cli` (`chatgpt`), `claude-code-cli` (`claude`), `gemini-cli` (`gemini`),
 and `antigravity-cli` (`agy`). Use quotes for shell values with spaces.
 
@@ -337,6 +338,7 @@ ur connect logout openai-api          # clear a stored key
 | LM Studio | local/server | UR-native | local OpenAI-compatible server |
 | llama.cpp | local/server | UR-native | local OpenAI-compatible server |
 | vLLM | local/server | UR-native | OpenAI-compatible server |
+| Unsloth | local/server | UR-native | authenticated user-run Unsloth Studio endpoint (`UNSLOTH_API_KEY`) |
 | Codex CLI | subscription | external app bridge | official Codex CLI login (`ur auth chatgpt`) |
 | Claude Code | subscription | external app bridge | official Claude Code login (`ur auth claude`) |
 | Gemini CLI | subscription | external app bridge | official Gemini Code Assist login (`ur auth gemini`) |
@@ -353,7 +355,7 @@ In the interactive app, `/model` is a two-step, provider-first picker:
 2. **Choose a model.** Only the selected provider's models are shown, labelled
    by source: `live` (discovered from the endpoint), `cache` (last discovery),
    or `static` (predefined). Local/server providers (Ollama, LM Studio,
-   llama.cpp, vLLM) and OpenAI-compatible endpoints are discovered live; API
+   llama.cpp, vLLM, Unsloth) and OpenAI-compatible endpoints are discovered live; API
    providers use live discovery from their `/models` endpoint once a key is
    connected (with a curated fallback list before that). Subscription CLIs show
    their curated model list because the official CLIs expose no models API. The
@@ -394,7 +396,10 @@ identity line in the system prompt reflects it too:
   selected, Gemini `x-goog-api-key` on `:generateContent`, and OpenRouter on its
   OpenAI-compatible chat endpoint.
 - **Local/server** providers call the configured endpoint (`/v1/chat/completions`
-  for LM Studio/llama.cpp/vLLM; the native API for Ollama).
+  for LM Studio/llama.cpp/vLLM/Unsloth; the native API for Ollama). Unsloth is
+  provider-only: UR never starts, installs, updates, trains, or loads models in
+  Unsloth. UR sends `enable_tools: false` so only UR's permissioned native tools
+  can execute.
 - **Subscription CLIs** (Codex, Claude Code, Gemini, Antigravity) are external
   app bridges: selecting one dispatches the turn through the vendor's official
   CLI using your subscription. Log in with `ur auth <provider>`. UR-native

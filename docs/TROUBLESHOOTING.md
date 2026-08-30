@@ -198,9 +198,28 @@ ur provider doctor <provider-id>
 ```sh
 curl http://localhost:11434/api/tags        # Ollama
 curl http://localhost:1234/v1/models        # LM Studio (llama.cpp: 8080, vLLM: 8000)
+curl -H "Authorization: Bearer $UNSLOTH_API_KEY" http://localhost:8888/v1/models
 ur connect openai-api                       # store an API key securely
 ur provider doctor
 ```
+
+### Unsloth is selected but unavailable
+
+- Likely cause: Studio is not running, no model is loaded, its generated API
+  key is not connected, or `base_url` does not end at the compatible API root.
+- Fix: start/load Unsloth outside UR, connect its key, and inspect discovery.
+
+```sh
+echo "$UNSLOTH_API_KEY" | ur connect unsloth
+ur config set provider unsloth
+ur config set base_url http://localhost:8888/v1
+ur provider doctor unsloth
+ur provider models unsloth --json
+```
+
+UR does not start or manage Unsloth. It also disables Unsloth server-side tools
+on every request; tool execution shown by UR is handled by UR's own guarded
+tool loop.
 
 ### Local server unreachable
 

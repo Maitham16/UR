@@ -6,28 +6,46 @@
     {
       "id": "off-by-one",
       "category": "bug-fix",
-      "prompt": "You are in a fresh TypeScript repo. Create src/findIndex.ts containing a function that returns the index of a target in an array. It currently returns -1 for the last element because the loop stops too early. Fix the off-by-one bug, add a test file src/findIndex.test.ts using your preferred runner, and run the tests. Finish with VERDICT: PASS if tests pass, otherwise VERDICT: FAIL.",
+      "prompt": "Fix the off-by-one defect in the existing src/findIndex.js without changing its public API. Add focused tests covering first, middle, last, and missing elements, run them, and finish with VERDICT: PASS only if they pass.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "src/findIndex.js": "export function findIndex(values, target) {\n  for (let i = 0; i < values.length - 1; i++) {\n    if (values[i] === target) return i\n  }\n  return -1\n}\n"
+        }
+      },
       "expect": {
         "contains": ["VERDICT:"],
-        "testCommand": "cd src && (ls findIndex.ts findIndex.test.ts && echo present)"
+        "testCommand": "node --input-type=module -e \"import {findIndex} from './src/findIndex.js'; import assert from 'node:assert/strict'; assert.equal(findIndex(['a','b','c'],'c'),2); assert.equal(findIndex(['a'],'a'),0); assert.equal(findIndex(['a'],'x'),-1)\""
       }
     },
     {
       "id": "null-guard",
       "category": "bug-fix",
-      "prompt": "You are in a fresh JavaScript repo. Create src/greet.js with a greet(name) function. It currently crashes when name is null/undefined because it calls name.toUpperCase(). Add a null guard so it returns 'Hello, stranger' for missing input. Add a test file and run it. Finish with VERDICT: PASS if tests pass.",
+      "prompt": "Fix the existing src/greet.js so null, undefined, and blank input return 'Hello, stranger' while names keep the documented uppercase greeting. Add focused tests, run them, and finish with VERDICT: PASS only if they pass.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "src/greet.js": "export function greet(name) {\n  return `Hello, ${name.toUpperCase()}`\n}\n"
+        }
+      },
       "expect": {
         "contains": ["VERDICT:"],
-        "testCommand": "cd src && (ls greet.js greet.test.js && echo present)"
+        "testCommand": "node --input-type=module -e \"import {greet} from './src/greet.js'; import assert from 'node:assert/strict'; assert.equal(greet(null),'Hello, stranger'); assert.equal(greet(undefined),'Hello, stranger'); assert.equal(greet('  '),'Hello, stranger'); assert.equal(greet('Ada'),'Hello, ADA')\""
       }
     },
     {
       "id": "missing-await",
       "category": "bug-fix",
-      "prompt": "You are in a fresh TypeScript repo. Create src/fetcher.ts with an async fetchData() function that forgets to await a Promise, returning the Promise object instead of the resolved value. Fix it, add a test using a mocked Promise, and run the tests. Finish with VERDICT: PASS if tests pass.",
+      "prompt": "Fix the existing src/fetcher.js so its try/catch handles a loader's asynchronous rejection and returns the documented fallback. Preserve the public API, add focused resolved/rejected tests, run them, and finish with VERDICT: PASS only if they pass.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "src/fetcher.js": "export async function fetchData(load) {\n  try {\n    return load()\n  } catch {\n    return 'fallback'\n  }\n}\n"
+        }
+      },
       "expect": {
         "contains": ["VERDICT:"],
-        "testCommand": "cd src && (ls fetcher.ts fetcher.test.ts && echo present)"
+        "testCommand": "node --input-type=module -e \"import {fetchData} from './src/fetcher.js'; import assert from 'node:assert/strict'; assert.equal(await fetchData(async()=>42),42); assert.equal(await fetchData(async()=>{throw new Error('x')}),'fallback')\""
       }
     }
   ]

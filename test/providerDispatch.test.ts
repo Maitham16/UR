@@ -537,6 +537,7 @@ describe('real provider identity', () => {
       lmstudio: 'openai-compatible',
       'llama.cpp': 'openai-compatible',
       vllm: 'openai-compatible',
+      unsloth: 'openai-compatible',
       ollama: 'ollama',
     }
     for (const id of PROVIDER_IDS) {
@@ -554,12 +555,13 @@ describe('real provider identity', () => {
 describe('config save/load preserves live-provider pairs across a cold process', () => {
   afterEach(() => clearProviderModelCacheForTests())
 
-  test('saved lmstudio/ollama/vllm models resolve with an empty cache', () => {
+  test('saved local/server models resolve with an empty cache', () => {
     clearProviderModelCacheForTests()
     for (const [provider, model, backend] of [
       ['lmstudio', 'my-local-model', 'openai-compatible:lmstudio'],
       ['ollama', 'llama3:latest', 'ollama'],
       ['vllm', 'served-model', 'openai-compatible:vllm'],
+      ['unsloth', 'unsloth-model', 'openai-compatible:unsloth'],
     ] as const) {
       const runtime = resolveActiveProviderModel({
         settings: { provider: { active: provider, model } } as any,

@@ -47,6 +47,7 @@ export function CreateAgentWizard(t0) {
   } else {
     t2 = $[3];
   }
+  const generateStep = () => <GenerateStep tools={tools} />;
   let t3;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
     t3 = isAutoMemoryEnabled() ? [MemoryStep] : [];
@@ -66,7 +67,7 @@ export function CreateAgentWizard(t0) {
   }
   let t5;
   if ($[9] !== t1 || $[10] !== t2 || $[11] !== t4) {
-    t5 = [LocationStep, MethodStep, GenerateStep, t1, PromptStep, DescriptionStep, t2, ModelStep, ColorStep, ...t3, t4];
+    t5 = [LocationStep, MethodStep, generateStep, t1, PromptStep, DescriptionStep, t2, ModelStep, ColorStep, ...t3, t4];
     $[9] = t1;
     $[10] = t2;
     $[11] = t4;

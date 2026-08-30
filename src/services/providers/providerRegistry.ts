@@ -24,6 +24,7 @@ export const PROVIDER_IDS = [
   'lmstudio',
   'llama.cpp',
   'vllm',
+  'unsloth',
   'openai-compatible',
   'openai-api',
   'anthropic-api',
@@ -124,6 +125,7 @@ export type ProviderDefinition = {
   legalPath: string
   accessPathLabel: string
   envKey?: string
+  requiresApiKey?: boolean
   commandCandidates?: string[]
   versionArgs?: string[]
   statusArgs?: string[]
@@ -535,6 +537,27 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     defaultBaseUrl: 'http://localhost:8000/v1',
     endpointKind: 'openai-compatible',
   },
+  unsloth: {
+    id: 'unsloth',
+    displayName: 'Unsloth',
+    statusBarName: 'Unsloth',
+    accessType: 'server',
+    accessTypeLabel: 'local/server',
+    credentialType: 'openai-compatible-endpoint',
+    modelDiscoveryType: 'live',
+    statusCheck: 'endpoint',
+    listModels: 'openai-compatible-models',
+    validateModel: 'discovered-list',
+    runtimeKind: 'ur-native',
+    ...UR_NATIVE_CAPABILITIES,
+    authMode: 'local',
+    legalPath: 'user-run authenticated Unsloth Studio OpenAI-compatible inference endpoint',
+    accessPathLabel: 'authenticated Unsloth Studio endpoint',
+    envKey: 'UNSLOTH_API_KEY',
+    requiresApiKey: true,
+    defaultBaseUrl: 'http://localhost:8888/v1',
+    endpointKind: 'openai-compatible',
+  },
 }
 
 const PROVIDER_ALIAS_ENTRIES: ProviderAliasEntry[] = [
@@ -593,6 +616,10 @@ const PROVIDER_ALIAS_ENTRIES: ProviderAliasEntry[] = [
   {
     canonical: 'vllm',
     aliases: ['vllm server'],
+  },
+  {
+    canonical: 'unsloth',
+    aliases: ['unsloth studio', 'unsloth server', 'unsloth local'],
   },
 ]
 
@@ -688,6 +715,8 @@ export function getProviderRuntimeBackend(providerId: ProviderId | string): stri
       return 'openai-compatible:llama.cpp'
     case 'vllm':
       return 'openai-compatible:vllm'
+    case 'unsloth':
+      return 'openai-compatible:unsloth'
     case 'openai-compatible':
       return 'openai-compatible'
     case 'codex-cli':
@@ -725,6 +754,7 @@ const PROVIDER_FAMILIES: Record<ProviderId, ProviderFamily> = {
   lmstudio: 'openai-compatible',
   'llama.cpp': 'openai-compatible',
   vllm: 'openai-compatible',
+  unsloth: 'openai-compatible',
   ollama: 'ollama',
 }
 
@@ -1150,6 +1180,19 @@ async function checkEndpoint(
     } catch {
       // Endpoint may not require authentication.
     }
+  }
+  if (definition.requiresApiKey && !apiKey) {
+    result.checks.push({
+      name: 'api_key',
+      status: 'fail',
+      message: `${definition.envKey ?? 'Provider API key'} is not set and no stored key is available.`,
+    })
+    addFailure(
+      result,
+      'API key missing',
+      `Connect once: ur connect ${definition.id}${definition.envKey ? ` (or set ${definition.envKey})` : ''}.`,
+    )
+    return
   }
   const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined
   const fetchImpl = adapters.fetch ?? fetch
@@ -1887,6 +1930,10 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   // vLLM - local/server OpenAI-compatible
   'vllm': [
     { id: 'dynamic', displayName: 'Discovered Models', description: 'Models discovered from vLLM server', isDynamic: true, isDefault: true },
+  ],
+  // Unsloth Studio - authenticated user-run OpenAI-compatible server
+  'unsloth': [
+    { id: 'dynamic', displayName: 'Discovered Models', description: 'Models discovered from Unsloth Studio', isDynamic: true, isDefault: true },
   ],
 }
 

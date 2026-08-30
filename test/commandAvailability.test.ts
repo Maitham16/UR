@@ -36,6 +36,7 @@ test('vendor-credentialed providers are the only third-party ones', () => {
     'lmstudio',
     'llama.cpp',
     'vllm',
+    'unsloth',
   ])
   expect(thirdParty).toContain('openai-api')
   expect(thirdParty).toContain('anthropic-api')
@@ -72,7 +73,7 @@ test('only URHQ subscription auth prompts for login', () => {
 
   expect(PROVIDER_IDS.filter(usesURHQAuth)).toEqual(['subscription'])
 
-  for (const id of ['ollama', 'lmstudio', 'llama.cpp', 'vllm'] as const) {
+  for (const id of ['ollama', 'lmstudio', 'llama.cpp', 'vllm', 'unsloth'] as const) {
     expect(usesURHQAuth(id)).toBe(false)
     // Local runtimes are simultaneously not third-party and not URHQ-authed.
     expect(classify(id)).toBe(false)

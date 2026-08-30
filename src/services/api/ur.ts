@@ -123,6 +123,7 @@ import {
   extractQuotaStatusFromHeaders,
 } from '../urAiLimits.js'
 import { getAPIContextManagement } from '../compact/apiMicrocompact.js'
+import { recordEvalConfiguration } from '../agents/evalProvenance.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
@@ -1523,6 +1524,29 @@ async function* queryModel(
     options.effortValue,
     options.providerSettings?.active,
   )
+
+  if (process.env.UR_EVAL_METRICS_FILE) {
+    recordEvalConfiguration({
+      systemPrompt,
+      toolSchemas: allTools,
+      contextPolicy: {
+        querySource: options.querySource,
+        useToolSearch,
+        globalCacheStrategy,
+        enablePromptCaching,
+        hasPendingMcpServers: options.hasPendingMcpServers,
+      },
+      modelConfig: {
+        model: options.model,
+        resolvedModel,
+        effort,
+        thinkingConfig,
+        provider: options.providerSettings?.active,
+        fastMode: isFastMode,
+        betas,
+      },
+    })
+  }
 
   if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
     // Exclude defer_loading tools from the hash -- the API strips them from the

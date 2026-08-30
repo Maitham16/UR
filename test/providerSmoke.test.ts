@@ -24,6 +24,9 @@ describe('provider smoke command', () => {
       'LMSTUDIO_MODEL',
       'VLLM_BASE_URL',
       'VLLM_MODEL',
+      'UNSLOTH_BASE_URL',
+      'UNSLOTH_API_KEY',
+      'UNSLOTH_MODEL',
     ]) {
       delete env[name]
     }
@@ -35,7 +38,7 @@ describe('provider smoke command', () => {
     })
 
     expect(result.status).toBe(0)
-    expect(result.stdout).toContain('Provider smoke summary: 0 passed, 7 skipped, 0 failed')
+    expect(result.stdout).toContain('Provider smoke summary: 0 passed, 8 skipped, 0 failed')
   })
 
   test('writes JSON skip report without credentials', () => {
@@ -58,6 +61,9 @@ describe('provider smoke command', () => {
       'LMSTUDIO_MODEL',
       'VLLM_BASE_URL',
       'VLLM_MODEL',
+      'UNSLOTH_BASE_URL',
+      'UNSLOTH_API_KEY',
+      'UNSLOTH_MODEL',
     ]) {
       delete env[name]
     }
@@ -71,14 +77,14 @@ describe('provider smoke command', () => {
 
       expect(result.status).toBe(0)
       const parsed = JSON.parse(result.stdout)
-      expect(parsed.summary).toMatchObject({ passed: 0, skipped: 7, failed: 0 })
+      expect(parsed.summary).toMatchObject({ passed: 0, skipped: 8, failed: 0 })
       expect(parsed.providers[0]).toMatchObject({
         provider: 'openai-compatible',
         configured: false,
         skipped: true,
       })
       expect(existsSync(output)).toBe(true)
-      expect(JSON.parse(readFileSync(output, 'utf8')).summary.skipped).toBe(7)
+      expect(JSON.parse(readFileSync(output, 'utf8')).summary.skipped).toBe(8)
     } finally {
       rmSync(outputDirectory, { recursive: true, force: true })
     }
@@ -100,6 +106,9 @@ describe('provider smoke command', () => {
       'LMSTUDIO_MODEL',
       'VLLM_BASE_URL',
       'VLLM_MODEL',
+      'UNSLOTH_BASE_URL',
+      'UNSLOTH_API_KEY',
+      'UNSLOTH_MODEL',
     ]) {
       delete env[name]
     }

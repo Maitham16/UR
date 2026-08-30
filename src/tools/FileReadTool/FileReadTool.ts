@@ -11,6 +11,7 @@ import {
 } from '../../constants/apiLimits.js'
 import { hasBinaryExtension } from '../../constants/files.js'
 import { memoryFreshnessNote } from '../../memdir/memoryAge.js'
+import { wrapUntrusted } from '../../security/promptInjection.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { logEvent } from '../../services/analytics/index.js'
 import {
@@ -695,7 +696,10 @@ export const FileReadTool = buildTool({
         if (data.file.content) {
           content =
             memoryFileFreshnessPrefix(data) +
-            formatFileLines(data.file) +
+            wrapUntrusted(
+              formatFileLines(data.file),
+              `file-read ${data.file.filePath}`,
+            ).wrapped +
             describeUnreadRemainder(data.file)
         } else {
           // Determine the appropriate warning message

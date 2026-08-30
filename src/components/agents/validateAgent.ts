@@ -76,7 +76,13 @@ export function validateAgent(
     errors.push('Tools must be an array')
   } else {
     if (agent.tools === undefined) {
-      warnings.push('Agent has access to all tools')
+      warnings.push(
+        'Agent has access to all tools; define an explicit least-privilege allowlist for production use',
+      )
+    } else if (agent.tools.includes('*')) {
+      warnings.push(
+        'Wildcard tool access bypasses least-privilege selection; prefer explicit tools',
+      )
     } else if (agent.tools.length === 0) {
       warnings.push(
         'No tools selected - agent will have very limited capabilities',
@@ -99,6 +105,19 @@ export function validateAgent(
     errors.push('System prompt is too short (minimum 20 characters)')
   } else if (systemPrompt.length > 10000) {
     warnings.push('System prompt is very long (over 10,000 characters)')
+  }
+  if (systemPrompt && !/success|acceptance|done when/i.test(systemPrompt)) {
+    warnings.push('System prompt does not state measurable success criteria')
+  }
+  if (systemPrompt && !/scope|non-goal|do not/i.test(systemPrompt)) {
+    warnings.push('System prompt does not define scope or non-goals')
+  }
+  if (systemPrompt && !/verify|evidence|test|check/i.test(systemPrompt)) {
+    warnings.push('System prompt does not require verification evidence')
+  }
+
+  if (!agent.maxTurns) {
+    warnings.push('Agent has no finite maxTurns budget')
   }
 
   return {

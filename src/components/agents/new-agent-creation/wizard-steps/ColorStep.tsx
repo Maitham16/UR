@@ -38,6 +38,18 @@ export function ColorStep() {
           whenToUse: wizardData.whenToUse,
           getSystemPrompt: () => wizardData.systemPrompt,
           tools: wizardData.selectedTools,
+          ...(wizardData.generatedDisallowedTools?.length ? {
+            disallowedTools: wizardData.generatedDisallowedTools
+          } : {}),
+          ...(wizardData.generatedPermissionMode ? {
+            permissionMode: wizardData.generatedPermissionMode
+          } : {}),
+          ...(wizardData.generatedMaxTurns ? {
+            maxTurns: wizardData.generatedMaxTurns
+          } : {}),
+          ...(wizardData.generatedBackground ? {
+            background: true
+          } : {}),
           ...(wizardData.selectedModel ? {
             model: wizardData.selectedModel
           } : {}),

@@ -30,6 +30,10 @@ import { ImageResizeError } from './utils/imageResizer.js'
 import { findToolByName, type ToolUseContext } from './Tool.js'
 import { getCwd } from './utils/cwd.js'
 import { asSystemPrompt, type SystemPrompt } from './utils/systemPromptType.js'
+import {
+  privilegedCanaryLeaked,
+  redactPrivilegedCanary,
+} from './constants/executionContract.js'
 import type {
   AssistantMessage,
   AttachmentMessage,
@@ -875,6 +879,31 @@ async function* queryLoop(
                 yieldMessage = {
                   ...message,
                   message: { ...message.message, content: clonedContent },
+                }
+              }
+
+              // Never stream a privileged canary to the user. Keep the
+              // original provider message internally so the action gate can
+              // detect the same leak in any tool arguments, but redact text
+              // at the presentation boundary.
+              let redactedContent: typeof message.message.content | undefined
+              for (let i = 0; i < yieldMessage.message.content.length; i++) {
+                const block = yieldMessage.message.content[i]!
+                if (
+                  block.type === 'text' &&
+                  privilegedCanaryLeaked(block.text)
+                ) {
+                  redactedContent ??= [...yieldMessage.message.content]
+                  redactedContent[i] = {
+                    ...block,
+                    text: redactPrivilegedCanary(block.text),
+                  }
+                }
+              }
+              if (redactedContent) {
+                yieldMessage = {
+                  ...yieldMessage,
+                  message: { ...yieldMessage.message, content: redactedContent },
                 }
               }
             }

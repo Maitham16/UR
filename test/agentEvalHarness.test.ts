@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runWithCwdOverride } from '../src/utils/cwd.js'
@@ -164,5 +164,41 @@ describe('eval persistence and command', () => {
     expect(report.total).toBeGreaterThan(0)
     // Dry-run echoes the prompt, so verdict/contains cases won't all pass — that's fine.
     expect(typeof report.passRate).toBe('number')
+  })
+
+  test('command evaluates prompt candidates and persists a rollback-safe artifact', async () => {
+    const dir = tempDir('ur-eval-optimize-')
+    const { call } = await import('../src/commands/eval/eval.js')
+    await runWithCwdOverride(dir, () => call('init', {} as never))
+    writeFileSync(
+      join(dir, 'candidates.json'),
+      JSON.stringify({
+        candidates: [
+          { id: 'lean-v1', prompt: 'Answer concisely and cite evidence.' },
+        ],
+      }),
+    )
+
+    const optimized = await runWithCwdOverride(dir, () =>
+      call(
+        'optimize starter --file candidates.json --dry-run --json',
+        {} as never,
+      ),
+    )
+    if (optimized.type !== 'text') throw new Error('expected text')
+    const artifact = JSON.parse(optimized.value)
+    expect(artifact.result.baselineId).toBe('baseline')
+    expect(artifact.result.selectedId).toBeTruthy()
+    expect(
+      existsSync(
+        join(
+          dir,
+          '.ur',
+          'evals',
+          '.results',
+          'starter.prompt-optimization.json',
+        ),
+      ),
+    ).toBe(true)
   })
 })

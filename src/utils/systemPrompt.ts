@@ -8,31 +8,22 @@ import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 import { isBuiltInAgent } from '../tools/AgentTool/loadAgentsDir.js'
 import { isEnvTruthy } from './envUtils.js'
 import { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
+import { ensureExecutionContract } from '../constants/executionContract.js'
 
 export { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
 
-// Dead code elimination: conditional import for proactive mode.
-// Same pattern as prompts.ts — lazy require to avoid pulling the module
-// into non-proactive builds.
-/* eslint-disable @typescript-eslint/no-require-imports */
-const proactiveModule =
-  feature('PROACTIVE') || feature('KAIROS')
-    ? (require('../proactive/index.js') as typeof import('../proactive/index.js'))
-    : null
-/* eslint-enable @typescript-eslint/no-require-imports */
-
-function isProactiveActive_SAFE_TO_CALL_ANYWHERE(): boolean {
-  return proactiveModule?.isProactiveActive() ?? false
-}
-
 /**
  * Builds the effective system prompt array based on priority:
- * 0. Override system prompt (if set, e.g., via loop mode - REPLACES all other prompts)
+ * The execution contract is an immutable platform kernel in every branch.
+ * Agent and CLI prompts are overlays on the standard runtime prompt so they
+ * cannot accidentally remove trust, permission, recovery, or verification
+ * policy. The internal override remains a replacement apart from the kernel.
+ *
+ * Priority:
+ * 0. Override system prompt (if set, e.g., via loop mode)
  * 1. Coordinator system prompt (if coordinator mode is active)
  * 2. Agent system prompt (if mainThreadAgentDefinition is set)
- *    - In proactive mode: agent prompt is APPENDED to default (agent adds domain
- *      instructions on top of the autonomous agent prompt, like teammates do)
- *    - Otherwise: agent prompt REPLACES default
+ *    - Agent instructions are appended as a domain overlay
  * 3. Custom system prompt (if specified via --system-prompt)
  * 4. Default system prompt (the standard UR prompt)
  *
@@ -54,7 +45,7 @@ export function buildEffectiveSystemPrompt({
   overrideSystemPrompt?: string | null
 }): SystemPrompt {
   if (overrideSystemPrompt) {
-    return asSystemPrompt([overrideSystemPrompt])
+    return asSystemPrompt(ensureExecutionContract([overrideSystemPrompt]))
   }
   // Coordinator mode: use coordinator prompt instead of default
   // Use inline env check instead of coordinatorModule to avoid circular
@@ -68,10 +59,10 @@ export function buildEffectiveSystemPrompt({
     const { getCoordinatorSystemPrompt } =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js')
-    return asSystemPrompt([
+    return asSystemPrompt(ensureExecutionContract([
       getCoordinatorSystemPrompt(),
       ...(appendSystemPrompt ? [appendSystemPrompt] : []),
-    ])
+    ]))
   }
 
   const agentSystemPrompt = mainThreadAgentDefinition
@@ -96,28 +87,15 @@ export function buildEffectiveSystemPrompt({
     })
   }
 
-  // In proactive mode, agent instructions are appended to the default prompt
-  // rather than replacing it. The proactive default prompt is already lean
-  // (autonomous agent identity + memory + env + proactive section), and agents
-  // add domain-specific behavior on top — same pattern as teammates.
-  if (
-    agentSystemPrompt &&
-    (feature('PROACTIVE') || feature('KAIROS')) &&
-    isProactiveActive_SAFE_TO_CALL_ANYWHERE()
-  ) {
-    return asSystemPrompt([
-      ...defaultSystemPrompt,
-      `\n# Custom Agent Instructions\n${agentSystemPrompt}`,
-      ...(appendSystemPrompt ? [appendSystemPrompt] : []),
-    ])
-  }
+  const overlay = agentSystemPrompt
+    ? `\n# Custom Agent Instructions\n${agentSystemPrompt}`
+    : customSystemPrompt
+      ? `\n# Custom System Instructions\n${customSystemPrompt}`
+      : undefined
 
-  return asSystemPrompt([
-    ...(agentSystemPrompt
-      ? [agentSystemPrompt]
-      : customSystemPrompt
-        ? [customSystemPrompt]
-        : defaultSystemPrompt),
+  return asSystemPrompt(ensureExecutionContract([
+    ...defaultSystemPrompt,
+    ...(overlay ? [overlay] : []),
     ...(appendSystemPrompt ? [appendSystemPrompt] : []),
-  ])
+  ]))
 }

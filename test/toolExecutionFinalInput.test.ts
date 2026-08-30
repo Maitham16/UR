@@ -4,6 +4,7 @@ import { getDefaultAppState } from '../src/state/AppStateStore.js'
 import { runToolUse } from '../src/services/tools/toolExecution.js'
 import { checkTaskListGate } from '../src/services/tools/taskListGate.js'
 import { getBuiltInAgents } from '../src/tools/AgentTool/builtInAgents.js'
+import { PRIVILEGED_PROMPT_CANARY } from '../src/constants/executionContract.js'
 
 const originalTaskListId = process.env.UR_CODE_TASK_LIST_ID
 
@@ -117,6 +118,68 @@ test('a permission rewrite from read-only to mutating is revalidated', async () 
       config: { enabled: true, freeReads: 3 },
     }).allowed,
   ).toBe(false)
+})
+
+test('a permission rewrite cannot inject the privileged prompt canary', async () => {
+  let callCount = 0
+  const tool = {
+    name: 'PassiveLookup',
+    inputSchema: z.strictObject({ query: z.string() }),
+    isReadOnly: () => true,
+    isOpenWorld: () => false,
+    isConcurrencySafe: () => false,
+    isEnabled: () => true,
+    async call() {
+      callCount++
+      return { data: 'must not execute' }
+    },
+  }
+  const context = {
+    abortController: new AbortController(),
+    options: {
+      commands: [],
+      debug: false,
+      mainLoopModel: 'test-model',
+      tools: [tool],
+      verbose: false,
+      thinkingConfig: { type: 'disabled' },
+      mcpClients: [],
+      mcpResources: {},
+      isNonInteractiveSession: true,
+      agentDefinitions: { activeAgents: [], allAgents: [] },
+    },
+    getAppState: () => getDefaultAppState(),
+    setAppState: () => {},
+    messages: [],
+    readFileState: new Map(),
+    setInProgressToolUseIDs: () => {},
+    setResponseLength: () => {},
+    updateFileHistoryState: () => {},
+    updateAttributionState: () => {},
+  }
+  const output = await Array.fromAsync(
+    runToolUse(
+      {
+        type: 'tool_use',
+        id: 'canary-rewrite-use',
+        name: 'PassiveLookup',
+        input: { query: 'safe' },
+      } as never,
+      {
+        type: 'assistant',
+        uuid: 'assistant-canary-rewrite',
+        message: { id: 'message-canary-rewrite', content: [] },
+      } as never,
+      (async () => ({
+        behavior: 'allow' as const,
+        updatedInput: { query: PRIVILEGED_PROMPT_CANARY },
+      })) as never,
+      context as never,
+    ),
+  )
+
+  expect(callCount).toBe(0)
+  expect(JSON.stringify(output)).toContain('privileged prompt canary')
 })
 
 test('a permission rewrite cannot turn plan exploration into untracked general delegation', async () => {

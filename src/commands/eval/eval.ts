@@ -35,14 +35,18 @@ import {
   listBuiltinSuiteIds,
   type BuiltinSuiteId,
 } from '../../services/agents/benchmarkSuites.js'
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
 import type { LocalCommandCall } from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { getCwd } from '../../utils/cwd.js'
 import { isNetworkRestricted } from '../../utils/offlineMode.js'
 import { getSessionId } from '../../bootstrap/state.js'
 import { loadRunManifests, readRunManifest } from '../../services/agents/runArtifacts.js'
+import {
+  optimizePromptCandidates,
+  type PromptCandidate,
+} from '../../services/agents/promptOptimizer.js'
 
 function optionValue(tokens: string[], flag: string): string | undefined {
   const index = tokens.indexOf(flag)
@@ -441,7 +445,7 @@ export const call: LocalCommandCall = async (args: string) => {
   const category = optionValue(tokens, '--category')
 
   if (
-    (command === 'run' || command === 'compare') &&
+    (command === 'run' || command === 'compare' || command === 'optimize') &&
     suite &&
     category !== undefined &&
     !suite.cases.some(evalCase => evalCase.category === category)
@@ -478,6 +482,113 @@ export const call: LocalCommandCall = async (args: string) => {
       }
     }
     return { type: 'text', value: formatEvalReport(report, json) }
+  }
+
+  if (command === 'optimize') {
+    if (!suite) return notFound(name)
+    const file = optionValue(tokens, '--file')
+    if (!file) {
+      process.exitCode = 1
+      return {
+        type: 'text',
+        value:
+          'Provide --file <candidates.json> with {"candidates":[{"id":"lean-v1","prompt":"..."}]}.',
+      }
+    }
+    const candidatePath = isAbsolute(file) ? file : join(cwd, file)
+    try {
+      const raw = readFileSync(candidatePath, 'utf8')
+      if (raw.length > 2 * 1024 * 1024) {
+        throw new Error('candidate file exceeds 2 MiB')
+      }
+      const parsed = JSON.parse(raw) as {
+        candidates?: Array<{ id?: unknown; prompt?: unknown }>
+      }
+      if (!Array.isArray(parsed.candidates) || parsed.candidates.length === 0) {
+        throw new Error('candidate file has no candidates')
+      }
+      if (parsed.candidates.length > 32) {
+        throw new Error('candidate file exceeds the 32-candidate limit')
+      }
+      const specs = parsed.candidates.map((item, index) => {
+        if (
+          typeof item.id !== 'string' ||
+          !/^[a-z0-9][a-z0-9-_]{0,63}$/i.test(item.id) ||
+          typeof item.prompt !== 'string' ||
+          !item.prompt.trim()
+        ) {
+          throw new Error(`invalid candidate at index ${index}`)
+        }
+        return { id: item.id, prompt: item.prompt }
+      })
+      const dryRun = tokens.includes('--dry-run')
+      const maxTurns = Number(optionValue(tokens, '--max-turns') ?? '20')
+      const model = optionValue(tokens, '--model')
+      const skipPermissions = tokens.includes('--skip-permissions')
+      const isolate = !tokens.includes('--no-isolate')
+      const runCandidate = async (
+        id: string,
+        prompt: string,
+      ): Promise<PromptCandidate> => {
+        const runner = dryRun
+          ? makeDryEvalRunner()
+          : makeCliEvalRunner({
+              cwd,
+              maxTurns,
+              skipPermissions,
+              model,
+              isolate,
+              systemPrompt: prompt || undefined,
+            })
+        return {
+          id,
+          prompt,
+          report: await runSuite(suite, runner, { category }),
+        }
+      }
+      const baseline = await runCandidate('baseline', '')
+      const candidates: PromptCandidate[] = []
+      for (const spec of specs) {
+        candidates.push(await runCandidate(spec.id, spec.prompt))
+      }
+      const result = optimizePromptCandidates(baseline, candidates)
+      const artifact = {
+        suite: suite.name,
+        generatedAt: new Date().toISOString(),
+        result,
+        reports: Object.fromEntries(
+          [baseline, ...candidates].map(candidate => [
+            candidate.id,
+            candidate.report,
+          ]),
+        ),
+      }
+      const outputPath = join(
+        evalsDir(cwd),
+        '.results',
+        `${suiteSlug(suite.name)}.prompt-optimization.json`,
+      )
+      mkdirSync(join(evalsDir(cwd), '.results'), { recursive: true })
+      writeFileSync(outputPath, JSON.stringify(artifact, null, 2) + '\n')
+      if (json) {
+        return { type: 'text', value: JSON.stringify(artifact, null, 2) }
+      }
+      return {
+        type: 'text',
+        value: [
+          `Prompt optimization: ${suite.name}`,
+          `Selected: ${result.selectedId}${result.rolledBack ? ' (baseline rollback)' : ''}`,
+          `Pareto front: ${result.paretoFront.join(', ')}`,
+          `Artifact: ${outputPath}`,
+        ].join('\n'),
+      }
+    } catch (error) {
+      process.exitCode = 1
+      return {
+        type: 'text',
+        value: `Prompt optimization failed: ${error instanceof Error ? error.message : String(error)}`,
+      }
+    }
   }
 
   if (command === 'run') {

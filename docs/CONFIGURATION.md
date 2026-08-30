@@ -74,7 +74,7 @@ UR-Nexus supports official provider access paths only:
 
 - Explicit API providers: OpenAI, Anthropic, Gemini, OpenRouter, and
   OpenAI-compatible endpoints.
-- Local/server providers: Ollama, LM Studio, llama.cpp, and vLLM OpenAI-compatible
+- Local/server providers: Ollama, LM Studio, llama.cpp, vLLM, and Unsloth OpenAI-compatible
   server mode.
 - Subscription CLI providers: Codex CLI, Claude Code CLI, Gemini CLI, and
   Antigravity where officially supported. These dispatch turns through the
@@ -117,6 +117,7 @@ ur config set provider anthropic-api
 ur config set provider gemini-api
 ur config set provider openrouter
 ur config set provider openai-compatible
+ur config set provider unsloth
 ur provider doctor agy
 ur config set provider.fallback ollama
 ur config set model <model>
@@ -130,7 +131,7 @@ recovery command; changing providers remains an explicit user action.
 
 Provider values accept canonical IDs and common aliases. Examples:
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
-`lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, and the subscription CLI
+`lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, `unsloth` (`Unsloth Studio`), and the subscription CLI
 providers `codex-cli` (`chatgpt`), `claude-code-cli` (`claude`), `gemini-cli`
 (`gemini`), and `antigravity-cli` (`agy`). Values with spaces should be quoted
 in shell commands.
@@ -179,7 +180,15 @@ OPENAI_COMPATIBLE_API_KEY=...
 ANTHROPIC_API_KEY=...
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
+UNSLOTH_API_KEY=...
 ```
+
+Unsloth is an inference-provider integration only. Start Unsloth Studio and
+load the model outside UR, connect its generated key with `ur connect unsloth`,
+then select a model discovered from `http://localhost:8888/v1` (or your
+configured `base_url`). UR always sends `enable_tools: false`; standard model
+function calls continue through UR's own permission, sandbox, and verifier
+flow, while Unsloth's server-side tools remain disabled.
 
 ### OpenAI Responses transport
 

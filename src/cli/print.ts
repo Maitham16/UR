@@ -983,6 +983,7 @@ export async function runHeadless(
   // Serialize eval metrics for the parent runner when running benchmark cases.
   // The parent sets a unique path per child, so parallel eval runs stay safe.
   if (process.env.UR_EVAL_METRICS_FILE) {
+    const { getEvalProvenanceSnapshot } = await import('../services/agents/evalProvenance.js')
     const modelUsage = getModelUsage()
     const metrics = {
       costUSD: getTotalCostUSD(),
@@ -992,6 +993,7 @@ export async function runHeadless(
       linesAdded: getTotalLinesAdded(),
       linesRemoved: getTotalLinesRemoved(),
       apiDurationMs: getTotalAPIDuration(),
+      provenance: getEvalProvenanceSnapshot(),
     }
     try {
       await writeFile(process.env.UR_EVAL_METRICS_FILE, JSON.stringify(metrics, null, 2) + '\n')

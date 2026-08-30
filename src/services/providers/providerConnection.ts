@@ -62,6 +62,32 @@ export async function getProviderConnection(
   const def = getProviderDefinition(provider)
   const base = { provider, displayName: def.displayName, accessType: def.accessType }
 
+  if (def.requiresApiKey) {
+    const { state, keySource } = getApiConnectionState(provider, options.credentials)
+    if (state !== 'connected') {
+      return {
+        ...base,
+        state,
+        keySource,
+        detail: `run: ur connect ${provider}`,
+      }
+    }
+    const baseUrl = getConfiguredBaseUrl(provider)
+    return baseUrl
+      ? {
+          ...base,
+          state: 'connected',
+          keySource,
+          detail: `${keySource === 'stored' ? 'stored key' : `${def.envKey} in environment`} · endpoint ${baseUrl}`,
+        }
+      : {
+          ...base,
+          state: 'needs-endpoint',
+          keySource,
+          detail: 'no base URL configured',
+        }
+  }
+
   if (def.accessType === 'api') {
     const { state, keySource } = getApiConnectionState(provider, options.credentials)
     // OpenAI-compatible endpoints may not require a key; a base URL is enough.

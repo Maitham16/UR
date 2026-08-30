@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { dirname, isAbsolute, join, normalize } from 'node:path'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { ensurePrivateDirectory } from '../../utils/privateState.js'
@@ -28,6 +28,10 @@ import {
 import {
   getModelUsage,
 } from '../../bootstrap/state.js'
+import {
+  mergeEvalProvenance,
+  type EvalProvenance,
+} from './evalProvenance.js'
 
 const SAFE_EVAL_GIT_ARGS = [
   '-c',
@@ -80,6 +84,10 @@ export type EvalCase = {
   category: string
   prompt: string
   expect: EvalExpectation
+  /** Deterministic repository state materialized before the agent starts. */
+  setup?: {
+    files: Record<string, string>
+  }
 }
 
 export type EvalSuite = {
@@ -145,6 +153,7 @@ export type EvalRunMetrics = {
   humanEditsNeeded?: number
   humanInterventions?: number
   rollbacks?: number
+  provenance?: EvalProvenance
 }
 
 export type EvalCaseResult = {
@@ -183,6 +192,8 @@ export type EvalReport = {
   testPassRate?: number
   /** Mean normalized score of cases that declared trajectory expectations. */
   trajectoryScore?: number
+  /** Exact prompt/tool/context/model fingerprints observed in child runs. */
+  provenance?: EvalProvenance
   cases: EvalCaseResult[]
 }
 
@@ -341,6 +352,27 @@ export function validateEvalSuite(suite: EvalSuite): EvalValidation {
     } else if (Buffer.byteLength(evalCase.prompt, 'utf8') > 64 * 1024) {
       errors.push(`case "${evalCase.id}" prompt exceeds 64 KiB`)
     }
+    if (evalCase.setup) {
+      const entries = Object.entries(evalCase.setup.files ?? {})
+      if (entries.length === 0 || entries.length > 100) {
+        errors.push(`case "${evalCase.id}" has an invalid setup file count`)
+      }
+      for (const [path, content] of entries) {
+        const normalized = normalize(path)
+        if (
+          !path ||
+          isAbsolute(path) ||
+          normalized === '..' ||
+          normalized.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) ||
+          normalized.split(/[\\/]/).includes('.git') ||
+          normalized.split(/[\\/]/).includes('.ur') ||
+          typeof content !== 'string' ||
+          content.length > 256 * 1024
+        ) {
+          errors.push(`case "${evalCase.id}" has an unsafe setup file: ${path}`)
+        }
+      }
+    }
     if (!evalCase.category?.trim()) {
       warnings.push(`case "${evalCase.id}" has no category`)
     } else if (evalCase.category.length > 128) {
@@ -393,6 +425,15 @@ export function validateEvalSuite(suite: EvalSuite): EvalValidation {
         SECRET_RE.test(expect.testCommand))
     ) {
       errors.push(`case "${evalCase.id}" has an invalid test command`)
+    } else if (
+      expect.testCommand &&
+      /^(?:cd\s+\S+\s+&&\s+)?\(?\s*(?:ls|test\s+-[ef]|find\s+\S+\s+-name)\b/u.test(
+        expect.testCommand.trim(),
+      )
+    ) {
+      warnings.push(
+        `case "${evalCase.id}" test command checks file presence but not behavior`,
+      )
     }
     const trajectoryNumbers = [
       expect.maxSteps,
@@ -576,6 +617,7 @@ function buildReport(name: string, cases: EvalCaseResult[]): EvalReport {
         ? sum(trajectoryCases.map(item => item.trajectoryScore)) /
           trajectoryCases.length
         : undefined,
+    provenance: mergeEvalProvenance(metrics.map(item => item?.provenance)),
     cases,
   }
 }
@@ -931,6 +973,8 @@ export type CliEvalRunnerOptions = {
   model?: string
   /** Run every case in a fresh detached worktree (default: true). */
   isolate?: boolean
+  /** Candidate overlay used by the regression-safe prompt optimizer. */
+  systemPrompt?: string
 }
 
 type ChildMetrics = {
@@ -941,6 +985,7 @@ type ChildMetrics = {
   linesAdded?: number
   linesRemoved?: number
   apiDurationMs?: number
+  provenance?: EvalProvenance
 }
 
 function metricsFile(): string {
@@ -1035,6 +1080,25 @@ export async function runEvalTestCommand(
     testStderr: redactAgenticCiText(
       result.stderr || result.error || '',
     ).slice(-32 * 1024),
+  }
+}
+
+/** Materialize a source-controlled fixture after isolation and before the run. */
+export function materializeEvalSetup(cwd: string, evalCase: EvalCase): void {
+  if (!evalCase.setup) return
+  for (const [relativePath, content] of Object.entries(evalCase.setup.files)) {
+    const normalized = normalize(relativePath)
+    if (
+      isAbsolute(relativePath) ||
+      normalized === '..' ||
+      normalized.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) ||
+      normalized.split(/[\\/]/).some(part => part === '.git' || part === '.ur')
+    ) {
+      throw new Error(`unsafe eval setup path: ${relativePath}`)
+    }
+    const target = join(cwd, normalized)
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, content, { encoding: 'utf8', mode: 0o600 })
   }
 }
 
@@ -1164,6 +1228,7 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
         : await createEvalWorktree(options.cwd, evalCase.id)
     const caseCwd = isolated?.cwd ?? options.cwd
     try {
+    materializeEvalSetup(caseCwd, evalCase)
     const started = Date.now()
     const file = process.execPath
     const baseArgs = [process.argv[1] ?? '']
@@ -1179,6 +1244,9 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
     }
     if (options.skipPermissions) {
       args.push('--dangerously-skip-permissions')
+    }
+    if (options.systemPrompt) {
+      args.push('--system-prompt', options.systemPrompt)
     }
     args.push(evalCase.prompt)
 
@@ -1250,6 +1318,7 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
       humanEditsNeeded: countHumanEdits(output),
       humanInterventions: countHumanEdits(output),
       rollbacks: countRollbacks(output),
+      provenance: childMetrics?.provenance,
     }
 
     return {
@@ -1965,6 +2034,7 @@ Commands:
 - \`ur eval run <suite> --metrics\` — persist cost, tokens, model, time, diffs, test results, command failures, and human-edit heuristics
 - \`ur eval run <suite> --dry-run\` — exercise the suite offline (no model calls)
 - \`ur eval run <suite> --category coding\` — run only one category
+- \`ur eval optimize <suite> --file candidates.json\` — evaluate prompt overlays, enforce regression constraints, select a Pareto-safe winner, or roll back
 - \`ur eval report <suite>\` — re-print the last run's report
 - \`ur eval compare <suite> pool codex claude\` — compare one suite across model/runner labels
 - \`ur eval dashboard\` — render the local task timeline with commands, diffs, tests, model, tokens, time, and cost
@@ -2050,6 +2120,9 @@ export function formatEvalReport(report: EvalReport, json: boolean): string {
       : null,
     report.totalRollbacks !== undefined ? `Rollbacks: ${report.totalRollbacks}` : null,
     report.totalDurationMs > 0 ? `Duration: ${report.totalDurationMs}ms` : null,
+    report.provenance
+      ? `Fingerprints: ${report.provenance.promptHashes.length} prompt / ${report.provenance.toolSchemaHashes.length} tools / ${report.provenance.contextPolicyHashes.length} context / ${report.provenance.modelConfigHashes.length} model`
+      : null,
     '',
   ].filter((line): line is string => line !== null)
   const categories = Object.entries(report.byCategory).sort((a, b) =>

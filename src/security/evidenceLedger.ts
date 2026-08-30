@@ -54,6 +54,10 @@ export function recordEvidence(entry: {
   signals: string[]
   now?: number
 }): EvidenceEntry {
+  const existing = ledger.find(
+    item => item.nonce === entry.nonce && item.source === entry.source,
+  )
+  if (existing) return existing
   const record: EvidenceEntry = {
     nonce: entry.nonce,
     source: entry.source,
