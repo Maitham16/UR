@@ -51,7 +51,8 @@ const tasks = [
 
 function runTask(task) {
   const started = Date.now()
-  const result = spawnSync('bun', task.args, {
+  const args = ['test', '--timeout', '120000', ...task.args.slice(1)]
+  const result = spawnSync('bun', args, {
     cwd: root,
     encoding: 'utf8',
     env: {
@@ -71,7 +72,7 @@ function runTask(task) {
     durationMs,
     checks: [
       {
-        name: `test command: bun ${task.args.join(' ')}`,
+        name: `test command: bun ${args.join(' ')}`,
         passed,
       },
     ],

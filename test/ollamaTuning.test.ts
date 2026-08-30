@@ -4,17 +4,10 @@ import {
   getOllamaKeepAlive,
   getOllamaNumCtxOverride,
   MIN_AGENT_NUM_CTX,
-  MIN_CHAT_NUM_CTX,
 } from '../src/utils/model/ollamaTuning.js'
 
 test('num_ctx floors at the agent minimum for small prompts', () => {
   expect(computeOllamaNumCtx({})).toBe(MIN_AGENT_NUM_CTX)
-})
-
-test('lightweight chat can use a smaller stable context bucket', () => {
-  expect(computeOllamaNumCtx({ minCtx: MIN_CHAT_NUM_CTX })).toBe(
-    MIN_CHAT_NUM_CTX,
-  )
 })
 
 test('num_ctx never exceeds the model context window', () => {

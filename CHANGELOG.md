@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.82.0
+
+- Restored the complete UR agent prompt, conversation history, tools, and
+  reasoning configuration for every request, including greetings and small
+  code questions. No request is reclassified into a reduced standalone chat,
+  preserving identical quality and agent behavior across Ollama, vLLM,
+  OpenRouter, and all other providers.
+- Retained only provider-compatibility safeguards: self-hosted runtimes use a
+  realistic completion reservation, vLLM context-overflow responses retry with
+  a budget that actually fits, and discovered provider output limits remain
+  enforced. Ollama keeps its full agent context and 30-minute warm lifetime.
+- Aligned release benchmarks with the repository's 120-second test timeout so
+  slower AST checks report their real result instead of an incidental five-second
+  machine-load timeout.
+
 ## 1.81.10
 
 - Reduced provider latency and memory pressure without removing the complete

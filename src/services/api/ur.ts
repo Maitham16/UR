@@ -108,7 +108,6 @@ import {
   isNonCustommodelOModel,
 } from '../../utils/model/model.js'
 import {
-  getProviderRequestProfile,
   SELF_HOSTED_DEFAULT_MAX_OUTPUT_TOKENS,
   usesConservativeOutputReservation,
 } from '../../utils/model/providerRequestTuning.js'
@@ -1144,27 +1143,6 @@ async function* queryModel(
         options.model)
       : options.model
 
-  const requestProvider =
-    options.providerSettings?.active ?? getRuntimeProvider()
-  const candidateRequestProfile = getProviderRequestProfile({
-    provider: requestProvider,
-    querySource: options.querySource,
-    messages,
-  })
-  const providerRequestProfile =
-    candidateRequestProfile.mode === 'lightweight-chat' &&
-    !options.hasAppendSystemPrompt &&
-    !options.outputFormat &&
-    !options.toolChoice &&
-    (options.extraToolSchemas?.length ?? 0) === 0
-      ? candidateRequestProfile
-      : ({ mode: 'agent' } as const)
-  const isLightweightChat =
-    providerRequestProfile.mode === 'lightweight-chat'
-  logForDebugging(
-    `Provider request profile: ${providerRequestProfile.mode} (${requestProvider}, source=${options.querySource}, messages=${messages.length})`,
-  )
-
   queryCheckpoint('query_tool_schema_build_start')
   const isAgenticQuery =
     options.querySource.startsWith('repl_main_thread') ||
@@ -1182,7 +1160,7 @@ async function* queryModel(
   }
 
   let advisorModel: string | undefined
-  if (isAgenticQuery && isAdvisorEnabled() && !isLightweightChat) {
+  if (isAgenticQuery && isAdvisorEnabled()) {
     let advisorOption = options.advisorModel
 
     const advisorExperiment = getExperimentAdvisorModels()
@@ -1221,15 +1199,13 @@ async function* queryModel(
 
   // Check if tool search is enabled (checks mode, model support, and threshold for auto mode)
   // This is async because it may need to calculate MCP tool description sizes for TstAuto mode
-  let useToolSearch = isLightweightChat
-    ? false
-    : await isToolSearchEnabled(
-        options.model,
-        tools,
-        options.getToolPermissionContext,
-        options.agents,
-        'query',
-      )
+  let useToolSearch = await isToolSearchEnabled(
+    options.model,
+    tools,
+    options.getToolPermissionContext,
+    options.agents,
+    'query',
+  )
 
   // Precompute once — isDeferredTool does 2 GrowthBook lookups per call
   const deferredToolNames = new Set<string>()
@@ -1257,9 +1233,7 @@ async function* queryModel(
   // ToolSearchTool returns tool_reference blocks which unsupported models can't handle
   let filteredTools: Tools
 
-  if (isLightweightChat) {
-    filteredTools = []
-  } else if (useToolSearch) {
+  if (useToolSearch) {
     // Dynamic tool loading: Only include deferred tools that have been discovered
     // via tool_reference blocks in the message history. This eliminates the need
     // to predeclare all deferred tools upfront and removes limits on tool quantity.
@@ -1352,16 +1326,7 @@ async function* queryModel(
   })
 
   queryCheckpoint('query_message_normalization_start')
-  const requestMessages = isLightweightChat
-    ? messages.filter(
-        message =>
-          message.type === 'user' &&
-          !message.isMeta &&
-          !message.isCompactSummary &&
-          !message.toolUseResult,
-      )
-    : messages
-  let messagesForAPI = normalizeMessagesForAPI(requestMessages, filteredTools)
+  let messagesForAPI = normalizeMessagesForAPI(messages, filteredTools)
   queryCheckpoint('query_message_normalization_end')
 
   // Model-specific post-processing: strip tool-search-specific fields if the
@@ -1453,19 +1418,9 @@ async function* queryModel(
     useToolSearch && hasChromeTools && !isMcpInstructionsDeltaEnabled()
 
   // filter(Boolean) works by converting each element to a boolean - empty strings become false and are filtered out.
-  if (providerRequestProfile.mode === 'lightweight-chat') {
-    systemPrompt = asSystemPrompt([providerRequestProfile.systemPrompt])
-  }
-
   systemPrompt = asSystemPrompt(
     [
-      // A per-prompt fingerprint at byte zero invalidates vLLM/Ollama prefix
-      // caches even though it carries no inference instruction. Self-hosted
-      // runtimes have no UR billing/attestation consumer, so omit it and keep
-      // the quality-bearing system/tool prefix byte-stable across sessions.
-      usesConservativeOutputReservation(requestProvider)
-        ? ''
-        : getAttributionHeader(fingerprint),
+      getAttributionHeader(fingerprint),
       getCLISyspromptPrefix({
         isNonInteractive: options.isNonInteractiveSession,
         hasAppendSystemPrompt: options.hasAppendSystemPrompt,
@@ -1490,9 +1445,7 @@ async function* queryModel(
   // Build minimal context for detailed tracing (when beta tracing is enabled)
   // Note: The actual new_context message extraction is done in sessionTracing.ts using
   // hash-based tracking per querySource (agent) from the messagesForAPI array
-  const extraToolSchemas = isLightweightChat
-    ? []
-    : [...(options.extraToolSchemas ?? [])]
+  const extraToolSchemas = [...(options.extraToolSchemas ?? [])]
   if (advisorModel) {
     // Server tools must be in the tools array by API contract. Appended after
     // toolSchemas (which carries the cache_control marker) so toggling /advisor
@@ -1675,16 +1628,14 @@ async function* queryModel(
       ...((extraBodyParams.output_config as BetaOutputConfig) ?? {}),
     }
 
-    if (!isLightweightChat) {
-      configureEffortParams(
-        effort,
-        outputConfig,
-        extraBodyParams,
-        betasParams,
-        options.model,
-        options.providerSettings?.active,
-      )
-    }
+    configureEffortParams(
+      effort,
+      outputConfig,
+      extraBodyParams,
+      betasParams,
+      options.model,
+      options.providerSettings?.active,
+    )
 
     configureTaskBudgetParams(
       options.taskBudget,
@@ -1706,23 +1657,15 @@ async function* queryModel(
     }
 
     // Retry context gets preference because it tries to course correct if we exceed the context window limit
-    const configuredMaxOutputTokens =
+    const maxOutputTokens =
       retryContext?.maxTokensOverride ||
       options.maxOutputTokensOverride ||
       getMaxOutputTokensForModel(
         options.model,
         options.providerSettings?.active ?? getRuntimeProvider(),
       )
-    const maxOutputTokens =
-      providerRequestProfile.mode === 'lightweight-chat'
-        ? Math.min(
-            configuredMaxOutputTokens,
-            providerRequestProfile.maxOutputTokens,
-          )
-        : configuredMaxOutputTokens
 
     const hasThinking =
-      !isLightweightChat &&
       thinkingConfig.type !== 'disabled' &&
       !isEnvTruthy(process.env.UR_CODE_DISABLE_THINKING)
     let thinking: BetaMessageStreamParams['thinking'] | undefined = undefined
