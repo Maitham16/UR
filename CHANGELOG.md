@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.82.2
+
+- Saved custom base URLs independently for every provider, including Ollama,
+  llama.cpp, vLLM, LM Studio, and Unsloth. Switching through `/provider`,
+  `/model`, or CLI configuration now restores each provider's last endpoint,
+  with automatic migration from the legacy single-address setting.
+- Fixed Ollama graded reasoning discovery and transport. The model picker now
+  reads the focused model's `/api/show` capability before selection, Left/Right
+  cycles its real effort ladder, and requests send the chosen native `think`
+  value; Kimi K3 supports `low`, `high`, and `max`, while GPT-OSS safely caps at
+  `high`.
+- Audited direct OpenAI, Anthropic, Gemini, OpenRouter, llama.cpp, and generic
+  OpenAI-compatible provider effort handling. Live model discovery retains
+  documented model-specific ladders, Gemini serializes `thinkingLevel`, and
+  providers without authoritative graded metadata no longer receive invented
+  levels.
+
 ## 1.82.1
 
 - Added a mandatory execution/trust kernel to every main, custom, and subagent

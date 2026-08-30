@@ -89,7 +89,7 @@ export type A2AV1AgentCard = {
 }
 
 const urVersion =
-  typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.82.1'
+  typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.82.2'
 const researchSnapshotDate = '2026-08-10'
 
 const coverage: TrendCoverage[] = [
