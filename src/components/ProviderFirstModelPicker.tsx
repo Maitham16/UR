@@ -60,6 +60,7 @@ import {
   convertEffortValueToLevel,
   type EffortLevel,
   getDefaultEffortForModel,
+  getSupportedEffortLevelLabelsForModel,
   getSupportedEffortLevelsForModel,
   modelSupportsEffort,
   resolveProviderEffortLevel,
@@ -413,6 +414,13 @@ export function ProviderFirstModelPicker({
   const focusedEffortLevels =
     focusedResolvedModel && focusedProviderId
       ? getSupportedEffortLevelsForModel(
+          focusedResolvedModel,
+          focusedProviderId,
+        )
+      : []
+  const focusedEffortLevelLabels =
+    focusedResolvedModel && focusedProviderId
+      ? getSupportedEffortLevelLabelsForModel(
           focusedResolvedModel,
           focusedProviderId,
         )
@@ -1104,7 +1112,7 @@ export function ProviderFirstModelPicker({
                       </Text>
                     </Text>
                     <Text dimColor color="subtle">
-                      Provider levels: {focusedEffortLevels.join(' · ')}
+                      Available levels: {focusedEffortLevelLabels.join(' · ')}
                     </Text>
                   </Box>
                 )}

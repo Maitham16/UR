@@ -4,7 +4,7 @@ import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, getSupportedEffortLevelsForModel, isEffortLevel, modelSupportsEffort, resolveAppliedEffort, resolveProviderEffortLevel, toPersistableEffort } from '../../utils/effort.js';
+import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, getSupportedEffortLevelLabelsForModel, getSupportedEffortLevelsForModel, isEffortLevel, modelSupportsEffort, resolveAppliedEffort, resolveProviderEffortLevel, toPersistableEffort } from '../../utils/effort.js';
 import { ensureProviderReasoningCapabilitiesForModel, type ProviderId } from '../../services/providers/providerRegistry.js';
 import { getMainLoopModel } from '../../utils/model/model.js';
 import { getRuntimeProvider } from '../../utils/model/providers.js';
@@ -28,7 +28,7 @@ function setEffortValue(effortValue: EffortValue, model?: string, provider: Prov
     !getSupportedEffortLevelsForModel(model, provider).includes('ultra')
   ) {
     return {
-      message: `Not applied: ${model} on ${provider} does not advertise the ultra reasoning-effort level.`
+      message: `Not applied: ${model} on ${provider} does not advertise a beyond-high reasoning-effort ceiling for Ultra.`
     };
   }
   const persistable = toPersistableEffort(effortValue);
@@ -100,12 +100,12 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
     const applied = resolveAppliedEffort(model, appStateEffort, provider);
     if (applied === undefined) {
       return {
-        message: `Effort: auto for ${model} on ${provider}; UR sends no explicit effort and the provider chooses its default. Provider levels: ${getSupportedEffortLevelsForModel(model, provider).join(', ')}`
+        message: `Effort: auto for ${model} on ${provider}; UR sends no explicit effort and the provider chooses its default. Available levels: ${getSupportedEffortLevelLabelsForModel(model, provider).join(', ')}`
       };
     }
     const level = getDisplayedEffortLevel(model, appStateEffort, provider);
     return {
-      message: `Effort: auto; applied ${level} for ${model} on ${provider}. Provider levels: ${getSupportedEffortLevelsForModel(model, provider).join(', ')}`
+      message: `Effort: auto; applied ${level} for ${model} on ${provider}. Available levels: ${getSupportedEffortLevelLabelsForModel(model, provider).join(', ')}`
     };
   }
   if (!modelSupportsEffort(model, provider)) {
@@ -118,18 +118,18 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
     !getSupportedEffortLevelsForModel(model, provider).includes('ultra')
   ) {
     return {
-      message: `Requested effort: ultra; not applied — ${model} on ${provider} does not advertise ultra. Provider levels: ${getSupportedEffortLevelsForModel(model, provider).join(', ')}`
+      message: `Requested effort: ultra; not applied — ${model} on ${provider} does not advertise a beyond-high ceiling. Available levels: ${getSupportedEffortLevelLabelsForModel(model, provider).join(', ')}`
     };
   }
   const appliedLevel = getDisplayedEffortLevel(model, appStateEffort, provider);
   if (typeof effectiveValue === 'string' && appliedLevel !== effectiveValue) {
     return {
-      message: `Requested effort: ${effectiveValue}; applied effort for ${model} on ${provider}: ${appliedLevel} (${getEffortValueDescription(appliedLevel)}). Provider levels: ${getSupportedEffortLevelsForModel(model, provider).join(', ')}`
+      message: `Requested effort: ${effectiveValue}; applied effort for ${model} on ${provider}: ${appliedLevel} (${getEffortValueDescription(appliedLevel)}). Available levels: ${getSupportedEffortLevelLabelsForModel(model, provider).join(', ')}`
     };
   }
   const description = getEffortValueDescription(effectiveValue);
   return {
-    message: `Current effort: ${effectiveValue}; applied ${appliedLevel} for ${model} on ${provider} (${description}). Provider levels: ${getSupportedEffortLevelsForModel(model, provider).join(', ')}`
+    message: `Current effort: ${effectiveValue}; applied ${appliedLevel} for ${model} on ${provider} (${description}). Available levels: ${getSupportedEffortLevelLabelsForModel(model, provider).join(', ')}`
   };
 }
 function unsetEffortLevel(): EffortCommandResult {
@@ -231,7 +231,7 @@ function ApplyEffortAndClose(t0) {
 export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, args?: string): Promise<React.ReactNode> {
   args = args?.trim() || '';
   if (COMMON_HELP_ARGS.includes(args)) {
-    onDone('Usage: /effort [minimal|low|medium|high|xhigh|max|ultra|auto]\n\nUR reads the selected model\'s exact provider-advertised levels. `max` means that model\'s established ceiling, so it resolves to max, xhigh, or high as appropriate. `ultra` is shown and accepted only when the selected provider/model explicitly advertises it (or an explicit provider-authored alias); it never silently degrades to max.\n\nEffort levels:\n- minimal: Lowest latency and cost\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- xhigh: Extended reasoning above high\n- max: The selected model\'s established maximum level\n- ultra: Explicit provider-advertised ultra reasoning\n- auto: Use the model/provider default');
+    onDone('Usage: /effort [minimal|low|medium|high|xhigh|max|ultra|auto]\n\nUR reads the selected model\'s exact provider-advertised levels. `max` means that model\'s established ceiling, so it resolves to max, xhigh, or high as appropriate. `ultra` is UR\'s visible beyond-high ceiling selector: it appears only when the model advertises ultra, max, xhigh, or an explicit equivalent, and UR sends that exact provider value. High-only and boolean-thinking models never receive Ultra.\n\nEffort levels:\n- minimal: Lowest latency and cost\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- xhigh: Extended reasoning above high\n- max: The selected model\'s established maximum level\n- ultra: Provider-advertised beyond-high ceiling (shown with its native mapping)\n- auto: Use the model/provider default');
     return;
   }
   const model = getMainLoopModel();

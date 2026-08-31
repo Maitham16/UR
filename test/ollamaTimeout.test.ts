@@ -239,7 +239,7 @@ test('Ollama sends the selected graded effort for thinking-capable models', () =
   expect(gptOss.think).toBe('high')
 })
 
-test('Ollama sends Ultra only when advertised, including provider aliases', () => {
+test('Ollama sends Ultra through the exact advertised ceiling or alias', () => {
   const capabilities = new Set(['completion', 'thinking', 'tools'])
   cacheProviderModelsForProvider('ollama', [
     {
@@ -256,6 +256,12 @@ test('Ollama sends Ultra only when advertised, including provider aliases', () =
         supportedEfforts: ['low', 'deep'],
         effortAliases: { ultra: 'deep' },
       },
+    },
+    {
+      id: 'kimi-k3:cloud',
+      displayName: 'kimi-k3:cloud',
+      description: 'Kimi K3 documented graded effort',
+      reasoning: { supportedEfforts: ['low', 'high', 'max'] },
     },
     {
       id: 'no-ultra',
@@ -278,6 +284,7 @@ test('Ollama sends Ultra only when advertised, including provider aliases', () =
 
     expect(request('ultra-native').think).toBe('ultra')
     expect(request('ultra-alias').think).toBe('deep')
+    expect(request('kimi-k3:cloud').think).toBe('max')
     expect(request('no-ultra').think).toBe(false)
   } finally {
     clearProviderModelCacheForTests()

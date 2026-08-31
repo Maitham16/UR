@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.83.0 (UR-Nexus)"
+# expected for this release: "1.83.1 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -78,9 +78,11 @@ Connect OpenRouter, run `/model`, select OpenRouter, and verify that its model
 step shows catalog freshness plus pricing/context/tool/reasoning details. Focus
 a reasoning model and press Left/Right; the displayed effort must change and
 the row must list only that model's provider-advertised levels. Move Up/Down
-between high-only, xhigh, max, and explicitly ultra-capable models; the level list and selected ceiling
-must update immediately, and the confirmation must match `/effort status` and
-the request wire value. For llama.cpp, verify focus requests
+between high-only, xhigh, max, and native-ultra models; the level list and
+selected ceiling must update immediately. High-only must omit Ultra, while
+xhigh/max entries must show `ultra→xhigh` or `ultra→max`, and the
+confirmation must match `/effort status` and the request wire value. For
+llama.cpp, verify focus requests
 `/props?model=<focused-id>` and that a template reporting
 `supports_reasoning_effort: false` has no graded selector. Open the OpenAI API or Claude
 API connection flow and verify the masked `API key` label and entry remain on

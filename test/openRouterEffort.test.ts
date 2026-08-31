@@ -114,6 +114,7 @@ describe('OpenRouter model-aware effort', () => {
       'medium',
       'high',
       'xhigh',
+      'ultra',
     ])
     expect(resolveAppliedEffort(MODEL, 'max', 'openrouter')).toBe('xhigh')
     expect(getDisplayedEffortLevel(MODEL, 'max', 'openrouter')).toBe('xhigh')
@@ -121,6 +122,12 @@ describe('OpenRouter model-aware effort', () => {
     expect(executeEffort('max', MODEL, 'openrouter').message).toContain(
       'Requested max (this session only); applied xhigh',
     )
+  })
+
+  test('Ultra uses an explicitly advertised xhigh ceiling on the exact wire', () => {
+    expect(resolveAppliedEffort(MODEL, 'ultra', 'openrouter')).toBe('ultra')
+    expect(getDisplayedEffortLevel(MODEL, 'ultra', 'openrouter')).toBe('ultra')
+    expect(toOpenRouterReasoningEffort(MODEL, 'ultra')).toBe('xhigh')
   })
 
   test('OpenRouter receives its unified xhigh reasoning request', () => {
@@ -146,6 +153,10 @@ describe('OpenRouter model-aware effort', () => {
     expect(executeEffort('max', model, 'openrouter').message).toContain(
       'applied high',
     )
+    expect(getSupportedEffortLevelsForModel(model, 'openrouter')).not.toContain(
+      'ultra',
+    )
+    expect(toOpenRouterReasoningEffort(model, 'ultra')).toBeUndefined()
   })
 
   test('a provider-native max remains max on the wire and in the UI', () => {
@@ -155,12 +166,12 @@ describe('OpenRouter model-aware effort', () => {
     expect(toOpenRouterReasoningEffort(model, 'max')).toBe('max')
   })
 
-  test('ultra is exact-only and never silently degrades to max', () => {
-    expect(resolveAppliedEffort('vendor/max-native', 'ultra', 'openrouter')).toBeUndefined()
-    expect(toOpenRouterReasoningEffort('vendor/max-native', 'ultra')).toBeUndefined()
-    expect(executeEffort('ultra', 'vendor/max-native', 'openrouter')).toEqual({
-      message: 'Not applied: vendor/max-native on openrouter does not advertise the ultra reasoning-effort level.',
-    })
+  test('Ultra preserves an advertised max ceiling and a native ultra value', () => {
+    expect(resolveAppliedEffort('vendor/max-native', 'ultra', 'openrouter')).toBe('ultra')
+    expect(toOpenRouterReasoningEffort('vendor/max-native', 'ultra')).toBe('max')
+    expect(executeEffort('ultra', 'vendor/max-native', 'openrouter').message).toContain(
+      'Set effort level to ultra',
+    )
 
     expect(
       getSupportedEffortLevelsForModel('vendor/ultra-native', 'openrouter'),

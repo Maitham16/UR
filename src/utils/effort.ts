@@ -11,11 +11,15 @@ import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getAntModelOverrideConfig, resolveAntModel } from './model/antModels.js'
 import type { ProviderId } from '../services/providers/providerRegistry.js'
+import type { ModelReasoningCapabilities } from '../services/providers/modelCatalog.js'
 /**
  * Normalized graded-reasoning values understood by UR provider adapters.
  * `max` is also the provider-neutral "use this model's ceiling" request; when
  * a provider calls that ceiling `xhigh` or `high`, resolution returns that
- * exact wire value before the request is serialized.
+ * exact wire value before the request is serialized. `ultra` is UR's visible
+ * beyond-high ceiling selector. It is offered only when the provider advertises
+ * `ultra`, `max`, `xhigh`, or an explicit equivalent, and is translated back to
+ * that exact provider wire value.
  */
 export type EffortLevel =
   | 'minimal'
@@ -44,6 +48,36 @@ export type EffortValue = EffortLevel | number
 
 const OLLAMA_GRADED_THINK_MODEL_RE = /gpt-oss/i
 
+/**
+ * Return the exact provider-authored value represented by UR's Ultra selector.
+ *
+ * `max` and `xhigh` are established beyond-high ceiling names in the provider
+ * APIs UR supports. Arbitrary labels remain ineligible unless discovery gives
+ * UR an explicit `ultra` alias, because their relative strength is unknowable.
+ */
+function getUltraEquivalentWireValue(
+  capabilities: ModelReasoningCapabilities | undefined,
+): string | undefined {
+  if (!Array.isArray(capabilities?.supportedEfforts)) return undefined
+
+  const advertised = new Set(
+    capabilities.supportedEfforts
+      .map(value => value.trim().toLowerCase())
+      .filter(Boolean),
+  )
+  const explicitAlias = Object.entries(capabilities.effortAliases ?? {}).find(
+    ([selector]) => selector.trim().toLowerCase() === 'ultra',
+  )?.[1]
+  const normalizedAlias = explicitAlias?.trim().toLowerCase()
+  if (normalizedAlias && advertised.has(normalizedAlias)) {
+    return normalizedAlias
+  }
+  if (advertised.has('ultra')) return 'ultra'
+  if (advertised.has('max')) return 'max'
+  if (advertised.has('xhigh')) return 'xhigh'
+  return undefined
+}
+
 export function normalizeEffortLevels(
   values: readonly string[],
 ): EffortLevel[] {
@@ -68,7 +102,7 @@ export function getSupportedEffortLevelsForModel(
 ): EffortLevel[] {
   if (isEnvTruthy(process.env.UR_CODE_ALWAYS_ENABLE_EFFORT)) {
     // The diagnostic override enables UR's established normalized ladder, but
-    // cannot fabricate a provider's opt-in `ultra` contract.
+    // cannot fabricate a provider's beyond-high Ultra equivalent.
     return [...ESTABLISHED_PROVIDER_EFFORT_LEVELS]
   }
 
@@ -85,8 +119,8 @@ export function getSupportedEffortLevelsForModel(
 
   const discovered = getRuntimeModelReasoningCapabilities(model, provider)
   if (discovered?.supportedEfforts === null) {
-    // `null` predates the ultra selector and means the provider accepts UR's
-    // established normalized ladder. Ultra remains explicit opt-in only.
+    // `null` means the gateway accepts the established normalized ladder but
+    // does not identify a model-specific beyond-high ceiling for Ultra.
     return applyOverrides(ESTABLISHED_PROVIDER_EFFORT_LEVELS)
   }
   if (discovered?.supportedEfforts !== undefined) {
@@ -100,10 +134,12 @@ export function getSupportedEffortLevelsForModel(
           advertisedWireValues.has(wireValue.trim().toLowerCase()),
       )
       .map(([selector]) => selector as EffortLevel)
+    const ultraEquivalent = getUltraEquivalentWireValue(discovered)
     return applyOverrides(
       normalizeEffortLevels([
         ...discovered.supportedEfforts,
         ...advertisedAliases,
+        ...(ultraEquivalent ? ['ultra'] : []),
       ]),
     )
   }
@@ -130,6 +166,23 @@ export function getSupportedEffortLevelsForModel(
   return []
 }
 
+/** User-facing labels that make UR-to-provider ceiling translation explicit. */
+export function getSupportedEffortLevelLabelsForModel(
+  model: string,
+  provider: ProviderId = getRuntimeProvider(),
+): string[] {
+  const levels = getSupportedEffortLevelsForModel(model, provider)
+  if (!levels.includes('ultra')) return levels
+  const nativeUltra = getUltraEquivalentWireValue(
+    getRuntimeModelReasoningCapabilities(model, provider),
+  )
+  return levels.map(level =>
+    level === 'ultra' && nativeUltra && nativeUltra !== 'ultra'
+      ? `ultra→${nativeUltra}`
+      : level,
+  )
+}
+
 export function getHighestSupportedEffortLevel(
   model: string,
   provider: ProviderId = getRuntimeProvider(),
@@ -145,9 +198,8 @@ export function resolveProviderEffortLevel(
 ): EffortLevel | undefined {
   const supported = getSupportedEffortLevelsForModel(model, provider)
   if (supported.length === 0) return undefined
-  // Ultra is never a synonym for max. It is valid only when the provider or
-  // model explicitly advertises ultra (or an explicit provider-authored alias
-  // captured by discovery).
+  // Ultra is a visible selector only for an explicitly advertised beyond-high
+  // ceiling. Request serialization preserves the provider's native name.
   if (requested === 'ultra') {
     return supported.includes('ultra') ? 'ultra' : undefined
   }
@@ -195,8 +247,9 @@ export type OpenRouterReasoningEffort =
 
 /**
  * Resolve a normalized UR selector to the exact provider-authored wire value.
- * Alias translation only happens when discovery explicitly supplied it and
- * its target is also in the provider's supported effort list.
+ * Ultra normalizes an advertised beyond-high ceiling (`ultra`, `max`, `xhigh`,
+ * or an explicit alias). Other alias translation happens only when discovery
+ * supplied it and its target is also in the provider's supported effort list.
  */
 export function getProviderEffortWireValue(
   model: string,
@@ -205,6 +258,10 @@ export function getProviderEffortWireValue(
 ): string | undefined {
   const capabilities = getRuntimeModelReasoningCapabilities(model, provider)
   const supported = getSupportedEffortLevelsForModel(model, provider)
+  if (requested === 'ultra') {
+    if (!supported.includes('ultra')) return undefined
+    return getUltraEquivalentWireValue(capabilities)
+  }
   if (!supported.includes(requested)) {
     if (requested !== 'max') return undefined
     const resolved = resolveProviderEffortLevel(model, requested, provider)
@@ -212,12 +269,13 @@ export function getProviderEffortWireValue(
   }
   const alias = capabilities?.effortAliases?.[requested]
   if (!alias) return requested
+  const normalizedAlias = alias.trim().toLowerCase()
   const advertised = capabilities.supportedEfforts
   if (
     Array.isArray(advertised) &&
-    advertised.some(value => value.trim().toLowerCase() === alias)
+    advertised.some(value => value.trim().toLowerCase() === normalizedAlias)
   ) {
-    return alias
+    return normalizedAlias
   }
   return undefined
 }
@@ -416,7 +474,7 @@ export function getEffortLevelDescription(level: EffortLevel): string {
     case 'max':
       return 'Maximum capability with deepest reasoning'
     case 'ultra':
-      return 'Provider-advertised ultra reasoning (available only on models that explicitly support it)'
+      return 'The provider-advertised beyond-high ceiling, using its exact native effort value'
   }
 }
 

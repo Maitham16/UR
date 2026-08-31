@@ -99,6 +99,15 @@ async function collect(stream: AsyncIterable<any>): Promise<any[]> {
 }
 
 describe('OpenAI Responses request and response mapping', () => {
+  test('maps GPT-5.6 Ultra to OpenAI\'s documented max wire value', () => {
+    const body = toOpenAIResponsesRequest({
+      model: 'gpt-5.6-sol',
+      messages: [{ role: 'user', content: 'go' }],
+      output_config: { effort: 'ultra' },
+    }) as any
+    expect(body.reasoning).toEqual({ effort: 'max' })
+  })
+
   test('maps only an explicitly advertised Ultra alias to the Responses wire', () => {
     const model = 'gpt-ultra-alias-test'
     cacheProviderModelsForProvider('openai-api', [{

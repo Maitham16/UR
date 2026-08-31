@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
+  cacheProviderModelsForProvider,
   clearProviderModelCacheForTests,
   ensureProviderModelsFresh,
   ensureProviderReasoningCapabilitiesForModel,
@@ -14,6 +15,10 @@ import {
   getStoredProviderApiKey,
   setProviderApiKey,
 } from '../src/services/providers/providerCredentials.js'
+import {
+  getProviderEffortWireValue,
+  getSupportedEffortLevelsForModel,
+} from '../src/utils/effort.js'
 
 let hadStoredOpenAiKey: string | undefined
 
@@ -344,6 +349,21 @@ describe('OpenAI-compatible reasoning discovery', () => {
         settings,
       ),
     ).toEqual(reasoning)
+    cacheProviderModelsForProvider('ollama', [{
+      id: 'kimi-k3:cloud',
+      displayName: 'kimi-k3:cloud',
+      description: 'Kimi K3 capability test',
+      reasoning,
+    }])
+    expect(
+      getSupportedEffortLevelsForModel(
+        'kimi-k3:cloud',
+        'ollama',
+      ),
+    ).toEqual(['low', 'high', 'max', 'ultra'])
+    expect(
+      getProviderEffortWireValue('kimi-k3:cloud', 'ultra', 'ollama'),
+    ).toBe('max')
   })
 
   test('uses Ollama documented effort ladders without inventing thinking support', async () => {

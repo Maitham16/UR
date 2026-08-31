@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.83.1
+
+- Made Ultra a capability-driven, visible ceiling selector without inventing a
+  provider tier. Models that explicitly advertise `max`, `xhigh`, native
+  `ultra`, or a validated custom alias now expose Ultra in `/model`; the picker
+  shows the exact mapping (such as `ultra→max`) and every adapter sends the
+  provider's native wire value. This covers Kimi K3, GPT-5.6, Claude Opus 5,
+  Claude Fable 5, and future live-catalog models with equivalent metadata,
+  while high-only, Boolean-thinking, and unknown-capability models remain
+  ineligible.
+- Preserved exact live reasoning metadata in snake_case or camelCase, kept
+  future Gemini ceiling values intact, and made a saved Ultra preference fall
+  back softly after switching to an ineligible provider/model instead of
+  failing the request.
+
 ## 1.83.0
 
 - Made provider endpoints fully provider-scoped across discovery, diagnostics,

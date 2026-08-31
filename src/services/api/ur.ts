@@ -1547,11 +1547,9 @@ async function* queryModel(
         options.model,
       ).catch(() => undefined)
     }
-    if (!getSupportedEffortLevelsForModel(options.model, effortProvider).includes('ultra')) {
-      throw new Error(
-        `Effort ultra is not available: ${options.model} on ${effortProvider} does not advertise ultra or a provider-authored equivalent.`,
-      )
-    }
+    // A saved Ultra choice can outlive a provider/model switch. If the new
+    // model has no advertised beyond-high ceiling, resolveAppliedEffort omits
+    // the effort instead of failing the whole request or inventing a value.
   }
 
   const effort = resolveAppliedEffort(

@@ -425,7 +425,7 @@ describe('standard API wire formats', () => {
       system: 'be terse',
       messages: userMessages(),
       max_tokens: 32,
-      output_config: { effort: 'max' },
+      output_config: { effort: 'ultra' },
     })
     const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
     expect(url).toBe('https://gateway.example/anthropic/v1/messages')
@@ -542,6 +542,41 @@ describe('standard API wire formats', () => {
       expect(
         (post.mock.calls[0]?.[1] as any).generationConfig.thinkingConfig,
       ).toEqual({ thinkingLevel: 'deep' })
+    } finally {
+      clearProviderModelCacheForTests()
+    }
+  })
+
+  test('direct Gemini preserves an advertised max ceiling selected as Ultra', async () => {
+    const model = 'gemini-max-ceiling-test'
+    cacheProviderModelsForProvider('gemini-api', [{
+      id: model,
+      displayName: model,
+      description: 'future max-capable test model',
+      reasoning: { supportedEfforts: ['low', 'high', 'max'] },
+    }])
+    const post = spyOn(axios, 'post').mockResolvedValue({
+      data: {
+        candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+      },
+      headers: {},
+    })
+    try {
+      const client = await createStandardAPIClient({
+        providerId: 'gemini-api',
+        apiKey: 'gm-test',
+        maxRetries: 0,
+      })
+      await client.beta.messages.create({
+        model,
+        messages: userMessages(),
+        max_tokens: 16,
+        output_config: { effort: 'ultra' },
+      })
+      expect(
+        (post.mock.calls[0]?.[1] as any).generationConfig.thinkingConfig,
+      ).toEqual({ thinkingLevel: 'max' })
     } finally {
       clearProviderModelCacheForTests()
     }

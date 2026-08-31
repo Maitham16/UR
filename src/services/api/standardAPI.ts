@@ -305,7 +305,7 @@ function toGeminiThinkingConfig(
       ? getProviderEffortWireValue(String(params.model ?? ''), requested, provider)
       : undefined
   const effort = wireEffort ?? (requested === 'ultra' ? undefined : requested)
-  if (wireEffort && !isEffortLevel(wireEffort)) {
+  if (wireEffort) {
     return { thinkingLevel: wireEffort }
   }
   if (

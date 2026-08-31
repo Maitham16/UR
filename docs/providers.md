@@ -181,14 +181,18 @@ resolved value as `reasoning_effort`. The command confirmation, status
 indicator, active-work spinner, SDK settings response, and provider request all
 use the same resolved value. If a provider advertises only boolean thinking,
 UR does not invent a graded effort selector.
-`ultra` is stricter than the provider-neutral `max`: it is selectable and
-accepted only when the provider/model explicitly advertises `ultra`, or when
-live metadata supplies an explicit provider-authored alias and canonical wire
-value. UR never maps unsupported `ultra` to `max`.
+`ultra` is UR's visible beyond-high ceiling selector. It is selectable only
+when the provider/model advertises `ultra`, `max`, `xhigh`, or an explicit
+provider-authored equivalent. UR shows the native mapping (for example,
+`ultra→max`) and sends that exact wire value; it never enables Ultra for a
+high-only model, boolean thinking, or unknown capability metadata. Arbitrary
+labels such as `deep` still require an explicit provider alias because UR
+cannot infer their rank.
 
 For Ollama, UR lazily reads the focused model's `/api/show` capabilities and
 sends the selected level through native `think`. Kimi K3 uses
-`low|high|max`; GPT-OSS uses `low|medium|high`; other models advertising
+`low|high|max` and therefore exposes Ultra as `ultra→max`; GPT-OSS uses
+`low|medium|high` and does not expose Ultra; other models advertising
 `thinking` use Ollama's current `low|medium|high|max` contract. Direct OpenAI,
 Anthropic, and Gemini models use curated model-specific ladders from their
 official documentation; live discovery rows are merged with those contracts.

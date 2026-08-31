@@ -156,6 +156,22 @@ describe('model entry construction', () => {
     })
   })
 
+  test('camel-case live reasoning metadata is normalized without guessing', () => {
+    expect(
+      parseModelReasoningCapabilities({
+        supportedEfforts: ['MAX', 'high', 'low'],
+        defaultEffort: 'MAX',
+        defaultEnabled: true,
+        supportsMaxTokens: false,
+      }),
+    ).toEqual({
+      supportedEfforts: ['max', 'high', 'low'],
+      defaultEffort: 'max',
+      defaultEnabled: true,
+      supportsMaxTokens: false,
+    })
+  })
+
   test('unusable entries are dropped rather than rendered blank', () => {
     expect(toDiscoveredModel(null, 'X')).toBeNull()
     expect(toDiscoveredModel({}, 'X')).toBeNull()

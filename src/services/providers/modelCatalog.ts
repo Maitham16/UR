@@ -30,7 +30,9 @@ export type ModelReasoningCapabilities = {
   /**
    * Optional provider-authored selector-to-wire aliases. For example, a
    * provider may explicitly advertise `ultra` as an alias for its canonical
-   * `deep` wire value. UR never invents these mappings.
+   * `deep` wire value. Established beyond-high values (`max` and `xhigh`) are
+   * also presented through UR's Ultra ceiling selector without changing the
+   * provider wire value; arbitrary names still require an explicit alias.
    */
   effortAliases?: Record<string, string>
   defaultEffort?: string
@@ -78,20 +80,28 @@ export function parseModelReasoningCapabilities(
 ): ModelReasoningCapabilities | undefined {
   if (!isRecord(value)) return undefined
 
+  const rawSupportedEfforts =
+    value.supported_efforts !== undefined
+      ? value.supported_efforts
+      : value.supportedEfforts
   const supportedEfforts =
-    value.supported_efforts === null
+    rawSupportedEfforts === null
       ? null
-      : Array.isArray(value.supported_efforts)
+      : Array.isArray(rawSupportedEfforts)
         ? Array.from(
             new Set(
-              value.supported_efforts
+              rawSupportedEfforts
                 .filter((entry): entry is string => typeof entry === 'string')
                 .map(entry => entry.trim().toLowerCase())
                 .filter(Boolean),
             ),
           )
         : undefined
-  const defaultEffort = asString(value.default_effort)?.toLowerCase()
+  const defaultEffort = asString(
+    value.default_effort !== undefined
+      ? value.default_effort
+      : value.defaultEffort,
+  )?.toLowerCase()
   const rawAliases = isRecord(value.effort_aliases)
     ? value.effort_aliases
     : isRecord(value.effortAliases)
@@ -111,12 +121,16 @@ export function parseModelReasoningCapabilities(
   const defaultEnabled =
     typeof value.default_enabled === 'boolean'
       ? value.default_enabled
+      : typeof value.defaultEnabled === 'boolean'
+        ? value.defaultEnabled
       : undefined
   const mandatory =
     typeof value.mandatory === 'boolean' ? value.mandatory : undefined
   const supportsMaxTokens =
     typeof value.supports_max_tokens === 'boolean'
       ? value.supports_max_tokens
+      : typeof value.supportsMaxTokens === 'boolean'
+        ? value.supportsMaxTokens
       : undefined
 
   if (

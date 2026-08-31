@@ -376,15 +376,17 @@ In the interactive app, `/model` is a two-step, provider-first picker:
 
    In the model catalog, use **Up/Down** to browse. The effort row updates to
    the focused model's exact provider-advertised levels; use **Left/Right** to
-   cycle only those levels before pressing Enter. `ultra` appears only when the
-   provider/model explicitly advertises it (or an explicit provider-authored
-   alias), and never degrades to `max`. A generic `max` request is
+   cycle only those levels before pressing Enter. `ultra` is UR's visible
+   beyond-high ceiling selector. It appears only when the provider/model
+   advertises `ultra`, `max`, `xhigh`, or an explicit equivalent, and the row
+   shows the exact mapping (for example, `ultra→max`). High-only and
+   boolean-thinking models do not get Ultra. A generic `max` request is
    resolved visibly to that model's actual `max`, `xhigh`, or `high` ceiling,
    and the resolved value is the value sent to the provider. llama.cpp models
    are checked lazily through their model-scoped `/props` capability while the
    cursor moves. Ollama models are checked through `/api/show`; Kimi K3 exposes
    `low`, `high`, and `max`, and the chosen level is sent through Ollama's
-   native `think` field. OpenRouter additionally
+   native `think` field; Ultra maps to Kimi's advertised `max`. OpenRouter additionally
    shows compact model names, FREE/PAID tier, context size, tool/reasoning
    support, and the full untruncated ID immediately below the focused entry.
    Its endpoint-scoped catalog is reused for five minutes; Ctrl+R forces an
