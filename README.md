@@ -386,9 +386,11 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    `max` request resolves visibly to that model's highest supported non-Ultra tier
    (commonly `max`, `xhigh`, or `high`), and that resolved value is sent to the provider. llama.cpp models
    are checked lazily through their model-scoped `/props` capability while the
-   cursor moves. Ollama models are checked through `/api/show`; Kimi K3 exposes
-   `low`, `high`, and `max`, and the chosen level is sent through Ollama's
-   native `think` field; Ultra maps to Kimi's advertised `max`. OpenRouter additionally
+   cursor moves. Ollama models are checked through `/api/show`; its `thinking`
+   capability enables boolean thinking without inventing a graded ladder.
+   GPT-OSS uses its documented `low|medium|high` values, while any other graded
+   values or Ultra aliases must be explicitly present in provider metadata.
+   The resolved value is sent through Ollama's native `think` field. OpenRouter additionally
    shows compact model names, FREE/PAID tier, context size, tool/reasoning
    support, and the full untruncated ID immediately below the focused entry.
    Its endpoint-scoped catalog is reused for five minutes; Ctrl+R forces an

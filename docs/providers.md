@@ -202,10 +202,11 @@ the provider-default `reasoning.enabled` control, or the exact token budget when
 the model advertises `supports_max_tokens`.
 
 For Ollama, UR lazily reads the focused model's `/api/show` capabilities and
-sends the selected level through native `think`. Kimi K3 uses
-`low|high|max` and therefore exposes Ultra as `ultra→max`; GPT-OSS uses
-`low|medium|high` and does not expose Ultra; other models advertising
-`thinking` use Ollama's current `low|medium|high|max` contract. Direct OpenAI,
+sends the resolved control through native `think`. A generic `thinking`
+capability means boolean thinking only. GPT-OSS uses Ollama's documented
+`low|medium|high` ladder and does not expose Ultra. Other graded ladders and
+Ultra aliases are used only when the endpoint explicitly returns them in model
+reasoning metadata. Direct OpenAI,
 Anthropic, and Gemini models use curated model-specific ladders from their
 official documentation; live discovery rows are merged with those contracts.
 See [Ollama thinking](https://docs.ollama.com/capabilities/thinking),

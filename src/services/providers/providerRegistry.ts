@@ -2478,47 +2478,55 @@ function reasoningCapabilitiesFromOllamaShow(
     return undefined
   }
   const root = value as Record<string, unknown>
-  const explicit = parseModelReasoningCapabilities(root.reasoning)
-  if (explicit) return explicit
-
   const capabilities = Array.isArray(root.capabilities)
     ? root.capabilities
         .filter((entry): entry is string => typeof entry === 'string')
         .map(entry => entry.trim().toLowerCase())
     : undefined
-  if (!capabilities) return undefined
-  if (!capabilities.includes('thinking')) {
-    return { supportedEfforts: [] }
-  }
 
   const details =
     root.details && typeof root.details === 'object'
       ? (root.details as Record<string, unknown>)
       : {}
+  const modelInfo =
+    root.model_info && typeof root.model_info === 'object'
+      ? (root.model_info as Record<string, unknown>)
+      : {}
+  const explicit =
+    parseModelReasoningCapabilities(root.reasoning) ??
+    parseModelReasoningCapabilities(modelInfo.reasoning) ??
+    parseModelReasoningCapabilities(details.reasoning) ??
+    parseModelReasoningCapabilities(root)
+  if (explicit) {
+    return capabilities
+      ? {
+          supportsThinking: capabilities.includes('thinking'),
+          ...explicit,
+        }
+      : explicit
+  }
+
+  if (!capabilities) return undefined
+  if (!capabilities.includes('thinking')) {
+    return { supportsThinking: false, supportedEfforts: [] }
+  }
+
   const identity = [model, details.family, details.parent_model]
     .filter((entry): entry is string => typeof entry === 'string')
     .join(' ')
 
-  // Ollama's native thinking contract advertises low/medium/high/max for most
-  // thinking models. Model-specific contracts can be narrower.
-  // Keep those exact so the picker never offers a value just because another
-  // Ollama model accepts it.
+  // Ollama's `thinking` capability is boolean for most model families. GPT-OSS
+  // is the documented exception with a low/medium/high string ladder. Never
+  // turn a generic capability flag or a model-name guess into graded levels;
+  // other ladders are accepted only through explicit provider metadata above.
   if (/gpt[-_]?oss/i.test(identity)) {
     return {
+      supportsThinking: true,
       supportedEfforts: ['low', 'medium', 'high'],
       defaultEffort: 'medium',
     }
   }
-  if (/kimi[-_]?k3|glm[-_]?5\.3/i.test(identity)) {
-    return {
-      supportedEfforts: ['low', 'high', 'max'],
-      defaultEffort: 'max',
-    }
-  }
-
-  return {
-    supportedEfforts: ['low', 'medium', 'high', 'max'],
-  }
+  return { supportsThinking: true }
 }
 
 function reasoningCapabilitiesFromProps(

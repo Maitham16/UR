@@ -208,8 +208,10 @@ graded selector.
   picker confirmation, status UI, SDK state, and outbound request share the same resolver.
 - Direct OpenAI, Anthropic, and Gemini use model-specific documented ladders. OpenRouter
   preserves live reasoning metadata. OpenAI-compatible servers receive
-  `reasoning_effort`. Ollama uses native `think`: Kimi K3 advertises `low|high|max`, so UR
-  shows `ultra→max`; GPT-OSS tops out at `high` and therefore omits Ultra. llama.cpp is probed
+  `reasoning_effort`. Ollama uses native `think`: generic `thinking` capability
+  metadata selects its boolean contract, while GPT-OSS uses the documented
+  `low|medium|high` ladder and therefore omits Ultra. Other graded ladders or
+  Ultra aliases require explicit model metadata. llama.cpp is probed
   lazily through its model-scoped `/props` contract.
 
 Unknown/future models are fail-closed for thinking request shaping: UR first consumes live

@@ -47,6 +47,7 @@ import {
 import { logForDebugging } from '../../utils/debug.js'
 import {
   getProviderEffortWireValue,
+  getSupportedEffortLevelsForModel,
   isEffortLevel,
 } from '../../utils/effort.js'
 import {
@@ -803,9 +804,13 @@ function getOllamaThink(
   if (capabilities && !supportsThinking) {
     return undefined
   }
-  // --effort lands in output_config.effort. Current Ollama accepts graded
-  // values for thinking-capable models. GPT-OSS is the documented exception:
-  // its ceiling is high, so provider-neutral max clamps to high.
+  if (thinking?.type === 'disabled') {
+    return supportsThinking ? false : undefined
+  }
+  // --effort lands in output_config.effort. Serialize a string only when
+  // model-scoped discovery advertised that exact ladder or alias. Most Ollama
+  // thinking models use the boolean contract; GPT-OSS advertises its graded
+  // low/medium/high contract through the shared capability resolver.
   const effort = (
     params as { output_config?: { effort?: unknown } }
   ).output_config?.effort
@@ -817,14 +822,16 @@ function getOllamaThink(
   if (advertisedWireEffort && supportsThinking) {
     return advertisedWireEffort
   }
+  const requestedEffort = typeof effort === 'string' && isEffortLevel(effort)
   if (
-    (effort === 'low' || effort === 'medium' || effort === 'high' ||
-      effort === 'max') &&
-    supportsThinking
+    requestedEffort &&
+    getSupportedEffortLevelsForModel(model, 'ollama').length > 0
   ) {
-    return effort === 'max' && /gpt[-_]?oss/i.test(model) ? 'high' : effort
+    // A stale or externally supplied setting must not bypass the exact ladder
+    // that discovery exposed for this model.
+    return false
   }
-  if (thinking && thinking.type !== 'disabled') {
+  if (thinking || requestedEffort) {
     return true
   }
   if (supportsThinking) {

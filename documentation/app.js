@@ -85,7 +85,7 @@ const commands = [
     category: 'Core',
     aliases: [],
     summary: 'Start an interactive session; a fresh workspace must choose and locally persist a validated provider/model pair first.',
-    examples: ['ur', 'ur --model kimi-k3:cloud --effort ultra', 'ur --continue', 'ur --resume'],
+    examples: ['ur', 'ur --model gpt-5.6-sol --effort ultra', 'ur --continue', 'ur --resume'],
   },
   {
     name: 'ur -p',

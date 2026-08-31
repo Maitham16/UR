@@ -305,7 +305,7 @@ describe('OpenAI-compatible reasoning discovery', () => {
     expect(authorization).toBe('Bearer ollama-test-key')
   })
 
-  test('queries focused Ollama models through /api/show and caches exact effort levels', async () => {
+  test('treats Ollama thinking capability as boolean without inventing effort levels', async () => {
     const settings = { provider: { active: 'ollama' as const } }
     const seen: Array<{ url: string; method?: string; body?: string }> = []
     const reasoning = await ensureProviderReasoningCapabilitiesForModel(
@@ -331,10 +331,7 @@ describe('OpenAI-compatible reasoning discovery', () => {
       },
     )
 
-    expect(reasoning).toEqual({
-      supportedEfforts: ['low', 'high', 'max'],
-      defaultEffort: 'max',
-    })
+    expect(reasoning).toEqual({ supportsThinking: true })
     expect(seen).toEqual([
       {
         url: 'http://localhost:11434/api/show',
@@ -352,7 +349,7 @@ describe('OpenAI-compatible reasoning discovery', () => {
     cacheProviderModelsForProvider('ollama', [{
       id: 'kimi-k3:cloud',
       displayName: 'kimi-k3:cloud',
-      description: 'Kimi K3 capability test',
+      description: 'Kimi K3 boolean thinking capability test',
       reasoning,
     }])
     expect(
@@ -360,13 +357,13 @@ describe('OpenAI-compatible reasoning discovery', () => {
         'kimi-k3:cloud',
         'ollama',
       ),
-    ).toEqual(['low', 'high', 'max', 'ultra'])
+    ).toEqual([])
     expect(
       getProviderEffortWireValue('kimi-k3:cloud', 'ultra', 'ollama'),
-    ).toBe('max')
+    ).toBeUndefined()
   })
 
-  test('uses Ollama documented effort ladders without inventing thinking support', async () => {
+  test('uses only Ollama documented or explicitly advertised effort ladders', async () => {
     const settings = { provider: { active: 'ollama' as const } }
     const show = async (model: string, capabilities: string[]) =>
       ensureProviderReasoningCapabilitiesForModel('ollama', model, {
@@ -377,19 +374,64 @@ describe('OpenAI-compatible reasoning discovery', () => {
       })
 
     expect(await show('gpt-oss:20b', ['completion', 'thinking'])).toEqual({
+      supportsThinking: true,
       supportedEfforts: ['low', 'medium', 'high'],
       defaultEffort: 'medium',
     })
     expect(await show('qwen3:latest', ['completion', 'thinking'])).toEqual({
-      supportedEfforts: ['low', 'medium', 'high', 'max'],
+      supportsThinking: true,
     })
     expect(await show('glm-5.3:cloud', ['completion', 'thinking'])).toEqual({
-      supportedEfforts: ['low', 'high', 'max'],
-      defaultEffort: 'max',
+      supportsThinking: true,
     })
     expect(await show('llama3:latest', ['completion', 'tools'])).toEqual({
+      supportsThinking: false,
       supportedEfforts: [],
     })
+  })
+
+  test('honors provider-authored Ollama reasoning metadata and Ultra aliases', async () => {
+    const settings = { provider: { active: 'ollama' as const } }
+    const reasoning = await ensureProviderReasoningCapabilitiesForModel(
+      'ollama',
+      'custom-reasoner:latest',
+      {
+        settings,
+        adapters: {
+          fetch: fetchReturning({
+            capabilities: ['completion', 'thinking'],
+            reasoning: {
+              supported_efforts: ['low', 'high', 'deep'],
+              effort_aliases: { ultra: 'deep' },
+              default_effort: 'high',
+            },
+          }),
+        },
+      },
+    )
+
+    expect(reasoning).toEqual({
+      supportsThinking: true,
+      supportedEfforts: ['low', 'high', 'deep'],
+      effortAliases: { ultra: 'deep' },
+      defaultEffort: 'high',
+    })
+    cacheProviderModelsForProvider('ollama', [{
+      id: 'custom-reasoner:latest',
+      displayName: 'custom-reasoner:latest',
+      description: 'explicit provider reasoning metadata',
+      reasoning,
+    }])
+    expect(
+      getSupportedEffortLevelsForModel('custom-reasoner:latest', 'ollama'),
+    ).toEqual(['low', 'high', 'ultra'])
+    expect(
+      getProviderEffortWireValue(
+        'custom-reasoner:latest',
+        'ultra',
+        'ollama',
+      ),
+    ).toBe('deep')
   })
 
   test('preserves provider-authored reasoning metadata from /v1/models', async () => {

@@ -204,39 +204,38 @@ test('Ollama chat requests enable thinking when the model advertises it', async 
   }
 })
 
-test('Ollama sends the selected graded effort for thinking-capable models', () => {
+test('Ollama sends strings only for graded models and booleans otherwise', () => {
   const capabilities = new Set(['completion', 'thinking', 'tools'])
-  const kimi = toOllamaChatRequest(
+  cacheProviderModelsForProvider('ollama', [
     {
-      model: 'kimi-k3:cloud',
-      messages: [],
-      output_config: { effort: 'max' },
-    } as never,
-    false,
-    capabilities,
-  )
-  const qwen = toOllamaChatRequest(
-    {
-      model: 'qwen3:latest',
-      messages: [],
-      output_config: { effort: 'medium' },
-    } as never,
-    false,
-    capabilities,
-  )
-  const gptOss = toOllamaChatRequest(
-    {
-      model: 'gpt-oss:20b',
-      messages: [],
-      output_config: { effort: 'max' },
-    } as never,
-    false,
-    capabilities,
-  )
+      id: 'gpt-oss:20b',
+      displayName: 'gpt-oss:20b',
+      description: 'documented graded model',
+      reasoning: {
+        supportsThinking: true,
+        supportedEfforts: ['low', 'medium', 'high'],
+      },
+    },
+  ])
+  try {
+    const request = (model: string, effort: 'medium' | 'max') =>
+      toOllamaChatRequest(
+        {
+          model,
+          messages: [],
+          output_config: { effort },
+        } as never,
+        false,
+        capabilities,
+      )
 
-  expect(kimi.think).toBe('max')
-  expect(qwen.think).toBe('medium')
-  expect(gptOss.think).toBe('high')
+    expect(request('kimi-k3:cloud', 'max').think).toBe(true)
+    expect(request('qwen3:latest', 'medium').think).toBe(true)
+    expect(request('deepseek-r1:latest', 'medium').think).toBe(true)
+    expect(request('gpt-oss:20b', 'max').think).toBe('high')
+  } finally {
+    clearProviderModelCacheForTests()
+  }
 })
 
 test('Ollama sends Ultra through the exact advertised ceiling or alias', () => {
@@ -260,7 +259,7 @@ test('Ollama sends Ultra through the exact advertised ceiling or alias', () => {
     {
       id: 'kimi-k3:cloud',
       displayName: 'kimi-k3:cloud',
-      description: 'Kimi K3 documented graded effort',
+      description: 'explicit provider-authored Kimi effort metadata',
       reasoning: { supportedEfforts: ['low', 'high', 'max'] },
     },
     {
