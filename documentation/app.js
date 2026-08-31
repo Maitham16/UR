@@ -67,9 +67,9 @@ const featureGroups = [
   },
   {
     title: 'Providers and auth',
-    tags: ['subscription', 'API', 'local', 'status bar'],
-    text: 'UR-native API/local/OpenAI-compatible runtimes, first-class subscription CLI providers dispatched through the official vendor CLIs, provider doctor checks, secure API-key connect, non-secret config, fallback hints, and provider-aware status-bar output.',
-    commands: ['ur provider list', 'ur provider status', 'ur provider doctor agy', 'ur connect status', 'ur config set provider openai-api', 'ur config set provider ollama'],
+    tags: ['subscription', 'API', 'local', 'effort', 'status bar'],
+    text: 'UR-native API/local/OpenAI-compatible runtimes, provider-scoped endpoints, provider-only Unsloth inference, capability-driven reasoning effort, responsive OpenRouter routing, first-class subscription CLI providers dispatched through the official vendor CLIs, provider doctor checks, secure API-key connect, non-secret config, fallback hints, and provider-aware status-bar output.',
+    commands: ['ur provider list', 'ur provider status', 'ur provider doctor agy', 'ur connect status', 'ur config set provider openai-api', 'ur config set provider ollama', 'ur config set base_url llama.cpp http://localhost:9931/v1', '/effort ultra'],
   },
   {
     title: 'Security and operations',
@@ -85,7 +85,7 @@ const commands = [
     category: 'Core',
     aliases: [],
     summary: 'Start an interactive session; a fresh workspace must choose and locally persist a validated provider/model pair first.',
-    examples: ['ur', 'ur --model qwen3-coder:480b-cloud', 'ur --continue', 'ur --resume'],
+    examples: ['ur', 'ur --model kimi-k3:cloud --effort ultra', 'ur --continue', 'ur --resume'],
   },
   {
     name: 'ur -p',
@@ -225,7 +225,7 @@ const commands = [
     category: 'Ops',
     aliases: ['settings'],
     summary: 'Open the config panel or persist safe non-secret provider settings.',
-    examples: ['ur config', 'ur config set provider ollama', 'ur config set provider openai-api', 'ur config set provider anthropic-api', 'ur config set model qwen3-coder:480b-cloud', 'ur config set base_url http://localhost:11434/v1', 'ur config set provider.fallback ollama'],
+    examples: ['ur config', 'ur config set provider ollama', 'ur config set provider openai-api', 'ur config set provider anthropic-api', 'ur config set model qwen3-coder:480b-cloud', 'ur config set base_url ollama http://localhost:11434', 'ur config set base_url llama.cpp http://localhost:9931/v1', 'ur config set provider.fallback ollama'],
   },
   {
     name: 'test-first',
@@ -547,8 +547,8 @@ const slashGroups = [
   },
   {
     title: 'Models, tools, and interop',
-    items: ['/model', '/model-doctor', '/model-route', '/escalate', '/mcp', '/plugin', '/skills', '/skill', '/sdk', '/a2a-card'],
-    text: 'Pick models, inspect capabilities, manage MCP/plugin extensions, browse prompt skills with /skills, run executable workflows with /skill, and expose interop surfaces.',
+    items: ['/model', '/provider', '/effort', '/fast', '/model-doctor', '/model-route', '/escalate', '/mcp', '/plugin', '/skills', '/skill', '/sdk', '/a2a-card'],
+    text: 'Pick providers and models, cycle only capability-backed effort selectors that map to provider-native values, inspect capabilities, manage MCP/plugin extensions, browse prompt skills with /skills, run executable workflows with /skill, and expose interop surfaces.',
   },
   {
     title: 'Security operations',

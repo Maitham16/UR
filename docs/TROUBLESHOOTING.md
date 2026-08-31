@@ -228,8 +228,8 @@ tool loop.
 - Fix: point UR at the right endpoint.
 
 ```sh
-ur config set base_url http://localhost:11434
-ur provider doctor
+ur config set base_url ollama http://localhost:11434
+ur provider doctor ollama
 ```
 
 Addresses are saved per provider. If the doctor probes an unexpected URL,

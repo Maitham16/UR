@@ -263,7 +263,8 @@ not fall back to Ollama unless `ollama` is the selected provider.
 ### Legal Provider Auth
 
 UR-Nexus stores only safe provider preferences: provider name, model name,
-base URL, fallback preference, and non-secret settings. API keys must stay in
+base URL, fallback preference, and non-secret settings. API keys stay out of
+plaintext settings and are read from the OS keychain after `ur connect` or from
 environment variables. API, local, and OpenAI-compatible server providers are
 UR-native runtimes and behave like Ollama: UR owns the conversation loop, tool
 loop, errors, and output.
@@ -290,7 +291,7 @@ ur config set provider openrouter
 ur config set provider unsloth
 ur config set model qwen2.5-coder:7b
 ur provider select-model ollama qwen2.5-coder:7b --json
-ur config set base_url http://localhost:11434
+ur config set base_url ollama http://localhost:11434
 ur config set base_url llama.cpp http://localhost:9931/v1
 ur config set provider.fallback ollama
 ```
@@ -305,7 +306,8 @@ provider before the URL to configure it without switching first, for example
 provider's address independently, so switching among Ollama, LM Studio,
 llama.cpp, vLLM, Unsloth, or another compatible endpoint restores that
 provider's last URL automatically. Existing single-URL settings are migrated
-to the previously active provider on the first switch.
+to the previously active provider on the first provider switch or scoped
+base-URL write.
 
 OpenAI API traffic uses Chat Completions by default. The Responses transport is
 an explicit, provider-scoped opt-in with privacy-conscious defaults:
@@ -375,14 +377,14 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    generic `subscription` entry is an internal placeholder hidden from listings.
 
    In the model catalog, use **Up/Down** to browse. The effort row updates to
-   the focused model's exact provider-advertised levels; use **Left/Right** to
-   cycle only those levels before pressing Enter. `ultra` is UR's visible
+   the focused model's capability-backed selectors; use **Left/Right** to cycle
+   only values UR can map to provider-native levels before pressing Enter. `ultra` is UR's visible
    beyond-high ceiling selector. It appears only when the provider/model
    advertises `ultra`, `max`, `xhigh`, or an explicit equivalent, and the row
-   shows the exact mapping (for example, `ultra→max`). High-only and
-   boolean-thinking models do not get Ultra. A generic `max` request is
-   resolved visibly to that model's actual `max`, `xhigh`, or `high` ceiling,
-   and the resolved value is the value sent to the provider. llama.cpp models
+   shows the exact mapping (for example, `ultra→max`). Models whose graded
+   ladder tops out at `high`, plus boolean-thinking models, do not get Ultra. A generic
+   `max` request resolves visibly to that model's highest supported non-Ultra tier
+   (commonly `max`, `xhigh`, or `high`), and that resolved value is sent to the provider. llama.cpp models
    are checked lazily through their model-scoped `/props` capability while the
    cursor moves. Ollama models are checked through `/api/show`; Kimi K3 exposes
    `low`, `high`, and `max`, and the chosen level is sent through Ollama's

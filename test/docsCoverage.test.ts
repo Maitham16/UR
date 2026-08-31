@@ -108,6 +108,71 @@ describe('documentation coverage', () => {
     expect(readme).toContain('packaged as a local VSIX')
   })
 
+  test('keeps public and technical reasoning-effort contracts synchronized', () => {
+    const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8')
+    const providers = readFileSync(
+      join(process.cwd(), 'docs', 'providers.md'),
+      'utf8',
+    )
+    const cli = readFileSync(
+      join(process.cwd(), 'technical', '02-cli-reference.md'),
+      'utf8',
+    )
+    const slash = readFileSync(
+      join(process.cwd(), 'technical', '03-slash-commands.md'),
+      'utf8',
+    )
+    const models = readFileSync(
+      join(process.cwd(), 'technical', '05-providers-and-models.md'),
+      'utf8',
+    )
+    const configuration = readFileSync(
+      join(process.cwd(), 'technical', '06-configuration.md'),
+      'utf8',
+    )
+    const site = readFileSync(
+      join(process.cwd(), 'documentation', 'index.html'),
+      'utf8',
+    )
+    const siteCatalog = readFileSync(
+      join(process.cwd(), 'documentation', 'app.js'),
+      'utf8',
+    )
+
+    for (const doc of [providers, cli, slash, models, site]) {
+      for (const level of [
+        'minimal',
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+        'max',
+        'ultra',
+      ]) {
+        expect(doc.toLowerCase()).toContain(level)
+      }
+    }
+    for (const doc of [readme, providers, models, configuration, site]) {
+      expect(doc).toContain('ultra→max')
+      expect(doc.toLowerCase()).toContain('advertis')
+    }
+    expect(cli).toContain('`--effort <level>`')
+    expect(slash).toContain(
+      '`/effort [minimal\\|low\\|medium\\|high\\|xhigh\\|max\\|ultra\\|auto]`',
+    )
+    expect(models).toContain('provider-scoped `provider.baseUrls`')
+    expect(models).toContain('Unsloth is an inference provider only')
+    expect(models).toContain('five-minute cache')
+    expect(configuration).toContain(
+      '`ur config set base_url <provider> <url>`',
+    )
+    expect(configuration).toContain('`/effort auto` clears')
+    expect(configuration).toContain('CLI flag values')
+    expect(siteCatalog).toContain("'/effort ultra'")
+    expect(slash).not.toContain('low\\|medium\\|high\\|max\\|auto]')
+    expect(models).not.toContain('low·medium·high·max·auto')
+  })
+
   test('IDE docs describe the professional integration and the bounded JetBrains implementation', () => {
     const ide = readFileSync(join(process.cwd(), 'docs', 'IDE.md'), 'utf8')
     const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8')

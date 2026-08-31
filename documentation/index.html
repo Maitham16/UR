@@ -45,7 +45,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.83.1</p>
+          <p class="eyebrow">Version 1.83.2</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -165,16 +165,31 @@ ur provider doctor agy</code></pre>
             <h3>API and local providers</h3>
             <pre><code>ur config set provider openai-compatible
 ur config set provider openai-api
-ur config set base_url http://localhost:11434/v1
+ur config set base_url ollama http://localhost:11434
+ur config set base_url llama.cpp http://localhost:9931/v1
+ur config set provider unsloth
 ur config set model qwen3-coder:480b-cloud
 ur config set provider.fallback ollama
 ur config set openai_transport responses
 ur config set responses.store false</code></pre>
-            <p>API providers require explicit selection and read keys from a key stored via <code>ur connect</code> (OS keychain) or from environment variables. OpenAI Responses is opt-in and privacy-first; Chat Completions remains the default. Local providers include Ollama, LM Studio, llama.cpp, and vLLM.</p>
+            <p>API providers require explicit selection and read keys from a key stored via <code>ur connect</code> (OS keychain) or from environment variables. Each configurable provider keeps its own <code>base_url</code>, so switching among Ollama, LM Studio, llama.cpp, vLLM, Unsloth, and API gateways restores the matching address. OpenAI Responses is opt-in and privacy-first; Chat Completions remains the default. Unsloth is an authenticated inference provider only.</p>
+          </article>
+          <article>
+            <h3>Capability-driven reasoning effort</h3>
+            <pre><code>/effort ultra
+ur --model kimi-k3:cloud --effort high
+/model  # Up/Down model · Left/Right effort · Enter apply</code></pre>
+            <p>The normalized vocabulary is <code>minimal</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>, <code>max</code>, and <code>ultra</code>; <code>/effort auto</code> clears an explicit choice. UR lists only capability-backed selectors it can map to the focused model's provider-native levels. <code>max</code> resolves to the highest supported non-Ultra tier. Ultra appears only for native <code>ultra</code>, advertised <code>max</code>/<code>xhigh</code>, or an explicit provider alias; the picker shows translations such as <code>ultra→max</code> and sends that exact provider value. Models that top out at <code>high</code>, boolean-thinking models, and unknown capabilities do not get Ultra.</p>
+          </article>
+          <article>
+            <h3>OpenRouter responsive routing</h3>
+            <pre><code>ur config set provider openrouter
+/model  # cached catalog; Ctrl+R forces live refresh</code></pre>
+            <p>The endpoint-scoped model catalog is reused for five minutes, while forced refresh never substitutes stale data. Interactive requests prefer OpenRouter latency routing, a stable session ID, and provider-authored prompt-cache markers; explicit routing preferences and model variants still win.</p>
           </article>
           <article>
             <h3>Status bar and updates</h3>
-            <pre><code>Ollama | llama3 | ask | main | update 1.48.0 available</code></pre>
+            <pre><code>Ollama | llama3 | ask | main | update 1.83.2 available</code></pre>
             <p>The interactive status bar shows only important runtime state: provider, model, mode, branch, active tasks, checks status when known, and update availability. It is hidden in CI, dumb terminals, and print mode.</p>
           </article>
           <article>

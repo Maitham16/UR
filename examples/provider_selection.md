@@ -38,7 +38,11 @@ ur config set provider codex-cli
 ```
 
 Inside a session, `/model` gives the same flow interactively: provider first,
-then only that provider's models. Verify the active pair any time:
+then only that provider's models. Use Up/Down to focus a model and Left/Right to
+cycle its capability-backed effort selectors before pressing Enter. Ultra is
+shown only when UR can map it to an advertised native `ultra`, `max`, `xhigh`,
+or explicit alias; the picker displays the exact mapping, such as
+`ultra→max`. Verify the active pair any time:
 
 ```sh
 ur provider status

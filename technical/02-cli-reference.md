@@ -24,6 +24,7 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | `--offline` | Local-first: no cloud APIs, telemetry, auto-update, remote control | `ur --offline` |
 | `--screen-reader` | Append-only accessible output, text-edit announcements, and reduced animation | `ur --screen-reader` |
 | `--model <model>` | Session model (e.g. an Ollama tag) | `ur --model qwen2.5-coder:7b` |
+| `--effort <level>` | Session reasoning effort: `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `ultra`; the selected provider/model must advertise a compatible level | `ur --model kimi-k3:cloud --effort ultra` |
 | `--fallback-model <model>` | Auto-fallback when primary is overloaded (with `-p`) | — |
 | `--agent <agent>` | Run as a named agent config | `ur --agent reviewer` |
 | `--agents <json>` | Define custom agents inline (JSON) | — |

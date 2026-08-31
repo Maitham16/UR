@@ -314,7 +314,7 @@ ur auth antigravity
 ur config set provider ollama
 ur config set provider openai-compatible
 ur config set model qwen2.5-coder:7b
-ur config set base_url http://localhost:11434/v1
+ur config set base_url openai-compatible http://localhost:11434/v1
 ur config set provider.fallback ollama
 ur upgrade
 ```

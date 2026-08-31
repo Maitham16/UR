@@ -10,6 +10,7 @@ Source of truth: `src/services/providers/providerRegistry.ts`, `src/utils/model/
 | `ollama` | Ollama | local runtime | none (localhost:11434) | **default local backend** |
 | `llama.cpp` | llama.cpp | local/server | OpenAI-compatible endpoint (localhost:8080/v1) | enabled |
 | `vllm` | vLLM | server | OpenAI-compatible endpoint (localhost:8000/v1) | enabled |
+| `unsloth` | Unsloth | local/server | authenticated OpenAI-compatible endpoint (localhost:8888/v1) | provider-only inference |
 | `openai-compatible` | OpenAI-compatible | server/api | any base URL + optional `OPENAI_COMPATIBLE_API_KEY` | enabled |
 | `openai-api` | OpenAI API | api | `OPENAI_API_KEY` | enabled |
 | `anthropic-api` | Claude API | api | `ANTHROPIC_API_KEY` | enabled |
@@ -20,11 +21,25 @@ Source of truth: `src/services/providers/providerRegistry.ts`, `src/utils/model/
 | `claude-code-cli` | Claude Code | subscription via official CLI | `claude auth login` | `disabled: true` |
 | `gemini-cli` | Gemini CLI | subscription via official CLI (Code Assist Std/Ent only) | — | `disabled: true` |
 | `antigravity-cli` | Antigravity | subscription via official CLI | — | `disabled: true` |
-| `lmstudio` | LM Studio | local server | OpenAI-compatible (localhost:1234/v1) | `disabled: true` |
+| `lmstudio` | LM Studio | local server | OpenAI-compatible (localhost:1234/v1) | enabled |
 
 Provider aliases are accepted everywhere a provider is named (e.g. `chatgpt`, `codex`,
 `openai codex` → `codex-cli`). Each definition declares capability metadata (native tool
 calls, native streaming, safety boundary label) used by the runtime and `/provider` UI.
+
+### Provider-scoped endpoints
+
+`provider.baseUrls` stores an independent endpoint for every configurable provider. With
+`ur config set base_url <url>`, the URL belongs to the active provider; the explicit form
+`ur config set base_url <provider> <url>` updates a provider without switching to it. A
+provider change restores that provider's saved URL instead of overwriting or reusing the
+previous provider's address. The legacy singular `provider.baseUrl` is migrated to the
+previously active provider on the first provider switch or scoped base-URL write. Discovery, doctor checks, and inference all
+resolve the same scoped value; default vendor URLs are fallbacks, not hardcoded destinations.
+
+Unsloth is an inference provider only. UR discovers and calls an authenticated, user-run
+Unsloth Studio OpenAI-compatible endpoint, sends `enable_tools: false` on every inference request, and does not
+start training, download models, or enable Unsloth's server-side tools.
 
 ### How to use
 
@@ -48,9 +63,10 @@ why CI (with no signed-in daemon) previously could not use Ollama at all. The
 key is trimmed, so a pasted trailing newline cannot corrupt the header, and
 read per request so a rotated key applies without restarting.
 
-Base-URL precedence: session override → `OLLAMA_HOST` / `OLLAMA_BASE_URL` →
-`ollama.host` setting → `https://ollama.com` when a key is set with no host →
-`http://localhost:11434`. An explicit host always wins, so self-hosted
+Base-URL precedence: session override → scoped `provider.baseUrls.ollama` (or the
+legacy active-provider URL) → `OLLAMA_HOST` / `OLLAMA_BASE_URL` → `ollama.host`
+setting → `https://ollama.com` when a key is set with no host →
+`http://localhost:11434`. Any explicit configured host wins, so self-hosted
 gateways that require a key are unaffected.
 
 `OLLAMA_API_KEY` is on the Agentic CI provider-credential allowlist, so it
@@ -84,8 +100,10 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
 - The startup picker validates the provider/model pair through the provider
   registry and persists it to `.ur/settings.local.json`. User-global model
   settings are intentionally insufficient for a new workspace.
-- `settings.json → model`, `provider.active`, `provider.availableModels`,
-  `provider.modelOverrides` persist choices per scope.
+- Top-level `model`, `availableModels`, and `modelOverrides`, plus `provider.active`,
+  `provider.model`, and provider-scoped `provider.baseUrls`, persist choices per scope. A
+  switch preserves the independently saved Ollama, LM Studio, llama.cpp, vLLM, Unsloth,
+  `openai-compatible`, and direct-API addresses.
 - `src/utils/model/aliases.ts` maps friendly aliases; `validateModel.ts` checks against the
   provider's discovered list; `ollamaTuning.ts` adjusts context/params for local models.
 - Deprecation warnings and 1M-context upgrade checks live in `deprecation.ts` /
@@ -94,11 +112,16 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   for a fresh workspace. Configured Ollama base URLs are honored consistently.
 - OpenAI-compatible endpoints use a dedicated credential key so an OpenAI API
   key is never forwarded to an arbitrary compatible base URL. Provider switches
-  clear stale endpoint/command overrides.
+  restore the selected provider's endpoint and clear incompatible command overrides.
 - Request adapters preserve system prompts, tools, images, stops, sampling,
   reasoning, metadata, and structured-output settings supported by each
   provider. Provider error payloads, empty responses, and truncated streams fail
   instead of becoming synthetic empty successes.
+- OpenRouter model discovery uses an endpoint-scoped five-minute cache. Opening the picker
+  reuses a fresh entry; Ctrl+R invalidates it and requires a live response instead of
+  silently substituting stale results. Interactive requests default to latency routing,
+  reuse a stable session identifier, and preserve provider-authored prompt-cache markers;
+  explicit routing preferences and model variants remain authoritative.
 - OpenAI API keeps Chat Completions as the default. Setting
   `provider.openaiTransport` through
   `ur config set openai_transport responses` selects the native Responses
@@ -164,11 +187,36 @@ LLM reflection pass:
 Disable automatic learning with `automaticLearningEnabled: false` or
 `UR_CODE_DISABLE_AUTO_LEARNING=1`.
 
+## Reasoning effort contract
+
+UR's normalized selector ladder is
+`minimal | low | medium | high | xhigh | max | ultra | auto`. The selectable rows are
+computed for the active provider/model pair from normalized live metadata (including
+snake_case and camelCase capability fields), curated official model contracts, or a
+model-scoped local probe. Empty or boolean-only capability metadata does not create a
+graded selector.
+
+- `max` is provider-neutral: it resolves to the selected model's highest supported
+  non-Ultra tier, commonly `high`, `xhigh`, or `max`.
+- `ultra` is UR's visible beyond-high ceiling selector. It appears only when the provider
+  advertises native `ultra`, `max`, `xhigh`, or an explicit provider-authored alias. The UI
+  exposes the translation (for example, `ultra→max`) and serialization sends that exact
+  wire value. Models whose graded ladder tops out at `high`, boolean-thinking models, and
+  unknown-capability models never get Ultra.
+- In `/model`, Up/Down changes the focused model and Left/Right cycles only that model's
+  capability-backed selectors; Enter applies the model and effort atomically. `/effort status`, the
+  picker confirmation, status UI, SDK state, and outbound request share the same resolver.
+- Direct OpenAI, Anthropic, and Gemini use model-specific documented ladders. OpenRouter
+  preserves live reasoning metadata. OpenAI-compatible servers receive
+  `reasoning_effort`. Ollama uses native `think`: Kimi K3 advertises `low|high|max`, so UR
+  shows `ultra→max`; GPT-OSS tops out at `high` and therefore omits Ultra. llama.cpp is probed
+  lazily through its model-scoped `/props` contract.
+
 ## Session behavior knobs
 
 | Feature | Command | Notes |
 |---|---|---|
-| Effort level | `/effort low·medium·high·max·auto` | persisted as `effortLevel` setting |
+| Effort level | `/effort minimal·low·medium·high·xhigh·max·ultra·auto` | capability-gated; provider-native wire value; persistable choices use `effortLevel` |
 | Fast mode | `/fast on` | `fastMode` / `fastModePerSessionOptIn` settings |
 | Advisor model | `/advisor <model>` / `/advisor off` | secondary model that critiques answers (`advisorModel` setting) |
 | Always thinking | `alwaysThinkingEnabled` setting | force extended thinking |

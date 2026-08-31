@@ -214,7 +214,7 @@ and `antigravity-cli` (`agy`) are subscription CLI providers.
 
 API modes are explicit. Keys are read from a key stored via
 `ur connect <provider>` (OS keychain) or from the environment variables
-`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, and
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
 `OPENROUTER_API_KEY`, and `UNSLOTH_API_KEY`. Subscription CLIs are optional, never required
 dependencies, and never used as a silent fallback. UR-Nexus never scrapes
 browser sessions, extracts OAuth tokens, or bypasses provider restrictions.
@@ -224,9 +224,10 @@ and is inference-only: UR does not manage Unsloth and disables its server-side
 tools while retaining standard function calls inside UR's guarded tool loop.
 
 UR stores `base_url` per provider. You can set different addresses for
-Ollama, llama.cpp, vLLM, and Unsloth once, then switch providers without
-re-entering any of them. `ur config get base_url` always reports the address
-for the currently active provider.
+Ollama, LM Studio, llama.cpp, vLLM, and Unsloth once, then switch providers without
+re-entering any of them. `ur config get base_url` reports the active provider's
+saved scoped override when one exists; use `ur provider status` or
+`ur provider doctor <provider>` to inspect the effective endpoint.
 Use `ur config set base_url <provider> <url>` to change one provider's address
 without making it active first. The `/model` picker offers the same endpoint
 entry flow for a disconnected local/server provider.

@@ -21,8 +21,9 @@ UR-Nexus never:
 - claims provider support unless the official CLI/API path works
 
 UR-Nexus stores only safe config: provider name, model name, base URL, fallback
-preference, and non-secret preferences. API keys are read from environment
-variables only when the user explicitly selects API mode.
+preference, and non-secret preferences. API keys stay out of plaintext settings
+and are read from the OS keychain after `ur connect` or from environment
+variables when the user explicitly selects API mode.
 
 ## Provider matrix
 
@@ -144,7 +145,8 @@ form `ur config set base_url <provider> <url>` configures a named provider
 without switching first, and the confirmation names that provider. Each
 provider retains its own address across `/provider`, `/model`, and CLI
 switches. The legacy single `provider.baseUrl` field remains readable and is
-migrated to the previously active provider on the first switch.
+migrated to the previously active provider on the first provider switch or
+scoped base-URL write.
 
 The override is not limited to local runtimes. OpenAI API, Anthropic API,
 Gemini API, and OpenRouter can each target a separate compatible gateway using
@@ -171,10 +173,11 @@ the previous provider.
 
 ### Reasoning effort
 
-Use `/effort minimal|low|medium|high|xhigh|max|ultra|auto` inside UR. UR normalizes
-the exact graded levels advertised for the active provider/model pair. `max`
-is provider-neutral and means the selected model's real ceiling: it therefore
-displays and sends `max`, `xhigh`, or `high` according to that model's contract.
+Use `/effort minimal|low|medium|high|xhigh|max|ultra|auto` inside UR. UR builds a
+capability-backed selector set from the native graded levels advertised for the active
+provider/model pair. `max` is provider-neutral and means the selected model's
+highest supported non-Ultra tier: it displays and sends the matching native
+value (commonly `max`, `xhigh`, or `high`) according to that model's contract.
 For OpenRouter, UR preserves the live `/models` reasoning metadata and sends
 the unified `reasoning.effort` request. OpenAI-compatible servers receive the
 resolved value as `reasoning_effort`. The command confirmation, status
@@ -184,8 +187,8 @@ UR does not invent a graded effort selector.
 `ultra` is UR's visible beyond-high ceiling selector. It is selectable only
 when the provider/model advertises `ultra`, `max`, `xhigh`, or an explicit
 provider-authored equivalent. UR shows the native mapping (for example,
-`ultra→max`) and sends that exact wire value; it never enables Ultra for a
-high-only model, boolean thinking, or unknown capability metadata. Arbitrary
+`ultra→max`) and sends that exact wire value; it never enables Ultra for a model
+whose graded ladder tops out at `high`, boolean thinking, or unknown capability metadata. Arbitrary
 labels such as `deep` still require an explicit provider alias because UR
 cannot infer their rank.
 
@@ -202,7 +205,7 @@ See [Ollama thinking](https://docs.ollama.com/capabilities/thinking),
 and [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking).
 
 The provider-first `/model` picker supports the same control directly: use
-Left/Right to move through the effort levels advertised by the focused model,
+Left/Right to move through the capability-backed selectors UR can map to the focused model's native levels,
 then Enter to apply the model and effort together. OpenRouter's live catalog
 shows pricing tier, context size, tool capability, reasoning capability, and
 the full, untruncated model ID immediately below the focused entry. Opening the
@@ -283,12 +286,12 @@ After selecting a provider:
 - Each model shows its concise capabilities; OpenRouter includes pricing,
   context size, tool support, and reasoning support. Its list uses compact
   model names; focus an entry to see the exact provider/model ID
-- Model source is displayed: `live` (dynamic discovery), `cache` (fallback), or `static` (predefined)
-- OpenRouter is fresh-only in this picker: every opening fetches `/models`, and
-  a failed refresh is reported instead of showing stale cached entries
+- Model source is displayed: `live` (dynamic discovery), `cache` (recent endpoint result), or `static` (predefined)
+- OpenRouter reuses an endpoint-scoped `/models` result for five minutes; Ctrl+R
+  forces a live refresh, and a failed forced refresh never substitutes stale data
 - Up/Down changes the focused model and immediately switches to that model's
-  provider-advertised effort list; Left/Right cycles only those exact levels;
-  Enter confirms both
+  capability-backed effort selectors; Left/Right cycles only values UR can map
+  to provider-native levels, and Enter confirms both
 - Press Esc to go back and change provider
 
 **Confirmation**
@@ -591,7 +594,7 @@ ur provider models unsloth --json
 
 The default endpoint is `http://localhost:8888/v1`; override it with
 `ur config set base_url unsloth <url>`. Authentication is mandatory. Every Unsloth
-request sets `enable_tools: false`, including streaming requests. The model may
+inference request sets `enable_tools: false`, including streaming requests. The model may
 still return standard OpenAI function calls; UR handles those through the same
 native tool flow used by its other providers. This keeps Unsloth provider-only
 and avoids running a second tool loop inside Studio. See the official
@@ -621,6 +624,7 @@ Required variables:
 | Provider | Required env vars | Optional env vars |
 | --- | --- | --- |
 | OpenAI-compatible | `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_MODEL` | `OPENAI_COMPATIBLE_API_KEY` |
+| Unsloth | `UNSLOTH_API_KEY`, `UNSLOTH_MODEL` | `UNSLOTH_BASE_URL` (defaults to `http://localhost:8888/v1`) |
 | OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL` | `OPENAI_BASE_URL` |
 | OpenRouter | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | `OPENROUTER_BASE_URL` |
 | Anthropic | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | `ANTHROPIC_BASE_URL` |

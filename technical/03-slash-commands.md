@@ -62,7 +62,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/model-doctor [model]` (`/model-capabilities`) | local | Probe local Ollama models for agent capabilities (tool calls, context, speed) | `/model-doctor llama3.3` |
 | `/model-route <task>` (`/model-pick`) | local | Recommend best model for a task from cheap/strong/default pools | `/model-route "large refactor across 40 files"` |
 | `/local-first` (`/offline-readiness`, `/local`) | local | Report readiness for no-cloud/offline/lab environments | `/local-first --json` |
-| `/effort [low\|medium\|high\|max\|auto]` | jsx | Set model effort level | `/effort high` |
+| `/effort [minimal\|low\|medium\|high\|xhigh\|max\|ultra\|auto]` | jsx | Inspect or set the active model's capability-driven, provider-native effort level | `/effort ultra` |
 | `/fast [on\|off]` | jsx | Toggle fast mode | `/fast on` |
 | `/advisor [<model>\|off]` | local | Configure a second "advisor" model that critiques the main model | `/advisor gpt-5.5` |
 | `/escalate plan\|run\|oracle\|policy "<task>"` | local | Run on a fast model, auto-escalate hard steps to an oracle model | `/escalate run "prove this lock-free queue is correct" --oracle gpt-5.5` |

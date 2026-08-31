@@ -164,7 +164,8 @@ request; Ollama is only used when `ollama` is the selected provider.
 The configured `base_url` is provider-scoped. Setting an address while vLLM is
 active does not replace the saved Ollama, llama.cpp, or Unsloth address;
 returning to any provider restores its own URL. Legacy `provider.baseUrl`
-settings are migrated to the old active provider when the first switch occurs.
+settings are migrated to the old active provider on the first provider switch
+or scoped base-URL write.
 To configure a provider that is not active, use
 `ur config set base_url <provider> <url>`; the success message names the target
 provider. This applies to direct API providers and gateways (OpenAI, Anthropic,
@@ -184,6 +185,12 @@ entry stays on one masked row and stores the value through the keychain flow.
 Ollama and llama.cpp capabilities are loaded lazily for the focused model from
 `/api/show` and `/props`, respectively, so the arrow selector reflects the
 actual model rather than a provider-wide guess.
+
+The effort row contains only capability-backed selectors UR can map to native
+provider values. Ultra appears only when metadata advertises `ultra`, `max`,
+`xhigh`, or an explicit alias; mappings such as `ultra→max` are shown and sent
+exactly. Models that top out at `high`, boolean-thinking models, and unknown
+capabilities omit Ultra. See [Reasoning effort](providers.md#reasoning-effort).
 
 The same provider-first picker is mandatory on the first interactive run in a
 workspace with no model in `.ur/settings.json` or `.ur/settings.local.json`.
@@ -223,7 +230,7 @@ UNSLOTH_API_KEY=...
 Unsloth is an inference-provider integration only. Start Unsloth Studio and
 load the model outside UR, connect its generated key with `ur connect unsloth`,
 then select a model discovered from `http://localhost:8888/v1` (or your
-configured `base_url`). UR always sends `enable_tools: false`; standard model
+configured `base_url`). UR sends `enable_tools: false` on every inference request; standard model
 function calls continue through UR's normal native tool flow, while Unsloth's
 server-side tools remain disabled so the integration stays provider-only.
 

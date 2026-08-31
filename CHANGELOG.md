@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.83.2
+
+- Synchronized the public guides, static documentation site, examples, and
+  source-derived technical specifications with the shipped capability-backed
+  effort contract. The docs now cover the complete selector ladder, `/effort`
+  and `--effort`, Left/Right model-picker control, provider-neutral `max`, and
+  exact Ultra mappings such as `ultra→max`, while clearly excluding models that
+  top out at `high`, Boolean-thinking models, and unknown capabilities.
+- Corrected adjacent provider documentation: provider-scoped `base_url`
+  persistence, Unsloth's provider-only inference boundary, LM Studio's enabled
+  status, and OpenRouter's five-minute endpoint cache and latency-oriented
+  request routing. Added regression coverage to keep public and technical
+  effort documentation synchronized. This release changes documentation and
+  source comments only; runtime behavior remains the 1.83.1 contract.
+
 ## 1.83.1
 
 - Made Ultra a capability-driven, visible ceiling selector without inventing a
