@@ -233,6 +233,82 @@ describe('provider tool-call request and response mapping', () => {
     expect(request.tool_choice).toBeUndefined()
   })
 
+  test('OpenRouter prioritizes low latency and promotes UR session stickiness', () => {
+    const request = toOpenAICompatibleRequest(
+      {
+        model: 'anthropic/claude-sonnet-5',
+        messages: userMessages(),
+        metadata: {
+          user_id: JSON.stringify({ session_id: 'ur-session-123' }),
+        },
+      },
+      'openrouter',
+    )
+
+    expect(request.provider).toEqual({ sort: 'latency' })
+    expect(request.session_id).toBe('ur-session-123')
+  })
+
+  test('OpenRouter preserves explicit routing and prompt-cache markers', () => {
+    const request = toOpenAICompatibleRequest(
+      {
+        model: 'anthropic/claude-sonnet-5',
+        provider: { sort: 'throughput', allow_fallbacks: true },
+        system: [
+          {
+            type: 'text',
+            text: 'stable system prefix',
+            cache_control: { type: 'ephemeral', ttl: '1h', scope: 'global' },
+          },
+        ],
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'stable user prefix',
+                cache_control: { type: 'ephemeral' },
+              },
+            ],
+          },
+        ],
+      },
+      'openrouter',
+    )
+
+    expect(request.provider).toEqual({
+      sort: 'throughput',
+      allow_fallbacks: true,
+    })
+    expect(request.messages[0].content).toEqual([
+      {
+        type: 'text',
+        text: 'stable system prefix',
+        cache_control: { type: 'ephemeral', ttl: '1h' },
+      },
+    ])
+    expect(request.messages[1].content).toEqual([
+      {
+        type: 'text',
+        text: 'stable user prefix',
+        cache_control: { type: 'ephemeral' },
+      },
+    ])
+  })
+
+  test('OpenRouter model routing variants keep their native strategy', () => {
+    const request = toOpenAICompatibleRequest(
+      {
+        model: 'openai/gpt-5.5:nitro',
+        messages: userMessages(),
+      },
+      'openrouter',
+    )
+
+    expect(request.provider).toBeUndefined()
+  })
+
   test('OpenRouter citation annotations become deduplicated Markdown sources', () => {
     const annotations = [
       {

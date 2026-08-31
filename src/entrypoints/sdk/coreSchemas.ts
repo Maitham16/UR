@@ -99,7 +99,7 @@ export const ThinkingConfigSchema = lazySchema(() =>
       ThinkingDisabledSchema(),
     ])
     .describe(
-      "Controls UR's thinking/reasoning behavior. When set, takes precedence over the deprecated maxThinkingTokens.",
+      "Controls UR's thinking/reasoning behavior: adaptive lets a compatible model manage reasoning, enabled requests an explicit token budget for compatible legacy APIs, and disabled turns extended thinking off.",
     ),
 )
 
@@ -393,6 +393,9 @@ export const HOOK_EVENTS = [
   'AfterCommand',
   'BeforeCommit',
   'OnFailure',
+  'Interrupt',
+  'PreModelSwitch',
+  'PostModelSwitch',
 ] as const
 
 export const HookEventSchema = lazySchema(() => z.enum(HOOK_EVENTS))
@@ -510,6 +513,53 @@ export const SessionStartHookInputSchema = lazySchema(() =>
       source: z.enum(['startup', 'resume', 'clear', 'compact']),
       agent_type: z.string().optional(),
       model: z.string().optional(),
+    }),
+  ),
+)
+
+export const InterruptHookInputSchema = lazySchema(() =>
+  BaseHookInputSchema().and(
+    z.object({
+      hook_event_name: z.literal('Interrupt'),
+      reason: z.enum([
+        'user_cancel',
+        'new_prompt',
+        'remote_cancel',
+        'shutdown',
+        'other',
+      ]),
+      source: z.enum(['keyboard', 'prompt_submit', 'remote', 'sdk', 'system']),
+      model: z.string().optional(),
+    }),
+  ),
+)
+
+export const ModelSwitchSourceSchema = lazySchema(() =>
+  z.enum(['picker', 'command', 'cli', 'config', 'api', 'fallback']),
+)
+
+export const PreModelSwitchHookInputSchema = lazySchema(() =>
+  BaseHookInputSchema().and(
+    z.object({
+      hook_event_name: z.literal('PreModelSwitch'),
+      from_provider: z.string().optional(),
+      from_model: z.string().optional(),
+      to_provider: z.string(),
+      to_model: z.string(),
+      source: ModelSwitchSourceSchema(),
+    }),
+  ),
+)
+
+export const PostModelSwitchHookInputSchema = lazySchema(() =>
+  BaseHookInputSchema().and(
+    z.object({
+      hook_event_name: z.literal('PostModelSwitch'),
+      from_provider: z.string().optional(),
+      from_model: z.string().optional(),
+      to_provider: z.string(),
+      to_model: z.string(),
+      source: ModelSwitchSourceSchema(),
     }),
   ),
 )
@@ -903,6 +953,9 @@ export const HookInputSchema = lazySchema(() =>
     AfterCommandHookInputSchema(),
     BeforeCommitHookInputSchema(),
     OnFailureHookInputSchema(),
+    InterruptHookInputSchema(),
+    PreModelSwitchHookInputSchema(),
+    PostModelSwitchHookInputSchema(),
   ]),
 )
 
@@ -1256,7 +1309,7 @@ export const ModelInfoSchema = lazySchema(() =>
         .optional()
         .describe('Whether this model supports effort levels'),
       supportedEffortLevels: z
-        .array(z.enum(['minimal', 'low', 'medium', 'high', 'xhigh', 'max']))
+        .array(z.enum(['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']))
         .optional()
         .describe('Available effort levels for this model'),
       supportsAdaptiveThinking: z
@@ -1366,7 +1419,7 @@ export const AgentDefinitionSchema = lazySchema(() =>
         ),
       effort: z
         .union([
-          z.enum(['minimal', 'low', 'medium', 'high', 'xhigh', 'max']),
+          z.enum(['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']),
           z.number().int(),
         ])
         .optional()

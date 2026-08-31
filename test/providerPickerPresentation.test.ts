@@ -4,7 +4,10 @@ import {
   formatModelSourceLabel,
   formatProviderModelDescription,
   getProviderKeyInputColumns,
+  providerPickerStatusWithoutNetwork,
+  providerSupportsEndpointEditing,
 } from '../src/components/ProviderFirstModelPicker.js'
+import { getProviderDefinition } from '../src/services/providers/providerRegistry.js'
 import {
   buildProviderModelLabels,
   compactModelDisplayName,
@@ -21,6 +24,12 @@ describe('provider-first model picker presentation', () => {
     expect(cycleProviderPickerEffort('high', 'right', ['high'])).toBe('high')
     expect(cycleProviderPickerEffort('high', 'right', ['low', 'high', 'max'])).toBe('max')
     expect(cycleProviderPickerEffort('low', 'left', ['low', 'high', 'max'])).toBe('max')
+    expect(
+      cycleProviderPickerEffort('max', 'right', ['low', 'max', 'ultra']),
+    ).toBe('ultra')
+    expect(
+      cycleProviderPickerEffort('ultra', 'right', ['low', 'max', 'ultra']),
+    ).toBe('low')
   })
 
   test('API key entry stays wide enough without exceeding narrow panes', () => {
@@ -28,6 +37,64 @@ describe('provider-first model picker presentation', () => {
     expect(getProviderKeyInputColumns(40)).toBe(20)
     expect(getProviderKeyInputColumns(20)).toBe(8)
     expect(getProviderKeyInputColumns()).toBe(60)
+  })
+
+  test('builds the initial provider list without requiring a network doctor', () => {
+    const openRouter = getProviderDefinition('openrouter')
+    expect(providerPickerStatusWithoutNetwork(openRouter, {}, 'none')).toEqual({
+      status: 'missing',
+      label: 'OPENROUTER_API_KEY required',
+    })
+    expect(providerPickerStatusWithoutNetwork(openRouter, {}, 'env')).toEqual({
+      status: 'connected',
+      label: 'Environment API key ready',
+    })
+
+    const ollama = getProviderDefinition('ollama')
+    expect(providerPickerStatusWithoutNetwork(ollama, {}, 'none')).toEqual({
+      status: 'unknown',
+      label: 'Endpoint configured; checked when selected',
+    })
+
+    const compatible = getProviderDefinition('openai-compatible')
+    expect(providerPickerStatusWithoutNetwork(compatible, {}, 'none')).toEqual({
+      status: 'missing',
+      label: 'Endpoint required',
+    })
+    expect(
+      providerPickerStatusWithoutNetwork(
+        compatible,
+        {
+          provider: {
+            baseUrls: { 'openai-compatible': 'http://localhost:9931/v1' },
+          },
+        },
+        'none',
+      ),
+    ).toEqual({
+      status: 'unknown',
+      label: 'Endpoint configured; checked when selected',
+    })
+  })
+
+  test('requires Unsloth authentication while leaving every API endpoint editable', () => {
+    const unsloth = getProviderDefinition('unsloth')
+    expect(providerPickerStatusWithoutNetwork(unsloth, {}, 'none')).toEqual({
+      status: 'missing',
+      label: 'UNSLOTH_API_KEY required',
+    })
+    expect(providerPickerStatusWithoutNetwork(unsloth, {}, 'stored')).toEqual({
+      status: 'unknown',
+      label: 'Stored API key and endpoint ready; checked when selected',
+    })
+
+    expect(providerSupportsEndpointEditing(unsloth)).toBe(true)
+    expect(
+      providerSupportsEndpointEditing(getProviderDefinition('openai-api')),
+    ).toBe(true)
+    expect(
+      providerSupportsEndpointEditing(getProviderDefinition('subscription')),
+    ).toBe(false)
   })
 
   test('OpenRouter models show concise live capabilities', () => {
@@ -47,6 +114,7 @@ describe('provider-first model picker presentation', () => {
     ).toBe('FREE · 131K context · tools · reasoning')
     expect(formatModelSourceLabel('live')).toBe('● LIVE CATALOG')
     expect(formatModelSourceLabel('cache')).toBe('◐ CACHED CATALOG')
+    expect(formatModelSourceLabel('unavailable')).toBe('× CATALOG UNAVAILABLE')
   })
 
   test('OpenRouter labels stay compact while duplicate names remain clear', () => {

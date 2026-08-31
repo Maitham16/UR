@@ -35,9 +35,7 @@
  * - The system supports multiple SDK MCP servers running simultaneously
  * - Message IDs are preserved through the entire flow for proper correlation
  */
-
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
-import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
+import type { JSONRPCMessage, Transport } from '@modelcontextprotocol/server'
 
 /**
  * Callback function to send an MCP message and get the response

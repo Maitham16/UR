@@ -7,7 +7,11 @@
  * embedder is available or a request fails.
  */
 
-import { getOllamaBaseUrl } from '../../utils/model/ollamaConfig.js'
+import {
+  getOllamaAuthHeaders,
+  getOllamaBaseUrl,
+} from '../../utils/model/ollamaConfig.js'
+import { getProviderApiKey } from '../providers/providerCredentials.js'
 
 export type Embedder = (texts: string[]) => Promise<number[][]>
 
@@ -41,7 +45,10 @@ export function makeOllamaEmbedder(
     if (texts.length === 0) return []
     const response = await fetch(`${baseUrl}/api/embed`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...getOllamaAuthHeaders(process.env, getProviderApiKey('ollama')),
+      },
       body: JSON.stringify({ model, input: texts }),
     })
     if (!response.ok) {

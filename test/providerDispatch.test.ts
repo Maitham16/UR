@@ -8,6 +8,7 @@ import { createStandardAPIClient } from '../src/services/api/standardAPI.js'
 import { createOpenAICompatibleClient } from '../src/services/api/openaiCompatible.js'
 import { resolveActiveProviderModel } from '../src/services/api/providerClient.js'
 import {
+  cacheProviderModelsForProvider,
   clearProviderModelCacheForTests,
   getProviderFamily,
   getRuntimeProviderId,
@@ -416,6 +417,7 @@ describe('standard API wire formats', () => {
     const client = await createStandardAPIClient({
       providerId: 'anthropic-api',
       apiKey: 'sk-ant-test',
+      baseUrl: 'https://gateway.example/anthropic',
       maxRetries: 1,
     })
     const res = await client.beta.messages.create({
@@ -426,7 +428,7 @@ describe('standard API wire formats', () => {
       output_config: { effort: 'max' },
     })
     const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
-    expect(url).toBe('https://api.anthropic.com/v1/messages')
+    expect(url).toBe('https://gateway.example/anthropic/v1/messages')
     expect(config.headers['x-api-key']).toBe('sk-ant-test')
     expect(config.headers['anthropic-version']).toBeDefined()
     expect(config.headers.Authorization).toBeUndefined()
@@ -434,6 +436,45 @@ describe('standard API wire formats', () => {
     expect(body.messages).toEqual(userMessages())
     expect(body.output_config).toEqual({ effort: 'max' })
     expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('hi from claude')
+  })
+
+  test('direct Anthropic sends an explicitly advertised Ultra alias', async () => {
+    const model = 'claude-ultra-alias-test'
+    cacheProviderModelsForProvider('anthropic-api', [{
+      id: model,
+      displayName: model,
+      description: 'test model',
+      reasoning: {
+        supportedEfforts: ['deep'],
+        effortAliases: { ultra: 'deep' },
+      },
+    }])
+    const post = spyOn(axios, 'post').mockResolvedValue({
+      data: {
+        id: 'msg_ultra',
+        model,
+        content: [{ type: 'text', text: 'ok' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+      headers: {},
+    })
+    try {
+      const client = await createStandardAPIClient({
+        providerId: 'anthropic-api',
+        apiKey: 'sk-test',
+        maxRetries: 0,
+      })
+      await client.beta.messages.create({
+        model,
+        messages: userMessages(),
+        max_tokens: 16,
+        output_config: { effort: 'ultra' },
+      })
+      expect((post.mock.calls[0]?.[1] as any).output_config.effort).toBe('deep')
+    } finally {
+      clearProviderModelCacheForTests()
+    }
   })
 
   test('gemini-api posts generateContent with contents/parts', async () => {
@@ -447,6 +488,7 @@ describe('standard API wire formats', () => {
     const client = await createStandardAPIClient({
       providerId: 'gemini-api',
       apiKey: 'gm-key',
+      baseUrl: 'https://gateway.example/gemini',
       maxRetries: 1,
     })
     const res = await client.beta.messages.create({
@@ -456,13 +498,53 @@ describe('standard API wire formats', () => {
       output_config: { effort: 'medium' },
     })
     const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
-    expect(url).toContain('/models/gemini-3.5-flash:generateContent')
+    expect(url).toBe(
+      'https://gateway.example/gemini/v1beta/models/gemini-3.5-flash:generateContent',
+    )
     expect(config.headers['x-goog-api-key']).toBe('gm-key')
     expect(body.contents[0].parts[0].text).toBe('hello')
     expect(body.generationConfig.thinkingConfig).toEqual({
       thinkingLevel: 'medium',
     })
     expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('hi from gemini')
+  })
+
+  test('direct Gemini sends an explicitly advertised Ultra alias', async () => {
+    const model = 'gemini-ultra-alias-test'
+    cacheProviderModelsForProvider('gemini-api', [{
+      id: model,
+      displayName: model,
+      description: 'test model',
+      reasoning: {
+        supportedEfforts: ['deep'],
+        effortAliases: { ultra: 'deep' },
+      },
+    }])
+    const post = spyOn(axios, 'post').mockResolvedValue({
+      data: {
+        candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+      },
+      headers: {},
+    })
+    try {
+      const client = await createStandardAPIClient({
+        providerId: 'gemini-api',
+        apiKey: 'gm-test',
+        maxRetries: 0,
+      })
+      await client.beta.messages.create({
+        model,
+        messages: userMessages(),
+        max_tokens: 16,
+        output_config: { effort: 'ultra' },
+      })
+      expect(
+        (post.mock.calls[0]?.[1] as any).generationConfig.thinkingConfig,
+      ).toEqual({ thinkingLevel: 'deep' })
+    } finally {
+      clearProviderModelCacheForTests()
+    }
   })
 
   test('openai-api posts chat/completions with Bearer', async () => {
@@ -478,6 +560,7 @@ describe('standard API wire formats', () => {
     const client = await createStandardAPIClient({
       providerId: 'openai-api',
       apiKey: 'sk-openai',
+      baseUrl: 'https://gateway.example/openai',
       maxRetries: 1,
     })
     const res = await client.beta.messages.create({
@@ -487,7 +570,7 @@ describe('standard API wire formats', () => {
       output_config: { effort: 'xhigh' },
     })
     const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
-    expect(url).toBe('https://api.openai.com/v1/chat/completions')
+    expect(url).toBe('https://gateway.example/openai/v1/chat/completions')
     expect(config.headers.Authorization).toBe('Bearer sk-openai')
     expect(body.reasoning_effort).toBe('xhigh')
     expect((res as { content: Array<{ text?: string }> }).content[0]?.text).toBe('hi from openai')

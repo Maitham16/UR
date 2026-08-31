@@ -73,12 +73,12 @@ import type {
 import { maybeResizeAndDownsampleImageBlock } from './imageResizer.js'
 import type { PastedContent } from './config.js'
 import { getGlobalConfig } from './config.js'
+import type { ReadResourceResult } from '@modelcontextprotocol/server'
 import {
   getDefaultmodelSModel,
   getDefaultmodelHModel,
   getDefaultmodelOModel,
 } from './model/model.js'
-import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js'
 import { getSkillToolCommands, getMcpSkillCommands } from '../commands.js'
 import type { Command } from '../types/command.js'
 import uniqBy from 'lodash-es/uniqBy.js'
@@ -159,6 +159,10 @@ import {
   getKairosActive,
 } from '../bootstrap/state.js'
 import type { QuerySource } from '../constants/querySource.js'
+import {
+  renderTaskPromptOverlay,
+  resolveTaskPromptOverlays,
+} from '../constants/taskPromptOverlays.js'
 import {
   getDeferredToolsDelta,
   isDeferredToolsDeltaEnabled,
@@ -684,6 +688,10 @@ export type Attachment =
       level: 'high'
     }
   | {
+      type: 'task_prompt_overlay'
+      content: string
+    }
+  | {
       type: 'deferred_tools_delta'
       addedNames: string[]
       addedLines: string[]
@@ -777,6 +785,9 @@ export async function getAttachments(
   // Attachments which are added in response to on user input
   const userInputAttachments = input
     ? [
+        maybe('task_prompt_overlay', () =>
+          Promise.resolve(getTaskPromptOverlayAttachment(input)),
+        ),
         maybe('at_mentioned_files', () =>
           processAtMentionedFiles(input, context),
         ),
@@ -1454,6 +1465,17 @@ function getUltrathinkEffortAttachment(input: string | null): Attachment[] {
   }
   logEvent('tengu_ultrathink', {})
   return [{ type: 'ultrathink_effort', level: 'high' }]
+}
+
+export function getTaskPromptOverlayAttachment(input: string): Attachment[] {
+  const overlays = resolveTaskPromptOverlays(input)
+  if (overlays.length === 0) return []
+  return [
+    {
+      type: 'task_prompt_overlay',
+      content: renderTaskPromptOverlay(overlays),
+    },
+  ]
 }
 
 // Exported for compact.ts — the gate must be identical at both call sites.

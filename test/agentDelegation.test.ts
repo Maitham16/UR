@@ -280,6 +280,29 @@ describe('a2a task server lifecycle', () => {
     const fetched = await json(get)
     expect(fetched.result.id).toBe(sent.result.id)
     expect(fetched.result.history.length).toBeGreaterThan(0)
+
+    const streamRequest = protocolMessage('stream-1', 'stream this patch')
+    streamRequest.method = 'message/stream'
+    const stream = await handleA2ARequest(
+      request('/a2a/jsonrpc', {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer server-token',
+          'a2a-version': '0.3',
+        },
+        body: JSON.stringify(streamRequest),
+      }),
+      options,
+      baseUrl,
+    )
+    expect(stream.headers.get('content-type')).toContain('text/event-stream')
+    const events = (await stream.text())
+      .split('\n\n')
+      .map(value => value.trim())
+      .filter(Boolean)
+      .map(value => JSON.parse(value.replace(/^data:\s*/u, '')))
+    expect(events[0].result.kind).toBe('task')
+    expect(events.at(-1).result.status.state).toBe('completed')
   })
 
   test('enforces the A2A JSON-RPC HTTP binding', async () => {

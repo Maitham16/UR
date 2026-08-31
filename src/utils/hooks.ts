@@ -113,10 +113,13 @@ import type {
   AfterCommandHookInput,
   BeforeCommitHookInput,
   OnFailureHookInput,
+  InterruptHookInput,
+  PreModelSwitchHookInput,
+  PostModelSwitchHookInput,
 } from 'src/entrypoints/agentSdkTypes.js'
 import type { TaskMemoryKind } from '../services/context/projectContextManifest.js'
+import type { ElicitResult } from '@modelcontextprotocol/server'
 import type { StatusLineCommandInput } from '../types/statusLine.js'
-import type { ElicitResult } from '@modelcontextprotocol/sdk/types.js'
 import type { FileSuggestionCommandInput } from '../types/fileSuggestion.js'
 import type { HookResultMessage } from 'src/types/message.js'
 import chalk from 'chalk'
@@ -1668,6 +1671,13 @@ export async function getMatchingHooks(
         break
       case 'ConfigChange':
         matchQuery = hookInput.source
+        break
+      case 'Interrupt':
+        matchQuery = hookInput.reason
+        break
+      case 'PreModelSwitch':
+      case 'PostModelSwitch':
+        matchQuery = `${hookInput.to_provider}:${hookInput.to_model}`
         break
       case 'InstructionsLoaded':
         matchQuery = hookInput.load_reason
@@ -3928,6 +3938,93 @@ export async function* executeSetupHooks(
     signal,
     timeoutMs,
     forceSyncExecution,
+  })
+}
+
+export type InterruptHookReason =
+  | 'user_cancel'
+  | 'new_prompt'
+  | 'remote_cancel'
+  | 'shutdown'
+  | 'other'
+export type InterruptHookSource =
+  | 'keyboard'
+  | 'prompt_submit'
+  | 'remote'
+  | 'sdk'
+  | 'system'
+export type ModelSwitchHookSource =
+  | 'picker'
+  | 'command'
+  | 'cli'
+  | 'config'
+  | 'api'
+  | 'fallback'
+
+export type ModelSwitchHookDetails = {
+  fromProvider?: string
+  fromModel?: string
+  toProvider: string
+  toModel: string
+  source: ModelSwitchHookSource
+}
+
+/** Fire an audit-only lifecycle hook when an active turn is interrupted. */
+export async function executeInterruptHooks(
+  reason: InterruptHookReason,
+  source: InterruptHookSource,
+  model?: string,
+  timeoutMs: number = TOOL_HOOK_EXECUTION_TIMEOUT_MS,
+): Promise<HookOutsideReplResult[]> {
+  const hookInput: InterruptHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'Interrupt',
+    reason,
+    source,
+    model,
+  }
+  return executeHooksOutsideREPL({ hookInput, matchQuery: reason, timeoutMs })
+}
+
+/** Run before a user-visible provider/model switch. Blocking results cancel it. */
+export async function executePreModelSwitchHooks(
+  details: ModelSwitchHookDetails,
+  timeoutMs: number = TOOL_HOOK_EXECUTION_TIMEOUT_MS,
+): Promise<HookOutsideReplResult[]> {
+  const hookInput: PreModelSwitchHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'PreModelSwitch',
+    from_provider: details.fromProvider,
+    from_model: details.fromModel,
+    to_provider: details.toProvider,
+    to_model: details.toModel,
+    source: details.source,
+  }
+  return executeHooksOutsideREPL({
+    hookInput,
+    matchQuery: `${details.toProvider}:${details.toModel}`,
+    timeoutMs,
+  })
+}
+
+/** Fire after a provider/model switch has been persisted and applied. */
+export async function executePostModelSwitchHooks(
+  details: ModelSwitchHookDetails,
+  timeoutMs: number = TOOL_HOOK_EXECUTION_TIMEOUT_MS,
+): Promise<HookOutsideReplResult[]> {
+  const hookInput: PostModelSwitchHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'PostModelSwitch',
+    from_provider: details.fromProvider,
+    from_model: details.fromModel,
+    to_provider: details.toProvider,
+    to_model: details.toModel,
+    source: details.source,
+  }
+  return executeHooksOutsideREPL({
+    hookInput,
+    matchQuery: `${details.toProvider}:${details.toModel}`,
+    timeoutMs,
   })
 }
 

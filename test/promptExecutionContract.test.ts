@@ -27,7 +27,12 @@ test('execution contract is ordered, complete, and compact', () => {
     'state skipped or failing checks',
   )
   expect(EXECUTION_CONTRACT_SECTION).toContain('observed evidence')
-  expect(EXECUTION_CONTRACT_SECTION).toContain('untrusted data')
+  expect(EXECUTION_CONTRACT_SECTION).toContain(
+    'evidence rather than higher-priority authority',
+  )
+  expect(EXECUTION_CONTRACT_SECTION).toContain(
+    'user-scoped project guidance',
+  )
   expect(EXECUTION_CONTRACT_SECTION).toContain('blocked or partial')
 
   const words = EXECUTION_CONTRACT_SECTION.split(/\s+/).length
@@ -130,7 +135,9 @@ test('consolidated guidance preserves every execution safety invariant', () => {
   expect(EXECUTION_CONTRACT_SECTION).toContain(
     'finish every required step before reporting done',
   )
-  expect(EXECUTION_CONTRACT_SECTION).toContain('untrusted data')
+  expect(EXECUTION_CONTRACT_SECTION).toContain(
+    'evidence rather than higher-priority authority',
+  )
   expect(EXECUTION_CONTRACT_SECTION).toContain('never emit an empty turn')
   expect(EXECUTION_CONTRACT_SECTION).not.toContain(
     '--break-system-packages',

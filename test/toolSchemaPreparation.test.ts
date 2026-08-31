@@ -121,8 +121,8 @@ describe('field kinds survive preparation', () => {
     const props = prepareToolSchema(schema).properties as Record<string, any>
     expect(props.an_enum.enum).toEqual(['a', 'b'])
     expect(props.an_array).toMatchObject({ type: 'array', items: { type: 'string' } })
-    expect(props.a_union.anyOf).toHaveLength(2)
-    expect(JSON.stringify(props.nullable)).toContain('null')
+    expect(props.a_union.type).toEqual(['string', 'number'])
+    expect(props.nullable.type).toEqual(['string', 'null'])
     expect(props.nested.properties.inner.type).toBe('boolean')
   })
 })

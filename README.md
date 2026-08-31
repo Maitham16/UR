@@ -71,6 +71,9 @@ handing work off to other tools or agents when needed.
   executable skills, reusable templates, deterministic validators, language
   adapters, LSP servers, role modes, custom agents, IDE diff bundles, A2A
   endpoints, and local knowledge indexes.
+- **Standards-current protocol runtime.** MCP client and server paths use the
+  stable split TypeScript SDK v2 packages and negotiate the final 2026-07-28
+  protocol while retaining only explicit, tested compatibility surfaces.
 
 ## Prompt Planning and Task Board
 
@@ -168,7 +171,7 @@ Planning defaults are safe and can be configured with:
 - Bun `>=1.3.0` (this repository pins `bun@1.3.14`). Bun is mandatory: every
   install path — npm, GitHub, or source checkout — runs the CLI through Bun,
   not Node. UR-Nexus is not Node-native.
-- Node.js `>=18.18` only to start the npm-installed launcher script
+- Node.js `>=22.12` to start the npm-installed launcher script
   (`bin/ur.js`), which immediately checks for Bun and re-execs into it. If Bun
   is missing, the launcher errors out instead of falling back to Node.
 - `sharp` installs automatically as a native runtime dependency (image
@@ -288,6 +291,7 @@ ur config set provider unsloth
 ur config set model qwen2.5-coder:7b
 ur provider select-model ollama qwen2.5-coder:7b --json
 ur config set base_url http://localhost:11434
+ur config set base_url llama.cpp http://localhost:9931/v1
 ur config set provider.fallback ollama
 ```
 
@@ -295,8 +299,10 @@ ur config set provider.fallback ollama
 guidance. UR never switches providers automatically: inspect the failure and
 select the recovery provider explicitly with `ur config set provider <id>`.
 
-`base_url` belongs to the provider that is active when it is set. UR remembers
-each provider's address independently, so switching among Ollama, LM Studio,
+`base_url` belongs to the active provider when only a URL is supplied. Pass a
+provider before the URL to configure it without switching first, for example
+`ur config set base_url llama.cpp http://localhost:9931/v1`. UR remembers each
+provider's address independently, so switching among Ollama, LM Studio,
 llama.cpp, vLLM, Unsloth, or another compatible endpoint restores that
 provider's last URL automatically. Existing single-URL settings are migrated
 to the previously active provider on the first switch.
@@ -340,10 +346,10 @@ ur connect logout openai-api          # clear a stored key
 | Claude API | API key | UR-native | `ANTHROPIC_API_KEY` or `ur connect anthropic-api` |
 | Gemini API | API key | UR-native | `GEMINI_API_KEY` or `ur connect gemini-api` |
 | OpenRouter | API/router | UR-native | `OPENROUTER_API_KEY` or `ur connect openrouter` |
-| Ollama | local | UR-native | localhost Ollama runtime |
-| LM Studio | local/server | UR-native | local OpenAI-compatible server |
-| llama.cpp | local/server | UR-native | local OpenAI-compatible server |
-| vLLM | local/server | UR-native | OpenAI-compatible server |
+| Ollama | local/server | UR-native | configurable local, LAN, or hosted endpoint; optional `OLLAMA_API_KEY` |
+| LM Studio | local/server | UR-native | configurable endpoint; optional `LMSTUDIO_API_KEY` |
+| llama.cpp | local/server | UR-native | configurable endpoint; optional `LLAMA_CPP_API_KEY` |
+| vLLM | local/server | UR-native | configurable endpoint; optional `VLLM_API_KEY` |
 | Unsloth | local/server | UR-native | authenticated user-run Unsloth Studio endpoint (`UNSLOTH_API_KEY`) |
 | Codex CLI | subscription | external app bridge | official Codex CLI login (`ur auth chatgpt`) |
 | Claude Code | subscription | external app bridge | official Claude Code login (`ur auth claude`) |
@@ -360,7 +366,8 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    `unavailable`, `unknown`).
 2. **Choose a model.** Only the selected provider's models are shown, labelled
    by source: `live` (discovered from the endpoint), `cache` (last discovery),
-   or `static` (predefined). Local/server providers (Ollama, LM Studio,
+   `static` (predefined), or `unavailable` after a failed discovery with no
+   fallback. Local/server providers (Ollama, LM Studio,
    llama.cpp, vLLM, Unsloth) and OpenAI-compatible endpoints are discovered live; API
    providers use live discovery from their `/models` endpoint once a key is
    connected (with a curated fallback list before that). Subscription CLIs show
@@ -369,7 +376,9 @@ In the interactive app, `/model` is a two-step, provider-first picker:
 
    In the model catalog, use **Up/Down** to browse. The effort row updates to
    the focused model's exact provider-advertised levels; use **Left/Right** to
-   cycle only those levels before pressing Enter. A generic `max` request is
+   cycle only those levels before pressing Enter. `ultra` appears only when the
+   provider/model explicitly advertises it (or an explicit provider-authored
+   alias), and never degrades to `max`. A generic `max` request is
    resolved visibly to that model's actual `max`, `xhigh`, or `high` ceiling,
    and the resolved value is the value sent to the provider. llama.cpp models
    are checked lazily through their model-scoped `/props` capability while the
@@ -378,10 +387,16 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    native `think` field. OpenRouter additionally
    shows compact model names, FREE/PAID tier, context size, tool/reasoning
    support, and the full untruncated ID immediately below the focused entry.
-   Its catalog is fetched fresh every time it opens and never falls back to a
-   stale cached list.
+   Its endpoint-scoped catalog is reused for five minutes; Ctrl+R forces an
+   immediate live refresh without substituting stale entries. Interactive
+   requests prefer OpenRouter's latency routing and reuse a stable session ID
+   and provider-authored prompt-cache markers for warmer multi-turn streams.
    API-key entry is masked, aligned on one row, and stored through the OS
    keychain flow.
+
+   Selecting a disconnected local/server provider opens an endpoint field in
+   `/model`; saving it continues directly to discovery and leaves every other
+   provider's address untouched.
 
 Model lists never cross providers: OpenAI API, Claude API, Gemini API,
 OpenRouter, Ollama, and OpenAI-compatible local/server endpoints are separate
@@ -582,7 +597,7 @@ commit, push, or create PRs unless explicitly requested:
 `/fix-bug`, `/refactor`, `/paper-implementation`, `/benchmark`, `/security-review`, `/dockerize`, `/latex-paper`.
 Install matching agent templates with `ur agent-templates install`.
 
-New built-in tools (exposed through MCP and the UR HTTP compatibility API): GitHub, API, Browser, Docker, TestRunner, Database. File-system and terminal tools are already built in (FileRead, FileEdit, FileWrite, Glob, Grep, Bash, PowerShell).
+New built-in tools (exposed through MCP and the UR HTTP compatibility API): GitHub, API, Browser, Docker, TestRunner, Database. Browser can discover and invoke permission-gated imperative WebMCP tools registered by the active site; site schemas and results remain bounded, untrusted content. File-system and terminal tools are already built in (FileRead, FileEdit, FileWrite, Glob, Grep, Bash, PowerShell).
 
 ### Plugin Marketplace
 
@@ -811,8 +826,8 @@ the permission boundary matters.
   (`sandbox.enabled: true`, best-effort), or `required`
   (`sandbox.enabled: true` + `sandbox.failIfUnavailable: true`) — `required`
   fails closed and refuses to start if OS sandbox support is unavailable.
-  OS confinement uses `sandbox-exec` (Seatbelt) on macOS or `bwrap`
-  (bubblewrap) on Linux/WSL2; see `ur sandbox status`.
+  OS confinement uses `sandbox-exec` (Seatbelt) on macOS and `bwrap`
+  (bubblewrap) on Linux/WSL2; see `ur sandbox status` for the active policy.
 - This sandbox wraps UR-run Bash/File tool commands only. It does not extend
   to actions a subscription CLI provider performs internally — see
   [Provider Guide](docs/providers.md).

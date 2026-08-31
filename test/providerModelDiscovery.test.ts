@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   clearProviderModelCacheForTests,
+  ensureProviderModelsFresh,
   ensureProviderReasoningCapabilitiesForModel,
   getProviderReasoningCapabilitiesForModel,
   getProviderRuntimeBlockReason,
@@ -39,11 +40,23 @@ describe('API provider live model discovery', () => {
     const result = await listModelsForProviderWithSource('openai-api', {
       adapters: {
         env: { OPENAI_API_KEY: 'sk-test' },
-        fetch: fetchReturning({ data: [{ id: 'gpt-5.5' }, { id: 'gpt-4o' }, { id: 'o3-mini' }] }),
+        fetch: fetchReturning({
+          data: [
+            { id: 'gpt-5.6-sol', reasoning: { mandatory: true } },
+            { id: 'gpt-5.5' },
+            { id: 'o3-mini' },
+          ],
+        }),
       },
     })
     expect(result.source).toBe('live')
-    expect(result.models.map(m => m.id)).toEqual(['gpt-4o', 'gpt-5.5', 'o3-mini']) // sorted, real
+    expect(result.models.map(m => m.id)).toEqual(['gpt-5.5', 'gpt-5.6-sol', 'o3-mini']) // sorted, live and authoritative
+    expect(result.models.find(m => m.id === 'gpt-5.6-sol')?.reasoning).toEqual({
+      supportedEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+      effortAliases: { minimal: 'none' },
+      defaultEffort: 'medium',
+      mandatory: true,
+    })
     expect(result.models.find(m => m.id === 'gpt-5.5')?.reasoning).toEqual({
       supportedEfforts: ['low', 'medium', 'high', 'xhigh'],
       defaultEffort: 'medium',
@@ -178,8 +191,31 @@ describe('API provider live model discovery', () => {
       },
     })
     expect(failed.models).toEqual([])
-    expect(failed.source).toBe('live')
+    expect(failed.source).toBe('unavailable')
     expect(failed.warning).toContain('No cached catalog was shown')
+  })
+
+  test('OpenRouter reuses its endpoint-scoped catalog inside the freshness TTL', async () => {
+    let calls = 0
+    const options = {
+      adapters: {
+        env: { OPENROUTER_API_KEY: 'or' },
+        fetch: (async () => {
+          calls++
+          return new Response(JSON.stringify({
+            data: [{ id: 'vendor/fast-model' }],
+          }))
+        }) as unknown as typeof fetch,
+      },
+    }
+
+    const first = await ensureProviderModelsFresh('openrouter', options)
+    const second = await ensureProviderModelsFresh('openrouter', options)
+
+    expect(calls).toBe(1)
+    expect(first.source).toBe('live')
+    expect(second.source).toBe('cache')
+    expect(second.models.map(model => model.id)).toEqual(['vendor/fast-model'])
   })
 
   test('OpenRouter models that explicitly lack tools are described and not selectable', async () => {
@@ -239,6 +275,31 @@ describe('API provider live model discovery', () => {
 })
 
 describe('OpenAI-compatible reasoning discovery', () => {
+  test('Ollama discovery normalizes the scoped /api URL and sends its optional key', async () => {
+    let seenUrl = ''
+    let authorization: string | null = null
+    const result = await listModelsForProviderWithSource('ollama', {
+      settings: {
+        provider: {
+          active: 'vllm',
+          baseUrls: { ollama: 'https://ollama.example/api' },
+        },
+      },
+      adapters: {
+        env: { OLLAMA_API_KEY: 'ollama-test-key' },
+        fetch: (async (input, init) => {
+          seenUrl = String(input)
+          authorization = new Headers(init?.headers).get('authorization')
+          return new Response(JSON.stringify({ models: [{ name: 'cloud-model' }] }))
+        }) as typeof fetch,
+      },
+    })
+
+    expect(result.source).toBe('live')
+    expect(seenUrl).toBe('https://ollama.example/api/tags')
+    expect(authorization).toBe('Bearer ollama-test-key')
+  })
+
   test('queries focused Ollama models through /api/show and caches exact effort levels', async () => {
     const settings = { provider: { active: 'ollama' as const } }
     const seen: Array<{ url: string; method?: string; body?: string }> = []
@@ -301,6 +362,10 @@ describe('OpenAI-compatible reasoning discovery', () => {
     })
     expect(await show('qwen3:latest', ['completion', 'thinking'])).toEqual({
       supportedEfforts: ['low', 'medium', 'high', 'max'],
+    })
+    expect(await show('glm-5.3:cloud', ['completion', 'thinking'])).toEqual({
+      supportedEfforts: ['low', 'high', 'max'],
+      defaultEffort: 'max',
     })
     expect(await show('llama3:latest', ['completion', 'tools'])).toEqual({
       supportedEfforts: [],

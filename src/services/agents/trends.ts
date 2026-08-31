@@ -1,4 +1,3 @@
-import type { AgentCard as ProtocolAgentCard } from '@a2a-js/sdk'
 import {
   type A2AAgentCardSignature,
   type A2ACardSigningKey,
@@ -38,7 +37,43 @@ type A2AAgentCardOptions = {
   signingKey?: A2ACardSigningKey
 }
 
-export type A2AAgentCard = ProtocolAgentCard
+export type A2AAgentCard = {
+  protocolVersion: '0.3.0'
+  name: string
+  description: string
+  url: string
+  preferredTransport: 'JSONRPC'
+  additionalInterfaces: Array<{ url: string; transport: 'JSONRPC' }>
+  version: string
+  documentationUrl: string
+  capabilities: {
+    streaming: true
+    pushNotifications: true
+    stateTransitionHistory: true
+  }
+  securitySchemes?: Record<
+    string,
+    {
+      type: 'http'
+      scheme: 'bearer'
+      description: string
+      bearerFormat?: string
+    }
+  >
+  security?: Array<Record<string, string[]>>
+  defaultInputModes: string[]
+  defaultOutputModes: string[]
+  provider: { organization: string; url: string }
+  skills: Array<{
+    id: string
+    name: string
+    description: string
+    tags: string[]
+    examples: string[]
+    inputModes: string[]
+    outputModes: string[]
+  }>
+}
 
 export type A2AV1SecurityRequirement = {
   schemes: Record<string, string[]>
@@ -57,8 +92,8 @@ export type A2AV1AgentCard = {
   version: string
   documentationUrl: string
   capabilities: {
-    streaming: false
-    pushNotifications: false
+    streaming: true
+    pushNotifications: true
     extensions: []
     extendedAgentCard: false
   }
@@ -89,7 +124,7 @@ export type A2AV1AgentCard = {
 }
 
 const urVersion =
-  typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.82.2'
+  typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.83.0'
 const researchSnapshotDate = '2026-08-10'
 
 const coverage: TrendCoverage[] = [
@@ -152,19 +187,19 @@ const coverage: TrendCoverage[] = [
     name: 'A2A / Agent Card interoperability',
     status: 'covered',
     summary:
-      'UR runs the official-SDK A2A v0.3 binding beside strict v1 ProtoJSON JSON-RPC and HTTP+JSON bindings, with negotiated cards, tenant boundaries, durable artifacts, and a separate UR compatibility API.',
+      'UR runs the stable official A2A v1.1 SDK with native ProtoJSON JSON-RPC and HTTP+JSON, SSE streaming, task resubscription, authenticated push delivery with validated destinations, and the SDK\'s explicit v0.3 compatibility transport.',
     evidence: [
       'ur a2a card',
       '/a2a-card',
       'ur a2a serve: negotiated discovery plus /a2a/jsonrpc and /a2a/v1/*',
-      'official A2A TCK compatibility coverage and strict version isolation',
+      'streaming/resubscription fixtures, authenticated push delivery tests, and strict version isolation',
     ],
     references: [
       'https://a2a-protocol.org/latest/specification/',
       'https://github.com/a2aproject/a2a-js',
     ],
     professionalNextStep:
-      'Adopt the stable v1 JavaScript SDK when released, close remaining TCK ambiguities, and add signed-card verification plus streaming only when truthfully supported.',
+      'Add independent-client and TCK runs for every advertised transport; keep gRPC and authenticated extended cards unadvertised until deployed and tested.',
   },
   {
     id: 'acp',
@@ -583,17 +618,23 @@ const coverage: TrendCoverage[] = [
   {
     id: 'inbound-triggers',
     name: 'Inbound chat/VCS triggers',
-    status: 'adapter-ready',
+    status: 'covered',
     summary:
-      'UR parses a GitHub issue/PR comment or Slack mention webhook payload, decides whether a keyword (default /ur) should dispatch it, extracts the prompt, and can launch a headless run — the inbound counterpart to the bundled GitHub Action and install-slack-app/install-github-app helpers.',
+      'UR serves verified GitHub, Slack, Gmail Pub/Sub, Microsoft Teams/Graph, and generic webhooks, plus an explicitly labeled unverified loopback mode; it bounds and deduplicates deliveries, applies optional actor allow-lists, and resumes one serialized UR session per conversation.',
     evidence: [
       'ur trigger parse --file payload.json (deterministic, testable decision)',
       'ur trigger run --file payload.json (launches headless ur -p for the prompt)',
-      '.github/workflows/ur.yml outbound runner + .ur/triggers scaffold',
+      'ur trigger serve (/events/github|slack|gmail|teams|generic)',
+      'durable hashed delivery/context state + bounded per-conversation dispatch queue',
     ],
-    references: ['https://docs.github.com/en/webhooks', 'https://api.slack.com/events/app_mention'],
+    references: [
+      'https://docs.github.com/en/webhooks',
+      'https://api.slack.com/authentication/verifying-requests-from-slack',
+      'https://developers.google.com/gmail/api/guides/push',
+      'https://learn.microsoft.com/graph/change-notifications-delivery-webhooks',
+    ],
     professionalNextStep:
-      'Ship a reference webhook receiver (serverless function) that calls ur trigger run with an actor allow-list.',
+      'Publish reverse-proxy and managed-service deployment recipes with external queue/HA state adapters.',
   },
   {
     id: 'sdk',
@@ -613,8 +654,8 @@ const coverage: TrendCoverage[] = [
 ]
 
 const priorityRoadmap = [
-  'Protocol stabilization: adopt final MCP 2026 and stable A2A v1 SDK artifacts when released, retaining explicit dual-stack negotiation and independent-client fixtures.',
-  'A2A trust and streaming: signed Agent Card verification, streaming/resubscription, and push notifications only with end-to-end authentication and truthful capability tests.',
+  'Protocol interoperability: retain explicit A2A dual-stack negotiation and broaden independent-client/TCK fixtures for the stable v1 SDK.',
+  'A2A trust: document optional operator-managed signed-card keys and receiver-side signature verification for deployments that need them.',
   'Memory unification: apply provenance chains, quarantine, rollback, and deletion proofs to legacy, team, semantic, and embedding-backed stores.',
   'Trajectory eval gates: grade tool choice, handoffs, policy compliance, recovery, and outcome quality in CI with versioned category history.',
   'Community supply chain: registry attestations, dependency review, revocation, and update transparency for installable skills and plugins.',
@@ -675,11 +716,8 @@ export function buildA2AAgentCard(
     documentationUrl:
       'https://github.com/Maitham16/UR/blob/master/docs/AGENT_TRENDS.md',
     capabilities: {
-      // The opt-in HTTP adapter currently returns unary task lifecycle
-      // responses. Do not advertise streaming until an A2A streaming binding
-      // is actually implemented.
-      streaming: false,
-      pushNotifications: false,
+      streaming: true,
+      pushNotifications: true,
       stateTransitionHistory: true,
     },
     ...(Object.keys(securitySchemes).length > 0 ? { securitySchemes } : {}),
@@ -815,8 +853,8 @@ export function buildA2AV1AgentCard(
       legacy.documentationUrl ??
       'https://github.com/Maitham16/UR/blob/master/docs/AGENT_TRENDS.md',
     capabilities: {
-      streaming: false,
-      pushNotifications: false,
+      streaming: true,
+      pushNotifications: true,
       extensions: [],
       extendedAgentCard: false,
     },

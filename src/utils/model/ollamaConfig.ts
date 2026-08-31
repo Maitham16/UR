@@ -7,6 +7,11 @@ export type OllamaSettingsInput = {
     host?: string
     lanDiscovery?: boolean
   }
+  provider?: {
+    active?: string
+    baseUrl?: string
+    baseUrls?: Record<string, string | undefined>
+  }
 }
 
 export function normalizeOllamaBaseUrl(value: string | undefined): string {
@@ -23,10 +28,11 @@ export const OLLAMA_CLOUD_BASE_URL = 'https://ollama.com'
  *
  * Precedence:
  *  1. In-memory session override (set when the user picks a discovered host).
- *  2. `OLLAMA_HOST` environment variable.
- *  3. Effective settings: `ollama.host` from user/project/local settings.
- *  4. Ollama's hosted API when `OLLAMA_API_KEY` is set and no host is.
- *  5. Fallback `http://localhost:11434`.
+ *  2. Provider-scoped `provider.baseUrls.ollama` (or its legacy active URL).
+ *  3. `OLLAMA_HOST` environment variable.
+ *  4. Effective settings: `ollama.host` from user/project/local settings.
+ *  5. Ollama's hosted API when `OLLAMA_API_KEY` is set and no host is.
+ *  6. Fallback `http://localhost:11434`.
  */
 export function getOllamaBaseUrl(
   env: Record<string, string | undefined> = process.env,
@@ -35,14 +41,22 @@ export function getOllamaBaseUrl(
   if (sessionOverride) {
     return normalizeOllamaBaseUrl(sessionOverride)
   }
+  const effectiveSettings = settings ?? getInitialSettings()
+  const scopedProviderHost = effectiveSettings.provider?.baseUrls?.ollama
+  const legacyProviderHost =
+    effectiveSettings.provider?.baseUrls === undefined &&
+    effectiveSettings.provider?.active === 'ollama'
+      ? effectiveSettings.provider.baseUrl
+      : undefined
+  const providerHost = scopedProviderHost ?? legacyProviderHost
+  if (providerHost) {
+    return normalizeOllamaBaseUrl(providerHost)
+  }
   const envHost = env.OLLAMA_HOST || env.OLLAMA_BASE_URL
   if (envHost) {
     return normalizeOllamaBaseUrl(envHost)
   }
-  const settingsHost =
-    settings === undefined
-      ? getInitialSettings().ollama?.host
-      : settings.ollama?.host
+  const settingsHost = effectiveSettings.ollama?.host
   if (settingsHost) {
     return normalizeOllamaBaseUrl(settingsHost)
   }
@@ -54,6 +68,15 @@ export function getOllamaBaseUrl(
     return OLLAMA_CLOUD_BASE_URL
   }
   return 'http://localhost:11434'
+}
+
+/** Optional bearer authentication shared by Ollama discovery and inference. */
+export function getOllamaAuthHeaders(
+  env: Record<string, string | undefined> = process.env,
+  apiKeyOverride?: string,
+): Record<string, string> {
+  const apiKey = apiKeyOverride?.trim() || env.OLLAMA_API_KEY?.trim()
+  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
 }
 
 /** Set a base URL for the current process only (not persisted). */

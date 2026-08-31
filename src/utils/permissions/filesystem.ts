@@ -237,10 +237,9 @@ function isURConfigFilePath(filePath: string): boolean {
     return true
   }
 
-  // Check if file is within .ur/commands or .ur/agents directories
-  // using proper path segment validation (not string matching with includes())
-  // pathInWorkingPath now handles case-insensitive comparison to prevent bypasses
-  const commandsDir = join(getOriginalCwd(), '.ur', 'commands')
+  // Protect active configuration roots using proper path-segment and
+  // case-insensitive comparisons. The retired .ur/commands root is ordinary
+  // project content now that UR no longer discovers or executes it.
   const agentsDir = join(getOriginalCwd(), '.ur', 'agents')
   const skillsDir = join(getOriginalCwd(), '.ur', 'skills')
   const crossClientSkillsDir = join(
@@ -250,7 +249,6 @@ function isURConfigFilePath(filePath: string): boolean {
   )
 
   return (
-    pathInWorkingPath(filePath, commandsDir) ||
     pathInWorkingPath(filePath, agentsDir) ||
     pathInWorkingPath(filePath, skillsDir) ||
     pathInWorkingPath(filePath, crossClientSkillsDir)
@@ -469,15 +467,16 @@ function isDangerousFilePathToAutoEdit(path: string): boolean {
         continue
       }
 
-      // Special case: .ur/worktrees/ is a structural path (where UR stores
-      // git worktrees), not a user-created dangerous directory. Skip the .ur
-      // segment when it's followed by 'worktrees'. Any nested .ur directories
-      // within the worktree (not followed by 'worktrees') are still blocked.
+      // .ur/worktrees is structural, while retired .ur/commands content is no
+      // longer executable configuration. Treat both as ordinary project
+      // paths; active .ur settings, agents, skills, and hooks stay protected.
       if (dir === '.ur') {
         const nextSegment = pathSegments[i + 1]
         if (
           nextSegment &&
-          normalizeCaseForComparison(nextSegment) === 'worktrees'
+          ['worktrees', 'commands'].includes(
+            normalizeCaseForComparison(nextSegment),
+          )
         ) {
           break // Skip this .ur, continue checking other segments
         }
@@ -623,7 +622,7 @@ function hasSuspiciousWindowsPathPattern(path: string): boolean {
  *
  * This function performs comprehensive safety checks including:
  * - Suspicious Windows path patterns (NTFS streams, 8.3 names, long path prefixes, etc.)
- * - UR config files (.ur/settings.json, .ur/commands/, .ur/agents/)
+ * - UR config files and reserved legacy roots
  * - MCP CLI state files (managed internally by UR)
  * - Dangerous files (.bashrc, .gitconfig, .git/, .vscode/, .idea/, etc.)
  *

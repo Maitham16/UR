@@ -18,6 +18,12 @@ import {
   validateProviderModelCompatibility,
 } from '../../services/providers/providerRegistry.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
+import {
+  executePostModelSwitchHooks,
+  executePreModelSwitchHooks,
+  hasBlockingResult,
+  type ModelSwitchHookDetails,
+} from '../../utils/hooks.js'
 
 type JsonOption = {
   json?: boolean
@@ -121,10 +127,49 @@ export async function providerSelectModelHandler(
 
   const settings = getInitialSettings()
   const discovered = await ensureProviderModelsFresh(provider, { settings, force: true })
+  const validation = validateProviderModelCompatibility(provider, model, {
+    availableModels: discovered.models,
+    settings,
+  })
+  if (validation.valid === false) {
+    const result = { ok: false as const, message: validation.error }
+    if (options.json) writeOutput(JSON.stringify(result, null, 2))
+    else writeError(result.message)
+    process.exit(1)
+  }
+  const previous = getActiveProviderSettings(settings)
+  const hookDetails: ModelSwitchHookDetails = {
+    fromProvider: previous.active,
+    fromModel: previous.model,
+    toProvider: provider,
+    toModel: model,
+    source: 'cli',
+  }
+  const isSwitch = previous.active !== provider || previous.model !== model
+  if (isSwitch) {
+    const preResults = await executePreModelSwitchHooks(hookDetails)
+    if (hasBlockingResult(preResults)) {
+      const reason = preResults
+        .filter(result => result.blocked)
+        .map(result => result.output.trim())
+        .filter(Boolean)
+        .join('\n')
+      const result = {
+        ok: false as const,
+        message: `Model switch blocked by PreModelSwitch hook${reason ? `: ${reason}` : '.'}`,
+      }
+      if (options.json) writeOutput(JSON.stringify(result, null, 2))
+      else writeError(result.message)
+      process.exit(1)
+    }
+  }
   const result = setProviderModel(provider, model, {
     availableModels: discovered.models,
     modelSource: discovered.source,
   })
+  if (result.ok && isSwitch) {
+    await executePostModelSwitchHooks(hookDetails)
+  }
   if (options.json) {
     writeOutput(
       JSON.stringify(
@@ -182,17 +227,48 @@ export const PROVIDER_CONFIG_KEYS = [
 
 export type ProviderConfigKey = (typeof PROVIDER_CONFIG_KEYS)[number]
 
+export function parseProviderConfigSetValue(
+  key: string,
+  values: string | string[],
+):
+  | { ok: true; value: string; targetBaseUrlProvider?: ProviderId }
+  | { ok: false; message: string } {
+  const parts = Array.isArray(values) ? values : [values]
+  if (key !== 'base_url' || parts.length <= 1) {
+    return { ok: true, value: parts.join(' ') }
+  }
+  const targetBaseUrlProvider = resolveProviderId(parts[0]!)
+  if (!targetBaseUrlProvider) {
+    return {
+      ok: false,
+      message: `Unknown provider "${parts[0]}". Use: ur config set base_url <provider> <url>`,
+    }
+  }
+  return {
+    ok: true,
+    value: parts.slice(1).join(' '),
+    targetBaseUrlProvider,
+  }
+}
+
 export async function providerConfigSetHandler(
   key: string,
   values: string | string[],
 ): Promise<void> {
-  const value = Array.isArray(values) ? values.join(' ') : values
+  const parsedValue = parseProviderConfigSetValue(key, values)
+  if ('message' in parsedValue) {
+    writeError(parsedValue.message)
+    process.exit(1)
+  }
+  const { value, targetBaseUrlProvider } = parsedValue
   if (!PROVIDER_CONFIG_KEYS.includes(key as ProviderConfigKey)) {
     writeError(
       `Unsupported provider config key "${key}". Supported: ${PROVIDER_CONFIG_KEYS.join(', ')}`,
     )
     process.exit(1)
   }
+
+  let switchHookDetails: ModelSwitchHookDetails | undefined
 
   // Validate provider/model compatibility when setting model
   if (key === 'model') {
@@ -209,8 +285,16 @@ export async function providerConfigSetHandler(
   Selected model: ${value}
   Valid models for ${currentProvider}: ${validation.validModels.join(', ') || '(no models discovered)'}
   Suggested action: Run /model and choose a model from ${currentProvider}${validation.suggestedModel ? `, or run: ur config set model ${validation.suggestedModel}` : ''}
-  Error: ${validation.error}`)
+      Error: ${validation.error}`)
       process.exit(1)
+    }
+    const previous = getActiveProviderSettings(settings)
+    switchHookDetails = {
+      fromProvider: previous.active,
+      fromModel: previous.model,
+      toProvider: currentProvider,
+      toModel: value,
+      source: 'config',
     }
   }
 
@@ -222,6 +306,7 @@ export async function providerConfigSetHandler(
     const discovered = newProvider
       ? await ensureProviderModelsFresh(newProvider, { settings, force: true })
       : undefined
+    let nextModel = currentModel
     if (currentModel) {
       if (newProvider) {
         const validation = validateProviderModelCompatibility(newProvider, currentModel, {
@@ -229,6 +314,7 @@ export async function providerConfigSetHandler(
           settings,
         })
         if (validation.valid === false) {
+          nextModel = undefined
           const validModelsStr = validation.validModels.join(', ') || '(uses dynamic discovery)'
           const suggestedModel = validation.suggestedModel ?? '<model-name>'
           writeError(`Warning: Current model "${currentModel}" is not available for provider "${newProvider}" and will be cleared.
@@ -238,10 +324,44 @@ export async function providerConfigSetHandler(
         }
       }
     }
+    if (newProvider) {
+      const previous = getActiveProviderSettings(settings)
+      switchHookDetails = {
+        fromProvider: previous.active,
+        fromModel: previous.model,
+        toProvider: newProvider,
+        toModel: nextModel ?? '(unset)',
+        source: 'config',
+      }
+    }
   }
 
-  const result = setSafeProviderConfig(key as ProviderConfigKey, value)
+  const isSwitch =
+    switchHookDetails !== undefined &&
+    (switchHookDetails.fromProvider !== switchHookDetails.toProvider ||
+      (switchHookDetails.fromModel ?? '(unset)') !== switchHookDetails.toModel)
+  if (switchHookDetails && isSwitch) {
+    const preResults = await executePreModelSwitchHooks(switchHookDetails)
+    if (hasBlockingResult(preResults)) {
+      const reason = preResults
+        .filter(result => result.blocked)
+        .map(result => result.output.trim())
+        .filter(Boolean)
+        .join('\n')
+      writeError(
+        `Provider/model change blocked by PreModelSwitch hook${reason ? `: ${reason}` : '.'}`,
+      )
+      process.exit(1)
+    }
+  }
+
+  const result = setSafeProviderConfig(key as ProviderConfigKey, value, {
+    ...(targetBaseUrlProvider ? { provider: targetBaseUrlProvider } : {}),
+  })
   if (result.ok) {
+    if (switchHookDetails && isSwitch) {
+      await executePostModelSwitchHooks(switchHookDetails)
+    }
     writeOutput(result.message)
     process.exit(0)
   }

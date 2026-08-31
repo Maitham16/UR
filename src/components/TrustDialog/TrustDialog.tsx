@@ -106,15 +106,7 @@ export function TrustDialog(t0) {
   }
   const dangerousEnvVarsSources = t9;
   const hasDangerousEnvVars = dangerousEnvVarsSources.length > 0;
-  let t10;
-  if ($[9] !== commands) {
-    t10 = commands?.some(_temp2) ?? false;
-    $[9] = commands;
-    $[10] = t10;
-  } else {
-    t10 = $[10];
-  }
-  const hasSlashCommandBash = t10;
+  const hasSlashCommandBash = false;
   let t11;
   if ($[11] !== commands) {
     t11 = commands?.some(_temp4) ?? false;
@@ -280,10 +272,4 @@ function _temp4(command_0) {
 }
 function _temp3(tool_0) {
   return tool_0 === BASH_TOOL_NAME || tool_0.startsWith(BASH_TOOL_NAME + "(");
-}
-function _temp2(command) {
-  return command.type === "prompt" && command.loadedFrom === "commands_DEPRECATED" && (command.source === "projectSettings" || command.source === "localSettings") && command.allowedTools?.some(_temp);
-}
-function _temp(tool) {
-  return tool === BASH_TOOL_NAME || tool.startsWith(BASH_TOOL_NAME + "(");
 }

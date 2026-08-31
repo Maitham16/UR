@@ -27,6 +27,10 @@ import {
   type OpenAIResponseStateStatus,
 } from './openaiResponsesState.js'
 import { normalizeOpenAIResponsesUsage } from './usageNormalization.js'
+import {
+  getProviderEffortWireValue,
+  isEffortLevel,
+} from '../../utils/effort.js'
 
 export type OpenAIResponsesToolSearchMode = 'off' | 'hosted'
 
@@ -156,15 +160,15 @@ function structuredTextConfig(outputConfig: any): Record<string, unknown> | unde
 
 function reasoningConfig(params: any): Record<string, unknown> | undefined {
   const requested = params.output_config?.effort
-  if (
-    requested === 'minimal' ||
-    requested === 'low' ||
-    requested === 'medium' ||
-    requested === 'high' ||
-    requested === 'xhigh' ||
-    requested === 'max'
-  ) {
-    return { effort: requested }
+  if (typeof requested === 'string' && isEffortLevel(requested)) {
+    const wire = getProviderEffortWireValue(
+      String(params.model ?? ''),
+      requested,
+      'openai-api',
+    )
+    if (wire) return { effort: wire }
+    if (requested !== 'ultra') return { effort: requested }
+    return undefined
   }
   if (params.thinking?.type === 'adaptive') return { effort: 'medium' }
   if (params.thinking?.type !== 'enabled') return undefined

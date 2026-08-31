@@ -1,29 +1,26 @@
 import {
-  discoverAuthorizationServerMetadata,
-  discoverOAuthServerInfo,
-  type OAuthClientProvider,
-  type OAuthDiscoveryState,
-  auth as sdkAuth,
-  refreshAuthorization as sdkRefreshAuthorization,
-} from '@modelcontextprotocol/sdk/client/auth.js'
-import {
-  InvalidGrantError,
-  OAuthError,
-  ServerError,
-  TemporarilyUnavailableError,
-  TooManyRequestsError,
-} from '@modelcontextprotocol/sdk/server/auth/errors.js'
-import {
-  type AuthorizationServerMetadata,
-  type OAuthClientInformation,
-  type OAuthClientInformationFull,
-  type OAuthClientMetadata,
   OAuthErrorResponseSchema,
   OAuthMetadataSchema,
-  type OAuthTokens,
   OAuthTokensSchema,
-} from '@modelcontextprotocol/sdk/shared/auth.js'
-import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
+} from '@modelcontextprotocol/core'
+import {
+  OAuthError,
+  OAuthErrorCode,
+  auth as sdkAuth,
+  discoverAuthorizationServerMetadata,
+  discoverOAuthServerInfo,
+  refreshAuthorization as sdkRefreshAuthorization,
+} from '@modelcontextprotocol/client'
+import type {
+  AuthorizationServerMetadata,
+  FetchLike,
+  OAuthClientInformation,
+  OAuthClientInformationFull,
+  OAuthClientMetadata,
+  OAuthClientProvider,
+  OAuthDiscoveryState,
+  OAuthTokens,
+} from '@modelcontextprotocol/client'
 import axios from 'axios'
 import { createHash, randomBytes, randomUUID } from 'crypto'
 import { mkdir } from 'fs/promises'
@@ -141,8 +138,7 @@ function redactSensitiveUrlParams(url: string): string {
  * Slack uses non-standard error codes (invalid_refresh_token observed live
  * at oauth.v2.user.access; expired_refresh_token/token_expired per Slack's
  * token rotation docs) where RFC 6749 specifies invalid_grant. We normalize
- * those so OAUTH_ERRORS['invalid_grant'] → InvalidGrantError matches and
- * token invalidation fires correctly.
+ * those to OAuthErrorCode.InvalidGrant so token invalidation fires correctly.
  */
 const NONSTANDARD_INVALID_GRANT_ALIASES = new Set([
   'invalid_refresh_token',
@@ -1290,12 +1286,11 @@ export async function performMCPOAuthFlow(
       }
     }
 
-    // sdkAuth uses native fetch and throws OAuthError subclasses (InvalidGrantError,
-    // ServerError, InvalidClientError, etc.) via parseErrorResponse. Extract the
-    // OAuth error code directly from the SDK error instance.
+    // sdkAuth uses native fetch and throws OAuthError for RFC 6749 failures.
+    // Extract the stable OAuth error code directly from the SDK error instance.
     if (error instanceof OAuthError) {
-      oauthErrorCode = error.errorCode
-      // SDK does not attach HTTP status as a property, but the fallback ServerError
+      oauthErrorCode = error.code
+      // SDK does not attach HTTP status as a property, but a fallback server error
       // embeds it in the message as "HTTP {status}:" when the response body was
       // unparseable. Best-effort extraction.
       const statusMatch = error.message.match(/^HTTP (\d{3}):/)
@@ -1304,7 +1299,7 @@ export async function performMCPOAuthFlow(
       }
       // If client not found, clear the stored client ID and suggest retry
       if (
-        error.errorCode === 'invalid_client' &&
+        error.code === OAuthErrorCode.InvalidClient &&
         error.message.includes('Client not found')
       ) {
         const storage = getSecureStorage()
@@ -2285,7 +2280,10 @@ export class URAuthProvider implements OAuthClientProvider {
       } catch (error) {
         // Invalid grant means the refresh token itself is invalid/revoked/expired.
         // But another process may have already refreshed successfully — check first.
-        if (error instanceof InvalidGrantError) {
+        if (
+          error instanceof OAuthError &&
+          error.code === OAuthErrorCode.InvalidGrant
+        ) {
           logMCPDebug(
             this.serverName,
             `Token refresh failed with invalid_grant: ${error.message}`,
@@ -2328,9 +2326,10 @@ export class URAuthProvider implements OAuthClientProvider {
           error instanceof Error &&
           /timeout|timed out|etimedout|econnreset/i.test(error.message)
         const isTransientServerError =
-          error instanceof ServerError ||
-          error instanceof TemporarilyUnavailableError ||
-          error instanceof TooManyRequestsError
+          error instanceof OAuthError &&
+          (error.code === OAuthErrorCode.ServerError ||
+            error.code === OAuthErrorCode.TemporarilyUnavailable ||
+            error.code === OAuthErrorCode.TooManyRequests)
         const isRetryable = isTimeoutError || isTransientServerError
 
         if (!isRetryable || attempt >= MAX_ATTEMPTS) {

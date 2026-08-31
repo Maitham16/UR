@@ -104,7 +104,7 @@ function formatContextAsMarkdownTable(data: ContextData): string {
   } = data
 
   let output = `## Context Usage\n\n`
-  output += `**Model:** ${model}  \n`
+  output += `**Model:** ${model}<br>\n`
   output += `**Tokens:** ${formatTokens(totalTokens)} / ${formatTokens(rawMaxTokens)} (${percentage}%)\n`
 
   // Context-collapse status. Always show when the runtime gate is on —

@@ -81,13 +81,13 @@ Inside an interactive session:
 | Trend | UR status | Current coverage | Professional next step |
 | --- | --- | --- | --- |
 | Provider-flexible, local-first runtime | Covered | Local Ollama; direct OpenAI, Anthropic, Gemini, OpenRouter, and OpenAI-compatible APIs; authenticated subscription-CLI adapters; explicit provider selection | Normalize capability discovery across providers and make automatic per-step routing opt-in |
-| Model Context Protocol ecosystem | Covered | `ur mcp`, OAuth/XAA, fail-closed bounded tools, final `input_required` continuation, all workspace roots with change notifications, and the opt-in stateless web server | Broaden independent-client interoperability fixtures |
+| Model Context Protocol ecosystem | Covered | Stable TypeScript SDK v2 split client/server/core runtime; `ur mcp`, OAuth/XAA, fail-closed bounded tools, final `input_required` continuation, all workspace roots with change notifications, and the opt-in stateless web server | Broaden independent-client interoperability fixtures |
 | Protocol Tasks and Apps | Covered | Negotiated Tasks lifecycle, owner-isolated durable state, and a self-contained Apps resource through `ur mcp serve-web` | Broaden independent-client interoperability fixtures |
-| A2A / Agent Card interoperability | Covered | Stable-SDK v0.3 plus strict v1 ProtoJSON JSON-RPC/HTTP+JSON, negotiated cards, tenant isolation, durable artifacts, and TCK coverage | Adopt the stable v1 SDK when released; add signed-card verification and streaming only with truthful end-to-end tests |
+| A2A / Agent Card interoperability | Covered | Stable official v1.1 SDK, native ProtoJSON JSON-RPC/HTTP+JSON, SSE streaming, task resubscription, authenticated push delivery with validated destinations, negotiated cards, tenant isolation, durable artifacts, and explicit v0.3 compatibility | Broaden independent-client/TCK fixtures; keep gRPC and extended cards unadvertised until deployed and tested |
 | AG-UI agent-to-frontend interoperability | Covered | Official-schema HTTP/SSE adapter, truthful capabilities, ordered state/text/tool events, cancellation, exact CORS, bounded requests/output, and loopback-or-bearer security | Add independent frontend fixtures before advertising optional interrupts, binary/WebSocket transport, or client tools |
 | Durable workflows and checkpoints | Covered | resume, rewind, steerable `ur bg`/managed-cloud runs, optional worktrees/PRs, cron/workflow internals, file restore, and resumable multi-repo DAG state | Add authenticated cross-machine checkpoint replication |
 | Managed cloud workers | Covered | `ur cloud --runner managed` persists remote session IDs/cursors/branches, reconciles lifecycle, accepts idempotent steering, deterministically ranks only PASS results with safe review branches, and never silently merges | Add provider-neutral managed-runner adapters behind the same lifecycle |
-| Mobile agent steering | Covered | authenticated owner-isolated A2A compatibility task messages plus bounded background/cloud steering and cancellation | Add push notifications without widening delegated scopes |
+| Mobile agent steering | Covered | authenticated owner-isolated A2A task messages, bounded background/cloud steering and cancellation, plus authenticated webhook push with tenant/owner isolation | Add a receiver deployment guide without widening delegated scopes |
 | Durable side chats | Covered | private hash-chained `/btw` create/continue/list/show/rename/close history with tool-free one-turn forks and cancellation | Add optional encrypted export/import |
 | Multi-repository coordination | Covered | canonical repository/remote identity, dependency DAGs, one writer per repo, isolated worktrees, resume, verification, and explicit PR/rollback plans | Add forge-neutral stacked-review adapters without automatic publishing |
 | Self-learning playbooks | Covered | proof-backed candidates, confidence floor, unsafe-trace rejection, explicit approval/rejection/disable, and standard workflow execution | Add drift detection and approval renewal when evidence changes materially |
@@ -139,13 +139,16 @@ ur artifacts capture-tests --command "bun test"
 
 ## A2A Position
 
-`ur a2a serve` keeps the official stable JavaScript SDK's v0.3 JSON-RPC binding
-at `/a2a/jsonrpc` and adds separate strict v1 ProtoJSON JSON-RPC and HTTP+JSON
-bindings. `/.well-known/agent-card.json` returns the v1 card by default and the
-v0.3 card for `A2A-Version: 0.3`; `Vary` prevents cache confusion. The v1
-routes provide durable tasks/artifacts, pagination, continuation, references,
-cancellation, and tenant isolation. Streaming and push notifications are not
-advertised.
+`ur a2a serve` uses the stable official v1.1 JavaScript SDK for native
+ProtoJSON JSON-RPC and HTTP+JSON bindings and mounts its explicit v0.3
+compatibility transport at `/a2a/jsonrpc`.
+`/.well-known/agent-card.json` returns the v1 card by default and the v0.3 card
+for `A2A-Version: 0.3`; `Vary` prevents cache confusion. The v1 routes provide
+durable tasks/artifacts, pagination, continuation, references, cancellation,
+tenant isolation, SSE streaming, task resubscription, and authenticated push
+delivery. Push URLs are HTTPS-only by default, resolved and checked again at
+delivery, blocked from private/local/metadata ranges, redirect-free, and
+DNS-pinned.
 
 The existing `/a2a/tasks` submission/list/status/output/cancel routes are a
 separate **UR compatibility API**, not an A2A REST binding. They remain useful
@@ -158,11 +161,9 @@ The server refuses unauthenticated off-loopback binds and requires
 `--public-base-url` for wildcard binds so discovery never advertises
 `0.0.0.0`. Prefer `UR_A2A_TOKEN` and `UR_A2A_DELEGATION_SECRET` over argv
 secrets. Request size, prompt size, output size, submission rate, concurrent
-submissions, and active tasks are bounded by `UR_A2A_*` settings. UR's
-final-protocol compatibility layer is covered by the official TCK. The
-official JavaScript SDK's matching binding remains alpha, so UR keeps the
-stable older SDK binding as a separately negotiated compatibility path rather
-than relabeling or silently translating it.
+submissions, active tasks, and push delivery time are bounded by `UR_A2A_*`
+settings. UR retains v0.3 only through the stable SDK's separately negotiated
+compatibility transport rather than relabeling either wire schema.
 
 ## Model Runtime Position
 
@@ -177,14 +178,14 @@ than an automatic provider switch.
 
 The final Model Context Protocol release is implemented, including Tasks,
 Apps, multi-round-trip tool input, roots compatibility, and strict request
-metadata. Agent-to-Agent 1.0 JSON-RPC and HTTP+JSON remain separately
-negotiated from the older stable JavaScript SDK binding. The current backlog
-focuses on proven interoperability and narrow trust boundaries:
+metadata. Agent-to-Agent 1.0 JSON-RPC and HTTP+JSON use the stable v1.1 SDK;
+v0.3 remains separately negotiated through its explicit compatibility
+transport. The current backlog focuses on proven interoperability and narrow
+trust boundaries:
 
 1. Broaden independent-client fixtures for final Model Context Protocol and
    Agent-to-Agent requests before adding more advertised protocol surface.
-2. Adopt a stable official Agent-to-Agent JavaScript binding when one exists.
-   Add gRPC only for a real transport consumer with TLS/authentication and TCK
+2. Add gRPC only for a real transport consumer with TLS/authentication and TCK
    coverage; do not advertise it from the Agent Card before that proof exists.
 3. Keep AP2 payments outside the coding agent until UR has an explicitly
    authorized commerce use case, mandate/signature policy, credential model,
@@ -230,6 +231,7 @@ Professional answer requirements:
 - OpenAI agent evals: https://developers.openai.com/api/docs/guides/agent-evals
 - Model Context Protocol: https://modelcontextprotocol.io/docs/getting-started/intro
 - Final Model Context Protocol 2026-07-28 release: https://blog.modelcontextprotocol.io/posts/2026-07-28/
+- MCP TypeScript SDK v1-to-v2 migration: https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/migration/upgrade-to-v2.md
 - MCP Tasks extension: https://tasks.extensions.modelcontextprotocol.io/
 - MCP Apps extension: https://apps.extensions.modelcontextprotocol.io/
 - ACP v1 schema: https://agentclientprotocol.com/protocol/v1/schema

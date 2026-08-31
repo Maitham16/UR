@@ -93,8 +93,9 @@ ur ps                    # list background sessions
 ur logs <id> · ur attach <id> · ur kill <id>
 ```
 In-session background work lives in `/tasks` (alias `/bashes`): backgrounded shell
-commands, subagents, workflows, monitors — each stoppable (TaskStop tool) and inspectable
-(TaskOutput tool).
+commands, subagents, workflows, and monitors. Each is stoppable with `TaskStop`;
+results are delivered by completion notifications and retained in internal task
+output storage for session views.
 
 ## Multi-directory & trust
 

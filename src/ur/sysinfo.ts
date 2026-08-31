@@ -5,12 +5,16 @@ import { arch, homedir, platform, release } from 'node:os'
 import { join } from 'node:path'
 import { detectProjectDna, formatDna } from './projectDna.ts'
 import { parseOllamaModelNames } from '../utils/model/ollamaModels.js'
+import { getProviderApiKey } from '../services/providers/providerCredentials.js'
 import {
   pickBestCoderModel,
   pickSmallFastModel,
   recommendedCoderModelToPull,
 } from '../utils/model/ollamaRouter.js'
-import { getOllamaBaseUrl } from '../utils/model/ollamaConfig.js'
+import {
+  getOllamaAuthHeaders,
+  getOllamaBaseUrl,
+} from '../utils/model/ollamaConfig.js'
 
 export function commandExists(bin: string): boolean {
   try {
@@ -64,7 +68,10 @@ export async function urDoctor(cwd: string): Promise<string> {
   let ollama: string
   let ollamaModels: string[] = []
   try {
-    const res = await fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(1500) })
+    const res = await fetch(`${host}/api/tags`, {
+      signal: AbortSignal.timeout(1500),
+      headers: getOllamaAuthHeaders(process.env, getProviderApiKey('ollama')),
+    })
     if (res.ok) {
       ollamaModels = parseOllamaModelNames(await res.json())
       ollama = `ok — ${ollamaModels.length} model(s) @ ${host}`

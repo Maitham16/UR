@@ -6,7 +6,11 @@
  * Pull a model first, e.g. `ollama pull nomic-embed-text`.
  */
 
-import { getOllamaBaseUrl } from '../model/ollamaConfig.js'
+import {
+  getOllamaAuthHeaders,
+  getOllamaBaseUrl,
+} from '../model/ollamaConfig.js'
+import { getProviderApiKey } from '../../services/providers/providerCredentials.js'
 
 export const DEFAULT_EMBED_MODEL = 'nomic-embed-text'
 
@@ -37,7 +41,10 @@ export async function embedTexts(
   try {
     response = await fetch(`${getOllamaBaseUrl()}/api/embed`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getOllamaAuthHeaders(process.env, getProviderApiKey('ollama')),
+      },
       body: JSON.stringify({ model: options.model, input: texts }),
       signal: options.signal,
     })

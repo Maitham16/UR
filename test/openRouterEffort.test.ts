@@ -51,6 +51,23 @@ function seedOpenRouterReasoningModels(): void {
       supportedParameters: ['reasoning', 'tools'],
       reasoning: { supportedEfforts: ['low', 'high', 'max'] },
     },
+    {
+      id: 'vendor/ultra-native',
+      displayName: 'vendor/ultra-native',
+      description: 'Native ultra reasoning model',
+      supportedParameters: ['reasoning', 'tools'],
+      reasoning: { supportedEfforts: ['low', 'high', 'max', 'ultra'] },
+    },
+    {
+      id: 'vendor/ultra-alias',
+      displayName: 'vendor/ultra-alias',
+      description: 'Provider-authored ultra alias',
+      supportedParameters: ['reasoning', 'tools'],
+      reasoning: {
+        supportedEfforts: ['low', 'deep'],
+        effortAliases: { ultra: 'deep' },
+      },
+    },
   ])
 }
 
@@ -138,6 +155,38 @@ describe('OpenRouter model-aware effort', () => {
     expect(toOpenRouterReasoningEffort(model, 'max')).toBe('max')
   })
 
+  test('ultra is exact-only and never silently degrades to max', () => {
+    expect(resolveAppliedEffort('vendor/max-native', 'ultra', 'openrouter')).toBeUndefined()
+    expect(toOpenRouterReasoningEffort('vendor/max-native', 'ultra')).toBeUndefined()
+    expect(executeEffort('ultra', 'vendor/max-native', 'openrouter')).toEqual({
+      message: 'Not applied: vendor/max-native on openrouter does not advertise the ultra reasoning-effort level.',
+    })
+
+    expect(
+      getSupportedEffortLevelsForModel('vendor/ultra-native', 'openrouter'),
+    ).toEqual(['low', 'high', 'max', 'ultra'])
+    expect(resolveAppliedEffort('vendor/ultra-native', 'ultra', 'openrouter')).toBe('ultra')
+    expect(toOpenRouterReasoningEffort('vendor/ultra-native', 'ultra')).toBe('ultra')
+  })
+
+  test('uses only an explicit provider-authored ultra alias on the wire', () => {
+    expect(
+      getSupportedEffortLevelsForModel('vendor/ultra-alias', 'openrouter'),
+    ).toEqual(['low', 'ultra'])
+    expect(resolveAppliedEffort('vendor/ultra-alias', 'ultra', 'openrouter')).toBe('ultra')
+    expect(toOpenRouterReasoningEffort('vendor/ultra-alias', 'ultra')).toBe('deep')
+    expect(
+      toOpenAICompatibleRequest(
+        {
+          model: 'vendor/ultra-alias',
+          messages: [],
+          output_config: { effort: 'ultra' },
+        },
+        'openrouter',
+      ).reasoning,
+    ).toEqual({ effort: 'deep' })
+  })
+
   test('OpenAI-compatible servers receive the already-resolved exact value', () => {
     expect(
       toOpenAICompatibleRequest(
@@ -159,5 +208,15 @@ describe('OpenRouter model-aware effort', () => {
         'llama.cpp',
       ).reasoning_effort,
     ).toBe('max')
+    expect(
+      toOpenAICompatibleRequest(
+        {
+          model: 'local/reasoner',
+          messages: [],
+          output_config: { effort: 'ultra' },
+        },
+        'llama.cpp',
+      ).reasoning_effort,
+    ).toBeUndefined()
   })
 })

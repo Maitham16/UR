@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { Client } from '@modelcontextprotocol/client'
 import { constantTimeStringEqual } from '../services/agents/delegation.js'
 import { createMCPServer } from './mcp.js'
 import { createLinkedTransportPair } from '../services/mcp/InProcessTransport.js'
@@ -327,7 +327,6 @@ export async function createUrMcp2026Runtime(options: {
             arguments: args,
             ...roundTrip,
           } as Parameters<typeof client.callTool>[0],
-          undefined,
           {
             signal,
             timeout: readPositiveInteger(

@@ -82,6 +82,7 @@ describe('provider real streaming', () => {
     const client = await createStandardAPIClient({
       providerId: 'openai-api',
       apiKey: 'sk-openai',
+      baseUrl: 'https://gateway.example/openai',
       maxRetries: 1,
     })
 
@@ -93,7 +94,8 @@ describe('provider real streaming', () => {
     }).withResponse()
     const events = await collect(data)
 
-    const [, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
+    const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
+    expect(url).toBe('https://gateway.example/openai/v1/chat/completions')
     expect(body.stream).toBe(true)
     expect(config.responseType).toBe('stream')
     expect(textDeltas(events)).toEqual(['Hel', 'lo'])
@@ -261,6 +263,7 @@ describe('provider real streaming', () => {
     })
     const client = await createOpenRouterClient({
       apiKey: 'sk-or',
+      baseUrl: 'https://router.example.test/custom/v1',
       maxRetries: 1,
     })
 
@@ -273,8 +276,10 @@ describe('provider real streaming', () => {
     }).withResponse()
     const events = await collect(data)
 
-    const [, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
+    const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
+    expect(url).toBe('https://router.example.test/custom/v1/chat/completions')
     expect(body.stream).toBe(true)
+    expect(body.provider).toEqual({ sort: 'latency' })
     expect(config.responseType).toBe('stream')
     expect(events.find(event => event.type === 'content_block_start')?.content_block)
       .toMatchObject({ type: 'tool_use', id: 'call_1', name: 'Edit' })
@@ -343,6 +348,7 @@ describe('provider real streaming', () => {
     const client = await createStandardAPIClient({
       providerId: 'anthropic-api',
       apiKey: 'sk-ant',
+      baseUrl: 'https://gateway.example/anthropic',
       maxRetries: 1,
     })
 
@@ -356,7 +362,8 @@ describe('provider real streaming', () => {
     const events = await collect(data)
     expect(request_id).toBe('req-anthropic')
 
-    const [, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
+    const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
+    expect(url).toBe('https://gateway.example/anthropic/v1/messages')
     expect(body.stream).toBe(true)
     expect(config.responseType).toBe('stream')
     expect(textDeltas(events)).toEqual(['Hi', ' there'])
@@ -433,6 +440,7 @@ describe('provider real streaming', () => {
     const client = await createStandardAPIClient({
       providerId: 'gemini-api',
       apiKey: 'gm-key',
+      baseUrl: 'https://gateway.example/gemini',
       maxRetries: 1,
     })
 
@@ -446,7 +454,9 @@ describe('provider real streaming', () => {
     const events = await collect(data)
 
     const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
-    expect(url).toContain(':streamGenerateContent?alt=sse')
+    expect(url).toBe(
+      'https://gateway.example/gemini/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse',
+    )
     expect(body).not.toHaveProperty('stream')
     expect(config.responseType).toBe('stream')
     expect(textDeltas(events)).toEqual(['Ge', 'mini'])

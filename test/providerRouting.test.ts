@@ -41,6 +41,10 @@ describe('provider runtime routing', () => {
           vllm: 'http://vllm-box:8000/v1',
           'llama.cpp': 'http://llama-box:8080/v1',
           unsloth: 'http://unsloth-box:8888/v1',
+          'openai-api': 'https://gateway.example.test/openai/v1',
+          'anthropic-api': 'https://gateway.example.test/anthropic/v1',
+          'gemini-api': 'https://gateway.example.test/gemini/v1beta',
+          openrouter: 'https://gateway.example.test/openrouter/v1',
         },
       },
     } as const
@@ -53,6 +57,18 @@ describe('provider runtime routing', () => {
     )
     expect(resolveProviderBaseUrl('unsloth', settings as never)).toBe(
       'http://unsloth-box:8888/v1',
+    )
+    expect(resolveProviderBaseUrl('openai-api', settings as never)).toBe(
+      'https://gateway.example.test/openai/v1',
+    )
+    expect(resolveProviderBaseUrl('anthropic-api', settings as never)).toBe(
+      'https://gateway.example.test/anthropic/v1',
+    )
+    expect(resolveProviderBaseUrl('gemini-api', settings as never)).toBe(
+      'https://gateway.example.test/gemini/v1beta',
+    )
+    expect(resolveProviderBaseUrl('openrouter', settings as never)).toBe(
+      'https://gateway.example.test/openrouter/v1',
     )
   })
 
@@ -94,6 +110,79 @@ describe('provider runtime routing', () => {
     expect(client).toBeDefined()
     expect(client.beta).toBeDefined()
     expect(client.beta.messages).toBeDefined()
+  })
+
+  test('explicit Ollama credentials reach discovery, model metadata, and chat', async () => {
+    const previousFetch = globalThis.fetch
+    const model = 'authenticated-ollama-model'
+    const seen: Array<{ url: string; authorization: string | null }> = []
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      seen.push({
+        url,
+        authorization: new Headers(init?.headers).get('authorization'),
+      })
+      if (url.endsWith('/api/tags')) {
+        return new Response(JSON.stringify({ models: [{ name: model }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (url.endsWith('/api/show')) {
+        return new Response(JSON.stringify({ capabilities: ['completion', 'thinking'] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (url.endsWith('/api/chat')) {
+        return new Response(JSON.stringify({
+          model,
+          message: { role: 'assistant', content: 'ok' },
+          done: true,
+          done_reason: 'stop',
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      throw new Error(`Unexpected Ollama URL: ${url}`)
+    }) as typeof fetch
+    try {
+      const settings = {
+        provider: {
+          active: 'ollama',
+          model,
+          baseUrls: { ollama: 'https://ollama-gateway.example/api' },
+        },
+      } as const
+      const client = await createProviderClient('ollama', {
+        apiKey: 'explicit-ollama-key',
+        model,
+        settings: settings as never,
+      })
+      await client.beta.messages.create({
+        model,
+        messages: [{ role: 'user', content: 'hello' }],
+        max_tokens: 16,
+        stream: false,
+      })
+      expect(seen).toEqual([
+        {
+          url: 'https://ollama-gateway.example/api/tags',
+          authorization: 'Bearer explicit-ollama-key',
+        },
+        {
+          url: 'https://ollama-gateway.example/api/show',
+          authorization: 'Bearer explicit-ollama-key',
+        },
+        {
+          url: 'https://ollama-gateway.example/api/chat',
+          authorization: 'Bearer explicit-ollama-key',
+        },
+      ])
+    } finally {
+      globalThis.fetch = previousFetch
+    }
   })
 
   test('openai-api provider requires API key', async () => {
@@ -161,6 +250,73 @@ describe('provider runtime routing', () => {
       model: 'llama-cpp-model',
     })
     expect(client).toBeDefined()
+  })
+
+  test('authenticated llama.cpp uses its scoped endpoint and key for discovery and chat', async () => {
+    const previousFetch = globalThis.fetch
+    const model = 'authenticated-llama-cpp-model'
+    const seen: Array<{ url: string; authorization: string | null }> = []
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      seen.push({
+        url,
+        authorization: new Headers(init?.headers).get('authorization'),
+      })
+      if (url.endsWith('/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: model }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (url.endsWith('/v1/chat/completions')) {
+        return new Response(JSON.stringify({
+          id: 'chatcmpl-llama-cpp',
+          model,
+          choices: [{
+            index: 0,
+            message: { role: 'assistant', content: 'ok' },
+            finish_reason: 'stop',
+          }],
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      throw new Error(`Unexpected llama.cpp URL: ${url}`)
+    }) as typeof fetch
+    try {
+      const settings = {
+        provider: {
+          active: 'llama.cpp',
+          model,
+          baseUrls: { 'llama.cpp': 'https://llama-gateway.example/v1' },
+        },
+      } as const
+      const client = await createProviderClient('llama.cpp', {
+        apiKey: 'explicit-llama-cpp-key',
+        model,
+        settings: settings as never,
+      })
+      await client.beta.messages.create({
+        model,
+        messages: [{ role: 'user', content: 'hello' }],
+        max_tokens: 16,
+        stream: false,
+      })
+
+      expect(seen).toEqual([
+        {
+          url: 'https://llama-gateway.example/v1/models',
+          authorization: 'Bearer explicit-llama-cpp-key',
+        },
+        {
+          url: 'https://llama-gateway.example/v1/chat/completions',
+          authorization: 'Bearer explicit-llama-cpp-key',
+        },
+      ])
+    } finally {
+      globalThis.fetch = previousFetch
+    }
   })
 
   test('vllm provider uses OpenAI-compatible endpoint', async () => {

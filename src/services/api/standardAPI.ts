@@ -5,7 +5,10 @@
  */
 
 import { randomUUID } from 'crypto'
-import { getProviderFamily } from '../providers/providerRegistry.js'
+import {
+  getProviderFamily,
+  resolveProviderId,
+} from '../providers/providerRegistry.js'
 import {
   assertNoImageBlocks,
   contentToText,
@@ -23,6 +26,7 @@ import {
 } from './providerClient.js'
 import {
   axiosPostWithProviderReliability,
+  normalizeGeminiBaseUrl,
   normalizeProviderEndpoint,
 } from './providerHttp.js'
 import {
@@ -43,6 +47,10 @@ import {
   ToolSchemaValidationError,
 } from './toolSchema.js'
 import { normalizeGeminiUsage } from './usageNormalization.js'
+import {
+  getProviderEffortWireValue,
+  isEffortLevel,
+} from '../../utils/effort.js'
 
 const ANTHROPIC_VERSION = '2023-06-01'
 
@@ -65,7 +73,7 @@ export async function createStandardAPIClient(options: {
     const clientRequestId = params?.headers?.['x-client-request-id']
     const response = await axiosPostWithProviderReliability(
       endpoint,
-      buildAPIRequest(family, params),
+      buildAPIRequest(family, params, providerId),
       {
         headers: {
           'Content-Type': 'application/json',
@@ -90,7 +98,7 @@ export async function createStandardAPIClient(options: {
     const clientRequestId = params?.headers?.['x-client-request-id']
     const response = await axiosPostWithProviderReliability(
       endpoint,
-      buildAPIRequest(family, { ...params, stream: true }),
+      buildAPIRequest(family, { ...params, stream: true }, providerId),
       {
         headers: {
           'Content-Type': 'application/json',
@@ -178,9 +186,9 @@ function getAPIEndpoint(
         '/messages',
       )
     case 'google': {
-      const root = baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta'
+      const root = normalizeGeminiBaseUrl(baseUrl)
       const method = stream ? 'streamGenerateContent?alt=sse' : 'generateContent'
-      return `${root.replace(/\/$/, '')}/models/${model}:${method}`
+      return `${root}/models/${model}:${method}`
     }
     default:
       return baseUrl ?? ''
@@ -210,7 +218,28 @@ function buildAuthHeaders(
   }
 }
 
-function buildAPIRequest(family: string, params: any): any {
+function providerOutputConfig(
+  params: any,
+  providerId: string,
+): Record<string, unknown> | undefined {
+  const configured = params.output_config
+  if (!configured || typeof configured !== 'object' || Array.isArray(configured)) {
+    return undefined
+  }
+  const requested = configured.effort
+  if (typeof requested !== 'string' || !isEffortLevel(requested)) {
+    return configured
+  }
+  const provider = resolveProviderId(providerId)
+  const wire = provider
+    ? getProviderEffortWireValue(String(params.model ?? ''), requested, provider)
+    : undefined
+  const { effort: _ignored, ...rest } = configured
+  if (wire) return { ...rest, effort: wire }
+  return requested === 'ultra' ? rest : configured
+}
+
+function buildAPIRequest(family: string, params: any, providerId: string): any {
   switch (family) {
     case 'openai': {
       return toOpenAICompatibleRequest(params, 'openai')
@@ -227,7 +256,9 @@ function buildAPIRequest(family: string, params: any): any {
         ...(params.stop_sequences?.length > 0 && { stop_sequences: params.stop_sequences }),
         ...(params.thinking !== undefined && { thinking: params.thinking }),
         ...(params.metadata !== undefined && { metadata: params.metadata }),
-        ...(params.output_config !== undefined && { output_config: params.output_config }),
+        ...(params.output_config !== undefined && {
+          output_config: providerOutputConfig(params, providerId),
+        }),
         stream: Boolean(params.stream),
         ...(tools.length > 0 ? { tools } : {}),
         ...(params.tool_choice !== undefined ? { tool_choice: params.tool_choice } : {}),
@@ -235,7 +266,7 @@ function buildAPIRequest(family: string, params: any): any {
     }
     case 'google': {
       const tools = toGeminiTools(params.tools)
-      const thinkingConfig = toGeminiThinkingConfig(params)
+      const thinkingConfig = toGeminiThinkingConfig(params, providerId)
       return {
         contents: toGeminiContents(params),
         ...(geminiSystemInstruction(params) && {
@@ -265,8 +296,18 @@ function buildAPIRequest(family: string, params: any): any {
 
 function toGeminiThinkingConfig(
   params: any,
+  providerId = 'gemini-api',
 ): Record<string, unknown> | undefined {
-  const effort = params.output_config?.effort
+  const requested = params.output_config?.effort
+  const provider = resolveProviderId(providerId)
+  const wireEffort =
+    provider && typeof requested === 'string' && isEffortLevel(requested)
+      ? getProviderEffortWireValue(String(params.model ?? ''), requested, provider)
+      : undefined
+  const effort = wireEffort ?? (requested === 'ultra' ? undefined : requested)
+  if (wireEffort && !isEffortLevel(wireEffort)) {
+    return { thinkingLevel: wireEffort }
+  }
   if (
     effort === 'minimal' ||
     effort === 'low' ||

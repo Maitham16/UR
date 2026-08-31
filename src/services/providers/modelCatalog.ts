@@ -27,6 +27,12 @@ export type ModelReasoningCapabilities = {
    * selection at all.
    */
   supportedEfforts?: string[] | null
+  /**
+   * Optional provider-authored selector-to-wire aliases. For example, a
+   * provider may explicitly advertise `ultra` as an alias for its canonical
+   * `deep` wire value. UR never invents these mappings.
+   */
+  effortAliases?: Record<string, string>
   defaultEffort?: string
   defaultEnabled?: boolean
   mandatory?: boolean
@@ -86,6 +92,22 @@ export function parseModelReasoningCapabilities(
           )
         : undefined
   const defaultEffort = asString(value.default_effort)?.toLowerCase()
+  const rawAliases = isRecord(value.effort_aliases)
+    ? value.effort_aliases
+    : isRecord(value.effortAliases)
+      ? value.effortAliases
+      : undefined
+  const effortAliases = rawAliases
+    ? Object.fromEntries(
+        Object.entries(rawAliases).flatMap(([selector, wireValue]) => {
+          const normalizedSelector = selector.trim().toLowerCase()
+          const normalizedWireValue = asString(wireValue)?.toLowerCase()
+          return normalizedSelector && normalizedWireValue
+            ? [[normalizedSelector, normalizedWireValue]]
+            : []
+        }),
+      )
+    : undefined
   const defaultEnabled =
     typeof value.default_enabled === 'boolean'
       ? value.default_enabled
@@ -99,6 +121,7 @@ export function parseModelReasoningCapabilities(
 
   if (
     supportedEfforts === undefined &&
+    (effortAliases === undefined || Object.keys(effortAliases).length === 0) &&
     defaultEffort === undefined &&
     defaultEnabled === undefined &&
     mandatory === undefined &&
@@ -109,6 +132,9 @@ export function parseModelReasoningCapabilities(
 
   return {
     ...(supportedEfforts !== undefined ? { supportedEfforts } : {}),
+    ...(effortAliases && Object.keys(effortAliases).length > 0
+      ? { effortAliases }
+      : {}),
     ...(defaultEffort !== undefined ? { defaultEffort } : {}),
     ...(defaultEnabled !== undefined ? { defaultEnabled } : {}),
     ...(mandatory !== undefined ? { mandatory } : {}),

@@ -101,6 +101,11 @@ const skillSearchFeatureCheck = feature('EXPERIMENTAL_SKILL_SEARCH')
 import type { OutputStyleConfig } from './outputStyles.js'
 import { getCyberRiskInstruction } from './cyberRiskInstruction.js'
 import { EXECUTION_CONTRACT_SECTION } from './executionContract.js'
+import {
+  FINAL_RESPONSE_CONTRACT,
+  renderGovernedPrompt,
+  SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
+} from './promptGovernance.js'
 import { wrapUntrustedStable } from '../security/promptInjection.js'
 import { getTaskToolGuidance } from './taskToolGuidance.js'
 
@@ -116,8 +121,7 @@ export const UR_CODE_DOCS_MAP_URL =
  * - src/utils/api.ts (splitSysPromptPrefix)
  * - src/services/api/ur.ts (buildSystemPromptBlocks)
  */
-export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY =
-  '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
+export { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from './promptGovernance.js'
 
 function getHooksSection(): string {
   return `Users may configure 'hooks', shell commands that execute in response to events like tool calls, in settings. Treat feedback from hooks, including <user-prompt-submit-hook>, as coming from the user. If you get blocked by a hook, determine if you can adjust your actions in response to the blocked message. If not, ask the user to check their hooks configuration.`
@@ -413,6 +417,8 @@ Write user-facing text in flowing prose while eschewing fragments, excessive em 
 
 What's most important is the reader understanding your output without mental overhead or follow-ups, not how terse you are. If the user has to reread a summary or ask you to explain, that will more than eat up the time savings from a shorter first read. Match responses to the task: a simple question gets a direct answer in prose, not headers and numbered sections. While keeping communication clear, also keep it concise, direct, and free of fluff. Avoid filler or stating the obvious. Get straight to the point. Don't overemphasize unimportant trivia about your process or use superlatives to oversell small wins or losses. Use inverted pyramid when appropriate (leading with the action), and if something about your reasoning or process is so important that it absolutely must be in user-facing text, save it for the end.
 
+${FINAL_RESPONSE_CONTRACT}
+
 These user-facing text instructions do not apply to code or tool calls.`
   }
   return `# Output efficiency
@@ -428,7 +434,7 @@ Focus text output on:
 
 Reason silently, then act. Working through a problem — weighing causes, checking arithmetic, deciding between fixes, talking yourself through what a test failure means — is thinking, not output. Do it, then emit the decision and the tool call. A paragraph that starts "Wait", "Maybe", "Let me think", "The issue is", or that revises itself mid-sentence, belongs nowhere in user-facing text.
 
-Finishing a task is not an invitation to write at length. The work is in the files and the tool calls; the final message only says what changed and anything the user must act on. Specifically:
+Finishing a task is not an invitation to write at length. ${FINAL_RESPONSE_CONTRACT} Specifically:
 - Never paste code, file contents, or diffs you already wrote to disk. Cite \`file_path:line\` instead. The user can open the file.
 - Report an audit, review, or investigation as its findings — one line each, and only the ones that matter. Do not narrate how you searched or restate what you read.
 - Do not re-explain a change you already described, list every file touched, or add a closing recap of the conversation.
@@ -458,13 +464,13 @@ export async function getSystemPrompt(
   mcpClients?: MCPServerConnection[],
 ): Promise<string[]> {
   if (isEnvTruthy(process.env.UR_CODE_SIMPLE)) {
-    return [
+    return renderGovernedPrompt('simple', [
       `You are UR, an AI coding agent.\n\nCWD: ${getCwd()}\nDate: ${getSessionStartDate()}`,
       getCyberRiskInstruction(),
       EXECUTION_CONTRACT_SECTION,
       `# Tool discipline
 Use the available Read, Edit, and Bash tools to perform work. Inspect relevant content before editing, prefer the narrowest tool, and treat a tool call as successful only after reading its result.`,
-    ]
+    ])
   }
 
   const cwd = getCwd()
@@ -482,7 +488,7 @@ Use the available Read, Edit, and Bash tools to perform work. Inspect relevant c
     proactiveModule?.isProactiveActive()
   ) {
     logForDebugging(`[SystemPrompt] path=simple-proactive`)
-    return [
+    return renderGovernedPrompt('proactive', [
       `\nYou are UR, an autonomous agent. Use the available tools to do useful work.`,
       getCyberRiskInstruction(),
       EXECUTION_CONTRACT_SECTION,
@@ -499,7 +505,7 @@ Use the available Read, Edit, and Bash tools to perform work. Inspect relevant c
       getFunctionResultClearingSection(model),
       SUMMARIZE_TOOL_RESULTS_SECTION,
       getProactiveSection(),
-    ].filter(s => s !== null)
+    ])
   }
 
   const dynamicSections = [
@@ -576,25 +582,30 @@ Use the available Read, Edit, and Bash tools to perform work. Inspect relevant c
   const resolvedDynamicSections =
     await resolveSystemPromptSections(dynamicSections)
 
-  return [
-    // --- Static content (cacheable) ---
-    getSimpleIntroSection(outputStyleConfig),
-    getSimpleSystemSection(),
-    EXECUTION_CONTRACT_SECTION,
-    outputStyleConfig === null ||
-    outputStyleConfig.keepCodingInstructions === true
-      ? getSimpleDoingTasksSection()
-      : null,
-    getActionsSection(),
-    getUsingYourToolsSection(enabledTools),
-    getOllamaToolDisciplineSection(),
-    getSimpleToneAndStyleSection(),
-    getOutputEfficiencySection(),
-    // === BOUNDARY MARKER - DO NOT MOVE OR REMOVE ===
-    ...(shouldUseGlobalCacheScope() ? [SYSTEM_PROMPT_DYNAMIC_BOUNDARY] : []),
-    // --- Dynamic content (registry-managed) ---
-    ...resolvedDynamicSections,
-  ].filter(s => s !== null)
+  return renderGovernedPrompt(
+    getAPIProvider() === 'ollama' ? 'ollama' : 'default',
+    [
+      // --- Static content (cacheable) ---
+      getSimpleIntroSection(outputStyleConfig),
+      getSimpleSystemSection(),
+      EXECUTION_CONTRACT_SECTION,
+      outputStyleConfig === null ||
+      outputStyleConfig.keepCodingInstructions === true
+        ? getSimpleDoingTasksSection()
+        : null,
+      getActionsSection(),
+      getUsingYourToolsSection(enabledTools),
+      getOllamaToolDisciplineSection(),
+      getSimpleToneAndStyleSection(),
+      getOutputEfficiencySection(),
+      // === BOUNDARY MARKER - DO NOT MOVE OR REMOVE ===
+      ...(shouldUseGlobalCacheScope()
+        ? [SYSTEM_PROMPT_DYNAMIC_BOUNDARY]
+        : []),
+      // --- Dynamic content (registry-managed) ---
+      ...resolvedDynamicSections,
+    ],
+  )
 }
 
 function getMcpInstructions(mcpClients: MCPServerConnection[]): string | null {

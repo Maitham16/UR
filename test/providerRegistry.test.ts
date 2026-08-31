@@ -29,6 +29,7 @@ import {
 } from '../src/services/providers/providerRegistry.js'
 import { resetSettingsCache } from '../src/utils/settings/settingsCache.js'
 import { updateSettingsForSource } from '../src/utils/settings/settings.js'
+import { parseProviderConfigSetValue } from '../src/cli/handlers/providers.js'
 
 beforeEach(() => {
   clearProviderModelCacheForTests()
@@ -55,9 +56,35 @@ function adapters(options: {
         stderr: '',
         code: 0,
       })),
-    fetch: options.fetch,
+    fetch:
+      options.fetch ??
+      (async () => new Response(JSON.stringify({ data: [], models: [] }))),
   }
 }
+
+describe('provider config CLI parsing', () => {
+  test('accepts both active-provider and explicitly named base URL forms', () => {
+    expect(
+      parseProviderConfigSetValue('base_url', ['http://localhost:11434']),
+    ).toEqual({ ok: true, value: 'http://localhost:11434' })
+    expect(
+      parseProviderConfigSetValue('base_url', [
+        'llama.cpp',
+        'http://localhost:9931/v1',
+      ]),
+    ).toEqual({
+      ok: true,
+      value: 'http://localhost:9931/v1',
+      targetBaseUrlProvider: 'llama.cpp',
+    })
+    expect(
+      parseProviderConfigSetValue('base_url', [
+        'not-a-provider',
+        'http://localhost:9931/v1',
+      ]),
+    ).toMatchObject({ ok: false })
+  })
+})
 
 describe('provider registry legal access paths', () => {
   test('resolves user-facing provider aliases to canonical IDs', () => {
@@ -100,6 +127,7 @@ describe('provider registry legal access paths', () => {
     const openai = providers.find(provider => provider.id === 'openai-api')
     const ollama = providers.find(provider => provider.id === 'ollama')
     const llama = providers.find(provider => provider.id === 'llama.cpp')
+    const lmstudio = providers.find(provider => provider.id === 'lmstudio')
     const unsloth = providers.find(provider => provider.id === 'unsloth')
 
     expect(openai?.accessType).toBe('api')
@@ -108,6 +136,13 @@ describe('provider registry legal access paths', () => {
     expect(ollama?.credentialType).toBe('local-runtime')
     expect(llama?.accessType).toBe('server')
     expect(llama?.credentialType).toBe('openai-compatible-endpoint')
+    expect(llama?.envKey).toBe('LLAMA_CPP_API_KEY')
+    expect(lmstudio).toMatchObject({
+      providerKind: 'ur-native',
+      usesExternalCli: false,
+      supportsNativeToolCalls: true,
+      supportsNativeStreaming: true,
+    })
     expect(unsloth).toMatchObject({
       accessType: 'server',
       credentialType: 'openai-compatible-endpoint',
@@ -285,10 +320,64 @@ describe('provider registry legal access paths', () => {
     expect(result.providerKind).toBe('ur-native')
     expect(result.usesExternalCli).toBe(false)
     expect(result.safetyBoundary).toBe('ur-native-runtime')
+    expect(result.baseUrl).toBe('https://api.openai.com/v1')
+    expect(text).toContain('Base URL: https://api.openai.com/v1')
     expect(text).toContain('Provider kind: ur-native')
     expect(text).toContain('Uses external CLI: no')
     expect(text).not.toContain('External vendor CLI boundary')
     expect(status).not.toContain('External vendor CLI boundary')
+  })
+
+  test('provider doctor reports the effective API gateway override', async () => {
+    const seen: string[] = []
+    const result = await doctorProvider('openrouter', {
+      adapters: adapters({
+        env: { OPENROUTER_API_KEY: 'sk-test' },
+        fetch: async input => {
+          seen.push(String(input))
+          return new Response(JSON.stringify({ data: [] }))
+        },
+      }),
+      settings: {
+        provider: {
+          active: 'openrouter',
+          baseUrls: {
+            openrouter: 'https://gateway.example.test/openrouter/v1',
+          },
+        },
+      },
+    })
+
+    expect(result.baseUrl).toBe(
+      'https://gateway.example.test/openrouter/v1',
+    )
+    expect(formatProviderDoctor(result)).toContain(
+      'Base URL: https://gateway.example.test/openrouter/v1',
+    )
+    expect(seen).toEqual([
+      'https://gateway.example.test/openrouter/v1/models',
+    ])
+    expect(result.checks.find(check => check.name === 'endpoint')?.status).toBe('pass')
+  })
+
+  test('provider doctor reports a dead custom API gateway as unavailable', async () => {
+    const result = await doctorProvider('openrouter', {
+      adapters: adapters({
+        env: { OPENROUTER_API_KEY: 'sk-test' },
+        fetch: async () => {
+          throw new Error('connection refused')
+        },
+      }),
+      settings: {
+        provider: {
+          active: 'openrouter',
+          baseUrls: { openrouter: 'https://dead-gateway.example/v1' },
+        },
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.failureReason).toContain('connection refused')
   })
 
   test('reports Claude CLI missing and exposes subscription login command', async () => {
@@ -419,6 +508,9 @@ describe('provider registry legal access paths', () => {
 
     expect(result.ok).toBe(false)
     expect(result.failureReason).toContain('HTTP 503')
+    expect(result.suggestedFix).toContain(
+      'ur config set base_url openai-compatible http://localhost:9999/v1',
+    )
   })
 
   test('lmstudio discovery falls back to /v1/models when base_url omits /v1', async () => {
@@ -581,7 +673,9 @@ describe('provider-scoped model listing', () => {
     // OpenAI models
     expect(openaiModels.some(m => m.id === 'gpt-4o')).toBe(true)
     expect(openaiModels.some(m => m.id === 'gpt-4o-mini')).toBe(true)
-    expect(openaiModels.some(m => m.id === 'o1')).toBe(true)
+    expect(openaiModels.some(m => m.id === 'gpt-5.6-sol')).toBe(true)
+    expect(openaiModels.some(m => m.id === 'o1')).toBe(false)
+    expect(openaiModels.some(m => m.id === 'o3-mini')).toBe(false)
     // OpenAI should NOT have Claude models
     expect(openaiModels.some(m => m.id.includes('claude'))).toBe(false)
 
@@ -600,7 +694,8 @@ describe('provider-scoped model listing', () => {
     // OpenAI provider supports GPT models
     expect(isModelSupportedByProvider('openai-api', 'gpt-5.5')).toBe(true)
     expect(isModelSupportedByProvider('openai-api', 'gpt-4o')).toBe(true)
-    expect(isModelSupportedByProvider('openai-api', 'o1')).toBe(true)
+    expect(isModelSupportedByProvider('openai-api', 'gpt-5.6-sol')).toBe(true)
+    expect(isModelSupportedByProvider('openai-api', 'o1')).toBe(false)
     // OpenAI provider does NOT support Claude models
     expect(isModelSupportedByProvider('openai-api', 'claude-sonnet-5')).toBe(false)
 
@@ -627,9 +722,9 @@ describe('provider-scoped model listing', () => {
     const geminiCliDefault = getDefaultModelForProvider('gemini-cli')
 
     expect(subscriptionDefault).toBeUndefined()
-    expect(openaiDefault).toBe('gpt-5.5')
+    expect(openaiDefault).toBe('gpt-5.6-sol')
     expect(anthropicDefault).toBe('claude-sonnet-5')
-    expect(geminiDefault).toBe('gemini-3.5-flash')
+    expect(geminiDefault).toBe('gemini-3.7-flash')
     expect(geminiCliDefault).toBe('gemini-cli/gemini-2.5-pro')
   })
 
@@ -666,7 +761,7 @@ describe('provider-scoped model listing', () => {
       expect(result.error).toContain('not available for provider')
       expect(result.error).toContain('openai-api')
       expect(result.validModels).toContain('gpt-5.5')
-      expect(result.suggestedModel).toBe('gpt-5.5')
+      expect(result.suggestedModel).toBe('gpt-5.6-sol')
     }
   })
 
@@ -948,13 +1043,30 @@ describe('provider-scoped model listing', () => {
       resetSettingsCache()
 
       expect(setSafeProviderConfig('provider', 'ollama').ok).toBe(true)
-      expect(setSafeProviderConfig('base_url', 'http://ollama-box:11434').ok).toBe(true)
+      expect(
+        setSafeProviderConfig('base_url', 'http://ollama-box:11434'),
+      ).toEqual({
+        ok: true,
+        message: 'Set base_url for ollama to http://ollama-box:11434.',
+      })
       expect(setSafeProviderConfig('provider', 'vllm').ok).toBe(true)
       expect(setSafeProviderConfig('base_url', 'http://vllm-box:8000/v1').ok).toBe(true)
       expect(setSafeProviderConfig('provider', 'llama.cpp').ok).toBe(true)
       expect(setSafeProviderConfig('base_url', 'http://llama-box:8080/v1').ok).toBe(true)
       expect(setSafeProviderConfig('provider', 'unsloth').ok).toBe(true)
       expect(setSafeProviderConfig('base_url', 'http://unsloth-box:8888/v1').ok).toBe(true)
+      const additionalEndpoints = {
+        'openai-api': 'https://gateway.example/openai/v1',
+        'anthropic-api': 'https://gateway.example/anthropic/v1',
+        'gemini-api': 'https://gateway.example/gemini/v1beta',
+        openrouter: 'https://gateway.example/openrouter/v1',
+        'openai-compatible': 'http://compatible-box:9000/v1',
+        lmstudio: 'http://lmstudio-box:1234/v1',
+      } as const
+      for (const [provider, baseUrl] of Object.entries(additionalEndpoints)) {
+        expect(setSafeProviderConfig('provider', provider).ok).toBe(true)
+        expect(setSafeProviderConfig('base_url', baseUrl).ok).toBe(true)
+      }
 
       expect(
         setProviderModel('vllm', 'vllm-model', {
@@ -974,6 +1086,10 @@ describe('provider-scoped model listing', () => {
       expect(getActiveProviderSettings().baseUrl).toBe('http://llama-box:8080/v1')
       expect(setSafeProviderConfig('provider', 'unsloth').ok).toBe(true)
       expect(getActiveProviderSettings().baseUrl).toBe('http://unsloth-box:8888/v1')
+      for (const [provider, baseUrl] of Object.entries(additionalEndpoints)) {
+        expect(setSafeProviderConfig('provider', provider).ok).toBe(true)
+        expect(getActiveProviderSettings().baseUrl).toBe(baseUrl)
+      }
 
       const saved = JSON.parse(
         readFileSync(join(dir, '.ur', 'settings.local.json'), 'utf8'),
@@ -983,13 +1099,74 @@ describe('provider-scoped model listing', () => {
         vllm: 'http://vllm-box:8000/v1',
         'llama.cpp': 'http://llama-box:8080/v1',
         unsloth: 'http://unsloth-box:8888/v1',
+        ...additionalEndpoints,
       })
-      expect(saved.provider.baseUrl).toBe('http://unsloth-box:8888/v1')
+      expect(saved.provider.baseUrl).toBe('http://lmstudio-box:1234/v1')
     } finally {
       rmSync(dir, { recursive: true, force: true })
       resetStateForTests()
       resetSettingsCache()
     }
+  })
+
+  test('sets another provider endpoint without switching or overwriting the active URL', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ur-provider-explicit-endpoint-'))
+    try {
+      resetStateForTests()
+      setOriginalCwd(dir)
+      setCwdState(dir)
+      resetSettingsCache()
+
+      // Start from the legacy single-URL shape to verify an explicit write
+      // migrates (rather than hides) the active provider's old address.
+      updateSettingsForSource('localSettings', {
+        provider: {
+          active: 'ollama',
+          baseUrl: 'http://ollama-box:11434',
+        },
+      })
+      resetSettingsCache()
+      const result = setSafeProviderConfig(
+        'base_url',
+        'http://llama-box:9931/v1',
+        { provider: 'llama.cpp' },
+      )
+
+      expect(result).toEqual({
+        ok: true,
+        message: 'Set base_url for llama.cpp to http://llama-box:9931/v1.',
+      })
+      expect(getActiveProviderSettings().active).toBe('ollama')
+      expect(getActiveProviderSettings().baseUrl).toBe(
+        'http://ollama-box:11434',
+      )
+      const saved = JSON.parse(
+        readFileSync(join(dir, '.ur', 'settings.local.json'), 'utf8'),
+      )
+      expect(saved.provider.baseUrls).toEqual({
+        ollama: 'http://ollama-box:11434',
+        'llama.cpp': 'http://llama-box:9931/v1',
+      })
+      expect(saved.provider.baseUrl).toBe('http://ollama-box:11434')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      resetStateForTests()
+      resetSettingsCache()
+    }
+  })
+
+  test('rejects meaningless endpoint overrides for vendor-managed subscription CLIs', () => {
+    expect(
+      setSafeProviderConfig(
+        'base_url',
+        'https://gateway.example.test/v1',
+        { provider: 'codex-cli' },
+      ),
+    ).toEqual({
+      ok: false,
+      message:
+        'Provider "codex-cli" is a vendor-managed subscription CLI and does not accept a base URL.',
+    })
   })
 
   test('legacy base_url migrates to the provider-scoped map on first switch', () => {

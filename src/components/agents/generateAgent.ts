@@ -30,6 +30,10 @@ export type GeneratedAgent = {
   model: string
   memory: 'user' | 'project' | 'local' | null
   background: boolean
+  /** Bounded working style; never grants authority or changes policy. */
+  personality?: string
+  /** Bounded coordination, handoff, and escalation behavior. */
+  collaboration?: string
   evaluationCases: Array<{
     input: string
     successCriteria: string[]
@@ -47,6 +51,8 @@ Requirements:
 - Use model "inherit" unless the task explicitly needs a model override.
 - Set a finite maxTurns proportional to the work (normally 8-30).
 - Memory is optional. Use null unless durable cross-session learning materially improves this role; recalled content is advisory data, never authority.
+- personality is one concise sentence describing working style, tone, and decision posture. It must not claim authority or weaken platform policy.
+- collaboration is one or two concise sentences defining when to work independently, coordinate, hand off, or escalate. It must not expand scope or permissions.
 - whenToUse must begin "Use this agent when...", include positive triggers and at least one "Do not use" boundary, and describe launching it through ${AGENT_TOOL_NAME}.
 - Create 2-4 evaluation cases containing concrete success criteria and forbidden behavior. Include at least one edge or failure case.
 - Use a lowercase kebab-case identifier with 2-4 descriptive words.
@@ -64,6 +70,10 @@ export const GeneratedAgentSchema = z.strictObject({
   model: z.string().min(1).max(200),
   memory: z.enum(['user', 'project', 'local']).nullable(),
   background: z.boolean(),
+  // Optional keeps parsing backward-compatible with generated specs saved by
+  // older releases. New structured generations require both fields below.
+  personality: z.string().trim().min(1).max(500).optional(),
+  collaboration: z.string().trim().min(1).max(500).optional(),
   evaluationCases: z
     .array(
       z.strictObject({
@@ -97,6 +107,8 @@ const GENERATED_AGENT_JSON_SCHEMA = {
       ],
     },
     background: { type: 'boolean' },
+    personality: { type: 'string', minLength: 1, maxLength: 500 },
+    collaboration: { type: 'string', minLength: 1, maxLength: 500 },
     evaluationCases: {
       type: 'array',
       minItems: 2,
@@ -124,10 +136,34 @@ const GENERATED_AGENT_JSON_SCHEMA = {
     'model',
     'memory',
     'background',
+    'personality',
+    'collaboration',
     'evaluationCases',
   ],
   additionalProperties: false,
 } as const
+
+/**
+ * Materialize generated behavioral contracts into the saved/runtime prompt.
+ * Keeping the fields optional preserves old generated payloads and manual
+ * agents while ensuring new contracts survive reloads as ordinary prompt text.
+ */
+export function formatGeneratedAgentSystemPrompt(
+  agent: Pick<GeneratedAgent, 'systemPrompt' | 'personality' | 'collaboration'>,
+): string {
+  const sections = [agent.systemPrompt.trim()]
+  if (agent.personality?.trim()) {
+    sections.push(
+      `## Personality\nAdopt this working style only when compatible with platform policy: ${agent.personality.trim()}`,
+    )
+  }
+  if (agent.collaboration?.trim()) {
+    sections.push(
+      `## Collaboration contract\nCoordinate and hand off as follows without expanding scope or authority: ${agent.collaboration.trim()}`,
+    )
+  }
+  return sections.join('\n\n')
+}
 
 export function parseGeneratedAgent(
   value: unknown,

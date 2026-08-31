@@ -19,6 +19,7 @@ import {
   getOllamaContextLengthForModel,
 } from '../../utils/model/ollamaModels.js'
 import {
+  getOllamaAuthHeaders,
   getOllamaBaseUrl,
   normalizeOllamaBaseUrl,
 } from '../../utils/model/ollamaConfig.js'
@@ -44,6 +45,10 @@ import {
   type VisionSupport,
 } from '../../utils/model/visionCapability.js'
 import { logForDebugging } from '../../utils/debug.js'
+import {
+  getProviderEffortWireValue,
+  isEffortLevel,
+} from '../../utils/effort.js'
 import {
   assertValidProviderToolUses,
   isProviderToolInput,
@@ -114,7 +119,7 @@ type OllamaChatRequest = {
   model: string
   messages: OllamaMessage[]
   stream: boolean
-  think?: boolean | 'high' | 'medium' | 'low' | 'max'
+  think?: boolean | string
   tools?: OllamaTool[]
   keep_alive?: string | number
   options?: {
@@ -143,20 +148,21 @@ const ollamaModelCapabilitiesCache = new Map<
 >()
 
 export function createOllamaURHQClient(
-  options?: { baseUrlOverride?: string }
+  options?: { baseUrlOverride?: string; apiKey?: string }
 ): unknown {
   // Capture the endpoint per client. A module-global override allowed creating
   // client B to silently retarget in-flight and future requests from client A.
   const baseUrl = getEffectiveOllamaBaseUrl(options?.baseUrlOverride)
+  const apiKey = options?.apiKey
 
   return {
     beta: {
       messages: {
         create(params: BetaMessageStreamParams, options?: RequestOptions) {
           if (params.stream) {
-            return createStreamingRequest(params, options, baseUrl)
+            return createStreamingRequest(params, options, baseUrl, apiKey)
           }
-          return createNonStreamingRequest(params, options, baseUrl)
+          return createNonStreamingRequest(params, options, baseUrl, apiKey)
         },
         async countTokens(params: {
           messages?: MessageParam[]
@@ -189,18 +195,17 @@ export function getEffectiveOllamaBaseUrl(override?: string): string {
  * API does need one, and without this the request simply 401s — which is why
  * Ollama Cloud was unreachable from CI, where no signed-in daemon exists.
  *
- * The key is read per request rather than cached so a rotated key takes effect
+ * An explicitly resolved stored key is captured by the client; otherwise the
+ * environment is read per request so an environment-key rotation takes effect
  * without restarting the session.
  */
 export function buildOllamaHeaders(
   env: NodeJS.ProcessEnv = process.env,
+  apiKeyOverride?: string,
 ): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-  }
-  const apiKey = env.OLLAMA_API_KEY?.trim()
-  if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`
+    ...getOllamaAuthHeaders(env, apiKeyOverride),
   }
   return headers
 }
@@ -209,6 +214,7 @@ function createStreamingRequest(
   params: BetaMessageStreamParams,
   options?: RequestOptions,
   baseUrl = getEffectiveOllamaBaseUrl(),
+  apiKey?: string,
 ) {
   const controller = createLinkedAbortController(options)
   const responsePromise = fetchOllamaChat(
@@ -217,6 +223,7 @@ function createStreamingRequest(
     controller,
     options,
     baseUrl,
+    apiKey,
   )
 
   return {
@@ -243,6 +250,7 @@ async function createNonStreamingRequest(
   params: BetaMessageStreamParams,
   options?: RequestOptions,
   baseUrl = getEffectiveOllamaBaseUrl(),
+  apiKey?: string,
 ): Promise<BetaMessage> {
   const controller = createLinkedAbortController(options)
   const { response, textToolFallbackAllowed } = await fetchOllamaChat(
@@ -251,6 +259,7 @@ async function createNonStreamingRequest(
     controller,
     options,
     baseUrl,
+    apiKey,
   )
   const json = (await response.json()) as OllamaChatChunk
   if (json.error) {
@@ -265,6 +274,7 @@ async function fetchOllamaChat(
   controller: AbortController,
   options?: RequestOptions,
   baseUrl = getEffectiveOllamaBaseUrl(),
+  apiKey?: string,
 ): Promise<OllamaFetchResult> {
   // This bounds the wait for response *headers* only — it is cleared in the
   // `finally` once they arrive, after which the per-chunk deadline takes over.
@@ -283,13 +293,14 @@ async function fetchOllamaChat(
       params.model,
       baseUrl,
       controller.signal,
+      apiKey,
     )
     const textToolFallbackAllowed =
       (params.tools?.length ?? 0) > 0 &&
       !modelCapabilityEnabled(capabilities, 'tools')
     const response = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
-      headers: buildOllamaHeaders(),
+      headers: buildOllamaHeaders(process.env, apiKey),
       body: JSON.stringify(
         toOllamaChatRequest(params, stream, capabilities, baseUrl),
       ),
@@ -798,6 +809,13 @@ function getOllamaThink(
     params as { output_config?: { effort?: unknown } }
   ).output_config?.effort
   const model = String((params as { model?: unknown }).model ?? '')
+  const advertisedWireEffort =
+    typeof effort === 'string' && isEffortLevel(effort)
+      ? getProviderEffortWireValue(model, effort, 'ollama')
+      : undefined
+  if (advertisedWireEffort && supportsThinking) {
+    return advertisedWireEffort
+  }
   if (
     (effort === 'low' || effort === 'medium' || effort === 'high' ||
       effort === 'max') &&
@@ -806,9 +824,6 @@ function getOllamaThink(
     return effort === 'max' && /gpt[-_]?oss/i.test(model) ? 'high' : effort
   }
   if (thinking && thinking.type !== 'disabled') {
-    return true
-  }
-  if (typeof effort === 'string') {
     return true
   }
   if (supportsThinking) {
@@ -828,6 +843,7 @@ async function getOllamaModelCapabilities(
   model: string,
   baseUrl: string,
   signal?: AbortSignal,
+  apiKey?: string,
 ): Promise<OllamaModelCapabilities | null> {
   const normalizedModel = model.trim()
   if (!normalizedModel) {
@@ -841,12 +857,11 @@ async function getOllamaModelCapabilities(
   try {
     const response = await fetch(`${baseUrl}/api/show`, {
       method: 'POST',
-      headers: buildOllamaHeaders(),
+      headers: buildOllamaHeaders(process.env, apiKey),
       body: JSON.stringify({ model: normalizedModel }),
       signal,
     })
     if (!response.ok) {
-      ollamaModelCapabilitiesCache.set(cacheKey, null)
       return null
     }
     const body = await response.json()
@@ -858,7 +873,6 @@ async function getOllamaModelCapabilities(
     if (signal?.aborted) {
       throw error
     }
-    ollamaModelCapabilitiesCache.set(cacheKey, null)
     return null
   }
 }

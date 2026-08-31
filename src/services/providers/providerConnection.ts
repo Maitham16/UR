@@ -25,6 +25,7 @@ import { getInitialSettings } from '../../utils/settings/settings.js'
 import {
   getOllamaBaseUrl,
   getOllamaSessionOverride,
+  normalizeOllamaBaseUrl,
 } from '../../utils/model/ollamaConfig.js'
 
 export type ConnectionState =
@@ -131,10 +132,10 @@ export function getConfiguredBaseUrl(provider: ProviderId): string | undefined {
   const allSettings = getInitialSettings()
   const scoped = getScopedProviderBaseUrl(provider, allSettings)
   if (provider === 'ollama') {
-    return (
+    return normalizeOllamaBaseUrl(
       getOllamaSessionOverride() ??
       scoped ??
-      getOllamaBaseUrl(process.env, allSettings)
+      getOllamaBaseUrl(process.env, allSettings),
     )
   }
   return scoped ?? getProviderDefinition(provider).defaultBaseUrl

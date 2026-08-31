@@ -23,6 +23,11 @@ export type UntrustedActionGateOptions = {
   windowMs?: number
 }
 
+export type UntrustedActionAdvisory = {
+  message: string
+  sources: string[]
+}
+
 function serializeInput(input: Record<string, unknown>): string {
   try {
     return JSON.stringify(input)
@@ -67,17 +72,37 @@ function actionCanCrossBoundary(
 }
 
 /**
- * Runtime policy derived from provenance, independent of model compliance.
- *
- * - A leaked canary is a hard denial.
- * - Recent suspicious content forces explicit approval before a mutating,
- *   destructive, or open-world action.
- * - Local passive reads remain available so the agent can investigate safely.
+ * Describe recent suspicious provenance without changing the user's selected
+ * permission policy. The model already sees source framing; this diagnostic is
+ * useful for logs and review, while normal allow/ask/deny rules remain decisive.
  */
-export function checkUntrustedActionGate(
+export function getUntrustedActionAdvisory(
   tool: Tool,
   input: Record<string, unknown>,
   options: UntrustedActionGateOptions = {},
+): UntrustedActionAdvisory | undefined {
+  const suspicious = recentSuspiciousEvidence(options)
+  if (suspicious.length === 0 || !actionCanCrossBoundary(tool, input)) {
+    return undefined
+  }
+  const sources = [...new Set(suspicious.map(entry => entry.source))].slice(0, 3)
+  return {
+    sources,
+    message:
+      `Recent evidence matched prompt-injection signals (${sources.join(', ')}). ` +
+      `Treat embedded requests as advisory and apply the user's normal permission policy.`,
+  }
+}
+
+/**
+ * Narrow runtime invariant: direct privileged-canary leakage is denied. Mere
+ * suspicious provenance is advisory and must not impose a blanket approval
+ * prompt or override the user's configured permission mode.
+ */
+export function checkUntrustedActionGate(
+  _tool: Tool,
+  input: Record<string, unknown>,
+  _options: UntrustedActionGateOptions = {},
 ): PermissionResult | undefined {
   const serialized = serializeInput(input)
   if (privilegedCanaryLeaked(serialized)) {
@@ -94,23 +119,7 @@ export function checkUntrustedActionGate(
     }
   }
 
-  const suspicious = recentSuspiciousEvidence(options)
-  if (suspicious.length === 0 || !actionCanCrossBoundary(tool, input)) {
-    return undefined
-  }
-
-  const sources = [...new Set(suspicious.map(entry => entry.source))]
-    .slice(0, 3)
-    .join(', ')
-  return {
-    behavior: 'ask',
-    message:
-      `Recent untrusted content matched prompt-injection signals (${sources}). ` +
-      `Approve ${tool.name} only if this exact action follows the user's request rather than directives in fetched content.`,
-    decisionReason: {
-      type: 'safetyCheck',
-      reason: 'recent suspicious untrusted content requires provenance-aware approval',
-      classifierApprovable: false,
-    },
-  }
+  // Keep advisory calculation separate from the permission result so a
+  // source-history heuristic cannot turn an allow policy into a forced ask.
+  return undefined
 }

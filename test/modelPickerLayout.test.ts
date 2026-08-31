@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { getAdaptiveModelVisibleCount } from '../src/components/ModelPicker.js'
+import {
+  getAdaptiveModelVisibleCount,
+  providerNeedsFocusedEffortProbe,
+} from '../src/components/ModelPicker.js'
 
 describe('direct model picker layout', () => {
   test('uses the available terminal height for large live catalogues', () => {
@@ -15,5 +18,14 @@ describe('direct model picker layout', () => {
   test('does not invent a row for an empty or invalid catalogue', () => {
     expect(getAdaptiveModelVisibleCount(0, 24)).toBe(0)
     expect(getAdaptiveModelVisibleCount(Number.NaN, 24)).toBe(0)
+  })
+
+  test('probes focused Ollama and llama.cpp models before effort arrows are used', () => {
+    expect(providerNeedsFocusedEffortProbe('ollama', 'kimi-k3:cloud')).toBe(true)
+    expect(providerNeedsFocusedEffortProbe('llama.cpp', 'local-model')).toBe(true)
+    expect(providerNeedsFocusedEffortProbe('openrouter', 'openai/gpt-5.6')).toBe(
+      false,
+    )
+    expect(providerNeedsFocusedEffortProbe('ollama', null)).toBe(false)
   })
 })

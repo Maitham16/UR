@@ -6,17 +6,18 @@ surfaces:
 | Surface | Path | Contract |
 | --- | --- | --- |
 | Agent Card | `/.well-known/agent-card.json` | Strict v1 card by default; send `A2A-Version: 0.3` for the separate v0.3 card |
-| A2A v1 JSON-RPC | `/` or `/a2a/v1/jsonrpc` | ProtoJSON, PascalCase lifecycle methods, `A2A-Version: 1.0` |
-| A2A v1 HTTP+JSON | `/message:send`, `/tasks`, or `/a2a/v1/...` | Versioned REST lifecycle with pagination, artifacts, references, and cancellation |
-| A2A v0.3 JSON-RPC | `/a2a/jsonrpc` | Stable v0.3 binding implemented with the official JavaScript SDK |
+| A2A v1 JSON-RPC | `/` or `/a2a/v1/jsonrpc` | Stable-SDK ProtoJSON, PascalCase lifecycle methods, SSE streaming, `A2A-Version: 1.0` |
+| A2A v1 HTTP+JSON | `/message:send`, `/message:stream`, `/tasks`, or `/a2a/v1/...` | Versioned REST lifecycle, SSE subscription, push configuration, pagination, artifacts, references, and cancellation |
+| A2A v0.3 JSON-RPC | `/a2a/jsonrpc` | Explicit SDK compatibility transport, including streaming/resubscription |
 | UR compatibility API | `/a2a/tasks` and `/a2a/tasks/:id` | UR-specific REST-style background-task controls; not an A2A REST binding |
 
-The two protocol versions deliberately use separate schemas and handlers. The
-stable SDK remains pinned for the older binding; UR's dependency-free final
-protocol compatibility layer translates strict messages and tasks onto the
-same bounded durable execution engine. It is covered by UR tests and the
-official A2A TCK. UR does not claim a gRPC interface or certification by the
-alpha JavaScript SDK binding.
+UR uses `@a2a-js/sdk` 1.1 as its native v1 execution engine. The SDK's explicit
+v0.3 compatibility transport translates older peers onto the same bounded,
+durable task store; UR does not keep a second legacy SDK runtime. JSON-RPC and
+HTTP+JSON streaming, in-flight task resubscription, and webhook push
+(authenticated for public destinations) are advertised because each path has
+end-to-end tests. UR does not
+advertise a gRPC interface or authenticated extended Agent Card.
 
 ## Start the server
 
@@ -80,7 +81,7 @@ curl -s http://127.0.0.1:8765/a2a/v1/jsonrpc \
     "id":"request-v1",
     "method":"SendMessage",
     "params":{
-      "configuration":{"blocking":true},
+      "configuration":{"returnImmediately":false},
       "message":{
         "messageId":"message-v1",
         "role":"ROLE_USER",
@@ -91,10 +92,36 @@ curl -s http://127.0.0.1:8765/a2a/v1/jsonrpc \
 ```
 
 The v1 HTTP+JSON binding accepts `application/a2a+json` and exposes
-`message:send`, task list/get/cancel, continuation, and artifact/reference
-operations at the advertised transport root or under `/a2a/v1`. List cursors
-are opaque and filter-bound. An optional tenant segment, for example
-`/a2a/v1/acme/tasks`, requires a matching `tenant:acme` delegation scope.
+`message:send`, `message:stream`, task list/get/cancel/subscribe, push
+notification configuration, continuation, and artifact/reference operations
+at the advertised transport root or under `/a2a/v1`. Stream responses use
+`text/event-stream`; each SSE `data` field contains one ProtoJSON
+`StreamResponse`. List cursors are opaque and filter-bound. An optional tenant
+segment, for example `/a2a/v1/acme/tasks`, requires a matching `tenant:acme`
+delegation scope.
+
+Stream a v1 request:
+
+```sh
+curl -N http://127.0.0.1:8765/a2a/v1/message:stream \
+  -H 'content-type: application/a2a+json' \
+  -H 'A2A-Version: 1.0' \
+  -H "authorization: Bearer $UR_A2A_TOKEN" \
+  -d '{
+    "metadata":{"skill":"coding-agent"},
+    "message":{
+      "messageId":"stream-v1",
+      "role":"ROLE_USER",
+      "parts":[{"text":"Review the current diff."}]
+    }
+  }'
+```
+
+Reconnect to an in-flight task with
+`POST /a2a/v1/tasks/{taskId}:subscribe`, or use the JSON-RPC
+`SubscribeToTask` method. A subscription first receives the current task
+snapshot, then subsequent status and artifact events from the same live event
+bus.
 
 Send a blocking v0.3 message:
 
@@ -122,15 +149,51 @@ curl -s http://127.0.0.1:8765/a2a/jsonrpc \
 
 Set `configuration.blocking` to `false` to receive a working task promptly,
 then call `tasks/get`; use `tasks/cancel` for a nonterminal task. The v0.3
-binding supports `message/send`, `tasks/get`, and `tasks/cancel`. Streaming,
-resubscription, push notifications, and authenticated extended cards are not
-advertised by either card and return protocol errors if requested.
+compatibility binding supports `message/send`, `message/stream`, `tasks/get`,
+`tasks/cancel`, `tasks/resubscribe`, and push configuration. It uses the v0.3
+wire shapes while sharing the v1 task engine. Authenticated
+extended cards remain unsupported.
 
 `params.metadata.skill` selects an advertised skill; the default is
 `coding-agent`. Requests with an unknown skill are rejected before execution.
 Prompts enter the child process through stdin, and the child uses fail-closed
 `dontAsk` permissions because this network binding has no interactive approval
 bridge.
+
+## Push notifications
+
+The v1 HTTP+JSON routes are:
+
+- `POST /tasks/{taskId}/pushNotificationConfigs`
+- `GET /tasks/{taskId}/pushNotificationConfigs`
+- `GET /tasks/{taskId}/pushNotificationConfigs/{configId}`
+- `DELETE /tasks/{taskId}/pushNotificationConfigs/{configId}`
+
+A loopback development callback may use HTTP and omit `authentication`; this
+works directly for `localhost`, `127.0.0.0/8`, and `::1` receivers without an
+allow-list entry. UR sends no `Authorization` header when the configuration has
+no authentication object.
+
+By default, public and other non-loopback destinations must use HTTPS and
+include both
+`authentication.scheme` and `authentication.credentials`; UR sends them in the
+webhook `Authorization` header. UR validates DNS at registration and again
+immediately before delivery, follows no redirects, and pins the validated
+address into the outbound connection. Unlisted private, link-local, multicast,
+documentation, and metadata destinations are rejected.
+
+For an intentional non-loopback development receiver, an operator can allow
+one exact origin:
+
+```sh
+UR_A2A_PUSH_ALLOWED_ORIGINS=http://192.168.1.20:9000 ur a2a serve
+```
+
+Multiple origins are comma-separated. This exception can permit HTTP or a
+private destination, but it does not waive authentication for a non-loopback
+receiver. Do not use a broad or user-controlled value. Push
+credentials are kept in process memory instead of being written to the task
+manifest; clients should register them again after a server restart.
 
 ## Delegation tokens
 
@@ -176,6 +239,9 @@ The server bounds work with these environment variables:
 - `UR_A2A_MAX_ACTIVE_TASKS`
 - `UR_A2A_MAX_ACTIVE_TASKS_PER_OWNER`
 - `UR_A2A_TASK_TIMEOUT_MS`
+- `UR_A2A_PUSH_TIMEOUT_MS`
+- `UR_A2A_PUSH_DNS_TIMEOUT_MS`
+- `UR_A2A_PUSH_ALLOWED_ORIGINS` (exact, comma-separated non-loopback development exceptions)
 
 Protocol task state and v1 artifacts are persisted with owner, tenant, skill,
 and version metadata under `.ur/a2a/` using owner-only permissions and atomic

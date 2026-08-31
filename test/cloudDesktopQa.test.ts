@@ -44,7 +44,11 @@ import {
   type DesktopQaReport,
   validateDesktopQaFixture,
 } from '../src/services/qa/desktopQa.js'
-import type { DesktopQaFixture } from '../src/services/qa/desktopQaSchema.js'
+import {
+  parseDesktopQaFixture,
+  type DesktopQaFixture,
+  type DesktopQaFixtureInput,
+} from '../src/services/qa/desktopQaSchema.js'
 import {
   openArtifactAttachment,
   recordArtifact,
@@ -695,8 +699,8 @@ class FakeDesktopDriver implements DesktopQaDriver {
   }
 }
 
-function fixture(steps: DesktopQaFixture['steps']): DesktopQaFixture {
-  return {
+function fixture(steps: DesktopQaFixtureInput['steps']): DesktopQaFixture {
+  return parseDesktopQaFixture({
     version: 1,
     name: 'Desktop fixture',
     driver: 'electron',
@@ -710,7 +714,7 @@ function fixture(steps: DesktopQaFixture['steps']): DesktopQaFixture {
       redactSelectors: [],
     },
     timeoutMs: 30_000,
-  }
+  })
 }
 
 describe('desktop QA fixtures and evidence', () => {

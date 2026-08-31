@@ -401,6 +401,22 @@ export function normalizeOpenAICompatibleBaseUrl(baseUrl: string): string {
   return url.toString().replace(/\/$/, '')
 }
 
+/** Normalize Gemini gateways so discovery and inference use the same API root. */
+export function normalizeGeminiBaseUrl(baseUrl?: string): string {
+  const url = trimmedUrl(
+    baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta',
+  )
+  url.hash = ''
+  url.search = ''
+  let path = url.pathname.replace(/\/+$/, '')
+  path = path.replace(/\/models(?:\/.*)?$/i, '')
+  if (!/\/v\d+(?:beta)?$/i.test(path)) {
+    path = `${path}/v1beta`
+  }
+  url.pathname = path
+  return url.toString().replace(/\/$/, '')
+}
+
 export function normalizeProviderEndpoint(
   baseUrl: string | undefined,
   defaultBaseUrl: string,
@@ -412,7 +428,7 @@ export function normalizeProviderEndpoint(
   const path = url.pathname.replace(/\/+$/, '')
   if (path.endsWith(finalSegment)) {
     url.pathname = path
-  } else if (path.endsWith('/v1')) {
+  } else if (/\/v\d+(?:beta)?$/i.test(path)) {
     url.pathname = `${path}${finalSegment}`
   } else {
     url.pathname = `${path || '/v1'}${path ? '/v1' : ''}${finalSegment}`

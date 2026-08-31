@@ -86,7 +86,12 @@ import {
   getModelMaxOutputTokens,
   getmodelS1mExpTreatmentEnabled,
 } from '../../utils/context.js'
-import { resolveAppliedEffort } from '../../utils/effort.js'
+import {
+  getEffortEnvOverride,
+  getSupportedEffortLevelsForModel,
+  resolveAppliedEffort,
+} from '../../utils/effort.js'
+import { ensureProviderReasoningCapabilitiesForModel } from '../providers/providerRegistry.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { computeFingerprintFromMessages } from '../../utils/fingerprint.js'
@@ -1519,10 +1524,40 @@ async function* queryModel(
     }
   }
 
+  const effortProvider = options.providerSettings?.active ?? getRuntimeProvider()
+  const envEffort = getEffortEnvOverride()
+  const requestedEffort =
+    envEffort === null ? undefined : envEffort ?? options.effortValue
+  if (
+    typeof requestedEffort === 'string' &&
+    getSupportedEffortLevelsForModel(options.model, effortProvider).length === 0
+  ) {
+    // Dynamic runtimes such as Ollama and llama.cpp publish their exact
+    // effort contract from a model-scoped endpoint. Resolve it on the first
+    // request as well as in the picker so a saved effort survives restart.
+    await ensureProviderReasoningCapabilitiesForModel(
+      effortProvider,
+      options.model,
+    ).catch(() => undefined)
+  }
+  if (requestedEffort === 'ultra') {
+    if (!getSupportedEffortLevelsForModel(options.model, effortProvider).includes('ultra')) {
+      await ensureProviderReasoningCapabilitiesForModel(
+        effortProvider,
+        options.model,
+      ).catch(() => undefined)
+    }
+    if (!getSupportedEffortLevelsForModel(options.model, effortProvider).includes('ultra')) {
+      throw new Error(
+        `Effort ultra is not available: ${options.model} on ${effortProvider} does not advertise ultra or a provider-authored equivalent.`,
+      )
+    }
+  }
+
   const effort = resolveAppliedEffort(
     options.model,
     options.effortValue,
-    options.providerSettings?.active,
+    effortProvider,
   )
 
   if (process.env.UR_EVAL_METRICS_FILE) {
@@ -1601,7 +1636,6 @@ async function* queryModel(
   let stream: Stream<BetaRawMessageStreamEvent> | undefined = undefined
   let streamRequestId: string | null | undefined = undefined
   let clientRequestId: string | undefined = undefined
-  // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins -- Response is available in Node 18+ and is used by the SDK
   let streamResponse: Response | undefined = undefined
 
   // Release all stream resources to prevent native memory leaks.

@@ -1,42 +1,33 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle'
+import {
+  Client,
+  ProtocolError,
+  ProtocolErrorCode,
+  SSEClientTransport,
+  StreamableHTTPClientTransport,
+  UnauthorizedError,
+  createFetchWithInit,
+} from '@modelcontextprotocol/client'
+import type {
+  ElicitRequestURLParams,
+  ElicitResult,
+  FetchLike,
+  JSONRPCMessage,
+  ListPromptsResult,
+  ListToolsResult,
+  PromptMessage,
+  ResourceLink,
+  SSEClientTransportOptions,
+  StreamableHTTPClientTransportOptions,
+  Transport,
+} from '@modelcontextprotocol/client'
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import type {
   Base64ImageSource,
   ContentBlockParam,
   MessageParam,
 } from '@urhq-ai/sdk/resources/index.mjs'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import {
-  SSEClientTransport,
-  type SSEClientTransportOptions,
-} from '@modelcontextprotocol/sdk/client/sse.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import {
-  StreamableHTTPClientTransport,
-  type StreamableHTTPClientTransportOptions,
-} from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import {
-  createFetchWithInit,
-  type FetchLike,
-  type Transport,
-} from '@modelcontextprotocol/sdk/shared/transport.js'
-import {
-  CallToolResultSchema,
-  ElicitRequestSchema,
-  type ElicitRequestURLParams,
-  type ElicitResult,
-  ErrorCode,
-  type JSONRPCMessage,
-  type ListPromptsResult,
-  ListPromptsResultSchema,
-  ListResourcesResultSchema,
-  ListRootsRequestSchema,
-  type ListToolsResult,
-  ListToolsResultSchema,
-  McpError,
-  type PromptMessage,
-  type ResourceLink,
-} from '@modelcontextprotocol/sdk/types.js'
 import mapValues from 'lodash-es/mapValues.js'
 import memoize from 'lodash-es/memoize.js'
 import zipObject from 'lodash-es/zipObject.js'
@@ -124,8 +115,6 @@ const fetchMcpSkillsForClient = feature('MCP_SKILLS')
       require('../../skills/mcpSkills.js') as typeof import('../../skills/mcpSkills.js')
     ).fetchMcpSkillsForClient
   : null
-
-import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
 import type { AssistantMessage } from 'src/types/message.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { classifyMcpToolForCollapse } from '../../tools/MCPTool/classifyForCollapse.js'
@@ -1006,7 +995,7 @@ export const connectToServer = memoize(
         logMCPDebug(name, `Client created, setting up request handler`)
       }
 
-      client.setRequestHandler(ListRootsRequestSchema, async () => {
+      client.setRequestHandler('roots/list', async () => {
         logMCPDebug(name, `Received ListRoots request from server`)
         return { roots: listMcpRoots() }
       })
@@ -1183,7 +1172,7 @@ export const connectToServer = memoize(
       // Register default elicitation handler that returns cancel during the
       // window before registerElicitationHandler overwrites it in
       // onConnectionAttempt (useManageMCPConnections).
-      client.setRequestHandler(ElicitRequestSchema, async request => {
+      client.setRequestHandler('elicitation/create', async request => {
         logMCPDebug(
           name,
           `Elicitation request received during initialization: ${jsonStringify(request)}`,
@@ -1748,7 +1737,6 @@ export const fetchToolsForClient = memoizeWithLRU(
 
       const result = (await client.client.request(
         { method: 'tools/list' },
-        ListToolsResultSchema,
       )) as ListToolsResult
 
       // Sanitize tool data from MCP server
@@ -2005,7 +1993,6 @@ export const fetchResourcesForClient = memoizeWithLRU(
 
       const result = await client.client.request(
         { method: 'resources/list' },
-        ListResourcesResultSchema,
       )
 
       if (!result.resources) return []
@@ -2039,7 +2026,6 @@ export const fetchCommandsForClient = memoizeWithLRU(
       // Request prompts list from client
       const result = (await client.client.request(
         { method: 'prompts/list' },
-        ListPromptsResultSchema,
       )) as ListPromptsResult
 
       if (!result.prompts) return []
@@ -2859,8 +2845,8 @@ export async function callMCPToolWithUrlElicitationRetry({
       // The MCP SDK's Protocol creates plain McpError (not UrlElicitationRequiredError)
       // for error responses, so we check the error code instead of instanceof.
       if (
-        !(error instanceof McpError) ||
-        error.code !== ErrorCode.UrlElicitationRequired
+        !(error instanceof ProtocolError) ||
+        error.code !== ProtocolErrorCode.UrlElicitationRequired
       ) {
         throw error
       }
@@ -3092,7 +3078,6 @@ async function callMCPTool({
           arguments: args,
           _meta: meta,
         },
-        CallToolResultSchema,
         {
           signal,
           timeout: timeoutMs,

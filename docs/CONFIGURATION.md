@@ -1,5 +1,21 @@
 # Configuration
 
+## Migration from retired surfaces
+
+- Move top-level `disableAutoMode: "disable"` to
+  `permissions.disableAutoMode`. UR migrates the old key while loading this
+  release, but it is no longer part of the public settings schema.
+- Project `.ur/commands` and user `~/.ur/commands` directories are no longer
+  discovered. Move each command to `.ur/skills/<name>/SKILL.md`. Plugin
+  manifest `commands` entries remain supported and are not affected.
+- The public `--max-thinking-tokens` flag is removed; use provider/model effort
+  controls (`--effort` or `/effort`). `MAX_THINKING_TOKENS` remains as a
+  managed-deployment environment compatibility bridge for this release.
+- The public `TaskOutput` polling tool and its `AgentOutputTool`/
+  `BashOutputTool` aliases are removed. Background task and agent results arrive
+  through completion notifications; task output files remain internal runtime
+  infrastructure.
+
 UR reads configuration from CLI flags, environment variables, and project or user settings files.
 
 Inside an interactive UR session, `/config` opens the settings panel and
@@ -123,6 +139,7 @@ ur config set provider.fallback ollama
 ur config set model <model>
 ur provider select-model <provider> <model> --json
 ur config set base_url <url>
+ur config set base_url <provider> <url>
 ```
 
 `provider.fallback` is diagnostic recovery metadata, not automatic routing.
@@ -139,7 +156,7 @@ in shell commands.
 In the interactive app, `/model` is provider-first: choose a provider, then
 choose a model from that provider only. The picker labels providers as
 subscription login, API key, local runtime, or OpenAI-compatible endpoint and
-shows model source as `live`, `cache`, or `static`. Changing providers clears an
+shows model source as `live`, `cache`, `static`, or `unavailable`. Changing providers clears an
 incompatible saved model instead of silently carrying it across providers. The
 saved provider/model pair controls the runtime backend for the next agent
 request; Ollama is only used when `ollama` is the selected provider.
@@ -148,13 +165,21 @@ The configured `base_url` is provider-scoped. Setting an address while vLLM is
 active does not replace the saved Ollama, llama.cpp, or Unsloth address;
 returning to any provider restores its own URL. Legacy `provider.baseUrl`
 settings are migrated to the old active provider when the first switch occurs.
+To configure a provider that is not active, use
+`ur config set base_url <provider> <url>`; the success message names the target
+provider. This applies to direct API providers and gateways (OpenAI, Anthropic,
+Gemini, and OpenRouter) as well as local/server providers; built-in vendor URLs
+are fallbacks only. Discovery, doctor output, and request dispatch all resolve
+the same per-provider override. `/model` also opens an endpoint field when a
+disconnected local/server provider is selected.
 
 In the model step, Up/Down browses, Left/Right changes the focused model's
 supported effort level, Enter confirms, Ctrl+R refreshes the catalog, and Esc
 returns to providers. OpenRouter entries show pricing tier, context size,
 tool/reasoning capability, compact names, and the exact ID for the focused
-entry. Its catalog is fetched fresh whenever opened; a failed refresh never
-silently displays cached entries. API-provider secret
+entry. Its endpoint-scoped catalog is reused for five minutes, while Ctrl+R
+forces an immediate live refresh; a failed forced refresh never silently
+displays cached entries. API-provider secret
 entry stays on one masked row and stores the value through the keychain flow.
 Ollama and llama.cpp capabilities are loaded lazily for the focused model from
 `/api/show` and `/props`, respectively, so the arrow selector reflects the
@@ -188,6 +213,10 @@ OPENAI_COMPATIBLE_API_KEY=...
 ANTHROPIC_API_KEY=...
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
+OLLAMA_API_KEY=...             # optional for authenticated Ollama gateways
+LMSTUDIO_API_KEY=...           # optional when required by the endpoint
+LLAMA_CPP_API_KEY=...          # optional when required by the endpoint
+VLLM_API_KEY=...               # optional when required by the endpoint
 UNSLOTH_API_KEY=...
 ```
 
@@ -195,8 +224,8 @@ Unsloth is an inference-provider integration only. Start Unsloth Studio and
 load the model outside UR, connect its generated key with `ur connect unsloth`,
 then select a model discovered from `http://localhost:8888/v1` (or your
 configured `base_url`). UR always sends `enable_tools: false`; standard model
-function calls continue through UR's own permission, sandbox, and verifier
-flow, while Unsloth's server-side tools remain disabled.
+function calls continue through UR's normal native tool flow, while Unsloth's
+server-side tools remain disabled so the integration stays provider-only.
 
 ### OpenAI Responses transport
 
@@ -222,11 +251,12 @@ refuses to persist compacted context.
 
 ### Reconfiguring the Ollama host
 
-The endpoint can be changed from UR in three ways, in order of precedence:
+The endpoint can be changed from UR in four ways, in order of precedence:
 
 1. `--ollama-host <url>` CLI flag (session only)
-2. `OLLAMA_HOST` environment variable
-3. `ollama.host` in user settings (`~/.ur/settings.json`)
+2. the provider-scoped URL set with `ur config set base_url ollama <url>`
+3. `OLLAMA_HOST` or `OLLAMA_BASE_URL` environment variable
+4. legacy `ollama.host` in user settings (`~/.ur/settings.json`)
 
 Examples:
 
@@ -238,7 +268,10 @@ ur --ollama-host http://192.168.1.50:11434
 OLLAMA_HOST=http://192.168.1.50:11434 ur
 
 # Persistent setting
-ur --settings '{"ollama":{"host":"http://192.168.1.50:11434"}}'
+ur config set base_url ollama http://192.168.1.50:11434
+
+# Optional key for an authenticated gateway
+echo "$OLLAMA_API_KEY" | ur connect ollama
 ```
 
 Model selection environment variables still work the same way:
@@ -511,7 +544,7 @@ ur config set sandbox.enabled false
 You can also inspect the current state with `ur sandbox status`.
 
 OS confinement depends on platform support: `sandbox-exec` (Seatbelt) on
-macOS, or `bwrap` (bubblewrap) on Linux/WSL2. `ur sandbox check` reports
+macOS and `bwrap` (bubblewrap) on Linux/WSL2. `ur sandbox check` reports
 missing dependencies for the current platform.
 
 This sandbox covers UR-run Bash/File tool commands only. For subscription CLI

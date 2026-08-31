@@ -19,7 +19,8 @@ ur --version
 
 ### `npm install -g ur-agent` fails
 
-- Likely cause: permission errors on the global prefix, or an old Node.js.
+- Likely cause: permission errors on the global prefix, or Node.js older than
+  the supported `22.12` baseline.
 - Fix: use a user-writable npm prefix (or a Node version manager), then retry.
 
 ```sh

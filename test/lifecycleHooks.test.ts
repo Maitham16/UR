@@ -11,6 +11,9 @@ import {
   BeforeCommitHookInputSchema,
   OnFailureHookInputSchema,
   DirectoryAddedHookInputSchema,
+  InterruptHookInputSchema,
+  PreModelSwitchHookInputSchema,
+  PostModelSwitchHookInputSchema,
 } from '../src/entrypoints/sdk/coreSchemas.js'
 import { getDefaultAppState } from '../src/state/AppStateStore.js'
 import { getSessionId } from '../src/bootstrap/state.js'
@@ -58,6 +61,9 @@ describe('lifecycle hooks', () => {
       'BeforeCommit',
       'OnFailure',
       'DirectoryAdded',
+      'Interrupt',
+      'PreModelSwitch',
+      'PostModelSwitch',
     ]) {
       expect(HOOK_EVENTS as readonly string[]).toContain(event)
     }
@@ -133,6 +139,37 @@ describe('lifecycle hooks', () => {
         scope: 'session',
       }).success,
     ).toBe(true)
+
+    expect(
+      InterruptHookInputSchema().safeParse({
+        ...base,
+        hook_event_name: 'Interrupt',
+        reason: 'user_cancel',
+        source: 'keyboard',
+        model: 'gpt-5.6-sol',
+      }).success,
+    ).toBe(true)
+
+    const modelSwitch = {
+      ...base,
+      from_provider: 'ollama',
+      from_model: 'kimi-k3:cloud',
+      to_provider: 'openai-api',
+      to_model: 'gpt-5.6-sol',
+      source: 'picker',
+    }
+    expect(
+      PreModelSwitchHookInputSchema().safeParse({
+        ...modelSwitch,
+        hook_event_name: 'PreModelSwitch',
+      }).success,
+    ).toBe(true)
+    expect(
+      PostModelSwitchHookInputSchema().safeParse({
+        ...modelSwitch,
+        hook_event_name: 'PostModelSwitch',
+      }).success,
+    ).toBe(true)
   })
 
   it('wires lifecycle hooks into edit, command, commit, and failure paths', () => {
@@ -163,6 +200,16 @@ describe('lifecycle hooks', () => {
       'utf-8',
     )
     expect(toolExecution).toContain('executeOnFailureHooks')
+
+    const providerPicker = readFileSync(
+      join(root, 'src/components/ProviderFirstModelPicker.tsx'),
+      'utf-8',
+    )
+    expect(providerPicker).toContain('executePreModelSwitchHooks')
+    expect(providerPicker).toContain('executePostModelSwitchHooks')
+
+    const repl = readFileSync(join(root, 'src/screens/REPL.tsx'), 'utf-8')
+    expect(repl).toContain('executeInterruptHooks')
   })
 
   it('runs FileEditTool.call with lifecycle hooks wired and a scoped context', async () => {
@@ -252,16 +299,20 @@ describe('lifecycle hooks', () => {
 
   it('ships the Bash timeout binding in the production bundle', () => {
     const dist = readFileSync(join(process.cwd(), 'dist/cli.js'), 'utf-8')
-    const bashHookIndex = dist.indexOf(
-      'await executeBeforeCommandHooks(input.command, "bash"',
+    const hook = /await executeBeforeCommandHooks\((\w+)\.command, "bash"/.exec(
+      dist,
     )
-    expect(bashHookIndex).toBeGreaterThan(0)
+    expect(hook?.index).toBeGreaterThan(0)
 
-    const timeoutBindingIndex = dist.lastIndexOf(
-      'const timeoutMs = input.timeout || getDefaultTimeoutMs',
-      bashHookIndex,
+    const inputIdentifier = hook?.[1]
+    const nearbyPrefix = dist.slice(
+      Math.max(0, (hook?.index ?? 0) - 500),
+      hook?.index,
     )
-    expect(timeoutBindingIndex).toBeGreaterThan(0)
-    expect(timeoutBindingIndex).toBeLessThan(bashHookIndex)
+    expect(nearbyPrefix).toMatch(
+      new RegExp(
+        `const timeoutMs = ${inputIdentifier}\\.timeout \\?\\? getDefaultTimeoutMs\\d*\\(\\)`,
+      ),
+    )
   })
 })

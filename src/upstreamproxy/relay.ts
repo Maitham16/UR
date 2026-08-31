@@ -56,8 +56,8 @@ const MAX_CHUNK_BYTES = 512 * 1024
 export const MAX_CONNECT_HEADER_BYTES = 8 * 1024
 export const MAX_PENDING_BYTES = 8 * 1024 * 1024
 
-// WHATWG and ws use the same readyState values. Keep these local instead of
-// reading WebSocket.OPEN: Node 18 has no global WebSocket implementation.
+// WHATWG and ws use the same readyState values. Keep these local so the relay
+// does not couple its state machine to either implementation's constructor.
 const WS_CONNECTING = 0
 const WS_OPEN = 1
 

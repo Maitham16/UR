@@ -24,6 +24,7 @@ import type { EffortValue } from './effort.js'
 import type { FileHistoryState } from './fileHistory.js'
 import { fileHistoryEnabled, fileHistoryMakeSnapshot } from './fileHistory.js'
 import { gracefulShutdownSync } from './gracefulShutdown.js'
+import { executeInterruptHooks } from './hooks.js'
 import { enqueue } from './messageQueueManager.js'
 import { resolveSkillModelOverride } from './model/model.js'
 import type { ProcessUserInputContext } from './processUserInput/processUserInput.js'
@@ -337,6 +338,11 @@ export async function handlePromptSubmit(
         streamMode:
           params.streamMode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
+      void executeInterruptHooks(
+        'new_prompt',
+        'prompt_submit',
+        params.mainLoopModel,
+      )
       params.abortController?.abort('interrupt')
     }
 

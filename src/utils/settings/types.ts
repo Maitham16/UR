@@ -897,8 +897,8 @@ export const SettingsSchema = lazySchema(() =>
       effortLevel: z
         .enum(
           process.env.USER_TYPE === 'ant'
-            ? ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']
-            : ['minimal', 'low', 'medium', 'high', 'xhigh'],
+            ? ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']
+            : ['minimal', 'low', 'medium', 'high', 'xhigh', 'ultra'],
         )
         .optional()
         .catch(undefined)
@@ -1267,12 +1267,6 @@ export const SettingsSchema = lazySchema(() =>
               .describe('Auto mode classifier prompt customization'),
           }
         : {}),
-      disableAutoMode: z
-        .enum(['disable'])
-        .optional()
-        .describe(
-          'DEPRECATED duplicate of permissions.disableAutoMode — both are honored for back-compat, but set the nested one. This top-level key will be removed in a future major.',
-        ),
       sshConfigs: z
         .array(
           z.object({

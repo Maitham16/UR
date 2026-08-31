@@ -29,6 +29,7 @@ import { isNetworkRestricted, offlineBlockReason } from '../../utils/offlineMode
 import {
   getOllamaBaseUrl,
   getOllamaSessionOverride,
+  normalizeOllamaBaseUrl,
 } from '../../utils/model/ollamaConfig.js'
 
 export type ProviderMessageClient = {
@@ -270,7 +271,7 @@ export async function createProviderClient(
   if (runtimeBlock) {
     throw new Error(runtimeBlock)
   }
-  assertProviderAllowedOffline(resolved)
+  assertProviderAllowedOffline(resolved, options.settings ?? getInitialSettings())
 
   let client: ProviderMessageClient
   switch (provider.accessType) {
@@ -362,10 +363,10 @@ export function resolveProviderBaseUrl(
   const definition = getProviderDefinition(providerId)
   const configuredBaseUrl = getScopedProviderBaseUrl(providerId, settings)
   if (providerId === 'ollama') {
-    return (
+    return normalizeOllamaBaseUrl(
       getOllamaSessionOverride() ??
       configuredBaseUrl ??
-      getOllamaBaseUrl(process.env, settings)
+      getOllamaBaseUrl(process.env, settings),
     )
   }
   return configuredBaseUrl ?? definition.defaultBaseUrl
@@ -376,11 +377,8 @@ export function assertProviderAllowedOffline(
   settings: SettingsJson = getInitialSettings(),
 ): void {
   if (!isNetworkRestricted()) return
-  const definition = getProviderDefinition(providerId)
   const baseUrl = resolveProviderBaseUrl(providerId, settings)
-  const localEndpoint =
-    (definition.accessType === 'local' || definition.accessType === 'server') &&
-    isLoopbackBaseUrl(baseUrl)
+  const localEndpoint = isLoopbackBaseUrl(baseUrl)
   if (!localEndpoint) throw new Error(offlineBlockReason('cloud-api'))
 }
 
@@ -410,7 +408,8 @@ async function createLocalProviderClient(
   const { createOllamaURHQClient } = await import('./ollama.js')
   const settings = options.settings ?? getInitialSettings()
   const baseUrlOverride = resolveProviderBaseUrl(providerId, settings)
-  return createOllamaURHQClient({ baseUrlOverride }) as ProviderMessageClient
+  const apiKey = options.apiKey ?? getProviderApiKey(providerId)
+  return createOllamaURHQClient({ baseUrlOverride, apiKey }) as ProviderMessageClient
 }
 
 async function createOpenAICompatibleProviderClient(
@@ -423,7 +422,7 @@ async function createOpenAICompatibleProviderClient(
   const baseUrl = resolveProviderBaseUrl(providerId, settings)
   if (!baseUrl) {
     throw new Error(
-      `Provider "${providerId}" requires a base URL. Run: ur config set base_url <url>`,
+      `Provider "${providerId}" requires a base URL. Run: ur config set base_url ${providerId} <url>`,
     )
   }
   const apiKey = options.apiKey ?? getProviderApiKey(providerId)
@@ -492,6 +491,7 @@ async function createAPIClient(
     const { createOpenRouterClient } = await import('./openrouter.js')
     return await createOpenRouterClient({
       apiKey,
+      baseUrl: resolveProviderBaseUrl(providerId, settings),
       maxRetries: options.maxRetries ?? 3,
       model: options.model,
     }) as ProviderMessageClient

@@ -20,6 +20,7 @@ import {
   getProviderStreamTimeoutMs,
   isRetryableProviderError,
   normalizeOpenAICompatibleBaseUrl,
+  normalizeProviderEndpoint,
 } from '../src/services/api/providerHttp.js'
 import { resetSettingsCache } from '../src/utils/settings/settingsCache.js'
 
@@ -238,6 +239,16 @@ describe('provider timeout, retry, and base URL reliability', () => {
         'http://localhost:1234/v1/chat/completions',
       ),
     ).toBe('http://localhost:1234/v1/chat/completions')
+  })
+
+  test('versioned custom gateway paths are preserved without inserting another v1', () => {
+    expect(
+      normalizeProviderEndpoint(
+        'https://gateway.example.test/api/v2',
+        'https://api.example.test/v1',
+        '/models',
+      ),
+    ).toBe('https://gateway.example.test/api/v2/models')
   })
 
   test('OpenAI-compatible fetch retries retryable provider errors', async () => {

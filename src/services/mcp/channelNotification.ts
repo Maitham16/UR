@@ -15,8 +15,7 @@
  * console gets a channelsEnabled admin surface. Teams/Enterprise orgs
  * must explicitly opt in via channelsEnabled: true in managed settings.
  */
-
-import type { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js'
+import type { ServerCapabilities } from '@modelcontextprotocol/server'
 import { z } from 'zod/v4'
 import { type ChannelEntry, getAllowedChannels } from '../../bootstrap/state.js'
 import { CHANNEL_TAG } from '../../constants/xml.js'
@@ -34,15 +33,13 @@ import {
   isChannelsEnabled,
 } from './channelAllowlist.js'
 
-export const ChannelMessageNotificationSchema = lazySchema(() =>
+export const CHANNEL_MESSAGE_METHOD = 'notifications/ur/channel'
+export const ChannelMessageNotificationParamsSchema = lazySchema(() =>
   z.object({
-    method: z.literal('notifications/ur/channel'),
-    params: z.object({
-      content: z.string(),
-      // Opaque passthrough — thread_id, user, whatever the channel wants the
-      // model to see. Rendered as attributes on the <channel> tag.
-      meta: z.record(z.string(), z.string()).optional(),
-    }),
+    content: z.string(),
+    // Opaque passthrough — thread_id, user, whatever the channel wants the
+    // model to see. Rendered as attributes on the <channel> tag.
+    meta: z.record(z.string(), z.string()).optional(),
   }),
 )
 
@@ -61,13 +58,10 @@ export const ChannelMessageNotificationSchema = lazySchema(() =>
  */
 export const CHANNEL_PERMISSION_METHOD =
   'notifications/ur/channel/permission'
-export const ChannelPermissionNotificationSchema = lazySchema(() =>
+export const ChannelPermissionNotificationParamsSchema = lazySchema(() =>
   z.object({
-    method: z.literal(CHANNEL_PERMISSION_METHOD),
-    params: z.object({
-      request_id: z.string(),
-      behavior: z.enum(['allow', 'deny']),
-    }),
+    request_id: z.string(),
+    behavior: z.enum(['allow', 'deny']),
   }),
 )
 

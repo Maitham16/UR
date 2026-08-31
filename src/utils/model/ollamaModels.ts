@@ -1,5 +1,6 @@
 import type { ModelOption } from './modelOptions.js'
-import { getOllamaBaseUrl } from './ollamaConfig.js'
+import { getProviderApiKey } from '../../services/providers/providerCredentials.js'
+import { getOllamaAuthHeaders, getOllamaBaseUrl } from './ollamaConfig.js'
 import { categorizeOllamaModels } from './ollamaRouter.js'
 
 const ollamaModelMetadataByEndpointAndName = new Map<
@@ -57,6 +58,7 @@ export async function listOllamaModelNames(
   const baseUrl = getOllamaBaseUrl()
   const response = await fetch(`${baseUrl}/api/tags`, {
     signal,
+    headers: getOllamaAuthHeaders(process.env, getProviderApiKey('ollama')),
   })
   if (!response.ok) {
     return []
@@ -147,6 +149,7 @@ export async function refreshOllamaModelMetadata(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...getOllamaAuthHeaders(process.env, getProviderApiKey('ollama')),
       },
       body: JSON.stringify({ model: normalizedModel }),
       signal: controller.signal,

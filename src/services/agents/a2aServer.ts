@@ -50,6 +50,7 @@ import {
   a2aV1VersionError,
   inspectA2AV1Request,
   validateA2AV1Tenant,
+  validateA2AV1Message,
 } from './a2aV1.js'
 import { buildA2AAgentCard, buildA2AV1AgentCard } from './trends.js'
 
@@ -181,6 +182,65 @@ function a2aV1RestResponse(status: number, body: unknown): Response {
   return a2aV1Response(status, body)
 }
 
+function a2aSseResponse(
+  stream: AsyncIterable<unknown>,
+  version: '0.3' | '1.0',
+  onFinally?: () => void,
+): Response {
+  const encoder = new TextEncoder()
+  const iterator = stream[Symbol.asyncIterator]()
+  let finalized = false
+  const finalize = () => {
+    if (finalized) return
+    finalized = true
+    onFinally?.()
+  }
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const next = await iterator.next()
+        if (next.done) {
+          finalize()
+          controller.close()
+          return
+        }
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(next.value)}\n\n`),
+        )
+      } catch (error) {
+        finalize()
+        controller.error(error)
+      }
+    },
+    async cancel() {
+      try {
+        await iterator.return?.()
+      } finally {
+        finalize()
+      }
+    },
+  })
+  return new Response(body, {
+    status: 200,
+    headers: {
+      'a2a-version': version,
+      'cache-control': 'no-cache, no-store',
+      connection: 'keep-alive',
+      'content-type': 'text/event-stream; charset=utf-8',
+      'x-accel-buffering': 'no',
+      'x-content-type-options': 'nosniff',
+    },
+  })
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    Symbol.asyncIterator in value
+  )
+}
+
 function agentCardResponse(
   card: unknown,
   version: '0.3' | '1.0',
@@ -293,7 +353,7 @@ function protocolRuntimes(
   }
   const runtime = new A2AProtocolRuntime({
     cwd: options.cwd,
-    card: serverAgentCard(options, baseUrl),
+    card: serverV1AgentCard(options, baseUrl),
     dryRun: options.dryRun,
   })
   const v1 = new A2AV1ProtocolRuntime(runtime)
@@ -477,17 +537,27 @@ async function handleA2AProtocolRequest(
     }
   }
 
+  let streamingLeaseTransferred = false
   try {
     const response = await protocolRuntimes(options, baseUrl).runtime.handle(
       payload,
       protocolIdentity(
         auth,
-        inspection.method === 'message/send' ? inspection.skill : undefined,
+        inspection.method === 'message/send' ||
+          inspection.method === 'message/stream'
+          ? inspection.skill
+          : undefined,
       ),
     )
+    if (isAsyncIterable(response)) {
+      streamingLeaseTransferred = true
+      return a2aSseResponse(response, '0.3', releaseSubmission)
+    }
     return protocolJsonResponse(200, response)
   } finally {
-    releaseSubmission?.()
+    // Streaming requests own the limiter lease until their generator closes.
+    // Unary requests release it here.
+    if (!streamingLeaseTransferred) releaseSubmission?.()
   }
 }
 
@@ -643,6 +713,7 @@ function validateA2AV1MediaTypes(
       : root
   const message = candidate.message
   if (!message || typeof message !== 'object' || Array.isArray(message)) return
+  validateA2AV1Message(message)
   const parts = (message as Record<string, unknown>).parts
   if (!Array.isArray(parts)) return
   const supported = new Set(
@@ -727,7 +798,10 @@ async function handleA2AV1JsonRpcRequest(
 
   let auth = preliminaryAuth
   let releaseSubmission: (() => void) | undefined
-  if (inspection.method === 'SendMessage') {
+  if (
+    inspection.method === 'SendMessage' ||
+    inspection.method === 'SendStreamingMessage'
+  ) {
     try {
       validateA2AV1MediaTypes(payload, options, baseUrl)
       validateA2AV1Submission(inspection)
@@ -781,17 +855,25 @@ async function handleA2AV1JsonRpcRequest(
     )
   }
 
+  let streamingLeaseTransferred = false
   try {
     const response = await protocolRuntimes(options, baseUrl).v1.handleJsonRpc(
       payload,
       protocolIdentity(
         auth,
-        inspection.method === 'SendMessage' ? inspection.skill : undefined,
+        inspection.method === 'SendMessage' ||
+          inspection.method === 'SendStreamingMessage'
+          ? inspection.skill
+          : undefined,
       ),
     )
+    if (isAsyncIterable(response)) {
+      streamingLeaseTransferred = true
+      return a2aSseResponse(response, '1.0', releaseSubmission)
+    }
     return a2aV1Response(200, response)
   } finally {
-    releaseSubmission?.()
+    if (!streamingLeaseTransferred) releaseSubmission?.()
   }
 }
 
@@ -804,6 +886,7 @@ type A2AV1RestRoute =
       operation: 'get' | 'cancel' | 'subscribe' | 'push'
       tenant: string
       id: string
+      configId?: string
     }
 
 function decodeA2AV1PathSegment(value: string, label: string): string {
@@ -856,6 +939,7 @@ function parseA2AV1RestRoute(pathname: string): A2AV1RestRoute | null {
   }
   if (
     segments.length >= 3 &&
+    segments.length <= 4 &&
     segments[0] === 'tasks' &&
     segments[2] === 'pushNotificationConfigs'
   ) {
@@ -863,6 +947,14 @@ function parseA2AV1RestRoute(pathname: string): A2AV1RestRoute | null {
       operation: 'push',
       tenant,
       id: decodeA2AV1PathSegment(segments[1] as string, 'task id'),
+      ...(segments[3]
+        ? {
+            configId: decodeA2AV1PathSegment(
+              segments[3],
+              'push notification config id',
+            ),
+          }
+        : {}),
     }
   }
   if (segments.length !== 2 || segments[0] !== 'tasks') return null
@@ -938,37 +1030,35 @@ async function handleA2AV1RestRequest(
     )
   }
 
-  if (route.operation === 'push') {
-    return v1RestFailure(
-      new A2AV1Error(
-        -32003,
-        'Push notifications are not supported by this agent',
-      ),
-    )
-  }
   if (route.operation === 'extended-card') {
     return v1RestFailure(
       new A2AV1Error(-32007, 'Extended Agent Card is not configured'),
     )
   }
 
-  const expectedMethod =
-    route.operation === 'get' || route.operation === 'list' ? 'GET' : 'POST'
-  if (request.method !== expectedMethod) {
+  const allowedMethods =
+    route.operation === 'push'
+      ? route.configId
+        ? ['GET', 'DELETE']
+        : ['GET', 'POST']
+      : route.operation === 'subscribe'
+        ? ['GET', 'POST']
+      : route.operation === 'get' || route.operation === 'list'
+        ? ['GET']
+        : ['POST']
+  if (!allowedMethods.includes(request.method)) {
     return a2aV1Response(
       405,
       a2aV1HttpError(
-        new A2AV1Error(-32600, `${expectedMethod} required`),
+        new A2AV1Error(
+          -32600,
+          `${allowedMethods.join(' or ')} required`,
+        ),
       ).body,
       {
         contentType: 'application/json',
-        headers: { allow: expectedMethod },
+        headers: { allow: allowedMethods.join(', ') },
       },
-    )
-  }
-  if (route.operation === 'stream' || route.operation === 'subscribe') {
-    return v1RestFailure(
-      new A2AV1Error(-32004, 'Streaming is not enabled by this agent'),
     )
   }
 
@@ -989,7 +1079,7 @@ async function handleA2AV1RestRequest(
     try {
       const parsed = await readA2AV1Json(
         request,
-        route.operation === 'cancel',
+        route.operation === 'cancel' || route.operation === 'subscribe',
       )
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         throw new A2AV1Error(-32602, 'Request body must be an object')
@@ -1038,6 +1128,40 @@ async function handleA2AV1RestRequest(
           releaseSubmission?.()
         }
       }
+      case 'stream': {
+        const inspection = inspectA2AV1Request(body, route.tenant)
+        validateA2AV1MediaTypes(body, options, baseUrl)
+        validateA2AV1Submission(inspection)
+        if (!knownA2ASkill(options, baseUrl, inspection.skill)) {
+          throw new A2AV1Error(-32602, `Unknown skill: ${inspection.skill}`)
+        }
+        const auth = authorizeRequest(request, options, inspection.skill)
+        if (!auth.ok) {
+          return v1RestAuthFailure(403, 'Insufficient delegation scope')
+        }
+        let releaseSubmission: (() => void) | undefined
+        try {
+          releaseSubmission = a2aSubmissionLimiter.acquire()
+          const stream = runtime.sendMessageStream(
+            body,
+            protocolIdentity(auth, inspection.skill),
+            route.tenant,
+          )
+          return a2aSseResponse(stream, '1.0', releaseSubmission)
+        } catch (error) {
+          releaseSubmission?.()
+          if (error instanceof RollingRateLimitError) {
+            const mapped = a2aV1HttpError(
+              new A2AV1Error(-32000, error.message),
+            )
+            return a2aV1Response(429, mapped.body, {
+              contentType: 'application/json',
+              headers: { 'retry-after': '60' },
+            })
+          }
+          throw error
+        }
+      }
       case 'list':
         return a2aV1RestResponse(
           200,
@@ -1071,6 +1195,75 @@ async function handleA2AV1RestRequest(
             route.tenant,
           ),
         )
+      case 'subscribe':
+        return a2aSseResponse(
+          runtime.subscribeToTask(
+            { id: route.id, tenant: route.tenant },
+            protocolIdentity(preliminaryAuth),
+            route.tenant,
+          ),
+          '1.0',
+        )
+      case 'push': {
+        if (request.method === 'POST') {
+          return a2aV1RestResponse(
+            201,
+            await runtime.createPushConfig(
+              { ...body, taskId: route.id, tenant: route.tenant },
+              protocolIdentity(preliminaryAuth),
+              route.tenant,
+            ),
+          )
+        }
+        if (request.method === 'GET' && route.configId) {
+          return a2aV1RestResponse(
+            200,
+            await runtime.getPushConfig(
+              {
+                taskId: route.id,
+                id: route.configId,
+                tenant: route.tenant,
+              },
+              protocolIdentity(preliminaryAuth),
+              route.tenant,
+            ),
+          )
+        }
+        if (request.method === 'GET') {
+          return a2aV1RestResponse(
+            200,
+            await runtime.listPushConfigs(
+              {
+                taskId: route.id,
+                tenant: route.tenant,
+                pageSize: url.searchParams.get('pageSize') ?? undefined,
+                pageToken: url.searchParams.get('pageToken') ?? undefined,
+              },
+              protocolIdentity(preliminaryAuth),
+              route.tenant,
+            ),
+          )
+        }
+        if (request.method === 'DELETE' && route.configId) {
+          await runtime.deletePushConfig(
+            {
+              taskId: route.id,
+              id: route.configId,
+              tenant: route.tenant,
+            },
+            protocolIdentity(preliminaryAuth),
+            route.tenant,
+          )
+          return new Response(null, {
+            status: 204,
+            headers: {
+              'a2a-version': A2A_V1_PROTOCOL_VERSION,
+              'cache-control': 'no-store',
+            },
+          })
+        }
+        throw new A2AV1Error(-32600, 'Unsupported push configuration request')
+      }
     }
   } catch (error) {
     return v1RestFailure(error)

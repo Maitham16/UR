@@ -19,13 +19,10 @@ function readAutoModeEnabledState(): AutoModeEnabledState | undefined {
   return v === 'enabled' || v === 'disabled' || v === 'opt-in' ? v : undefined
 }
 
-export const LogEventNotificationSchema = lazySchema(() =>
+export const LogEventNotificationParamsSchema = lazySchema(() =>
   z.object({
-    method: z.literal('log_event'),
-    params: z.object({
-      eventName: z.string(),
-      eventData: z.object({}).passthrough(),
-    }),
+    eventName: z.string(),
+    eventData: z.object({}).passthrough(),
   }),
 )
 
@@ -69,9 +66,9 @@ export function setupVscodeSdkMcp(sdkClients: MCPServerConnection[]): void {
     vscodeMcpClient = client
 
     client.client.setNotificationHandler(
-      LogEventNotificationSchema(),
-      async notification => {
-        const { eventName, eventData } = notification.params
+      'log_event',
+      { params: LogEventNotificationParamsSchema() },
+      async ({ eventName, eventData }) => {
         logEvent(
           `tengu_vscode_${eventName}`,
           eventData as { [key: string]: boolean | number | undefined },

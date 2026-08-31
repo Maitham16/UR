@@ -19,7 +19,8 @@ describe('agent trend coverage', () => {
       { url: 'https://example.com/root/a2a/jsonrpc', transport: 'JSONRPC' },
     ])
     expect(card.documentationUrl).toContain('docs/AGENT_TRENDS.md')
-    expect(card.capabilities.streaming).toBe(false)
+    expect(card.capabilities.streaming).toBe(true)
+    expect(card.capabilities.pushNotifications).toBe(true)
     expect(card.skills.map(skill => skill.id)).toContain('coding-agent')
     expect(card.skills.map(skill => skill.id)).toContain('mcp-agent')
   })

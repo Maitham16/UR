@@ -19,6 +19,10 @@ import {
   type OpenAIResponsesWebSocketLike,
 } from '../src/services/api/openaiResponses.js'
 import { OpenAIResponsesStateStore } from '../src/services/api/openaiResponsesState.js'
+import {
+  cacheProviderModelsForProvider,
+  clearProviderModelCacheForTests,
+} from '../src/services/providers/providerRegistry.js'
 
 const temporaryDirectories: string[] = []
 
@@ -29,6 +33,7 @@ function temporaryDirectory(): string {
 }
 
 afterEach(() => {
+  clearProviderModelCacheForTests()
   while (temporaryDirectories.length > 0) {
     rmSync(temporaryDirectories.pop()!, { recursive: true, force: true })
   }
@@ -94,6 +99,25 @@ async function collect(stream: AsyncIterable<any>): Promise<any[]> {
 }
 
 describe('OpenAI Responses request and response mapping', () => {
+  test('maps only an explicitly advertised Ultra alias to the Responses wire', () => {
+    const model = 'gpt-ultra-alias-test'
+    cacheProviderModelsForProvider('openai-api', [{
+      id: model,
+      displayName: model,
+      description: 'test model',
+      reasoning: {
+        supportedEfforts: ['deep'],
+        effortAliases: { ultra: 'deep' },
+      },
+    }])
+    const body = toOpenAIResponsesRequest({
+      model,
+      messages: [{ role: 'user', content: 'go' }],
+      output_config: { effort: 'ultra' },
+    }) as any
+    expect(body.reasoning).toEqual({ effort: 'deep' })
+  })
+
   test('maps multimodal history, tool calls, structured output, compaction, and privacy defaults', () => {
     const body = toOpenAIResponsesRequest(
       {

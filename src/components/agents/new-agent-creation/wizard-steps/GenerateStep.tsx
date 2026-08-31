@@ -12,7 +12,7 @@ import { Spinner } from '../../../Spinner.js';
 import TextInput from '../../../TextInput.js';
 import { useWizard } from '../../../wizard/index.js';
 import { WizardDialogLayout } from '../../../wizard/WizardDialogLayout.js';
-import { generateAgent } from '../../generateAgent.js';
+import { formatGeneratedAgentSystemPrompt, generateAgent } from '../../generateAgent.js';
 import type { AgentWizardData } from '../types.js';
 import type { Tools } from '../../../../Tool.js';
 type Props = { tools: Tools };
@@ -98,7 +98,7 @@ export function GenerateStep({ tools }: Props): ReactNode {
       updateWizardData({
         agentType: generated.identifier,
         whenToUse: generated.whenToUse,
-        systemPrompt: generated.systemPrompt,
+        systemPrompt: formatGeneratedAgentSystemPrompt(generated),
         selectedTools: generated.tools,
         generatedDisallowedTools: generated.disallowedTools,
         generatedPermissionMode: generated.permissionMode,

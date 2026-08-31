@@ -1,10 +1,8 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle'
 import type { URHQ } from '@urhq-ai/sdk'
-import {
-  getSystemPrompt,
-  SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
-} from 'src/constants/prompts.js'
+import { getSystemPrompt } from 'src/constants/prompts.js'
+import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from 'src/constants/promptGovernance.js'
 import { microcompactMessages } from 'src/services/compact/microCompact.js'
 import { getSdkBetas } from '../bootstrap/state.js'
 import { getCommandName } from '../commands.js'

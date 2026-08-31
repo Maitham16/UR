@@ -76,7 +76,8 @@ approval are held in memory and expire with the session.
       "reviewing": { "deny": ["Edit", "Write", "Bash"], "description": "read-only" },
       "trusted":   { "allow": ["Bash(git:*)"] }
     },
-    "activeProfile": "reviewing"        // switch with /permission-profile use <name>
+    "activeProfile": "reviewing",       // switch with /permission-profile use <name>
+    "disableAutoMode": "disable"
   },
   "agents": {                           // subagent fan-out limits (doc 09)
     "maxDepth": 10,                     // default 10, hard ceiling 64
@@ -98,7 +99,7 @@ approval are held in memory and expire with the session.
     }
   },
   "autoMode": { "allow": [], "soft_deny": [], "deny": [] },
-  "useAutoModeDuringPlan": false, "disableAutoMode": false,
+  "useAutoModeDuringPlan": false,
   "skipDangerousModePermissionPrompt": false,
   "skipAutoPermissionPrompt": false,
   "classifierPermissionsEnabled": false,

@@ -19,7 +19,7 @@ Every tool call is checked (doc 04 §Permission model):
   make it opt-in at runtime); org policy can forbid it (`policyLimits`).
 - Auto-mode: `autoMode.allow / soft_deny / deny` + optional LLM classifier
   (`classifierPermissionsEnabled`) to auto-approve safe commands;
-  `useAutoModeDuringPlan`, `disableAutoMode` toggles.
+  `useAutoModeDuringPlan` and `permissions.disableAutoMode` control availability.
 - Managed environments: `allowManagedPermissionRulesOnly`, `allowManagedHooksOnly`,
   `allowManagedMcpServersOnly`, managed-settings scope wins over all.
 - Bash-specific hardening: command parsing + injection analysis
@@ -122,7 +122,12 @@ The nonce matters. A fixed `</untrusted-content>` marker is forgeable — text
 containing the closing tag escapes the fence and the remainder is read as
 instruction. Binding the boundary to a random per-call id means breaking out
 requires guessing 128 bits. A block that trips a detector is additionally
-labelled for the model with the rules that fired.
+labelled for the model with the rules that fired. This label is advisory: it
+does not replace the configured permission mode or force an extra approval.
+Relevant facts and user-scoped project guidance remain usable, while embedded
+content cannot override higher-priority instructions, grant permissions, widen
+the user's requested scope, or authorize secret disclosure. Direct leakage of
+the privileged prompt canary remains a narrow hard denial.
 
 ## Project safety policy (`/safety`)
 

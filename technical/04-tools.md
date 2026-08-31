@@ -51,7 +51,7 @@ users don't call tools directly.
 | `TaskCreate` / `TaskGet` / `TaskUpdate` / `TaskList` | Structured task tracking with dependencies and statuses. The default strict-hybrid gate requires an actionable task before mutation for multi-outcome, sequenced, planned, delegated, project-sized, and high-risk lifecycle work, while atomic low-risk requests stay direct. No synthetic task is created merely because the user sent a prompt; explicit boards are resumed and reconciled across replies and interruptions | "Track these five subtasks" |
 | `EnterPlanMode` / `ExitPlanMode` | Enter/leave plan mode; plan approval flow | "Plan first, then implement" |
 | `AskUserQuestion` | Validated multiple-choice questions; malformed single-suggestion provider output gains a neutral rejection path without inventing an answer | (agent asks when blocked on a decision) |
-| `TaskOutput` / `TaskStop` | Read output of / stop a background task | "Kill the dev server you started" |
+| `TaskStop` | Stop a background task; completed task results are delivered automatically | "Kill the dev server you started" |
 | `EnterWorktree` / `ExitWorktree` | Move the session into/out of an isolated git worktree (worktree mode) | "Do this in a scratch worktree" |
 | `SendUserMessage` | Send a mid-turn brief message to the user (Brief tool) | — |
 

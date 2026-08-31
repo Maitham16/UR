@@ -36,6 +36,7 @@ const NULL_RENDERING_TYPES = [
   'companion_intro',
   'token_usage',
   'ultrathink_effort',
+  'task_prompt_overlay',
   'max_turns_reached',
   'task_reminder',
   'auto_mode',

@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.83.0
+
+- Made provider endpoints fully provider-scoped across discovery, diagnostics,
+  and inference. OpenAI, Anthropic, Gemini, OpenRouter, Ollama, llama.cpp,
+  vLLM, LM Studio, Unsloth, and generic compatible gateways each retain their
+  own configurable URL; vendor URLs are defaults rather than fixed dispatch
+  destinations. Updated live/curated model metadata for GPT-5.6 Sol/Terra/Luna,
+  Claude Opus/Fable 5, and Gemini 3.6/3.7, and removed deprecated OpenAI
+  fallback entries. Added Unsloth as an authenticated, provider-only
+  OpenAI-compatible runtime that leaves model loading and server tools to the
+  user-run Studio process.
+- Fixed provider-authored reasoning capabilities end to end. Ollama now probes
+  model details for Kimi K3, GPT-OSS, and GLM graded effort; Left/Right changes
+  the focused model's real ladder before selection. Added exact-only `ultra`:
+  it appears only when live/static metadata advertises it or an explicit native
+  alias, and is never synthesized or reduced to `max`. OpenRouter now reuses an
+  endpoint-scoped catalogue, prefers latency routing, retains session affinity
+  and prompt-cache markers, and honors custom inference URLs.
+- Upgraded to the stable A2A JavaScript SDK 1.1 with real SSE streaming, task
+  resubscription, explicit v0.3 compatibility, and authenticated push delivery
+  with validated destinations. Migrated MCP to the official split v2 client,
+  core, and server packages with a live interoperability test.
+- Added production inbound GitHub, Slack, Gmail Pub/Sub, Teams, and generic
+  event receivers with loopback-friendly local startup, opt-in authentication
+  enforcement, replay/deduplication, durable conversation-scoped resume, and
+  secret stripping. Added `Interrupt`, blocking `PreModelSwitch`, and
+  `PostModelSwitch` lifecycle hooks across interactive and CLI model changes.
+- Added browser WebMCP discovery and imperative site tools through UR's normal
+  approval flow. Passive fetch, navigation, screenshots, and tool discovery no
+  longer add a separate Browser confirmation; active page actions still do.
+- Modernized the prompt platform with governed stable-prefix profiles,
+  task-triggered research/edit/frontend/vision overlays, semantic lifecycle
+  provenance, generated-agent personality/collaboration contracts and eval
+  suites, and repeated paired model/effort optimization with confidence-based
+  promotion rather than single-sample wins. Suspicious-content signals remain
+  visible evidence but defer to the normal permission policy instead of
+  forcing a session-wide approval gate; direct privileged-canary leakage is
+  still denied.
+- Raised the launcher baseline to Node 22.12. Removed
+  the public TaskOutput polling tool and aliases, `.ur/commands` discovery, and
+  `--max-thinking-tokens`; migrated top-level `disableAutoMode` to
+  `permissions.disableAutoMode` while retaining narrow documented environment
+  compatibility for managed deployments. Retired `.ur/commands` files are now
+  treated as ordinary project content.
+
 ## 1.82.2
 
 - Saved custom base URLs independently for every provider, including Ollama,

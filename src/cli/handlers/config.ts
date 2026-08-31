@@ -120,7 +120,9 @@ export async function configSetHandler(
     )
     process.exit(1)
   }
-  await providerConfigSetHandler(key, value)
+  // Preserve argument boundaries for provider-scoped base URLs:
+  // `ur config set base_url llama.cpp http://localhost:9931/v1`.
+  await providerConfigSetHandler(key, values)
 }
 
 export function configGetHandler(

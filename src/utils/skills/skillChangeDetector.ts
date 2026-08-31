@@ -105,7 +105,7 @@ export async function initialize(): Promise<void> {
   if (paths.length === 0) return
 
   logForDebugging(
-    `Watching for changes in skill/command directories: ${paths.join(', ')}...`,
+    `Watching for changes in skill directories: ${paths.join(', ')}...`,
   )
 
   watcher = chokidar.watch(paths, {
@@ -184,17 +184,6 @@ async function getWatchablePaths(): Promise<string[]> {
     }
   }
 
-  // User commands directory (~/.ur/commands)
-  const userCommandsPath = getSkillsPath('userSettings', 'commands')
-  if (userCommandsPath) {
-    try {
-      await fs.stat(userCommandsPath)
-      paths.push(userCommandsPath)
-    } catch {
-      // Path doesn't exist, skip it
-    }
-  }
-
   // Cross-client user skills directory (~/.agents/skills)
   const userCrossClientSkillsPath = platformPath.join(
     homedir(),
@@ -231,19 +220,6 @@ async function getWatchablePaths(): Promise<string[]> {
     paths.push(projectCrossClientSkillsPath)
   } catch {
     // Path doesn't exist, skip it
-  }
-
-  // Project commands directory (.ur/commands)
-  const projectCommandsPath = getSkillsPath('projectSettings', 'commands')
-  if (projectCommandsPath) {
-    try {
-      // For project settings, resolve to absolute path
-      const absolutePath = platformPath.resolve(projectCommandsPath)
-      await fs.stat(absolutePath)
-      paths.push(absolutePath)
-    } catch {
-      // Path doesn't exist, skip it
-    }
   }
 
   // Additional directories (--add-dir) skills

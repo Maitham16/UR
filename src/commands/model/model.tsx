@@ -17,6 +17,7 @@ import { getDefaultMainLoopModelSetting, ismodelO1mMergeEnabled, renderDefaultMo
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { ensureProviderModelsFresh, getActiveProviderSettings, type ProviderId, setProviderModel, validateProviderModelPair } from '../../services/providers/providerRegistry.js';
 import { getInitialSettings, updateSettingsForSource } from '../../utils/settings/settings.js';
+import { executePostModelSwitchHooks, executePreModelSwitchHooks, hasBlockingResult } from '../../utils/hooks.js';
 function ModelPickerWrapper(t0) {
   const $ = _c(17);
   const {
@@ -197,6 +198,25 @@ function SetModelAndClose({
         });
         return;
       }
+      const previous = getActiveProviderSettings(getInitialSettings());
+      const hookDetails = {
+        fromProvider: previous.active,
+        fromModel: previous.model,
+        toProvider: currentProvider,
+        toModel: model,
+        source: 'command' as const
+      };
+      const isSwitch = previous.active !== currentProvider || previous.model !== model;
+      if (isSwitch) {
+        const preResults = await executePreModelSwitchHooks(hookDetails);
+        if (hasBlockingResult(preResults)) {
+          const reason = preResults.filter(result => result.blocked).map(result => result.output.trim()).filter(Boolean).join('\n');
+          onDone(`Model switch blocked by PreModelSwitch hook${reason ? `: ${reason}` : '.'}`, {
+            display: 'system'
+          });
+          return;
+        }
+      }
       const saved = setProviderModel(currentProvider, model, {
         availableModels: discovered.models,
         modelSource: discovered.source
@@ -208,6 +228,9 @@ function SetModelAndClose({
         return;
       }
       setModel(model, currentProvider, discovered.warning);
+      if (isSwitch) {
+        await executePostModelSwitchHooks(hookDetails);
+      }
       return;
     }
     function setModel(modelValue: string | null, provider?: ProviderId, warning?: string): void {

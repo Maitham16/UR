@@ -162,7 +162,7 @@ import type { MCPServerConnection } from '../services/mcp/types.js';
 import type { ScopedMcpServerConfig } from '../services/mcp/types.js';
 import { randomUUID, type UUID } from 'crypto';
 import { processSessionStartHooks } from '../utils/sessionStart.js';
-import { executeSessionEndHooks, getSessionEndHookTimeoutMs } from '../utils/hooks.js';
+import { executeInterruptHooks, executeSessionEndHooks, getSessionEndHookTimeoutMs } from '../utils/hooks.js';
 import { type IDESelection, useIdeSelection } from '../hooks/useIdeSelection.js';
 import { getTools, assembleToolPool } from '../tools.js';
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js';
@@ -2113,6 +2113,12 @@ export function REPL({
       })]);
     }
     resetLoadingState();
+
+    void executeInterruptHooks(
+      activeRemote.isRemoteMode ? 'remote_cancel' : 'user_cancel',
+      activeRemote.isRemoteMode ? 'remote' : 'keyboard',
+      mainLoopModel,
+    );
 
     // Clear any active token budget so the backstop doesn't fire on
     // a stale budget if the query generator hasn't exited yet.

@@ -204,11 +204,11 @@ export const AGENT_FEATURES: AgentFeature[] = [
   },
   {
     id: 'trigger-bridge',
-    name: 'GitHub/Slack trigger bridge',
+    name: 'Inbound event receiver',
     status: 'command',
-    command: 'ur trigger parse|run --file payload.json',
+    command: 'ur trigger parse|run --file payload.json | ur trigger serve',
     summary:
-      'Parses a GitHub issue/PR comment or Slack mention webhook payload, decides whether a `/ur` mention should dispatch UR, extracts the prompt, and (run) launches a headless run. Inbound counterpart to the GitHub Action and install-slack-app/install-github-app.',
+      'Receives GitHub, Slack, Gmail Pub/Sub, Teams/Graph, and generic webhooks, verifies configured provider credentials, deduplicates retries, and resumes one durable UR session per conversation. Loopback can run in a clearly labeled local unverified mode.',
     scaffold: '.ur/triggers/README.md',
   },
   {
@@ -739,16 +739,19 @@ rules. These can be replayed by a browser-debugger agent or a Playwright test.
     path: 'triggers/README.md',
     content: `# Inbound Triggers
 
-UR can be dispatched from a GitHub issue/PR comment or a Slack mention.
+UR can be dispatched from a GitHub issue/PR comment, Slack or Teams mention,
+Gmail Pub/Sub notification, or authenticated generic event.
 
 1. Save the webhook payload to a file (your bot/CI does this).
 2. Decide whether it should run:  \`ur trigger parse --file payload.json\`
 3. Launch the agent for it:       \`ur trigger run --file payload.json\`
+4. Or run the authenticated receiver: \`ur trigger serve\`
 
 A run is triggered only when the configured keyword (default \`/ur\`) appears in
 the comment/message; the text after the keyword becomes the prompt. Keep the
-keyword and any allow-list of actors under your control — treat webhook content
-as untrusted input.
+keyword, provider verification secret, and any allow-list of actors under your
+control — treat webhook content as untrusted input. See \`docs/TRIGGERS.md\` for
+the route and environment-variable reference.
 
 The bundled GitHub Action (\`.github/workflows/ur.yml\`) is the outbound
 runner; \`ur trigger\` is the inbound parser that decides what to run.
@@ -759,7 +762,7 @@ runner; \`ur trigger\` is the inbound parser that decides what to run.
     root: 'project',
     content: compileAgenticCiWorkflow('default', {
       packageVersion:
-        typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.82.2',
+        typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.83.0',
     }),
   },
   {

@@ -67,6 +67,17 @@ test('no override means no session host, not an empty string', () => {
   expect(getOllamaSessionOverride() ?? 'fallback').toBe('fallback')
 })
 
+test('Ollama utilities use and normalize the provider-scoped saved endpoint', () => {
+  expect(
+    getOllamaBaseUrl({} as never, {
+      provider: {
+        active: 'vllm',
+        baseUrls: { ollama: 'http://ollama-box:11434/api' },
+      },
+    }),
+  ).toBe('http://ollama-box:11434')
+})
+
 test('the session override outranks the environment', () => {
   setOllamaBaseUrlOverride('http://172.20.10.5:11434')
   expect(
@@ -105,6 +116,32 @@ test('offline gating evaluates the session host rather than a stale persisted ho
     } else {
       process.env.UR_OFFLINE = previousOffline
     }
+  }
+})
+
+test('offline mode permits any provider explicitly routed to loopback', () => {
+  const previousOffline = process.env.UR_OFFLINE
+  process.env.UR_OFFLINE = '1'
+  try {
+    expect(() =>
+      assertProviderAllowedOffline('openai-compatible', {
+        provider: {
+          active: 'openai-compatible',
+          baseUrls: { 'openai-compatible': 'http://localhost:9931/v1' },
+        },
+      } as never),
+    ).not.toThrow()
+    expect(() =>
+      assertProviderAllowedOffline('openai-api', {
+        provider: {
+          active: 'openai-api',
+          baseUrls: { 'openai-api': 'http://127.0.0.1:9000/v1' },
+        },
+      } as never),
+    ).not.toThrow()
+  } finally {
+    if (previousOffline === undefined) delete process.env.UR_OFFLINE
+    else process.env.UR_OFFLINE = previousOffline
   }
 })
 

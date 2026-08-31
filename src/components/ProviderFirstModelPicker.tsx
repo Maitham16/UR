@@ -9,23 +9,26 @@ import {
 import {
   clearProviderModelCache,
   getActiveProviderSettings,
+  getScopedProviderBaseUrl,
   listProviders,
   getProviderAccessTypeLabel,
-  getProviderStatus,
   type ProviderId,
   type ProviderDefinition,
   type ProviderConnectionStatus,
   type ProviderModelDefinition,
   type ProviderModelSource,
   listModelsForProviderWithSource,
+  setSafeProviderConfig,
   setProviderModel,
   validateProviderModelPair,
   getProviderRuntimeBlockReason,
   authAliasForProvider,
+  ensureProviderModelsFresh,
   ensureProviderReasoningCapabilitiesForModel,
 } from 'src/services/providers/providerRegistry.js'
 import {
   clearProviderApiKey,
+  type ApiKeySource,
   getProviderApiKeySource,
   setProviderApiKey,
 } from 'src/services/providers/providerCredentials.js'
@@ -39,6 +42,11 @@ import {
   getInitialSettings,
   updateSettingsForSource,
 } from 'src/utils/settings/settings.js'
+import {
+  executePostModelSwitchHooks,
+  executePreModelSwitchHooks,
+  hasBlockingResult,
+} from 'src/utils/hooks.js'
 import type { ModelOption } from 'src/utils/model/modelOptions.js'
 import { Box, Text, useInput } from '../ink.js'
 import { useAppState as useAppStateSelector } from '../state/AppState.js'
@@ -76,6 +84,7 @@ const selectEffortValue = (s: { effortValue?: unknown }) => s.effortValue
 const selectThinkingEnabled = (s: { thinkingEnabled?: boolean }) => s.thinkingEnabled
 
 type Step = 'provider' | 'connect' | 'manage' | 'model'
+type ConnectionMode = 'api-key' | 'endpoint'
 
 type ProviderStatusOption = {
   value: string
@@ -132,12 +141,17 @@ export function ProviderFirstModelPicker({
   const [connectingProvider, setConnectingProvider] = useState<ProviderStatusOption | null>(null)
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [apiKeyCursorOffset, setApiKeyCursorOffset] = useState(0)
+  const [endpointInput, setEndpointInput] = useState('')
+  const [endpointCursorOffset, setEndpointCursorOffset] = useState(0)
+  const [connectionMode, setConnectionMode] = useState<ConnectionMode>('api-key')
+  const [connectReturnStep, setConnectReturnStep] = useState<Step>('provider')
   const [connectError, setConnectError] = useState<string | null>(null)
   const [credentialNotice, setCredentialNotice] = useState<string | null>(null)
   const [effortCapabilityLoading, setEffortCapabilityLoading] = useState(false)
   const [effortCapabilityWarning, setEffortCapabilityWarning] = useState<string | null>(null)
   // Bumping this re-runs discovery for the selected provider (the retry state).
   const [modelReloadToken, setModelReloadToken] = useState(0)
+  const handledModelReloadToken = React.useRef(modelReloadToken)
   const terminalSize = useContext(TerminalSizeContext)
   // Keep the label and masked secret on one stable row. The old 20-column
   // minimum could exceed a narrow pane and render one character per line.
@@ -156,31 +170,31 @@ export function ProviderFirstModelPicker({
 
   // Step 1: Load provider status
   useEffect(() => {
-    async function loadProviderStatus() {
+    function loadProviderStatus() {
       setLoadingProviders(true)
       const providers = listProviders({ includeExternalAppBridges: true })
       const settings = getInitialSettings()
 
-      const options: ProviderStatusOption[] = await Promise.all(
-        providers.map(async provider => {
-          const status = await getProviderStatus(provider.id, {
-            settings,
-          })
-          const accessType = getProviderAccessTypeLabel(provider)
+      // Keep opening /model instantaneous. Endpoint verification and the live
+      // model fetch are one operation after selection; probing every provider
+      // here doubled OpenRouter's large /models request and made one slow
+      // gateway block the entire provider list.
+      const options: ProviderStatusOption[] = providers.map(provider => {
+        const status = providerPickerStatusWithoutNetwork(provider, settings)
+        const accessType = getProviderAccessTypeLabel(provider)
 
-          return {
-            value: provider.id,
-            label: provider.displayName,
-            description: `${accessType} · ${provider.credentialType} · ${provider.runtimeKind === 'external-app' ? 'external app bridge' : status.label}`,
-            status: status.status,
-            statusLabel: status.label,
-            accessType,
-            credentialType: provider.credentialType,
-            runtimeBlockedReason: getProviderRuntimeBlockReason(provider.id),
-            provider,
-          }
-        }),
-      )
+        return {
+          value: provider.id,
+          label: provider.displayName,
+          description: `${accessType} · ${provider.credentialType} · ${provider.runtimeKind === 'external-app' ? 'external app bridge' : status.label}`,
+          status: status.status,
+          statusLabel: status.label,
+          accessType,
+          credentialType: provider.credentialType,
+          runtimeBlockedReason: getProviderRuntimeBlockReason(provider.id),
+          provider,
+        }
+      })
 
       setProviderOptions(options)
       setLoadingProviders(false)
@@ -203,12 +217,23 @@ export function ProviderFirstModelPicker({
       setLoadingModels(true)
       setModelWarning(null)
       const providerId = selectedProvider.value as ProviderId
+      const forceRefresh =
+        modelReloadToken !== handledModelReloadToken.current
+      handledModelReloadToken.current = modelReloadToken
       try {
-        const result = await listModelsForProviderWithSource(providerId, {
+        const discoveryOptions = {
           settings: getInitialSettings(),
           signal: controller.signal,
-          freshOnly: providerId === 'openrouter',
-        })
+        }
+        // OpenRouter's catalogue is large. Reopening the provider reuses the
+        // endpoint-scoped five-minute cache; Ctrl+R still forces a live fetch.
+        const result =
+          providerId === 'openrouter' && !forceRefresh
+            ? await ensureProviderModelsFresh(providerId, discoveryOptions)
+            : await listModelsForProviderWithSource(providerId, {
+                ...discoveryOptions,
+                freshOnly: providerId === 'openrouter' && forceRefresh,
+              })
         if (cancelled) return
         const modelLabels = buildProviderModelLabels(providerId, result.models)
         const options: Array<ModelOption & { disabled?: boolean }> = result.models.map(model => ({
@@ -236,6 +261,7 @@ export function ProviderFirstModelPicker({
         // here means the call itself failed. Report it rather than rendering
         // an empty list that looks like "this provider has no models".
         setModelOptions([])
+        setModelSource('unavailable')
         setModelWarning(
           `Could not load models: ${error instanceof Error ? error.message : String(error)}`,
         )
@@ -323,6 +349,31 @@ export function ProviderFirstModelPicker({
     { isActive: step === 'connect' },
   )
 
+  // Endpoint editing stays available even when the initial provider list uses
+  // its fast, non-network status. This also makes switching among several
+  // saved local/server addresses a one-screen workflow.
+  useInput(
+    (input, _key, event) => {
+      if (input.toLowerCase() !== 'e' || !selectedProvider) return
+      if (!providerSupportsEndpointEditing(selectedProvider.provider)) return
+      const settings = getInitialSettings()
+      setConnectingProvider(selectedProvider)
+      setConnectionMode('endpoint')
+      setConnectReturnStep('model')
+      setEndpointInput(
+        getScopedProviderBaseUrl(
+          selectedProvider.value as ProviderId,
+          settings,
+        ) ?? selectedProvider.provider.defaultBaseUrl ?? '',
+      )
+      setEndpointCursorOffset(0)
+      setConnectError(null)
+      setStep('connect')
+      event.stopImmediatePropagation()
+    },
+    { isActive: step === 'model' && !loadingModels },
+  )
+
   // Ctrl+R re-runs discovery so a transient network failure or a provider that
   // has just published a model does not require leaving and reopening /model.
   useInput(
@@ -389,6 +440,7 @@ export function ProviderFirstModelPicker({
   function handleProviderFocus(value: string) {
     setFocusedProviderValue(value)
     setProviderWarning(null)
+    setCredentialNotice(null)
   }
 
   function handleModelFocus(value: string) {
@@ -432,23 +484,52 @@ export function ProviderFirstModelPicker({
         setProviderWarning(provider.runtimeBlockedReason)
         return
       }
-      if (provider.status === 'connected' && provider.credentialType === 'api-key') {
+      if (
+        getProviderApiKeySource(provider.value) === 'stored' &&
+        (provider.credentialType === 'api-key' || provider.provider.requiresApiKey)
+      ) {
         // A key UR itself stores can be replaced or removed from here. An
         // env-var key belongs to the shell, so there is nothing to manage.
-        if (getProviderApiKeySource(provider.value) === 'stored') {
-          setConnectingProvider(provider)
-          setCredentialNotice(null)
-          setConnectError(null)
-          setStep('manage')
-          return
-        }
+        setConnectingProvider(provider)
+        setCredentialNotice(null)
+        setConnectError(null)
+        setStep('manage')
+        return
       }
       if (provider.status !== 'connected') {
-        if (provider.credentialType === 'api-key') {
+        if (
+          (provider.credentialType === 'api-key' ||
+            provider.provider.requiresApiKey) &&
+          getProviderApiKeySource(provider.value) === 'none'
+        ) {
           // Add the API key right here, while UR is running, then load models.
           setConnectingProvider(provider)
           setApiKeyInput('')
           setApiKeyCursorOffset(0)
+          setConnectionMode('api-key')
+          setConnectReturnStep('provider')
+          setConnectError(null)
+          setStep('connect')
+          return
+        }
+        if (
+          provider.status === 'missing' &&
+          (provider.credentialType === 'openai-compatible-endpoint' ||
+            provider.credentialType === 'local-runtime')
+        ) {
+          // Local/server providers are configured in-place. Requiring users
+          // to leave /model, switch the global provider, and then set a URL
+          // made the provider-first flow a dead end.
+          const settings = getInitialSettings()
+          setConnectingProvider(provider)
+          setConnectionMode('endpoint')
+          setConnectReturnStep('provider')
+          setEndpointInput(
+            getScopedProviderBaseUrl(provider.value as ProviderId, settings) ??
+              provider.provider.defaultBaseUrl ??
+              '',
+          )
+          setEndpointCursorOffset(0)
           setConnectError(null)
           setStep('connect')
           return
@@ -457,8 +538,10 @@ export function ProviderFirstModelPicker({
           setProviderWarning(`${provider.label} is not logged in. Sign in with \`ur auth ${authAliasForProvider(provider.value)}\` (uses your own subscription), then reselect.`)
           return
         }
-        setProviderWarning(`Provider "${provider.value}" is ${provider.status}: ${provider.statusLabel}. Run \`ur provider doctor ${provider.value}\`, or choose a connected API/local/server provider.`)
-        return
+        if (provider.status !== 'unknown') {
+          setProviderWarning(`Provider "${provider.value}" is ${provider.status}: ${provider.statusLabel}. Run \`ur provider doctor ${provider.value}\`, or choose a connected API/local/server provider.`)
+          return
+        }
       }
       setSelectedProvider(provider)
       setStep('model')
@@ -466,7 +549,7 @@ export function ProviderFirstModelPicker({
     }
   }
 
-  function handleModelSelect(value: string) {
+  async function handleModelSelect(value: string) {
     const selectedProviderId = selectedProvider?.value as ProviderId | undefined
     const selectedResolvedModel = parseUserSpecifiedModel(value)
     const selectedEffort =
@@ -499,6 +582,17 @@ export function ProviderFirstModelPicker({
     let runtimeBackend: string | undefined
     let savedProviderSettings
     if (selectedProvider) {
+      const previous = getActiveProviderSettings(getInitialSettings())
+      const hookDetails = {
+        fromProvider: previous.active,
+        fromModel: previous.model,
+        toProvider: selectedProvider.value,
+        toModel: value,
+        source: 'picker' as const,
+      }
+      const isSwitch =
+        previous.active !== selectedProvider.value || previous.model !== value
+
       try {
         const runtime = resolveActiveProviderModel({
           settings: {
@@ -517,6 +611,21 @@ export function ProviderFirstModelPicker({
         return
       }
 
+      if (isSwitch) {
+        const preResults = await executePreModelSwitchHooks(hookDetails)
+        if (hasBlockingResult(preResults)) {
+          const reason = preResults
+            .filter(result => result.blocked)
+            .map(result => result.output.trim())
+            .filter(Boolean)
+            .join('\n')
+          setModelWarning(
+            `Model switch blocked by PreModelSwitch hook${reason ? `: ${reason}` : '.'}`,
+          )
+          return
+        }
+      }
+
       const saveResult = setProviderModel(selectedProvider.value, value, {
         availableModels: modelOptions.map(option => option.value),
         modelSource,
@@ -526,6 +635,9 @@ export function ProviderFirstModelPicker({
         return
       }
       savedProviderSettings = getActiveProviderSettings(getInitialSettings())
+      if (isSwitch) {
+        await executePostModelSwitchHooks(hookDetails)
+      }
     }
 
     if (hasToggledEffort) {
@@ -589,21 +701,79 @@ export function ProviderFirstModelPicker({
       return
     }
     clearProviderModelCache(connectingProvider.value)
+    const ready = providerPickerStatusWithoutNetwork(
+      connectingProvider.provider,
+      getInitialSettings(),
+      'stored',
+    )
+    const readyProvider: ProviderStatusOption = {
+      ...connectingProvider,
+      status: ready.status,
+      statusLabel: ready.label,
+    }
+    setProviderOptions(previous =>
+      previous.map(option =>
+        option.value === readyProvider.value ? readyProvider : option,
+      ),
+    )
     setApiKeyInput('')
     setApiKeyCursorOffset(0)
     setConnectError(null)
     setCredentialNotice(saved.message)
     // Selecting the provider triggers live model discovery with the new key.
-    setSelectedProvider(connectingProvider)
+    setSelectedProvider(readyProvider)
     setStep('model')
   }
 
   function handleKeyCancel() {
     setApiKeyInput('')
     setApiKeyCursorOffset(0)
-    setConnectingProvider(null)
+    setEndpointInput('')
+    setEndpointCursorOffset(0)
+    if (connectReturnStep !== 'manage') {
+      setConnectingProvider(null)
+    }
     setConnectError(null)
-    setStep('provider')
+    setStep(connectReturnStep)
+  }
+
+  function handleEndpointSubmit() {
+    if (!connectingProvider) return
+    const endpoint = endpointInput.trim()
+    if (!endpoint) {
+      setConnectError('Enter the provider endpoint (or press Esc to go back).')
+      return
+    }
+    const providerId = connectingProvider.value as ProviderId
+    const saved = setSafeProviderConfig('base_url', endpoint, {
+      provider: providerId,
+    })
+    if (!saved.ok) {
+      setConnectError(saved.message)
+      return
+    }
+    clearProviderModelCache(providerId)
+    const configured = providerPickerStatusWithoutNetwork(
+      connectingProvider.provider,
+      getInitialSettings(),
+    )
+    const pendingProvider: ProviderStatusOption = {
+      ...connectingProvider,
+      status: configured.status,
+      statusLabel: `${configured.label}; endpoint saved`,
+    }
+    setProviderOptions(previous =>
+      previous.map(option =>
+        option.value === providerId ? pendingProvider : option,
+      ),
+    )
+    setEndpointInput('')
+    setEndpointCursorOffset(0)
+    setConnectError(null)
+    setCredentialNotice(saved.message)
+    setSelectedProvider(pendingProvider)
+    setFocusedModelValue(null)
+    setStep('model')
   }
 
   function handleManageSelect(action: string) {
@@ -617,6 +787,8 @@ export function ProviderFirstModelPicker({
     if (action === 'replace') {
       setApiKeyInput('')
       setApiKeyCursorOffset(0)
+      setConnectionMode('api-key')
+      setConnectReturnStep('manage')
       setConnectError(null)
       setStep('connect')
       return
@@ -693,17 +865,20 @@ export function ProviderFirstModelPicker({
 
   // API key entry view (add a token from inside UR while it is running).
   if (step === 'connect' && connectingProvider) {
+    const endpointConnection = connectionMode === 'endpoint'
     const envKey = connectingProvider.provider.envKey
     const content = (
       <Box flexDirection="column">
         <Box marginBottom={1} flexDirection="column">
           <Text color="remember" bold>
-            Connect {connectingProvider.label}
+            {endpointConnection ? 'Configure' : 'Connect'} {connectingProvider.label}
           </Text>
           <Text dimColor>
-            Paste your API key to use your own account. It is stored securely in your OS keychain and reused automatically — you only do this once.
+            {endpointConnection
+              ? 'Enter this provider’s endpoint. UR stores it separately, so switching providers never overwrites another local/server address.'
+              : 'Paste your API key to use your own account. It is stored securely in your OS keychain and reused automatically — you only do this once.'}
           </Text>
-          {envKey && (
+          {!endpointConnection && envKey && (
             <Text dimColor color="subtle">
               Equivalent to setting {envKey}. Get a key from the provider's dashboard.
             </Text>
@@ -711,22 +886,37 @@ export function ProviderFirstModelPicker({
         </Box>
         <Box width="100%" flexDirection="row">
           <Box width={12} flexShrink={0}>
-            <Text bold color="subtle">API key</Text>
+            <Text bold color="subtle">{endpointConnection ? 'Endpoint' : 'API key'}</Text>
           </Box>
           <Box flexGrow={1}>
-            <TextInput
-              value={apiKeyInput}
-              onChange={setApiKeyInput}
-              onSubmit={handleKeySubmit}
-              mask="*"
-              placeholder="paste key, then Enter"
-              focus={true}
-              showCursor={true}
-              multiline={false}
-              columns={keyInputColumns}
-              cursorOffset={apiKeyCursorOffset}
-              onChangeCursorOffset={setApiKeyCursorOffset}
-            />
+            {!endpointConnection ? (
+              <TextInput
+                value={apiKeyInput}
+                onChange={setApiKeyInput}
+                onSubmit={handleKeySubmit}
+                mask="*"
+                placeholder="paste key, then Enter"
+                focus={true}
+                showCursor={true}
+                multiline={false}
+                columns={keyInputColumns}
+                cursorOffset={apiKeyCursorOffset}
+                onChangeCursorOffset={setApiKeyCursorOffset}
+              />
+            ) : (
+              <TextInput
+                value={endpointInput}
+                onChange={setEndpointInput}
+                onSubmit={handleEndpointSubmit}
+                placeholder="http://localhost:8080/v1"
+                focus={true}
+                showCursor={true}
+                multiline={false}
+                columns={keyInputColumns}
+                cursorOffset={endpointCursorOffset}
+                onChangeCursorOffset={setEndpointCursorOffset}
+              />
+            )}
           </Box>
         </Box>
         {connectError && (
@@ -736,7 +926,7 @@ export function ProviderFirstModelPicker({
         )}
         <Box marginTop={1}>
           <Byline>
-            <KeyboardShortcutHint shortcut="Enter" action="store key & load models" />
+            <KeyboardShortcutHint shortcut="Enter" action={endpointConnection ? 'save endpoint & load models' : 'store key & load models'} />
             <KeyboardShortcutHint shortcut="Esc" action="back" />
           </Byline>
         </Box>
@@ -786,7 +976,7 @@ export function ProviderFirstModelPicker({
                     <Text dimColor> · {focusedProvider.accessType} · {focusedProvider.credentialType}</Text>
                   </Box>
                   <Text dimColor>
-                    Status: <Text color={focusedProvider.status === 'connected' ? 'success' : 'error'}>{focusedProvider.status}</Text>
+                    Status: <Text color={focusedProvider.status === 'connected' ? 'success' : focusedProvider.status === 'unknown' ? 'subtle' : 'error'}>{focusedProvider.status}</Text>
                     <Text dimColor> · {focusedProvider.statusLabel}</Text>
                   </Text>
                   <Text dimColor>
@@ -795,7 +985,7 @@ export function ProviderFirstModelPicker({
                   <Text dimColor color={focusedProvider.runtimeBlockedReason ? 'error' : 'subtle'}>
                     Runtime: {focusedProvider.provider.runtimeKind === 'external-app' ? 'external app bridge (disabled for independent UR runtime)' : 'UR-native'}
                   </Text>
-                  {focusedProvider.status !== 'connected' && (
+                  {focusedProvider.status !== 'connected' && focusedProvider.status !== 'unknown' && (
                     <Text dimColor color="subtle">
                       Not connected — run `ur connect {focusedProvider.value}` (subscription login or API key), then reselect. Troubleshoot: `ur provider doctor {focusedProvider.value}`
                     </Text>
@@ -844,17 +1034,24 @@ export function ProviderFirstModelPicker({
           </Text>
           <Text dimColor>
             {selectedProvider?.value === 'openrouter'
-              ? `${modelOptions.length} models · fetched fresh whenever this catalog opens`
+              ? `${modelOptions.length} models · live catalog cached for 5 minutes · Ctrl+R refreshes now`
               : `Showing models for ${selectedProvider?.label} (${selectedProvider?.accessType})`}
           </Text>
-          <Text color={modelSource === 'live' ? 'success' : 'subtle'}>
+          <Text color={modelSource === 'live' ? 'success' : modelSource === 'unavailable' ? 'error' : 'subtle'}>
             {formatModelSourceLabel(modelSource)}
             <Text dimColor color="subtle">
               {' '}· agent-capable models can be selected
             </Text>
           </Text>
+          {credentialNotice && (
+            <Text dimColor color="subtle">{credentialNotice}</Text>
+          )}
           <Text dimColor color="subtle">
             ↑↓ browse · Enter select · ←→ effort · Ctrl+R refresh · Esc providers
+            {selectedProvider &&
+            providerSupportsEndpointEditing(selectedProvider.provider)
+              ? ' · E endpoint'
+              : ''}
           </Text>
         </Box>
 
@@ -943,7 +1140,7 @@ export function ProviderFirstModelPicker({
                   No models available for this provider.
                 </Text>
                 <Text dimColor color="subtle">
-                  Press ctrl+r to retry, or run `ur provider doctor {selectedProvider?.value}` to troubleshoot.
+                  Press ctrl+r to retry{selectedProvider && providerSupportsEndpointEditing(selectedProvider.provider) ? ', press E to change the endpoint' : ''}, or run `ur provider doctor {selectedProvider?.value}` to troubleshoot.
                 </Text>
               </Box>
             )}
@@ -969,6 +1166,75 @@ export function ProviderFirstModelPicker({
 
 function noop() {}
 
+export type ProviderPickerStatus = {
+  status: ProviderConnectionStatus
+  label: string
+}
+
+/**
+ * Whether the provider exposes an HTTP endpoint users can override from the
+ * picker. API providers count too: their official URL is only a default, not a
+ * hard-coded destination.
+ */
+export function providerSupportsEndpointEditing(
+  provider: ProviderDefinition,
+): boolean {
+  return (
+    provider.credentialType === 'openai-compatible-endpoint' ||
+    provider.credentialType === 'local-runtime' ||
+    provider.defaultBaseUrl !== undefined
+  )
+}
+
+/**
+ * Build the provider-list status from configuration and credential presence
+ * only. Network verification is deliberately deferred until selection, where
+ * the same live request also supplies the model catalogue.
+ */
+export function providerPickerStatusWithoutNetwork(
+  provider: ProviderDefinition,
+  settings: Parameters<typeof getScopedProviderBaseUrl>[1] = getInitialSettings(),
+  apiKeySource: ApiKeySource = getProviderApiKeySource(provider.id),
+): ProviderPickerStatus {
+  const needsApiKey =
+    provider.credentialType === 'api-key' || provider.requiresApiKey === true
+  if (needsApiKey && apiKeySource === 'none') {
+    return {
+      status: 'missing',
+      label: `${provider.envKey ?? 'API key'} required`,
+    }
+  }
+
+  if (provider.credentialType === 'api-key') {
+    return {
+      status: 'connected',
+      label:
+        apiKeySource === 'stored'
+          ? 'Stored API key ready'
+          : 'Environment API key ready',
+    }
+  }
+
+  if (
+    provider.credentialType === 'openai-compatible-endpoint' ||
+    provider.credentialType === 'local-runtime'
+  ) {
+    const endpoint =
+      getScopedProviderBaseUrl(provider.id, settings) ?? provider.defaultBaseUrl
+    if (!endpoint) {
+      return { status: 'missing', label: 'Endpoint required' }
+    }
+    return {
+      status: 'unknown',
+      label: provider.requiresApiKey
+        ? `${apiKeySource === 'stored' ? 'Stored' : 'Environment'} API key and endpoint ready; checked when selected`
+        : 'Endpoint configured; checked when selected',
+    }
+  }
+
+  return { status: 'unknown', label: 'Checked when selected' }
+}
+
 export function getProviderKeyInputColumns(terminalColumns?: number): number {
   const columns =
     Number.isFinite(terminalColumns) && (terminalColumns as number) > 0
@@ -992,6 +1258,7 @@ export function cycleProviderPickerEffort(
 export function formatModelSourceLabel(source: ProviderModelSource): string {
   if (source === 'live') return '● LIVE CATALOG'
   if (source === 'cache') return '◐ CACHED CATALOG'
+  if (source === 'unavailable') return '× CATALOG UNAVAILABLE'
   return '○ BUILT-IN CATALOG'
 }
 

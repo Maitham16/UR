@@ -8,7 +8,7 @@ import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 import { isBuiltInAgent } from '../tools/AgentTool/loadAgentsDir.js'
 import { isEnvTruthy } from './envUtils.js'
 import { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
-import { ensureExecutionContract } from '../constants/executionContract.js'
+import { renderGovernedPrompt } from '../constants/promptGovernance.js'
 
 export { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
 
@@ -45,7 +45,9 @@ export function buildEffectiveSystemPrompt({
   overrideSystemPrompt?: string | null
 }): SystemPrompt {
   if (overrideSystemPrompt) {
-    return asSystemPrompt(ensureExecutionContract([overrideSystemPrompt]))
+    return asSystemPrompt(
+      renderGovernedPrompt('custom-overlay', [overrideSystemPrompt]),
+    )
   }
   // Coordinator mode: use coordinator prompt instead of default
   // Use inline env check instead of coordinatorModule to avoid circular
@@ -59,10 +61,12 @@ export function buildEffectiveSystemPrompt({
     const { getCoordinatorSystemPrompt } =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js')
-    return asSystemPrompt(ensureExecutionContract([
-      getCoordinatorSystemPrompt(),
-      ...(appendSystemPrompt ? [appendSystemPrompt] : []),
-    ]))
+    return asSystemPrompt(
+      renderGovernedPrompt('custom-overlay', [
+        getCoordinatorSystemPrompt(),
+        ...(appendSystemPrompt ? [appendSystemPrompt] : []),
+      ]),
+    )
   }
 
   const agentSystemPrompt = mainThreadAgentDefinition
@@ -93,9 +97,11 @@ export function buildEffectiveSystemPrompt({
       ? `\n# Custom System Instructions\n${customSystemPrompt}`
       : undefined
 
-  return asSystemPrompt(ensureExecutionContract([
-    ...defaultSystemPrompt,
-    ...(overlay ? [overlay] : []),
-    ...(appendSystemPrompt ? [appendSystemPrompt] : []),
-  ]))
+  return asSystemPrompt(
+    renderGovernedPrompt('custom-overlay', [
+      ...defaultSystemPrompt,
+      ...(overlay ? [overlay] : []),
+      ...(appendSystemPrompt ? [appendSystemPrompt] : []),
+    ]),
+  )
 }

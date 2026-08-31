@@ -22,6 +22,15 @@ function setEffortValue(effortValue: EffortValue, model?: string, provider: Prov
       message: `Not applied: ${model} on ${provider} does not advertise graded reasoning-effort levels.`
     };
   }
+  if (
+    model &&
+    effortValue === 'ultra' &&
+    !getSupportedEffortLevelsForModel(model, provider).includes('ultra')
+  ) {
+    return {
+      message: `Not applied: ${model} on ${provider} does not advertise the ultra reasoning-effort level.`
+    };
+  }
   const persistable = toPersistableEffort(effortValue);
   if (persistable !== undefined) {
     const result = updateSettingsForSource('userSettings', {
@@ -104,6 +113,14 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
       message: `Effort: unavailable — ${model} on ${provider} does not advertise graded reasoning-effort levels.`
     };
   }
+  if (
+    effectiveValue === 'ultra' &&
+    !getSupportedEffortLevelsForModel(model, provider).includes('ultra')
+  ) {
+    return {
+      message: `Requested effort: ultra; not applied — ${model} on ${provider} does not advertise ultra. Provider levels: ${getSupportedEffortLevelsForModel(model, provider).join(', ')}`
+    };
+  }
   const appliedLevel = getDisplayedEffortLevel(model, appStateEffort, provider);
   if (typeof effectiveValue === 'string' && appliedLevel !== effectiveValue) {
     return {
@@ -153,7 +170,7 @@ export function executeEffort(args: string, model?: string, provider: ProviderId
   }
   if (!isEffortLevel(normalized)) {
     return {
-      message: `Invalid argument: ${args}. Valid options are: minimal, low, medium, high, xhigh, max, auto`
+      message: `Invalid argument: ${args}. Valid options are: minimal, low, medium, high, xhigh, max, ultra, auto`
     };
   }
   return setEffortValue(normalized, model, provider);
@@ -214,12 +231,16 @@ function ApplyEffortAndClose(t0) {
 export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, args?: string): Promise<React.ReactNode> {
   args = args?.trim() || '';
   if (COMMON_HELP_ARGS.includes(args)) {
-    onDone('Usage: /effort [minimal|low|medium|high|xhigh|max|auto]\n\nUR reads the selected model\'s exact provider-advertised levels. `max` means that model\'s real ceiling, so it resolves to max, xhigh, or high as appropriate.\n\nEffort levels:\n- minimal: Lowest latency and cost\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- xhigh: Extended reasoning above high\n- max: The selected model\'s highest advertised level\n- auto: Use the model/provider default');
+    onDone('Usage: /effort [minimal|low|medium|high|xhigh|max|ultra|auto]\n\nUR reads the selected model\'s exact provider-advertised levels. `max` means that model\'s established ceiling, so it resolves to max, xhigh, or high as appropriate. `ultra` is shown and accepted only when the selected provider/model explicitly advertises it (or an explicit provider-authored alias); it never silently degrades to max.\n\nEffort levels:\n- minimal: Lowest latency and cost\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- xhigh: Extended reasoning above high\n- max: The selected model\'s established maximum level\n- ultra: Explicit provider-advertised ultra reasoning\n- auto: Use the model/provider default');
     return;
   }
   const model = getMainLoopModel();
   const runtimeProvider = getRuntimeProvider();
-  if (!getSupportedEffortLevelsForModel(model, runtimeProvider).length) {
+  if (
+    !getSupportedEffortLevelsForModel(model, runtimeProvider).length ||
+    (args.toLowerCase() === 'ultra' &&
+      !getSupportedEffortLevelsForModel(model, runtimeProvider).includes('ultra'))
+  ) {
     await ensureProviderReasoningCapabilitiesForModel(runtimeProvider, model).catch(() => undefined);
   }
   if (!args || args === 'current' || args === 'status') {

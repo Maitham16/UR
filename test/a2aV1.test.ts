@@ -31,7 +31,7 @@ function runtime(directory = cwd()): A2AV1ProtocolRuntime {
   return new A2AV1ProtocolRuntime(
     new A2AProtocolRuntime({
       cwd: directory,
-      card: buildA2AAgentCard({ baseUrl }),
+      card: buildA2AV1AgentCard({ baseUrl }),
       dryRun: true,
     }),
   )
@@ -59,6 +59,14 @@ function request(path: string, init: RequestInit = {}): Request {
 
 async function json(response: Response): Promise<any> {
   return await response.json()
+}
+
+async function sse(response: Response): Promise<any[]> {
+  return (await response.text())
+    .split('\n\n')
+    .map(event => event.trim())
+    .filter(Boolean)
+    .map(event => JSON.parse(event.replace(/^data:\s*/u, '')))
 }
 
 describe('A2A v1 compatibility runtime', () => {
@@ -145,7 +153,7 @@ describe('A2A v1 compatibility runtime', () => {
     ).rejects.toThrow('pageToken')
   })
 
-  test('rejects ambiguous parts and unknown operations deterministically', async () => {
+  test('rejects ambiguous parts and streams v1 task lifecycle events', async () => {
     const adapter = runtime()
     const invalid = await adapter.handleJsonRpc(
       {
@@ -173,7 +181,61 @@ describe('A2A v1 compatibility runtime', () => {
       },
       identity,
     )
-    expect(streaming.error?.code).toBe(-32004)
+    const events = []
+    for await (const event of streaming) events.push(event)
+    expect(events.length).toBeGreaterThanOrEqual(3)
+    expect((events[0]?.result as any).task.status.state).toBe(
+      'TASK_STATE_WORKING',
+    )
+    expect((events.at(-1)?.result as any).statusUpdate.status.state).toBe(
+      'TASK_STATE_COMPLETED',
+    )
+  })
+
+  test('resubscribes to an in-flight task stream', async () => {
+    let finish!: () => void
+    const gate = new Promise<void>(resolve => {
+      finish = resolve
+    })
+    const adapter = new A2AV1ProtocolRuntime(
+      new A2AProtocolRuntime({
+        cwd: cwd(),
+        card: buildA2AV1AgentCard({ baseUrl }),
+        runPrompt: async () => {
+          await gate
+          return { code: 0, stdout: 'resubscribed', stderr: '' }
+        },
+      }),
+    )
+    const original = await adapter.handleJsonRpc(
+      {
+        jsonrpc: '2.0',
+        id: 'stream-original',
+        method: 'SendStreamingMessage',
+        params: message('resubscribe', 'wait for subscriber'),
+      },
+      identity,
+    )
+    const originalIterator = original[Symbol.asyncIterator]()
+    const first = await originalIterator.next()
+    if (first.done) throw new Error('expected initial streaming task event')
+    const taskId = ((first.value as any).result as any).task.id as string
+    const subscription = await adapter.handleJsonRpc(
+      {
+        jsonrpc: '2.0',
+        id: 'stream-subscription',
+        method: 'SubscribeToTask',
+        params: { id: taskId },
+      },
+      identity,
+    )
+    const subscriptionIterator = subscription[Symbol.asyncIterator]()
+    finish()
+    const subscribed = await subscriptionIterator.next()
+    if (subscribed.done) throw new Error('expected resubscription snapshot')
+    expect(((subscribed.value as any).result as any).task.id).toBe(taskId)
+    await originalIterator.return?.()
+    await subscriptionIterator.return?.()
   })
 
   test('namespaces identities only when a tenant is present', () => {
@@ -284,6 +346,127 @@ describe('A2A v1 HTTP bindings', () => {
       baseUrl,
     )
     expect((await json(fetched)).id).toBe(restTask.id)
+  })
+
+  test('serves JSON-RPC and HTTP+JSON streams as SSE', async () => {
+    const options = {
+      host: '127.0.0.1',
+      port: 8765,
+      cwd: cwd(),
+      dryRun: true,
+    }
+    const headers = { 'a2a-version': '1.0' }
+    const rpc = await handleA2ARequest(
+      request('/a2a/v1/jsonrpc', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'rpc-stream',
+          method: 'SendStreamingMessage',
+          params: message('rpc-stream', 'stream over JSON-RPC'),
+        }),
+      }),
+      options,
+      baseUrl,
+    )
+    expect(rpc.headers.get('content-type')).toContain('text/event-stream')
+    const rpcEvents = await sse(rpc)
+    expect(rpcEvents[0].result.task.status.state).toBe('TASK_STATE_WORKING')
+    expect(rpcEvents.at(-1).result.statusUpdate.status.state).toBe(
+      'TASK_STATE_COMPLETED',
+    )
+
+    const rest = await handleA2ARequest(
+      request('/a2a/v1/message:stream', {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/a2a+json' },
+        body: JSON.stringify(message('rest-stream', 'stream over REST')),
+      }),
+      options,
+      baseUrl,
+    )
+    expect(rest.headers.get('content-type')).toContain('text/event-stream')
+    const restEvents = await sse(rest)
+    expect(restEvents[0].task.status.state).toBe('TASK_STATE_WORKING')
+    expect(restEvents.at(-1).statusUpdate.status.state).toBe(
+      'TASK_STATE_COMPLETED',
+    )
+  })
+
+  test('creates, lists, gets, and deletes authenticated push configurations', async () => {
+    const previous = process.env.UR_A2A_PUSH_ALLOWED_ORIGINS
+    process.env.UR_A2A_PUSH_ALLOWED_ORIGINS = 'http://127.0.0.1:9192'
+    try {
+      const options = {
+        host: '127.0.0.1',
+        port: 8765,
+        cwd: cwd(),
+        dryRun: true,
+      }
+      const headers = { 'a2a-version': '1.0' }
+      const sent = await handleA2ARequest(
+        request('/a2a/v1/message:send', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(message('push-task', 'create push task')),
+        }),
+        options,
+        baseUrl,
+      )
+      const taskId = (await json(sent)).task.id as string
+      const collection = `/a2a/v1/tasks/${encodeURIComponent(taskId)}/pushNotificationConfigs`
+      const created = await handleA2ARequest(
+        request(collection, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            url: 'http://127.0.0.1:9192/a2a-events',
+            authentication: {
+              scheme: 'Bearer',
+              credentials: 'webhook-secret',
+            },
+          }),
+        }),
+        options,
+        baseUrl,
+      )
+      expect(created.status).toBe(201)
+      const config = await json(created)
+      expect(config.id).toBeTruthy()
+      expect(config.taskId).toBe(taskId)
+
+      const listed = await handleA2ARequest(
+        request(collection, { headers }),
+        options,
+        baseUrl,
+      )
+      expect((await json(listed)).configs).toHaveLength(1)
+
+      const resource = `${collection}/${encodeURIComponent(config.id)}`
+      const fetched = await handleA2ARequest(
+        request(resource, { headers }),
+        options,
+        baseUrl,
+      )
+      expect((await json(fetched)).url).toContain('127.0.0.1:9192')
+
+      const deleted = await handleA2ARequest(
+        request(resource, { method: 'DELETE', headers }),
+        options,
+        baseUrl,
+      )
+      expect(deleted.status).toBe(204)
+      const afterDelete = await handleA2ARequest(
+        request(collection, { headers }),
+        options,
+        baseUrl,
+      )
+      expect((await json(afterDelete)).configs).toHaveLength(0)
+    } finally {
+      if (previous === undefined) delete process.env.UR_A2A_PUSH_ALLOWED_ORIGINS
+      else process.env.UR_A2A_PUSH_ALLOWED_ORIGINS = previous
+    }
   })
 
   test('enforces v1 media type, version, and tenant delegation boundaries', async () => {

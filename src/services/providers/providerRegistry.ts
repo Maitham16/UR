@@ -3,11 +3,13 @@ import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
 import {
   getOllamaBaseUrl,
   getOllamaSessionOverride,
+  normalizeOllamaBaseUrl,
 } from '../../utils/model/ollamaConfig.js'
 import { getInitialSettings, updateSettingsForSource } from '../../utils/settings/settings.js'
 import type { EditableSettingSource } from '../../utils/settings/constants.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
 import { which } from '../../utils/which.js'
+import { normalizeGeminiBaseUrl } from '../api/providerHttp.js'
 import {
   describeCacheAge,
   MODEL_CACHE_TTL_MS,
@@ -158,6 +160,8 @@ export type ProviderDoctorResult = {
   safetyBoundary: ProviderSafetyBoundary
   safetyBoundaryLabel: string
   selected: boolean
+  /** Effective provider-scoped endpoint (configured override or provider default). */
+  baseUrl?: string
   ok: boolean
   checks: ProviderCheck[]
   failureReason?: string
@@ -204,6 +208,27 @@ export type ProviderDoctorAdapters = {
    *  doctor never calls. */
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   env?: Record<string, string | undefined>
+  /** Optional credential resolver for deterministic diagnostics and discovery
+   *  tests. When supplied, it is authoritative for stored credentials; env
+   *  variables still take precedence at each call site. */
+  getApiKey?: (
+    provider: ProviderId,
+    env: Record<string, string | undefined>,
+  ) => string | undefined
+}
+
+async function storedProviderApiKey(
+  provider: ProviderId,
+  env: Record<string, string | undefined>,
+  adapters?: ProviderDoctorAdapters,
+): Promise<string | undefined> {
+  if (adapters?.getApiKey) return adapters.getApiKey(provider, env)
+  try {
+    const credentials = await import('./providerCredentials.js')
+    return credentials.getProviderApiKey(provider, { env })
+  } catch {
+    return undefined
+  }
 }
 
 export type ProviderConnectionStatus = 'connected' | 'missing' | 'unavailable' | 'unknown'
@@ -226,7 +251,12 @@ export type ProviderStatusSummary = {
   doctor: ProviderDoctorResult
 }
 
-export type ProviderModelSource = 'live' | 'cache' | 'static'
+/**
+ * Where the currently displayed catalogue came from. `unavailable` is
+ * intentionally distinct from `live`: a failed or empty discovery must never
+ * be presented as a successfully fetched live catalogue.
+ */
+export type ProviderModelSource = 'live' | 'cache' | 'static' | 'unavailable'
 
 export type ProviderModelDiscoveryResult = {
   provider: ProviderId
@@ -391,6 +421,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     legalPath: 'OPENAI_API_KEY',
     accessPathLabel: 'API key from OPENAI_API_KEY',
     envKey: 'OPENAI_API_KEY',
+    defaultBaseUrl: 'https://api.openai.com/v1',
   },
   'anthropic-api': {
     id: 'anthropic-api',
@@ -408,6 +439,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     legalPath: 'ANTHROPIC_API_KEY',
     accessPathLabel: 'API key from ANTHROPIC_API_KEY',
     envKey: 'ANTHROPIC_API_KEY',
+    defaultBaseUrl: 'https://api.anthropic.com/v1',
   },
   'gemini-api': {
     id: 'gemini-api',
@@ -425,6 +457,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     legalPath: 'GEMINI_API_KEY',
     accessPathLabel: 'API key from GEMINI_API_KEY',
     envKey: 'GEMINI_API_KEY',
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
   },
   openrouter: {
     id: 'openrouter',
@@ -442,6 +475,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     legalPath: 'OPENROUTER_API_KEY',
     accessPathLabel: 'API key from OPENROUTER_API_KEY',
     envKey: 'OPENROUTER_API_KEY',
+    defaultBaseUrl: 'https://openrouter.ai/api/v1',
   },
   'openai-compatible': {
     id: 'openai-compatible',
@@ -475,8 +509,9 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     runtimeKind: 'ur-native',
     ...UR_NATIVE_CAPABILITIES,
     authMode: 'local',
-    legalPath: 'localhost Ollama runtime',
-    accessPathLabel: 'local Ollama runtime',
+    legalPath: 'configured Ollama endpoint (local, LAN, or hosted; optional API key)',
+    accessPathLabel: 'Ollama endpoint',
+    envKey: 'OLLAMA_API_KEY',
     defaultBaseUrl: 'http://localhost:11434',
     endpointKind: 'ollama',
   },
@@ -492,12 +527,12 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     listModels: 'openai-compatible-models',
     validateModel: 'discovered-list',
     runtimeKind: 'ur-native',
-    ...SUBSCRIPTION_CLI_CAPABILITIES,
+    ...UR_NATIVE_CAPABILITIES,
     authMode: 'local',
-    legalPath: 'local OpenAI-compatible server',
-    accessPathLabel: 'local OpenAI-compatible endpoint',
+    legalPath: 'configured LM Studio OpenAI-compatible endpoint (optional API key)',
+    accessPathLabel: 'LM Studio endpoint',
+    envKey: 'LMSTUDIO_API_KEY',
     defaultBaseUrl: 'http://localhost:1234/v1',
-    disabled: true,
     endpointKind: 'openai-compatible',
   },
   'llama.cpp': {
@@ -514,8 +549,9 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     runtimeKind: 'ur-native',
     ...UR_NATIVE_CAPABILITIES,
     authMode: 'local',
-    legalPath: 'local OpenAI-compatible server',
-    accessPathLabel: 'local OpenAI-compatible endpoint',
+    legalPath: 'configured llama.cpp OpenAI-compatible endpoint (optional API key)',
+    accessPathLabel: 'llama.cpp endpoint',
+    envKey: 'LLAMA_CPP_API_KEY',
     defaultBaseUrl: 'http://localhost:8080/v1',
     endpointKind: 'openai-compatible',
   },
@@ -533,8 +569,9 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     runtimeKind: 'ur-native',
     ...UR_NATIVE_CAPABILITIES,
     authMode: 'local',
-    legalPath: 'OpenAI-compatible server',
-    accessPathLabel: 'OpenAI-compatible endpoint runtime',
+    legalPath: 'configured vLLM OpenAI-compatible endpoint (optional API key)',
+    accessPathLabel: 'vLLM endpoint',
+    envKey: 'VLLM_API_KEY',
     defaultBaseUrl: 'http://localhost:8000/v1',
     endpointKind: 'openai-compatible',
   },
@@ -943,7 +980,11 @@ export function setSafeProviderConfig(
     | 'model'
     | 'base_url',
   value: string,
-  options: { source?: EditableSettingSource } = {},
+  options: {
+    source?: EditableSettingSource
+    /** Assign base_url to this provider without changing the active provider. */
+    provider?: ProviderId | string
+  } = {},
 ): { ok: true; message: string } | { ok: false; message: string } {
   const trimmed = value.trim()
   if (!trimmed) {
@@ -1071,11 +1112,36 @@ export function setSafeProviderConfig(
       const currentSettings = getInitialSettings()
       const currentProvider =
         getActiveProviderSettings(currentSettings).active ?? DEFAULT_PROVIDER_ID
+      const targetProvider = options.provider
+        ? resolveProviderId(options.provider)
+        : currentProvider
+      if (!targetProvider) {
+        return {
+          ok: false,
+          message: `Unknown provider "${options.provider}". Run: ur provider list`,
+        }
+      }
+      if (getProviderDefinition(targetProvider).accessType === 'subscription') {
+        return {
+          ok: false,
+          message: `Provider "${targetProvider}" is a vendor-managed subscription CLI and does not accept a base URL.`,
+        }
+      }
       const baseUrl = normalizeBaseUrl(trimmed)
+      const configured = currentSettings.provider ?? {}
+      const migratedLegacyBaseUrls: Partial<Record<ProviderId, string>> = {}
+      if (configured.baseUrls === undefined && configured.baseUrl) {
+        migratedLegacyBaseUrls[currentProvider] = configured.baseUrl
+      }
       settings = {
         provider: {
-          baseUrl,
-          baseUrls: { [currentProvider]: baseUrl },
+          // Keep the legacy mirror tied to the active provider. Runtime
+          // resolution uses baseUrls, but older readers still inspect baseUrl.
+          ...(targetProvider === currentProvider ? { baseUrl } : {}),
+          baseUrls: {
+            ...migratedLegacyBaseUrls,
+            [targetProvider]: baseUrl,
+          },
         },
       } as SettingsJson
     }
@@ -1100,9 +1166,17 @@ export function setSafeProviderConfig(
         ? 'disabled'
         : resolveProviderId(trimmed) ?? trimmed
       : trimmed
+  const namedBaseUrlProvider =
+    key === 'base_url'
+      ? resolveProviderId(options.provider ?? getActiveProviderSettings(getInitialSettings()).active ?? DEFAULT_PROVIDER_ID)
+      : undefined
   return {
     ok: true,
-    message: `Set ${key} to ${savedValue}.${providerModelInvalidated ? ' Cleared incompatible model for the new provider; run /model to choose a scoped model.' : ''}`,
+    message: `${
+      key === 'base_url' && namedBaseUrlProvider
+        ? `Set base_url for ${namedBaseUrlProvider} to ${savedValue}.`
+        : `Set ${key} to ${savedValue}.`
+    }${providerModelInvalidated ? ' Cleared incompatible model for the new provider; run /model to choose a scoped model.' : ''}`,
   }
 }
 
@@ -1168,10 +1242,10 @@ function addFailure(result: ProviderDoctorResult, reason: string, fix: string): 
 }
 
 function endpointUrl(baseUrl: string, kind: 'ollama' | 'openai-compatible'): string {
-  const trimmed = baseUrl.replace(/\/$/, '')
   if (kind === 'ollama') {
-    return `${trimmed}/api/tags`
+    return `${normalizeOllamaBaseUrl(baseUrl)}/api/tags`
   }
+  const trimmed = baseUrl.replace(/\/$/, '')
   return `${trimmed}/models`
 }
 
@@ -1227,14 +1301,18 @@ async function checkEndpoint(
       status: 'fail',
       message: 'No base_url configured.',
     })
-    addFailure(result, 'missing base_url', 'Run: ur config set base_url <url>')
+    addFailure(
+      result,
+      'missing base_url',
+      `Run: ur config set base_url ${definition.id} <url>`,
+    )
     return
   }
   // Probe the same candidate paths discovery uses, so the doctor reflects the
   // URL that actually yields models (e.g. `/v1/models` when base_url omits /v1).
   const candidates =
     definition.endpointKind === 'ollama'
-      ? [endpointUrl(baseUrl, 'ollama')]
+      ? [endpointUrl(normalizeOllamaBaseUrl(baseUrl), 'ollama')]
       : openAiCompatibleModelUrls(baseUrl)
   const env = adapters.env ?? process.env
   let apiKey =
@@ -1243,13 +1321,8 @@ async function checkEndpoint(
       : definition.envKey
         ? env[definition.envKey]
         : undefined
-  if (!apiKey && definition.credentialType === 'openai-compatible-endpoint') {
-    try {
-      const credentials = await import('./providerCredentials.js')
-      apiKey = credentials.getProviderApiKey(definition.id, { env })
-    } catch {
-      // Endpoint may not require authentication.
-    }
+  if (!apiKey && definition.envKey) {
+    apiKey = await storedProviderApiKey(definition.id, env, adapters)
   }
   if (definition.requiresApiKey && !apiKey) {
     result.checks.push({
@@ -1311,7 +1384,7 @@ async function checkEndpoint(
       addFailure(
         result,
         `endpoint returned HTTP ${lastStatus}`,
-        `Start the provider server or update base_url: ur config set base_url ${baseUrl}`,
+        `Start the provider server or update base_url: ur config set base_url ${definition.id} ${baseUrl}`,
       )
     } else {
       result.checks.push({
@@ -1322,7 +1395,7 @@ async function checkEndpoint(
       addFailure(
         result,
         lastError?.message ?? 'endpoint unavailable',
-        `Start the provider server or update base_url: ur config set base_url ${baseUrl}`,
+        `Start the provider server or update base_url: ur config set base_url ${definition.id} ${baseUrl}`,
       )
     }
     return
@@ -1479,28 +1552,18 @@ async function checkApiProvider(
     definition.id !== 'openai-compatible' ||
     !baseUrl ||
     !isLocalBaseUrl(baseUrl)
+  let apiKey = definition.envKey ? env[definition.envKey] : undefined
+  let keySource: 'env' | 'stored' = 'env'
+  if (!apiKey && (!adapters.env || adapters.getApiKey)) {
+    apiKey = await storedProviderApiKey(definition.id, env, adapters)
+    if (apiKey) keySource = 'stored'
+  }
   if (definition.envKey && requiresKey) {
-    let hasKey = Boolean(env[definition.envKey])
-    let source: 'env' | 'stored' = 'env'
-    // Runtime path only (no injected env): a key connected via `ur connect` is
-    // stored in the secure store, so reflect it here. Dynamic import avoids a
-    // static import cycle with providerCredentials.
-    if (!hasKey && !adapters.env) {
-      try {
-        const { getStoredProviderApiKey } = await import('./providerCredentials.js')
-        if (getStoredProviderApiKey(definition.id)) {
-          hasKey = true
-          source = 'stored'
-        }
-      } catch {
-        // Secure store unavailable — fall back to env-only reporting.
-      }
-    }
-    if (hasKey) {
+    if (apiKey) {
       result.checks.push({
         name: 'api_key',
         status: 'pass',
-        message: source === 'stored' ? 'Stored API key present (connected).' : `${definition.envKey} is present.`,
+        message: keySource === 'stored' ? 'Stored API key present (connected).' : `${definition.envKey} is present.`,
       })
     } else {
       result.checks.push({
@@ -1511,7 +1574,50 @@ async function checkApiProvider(
       addFailure(result, 'API key missing', `Connect once: ur connect ${definition.id} (or set ${definition.envKey}).`)
     }
   }
-  await checkEndpoint(definition, settings, adapters, result)
+  if (definition.endpointKind) {
+    await checkEndpoint(definition, settings, adapters, result)
+    return
+  }
+  if (!apiKey || !baseUrl) return
+
+  const request = apiModelsRequestForBase(definition.id, apiKey, baseUrl)
+  try {
+    const response = await (adapters.fetch ?? fetch)(request.url, {
+      method: 'GET',
+      headers: request.headers,
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) {
+      result.checks.push({
+        name: 'endpoint',
+        status: 'fail',
+        message: `${request.url} returned HTTP ${response.status}.`,
+      })
+      addFailure(
+        result,
+        `endpoint returned HTTP ${response.status}`,
+        `Check the API key or update base_url: ur config set base_url ${definition.id} ${baseUrl}`,
+      )
+      return
+    }
+    result.checks.push({
+      name: 'endpoint',
+      status: 'pass',
+      message: `${request.url} is reachable.`,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    result.checks.push({
+      name: 'endpoint',
+      status: 'fail',
+      message: `${request.url} is not reachable.`,
+    })
+    addFailure(
+      result,
+      message,
+      `Update base_url or start the configured gateway: ur config set base_url ${definition.id} ${baseUrl}`,
+    )
+  }
 }
 
 function fallbackResult(
@@ -1568,6 +1674,7 @@ export async function doctorProvider(
     safetyBoundary: definition.safetyBoundary,
     safetyBoundaryLabel: definition.safetyBoundaryLabel,
     selected: active === providerSettings.active,
+    baseUrl: settingsForProvider.baseUrl ?? definition.defaultBaseUrl,
     ok: true,
     checks: [
       {
@@ -1635,7 +1742,7 @@ export function formatProviderStatusLabel(
         return `${provider.envKey} found`
       }
       if (provider.id === 'ollama') {
-        return 'localhost reachable'
+        return 'Ollama endpoint reachable'
       }
       if (provider.credentialType === 'openai-compatible-endpoint') {
         return 'OpenAI-compatible endpoint reachable'
@@ -1854,6 +1961,7 @@ export function formatProviderDoctor(result: ProviderDoctorResult, json = false)
     `UR-native tool calls: ${result.supportsNativeToolCalls ? 'yes' : 'no'}`,
     `UR-native streaming: ${result.supportsNativeStreaming ? 'yes' : 'no'}`,
     `Runtime backend: ${getProviderRuntimeBackend(result.provider)}`,
+    ...(result.baseUrl ? [`Base URL: ${result.baseUrl}`] : []),
     `Safety boundary: ${result.safetyBoundaryLabel}`,
     `Runtime available: ${runtimeBlock ? 'no' : 'yes'}`,
     `Auth: ${authModeLabel(result.authMode)}`,
@@ -1921,6 +2029,12 @@ const EFFORT_LOW_MEDIUM_HIGH_MAX: ModelReasoningCapabilities = {
 const EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX: ModelReasoningCapabilities = {
   supportedEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
 }
+const OPENAI_GPT_56_EFFORTS: ModelReasoningCapabilities = {
+  // OpenAI names the no-reasoning tier `none`; UR presents it as the existing
+  // `minimal` selector and preserves the provider-authored wire value.
+  supportedEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+  effortAliases: { minimal: 'none' },
+}
 const GEMINI_MINIMAL_TO_HIGH: ModelReasoningCapabilities = {
   supportedEfforts: ['minimal', 'low', 'medium', 'high'],
 }
@@ -1932,13 +2046,14 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   subscription: [],
   // OpenAI subscription CLI (codex) - uses Codex CLI subscription login
   'codex-cli': [
-    { id: 'codex/gpt-5.5', displayName: 'GPT-5.5 (Codex CLI)', description: 'Subscription model through official Codex CLI login', isDefault: true },
+    { id: 'codex/gpt-5.6-sol', displayName: 'GPT-5.6 Sol (Codex CLI)', description: 'Flagship subscription model through official Codex CLI login', isDefault: true },
+    { id: 'codex/gpt-5.6-terra', displayName: 'GPT-5.6 Terra (Codex CLI)', description: 'Balanced GPT-5.6 subscription model through official Codex CLI login' },
+    { id: 'codex/gpt-5.6-luna', displayName: 'GPT-5.6 Luna (Codex CLI)', description: 'Efficient GPT-5.6 subscription model through official Codex CLI login' },
+    { id: 'codex/gpt-5.5', displayName: 'GPT-5.5 (Codex CLI)', description: 'Previous-generation subscription model through official Codex CLI login' },
     { id: 'codex/gpt-5.4', displayName: 'GPT-5.4 (Codex CLI)', description: 'Subscription model through official Codex CLI login' },
     { id: 'codex/gpt-5.4-mini', displayName: 'GPT-5.4 Mini (Codex CLI)', description: 'Fast subscription model through official Codex CLI login' },
     { id: 'codex/gpt-4o', displayName: 'GPT-4o (Codex CLI)', description: 'Subscription model through official Codex CLI login' },
     { id: 'codex/gpt-4o-mini', displayName: 'GPT-4o Mini (Codex CLI)', description: 'Fast subscription model through official Codex CLI login' },
-    { id: 'codex/o1', displayName: 'o1 (Codex CLI)', description: 'Reasoning model through official Codex CLI login' },
-    { id: 'codex/o3-mini', displayName: 'o3-mini (Codex CLI)', description: 'Fast reasoning model through official Codex CLI login' },
   ],
   // Anthropic subscription CLI (Claude Code) - uses Claude Code subscription
   'claude-code-cli': [
@@ -1960,17 +2075,20 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   ],
   // OpenAI API - direct API access with OPENAI_API_KEY
   'openai-api': [
-    { id: 'gpt-5.5', displayName: 'GPT-5.5', description: 'Latest OpenAI model', isDefault: true, reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH, defaultEffort: 'medium' } },
+    { id: 'gpt-5.6-sol', displayName: 'GPT-5.6 Sol', description: 'Flagship model for complex professional work', isDefault: true, contextLength: 1_050_000, outputTokenLimit: 128_000, reasoning: { ...OPENAI_GPT_56_EFFORTS, defaultEffort: 'medium' } },
+    { id: 'gpt-5.6-terra', displayName: 'GPT-5.6 Terra', description: 'Balances intelligence and cost', contextLength: 1_050_000, outputTokenLimit: 128_000, reasoning: { ...OPENAI_GPT_56_EFFORTS, defaultEffort: 'medium' } },
+    { id: 'gpt-5.6-luna', displayName: 'GPT-5.6 Luna', description: 'Optimized for cost-sensitive, high-volume workloads', contextLength: 1_050_000, outputTokenLimit: 128_000, reasoning: { ...OPENAI_GPT_56_EFFORTS, defaultEffort: 'medium' } },
+    { id: 'gpt-5.5', displayName: 'GPT-5.5', description: 'Previous GPT-5 generation', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH, defaultEffort: 'medium' } },
     { id: 'gpt-5.4', displayName: 'GPT-5.4', description: 'Advanced reasoning and coding', reasoning: EFFORT_LOW_MEDIUM_HIGH_XHIGH },
     { id: 'gpt-5.4-mini', displayName: 'GPT-5.4 Mini', description: 'Fast, efficient variant', reasoning: EFFORT_LOW_MEDIUM_HIGH_XHIGH },
     { id: 'gpt-4o', displayName: 'GPT-4o', description: 'Previous generation flagship' },
     { id: 'gpt-4o-mini', displayName: 'GPT-4o Mini', description: 'Fast GPT-4o variant' },
-    { id: 'o1', displayName: 'o1', description: 'Deep reasoning model', reasoning: EFFORT_LOW_MEDIUM_HIGH },
-    { id: 'o3-mini', displayName: 'o3-mini', description: 'Fast reasoning model', reasoning: EFFORT_LOW_MEDIUM_HIGH },
   ],
   // Anthropic API - direct API access with ANTHROPIC_API_KEY
   'anthropic-api': [
     { id: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: 'Balanced performance and speed', isDefault: true, reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
+    { id: 'claude-opus-5', displayName: 'Claude Opus 5', description: 'Frontier intelligence for coding and agentic work', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
+    { id: 'claude-fable-5', displayName: 'Claude Fable 5', description: 'Most capable Claude model for long-horizon work', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
     { id: 'claude-opus-4-8', displayName: 'Claude Opus 4.8', description: 'Most powerful Claude model', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
     { id: 'claude-opus-4-7', displayName: 'Claude Opus 4.7', description: 'High-end reasoning', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
     { id: 'claude-opus-4-6', displayName: 'Claude Opus 4.6', description: 'Advanced problem solving', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_MAX, defaultEffort: 'high' } },
@@ -1981,7 +2099,9 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   ],
   // Google Gemini API - direct API access with GEMINI_API_KEY
   'gemini-api': [
-    { id: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Most intelligent for agentic tasks', isDefault: true, reasoning: { ...GEMINI_MINIMAL_TO_HIGH, defaultEffort: 'medium' } },
+    { id: 'gemini-3.7-flash', displayName: 'Gemini 3.7 Flash', description: 'Latest agentic and multimodal Flash model', isDefault: true, reasoning: { ...EFFORT_LOW_MEDIUM_HIGH, defaultEffort: 'medium' } },
+    { id: 'gemini-3.6-flash', displayName: 'Gemini 3.6 Flash', description: 'Agentic and multimodal Flash model', reasoning: { ...GEMINI_MINIMAL_TO_HIGH, defaultEffort: 'medium' } },
+    { id: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Previous Flash generation for agentic tasks', reasoning: { ...GEMINI_MINIMAL_TO_HIGH, defaultEffort: 'medium' } },
     { id: 'gemini-3.1-pro', displayName: 'Gemini 3.1 Pro', description: 'Advanced problem solving (preview)', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH, defaultEffort: 'high' } },
     { id: 'gemini-3.1-flash-lite', displayName: 'Gemini 3.1 Flash Lite', description: 'Budget-friendly performance', reasoning: { ...GEMINI_MINIMAL_TO_HIGH, defaultEffort: 'minimal' } },
     { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Complex reasoning and coding', reasoning: EFFORT_LOW_MEDIUM_HIGH },
@@ -1990,11 +2110,18 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   ],
   // OpenRouter - multi-provider router (openai/*, anthropic/*, google/*, etc.)
   'openrouter': [
-    { id: 'openai/gpt-5.5', displayName: 'GPT-5.5', description: 'OpenAI GPT-5.5 via OpenRouter', isDefault: true },
+    { id: 'openai/gpt-5.6-sol', displayName: 'GPT-5.6 Sol', description: 'OpenAI GPT-5.6 Sol via OpenRouter', isDefault: true, reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'medium' } },
+    { id: 'openai/gpt-5.6-terra', displayName: 'GPT-5.6 Terra', description: 'OpenAI GPT-5.6 Terra via OpenRouter', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'medium' } },
+    { id: 'openai/gpt-5.6-luna', displayName: 'GPT-5.6 Luna', description: 'OpenAI GPT-5.6 Luna via OpenRouter', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'medium' } },
+    { id: 'openai/gpt-5.5', displayName: 'GPT-5.5', description: 'Previous OpenAI GPT-5 generation via OpenRouter', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH, defaultEffort: 'medium' } },
     { id: 'openai/gpt-5.4', displayName: 'GPT-5.4', description: 'OpenAI GPT-5.4 via OpenRouter' },
     { id: 'openai/gpt-4o', displayName: 'GPT-4o', description: 'OpenAI GPT-4o via OpenRouter' },
     { id: 'anthropic/claude-sonnet-5', displayName: 'Claude Sonnet 5', description: 'Anthropic Claude via OpenRouter' },
+    { id: 'anthropic/claude-opus-5', displayName: 'Claude Opus 5', description: 'Anthropic Claude via OpenRouter', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
+    { id: 'anthropic/claude-fable-5', displayName: 'Claude Fable 5', description: 'Anthropic Claude via OpenRouter', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
     { id: 'anthropic/claude-opus-4-8', displayName: 'Claude Opus 4.8', description: 'Anthropic Claude via OpenRouter' },
+    { id: 'google/gemini-3.7-flash', displayName: 'Gemini 3.7 Flash', description: 'Google Gemini via OpenRouter', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH, defaultEffort: 'medium' } },
+    { id: 'google/gemini-3.6-flash', displayName: 'Gemini 3.6 Flash', description: 'Google Gemini via OpenRouter', reasoning: { ...GEMINI_MINIMAL_TO_HIGH, defaultEffort: 'medium' } },
     { id: 'google/gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Google Gemini via OpenRouter' },
     { id: 'google/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Google Gemini via OpenRouter' },
   ],
@@ -2086,7 +2213,11 @@ function providerBaseUrl(
     }
   }
   const configuredBaseUrl = getScopedProviderBaseUrl(provider, settings)
-  if (configuredBaseUrl) return configuredBaseUrl
+  if (configuredBaseUrl) {
+    return provider === 'ollama'
+      ? normalizeOllamaBaseUrl(configuredBaseUrl)
+      : configuredBaseUrl
+  }
   if (provider === 'ollama') {
     return getOllamaBaseUrl(process.env, settings)
   }
@@ -2168,6 +2299,21 @@ function modelDefinitionsFromDiscovered(
     const curated = staticModels.find(
       entry => entry.id.toLowerCase() === model.id.toLowerCase(),
     )
+    const reasoning =
+      model.reasoning || curated?.reasoning
+        ? {
+            ...(curated?.reasoning ?? {}),
+            ...(model.reasoning ?? {}),
+            ...(curated?.reasoning?.effortAliases || model.reasoning?.effortAliases
+              ? {
+                  effortAliases: {
+                    ...(curated?.reasoning?.effortAliases ?? {}),
+                    ...(model.reasoning?.effortAliases ?? {}),
+                  },
+                }
+              : {}),
+          }
+        : undefined
     return {
       id: model.id,
       displayName: model.displayName,
@@ -2177,9 +2323,7 @@ function modelDefinitionsFromDiscovered(
       ...(model.outputTokenLimit ? { outputTokenLimit: model.outputTokenLimit } : {}),
       ...(model.supportedParameters ? { supportedParameters: model.supportedParameters } : {}),
       ...(model.capabilities ? { capabilities: model.capabilities } : {}),
-      ...(model.reasoning ?? curated?.reasoning
-        ? { reasoning: model.reasoning ?? curated?.reasoning }
-        : {}),
+      ...(reasoning ? { reasoning } : {}),
       ...(model.expirationDate ? { expirationDate: model.expirationDate } : {}),
       ...(model.deprecated ? { deprecated: true } : {}),
     }
@@ -2352,23 +2496,23 @@ function reasoningCapabilitiesFromOllamaShow(
     .filter((entry): entry is string => typeof entry === 'string')
     .join(' ')
 
-  // GPT-OSS is Ollama's documented exception: it accepts only this three-step
-  // ladder and rejects booleans/max. Kimi K3 publishes low/high/max natively.
+  // Ollama's native thinking contract advertises low/medium/high/max for most
+  // thinking models. Model-specific contracts can be narrower.
+  // Keep those exact so the picker never offers a value just because another
+  // Ollama model accepts it.
   if (/gpt[-_]?oss/i.test(identity)) {
     return {
       supportedEfforts: ['low', 'medium', 'high'],
       defaultEffort: 'medium',
     }
   }
-  if (/kimi[-_]?k3/i.test(identity)) {
+  if (/kimi[-_]?k3|glm[-_]?5\.3/i.test(identity)) {
     return {
       supportedEfforts: ['low', 'high', 'max'],
       defaultEffort: 'max',
     }
   }
 
-  // Ollama's current native chat contract accepts low/medium/high/max for
-  // thinking-capable models, with max requesting the model's highest level.
   return { supportedEfforts: ['low', 'medium', 'high', 'max'] }
 }
 
@@ -2476,12 +2620,7 @@ export async function ensureProviderReasoningCapabilitiesForModel(
         ? env[definition.envKey]
         : undefined
   if (!apiKey) {
-    try {
-      const credentials = await import('./providerCredentials.js')
-      apiKey = credentials.getProviderApiKey(provider, { env })
-    } catch {
-      // Local llama.cpp endpoints normally require no key.
-    }
+    apiKey = await storedProviderApiKey(provider, env, options.adapters)
   }
   const response = await fetchImpl(
     provider === 'ollama'
@@ -2617,12 +2756,7 @@ async function discoverLiveModelsForProvider(
   const fetchImpl = options.adapters?.fetch ?? fetch
   let apiKey = definition.envKey ? env[definition.envKey] : undefined
   if (!apiKey) {
-    try {
-      const credentials = await import('./providerCredentials.js')
-      apiKey = credentials.getProviderApiKey(provider, { env })
-    } catch {
-      // Endpoint may not require authentication.
-    }
+    apiKey = await storedProviderApiKey(provider, env, options.adapters)
   }
   const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined
 
@@ -2670,18 +2804,18 @@ async function discoverLiveModelsForProvider(
   return []
 }
 
-function apiModelsRequest(
+function apiModelsRequestForBase(
   provider: ProviderId,
   apiKey: string,
-  settings: SettingsJson,
+  configuredBase: string | undefined,
 ): { url: string; headers: Record<string, string> } {
-  const configuredBase = getScopedProviderBaseUrl(provider, settings)
+  const providerDefault = getProviderDefinition(provider).defaultBaseUrl
   const modelsUrl = (baseUrl: string, version: string): string => {
     const url = new URL(normalizeBaseUrl(baseUrl))
     url.hash = ''
     url.search = ''
     let path = url.pathname.replace(/\/+$/, '')
-    path = path.replace(/\/(chat\/completions|messages|models)$/i, '')
+    path = path.replace(/\/(chat\/completions|messages|models|responses)$/i, '')
     if (!/\/v\d+(?:beta)?$/i.test(path) && !/\/api\/v\d+$/i.test(path)) {
       path = `${path}/${version}`
     }
@@ -2691,25 +2825,37 @@ function apiModelsRequest(
   switch (provider) {
     case 'anthropic-api':
       return {
-        url: modelsUrl(configuredBase ?? 'https://api.anthropic.com/v1', 'v1'),
+        url: modelsUrl(configuredBase ?? providerDefault!, 'v1'),
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       }
     case 'gemini-api':
       return {
-        url: modelsUrl(configuredBase ?? 'https://generativelanguage.googleapis.com/v1beta', 'v1beta'),
+        url: `${normalizeGeminiBaseUrl(configuredBase ?? providerDefault)}/models`,
         headers: { 'x-goog-api-key': apiKey },
       }
     case 'openrouter':
       return {
-        url: modelsUrl(configuredBase ?? 'https://openrouter.ai/api/v1', 'v1'),
+        url: modelsUrl(configuredBase ?? providerDefault!, 'v1'),
         headers: { Authorization: `Bearer ${apiKey}` },
       }
     default:
       return {
-        url: modelsUrl(configuredBase ?? 'https://api.openai.com/v1', 'v1'),
+        url: modelsUrl(configuredBase ?? providerDefault!, 'v1'),
         headers: { Authorization: `Bearer ${apiKey}` },
       }
   }
+}
+
+function apiModelsRequest(
+  provider: ProviderId,
+  apiKey: string,
+  settings: SettingsJson,
+): { url: string; headers: Record<string, string> } {
+  return apiModelsRequestForBase(
+    provider,
+    apiKey,
+    getScopedProviderBaseUrl(provider, settings),
+  )
 }
 
 function apiModelEntries(provider: ProviderId, body: unknown): Array<Record<string, unknown>> {
@@ -2781,12 +2927,7 @@ async function discoverApiProviderModels(
   const env = options.adapters?.env ?? process.env
   let apiKey = definition.envKey ? env[definition.envKey] : undefined
   if (!apiKey) {
-    try {
-      const { getProviderApiKey } = await import('./providerCredentials.js')
-      apiKey = getProviderApiKey(provider, { env })
-    } catch {
-      // Secure store unavailable — treated as not connected below.
-    }
+    apiKey = await storedProviderApiKey(provider, env, options.adapters)
   }
   if (!apiKey) {
     throw new Error(`Not connected: run \`ur connect ${provider}\` to add an API key.`)
@@ -2896,7 +3037,7 @@ export async function listModelsForProviderWithSource(
       return {
         provider,
         models: [],
-        source: 'live',
+        source: 'unavailable',
         warning: `Live model discovery for "${provider}" returned no models. No cached catalog was shown.`,
       }
     }
@@ -2914,7 +3055,7 @@ export async function listModelsForProviderWithSource(
     return {
       provider,
       models: staticModels,
-      source: staticModels.length > 0 ? 'static' : 'live',
+      source: staticModels.length > 0 ? 'static' : 'unavailable',
       warning: `Live model discovery for "${provider}" returned no models.`,
     }
   } catch (error) {
@@ -2922,7 +3063,7 @@ export async function listModelsForProviderWithSource(
       return {
         provider,
         models: [],
-        source: 'live',
+        source: 'unavailable',
         warning: `Live model discovery for "${provider}" failed: ${error instanceof Error ? error.message : String(error)}. No cached catalog was shown.`,
       }
     }
@@ -2940,7 +3081,7 @@ export async function listModelsForProviderWithSource(
     return {
       provider,
       models: staticModels,
-      source: staticModels.length > 0 ? 'static' : 'live',
+      source: staticModels.length > 0 ? 'static' : 'unavailable',
       warning: `Live model discovery for "${provider}" failed: ${error instanceof Error ? error.message : String(error)}.`,
     }
   }

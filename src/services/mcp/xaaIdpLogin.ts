@@ -5,16 +5,15 @@
  * This is the "one browser pop" in the XAA value prop: one IdP login → N silent
  * MCP server auths. The id_token is cached in the keychain and reused until expiry.
  */
-
 import {
   exchangeAuthorization,
   startAuthorization,
-} from '@modelcontextprotocol/sdk/client/auth.js'
-import {
-  type OAuthClientInformation,
-  type OpenIdProviderDiscoveryMetadata,
-  OpenIdProviderDiscoveryMetadataSchema,
-} from '@modelcontextprotocol/sdk/shared/auth.js'
+} from '@modelcontextprotocol/client'
+import type {
+  OAuthClientInformation,
+  OpenIdProviderDiscoveryMetadata,
+} from '@modelcontextprotocol/client'
+import { OpenIdProviderDiscoveryMetadataSchema } from '@modelcontextprotocol/core'
 import { randomBytes } from 'crypto'
 import { createServer, type Server } from 'http'
 import { parse } from 'url'

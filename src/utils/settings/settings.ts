@@ -210,7 +210,7 @@ function parseSettingsFileUncached(path: string): {
       return { settings: {}, errors: [] }
     }
 
-    const data = safeParseJSON(content, false)
+    const data = migrateDeprecatedSettings(safeParseJSON(content, false), path)
 
     // Filter invalid permission rules before schema validation so one bad
     // rule doesn't cause the entire settings file to be rejected.
@@ -228,6 +228,40 @@ function parseSettingsFileUncached(path: string): {
     handleFileSystemError(error, path)
     return { settings: null, errors: [] }
   }
+}
+
+/**
+ * Normalize removed settings before schema validation. This keeps one release
+ * of migration compatibility without retaining deprecated keys in the public
+ * schema or merged runtime settings.
+ */
+function migrateDeprecatedSettings(value: unknown, origin: string): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const input = clone(value as Record<string, unknown>)
+  if ('disableAutoMode' in input) {
+    const legacyDisableAutoMode = input.disableAutoMode
+    delete input.disableAutoMode
+    if (legacyDisableAutoMode !== 'disable') {
+      logForDebugging(
+        `Ignored removed top-level disableAutoMode from ${origin}; use permissions.disableAutoMode`,
+        { level: 'warn' },
+      )
+      return input
+    }
+    const permissions =
+      input.permissions &&
+      typeof input.permissions === 'object' &&
+      !Array.isArray(input.permissions)
+        ? { ...(input.permissions as Record<string, unknown>) }
+        : {}
+    permissions.disableAutoMode ??= 'disable'
+    input.permissions = permissions
+    logForDebugging(
+      `Migrated removed top-level disableAutoMode from ${origin} to permissions.disableAutoMode`,
+      { level: 'warn' },
+    )
+  }
+  return input
 }
 
 /**
@@ -323,22 +357,34 @@ function getSettingsForSourceUncached(
   if (source === 'policySettings') {
     const remoteSettings = getRemoteManagedSettingsSyncFromCache()
     if (remoteSettings && Object.keys(remoteSettings).length > 0) {
-      return remoteSettings
+      return migrateDeprecatedSettings(
+        remoteSettings,
+        'remote managed settings',
+      ) as SettingsJson
     }
 
     const mdmResult = getMdmSettings()
     if (Object.keys(mdmResult.settings).length > 0) {
-      return mdmResult.settings
+      return migrateDeprecatedSettings(
+        mdmResult.settings,
+        'managed settings',
+      ) as SettingsJson
     }
 
     const { settings: fileSettings } = loadManagedFileSettings()
     if (fileSettings) {
-      return fileSettings
+      return migrateDeprecatedSettings(
+        fileSettings,
+        'managed settings file',
+      ) as SettingsJson
     }
 
     const hkcu = getHkcuSettings()
     if (Object.keys(hkcu.settings).length > 0) {
-      return hkcu.settings
+      return migrateDeprecatedSettings(
+        hkcu.settings,
+        'HKCU managed settings',
+      ) as SettingsJson
     }
 
     return null
@@ -353,7 +399,9 @@ function getSettingsForSourceUncached(
   if (source === 'flagSettings') {
     const inlineSettings = getFlagSettingsInline()
     if (inlineSettings) {
-      const parsed = SettingsSchema().safeParse(inlineSettings)
+      const parsed = SettingsSchema().safeParse(
+        migrateDeprecatedSettings(inlineSettings, 'inline flag settings'),
+      )
       if (parsed.success) {
         return mergeWith(
           fileSettings || {},

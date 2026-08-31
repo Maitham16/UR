@@ -23,5 +23,12 @@ describe('built-in tool registry coverage', () => {
     ]) {
       expect(names).toContain(name)
     }
+
+    // Background results are delivered by completion notifications. The
+    // retired polling tool and its historical aliases must not re-enter the
+    // public tool registry.
+    expect(names).not.toContain('TaskOutput')
+    expect(names).not.toContain('AgentOutputTool')
+    expect(names).not.toContain('BashOutputTool')
   })
 })

@@ -5,8 +5,12 @@ import {
 } from '../../utils/model/visionCapability.js'
 import { request as httpsRequest } from 'node:https'
 import type { LocalCommandCall } from '../../types/command.js'
+import { getProviderApiKey } from '../../services/providers/providerCredentials.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
-import { getOllamaBaseUrl } from '../../utils/model/ollamaConfig.js'
+import {
+  getOllamaAuthHeaders,
+  getOllamaBaseUrl,
+} from '../../utils/model/ollamaConfig.js'
 type OllamaTag = {
   name?: string
   model?: string
@@ -59,6 +63,7 @@ async function fetchJson<T>(
         method: options.method ?? 'GET',
         headers: {
           'content-type': 'application/json',
+          ...getOllamaAuthHeaders(process.env, getProviderApiKey('ollama')),
           ...(options.headers ?? {}),
         },
         timeout: 2_000,

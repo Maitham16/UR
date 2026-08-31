@@ -232,6 +232,9 @@ export type BeforeCommandHookInput = HookInputBase
 export type AfterCommandHookInput = HookInputBase
 export type BeforeCommitHookInput = HookInputBase
 export type OnFailureHookInput = HookInputBase
+export type InterruptHookInput = HookInputBase
+export type PreModelSwitchHookInput = HookInputBase
+export type PostModelSwitchHookInput = HookInputBase
 export type UserPromptSubmitHookInput = HookInputBase
 
 export interface HookJSONOutput {

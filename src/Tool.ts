@@ -1,12 +1,12 @@
 // @ts-nocheck
 import type {
+  ElicitRequestURLParams,
+  ElicitResult,
+} from '@modelcontextprotocol/server'
+import type {
   ToolResultBlockParam,
   ToolUseBlockParam,
 } from '@urhq-ai/sdk/resources/index.mjs'
-import type {
-  ElicitRequestURLParams,
-  ElicitResult,
-} from '@modelcontextprotocol/sdk/types.js'
 import type { UUID } from 'crypto'
 import type { z } from 'zod/v4'
 import type { Command } from './commands.js'
@@ -52,7 +52,6 @@ import type {
   MCPProgress,
   REPLToolProgress,
   SkillToolProgress,
-  TaskOutputProgress,
   ToolProgressData,
   WebSearchProgress,
 } from './types/tools.js'
@@ -68,7 +67,6 @@ export type {
   MCPProgress,
   REPLToolProgress,
   SkillToolProgress,
-  TaskOutputProgress,
   WebSearchProgress,
 }
 

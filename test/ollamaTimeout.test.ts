@@ -16,6 +16,10 @@ import {
   getOllamaContextLengthForModel,
 } from '../src/utils/model/ollamaModels.js'
 import {
+  cacheProviderModelsForProvider,
+  clearProviderModelCacheForTests,
+} from '../src/services/providers/providerRegistry.js'
+import {
   getNonstreamingFallbackTimeoutMs,
   isOllamaCloudRuntime,
   isStreamWatchdogEnabled,
@@ -233,6 +237,51 @@ test('Ollama sends the selected graded effort for thinking-capable models', () =
   expect(kimi.think).toBe('max')
   expect(qwen.think).toBe('medium')
   expect(gptOss.think).toBe('high')
+})
+
+test('Ollama sends Ultra only when advertised, including provider aliases', () => {
+  const capabilities = new Set(['completion', 'thinking', 'tools'])
+  cacheProviderModelsForProvider('ollama', [
+    {
+      id: 'ultra-native',
+      displayName: 'ultra-native',
+      description: 'native ultra model',
+      reasoning: { supportedEfforts: ['low', 'ultra'] },
+    },
+    {
+      id: 'ultra-alias',
+      displayName: 'ultra-alias',
+      description: 'provider-authored alias',
+      reasoning: {
+        supportedEfforts: ['low', 'deep'],
+        effortAliases: { ultra: 'deep' },
+      },
+    },
+    {
+      id: 'no-ultra',
+      displayName: 'no-ultra',
+      description: 'high-only model',
+      reasoning: { supportedEfforts: ['low', 'high'] },
+    },
+  ])
+  try {
+    const request = (model: string) =>
+      toOllamaChatRequest(
+        {
+          model,
+          messages: [],
+          output_config: { effort: 'ultra' },
+        } as never,
+        false,
+        capabilities,
+      )
+
+    expect(request('ultra-native').think).toBe('ultra')
+    expect(request('ultra-alias').think).toBe('deep')
+    expect(request('no-ultra').think).toBe(false)
+  } finally {
+    clearProviderModelCacheForTests()
+  }
 })
 
 test('Ollama chat requests omit think when the model does not advertise thinking', async () => {

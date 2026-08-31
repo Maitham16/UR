@@ -13,7 +13,10 @@ import {
   createOpenAISSEMessageStream,
   mergeAbortSignals,
 } from './streamingAdapters.js'
-import { axiosPostWithProviderReliability } from './providerHttp.js'
+import {
+  axiosPostWithProviderReliability,
+  normalizeProviderEndpoint,
+} from './providerHttp.js'
 
 type URHQClient = {
   beta: { messages: any }
@@ -22,17 +25,22 @@ type URHQClient = {
 export async function createOpenRouterClient(
   options: {
     apiKey?: string
+    baseUrl?: string
     maxRetries: number
     model?: string
   },
 ): Promise<URHQClient> {
-  const { apiKey, maxRetries } = options
-  const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
+  const { apiKey, baseUrl, maxRetries } = options
+  const endpoint = normalizeProviderEndpoint(
+    baseUrl,
+    'https://openrouter.ai/api/v1',
+    '/chat/completions',
+  )
 
   async function doRequest(params: any, requestOptions?: any) {
     const clientRequestId = params?.headers?.['x-client-request-id']
     const response = await axiosPostWithProviderReliability<any>(
-      `${OPENROUTER_BASE}/chat/completions`,
+      endpoint,
       toOpenAICompatibleRequest(params, 'openrouter'),
       {
         headers: {
@@ -68,7 +76,7 @@ export async function createOpenRouterClient(
     const signal = mergeAbortSignals([requestOptions?.signal, streamController.signal])
 
     const response = await axiosPostWithProviderReliability<any>(
-      `${OPENROUTER_BASE}/chat/completions`,
+      endpoint,
       toOpenAICompatibleRequest({ ...params, stream: true }, 'openrouter'),
       {
         headers: {

@@ -32,6 +32,10 @@ import {
   mergeEvalProvenance,
   type EvalProvenance,
 } from './evalProvenance.js'
+import {
+  CURRENT_PROMPT_LIFECYCLE,
+  type PromptLifecycleMetadata,
+} from '../../constants/promptLifecycle.js'
 
 const SAFE_EVAL_GIT_ARGS = [
   '-c',
@@ -172,6 +176,8 @@ export type EvalCaseResult = {
 export type EvalReport = {
   name: string
   generatedAt: string
+  /** Semantic governance metadata for the prompt contract under evaluation. */
+  promptLifecycle?: PromptLifecycleMetadata
   total: number
   passed: number
   failed: number
@@ -591,6 +597,7 @@ function buildReport(name: string, cases: EvalCaseResult[]): EvalReport {
   return {
     name,
     generatedAt: new Date().toISOString(),
+    promptLifecycle: CURRENT_PROMPT_LIFECYCLE,
     total: cases.length,
     passed,
     failed: cases.length - passed,
@@ -971,6 +978,8 @@ export type CliEvalRunnerOptions = {
   skipPermissions?: boolean
   timeoutMs?: number
   model?: string
+  /** Session effort override for model/effort matrix evaluations. */
+  effort?: string
   /** Run every case in a fresh detached worktree (default: true). */
   isolate?: boolean
   /** Candidate overlay used by the regression-safe prompt optimizer. */
@@ -1259,6 +1268,9 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
     if (options.model) {
       childEnv.UR_MODEL = options.model
       childEnv.OLLAMA_MODEL = options.model
+    }
+    if (options.effort) {
+      childEnv.UR_CODE_EFFORT_LEVEL = options.effort
     }
     const result = await execFileNoThrowWithCwd(file, args, {
       cwd: caseCwd,
@@ -2123,6 +2135,11 @@ export function formatEvalReport(report: EvalReport, json: boolean): string {
     report.provenance
       ? `Fingerprints: ${report.provenance.promptHashes.length} prompt / ${report.provenance.toolSchemaHashes.length} tools / ${report.provenance.contextPolicyHashes.length} context / ${report.provenance.modelConfigHashes.length} model`
       : null,
+    report.promptLifecycle
+      ? `Prompt lifecycle: ${report.promptLifecycle.promptVersion} (${report.promptLifecycle.rolloutId})`
+      : report.provenance?.promptLifecycles?.length
+        ? `Prompt lifecycle: ${report.provenance.promptLifecycles.map(item => `${item.promptVersion} (${item.rolloutId})`).join(', ')}`
+        : null,
     '',
   ].filter((line): line is string => line !== null)
   const categories = Object.entries(report.byCategory).sort((a, b) =>

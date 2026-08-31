@@ -27,7 +27,6 @@ import { isRestrictedToPluginOnly } from './settings/pluginOnlyPolicy.js'
 
 // UR configuration directory names
 export const UR_CONFIG_DIRECTORIES = [
-  'commands',
   'agents',
   'output-styles',
   'skills',
@@ -222,11 +221,11 @@ function resolveStopBoundary(cwd: string): string | null {
  * Traverse from the current directory up to the git root (or home directory
  * outside a repository), collecting one relative directory at each level.
  *
- * Stopping at git root prevents commands/skills from parent directories outside the repository
- * from leaking into projects. For example, if ~/projects/.ur/commands/ exists, it won't
- * appear in ~/projects/my-repo/ if my-repo is a git repository.
+ * Stopping at git root prevents project configuration from parent directories outside the
+ * repository from leaking into projects. For example, ~/projects/.ur/skills/ does not appear
+ * in ~/projects/my-repo/ when my-repo is a git repository.
  *
- * @param subdir Subdirectory (eg. "commands", "agents")
+ * @param subdir Subdirectory (for example, "skills" or "agents")
  * @param cwd Current working directory to start from
  * @returns Array of directory paths containing .ur/subdir, from most specific (cwd) to least specific
  */
@@ -554,7 +553,7 @@ async function findMarkdownFilesNative(
 
 /**
  * Generic function to load markdown files from specified directories
- * @param dir Directory (eg. "~/.ur/commands")
+ * @param dir Directory (for example, "~/.ur/skills")
  * @returns Array of parsed markdown files with metadata
  */
 async function loadMarkdownFiles(dir: string): Promise<

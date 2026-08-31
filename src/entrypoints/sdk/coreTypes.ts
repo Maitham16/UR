@@ -57,6 +57,9 @@ export const HOOK_EVENTS = [
   'AfterCommand',
   'BeforeCommit',
   'OnFailure',
+  'Interrupt',
+  'PreModelSwitch',
+  'PostModelSwitch',
 ] as const
 
 export const EXIT_REASONS = [

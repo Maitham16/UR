@@ -165,6 +165,7 @@ ur config set provider openai-compatible
 ur config set provider unsloth
 ur config set model <model>
 ur config set base_url <url>
+ur config set base_url <provider> <url>
 ur config set provider.fallback ollama
 ur config set openai_transport responses
 ur config set responses.store false
@@ -226,6 +227,9 @@ UR stores `base_url` per provider. You can set different addresses for
 Ollama, llama.cpp, vLLM, and Unsloth once, then switch providers without
 re-entering any of them. `ur config get base_url` always reports the address
 for the currently active provider.
+Use `ur config set base_url <provider> <url>` to change one provider's address
+without making it active first. The `/model` picker offers the same endpoint
+entry flow for a disconnected local/server provider.
 
 Use `/model` in an interactive session to select provider first and model
 second. OpenAI API, Claude API, Gemini API, OpenRouter, Ollama, and
@@ -296,6 +300,9 @@ UR supports lifecycle hook events that fire around agent actions. Hooks are conf
 | `AfterCommand` | After a command finishes. | `command`, `exit_code`, `stdout`, `stderr`, `tool_use_id` |
 | `BeforeCommit` | After a successful `git commit` command. | `command`, `message`, `files`, `tool_use_id` |
 | `OnFailure` | When a tool, turn, or API call fails. | `error`, `stage`, `tool_name`, `tool_use_id` |
+| `Interrupt` | When a running turn is cancelled or replaced by a new prompt. | `reason`, `source`, optional `model` |
+| `PreModelSwitch` | Before a picker, slash command, or CLI/config provider-model change is persisted. May block. | `from_provider`, `from_model`, `to_provider`, `to_model`, `source` |
+| `PostModelSwitch` | After a provider-model change has been persisted and applied. | Same provider/model fields as `PreModelSwitch` |
 
 Example `UR.md` frontmatter hook:
 
@@ -310,6 +317,20 @@ hooks:
 Hooks are advisory by default. A `BeforeEdit`/`BeforeCommand`/`BeforeCommit` hook can block the action by returning `{"decision":"block","reason":"..."}` or exit code 2. `AfterEdit` and `OnFailure` hooks can return `{"hookSpecificOutput":{"hookEventName":"...","memory":{"kind":"accepted","text":"..."}}}` to append project memory automatically.
 `DirectoryAdded` fires after `/add-dir` authorizes and adds a directory, so
 plugins and project automation can initialize directory-specific state.
+
+## WebMCP site tools
+
+With `UR_BROWSER_TOOL=1` and Playwright available, the built-in Browser tool
+supports the imperative WebMCP API exposed by a live page. `site_tools` lists
+tools registered through `document.modelContext.registerTool(...)`, and
+`site_tool_call` invokes one by its exact name with JSON input. Browser-native
+implementations are retained when present; UR installs a compatibility bridge
+only when the browser does not expose the API.
+
+Site definitions, schemas, and results are untrusted page content. Discovery is
+read-only, invocation is classified as destructive and always passes through a
+permission prompt, public-URL/redirect checks still apply, and names, inputs,
+definitions, catalogue size, and outputs are bounded.
 
 ## Commands
 
@@ -395,7 +416,10 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur browser-qa ...` to validate and smoke-run browser QA replay fixtures
 - `ur desktop-qa ...` to run Electron fixtures with hashed masked screenshots;
   raw video/trace requires selector redaction to be disabled
-- `ur trigger ...` to parse GitHub/Slack webhook payloads and optionally launch a headless run
+- `ur trigger parse|run ...` to inspect GitHub/Slack/Teams/Gmail/generic payloads,
+  and `ur trigger serve` to receive verified events over HTTP, deduplicate them,
+  and resume one durable UR session per conversation (see
+  [TRIGGERS.md](TRIGGERS.md))
 - `ur agent-templates ...`, `ur agent-task ...`, `ur agent-inspect`, `ur agent-features`, and `ur agent-trends` for agent template, PR handoff, timeline, and coverage utilities
 - `ur selftest run` spawns the shipped binary against real directories and
   checks the features end-to-end, then prints the manual drills — the ones

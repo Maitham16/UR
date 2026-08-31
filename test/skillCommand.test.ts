@@ -113,6 +113,31 @@ test('slash-skill catalog loads .agents/skills and orders native collisions firs
   rmSync(tmp, { recursive: true, force: true })
 })
 
+test('slash-skill catalog ignores retired .ur/commands entries', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'ur-retired-commands-'))
+  const legacyName = `retired-${Date.now()}`
+  const nativeName = `native-${Date.now()}`
+  mkdirSync(join(tmp, '.git'), { recursive: true })
+  mkdirSync(join(tmp, '.ur', 'commands'), { recursive: true })
+  mkdirSync(join(tmp, '.ur', 'skills', nativeName), { recursive: true })
+  writeFileSync(
+    join(tmp, '.ur', 'commands', `${legacyName}.md`),
+    '---\ndescription: Retired command\n---\nThis must not load.\n',
+  )
+  writeFileSync(
+    join(tmp, '.ur', 'skills', nativeName, 'SKILL.md'),
+    `---\nname: ${nativeName}\ndescription: Native skill\n---\nThis must load.\n`,
+  )
+
+  clearSkillCaches()
+  const commands = await getSkillDirCommands(tmp)
+  expect(commands.some(command => command.name === legacyName)).toBe(false)
+  expect(commands.some(command => command.name === nativeName)).toBe(true)
+
+  clearSkillCaches()
+  rmSync(tmp, { recursive: true, force: true })
+})
+
 test('ur skill show prints compiled workflow with executable assets and args', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'ur-skill-cmd-'))
   const skillDir = join(tmp, '.ur', 'skills', 'demo')

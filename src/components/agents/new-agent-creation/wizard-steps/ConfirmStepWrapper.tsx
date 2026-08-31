@@ -6,9 +6,11 @@ import { useSetAppState } from 'src/state/AppState.js';
 import type { Tools } from '../../../../Tool.js';
 import type { AgentDefinition } from '../../../../tools/AgentTool/loadAgentsDir.js';
 import { getActiveAgentsFromList } from '../../../../tools/AgentTool/loadAgentsDir.js';
+import { getCwd } from '../../../../utils/cwd.js';
 import { editFileInEditor } from '../../../../utils/promptEditor.js';
 import { useWizard } from '../../../wizard/index.js';
 import { getNewAgentFilePath, saveAgentToFile } from '../../agentFileUtils.js';
+import { assertGeneratedAgentEvalsValid, persistGeneratedAgentEvalArtifact } from '../../generatedAgentEvals.js';
 import type { AgentWizardData } from '../types.js';
 import { ConfirmStep } from './ConfirmStep.js';
 type Props = {
@@ -29,7 +31,19 @@ export function ConfirmStepWrapper({
   const saveAgent = useCallback(async (openInEditor: boolean): Promise<void> => {
     if (!wizardData?.finalAgent) return;
     try {
-      await saveAgentToFile(wizardData.location!, wizardData.finalAgent.agentType, wizardData.finalAgent.whenToUse, wizardData.finalAgent.tools, wizardData.finalAgent.getSystemPrompt(), true, wizardData.finalAgent.color, wizardData.finalAgent.model, wizardData.finalAgent.memory, wizardData.finalAgent.effort, wizardData.finalAgent.permissionMode, wizardData.finalAgent.maxTurns, wizardData.finalAgent.background, wizardData.finalAgent.disallowedTools);
+      const generatedAgent = wizardData.wasGenerated ? wizardData.generatedAgent : undefined;
+      if (wizardData.wasGenerated && !generatedAgent) {
+        throw new Error('Generated agent evaluation cases are missing');
+      }
+      if (generatedAgent && generatedAgent.identifier !== wizardData.finalAgent.agentType) {
+        throw new Error('Generated agent evaluation cases do not match the agent being saved');
+      }
+      if (generatedAgent) {
+        // Fail closed before the agent file is saved or activated in app state.
+        assertGeneratedAgentEvalsValid(generatedAgent);
+      }
+      await saveAgentToFile(wizardData.location!, wizardData.finalAgent.agentType, wizardData.finalAgent.whenToUse, wizardData.finalAgent.tools, wizardData.finalAgent.getSystemPrompt(), true, wizardData.finalAgent.color, wizardData.finalAgent.model, wizardData.finalAgent.memory, wizardData.finalAgent.effort, wizardData.finalAgent.permissionMode, wizardData.finalAgent.maxTurns, wizardData.finalAgent.background, wizardData.finalAgent.disallowedTools, generatedAgent?.personality, generatedAgent?.collaboration);
+      const evalArtifact = generatedAgent ? persistGeneratedAgentEvalArtifact(getCwd(), generatedAgent) : undefined;
       setAppState(state => {
         if (!wizardData.finalAgent) return state;
         const allAgents = state.agentDefinitions.allAgents.concat(wizardData.finalAgent);
@@ -62,7 +76,9 @@ export function ConfirmStepWrapper({
           opened_in_editor: true
         } : {})
       } as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS);
-      const message = openInEditor ? `Created agent: ${chalk.bold(wizardData.finalAgent.agentType)} and opened in editor. ` + `If you made edits, restart to load the latest version.` : `Created agent: ${chalk.bold(wizardData.finalAgent.agentType)}`;
+      const baseMessage = openInEditor ? `Created agent: ${chalk.bold(wizardData.finalAgent.agentType)} and opened in editor. ` + `If you made edits, restart to load the latest version.` : `Created agent: ${chalk.bold(wizardData.finalAgent.agentType)}`;
+      const separator = baseMessage.endsWith('.') ? ' ' : '. ';
+      const message = evalArtifact ? `${baseMessage}${separator}Eval suite: ${evalArtifact.suite.name} (run: ur eval run ${evalArtifact.suite.name})` : baseMessage;
       onComplete(message);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save agent');

@@ -25,7 +25,10 @@ import {
   getStatsStore,
 } from '../../bootstrap/state.js'
 import { getCwd } from '../../utils/cwd.js'
-import { checkUntrustedActionGate } from '../../security/untrustedActionGate.js'
+import {
+  checkUntrustedActionGate,
+  getUntrustedActionAdvisory,
+} from '../../security/untrustedActionGate.js'
 import { stripUnrecognizedKeys } from '../../utils/toolInputSanitize.js'
 import {
   buildCodeEditToolAttributes,
@@ -1441,9 +1444,14 @@ async function checkPermissionsAndCallTool(
   const permissionMode = toolUseContext.getAppState().toolPermissionContext.mode
   const permissionStart = Date.now()
 
-  // Provenance is an enforcement input, not prompt decoration. A hook cannot
-  // silently approve an action derived from recently detected hostile content,
-  // and a leaked privileged canary is always denied.
+  // Suspicious source history is advisory and never overrides the user's
+  // selected permission mode. Direct privileged-canary leakage remains a
+  // narrow hard stop because it proves privileged prompt material entered the
+  // exact outbound tool input.
+  const provenanceAdvisory = getUntrustedActionAdvisory(tool, processedInput)
+  if (provenanceAdvisory) {
+    logForDebugging(`[provenance advisory] ${provenanceAdvisory.message}`)
+  }
   const provenanceDecision = checkUntrustedActionGate(tool, processedInput)
   if (
     provenanceDecision &&

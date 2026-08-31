@@ -44,8 +44,10 @@ import { isNetworkRestricted } from '../../utils/offlineMode.js'
 import { getSessionId } from '../../bootstrap/state.js'
 import { loadRunManifests, readRunManifest } from '../../services/agents/runArtifacts.js'
 import {
+  aggregatePromptTrialReports,
   optimizePromptCandidates,
   type PromptCandidate,
+  type PromptCandidateTrial,
 } from '../../services/agents/promptOptimizer.js'
 
 function optionValue(tokens: string[], flag: string): string | undefined {
@@ -103,6 +105,8 @@ const EVAL_FLAGS_WITH_VALUES = new Set([
   '--category',
   '--max-turns',
   '--model',
+  '--models',
+  '--efforts',
   '--repeat',
   '--strategy',
   '--format',
@@ -127,6 +131,85 @@ function stripFlagValues(tokens: string[]): string[] {
     result.push(token)
   }
   return result
+}
+
+type PromptOptimizationMatrix = {
+  models?: string[]
+  efforts?: string[]
+}
+
+const EVAL_EFFORT_LEVELS = new Set([
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+])
+
+function commaSeparatedValues(raw: string | undefined, label: string): string[] {
+  if (raw === undefined) return []
+  const values = raw
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean)
+  if (values.length === 0) throw new Error(`${label} must not be empty`)
+  return [...new Set(values)]
+}
+
+function fileMatrixValues(
+  value: unknown,
+  label: string,
+): string[] | undefined {
+  if (value === undefined) return undefined
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some(item => typeof item !== 'string' || !item.trim())
+  ) {
+    throw new Error(`${label} must be a non-empty string array`)
+  }
+  return [...new Set(value.map(item => (item as string).trim()))]
+}
+
+function promptOptimizationMatrix(
+  tokens: string[],
+  fileMatrix: PromptOptimizationMatrix | undefined,
+): Array<{ model?: string; effort?: string }> {
+  const modelsFlag = optionValue(tokens, '--models')
+  const singleModel = optionValue(tokens, '--model')
+  if (modelsFlag !== undefined && singleModel !== undefined) {
+    throw new Error('use either --model or --models, not both')
+  }
+  const models =
+    modelsFlag !== undefined
+      ? commaSeparatedValues(modelsFlag, '--models')
+      : singleModel !== undefined
+        ? [singleModel]
+        : fileMatrixValues(fileMatrix?.models, 'matrix.models') ?? [undefined]
+  const effortsFlag = optionValue(tokens, '--efforts')
+  const efforts =
+    effortsFlag !== undefined
+      ? commaSeparatedValues(effortsFlag, '--efforts')
+      : fileMatrixValues(fileMatrix?.efforts, 'matrix.efforts') ?? [undefined]
+
+  for (const effort of efforts) {
+    if (effort !== undefined && !EVAL_EFFORT_LEVELS.has(effort.toLowerCase())) {
+      throw new Error(
+        `unsupported effort in optimization matrix: ${effort} (expected ${[...EVAL_EFFORT_LEVELS].join(', ')})`,
+      )
+    }
+  }
+  if (models.length * efforts.length > 32) {
+    throw new Error('prompt optimization matrix exceeds the 32-cell limit')
+  }
+  return models.flatMap(model =>
+    efforts.map(effort => ({
+      model,
+      effort: effort?.toLowerCase(),
+    })),
+  )
 }
 
 export const call: LocalCommandCall = async (args: string) => {
@@ -503,6 +586,7 @@ export const call: LocalCommandCall = async (args: string) => {
       }
       const parsed = JSON.parse(raw) as {
         candidates?: Array<{ id?: unknown; prompt?: unknown }>
+        matrix?: PromptOptimizationMatrix
       }
       if (!Array.isArray(parsed.candidates) || parsed.candidates.length === 0) {
         throw new Error('candidate file has no candidates')
@@ -521,45 +605,126 @@ export const call: LocalCommandCall = async (args: string) => {
         }
         return { id: item.id, prompt: item.prompt }
       })
+      const candidateIds = new Set<string>()
+      for (const spec of specs) {
+        if (spec.id === 'baseline') {
+          throw new Error('candidate id "baseline" is reserved')
+        }
+        if (candidateIds.has(spec.id)) {
+          throw new Error(`duplicate candidate id: ${spec.id}`)
+        }
+        candidateIds.add(spec.id)
+      }
       const dryRun = tokens.includes('--dry-run')
       const maxTurns = Number(optionValue(tokens, '--max-turns') ?? '20')
-      const model = optionValue(tokens, '--model')
       const skipPermissions = tokens.includes('--skip-permissions')
       const isolate = !tokens.includes('--no-isolate')
-      const runCandidate = async (
+      const repeat = Number(optionValue(tokens, '--repeat') ?? '3')
+      const matrix = promptOptimizationMatrix(tokens, parsed.matrix)
+      const allSpecs = [{ id: 'baseline', prompt: '' }, ...specs]
+      const trials = new Map<string, PromptCandidateTrial[]>(
+        allSpecs.map(spec => [spec.id, []]),
+      )
+      const evaluationOrder: Array<{
+        key: string
+        order: string[]
+        model?: string
+        effort?: string
+      }> = []
+
+      const runCandidateTrial = async (
         id: string,
         prompt: string,
-      ): Promise<PromptCandidate> => {
+        context: { model?: string; effort?: string },
+        key: string,
+        repeatIndex: number,
+      ): Promise<void> => {
         const runner = dryRun
           ? makeDryEvalRunner()
           : makeCliEvalRunner({
               cwd,
               maxTurns,
               skipPermissions,
-              model,
+              model: context.model,
+              effort: context.effort,
               isolate,
               systemPrompt: prompt || undefined,
             })
-        return {
-          id,
-          prompt,
+        trials.get(id)!.push({
+          key,
+          model: context.model,
+          effort: context.effort,
+          repeat: repeatIndex + 1,
           report: await runSuite(suite, runner, { category }),
+        })
+      }
+
+      // Evaluate one balanced block at a time so every candidate is paired
+      // with a nearby baseline under the exact same model/effort context.
+      for (let matrixIndex = 0; matrixIndex < matrix.length; matrixIndex++) {
+        const context = matrix[matrixIndex]!
+        for (let repeatIndex = 0; repeatIndex < repeat; repeatIndex++) {
+          const key = `m${matrixIndex + 1}-r${repeatIndex + 1}`
+          const offset = (matrixIndex + repeatIndex) % allSpecs.length
+          const balancedOrder = [
+            ...allSpecs.slice(offset),
+            ...allSpecs.slice(0, offset),
+          ]
+          evaluationOrder.push({
+            key,
+            order: balancedOrder.map(spec => spec.id),
+            model: context.model,
+            effort: context.effort,
+          })
+          for (const spec of balancedOrder) {
+            await runCandidateTrial(
+              spec.id,
+              spec.prompt,
+              context,
+              key,
+              repeatIndex,
+            )
+          }
         }
       }
-      const baseline = await runCandidate('baseline', '')
-      const candidates: PromptCandidate[] = []
-      for (const spec of specs) {
-        candidates.push(await runCandidate(spec.id, spec.prompt))
-      }
-      const result = optimizePromptCandidates(baseline, candidates)
+
+      const evaluated = allSpecs.map<PromptCandidate>(spec => {
+        const candidateTrials = trials.get(spec.id)!
+        return {
+          ...spec,
+          trials: candidateTrials,
+          report: aggregatePromptTrialReports(
+            `${suite.name}:${spec.id}`,
+            candidateTrials,
+          ),
+        }
+      })
+      const baseline = evaluated[0]!
+      const candidates = evaluated.slice(1)
+      const result = optimizePromptCandidates(baseline, candidates, {
+        requireStatisticalConfidence: true,
+        minTrialPairs: 2,
+      })
       const artifact = {
         suite: suite.name,
         generatedAt: new Date().toISOString(),
+        design: {
+          paired: true,
+          repeat,
+          matrix,
+          evaluationOrder,
+        },
         result,
         reports: Object.fromEntries(
           [baseline, ...candidates].map(candidate => [
             candidate.id,
             candidate.report,
+          ]),
+        ),
+        trials: Object.fromEntries(
+          [baseline, ...candidates].map(candidate => [
+            candidate.id,
+            candidate.trials,
           ]),
         ),
       }
@@ -578,6 +743,8 @@ export const call: LocalCommandCall = async (args: string) => {
         value: [
           `Prompt optimization: ${suite.name}`,
           `Selected: ${result.selectedId}${result.rolledBack ? ' (baseline rollback)' : ''}`,
+          `Promotion: ${result.promotionStatus}`,
+          `Design: ${repeat} paired repeats × ${matrix.length} model/effort cells`,
           `Pareto front: ${result.paretoFront.join(', ')}`,
           `Artifact: ${outputPath}`,
         ].join('\n'),

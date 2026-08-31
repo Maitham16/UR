@@ -46,6 +46,7 @@ import {
 import {
   getActiveProviderSettings,
   ensureProviderReasoningCapabilitiesForModel,
+  ensureProviderModelsFresh,
   listModelsForProviderWithSource,
   validateProviderModelPair,
 } from '../services/providers/providerRegistry.js'
@@ -117,6 +118,7 @@ export function ModelPicker({
   const [pickerError, setPickerError] = useState<string | null>(null)
   const [loadingModels, setLoadingModels] = useState(true)
   const [modelReloadToken, setModelReloadToken] = useState(0)
+  const handledModelReloadToken = React.useRef(modelReloadToken)
   const [effortCapabilityLoading, setEffortCapabilityLoading] = useState(false)
   const [effortCapabilityWarning, setEffortCapabilityWarning] = useState<string | null>(null)
   const effectiveSettings = getInitialSettings()
@@ -128,11 +130,23 @@ export function ModelPicker({
     const controller = new AbortController()
     setLoadingModels(true)
     setPickerError(null)
-    listModelsForProviderWithSource(currentProvider, {
-      settings: effectiveSettings,
-      signal: controller.signal,
-      freshOnly: currentProvider === 'openrouter',
-    })
+    const forceRefresh =
+      modelReloadToken !== handledModelReloadToken.current
+    handledModelReloadToken.current = modelReloadToken
+    // OpenRouter's catalogue is large. Reopening the picker reuses the
+    // endpoint-scoped five-minute cache; Ctrl+R still forces a live fetch.
+    const discovery =
+      currentProvider === 'openrouter' && !forceRefresh
+        ? ensureProviderModelsFresh(currentProvider, {
+            settings: effectiveSettings,
+            signal: controller.signal,
+          })
+        : listModelsForProviderWithSource(currentProvider, {
+            settings: effectiveSettings,
+            signal: controller.signal,
+            freshOnly: currentProvider === 'openrouter' && forceRefresh,
+          })
+    discovery
       .then(result => {
         if (controller.signal.aborted) return
         const modelLabels = buildProviderModelLabels(
@@ -161,11 +175,11 @@ export function ModelPicker({
     return () => controller.abort()
   }, [currentProvider, modelReloadToken])
 
-  // llama.cpp publishes the selected chat template's reasoning-effort support
-  // on /props. Resolve the model under the arrow cursor, not the active model,
-  // so Left/Right always receives that focused model's exact level list.
+  // llama.cpp and Ollama publish decisive reasoning capabilities outside their
+  // ordinary model-list rows. Resolve the model under the arrow cursor, not the
+  // active model, so Left/Right gets the focused model's exact level list.
   useEffect(() => {
-    if (currentProvider !== 'llama.cpp' || !focusedValue) {
+    if (!providerNeedsFocusedEffortProbe(currentProvider, focusedValue)) {
       setEffortCapabilityLoading(false)
       setEffortCapabilityWarning(null)
       return
@@ -549,6 +563,16 @@ export function getAdaptiveModelVisibleCount(
   if (!Number.isFinite(optionCount) || optionCount <= 0) return 0
   const availableRows = Math.max(5, (terminalRows ?? 24) - 16)
   return Math.min(Math.floor(optionCount), availableRows)
+}
+
+export function providerNeedsFocusedEffortProbe(
+  provider: string,
+  focusedModel: string | null | undefined,
+): boolean {
+  return (
+    (provider === 'llama.cpp' || provider === 'ollama') &&
+    Boolean(focusedModel)
+  )
 }
 
 function resolveOptionModel(value?: string): string | undefined {

@@ -6,7 +6,7 @@ import { renderToolResultMessage as renderDefaultMCPToolResultMessage } from '..
 import type { MCPToolResult } from '../../utils/mcpValidation.js';
 import { truncateToWidth } from '../format.js';
 import { trackURInChromeTabId } from './common.js';
-export type { Tool } from '@modelcontextprotocol/sdk/types.js';
+export type { Tool } from '@modelcontextprotocol/server';
 
 /**
  * All tool names from BROWSER_TOOLS in @ant/ur-for-chrome-mcp.

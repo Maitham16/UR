@@ -1,12 +1,10 @@
-import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { Server } from '@modelcontextprotocol/server'
+import type {
+  CallToolResult,
+  ListToolsResult,
+} from '@modelcontextprotocol/server'
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio'
 import { randomUUID } from 'node:crypto'
-import {
-  CallToolRequestSchema,
-  type CallToolResult,
-  ListToolsRequestSchema,
-  type ListToolsResult,
-} from '@modelcontextprotocol/sdk/types.js'
 import { getDefaultAppState } from 'src/state/AppStateStore.js'
 import review from '../commands/review.js'
 import type { Command } from '../commands.js'
@@ -97,7 +95,7 @@ export function createMCPServer(
   )
 
   server.setRequestHandler(
-    ListToolsRequestSchema,
+    'tools/list',
     async (): Promise<ListToolsResult> => {
       // Deliberately expose UR's built-in tools only. Re-exporting configured
       // downstream MCP servers would cross their authentication and approval
@@ -114,7 +112,7 @@ export function createMCPServer(
   )
 
   server.setRequestHandler(
-    CallToolRequestSchema,
+    'tools/call',
     async ({ params: { name, arguments: args } }): Promise<CallToolResult> => {
       const tools = getTools(toolPermissionContext)
       const tool = findToolByName(tools, name)

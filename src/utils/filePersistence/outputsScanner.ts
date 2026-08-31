@@ -83,7 +83,7 @@ export async function findModifiedFiles(
       continue
     }
     if (entry.isFile()) {
-      // entry.parentPath is available in Node 20+, fallback to entry.path for older versions
+      // Bun and Node expose slightly different Dirent parent properties.
       const parentPath = getEntryParentPath(entry, outputsDir)
       filePaths.push(path.join(parentPath, entry.name))
     }

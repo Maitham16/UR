@@ -37,10 +37,10 @@ multimodal input, external CLI boundary, and sandbox scope:
 | Gemini API | API | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:gemini` | `GEMINI_API_KEY` |
 | OpenRouter | API/router | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:openrouter` | `OPENROUTER_API_KEY` |
 | OpenAI-compatible | server/API | UR-native | no | yes | yes | endpoint-dependent | UR Bash/File sandbox | `openai-compatible` | optional `OPENAI_COMPATIBLE_API_KEY`; never reuses `OPENAI_API_KEY` |
-| Ollama | local | UR-native | no | yes | yes | yes* | UR Bash/File sandbox | `ollama` | localhost Ollama runtime |
-| LM Studio | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:lmstudio` | local OpenAI-compatible server |
-| llama.cpp | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:llama.cpp` | local OpenAI-compatible server |
-| vLLM | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:vllm` | OpenAI-compatible server |
+| Ollama | local/server | UR-native | no | yes | yes | yes* | UR Bash/File sandbox | `ollama` | configured local, LAN, or hosted endpoint; optional `OLLAMA_API_KEY` |
+| LM Studio | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:lmstudio` | configured endpoint; optional `LMSTUDIO_API_KEY` |
+| llama.cpp | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:llama.cpp` | configured endpoint; optional `LLAMA_CPP_API_KEY` |
+| vLLM | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:vllm` | configured endpoint; optional `VLLM_API_KEY` |
 | Unsloth | local/server | UR-native | no | yes | yes | model-dependent | UR Bash/File sandbox | `openai-compatible:unsloth` | authenticated user-run Unsloth Studio endpoint (`UNSLOTH_API_KEY`) |
 | Codex CLI | subscription | subscription-cli | yes | no | no | no† | UR-run tools/output only† | `subscription-cli:codex` | official Codex CLI login |
 | Claude Code | subscription | subscription-cli | yes | no | no | no† | UR-run tools/output only† | `subscription-cli:claude-code` | official Claude Code CLI login |
@@ -127,6 +127,7 @@ ur config set provider unsloth
 ur config set model <model>
 ur provider select-model <provider> <model> --json
 ur config set base_url <url>
+ur config set base_url <provider> <url>
 ur config set provider.fallback ollama
 ur config set openai_transport responses
 ur config set responses.store false
@@ -138,10 +139,19 @@ The fallback setting is a recovery hint for `ur provider doctor`; it does not
 route a failed request to another provider. Review the failure and use
 `ur config set provider <id>` to switch explicitly.
 
-`base_url` is stored for the provider that is active when the command runs.
-Each provider retains its own address across `/provider`, `/model`, and CLI
+With only a URL, `base_url` is stored for the active provider. The explicit
+form `ur config set base_url <provider> <url>` configures a named provider
+without switching first, and the confirmation names that provider. Each
+provider retains its own address across `/provider`, `/model`, and CLI
 switches. The legacy single `provider.baseUrl` field remains readable and is
 migrated to the previously active provider on the first switch.
+
+The override is not limited to local runtimes. OpenAI API, Anthropic API,
+Gemini API, and OpenRouter can each target a separate compatible gateway using
+the same command. Their official URLs are defaults, not hardcoded dispatch
+destinations; model discovery and inference use the selected provider's saved
+URL. Subscription CLI providers remain vendor-managed and do not accept a base
+URL.
 
 OpenAI API uses Chat Completions by default. `openai_transport responses` is an
 explicit opt-in to the native Responses adapter; it defaults to `store=false`
@@ -161,7 +171,7 @@ the previous provider.
 
 ### Reasoning effort
 
-Use `/effort minimal|low|medium|high|xhigh|max|auto` inside UR. UR normalizes
+Use `/effort minimal|low|medium|high|xhigh|max|ultra|auto` inside UR. UR normalizes
 the exact graded levels advertised for the active provider/model pair. `max`
 is provider-neutral and means the selected model's real ceiling: it therefore
 displays and sends `max`, `xhigh`, or `high` according to that model's contract.
@@ -171,6 +181,10 @@ resolved value as `reasoning_effort`. The command confirmation, status
 indicator, active-work spinner, SDK settings response, and provider request all
 use the same resolved value. If a provider advertises only boolean thinking,
 UR does not invent a graded effort selector.
+`ultra` is stricter than the provider-neutral `max`: it is selectable and
+accepted only when the provider/model explicitly advertises `ultra`, or when
+live metadata supplies an explicit provider-authored alias and canonical wire
+value. UR never maps unsupported `ultra` to `max`.
 
 For Ollama, UR lazily reads the focused model's `/api/show` capabilities and
 sends the selected level through native `think`. Kimi K3 uses
@@ -188,8 +202,12 @@ Left/Right to move through the effort levels advertised by the focused model,
 then Enter to apply the model and effort together. OpenRouter's live catalog
 shows pricing tier, context size, tool capability, reasoning capability, and
 the full, untruncated model ID immediately below the focused entry. Opening the
-OpenRouter catalog always fetches the current `/models` endpoint and never
-substitutes a cached list when that refresh fails. API-key entry for
+OpenRouter catalog reuses its endpoint-scoped five-minute cache; Ctrl+R forces
+the current `/models` endpoint and never substitutes a cached list when that
+forced refresh fails. Interactive requests default to OpenRouter's latency
+sorting, promote UR's stable session ID for sticky routing, and preserve safe
+provider prompt-cache markers. Explicit routing preferences and the `:nitro`,
+`:floor`, and `:exacto` model variants remain authoritative. API-key entry for
 OpenAI, Claude, Gemini, and OpenRouter is a single aligned masked row; the key
 is stored in the OS keychain flow and is never written to settings.
 
@@ -286,7 +304,7 @@ After selecting a model, the confirmation shows:
 ```
 /model
 → Step 1: Select provider
-  Ollama · local · local-runtime · localhost reachable
+  Ollama · local/server · local-runtime · endpoint configured
   OpenAI API · api · OPENAI_API_KEY found
   
 → Select: Ollama
@@ -314,7 +332,7 @@ ur config set provider openai-api
 /model
 
 # 3. Select a model from the filtered list
-ur config set model gpt-5.5
+ur config set model gpt-5.6-sol
 
 # 4. Switch to a different provider - model list updates automatically
 ur config set provider anthropic-api
@@ -326,10 +344,19 @@ ur config set provider anthropic-api
 | Provider type | Model discovery | Source label |
 | --- | --- | --- |
 | API providers (openai-api, anthropic-api, gemini-api) | Live discovery from the provider's `/models` endpoint using your connected key (curated fallback until connected) | live |
-| OpenRouter | Fresh `/models` discovery every time its picker opens; no cached-list fallback in the picker | live |
+| OpenRouter | Live `/models` discovery with an endpoint-scoped five-minute cache; Ctrl+R forces a fresh request with no stale fallback | live/cache |
 | Local/server providers (ollama, lmstudio, llama.cpp, vllm, unsloth) | Dynamic discovery from the selected provider endpoint | live |
 | OpenAI-compatible | Dynamic discovery from configured endpoint | live |
 | Subscription CLIs (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Curated list (the official CLIs expose no models API); first-class in `/model`, dispatched via the official CLI. External CLI behavior depends on the vendor CLI. Log in with `ur auth <provider>` | static |
+
+The current curated API fallbacks include GPT-5.6 Sol, Terra, and Luna;
+Claude Sonnet 5, Opus 5, and Fable 5; and Gemini 3.7 Flash and 3.6 Flash.
+GPT-5.6 defaults to `medium` across its documented
+`none|low|medium|high|xhigh|max` wire ladder (`none` appears as UR's
+`minimal` selector); Gemini 3.7 Flash exposes
+`low|medium|high`, while Gemini 3.6 Flash also exposes `minimal`. Deprecated
+OpenAI `o1` and `o3-mini` are no longer baked into UR's fallback catalog. A
+provider's successful live catalog remains authoritative for that account.
 
 ### API vs Subscription distinction
 
@@ -346,7 +373,7 @@ ur config set provider anthropic-api
 - `openrouter` — requires `OPENROUTER_API_KEY`
 
 **Local/server providers** require local runtime or endpoint:
-- `ollama` — localhost Ollama server
+- `ollama` — configurable local, LAN, or hosted Ollama server
 - `lmstudio` — LM Studio OpenAI-compatible server
 - `llama.cpp` — llama.cpp server mode
 - `vllm` — vLLM server
@@ -398,8 +425,8 @@ When you set a model that is incompatible with the current provider, UR-Nexus sh
 Invalid model for current provider:
   Selected provider: openai-api
   Selected model: claude-sonnet-5
-  Valid models for openai-api: gpt-5.5, gpt-5.4, gpt-5.4-mini, gpt-4o, gpt-4o-mini, o1, o3-mini
-  Suggested action: Run /model and choose a model from openai-api, or run: ur config set model gpt-5.5
+  Valid models for openai-api: gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5, gpt-5.4, gpt-5.4-mini, gpt-4o, gpt-4o-mini
+  Suggested action: Run /model and choose a model from openai-api, or run: ur config set model gpt-5.6-sol
   Error: Model "claude-sonnet-5" is not available for provider "openai-api".
 ```
 
@@ -407,7 +434,7 @@ When you change providers, UR-Nexus warns if the current model is incompatible:
 
 ```
 Warning: Current model "gpt-5.5" is not available for provider "anthropic-api" and will be cleared.
-  Valid models for anthropic-api: claude-sonnet-5, claude-opus-4-8, claude-opus-4-7
+  Valid models for anthropic-api: claude-sonnet-5, claude-opus-5, claude-fable-5, claude-opus-4-8, claude-opus-4-7
   After changing provider, run /model or: ur config set model claude-sonnet-5
 ```
 
@@ -516,6 +543,10 @@ OPENAI_COMPATIBLE_API_KEY=...
 ANTHROPIC_API_KEY=...
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
+OLLAMA_API_KEY=...             # optional for authenticated Ollama gateways
+LMSTUDIO_API_KEY=...           # optional when the endpoint requires it
+LLAMA_CPP_API_KEY=...          # optional when the endpoint requires it
+VLLM_API_KEY=...               # optional when the endpoint requires it
 UNSLOTH_API_KEY=...
 ```
 
@@ -555,12 +586,11 @@ ur provider models unsloth --json
 ```
 
 The default endpoint is `http://localhost:8888/v1`; override it with
-`ur config set base_url <url>`. Authentication is mandatory. Every Unsloth
+`ur config set base_url unsloth <url>`. Authentication is mandatory. Every Unsloth
 request sets `enable_tools: false`, including streaming requests. The model may
-still return standard OpenAI function calls, but execution remains exclusively
-inside UR's provenance gate, permissions, sandbox, and verifier. This prevents
-Unsloth Studio's optional server-side web/code tools from becoming a second,
-uncontrolled agent runtime. See the official
+still return standard OpenAI function calls; UR handles those through the same
+native tool flow used by its other providers. This keeps Unsloth provider-only
+and avoids running a second tool loop inside Studio. See the official
 [Unsloth Studio announcement](https://github.com/unslothai/unsloth/discussions/5285)
 and [Unsloth repository](https://github.com/unslothai/unsloth).
 
@@ -587,11 +617,13 @@ Required variables:
 | Provider | Required env vars | Optional env vars |
 | --- | --- | --- |
 | OpenAI-compatible | `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_MODEL` | `OPENAI_COMPATIBLE_API_KEY` |
-| OpenRouter | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` |  |
+| OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL` | `OPENAI_BASE_URL` |
+| OpenRouter | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | `OPENROUTER_BASE_URL` |
 | Anthropic | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | `ANTHROPIC_BASE_URL` |
 | Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL` | `GEMINI_BASE_URL` |
-| Ollama | `OLLAMA_MODEL` | `OLLAMA_BASE_URL` or `OLLAMA_HOST` |
+| Ollama | `OLLAMA_MODEL` | `OLLAMA_BASE_URL` or `OLLAMA_HOST`; `OLLAMA_API_KEY` when required |
 | LM Studio | `LMSTUDIO_BASE_URL`, `LMSTUDIO_MODEL` | `LMSTUDIO_API_KEY` |
+| llama.cpp | `LLAMA_CPP_BASE_URL`, `LLAMA_CPP_MODEL` | `LLAMA_CPP_API_KEY` |
 | vLLM | `VLLM_BASE_URL`, `VLLM_MODEL` | `VLLM_API_KEY` |
 
 Common knobs:

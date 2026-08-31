@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod/v4'
 
 const selector = z.string().trim().min(1).max(2_048)
 const actionTimeout = z.number().int().min(100).max(120_000).optional()
@@ -133,7 +133,9 @@ export const desktopQaFixtureSchema = z
         executablePath: z.string().trim().min(1).max(4_096).optional(),
         args: z.array(z.string().max(8_192)).max(100).default([]),
         cwd: z.string().trim().min(1).max(4_096).optional(),
-        env: z.record(z.string().max(64 * 1_024)).optional(),
+        env: z
+          .record(z.string(), z.string().max(64 * 1_024))
+          .optional(),
         timeoutMs: z.number().int().min(1_000).max(120_000).default(30_000),
       })
       .strict(),
@@ -164,7 +166,7 @@ export const desktopQaFixtureSchema = z
           })
         }
       })
-      .default({}),
+      .prefault({}),
     timeoutMs: z
       .number()
       .int()
@@ -175,6 +177,7 @@ export const desktopQaFixtureSchema = z
   .strict()
 
 export type DesktopQaFixture = z.infer<typeof desktopQaFixtureSchema>
+export type DesktopQaFixtureInput = z.input<typeof desktopQaFixtureSchema>
 export type DesktopQaStep = z.infer<typeof desktopQaStepSchema>
 
 export function parseDesktopQaFixture(input: unknown): DesktopQaFixture {

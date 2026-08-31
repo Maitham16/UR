@@ -46,14 +46,30 @@ const providers = [
       }),
   },
   {
+    id: 'openai-api',
+    required: ['OPENAI_API_KEY', 'OPENAI_MODEL'],
+    model: process.env.OPENAI_MODEL,
+    endpoint: () => process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+    toolCallsSupported: true,
+    create: () =>
+      createStandardAPIClient({
+        providerId: 'openai-api',
+        apiKey: process.env.OPENAI_API_KEY,
+        model: process.env.OPENAI_MODEL,
+        baseUrl: process.env.OPENAI_BASE_URL,
+        maxRetries,
+      }),
+  },
+  {
     id: 'openrouter',
     required: ['OPENROUTER_API_KEY', 'OPENROUTER_MODEL'],
     model: process.env.OPENROUTER_MODEL,
-    endpoint: () => 'https://openrouter.ai/api/v1',
+    endpoint: () => process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1',
     toolCallsSupported: true,
     create: () =>
       createOpenRouterClient({
         apiKey: process.env.OPENROUTER_API_KEY,
+        baseUrl: process.env.OPENROUTER_BASE_URL,
         model: process.env.OPENROUTER_MODEL,
         maxRetries,
       }),
@@ -97,6 +113,7 @@ const providers = [
     create: () =>
       createOllamaURHQClient({
         baseUrlOverride: process.env.OLLAMA_BASE_URL ?? process.env.OLLAMA_HOST,
+        apiKey: process.env.OLLAMA_API_KEY,
       }),
   },
   {
@@ -110,6 +127,20 @@ const providers = [
         baseUrl: process.env.LMSTUDIO_BASE_URL,
         apiKey: process.env.LMSTUDIO_API_KEY,
         maxRetries,
+      }),
+  },
+  {
+    id: 'llama.cpp',
+    required: ['LLAMA_CPP_BASE_URL', 'LLAMA_CPP_MODEL'],
+    model: process.env.LLAMA_CPP_MODEL,
+    endpoint: () => process.env.LLAMA_CPP_BASE_URL ?? null,
+    toolCallsSupported: true,
+    create: () =>
+      createOpenAICompatibleClient({
+        baseUrl: process.env.LLAMA_CPP_BASE_URL,
+        apiKey: process.env.LLAMA_CPP_API_KEY,
+        maxRetries,
+        providerId: 'llama.cpp',
       }),
   },
   {

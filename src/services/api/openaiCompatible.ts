@@ -7,8 +7,10 @@ import { randomUUID } from 'crypto'
 import { synthesizeKimiToolCalls } from '../../cli/transports/kimiToolCalls.js'
 import {
   type EffortLevel,
+  getProviderEffortWireValue,
   toOpenRouterReasoningEffort,
 } from '../../utils/effort.js'
+import { resolveProviderId } from '../providers/providerRegistry.js'
 import { normalizeOpenAIChatUsage } from './usageNormalization.js'
 import {
   assertUniqueToolNames,
@@ -176,23 +178,41 @@ export function toOpenAICompatibleRequest(
 ): any {
   const tools = toOpenAITools(params.tools, providerName)
   const responseFormat = toOpenAIResponseFormat(params.output_config?.format)
-  const reasoningEffort = toOpenAIReasoningEffort(params)
-  const openRouterReasoning =
+  const reasoningEffort = toOpenAIReasoningEffort(params, providerName)
+  const openRouterWireEffort =
     providerName === 'openrouter' && reasoningEffort
-      ? {
-          effort: toOpenRouterReasoningEffort(
-            String(params.model ?? ''),
-            reasoningEffort,
-          ),
-        }
+      ? toOpenRouterReasoningEffort(String(params.model ?? ''), reasoningEffort)
       : undefined
-  const compatibleReasoningEffort = reasoningEffort
+  const openRouterReasoning = openRouterWireEffort
+    ? { effort: openRouterWireEffort }
+    : undefined
+  const compatibleReasoningEffort =
+    reasoningEffort === 'ultra'
+      ? (() => {
+          const provider = resolveProviderId(providerName)
+          return provider
+            ? getProviderEffortWireValue(
+                String(params.model ?? ''),
+                reasoningEffort,
+                provider,
+              )
+            : undefined
+        })()
+      : reasoningEffort
   const openRouterServerSearch =
     providerName === 'openrouter' &&
     tools.some(tool => tool?.type === 'openrouter:web_search')
   const toolChoice = openRouterServerSearch
     ? undefined
     : mapOpenAIToolChoice(params.tool_choice)
+  const openRouterProviderPreferences =
+    providerName === 'openrouter'
+      ? openRouterRoutingPreferences(params)
+      : undefined
+  const openRouterSessionId =
+    providerName === 'openrouter'
+      ? resolveOpenRouterSessionId(params)
+      : undefined
   return {
     model: params.model,
     messages: toOpenAIMessages(params, providerName),
@@ -212,6 +232,10 @@ export function toOpenAICompatibleRequest(
         ? { reasoning_effort: compatibleReasoningEffort }
         : {}),
     ...(responseFormat && { response_format: responseFormat }),
+    ...(openRouterProviderPreferences && {
+      provider: openRouterProviderPreferences,
+    }),
+    ...(openRouterSessionId && { session_id: openRouterSessionId }),
     stream: Boolean(params.stream),
     // OpenRouter now always includes usage in its final streaming chunk; its
     // former `usage.include` and `stream_options.include_usage` switches are
@@ -222,6 +246,45 @@ export function toOpenAICompatibleRequest(
     ...(tools.length > 0 ? { tools } : {}),
     ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
   }
+}
+
+/**
+ * OpenRouter otherwise favours price when choosing among healthy endpoints.
+ * An interactive agent is much more sensitive to time-to-first-token, so UR
+ * opts into OpenRouter's rolling latency sort unless the caller supplied an
+ * explicit preference or selected a routing model variant.
+ */
+function openRouterRoutingPreferences(params: any): Record<string, unknown> | undefined {
+  if (params?.provider && typeof params.provider === 'object' && !Array.isArray(params.provider)) {
+    return params.provider as Record<string, unknown>
+  }
+  const model = typeof params?.model === 'string' ? params.model : ''
+  if (/:(?:nitro|floor|exacto)$/iu.test(model)) return undefined
+  return { sort: 'latency' }
+}
+
+/**
+ * OpenRouter's session_id keeps an agent conversation on the same upstream
+ * endpoint, allowing provider prompt caches to stay warm across tool turns.
+ * UR already puts its stable session id inside metadata.user_id; promote that
+ * value to the provider-native field without introducing another identifier.
+ */
+function resolveOpenRouterSessionId(params: any): string | undefined {
+  const explicit = validOpenRouterSessionId(params?.session_id)
+  if (explicit) return explicit
+  const encodedMetadata = params?.metadata?.user_id
+  if (typeof encodedMetadata !== 'string') return undefined
+  try {
+    return validOpenRouterSessionId(JSON.parse(encodedMetadata)?.session_id)
+  } catch {
+    return undefined
+  }
+}
+
+function validOpenRouterSessionId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 && trimmed.length <= 256 ? trimmed : undefined
 }
 
 function toOpenAIResponseFormat(format: any): any | undefined {
@@ -236,7 +299,10 @@ function toOpenAIResponseFormat(format: any): any | undefined {
   }
 }
 
-function toOpenAIReasoningEffort(params: any): EffortLevel | undefined {
+function toOpenAIReasoningEffort(
+  params: any,
+  providerName: string,
+): EffortLevel | undefined {
   const requested = params.output_config?.effort
   if (
     requested === 'minimal' ||
@@ -247,6 +313,17 @@ function toOpenAIReasoningEffort(params: any): EffortLevel | undefined {
     requested === 'max'
   ) {
     return requested
+  }
+  if (requested === 'ultra') {
+    const provider = resolveProviderId(providerName)
+    if (!provider) return undefined
+    return getProviderEffortWireValue(
+      String(params.model ?? ''),
+      'ultra',
+      provider,
+    )
+      ? 'ultra'
+      : undefined
   }
   if (params.thinking?.type === 'adaptive') return 'medium'
   if (params.thinking?.type !== 'enabled') return undefined
@@ -267,8 +344,8 @@ export function estimateProviderInputTokens(params: any): number {
 
 export function toOpenAIMessages(params: any, providerName = 'openai-compatible'): any[] {
   const messages: any[] = []
-  const system = systemToText(params.system, providerName)
-  if (system) {
+  const system = systemToOpenAIContent(params.system, providerName)
+  if (typeof system === 'string' ? system.length > 0 : system.length > 0) {
     messages.push({ role: 'system', content: system })
   }
   const toolNamesById = collectToolNamesById(params.messages)
@@ -276,6 +353,33 @@ export function toOpenAIMessages(params: any, providerName = 'openai-compatible'
     messages.push(...messageToOpenAIMessages(message, toolNamesById, providerName))
   }
   return messages
+}
+
+function systemToOpenAIContent(system: any, providerName: string): string | any[] {
+  const text = systemToText(system, providerName)
+  if (providerName !== 'openrouter' || !Array.isArray(system)) return text
+  const blocks = system.flatMap(block => {
+    if (typeof block?.text !== 'string') return []
+    const cacheControl = toOpenRouterCacheControl(block.cache_control)
+    return [{
+      type: 'text',
+      text: block.text,
+      ...(cacheControl && { cache_control: cacheControl }),
+    }]
+  })
+  return blocks.some(block => block.cache_control) ? blocks : text
+}
+
+function toOpenRouterCacheControl(
+  value: unknown,
+): { type: 'ephemeral'; ttl?: '1h' } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const cache = value as Record<string, unknown>
+  if (cache.type !== 'ephemeral') return undefined
+  return {
+    type: 'ephemeral',
+    ...(cache.ttl === '1h' ? { ttl: '1h' as const } : {}),
+  }
 }
 
 export function systemToText(system: any, providerName = 'provider'): string {
@@ -615,15 +719,30 @@ function messageToOpenAIMessages(
 
   const textParts: string[] = []
   const multimodalParts: any[] = []
-  let pendingTextParts: string[] = []
-  let hasImageContent = false
+  let pendingTextParts: Array<{
+    text: string
+    cacheControl?: { type: 'ephemeral'; ttl?: '1h' }
+  }> = []
+  let hasStructuredContent = false
   const toolCalls: any[] = []
   const toolResults: any[] = []
   const flushTextPart = () => {
     if (pendingTextParts.length === 0) return
-    const text = pendingTextParts.join('\n')
-    if (text.length > 0) {
-      multimodalParts.push({ type: 'text', text })
+    if (pendingTextParts.some(part => part.cacheControl)) {
+      hasStructuredContent = true
+      for (const part of pendingTextParts) {
+        if (part.text.length === 0) continue
+        multimodalParts.push({
+          type: 'text',
+          text: part.text,
+          ...(part.cacheControl && { cache_control: part.cacheControl }),
+        })
+      }
+    } else {
+      const text = pendingTextParts.map(part => part.text).join('\n')
+      if (text.length > 0) {
+        multimodalParts.push({ type: 'text', text })
+      }
     }
     pendingTextParts = []
   }
@@ -631,13 +750,19 @@ function messageToOpenAIMessages(
   for (const [index, block] of content.entries()) {
     if (typeof block === 'string') {
       textParts.push(block)
-      pendingTextParts.push(block)
+      pendingTextParts.push({ text: block })
       continue
     }
     switch (block?.type) {
       case 'text':
         textParts.push(block.text ?? '')
-        pendingTextParts.push(block.text ?? '')
+        pendingTextParts.push({
+          text: block.text ?? '',
+          ...(providerName === 'openrouter' &&
+          toOpenRouterCacheControl(block.cache_control)
+            ? { cacheControl: toOpenRouterCacheControl(block.cache_control) }
+            : {}),
+        })
         break
       case 'image':
         flushTextPart()
@@ -648,7 +773,7 @@ function messageToOpenAIMessages(
             `messages[].content[${index}]`,
           ),
         )
-        hasImageContent = true
+        hasStructuredContent = true
         break
       case 'tool_use':
         toolCalls.push({
@@ -666,10 +791,21 @@ function messageToOpenAIMessages(
           providerName,
           `tool_result ${block.tool_use_id ?? index} content`,
         )
+        const toolResultCacheControl =
+          providerName === 'openrouter'
+            ? toOpenRouterCacheControl(block.cache_control)
+            : undefined
+        const toolResultText = contentToText(block.content)
         toolResults.push({
           role: 'tool',
           tool_call_id: block.tool_use_id,
-          content: contentToText(block.content),
+          content: toolResultCacheControl
+            ? [{
+                type: 'text',
+                text: toolResultText,
+                cache_control: toolResultCacheControl,
+              }]
+            : toolResultText,
           ...(toolNamesById.get(block.tool_use_id)
             ? { name: toolNamesById.get(block.tool_use_id) }
             : {}),
@@ -682,12 +818,12 @@ function messageToOpenAIMessages(
 
   const text = textParts.join('\n')
   flushTextPart()
-  const messageContent = hasImageContent ? multimodalParts : text
+  const messageContent = hasStructuredContent ? multimodalParts : text
   if (message.role === 'assistant' && toolCalls.length > 0) {
     return [
       {
         role: 'assistant',
-        content: hasImageContent ? messageContent : text || null,
+        content: hasStructuredContent ? messageContent : text || null,
         tool_calls: toolCalls,
       },
     ]
@@ -695,7 +831,7 @@ function messageToOpenAIMessages(
 
   if (toolResults.length > 0) {
     const result: any[] = []
-    if (hasImageContent) {
+    if (hasStructuredContent) {
       result.push({ role: message.role, content: messageContent })
     } else if (text) {
       result.push({ role: message.role, content: text })

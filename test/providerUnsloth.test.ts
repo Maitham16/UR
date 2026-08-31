@@ -122,6 +122,7 @@ describe('Unsloth provider-only integration', () => {
       settings: { provider: { active: 'unsloth' } },
       adapters: {
         env: {},
+        getApiKey: () => undefined,
         fetch: async () => {
           fetched = true
           return new Response('{}')

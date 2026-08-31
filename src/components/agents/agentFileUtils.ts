@@ -31,6 +31,8 @@ export function formatAgentAsMarkdown(
   maxTurns?: number,
   background?: boolean,
   disallowedTools?: string[],
+  personality?: string,
+  collaboration?: string,
 ): string {
   // For YAML double-quoted strings, we need to escape:
   // - Backslashes: \ -> \\
@@ -57,10 +59,18 @@ export function formatAgentAsMarkdown(
   const disallowedToolsLine = disallowedTools?.length
     ? `\ndisallowedTools: ${disallowedTools.join(', ')}`
     : ''
+  // JSON string literals are valid YAML scalars and safely preserve punctuation
+  // and newlines in these concise generated-agent metadata fields.
+  const personalityLine = personality?.trim()
+    ? `\npersonality: ${JSON.stringify(personality.trim())}`
+    : ''
+  const collaborationLine = collaboration?.trim()
+    ? `\ncollaboration: ${JSON.stringify(collaboration.trim())}`
+    : ''
 
   return `---
 name: ${agentType}
-description: "${escapedWhenToUse}"${toolsLine}${disallowedToolsLine}${modelLine}${effortLine}${permissionModeLine}${maxTurnsLine}${backgroundLine}${colorLine}${memoryLine}
+description: "${escapedWhenToUse}"${toolsLine}${disallowedToolsLine}${modelLine}${effortLine}${permissionModeLine}${maxTurnsLine}${backgroundLine}${personalityLine}${collaborationLine}${colorLine}${memoryLine}
 ---
 
 ${systemPrompt}
@@ -191,6 +201,8 @@ export async function saveAgentToFile(
   maxTurns?: number,
   background?: boolean,
   disallowedTools?: string[],
+  personality?: string,
+  collaboration?: string,
 ): Promise<void> {
   if (source === 'built-in') {
     throw new Error('Cannot save built-in agents')
@@ -212,6 +224,8 @@ export async function saveAgentToFile(
     maxTurns,
     background,
     disallowedTools,
+    personality,
+    collaboration,
   )
   try {
     await writeFileAndFlush(filePath, content, checkExists ? 'wx' : 'w')

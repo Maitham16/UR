@@ -19,7 +19,7 @@ import {
   resolve,
   sep,
 } from 'node:path'
-import { ZodError } from 'zod'
+import { ZodError } from 'zod/v4'
 import { recordArtifact, type Artifact } from '../agents/artifacts.js'
 import { ensurePrivateDirectory } from '../../utils/privateState.js'
 import {

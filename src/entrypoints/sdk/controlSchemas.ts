@@ -33,7 +33,7 @@ import {
 // External Type Placeholders
 // ============================================================================
 
-// JSONRPCMessage from @modelcontextprotocol/sdk - treat as unknown
+// JSONRPCMessage from the split MCP v2 packages - treat as unknown
 export const JSONRPCMessagePlaceholder = lazySchema(() => z.unknown())
 
 // ============================================================================
@@ -504,7 +504,7 @@ export const SDKControlGetSettingsResponseSchema = lazySchema(() =>
           // String levels only — numeric effort is ant-only and the
           // Zod→proto generator can't emit enum∪number unions.
           effort: z
-            .enum(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+            .enum(['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
             .nullable(),
         })
         .optional()

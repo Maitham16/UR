@@ -144,6 +144,18 @@ describe('model entry construction', () => {
     })
   })
 
+  test('provider-authored effort aliases are normalized and preserved', () => {
+    expect(
+      parseModelReasoningCapabilities({
+        supported_efforts: ['deep'],
+        effort_aliases: { ULTRA: 'DEEP', ignored: '', empty: null },
+      }),
+    ).toEqual({
+      supportedEfforts: ['deep'],
+      effortAliases: { ultra: 'deep' },
+    })
+  })
+
   test('unusable entries are dropped rather than rendered blank', () => {
     expect(toDiscoveredModel(null, 'X')).toBeNull()
     expect(toDiscoveredModel({}, 'X')).toBeNull()

@@ -94,7 +94,7 @@ async function connectProvider(provider: ProviderId, keyFlag?: string): Promise<
     return `Connected ${def.displayName}. ${saved.message}${refresh} You can now select it with /model.`
   }
 
-  return `${def.displayName} needs a local endpoint, not a login. Set it with: ur config set base_url <url>`
+  return `${def.displayName} needs a local endpoint, not a login. Set it with: ur config set base_url ${provider} <url>`
 }
 
 export const call: LocalCommandCall = async (args: string) => {

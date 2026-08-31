@@ -42,7 +42,6 @@ export interface SkillToolProgress {
   prompt?: string
   agentId?: string
 }
-export interface TaskOutputProgress {}
 export interface ToolProgressData {}
 export type WebSearchProgress =
   | { type: 'query_update'; query: string }

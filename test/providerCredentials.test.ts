@@ -52,6 +52,20 @@ describe('provider credential store', () => {
     expect(getProviderApiKeySource('anthropic-api', { storage, env: {} })).toBe('none')
   })
 
+  test('optional local/server provider keys use their documented env variables', () => {
+    const storage = memoryStorage()
+    const env = {
+      OLLAMA_API_KEY: 'ollama-key',
+      LMSTUDIO_API_KEY: 'lmstudio-key',
+      LLAMA_CPP_API_KEY: 'llama-cpp-key',
+      VLLM_API_KEY: 'vllm-key',
+    }
+    expect(getProviderApiKey('ollama', { storage, env })).toBe('ollama-key')
+    expect(getProviderApiKey('lmstudio', { storage, env })).toBe('lmstudio-key')
+    expect(getProviderApiKey('llama.cpp', { storage, env })).toBe('llama-cpp-key')
+    expect(getProviderApiKey('vllm', { storage, env })).toBe('vllm-key')
+  })
+
   test('clear removes only that provider and preserves other stored data', () => {
     const storage = memoryStorage({ urAiOauth: { accessToken: 'keep-me' } })
     setProviderApiKey('openai-api', 'sk-a', { storage })

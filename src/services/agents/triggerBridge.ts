@@ -1,8 +1,9 @@
 /**
  * Inbound trigger bridge.
  *
- * Turns a chat/VCS webhook payload (GitHub issue/PR comment, Slack mention, or a
- * generic JSON envelope) into a decision about whether — and with what prompt —
+ * Turns a chat/VCS webhook payload (GitHub issue/PR comment, Slack/Teams
+ * mention, Gmail Pub/Sub notification, or a generic JSON envelope) into a
+ * decision about whether — and with what prompt —
  * to launch a headless UR run. The parser is deterministic and offline so it can
  * be unit-tested against fixture payloads; the actual run is a separate, opt-in
  * step (`ur trigger run`) that spawns `ur -p`. This is the inbound counterpart to
@@ -10,7 +11,7 @@
  * commands, matching the "mention an agent to dispatch it" pattern.
  */
 
-export type TriggerSource = 'github' | 'slack' | 'generic' | 'unknown'
+export type TriggerSource = 'github' | 'slack' | 'gmail' | 'teams' | 'generic' | 'unknown'
 
 export type TriggerContext = {
   repo?: string
@@ -18,6 +19,11 @@ export type TriggerContext = {
   pr?: number
   channel?: string
   threadTs?: string
+  mailbox?: string
+  historyId?: string
+  conversationId?: string
+  tenantId?: string
+  resource?: string
 }
 
 export type TriggerDecision = {
@@ -53,6 +59,17 @@ export function detectTriggerSource(payload: unknown): TriggerSource {
   const root = asRecord(payload)
   if (asRecord(root.comment).body !== undefined || root.issue !== undefined || root.pull_request !== undefined) {
     return 'github'
+  }
+  const message = asRecord(root.message)
+  if (asString(message.data) !== undefined && asString(message.messageId) !== undefined) {
+    return 'gmail'
+  }
+  if (
+    root.conversation !== undefined ||
+    root.channelData !== undefined ||
+    (Array.isArray(root.value) && root.value.some(item => asString(asRecord(item).subscriptionId) !== undefined))
+  ) {
+    return 'teams'
   }
   if (root.event !== undefined || root.type === 'event_callback' || asString(root.token) !== undefined) {
     return 'slack'
@@ -97,6 +114,16 @@ function parseGithub(root: Record<string, unknown>, keyword: string): Omit<Trigg
 function parseSlack(root: Record<string, unknown>, keyword: string): Omit<TriggerDecision, 'source' | 'keyword'> {
   const event = asRecord(root.event)
   const text = asString(event.text) ?? asString(root.text) ?? ''
+  if (event.bot_id !== undefined || event.subtype === 'bot_message') {
+    return {
+      triggered: false,
+      reason: 'ignored a Slack bot-authored message to prevent trigger loops',
+      context: {
+        channel: asString(event.channel) ?? asString(root.channel),
+        threadTs: asString(event.thread_ts) ?? asString(event.ts),
+      },
+    }
+  }
   const prompt = extractPrompt(text, keyword)
   const context: TriggerContext = {
     channel: asString(event.channel) ?? asString(root.channel),
@@ -108,6 +135,83 @@ function parseSlack(root: Record<string, unknown>, keyword: string): Omit<Trigge
     prompt,
     actor: asString(event.user) ?? asString(root.user),
     context,
+  }
+}
+
+function decodeBase64Json(value: unknown): Record<string, unknown> {
+  const encoded = asString(value)
+  if (!encoded) return {}
+  try {
+    const decoded = Buffer.from(encoded, 'base64').toString('utf-8')
+    return asRecord(JSON.parse(decoded))
+  } catch {
+    return {}
+  }
+}
+
+function parseGmail(root: Record<string, unknown>): Omit<TriggerDecision, 'source' | 'keyword'> {
+  const message = asRecord(root.message)
+  const data = decodeBase64Json(message.data)
+  const mailbox = asString(data.emailAddress) ?? asString(root.emailAddress)
+  const historyId = asString(data.historyId) ?? asString(root.historyId)
+  const explicitPrompt = asString(data.prompt) ?? asString(root.prompt)
+  const prompt = explicitPrompt?.trim() || [
+    `Gmail reported new mailbox activity${mailbox ? ` for ${mailbox}` : ''}.`,
+    historyId ? `The Gmail history ID is ${historyId}.` : '',
+    'Inspect the new mail through the configured Gmail tools and handle it according to the agent instructions.',
+  ].filter(Boolean).join(' ')
+  return {
+    triggered: true,
+    reason: 'authenticated Gmail Pub/Sub mailbox notification',
+    prompt,
+    actor: mailbox,
+    context: { mailbox, historyId },
+  }
+}
+
+function teamsConversationFromResource(resource: string | undefined): string | undefined {
+  if (!resource) return undefined
+  const chat = resource.match(/(?:^|\/)chats\/([^/]+)/iu)?.[1]
+  if (chat) return chat
+  const channel = resource.match(/(?:^|\/)teams\/([^/]+)\/channels\/([^/]+)/iu)
+  return channel ? `${channel[1]}:${channel[2]}` : undefined
+}
+
+function parseTeams(root: Record<string, unknown>, keyword: string): Omit<TriggerDecision, 'source' | 'keyword'> {
+  const notifications = Array.isArray(root.value) ? root.value.map(asRecord) : []
+  const notification = notifications[0] ?? {}
+  const resourceData = asRecord(notification.resourceData)
+  const conversation = asRecord(root.conversation)
+  const channelData = asRecord(root.channelData)
+  const tenant = asRecord(channelData.tenant)
+  const from = asRecord(root.from)
+  const resource = asString(notification.resource)
+  const conversationId = asString(conversation.id) ?? teamsConversationFromResource(resource)
+  const text = asString(root.text) ?? asString(resourceData.text) ?? ''
+  const extracted = extractPrompt(text, keyword)
+  const graphPrompt = notifications.length > 0
+    ? [
+        'Microsoft Teams reported a conversation event.',
+        resource ? `Resource: ${resource}.` : '',
+        'Inspect the referenced conversation through the configured Microsoft tools and handle it according to the agent instructions.',
+      ].filter(Boolean).join(' ')
+    : undefined
+  const prompt = extracted ?? graphPrompt
+  return {
+    triggered: prompt !== undefined,
+    reason: extracted
+      ? `Teams message contains "${keyword}"`
+      : graphPrompt
+        ? 'Microsoft Graph Teams notification'
+        : `no "${keyword}" mention in Teams payload`,
+    prompt,
+    actor: asString(from.id) ?? asString(from.aadObjectId) ?? asString(resourceData.from),
+    context: {
+      conversationId,
+      tenantId: asString(tenant.id) ?? asString(notification.tenantId),
+      resource,
+      threadTs: asString(root.replyToId) ?? asString(root.id),
+    },
   }
 }
 
@@ -140,6 +244,8 @@ export function parseTriggerPayload(
   let partial: Omit<TriggerDecision, 'source' | 'keyword'>
   if (source === 'github') partial = parseGithub(root, keyword)
   else if (source === 'slack') partial = parseSlack(root, keyword)
+  else if (source === 'gmail') partial = parseGmail(root)
+  else if (source === 'teams') partial = parseTeams(root, keyword)
   else if (source === 'generic') partial = parseGeneric(root, keyword)
   else {
     partial = { triggered: false, reason: 'could not detect a known payload shape', context: {} }
@@ -154,6 +260,10 @@ export type TriggerCommandOptions = {
   maxTurns?: number
   skipPermissions?: boolean
   outputFormat?: 'json' | 'text' | 'stream-json'
+  /** Start a new stable inbound-event session with this UUID. */
+  sessionId?: string
+  /** Resume an existing inbound-event session instead of creating it. */
+  resumeSession?: boolean
 }
 
 /** Build the headless command a triggered decision should run. */
@@ -166,6 +276,9 @@ export function buildTriggerCommand(
   const args = [...baseArgs, '-p', '--output-format', options.outputFormat ?? 'json']
   if (options.maxTurns && options.maxTurns > 0) args.push('--max-turns', String(options.maxTurns))
   if (options.skipPermissions) args.push('--dangerously-skip-permissions')
+  if (options.sessionId) {
+    args.push(options.resumeSession ? '--resume' : '--session-id', options.sessionId)
+  }
   args.push(prompt)
   return { file, args }
 }
@@ -189,6 +302,8 @@ export function formatTriggerDecision(
     ctx.issue ? `issue=#${ctx.issue}` : null,
     ctx.pr ? `pr=#${ctx.pr}` : null,
     ctx.channel ? `channel=${ctx.channel}` : null,
+    ctx.mailbox ? `mailbox=${ctx.mailbox}` : null,
+    ctx.conversationId ? `conversation=${ctx.conversationId}` : null,
   ].filter(Boolean)
   if (ctxParts.length) lines.push(`Context:   ${ctxParts.join(' ')}`)
   if (decision.prompt) lines.push(`Prompt:    ${decision.prompt}`)

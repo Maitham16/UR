@@ -181,7 +181,7 @@ describe('eval persistence and command', () => {
 
     const optimized = await runWithCwdOverride(dir, () =>
       call(
-        'optimize starter --file candidates.json --dry-run --json',
+        'optimize starter --file candidates.json --dry-run --repeat 2 --models fixture-a,fixture-b --efforts low,high --json',
         {} as never,
       ),
     )
@@ -189,6 +189,10 @@ describe('eval persistence and command', () => {
     const artifact = JSON.parse(optimized.value)
     expect(artifact.result.baselineId).toBe('baseline')
     expect(artifact.result.selectedId).toBeTruthy()
+    expect(artifact.design.paired).toBe(true)
+    expect(artifact.design.repeat).toBe(2)
+    expect(artifact.design.matrix).toHaveLength(4)
+    expect(artifact.trials.baseline).toHaveLength(8)
     expect(
       existsSync(
         join(
