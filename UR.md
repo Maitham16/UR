@@ -20,8 +20,10 @@ very code you are editing — be careful, verify, and prefer small reviewable st
   bunfig.toml MACRO.VERSION, documentation/index.html eyebrow, and
   extensions/vscode-ur-inline-diffs/package.json together, plus a CHANGELOG
   entry, then `bun run build` so dist/cli.js embeds it.
-- `.ur/` is machine-local agent state (gitignored piece by piece) — never
-  commit files under it without checking .gitignore.
+- `.ur/` contains both shareable project definitions and generated local state.
+  Runtime-only paths are gitignored piece by piece; agents, skills, workflow
+  definitions, goals, specs, and other intentional team assets remain trackable.
+  Never commit a `.ur/` file without checking its purpose and `.gitignore`.
 
 ## Architecture map (verified against code; details in technical/)
 

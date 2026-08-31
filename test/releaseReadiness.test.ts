@@ -142,6 +142,22 @@ test('release gate keeps npm, documentation, and IDE versions synchronized', () 
   )
 })
 
+test('the build rejects inconsistent version sources before bundling', () => {
+  const bundle = readFileSync(join(REPO, 'scripts', 'bundle.mjs'), 'utf8')
+  const consistency = readFileSync(
+    join(REPO, 'scripts', 'version-consistency.mjs'),
+    'utf8',
+  )
+
+  expect(bundle).toContain("import { assertVersionConsistency } from './version-consistency.mjs'")
+  expect(bundle.indexOf('assertVersionConsistency(root, version)')).toBeLessThan(
+    bundle.indexOf("execFileSync(\n  'bun'"),
+  )
+  expect(consistency).toContain('extensions/vscode-ur-inline-diffs/package-lock.json')
+  expect(consistency).toContain('CHANGELOG.md')
+  expect(consistency).toContain('node scripts/version-bump.mjs')
+})
+
 test('changelog starts at the package version and remains newest-first', () => {
   const packageJson = JSON.parse(
     readFileSync(join(REPO, 'package.json'), 'utf8'),

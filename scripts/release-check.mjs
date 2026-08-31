@@ -7,6 +7,7 @@ import {
   releasePathViolations,
   sourceArchiveCandidatePaths,
 } from './release-hygiene.mjs'
+import { collectVersionConsistencyErrors } from './version-consistency.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const failures = []
@@ -29,6 +30,7 @@ function checkSourceArchiveHygiene() {
 
 const packageJson = JSON.parse(read('package.json'))
 const version = packageJson.version
+failures.push(...collectVersionConsistencyErrors(root, version))
 const oldLowerRepo = 'Maitham16/' + 'ur-agent'
 const oldMapekRepo = 'Maitham16/' + 'UR-' + 'mapek'
 const changelog = read('CHANGELOG.md')

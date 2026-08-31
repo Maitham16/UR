@@ -67,12 +67,17 @@ UR.local.md
 .ur/settings.local.json
 .ur/*.local.json
 .ur/index/
+.ur/code-index/
 .ur/memory/
+.ur/project-manifest.json
 .ur/learning/playbooks.json
+.ur/learning/stats.json
+.ur/learning/*.mutation-lock
 .ur/semantic-memory/index/
 .ur/brainstorming/
 .ur/agent-memory-local/
 .ur/scheduled_tasks.json
+.ur/scheduled_tasks.lock
 .ur/actions*.jsonl
 .ur/cache/
 .ur/tmp/
@@ -93,6 +98,18 @@ UR.local.md
 .ur/workspaces/.worktrees/
 .ur/ide/
 .ur/runs/
+.ur/research/projects/
+.ur/repo-edit/index.json
+.ur/mcp-2026/tasks.json
+.ur/a2a/protocol-tasks.json
+.ur/openai-responses/
+.ur/test-first/traces/
+.ur/workflows/.state/
+.ur/crew/*.mutation-lock
+.ur/threads/
+.ur/automations/scheduler.log
+.ur/escalation.json
+.ur/mode
 .ur-analysis/
 
 # Release build artifacts (regenerated; avoid nested archives in publish)

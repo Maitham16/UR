@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { assertVersionConsistency } from './version-consistency.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const packageJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
@@ -16,6 +17,13 @@ const issues =
   typeof packageJson.bugs?.url === 'string'
     ? packageJson.bugs.url
     : 'https://github.com/Maitham16/UR/issues'
+
+try {
+  assertVersionConsistency(root, version)
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error))
+  process.exit(1)
+}
 
 if (!packageJson.dependencies?.sharp) {
   console.error(
