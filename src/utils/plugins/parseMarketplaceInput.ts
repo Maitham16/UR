@@ -2,7 +2,55 @@ import { homedir } from 'os'
 import { resolve } from 'path'
 import { getErrnoCode } from '../errors.js'
 import { getFsImplementation } from '../fsOperations.js'
-import type { MarketplaceSource } from './schemas.js'
+import {
+  type MarketplaceSource,
+  MarketplaceSourceSchema,
+} from './schemas.js'
+
+/**
+ * Parse the unambiguous `npm:<package>[@<version-or-tag>]` marketplace form.
+ * Scoped package names contain a leading `@`, so their optional version
+ * separator is the first `@` after the scope/name slash.
+ */
+function parseNpmMarketplaceInput(
+  value: string,
+): MarketplaceSource | { error: string } {
+  const spec = value.slice('npm:'.length).trim()
+  if (!spec) {
+    return {
+      error:
+        'NPM marketplace source is missing a package name. Use npm:package or npm:@scope/package@version.',
+    }
+  }
+
+  let packageName = spec
+  let version: string | undefined
+  const versionSeparator = spec.startsWith('@')
+    ? spec.indexOf('@', spec.indexOf('/') + 1)
+    : spec.indexOf('@')
+
+  if (versionSeparator >= 0) {
+    packageName = spec.slice(0, versionSeparator)
+    version = spec.slice(versionSeparator + 1)
+    if (!version) {
+      return {
+        error: `NPM marketplace version is empty in '${value}'. Remove the trailing @ or provide a version, range, or dist-tag.`,
+      }
+    }
+  }
+
+  const parsed = MarketplaceSourceSchema().safeParse({
+    source: 'npm',
+    package: packageName,
+    ...(version ? { version } : {}),
+  })
+  if (!parsed.success) {
+    return {
+      error: `Invalid NPM marketplace source '${value}': ${parsed.error.issues.map(issue => issue.message).join(', ')}`,
+    }
+  }
+  return parsed.data
+}
 
 /**
  * Parses a marketplace input string and returns the appropriate marketplace source type.
@@ -24,6 +72,10 @@ export async function parseMarketplaceInput(
 ): Promise<MarketplaceSource | { error: string } | null> {
   const trimmed = input.trim()
   const fs = getFsImplementation()
+
+  if (trimmed.toLowerCase().startsWith('npm:')) {
+    return parseNpmMarketplaceInput(trimmed)
+  }
 
   // Handle git SSH URLs with any valid username (not just 'git')
   // Supports: user@host:path, user@host:path.git, and with #ref suffix
@@ -154,7 +206,6 @@ export async function parseMarketplaceInput(
     return ref ? { source: 'github', repo, ref } : { source: 'github', repo }
   }
 
-  // NPM packages not yet implemented
   // Returning null for unrecognized input
 
   return null

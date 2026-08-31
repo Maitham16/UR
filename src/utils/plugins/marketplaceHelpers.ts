@@ -43,6 +43,8 @@ export function getMarketplaceSourceDisplay(source: MarketplaceSource): string {
       return source.url
     case 'git':
       return source.url
+    case 'npm':
+      return `npm:${source.package}${source.version ? `@${source.version}` : ''}`
     case 'directory':
       return source.path
     case 'file':
@@ -207,7 +209,13 @@ function areSourcesEqual(a: MarketplaceSource, b: MarketplaceSource): boolean {
         (a.path || undefined) === ((b as typeof a).path || undefined)
       )
     case 'npm':
-      return a.package === (b as typeof a).package
+      return (
+        a.package === (b as typeof a).package &&
+        (a.version || undefined) ===
+          ((b as typeof a).version || undefined) &&
+        (a.registry || undefined) ===
+          ((b as typeof a).registry || undefined)
+      )
     case 'file':
       return a.path === (b as typeof a).path
     case 'directory':
@@ -509,7 +517,7 @@ export function formatSourceForDisplay(source: MarketplaceSource): string {
     case 'git':
       return `git:${source.url}${source.ref ? `@${source.ref}` : ''}`
     case 'npm':
-      return `npm:${source.package}`
+      return `npm:${source.package}${source.version ? `@${source.version}` : ''}`
     case 'file':
       return `file:${source.path}`
     case 'directory':

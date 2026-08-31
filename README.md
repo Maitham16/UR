@@ -615,6 +615,7 @@ validator, and Markdown language-adapter metadata.
 
 ```sh
 ur plugin list
+ur plugin marketplace add npm:@acme/ur-marketplace@latest
 ur plugin search git
 ur plugin search --capability skills --json
 ur plugin show github@ur-plugins-official
@@ -635,6 +636,13 @@ metadata and an exact install command. `ur plugin doctor` validates every
 installed, project, and bundled plugin manifest and reports its declared
 components and capability surface, so you can review what a plugin touches
 before enabling it.
+
+Marketplace catalogs can come from GitHub/Git, direct URLs, npm packages,
+local files/directories, or inline settings. npm sources use
+`npm:<package>[@<version-range-or-dist-tag>]`, respect the user's npm registry
+and authentication configuration, and must ship `.ur-plugin/marketplace.json`.
+See the [Plugin Guide](docs/plugins.md) for private-registry configuration and
+refresh behavior.
 
 The npm package includes `README.md`, `QUALITY.md`, `docs/`, `documentation/`,
 and `plugins/`, so the npm package page and installed artifact both carry the

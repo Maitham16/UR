@@ -349,6 +349,10 @@ UR includes slash commands and CLI subcommands for common workflows:
   `ur plugin search [query]` for ranked cross-catalog discovery and
   `ur plugin show <name@marketplace>` to inspect provenance and capabilities
   before installation.
+  Add an npm-hosted catalog with
+  `ur plugin marketplace add npm:@scope/catalog@latest`; npm sources respect
+  the user's registry/authentication configuration and are refreshed with the
+  normal marketplace update command.
 - `ur agents` to list configured agents
 - `ur agent-trends` to inspect coverage for current agent technology trends
 - `ur a2a card` to print legacy Agent Card metadata, or

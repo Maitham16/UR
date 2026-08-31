@@ -22,7 +22,7 @@ built-in command/tool surface.
 | [05-providers-and-models.md](05-providers-and-models.md) | Provider registry, model selection, routing, escalation, effort/fast modes |
 | [06-configuration.md](06-configuration.md) | settings.json schema, scopes, permission rules, env variables, keybindings |
 | [07-memory-and-context.md](07-memory-and-context.md) | UR.md, auto-memory, /remember, semantic memory, knowledge base, context pack, compaction |
-| [08-skills-plugins-workflows.md](08-skills-plugins-workflows.md) | Skills (SKILL.md), bundled skills, plugins/marketplaces, declarative workflows, patterns, toolsmith |
+| [08-skills-plugins-workflows.md](08-skills-plugins-workflows.md) | Skills (SKILL.md), bundled skills, Git/GitHub/URL/npm/local plugin marketplaces, declarative workflows, patterns, toolsmith |
 | [09-multi-agent.md](09-multi-agent.md) | Subagents, crews, arena, background agents, routing, escalation, worktrees per task |
 | [10-headless-automation-eval.md](10-headless-automation-eval.md) | `-p` print mode, /exec, SDK, automations, triggers, CI loop, eval harness, benchmarks |
 | [11-integrations.md](11-integrations.md) | MCP, IDE/ACP, A2A, Chrome, GitHub, Slack, remote control, desktop, voice |

@@ -9,7 +9,7 @@
  * Limitations:
  * - Only headless mode is supported
  * - All settings sources are used (same as normal plugin flow)
- * - Only github, git, and url marketplace sources are supported
+ * - Network-backed GitHub, git, URL, and npm sources plus inline settings are supported
  * - Only strict:true marketplace entries are supported
  * - Auto-update is non-blocking (background, does not affect current session)
  *
@@ -394,13 +394,14 @@ export function getMarketplaceJsonRelativePath(
  * Supported sources write to `join(cacheDir, name)` — syncMarketplacesToZipCache
  * reads marketplace.json from that installLocation, source-type-agnostic.
  * - github/git/url: clone to temp, rename into cacheDir
+ * - npm: install into an isolated staging prefix, retain only the package dir
  * - settings: write synthetic marketplace.json directly to cacheDir (no fetch)
  *
  * Excluded: file/directory (installLocation is the user's path OUTSIDE cacheDir —
- * nonsensical in ephemeral containers), npm (node_modules bloat on Filestore mount).
+ * nonsensical in ephemeral containers).
  */
 export function isMarketplaceSourceSupportedByZipCache(
   source: MarketplaceSource,
 ): boolean {
-  return ['github', 'git', 'url', 'settings'].includes(source.source)
+  return ['github', 'git', 'url', 'npm', 'settings'].includes(source.source)
 }

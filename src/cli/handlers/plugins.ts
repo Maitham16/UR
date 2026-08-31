@@ -639,7 +639,7 @@ export async function marketplaceAddHandler(
 
     if (!parsed) {
       cliError(
-        `${figures.cross} Invalid marketplace source format. Try: owner/repo, https://..., or ./path`,
+        `${figures.cross} Invalid marketplace source format. Try: owner/repo, npm:package, https://..., or ./path`,
       )
     }
 

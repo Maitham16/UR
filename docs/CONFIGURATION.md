@@ -719,6 +719,7 @@ Plugins can add commands, tools, and skills:
 
 ```sh
 ur plugin list
+ur plugin marketplace add npm:@scope/catalog@latest
 ur plugin search [query] [--capability <name>] [--marketplace <name>] [--installed] [--json]
 ur plugin show <name-or-name@marketplace> [--json]
 ur plugin install <plugin>

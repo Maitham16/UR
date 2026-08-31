@@ -1352,13 +1352,116 @@ function getCachePathForSource(source: MarketplaceSource): string {
     source.source === 'github'
       ? source.repo.replace('/', '-')
       : source.source === 'npm'
-        ? source.package.replace('@', '').replace('/', '-')
+        ? `.npm-${source.package.replace('@', '').replace('/', '-')}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         : source.source === 'file'
           ? basename(source.path).replace('.json', '')
           : source.source === 'directory'
             ? basename(source.path)
             : 'temp_' + Date.now()
   return tempName
+}
+
+type NpmMarketplaceSource = Extract<
+  MarketplaceSource,
+  { source: 'npm' }
+>
+type NpmCommandRunner = typeof execFileNoThrow
+
+/**
+ * Materialize an npm marketplace package into a standalone cache directory.
+ *
+ * npm remains the source of truth for package-spec resolution, registry
+ * selection, authentication, proxy settings, and integrity verification. The
+ * install runs in an isolated staging prefix with lifecycle scripts disabled;
+ * only the requested package directory is moved into the marketplace cache,
+ * so its dependency tree and npm metadata do not become part of the catalog.
+ */
+async function cacheMarketplaceFromNpm(
+  source: NpmMarketplaceSource,
+  cachePath: string,
+  onProgress?: MarketplaceProgressCallback,
+  runNpm: NpmCommandRunner = execFileNoThrow,
+): Promise<void> {
+  const fs = getFsImplementation()
+  const packageSpec = source.version
+    ? `${source.package}@${source.version}`
+    : source.package
+  const stagingPath = `${cachePath}.staging`
+  const installedPackagePath = join(
+    stagingPath,
+    'node_modules',
+    ...source.package.split('/'),
+  )
+
+  await fs.rm(stagingPath, { recursive: true, force: true })
+  await fs.rm(cachePath, { recursive: true, force: true })
+  await fs.mkdir(dirname(cachePath))
+
+  safeCallProgress(
+    onProgress,
+    `Downloading npm marketplace package ${packageSpec}`,
+  )
+
+  const args = [
+    'install',
+    '--ignore-scripts',
+    '--no-save',
+    '--package-lock=false',
+    '--no-audit',
+    '--no-fund',
+    '--install-strategy=shallow',
+    '--prefer-online',
+    '--prefix',
+    stagingPath,
+  ]
+  if (source.registry) {
+    args.push('--registry', source.registry)
+  }
+  args.push(packageSpec)
+
+  const fetchStarted = performance.now()
+  try {
+    const result = await runNpm('npm', args, {
+      useCwd: false,
+      stdin: 'ignore',
+    })
+    if (result.code !== 0) {
+      const details = (result.stderr || result.error || result.stdout).trim()
+      const failure = new Error(
+        `Failed to download npm marketplace package '${packageSpec}'${details ? `: ${details}` : ` (npm exited with code ${result.code})`}`,
+      )
+      logPluginFetch(
+        'marketplace_npm',
+        source.registry ?? 'https://registry.npmjs.org',
+        'failure',
+        performance.now() - fetchStarted,
+        classifyFetchError(failure),
+      )
+      throw failure
+    }
+
+    try {
+      await fs.stat(installedPackagePath)
+    } catch (error) {
+      if (isENOENT(error)) {
+        throw new Error(
+          `npm completed without materializing '${source.package}' at ${installedPackagePath}`,
+        )
+      }
+      throw error
+    }
+
+    await fs.rename(installedPackagePath, cachePath)
+    logPluginFetch(
+      'marketplace_npm',
+      source.registry ?? 'https://registry.npmjs.org',
+      'success',
+      performance.now() - fetchStarted,
+    )
+    safeCallProgress(onProgress, 'NPM package downloaded, validating marketplace')
+  } finally {
+    await fs.rm(stagingPath, { recursive: true, force: true })
+  }
 }
 
 /**
@@ -1406,7 +1509,7 @@ async function parseFileWithSchema<T>(
  * - URL: Downloads marketplace.json directly
  * - GitHub: Clones repo and looks for .ur-plugin/marketplace.json
  * - Git: Clones repository from git URL
- * - NPM: (Not yet implemented) Would fetch from npm package
+ * - NPM: Resolves and installs a package, then reads .ur-plugin/marketplace.json
  * - File: Reads from local filesystem
  *
  * After loading, validates the marketplace schema and renames the cache
@@ -1422,12 +1525,15 @@ async function parseFileWithSchema<T>(
  *
  * @param source - The marketplace source to load from
  * @param onProgress - Optional callback to report progress
+ * @param expectedMarketplaceName - When refreshing, require the package to
+ *   retain the configured marketplace identity before replacing its cache
  * @returns Object containing the validated marketplace and its cache path
  * @throws If marketplace file not found or validation fails
  */
 async function loadAndCacheMarketplace(
   source: MarketplaceSource,
   onProgress?: MarketplaceProgressCallback,
+  expectedMarketplaceName?: string,
 ): Promise<LoadedPluginMarketplace> {
   const fs = getFsImplementation()
   const cacheDir = getMarketplacesCacheDir()
@@ -1611,8 +1717,19 @@ async function loadAndCacheMarketplace(
       }
 
       case 'npm': {
-        // TODO: Implement npm package support
-        throw new Error('NPM marketplace sources not yet implemented')
+        temporaryCachePath = join(cacheDir, tempName)
+        cleanupNeeded = true
+        await cacheMarketplaceFromNpm(
+          source,
+          temporaryCachePath,
+          onProgress,
+        )
+        marketplacePath = join(
+          temporaryCachePath,
+          '.ur-plugin',
+          'marketplace.json',
+        )
+        break
       }
 
       case 'file': {
@@ -1697,6 +1814,15 @@ async function loadAndCacheMarketplace(
       }
       throw new Error(
         `Failed to parse marketplace file at ${marketplacePath}: ${errorMessage(e)}`,
+      )
+    }
+
+    if (
+      expectedMarketplaceName &&
+      marketplace.name !== expectedMarketplaceName
+    ) {
+      throw new Error(
+        `Source now declares marketplace '${marketplace.name}', expected '${expectedMarketplaceName}'. Remove and re-add the source to accept a marketplace rename.`,
       )
     }
 
@@ -2157,7 +2283,11 @@ export const getMarketplace = memoize(
     // Cache doesn't exist or is invalid, fetch from source
     let marketplace: PluginMarketplace
     try {
-      ;({ marketplace } = await loadAndCacheMarketplace(entry.source))
+      ;({ marketplace } = await loadAndCacheMarketplace(
+        entry.source,
+        undefined,
+        name,
+      ))
     } catch (error) {
       throw new Error(
         `Failed to load marketplace "${name}" from source (${entry.source.source}): ${errorMessage(error)}`,
@@ -2329,7 +2459,11 @@ export async function refreshAllMarketplaces(): Promise<void> {
       // fall through to git
     }
     try {
-      const { cachePath } = await loadAndCacheMarketplace(entry.source)
+      const { cachePath } = await loadAndCacheMarketplace(
+        entry.source,
+        undefined,
+        name,
+      )
       config[name]!.lastUpdated = new Date().toISOString()
       config[name]!.installLocation = cachePath
     } catch (error) {
@@ -2546,6 +2680,15 @@ export async function refreshMarketplace(
         source.headers,
         onProgress,
       )
+    } else if (source.source === 'npm') {
+      // Re-resolve dist-tags/ranges through npm and validate the replacement
+      // before loadAndCacheMarketplace swaps it into the named cache path.
+      const refreshed = await loadAndCacheMarketplace(
+        source,
+        onProgress,
+        name,
+      )
+      config[name]!.installLocation = refreshed.cachePath
     } else if (isLocalMarketplaceSource(source)) {
       // Local sources: no remote to update from, but validate the file still exists and is valid
       safeCallProgress(onProgress, 'Validating local marketplace')
@@ -2634,5 +2777,6 @@ export async function setMarketplaceAutoUpdate(
 }
 
 export const _test = {
+  cacheMarketplaceFromNpm,
   redactUrlCredentials,
 }

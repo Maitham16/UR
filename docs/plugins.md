@@ -51,6 +51,50 @@ ur --plugin-dir ./plugins/community/my-plugin
 Plugins are loaded from local UR-Nexus paths first. Network marketplace installs
 remain explicit user actions and are subject to plugin policy checks.
 
+## Marketplace sources
+
+UR accepts GitHub shorthand, Git URLs, direct marketplace JSON URLs, npm
+packages, local files/directories, and inline settings manifests. Add an npm
+marketplace with the explicit `npm:` prefix:
+
+```sh
+ur plugin marketplace add npm:acme-ur-marketplace
+ur plugin marketplace add npm:@acme/ur-marketplace@latest
+ur plugin marketplace add npm:@acme/ur-marketplace@^2.0.0
+ur plugin marketplace update <marketplace-name>
+```
+
+The package must ship `.ur-plugin/marketplace.json`. An omitted version follows
+the registry's `latest` dist-tag; a version, semver range, or another dist-tag
+can be supplied after the package name, using npm's
+[package-spec syntax](https://docs.npmjs.com/cli/v11/using-npm/package-spec/).
+Refreshing the marketplace re-resolves
+that selector. UR uses the installed npm client, so standard `.npmrc`
+authentication, scoped registries, proxies, and registry settings continue to
+work. Package lifecycle scripts are disabled during marketplace download, and
+only the requested package—not its staging dependency tree—is retained.
+
+For a private registry selected in project or user settings:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "acme": {
+      "source": {
+        "source": "npm",
+        "package": "@acme/ur-marketplace",
+        "version": "^2.0.0",
+        "registry": "https://registry.example.com"
+      }
+    }
+  }
+}
+```
+
+After an install, removal, or external registry-file change,
+`/reload-plugins` clears both plugin discovery caches and the installed-plugin
+snapshot before reloading.
+
 ## Manifest reference
 
 A plugin is a directory containing `.ur-plugin/plugin.json`. UR uses a

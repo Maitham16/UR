@@ -87,7 +87,10 @@ import { getAddDirEnabledPlugins } from './addDirPluginSettings.js'
 import { verifyAndDemote } from './dependencyResolver.js'
 import { classifyFetchError, logPluginFetch } from './fetchTelemetry.js'
 import { checkGitAvailable } from './gitAvailability.js'
-import { getInMemoryInstalledPlugins } from './installedPluginsManager.js'
+import {
+  clearInstalledPluginsCache,
+  getInMemoryInstalledPlugins,
+} from './installedPluginsManager.js'
 import { getManagedPluginNames } from './managedPlugins.js'
 import {
   formatSourceForDisplay,
@@ -3304,7 +3307,10 @@ export function clearPluginCache(reason?: string): void {
     resetSettingsCache()
   }
   clearPluginSettingsBase()
-  // TODO: Clear installed plugins cache when installedPluginsManager is implemented
+  // A plugin reload is an explicit request to observe current installation
+  // state. Drop both the disk-read cache and the session snapshot so an
+  // install/uninstall performed by another code path cannot survive reload.
+  clearInstalledPluginsCache()
 }
 
 /**

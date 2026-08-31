@@ -1062,6 +1062,21 @@ export const MarketplaceSourceSchema = lazySchema(() =>
       package: NpmPackageNameSchema().describe(
         'NPM package containing marketplace.json',
       ),
+      version: z
+        .string()
+        .trim()
+        .min(1)
+        .optional()
+        .describe(
+          'Package version, semver range, or dist-tag (defaults to the registry latest tag)',
+        ),
+      registry: z
+        .string()
+        .url()
+        .optional()
+        .describe(
+          'Custom NPM registry URL (defaults to the registry selected by the user\'s npm configuration)',
+        ),
     }),
     z.object({
       source: z.literal('file'),

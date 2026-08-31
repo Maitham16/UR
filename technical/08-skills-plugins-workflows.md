@@ -124,6 +124,7 @@ styles.
 
 ```
 ur plugin marketplace add github.com/acme/ur-plugins   # or a local path
+ur plugin marketplace add npm:@acme/ur-marketplace@latest
 ur plugin marketplace list / update / remove <name>
 ur plugin install fmt@acme -s project     # scopes: user | project | local
 ur plugin list --json --available
@@ -135,6 +136,43 @@ ur plugin doctor --path ./plugins         # diagnose
 /reload-plugins                            # activate pending changes in-session
 ur --plugin-dir ./dev-plugin               # session-only plugin load
 ```
+
+Marketplace sources support GitHub shorthand, full Git repositories, direct
+manifest URLs, npm packages, local manifest files/directories, and inline
+settings manifests. The unambiguous CLI npm form is
+`npm:<package>[@<version-range-or-dist-tag>]`; scoped packages work as expected,
+for example `npm:@acme/catalog@^2.0.0`, following npm's
+[package-spec rules](https://docs.npmjs.com/cli/v11/using-npm/package-spec/).
+An npm marketplace package must contain
+`.ur-plugin/marketplace.json`. UR delegates package resolution, configured
+registry authentication, proxy settings, and integrity verification to the
+installed npm client, disables package lifecycle scripts while reading a
+marketplace, and caches only the selected package directory. The
+`ur plugin marketplace update` command re-resolves ranges and dist-tags with
+the registry.
+
+Private registries can use the user's normal `.npmrc`, or a declarative source
+can select a registry explicitly:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "acme": {
+      "source": {
+        "source": "npm",
+        "package": "@acme/ur-marketplace",
+        "version": "^2.0.0",
+        "registry": "https://registry.example.com"
+      }
+    }
+  }
+}
+```
+
+`/reload-plugins` invalidates the marketplace/plugin-loader memoization and the
+installed-plugin registry snapshot, so installs and removals are visible in the
+same session without carrying stale entries.
+
 Settings: `enabledPlugins`, `pluginConfigs`, `extraKnownMarketplaces`,
 `strictKnownMarketplaces`, `blockedMarketplaces`, `strictPluginOnlyCustomization`.
 

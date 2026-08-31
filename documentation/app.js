@@ -378,8 +378,8 @@ const commands = [
     name: 'plugin',
     category: 'Interop',
     aliases: ['plugins'],
-    summary: 'Manage UR plugins and marketplaces for MCP tools, skills, templates, validators, language adapters, LSP servers, agents, hooks, output styles, and commands.',
-    examples: ['ur plugin search git', 'ur plugin search --capability skills --json', 'ur plugin show github@ur-plugins-official', 'ur plugin list', 'ur plugin install hello@ur-plugins-official', 'ur plugin update <plugin>'],
+    summary: 'Manage UR plugins and GitHub, Git, URL, npm, local, or settings-backed marketplaces for MCP tools, skills, templates, validators, language adapters, LSP servers, agents, hooks, output styles, and commands.',
+    examples: ['ur plugin marketplace add npm:@scope/catalog@latest', 'ur plugin search git', 'ur plugin search --capability skills --json', 'ur plugin show github@ur-plugins-official', 'ur plugin list', 'ur plugin install hello@ur-plugins-official', 'ur plugin update <plugin>'],
   },
   {
     name: 'provider',

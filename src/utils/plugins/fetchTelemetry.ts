@@ -18,6 +18,7 @@ export type PluginFetchSource =
   | 'install_counts'
   | 'marketplace_clone'
   | 'marketplace_pull'
+  | 'marketplace_npm'
   | 'marketplace_url'
   | 'plugin_clone'
   | 'mcpb'
@@ -39,6 +40,7 @@ const KNOWN_PUBLIC_HOSTS = new Set([
   'dev.azure.com',
   'ssh.dev.azure.com',
   'storage.googleapis.com',
+  'registry.npmjs.org',
 ])
 
 const OFFICIAL_MARKETPLACE_REPO = OFFICIAL_MARKETPLACE_SOURCE.repo
