@@ -19,6 +19,7 @@
  */
 
 import axios from 'axios'
+import { randomUUID } from 'crypto'
 import { writeFile } from 'fs/promises'
 import isEqual from 'lodash-es/isEqual.js'
 import memoize from 'lodash-es/memoize.js'
@@ -34,7 +35,10 @@ import {
   toError,
 } from '../errors.js'
 import { execFileNoThrow, execFileNoThrowWithCwd } from '../execFileNoThrow.js'
-import { getFsImplementation } from '../fsOperations.js'
+import {
+  getFsImplementation,
+  type FsOperations,
+} from '../fsOperations.js'
 import { gitExe } from '../git.js'
 import { logError } from '../log.js'
 import {
@@ -1844,27 +1848,13 @@ async function loadAndCacheMarketplace(
       temporaryCachePath !== finalCachePath &&
       !isLocalMarketplaceSource(source)
     ) {
-      try {
-        // Remove the destination if it already exists, then rename
-        try {
-          onProgress?.('Cleaning up old marketplace cache…')
-        } catch (callbackError) {
-          logForDebugging(
-            `Progress callback error: ${errorMessage(callbackError)}`,
-            { level: 'warn' },
-          )
-        }
-        await fs.rm(finalCachePath, { recursive: true, force: true })
-        // Rename temp cache to final name
-        await fs.rename(temporaryCachePath, finalCachePath)
-        temporaryCachePath = finalCachePath
-        cleanupNeeded = false // Successfully renamed, no cleanup needed
-      } catch (error) {
-        const errorMsg = errorMessage(error)
-        throw new Error(
-          `Failed to finalize marketplace cache. Please manually delete the directory at ${finalCachePath} if it exists and try again.\n\nTechnical details: ${errorMsg}`,
-        )
-      }
+      await replaceMarketplaceCache(
+        temporaryCachePath,
+        finalCachePath,
+        onProgress,
+      )
+      temporaryCachePath = finalCachePath
+      cleanupNeeded = false
     }
 
     return { marketplace, cachePath: temporaryCachePath }
@@ -1885,6 +1875,76 @@ async function loadAndCacheMarketplace(
       }
     }
     throw error
+  }
+}
+
+async function pathExists(path: string, fs: FsOperations): Promise<boolean> {
+  try {
+    await fs.stat(path)
+    return true
+  } catch (error) {
+    if (isENOENT(error)) return false
+    throw error
+  }
+}
+
+/**
+ * Replace a validated marketplace directory without discarding the last
+ * known-good cache first. Directory replacement is not atomic on every
+ * supported platform, so the old directory is moved to a same-parent backup,
+ * the staged directory is promoted, and any failed promotion rolls back.
+ */
+async function replaceMarketplaceCache(
+  stagedPath: string,
+  finalPath: string,
+  onProgress?: MarketplaceProgressCallback,
+  fs: FsOperations = getFsImplementation(),
+): Promise<void> {
+  const backupPath = `${finalPath}.backup-${randomUUID()}`
+  let backupCreated = false
+
+  try {
+    if (await pathExists(finalPath, fs)) {
+      safeCallProgress(onProgress, 'Replacing old marketplace cache…')
+      await fs.rename(finalPath, backupPath)
+      backupCreated = true
+    }
+    await fs.rename(stagedPath, finalPath)
+  } catch (promotionError) {
+    let rollbackError: unknown
+    if (backupCreated) {
+      try {
+        // A rename is atomic, but remove any destination a platform-specific
+        // implementation may have left behind before restoring the backup.
+        await fs.rm(finalPath, { recursive: true, force: true })
+        await fs.rename(backupPath, finalPath)
+        backupCreated = false
+      } catch (error) {
+        rollbackError = error
+      }
+    }
+
+    const rollbackMessage = rollbackError
+      ? ` The previous cache remains at ${backupPath}, but automatic rollback failed: ${errorMessage(rollbackError)}`
+      : backupCreated
+        ? ` The previous cache remains at ${backupPath}.`
+        : ' The previous cache was preserved.'
+    throw new Error(
+      `Failed to finalize marketplace cache: ${errorMessage(promotionError)}.${rollbackMessage}`,
+    )
+  }
+
+  if (backupCreated) {
+    try {
+      await fs.rm(backupPath, { recursive: true, force: true })
+    } catch (error) {
+      // The new cache is already live. A stale same-parent backup is safer than
+      // turning a successful refresh into a failure and rolling it back.
+      logForDebugging(
+        `Marketplace cache updated, but old backup cleanup failed at ${backupPath}: ${errorMessage(error)}`,
+        { level: 'warn' },
+      )
+    }
   }
 }
 
@@ -2778,5 +2838,7 @@ export async function setMarketplaceAutoUpdate(
 
 export const _test = {
   cacheMarketplaceFromNpm,
+  loadAndCacheMarketplace,
+  replaceMarketplaceCache,
   redactUrlCredentials,
 }

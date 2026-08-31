@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   stat,
   writeFile,
@@ -18,6 +19,10 @@ import { parseMarketplaceInput } from '../src/utils/plugins/parseMarketplaceInpu
 import { clearPluginCache } from '../src/utils/plugins/pluginLoader.js'
 import { MarketplaceSourceSchema } from '../src/utils/plugins/schemas.js'
 import { isMarketplaceSourceSupportedByZipCache } from '../src/utils/plugins/zipCache.js'
+import {
+  NodeFsOperations,
+  type FsOperations,
+} from '../src/utils/fsOperations.js'
 
 const temporaryDirectories: string[] = []
 const originalPluginCacheDir = process.env.UR_CODE_PLUGIN_CACHE_DIR
@@ -201,6 +206,54 @@ describe('npm marketplace materialization', () => {
     await expect(stat(`${target}.staging`)).rejects.toMatchObject({
       code: 'ENOENT',
     })
+  })
+
+  test('restores the last good cache when final promotion fails', async () => {
+    const root = await temporaryDirectory('ur-npm-marketplace-rollback-')
+    const finalPath = join(root, 'acme')
+    const stagedPath = join(root, '.npm-acme-staged')
+    await mkdir(join(finalPath, '.ur-plugin'), { recursive: true })
+    await mkdir(join(stagedPath, '.ur-plugin'), { recursive: true })
+    await writeFile(
+      join(finalPath, '.ur-plugin', 'marketplace.json'),
+      '{"name":"acme","version":"old"}',
+    )
+    await writeFile(
+      join(stagedPath, '.ur-plugin', 'marketplace.json'),
+      '{"name":"acme","version":"new"}',
+    )
+
+    let promotionFailed = false
+    const faultingFs: FsOperations = {
+      ...NodeFsOperations,
+      async rename(oldPath, newPath) {
+        if (!promotionFailed && oldPath === stagedPath && newPath === finalPath) {
+          promotionFailed = true
+          const error = new Error('injected promotion failure') as NodeJS.ErrnoException
+          error.code = 'EIO'
+          throw error
+        }
+        await NodeFsOperations.rename(oldPath, newPath)
+      },
+    }
+
+    await expect(
+      marketplaceTest.replaceMarketplaceCache(
+        stagedPath,
+        finalPath,
+        undefined,
+        faultingFs,
+      ),
+    ).rejects.toThrow('The previous cache was preserved')
+    expect(
+      await readFile(join(finalPath, '.ur-plugin', 'marketplace.json'), 'utf8'),
+    ).toContain('"version":"old"')
+    expect(
+      (await readdir(root)).filter(entry => entry.includes('.backup-')),
+    ).toEqual([])
+    expect(
+      await readFile(join(stagedPath, '.ur-plugin', 'marketplace.json'), 'utf8'),
+    ).toContain('"version":"new"')
   })
 })
 
