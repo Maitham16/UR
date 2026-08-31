@@ -10,6 +10,7 @@ import {
 import { jsonStringify } from '../utils/slowOperations.js'
 import { getURHQClient } from './api/client.js'
 import { estimateProviderInputTokens } from './api/openaiCompatible.js'
+import { getProviderRuntimeInfo } from './providers/providerRegistry.js'
 import { withTokenCountVCR } from './vcr.js'
 
 // Minimal values for token counting with thinking enabled
@@ -59,9 +60,16 @@ export async function countMessagesTokensWithAPI(
   messages: URHQ.Beta.Messages.BetaMessageParam[],
   tools: URHQ.Beta.Messages.BetaToolUnion[],
 ): Promise<number | null> {
-  return withTokenCountVCR(messages, tools, async () => {
+  const model = getMainLoopModel()
+  const normalizedModel = normalizeModelStringForAPI(model)
+  const runtime = getProviderRuntimeInfo()
+  return withTokenCountVCR(messages, tools, {
+    provider: runtime.provider,
+    model: normalizedModel,
+    ...(runtime.baseUrl ? { endpoint: runtime.baseUrl } : {}),
+    countMode: runtime.runtimeBackend,
+  }, async () => {
     try {
-      const model = getMainLoopModel()
       const betas = getModelBetas(model)
       const containsThinking = hasThinkingBlocks(messages)
 
@@ -73,7 +81,7 @@ export async function countMessagesTokensWithAPI(
 
       if (!urhq.beta.messages.countTokens) return null
       const response = await urhq.beta.messages.countTokens({
-        model: normalizeModelStringForAPI(model),
+        model: normalizedModel,
         messages:
           // When we pass tools and no messages, we need to pass a dummy message
           // to get an accurate tool token count.

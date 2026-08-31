@@ -255,10 +255,16 @@ describe('future-model thinking capability discovery', () => {
         id: 'vendor/budget-reasoner',
         displayName: 'Budget Reasoner',
         description: 'Live model',
-        reasoning: { supportsThinking: true, supportsMaxTokens: true },
+        reasoning: { supportsMaxTokens: true },
       },
     ])
 
+    expect(modelSupportsThinking('vendor/budget-reasoner', 'openrouter')).toBe(
+      true,
+    )
+    expect(
+      modelSupportsAdaptiveThinking('vendor/budget-reasoner', 'openrouter'),
+    ).toBe(false)
     expect(
       toOpenAICompatibleRequest(
         {
