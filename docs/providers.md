@@ -192,6 +192,15 @@ whose graded ladder tops out at `high`, boolean thinking, or unknown capability 
 labels such as `deep` still require an explicit provider alias because UR
 cannot infer their rank.
 
+For an unknown or newly released model, UR waits for provider-authored model
+metadata or a supported model-scoped probe before adding thinking parameters.
+If the provider does not establish support, thinking stays off for request
+shaping; UR does not optimistically send an unknown parameter and treat an API
+error as capability discovery. Boolean thinking metadata enables the thinking
+toggle only and never invents a graded effort ladder. On OpenRouter, UR sends
+the provider-default `reasoning.enabled` control, or the exact token budget when
+the model advertises `supports_max_tokens`.
+
 For Ollama, UR lazily reads the focused model's `/api/show` capabilities and
 sends the selected level through native `think`. Kimi K3 uses
 `low|high|max` and therefore exposes Ultra as `ultra→max`; GPT-OSS uses
@@ -217,6 +226,18 @@ provider prompt-cache markers. Explicit routing preferences and the `:nitro`,
 `:floor`, and `:exacto` model variants remain authoritative. API-key entry for
 OpenAI, Claude, Gemini, and OpenRouter is a single aligned masked row; the key
 is stored in the OS keychain flow and is never written to settings.
+
+### Token counting
+
+UR uses each provider's non-generating count endpoint when one covers the full
+request: OpenAI Responses input tokens, Anthropic Messages token counting,
+Gemini `countTokens`, llama.cpp chat input tokens, and vLLM Messages token
+counting. Ollama, OpenRouter, LM Studio, Unsloth, and subscription CLIs use a
+provider-wire local estimate because those runtimes do not share a dependable
+preflight tokenizer for complete chat history plus tools. UR never launches a
+hidden completion for token counting. If a native count call is unavailable,
+file and MCP size checks retain the local estimate rather than disabling their
+limits.
 
 For llama.cpp, `/v1/models` metadata is preserved when the server supplies it.
 Because stock llama.cpp exposes chat-template effort support per loaded model,

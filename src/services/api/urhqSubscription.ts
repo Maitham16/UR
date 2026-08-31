@@ -182,7 +182,10 @@ export function createURHQSubscriptionClient(
       }))
     },
     async countTokens(params: SubscriptionRequestParams) {
-      return { input_tokens: estimateTokens(messagesToPrompt(params, providerId)) }
+      return {
+        input_tokens: estimateTokens(messagesToPrompt(params, providerId)),
+        source: 'local-estimate' as const,
+      }
     },
   }
 

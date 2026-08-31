@@ -1,28 +1,20 @@
 import type { URHQ } from '@urhq-ai/sdk'
-import type { BetaMessageParam as MessageParam } from '@urhq-ai/sdk/resources/beta/messages/messages.mjs'
-import { getAPIProvider, isBedrockRuntime, isVertexRuntime } from 'src/utils/model/providers.js'
-import { VERTEX_COUNT_TOKENS_ALLOWED_BETAS } from '../constants/betas.js'
 import type { Attachment } from '../utils/attachments.js'
 import { getModelBetas } from '../utils/betas.js'
-import { getVertexRegionForModel, isEnvTruthy } from '../utils/envUtils.js'
 import { logError } from '../utils/log.js'
 import { normalizeAttachmentForAPI } from '../utils/messages.js'
 import {
-  getDefaultmodelSModel,
   getMainLoopModel,
-  getSmallFastModel,
   normalizeModelStringForAPI,
 } from '../utils/model/model.js'
 import { jsonStringify } from '../utils/slowOperations.js'
-import { isToolReferenceBlock } from '../utils/toolSearch.js'
-import { getAPIMetadata, getExtraBodyParams } from './api/ur.js'
 import { getURHQClient } from './api/client.js'
+import { estimateProviderInputTokens } from './api/openaiCompatible.js'
 import { withTokenCountVCR } from './vcr.js'
 
 // Minimal values for token counting with thinking enabled
 // API constraint: max_tokens must be greater than thinking.budget_tokens
 const TOKEN_COUNT_THINKING_BUDGET = 1024
-const TOKEN_COUNT_MAX_TOKENS = 2048
 
 /**
  * Check if messages contain thinking blocks
@@ -45,72 +37,6 @@ function hasThinkingBlocks(
     }
   }
   return false
-}
-
-/**
- * Strip tool search-specific fields from messages before sending for token counting.
- * This removes 'caller' from tool_use blocks and 'tool_reference' from tool_result content.
- * These fields are only valid with the tool search beta and will cause errors otherwise.
- *
- * Note: We use 'as unknown as' casts because the SDK types don't include tool search beta fields,
- * but at runtime these fields may exist from API responses when tool search was enabled.
- */
-function stripToolSearchFieldsFromMessages(
-  messages: URHQ.Beta.Messages.BetaMessageParam[],
-): URHQ.Beta.Messages.BetaMessageParam[] {
-  return messages.map(message => {
-    if (!Array.isArray(message.content)) {
-      return message
-    }
-
-    const normalizedContent = message.content.map(block => {
-      // Strip 'caller' from tool_use blocks (assistant messages)
-      if (block.type === 'tool_use') {
-        // Destructure to exclude any extra fields like 'caller'
-        const toolUse =
-          block as URHQ.Beta.Messages.BetaToolUseBlockParam & {
-            caller?: unknown
-          }
-        return {
-          type: 'tool_use' as const,
-          id: toolUse.id,
-          name: toolUse.name,
-          input: toolUse.input,
-        }
-      }
-
-      // Strip tool_reference blocks from tool_result content (user messages)
-      if (block.type === 'tool_result') {
-        const toolResult =
-          block as URHQ.Beta.Messages.BetaToolResultBlockParam
-        if (Array.isArray(toolResult.content)) {
-          const filteredContent = (toolResult.content as unknown[]).filter(
-            c => !isToolReferenceBlock(c),
-          ) as typeof toolResult.content
-
-          if (filteredContent.length === 0) {
-            return {
-              ...toolResult,
-              content: [{ type: 'text' as const, text: '[tool references]' }],
-            }
-          }
-          if (filteredContent.length !== toolResult.content.length) {
-            return {
-              ...toolResult,
-              content: filteredContent,
-            }
-          }
-        }
-      }
-
-      return block
-    })
-
-    return {
-      ...message,
-      content: normalizedContent,
-    }
-  })
 }
 
 export async function countTokensWithAPI(
@@ -139,24 +65,13 @@ export async function countMessagesTokensWithAPI(
       const betas = getModelBetas(model)
       const containsThinking = hasThinkingBlocks(messages)
 
-      // Bedrock token counting is not supported in external builds; fall
-      // through to the local-Ollama path. This branch is unreachable while
-      // the provider is hardcoded to 'ollama'.
-      if (isBedrockRuntime()) {
-        return null
-      }
-
       const urhq = await getURHQClient({
         maxRetries: 1,
         model,
         source: 'count_tokens',
       })
 
-      const filteredBetas =
-        isVertexRuntime()
-          ? betas.filter(b => VERTEX_COUNT_TOKENS_ALLOWED_BETAS.has(b))
-          : betas
-
+      if (!urhq.beta.messages.countTokens) return null
       const response = await urhq.beta.messages.countTokens({
         model: normalizeModelStringForAPI(model),
         messages:
@@ -164,7 +79,7 @@ export async function countMessagesTokensWithAPI(
           // to get an accurate tool token count.
           messages.length > 0 ? messages : [{ role: 'user', content: 'foo' }],
         tools,
-        ...(filteredBetas.length > 0 && { betas: filteredBetas }),
+        ...(betas.length > 0 && { betas }),
         // Enable thinking if messages contain thinking blocks
         ...(containsThinking && {
           thinking: {
@@ -174,13 +89,15 @@ export async function countMessagesTokensWithAPI(
         }),
       })
 
-      if (typeof response.input_tokens !== 'number') {
-        // Vertex client throws
-        // Bedrock client succeeds with { Output: { __type: 'com.amazon.coral.service#UnknownOperationException' }, Version: '1.0' }
+      if (
+        typeof response.input_tokens !== 'number' ||
+        !Number.isFinite(response.input_tokens) ||
+        response.input_tokens < 0
+      ) {
         return null
       }
 
-      return response.input_tokens
+      return Math.floor(response.input_tokens)
     } catch (error) {
       logError(error)
       return null
@@ -230,86 +147,16 @@ export function roughTokenCountEstimationForFileType(
 }
 
 /**
- * Estimates token count for a Message object by extracting and analyzing its text content.
- * This provides a more reliable estimate than getTokenUsage for messages that may have been compacted.
- * Uses modelH for token counting (modelH 4.5 supports thinking blocks), except:
- * - Vertex global region: uses modelS (modelH not available)
- * - Bedrock with thinking blocks: uses modelS (modelH 3.5 doesn't support thinking)
+ * Provider-neutral local fallback for runtimes without a non-generating token
+ * endpoint, or when the provider count request is unavailable. It estimates the
+ * exact structured payload (messages + tools) rather than running a paid
+ * one-token completion as the former modelH fallback did.
  */
-export async function countTokensViamodelHFallback(
+export function estimateMessagesTokensLocally(
   messages: URHQ.Beta.Messages.BetaMessageParam[],
   tools: URHQ.Beta.Messages.BetaToolUnion[],
-): Promise<number | null> {
-  // Check if messages contain thinking blocks
-  const containsThinking = hasThinkingBlocks(messages)
-
-  // If we're on Vertex and using global region, always use modelS since modelH is not available there.
-  const isVertexGlobalEndpoint =
-    isEnvTruthy(process.env.UR_CODE_USE_VERTEX) &&
-    getVertexRegionForModel(getSmallFastModel()) === 'global'
-  // If we're on Bedrock with thinking blocks, use modelS since modelH 3.5 doesn't support thinking
-  const isBedrockWithThinking =
-    isEnvTruthy(process.env.UR_CODE_USE_BEDROCK) && containsThinking
-  // If we're on Vertex with thinking blocks, use modelS since modelH 3.5 doesn't support thinking
-  const isVertexWithThinking =
-    isEnvTruthy(process.env.UR_CODE_USE_VERTEX) && containsThinking
-  // Otherwise always use modelH - modelH 4.5 supports thinking blocks.
-  // WARNING: if you change this to use a non-modelH model, this request will fail in 1P unless it uses getCLISyspromptPrefix.
-  // Note: We don't need modelS for tool_reference blocks because we strip them via
-  // stripToolSearchFieldsFromMessages() before sending.
-  // Use getSmallFastModel() to respect URHQ_SMALL_FAST_MODEL env var for Bedrock users
-  // with global inference profiles (see issue #10883).
-  const model =
-    isVertexGlobalEndpoint || isBedrockWithThinking || isVertexWithThinking
-      ? getDefaultmodelSModel()
-      : getSmallFastModel()
-  const urhq = await getURHQClient({
-    maxRetries: 1,
-    model,
-    source: 'count_tokens',
-  })
-
-  // Strip tool search-specific fields (caller, tool_reference) before sending
-  // These fields are only valid with the tool search beta header
-  const normalizedMessages = stripToolSearchFieldsFromMessages(messages)
-
-  const messagesToSend: MessageParam[] =
-    normalizedMessages.length > 0
-      ? (normalizedMessages as MessageParam[])
-      : [{ role: 'user', content: 'count' }]
-
-  const betas = getModelBetas(model)
-  // Filter betas for Vertex - some betas (like web-search) cause 400 errors
-  // on certain Vertex endpoints. See issue #10789.
-  const filteredBetas =
-    isVertexRuntime()
-      ? betas.filter(b => VERTEX_COUNT_TOKENS_ALLOWED_BETAS.has(b))
-      : betas
-
-  // biome-ignore lint/plugin: token counting needs specialized parameters (thinking, betas) that sideQuery doesn't support
-  const response = await urhq.beta.messages.create({
-    model: normalizeModelStringForAPI(model),
-    max_tokens: containsThinking ? TOKEN_COUNT_MAX_TOKENS : 1,
-    messages: messagesToSend,
-    tools: tools.length > 0 ? tools : undefined,
-    ...(filteredBetas.length > 0 && { betas: filteredBetas }),
-    metadata: getAPIMetadata(),
-    ...getExtraBodyParams(),
-    // Enable thinking if messages contain thinking blocks
-    ...(containsThinking && {
-      thinking: {
-        type: 'enabled',
-        budget_tokens: TOKEN_COUNT_THINKING_BUDGET,
-      },
-    }),
-  })
-
-  const usage = response.usage
-  const inputTokens = usage.input_tokens
-  const cacheCreationTokens = usage.cache_creation_input_tokens || 0
-  const cacheReadTokens = usage.cache_read_input_tokens || 0
-
-  return inputTokens + cacheCreationTokens + cacheReadTokens
+): number {
+  return estimateProviderInputTokens({ messages, tools })
 }
 
 export function roughTokenCountEstimationForMessages(
@@ -421,4 +268,3 @@ function roughTokenCountEstimationForBlock(
   // key/bracket overhead is single-digit percent on real blocks.
   return roughTokenCountEstimation(jsonStringify(block))
 }
-

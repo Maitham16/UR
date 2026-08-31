@@ -91,7 +91,10 @@ import {
   getSupportedEffortLevelsForModel,
   resolveAppliedEffort,
 } from '../../utils/effort.js'
-import { ensureProviderReasoningCapabilitiesForModel } from '../providers/providerRegistry.js'
+import {
+  ensureProviderReasoningCapabilitiesForModel,
+  getProviderReasoningCapabilitiesForModel,
+} from '../providers/providerRegistry.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { computeFingerprintFromMessages } from '../../utils/fingerprint.js'
@@ -1528,6 +1531,25 @@ async function* queryModel(
   const envEffort = getEffortEnvOverride()
   const requestedEffort =
     envEffort === null ? undefined : envEffort ?? options.effortValue
+  const wantsThinkingCapability =
+    thinkingConfig.type !== 'disabled' &&
+    !isEnvTruthy(process.env.UR_CODE_DISABLE_THINKING)
+  if (
+    wantsThinkingCapability &&
+    getProviderReasoningCapabilitiesForModel(
+      options.model,
+      effortProvider,
+    ) === undefined
+  ) {
+    // Resolve provider-authored metadata before shaping the first request.
+    // Unknown models remain disabled if discovery/probing is inconclusive;
+    // never send an optimistic thinking field and use a production 400 as the
+    // capability detector.
+    await ensureProviderReasoningCapabilitiesForModel(
+      effortProvider,
+      options.model,
+    ).catch(() => undefined)
+  }
   if (
     typeof requestedEffort === 'string' &&
     getSupportedEffortLevelsForModel(options.model, effortProvider).length === 0
@@ -1729,10 +1751,10 @@ async function* queryModel(
     // IMPORTANT: Do not change the adaptive-vs-budget thinking selection below
     // without notifying the model launch DRI and research. This is a sensitive
     // setting that can greatly affect model quality and bashing.
-    if (hasThinking && modelSupportsThinking(options.model)) {
+    if (hasThinking && modelSupportsThinking(options.model, effortProvider)) {
       if (
         !isEnvTruthy(process.env.UR_CODE_DISABLE_ADAPTIVE_THINKING) &&
-        modelSupportsAdaptiveThinking(options.model)
+        modelSupportsAdaptiveThinking(options.model, effortProvider)
       ) {
         // For models that support adaptive thinking, always use adaptive
         // thinking without a budget.

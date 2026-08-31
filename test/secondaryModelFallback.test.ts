@@ -1,5 +1,11 @@
-import { afterEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
+import { resetStateForTests } from '../src/bootstrap/state.ts'
+import { __resetOllamaRouteMemoForTests } from '../src/utils/model/model.ts'
+import {
+  resetSettingsCache,
+  setSessionSettingsCache,
+} from '../src/utils/settings/settingsCache.ts'
 
 // A live run exposed this: WebFetch fetched example.com fine (559 bytes, 200
 // OK), then summarising it failed with "Model qwen2.5-coder:7b is not
@@ -8,10 +14,47 @@ import { readFileSync } from 'node:fs'
 // error as the content of example.com and --check against real page text
 // correctly found nothing. Two separate defects in one line of output.
 
+const modelEnvKeys = [
+  'OLLAMA_MODEL',
+  'OLLAMA_SMALL_FAST_MODEL',
+  'URHQ_MODEL',
+  'URHQ_SMALL_FAST_MODEL',
+  'UR_MODEL',
+] as const
+const originalModelEnv = Object.fromEntries(
+  modelEnvKeys.map(key => [key, process.env[key]]),
+) as Record<(typeof modelEnvKeys)[number], string | undefined>
+
+function restoreOriginalModelEnvironment(): void {
+  for (const key of modelEnvKeys) {
+    const original = originalModelEnv[key]
+    if (original === undefined) delete process.env[key]
+    else process.env[key] = original
+  }
+}
+
+function resetModelSelectionState(): void {
+  resetStateForTests()
+  resetSettingsCache()
+  __resetOllamaRouteMemoForTests()
+}
+
+beforeEach(() => {
+  resetModelSelectionState()
+  for (const key of modelEnvKeys) delete process.env[key]
+
+  // Prime the session cache with a controlled snapshot. A plain cache clear is
+  // insufficient here: the next model lookup would immediately reload the
+  // developer's real user/project settings (including provider.model).
+  setSessionSettingsCache({
+    settings: { provider: { active: 'ollama' } },
+    errors: [],
+  })
+})
+
 afterEach(() => {
-  delete process.env.OLLAMA_MODEL
-  delete process.env.OLLAMA_SMALL_FAST_MODEL
-  delete process.env.URHQ_SMALL_FAST_MODEL
+  restoreOriginalModelEnvironment()
+  resetModelSelectionState()
 })
 
 test('the small-fast fallback uses the session model, not a compiled default', async () => {

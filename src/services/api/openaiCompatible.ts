@@ -10,7 +10,11 @@ import {
   getProviderEffortWireValue,
   toOpenRouterReasoningEffort,
 } from '../../utils/effort.js'
-import { resolveProviderId } from '../providers/providerRegistry.js'
+import { logForDebugging } from '../../utils/debug.js'
+import {
+  getProviderReasoningCapabilitiesForModel,
+  resolveProviderId,
+} from '../providers/providerRegistry.js'
 import { normalizeOpenAIChatUsage } from './usageNormalization.js'
 import {
   assertUniqueToolNames,
@@ -42,6 +46,8 @@ type URHQClient = {
   beta: { messages: any }
 }
 
+const TOKEN_COUNT_TIMEOUT_MS = 10_000
+
 type NormalizedImageSource =
   | {
     type: 'base64'
@@ -60,6 +66,7 @@ export async function createOpenAICompatibleClient(
     apiKey?: string
     maxRetries?: number
     providerId?: string
+    fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   },
 ): Promise<URHQClient> {
   const endpoint = normalizeOpenAICompatibleBaseUrl(options.baseUrl)
@@ -81,6 +88,7 @@ export async function createOpenAICompatibleClient(
         body: JSON.stringify(toOpenAICompatibleRequest(params, providerId)),
       },
       {
+        fetch: options.fetch,
         maxRetries,
         timeoutMs: requestOptions?.timeoutMs,
         signal: requestOptions?.signal,
@@ -115,6 +123,7 @@ export async function createOpenAICompatibleClient(
         ),
       },
       {
+        fetch: options.fetch,
         maxRetries,
         timeoutMs: requestOptions?.timeoutMs,
         signal,
@@ -162,14 +171,94 @@ export async function createOpenAICompatibleClient(
           }
           return doRequest(params, requestOptions).then(({ data }) => data)
         },
-        async countTokens(params: any) {
-          return {
-            input_tokens: estimateProviderInputTokens(params),
+        async countTokens(params: any, requestOptions?: any) {
+          const estimate = () => {
+            const translated = toOpenAICompatibleRequest(params, providerId)
+            return {
+              input_tokens: estimateSerializedInputTokens({
+                messages: translated.messages ?? [],
+                tools: translated.tools ?? [],
+              }),
+              source: 'local-estimate' as const,
+            }
+          }
+          if (providerId !== 'llama.cpp' && providerId !== 'vllm') {
+            return estimate()
+          }
+
+          try {
+            const openAIRequest = toOpenAICompatibleRequest(params, providerId)
+            const url = providerId === 'llama.cpp'
+              ? `${endpoint.replace(/\/$/u, '')}/input_tokens`
+              : openAICompatibleAnthropicCountUrl(endpoint)
+            const body = providerId === 'llama.cpp'
+              ? openAIRequest
+              : {
+                  model: params.model,
+                  messages: params.messages?.length
+                    ? params.messages
+                    : [{ role: 'user', content: 'count' }],
+                  ...(params.system !== undefined ? { system: params.system } : {}),
+                  ...(params.tools?.length ? { tools: params.tools } : {}),
+                  ...(params.thinking !== undefined
+                    ? { thinking: params.thinking }
+                    : {}),
+                }
+            const response = await fetchWithProviderReliability(
+              url,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(options.apiKey
+                    ? { Authorization: `Bearer ${options.apiKey}` }
+                    : {}),
+                  ...(requestOptions?.headers ?? {}),
+                },
+                body: JSON.stringify(body),
+              },
+              {
+                fetch: options.fetch,
+                maxRetries,
+                timeoutMs: requestOptions?.timeoutMs ?? TOKEN_COUNT_TIMEOUT_MS,
+                signal: requestOptions?.signal,
+                failureMessage: (failedResponse, responseBody) =>
+                  `${providerId} token-count request failed (${failedResponse.status}): ${responseBody || failedResponse.statusText}`,
+              },
+            )
+            const result = await response.json() as Record<string, unknown>
+            if (
+              typeof result.input_tokens !== 'number' ||
+              !Number.isFinite(result.input_tokens) ||
+              result.input_tokens < 0
+            ) {
+              throw new Error(`${providerId} token-count response omitted input_tokens.`)
+            }
+            return {
+              input_tokens: Math.floor(result.input_tokens),
+              source: 'provider' as const,
+            }
+          } catch (error) {
+            logForDebugging(
+              `[token-count] ${providerId} native count unavailable; using a provider-wire estimate: ${error instanceof Error ? error.message : String(error)}`,
+            )
+            return estimate()
           }
         },
       },
     },
   } as URHQClient
+}
+
+function openAICompatibleAnthropicCountUrl(chatEndpoint: string): string {
+  const url = new URL(chatEndpoint)
+  url.hash = ''
+  url.search = ''
+  url.pathname = url.pathname.replace(
+    /\/chat\/completions\/?$/u,
+    '/messages/count_tokens',
+  )
+  return url.toString().replace(/\/$/u, '')
 }
 
 export function toOpenAICompatibleRequest(
@@ -183,9 +272,10 @@ export function toOpenAICompatibleRequest(
     providerName === 'openrouter' && reasoningEffort
       ? toOpenRouterReasoningEffort(String(params.model ?? ''), reasoningEffort)
       : undefined
-  const openRouterReasoning = openRouterWireEffort
-    ? { effort: openRouterWireEffort }
-    : undefined
+  const openRouterReasoning =
+    providerName === 'openrouter'
+      ? toOpenRouterReasoning(params, openRouterWireEffort)
+      : undefined
   const compatibleReasoningEffort =
     reasoningEffort === 'ultra'
       ? (() => {
@@ -325,6 +415,19 @@ function toOpenAIReasoningEffort(
       ? 'ultra'
       : undefined
   }
+  // There is no cross-server boolean reasoning control in the generic
+  // OpenAI-compatible contract. OpenRouter publishes a model-scoped contract;
+  // other adapters send an effort only when UR resolved one explicitly above.
+  if (providerName !== 'openrouter') return undefined
+  const capabilities = getProviderReasoningCapabilitiesForModel(
+    String(params.model ?? ''),
+    'openrouter',
+  )
+  const advertisesGradedEffort =
+    capabilities?.supportedEfforts === null ||
+    (Array.isArray(capabilities?.supportedEfforts) &&
+      capabilities.supportedEfforts.length > 0)
+  if (!advertisesGradedEffort) return undefined
   if (params.thinking?.type === 'adaptive') return 'medium'
   if (params.thinking?.type !== 'enabled') return undefined
   const budget = Number(params.thinking.budget_tokens ?? 0)
@@ -333,12 +436,54 @@ function toOpenAIReasoningEffort(
   return 'medium'
 }
 
+function toOpenRouterReasoning(
+  params: any,
+  wireEffort: string | undefined,
+): Record<string, unknown> | undefined {
+  if (wireEffort) return { effort: wireEffort }
+  if (
+    params.thinking?.type !== 'enabled' &&
+    params.thinking?.type !== 'adaptive'
+  ) {
+    return undefined
+  }
+  const capabilities = getProviderReasoningCapabilitiesForModel(
+    String(params.model ?? ''),
+    'openrouter',
+  )
+  if (!capabilities || capabilities.supportsThinking === false) return undefined
+  const advertisesReasoning =
+    capabilities.supportsThinking === true ||
+    capabilities.supportedEfforts !== undefined ||
+    capabilities.defaultEffort !== undefined ||
+    capabilities.defaultEnabled !== undefined ||
+    capabilities.mandatory !== undefined ||
+    capabilities.supportsMaxTokens === true
+  if (!advertisesReasoning) return undefined
+  const budget = Number(params.thinking?.budget_tokens ?? 0)
+  if (
+    capabilities.supportsMaxTokens === true &&
+    Number.isFinite(budget) &&
+    budget > 0
+  ) {
+    return { max_tokens: Math.floor(budget) }
+  }
+  // OpenRouter's documented provider-default control is the only safe choice
+  // when a model advertises reasoning but no graded effort vocabulary.
+  return { enabled: true }
+}
+
 export function estimateProviderInputTokens(params: any): number {
-  const serialized = JSON.stringify({
+  return estimateSerializedInputTokens({
     system: params.system ?? null,
     messages: params.messages ?? [],
     tools: params.tools ?? [],
   })
+}
+
+/** Conservative tokenizer-independent estimate of an already translated wire payload. */
+export function estimateSerializedInputTokens(value: unknown): number {
+  const serialized = JSON.stringify(value) ?? ''
   return Math.max(1, Math.ceil(serialized.length / 4))
 }
 

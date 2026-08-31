@@ -16,7 +16,7 @@ import {
 } from '../services/compact/autoCompact.js'
 import {
   countMessagesTokensWithAPI,
-  countTokensViamodelHFallback,
+  estimateMessagesTokensLocally,
   roughTokenCountEstimation,
 } from '../services/tokenEstimation.js'
 import { estimateSkillFrontmatterTokens } from '../skills/loadSkillsDir.js'
@@ -83,28 +83,14 @@ async function countTokensWithFallback(
       return result
     }
     logForDebugging(
-      `countTokensWithFallback: API returned null, trying modelH fallback (${tools.length} tools)`,
+      `countTokensWithFallback: provider count unavailable, using local structured estimate (${tools.length} tools)`,
     )
   } catch (err) {
     logForDebugging(`countTokensWithFallback: API failed: ${errorMessage(err)}`)
     logError(err)
   }
 
-  try {
-    const fallbackResult = await countTokensViamodelHFallback(messages, tools)
-    if (fallbackResult === null) {
-      logForDebugging(
-        `countTokensWithFallback: modelH fallback also returned null (${tools.length} tools)`,
-      )
-    }
-    return fallbackResult
-  } catch (err) {
-    logForDebugging(
-      `countTokensWithFallback: modelH fallback failed: ${errorMessage(err)}`,
-    )
-    logError(err)
-    return null
-  }
+  return estimateMessagesTokensLocally(messages, tools)
 }
 
 interface ContextCategory {

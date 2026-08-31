@@ -5,8 +5,15 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growt
 import { resolveAntModel } from './model/antModels.js'
 import { getCanonicalName } from './model/model.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
-import { getAPIProvider, isFirstPartyRuntime } from './model/providers.js'
+import {
+  getRuntimeModelReasoningCapabilities,
+  getRuntimeProvider,
+} from './model/providers.js'
 import { getSettingsWithErrors } from './settings/settings.js'
+import type {
+  ModelReasoningCapabilities,
+} from '../services/providers/modelCatalog.js'
+import type { ProviderId } from '../services/providers/providerRegistry.js'
 
 export type ThinkingConfig =
   | { type: 'adaptive' }
@@ -86,53 +93,82 @@ export function getRainbowColor(
   return colors[charIndex % colors.length]!
 }
 
-// TODO(inigo): add support for probing unknown models via API error detection
-// Provider-aware thinking support detection (aligns with modelSupportsISP in betas.ts)
-export function modelSupportsThinking(model: string): boolean {
-  const provider = getAPIProvider()
-  if (provider === 'ollama') {
-    // The Ollama adapter probes the selected model's advertised capabilities
-    // and only sends `think` to models that support it.
+function reasoningMetadataSupportsThinking(
+  capabilities: ModelReasoningCapabilities | undefined,
+): boolean | undefined {
+  if (!capabilities) return undefined
+  if (capabilities.supportsThinking !== undefined) {
+    return capabilities.supportsThinking
+  }
+  if (capabilities.supportedEfforts === null) return true
+  if (Array.isArray(capabilities.supportedEfforts)) {
+    return capabilities.supportedEfforts.length > 0
+  }
+  if (
+    capabilities.defaultEffort !== undefined ||
+    capabilities.defaultEnabled !== undefined ||
+    capabilities.mandatory !== undefined ||
+    capabilities.supportsMaxTokens === true
+  ) {
     return true
   }
+  return undefined
+}
 
+/**
+ * Synchronous capability check backed only by provider-authored discovery,
+ * model-scoped probes, or an explicit user override. Unknown models are kept
+ * unknown/disabled until `ensureProviderReasoningCapabilitiesForModel` has
+ * completed; UR never discovers support by sending an optimistic production
+ * request and hoping a 400 response explains the provider's schema.
+ */
+export function modelSupportsThinking(
+  model: string,
+  provider: ProviderId = getRuntimeProvider(),
+): boolean {
   const supported3P = get3PModelCapabilityOverride(model, 'thinking')
   if (supported3P !== undefined) {
     return supported3P
   }
+  const discovered = reasoningMetadataSupportsThinking(
+    getRuntimeModelReasoningCapabilities(model, provider),
+  )
+  if (discovered !== undefined) return discovered
   if (process.env.USER_TYPE === 'ant') {
     if (resolveAntModel(model.toLowerCase())) {
       return true
     }
   }
-  if (provider === 'foundry' || isFirstPartyRuntime()) {
-    return true
-  }
   return false
 }
 
-export function modelSupportsAdaptiveThinking(model: string): boolean {
+export function modelSupportsAdaptiveThinking(
+  model: string,
+  provider: ProviderId = getRuntimeProvider(),
+): boolean {
   const supported3P = get3PModelCapabilityOverride(model, 'adaptive_thinking')
   if (supported3P !== undefined) {
     return supported3P
   }
-  if (getAPIProvider() === 'ollama') {
+  if (provider === 'ollama') {
     return false
   }
-  void model
   // IMPORTANT: Do not change adaptive thinking support without notifying the
   // model launch DRI and research. This can greatly affect model quality and
   // bashing.
-
-  // Newer models (4.6+) are all trained on adaptive thinking and MUST have it
-  // enabled for model testing. DO NOT default to false for first party, otherwise
-  // we may silently degrade model quality.
-
-  // Default to true for unknown model strings on 1P and Foundry (because Foundry
-  // is a proxy). Do not default to true for other 3P as they have different formats
-  // for their model strings.
-  const provider = getAPIProvider()
-  return isFirstPartyRuntime() || provider === 'foundry'
+  const capabilities = getRuntimeModelReasoningCapabilities(model, provider)
+  if (reasoningMetadataSupportsThinking(capabilities) !== true) return false
+  // Claude 4.5 supports only the older budgeted mode. Current Claude 4.6+
+  // models and native graded-reasoning APIs use adaptive/provider-native
+  // control. An explicit adaptive_thinking override remains authoritative.
+  if (provider === 'anthropic-api' && /claude-(?:opus|sonnet)-4[-_.]?5(?:\b|$)/iu.test(model)) {
+    return false
+  }
+  return (
+    capabilities?.supportedEfforts === null ||
+    (Array.isArray(capabilities?.supportedEfforts) &&
+      capabilities.supportedEfforts.length > 0)
+  )
 }
 
 export function shouldEnableThinkingByDefault(): boolean {

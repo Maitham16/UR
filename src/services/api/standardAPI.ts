@@ -5,6 +5,11 @@
  */
 
 import { randomUUID } from 'crypto'
+import { logForDebugging } from '../../utils/debug.js'
+import {
+  getProviderEffortWireValue,
+  isEffortLevel,
+} from '../../utils/effort.js'
 import {
   getProviderFamily,
   resolveProviderId,
@@ -12,9 +17,10 @@ import {
 import {
   assertNoImageBlocks,
   contentToText,
+  estimateProviderInputTokens,
+  estimateSerializedInputTokens,
   normalizeImageBlockSource,
   parseOpenAICompatibleResponse,
-  estimateProviderInputTokens,
   systemToText,
   toOpenAICompatibleRequest,
 } from './openaiCompatible.js'
@@ -26,6 +32,7 @@ import {
 } from './providerClient.js'
 import {
   axiosPostWithProviderReliability,
+  fetchWithProviderReliability,
   normalizeGeminiBaseUrl,
   normalizeProviderEndpoint,
 } from './providerHttp.js'
@@ -47,12 +54,10 @@ import {
   ToolSchemaValidationError,
 } from './toolSchema.js'
 import { normalizeGeminiUsage } from './usageNormalization.js'
-import {
-  getProviderEffortWireValue,
-  isEffortLevel,
-} from '../../utils/effort.js'
+import { toOpenAIInputTokenCountRequest } from './openaiResponses.js'
 
 const ANTHROPIC_VERSION = '2023-06-01'
+const TOKEN_COUNT_TIMEOUT_MS = 10_000
 
 type URHQClient = {
   beta: { messages: any }
@@ -64,6 +69,7 @@ export async function createStandardAPIClient(options: {
   maxRetries: number
   model?: string
   baseUrl?: string
+  fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 }): Promise<URHQClient> {
   const { providerId, apiKey, baseUrl, maxRetries } = options
   const family = getProviderFamily(providerId)
@@ -158,12 +164,131 @@ export async function createStandardAPIClient(options: {
         }),
       }))
     },
-    async countTokens(params: any) {
-      return { input_tokens: estimateTokenCount(params) }
+    async countTokens(params: any, requestOptions?: any) {
+      let countBody: Record<string, unknown> | undefined
+      try {
+        const { endpoint, body } = buildTokenCountRequest(
+          family,
+          baseUrl,
+          params,
+          providerId,
+        )
+        countBody = body
+        const response = await fetchWithProviderReliability(
+          endpoint,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...buildAuthHeaders(family, apiKey, params),
+              ...(requestOptions?.headers ?? {}),
+            },
+            body: JSON.stringify(body),
+          },
+          {
+            fetch: options.fetch,
+            maxRetries,
+            timeoutMs: requestOptions?.timeoutMs ?? TOKEN_COUNT_TIMEOUT_MS,
+            signal: requestOptions?.signal,
+            failureMessage: (failedResponse, responseBody) =>
+              `${family} token-count request failed (${failedResponse.status}): ${responseBody || failedResponse.statusText}`,
+          },
+        )
+        const result = await response.json()
+        return {
+          input_tokens: parseProviderTokenCount(family, result),
+          source: 'provider' as const,
+        }
+      } catch (error) {
+        logForDebugging(
+          `[token-count] ${providerId} native count unavailable; using a provider-wire estimate: ${error instanceof Error ? error.message : String(error)}`,
+        )
+        return {
+          input_tokens: countBody
+            ? estimateSerializedInputTokens(countBody)
+            : estimateTokenCount(params),
+          source: 'local-estimate' as const,
+        }
+      }
     },
   }
 
   return { beta: { messages: messagesAPI } } as URHQClient
+}
+
+/**
+ * Build the provider's documented, non-generating token-count request.
+ *
+ * OpenAI uses Responses `/input_tokens`, Anthropic mirrors Messages at
+ * `/messages/count_tokens`, and Gemini accepts a GenerateContent request at
+ * `:countTokens`. Keeping the translation beside normal request translation
+ * prevents context analysis from accidentally sending an Anthropic-shaped
+ * body to an unrelated provider.
+ */
+export function buildTokenCountRequest(
+  family: string,
+  baseUrl: string | undefined,
+  params: any,
+  providerId: string,
+): { endpoint: string; body: Record<string, unknown> } {
+  switch (family) {
+    case 'openai': {
+      return {
+        endpoint: normalizeProviderEndpoint(
+          baseUrl,
+          'https://api.openai.com/v1',
+          '/responses/input_tokens',
+        ),
+        body: toOpenAIInputTokenCountRequest(params),
+      }
+    }
+    case 'anthropic': {
+      const request = buildAPIRequest(family, params, providerId)
+      const {
+        max_tokens: _maxTokens,
+        metadata: _metadata,
+        stream: _stream,
+        ...body
+      } = request
+      return {
+        endpoint: normalizeProviderEndpoint(
+          baseUrl,
+          'https://api.anthropic.com/v1',
+          '/messages/count_tokens',
+        ),
+        body,
+      }
+    }
+    case 'google': {
+      const request = buildAPIRequest(family, params, providerId)
+      return {
+        endpoint: `${normalizeGeminiBaseUrl(baseUrl)}/models/${params.model}:countTokens`,
+        body: {
+          generateContentRequest: {
+            model: `models/${params.model}`,
+            ...request,
+          },
+        },
+      }
+    }
+    default:
+      throw new Error(`Provider family "${family}" has no native token-count contract.`)
+  }
+}
+
+export function parseProviderTokenCount(family: string, value: unknown): number {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${family} token-count response was not an object.`)
+  }
+  const response = value as Record<string, unknown>
+  const raw =
+    family === 'google'
+      ? response.totalTokens ?? response.total_tokens
+      : response.input_tokens
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0) {
+    throw new Error(`${family} token-count response omitted a valid count.`)
+  }
+  return Math.floor(raw)
 }
 
 function getAPIEndpoint(

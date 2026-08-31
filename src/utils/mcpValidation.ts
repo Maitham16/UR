@@ -6,6 +6,7 @@ import type {
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
   countMessagesTokensWithAPI,
+  estimateMessagesTokensLocally,
   roughTokenCountEstimation,
 } from '../services/tokenEstimation.js'
 import { compressImageBlock } from './imageResizer.js'
@@ -162,18 +163,18 @@ export async function mcpContentNeedsTruncation(
     return false
   }
 
+  const messages = [{ role: 'user' as const, content }]
   try {
-    const messages =
-      typeof content === 'string'
-        ? [{ role: 'user' as const, content }]
-        : [{ role: 'user' as const, content }]
-
-    const tokenCount = await countMessagesTokensWithAPI(messages, [])
-    return !!(tokenCount && tokenCount > getMaxMcpOutputTokens())
+    const tokenCount =
+      (await countMessagesTokensWithAPI(messages, [])) ??
+      estimateMessagesTokensLocally(messages, [])
+    return tokenCount > getMaxMcpOutputTokens()
   } catch (error) {
     logError(error)
-    // Assume no truncation needed on error
-    return false
+    // Never let a provider/tokenizer outage disable the local size guard.
+    return (
+      estimateMessagesTokensLocally(messages, []) > getMaxMcpOutputTokens()
+    )
   }
 }
 

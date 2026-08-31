@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   contentToText,
-  estimateProviderInputTokens,
+  estimateSerializedInputTokens,
   mapOpenAIToolChoice,
   normalizeImageBlockSource,
   systemToText,
@@ -27,6 +27,7 @@ import {
   type OpenAIResponseStateStatus,
 } from './openaiResponsesState.js'
 import { normalizeOpenAIResponsesUsage } from './usageNormalization.js'
+import { logForDebugging } from '../../utils/debug.js'
 import {
   getProviderEffortWireValue,
   isEffortLevel,
@@ -76,6 +77,7 @@ const TERMINAL_STATUSES = new Set<OpenAIResponseStateStatus>([
   'incomplete',
 ])
 const RESPONSE_ID_RE = /^[A-Za-z0-9_-]{1,200}$/u
+const TOKEN_COUNT_TIMEOUT_MS = 10_000
 
 function responsesEndpoint(baseUrl?: string): string {
   const url = new URL(baseUrl ?? 'https://api.openai.com/v1')
@@ -459,6 +461,35 @@ export function toOpenAIResponsesRequest(
   }
 }
 
+/** Request fields accepted by OpenAI's non-generating input-token endpoint. */
+export function toOpenAIInputTokenCountRequest(
+  params: any,
+  options: {
+    toolSearch?: OpenAIResponsesToolSearchMode
+  } = {},
+): Record<string, unknown> {
+  const request = toOpenAIResponsesRequest(params, {
+    store: false,
+    toolSearch: options.toolSearch,
+  })
+  return Object.fromEntries(
+    [
+      'input',
+      'instructions',
+      'model',
+      'parallel_tool_calls',
+      'previous_response_id',
+      'reasoning',
+      'text',
+      'tool_choice',
+      'tools',
+      'truncation',
+    ].flatMap(key =>
+      request[key] === undefined ? [] : [[key, request[key]]],
+    ),
+  )
+}
+
 function parsedArguments(item: any): Record<string, unknown> {
   if (typeof item.arguments !== 'string') return {}
   try {
@@ -588,6 +619,33 @@ export class OpenAIResponsesHTTPTransport {
   ): Promise<RawResponse> {
     const body = { ...this.toRequest(params), stream: false, background: true }
     return this.create(body, options)
+  }
+
+  async countInputTokens(
+    params: any,
+    options: OpenAIResponsesRawRequestOptions = {},
+  ): Promise<number> {
+    const body = toOpenAIInputTokenCountRequest(params, {
+      toolSearch: this.#toolSearch,
+    })
+    const response = await this.#request(
+      `${this.endpoint}/input_tokens`,
+      'POST',
+      body,
+      options,
+    )
+    const value = await response.json() as Record<string, unknown>
+    if (
+      typeof value.input_tokens !== 'number' ||
+      !Number.isFinite(value.input_tokens) ||
+      value.input_tokens < 0
+    ) {
+      throw new ProviderResponseParseError(
+        'OpenAI Responses token-count response omitted input_tokens.',
+        { value },
+      )
+    }
+    return Math.floor(value.input_tokens)
   }
 
   async retrieve(
@@ -797,8 +855,31 @@ export async function createOpenAIResponsesClient(
         }
       })
     },
-    async countTokens(params: any) {
-      return { input_tokens: estimateProviderInputTokens(params) }
+    async countTokens(
+      params: any,
+      requestOptions?: OpenAIResponsesRawRequestOptions,
+    ) {
+      try {
+        return {
+          input_tokens: await transport.countInputTokens(params, {
+            ...requestOptions,
+            timeoutMs: requestOptions?.timeoutMs ?? TOKEN_COUNT_TIMEOUT_MS,
+          }),
+          source: 'provider' as const,
+        }
+      } catch (error) {
+        logForDebugging(
+          `[token-count] openai-api native count unavailable; using a provider-wire estimate: ${error instanceof Error ? error.message : String(error)}`,
+        )
+        return {
+          input_tokens: estimateSerializedInputTokens(
+            toOpenAIInputTokenCountRequest(params, {
+              toolSearch: options.toolSearch,
+            }),
+          ),
+          source: 'local-estimate' as const,
+        }
+      }
     },
   }
   return {

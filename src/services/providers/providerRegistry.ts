@@ -2445,9 +2445,10 @@ export function getProviderReasoningCapabilitiesForModel(
     ...getCachedProviderModels(providerId, settings),
     ...(PROVIDER_MODELS[providerId] ?? []),
   ]
-  const match =
-    known.find(entry => entry.id.toLowerCase() === wanted) ??
-    known.find(entry => wanted.includes(entry.id.toLowerCase()))
+  // Capability request shaping must use an exact model identity. Substring
+  // inheritance can silently attach one model's reasoning contract to a new
+  // or vendor-prefixed model whose provider never advertised it.
+  const match = known.find(entry => entry.id.toLowerCase() === wanted)
   return match?.reasoning
 }
 
@@ -2486,7 +2487,9 @@ function reasoningCapabilitiesFromOllamaShow(
         .map(entry => entry.trim().toLowerCase())
     : undefined
   if (!capabilities) return undefined
-  if (!capabilities.includes('thinking')) return { supportedEfforts: [] }
+  if (!capabilities.includes('thinking')) {
+    return { supportedEfforts: [] }
+  }
 
   const details =
     root.details && typeof root.details === 'object'
@@ -2513,7 +2516,9 @@ function reasoningCapabilitiesFromOllamaShow(
     }
   }
 
-  return { supportedEfforts: ['low', 'medium', 'high', 'max'] }
+  return {
+    supportedEfforts: ['low', 'medium', 'high', 'max'],
+  }
 }
 
 function reasoningCapabilitiesFromProps(

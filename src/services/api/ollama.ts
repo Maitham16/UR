@@ -171,6 +171,7 @@ export function createOllamaURHQClient(
         }) {
           return {
             input_tokens: estimateInputTokens(params),
+            source: 'local-estimate' as const,
           }
         },
       },

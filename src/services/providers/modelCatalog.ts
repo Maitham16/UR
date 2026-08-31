@@ -21,6 +21,8 @@
 export type ModelPricingTier = 'free' | 'paid' | 'unknown'
 
 export type ModelReasoningCapabilities = {
+  /** Explicit boolean reasoning/thinking support, independent of graded effort. */
+  supportsThinking?: boolean
   /**
    * Provider-advertised effort values. `null` means the gateway accepts every
    * normalized effort value; `undefined` means it did not advertise effort
@@ -132,8 +134,15 @@ export function parseModelReasoningCapabilities(
       : typeof value.supportsMaxTokens === 'boolean'
         ? value.supportsMaxTokens
       : undefined
+  const supportsThinking =
+    typeof value.supports_thinking === 'boolean'
+      ? value.supports_thinking
+      : typeof value.supportsThinking === 'boolean'
+        ? value.supportsThinking
+        : undefined
 
   if (
+    supportsThinking === undefined &&
     supportedEfforts === undefined &&
     (effortAliases === undefined || Object.keys(effortAliases).length === 0) &&
     defaultEffort === undefined &&
@@ -145,6 +154,7 @@ export function parseModelReasoningCapabilities(
   }
 
   return {
+    ...(supportsThinking !== undefined ? { supportsThinking } : {}),
     ...(supportedEfforts !== undefined ? { supportedEfforts } : {}),
     ...(effortAliases && Object.keys(effortAliases).length > 0
       ? { effortAliases }
@@ -248,7 +258,12 @@ export function toDiscoveredModel(entry: unknown, providerLabel: string): Discov
       ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string')
       : undefined
   const capabilities = isRecord(raw.capabilities) ? raw.capabilities : undefined
-  const reasoning = parseModelReasoningCapabilities(raw.reasoning)
+  const parsedReasoning = parseModelReasoningCapabilities(raw.reasoning)
+  const advertisesReasoning = supportedParameters?.some(parameter =>
+    /^(?:reasoning|reasoning_effort|thinking)$/iu.test(parameter.trim()),
+  )
+  const reasoning = parsedReasoning ??
+    (advertisesReasoning ? { supportsThinking: true } : undefined)
   const expirationDate = asEpochSeconds(raw.expiration_date)
   const deprecated =
     raw.deprecated === true ||

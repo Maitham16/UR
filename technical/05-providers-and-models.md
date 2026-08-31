@@ -212,6 +212,36 @@ graded selector.
   shows `ultra→max`; GPT-OSS tops out at `high` and therefore omits Ultra. llama.cpp is probed
   lazily through its model-scoped `/props` contract.
 
+Unknown/future models are fail-closed for thinking request shaping: UR first consumes live
+provider metadata, curated contracts, `/api/show` (Ollama), or `/props` (llama.cpp). If none
+of those sources establishes thinking support, UR omits the thinking field instead of sending
+a speculative production request and interpreting a 400 response. Boolean thinking metadata
+can enable the thinking toggle without fabricating graded effort levels. For OpenRouter, that
+maps to its documented [`reasoning.enabled`](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens);
+when the model instead advertises
+`supports_max_tokens`, UR preserves the configured budget as `reasoning.max_tokens`.
+
+## Provider-aware token accounting
+
+Context analysis, file limits, and MCP-output truncation use the selected model's runtime
+family. OpenAI calls `POST /responses/input_tokens`; Anthropic calls
+`POST /messages/count_tokens`; Gemini calls `models.countTokens`; llama.cpp uses
+`POST /v1/chat/completions/input_tokens`; and vLLM uses its Anthropic-compatible
+`POST /v1/messages/count_tokens`. The same translated messages, system instructions, images,
+and tool schemas used for inference are supplied to the count endpoint.
+
+Ollama, OpenRouter, LM Studio, Unsloth, and subscription CLIs do not expose one universal,
+non-generating preflight tokenizer for the complete chat-and-tools request. UR therefore uses
+an explicit provider-wire estimate for those runtimes and on native count failure. It never
+runs a hidden one-token completion merely to obtain usage. The local estimate also remains the
+fallback for MCP truncation, so a tokenizer outage cannot silently disable the output limit.
+
+Primary contracts: [OpenAI input tokens](https://developers.openai.com/api/reference/typescript/resources/responses/subresources/input_tokens),
+[Anthropic token counting](https://platform.claude.com/docs/en/build-with-claude/token-counting),
+[Gemini token counting](https://ai.google.dev/gemini-api/docs/generate-content/tokens),
+[llama.cpp server API](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md),
+and [vLLM online serving](https://docs.vllm.ai/en/latest/serving/openai_compatible_server/).
+
 ## Session behavior knobs
 
 | Feature | Command | Notes |

@@ -39,7 +39,14 @@ export type ProviderMessageClient = {
         params: Record<string, unknown>,
         options?: Record<string, unknown>,
       ) => ProviderMessage | ProviderStreamCreateResult | Promise<ProviderMessage>
-      countTokens?: (params: Record<string, unknown>) => Promise<{ input_tokens: number }>
+      countTokens?: (
+        params: Record<string, unknown>,
+        options?: Record<string, unknown>,
+      ) => Promise<{
+        input_tokens: number
+        /** Whether the provider tokenized the request or UR estimated its wire payload. */
+        source?: 'provider' | 'local-estimate'
+      }>
     }
   }
   models?: {
@@ -437,6 +444,7 @@ async function createOpenAICompatibleProviderClient(
     apiKey,
     maxRetries: options.maxRetries ?? 3,
     providerId,
+    fetch: options.fetchOverride,
   }) as ProviderMessageClient
 }
 
@@ -528,6 +536,7 @@ async function createAPIClient(
     baseUrl: resolveProviderBaseUrl(providerId, settings),
     maxRetries: options.maxRetries ?? 3,
     model: options.model,
+    fetch: options.fetchOverride,
   }) as ProviderMessageClient
 }
 

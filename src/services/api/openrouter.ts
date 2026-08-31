@@ -5,7 +5,7 @@
 
 import { randomUUID } from 'crypto'
 import {
-  estimateProviderInputTokens,
+  estimateSerializedInputTokens,
   parseOpenAICompatibleResponse,
   toOpenAICompatibleRequest,
 } from './openaiCompatible.js'
@@ -140,6 +140,7 @@ export async function createOpenRouterClient(
     async countTokens(params: any) {
       return {
         input_tokens: estimateTokenCount(params),
+        source: 'local-estimate' as const,
       }
     },
   }
@@ -152,5 +153,9 @@ export async function createOpenRouterClient(
 }
 
 function estimateTokenCount(params: any): number {
-  return estimateProviderInputTokens(params)
+  const request = toOpenAICompatibleRequest(params, 'openrouter')
+  return estimateSerializedInputTokens({
+    messages: request.messages ?? [],
+    tools: request.tools ?? [],
+  })
 }
