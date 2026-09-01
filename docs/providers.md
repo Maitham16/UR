@@ -273,6 +273,29 @@ remain authoritative. See OpenRouter's
 [provider routing](https://openrouter.ai/docs/guides/routing/provider-selection),
 [Auto Exacto](https://openrouter.ai/docs/guides/routing/auto-exacto), and
 [prompt caching](https://openrouter.ai/docs/guides/best-practices/prompt-caching).
+
+Direct Anthropic requests retain supported prompt-cache breakpoints and enable
+per-tool `eager_input_streaming` on streaming turns. This reduces repeated
+prefill work and avoids waiting for a complete large tool argument before its
+deltas arrive. Anthropic's premium fast tier remains explicit:
+
+```sh
+ur config set anthropic.speed fast
+```
+
+UR sends `speed: "fast"` with the `fast-mode-2026-02-01` beta only for Claude
+Opus 5 and Opus 4.8, and retains `usage.speed` so accounting can distinguish the
+tier actually served. Enabled account access is still required. Unsupported
+models stay on standard speed. See Anthropic's
+[prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching),
+[fine-grained tool streaming](https://platform.claude.com/docs/en/agents-and-tools/tool-use/fine-grained-tool-streaming),
+and [fast mode](https://platform.claude.com/docs/en/build-with-claude/fast-mode).
+
+UR uses only provider-documented acceleration controls. OpenAI Responses
+already has native streaming and WebSocket continuation; Gemini 2.5+ implicit
+caching is automatic. Google's Priority tier requires the Interactions API and
+is not a valid `generateContent` option. NVIDIA NIM and local servers publish
+no universal OpenRouter-style routing field, so UR does not invent one.
 API-key entry for
 OpenAI, Claude, Gemini, OpenRouter, NVIDIA NIM, and authenticated compatible
 endpoints is a single aligned masked row; the key is stored in the OS keychain
@@ -284,8 +307,9 @@ OpenAI-compatible endpoints may remain anonymous.
 
 UR uses each provider's non-generating count endpoint when one covers the full
 request: OpenAI Responses input tokens, Anthropic Messages token counting,
-Gemini `countTokens`, llama.cpp chat input tokens, and vLLM/NVIDIA NIM Messages
-token counting. Ollama, OpenRouter, LM Studio, Unsloth, and subscription CLIs use a
+Gemini `countTokens`, llama.cpp chat input tokens, and vLLM Messages token
+counting. NVIDIA's hosted NIM API has no documented token-count route;
+NVIDIA NIM, Ollama, OpenRouter, LM Studio, Unsloth, and subscription CLIs use a
 provider-wire local estimate because those runtimes do not share a dependable
 preflight tokenizer for complete chat history plus tools. UR never launches a
 hidden completion for token counting. If a native count call is unavailable,
@@ -427,7 +451,7 @@ ur config set provider anthropic-api
 | --- | --- | --- |
 | API providers (openai-api, anthropic-api, gemini-api) | Live discovery from the provider's `/models` endpoint using your connected key (curated fallback until connected) | live |
 | OpenRouter | Live `/models` discovery with an endpoint-scoped five-minute cache; Ctrl+R forces a fresh request with no stale fallback | live/cache |
-| NVIDIA NIM | Hosted: live `/models` intersected with the connected account's ACTIVE NVCF functions, then restricted to agent/chat endpoints. Configured NIM gateway: its own live `/models` catalog | live |
+| NVIDIA NIM | Hosted: authoritative live `/models`, restricted to agent/chat endpoints. Configured NIM gateway: its own live `/models` catalog | live |
 | Local/server providers (ollama, lmstudio, llama.cpp, vllm, unsloth) | Dynamic discovery from the selected provider endpoint | live |
 | OpenAI-compatible | Dynamic discovery from configured endpoint | live |
 | Subscription CLIs (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Curated list (the official CLIs expose no models API); first-class in `/model`, dispatched via the official CLI. External CLI behavior depends on the vendor CLI. Log in with `ur auth <provider>` | static |
@@ -664,28 +688,38 @@ ur provider doctor nvidia-nim
 ur config set base_url nvidia-nim https://nim-gateway.example/v1
 ```
 
-The default is `https://integrate.api.nvidia.com/v1`. NVIDIA's hosted
-`/v1/models` response can be broader than the functions that the connected
-account can actually invoke. UR therefore intersects it with the authenticated
-NVCF `GET /v2/nvcf/functions` inventory, keeps only `ACTIVE` matches, and
-removes embedding, guard, parser, translation, reward, and similar non-agent
-endpoints. A custom enterprise or self-hosted NIM remains independent and uses
+The default is `https://integrate.api.nvidia.com/v1`. NVIDIA documents
+`/v1/models` as the management endpoint for models available for inference, so
+UR uses that authenticated response as the live hosted catalog. It removes
+embedding, guard, parser, translation, reward, and similar non-agent endpoints,
+but does not intersect the result with NVCF's separate deployment-function
+inventory. A custom enterprise or self-hosted NIM remains independent and uses
 only that configured gateway's `/models` response.
 
-UR calls `/models`, `/chat/completions`, and, when available, `/messages/count_tokens`; native
-count failure falls back to a provider-wire estimate and never launches a
-hidden completion. Streaming, standard tool calls, and image input use the
+The Build web catalog also contains download-only NIMs. UR does not add those
+cards to the hosted picker: only IDs returned by the authenticated hosted
+`/v1/models` endpoint can appear. UR focuses
+`nvidia/nemotron-3.5-lightning-30b-a3b` first because NVIDIA documents it as
+its fastest 30B model for long-running agents. Left/Right can turn that exact
+model's thinking off/on through NVIDIA's documented
+`chat_template_kwargs.enable_thinking`; other NIM models receive only their
+own advertised reasoning contract.
+
+UR calls `/models` and `/chat/completions`. It counts NVIDIA requests with a
+provider-wire local estimate instead of first calling the unsupported hosted
+`/messages/count_tokens` route, and never launches a hidden completion.
+Streaming, standard tool calls, and image input use the
 same OpenAI-compatible adapter. Vision and tools remain model-dependent. For
 documented Nemotron coding-agent models, UR includes NVIDIA's
 `force_nonempty_content` template option when tools are present. See NVIDIA's
 [NIM LLM API reference](https://docs.api.nvidia.com/nim/reference/llm-apis)
-and [NVCF API scope reference](https://docs.nvidia.com/nvcf/api#scope-reference).
+and [NIM endpoint guide](https://docs.nvidia.com/nim/large-language-models/latest/tutorials.html).
 
-`ur provider doctor nvidia-nim` verifies both the hosted catalog and the
-selected model against the account-active inventory. If NVIDIA retires a
-function after selection, UR redacts NVIDIA's internal function/account IDs,
-removes that model from the current endpoint-scoped session catalog, and asks
-the user to select an active model. `Ctrl+R` explicitly retries discovery.
+`ur provider doctor nvidia-nim` verifies the hosted catalog and selected model
+against the live `/v1/models` response. If NVIDIA rejects a listed model after
+selection, UR redacts NVIDIA's internal function/account IDs, removes that
+model from the current endpoint-scoped session catalog, and asks the user to
+select another model. `Ctrl+R` explicitly retries discovery.
 
 Local/server providers use their normal endpoints:
 

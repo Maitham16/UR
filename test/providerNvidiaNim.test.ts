@@ -19,6 +19,7 @@ import {
   getSupportedEffortLevelsForModel,
 } from '../src/utils/effort.js'
 import { SettingsSchema } from '../src/utils/settings/types.js'
+import { providerSupportsThinkingToggle } from '../src/utils/thinking.js'
 
 beforeEach(() => clearProviderModelCacheForTests())
 afterEach(() => clearProviderModelCacheForTests())
@@ -51,7 +52,7 @@ describe('NVIDIA NIM provider integration', () => {
     ).toBe(true)
   })
 
-  test('discovers the account catalog with bearer auth and enriches only documented effort contracts', async () => {
+  test('uses the hosted models endpoint as the live catalog and enriches only documented effort contracts', async () => {
     const requests: Array<{ url: string; authorization: string | null }> = []
     const result = await listModelsForProviderWithSource('nvidia-nim', {
       adapters: {
@@ -62,20 +63,11 @@ describe('NVIDIA NIM provider integration', () => {
             url: String(input),
             authorization: headers.get('authorization'),
           })
-          if (String(input).includes('api.nvcf.nvidia.com')) {
-            return Response.json({
-              functions: [
-                { name: 'ai-deepseek-v4-flash', status: 'ACTIVE', tags: [] },
-                { name: 'ai-future-model', status: 'ACTIVE', tags: [] },
-                { name: 'ai-nemotron-parse', status: 'ACTIVE', tags: [] },
-                { name: 'ai-yi-large', status: 'INACTIVE', tags: [] },
-              ],
-            })
-          }
           return Response.json({
             data: [
               { id: '01-ai/yi-large' },
               { id: 'deepseek-ai/deepseek-v4-flash' },
+              { id: 'nvidia/nemotron-3.5-lightning-30b-a3b' },
               { id: 'nvidia/nemotron-parse' },
               { id: 'vendor/future-model', supported_parameters: ['reasoning_effort'] },
             ],
@@ -89,13 +81,11 @@ describe('NVIDIA NIM provider integration', () => {
         url: 'https://integrate.api.nvidia.com/v1/models',
         authorization: 'Bearer nvapi-test',
       },
-      {
-        url: 'https://api.nvcf.nvidia.com/v2/nvcf/functions?visibility=authorized&visibility=public',
-        authorization: 'Bearer nvapi-test',
-      },
     ])
     expect(result.source).toBe('live')
     expect(result.models.map(model => model.id)).toEqual([
+      'nvidia/nemotron-3.5-lightning-30b-a3b',
+      '01-ai/yi-large',
       'deepseek-ai/deepseek-v4-flash',
       'vendor/future-model',
     ])
@@ -115,6 +105,29 @@ describe('NVIDIA NIM provider integration', () => {
     expect(
       getSupportedEffortLevelsForModel('vendor/future-model', 'nvidia-nim'),
     ).toEqual([])
+    expect(result.models[0]).toMatchObject({
+      isDefault: true,
+      reasoning: { supportsThinking: true, defaultEnabled: true },
+    })
+    expect(
+      providerSupportsThinkingToggle(
+        'nvidia-nim',
+        'nvidia/nemotron-3.5-lightning-30b-a3b',
+      ),
+    ).toBe(true)
+    expect(
+      providerSupportsThinkingToggle('nvidia-nim', 'moonshotai/kimi-k3'),
+    ).toBe(false)
+    expect(
+      getSupportedEffortLevelsForModel('moonshotai/kimi-k3', 'nvidia-nim'),
+    ).toEqual(['low', 'high', 'max', 'ultra'])
+    expect(
+      getProviderEffortWireValue(
+        'moonshotai/kimi-k3',
+        'ultra',
+        'nvidia-nim',
+      ),
+    ).toBe('max')
   })
 
   test('does not apply the hosted account inventory to a configured NIM gateway', async () => {
@@ -142,21 +155,22 @@ describe('NVIDIA NIM provider integration', () => {
     expect(requests).toEqual(['https://nim.example/v1/models'])
   })
 
-  test('does not trust the broad hosted catalog when account inventory cannot be verified', async () => {
+  test('does not depend on the separate NVCF function inventory', async () => {
+    const requests: string[] = []
     const result = await listModelsForProviderWithSource('nvidia-nim', {
       freshOnly: true,
       adapters: {
         env: { NVIDIA_API_KEY: 'nvapi-test' },
-        fetch: async input =>
-          String(input).includes('api.nvcf.nvidia.com')
-            ? new Response('', { status: 403 })
-            : Response.json({ data: [{ id: '01-ai/yi-large' }] }),
+        fetch: async input => {
+          requests.push(String(input))
+          return Response.json({ data: [{ id: '01-ai/yi-large' }] })
+        },
       },
     })
 
-    expect(result.source).toBe('unavailable')
-    expect(result.models).toEqual([])
-    expect(result.warning).toContain('account function inventory returned HTTP 403')
+    expect(result.source).toBe('live')
+    expect(result.models.map(model => model.id)).toEqual(['01-ai/yi-large'])
+    expect(requests).toEqual(['https://integrate.api.nvidia.com/v1/models'])
   })
 
   test('doctor requires a key and probes a user-selected endpoint', async () => {
@@ -196,7 +210,7 @@ describe('NVIDIA NIM provider integration', () => {
     expect(seen).toEqual(['https://nim.example/v1/models'])
   })
 
-  test('doctor rejects a broad-catalog model that is not account-active', async () => {
+  test('doctor validates the selected model against the hosted models endpoint', async () => {
     const result = await doctorProvider('nvidia-nim', {
       settings: {
         provider: {
@@ -206,31 +220,22 @@ describe('NVIDIA NIM provider integration', () => {
       },
       adapters: {
         env: { NVIDIA_API_KEY: 'nvapi-test' },
-        fetch: async input =>
-          String(input).includes('api.nvcf.nvidia.com')
-            ? Response.json({
-                functions: [
-                  { name: 'ai-kimi-k3', status: 'ACTIVE', tags: ['kimi-k3'] },
-                  { name: 'ai-yi-large', status: 'INACTIVE', tags: [] },
-                ],
-              })
-            : Response.json({
-                data: [{ id: '01-ai/yi-large' }, { id: 'moonshotai/kimi-k3' }],
-              }),
+        fetch: async () => Response.json({
+          data: [{ id: '01-ai/yi-large' }, { id: 'moonshotai/kimi-k3' }],
+        }),
       },
     })
 
-    expect(result.ok).toBe(false)
-    expect(result.failureReason).toBe('selected NVIDIA NIM model is inactive')
+    expect(result.ok).toBe(true)
     expect(result.checks).toContainEqual({
-      name: 'account_models',
+      name: 'chat_models',
       status: 'pass',
-      message: '1 account-active NVIDIA chat models are selectable.',
+      message: '2 NVIDIA hosted chat models are selectable.',
     })
     expect(result.checks).toContainEqual({
       name: 'model',
-      status: 'fail',
-      message: 'Model "01-ai/yi-large" is not an account-active NVIDIA chat model.',
+      status: 'pass',
+      message: 'Model "01-ai/yi-large" is detectable.',
     })
   })
 
@@ -258,23 +263,35 @@ describe('NVIDIA NIM provider integration', () => {
     expect(request.stream).toBe(true)
     expect(request.tools[0].function.name).toBe('FileRead')
 
+    const lightningOff = toOpenAICompatibleRequest(
+      {
+        model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+        messages: [{ role: 'user', content: 'Be quick.' }],
+        thinking: { type: 'disabled' },
+      },
+      'nvidia-nim',
+    )
+    expect(lightningOff.chat_template_kwargs).toEqual({
+      enable_thinking: false,
+    })
+    const lightningOn = toOpenAICompatibleRequest(
+      {
+        model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+        messages: [{ role: 'user', content: 'Reason.' }],
+        thinking: { type: 'adaptive' },
+      },
+      'nvidia-nim',
+    )
+    expect(lightningOn.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+    })
+
     const seen: Array<{ url: string; authorization: string | null; body: any }> = []
     const fetchOverride = (async (input, init) => {
       const url = String(input)
       const headers = new Headers(init?.headers)
       const body = init?.body ? JSON.parse(String(init.body)) : undefined
       seen.push({ url, authorization: headers.get('authorization'), body })
-      if (url.includes('api.nvcf.nvidia.com')) {
-        return Response.json({
-          functions: [
-            {
-              name: 'openshell-nemotron-3-super-120b-a12b',
-              status: 'ACTIVE',
-              tags: [],
-            },
-          ],
-        })
-      }
       if (url.endsWith('/models')) {
         return new Response(
           JSON.stringify({ data: [{ id: 'nvidia/nemotron-3-super-120b-a12b' }] }),
@@ -304,10 +321,9 @@ describe('NVIDIA NIM provider integration', () => {
     expect((client as any).__urRuntimeBackend).toBe('api:nvidia-nim')
     expect(seen.map(entry => entry.url)).toEqual([
       'https://integrate.api.nvidia.com/v1/models',
-      'https://api.nvcf.nvidia.com/v2/nvcf/functions?visibility=authorized&visibility=public',
       'https://integrate.api.nvidia.com/v1/chat/completions',
     ])
-    expect(seen[2]).toMatchObject({
+    expect(seen[1]).toMatchObject({
       authorization: 'Bearer nvapi-test',
       body: { model: 'nvidia/nemotron-3-super-120b-a12b' },
     })
@@ -316,14 +332,8 @@ describe('NVIDIA NIM provider integration', () => {
 
   test('redacts NVIDIA account/function identifiers and hides a runtime-rejected model', async () => {
     const apiBase = 'https://integrate.api.nvidia.com/v1'
-    const modelsFetch = async (input: RequestInfo | URL) =>
-      String(input).includes('api.nvcf.nvidia.com')
-        ? Response.json({
-            functions: [
-              { name: 'ai-yi-large', status: 'ACTIVE', tags: ['yi-large'] },
-            ],
-          })
-        : Response.json({ data: [{ id: '01-ai/yi-large' }] })
+    const modelsFetch = async (_input: RequestInfo | URL) =>
+      Response.json({ data: [{ id: '01-ai/yi-large' }] })
 
     const discovered = await listModelsForProviderWithSource('nvidia-nim', {
       adapters: {
@@ -369,7 +379,7 @@ describe('NVIDIA NIM provider integration', () => {
       }
       expect(caught).toBeInstanceOf(ProviderHTTPError)
       expect((caught as Error).message).toContain(
-        'NVIDIA NIM model "01-ai/yi-large" is not active for this account',
+        'NVIDIA NIM model "01-ai/yi-large" is unavailable to this account',
       )
       expect((caught as Error).message).not.toContain('23bd454d')
       expect((caught as Error).message).not.toContain('VSB91X1')

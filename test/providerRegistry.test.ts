@@ -1312,4 +1312,22 @@ describe('provider-scoped model listing', () => {
       resetSettingsCache()
     }
   })
+
+  test('Anthropic premium fast mode is explicit, validated, and persisted', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ur-provider-anthropic-config-'))
+    try {
+      resetStateForTests()
+      setOriginalCwd(dir)
+      setCwdState(dir)
+      resetSettingsCache()
+
+      expect(setSafeProviderConfig('anthropic.speed', 'fast').ok).toBe(true)
+      expect(setSafeProviderConfig('anthropic.speed', 'turbo').ok).toBe(false)
+      expect(getActiveProviderSettings().anthropic).toEqual({ speed: 'fast' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      resetStateForTests()
+      resetSettingsCache()
+    }
+  })
 })

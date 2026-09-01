@@ -45,15 +45,21 @@ start training, download models, or enable Unsloth's server-side tools.
 NVIDIA NIM is a UR-native OpenAI-compatible provider. The build.nvidia.com
 hosted path defaults to `https://integrate.api.nvidia.com/v1`, while the scoped
 endpoint can target enterprise or self-hosted NIM. Discovery is always live;
-on the hosted path the broad `/v1/models` list is intersected with the
-authenticated `GET /v2/nvcf/functions` response and only ACTIVE, agent-capable
-matches survive. Embedding, guard, parser, translation, detector, calibration,
+on the hosted path the documented `/v1/models` response is authoritative and
+is not intersected with NVCF's separate deployment-function inventory.
+This endpoint list is intentionally different from the Build web catalog:
+download-only NIM cards are not hosted chat choices. NVIDIA's documented
+`nvidia/nemotron-3.5-lightning-30b-a3b` endpoint is preferred first because
+NVIDIA identifies it as its fastest 30B agent model. Its model-scoped
+`chat_template_kwargs.enable_thinking` contract powers the real on/off picker
+control; no other NVIDIA model inherits that boolean field.
+Embedding, guard, parser, translation, detector, calibration,
 retrieval, and reward endpoints are removed from the agent picker. A custom
 NIM gateway uses only its own `/models` feed and never inherits hosted control-plane
 assumptions. Hidden curated entries enrich only exact, NVIDIA-documented
 reasoning contracts and never act as an offline model list.
 
-The provider doctor applies the same intersection to the selected model. A
+The provider doctor applies the same live-catalog filter to the selected model. A
 hosted 404 whose detail says an internal function is missing for an account is
 classified as catalog churn: request-visible and retained error text is
 redacted, and the rejected model is removed from that endpoint's in-memory
@@ -155,6 +161,19 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   throughput/latency preference, service-tier, and supported fast-mode controls. Explicit
   request preferences and the `:nitro`, `:floor`, and `:exacto` variants remain authoritative,
   and virtual variants inherit discovery metadata from their base model.
+- Direct Anthropic request translation retains valid `cache_control`
+  breakpoints on system, message, tool-result, and tool-schema blocks after
+  removing URHQ-only fields. Streaming user tools receive Anthropic's native
+  `eager_input_streaming: true`, so tool input deltas are available without
+  server buffering. `provider.anthropic.speed=fast` is an explicit premium
+  opt-in: the adapter adds `speed: fast` plus the
+  `fast-mode-2026-02-01` beta only for exact Opus 5/4.8 model IDs and preserves
+  the provider-reported `usage.speed`. No other Claude model inherits it.
+- OpenAI Responses already provides native SSE/WebSocket continuation and
+  Gemini 2.5+ receives Google's automatic implicit caching. Gemini Priority is
+  an Interactions-API service tier, not a legal `generateContent` field;
+  NVIDIA NIM and local OpenAI-compatible servers likewise expose no universal
+  OpenRouter-style routing switch. UR does not synthesize those controls.
 - OpenAI API keeps Chat Completions as the default. Setting
   `provider.openaiTransport` through
   `ur config set openai_transport responses` selects the native Responses
@@ -281,13 +300,16 @@ Context analysis, file limits, and MCP-output truncation use the selected model'
 family. OpenAI calls `POST /responses/input_tokens`; Anthropic calls
 `POST /messages/count_tokens`; Gemini calls `models.countTokens`; llama.cpp uses
 `POST /v1/chat/completions/input_tokens`; and vLLM uses its Anthropic-compatible
-`POST /v1/messages/count_tokens`; NVIDIA NIM uses the same NIM Messages count
-endpoint when available. The same translated messages, system instructions, images,
+`POST /v1/messages/count_tokens`. The same translated messages, system instructions, images,
 and tool schemas used for inference are supplied to the count endpoint.
 
-Ollama, OpenRouter, LM Studio, Unsloth, and subscription CLIs do not expose one universal,
-non-generating preflight tokenizer for the complete chat-and-tools request. UR therefore uses
-an explicit provider-wire estimate for those runtimes and on native count failure. It never
+NVIDIA's hosted NIM API documents chat completion and model-list endpoints but
+does not expose a token-count route; attempting `/v1/messages/count_tokens`
+returns 404 and adds latency. NVIDIA NIM, Ollama, OpenRouter, LM Studio,
+Unsloth, and subscription CLIs therefore use a provider-wire local estimate.
+These runtimes do not expose one universal, non-generating preflight tokenizer
+for the complete chat-and-tools request. Native count failure also falls back
+to the same explicit estimate. UR never
 runs a hidden one-token completion merely to obtain usage. The local estimate also remains the
 fallback for MCP truncation, so a tokenizer outage cannot silently disable the output limit.
 

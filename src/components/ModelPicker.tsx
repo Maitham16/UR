@@ -300,7 +300,7 @@ export function ModelPicker({
     : false
   const focusedSupportsThinking = focusedModel
     ? focusedAdvertisesThinking &&
-      providerSupportsThinkingToggle(currentProvider)
+      providerSupportsThinkingToggle(currentProvider, focusedModel)
     : false
   const focusedDefaultEffort = getDefaultEffortLevelForOption(
     focusedValue,

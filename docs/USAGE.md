@@ -190,6 +190,19 @@ features and are effective only for models that OpenRouter supports. Append
 `:nitro`, `:floor`, or `:exacto` to an OpenRouter model ID for its native
 throughput-, price-, or tool-quality-first virtual route.
 
+Direct Anthropic sessions preserve prompt-cache breakpoints and stream large
+tool arguments with Anthropic's per-tool `eager_input_streaming` control.
+Accounts admitted to Anthropic's premium fast-mode research preview can opt in
+for its supported Opus models:
+
+```sh
+ur config set anthropic.speed fast
+```
+
+UR sends that tier only to Claude Opus 5 and Opus 4.8; all other Claude models
+remain on standard speed. Use `ur config set anthropic.speed standard` to turn
+the premium tier off.
+
 `provider.fallback` only controls the recovery suggestion printed by provider
 diagnostics. UR does not switch or retry across providers automatically; use
 `ur config set provider <id>` after reviewing the failure.
@@ -258,9 +271,14 @@ NVIDIA NIM uses the build.nvidia.com key and hosted
 `https://integrate.api.nvidia.com/v1` endpoint by default. Connect it with
 `ur connect nvidia-nim`; use `ur config set base_url nvidia-nim <url>` for a
 different NIM deployment. For the hosted endpoint, `/model` shows only models
-that occur in both NVIDIA's `/v1/models` feed and the connected account's
-ACTIVE function inventory; utility endpoints such as embeddings, guards, and
-parsers are excluded. A custom NIM gateway retains its own independent catalog.
+returned by NVIDIA's authoritative `/v1/models` feed, excluding non-agent
+utility endpoints such as embeddings, guards, and parsers. NVCF deployment
+functions are a separate API and do not narrow this hosted catalog. A custom
+NIM gateway retains its own independent catalog.
+Download-only cards from the Build web catalog are not inserted into the
+hosted picker. NVIDIA's live `nemotron-3.5-lightning-30b-a3b` endpoint is
+focused first as its documented fastest 30B agent model; Left/Right controls
+that model's advertised on/off thinking switch.
 On the `/model` model screen, `K` adds or replaces a
 provider API key and `E` edits its endpoint. This also makes optional
 authentication practical for generic OpenAI-compatible gateways.

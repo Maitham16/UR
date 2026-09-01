@@ -29,7 +29,7 @@ function capabilityMessage(
   if (!modelSupportsThinking(model, provider)) {
     return `${model} on ${provider} does not advertise thinking, so UR will not send a thinking control to it.`
   }
-  if (!providerSupportsThinkingToggle(provider)) {
+  if (!providerSupportsThinkingToggle(provider, model)) {
     return `${model} advertises thinking, but the ${provider} runtime has no provider-native on/off mapping. ${modelSupportsEffort(model, provider) ? 'Use /effort for its advertised graded control.' : 'UR will not invent a boolean wire field.'}`
   }
   if (!modelSupportsEffort(model, provider)) {
@@ -62,7 +62,7 @@ export function executeThinking(
     )
     const statusLabel =
       modelSupportsThinking(model, provider) &&
-      providerSupportsThinkingToggle(provider)
+      providerSupportsThinkingToggle(provider, model)
         ? 'Thinking'
         : 'Thinking preference'
     return {
@@ -97,7 +97,7 @@ export function executeThinking(
     enabled && isEnvTruthy(process.env.UR_CODE_DISABLE_THINKING)
   const appliesToActiveModel =
     modelSupportsThinking(model, provider) &&
-    providerSupportsThinkingToggle(provider) &&
+    providerSupportsThinkingToggle(provider, model) &&
     !disabledByEnvironment
   return {
     message: disabledByEnvironment

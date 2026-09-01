@@ -247,6 +247,133 @@ export const NO_RESPONSE_REQUESTED = 'No response requested.'
 export const SYNTHETIC_TOOL_RESULT_PLACEHOLDER =
   '[Tool result missing due to internal error]'
 
+/**
+ * Give a later, independently completed tool call a conversation-unique ID
+ * when an OpenAI-compatible backend scopes IDs to a single response and
+ * reuses one in a later response (for example `TaskCreate:0`).
+ *
+ * The API-facing transcript must use unique IDs, but the saved transcript is
+ * kept byte-for-byte faithful to what the provider returned. Renaming happens
+ * only when the later assistant call has exactly one matching result in the
+ * immediately following user message. Same-message duplicates and unmatched
+ * calls are deliberately left for ensureToolResultPairing() to diagnose and
+ * repair as corruption.
+ */
+export function canonicalizeReusedToolUseIds(
+  messages: (UserMessage | AssistantMessage)[],
+): (UserMessage | AssistantMessage)[] {
+  const seenIds = new Set<string>()
+  const assistantRenames = new Map<number, Map<string, string>>()
+  let renameCount = 0
+
+  for (let messageIndex = 0; messageIndex < messages.length; messageIndex++) {
+    const message = messages[messageIndex]!
+    if (message.type !== 'assistant' || !Array.isArray(message.message.content)) {
+      continue
+    }
+
+    const idCounts = new Map<string, number>()
+    for (const block of message.message.content) {
+      if (block.type !== 'tool_use' || typeof block.id !== 'string') continue
+      idCounts.set(block.id, (idCounts.get(block.id) ?? 0) + 1)
+    }
+
+    const nextMessage = messages[messageIndex + 1]
+    const resultCounts = new Map<string, number>()
+    if (nextMessage?.type === 'user' && Array.isArray(nextMessage.message.content)) {
+      for (const block of nextMessage.message.content) {
+        if (
+          typeof block === 'object' &&
+          block !== null &&
+          'type' in block &&
+          block.type === 'tool_result' &&
+          typeof (block as ToolResultBlockParam).tool_use_id === 'string'
+        ) {
+          const id = (block as ToolResultBlockParam).tool_use_id
+          resultCounts.set(id, (resultCounts.get(id) ?? 0) + 1)
+        }
+      }
+    }
+
+    const renames = new Map<string, string>()
+    let blockIndex = 0
+    for (const block of message.message.content) {
+      if (block.type !== 'tool_use' || typeof block.id !== 'string') {
+        blockIndex++
+        continue
+      }
+      const originalId = block.id
+      const isUnambiguousCompletedCall =
+        idCounts.get(originalId) === 1 && resultCounts.get(originalId) === 1
+      if (seenIds.has(originalId) && isUnambiguousCompletedCall) {
+        let suffix = 0
+        let canonicalId = `toolu_ur_${messageIndex}_${blockIndex}`
+        while (seenIds.has(canonicalId)) {
+          suffix++
+          canonicalId = `toolu_ur_${messageIndex}_${blockIndex}_${suffix}`
+        }
+        renames.set(originalId, canonicalId)
+        seenIds.add(canonicalId)
+        renameCount++
+      } else {
+        seenIds.add(originalId)
+      }
+      blockIndex++
+    }
+    if (renames.size > 0) assistantRenames.set(messageIndex, renames)
+  }
+
+  if (assistantRenames.size === 0) return messages
+
+  const normalized = messages.map((message, messageIndex) => {
+    const assistantRename = assistantRenames.get(messageIndex)
+    const resultRename = assistantRenames.get(messageIndex - 1)
+    if (
+      (!assistantRename && !resultRename) ||
+      !Array.isArray(message.message.content)
+    ) {
+      return message
+    }
+
+    let changed = false
+    const content = message.message.content.map(block => {
+      if (
+        assistantRename &&
+        block.type === 'tool_use' &&
+        typeof block.id === 'string'
+      ) {
+        const id = assistantRename.get(block.id)
+        if (id) {
+          changed = true
+          return { ...block, id }
+        }
+      }
+      if (
+        resultRename &&
+        typeof block === 'object' &&
+        block !== null &&
+        'type' in block &&
+        block.type === 'tool_result'
+      ) {
+        const result = block as ToolResultBlockParam
+        const id = resultRename.get(result.tool_use_id)
+        if (id) {
+          changed = true
+          return { ...result, tool_use_id: id }
+        }
+      }
+      return block
+    })
+
+    return changed
+      ? { ...message, message: { ...message.message, content } }
+      : message
+  }) as (UserMessage | AssistantMessage)[]
+
+  logEvent('tengu_reused_tool_use_id_canonicalized', { renameCount })
+  return normalized
+}
+
 // Prefix used by UI to detect classifier denials and render them concisely
 const AUTO_MODE_REJECTION_PREFIX =
   'Permission for this action has been denied. Reason: '

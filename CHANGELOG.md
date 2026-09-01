@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.84.5
+
+- Fixed a provider-wide multi-turn tool-history failure. Some
+  OpenAI-compatible models reuse response-scoped IDs such as `TaskCreate:0`;
+  UR previously classified the later completed pair as a duplicate, removed
+  it from the API-bound history, and could prompt the model to say the user's
+  answer was empty. Later unambiguous call/result pairs now receive stable,
+  conversation-unique IDs before pairing repair, while the saved transcript
+  remains unchanged and genuinely corrupt duplicates still fail normally.
+- Restored NVIDIA Build's full hosted chat catalog by making its authenticated
+  `/v1/models` response authoritative. UR no longer intersects hosted models
+  with the unrelated NVCF deployment-function inventory that hid valid
+  endpoints; non-agent utility endpoints remain filtered, and download-only
+  Build cards are never inserted into the hosted picker. Doctor and runtime
+  invalidation now follow the same catalog contract.
+- Reduced NVIDIA request overhead and added exact model-native behavior. Hosted
+  NIM token analysis now uses the local request-shaped estimate immediately
+  instead of probing an unsupported count route. Nemotron 3.5 Lightning is
+  preferred when NVIDIA returns it and its native on/off thinking field is
+  wired; Kimi K3 retains its mandatory documented effort contract, and no
+  unknown model inherits a fabricated level or Ultra.
+- Added documented direct-Anthropic latency controls. Prompt-cache breakpoints
+  now survive native request translation, streaming tools use per-tool
+  fine-grained input streaming, and `anthropic.speed=fast` opts enabled Opus
+  5/4.8 accounts into Anthropic's premium research-preview tier with the
+  required beta header. Unsupported models stay on standard speed and response
+  accounting preserves the tier actually served.
+- Audited other provider acceleration paths against their current APIs.
+  OpenAI Responses already retains native SSE/WebSocket continuation, Gemini
+  implicit caching remains automatic, and UR does not invent Interactions-only
+  Gemini Priority fields or OpenRouter-style routing controls for NVIDIA and
+  local servers. User, troubleshooting, validation, provider, and technical
+  documentation now match these executable boundaries.
+
 ## 1.84.4
 
 - Corrected NVIDIA Build model discovery so the picker no longer treats the

@@ -538,6 +538,7 @@ async function createAPIClient(
     maxRetries: options.maxRetries ?? 3,
     model: options.model,
     fetch: options.fetchOverride,
+    anthropic: providerSettings.anthropic,
   }) as ProviderMessageClient
 }
 

@@ -99,6 +99,7 @@ import { errorMessage } from '../../utils/errors.js'
 import { computeFingerprintFromMessages } from '../../utils/fingerprint.js'
 import { captureAPIRequest, logError } from '../../utils/log.js'
 import {
+  canonicalizeReusedToolUseIds,
   createAssistantAPIErrorMessage,
   createUserMessage,
   ensureToolResultPairing,
@@ -213,6 +214,7 @@ import { endQueryProfile, queryCheckpoint } from 'src/utils/queryProfiler.js'
 import {
   modelSupportsAdaptiveThinking,
   modelSupportsThinking,
+  providerSupportsThinkingToggle,
   type ThinkingConfig,
 } from 'src/utils/thinking.js'
 import {
@@ -1367,6 +1369,13 @@ async function* queryModel(
     })
   }
 
+  // Some OpenAI-compatible backends scope tool-call IDs to one response and
+  // legally reuse values such as `TaskCreate:0` on the next response. Make
+  // completed pairs conversation-unique before the corruption repair below;
+  // otherwise that repair would discard a real later call as a duplicate and
+  // replace its result with "(no content)".
+  messagesForAPI = canonicalizeReusedToolUseIds(messagesForAPI)
+
   // Repair tool_use/tool_result pairing mismatches that can occur when resuming
   // remote/teleport sessions. Inserts synthetic error tool_results for orphaned
   // tool_uses and strips orphaned tool_results referencing non-existent tool_uses.
@@ -1777,6 +1786,18 @@ async function* queryModel(
           type: 'enabled',
         } satisfies BetaMessageStreamParams['thinking']
       }
+    } else if (
+      !hasThinking &&
+      effortProvider !== 'anthropic-api' &&
+      providerSupportsThinkingToggle(effortProvider, options.model)
+    ) {
+      // Ollama and the documented NVIDIA Lightning chat template need an
+      // explicit false value to override a model whose server default is ON.
+      // Anthropic disables thinking by omission, so it intentionally does not
+      // enter this provider-specific internal representation.
+      thinking = {
+        type: 'disabled',
+      } as unknown as BetaMessageStreamParams['thinking']
     }
 
     // Get API context management strategies if enabled

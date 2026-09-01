@@ -13,6 +13,7 @@ import {
 import {
   getProviderFamily,
   resolveProviderId,
+  type AnthropicSettings,
 } from '../providers/providerRegistry.js'
 import {
   assertNoImageBlocks,
@@ -58,6 +59,7 @@ import { normalizeGeminiUsage } from './usageNormalization.js'
 import { toOpenAIInputTokenCountRequest } from './openaiResponses.js'
 
 const ANTHROPIC_VERSION = '2023-06-01'
+const ANTHROPIC_FAST_MODE_BETA = 'fast-mode-2026-02-01'
 const TOKEN_COUNT_TIMEOUT_MS = 10_000
 
 type URHQClient = {
@@ -71,20 +73,26 @@ export async function createStandardAPIClient(options: {
   model?: string
   baseUrl?: string
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  anthropic?: AnthropicSettings
 }): Promise<URHQClient> {
   const { providerId, apiKey, baseUrl, maxRetries } = options
   const family = getProviderFamily(providerId)
 
   async function doRequest(params: any, requestOptions?: any) {
-    const endpoint = getAPIEndpoint(family, baseUrl, params.model, false)
-    const clientRequestId = params?.headers?.['x-client-request-id']
+    const wireParams = withConfiguredAnthropicPerformance(
+      family,
+      params,
+      options.anthropic,
+    )
+    const endpoint = getAPIEndpoint(family, baseUrl, wireParams.model, false)
+    const clientRequestId = wireParams?.headers?.['x-client-request-id']
     const response = await axiosPostWithProviderReliability(
       endpoint,
-      buildAPIRequest(family, params, providerId),
+      buildAPIRequest(family, wireParams, providerId),
       {
         headers: {
           'Content-Type': 'application/json',
-          ...buildAuthHeaders(family, apiKey, params),
+          ...buildAuthHeaders(family, apiKey, wireParams),
           ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
           ...(requestOptions?.headers ?? {}),
         },
@@ -95,21 +103,29 @@ export async function createStandardAPIClient(options: {
         signal: requestOptions?.signal,
       },
     )
-    return { response, data: parseAPIResponse(family, response.data, params.model) }
+    return {
+      response,
+      data: parseAPIResponse(family, response.data, wireParams.model),
+    }
   }
 
   async function doStream(params: any, requestOptions?: any, controller?: AbortController) {
-    const endpoint = getAPIEndpoint(family, baseUrl, params.model, true)
+    const wireParams = withConfiguredAnthropicPerformance(
+      family,
+      params,
+      options.anthropic,
+    )
+    const endpoint = getAPIEndpoint(family, baseUrl, wireParams.model, true)
     const streamController = controller ?? new AbortController()
     const signal = mergeAbortSignals([requestOptions?.signal, streamController.signal])
-    const clientRequestId = params?.headers?.['x-client-request-id']
+    const clientRequestId = wireParams?.headers?.['x-client-request-id']
     const response = await axiosPostWithProviderReliability(
       endpoint,
-      buildAPIRequest(family, { ...params, stream: true }, providerId),
+      buildAPIRequest(family, { ...wireParams, stream: true }, providerId),
       {
         headers: {
           'Content-Type': 'application/json',
-          ...buildAuthHeaders(family, apiKey, params),
+          ...buildAuthHeaders(family, apiKey, wireParams),
           ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
           ...(requestOptions?.headers ?? {}),
         },
@@ -126,7 +142,7 @@ export async function createStandardAPIClient(options: {
     const streamOptions = {
       controller: streamController,
       signal,
-      model: params.model,
+      model: wireParams.model,
       requestId,
       providerName: family,
     }
@@ -215,6 +231,32 @@ export async function createStandardAPIClient(options: {
   }
 
   return { beta: { messages: messagesAPI } } as URHQClient
+}
+
+function isAnthropicFastModeModel(model: unknown): boolean {
+  return /^claude-opus-(?:5(?:-|$)|4[-.]8(?:-|$))/iu.test(String(model ?? ''))
+}
+
+function withConfiguredAnthropicPerformance(
+  family: string,
+  params: any,
+  settings: AnthropicSettings | undefined,
+): any {
+  if (
+    family !== 'anthropic' ||
+    settings?.speed !== 'fast' ||
+    !isAnthropicFastModeModel(params?.model)
+  ) {
+    return params
+  }
+  const betas = Array.isArray(params.betas) ? params.betas : []
+  return {
+    ...params,
+    speed: 'fast',
+    betas: betas.includes(ANTHROPIC_FAST_MODE_BETA)
+      ? betas
+      : [...betas, ANTHROPIC_FAST_MODE_BETA],
+  }
 }
 
 /**
@@ -365,13 +407,13 @@ function providerOutputConfig(
   return requested === 'ultra' ? rest : configured
 }
 
-function buildAPIRequest(family: string, params: any, providerId: string): any {
+export function buildAPIRequest(family: string, params: any, providerId: string): any {
   switch (family) {
     case 'openai': {
       return toOpenAICompatibleRequest(params, 'openai')
     }
     case 'anthropic': {
-      const tools = toAnthropicTools(params.tools)
+      const tools = toAnthropicTools(params.tools, Boolean(params.stream))
       return {
         model: params.model,
         ...(params.system && { system: toAnthropicSystem(params.system) }),
@@ -385,6 +427,7 @@ function buildAPIRequest(family: string, params: any, providerId: string): any {
         ...(params.output_config !== undefined && {
           output_config: providerOutputConfig(params, providerId),
         }),
+        ...(params.speed === 'fast' && { speed: 'fast' }),
         stream: Boolean(params.stream),
         ...(tools.length > 0 ? { tools } : {}),
         ...(params.tool_choice !== undefined ? { tool_choice: params.tool_choice } : {}),
@@ -503,6 +546,7 @@ function parseAPIResponse(family: string, data: any, fallbackModel: string): any
           output_tokens: data.usage?.output_tokens ?? 0,
           cache_creation_input_tokens: data.usage?.cache_creation_input_tokens ?? 0,
           cache_read_input_tokens: data.usage?.cache_read_input_tokens ?? 0,
+          speed: data.usage?.speed ?? null,
         },
       }
     }
@@ -585,7 +629,22 @@ function geminiSystemInstruction(params: any): { parts: Array<{ text: string }> 
 
 function toAnthropicSystem(system: any): any {
   assertNoImageBlocks(system, 'anthropic', 'system content')
-  return system
+  if (!Array.isArray(system)) return system
+  return system.map((block, index) =>
+    toAnthropicContentBlock(block, `system[${index}]`),
+  )
+}
+
+function toAnthropicCacheControl(
+  value: unknown,
+): { type: 'ephemeral'; ttl?: '1h' } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const cache = value as Record<string, unknown>
+  if (cache.type !== 'ephemeral') return undefined
+  return {
+    type: 'ephemeral',
+    ...(cache.ttl === '1h' ? { ttl: '1h' as const } : {}),
+  }
 }
 
 function toAnthropicMessages(messages: any): any[] {
@@ -609,8 +668,13 @@ function toAnthropicContent(content: any, context: string): any {
 
 function toAnthropicContentBlock(block: any, context: string): any {
   if (typeof block === 'string') return { type: 'text', text: block }
+  const cacheControl = toAnthropicCacheControl(block?.cache_control)
   if (block?.type === 'text') {
-    return { type: 'text', text: block.text ?? '' }
+    return {
+      type: 'text',
+      text: block.text ?? '',
+      ...(cacheControl && { cache_control: cacheControl }),
+    }
   }
   if (block?.type === 'image') {
     const source = normalizeImageBlockSource(block, 'anthropic', context)
@@ -622,6 +686,7 @@ function toAnthropicContentBlock(block: any, context: string): any {
           media_type: source.mediaType,
           data: source.data,
         },
+        ...(cacheControl && { cache_control: cacheControl }),
       }
     }
     return {
@@ -630,16 +695,24 @@ function toAnthropicContentBlock(block: any, context: string): any {
         type: 'url',
         url: source.url,
       },
+      ...(cacheControl && { cache_control: cacheControl }),
     }
   }
   if (block?.type === 'tool_result') {
+    const { cache_control: _cacheControl, ...rest } = block
     return {
-      ...block,
+      ...rest,
       content: toAnthropicToolResultContent(
         block.content,
         `${context}.content`,
       ),
+      ...(cacheControl && { cache_control: cacheControl }),
     }
+  }
+  if (cacheControl) return { ...block, cache_control: cacheControl }
+  if (block?.cache_control !== undefined) {
+    const { cache_control: _cacheControl, ...rest } = block
+    return rest
   }
   return block
 }
@@ -663,7 +736,7 @@ function toAnthropicToolResultBlock(block: any, context: string): any {
   return block
 }
 
-function toAnthropicTools(tools: any): any[] {
+function toAnthropicTools(tools: any, eagerInputStreaming = false): any[] {
   if (tools === undefined || tools === null) return []
   if (!Array.isArray(tools)) {
     throw new ToolSchemaValidationError('Anthropic tools must be an array.')
@@ -675,11 +748,14 @@ function toAnthropicTools(tools: any): any[] {
       )
     }
     assertValidToolName(tool.name, 'Anthropic')
+    const cacheControl = toAnthropicCacheControl(tool.cache_control)
     return {
       name: tool.name,
       ...(tool.description !== undefined && { description: tool.description }),
       input_schema: prepareAndValidateToolSchema(tool.input_schema, tool.name),
       ...(tool.strict === true && { strict: true }),
+      ...(eagerInputStreaming && { eager_input_streaming: true }),
+      ...(cacheControl && { cache_control: cacheControl }),
     }
   })
   assertUniqueToolNames(mapped.map(tool => tool.name), 'Anthropic')

@@ -208,6 +208,25 @@ describe('provider-native token counting', () => {
     expect(result.source).toBe('local-estimate')
     expect(result.input_tokens).toBeGreaterThan(0)
   })
+
+  test('NVIDIA NIM avoids its unsupported hosted token-count route', async () => {
+    let requests = 0
+    const client = await createOpenAICompatibleClient({
+      baseUrl: 'https://integrate.api.nvidia.com/v1',
+      providerId: 'nvidia-nim',
+      apiKey: 'test-key',
+      maxRetries: 0,
+      fetch: async () => {
+        requests += 1
+        throw new Error('NVIDIA hosted NIM has no documented count endpoint')
+      },
+    })
+
+    const result = await client.beta.messages.countTokens(params)
+    expect(result.source).toBe('local-estimate')
+    expect(result.input_tokens).toBeGreaterThan(0)
+    expect(requests).toBe(0)
+  })
 })
 
 describe('future-model thinking capability discovery', () => {

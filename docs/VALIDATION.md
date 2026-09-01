@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.84.4 (UR-Nexus)"
+# expected for this release: "1.84.5 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -122,6 +122,20 @@ fallback/threshold settings must use OpenRouter's snake-case wire keys;
 validate against the discovered base model and inherit its context, output,
 tool, and reasoning metadata.
 
+For direct Anthropic, inspect one streaming request with tools. Valid
+`cache_control` markers must remain while URHQ-only `scope` is absent, each user
+tool must include `eager_input_streaming: true`, and no legacy fine-grained
+streaming beta header is required. Then run:
+
+```sh
+ur config set anthropic.speed fast
+```
+
+Opus 5/4.8 must receive `speed="fast"` and
+`anthropic-beta: fast-mode-2026-02-01`; Sonnet, Fable, Haiku, and unsupported
+Opus versions must receive neither. A non-stream response must retain
+`usage.speed`.
+
 Deterministic coverage:
 
 ```sh
@@ -129,8 +143,14 @@ bun test test/providerPickerPresentation.test.ts \
   test/openRouterEffort.test.ts test/providerModelDiscovery.test.ts \
   test/secondaryModelFallback.test.ts test/providerToolCalls.test.ts \
   test/providerContextWindow.test.ts test/outputLimitRecovery.test.ts \
-  test/usageAccounting.test.ts test/providerRouting.test.ts
+  test/usageAccounting.test.ts test/providerRouting.test.ts \
+  test/reusedToolUseIds.test.ts
 ```
+
+The repeated-ID fixture contains two sequential completed calls that both
+arrive as `TaskCreate:0`. Both call/results must survive the provider-bound
+history pass with the later pair renamed deterministically; same-message or
+unmatched duplicates must remain visible to corruption repair.
 
 ### 0.0.0a Provider output-boundary continuation (1.84.4)
 
@@ -241,10 +261,11 @@ NVIDIA NIM, Ollama, LM Studio, llama.cpp, vLLM, Unsloth, and generic OpenAI-comp
 request shapes.
 
 The NVIDIA fixture also verifies hosted/default and overridden endpoints,
-Bearer discovery, intersection with account-active NVCF functions, removal of
-retired and non-agent models, selected-model doctor diagnostics, redaction of
-internal NVIDIA account/function IDs, endpoint-scoped invalidation, native
-dispatch, documented effort aliases, and no Ultra on an unknown model. In
+Bearer discovery from NVIDIA's authoritative `/v1/models` endpoint, removal
+of non-agent utility models, selected-model doctor diagnostics, redaction of
+internal NVIDIA account/function IDs, endpoint-scoped runtime invalidation,
+native dispatch, the preferred Lightning endpoint and its model-scoped
+`enable_thinking` switch, documented effort aliases, and no Ultra on an unknown model. In
 `/model`, select `openai-compatible` and verify `K` can
 add or replace its optional key while `E` continues to edit only its endpoint.
 

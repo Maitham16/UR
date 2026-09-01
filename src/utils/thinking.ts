@@ -37,8 +37,14 @@ export function resolveThinkingArrowValue(
  */
 export function providerSupportsThinkingToggle(
   provider: ProviderId,
+  model?: string,
 ): boolean {
-  return provider === 'ollama' || provider === 'anthropic-api'
+  if (provider === 'ollama' || provider === 'anthropic-api') return true
+  // NVIDIA documents a model-native enable_thinking chat-template switch for
+  // Nemotron 3.5 Lightning. This is deliberately model-scoped: Kimi K3, for
+  // example, advertises mandatory reasoning and must not inherit an off toggle.
+  return provider === 'nvidia-nim' &&
+    /^nvidia\/nemotron-3\.5-lightning-30b-a3b(?:-|$)/iu.test(model ?? '')
 }
 
 /**

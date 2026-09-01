@@ -347,6 +347,19 @@ ur config set openrouter.service_tier priority # auto | default | flex | priorit
 ur config set openrouter.speed fast            # standard | fast
 ```
 
+Direct Anthropic requests automatically preserve UR's prompt-cache
+breakpoints and enable per-tool fine-grained input streaming, reducing repeat
+prefill work and exposing large tool arguments as Claude generates them.
+Anthropic's premium research-preview fast tier is opt-in and is sent only for
+Claude Opus 5 or Opus 4.8:
+
+```sh
+ur config set anthropic.speed fast             # standard | fast
+```
+
+The account must have Anthropic fast-mode access. Unsupported Claude models
+stay on standard speed instead of receiving a fabricated provider option.
+
 Provider config accepts canonical IDs and common aliases. Examples:
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `nvidia-nim` (`NVIDIA Build`), `ollama`,
 `lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, `unsloth` (`Unsloth Studio`), and the subscription CLIs
@@ -392,8 +405,8 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    `static` (predefined), or `unavailable` after a failed discovery with no
    fallback. Local/server providers (Ollama, LM Studio,
    llama.cpp, vLLM, Unsloth) and OpenAI-compatible endpoints are discovered live. Hosted NVIDIA NIM
-   intersects its broad `/v1/models` response with NVIDIA's authenticated ACTIVE
-   function inventory and removes non-agent utility endpoints before presenting a model; API
+   uses its documented `/v1/models` response directly and removes non-agent utility
+   endpoints before presenting a model; the separate NVCF deployment inventory does not narrow it. API
    providers use live discovery from their `/models` endpoint once a key is
    connected (with a curated fallback list before that). Subscription CLIs show
    their curated model list because the official CLIs expose no models API. The
@@ -403,8 +416,8 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    the focused model's capability-backed selectors; use **Left/Right** to cycle
    only values UR can map to provider-native levels before pressing Enter. For
    models with thinking but no advertised graded ladder on runtimes with a native
-   two-state mapping (currently
-   Ollama and direct Anthropic), Left selects off, Right selects on, and `t`
+   two-state mapping (currently Ollama, direct Anthropic, and NVIDIA Nemotron
+   3.5 Lightning), Left selects off, Right selects on, and `t`
    toggles. The same state is available directly through `/thinking on|off`.
    Generic OpenAI-compatible runtimes never receive an invented boolean field.
    `ultra` is UR's visible

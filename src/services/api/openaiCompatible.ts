@@ -91,7 +91,7 @@ export async function createOpenAICompatibleClient(
         ? model.trim()
         : 'selected model'
       markProviderModelUnavailable(providerId, modelId, options.baseUrl)
-      return `NVIDIA NIM model "${modelId}" is not active for this account. UR removed it from this session's catalog; run /model and choose an account-active NVIDIA model.`
+      return `NVIDIA NIM model "${modelId}" is unavailable to this account. UR removed it from this session's catalog; refresh /model and choose another NVIDIA-hosted model.`
     }
     return `OpenAI-compatible${streaming ? ' streaming' : ''} request failed for ${endpoint} (${response.status}): ${body || response.statusText}`
   }
@@ -212,8 +212,7 @@ export async function createOpenAICompatibleClient(
           }
           if (
             providerId !== 'llama.cpp' &&
-            providerId !== 'vllm' &&
-            providerId !== 'nvidia-nim'
+            providerId !== 'vllm'
           ) {
             return estimate()
           }
@@ -357,6 +356,21 @@ export function toOpenAICompatibleRequest(
     tools.length > 0
       ? { force_nonempty_content: true }
       : undefined
+  const nvidiaLightningThinking =
+    providerName === 'nvidia-nim' &&
+    /^nvidia\/nemotron-3\.5-lightning-30b-a3b(?:-|$)/iu.test(String(params.model ?? '')) &&
+    (params.thinking?.type === 'disabled' ||
+      params.thinking?.type === 'enabled' ||
+      params.thinking?.type === 'adaptive')
+      ? { enable_thinking: params.thinking.type !== 'disabled' }
+      : undefined
+  const nvidiaChatTemplate =
+    nvidiaCodingAgentTemplate || nvidiaLightningThinking
+      ? {
+          ...nvidiaCodingAgentTemplate,
+          ...nvidiaLightningThinking,
+        }
+      : undefined
   return {
     model: params.model,
     messages: toOpenAIMessages(params, providerName),
@@ -384,8 +398,8 @@ export function toOpenAICompatibleRequest(
       ? { service_tier: openRouterServiceTier }
       : {}),
     ...(openRouterSpeed === 'fast' ? { speed: 'fast' } : {}),
-    ...(nvidiaCodingAgentTemplate && {
-      chat_template_kwargs: nvidiaCodingAgentTemplate,
+    ...(nvidiaChatTemplate && {
+      chat_template_kwargs: nvidiaChatTemplate,
     }),
     stream: Boolean(params.stream),
     // OpenRouter now always includes usage in its final streaming chunk; its

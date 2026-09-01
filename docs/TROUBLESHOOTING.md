@@ -212,19 +212,34 @@ custom `base_url` scoped to that provider.
 
 ### NVIDIA lists a model but inference returns `Function … Not found for account`
 
-- Cause: NVIDIA's hosted `/v1/models` feed can contain a function that is no
-  longer ACTIVE for the connected account.
+- Cause: NVIDIA's hosted `/v1/models` feed can change, or a listed model's
+  backing function can become unavailable for the connected account.
 - Fix: upgrade UR, run `ur provider doctor nvidia-nim`, then open `/model` and
-  press `Ctrl+R`. Hosted discovery now intersects `/v1/models` with NVIDIA's
-  authenticated ACTIVE function inventory and excludes non-agent utility
-  endpoints. A definitive runtime 404 also removes that model from the current
-  endpoint-scoped session catalog.
+  press `Ctrl+R`. Hosted discovery uses NVIDIA's documented `/v1/models`
+  endpoint and excludes non-agent utility endpoints. It does not intersect the
+  catalog with the separate NVCF deployment-function inventory. A definitive
+  runtime 404 removes only that model from the current endpoint-scoped session
+  catalog until the next explicit refresh.
 - Privacy: UR does not display or retain the internal NVIDIA function UUID and
   account identifier from this error response.
 
-If `account_models` fails, reconnect a current build.nvidia.com key with
+If `chat_models` fails, reconnect a current build.nvidia.com key with
 `ur connect nvidia-nim`. A configured enterprise/self-hosted NIM endpoint is
-validated only against that gateway and does not use NVIDIA's hosted inventory.
+validated only against that gateway's own `/models` response.
+
+### A provider says the previous answer was empty after successful tool calls
+
+Some OpenAI-compatible models scope generated tool-call IDs to one response
+and reuse values such as `TaskCreate:0` on a later response. Older UR releases
+mistook the later completed pair for transcript corruption, removed it before
+the next API request, and could make the model believe that the user sent an
+empty continuation.
+
+Upgrade UR and retry the turn. UR now canonicalizes only later, independently
+completed call/result pairs before provider dispatch. Same-message duplicates,
+unmatched calls, and orphaned results still go through normal transcript
+repair. The saved transcript remains faithful to the provider response; only
+the API-bound copy receives conversation-unique IDs.
 
 ### `The provider reported that model … reached its per-response output boundary`
 

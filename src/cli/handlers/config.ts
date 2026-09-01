@@ -104,6 +104,11 @@ function providerConfigEntries(): CliConfigEntry[] {
       value: configured.openrouter?.speed ?? 'standard',
       category: 'provider',
     },
+    {
+      key: 'anthropic.speed',
+      value: configured.anthropic?.speed ?? 'standard',
+      category: 'provider',
+    },
     { key: 'model', value: active.model ?? null, category: 'provider' },
     { key: 'base_url', value: active.baseUrl ?? null, category: 'provider' },
   ]

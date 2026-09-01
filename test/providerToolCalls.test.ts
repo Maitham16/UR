@@ -6,7 +6,10 @@ import {
   toOpenAITools,
 } from '../src/services/api/openaiCompatible.js'
 import { createOpenRouterClient } from '../src/services/api/openrouter.js'
-import { createStandardAPIClient } from '../src/services/api/standardAPI.js'
+import {
+  buildAPIRequest,
+  createStandardAPIClient,
+} from '../src/services/api/standardAPI.js'
 import { AskUserQuestionTool } from '../src/tools/AskUserQuestionTool/AskUserQuestionTool.js'
 import { zodToJsonSchema } from '../src/utils/zodToJsonSchema.js'
 import {
@@ -501,6 +504,136 @@ describe('provider tool-call request and response mapping', () => {
       name: 'Edit',
       input: { file_path: 'src/app.ts', content: 'updated' },
     })
+  })
+
+  test('Anthropic preserves valid cache breakpoints and streams tool inputs eagerly', () => {
+    const body = buildAPIRequest(
+      'anthropic',
+      {
+        model: 'claude-sonnet-5',
+        system: [
+          {
+            type: 'text',
+            text: 'Stable system prefix',
+            cache_control: { type: 'ephemeral', ttl: '1h', scope: 'global' },
+          },
+        ],
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Continue the long-running task',
+                cache_control: { type: 'ephemeral', scope: 'global' },
+              },
+            ],
+          },
+          {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                id: 'toolu_cached',
+                name: 'Edit',
+                input: { file_path: 'src/app.ts', content: 'updated' },
+                cache_control: { type: 'ephemeral', scope: 'global' },
+              },
+            ],
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'toolu_cached',
+                content: 'updated',
+                cache_control: {
+                  type: 'ephemeral',
+                  ttl: '1h',
+                  scope: 'global',
+                },
+              },
+            ],
+          },
+        ],
+        tools: [
+          {
+            ...sampleTools[0],
+            cache_control: { type: 'ephemeral', ttl: '1h', scope: 'global' },
+          },
+        ],
+        max_tokens: 32,
+        stream: true,
+      },
+      'anthropic-api',
+    )
+
+    expect(body.system[0].cache_control).toEqual({
+      type: 'ephemeral',
+      ttl: '1h',
+    })
+    expect(body.messages[0].content[0].cache_control).toEqual({
+      type: 'ephemeral',
+    })
+    expect(body.messages[1].content[0].cache_control).toEqual({
+      type: 'ephemeral',
+    })
+    expect(body.messages[2].content[0].cache_control).toEqual({
+      type: 'ephemeral',
+      ttl: '1h',
+    })
+    expect(body.tools[0]).toMatchObject({
+      name: 'Edit',
+      eager_input_streaming: true,
+      cache_control: { type: 'ephemeral', ttl: '1h' },
+    })
+  })
+
+  test('Anthropic fast mode is explicit, model-gated, and carries the required beta', async () => {
+    const post = spyOn(axios, 'post').mockResolvedValue({
+      data: {
+        id: 'msg_fast',
+        model: 'claude-opus-5',
+        content: [{ type: 'text', text: 'Fast response' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 3, output_tokens: 4, speed: 'fast' },
+      },
+      headers: {},
+    })
+    const client = await createStandardAPIClient({
+      providerId: 'anthropic-api',
+      apiKey: 'sk-ant-test',
+      maxRetries: 1,
+      anthropic: { speed: 'fast' },
+    })
+    const result = await client.beta.messages.create({
+      model: 'claude-opus-5',
+      messages: userMessages(),
+      max_tokens: 32,
+    })
+
+    const [, body, config] = post.mock.calls[0] as [
+      string,
+      Record<string, any>,
+      { headers: Record<string, string> },
+    ]
+    expect(body.speed).toBe('fast')
+    expect(config.headers['anthropic-beta']).toContain('fast-mode-2026-02-01')
+    expect(result.usage.speed).toBe('fast')
+
+    await client.beta.messages.create({
+      model: 'claude-sonnet-5',
+      messages: userMessages(),
+      max_tokens: 32,
+    })
+    const [, unsupportedBody, unsupportedConfig] = post.mock.calls[1] as [
+      string,
+      Record<string, any>,
+      { headers: Record<string, string> },
+    ]
+    expect(unsupportedBody.speed).toBeUndefined()
+    expect(unsupportedConfig.headers['anthropic-beta']).toBeUndefined()
   })
 
   test('standard Gemini round-trips function IDs and thought signatures', async () => {

@@ -228,6 +228,7 @@ export const PROVIDER_CONFIG_KEYS = [
   'openrouter.preferred_max_latency',
   'openrouter.service_tier',
   'openrouter.speed',
+  'anthropic.speed',
   'model',
   'base_url',
 ] as const

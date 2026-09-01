@@ -595,6 +595,17 @@ export const SettingsSchema = lazySchema(() =>
             })
             .optional()
             .describe('OpenRouter performance and routing controls.'),
+          anthropic: z
+            .object({
+              speed: z
+                .enum(['standard', 'fast'])
+                .optional()
+                .describe(
+                  'Anthropic inference speed. Fast is an opt-in, premium research preview available only to enabled accounts and supported Opus models.',
+                ),
+            })
+            .optional()
+            .describe('Anthropic API performance controls.'),
           preferences: z
             .record(z.string(), NonSecretPreferenceSchema)
             .optional()

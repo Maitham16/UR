@@ -28,7 +28,7 @@ export function applyEffortCommandState(previous: AppState, result: EffortComman
 }
 function setEffortValue(effortValue: EffortValue, model?: string, provider: ProviderId = getRuntimeProvider()): EffortCommandResult {
   if (model && !modelSupportsEffort(model, provider)) {
-    if (modelSupportsThinking(model, provider) && providerSupportsThinkingToggle(provider)) {
+    if (modelSupportsThinking(model, provider) && providerSupportsThinkingToggle(provider, model)) {
       const result = updateSettingsForSource('userSettings', {
         // `undefined` is the persisted "thinking on/default" value. `false`
         // is the only stored override that disables thinking.
@@ -129,7 +129,7 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
   const effectiveValue = envOverride === null ? undefined : envOverride ?? appStateEffort;
   if (effectiveValue === undefined) {
     if (!modelSupportsEffort(model, provider)) {
-      if (modelSupportsThinking(model, provider) && providerSupportsThinkingToggle(provider)) {
+      if (modelSupportsThinking(model, provider) && providerSupportsThinkingToggle(provider, model)) {
         return {
           message: `Effort: no model-specific graded ladder advertised for ${model} on ${provider}. UR is using the provider-native on/off control; thinking is ${thinkingEnabled === false ? 'OFF' : 'ON'}. Use /thinking on|off to change it.`
         };
@@ -155,7 +155,7 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
     };
   }
   if (!modelSupportsEffort(model, provider)) {
-    if (modelSupportsThinking(model, provider) && providerSupportsThinkingToggle(provider)) {
+    if (modelSupportsThinking(model, provider) && providerSupportsThinkingToggle(provider, model)) {
       return {
         message: `Requested effort: ${effectiveValue}; not sent — ${model} on ${provider} advertises thinking but no model-specific graded ladder. UR is using the provider-native on/off control; thinking is ${thinkingEnabled === false ? 'OFF' : 'ON'}. Use /thinking on|off to change it.`
       };

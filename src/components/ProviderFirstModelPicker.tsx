@@ -457,7 +457,7 @@ export function ProviderFirstModelPicker({
     : false
   const focusedSupportsThinking = focusedResolvedModel && focusedProviderId
     ? focusedAdvertisesThinking &&
-      providerSupportsThinkingToggle(focusedProviderId)
+      providerSupportsThinkingToggle(focusedProviderId, focusedResolvedModel)
     : false
   const focusedDefaultEffort = focusedResolvedModel
     ? convertEffortValueToLevel(

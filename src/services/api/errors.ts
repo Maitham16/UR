@@ -746,7 +746,9 @@ export function getAssistantMessageFromError(
     logEvent('tengu_unexpected_tool_result', {})
   }
 
-  // Duplicate tool_use IDs (CC-1212). ensureToolResultPairing strips these
+  // Duplicate corrupt tool_use IDs (CC-1212). Completed calls whose provider
+  // reused a response-scoped ID are canonicalized before pairing repair;
+  // ensureToolResultPairing strips only the remaining ambiguous duplicates.
   // before send, so hitting this means a new corruption path slipped through.
   // Log for root-causing, and give users a recovery path instead of deadlock.
   if (
