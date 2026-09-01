@@ -100,7 +100,7 @@
           </article>
           <article>
             <strong>Deterministic commands</strong>
-            <span>The external runtime exposes 172 commands and 253 unique slash tokens; registry tests reject ambiguous names, broken loaders, and undocumented visible commands.</span>
+            <span>The external runtime exposes a source-derived command catalog; registry tests reject ambiguous names, broken loaders, undocumented visible aliases, and documented commands without implementations.</span>
           </article>
           <article>
             <strong>Safety and context</strong>
@@ -189,7 +189,7 @@ ur --model kimi-k3:cloud --effort high
           </article>
           <article>
             <h3>Status bar and updates</h3>
-            <pre><code>Ollama | llama3 | ask | main | update 1.83.2 available</code></pre>
+            <pre><code>Ollama | llama3 | ask | main | update available</code></pre>
             <p>The interactive status bar shows only important runtime state: provider, model, mode, branch, active tasks, checks status when known, and update availability. It is hidden in CI, dumb terminals, and print mode.</p>
           </article>
           <article>

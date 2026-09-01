@@ -1,8 +1,8 @@
 # UR-Nexus — Technical Specifications
 
 > Maintained from the `ur-agent` implementation rather than copied from the public guides.
-> The provider, endpoint, model-discovery, and reasoning-effort specifications were verified
-> against the v1.83.2 source (`src/services/providers/providerRegistry.ts`,
+> The provider, endpoint, model-discovery, and reasoning-effort specifications are verified
+> against the current source (`src/services/providers/providerRegistry.ts`,
 > `src/utils/effort.ts`, `src/utils/settings/types.ts`, and the CLI/model-picker entrypoints).
 
 UR-Nexus is an autonomous engineering workflow engine: a terminal (Ink/React) coding agent
@@ -33,9 +33,9 @@ built-in command/tool surface.
 ## Quick facts (from code)
 
 - **Package**: `ur-agent`, binary `ur` (`bin/ur.js` → `dist/cli.js`, bundled from `src/entrypoints/cli.tsx`).
-- **Runtime**: Node ≥ 18.18 or Bun ≥ 1.3; TUI built with React 19 + a vendored Ink fork (`src/ink`).
+- **Runtime**: Node ≥ 22.12 or Bun ≥ 1.3; TUI built with React 19 + a vendored Ink fork (`src/ink`).
 - **Local-first**: default model backend is the local Ollama runtime (`http://localhost:11434`); `--offline` disables all cloud paths.
-- **Registered commands**: 150 commands in the external test runtime (143 visible), 217 unique slash invocation tokens, and 57 top-level CLI subcommands; user/project skills, installed plugins, workflows, and MCP prompts are additive and normalized by source priority.
+- **Registered commands**: the source-derived slash-command reference is checked in both directions against the shipped registry, aliases, bundled skills, internal commands, and feature-gated implementations; user/project skills, installed plugins, workflows, and MCP prompts are additive and normalized by source priority.
 - **Registered tools**: ~40 always-on tools plus ~20 feature-flagged tools (`src/tools.ts:getAllBaseTools`).
 - **Feature flags**: compile-time `feature(...)` gates (`bun:bundle`) dead-code-eliminate internal-only surfaces from external builds; `USER_TYPE=ant` gates internal commands.
 - **Project state**: lives under `.ur/` in each repo (artifacts, specs, workflows, guardrails, safety policy, knowledge, memory index, devcontainer config, tools, index).
