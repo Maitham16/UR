@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.85.0
+
+- Split NVIDIA Build into two truthful provider surfaces backed by one saved
+  `NVIDIA_API_KEY`: **NVIDIA Agentic** for continuous tool-capable agent models
+  and **NVIDIA Special** for focused inference such as image, video, audio,
+  vision, retrieval, healthcare, climate, and optimization tasks. The generated
+  catalog currently mirrors all 36 Build cards marked Free Endpoint: 13
+  Agentic and 23 Special.
+- Rebuilt NVIDIA routing from each card's published inference contract. Every
+  executable model now uses its own documented HTTP endpoint and method or its
+  exact NVCF gRPC package, service, method, metadata, and streaming shape; direct
+  NVCF functions, Assets uploads, asynchronous polling, JSON-schema validation,
+  and binary artifact decoding are handled natively instead of being forced
+  through the shared chat-completions URL.
+- Added native execution for NVIDIA's five current public gRPC contracts,
+  including active-speaker detection, background-noise removal, Magpie TTS,
+  Studio Voice, and synthetic-video detection. Model descriptions expose their
+  purpose, expected input and output, transport, and contract before execution.
+- Made the official catalog non-destructive: account or invocation errors no
+  longer remove models. A card without a published API or proto contract remains
+  visible and explicitly unavailable rather than receiving an invented route.
+  Custom NVIDIA enterprise gateways retain their configurable endpoint and live
+  model discovery independently of the public Build catalog.
+- Updated provider diagnostics, `/model`, the `NvidiaSpecial` tool, public and
+  technical documentation, generated-catalog tooling, and regression coverage
+  for exact endpoint parity, shared credentials, non-pruning behavior, native
+  gRPC descriptors, assets, async results, artifacts, and focused-task dispatch.
+
 ## 1.84.7
 
 - Replaced NVIDIA's three-model one-shot allowlist with a generated catalog
