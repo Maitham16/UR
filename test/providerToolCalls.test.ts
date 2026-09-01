@@ -233,7 +233,7 @@ describe('provider tool-call request and response mapping', () => {
     expect(request.tool_choice).toBeUndefined()
   })
 
-  test('OpenRouter prioritizes low latency and promotes UR session stickiness', () => {
+  test('OpenRouter prioritizes end-to-end throughput and promotes UR session stickiness', () => {
     const request = toOpenAICompatibleRequest(
       {
         model: 'anthropic/claude-sonnet-5',
@@ -245,8 +245,54 @@ describe('provider tool-call request and response mapping', () => {
       'openrouter',
     )
 
-    expect(request.provider).toEqual({ sort: 'latency' })
+    expect(request.provider).toEqual({ sort: 'throughput' })
     expect(request.session_id).toBe('ur-session-123')
+  })
+
+  test('OpenRouter leaves tool turns to Auto Exacto by default', () => {
+    const request = toOpenAICompatibleRequest(
+      {
+        model: 'anthropic/claude-sonnet-5',
+        messages: userMessages(),
+        tools: sampleTools,
+      },
+      'openrouter',
+    )
+
+    expect(request.tools).toHaveLength(1)
+    expect(request.provider).toBeUndefined()
+  })
+
+  test('OpenRouter performance routing remains fully configurable', () => {
+    const request = toOpenAICompatibleRequest(
+      {
+        model: 'anthropic/claude-sonnet-5',
+        messages: userMessages(),
+        tools: sampleTools,
+      },
+      'openrouter',
+      {
+        openrouter: {
+          routing: 'latency',
+          allowFallbacks: false,
+          requireParameters: true,
+          preferredMinThroughput: 40,
+          preferredMaxLatency: 3,
+          serviceTier: 'priority',
+          speed: 'fast',
+        },
+      },
+    )
+
+    expect(request.provider).toEqual({
+      sort: 'latency',
+      allow_fallbacks: false,
+      require_parameters: true,
+      preferred_min_throughput: 40,
+      preferred_max_latency: 3,
+    })
+    expect(request.service_tier).toBe('priority')
+    expect(request.speed).toBe('fast')
   })
 
   test('OpenRouter preserves explicit routing and prompt-cache markers', () => {
@@ -307,6 +353,19 @@ describe('provider tool-call request and response mapping', () => {
     )
 
     expect(request.provider).toBeUndefined()
+  })
+
+  test('OpenRouter explicit routing overrides a conflicting model variant', () => {
+    const request = toOpenAICompatibleRequest(
+      {
+        model: 'openai/gpt-5.5:nitro',
+        messages: userMessages(),
+      },
+      'openrouter',
+      { openrouter: { routing: 'latency' } },
+    )
+
+    expect(request.provider).toEqual({ sort: 'latency' })
   })
 
   test('OpenRouter citation annotations become deduplicated Markdown sources', () => {

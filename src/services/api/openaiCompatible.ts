@@ -13,7 +13,9 @@ import {
 import { logForDebugging } from '../../utils/debug.js'
 import {
   getProviderReasoningCapabilitiesForModel,
+  markProviderModelUnavailable,
   resolveProviderId,
+  type OpenRouterSettings,
 } from '../providers/providerRegistry.js'
 import { normalizeOpenAIChatUsage } from './usageNormalization.js'
 import {
@@ -73,6 +75,30 @@ export async function createOpenAICompatibleClient(
   const maxRetries = options.maxRetries
   const providerId = options.providerId ?? 'openai-compatible'
 
+  const isUnavailableNvidiaFunction = (response: Response, body: string): boolean =>
+    providerId === 'nvidia-nim' &&
+    response.status === 404 &&
+    /function\s+['"][^'"]+['"]\s*:\s*not found for account\s+['"][^'"]+['"]/iu.test(body)
+
+  const failureMessage = (
+    response: Response,
+    body: string,
+    streaming: boolean,
+    model: unknown,
+  ): string => {
+    if (isUnavailableNvidiaFunction(response, body)) {
+      const modelId = typeof model === 'string' && model.trim()
+        ? model.trim()
+        : 'selected model'
+      markProviderModelUnavailable(providerId, modelId, options.baseUrl)
+      return `NVIDIA NIM model "${modelId}" is not active for this account. UR removed it from this session's catalog; run /model and choose an account-active NVIDIA model.`
+    }
+    return `OpenAI-compatible${streaming ? ' streaming' : ''} request failed for ${endpoint} (${response.status}): ${body || response.statusText}`
+  }
+
+  const failureBody = (response: Response, body: string): string | undefined =>
+    isUnavailableNvidiaFunction(response, body) ? undefined : body
+
   async function doRequest(params: any, requestOptions?: any) {
     const response = await fetchWithProviderReliability(
       endpoint,
@@ -93,7 +119,8 @@ export async function createOpenAICompatibleClient(
         timeoutMs: requestOptions?.timeoutMs,
         signal: requestOptions?.signal,
         failureMessage: (response, body) =>
-          `OpenAI-compatible request failed for ${endpoint} (${response.status}): ${body || response.statusText}`,
+          failureMessage(response, body, false, params.model),
+        failureBody,
       },
     )
 
@@ -129,7 +156,8 @@ export async function createOpenAICompatibleClient(
         signal,
         streaming: true,
         failureMessage: (response, body) =>
-          `OpenAI-compatible streaming request failed for ${endpoint} (${response.status}): ${body || response.statusText}`,
+          failureMessage(response, body, true, params.model),
+        failureBody,
       },
     )
 
@@ -268,6 +296,7 @@ function openAICompatibleAnthropicCountUrl(chatEndpoint: string): string {
 export function toOpenAICompatibleRequest(
   params: any,
   providerName = 'openai-compatible',
+  options: { openrouter?: OpenRouterSettings } = {},
 ): any {
   const tools = toOpenAITools(params.tools, providerName)
   const responseFormat = toOpenAIResponseFormat(params.output_config?.format)
@@ -308,11 +337,19 @@ export function toOpenAICompatibleRequest(
     : mapOpenAIToolChoice(params.tool_choice)
   const openRouterProviderPreferences =
     providerName === 'openrouter'
-      ? openRouterRoutingPreferences(params)
+      ? openRouterRoutingPreferences(params, options.openrouter)
       : undefined
   const openRouterSessionId =
     providerName === 'openrouter'
       ? resolveOpenRouterSessionId(params)
+      : undefined
+  const openRouterServiceTier =
+    providerName === 'openrouter'
+      ? params.service_tier ?? options.openrouter?.serviceTier
+      : undefined
+  const openRouterSpeed =
+    providerName === 'openrouter'
+      ? params.speed ?? options.openrouter?.speed
       : undefined
   const nvidiaCodingAgentTemplate =
     providerName === 'nvidia-nim' &&
@@ -343,6 +380,10 @@ export function toOpenAICompatibleRequest(
       provider: openRouterProviderPreferences,
     }),
     ...(openRouterSessionId && { session_id: openRouterSessionId }),
+    ...(openRouterServiceTier && openRouterServiceTier !== 'auto'
+      ? { service_tier: openRouterServiceTier }
+      : {}),
+    ...(openRouterSpeed === 'fast' ? { speed: 'fast' } : {}),
     ...(nvidiaCodingAgentTemplate && {
       chat_template_kwargs: nvidiaCodingAgentTemplate,
     }),
@@ -359,18 +400,46 @@ export function toOpenAICompatibleRequest(
 }
 
 /**
- * OpenRouter otherwise favours price when choosing among healthy endpoints.
- * An interactive agent is much more sensitive to time-to-first-token, so UR
- * opts into OpenRouter's rolling latency sort unless the caller supplied an
- * explicit preference or selected a routing model variant.
+ * Preserve OpenRouter's Auto Exacto routing for tool turns. It combines live
+ * throughput with measured tool-call reliability and is bypassed by any
+ * explicit sort. Ordinary text turns prioritize total generation throughput,
+ * which includes TTFT and streaming time, instead of TTFT alone. Explicit
+ * request/config sorting follows OpenRouter precedence; model variants remain
+ * authoritative when no conflicting sort was selected.
  */
-function openRouterRoutingPreferences(params: any): Record<string, unknown> | undefined {
+function openRouterRoutingPreferences(
+  params: any,
+  settings: OpenRouterSettings | undefined,
+): Record<string, unknown> | undefined {
   if (params?.provider && typeof params.provider === 'object' && !Array.isArray(params.provider)) {
     return params.provider as Record<string, unknown>
   }
   const model = typeof params?.model === 'string' ? params.model : ''
-  if (/:(?:nitro|floor|exacto)$/iu.test(model)) return undefined
-  return { sort: 'latency' }
+  const usesModelRoutingVariant = /:(?:nitro|floor|exacto)$/iu.test(model)
+
+  const preferences: Record<string, unknown> = {}
+  const strategy = settings?.routing ?? 'auto'
+  const hasTools =
+    (Array.isArray(params?.tools) && params.tools.length > 0) ||
+    params?.tool_choice !== undefined
+  if (strategy !== 'auto') {
+    preferences.sort = strategy
+  } else if (!usesModelRoutingVariant && !hasTools) {
+    preferences.sort = 'throughput'
+  }
+  if (settings?.allowFallbacks !== undefined) {
+    preferences.allow_fallbacks = settings.allowFallbacks
+  }
+  if (settings?.requireParameters !== undefined) {
+    preferences.require_parameters = settings.requireParameters
+  }
+  if (settings?.preferredMinThroughput !== undefined) {
+    preferences.preferred_min_throughput = settings.preferredMinThroughput
+  }
+  if (settings?.preferredMaxLatency !== undefined) {
+    preferences.preferred_max_latency = settings.preferredMaxLatency
+  }
+  return Object.keys(preferences).length > 0 ? preferences : undefined
 }
 
 /**

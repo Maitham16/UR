@@ -295,6 +295,9 @@ ur provider select-model ollama qwen2.5-coder:7b --json
 ur config set base_url ollama http://localhost:11434
 ur config set base_url llama.cpp http://localhost:9931/v1
 ur config set provider.fallback ollama
+ur config set openrouter.routing auto
+ur config set openrouter.preferred_min_throughput 40
+ur config set openrouter.preferred_max_latency 3
 ```
 
 `provider.fallback` records a recovery provider for `ur provider doctor`
@@ -327,6 +330,22 @@ deferred tool discovery. `store` defaults to `false`; the durable local cursor
 store records identifiers and status only. Compacted context is persisted only
 when `UR_OPENAI_RESPONSES_STATE_KEY` contains a 32-byte encryption key. Return
 to the default with `ur config set openai_transport chat-completions`.
+
+OpenRouter `auto` routing leaves tool turns to Auto Exacto and optimizes
+non-tool turns for end-to-end throughput. The routing, fallback,
+strict-parameter, rolling performance preference, service-tier, and supported
+fast-mode controls are configurable; `priority` and `fast` are optional and may
+cost more. Native `:nitro`, `:floor`, and `:exacto` model suffixes are accepted
+and keep the base model's discovered context, output, tool, and reasoning
+capabilities.
+
+```sh
+ur config set openrouter.routing auto          # auto | throughput | latency | price
+ur config set openrouter.allow_fallbacks true    # true | false | auto
+ur config set openrouter.require_parameters true # true | false | auto
+ur config set openrouter.service_tier priority # auto | default | flex | priority | fast
+ur config set openrouter.speed fast            # standard | fast
+```
 
 Provider config accepts canonical IDs and common aliases. Examples:
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `nvidia-nim` (`NVIDIA Build`), `ollama`,
@@ -372,7 +391,9 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    by source: `live` (discovered from the endpoint), `cache` (last discovery),
    `static` (predefined), or `unavailable` after a failed discovery with no
    fallback. Local/server providers (Ollama, LM Studio,
-   llama.cpp, vLLM, Unsloth) and OpenAI-compatible endpoints, including NVIDIA NIM, are discovered live; API
+   llama.cpp, vLLM, Unsloth) and OpenAI-compatible endpoints are discovered live. Hosted NVIDIA NIM
+   intersects its broad `/v1/models` response with NVIDIA's authenticated ACTIVE
+   function inventory and removes non-agent utility endpoints before presenting a model; API
    providers use live discovery from their `/models` endpoint once a key is
    connected (with a curated fallback list before that). Subscription CLIs show
    their curated model list because the official CLIs expose no models API. The
@@ -412,8 +433,12 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    support, and the full untruncated ID immediately below the focused entry.
    Its endpoint-scoped catalog is reused for five minutes; Ctrl+R forces an
    immediate live refresh without substituting stale entries. Interactive
-   requests prefer OpenRouter's latency routing and reuse a stable session ID
-   and provider-authored prompt-cache markers for warmer multi-turn streams.
+   tool turns preserve OpenRouter Auto Exacto so the router can combine live
+   throughput with measured tool-call reliability; ordinary text turns prefer
+   end-to-end throughput rather than time-to-first-token alone. UR reuses a
+   stable session ID and provider-authored prompt-cache markers for warmer
+   multi-turn streams. Configure the policy with `openrouter.routing`, or use
+   the native `:nitro`, `:floor`, and `:exacto` model variants.
    API-key entry is masked, aligned on one row, and stored through the OS
    keychain flow.
 

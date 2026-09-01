@@ -45,7 +45,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.84.3</p>
+          <p class="eyebrow">Version 1.84.4</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -187,7 +187,7 @@ ur --model kimi-k3:cloud --effort high
             <h3>OpenRouter responsive routing</h3>
             <pre><code>ur config set provider openrouter
 /model  # cached catalog; Ctrl+R forces live refresh</code></pre>
-            <p>The endpoint-scoped model catalog is reused for five minutes, while forced refresh never substitutes stale data. Interactive requests prefer OpenRouter latency routing, a stable session ID, and provider-authored prompt-cache markers; explicit routing preferences and model variants still win.</p>
+            <p>The endpoint-scoped model catalog is reused for five minutes, while forced refresh never substitutes stale data. Tool turns preserve OpenRouter Auto Exacto for live throughput and tool-call reliability; non-tool turns prefer end-to-end throughput. Stable session affinity keeps prompt caches warm, while configurable routing preferences and the <code>:nitro</code>, <code>:floor</code>, and <code>:exacto</code> variants remain authoritative.</p>
           </article>
           <article>
             <h3>NVIDIA NIM and compatible API keys</h3>

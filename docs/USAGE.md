@@ -173,6 +173,23 @@ ur config set responses.compact_threshold 20000
 ur config set responses.tool_search hosted
 ```
 
+For OpenRouter, UR preserves Auto Exacto on tool turns and uses throughput
+routing on non-tool turns. Tune that provider without hardcoded endpoints or
+request patches:
+
+```sh
+ur config set openrouter.routing auto
+ur config set openrouter.preferred_min_throughput 40
+ur config set openrouter.preferred_max_latency 3
+ur config set openrouter.service_tier priority
+ur config set openrouter.speed fast
+```
+
+`auto` is the recommended default. `priority`/`fast` are optional paid upstream
+features and are effective only for models that OpenRouter supports. Append
+`:nitro`, `:floor`, or `:exacto` to an OpenRouter model ID for its native
+throughput-, price-, or tool-quality-first virtual route.
+
 `provider.fallback` only controls the recovery suggestion printed by provider
 diagnostics. UR does not switch or retry across providers automatically; use
 `ur config set provider <id>` after reviewing the failure.
@@ -240,7 +257,11 @@ API-key access, and an API key does not grant subscription CLI access.
 NVIDIA NIM uses the build.nvidia.com key and hosted
 `https://integrate.api.nvidia.com/v1` endpoint by default. Connect it with
 `ur connect nvidia-nim`; use `ur config set base_url nvidia-nim <url>` for a
-different NIM deployment. On the `/model` model screen, `K` adds or replaces a
+different NIM deployment. For the hosted endpoint, `/model` shows only models
+that occur in both NVIDIA's `/v1/models` feed and the connected account's
+ACTIVE function inventory; utility endpoints such as embeddings, guards, and
+parsers are excluded. A custom NIM gateway retains its own independent catalog.
+On the `/model` model screen, `K` adds or replaces a
 provider API key and `E` edits its endpoint. This also makes optional
 authentication practical for generic OpenAI-compatible gateways.
 

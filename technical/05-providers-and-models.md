@@ -45,8 +45,20 @@ start training, download models, or enable Unsloth's server-side tools.
 NVIDIA NIM is a UR-native OpenAI-compatible provider. The build.nvidia.com
 hosted path defaults to `https://integrate.api.nvidia.com/v1`, while the scoped
 endpoint can target enterprise or self-hosted NIM. Discovery is always live;
-hidden curated entries enrich only exact, NVIDIA-documented reasoning
-contracts and never act as an offline model list.
+on the hosted path the broad `/v1/models` list is intersected with the
+authenticated `GET /v2/nvcf/functions` response and only ACTIVE, agent-capable
+matches survive. Embedding, guard, parser, translation, detector, calibration,
+retrieval, and reward endpoints are removed from the agent picker. A custom
+NIM gateway uses only its own `/models` feed and never inherits hosted control-plane
+assumptions. Hidden curated entries enrich only exact, NVIDIA-documented
+reasoning contracts and never act as an offline model list.
+
+The provider doctor applies the same intersection to the selected model. A
+hosted 404 whose detail says an internal function is missing for an account is
+classified as catalog churn: request-visible and retained error text is
+redacted, and the rejected model is removed from that endpoint's in-memory
+catalog until an explicit refresh. This invalidation is endpoint-scoped, so a
+different saved NIM gateway remains unaffected.
 
 ### How to use
 
@@ -136,9 +148,13 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   `test/ollamaToolResultImages.test.ts` enforce the complete UR-native matrix.
 - OpenRouter model discovery uses an endpoint-scoped five-minute cache. Opening the picker
   reuses a fresh entry; Ctrl+R invalidates it and requires a live response instead of
-  silently substituting stale results. Interactive requests default to latency routing,
-  reuse a stable session identifier, and preserve provider-authored prompt-cache markers;
-  explicit routing preferences and model variants remain authoritative.
+  silently substituting stale results. Tool turns preserve OpenRouter Auto Exacto rather
+  than sending an explicit sort that disables it; non-tool turns sort by end-to-end
+  throughput. Stable `session_id` affinity keeps prompt caches warm and retains automatic
+  fallback. `provider.openrouter` exposes routing, fallback, strict-parameter, rolling
+  throughput/latency preference, service-tier, and supported fast-mode controls. Explicit
+  request preferences and the `:nitro`, `:floor`, and `:exacto` variants remain authoritative,
+  and virtual variants inherit discovery metadata from their base model.
 - OpenAI API keeps Chat Completions as the default. Setting
   `provider.openaiTransport` through
   `ur config set openai_transport responses` selects the native Responses

@@ -301,6 +301,8 @@ export async function fetchWithProviderReliability(
     idleTimeoutMs?: number
     fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
     failureMessage: (response: Response, body: string) => string
+    /** Optional redaction/normalization for the body retained on an error. */
+    failureBody?: (response: Response, body: string) => string | undefined
   },
 ): Promise<Response> {
   const timeoutMs = options.streaming
@@ -318,7 +320,9 @@ export async function fetchWithProviderReliability(
         const body = await response.text().catch(() => '')
         throw new ProviderHTTPError(options.failureMessage(response, body), {
           status: response.status,
-          body,
+          body: options.failureBody
+            ? options.failureBody(response, body)
+            : body,
           headers: response.headers,
         })
       }

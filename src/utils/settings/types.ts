@@ -558,6 +558,43 @@ export const SettingsSchema = lazySchema(() =>
             })
             .optional()
             .describe('Privacy-conscious OpenAI Responses API options.'),
+          openrouter: z
+            .object({
+              routing: z
+                .enum(['auto', 'throughput', 'latency', 'price'])
+                .optional()
+                .describe(
+                  'OpenRouter routing strategy. Auto preserves Auto Exacto for tool turns and prioritizes throughput for ordinary turns.',
+                ),
+              allowFallbacks: z
+                .boolean()
+                .optional()
+                .describe('Allow OpenRouter to try another upstream endpoint after a provider failure.'),
+              requireParameters: z
+                .boolean()
+                .optional()
+                .describe('Only route through OpenRouter endpoints that support every request parameter.'),
+              preferredMinThroughput: z
+                .number()
+                .positive()
+                .optional()
+                .describe('Preferred OpenRouter median throughput in output tokens per second.'),
+              preferredMaxLatency: z
+                .number()
+                .positive()
+                .optional()
+                .describe('Preferred OpenRouter median time-to-first-token latency in seconds.'),
+              serviceTier: z
+                .enum(['auto', 'default', 'flex', 'priority', 'fast'])
+                .optional()
+                .describe('OpenRouter upstream service tier; priority may cost more and is model-dependent.'),
+              speed: z
+                .enum(['standard', 'fast'])
+                .optional()
+                .describe('Request OpenRouter fast mode on models that explicitly support it.'),
+            })
+            .optional()
+            .describe('OpenRouter performance and routing controls.'),
           preferences: z
             .record(z.string(), NonSecretPreferenceSchema)
             .optional()

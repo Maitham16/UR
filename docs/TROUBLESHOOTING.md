@@ -210,6 +210,39 @@ press `K` on its `/model` screen; the key is optional and stored separately
 from `OPENAI_API_KEY`. NVIDIA NIM uses `ur connect nvidia-nim` and keeps any
 custom `base_url` scoped to that provider.
 
+### NVIDIA lists a model but inference returns `Function … Not found for account`
+
+- Cause: NVIDIA's hosted `/v1/models` feed can contain a function that is no
+  longer ACTIVE for the connected account.
+- Fix: upgrade UR, run `ur provider doctor nvidia-nim`, then open `/model` and
+  press `Ctrl+R`. Hosted discovery now intersects `/v1/models` with NVIDIA's
+  authenticated ACTIVE function inventory and excludes non-agent utility
+  endpoints. A definitive runtime 404 also removes that model from the current
+  endpoint-scoped session catalog.
+- Privacy: UR does not display or retain the internal NVIDIA function UUID and
+  account identifier from this error response.
+
+If `account_models` fails, reconnect a current build.nvidia.com key with
+`ur connect nvidia-nim`. A configured enterprise/self-hosted NIM endpoint is
+validated only against that gateway and does not use NVIDIA's hosted inventory.
+
+### `The provider reported that model … reached its per-response output boundary`
+
+This is not an input-context overflow and does not mean UR counted the text
+incorrectly. The provider ended the generation with its `max_tokens`/`length`
+finish reason on a response chunk whose boundary was the displayed value. The
+normal query loop silently continues from the exact cutoff with no fixed total
+continuation ceiling while every capped response adds novel work. It stops only
+after two consecutive empty or replayed capped responses, which indicates a
+stalled model loop rather than a long task.
+
+`UR_CODE_MAX_OUTPUT_TOKENS` changes only the per-response chunk, up to the
+model's discovered limit; it does not impose or remove a total task limit.
+Cloud requests use a practical chunk so routers retain fast endpoint choices,
+and local runtimes use a smaller reservation to avoid unnecessary KV-memory
+allocation. If the stalled-loop message appears, inspect the prompt/model for
+repetition before retrying.
+
 ### Unsloth is selected but unavailable
 
 - Likely cause: Studio is not running, no model is loaded, its generated API

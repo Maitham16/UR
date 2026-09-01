@@ -17,6 +17,7 @@ import {
   axiosPostWithProviderReliability,
   normalizeProviderEndpoint,
 } from './providerHttp.js'
+import type { OpenRouterSettings } from '../providers/providerRegistry.js'
 
 type URHQClient = {
   beta: { messages: any }
@@ -28,9 +29,10 @@ export async function createOpenRouterClient(
     baseUrl?: string
     maxRetries: number
     model?: string
+    openrouter?: OpenRouterSettings
   },
 ): Promise<URHQClient> {
-  const { apiKey, baseUrl, maxRetries } = options
+  const { apiKey, baseUrl, maxRetries, openrouter } = options
   const endpoint = normalizeProviderEndpoint(
     baseUrl,
     'https://openrouter.ai/api/v1',
@@ -41,7 +43,7 @@ export async function createOpenRouterClient(
     const clientRequestId = params?.headers?.['x-client-request-id']
     const response = await axiosPostWithProviderReliability<any>(
       endpoint,
-      toOpenAICompatibleRequest(params, 'openrouter'),
+      toOpenAICompatibleRequest(params, 'openrouter', { openrouter }),
       {
         headers: {
           'Content-Type': 'application/json',
@@ -77,7 +79,11 @@ export async function createOpenRouterClient(
 
     const response = await axiosPostWithProviderReliability<any>(
       endpoint,
-      toOpenAICompatibleRequest({ ...params, stream: true }, 'openrouter'),
+      toOpenAICompatibleRequest(
+        { ...params, stream: true },
+        'openrouter',
+        { openrouter },
+      ),
       {
         headers: {
           'Content-Type': 'application/json',

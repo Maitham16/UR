@@ -263,10 +263,17 @@ shows pricing tier, context size, tool capability, reasoning capability, and
 the full, untruncated model ID immediately below the focused entry. Opening the
 OpenRouter catalog reuses its endpoint-scoped five-minute cache; Ctrl+R forces
 the current `/models` endpoint and never substitutes a cached list when that
-forced refresh fails. Interactive requests default to OpenRouter's latency
-sorting, promote UR's stable session ID for sticky routing, and preserve safe
-provider prompt-cache markers. Explicit routing preferences and the `:nitro`,
-`:floor`, and `:exacto` model variants remain authoritative. API-key entry for
+forced refresh fails. Tool requests preserve OpenRouter Auto Exacto so its live
+throughput, tool-call reliability, and benchmark signals choose the route;
+non-tool requests default to throughput sorting rather than TTFT-only latency
+sorting. UR promotes its stable session ID for prompt-cache affinity while
+retaining router fallback. Explicit request preferences, the `openrouter.*`
+configuration controls, and the `:nitro`, `:floor`, and `:exacto` model variants
+remain authoritative. See OpenRouter's
+[provider routing](https://openrouter.ai/docs/guides/routing/provider-selection),
+[Auto Exacto](https://openrouter.ai/docs/guides/routing/auto-exacto), and
+[prompt caching](https://openrouter.ai/docs/guides/best-practices/prompt-caching).
+API-key entry for
 OpenAI, Claude, Gemini, OpenRouter, NVIDIA NIM, and authenticated compatible
 endpoints is a single aligned masked row; the key is stored in the OS keychain
 flow and is never written to settings. On the model screen, `K` adds or
@@ -420,7 +427,7 @@ ur config set provider anthropic-api
 | --- | --- | --- |
 | API providers (openai-api, anthropic-api, gemini-api) | Live discovery from the provider's `/models` endpoint using your connected key (curated fallback until connected) | live |
 | OpenRouter | Live `/models` discovery with an endpoint-scoped five-minute cache; Ctrl+R forces a fresh request with no stale fallback | live/cache |
-| NVIDIA NIM | Live `/models` discovery from the hosted or configured NIM endpoint; no stale offline model catalog | live |
+| NVIDIA NIM | Hosted: live `/models` intersected with the connected account's ACTIVE NVCF functions, then restricted to agent/chat endpoints. Configured NIM gateway: its own live `/models` catalog | live |
 | Local/server providers (ollama, lmstudio, llama.cpp, vllm, unsloth) | Dynamic discovery from the selected provider endpoint | live |
 | OpenAI-compatible | Dynamic discovery from configured endpoint | live |
 | Subscription CLIs (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Curated list (the official CLIs expose no models API); first-class in `/model`, dispatched via the official CLI. External CLI behavior depends on the vendor CLI. Log in with `ur auth <provider>` | static |
@@ -657,15 +664,28 @@ ur provider doctor nvidia-nim
 ur config set base_url nvidia-nim https://nim-gateway.example/v1
 ```
 
-The default is `https://integrate.api.nvidia.com/v1`. UR calls `/models`,
-`/chat/completions`, and, when available, `/messages/count_tokens`; native
+The default is `https://integrate.api.nvidia.com/v1`. NVIDIA's hosted
+`/v1/models` response can be broader than the functions that the connected
+account can actually invoke. UR therefore intersects it with the authenticated
+NVCF `GET /v2/nvcf/functions` inventory, keeps only `ACTIVE` matches, and
+removes embedding, guard, parser, translation, reward, and similar non-agent
+endpoints. A custom enterprise or self-hosted NIM remains independent and uses
+only that configured gateway's `/models` response.
+
+UR calls `/models`, `/chat/completions`, and, when available, `/messages/count_tokens`; native
 count failure falls back to a provider-wire estimate and never launches a
 hidden completion. Streaming, standard tool calls, and image input use the
 same OpenAI-compatible adapter. Vision and tools remain model-dependent. For
 documented Nemotron coding-agent models, UR includes NVIDIA's
 `force_nonempty_content` template option when tools are present. See NVIDIA's
 [NIM LLM API reference](https://docs.api.nvidia.com/nim/reference/llm-apis)
-and [NIM function-calling API](https://docs.nvidia.com/nim/large-language-models/latest/function-calling.html).
+and [NVCF API scope reference](https://docs.nvidia.com/nvcf/api#scope-reference).
+
+`ur provider doctor nvidia-nim` verifies both the hosted catalog and the
+selected model against the account-active inventory. If NVIDIA retires a
+function after selection, UR redacts NVIDIA's internal function/account IDs,
+removes that model from the current endpoint-scoped session catalog, and asks
+the user to select an active model. `Ctrl+R` explicitly retries discovery.
 
 Local/server providers use their normal endpoints:
 

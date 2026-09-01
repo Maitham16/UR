@@ -18,18 +18,9 @@ export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
 // Maximum output tokens for compact operations
 export const COMPACT_MAX_OUTPUT_TOKENS = 20_000
 
-// Default max output tokens
+// Fallback only for providers that publish no output-limit metadata.
 const MAX_OUTPUT_TOKENS_DEFAULT = 32_000
-const MAX_OUTPUT_TOKENS_UPPER_LIMIT = 64_000
-
-// Capped default for slot-reservation optimization. BQ p99 output = 4,911
-// tokens, so 32k/64k defaults over-reserve 8-16× slot capacity. With the cap
-// enabled, <1% of requests hit the limit; those get one clean retry at 64k
-// (see query.ts max_output_tokens_escalate). Cap is applied in
-// ur.ts:getMaxOutputTokensForModel to avoid the growthbook→betas→context
-// import cycle.
-export const CAPPED_DEFAULT_MAX_TOKENS = 8_000
-export const ESCALATED_MAX_TOKENS = 64_000
+const UNKNOWN_MODEL_OUTPUT_TOKENS_UPPER_LIMIT = 64_000
 
 /**
  * Check if 1M context is disabled via environment variable.
@@ -185,13 +176,14 @@ export function getModelMaxOutputTokens(
   upperLimit: number
 } {
   let defaultTokens = MAX_OUTPUT_TOKENS_DEFAULT
-  let upperLimit = MAX_OUTPUT_TOKENS_UPPER_LIMIT
+  let upperLimit = UNKNOWN_MODEL_OUTPUT_TOKENS_UPPER_LIMIT
 
   if (process.env.USER_TYPE === 'ant') {
     const antModel = resolveAntModel(model.toLowerCase())
     if (antModel) {
       defaultTokens = antModel.defaultMaxTokens ?? MAX_OUTPUT_TOKENS_DEFAULT
-      upperLimit = antModel.upperMaxTokensLimit ?? MAX_OUTPUT_TOKENS_UPPER_LIMIT
+      upperLimit =
+        antModel.upperMaxTokensLimit ?? UNKNOWN_MODEL_OUTPUT_TOKENS_UPPER_LIMIT
       return { default: defaultTokens, upperLimit }
     }
   }
@@ -211,7 +203,9 @@ export function getModelMaxOutputTokens(
     settings,
   )
   if (providerOutputLimit !== undefined) {
-    upperLimit = Math.min(upperLimit, providerOutputLimit)
+    upperLimit = cap?.max_tokens
+      ? Math.min(upperLimit, providerOutputLimit)
+      : providerOutputLimit
     defaultTokens = Math.min(defaultTokens, upperLimit)
   }
 

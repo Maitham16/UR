@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.84.4
+
+- Corrected NVIDIA Build model discovery so the picker no longer treats the
+  hosted `/v1/models` feed as proof that a model can be invoked. UR now
+  intersects that feed with the connected account's authenticated ACTIVE NVCF
+  functions and removes embedding, safety, parser, translation, retrieval,
+  reward, detector, and other non-agent endpoints. Custom enterprise and
+  self-hosted NIM gateways remain independent and use their own configured
+  catalogs.
+- Made NVIDIA diagnostics and runtime catalog churn actionable. `ur provider
+  doctor nvidia-nim` now validates the selected model against the account-active
+  inventory; a definitive missing-function 404 removes that model from the
+  endpoint-scoped session catalog and reports a model-selection fix without
+  displaying or retaining NVIDIA's internal account and function identifiers.
+- Added production regressions for retired hosted models, account inventory
+  failures, utility-model filtering, custom gateway isolation, selected-model
+  doctor failures, request/stream error redaction, and runtime cache
+  invalidation. User, troubleshooting, validation, configuration, and technical
+  documentation now describe the executable behavior.
+- Corrected the output-limit diagnostic: a `max_tokens`/`length` finish now
+  says that the provider stopped the selected model at a per-response boundary,
+  rather than incorrectly claiming that UR's accumulated response exceeded a
+  total limit. Long work now continues without a fixed continuation count while
+  each response makes novel progress; two consecutive empty/replayed capped
+  responses stop only the stalled loop. Practical response chunks preserve
+  router capacity and local KV memory, while the selected model's advertised
+  limit remains the upper bound for explicit overrides.
+- Updated OpenRouter dispatch to its current routing contract. Tool turns no
+  longer force `sort: latency`, which had disabled OpenRouter Auto Exacto;
+  they now use the router's live throughput, tool-call reliability, and
+  benchmark ordering. Non-tool turns default to end-to-end throughput rather
+  than time-to-first-token alone. Stable session affinity remains enabled for
+  prompt caching, and CLI settings now expose routing, fallback, parameter,
+  latency/throughput preference, service-tier, and supported fast-mode controls.
+  OpenRouter's `:nitro`, `:floor`, and `:exacto` virtual model variants now
+  validate against the discovered base model and inherit its capabilities.
+
 ## 1.84.3
 
 - Updated both production and release artifact uploads to the current official

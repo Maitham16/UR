@@ -774,6 +774,25 @@ describe('provider-scoped model listing', () => {
     expect(result3.valid).toBe(true)
   })
 
+  test('OpenRouter virtual routing variants validate against the discovered base model', () => {
+    expect(
+      validateProviderModelCompatibility(
+        'openrouter',
+        'moonshotai/kimi-agent:nitro',
+        {
+          availableModels: [
+            {
+              id: 'moonshotai/kimi-agent',
+              displayName: 'Kimi Agent',
+              description: '',
+              supportedParameters: ['tools'],
+            },
+          ],
+        },
+      ),
+    ).toEqual({ valid: true })
+  })
+
   test('validateProviderModelCompatibility returns error for incompatible pairs', () => {
     const result = validateProviderModelCompatibility('openai-api', 'claude-sonnet-5')
 
@@ -1242,6 +1261,50 @@ describe('provider-scoped model listing', () => {
           compactThreshold: 20_000,
           toolSearch: 'hosted',
         },
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      resetStateForTests()
+      resetSettingsCache()
+    }
+  })
+
+  test('OpenRouter performance controls are explicit, validated, and persisted', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ur-provider-openrouter-config-'))
+    try {
+      resetStateForTests()
+      setOriginalCwd(dir)
+      setCwdState(dir)
+      resetSettingsCache()
+
+      expect(setSafeProviderConfig('openrouter.routing', 'throughput').ok).toBe(true)
+      expect(setSafeProviderConfig('openrouter.allow_fallbacks', 'true').ok).toBe(true)
+      expect(setSafeProviderConfig('openrouter.require_parameters', 'true').ok).toBe(true)
+      expect(setSafeProviderConfig('openrouter.preferred_min_throughput', '40').ok).toBe(true)
+      expect(setSafeProviderConfig('openrouter.preferred_max_latency', '3.5').ok).toBe(true)
+      expect(setSafeProviderConfig('openrouter.service_tier', 'fast').ok).toBe(true)
+      expect(setSafeProviderConfig('openrouter.speed', 'fast').ok).toBe(true)
+      expect(setSafeProviderConfig('openrouter.routing', 'fastest').ok).toBe(false)
+      expect(setSafeProviderConfig('openrouter.preferred_max_latency', '0').ok).toBe(false)
+
+      expect(getActiveProviderSettings().openrouter).toEqual({
+        routing: 'throughput',
+        allowFallbacks: true,
+        requireParameters: true,
+        preferredMinThroughput: 40,
+        preferredMaxLatency: 3.5,
+        serviceTier: 'fast',
+        speed: 'fast',
+      })
+
+      expect(setSafeProviderConfig('openrouter.allow_fallbacks', 'auto').ok).toBe(true)
+      expect(setSafeProviderConfig('openrouter.require_parameters', 'auto').ok).toBe(true)
+      expect(setSafeProviderConfig('openrouter.preferred_min_throughput', 'auto').ok).toBe(true)
+      expect(setSafeProviderConfig('openrouter.preferred_max_latency', 'auto').ok).toBe(true)
+      expect(getActiveProviderSettings().openrouter).toEqual({
+        routing: 'throughput',
+        serviceTier: 'fast',
+        speed: 'fast',
       })
     } finally {
       rmSync(dir, { recursive: true, force: true })

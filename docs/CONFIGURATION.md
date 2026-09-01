@@ -143,6 +143,27 @@ ur config set base_url <url>
 ur config set base_url <provider> <url>
 ```
 
+OpenRouter's default `auto` policy keeps its current Auto Exacto ordering for
+tool turns and prioritizes end-to-end throughput for ordinary text turns.
+Every performance choice is explicit and editable:
+
+```sh
+ur config set openrouter.routing auto          # auto | throughput | latency | price
+ur config set openrouter.allow_fallbacks true    # true | false | auto
+ur config set openrouter.require_parameters true # true | false | auto
+ur config set openrouter.preferred_min_throughput 40
+ur config set openrouter.preferred_max_latency 3
+ur config set openrouter.service_tier priority # auto | default | flex | priority | fast
+ur config set openrouter.speed fast            # standard | fast
+ur config set model <openrouter-model>:nitro   # or :floor / :exacto
+```
+
+Thresholds are preferences, not exclusions. `priority` and `fast` can increase
+price and apply only where OpenRouter advertises upstream support; their
+default `auto`/`standard` values add no premium request. Explicit request-level
+provider preferences still win. Set either performance threshold to `auto` to
+remove it and return to OpenRouter's own routing data.
+
 `provider.fallback` is diagnostic recovery metadata, not automatic routing.
 When the active provider fails, `ur provider doctor` shows the configured
 recovery command; changing providers remains an explicit user action.
@@ -242,7 +263,10 @@ UNSLOTH_API_KEY=...
 
 NVIDIA NIM defaults to `https://integrate.api.nvidia.com/v1`, discovers the
 connected account's models live, and accepts a provider-scoped override for an
-enterprise or self-hosted NIM. Generic `openai-compatible` authentication is
+enterprise or self-hosted NIM. On NVIDIA's hosted endpoint, UR intersects the
+broad `/v1/models` feed with the key's ACTIVE NVCF function inventory and omits
+non-agent utility endpoints; a configured NIM gateway uses its own model feed
+without contacting NVIDIA's hosted control plane. Generic `openai-compatible` authentication is
 optional: `ur connect openai-compatible` or the picker's `K` key stores a
 credential when the chosen gateway needs one, without breaking anonymous
 local endpoints.

@@ -49,6 +49,15 @@ restore their session model without showing the picker.
       "compactThreshold": 20000,
       "toolSearch": "hosted"        // off (default) | hosted
     },
+    "openrouter": {
+      "routing": "auto",            // auto | throughput | latency | price
+      "allowFallbacks": true,
+      "requireParameters": true,
+      "preferredMinThroughput": 40,
+      "preferredMaxLatency": 3,
+      "serviceTier": "priority",     // auto | default | flex | priority | fast
+      "speed": "fast"                // standard | fast
+    },
     "preferences": {},
     "availableModels": [], "modelOverrides": {}
   },
@@ -70,6 +79,16 @@ own address. `ur config set base_url <url>` updates the active provider;
 `ur config set base_url <provider> <url>` updates the named provider. Switching providers
 restores the matching URL, and provider discovery, doctor checks, and inference resolve the
 same value.
+
+`provider.openrouter.routing=auto` deliberately sends no explicit sort on tool
+turns, preserving OpenRouter Auto Exacto. Non-tool turns use `sort=throughput`.
+An explicit routing value forces that OpenRouter sort on all turns. The two
+performance thresholds map to OpenRouter's rolling p50 preferences and
+deprioritize slower endpoints without excluding fallback; the CLI value `auto`
+removes either threshold or boolean override. `serviceTier` and
+`speed` are omitted at their `auto`/`standard` defaults; premium values are sent
+only when explicitly selected. `:nitro`, `:floor`, and `:exacto` virtual model
+IDs validate against and inherit capabilities from the discovered base model.
 
 `effortLevel` accepts `minimal`, `low`, `medium`, `high`, `xhigh`, and `ultra` for normal
 users (`max` is also persistable in internal builds). `--effort` and `/effort` additionally
@@ -314,7 +333,7 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 | `UR_CODE_DISABLE_AUTO_MEMORY=1` | Disable auto-memory |
 | `UR_CODE_DISABLE_CRON=1` | Disable cron/trigger scheduling |
 | `UR_CODE_DISABLE_COMMAND_INJECTION_CHECK=1` | Skip bash injection analysis (not recommended) |
-| `UR_CODE_MAX_OUTPUT_TOKENS` | Cap model output tokens |
+| `UR_CODE_MAX_OUTPUT_TOKENS` | Per-response chunk size, bounded by the selected model/provider's verified output limit; it is not a total task limit, and a provider `max_tokens`/`length` stop continues while novel progress is produced |
 | `UR_CODE_MAX_RETRIES` | API retry cap |
 | `UR_CODE_EXTRA_BODY` | Extra JSON merged into API requests |
 | `UR_CODE_COORDINATOR_MODE=1` | Coordinator (lead + workers) mode |

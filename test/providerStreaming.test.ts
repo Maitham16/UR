@@ -279,7 +279,9 @@ describe('provider real streaming', () => {
     const [url, body, config] = post.mock.calls[0] as [string, Record<string, any>, Record<string, any>]
     expect(url).toBe('https://router.example.test/custom/v1/chat/completions')
     expect(body.stream).toBe(true)
-    expect(body.provider).toEqual({ sort: 'latency' })
+    // Tool turns deliberately leave sorting unset so OpenRouter Auto Exacto
+    // can apply its live throughput and tool-call reliability ordering.
+    expect(body.provider).toBeUndefined()
     expect(config.responseType).toBe('stream')
     expect(events.find(event => event.type === 'content_block_start')?.content_block)
       .toMatchObject({ type: 'tool_use', id: 'call_1', name: 'Edit' })

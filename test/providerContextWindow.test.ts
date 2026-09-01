@@ -96,6 +96,35 @@ describe('the output limit a provider reported can be read back', () => {
     ).toEqual({ default: 16_384, upperLimit: 16_384 })
   })
 
+  test('a large advertised ceiling keeps a practical response chunk', () => {
+    cache('openai/gpt-large-output', 400_000, 128_000)
+    expect(
+      getModelMaxOutputTokens(
+        'openai/gpt-large-output',
+        'openrouter',
+        SETTINGS,
+      ),
+    ).toEqual({ default: 32_000, upperLimit: 128_000 })
+  })
+
+  test('OpenRouter virtual routing variants inherit the base model limits', () => {
+    cache('moonshotai/kimi-agent', 262_144, 64_000)
+    expect(
+      getProviderContextLengthForModel(
+        'moonshotai/kimi-agent:nitro',
+        'openrouter',
+        SETTINGS,
+      ),
+    ).toBe(262_144)
+    expect(
+      getModelMaxOutputTokens(
+        'moonshotai/kimi-agent:exacto',
+        'openrouter',
+        SETTINGS,
+      ),
+    ).toEqual({ default: 32_000, upperLimit: 64_000 })
+  })
+
   test('missing and invalid output limits are not guessed', () => {
     cache('silent/model', 128_000)
     expect(

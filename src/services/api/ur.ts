@@ -82,7 +82,6 @@ import {
 } from '../../utils/betas.js'
 import { getOrCreateUserID } from '../../utils/config.js'
 import {
-  CAPPED_DEFAULT_MAX_TOKENS,
   getModelMaxOutputTokens,
   getmodelS1mExpTreatmentEnabled,
 } from '../../utils/context.js'
@@ -116,6 +115,7 @@ import {
   isNonCustommodelOModel,
 } from '../../utils/model/model.js'
 import {
+  formatOutputTokenLimitMessage,
   SELF_HOSTED_DEFAULT_MAX_OUTPUT_TOKENS,
   usesConservativeOutputReservation,
 } from '../../utils/model/providerRequestTuning.js'
@@ -2452,9 +2452,10 @@ async function* queryModel(
                 max_tokens: maxOutputTokens,
               })
               yield createAssistantAPIErrorMessage({
-                content: `${API_ERROR_MESSAGE_PREFIX}: UR's response exceeded the ${
-                  maxOutputTokens
-                } output token maximum. To configure this behavior, set the UR_CODE_MAX_OUTPUT_TOKENS environment variable.`,
+                content: `${API_ERROR_MESSAGE_PREFIX}: ${formatOutputTokenLimitMessage(
+                  options.model,
+                  maxOutputTokens,
+                )}`,
                 apiError: 'max_output_tokens',
                 error: 'max_output_tokens',
               })
@@ -3622,11 +3623,6 @@ export function adjustParamsForNonStreaming<
   }
 }
 
-function isMaxTokensCapEnabled(): boolean {
-  // 3P default: false (not validated on Bedrock/Vertex)
-  return getFeatureValue_CACHED_MAY_BE_STALE('tengu_otk_slot_v1', false)
-}
-
 export function getMaxOutputTokensForModel(
   model: string,
   provider: NonNullable<ProviderSettings['active']> = getRuntimeProvider(),
@@ -3634,19 +3630,19 @@ export function getMaxOutputTokensForModel(
   const maxOutputTokens = getModelMaxOutputTokens(model, provider)
 
   // Self-hosted runtimes reserve 4K by default so a normal agent request fits
-  // a 32K KV context instead of allocating 49K/65K. A max-token stop resumes
-  // in the existing recovery loop, preserving the complete answer. Hosted
-  // slot optimization uses its independently controlled 8K cap. Math.min
-  // keeps lower native limits, and the explicit env override still wins.
+  // a 32K KV context instead of reserving the entire native ceiling. Cloud
+  // providers use a practical response chunk bounded by the model/provider's
+  // advertised ceiling. Reserving an entire 64K/128K output on every request
+  // can reduce router choices and throughput. Either way, a max-token stop
+  // resumes through the progress-aware continuation loop, so this per-request
+  // value is not a total task-output ceiling.
   const defaultTokens =
     usesConservativeOutputReservation(provider)
       ? Math.min(
           maxOutputTokens.default,
           SELF_HOSTED_DEFAULT_MAX_OUTPUT_TOKENS,
         )
-      : isMaxTokensCapEnabled()
-        ? Math.min(maxOutputTokens.default, CAPPED_DEFAULT_MAX_TOKENS)
-    : maxOutputTokens.default
+      : maxOutputTokens.default
 
   const result = validateBoundedIntEnvVar(
     'UR_CODE_MAX_OUTPUT_TOKENS',

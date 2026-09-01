@@ -221,6 +221,13 @@ export const PROVIDER_CONFIG_KEYS = [
   'responses.store',
   'responses.compact_threshold',
   'responses.tool_search',
+  'openrouter.routing',
+  'openrouter.allow_fallbacks',
+  'openrouter.require_parameters',
+  'openrouter.preferred_min_throughput',
+  'openrouter.preferred_max_latency',
+  'openrouter.service_tier',
+  'openrouter.speed',
   'model',
   'base_url',
 ] as const

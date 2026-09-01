@@ -92,6 +92,27 @@ export type ProviderCapabilities = {
   safetyBoundaryLabel: string
 }
 
+export type OpenRouterRoutingStrategy =
+  | 'auto'
+  | 'throughput'
+  | 'latency'
+  | 'price'
+
+export type OpenRouterSettings = {
+  /**
+   * `auto` keeps OpenRouter Auto Exacto for tool turns and optimizes ordinary
+   * text turns for end-to-end throughput. Other values force that provider
+   * sort for every request.
+   */
+  routing?: OpenRouterRoutingStrategy
+  allowFallbacks?: boolean
+  requireParameters?: boolean
+  preferredMinThroughput?: number
+  preferredMaxLatency?: number
+  serviceTier?: 'auto' | 'default' | 'flex' | 'priority' | 'fast'
+  speed?: 'standard' | 'fast'
+}
+
 export type ProviderSettings = {
   active?: ProviderId
   model?: string
@@ -105,6 +126,7 @@ export type ProviderSettings = {
     compactThreshold?: number
     toolSearch?: 'off' | 'hosted'
   }
+  openrouter?: OpenRouterSettings
 }
 
 export type ProviderDefinition = {
@@ -758,6 +780,9 @@ export function getActiveProviderSettings(settings: SettingsJson | null = getIni
     baseUrls: configured.baseUrls,
     commandPath: configured.commandPath,
     fallback,
+    openaiTransport: configured.openaiTransport,
+    responses: configured.responses,
+    openrouter: configured.openrouter,
   }
 }
 
@@ -1004,6 +1029,13 @@ export function setSafeProviderConfig(
     | 'responses.store'
     | 'responses.compact_threshold'
     | 'responses.tool_search'
+    | 'openrouter.routing'
+    | 'openrouter.allow_fallbacks'
+    | 'openrouter.require_parameters'
+    | 'openrouter.preferred_min_throughput'
+    | 'openrouter.preferred_max_latency'
+    | 'openrouter.service_tier'
+    | 'openrouter.speed'
     | 'model'
     | 'base_url',
   value: string,
@@ -1116,6 +1148,77 @@ export function setSafeProviderConfig(
         return { ok: false, message: 'responses.tool_search must be off or hosted.' }
       }
       settings = { provider: { responses: { toolSearch: trimmed } } } as SettingsJson
+    } else if (key === 'openrouter.routing') {
+      if (!['auto', 'throughput', 'latency', 'price'].includes(trimmed)) {
+        return {
+          ok: false,
+          message: 'openrouter.routing must be auto, throughput, latency, or price.',
+        }
+      }
+      settings = {
+        provider: { openrouter: { routing: trimmed as OpenRouterRoutingStrategy } },
+      } as SettingsJson
+    } else if (
+      key === 'openrouter.allow_fallbacks' ||
+      key === 'openrouter.require_parameters'
+    ) {
+      if (trimmed !== 'true' && trimmed !== 'false' && trimmed !== 'auto') {
+        return { ok: false, message: `${key} must be true, false, or auto.` }
+      }
+      const field =
+        key === 'openrouter.allow_fallbacks'
+          ? 'allowFallbacks'
+          : 'requireParameters'
+      settings = {
+        provider: {
+          openrouter: {
+            [field]: trimmed === 'auto' ? undefined : trimmed === 'true',
+          },
+        },
+      } as SettingsJson
+    } else if (
+      key === 'openrouter.preferred_min_throughput' ||
+      key === 'openrouter.preferred_max_latency'
+    ) {
+      const parsed = trimmed === 'auto' ? undefined : Number(trimmed)
+      if (parsed !== undefined && (!Number.isFinite(parsed) || parsed <= 0)) {
+        return { ok: false, message: `${key} must be a positive number or auto.` }
+      }
+      const field =
+        key === 'openrouter.preferred_min_throughput'
+          ? 'preferredMinThroughput'
+          : 'preferredMaxLatency'
+      settings = {
+        provider: { openrouter: { [field]: parsed } },
+      } as SettingsJson
+    } else if (key === 'openrouter.service_tier') {
+      if (!['auto', 'default', 'flex', 'priority', 'fast'].includes(trimmed)) {
+        return {
+          ok: false,
+          message: 'openrouter.service_tier must be auto, default, flex, priority, or fast.',
+        }
+      }
+      settings = {
+        provider: {
+          openrouter: {
+            serviceTier: trimmed as NonNullable<OpenRouterSettings['serviceTier']>,
+          },
+        },
+      } as SettingsJson
+    } else if (key === 'openrouter.speed') {
+      if (trimmed !== 'standard' && trimmed !== 'fast') {
+        return {
+          ok: false,
+          message: 'openrouter.speed must be standard or fast.',
+        }
+      }
+      settings = {
+        provider: {
+          openrouter: {
+            speed: trimmed as NonNullable<OpenRouterSettings['speed']>,
+          },
+        },
+      } as SettingsJson
     } else if (key === 'model') {
       // Validate model against current provider
       const currentSettings = getInitialSettings()
@@ -1304,6 +1407,124 @@ function openAiCompatibleModelUrls(baseUrl: string): string[] {
   return [versioned, url.toString().replace(/\/$/, '')]
 }
 
+const NVIDIA_HOSTED_API_HOST = 'integrate.api.nvidia.com'
+const NVIDIA_FUNCTIONS_URL =
+  'https://api.nvcf.nvidia.com/v2/nvcf/functions?visibility=authorized&visibility=public'
+
+type NvidiaActiveFunctionInventory = {
+  activeFunctionCount: number
+  descriptors: string[]
+}
+
+function isNvidiaHostedApi(baseUrl: string): boolean {
+  try {
+    return new URL(normalizeBaseUrl(baseUrl)).hostname.toLowerCase() === NVIDIA_HOSTED_API_HOST
+  } catch {
+    return false
+  }
+}
+
+function normalizeNvidiaIdentifier(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/gu, '')
+}
+
+function isNvidiaAgentModelCandidate(modelId: string): boolean {
+  // NVIDIA's hosted `/v1/models` response mixes chat models with embeddings,
+  // safety classifiers, parsers, translators, reward models, and detectors.
+  // Those endpoints cannot drive UR's tool-calling agent loop and should not
+  // be presented as selectable chat models.
+  return !/(?:^|[/_.-])(?:calibration|deplot|detector|embed(?:ding|qa)?|guard|nemoguard|nemoretriever|nvclip|ocr|parse|rerank|retriever|reward|safety|translate)(?:$|[/_.-])/iu.test(
+    modelId,
+  )
+}
+
+function parseNvidiaActiveFunctionInventory(
+  value: unknown,
+): NvidiaActiveFunctionInventory {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('NVIDIA account function inventory returned an invalid response.')
+  }
+  const functions = (value as { functions?: unknown }).functions
+  if (!Array.isArray(functions)) {
+    throw new Error('NVIDIA account function inventory omitted its functions list.')
+  }
+  const active = functions.filter(entry => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false
+    return String((entry as { status?: unknown }).status ?? '').toUpperCase() === 'ACTIVE'
+  })
+  const descriptors = active.flatMap(entry => {
+    const record = entry as { name?: unknown; tags?: unknown }
+    const values = [
+      ...(typeof record.name === 'string' ? [record.name] : []),
+      ...(Array.isArray(record.tags)
+        ? record.tags.filter((tag): tag is string => typeof tag === 'string')
+        : typeof record.tags === 'string'
+          ? [record.tags]
+          : []),
+    ]
+    return values.map(normalizeNvidiaIdentifier).filter(Boolean)
+  })
+  return {
+    activeFunctionCount: active.length,
+    descriptors: [...new Set(descriptors)],
+  }
+}
+
+async function fetchNvidiaActiveFunctionInventory(
+  fetchImpl: NonNullable<ProviderDoctorAdapters['fetch']>,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<NvidiaActiveFunctionInventory> {
+  let response: Response
+  try {
+    response = await fetchImpl(NVIDIA_FUNCTIONS_URL, {
+      method: 'GET',
+      signal,
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+  } catch (error) {
+    throw new Error(
+      `NVIDIA account function inventory is unreachable: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  if (!response.ok) {
+    throw new Error(
+      `NVIDIA account function inventory returned HTTP ${response.status}.`,
+    )
+  }
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch {
+    throw new Error('NVIDIA account function inventory returned malformed JSON.')
+  }
+  return parseNvidiaActiveFunctionInventory(body)
+}
+
+function filterNvidiaHostedModels(
+  models: ProviderModelDefinition[],
+  inventory: NvidiaActiveFunctionInventory,
+): ProviderModelDefinition[] {
+  if (inventory.activeFunctionCount === 0 || inventory.descriptors.length === 0) {
+    return []
+  }
+  return models.flatMap(model => {
+    if (!isNvidiaAgentModelCandidate(model.id)) return []
+    const basename = model.id.split('/').at(-1) ?? model.id
+    const normalizedModel = normalizeNvidiaIdentifier(basename)
+    if (
+      !normalizedModel ||
+      !inventory.descriptors.some(descriptor => descriptor.includes(normalizedModel))
+    ) {
+      return []
+    }
+    return [{
+      ...model,
+      description: `${model.description} · active for connected NVIDIA account`,
+    }]
+  })
+}
+
 async function checkEndpoint(
   definition: ProviderDefinition,
   settings: ProviderSettings,
@@ -1364,7 +1585,7 @@ async function checkEndpoint(
   const fetchImpl = adapters.fetch ?? fetch
   let reachableUrl: string | undefined
   let modelsUrl: string | undefined
-  let modelsBody = ''
+  let detectedModels: ProviderModelDefinition[] = []
   let lastStatus: number | undefined
   let lastError: Error | undefined
   for (const candidate of candidates) {
@@ -1393,7 +1614,7 @@ async function checkEndpoint(
         : parseOpenAICompatibleModelNames(parsed)
     if (names.length > 0) {
       modelsUrl = candidate
-      modelsBody = body
+      detectedModels = modelDefinitionsFromNames(definition.id, names, 'live')
       break
     }
   }
@@ -1440,14 +1661,65 @@ async function checkEndpoint(
       message: `${reachableUrl} is reachable but returned no models. Load a model in the server, or check that base_url includes the API path (e.g. /v1).`,
     })
   }
+  const verifiesNvidiaAccountFunctions =
+    definition.id === 'nvidia-nim' && isNvidiaHostedApi(baseUrl)
+  if (verifiesNvidiaAccountFunctions && modelsUrl && apiKey) {
+    try {
+      const inventory = await fetchNvidiaActiveFunctionInventory(
+        fetchImpl,
+        apiKey,
+        AbortSignal.timeout(10_000),
+      )
+      detectedModels = filterNvidiaHostedModels(detectedModels, inventory)
+      if (detectedModels.length === 0) {
+        result.checks.push({
+          name: 'account_models',
+          status: 'fail',
+          message: 'NVIDIA returned no active chat models for this account.',
+        })
+        addFailure(
+          result,
+          'NVIDIA account has no active chat models',
+          'Confirm the key at build.nvidia.com, then reconnect with: ur connect nvidia-nim',
+        )
+      } else {
+        result.checks.push({
+          name: 'account_models',
+          status: 'pass',
+          message: `${detectedModels.length} account-active NVIDIA chat models are selectable.`,
+        })
+      }
+    } catch (error) {
+      result.checks.push({
+        name: 'account_models',
+        status: 'fail',
+        message: error instanceof Error ? error.message : String(error),
+      })
+      addFailure(
+        result,
+        'NVIDIA account model inventory unavailable',
+        'Reconnect the build.nvidia.com key with: ur connect nvidia-nim',
+      )
+    }
+  }
   if (settings.model) {
-    if (modelsBody && !modelsBody.includes(settings.model)) {
+    const modelDetected = detectedModels.some(model => model.id === settings.model)
+    if (modelsUrl && !modelDetected) {
       result.checks.push({
         name: 'model',
-        status: 'warn',
-        message: `Model "${settings.model}" was not found in the detectable model list.`,
+        status: verifiesNvidiaAccountFunctions ? 'fail' : 'warn',
+        message: verifiesNvidiaAccountFunctions
+          ? `Model "${settings.model}" is not an account-active NVIDIA chat model.`
+          : `Model "${settings.model}" was not found in the detectable model list.`,
       })
-    } else if (modelsBody) {
+      if (verifiesNvidiaAccountFunctions) {
+        addFailure(
+          result,
+          'selected NVIDIA NIM model is inactive',
+          'Run /model, choose NVIDIA NIM, and select an account-active model.',
+        )
+      }
+    } else if (modelsUrl) {
       result.checks.push({
         name: 'model',
         status: 'pass',
@@ -2208,6 +2480,8 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
 const cachedModelsByProvider = new Map<string, ProviderModelDefinition[]>()
 /** Wall-clock time each cache entry was written, so age can be reported. */
 const cachedModelsWrittenAt = new Map<string, number>()
+/** Runtime-rejected models stay hidden until the user explicitly refreshes. */
+const unavailableModelsByEndpoint = new Map<string, Set<string>>()
 /** Collapses concurrent identical discovery requests onto one fetch. */
 const modelDiscoveryCoalescer = new RequestCoalescer<ProviderModelDefinition[]>()
 
@@ -2217,6 +2491,7 @@ export const MODEL_DISCOVERY_TIMEOUT_MS = 15_000
 export function clearProviderModelCacheForTests(): void {
   cachedModelsByProvider.clear()
   cachedModelsWrittenAt.clear()
+  unavailableModelsByEndpoint.clear()
   modelDiscoveryCoalescer.clear()
 }
 
@@ -2233,6 +2508,11 @@ export function clearProviderModelCache(providerId: ProviderId | string): void {
       cachedModelsWrittenAt.delete(key)
     }
   }
+  for (const key of unavailableModelsByEndpoint.keys()) {
+    if (key === provider || key.startsWith(prefix)) {
+      unavailableModelsByEndpoint.delete(key)
+    }
+  }
 }
 
 /** Number of discovery requests currently in flight. Exposed for tests. */
@@ -2240,9 +2520,51 @@ export function inFlightModelDiscoveryCount(): number {
   return modelDiscoveryCoalescer.size
 }
 
+function withoutRuntimeUnavailableModels(
+  key: string,
+  models: ProviderModelDefinition[],
+): ProviderModelDefinition[] {
+  const unavailable = unavailableModelsByEndpoint.get(key)
+  if (!unavailable?.size) return models
+  return models.filter(model => !unavailable.has(model.id.toLowerCase()))
+}
+
 function rememberModels(key: string, models: ProviderModelDefinition[]): void {
-  cachedModelsByProvider.set(key, models)
+  cachedModelsByProvider.set(key, withoutRuntimeUnavailableModels(key, models))
   cachedModelsWrittenAt.set(key, Date.now())
+}
+
+/**
+ * Hide a model that a compatible runtime has definitively rejected. This is
+ * endpoint-scoped: switching to another saved server cannot inherit the
+ * failure. Clearing/refreshing the provider catalog intentionally retries it.
+ */
+export function markProviderModelUnavailable(
+  providerId: ProviderId | string,
+  modelId: string,
+  baseUrl?: string,
+): void {
+  const provider = resolveProviderId(providerId)
+  const normalizedModel = modelId.trim().toLowerCase()
+  if (!provider || !normalizedModel) return
+  const keys = baseUrl
+    ? [providerEndpointCacheKey(provider, baseUrl)]
+    : [...cachedModelsByProvider.keys()].filter(
+        key => key === provider || key.startsWith(`${provider}@`),
+      )
+  for (const key of keys) {
+    const unavailable = unavailableModelsByEndpoint.get(key) ?? new Set<string>()
+    unavailable.add(normalizedModel)
+    unavailableModelsByEndpoint.set(key, unavailable)
+    const cached = cachedModelsByProvider.get(key)
+    if (cached) {
+      cachedModelsByProvider.set(
+        key,
+        cached.filter(model => model.id.toLowerCase() !== normalizedModel),
+      )
+    }
+    modelDiscoveryCoalescer.cancel(key)
+  }
 }
 
 /** Age of a cache entry in ms, or undefined when nothing is cached. */
@@ -2398,6 +2720,13 @@ function providerModelCacheKey(
     endpoint = apiModelsRequest(provider, '', settings).url
   }
   if (!endpoint) return provider
+  return providerEndpointCacheKey(provider, endpoint)
+}
+
+function providerEndpointCacheKey(
+  provider: ProviderId,
+  endpoint: string,
+): string {
   try {
     const url = new URL(normalizeBaseUrl(endpoint))
     url.hash = ''
@@ -2417,6 +2746,13 @@ function getCachedProviderModels(
   settings: SettingsJson = getInitialSettings(),
 ): ProviderModelDefinition[] {
   return cachedModelsByProvider.get(providerModelCacheKey(provider, settings)) ?? []
+}
+
+function providerCapabilityModelId(provider: ProviderId, model: string): string {
+  const normalized = model.trim().toLowerCase()
+  return provider === 'openrouter'
+    ? normalized.replace(/:(?:nitro|floor|exacto)$/u, '')
+    : normalized
 }
 
 /**
@@ -2440,7 +2776,7 @@ export function getProviderContextLengthForModel(
 ): number | undefined {
   const providerId = resolveProviderId(provider)
   if (!providerId) return undefined
-  const wanted = model.trim().toLowerCase()
+  const wanted = providerCapabilityModelId(providerId, model)
   if (!wanted) return undefined
   const known = [
     ...getCachedProviderModels(providerId, settings),
@@ -2469,7 +2805,7 @@ export function getProviderOutputTokenLimitForModel(
 ): number | undefined {
   const providerId = resolveProviderId(provider)
   if (!providerId) return undefined
-  const wanted = model.trim().toLowerCase()
+  const wanted = providerCapabilityModelId(providerId, model)
   if (!wanted) return undefined
   const known = [
     ...getCachedProviderModels(providerId, settings),
@@ -2497,7 +2833,7 @@ export function getProviderReasoningCapabilitiesForModel(
 ): ModelReasoningCapabilities | undefined {
   const providerId = resolveProviderId(provider)
   if (!providerId) return undefined
-  const wanted = model.trim().toLowerCase()
+  const wanted = providerCapabilityModelId(providerId, model)
   if (!wanted) return undefined
   const known = [
     ...getCachedProviderModels(providerId, settings),
@@ -2944,7 +3280,19 @@ async function discoverLiveModelsForProvider(
       getProviderDefinition(provider).displayName,
     )
     if (discovered.length > 0) {
-      return modelDefinitionsFromDiscovered(discovered, provider)
+      const models = modelDefinitionsFromDiscovered(discovered, provider)
+      if (provider === 'nvidia-nim' && isNvidiaHostedApi(baseUrl)) {
+        if (!apiKey) {
+          throw new Error('NVIDIA hosted model discovery requires an API key.')
+        }
+        const inventory = await fetchNvidiaActiveFunctionInventory(
+          fetchImpl,
+          apiKey,
+          options.signal,
+        )
+        return filterNvidiaHostedModels(models, inventory)
+      }
+      return models
     }
   }
   if (!reachedOk && lastError) {
@@ -3174,11 +3522,12 @@ export async function listModelsForProviderWithSource(
         ),
       options.signal,
     )
-    if (liveModels.length > 0) {
-      rememberModels(cacheKey, liveModels)
+    const selectableLiveModels = withoutRuntimeUnavailableModels(cacheKey, liveModels)
+    if (selectableLiveModels.length > 0) {
+      rememberModels(cacheKey, selectableLiveModels)
       return {
         provider,
-        models: liveModels,
+        models: selectableLiveModels,
         source: 'live',
       }
     }
@@ -3402,11 +3751,12 @@ export function validateProviderModelPair(
           : staticModelIds
         : Array.from(new Set([...staticModelIds, ...cachedModels]))
 
+  const comparableModelId = providerCapabilityModelId(provider, modelId)
   const selectedDefinition = [
     ...cachedDefinitions,
     ...suppliedDefinitions,
     ...staticDefinitions,
-  ].find(model => model.id === modelId)
+  ].find(model => model.id.toLowerCase() === comparableModelId)
   if (
     selectedDefinition?.supportedParameters !== undefined &&
     !selectedDefinition.supportedParameters.includes('tools')
@@ -3420,7 +3770,11 @@ export function validateProviderModelPair(
     }
   }
 
-  if (validModelIds.includes(modelId)) {
+  if (
+    validModelIds.some(
+      validModelId => validModelId.toLowerCase() === comparableModelId,
+    )
+  ) {
     return { valid: true }
   }
 

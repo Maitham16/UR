@@ -502,6 +502,7 @@ async function createAPIClient(
       baseUrl: resolveProviderBaseUrl(providerId, settings),
       maxRetries: options.maxRetries ?? 3,
       model: options.model,
+      openrouter: providerSettings.openrouter,
     }) as ProviderMessageClient
   }
 

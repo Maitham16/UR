@@ -94,8 +94,6 @@ import {
   finalContextTokensFromLastResponse,
   tokenCountWithEstimation,
 } from './utils/tokens.js'
-import { ESCALATED_MAX_TOKENS } from './utils/context.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from './services/analytics/growthbook.js'
 import { SLEEP_TOOL_NAME } from './tools/SleepTool/prompt.js'
 import { executePostSamplingHooks } from './utils/hooks/postSamplingHooks.js'
 import {
@@ -123,6 +121,7 @@ import {
   incrementBudgetContinuationCount,
 } from './bootstrap/state.js'
 import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
+import { OutputLimitRecoveryTracker } from './query/outputLimitRecovery.js'
 import { count } from './utils/array.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -175,8 +174,6 @@ function* yieldMissingToolResultBlocks(
  * the rules of thinking are the rules of the universe. If ye does not heed these
  * rules, ye will be punished with an entire day of debugging and hair pulling.
  */
-const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3
-
 /**
  * Is this a max_output_tokens error message? If so, the streaming loop should
  * withhold it from SDK callers until we know whether the recovery loop can
@@ -306,6 +303,7 @@ async function* queryLoop(
     pendingToolUseSummary: undefined,
     transition: undefined,
   }
+  const outputLimitRecovery = new OutputLimitRecoveryTracker()
   const budgetTracker = feature('TOKEN_BUDGET') ? createBudgetTracker() : null
 
   // task_budget.remaining tracking across compaction boundaries. Undefined
@@ -1189,6 +1187,8 @@ async function* queryLoop(
 
     if (!needsFollowUp) {
       const lastMessage = assistantMessages.at(-1)
+      const hitOutputLimit = isWithheldMaxOutputTokens(lastMessage)
+      if (!hitOutputLimit) outputLimitRecovery.reset()
 
       // Prompt-too-long recovery: the streaming loop withheld the error
       // (see withheldByCollapse / withheldByReactive above). Try collapse
@@ -1394,46 +1394,14 @@ async function* queryLoop(
       // Check for max_output_tokens and inject recovery message. The error
       // was withheld from the stream above; only surface it if recovery
       // exhausts.
-      if (isWithheldMaxOutputTokens(lastMessage)) {
-        // Escalating retry: if we used the capped 8k default and hit the
-        // limit, retry the SAME request at 64k — no meta message, no
-        // multi-turn dance. This fires once per turn (guarded by the
-        // override check), then falls through to multi-turn recovery if
-        // 64k also hits the cap.
-        // 3P default: false (not validated on Bedrock/Vertex)
-        const capEnabled = getFeatureValue_CACHED_MAY_BE_STALE(
-          'tengu_otk_slot_v1',
-          false,
-        )
-        if (
-          capEnabled &&
-          maxOutputTokensOverride === undefined &&
-          !process.env.UR_CODE_MAX_OUTPUT_TOKENS
-        ) {
-          logEvent('tengu_max_tokens_escalate', {
-            escalatedTo: ESCALATED_MAX_TOKENS,
-          })
-          const next: State = {
-            messages: messagesForQuery,
-            toolUseContext,
-            autoCompactTracking: tracking,
-            maxOutputTokensRecoveryCount,
-            hasAttemptedReactiveCompact,
-            maxOutputTokensOverride: ESCALATED_MAX_TOKENS,
-            pendingToolUseSummary: undefined,
-            stopHookActive: undefined,
-            turnCount,
-            transition: { reason: 'max_output_tokens_escalate' },
-          }
-          state = next
-          continue
-        }
-
-        if (maxOutputTokensRecoveryCount < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT) {
+      if (hitOutputLimit) {
+        const recovery = outputLimitRecovery.record(assistantMessages)
+        if (recovery.shouldContinue) {
           const recoveryMessage = createUserMessage({
             content:
-              `Output token limit hit. Resume directly — no apology, no recap of what you were doing. ` +
-              `Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.`,
+              `The provider ended this response at its per-response output boundary. ` +
+              `Continue from the exact cutoff with only novel work—do not apologize, recap, restart, or repeat prior text. ` +
+              `Preserve the task and tool state; if the requested work is complete, finish now.`,
             isMeta: true,
           })
 
@@ -1453,15 +1421,24 @@ async function* queryLoop(
             turnCount,
             transition: {
               reason: 'max_output_tokens_recovery',
-              attempt: maxOutputTokensRecoveryCount + 1,
+              attempt: recovery.continuationCount,
             },
           }
           state = next
           continue
         }
 
-        // Recovery exhausted — surface the withheld error now.
-        yield lastMessage
+        // There is deliberately no total continuation count. Stop only when
+        // the provider/model has produced repeated or empty capped responses,
+        // which is a stalled loop rather than a long task.
+        yield createAssistantAPIErrorMessage({
+          content:
+            `Model "${currentModel}" repeatedly reached its per-response output boundary without novel progress ` +
+            `(${recovery.stallReason === 'empty' ? 'empty output' : 'replayed output'}). ` +
+            `UR has no fixed total-output continuation ceiling; it stopped this stalled loop to avoid repeating the same provider calls.`,
+          apiError: 'max_output_tokens',
+          error: 'max_output_tokens',
+        })
       }
 
       // Skip stop hooks when the last message is an API error (rate limit,
@@ -1661,6 +1638,10 @@ async function* queryLoop(
 
       return { reason: 'completed' }
     }
+
+    // A tool call is concrete progress and begins a new output phase. Future
+    // provider-boundary continuations should not be compared with pre-tool text.
+    outputLimitRecovery.reset()
 
     let shouldPreventContinuation = false
     let updatedToolUseContext = toolUseContext

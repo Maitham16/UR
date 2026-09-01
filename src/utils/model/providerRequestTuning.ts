@@ -11,10 +11,18 @@ const CONSERVATIVE_OUTPUT_PROVIDERS = new Set<ProviderId>([
   'lmstudio',
   'llama.cpp',
   'vllm',
+  'unsloth',
   'openai-compatible',
 ])
 
 export const SELF_HOSTED_DEFAULT_MAX_OUTPUT_TOKENS = 4_096
+
+export function formatOutputTokenLimitMessage(
+  model: string,
+  requestedMaxTokens: number,
+): string {
+  return `The provider reported that model "${model}" reached its per-response output boundary on a ${requestedMaxTokens}-token response chunk. This is not a total task-output limit: UR's agent loop continues automatically while the model makes novel progress. UR_CODE_MAX_OUTPUT_TOKENS may change the chunk size up to the model's verified limit.`
+}
 
 export function usesConservativeOutputReservation(
   provider: ProviderId,

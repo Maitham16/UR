@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.84.3 (UR-Nexus)"
+# expected for this release: "1.84.4 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -72,7 +72,7 @@ changes must remain blocked. The deterministic regressions are:
 bun test test/taskListGate.test.ts test/toolExecutionFinalInput.test.ts
 ```
 
-### 0.0.0 OpenRouter research routing and provider UI (1.81.3; Ultra mapping updated 1.83.1)
+### 0.0.0 OpenRouter research routing and provider UI (routing updated 1.84.4)
 
 Connect OpenRouter, run `/model`, select OpenRouter, and verify that its model
 step shows catalog freshness plus pricing/context/tool/reasoning details. Focus
@@ -100,13 +100,56 @@ the auxiliary request stays on the active OpenRouter model, no `modelH` error
 appears, a real provider search count is shown, and a response that did not
 perform a search fails clearly instead of saying `Did 0 searches`.
 
+Inspect the OpenRouter request body. A turn containing tools must not contain a
+default `provider.sort`, leaving Auto Exacto active; a text-only request must
+contain `provider.sort="throughput"`. Both retain the stable `session_id`.
+Then verify explicit controls and native virtual variants:
+
+```sh
+ur config set openrouter.routing latency
+ur config set openrouter.allow_fallbacks true
+ur config set openrouter.require_parameters true
+ur config set openrouter.preferred_min_throughput 40
+ur config set openrouter.preferred_max_latency 3
+ur config set openrouter.service_tier priority
+ur config set openrouter.speed fast
+ur config set model <discovered-openrouter-model>:nitro
+```
+
+The forced routing value must appear on both tool and non-tool requests;
+fallback/threshold settings must use OpenRouter's snake-case wire keys;
+`priority`/`fast` must appear only when explicitly selected. `:nitro` must
+validate against the discovered base model and inherit its context, output,
+tool, and reasoning metadata.
+
 Deterministic coverage:
 
 ```sh
 bun test test/providerPickerPresentation.test.ts \
   test/openRouterEffort.test.ts test/providerModelDiscovery.test.ts \
   test/secondaryModelFallback.test.ts test/providerToolCalls.test.ts \
+  test/providerContextWindow.test.ts test/outputLimitRecovery.test.ts \
   test/usageAccounting.test.ts test/providerRouting.test.ts
+```
+
+### 0.0.0a Provider output-boundary continuation (1.84.4)
+
+Use a provider fixture that returns `max_tokens`/`length` after non-empty
+partial output. UR must withhold the intermediate API error, add a continuation
+turn that requests only novel work from the exact cutoff, and continue for more
+than three responses while every response progresses. The original prompt,
+tool state, and completed output remain in context. Two consecutive empty or
+exact-replay capped responses must stop with the stalled-loop diagnostic.
+
+The per-request `max_tokens` value remains bounded by live/static model
+metadata. A model with a 128K advertised output ceiling uses a practical 32K
+default response chunk; `UR_CODE_MAX_OUTPUT_TOKENS` may raise that chunk to
+128K, but neither value creates a total task-output ceiling. Local/user-hosted
+runtimes use their conservative 4K reservation and the same continuation path.
+
+```sh
+bun test test/outputLimitRecovery.test.ts \
+  test/providerRequestTuning.test.ts test/providerContextWindow.test.ts
 ```
 
 ### 0.0.1 Unavailable Ollama tools recover (1.80.7)
@@ -198,8 +241,11 @@ NVIDIA NIM, Ollama, LM Studio, llama.cpp, vLLM, Unsloth, and generic OpenAI-comp
 request shapes.
 
 The NVIDIA fixture also verifies hosted/default and overridden endpoints,
-Bearer discovery, native dispatch, documented effort aliases, and no Ultra on
-an unknown model. In `/model`, select `openai-compatible` and verify `K` can
+Bearer discovery, intersection with account-active NVCF functions, removal of
+retired and non-agent models, selected-model doctor diagnostics, redaction of
+internal NVIDIA account/function IDs, endpoint-scoped invalidation, native
+dispatch, documented effort aliases, and no Ultra on an unknown model. In
+`/model`, select `openai-compatible` and verify `K` can
 add or replace its optional key while `E` continues to edit only its endpoint.
 
 ## 0.2 Permission safety and context pack (1.19.0)

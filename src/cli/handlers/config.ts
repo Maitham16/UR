@@ -69,6 +69,41 @@ function providerConfigEntries(): CliConfigEntry[] {
       value: configured.responses?.toolSearch ?? null,
       category: 'provider',
     },
+    {
+      key: 'openrouter.routing',
+      value: configured.openrouter?.routing ?? 'auto',
+      category: 'provider',
+    },
+    {
+      key: 'openrouter.allow_fallbacks',
+      value: configured.openrouter?.allowFallbacks ?? true,
+      category: 'provider',
+    },
+    {
+      key: 'openrouter.require_parameters',
+      value: configured.openrouter?.requireParameters ?? null,
+      category: 'provider',
+    },
+    {
+      key: 'openrouter.preferred_min_throughput',
+      value: configured.openrouter?.preferredMinThroughput ?? null,
+      category: 'provider',
+    },
+    {
+      key: 'openrouter.preferred_max_latency',
+      value: configured.openrouter?.preferredMaxLatency ?? null,
+      category: 'provider',
+    },
+    {
+      key: 'openrouter.service_tier',
+      value: configured.openrouter?.serviceTier ?? 'auto',
+      category: 'provider',
+    },
+    {
+      key: 'openrouter.speed',
+      value: configured.openrouter?.speed ?? 'standard',
+      category: 'provider',
+    },
     { key: 'model', value: active.model ?? null, category: 'provider' },
     { key: 'base_url', value: active.baseUrl ?? null, category: 'provider' },
   ]
