@@ -5,7 +5,7 @@ export const ASK_USER_QUESTION_TOOL_NAME = 'AskUserQuestion'
 export const ASK_USER_QUESTION_TOOL_CHIP_WIDTH = 12
 
 export const DESCRIPTION =
-  'Asks the user multiple choice questions to gather information, clarify ambiguity, understand preferences, make decisions or offer them choices. This is the required way to present the user with a choice: whenever you would otherwise end a message by asking the user to pick between options or decide a direction, call this tool instead of asking in plain text, so the user gets a selectable menu rather than having to type a free-form answer.'
+  'Asks the user selectable questions to gather information, clarify ambiguity, understand preferences, make decisions, or offer choices. This is mandatory for every user-facing question with two or more plausible concrete answers: call this tool instead of asking in plain text. Plain-text questions are allowed only when the answer is genuinely open-ended and no useful concrete choices can be formed.'
 
 export const PREVIEW_FEATURE_PROMPT = {
   markdown: `
@@ -35,10 +35,11 @@ export const ASK_USER_QUESTION_TOOL_PROMPT = `Use this tool when you need to ask
 3. Get decisions on implementation choices as you work
 4. Offer choices to the user about what direction to take.
 
-Strongly prefer this tool over asking a question in plain assistant text. Any time your reply would end with a question that offers the user options or asks them to choose a direction (e.g. "Would you like A or B?", "Which approach should I take?", "Want me to do X or Y?"), call this tool with those options instead so the user gets a selectable arrow-key menu. Only ask in plain text when the answer is genuinely open-ended and cannot be expressed as a small set of choices.
+This tool is REQUIRED for every real user-facing question that has two or more plausible concrete answers. Never ask such a question in plain assistant text, even when the choices are implicit, numerous, or easy to type. If you can name useful alternatives, put them in this tool so the user gets a selectable arrow-key menu. Ask in plain text only when the answer is genuinely open-ended and no meaningful concrete choices can be formed. Do not turn rhetorical questions into tool calls.
 
 Usage notes:
 - Users will always be able to select "Other" to provide custom text input, so it is safe to offer choices even when you are unsure you have listed every option
+- Prefer 2-8 focused options when that covers the decision, but include every meaningful option when a legitimate decision has more than eight; never discard choices just to meet a menu-size target
 - Use multiSelect: true to allow multiple answers to be selected for a question
 - If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
 

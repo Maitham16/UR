@@ -45,7 +45,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.84.5</p>
+          <p class="eyebrow">Version 1.84.6</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -196,7 +196,7 @@ ur --model kimi-k3:cloud --effort high
 ur config set provider nvidia-nim
 ur config set base_url nvidia-nim https://integrate.api.nvidia.com/v1
 /model  # K API key · E endpoint</code></pre>
-            <p>NVIDIA NIM is a UR-native provider with live models, streaming, tools, images, configurable endpoints, and only NVIDIA-documented effort ladders. Its authenticated hosted <code>/v1/models</code> response is authoritative: UR filters utility endpoints but does not narrow the catalog through the unrelated NVCF deployment inventory, and download-only Build cards are not presented as hosted endpoints. Nemotron 3.5 Lightning is preferred when live and receives its documented on/off thinking field; unknown models inherit no fabricated effort. Generic OpenAI-compatible endpoints can store an optional dedicated key, while anonymous endpoints remain valid.</p>
+            <p>NVIDIA NIM separates ongoing agents from specialized one-shot models. Hosted agent discovery intersects the live <code>/v1/models</code> inventory with audited tool-loop contracts; download-only, utility, and unadapted models stay hidden. The separately labelled one-shot section shows a model only when the connected account returns it and UR has a complete adapter: FLUX.1 Schnell text-to-image, Stable Video Diffusion image-to-video, and PaliGemma image understanding use their exact documented endpoints and the same stored NVIDIA key. Their purpose appears before selection, generated media is saved under <code>.ur/artifacts/nvidia/</code>, and the ongoing agent never changes. Nemotron 3.5 Lightning retains its documented on/off thinking field; unknown models inherit no fabricated effort. Generic OpenAI-compatible endpoints can store an optional dedicated key, while anonymous endpoints remain valid.</p>
           </article>
           <article>
             <h3>Portable shell deadlines</h3>

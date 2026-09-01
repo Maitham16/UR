@@ -217,6 +217,10 @@ NVIDIA's current model API reference documents that exact model's
 `reasoning_effort` values. Documented `none` appears as Minimal and `max`
 appears as Ultra while the request preserves NVIDIA's wire values. An unknown
 NIM model never inherits an invented graded ladder.
+Hosted discovery is also a positive agent-contract intersection: a row in the
+mixed NVIDIA `/v1/models` inventory is not sufficient by itself to enter the
+ongoing agent picker. Verified dedicated media/VLM endpoints are exposed only
+as one-shot task contracts and cannot pass provider/model validation.
 
 For an unknown or newly released model, UR waits for provider-authored model
 metadata or a supported model-scoped probe before adding thinking parameters.
@@ -451,7 +455,7 @@ ur config set provider anthropic-api
 | --- | --- | --- |
 | API providers (openai-api, anthropic-api, gemini-api) | Live discovery from the provider's `/models` endpoint using your connected key (curated fallback until connected) | live |
 | OpenRouter | Live `/models` discovery with an endpoint-scoped five-minute cache; Ctrl+R forces a fresh request with no stale fallback | live/cache |
-| NVIDIA NIM | Hosted: authoritative live `/models`, restricted to agent/chat endpoints. Configured NIM gateway: its own live `/models` catalog | live |
+| NVIDIA NIM | Hosted: live `/models` availability intersected with audited agent contracts, plus separately labelled one-shot models with implemented adapters. Configured NIM gateway: its own live `/models` catalog | live |
 | Local/server providers (ollama, lmstudio, llama.cpp, vllm, unsloth) | Dynamic discovery from the selected provider endpoint | live |
 | OpenAI-compatible | Dynamic discovery from configured endpoint | live |
 | Subscription CLIs (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Curated list (the official CLIs expose no models API); first-class in `/model`, dispatched via the official CLI. External CLI behavior depends on the vendor CLI. Log in with `ur auth <provider>` | static |
@@ -688,11 +692,11 @@ ur provider doctor nvidia-nim
 ur config set base_url nvidia-nim https://nim-gateway.example/v1
 ```
 
-The default is `https://integrate.api.nvidia.com/v1`. NVIDIA documents
-`/v1/models` as the management endpoint for models available for inference, so
-UR uses that authenticated response as the live hosted catalog. It removes
-embedding, guard, parser, translation, reward, and similar non-agent endpoints,
-but does not intersect the result with NVCF's separate deployment-function
+The default is `https://integrate.api.nvidia.com/v1`. NVIDIA's authenticated
+`/v1/models` response proves current account availability but mixes agents,
+utilities, VLMs, and generation functions. UR intersects it with a reviewed
+positive agent registry before allowing a model to own the multi-turn tool
+loop. It does not intersect the result with NVCF's separate deployment-function
 inventory. A custom enterprise or self-hosted NIM remains independent and uses
 only that configured gateway's `/models` response.
 
@@ -714,6 +718,26 @@ documented Nemotron coding-agent models, UR includes NVIDIA's
 `force_nonempty_content` template option when tools are present. See NVIDIA's
 [NIM LLM API reference](https://docs.api.nvidia.com/nim/reference/llm-apis)
 and [NIM endpoint guide](https://docs.nvidia.com/nim/large-language-models/latest/tutorials.html).
+
+NVIDIA's dedicated APIs are a separate one-shot surface. `/model` labels them
+`ONE-SHOT`, shows the task purpose, and keeps the current agent model when one
+is selected. `NvidiaNimTask` currently implements three exact contracts:
+
+- [FLUX.1 Schnell](https://docs.api.nvidia.com/nim/reference/black-forest-labs-flux_1-schnell-infer)
+  → text-to-JPEG at
+  `https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell`.
+- [Stable Video Diffusion](https://docs.api.nvidia.com/nim/reference/stabilityai-stable-video-diffusion-infer)
+  → JPEG/PNG-to-MP4 at
+  `https://ai.api.nvidia.com/v1/genai/stabilityai/stable-video-diffusion`;
+  NVIDIA's inline input contract requires a source smaller than 200 KB.
+- [PaliGemma](https://docs.api.nvidia.com/nim/reference/google-paligemma-infer)
+  → one-image visual analysis at
+  `https://ai.api.nvidia.com/v1/vlm/google/paligemma`.
+
+They reuse `NVIDIA_API_KEY`, poll documented asynchronous responses when
+necessary, save generated files under `.ur/artifacts/nvidia/` by default, and
+return only text/path metadata to the enclosing agent. Unsupported,
+download-only, and unadapted dedicated models never appear as usable choices.
 
 `ur provider doctor nvidia-nim` verifies the hosted catalog and selected model
 against the live `/v1/models` response. If NVIDIA rejects a listed model after

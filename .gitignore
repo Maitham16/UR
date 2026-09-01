@@ -81,6 +81,7 @@ UR.local.md
 .ur/actions*.jsonl
 .ur/cache/
 .ur/tmp/
+.ur/artifacts/
 .ur/logs/
 .ur/background/
 .ur/worktrees/

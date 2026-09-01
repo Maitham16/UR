@@ -215,8 +215,8 @@ custom `base_url` scoped to that provider.
 - Cause: NVIDIA's hosted `/v1/models` feed can change, or a listed model's
   backing function can become unavailable for the connected account.
 - Fix: upgrade UR, run `ur provider doctor nvidia-nim`, then open `/model` and
-  press `Ctrl+R`. Hosted discovery uses NVIDIA's documented `/v1/models`
-  endpoint and excludes non-agent utility endpoints. It does not intersect the
+  press `Ctrl+R`. Hosted discovery intersects NVIDIA's live `/v1/models`
+  availability with UR's audited agent contracts. It does not intersect the
   catalog with the separate NVCF deployment-function inventory. A definitive
   runtime 404 removes only that model from the current endpoint-scoped session
   catalog until the next explicit refresh.
@@ -226,6 +226,18 @@ custom `base_url` scoped to that provider.
 If `chat_models` fails, reconnect a current build.nvidia.com key with
 `ur connect nvidia-nim`. A configured enterprise/self-hosted NIM endpoint is
 validated only against that gateway's own `/models` response.
+
+### An NVIDIA image/video/vision model is missing from `/model`
+
+- Ongoing models appear only when NVIDIA returns them live and their exact
+  documented contract supports UR's multi-turn streaming tool loop.
+- Dedicated models appear only in the `ONE-SHOT` section after UR implements
+  their endpoint, request, response, media constraints, and artifact handling.
+  The current set is FLUX.1 Schnell, Stable Video Diffusion, and PaliGemma.
+- Download-only Build cards and unadapted endpoints are intentionally absent;
+  UR does not present a model that it cannot execute correctly.
+- Stable Video Diffusion's hosted inline-image contract accepts JPEG/PNG files
+  smaller than 200 KB. Compress larger input before retrying.
 
 ### A provider says the previous answer was empty after successful tool calls
 

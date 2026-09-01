@@ -129,7 +129,7 @@ test('AskUserQuestion is available without ToolSearch preloading', () => {
   expect(AskUserQuestionTool.shouldDefer).toBe(false)
 })
 
-test('AskUserQuestion allows up to eight professional clarification options', () => {
+test('AskUserQuestion preserves legitimate menus larger than eight options', () => {
   const parsed = AskUserQuestionTool.inputSchema.safeParse({
     question: 'Which professional redesign direction should I take?',
     options: [
@@ -141,10 +141,14 @@ test('AskUserQuestion allows up to eight professional clarification options', ()
       'Commerce',
       'Documentation',
       'Experimental',
+      'Scientific',
+      'Presentation',
     ],
   })
 
   expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions[0]?.options).toHaveLength(10)
 })
 
 test('AskUserQuestion drops malformed question entries but keeps valid ones', () => {
@@ -569,9 +573,9 @@ test('AskUserQuestion infers labels from description-only option objects', () =>
   expect(parsed.data.questions[0]?.options[5]?.label).toBe('Ask me for sources')
 })
 
-test('AskUserQuestion rejects unbounded clarification option lists', () => {
+test('AskUserQuestion preserves meaningful clarification lists beyond eight options', () => {
   const parsed = AskUserQuestionTool.inputSchema.safeParse({
-    question: 'Which option should fail?',
+    question: 'Which provider should we configure?',
     options: [
       'One',
       'Two',
@@ -585,7 +589,10 @@ test('AskUserQuestion rejects unbounded clarification option lists', () => {
     ],
   })
 
-  expect(parsed.success).toBe(false)
+  expect(parsed.success).toBe(true)
+  if (!parsed.success) return
+  expect(parsed.data.questions[0]?.options).toHaveLength(9)
+  expect(parsed.data.questions[0]?.options[8]?.label).toBe('Nine')
 })
 
 test('AskUserQuestion turns duplicate-only inferred options into a rejectable decision', () => {

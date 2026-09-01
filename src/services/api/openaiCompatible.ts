@@ -17,6 +17,10 @@ import {
   resolveProviderId,
   type OpenRouterSettings,
 } from '../providers/providerRegistry.js'
+import {
+  isNvidiaHostedApi,
+  resolveNvidiaHostedModelEndpoint,
+} from '../providers/nvidiaHostedModels.js'
 import { normalizeOpenAIChatUsage } from './usageNormalization.js'
 import {
   assertUniqueToolNames,
@@ -71,9 +75,26 @@ export async function createOpenAICompatibleClient(
     fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   },
 ): Promise<URHQClient> {
-  const endpoint = normalizeOpenAICompatibleBaseUrl(options.baseUrl)
+  const defaultEndpoint = normalizeOpenAICompatibleBaseUrl(options.baseUrl)
   const maxRetries = options.maxRetries
   const providerId = options.providerId ?? 'openai-compatible'
+
+  const endpointForModel = (model: unknown): string => {
+    if (providerId !== 'nvidia-nim' || !isNvidiaHostedApi(options.baseUrl)) {
+      return defaultEndpoint
+    }
+    const modelId = typeof model === 'string' ? model.trim() : ''
+    const endpoint = modelId
+      ? resolveNvidiaHostedModelEndpoint(options.baseUrl, modelId)
+      : undefined
+    if (!endpoint) {
+      throw new ProviderCapabilityError(
+        `NVIDIA NIM model "${modelId || 'unknown'}" has no documented UR-compatible agent endpoint and cannot be used as the session model. Refresh /model and choose a listed NVIDIA agent model.`,
+        { providerId, model: modelId, capability: 'agent_tool_loop' },
+      )
+    }
+    return endpoint
+  }
 
   const isUnavailableNvidiaFunction = (response: Response, body: string): boolean =>
     providerId === 'nvidia-nim' &&
@@ -85,6 +106,7 @@ export async function createOpenAICompatibleClient(
     body: string,
     streaming: boolean,
     model: unknown,
+    endpoint: string,
   ): string => {
     if (isUnavailableNvidiaFunction(response, body)) {
       const modelId = typeof model === 'string' && model.trim()
@@ -100,6 +122,7 @@ export async function createOpenAICompatibleClient(
     isUnavailableNvidiaFunction(response, body) ? undefined : body
 
   async function doRequest(params: any, requestOptions?: any) {
+    const endpoint = endpointForModel(params.model)
     const response = await fetchWithProviderReliability(
       endpoint,
       {
@@ -119,7 +142,7 @@ export async function createOpenAICompatibleClient(
         timeoutMs: requestOptions?.timeoutMs,
         signal: requestOptions?.signal,
         failureMessage: (response, body) =>
-          failureMessage(response, body, false, params.model),
+          failureMessage(response, body, false, params.model, endpoint),
         failureBody,
       },
     )
@@ -132,6 +155,7 @@ export async function createOpenAICompatibleClient(
   }
 
   async function doStream(params: any, requestOptions?: any, controller?: AbortController) {
+    const endpoint = endpointForModel(params.model)
     const streamController = controller ?? new AbortController()
     const signal = mergeAbortSignals([requestOptions?.signal, streamController.signal])
     const response = await fetchWithProviderReliability(
@@ -156,7 +180,7 @@ export async function createOpenAICompatibleClient(
         signal,
         streaming: true,
         failureMessage: (response, body) =>
-          failureMessage(response, body, true, params.model),
+          failureMessage(response, body, true, params.model, endpoint),
         failureBody,
       },
     )
@@ -220,8 +244,8 @@ export async function createOpenAICompatibleClient(
           try {
             const openAIRequest = toOpenAICompatibleRequest(params, providerId)
             const url = providerId === 'llama.cpp'
-              ? `${endpoint.replace(/\/$/u, '')}/input_tokens`
-              : openAICompatibleAnthropicCountUrl(endpoint)
+              ? `${defaultEndpoint.replace(/\/$/u, '')}/input_tokens`
+              : openAICompatibleAnthropicCountUrl(defaultEndpoint)
             const body = providerId === 'llama.cpp'
               ? openAIRequest
               : {

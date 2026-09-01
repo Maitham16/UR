@@ -27,6 +27,11 @@ describe('question choice list sizing', () => {
     expect(visibleChoiceCount(20, rows)).toBeGreaterThanOrEqual(MIN_VISIBLE_CHOICES)
   })
 
+  test('large provider menus remain scrollable without dropping choices', () => {
+    expect(visibleChoiceCount(25, 40)).toBeLessThan(25)
+    expect(visibleChoiceCount(25, 40)).toBeGreaterThanOrEqual(MIN_VISIBLE_CHOICES)
+  })
+
   test('a very short terminal still shows a navigable minimum', () => {
     expect(visibleChoiceCount(12, 4)).toBe(MIN_VISIBLE_CHOICES)
     expect(visibleChoiceCount(12, 1)).toBe(MIN_VISIBLE_CHOICES)

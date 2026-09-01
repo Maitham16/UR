@@ -125,7 +125,7 @@ describe('documentation coverage', () => {
     expect(site).toContain('update available')
     expect(readme).toContain('Development build detected. To update, pull latest source or install from npm.')
     expect(features).toContain('AskUserQuestion')
-    expect(features).toContain('up to eight concrete options')
+    expect(features).toContain('preserves larger legitimate menus')
     expect(usage).toContain('does not rely on')
     expect(usage).toContain('the stale marketplace extension ID')
     expect(readme).toContain('packaged as a local VSIX')

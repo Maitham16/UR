@@ -110,6 +110,20 @@ type SelectionMetadata = {
   runtimeBackend: string
 }
 
+export type NvidiaTaskSelectionMetadata = {
+  modelId: string
+  displayName: string
+  taskKind: 'text-to-image' | 'image-to-video' | 'image-understanding'
+  purpose: string
+}
+
+export function shouldIncludeProviderModelInPicker(
+  model: Pick<ProviderModelDefinition, 'usageMode'>,
+  allowsTaskSelection: boolean,
+): boolean {
+  return model.usageMode !== 'task' || allowsTaskSelection
+}
+
 type Props = {
   initial: string | null
   onSelect: (
@@ -118,6 +132,7 @@ type Props = {
     metadata?: SelectionMetadata,
   ) => void
   onCancel?: () => void
+  onTaskSelect?: (selection: NvidiaTaskSelectionMetadata) => void
   isStandaloneCommand?: boolean
   headerText?: string
 }
@@ -126,6 +141,7 @@ export function ProviderFirstModelPicker({
   initial,
   onSelect,
   onCancel,
+  onTaskSelect,
   isStandaloneCommand,
   headerText,
 }: Props): React.ReactNode {
@@ -240,22 +256,34 @@ export function ProviderFirstModelPicker({
               })
         if (cancelled) return
         const modelLabels = buildProviderModelLabels(providerId, result.models)
-        const options: Array<ModelOption & { disabled?: boolean }> = result.models.map(model => ({
-          value: model.id,
-          label: modelLabels.get(model.id) ?? model.displayName,
-          description: formatProviderModelDescription(
-            model,
-            result.source,
-            providerId,
-          ),
-          pricing: model.pricing,
-          contextLength: model.contextLength,
-          supportedParameters: model.supportedParameters,
-          reasoning: model.reasoning,
-          ...(model.supportedParameters !== undefined && !model.supportedParameters.includes('tools')
-            ? { disabled: true }
-            : {}),
-        }))
+        const options: Array<ModelOption & { disabled?: boolean }> = result.models
+          .filter(model =>
+            shouldIncludeProviderModelInPicker(
+              model,
+              onTaskSelect !== undefined,
+            ),
+          )
+          .map(model => ({
+            value: model.id,
+            label: modelLabels.get(model.id) ?? model.displayName,
+            description: formatProviderModelDescription(
+              model,
+              result.source,
+              providerId,
+            ),
+            pricing: model.pricing,
+            contextLength: model.contextLength,
+            supportedParameters: model.supportedParameters,
+            reasoning: model.reasoning,
+            usageMode: model.usageMode,
+            taskKind: model.taskKind,
+            purpose: model.purpose,
+            ...(model.usageMode !== 'task' &&
+            model.supportedParameters !== undefined &&
+            !model.supportedParameters.includes('tools')
+              ? { disabled: true }
+              : {}),
+          }))
         setModelOptions(options)
         setModelSource(result.source)
         setModelWarning(result.warning ?? null)
@@ -279,7 +307,7 @@ export function ProviderFirstModelPicker({
       cancelled = true
       controller.abort()
     }
-  }, [selectedProvider, modelReloadToken])
+  }, [selectedProvider, modelReloadToken, onTaskSelect])
 
   // llama.cpp, Ollama, and vLLM publish decisive reasoning capabilities outside their
   // ordinary model-list rows. Resolve only the focused model so arrow browsing
@@ -435,24 +463,25 @@ export function ProviderFirstModelPicker({
     ? parseUserSpecifiedModel(focusedModel.value)
     : undefined
   const focusedProviderId = selectedProvider?.value as ProviderId | undefined
+  const focusedIsTaskModel = focusedModel?.usageMode === 'task'
   const focusedEffortLevels =
-    focusedResolvedModel && focusedProviderId
+    focusedResolvedModel && focusedProviderId && !focusedIsTaskModel
       ? getSupportedEffortLevelsForModel(
           focusedResolvedModel,
           focusedProviderId,
         )
       : []
   const focusedEffortLevelLabels =
-    focusedResolvedModel && focusedProviderId
+    focusedResolvedModel && focusedProviderId && !focusedIsTaskModel
       ? getSupportedEffortLevelLabelsForModel(
           focusedResolvedModel,
           focusedProviderId,
         )
       : []
-  const focusedSupportsEffort = focusedResolvedModel
+  const focusedSupportsEffort = focusedResolvedModel && !focusedIsTaskModel
     ? modelSupportsEffort(focusedResolvedModel, focusedProviderId)
     : false
-  const focusedAdvertisesThinking = focusedResolvedModel && focusedProviderId
+  const focusedAdvertisesThinking = focusedResolvedModel && focusedProviderId && !focusedIsTaskModel
     ? modelSupportsThinking(focusedResolvedModel, focusedProviderId)
     : false
   const focusedSupportsThinking = focusedResolvedModel && focusedProviderId
@@ -608,6 +637,24 @@ export function ProviderFirstModelPicker({
   }
 
   async function handleModelSelect(value: string) {
+    const selectedOption = modelOptions.find(model => model.value === value)
+    if (
+      selectedOption?.usageMode === 'task' &&
+      selectedOption.taskKind &&
+      selectedOption.purpose
+    ) {
+      setAppState(previous => ({
+        ...previous,
+        nvidiaTaskModel: value,
+      }))
+      onTaskSelect?.({
+        modelId: value,
+        displayName: selectedOption.label,
+        taskKind: selectedOption.taskKind,
+        purpose: selectedOption.purpose,
+      })
+      return
+    }
     const selectedProviderId = selectedProvider?.value as ProviderId | undefined
     const selectedResolvedModel = parseUserSpecifiedModel(value)
     const selectedEffort =
@@ -1098,12 +1145,14 @@ export function ProviderFirstModelPicker({
           <Text dimColor>
             {selectedProvider?.value === 'openrouter'
               ? `${modelOptions.length} models · live catalog cached for 5 minutes · Ctrl+R refreshes now`
+              : selectedProvider?.value === 'nvidia-nim'
+                ? `${modelOptions.filter(model => model.usageMode !== 'task').length} ongoing agent models · ${modelOptions.filter(model => model.usageMode === 'task').length} one-shot task models`
               : `Showing models for ${selectedProvider?.label} (${selectedProvider?.accessType})`}
           </Text>
           <Text color={modelSource === 'live' ? 'success' : modelSource === 'unavailable' ? 'error' : 'subtle'}>
             {formatModelSourceLabel(modelSource)}
             <Text dimColor color="subtle">
-              {' '}· agent-capable models can be selected
+              {' '}· agent models continue chat; NVIDIA task models run one specialized job
             </Text>
           </Text>
           {credentialNotice && (
@@ -1159,6 +1208,19 @@ export function ProviderFirstModelPicker({
                 <Text dimColor>
                   {focusedModel.description}
                 </Text>
+                {focusedIsTaskModel && (
+                  <Box flexDirection="column">
+                    <Text color="remember" bold>
+                      ONE-SHOT NVIDIA TASK · {focusedModel.taskKind}
+                    </Text>
+                    <Text dimColor>
+                      {focusedModel.purpose}
+                    </Text>
+                    <Text dimColor color="subtle">
+                      Enter chooses this model for the next matching NVIDIA task. It never replaces the ongoing agent model.
+                    </Text>
+                  </Box>
+                )}
                 {focusedSupportsEffort && (
                   <Box flexDirection="column">
                     <Text>
@@ -1175,12 +1237,12 @@ export function ProviderFirstModelPicker({
                     </Text>
                   </Box>
                 )}
-                {!focusedSupportsEffort && effortCapabilityLoading && (
+                {!focusedIsTaskModel && !focusedSupportsEffort && effortCapabilityLoading && (
                   <Text dimColor color="subtle">
                     Checking this model's provider effort levels…
                   </Text>
                 )}
-                {!focusedSupportsEffort && !effortCapabilityLoading && (
+                {!focusedIsTaskModel && !focusedSupportsEffort && !effortCapabilityLoading && (
                   <Text dimColor color="subtle">
                     {focusedSupportsThinking
                       ? 'Thinking supported; no model-specific graded ladder advertised. Using provider-native on/off control.'
@@ -1189,7 +1251,7 @@ export function ProviderFirstModelPicker({
                         : 'Graded effort not advertised for this model.'}
                   </Text>
                 )}
-                {focusedSupportsThinking && (
+                {!focusedIsTaskModel && focusedSupportsThinking && (
                   <Text dimColor>
                     <Text color={thinkingEnabled ? 'ur' : 'subtle'}>
                       {thinkingEnabled ? '◆' : '◇'}

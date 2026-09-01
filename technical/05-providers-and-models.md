@@ -42,22 +42,52 @@ Unsloth is an inference provider only. UR discovers and calls an authenticated, 
 Unsloth Studio OpenAI-compatible endpoint, sends `enable_tools: false` on every inference request, and does not
 start training, download models, or enable Unsloth's server-side tools.
 
-NVIDIA NIM is a UR-native OpenAI-compatible provider. The build.nvidia.com
-hosted path defaults to `https://integrate.api.nvidia.com/v1`, while the scoped
-endpoint can target enterprise or self-hosted NIM. Discovery is always live;
-on the hosted path the documented `/v1/models` response is authoritative and
-is not intersected with NVCF's separate deployment-function inventory.
-This endpoint list is intentionally different from the Build web catalog:
-download-only NIM cards are not hosted chat choices. NVIDIA's documented
+NVIDIA NIM is a UR-native provider with separate agent and one-shot task
+contracts. The build.nvidia.com hosted agent path defaults to
+`https://integrate.api.nvidia.com/v1`, while the scoped endpoint can target
+enterprise or self-hosted NIM. Discovery is always live. On the hosted path,
+UR positively intersects the authenticated `/v1/models` feed with
+`nvidiaHostedModels.ts`; the feed proves current account availability, while
+the audited contract proves that the exact model can sustain UR's multi-turn
+streaming tool loop. It is not intersected with NVCF's separate deployment
+inventory. Download-only Build cards and hosted utility/VLM/generation
+functions are never promoted to agent models. NVIDIA's documented
 `nvidia/nemotron-3.5-lightning-30b-a3b` endpoint is preferred first because
 NVIDIA identifies it as its fastest 30B agent model. Its model-scoped
 `chat_template_kwargs.enable_thinking` contract powers the real on/off picker
 control; no other NVIDIA model inherits that boolean field.
-Embedding, guard, parser, translation, detector, calibration,
-retrieval, and reward endpoints are removed from the agent picker. A custom
+Embedding, guard, parser, translation, detector, calibration, retrieval, and
+reward endpoints are removed from the agent picker. A custom
 NIM gateway uses only its own `/models` feed and never inherits hosted control-plane
 assumptions. Hidden curated entries enrich only exact, NVIDIA-documented
 reasoning contracts and never act as an offline model list.
+
+The hosted picker also has a separately labelled `ONE-SHOT` section. These
+entries are not eligible for `provider.model`, `setProviderModel`, startup
+selection, or the OpenAI-compatible agent adapter. Enter stores a process-local
+task preference while leaving the ongoing model unchanged. Only models both
+returned by the authenticated live catalog and backed by a complete
+`NvidiaNimTask` adapter appear:
+
+| Model | Purpose | Exact endpoint | Result |
+|---|---|---|---|
+| `black-forest-labs/flux.1-schnell` | text-to-image; documented dimensions, seed, and 1-4 steps | `https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell` | JPEG path |
+| `stabilityai/stable-video-diffusion` | JPEG/PNG-to-video; inline source must be smaller than 200 KB | `https://ai.api.nvidia.com/v1/genai/stabilityai/stable-video-diffusion` | MP4 path |
+| `google/paligemma` | one prompt plus one image for visual question answering/captioning | `https://ai.api.nvidia.com/v1/vlm/google/paligemma` | text |
+
+These adapters follow NVIDIA's official
+[FLUX.1 Schnell](https://docs.api.nvidia.com/nim/reference/black-forest-labs-flux_1-schnell-infer),
+[Stable Video Diffusion](https://docs.api.nvidia.com/nim/reference/stabilityai-stable-video-diffusion-infer),
+and [PaliGemma](https://docs.api.nvidia.com/nim/reference/google-paligemma-infer)
+contracts.
+
+All three reuse the secure `NVIDIA_API_KEY`. Media responses are decoded to
+`.ur/artifacts/nvidia/` (or an explicit output path). If NVIDIA returns `202`,
+UR follows `Location` or `NVCF-REQID` until completion with cancellation
+support. Tool results contain text/path metadata, never base64 image/video
+content, so the enclosing agent provider receives a legal textual
+`tool_result`. Models without a real adapter remain absent rather than being
+shown as aspirational or partial support.
 
 The provider doctor applies the same live-catalog filter to the selected model. A
 hosted 404 whose detail says an internal function is missing for an account is
@@ -127,6 +157,10 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
 - The startup picker validates the provider/model pair through the provider
   registry and persists it to `.ur/settings.local.json`. User-global model
   settings are intentionally insufficient for a new workspace.
+- NVIDIA task models are omitted from startup setup because they cannot own an
+  agent session. In the normal `/model` picker they are visibly marked
+  `ONE-SHOT`, show their purpose before selection, and never replace the active
+  agent/provider pair.
 - Top-level `model`, `availableModels`, and `modelOverrides`, plus `provider.active`,
   `provider.model`, and provider-scoped `provider.baseUrls`, persist choices per scope. A
   switch preserves the independently saved Ollama, LM Studio, llama.cpp, vLLM, Unsloth, NVIDIA NIM,

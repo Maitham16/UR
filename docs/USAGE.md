@@ -56,8 +56,11 @@ macOS, Autodesk 3ds Max is expected to be missing because it is a Windows
 application. Use Blender locally, or run the 3ds Max project on a Windows host.
 
 When UR needs a focused clarification, it uses the `AskUserQuestion` dialog.
-Professional clarification prompts can provide up to eight concrete options;
-UR also accepts custom "Other" answers. If a model supplies only one concrete
+Every real question with two or more plausible concrete answers must use this
+dialog; plain text is reserved for genuinely open-ended questions where no
+meaningful choices can be formed. UR prefers 2-8 focused choices but preserves
+larger legitimate menus instead of rejecting or truncating them, and always
+accepts a custom "Other" answer. If a model supplies only one concrete
 suggestion, UR keeps it and adds a neutral `Different answer` rejection path
 instead of showing an internal validation error or inventing another choice.
 
@@ -270,15 +273,25 @@ API-key access, and an API key does not grant subscription CLI access.
 NVIDIA NIM uses the build.nvidia.com key and hosted
 `https://integrate.api.nvidia.com/v1` endpoint by default. Connect it with
 `ur connect nvidia-nim`; use `ur config set base_url nvidia-nim <url>` for a
-different NIM deployment. For the hosted endpoint, `/model` shows only models
-returned by NVIDIA's authoritative `/v1/models` feed, excluding non-agent
-utility endpoints such as embeddings, guards, and parsers. NVCF deployment
-functions are a separate API and do not narrow this hosted catalog. A custom
-NIM gateway retains its own independent catalog.
+different NIM deployment. For the hosted endpoint, `/model` intersects the
+account's live `/v1/models` feed with exact NVIDIA-documented agent contracts.
+This excludes utility endpoints and dedicated single-use APIs from the ongoing
+agent list even when NVIDIA returns them. NVCF deployment functions are a
+separate API and do not narrow this hosted catalog. A custom NIM gateway
+retains its own independent catalog.
 Download-only cards from the Build web catalog are not inserted into the
 hosted picker. NVIDIA's live `nemotron-3.5-lightning-30b-a3b` endpoint is
 focused first as its documented fastest 30B agent model; Left/Right controls
 that model's advertised on/off thinking switch.
+Verified specialized models returned by the connected account appear
+separately as `ONE-SHOT`, with their purpose visible before selection. FLUX.1
+Schnell generates a JPEG from text, Stable Video Diffusion generates an MP4
+from a sub-200-KB JPEG/PNG, and PaliGemma analyzes one image with one prompt.
+Selecting one leaves the ongoing agent unchanged; describe the task normally
+and UR uses `NvidiaNimTask` with the same stored NVIDIA key and exact model
+endpoint. Generated media defaults to `.ur/artifacts/nvidia/`. Other
+download-only, utility, and dedicated models remain hidden until UR has a
+complete executable adapter for their contract.
 On the `/model` model screen, `K` adds or replaces a
 provider API key and `E` edits its endpoint. This also makes optional
 authentication practical for generic OpenAI-compatible gateways.

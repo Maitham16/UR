@@ -19,6 +19,12 @@ import {
   type DiscoveredModel,
   type ModelReasoningCapabilities,
 } from './modelCatalog.js'
+import {
+  getNvidiaHostedAgentModelContract,
+  isNvidiaHostedApi,
+  NVIDIA_HOSTED_API_BASE_URL,
+  NVIDIA_HOSTED_TASK_MODEL_CONTRACTS,
+} from './nvidiaHostedModels.js'
 
 export const PROVIDER_IDS = [
   'ollama',
@@ -521,7 +527,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     accessPathLabel: 'NVIDIA NIM OpenAI-compatible endpoint',
     envKey: 'NVIDIA_API_KEY',
     requiresApiKey: true,
-    defaultBaseUrl: 'https://integrate.api.nvidia.com/v1',
+    defaultBaseUrl: NVIDIA_HOSTED_API_BASE_URL,
     endpointKind: 'openai-compatible',
   },
   'openai-compatible': {
@@ -1428,44 +1434,70 @@ function openAiCompatibleModelUrls(baseUrl: string): string[] {
   return [versioned, url.toString().replace(/\/$/, '')]
 }
 
-const NVIDIA_HOSTED_API_HOST = 'integrate.api.nvidia.com'
-
-function isNvidiaHostedApi(baseUrl: string): boolean {
-  try {
-    return new URL(normalizeBaseUrl(baseUrl)).hostname.toLowerCase() === NVIDIA_HOSTED_API_HOST
-  } catch {
-    return false
-  }
-}
-
-function isNvidiaAgentModelCandidate(modelId: string): boolean {
-  // NVIDIA's hosted `/v1/models` response mixes chat models with embeddings,
-  // safety classifiers, parsers, translators, reward models, and detectors.
-  // Those endpoints cannot drive UR's tool-calling agent loop and should not
-  // be presented as selectable chat models.
-  return !/(?:^|[/_.-])(?:calibration|deplot|detector|embed(?:ding|qa)?|guard|nemoguard|nemoretriever|nvclip|ocr|parse|rerank|retriever|reward|safety|translate)(?:$|[/_.-])/iu.test(
-    modelId,
-  )
-}
-
 function filterNvidiaHostedModels(
   models: ProviderModelDefinition[],
 ): ProviderModelDefinition[] {
-  // NVIDIA documents `/v1/models` as the management endpoint for models that
-  // are available for inference. NVCF's `/v2/nvcf/functions` inventory is a
-  // separate deployment API and must not be intersected with the hosted NIM
-  // catalog: doing so hides valid integrate.api.nvidia.com models whose backing
-  // functions are intentionally not exposed through the caller's NVCF scope.
-  return models.flatMap(model =>
-    isNvidiaAgentModelCandidate(model.id) ? [{
+  // `/v1/models` proves account availability, but NVIDIA's hosted response
+  // mixes agent LLMs with utility and dedicated inference functions. Intersect
+  // it with the audited positive contracts so unsupported models never appear
+  // in UR's agent picker. Custom NIM gateways bypass this hosted-only filter.
+  return models.flatMap(model => {
+    const contract = getNvidiaHostedAgentModelContract(model.id)
+    if (!contract) return []
+    return [{
       ...model,
+      supportedParameters: [
+        ...new Set([
+          ...(model.supportedParameters ?? []),
+          ...contract.supportedParameters,
+        ]),
+      ],
+      capabilities: {
+        ...(model.capabilities ?? {}),
+        ...contract.capabilities,
+        endpoint: contract.endpoint,
+      },
       description: model.isDefault
-        ? `${model.description} · NVIDIA hosted chat catalog · NVIDIA's fastest 30B agent model`
-        : `${model.description} · NVIDIA hosted chat catalog`,
-    }] : [],
-  ).sort((left, right) =>
+        ? `${model.description} · NVIDIA-documented agent contract · NVIDIA's fastest 30B agent model`
+        : `${model.description} · NVIDIA-documented agent contract`,
+    }]
+  }).sort((left, right) =>
     Number(Boolean(right.isDefault)) - Number(Boolean(left.isDefault)),
   )
+}
+
+function nvidiaHostedTaskModels(): ProviderModelDefinition[] {
+  return NVIDIA_HOSTED_TASK_MODEL_CONTRACTS.map(contract => ({
+    id: contract.id,
+    displayName: contract.displayName,
+    description: `ONE-SHOT ${contract.taskKind} · ${contract.purpose}`,
+    usageMode: 'task',
+    taskKind: contract.taskKind,
+    purpose: contract.purpose,
+    supportedParameters: [],
+    capabilities: {
+      oneShotTask: true,
+      endpoint: contract.endpoint,
+      inputMediaTypes: [...contract.inputMediaTypes],
+      outputMediaType: contract.outputMediaType,
+    },
+  }))
+}
+
+function addAvailableNvidiaHostedTaskModels(
+  agentModels: ProviderModelDefinition[],
+  discoveredModels: ProviderModelDefinition[],
+): ProviderModelDefinition[] {
+  const discoveredById = new Map(
+    discoveredModels.map(model => [model.id.toLowerCase(), model]),
+  )
+  return [
+    ...agentModels,
+    ...nvidiaHostedTaskModels().flatMap(model => {
+      const discovered = discoveredById.get(model.id.toLowerCase())
+      return discovered ? [{ ...discovered, ...model }] : []
+    }),
+  ]
 }
 
 async function checkEndpoint(
@@ -2239,6 +2271,10 @@ export type ProviderModelDefinition = {
   reasoning?: ModelReasoningCapabilities
   expirationDate?: number
   deprecated?: boolean
+  /** Agent models may own the ongoing session; task models are one-shot only. */
+  usageMode?: 'agent' | 'task'
+  taskKind?: 'text-to-image' | 'image-to-video' | 'image-understanding'
+  purpose?: string
 }
 
 const EFFORT_LOW_MEDIUM_HIGH: ModelReasoningCapabilities = {
@@ -3210,7 +3246,10 @@ async function discoverLiveModelsForProvider(
     if (discovered.length > 0) {
       const models = modelDefinitionsFromDiscovered(discovered, provider)
       if (provider === 'nvidia-nim' && isNvidiaHostedApi(baseUrl)) {
-        return filterNvidiaHostedModels(models)
+        return addAvailableNvidiaHostedTaskModels(
+          filterNvidiaHostedModels(models),
+          models,
+        )
       }
       return models
     }
@@ -3652,7 +3691,8 @@ export function validateProviderModelPair(
   const cachedDefinitions = getCachedProviderModels(provider, options.settings)
   const staticDefinitions = staticModelsForProvider(provider)
   const isAgentCapable = (model: ProviderModelDefinition): boolean =>
-    model.supportedParameters === undefined || model.supportedParameters.includes('tools')
+    model.usageMode !== 'task' &&
+    (model.supportedParameters === undefined || model.supportedParameters.includes('tools'))
   const suppliedModels = suppliedDefinitions.filter(isAgentCapable).map(model => model.id)
   const cachedModels = cachedDefinitions.filter(isAgentCapable).map(model => model.id)
   const staticModelIds = staticDefinitions.filter(isAgentCapable).map(model => model.id)
@@ -3677,6 +3717,15 @@ export function validateProviderModelPair(
     ...suppliedDefinitions,
     ...staticDefinitions,
   ].find(model => model.id.toLowerCase() === comparableModelId)
+  if (selectedDefinition?.usageMode === 'task') {
+    const defaultModel = getDefaultModelForProvider(provider)
+    return {
+      valid: false,
+      error: `Model "${modelId}" is a one-shot ${selectedDefinition.taskKind ?? 'task'} model, not an ongoing agent model. It remains available through the NVIDIA task tool without replacing the active chat model.`,
+      validModels: validModelIds,
+      suggestedModel: defaultModel,
+    }
+  }
   if (
     selectedDefinition?.supportedParameters !== undefined &&
     !selectedDefinition.supportedParameters.includes('tools')

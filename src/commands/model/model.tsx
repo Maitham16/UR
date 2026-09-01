@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import * as React from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
 import { ModelPicker } from '../../components/ModelPicker.js';
-import { ProviderFirstModelPicker } from '../../components/ProviderFirstModelPicker.js';
+import { ProviderFirstModelPicker, type NvidiaTaskSelectionMetadata } from '../../components/ProviderFirstModelPicker.js';
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
@@ -19,7 +19,7 @@ import { ensureProviderModelsFresh, getActiveProviderSettings, type ProviderId, 
 import { getInitialSettings, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { executePostModelSwitchHooks, executePreModelSwitchHooks, hasBlockingResult } from '../../utils/hooks.js';
 function ModelPickerWrapper(t0) {
-  const $ = _c(17);
+  const $ = _c(20);
   const {
     onDone
   } = t0;
@@ -101,6 +101,16 @@ function ModelPickerWrapper(t0) {
     t2 = $[7];
   }
   const handleSelect = t2;
+  let taskHandler;
+  if ($[17] !== onDone) {
+    taskHandler = function handleTaskSelect(selection: NvidiaTaskSelectionMetadata) {
+      onDone(`Selected NVIDIA one-shot model: ${chalk.bold(selection.displayName)}\nPurpose: ${selection.purpose}\nThe ongoing agent model is unchanged. Describe the matching ${selection.taskKind} job and UR will run it with the NVIDIA task tool.`);
+    };
+    $[17] = onDone;
+    $[18] = taskHandler;
+  } else {
+    taskHandler = $[18];
+  }
   let t3;
   if ($[8] !== isFastMode || $[9] !== mainLoopModel) {
     t3 = isFastModeEnabled() && isFastMode && isFastModeSupportedByModel(mainLoopModel) && isFastModeAvailable();
@@ -111,14 +121,15 @@ function ModelPickerWrapper(t0) {
     t3 = $[10];
   }
   let t4;
-  if ($[11] !== handleCancel || $[12] !== handleSelect || $[13] !== mainLoopModel || $[14] !== mainLoopModelForSession || $[15] !== t3) {
-    t4 = <ProviderFirstModelPicker initial={mainLoopModel} onSelect={handleSelect} onCancel={handleCancel} isStandaloneCommand={true} />;
+  if ($[11] !== handleCancel || $[12] !== handleSelect || $[13] !== mainLoopModel || $[14] !== mainLoopModelForSession || $[15] !== t3 || $[19] !== taskHandler) {
+    t4 = <ProviderFirstModelPicker initial={mainLoopModel} onSelect={handleSelect} onTaskSelect={taskHandler} onCancel={handleCancel} isStandaloneCommand={true} />;
     $[11] = handleCancel;
     $[12] = handleSelect;
     $[13] = mainLoopModel;
     $[14] = mainLoopModelForSession;
     $[15] = t3;
     $[16] = t4;
+    $[19] = taskHandler;
   } else {
     t4 = $[16];
   }

@@ -282,10 +282,11 @@ UNSLOTH_API_KEY=...
 
 NVIDIA NIM defaults to `https://integrate.api.nvidia.com/v1`, discovers the
 connected account's models live, and accepts a provider-scoped override for an
-enterprise or self-hosted NIM. On NVIDIA's hosted endpoint, UR treats the
-documented `/v1/models` response as authoritative and omits non-agent utility
-endpoints. It does not narrow hosted models using the separate NVCF deployment
-inventory; a configured NIM gateway uses its own model feed. Generic
+enterprise or self-hosted NIM. On NVIDIA's hosted endpoint, `/v1/models`
+establishes account availability and UR's audited positive contract registry
+establishes agent compatibility; only their intersection can become the
+ongoing model. It does not narrow hosted models using the separate NVCF
+deployment inventory; a configured NIM gateway uses its own model feed. Generic
 `openai-compatible` authentication is
 optional: `ur connect openai-compatible` or the picker's `K` key stores a
 credential when the chosen gateway needs one, without breaking anonymous
@@ -296,6 +297,10 @@ hosted choices unless the authenticated `/v1/models` endpoint returns them.
 For the hosted service, UR focuses NVIDIA's documented fastest 30B agent model,
 `nvidia/nemotron-3.5-lightning-30b-a3b`, first. Its thinking toggle maps to
 NVIDIA's model-specific `chat_template_kwargs.enable_thinking` field.
+The same key also authorizes the separately labelled one-shot FLUX.1 Schnell,
+Stable Video Diffusion, and PaliGemma adapters. Those use their exact
+`ai.api.nvidia.com` paths, never replace `provider.model`, and write generated
+media under `.ur/artifacts/nvidia/` unless an output path is supplied.
 
 Unsloth is an inference-provider integration only. Start Unsloth Studio and
 load the model outside UR, connect its generated key with `ur connect unsloth`,

@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.84.6
+
+- Made NVIDIA hosted model selection contract-driven. The authenticated live
+  catalog is now intersected with a reviewed positive list of multi-turn,
+  tool-capable agent contracts, so download-only cards, utility endpoints,
+  single-use functions, and unknown models cannot become the ongoing agent.
+  Custom enterprise/self-hosted NIM gateways continue to use their own saved
+  endpoint and live catalog.
+- Added complete NVIDIA one-shot workflows without replacing the conversation
+  model. `/model` labels eligible FLUX.1 Schnell, Stable Video Diffusion, and
+  PaliGemma entries with their purpose; UR reuses the configured NVIDIA key,
+  dispatches to each exact documented `ai.api.nvidia.com` endpoint, polls
+  asynchronous jobs, and saves JPEG/MP4 artifacts under
+  `.ur/artifacts/nvidia/`. A one-shot entry appears only when the connected
+  account returns it and UR has a complete adapter.
+- Kept NVIDIA media tasks portable across every enclosing agent provider.
+  Generated binary data is decoded locally and the tool result contains only
+  the artifact path or analysis text, avoiding provider-invalid image content
+  inside `tool_result`. Definitive account/function 404s are reported without
+  exposing NVIDIA's internal identifiers and remove the rejected model from
+  the current catalog until refresh.
+- Made structured clarification menus the mandatory path for every real
+  question with concrete choices. Plain text remains available for genuinely
+  open-ended questions, while legitimate menus larger than eight options are
+  preserved instead of failing schema validation. Public, configuration,
+  troubleshooting, validation, and technical documentation now describe the
+  same executable behavior.
+
 ## 1.84.5
 
 - Fixed a provider-wide multi-turn tool-history failure. Some

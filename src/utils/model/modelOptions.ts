@@ -41,6 +41,9 @@ export type ModelOption = {
   label: string
   description: string
   descriptionForModel?: string
+  usageMode?: 'agent' | 'task'
+  taskKind?: 'text-to-image' | 'image-to-video' | 'image-understanding'
+  purpose?: string
 }
 
 export function getDefaultOptionForUser(fastMode = false): ModelOption {

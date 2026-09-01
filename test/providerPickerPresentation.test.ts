@@ -7,6 +7,7 @@ import {
   providerPickerStatusWithoutNetwork,
   providerSupportsApiKeyEditing,
   providerSupportsEndpointEditing,
+  shouldIncludeProviderModelInPicker,
 } from '../src/components/ProviderFirstModelPicker.js'
 import { getProviderSelectionRefreshPolicy } from '../src/components/ProviderPicker.js'
 import { getProviderDefinition } from '../src/services/providers/providerRegistry.js'
@@ -17,6 +18,15 @@ import {
 } from '../src/utils/model/modelPresentation.js'
 
 describe('provider-first model picker presentation', () => {
+  test('one-shot task models appear only in a picker with a task-selection handler', () => {
+    const agent = { usageMode: 'agent' as const }
+    const task = { usageMode: 'task' as const }
+
+    expect(shouldIncludeProviderModelInPicker(agent, false)).toBe(true)
+    expect(shouldIncludeProviderModelInPicker(task, false)).toBe(false)
+    expect(shouldIncludeProviderModelInPicker(task, true)).toBe(true)
+  })
+
   test('provider selection reuses OpenRouter catalogue cache', () => {
     expect(getProviderSelectionRefreshPolicy('openrouter')).toEqual({})
     expect(getProviderSelectionRefreshPolicy('ollama')).toEqual({ force: true })

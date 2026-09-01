@@ -13,7 +13,16 @@ import {
   getProviderRuntimeBackend,
   listModelsForProviderWithSource,
   resolveProviderId,
+  validateProviderModelPair,
 } from '../src/services/providers/providerRegistry.js'
+import {
+  getNvidiaHostedAgentModelContract,
+  getNvidiaHostedTaskModelContract,
+  NVIDIA_HOSTED_CHAT_ENDPOINT,
+  nvidiaHostedAgentModelIds,
+  nvidiaHostedTaskModelIds,
+  resolveNvidiaHostedModelEndpoint,
+} from '../src/services/providers/nvidiaHostedModels.js'
 import {
   getProviderEffortWireValue,
   getSupportedEffortLevelsForModel,
@@ -52,7 +61,7 @@ describe('NVIDIA NIM provider integration', () => {
     ).toBe(true)
   })
 
-  test('uses the hosted models endpoint as the live catalog and enriches only documented effort contracts', async () => {
+  test('intersects the hosted catalog with documented agent contracts', async () => {
     const requests: Array<{ url: string; authorization: string | null }> = []
     const result = await listModelsForProviderWithSource('nvidia-nim', {
       adapters: {
@@ -70,6 +79,9 @@ describe('NVIDIA NIM provider integration', () => {
               { id: 'nvidia/nemotron-3.5-lightning-30b-a3b' },
               { id: 'nvidia/nemotron-parse' },
               { id: 'vendor/future-model', supported_parameters: ['reasoning_effort'] },
+              { id: 'black-forest-labs/flux.1-schnell' },
+              { id: 'stabilityai/stable-video-diffusion' },
+              { id: 'google/paligemma' },
             ],
           })
         },
@@ -83,12 +95,22 @@ describe('NVIDIA NIM provider integration', () => {
       },
     ])
     expect(result.source).toBe('live')
-    expect(result.models.map(model => model.id)).toEqual([
+    const agents = result.models.filter(model => model.usageMode !== 'task')
+    const tasks = result.models.filter(model => model.usageMode === 'task')
+    expect(agents.map(model => model.id)).toEqual([
       'nvidia/nemotron-3.5-lightning-30b-a3b',
-      '01-ai/yi-large',
       'deepseek-ai/deepseek-v4-flash',
-      'vendor/future-model',
     ])
+    expect(agents.every(model => model.supportedParameters?.includes('tools'))).toBe(true)
+    expect(tasks.map(model => model.id)).toEqual(nvidiaHostedTaskModelIds())
+    expect(tasks.every(model => model.usageMode === 'task')).toBe(true)
+    expect(agents[1]).toMatchObject({
+      capabilities: {
+        agent: true,
+        toolCalling: true,
+        endpoint: NVIDIA_HOSTED_CHAT_ENDPOINT,
+      },
+    })
     expect(
       getSupportedEffortLevelsForModel(
         'deepseek-ai/deepseek-v4-flash',
@@ -105,7 +127,7 @@ describe('NVIDIA NIM provider integration', () => {
     expect(
       getSupportedEffortLevelsForModel('vendor/future-model', 'nvidia-nim'),
     ).toEqual([])
-    expect(result.models[0]).toMatchObject({
+    expect(agents[0]).toMatchObject({
       isDefault: true,
       reasoning: { supportsThinking: true, defaultEnabled: true },
     })
@@ -163,14 +185,125 @@ describe('NVIDIA NIM provider integration', () => {
         env: { NVIDIA_API_KEY: 'nvapi-test' },
         fetch: async input => {
           requests.push(String(input))
-          return Response.json({ data: [{ id: '01-ai/yi-large' }] })
+          return Response.json({ data: [{ id: 'openai/gpt-oss-20b' }] })
         },
       },
     })
 
     expect(result.source).toBe('live')
-    expect(result.models.map(model => model.id)).toEqual(['01-ai/yi-large'])
+    expect(
+      result.models
+        .filter(model => model.usageMode !== 'task')
+        .map(model => model.id),
+    ).toEqual(['openai/gpt-oss-20b'])
+    expect(
+      result.models
+        .filter(model => model.usageMode === 'task')
+        .map(model => model.id),
+    ).toEqual([])
     expect(requests).toEqual(['https://integrate.api.nvidia.com/v1/models'])
+  })
+
+  test('exposes only implemented dedicated tasks and never treats them as agent models', async () => {
+    const result = await listModelsForProviderWithSource('nvidia-nim', {
+      freshOnly: true,
+      adapters: {
+        env: { NVIDIA_API_KEY: 'nvapi-test' },
+        fetch: async () => Response.json({
+          data: [
+            { id: 'google/paligemma' },
+            { id: 'adept/fuyu-8b' },
+            { id: 'meta/llama-3.2-11b-vision-instruct' },
+            { id: 'nvidia/vila' },
+            { id: 'nvidia/nemotron-parse' },
+            { id: 'black-forest-labs/flux.1-schnell' },
+            { id: 'moonshotai/kimi-k3' },
+          ],
+        }),
+      },
+    })
+
+    expect(result.source).toBe('live')
+    expect(
+      result.models
+        .filter(model => model.usageMode !== 'task')
+        .map(model => model.id),
+    ).toEqual(['moonshotai/kimi-k3'])
+    expect(
+      result.models
+        .filter(model => model.usageMode === 'task')
+        .map(model => model.id),
+    ).toEqual([
+      'black-forest-labs/flux.1-schnell',
+      'google/paligemma',
+    ])
+    expect(result.models.some(model => model.id === 'adept/fuyu-8b')).toBe(false)
+    expect(result.models.some(model => model.id === 'nvidia/vila')).toBe(false)
+    expect(result.models.some(model => model.id === 'nvidia/nemotron-parse')).toBe(false)
+
+    const validation = validateProviderModelPair(
+      'nvidia-nim',
+      'google/paligemma',
+      { availableModels: result.models },
+    )
+    expect(validation.valid).toBe(false)
+    if (validation.valid === false) {
+      expect(validation.error).toContain('one-shot image-understanding model')
+      expect(validation.error).toContain('not an ongoing agent model')
+    }
+  })
+
+  test('keeps exact endpoint contracts per hosted agent model', () => {
+    const contracts = nvidiaHostedAgentModelIds().map(model =>
+      getNvidiaHostedAgentModelContract(model),
+    )
+    expect(contracts.length).toBeGreaterThan(20)
+    expect(contracts.every(contract => contract?.endpoint === NVIDIA_HOSTED_CHAT_ENDPOINT)).toBe(true)
+    expect(
+      resolveNvidiaHostedModelEndpoint(
+        'https://integrate.api.nvidia.com/v1',
+        'meta/muse-glimmer-30b',
+      ),
+    ).toBe(NVIDIA_HOSTED_CHAT_ENDPOINT)
+    expect(
+      resolveNvidiaHostedModelEndpoint(
+        'https://integrate.api.nvidia.com/v1',
+        'google/paligemma',
+      ),
+    ).toBeUndefined()
+    expect(
+      resolveNvidiaHostedModelEndpoint(
+        'https://enterprise-nim.example/v1',
+        'meta/muse-glimmer-30b',
+      ),
+    ).toBeUndefined()
+  })
+
+  test('keeps exact endpoint and purpose contracts for implemented one-shot models', () => {
+    const contracts = nvidiaHostedTaskModelIds().map(model =>
+      getNvidiaHostedTaskModelContract(model),
+    )
+    expect(contracts).toHaveLength(3)
+    expect(contracts).toEqual([
+      expect.objectContaining({
+        id: 'black-forest-labs/flux.1-schnell',
+        taskKind: 'text-to-image',
+        endpoint: 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell',
+        outputMediaType: 'image/jpeg',
+      }),
+      expect.objectContaining({
+        id: 'stabilityai/stable-video-diffusion',
+        taskKind: 'image-to-video',
+        endpoint: 'https://ai.api.nvidia.com/v1/genai/stabilityai/stable-video-diffusion',
+        outputMediaType: 'video/mp4',
+      }),
+      expect.objectContaining({
+        id: 'google/paligemma',
+        taskKind: 'image-understanding',
+        endpoint: 'https://ai.api.nvidia.com/v1/vlm/google/paligemma',
+        outputMediaType: 'text/plain',
+      }),
+    ])
   })
 
   test('doctor requires a key and probes a user-selected endpoint', async () => {
@@ -215,7 +348,7 @@ describe('NVIDIA NIM provider integration', () => {
       settings: {
         provider: {
           active: 'nvidia-nim',
-          model: '01-ai/yi-large',
+          model: 'moonshotai/kimi-k3',
         },
       },
       adapters: {
@@ -230,12 +363,12 @@ describe('NVIDIA NIM provider integration', () => {
     expect(result.checks).toContainEqual({
       name: 'chat_models',
       status: 'pass',
-      message: '2 NVIDIA hosted chat models are selectable.',
+      message: '1 NVIDIA hosted chat models are selectable.',
     })
     expect(result.checks).toContainEqual({
       name: 'model',
       status: 'pass',
-      message: 'Model "01-ai/yi-large" is detectable.',
+      message: 'Model "moonshotai/kimi-k3" is detectable.',
     })
   })
 
@@ -333,7 +466,7 @@ describe('NVIDIA NIM provider integration', () => {
   test('redacts NVIDIA account/function identifiers and hides a runtime-rejected model', async () => {
     const apiBase = 'https://integrate.api.nvidia.com/v1'
     const modelsFetch = async (_input: RequestInfo | URL) =>
-      Response.json({ data: [{ id: '01-ai/yi-large' }] })
+      Response.json({ data: [{ id: 'openai/gpt-oss-20b' }] })
 
     const discovered = await listModelsForProviderWithSource('nvidia-nim', {
       adapters: {
@@ -341,7 +474,11 @@ describe('NVIDIA NIM provider integration', () => {
         fetch: modelsFetch,
       },
     })
-    expect(discovered.models.map(model => model.id)).toEqual(['01-ai/yi-large'])
+    expect(
+      discovered.models
+        .filter(model => model.usageMode !== 'task')
+        .map(model => model.id),
+    ).toEqual(['openai/gpt-oss-20b'])
 
     const client = await createOpenAICompatibleClient({
       baseUrl: apiBase,
@@ -364,7 +501,7 @@ describe('NVIDIA NIM provider integration', () => {
       let caught: unknown
       try {
         const request = client.beta.messages.create({
-          model: '01-ai/yi-large',
+          model: 'openai/gpt-oss-20b',
           messages: [{ role: 'user', content: 'hi' }],
           max_tokens: 8,
           stream,
@@ -379,7 +516,7 @@ describe('NVIDIA NIM provider integration', () => {
       }
       expect(caught).toBeInstanceOf(ProviderHTTPError)
       expect((caught as Error).message).toContain(
-        'NVIDIA NIM model "01-ai/yi-large" is unavailable to this account',
+        'NVIDIA NIM model "openai/gpt-oss-20b" is unavailable to this account',
       )
       expect((caught as Error).message).not.toContain('23bd454d')
       expect((caught as Error).message).not.toContain('VSB91X1')
@@ -392,7 +529,36 @@ describe('NVIDIA NIM provider integration', () => {
         fetch: modelsFetch,
       },
     })
-    expect(afterFailure.models).toEqual([])
+    expect(
+      afterFailure.models
+        .filter(model => model.usageMode !== 'task')
+        .map(model => model.id),
+    ).toEqual([])
+    expect(
+      afterFailure.models
+        .filter(model => model.usageMode === 'task')
+        .map(model => model.id),
+    ).toEqual([])
     expect(afterFailure.source).toBe('unavailable')
+  })
+
+  test('blocks a manually supplied unsupported hosted model before network I/O', async () => {
+    let fetched = false
+    const client = await createOpenAICompatibleClient({
+      baseUrl: 'https://integrate.api.nvidia.com/v1',
+      apiKey: 'nvapi-test',
+      providerId: 'nvidia-nim',
+      fetch: async () => {
+        fetched = true
+        return Response.json({})
+      },
+    })
+
+    await expect(client.beta.messages.create({
+      model: 'google/paligemma',
+      messages: [{ role: 'user', content: 'Use a tool.' }],
+      max_tokens: 8,
+    })).rejects.toThrow('has no documented UR-compatible agent endpoint')
+    expect(fetched).toBe(false)
   })
 })

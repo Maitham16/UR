@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.84.5 (UR-Nexus)"
+# expected for this release: "1.84.6 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -249,6 +249,7 @@ Run the deterministic adapter and shell coverage:
 ```sh
 bun test test/bashCommandExecution.test.ts \
   test/providerNvidiaNim.test.ts \
+  test/nvidiaTaskRuntime.test.ts \
   test/providerMultimodal.test.ts \
   test/openaiResponses.test.ts \
   test/ollamaToolResultImages.test.ts
@@ -261,11 +262,15 @@ NVIDIA NIM, Ollama, LM Studio, llama.cpp, vLLM, Unsloth, and generic OpenAI-comp
 request shapes.
 
 The NVIDIA fixture also verifies hosted/default and overridden endpoints,
-Bearer discovery from NVIDIA's authoritative `/v1/models` endpoint, removal
-of non-agent utility models, selected-model doctor diagnostics, redaction of
+Bearer discovery from NVIDIA's live `/v1/models` endpoint, positive agent
+contract intersection, selected-model doctor diagnostics, redaction of
 internal NVIDIA account/function IDs, endpoint-scoped runtime invalidation,
 native dispatch, the preferred Lightning endpoint and its model-scoped
-`enable_thinking` switch, documented effort aliases, and no Ultra on an unknown model. In
+`enable_thinking` switch, documented effort aliases, and no Ultra on an unknown model.
+`nvidiaTaskRuntime.test.ts` verifies the exact FLUX, Stable Video Diffusion,
+and PaliGemma endpoints and payloads; Bearer reuse; async request-ID polling;
+artifact decoding; media constraints; and rejection of every model without an
+implemented adapter. In
 `/model`, select `openai-compatible` and verify `K` can
 add or replace its optional key while `E` continues to edit only its endpoint.
 
