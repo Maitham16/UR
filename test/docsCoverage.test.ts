@@ -66,6 +66,25 @@ describe('documentation coverage', () => {
     }
   })
 
+  test('technical integrations cover every shipped inbound event receiver', () => {
+    const integrations = readFileSync(
+      join(process.cwd(), 'technical', '11-integrations.md'),
+      'utf8',
+    )
+
+    for (const producer of [
+      'GitHub webhooks',
+      'Slack events',
+      'Gmail Pub/Sub',
+      'Microsoft Teams/Graph',
+      'generic JSON',
+    ]) {
+      expect(integrations).toContain(producer)
+    }
+    expect(integrations).toContain('durable session')
+    expect(integrations).toContain('docs/TRIGGERS.md')
+  })
+
   test('documents current provider, status bar, update, and IDE behavior', () => {
     const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8')
     const usage = readFileSync(join(process.cwd(), 'docs', 'USAGE.md'), 'utf8')

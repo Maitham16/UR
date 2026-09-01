@@ -103,11 +103,16 @@ Three tiers:
    auto-registers the `ur-in-chrome` bundled skill when configured.
 3. **`/browser-qa`** — validate and replay browser QA fixtures: `/browser-qa run login-flow`.
 
-## GitHub & Slack
+## Inbound events and collaboration
 
 - `GitHub` tool (PRs/issues/search, doc 04); `/pr-comments`, `/review`; `--from-pr` resume.
 - `/install-slack-app` — Slack app install.
-- `/trigger` — consume GitHub/Slack webhook payloads headlessly (doc 10).
+- `ur trigger serve` — persistent receiver for GitHub webhooks, Slack events,
+  Gmail Pub/Sub pushes, Microsoft Teams/Graph notifications, and generic JSON
+  producers. Accepted work is deduplicated and resumes a durable session per
+  issue, thread, conversation, mailbox, or explicit generic session key.
+- `/trigger` — parse or dispatch a saved inbound payload headlessly (doc 10;
+  full receiver setup and route contracts are in `docs/TRIGGERS.md`).
 
 ## Remote & desktop
 
