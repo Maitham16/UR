@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.84.0
+
+- Added production npm marketplace sources with scoped-package and version
+  selectors, custom registries, isolated installation, atomic cache promotion
+  and rollback, actionable failures, and complete installed-plugin cache
+  invalidation. Public and technical plugin documentation now describes the
+  same executable contract.
+- Made input-token accounting provider-aware. OpenAI Responses, Anthropic,
+  Gemini, llama.cpp, and vLLM use native non-generating count paths where
+  available; Ollama, OpenRouter, LM Studio, Unsloth, and compatible endpoints
+  use request-shaped local estimation without reusing another provider's
+  fixture or carrying unreachable Bedrock/Vertex branches.
+- Corrected reasoning controls across dynamic providers. Ollama capability
+  discovery now treats ordinary thinking models as native boolean `think`
+  models and sends strings only for explicitly advertised graded ladders or
+  aliases. Added `/thinking on|off|toggle|status`; boolean-capable model pickers
+  use Left for off and Right for on only when the runtime has a real two-state
+  transport. `/effort` never claims a fabricated level, and Ultra remains
+  limited to an explicit provider-advertised beyond-high value. OpenRouter
+  provider selection now reuses its endpoint-scoped live catalogue instead of
+  forcing a slow refresh each time.
+- Replaced incomplete runtime scaffolding with working implementations: a
+  validated tmux-backed Tungsten tool and live monitor; a buildable KAIROS
+  assistant/proactive runtime with transcript persistence, dream lifecycle,
+  scheduling, and communication tools; complete tool output/permission
+  contracts; and a non-React MCP desired-state controller that handles
+  reconnect, authentication, partial failure, and late-connection races.
+- Completed the keybinding and SDK migrations. Shortcut labels now come from
+  the typed registry with correct last-write and Alt/Meta behavior, feature
+  gates hide unavailable bindings, remote tools receive a full fallback
+  contract, and SDK initialization emits canonical `Agent` names while
+  retaining compatibility only at the input boundary.
+- Fixed production-shell and test-isolation defects: `getCwd` is always bound,
+  spawned zsh sessions pass unmatched globs through instead of aborting,
+  missing grep/rg targets become precise model-facing recovery guidance, and
+  secondary-model tests no longer inherit cached live provider settings.
+- Synchronized the slash-command reference from the shipped registry, separated
+  commands from bundled skills and feature-gated internals, expanded KAIROS and
+  provider technical coverage, ignored only runtime-owned `.ur/` state, and
+  added pre-build version consistency enforcement across npm, documentation,
+  IDE extensions, source fallbacks, and the generated CLI.
+
 ## 1.83.2
 
 - Synchronized the public guides, static documentation site, examples, and
