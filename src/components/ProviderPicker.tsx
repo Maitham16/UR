@@ -34,6 +34,19 @@ type Props = {
   headerText?: string
 }
 
+/**
+ * Selecting OpenRouter should reuse its endpoint-scoped catalogue cache. Its
+ * catalogue is large, and the model picker already provides Ctrl+R for an
+ * explicit live refresh. Other providers retain the existing eager refresh
+ * behavior because their local catalogues are small and can change whenever a
+ * server starts or stops.
+ */
+export function getProviderSelectionRefreshPolicy(provider: string):
+  | Record<string, never>
+  | { force: true } {
+  return provider === 'openrouter' ? {} : { force: true }
+}
+
 export function ProviderPicker({
   initial,
   onSelect,
@@ -76,7 +89,10 @@ export function ProviderPicker({
 
     // Refresh before saving so provider/model compatibility uses the current
     // endpoint catalogue rather than a hard-coded or unrelated cached list.
-    await ensureProviderModelsFresh(value, { settings: getInitialSettings(), force: true })
+    await ensureProviderModelsFresh(value, {
+      settings: getInitialSettings(),
+      ...getProviderSelectionRefreshPolicy(value),
+    })
 
     const result = setSafeProviderConfig('provider', value)
     if (!result.ok) {

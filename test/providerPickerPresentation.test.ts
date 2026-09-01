@@ -7,6 +7,7 @@ import {
   providerPickerStatusWithoutNetwork,
   providerSupportsEndpointEditing,
 } from '../src/components/ProviderFirstModelPicker.js'
+import { getProviderSelectionRefreshPolicy } from '../src/components/ProviderPicker.js'
 import { getProviderDefinition } from '../src/services/providers/providerRegistry.js'
 import {
   buildProviderModelLabels,
@@ -15,6 +16,11 @@ import {
 } from '../src/utils/model/modelPresentation.js'
 
 describe('provider-first model picker presentation', () => {
+  test('provider selection reuses OpenRouter catalogue cache', () => {
+    expect(getProviderSelectionRefreshPolicy('openrouter')).toEqual({})
+    expect(getProviderSelectionRefreshPolicy('ollama')).toEqual({ force: true })
+  })
+
   test('Left and Right cycle every supported effort without losing max', () => {
     const extended = ['minimal', 'low', 'high', 'xhigh'] as const
     expect(cycleProviderPickerEffort('high', 'right', extended)).toBe('xhigh')
