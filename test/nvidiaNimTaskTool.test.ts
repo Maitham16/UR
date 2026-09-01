@@ -20,7 +20,7 @@ describe('NVIDIA one-shot tool contract', () => {
     ).toBe('black-forest-labs/flux.1-schnell')
   })
 
-  test('infers only implemented task adapters from the requested media shape', () => {
+  test('infers a generated task contract from the requested media shape', () => {
     expect(resolveNvidiaTaskModel({ prompt: 'A landscape' }, undefined)).toBe(
       'black-forest-labs/flux.1-schnell',
     )
@@ -39,7 +39,7 @@ describe('NVIDIA one-shot tool contract', () => {
     const block = NvidiaNimTaskTool.mapToolResultToToolResultBlockParam(
       {
         model: 'black-forest-labs/flux.1-schnell',
-        taskKind: 'text-to-image',
+        taskKind: 'image-generation',
         purpose: 'Generate one image.',
         outputPath: '/tmp/generated.jpg',
         mediaType: 'image/jpeg',
@@ -52,7 +52,7 @@ describe('NVIDIA one-shot tool contract', () => {
       type: 'tool_result',
       tool_use_id: 'tool-1',
       content:
-        'NVIDIA text-to-image completed with black-forest-labs/flux.1-schnell. Artifact saved to /tmp/generated.jpg (seed 7).',
+        'NVIDIA image-generation completed with black-forest-labs/flux.1-schnell. Artifact saved to /tmp/generated.jpg (seed 7).',
     })
     expect(JSON.stringify(block)).not.toContain('base64')
     expect(JSON.stringify(block)).not.toContain('image_url')

@@ -283,15 +283,17 @@ Download-only cards from the Build web catalog are not inserted into the
 hosted picker. NVIDIA's live `nemotron-3.5-lightning-30b-a3b` endpoint is
 focused first as its documented fastest 30B agent model; Left/Right controls
 that model's advertised on/off thinking switch.
-Verified specialized models returned by the connected account appear
-separately as `ONE-SHOT`, with their purpose visible before selection. FLUX.1
-Schnell generates a JPEG from text, Stable Video Diffusion generates an MP4
-from a sub-200-KB JPEG/PNG, and PaliGemma analyzes one image with one prompt.
-Selecting one leaves the ongoing agent unchanged; describe the task normally
-and UR uses `NvidiaNimTask` with the same stored NVIDIA key and exact model
-endpoint. Generated media defaults to `.ur/artifacts/nvidia/`. Other
-download-only, utility, and dedicated models remain hidden until UR has a
-complete executable adapter for their contract.
+Specialized public hosted contracts appear separately as `ONE-SHOT`, with
+their purpose visible before selection. The catalog is generated from
+NVIDIA's official OpenAPI indexes and currently covers 92 task models across
+generation, vision, retrieval, safety, translation, biology, molecular and
+medical inference, optimization, and climate APIs. Selecting one leaves the
+ongoing agent unchanged; describe the task normally and UR uses
+`NvidiaNimTask` with the same stored NVIDIA key and exact model endpoint. For
+advanced schemas the tool can describe required fields before running exact
+JSON and file bindings. Large inputs use NVIDIA Assets; binary or large JSON
+output defaults to `.ur/artifacts/nvidia/`. Download-only and non-executable
+cards remain hidden.
 On the `/model` model screen, `K` adds or replaces a
 provider API key and `E` edits its endpoint. This also makes optional
 authentication practical for generic OpenAI-compatible gateways.

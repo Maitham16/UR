@@ -52,7 +52,7 @@ users don't call tools directly.
 | `EnterPlanMode` / `ExitPlanMode` | Enter/leave plan mode; plan approval flow | "Plan first, then implement" |
 | `AskUserQuestion` | Mandatory for every real user-facing question with two or more plausible concrete answers. Prefer 2-8 focused choices, preserve every meaningful choice when there are more, and use plain text only for genuinely open-ended questions with no useful concrete alternatives. Malformed single-suggestion output gains a neutral rejection path without inventing an answer | (agent needs a user decision) |
 | `TaskStop` | Stop a background task; completed task results are delivered automatically | "Kill the dev server you started" |
-| `NvidiaNimTask` | Run a verified NVIDIA one-shot model without replacing the active agent: FLUX.1 Schnell text-to-JPEG, Stable Video Diffusion image-to-MP4, or PaliGemma single-image analysis. Uses the configured NVIDIA key, exact model endpoint, cancellable async polling, and textual result paths | "Use NVIDIA to generate a product image" |
+| `NvidiaNimTask` | Describe or run any generated public NVIDIA hosted task contract without replacing the active agent. Routes exact AI/retrieval/health/optimization/climate endpoints, validates OpenAPI-shaped JSON, binds local files by JSON pointer, uploads NVIDIA Assets, polls async work, and saves binary/large JSON results | "Use NVIDIA to generate a product image" |
 | `EnterWorktree` / `ExitWorktree` | Move the session into/out of an isolated git worktree (worktree mode) | "Do this in a scratch worktree" |
 | `SendUserMessage` | Send a mid-turn brief message to the user (Brief tool) | — |
 

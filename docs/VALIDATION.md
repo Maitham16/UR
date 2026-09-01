@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.84.6 (UR-Nexus)"
+# expected for this release: "1.84.7 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -267,10 +267,11 @@ contract intersection, selected-model doctor diagnostics, redaction of
 internal NVIDIA account/function IDs, endpoint-scoped runtime invalidation,
 native dispatch, the preferred Lightning endpoint and its model-scoped
 `enable_thinking` switch, documented effort aliases, and no Ultra on an unknown model.
-`nvidiaTaskRuntime.test.ts` verifies the exact FLUX, Stable Video Diffusion,
-and PaliGemma endpoints and payloads; Bearer reuse; async request-ID polling;
-artifact decoding; media constraints; and rejection of every model without an
-implemented adapter. In
+`nvidiaTaskRuntime.test.ts` verifies exact AI, retrieval, and healthcare
+endpoint routing; generated-schema defaults and validation; FLUX, Stable Video
+Diffusion, and PaliGemma conveniences; Bearer reuse; NVIDIA Asset upload and
+cleanup; async request-ID polling; artifact decoding; and rejection of models
+without a generated public hosted contract. In
 `/model`, select `openai-compatible` and verify `K` can
 add or replace its optional key while `E` continues to edit only its endpoint.
 

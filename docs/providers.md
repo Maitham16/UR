@@ -455,7 +455,7 @@ ur config set provider anthropic-api
 | --- | --- | --- |
 | API providers (openai-api, anthropic-api, gemini-api) | Live discovery from the provider's `/models` endpoint using your connected key (curated fallback until connected) | live |
 | OpenRouter | Live `/models` discovery with an endpoint-scoped five-minute cache; Ctrl+R forces a fresh request with no stale fallback | live/cache |
-| NVIDIA NIM | Hosted: live `/models` availability intersected with audited agent contracts, plus separately labelled one-shot models with implemented adapters. Configured NIM gateway: its own live `/models` catalog | live |
+| NVIDIA NIM | Hosted: live `/models` availability intersected with audited agent contracts, plus a generated official OpenAPI catalog for dedicated one-shot APIs. Configured NIM gateway: its own live `/models` catalog | live agents + official task contracts |
 | Local/server providers (ollama, lmstudio, llama.cpp, vllm, unsloth) | Dynamic discovery from the selected provider endpoint | live |
 | OpenAI-compatible | Dynamic discovery from configured endpoint | live |
 | Subscription CLIs (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Curated list (the official CLIs expose no models API); first-class in `/model`, dispatched via the official CLI. External CLI behavior depends on the vendor CLI. Log in with `ur auth <provider>` | static |
@@ -720,30 +720,31 @@ documented Nemotron coding-agent models, UR includes NVIDIA's
 and [NIM endpoint guide](https://docs.nvidia.com/nim/large-language-models/latest/tutorials.html).
 
 NVIDIA's dedicated APIs are a separate one-shot surface. `/model` labels them
-`ONE-SHOT`, shows the task purpose, and keeps the current agent model when one
-is selected. `NvidiaNimTask` currently implements three exact contracts:
+`ONE-SHOT`, shows each task's real purpose, and keeps the current agent model
+when one is selected. UR generates the executable catalog from NVIDIA's
+official LLM, retrieval, visual, multimodal, healthcare, route-optimization,
+and climate OpenAPI indexes. The current catalog has 92 tasks and routes each
+one to its documented endpoint on `integrate.api.nvidia.com`,
+`ai.api.nvidia.com`, `health.api.nvidia.com`, `optimize.api.nvidia.com`, or
+`climate.api.nvidia.com`.
 
-- [FLUX.1 Schnell](https://docs.api.nvidia.com/nim/reference/black-forest-labs-flux_1-schnell-infer)
-  → text-to-JPEG at
-  `https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell`.
-- [Stable Video Diffusion](https://docs.api.nvidia.com/nim/reference/stabilityai-stable-video-diffusion-infer)
-  → JPEG/PNG-to-MP4 at
-  `https://ai.api.nvidia.com/v1/genai/stabilityai/stable-video-diffusion`;
-  NVIDIA's inline input contract requires a source smaller than 200 KB.
-- [PaliGemma](https://docs.api.nvidia.com/nim/reference/google-paligemma-infer)
-  → one-image visual analysis at
-  `https://ai.api.nvidia.com/v1/vlm/google/paligemma`.
+`NvidiaNimTask` accepts convenience prompt/image/query/passages fields, or its
+`describe` action exposes the exact request schema before an advanced
+`payload_json` call. `file_inputs` can bind local files into that payload by
+JSON pointer. UR automatically inlines small media or creates an NVIDIA Asset
+UUID/reference for larger and asset-based contracts, polls documented
+asynchronous responses, and saves binary or large JSON results under
+`.ur/artifacts/nvidia/`. It reuses `NVIDIA_API_KEY` and returns text/path
+metadata to the enclosing agent. Download-only cards, status routes,
+staging-only URLs, broken references, and operations without a documented
+public hosted POST endpoint never appear as usable choices.
 
-They reuse `NVIDIA_API_KEY`, poll documented asynchronous responses when
-necessary, save generated files under `.ur/artifacts/nvidia/` by default, and
-return only text/path metadata to the enclosing agent. Unsupported,
-download-only, and unadapted dedicated models never appear as usable choices.
-
-`ur provider doctor nvidia-nim` verifies the hosted catalog and selected model
-against the live `/v1/models` response. If NVIDIA rejects a listed model after
-selection, UR redacts NVIDIA's internal function/account IDs, removes that
-model from the current endpoint-scoped session catalog, and asks the user to
-select another model. `Ctrl+R` explicitly retries discovery.
+`ur provider doctor nvidia-nim` verifies the hosted agent catalog and selected
+agent model against live `/v1/models`, and reports the generated task-contract
+count. Dedicated API entitlement can be verified only with that task's valid
+payload. If NVIDIA rejects a listed model after selection, UR redacts internal
+function/account IDs and removes only that endpoint-scoped model until
+`Ctrl+R` explicitly retries discovery.
 
 Local/server providers use their normal endpoints:
 

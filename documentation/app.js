@@ -68,7 +68,7 @@ const featureGroups = [
   {
     title: 'Providers and auth',
     tags: ['subscription', 'API', 'local', 'effort', 'status bar'],
-    text: 'UR-native API/local/OpenAI-compatible runtimes, provider-scoped endpoints, audited NVIDIA agent discovery plus exact one-shot image/video/vision adapters, provider-only Unsloth inference, optional compatible-gateway keys, capability-driven reasoning effort, responsive OpenRouter routing, first-class subscription CLI providers dispatched through the official vendor CLIs, provider doctor checks, secure API-key connect, non-secret config, fallback hints, and provider-aware status-bar output.',
+    text: 'UR-native API/local/OpenAI-compatible runtimes, provider-scoped endpoints, audited NVIDIA agent discovery plus a generated official OpenAPI catalog for 92 exact one-shot AI/retrieval/health/optimization/climate contracts, provider-only Unsloth inference, optional compatible-gateway keys, capability-driven reasoning effort, responsive OpenRouter routing, first-class subscription CLI providers dispatched through the official vendor CLIs, provider doctor checks, secure API-key connect, non-secret config, fallback hints, and provider-aware status-bar output.',
     commands: ['ur provider list', 'ur provider status', 'ur provider doctor nvidia-nim', 'ur connect status', 'ur config set provider nvidia-nim', 'ur config set provider openai-api', 'ur config set provider ollama', 'ur config set base_url llama.cpp http://localhost:9931/v1', '/model', '/effort ultra', '/thinking on'],
   },
   {

@@ -113,7 +113,7 @@ type SelectionMetadata = {
 export type NvidiaTaskSelectionMetadata = {
   modelId: string
   displayName: string
-  taskKind: 'text-to-image' | 'image-to-video' | 'image-understanding'
+  taskKind: import('../services/providers/nvidiaHostedModels.js').NvidiaHostedTaskKind
   purpose: string
 }
 
@@ -1150,7 +1150,9 @@ export function ProviderFirstModelPicker({
               : `Showing models for ${selectedProvider?.label} (${selectedProvider?.accessType})`}
           </Text>
           <Text color={modelSource === 'live' ? 'success' : modelSource === 'unavailable' ? 'error' : 'subtle'}>
-            {formatModelSourceLabel(modelSource)}
+            {selectedProvider?.value === 'nvidia-nim' && modelSource === 'live'
+              ? '● LIVE AGENTS + OFFICIAL TASK APIs'
+              : formatModelSourceLabel(modelSource)}
             <Text dimColor color="subtle">
               {' '}· agent models continue chat; NVIDIA task models run one specialized job
             </Text>
@@ -1420,6 +1422,9 @@ export function formatProviderModelDescription(
   source: ProviderModelSource,
   providerId: ProviderId,
 ): string {
+  if (providerId === 'nvidia-nim' && model.usageMode === 'task') {
+    return `${model.description} · official NVIDIA OpenAPI contract`
+  }
   if (providerId !== 'openrouter') {
     return `${model.description} · ${source}`
   }

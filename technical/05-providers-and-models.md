@@ -65,29 +65,36 @@ reasoning contracts and never act as an offline model list.
 The hosted picker also has a separately labelled `ONE-SHOT` section. These
 entries are not eligible for `provider.model`, `setProviderModel`, startup
 selection, or the OpenAI-compatible agent adapter. Enter stores a process-local
-task preference while leaving the ongoing model unchanged. Only models both
-returned by the authenticated live catalog and backed by a complete
-`NvidiaNimTask` adapter appear:
+task preference while leaving the ongoing model unchanged.
 
-| Model | Purpose | Exact endpoint | Result |
-|---|---|---|---|
-| `black-forest-labs/flux.1-schnell` | text-to-image; documented dimensions, seed, and 1-4 steps | `https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell` | JPEG path |
-| `stabilityai/stable-video-diffusion` | JPEG/PNG-to-video; inline source must be smaller than 200 KB | `https://ai.api.nvidia.com/v1/genai/stabilityai/stable-video-diffusion` | MP4 path |
-| `google/paligemma` | one prompt plus one image for visual question answering/captioning | `https://ai.api.nvidia.com/v1/vlm/google/paligemma` | text |
+`scripts/update-nvidia-hosted-catalog.mjs` reads NVIDIA's seven public API
+indexes and each linked OpenAPI operation, then generates
+`nvidiaHostedCatalog.generated.ts`. It accepts only a public production HTTPS
+POST contract on NVIDIA's documented hosts; status routes, staging-only URLs,
+broken references, download-only cards, and undocumented operations are not
+generated. The current artifact contains 35 positive agent contracts and 92
+task contracts. Agent IDs still require live `/v1/models` availability. Task
+contracts do not depend on that chat inventory because dedicated APIs are not
+consistently listed there.
 
-These adapters follow NVIDIA's official
-[FLUX.1 Schnell](https://docs.api.nvidia.com/nim/reference/black-forest-labs-flux_1-schnell-infer),
-[Stable Video Diffusion](https://docs.api.nvidia.com/nim/reference/stabilityai-stable-video-diffusion-infer),
-and [PaliGemma](https://docs.api.nvidia.com/nim/reference/google-paligemma-infer)
-contracts.
+Task families include text/image/video/3D generation, image understanding and
+detection, text/multimodal embeddings, reranking, parsing, safety,
+translation, biological and molecular inference, medical imaging, cuOpt route
+optimization, and climate simulation. Every contract records its exact
+endpoint, purpose, documentation URL, request content type, compact request
+schema, response media types, and source update timestamp. The tool's
+`describe` action returns that model's required fields and schema. `run`
+accepts standard prompt/image/query/passages conveniences or exact
+`payload_json`; `file_inputs` binds local data at JSON pointers as text,
+base64, data URLs, asset UUIDs, or NVIDIA asset references.
 
-All three reuse the secure `NVIDIA_API_KEY`. Media responses are decoded to
-`.ur/artifacts/nvidia/` (or an explicit output path). If NVIDIA returns `202`,
-UR follows `Location` or `NVCF-REQID` until completion with cancellation
-support. Tool results contain text/path metadata, never base64 image/video
-content, so the enclosing agent provider receives a legal textual
-`tool_result`. Models without a real adapter remain absent rather than being
-shown as aspirational or partial support.
+All tasks reuse `NVIDIA_API_KEY`. Files too large for inline preview contracts
+and UUID/reference inputs are uploaded through NVIDIA's documented Asset API
+and removed after completion. If NVIDIA returns `202`, UR follows `Location`
+or `NVCF-REQID` with cancellation support. JSON is returned directly when
+compact; generated/binary and large JSON results are written under
+`.ur/artifacts/nvidia/` (or an explicit output path). Provider-facing tool
+results contain text/path metadata rather than embedded binary content.
 
 The provider doctor applies the same live-catalog filter to the selected model. A
 hosted 404 whose detail says an internal function is missing for an account is

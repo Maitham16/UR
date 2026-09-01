@@ -227,17 +227,21 @@ If `chat_models` fails, reconnect a current build.nvidia.com key with
 `ur connect nvidia-nim`. A configured enterprise/self-hosted NIM endpoint is
 validated only against that gateway's own `/models` response.
 
-### An NVIDIA image/video/vision model is missing from `/model`
+### An NVIDIA specialized model is missing from `/model`
 
 - Ongoing models appear only when NVIDIA returns them live and their exact
   documented contract supports UR's multi-turn streaming tool loop.
-- Dedicated models appear only in the `ONE-SHOT` section after UR implements
-  their endpoint, request, response, media constraints, and artifact handling.
-  The current set is FLUX.1 Schnell, Stable Video Diffusion, and PaliGemma.
-- Download-only Build cards and unadapted endpoints are intentionally absent;
-  UR does not present a model that it cannot execute correctly.
-- Stable Video Diffusion's hosted inline-image contract accepts JPEG/PNG files
-  smaller than 200 KB. Compress larger input before retrying.
+- Dedicated models come from UR's generated NVIDIA OpenAPI catalog and appear
+  in the `ONE-SHOT` section without relying on the chat `/v1/models` response.
+  Run `bun run provider:nvidia-catalog` in a source checkout to refresh the
+  checked-in contracts from NVIDIA's current public reference.
+- Download-only cards, status-only routes, staging URLs, broken documentation,
+  and operations without a public hosted POST contract are intentionally absent.
+- UR inlines small supported media and automatically uses NVIDIA's Asset API
+  for larger files or contracts that require an asset UUID/reference.
+- A task-specific entitlement failure removes only that model until `Ctrl+R`;
+  the exact endpoint and documentation link are available through the
+  `NvidiaNimTask` describe action.
 
 ### A provider says the previous answer was empty after successful tool calls
 

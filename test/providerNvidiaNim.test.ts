@@ -177,7 +177,7 @@ describe('NVIDIA NIM provider integration', () => {
     expect(requests).toEqual(['https://nim.example/v1/models'])
   })
 
-  test('does not depend on the separate NVCF function inventory', async () => {
+  test('uses the official hosted task contracts without depending on a separate NVCF function inventory', async () => {
     const requests: string[] = []
     const result = await listModelsForProviderWithSource('nvidia-nim', {
       freshOnly: true,
@@ -200,11 +200,11 @@ describe('NVIDIA NIM provider integration', () => {
       result.models
         .filter(model => model.usageMode === 'task')
         .map(model => model.id),
-    ).toEqual([])
+    ).toEqual(nvidiaHostedTaskModelIds())
     expect(requests).toEqual(['https://integrate.api.nvidia.com/v1/models'])
   })
 
-  test('exposes only implemented dedicated tasks and never treats them as agent models', async () => {
+  test('exposes every generated public task contract and never treats tasks as agent models', async () => {
     const result = await listModelsForProviderWithSource('nvidia-nim', {
       freshOnly: true,
       adapters: {
@@ -233,13 +233,16 @@ describe('NVIDIA NIM provider integration', () => {
       result.models
         .filter(model => model.usageMode === 'task')
         .map(model => model.id),
-    ).toEqual([
-      'black-forest-labs/flux.1-schnell',
-      'google/paligemma',
-    ])
+    ).toEqual(nvidiaHostedTaskModelIds())
     expect(result.models.some(model => model.id === 'adept/fuyu-8b')).toBe(false)
-    expect(result.models.some(model => model.id === 'nvidia/vila')).toBe(false)
-    expect(result.models.some(model => model.id === 'nvidia/nemotron-parse')).toBe(false)
+    expect(result.models.find(model => model.id === 'nvidia/vila')).toMatchObject({
+      usageMode: 'task',
+      taskKind: 'image-understanding',
+    })
+    expect(result.models.find(model => model.id === 'nvidia/nemotron-parse')).toMatchObject({
+      usageMode: 'task',
+      taskKind: 'document-parsing',
+    })
 
     const validation = validateProviderModelPair(
       'nvidia-nim',
@@ -279,31 +282,34 @@ describe('NVIDIA NIM provider integration', () => {
     ).toBeUndefined()
   })
 
-  test('keeps exact endpoint and purpose contracts for implemented one-shot models', () => {
+  test('keeps exact endpoint, schema, and purpose contracts across every NVIDIA API family', () => {
     const contracts = nvidiaHostedTaskModelIds().map(model =>
       getNvidiaHostedTaskModelContract(model),
     )
-    expect(contracts).toHaveLength(3)
-    expect(contracts).toEqual([
-      expect.objectContaining({
-        id: 'black-forest-labs/flux.1-schnell',
-        taskKind: 'text-to-image',
-        endpoint: 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell',
-        outputMediaType: 'image/jpeg',
-      }),
-      expect.objectContaining({
-        id: 'stabilityai/stable-video-diffusion',
-        taskKind: 'image-to-video',
-        endpoint: 'https://ai.api.nvidia.com/v1/genai/stabilityai/stable-video-diffusion',
-        outputMediaType: 'video/mp4',
-      }),
-      expect.objectContaining({
-        id: 'google/paligemma',
-        taskKind: 'image-understanding',
-        endpoint: 'https://ai.api.nvidia.com/v1/vlm/google/paligemma',
-        outputMediaType: 'text/plain',
-      }),
-    ])
+    expect(contracts.length).toBeGreaterThan(80)
+    expect(contracts.every(contract => contract?.endpoint.startsWith('https://'))).toBe(true)
+    expect(contracts.every(contract => contract?.requestSchema)).toBe(true)
+    expect(getNvidiaHostedTaskModelContract('black-forest-labs/flux.1-schnell')).toMatchObject({
+      taskKind: 'image-generation',
+      endpoint: 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell',
+      outputMediaType: 'image/jpeg',
+    })
+    expect(getNvidiaHostedTaskModelContract('nvidia/llama-nemotron-rerank-1b-v2')).toMatchObject({
+      taskKind: 'reranking',
+      endpoint: 'https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking',
+    })
+    expect(getNvidiaHostedTaskModelContract('nvidia/genmol')).toMatchObject({
+      taskKind: 'molecular-modeling',
+      endpoint: 'https://health.api.nvidia.com/v1/biology/nvidia/genmol/generate',
+    })
+    expect(getNvidiaHostedTaskModelContract('nvidia/cuOpt')).toMatchObject({
+      taskKind: 'route-optimization',
+      endpoint: 'https://optimize.api.nvidia.com/v1/nvidia/cuopt',
+    })
+    expect(getNvidiaHostedTaskModelContract('nvidia/fourcastnet')).toMatchObject({
+      taskKind: 'weather-simulation',
+      endpoint: 'https://climate.api.nvidia.com/v1/nvidia/fourcastnet',
+    })
   })
 
   test('doctor requires a key and probes a user-selected endpoint', async () => {
@@ -538,8 +544,8 @@ describe('NVIDIA NIM provider integration', () => {
       afterFailure.models
         .filter(model => model.usageMode === 'task')
         .map(model => model.id),
-    ).toEqual([])
-    expect(afterFailure.source).toBe('unavailable')
+    ).toEqual(nvidiaHostedTaskModelIds())
+    expect(afterFailure.source).toBe('live')
   })
 
   test('blocks a manually supplied unsupported hosted model before network I/O', async () => {

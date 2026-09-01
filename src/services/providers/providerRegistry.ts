@@ -1486,17 +1486,10 @@ function nvidiaHostedTaskModels(): ProviderModelDefinition[] {
 
 function addAvailableNvidiaHostedTaskModels(
   agentModels: ProviderModelDefinition[],
-  discoveredModels: ProviderModelDefinition[],
 ): ProviderModelDefinition[] {
-  const discoveredById = new Map(
-    discoveredModels.map(model => [model.id.toLowerCase(), model]),
-  )
   return [
     ...agentModels,
-    ...nvidiaHostedTaskModels().flatMap(model => {
-      const discovered = discoveredById.get(model.id.toLowerCase())
-      return discovered ? [{ ...discovered, ...model }] : []
-    }),
+    ...nvidiaHostedTaskModels(),
   ]
 }
 
@@ -1658,6 +1651,11 @@ async function checkEndpoint(
         message: `${detectedModels.length} NVIDIA hosted chat models are selectable.`,
       })
     }
+    result.checks.push({
+      name: 'task_models',
+      status: 'pass',
+      message: `${NVIDIA_HOSTED_TASK_MODEL_CONTRACTS.length} public NVIDIA task APIs have generated exact-endpoint contracts; key entitlement is verified when each task runs.`,
+    })
   }
   if (settings.model) {
     const modelDetected = detectedModels.some(model => model.id === settings.model)
@@ -2273,7 +2271,7 @@ export type ProviderModelDefinition = {
   deprecated?: boolean
   /** Agent models may own the ongoing session; task models are one-shot only. */
   usageMode?: 'agent' | 'task'
-  taskKind?: 'text-to-image' | 'image-to-video' | 'image-understanding'
+  taskKind?: import('./nvidiaHostedModels.js').NvidiaHostedTaskKind
   purpose?: string
 }
 
@@ -3246,16 +3244,16 @@ async function discoverLiveModelsForProvider(
     if (discovered.length > 0) {
       const models = modelDefinitionsFromDiscovered(discovered, provider)
       if (provider === 'nvidia-nim' && isNvidiaHostedApi(baseUrl)) {
-        return addAvailableNvidiaHostedTaskModels(
-          filterNvidiaHostedModels(models),
-          models,
-        )
+        return addAvailableNvidiaHostedTaskModels(filterNvidiaHostedModels(models))
       }
       return models
     }
   }
   if (!reachedOk && lastError) {
     throw lastError
+  }
+  if (provider === 'nvidia-nim' && isNvidiaHostedApi(baseUrl)) {
+    return addAvailableNvidiaHostedTaskModels([])
   }
   return []
 }

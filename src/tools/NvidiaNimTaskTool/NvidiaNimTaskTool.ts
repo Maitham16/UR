@@ -1,6 +1,8 @@
 import { z } from 'zod/v4'
 import {
   getNvidiaHostedTaskModelContract,
+  NVIDIA_HOSTED_CATALOG_REVIEWED_AT,
+  NVIDIA_HOSTED_TASK_MODEL_CONTRACTS,
   nvidiaHostedTaskModelIds,
 } from '../../services/providers/nvidiaHostedModels.js'
 import { runNvidiaHostedTask } from '../../services/providers/nvidiaTaskRuntime.js'
@@ -13,36 +15,69 @@ export const NVIDIA_NIM_TASK_TOOL_NAME = 'NvidiaNimTask'
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
+    action: z
+      .enum(['run', 'describe'])
+      .optional()
+      .describe(
+        'Use describe to retrieve the selected model’s exact NVIDIA request schema; use run to invoke it.',
+      ),
     model: z
       .string()
       .optional()
       .describe(
-        `Exact NVIDIA one-shot model ID. Available adapters: ${nvidiaHostedTaskModelIds().join(', ')}. Omit it to use the task model selected in /model, or the matching built-in default.`,
+        'Exact NVIDIA task model ID. Omit it to use the task selected in /model or UR’s matching default.',
       ),
     prompt: z
       .string()
       .optional()
       .describe(
-        'Required for text-to-image and image-understanding tasks. Describe the image to generate or the question to answer about the input image.',
+        'Convenience text input for chat, generation, image understanding, biology, and other single-text-field contracts.',
       ),
     image_path: z
       .string()
       .optional()
       .describe(
-        'Local JPEG or PNG path required for image-to-video and image-understanding tasks.',
+        'Convenience local image path. UR inlines files below NVIDIA’s limit and uploads larger inputs through NVIDIA’s Asset API.',
       ),
     output_path: z
       .string()
       .optional()
       .describe(
-        'Optional output path for generated image/video. Relative paths resolve from the current working directory; otherwise UR writes under .ur/artifacts/nvidia/.',
+        'Optional artifact/JSON output path; relative paths resolve from the current working directory.',
       ),
-    width: z.number().int().optional().describe('FLUX output width.'),
-    height: z.number().int().optional().describe('FLUX output height.'),
-    steps: z.number().int().min(1).max(4).optional().describe('FLUX diffusion steps (1-4).'),
-    seed: z.number().int().min(0).optional().describe('Generation seed; 0 asks NVIDIA for a random seed.'),
-    cfg_scale: z.number().optional().describe('Stable Video Diffusion source-image adherence (>1 through 9).'),
-    max_tokens: z.number().int().min(1).max(1024).optional().describe('Maximum PaliGemma analysis tokens.'),
+    query: z.string().optional().describe('Convenience query for reranking models.'),
+    passages: z
+      .array(z.string())
+      .optional()
+      .describe('Convenience candidate passages for reranking models.'),
+    payload_json: z
+      .string()
+      .optional()
+      .describe(
+        'Exact JSON request object for advanced NVIDIA contracts. Convenience fields fill only missing properties.',
+      ),
+    file_inputs: z
+      .array(
+        z.strictObject({
+          json_pointer: z
+            .string()
+            .describe('RFC 6901-style pointer where the encoded file value is inserted.'),
+          path: z.string().describe('Local file path.'),
+          encoding: z
+            .enum(['data-url', 'base64', 'text', 'asset-id', 'asset-reference'])
+            .optional()
+            .describe(
+              'Use asset-id for UUID fields or asset-reference for NVIDIA data:*;asset_id references.',
+            ),
+        }),
+      )
+      .optional(),
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional(),
+    steps: z.number().int().positive().optional(),
+    seed: z.number().int().min(0).optional(),
+    cfg_scale: z.number().optional(),
+    max_tokens: z.number().int().positive().optional(),
   }),
 )
 type InputSchema = ReturnType<typeof inputSchema>
@@ -50,8 +85,12 @@ type InputSchema = ReturnType<typeof inputSchema>
 const outputSchema = lazySchema(() =>
   z.object({
     model: z.string(),
-    taskKind: z.enum(['text-to-image', 'image-to-video', 'image-understanding']),
+    taskKind: z.string(),
     purpose: z.string(),
+    endpoint: z.string().optional(),
+    documentation: z.string().optional(),
+    required: z.array(z.string()).optional(),
+    requestSchema: z.record(z.string(), z.unknown()).optional(),
     outputPath: z.string().optional(),
     mediaType: z.string().optional(),
     text: z.string().optional(),
@@ -62,6 +101,15 @@ const outputSchema = lazySchema(() =>
 type OutputSchema = ReturnType<typeof outputSchema>
 type Output = z.infer<OutputSchema>
 
+function defaultTaskModel(input: z.infer<InputSchema>): string {
+  if (input.query || input.passages) return 'nvidia/llama-nemotron-rerank-1b-v2'
+  if (input.image_path && !input.prompt) {
+    return 'stabilityai/stable-video-diffusion'
+  }
+  if (input.image_path) return 'google/paligemma'
+  return 'black-forest-labs/flux.1-schnell'
+}
+
 export function resolveNvidiaTaskModel(
   input: z.infer<InputSchema>,
   selectedModel: string | undefined,
@@ -70,17 +118,36 @@ export function resolveNvidiaTaskModel(
   if (selectedModel && getNvidiaHostedTaskModelContract(selectedModel)) {
     return selectedModel
   }
-  if (input.image_path && !input.prompt) {
-    return 'stabilityai/stable-video-diffusion'
+  return defaultTaskModel(input)
+}
+
+function parsePayload(value: string | undefined): Record<string, unknown> | undefined {
+  if (!value?.trim()) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch (error) {
+    throw new Error(
+      `payload_json must be valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    )
   }
-  if (input.image_path) return 'google/paligemma'
-  return 'black-forest-labs/flux.1-schnell'
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('payload_json must contain a JSON object.')
+  }
+  return parsed as Record<string, unknown>
+}
+
+function requiredFields(schema: Record<string, unknown>): string[] {
+  return Array.isArray(schema.required)
+    ? schema.required.filter((value): value is string => typeof value === 'string')
+    : []
 }
 
 export const NvidiaNimTaskTool = buildTool({
   name: NVIDIA_NIM_TASK_TOOL_NAME,
-  searchHint: 'generate images videos or analyze pictures with NVIDIA',
-  maxResultSizeChars: 30_000,
+  searchHint:
+    'NVIDIA hosted image video vision embedding reranking biology climate route or specialized inference',
+  maxResultSizeChars: 120_000,
   strict: true,
   shouldDefer: true,
   get inputSchema(): InputSchema {
@@ -96,31 +163,34 @@ export const NvidiaNimTaskTool = buildTool({
     return true
   },
   isReadOnly(input) {
+    if (input.action === 'describe') return true
     const contract = input.model
       ? getNvidiaHostedTaskModelContract(input.model)
       : undefined
-    return contract?.taskKind === 'image-understanding'
+    return !contract?.outputExtension
   },
   async description(input) {
     const contract = input.model
       ? getNvidiaHostedTaskModelContract(input.model)
       : undefined
     return contract
-      ? `Run NVIDIA ${contract.displayName} once: ${contract.purpose}`
-      : 'Run a verified one-shot NVIDIA image, video, or visual-understanding model without changing the ongoing agent model.'
+      ? `${input.action === 'describe' ? 'Describe' : 'Run'} NVIDIA ${contract.displayName}: ${contract.purpose}`
+      : `${input.action === 'describe' ? 'Describe' : 'Run'} a documented NVIDIA hosted task model.`
   },
   async prompt() {
-    return `Use this tool for NVIDIA's specialized hosted models, never as the ongoing chat model. It uses the same securely configured NVIDIA_API_KEY as the NVIDIA NIM provider and dispatches each model to its documented endpoint. Supported adapters:\n${nvidiaHostedTaskModelIds()
-      .map(id => {
-        const contract = getNvidiaHostedTaskModelContract(id)!
-        return `- ${id} (${contract.taskKind}): ${contract.purpose}`
-      })
-      .join('\n')}\nIf the user selected a one-shot NVIDIA model in /model, omit model to use that preference. Return the generated file path or analysis text to the user. Do not place generated image bytes in tool_result content.`
+    const counts = new Map<string, number>()
+    for (const contract of NVIDIA_HOSTED_TASK_MODEL_CONTRACTS) {
+      counts.set(contract.taskKind, (counts.get(contract.taskKind) ?? 0) + 1)
+    }
+    return `Use this tool for NVIDIA hosted models that are useful inside UR but cannot own the ongoing agent loop. The catalog was generated from NVIDIA's official OpenAPI reference (${NVIDIA_HOSTED_CATALOG_REVIEWED_AT}) and contains ${NVIDIA_HOSTED_TASK_MODEL_CONTRACTS.length} executable task contracts across ${[...counts.entries()].map(([kind, count]) => `${kind} (${count})`).join(', ')}. Each contract routes to its documented integrate, AI, health, optimization, or climate endpoint using the configured NVIDIA_API_KEY. If /model selected a task model, omit model. For ordinary text/image/reranking inputs, use the convenience fields. For advanced scientific or structured APIs, call action=describe first, then action=run with payload_json and optional file_inputs. UR uses NVIDIA's Asset API automatically for asset inputs and saves binary or large JSON results under .ur/artifacts/nvidia.`
   },
   renderToolUseMessage(input) {
-    return `Running NVIDIA one-shot task${input.model ? ` with ${input.model}` : ''}`
+    return input.action === 'describe'
+      ? `Reading NVIDIA contract${input.model ? ` for ${input.model}` : ''}`
+      : `Running NVIDIA task${input.model ? ` with ${input.model}` : ''}`
   },
   renderToolResultMessage(output) {
+    if (output.requestSchema) return `NVIDIA ${output.taskKind} contract ready`
     return output.outputPath
       ? `NVIDIA ${output.taskKind} complete: ${output.outputPath}`
       : `NVIDIA ${output.taskKind} complete`
@@ -130,22 +200,21 @@ export const NvidiaNimTaskTool = buildTool({
       input,
       context.getAppState().nvidiaTaskModel,
     )
-    const contract = getNvidiaHostedTaskModelContract(model)
-    if (!contract) {
+    if (!getNvidiaHostedTaskModelContract(model)) {
       return {
         result: false,
-        message: `No implemented NVIDIA one-shot adapter for "${model}". Available: ${nvidiaHostedTaskModelIds().join(', ')}.`,
+        message: `No public hosted NVIDIA task contract exists for "${model}". Refresh /model; UR currently has ${nvidiaHostedTaskModelIds().length} generated task contracts.`,
         errorCode: 1,
       }
     }
-    if (contract.taskKind === 'text-to-image' && !input.prompt?.trim()) {
-      return { result: false, message: 'prompt is required for text-to-image.', errorCode: 2 }
-    }
-    if (contract.taskKind !== 'text-to-image' && !input.image_path?.trim()) {
-      return { result: false, message: `image_path is required for ${contract.taskKind}.`, errorCode: 3 }
-    }
-    if (contract.taskKind === 'image-understanding' && !input.prompt?.trim()) {
-      return { result: false, message: 'prompt is required for image-understanding.', errorCode: 4 }
+    try {
+      parsePayload(input.payload_json)
+    } catch (error) {
+      return {
+        result: false,
+        message: error instanceof Error ? error.message : String(error),
+        errorCode: 2,
+      }
     }
     return { result: true }
   },
@@ -154,6 +223,20 @@ export const NvidiaNimTaskTool = buildTool({
       input,
       context.getAppState().nvidiaTaskModel,
     )
+    const contract = getNvidiaHostedTaskModelContract(model)!
+    if (input.action === 'describe') {
+      return {
+        data: {
+          model: contract.id,
+          taskKind: contract.taskKind,
+          purpose: contract.purpose,
+          endpoint: contract.endpoint,
+          documentation: contract.documentation,
+          required: requiredFields(contract.requestSchema),
+          requestSchema: contract.requestSchema,
+        },
+      }
+    }
     const apiKey = getProviderApiKey('nvidia-nim') ?? ''
     const data = await runNvidiaHostedTask(
       {
@@ -161,6 +244,14 @@ export const NvidiaNimTaskTool = buildTool({
         prompt: input.prompt,
         imagePath: input.image_path,
         outputPath: input.output_path,
+        query: input.query,
+        passages: input.passages,
+        payload: parsePayload(input.payload_json),
+        fileInputs: input.file_inputs?.map(file => ({
+          jsonPointer: file.json_pointer,
+          path: file.path,
+          encoding: file.encoding,
+        })),
         width: input.width,
         height: input.height,
         steps: input.steps,
@@ -180,9 +271,11 @@ export const NvidiaNimTaskTool = buildTool({
     return {
       type: 'tool_result',
       tool_use_id: toolUseID,
-      content: output.outputPath
-        ? `NVIDIA ${output.taskKind} completed with ${output.model}. Artifact saved to ${output.outputPath}${output.seed !== undefined ? ` (seed ${output.seed})` : ''}.`
-        : `NVIDIA ${output.taskKind} completed with ${output.model}.\n${output.text ?? ''}`,
+      content: output.requestSchema
+        ? `NVIDIA ${output.model} is a ${output.taskKind} contract: ${output.purpose}\nEndpoint: ${output.endpoint}\nRequired: ${output.required?.join(', ') || 'none'}\nSchema: ${JSON.stringify(output.requestSchema)}\nDocumentation: ${output.documentation}`
+        : output.outputPath
+          ? `NVIDIA ${output.taskKind} completed with ${output.model}. Artifact saved to ${output.outputPath}${output.seed !== undefined ? ` (seed ${output.seed})` : ''}.${output.text ? `\n${output.text}` : ''}`
+          : `NVIDIA ${output.taskKind} completed with ${output.model}.\n${output.text ?? ''}`,
     }
   },
 } satisfies ToolDef<InputSchema, Output>)

@@ -416,15 +416,18 @@ In the interactive app, `/model` is a two-step, provider-first picker:
 
    NVIDIA is split into two visibly labelled modes. `AGENT` models own the
    ongoing tool-calling conversation. `ONE-SHOT` models run one specialized
-   job and never replace that agent. UR exposes a task model only when the live
-   account catalog returns it and UR has a complete adapter: FLUX.1 Schnell
-   (text-to-image JPEG), Stable Video Diffusion (JPEG/PNG-to-MP4), and PaliGemma
-   (single-image understanding).
-   Focusing a task model shows its purpose and constraints; Enter remembers it
-   for the next matching NVIDIA task. Generated media is written under
-   `.ur/artifacts/nvidia/` by default and the model receives only the file path
-   in the tool result, preserving compatibility with providers that reject
-   binary image content inside `tool_result`.
+   job and never replace that agent. The latter come from a checked-in catalog
+   generated from NVIDIA's current public OpenAPI indexes, not from the chat-only
+   `/v1/models` feed. This release implements 92 exact task contracts spanning
+   text/image/video/3D generation, visual analysis, embeddings, reranking,
+   parsing, safety, translation, biology, molecular modeling, medical imaging,
+   route optimization, and climate simulation. Broken, staging-only,
+   status-only, download-only, and undocumented operations stay absent.
+   Focusing a task model shows what it is for; Enter remembers it for the next
+   matching NVIDIA task. UR validates its documented schema, routes to the exact
+   `integrate`, `ai`, `health`, `optimize`, or `climate` host, uploads large or
+   UUID-based files with NVIDIA Assets, polls asynchronous work, and writes
+   binary/large JSON results under `.ur/artifacts/nvidia/`.
 
    In the model catalog, use **Up/Down** to browse. For graded models, the effort row updates to
    the focused model's capability-backed selectors; use **Left/Right** to cycle
@@ -494,9 +497,10 @@ identity line in the system prompt reflects it too:
   selected, Gemini `x-goog-api-key` on `:generateContent`, OpenRouter on its
   OpenAI-compatible chat endpoint, and NVIDIA NIM agent models on their exact
   documented hosted chat endpoint or a user-selected compatible NIM gateway.
-  NVIDIA one-shot models use their documented `ai.api.nvidia.com` endpoint
-  with the same securely stored `NVIDIA_API_KEY`; asynchronous jobs are polled
-  through NVIDIA's request ID until completion or user cancellation.
+  NVIDIA one-shot models use their documented model endpoint across NVIDIA's
+  AI, retrieval, health, optimization, and climate APIs with the same stored
+  `NVIDIA_API_KEY`; asynchronous jobs are polled through NVIDIA's request ID
+  until completion or user cancellation.
 - **Local/server** providers call the configured endpoint (`/v1/chat/completions`
   for LM Studio/llama.cpp/vLLM/Unsloth; the native API for Ollama). Unsloth is
   provider-only: UR never starts, installs, updates, trains, or loads models in

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.84.7
+
+- Replaced NVIDIA's three-model one-shot allowlist with a generated catalog
+  built from the current official LLM, retrieval, visual, multimodal,
+  healthcare, route-optimization, and climate OpenAPI references. The current
+  artifact contains 35 positive agent contracts and 92 exact task contracts;
+  task discovery no longer loses dedicated APIs merely because NVIDIA's chat
+  `/v1/models` inventory omits them. Broken, staging-only, status-only,
+  download-only, and undocumented operations stay hidden.
+- Added real execution for every generated task contract. `NvidiaNimTask` can
+  describe required fields, validate documented request shapes, apply standard
+  prompt/image/query/passages conveniences, send advanced exact JSON, bind
+  local files through JSON pointers, upload and clean up NVIDIA Assets, poll
+  asynchronous requests, and save binary or large JSON output. Requests route
+  to the model's documented `integrate`, `ai`, `health`, `optimize`, or
+  `climate` endpoint with the configured NVIDIA key.
+- Updated `/model`, provider doctor, tests, public docs, the static docs site,
+  and technical references to distinguish live agent inventory from official
+  task contracts and to show what each specialized model is for before use.
+
 ## 1.84.6
 
 - Made NVIDIA hosted model selection contract-driven. The authenticated live

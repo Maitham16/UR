@@ -297,10 +297,12 @@ hosted choices unless the authenticated `/v1/models` endpoint returns them.
 For the hosted service, UR focuses NVIDIA's documented fastest 30B agent model,
 `nvidia/nemotron-3.5-lightning-30b-a3b`, first. Its thinking toggle maps to
 NVIDIA's model-specific `chat_template_kwargs.enable_thinking` field.
-The same key also authorizes the separately labelled one-shot FLUX.1 Schnell,
-Stable Video Diffusion, and PaliGemma adapters. Those use their exact
-`ai.api.nvidia.com` paths, never replace `provider.model`, and write generated
-media under `.ur/artifacts/nvidia/` unless an output path is supplied.
+The same key authorizes the separately labelled one-shot catalog generated from
+NVIDIA's public OpenAPI reference. Its 92 task contracts use the exact
+`integrate.api`, `ai.api`, `health.api`, `optimize.api`, or `climate.api`
+NVIDIA path for each model. They never replace `provider.model`; large inputs
+use NVIDIA Assets and binary or large JSON output is saved under
+`.ur/artifacts/nvidia/` unless an output path is supplied.
 
 Unsloth is an inference-provider integration only. Start Unsloth Studio and
 load the model outside UR, connect its generated key with `ur connect unsloth`,

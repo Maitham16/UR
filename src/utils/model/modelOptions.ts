@@ -42,7 +42,7 @@ export type ModelOption = {
   description: string
   descriptionForModel?: string
   usageMode?: 'agent' | 'task'
-  taskKind?: 'text-to-image' | 'image-to-video' | 'image-understanding'
+  taskKind?: import('../../services/providers/nvidiaHostedModels.js').NvidiaHostedTaskKind
   purpose?: string
 }
 

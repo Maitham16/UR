@@ -1,165 +1,133 @@
-/**
- * Audited contracts for NVIDIA's public hosted NIM service.
- *
- * The hosted `/v1/models` feed contains chat models, utility models, and
- * dedicated inference functions. Presence in that feed is therefore only an
- * availability signal, not proof that a model can run UR's multi-turn tool
- * loop. Keep this list deliberately positive: a public hosted model is
- * selectable only when NVIDIA documents an agent/tool contract for it.
- *
- * Contract review: 2026-09-01
- * Index: https://docs.api.nvidia.com/nim/reference/llm-apis
- */
+import {
+  NVIDIA_HOSTED_CATALOG_REVIEWED_AT,
+  NVIDIA_HOSTED_MODEL_CONTRACTS,
+  type NvidiaHostedCatalogContract,
+} from './nvidiaHostedCatalog.generated.js'
 
+/**
+ * NVIDIA's public hosted NIM catalog is generated from the official OpenAPI
+ * reference instead of being inferred from the OpenAI-compatible model feed.
+ * The feed is an account inventory; the generated contracts are the source of
+ * truth for each model's endpoint and request family.
+ */
 export const NVIDIA_HOSTED_API_HOST = 'integrate.api.nvidia.com'
 export const NVIDIA_HOSTED_API_BASE_URL =
   'https://integrate.api.nvidia.com/v1'
 export const NVIDIA_HOSTED_CHAT_ENDPOINT =
   `${NVIDIA_HOSTED_API_BASE_URL}/chat/completions`
+export { NVIDIA_HOSTED_CATALOG_REVIEWED_AT }
 
-export type NvidiaHostedAgentModelContract = {
-  id: string
-  endpoint: string
-  documentation: string
+export type NvidiaHostedAgentModelContract = NvidiaHostedCatalogContract & {
   supportedParameters: string[]
   capabilities: Record<string, unknown>
 }
 
 export type NvidiaHostedTaskKind =
-  | 'text-to-image'
-  | 'image-to-video'
+  | '3d-generation'
+  | 'biology'
+  | 'change-detection'
+  | 'content-safety'
+  | 'document-parsing'
+  | 'image-analysis'
+  | 'image-editing'
+  | 'image-generation'
   | 'image-understanding'
+  | 'information-extraction'
+  | 'medical-imaging'
+  | 'molecular-modeling'
+  | 'multimodal-embedding'
+  | 'object-detection'
+  | 'reranking'
+  | 'route-optimization'
+  | 'specialized-inference'
+  | 'text-embedding'
+  | 'text-generation'
+  | 'translation'
+  | 'video-generation'
+  | 'visual-analysis'
+  | 'weather-simulation'
 
-export type NvidiaHostedTaskModelContract = {
-  id: string
-  displayName: string
-  endpoint: string
-  documentation: string
+export type NvidiaHostedTaskModelContract = NvidiaHostedCatalogContract & {
   taskKind: NvidiaHostedTaskKind
-  purpose: string
   inputMediaTypes: string[]
   outputMediaType: string
   outputExtension?: string
 }
 
-type ContractInput = {
-  id: string
-  documentation: string
-  vision?: boolean
+function inputMediaTypes(contract: NvidiaHostedCatalogContract): string[] {
+  const schema = JSON.stringify(contract.requestSchema).toLowerCase()
+  const media = ['application/json']
+  if (/image|jpeg|png/u.test(schema)) media.push('image/jpeg', 'image/png')
+  if (/video|mp4/u.test(schema)) media.push('video/mp4')
+  return media
 }
 
-const contract = ({
-  id,
-  documentation,
-  vision = false,
-}: ContractInput): NvidiaHostedAgentModelContract => ({
-  id,
-  endpoint: NVIDIA_HOSTED_CHAT_ENDPOINT,
-  documentation,
-  supportedParameters: ['tools'],
-  capabilities: {
-    agent: true,
-    toolCalling: true,
-    streaming: true,
-    ...(vision ? { vision: true } : {}),
-  },
-})
+function outputContract(contract: NvidiaHostedCatalogContract): {
+  outputMediaType: string
+  outputExtension?: string
+} {
+  if (
+    contract.taskKind === 'image-generation' ||
+    contract.taskKind === 'image-editing'
+  ) {
+    return { outputMediaType: 'image/jpeg', outputExtension: '.jpg' }
+  }
+  if (contract.taskKind === 'video-generation') {
+    return { outputMediaType: 'video/mp4', outputExtension: '.mp4' }
+  }
+  if (contract.taskKind === '3d-generation') {
+    return { outputMediaType: 'model/gltf-binary', outputExtension: '.glb' }
+  }
+  const binary = contract.responseMediaTypes.find(type =>
+    /octet-stream|application\/zip|application\/x-tar/u.test(type),
+  )
+  if (binary) {
+    return {
+      outputMediaType: binary,
+      outputExtension: binary.includes('zip')
+        ? '.zip'
+        : binary.includes('tar')
+          ? '.tar'
+          : '.bin',
+    }
+  }
+  return { outputMediaType: 'application/json' }
+}
 
-/**
- * NVIDIA-hosted models with a documented multi-turn tool-use contract.
- *
- * Some model pages describe tool use in the model contract while others also
- * expose `tools` directly in their OpenAPI request schema. Both are explicit
- * NVIDIA capability statements. Models documented only for generation,
- * classification, retrieval, translation, parsing, or tool-free VLM inference
- * are intentionally absent.
- */
-const NVIDIA_HOSTED_AGENT_MODEL_CONTRACTS = [
-  contract({ id: 'deepseek-ai/deepseek-v4-flash', documentation: 'deepseek-ai-deepseek-v4-flash' }),
-  contract({ id: 'deepseek-ai/deepseek-v4-flash-0731', documentation: 'deepseek-ai-deepseek-v4-flash-0731' }),
-  contract({ id: 'deepseek-ai/deepseek-v4-pro', documentation: 'deepseek-ai-deepseek-v4-pro' }),
-  contract({ id: 'deepseek-ai/deepseek-v4-pro-0813', documentation: 'deepseek-ai-deepseek-v4-pro-0813' }),
-  contract({ id: 'meta/llama-3.1-8b-instruct', documentation: 'meta-llama-3_1-8b' }),
-  contract({ id: 'meta/llama-3.1-70b-instruct', documentation: 'meta-llama-3_1-70b' }),
-  contract({ id: 'meta/llama-3.3-70b-instruct', documentation: 'meta-llama-3_3-70b-instruct' }),
-  contract({ id: 'meta/muse-glimmer-30b', documentation: 'meta-muse-glimmer-30b', vision: true }),
-  contract({ id: 'microsoft/phi-4-mini-instruct', documentation: 'microsoft-phi-4-mini-instruct' }),
-  contract({ id: 'minimaxai/minimax-m3', documentation: 'minimaxai-minimax-m3', vision: true }),
-  contract({ id: 'mistralai/mistral-nemotron', documentation: 'mistralai-mistral-nemotron' }),
-  contract({ id: 'moonshotai/kimi-k2.5', documentation: 'moonshotai-kimi-k2-5', vision: true }),
-  contract({ id: 'moonshotai/kimi-k2.6', documentation: 'moonshotai-kimi-k2-6', vision: true }),
-  contract({ id: 'moonshotai/kimi-k2-instruct', documentation: 'moonshotai-kimi-k2-instruct' }),
-  contract({ id: 'moonshotai/kimi-k2-thinking', documentation: 'moonshotai-kimi-k2-thinking' }),
-  contract({ id: 'moonshotai/kimi-k3', documentation: 'moonshotai-kimi-k3', vision: true }),
-  contract({ id: 'nvidia/llama-3.1-nemotron-ultra-253b-v1', documentation: 'nvidia-llama-3_1-nemotron-ultra-253b-v1' }),
-  contract({ id: 'nvidia/nemotron-3-nano-30b-a3b', documentation: 'nvidia-nemotron-3-nano-30b-a3b' }),
-  contract({ id: 'nvidia/nemotron-3-super-120b-a12b', documentation: 'nvidia-nemotron-3-super-120b-a12b' }),
-  contract({ id: 'nvidia/nemotron-3-ultra-550b-a55b', documentation: 'nvidia-nemotron-3-ultra-550b-a55b' }),
-  contract({ id: 'nvidia/nemotron-3.5-lightning-30b-a3b', documentation: 'nvidia-nemotron-3-5-lightning-30b-a3b' }),
-  contract({ id: 'nvidia/nemotron-mini-4b-instruct', documentation: 'nvidia-nemotron-mini-4b-instruct' }),
-  contract({ id: 'openai/gpt-oss-20b', documentation: 'openai-gpt-oss-20b' }),
-  contract({ id: 'openai/gpt-oss-120b', documentation: 'openai-gpt-oss-120b' }),
-  contract({ id: 'poolside/laguna-xs-2.1', documentation: 'poolside-laguna-xs-2-1' }),
-  contract({ id: 'qwen/qwen3.5-122b-a10b', documentation: 'qwen-qwen3-5-122b-a10b', vision: true }),
-  contract({ id: 'stepfun-ai/step-3.5-flash', documentation: 'stepfun-ai-step-3-5-flash' }),
-  contract({ id: 'stepfun-ai/step-3.7-flash', documentation: 'stepfun-ai-step-3-7-flash', vision: true }),
-] as const
+const agentContracts = NVIDIA_HOSTED_MODEL_CONTRACTS
+  .filter(contract => contract.agent)
+  .map(contract => ({
+    ...contract,
+    supportedParameters: ['tools'],
+    capabilities: {
+      agent: true,
+      toolCalling: true,
+      streaming: contract.supportsStreaming,
+      endpoint: contract.endpoint,
+      capabilitySource: contract.agentCapabilitySource,
+      ...(contract.category === 'multimodal-apis' ||
+      contract.category === 'visual-models-apis'
+        ? { vision: true }
+        : {}),
+    },
+  })) satisfies NvidiaHostedAgentModelContract[]
+
+export const NVIDIA_HOSTED_TASK_MODEL_CONTRACTS =
+  NVIDIA_HOSTED_MODEL_CONTRACTS
+    .filter(
+      (contract): contract is NvidiaHostedCatalogContract & {
+        taskKind: NvidiaHostedTaskKind
+      } => !contract.agent && Boolean(contract.taskKind),
+    )
+    .map(contract => ({
+      ...contract,
+      inputMediaTypes: inputMediaTypes(contract),
+      ...outputContract(contract),
+    })) satisfies NvidiaHostedTaskModelContract[]
 
 const contractsByModel = new Map<string, NvidiaHostedAgentModelContract>(
-  NVIDIA_HOSTED_AGENT_MODEL_CONTRACTS.map(entry => [entry.id.toLowerCase(), entry]),
+  agentContracts.map(entry => [entry.id.toLowerCase(), entry]),
 )
-
-/**
- * One-shot hosted APIs with request/response adapters implemented by UR.
- *
- * These are deliberately separate from the agent contracts: they can perform
- * a useful job inside UR, but cannot become the multi-turn coding model. A
- * model is added here only after its exact public endpoint, payload, response,
- * and media constraints are implemented by NvidiaNimTaskTool.
- */
-export const NVIDIA_HOSTED_TASK_MODEL_CONTRACTS = [
-  {
-    id: 'black-forest-labs/flux.1-schnell',
-    displayName: 'FLUX.1 Schnell',
-    endpoint:
-      'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell',
-    documentation:
-      'https://docs.api.nvidia.com/nim/reference/black-forest-labs-flux_1-schnell-infer',
-    taskKind: 'text-to-image',
-    purpose:
-      'Generate one JPEG image from a text prompt; supports NVIDIA-documented dimensions, seed, and 1-4 diffusion steps.',
-    inputMediaTypes: ['text/plain'],
-    outputMediaType: 'image/jpeg',
-    outputExtension: '.jpg',
-  },
-  {
-    id: 'stabilityai/stable-video-diffusion',
-    displayName: 'Stable Video Diffusion',
-    endpoint:
-      'https://ai.api.nvidia.com/v1/genai/stabilityai/stable-video-diffusion',
-    documentation:
-      'https://docs.api.nvidia.com/nim/reference/stabilityai-stable-video-diffusion-infer',
-    taskKind: 'image-to-video',
-    purpose:
-      'Generate one MP4 video from a JPEG or PNG source image; inline images must be smaller than 200 KB under NVIDIA’s hosted contract.',
-    inputMediaTypes: ['image/jpeg', 'image/png'],
-    outputMediaType: 'video/mp4',
-    outputExtension: '.mp4',
-  },
-  {
-    id: 'google/paligemma',
-    displayName: 'PaliGemma',
-    endpoint: 'https://ai.api.nvidia.com/v1/vlm/google/paligemma',
-    documentation:
-      'https://docs.api.nvidia.com/nim/reference/google-paligemma-infer',
-    taskKind: 'image-understanding',
-    purpose:
-      'Analyze one image with one user prompt for captioning or visual question answering; returns text and does not continue a chat.',
-    inputMediaTypes: ['image/jpeg', 'image/png'],
-    outputMediaType: 'text/plain',
-  },
-] as const satisfies readonly NvidiaHostedTaskModelContract[]
-
 const taskContractsByModel = new Map<string, NvidiaHostedTaskModelContract>(
   NVIDIA_HOSTED_TASK_MODEL_CONTRACTS.map(entry => [
     entry.id.toLowerCase(),
@@ -192,9 +160,8 @@ export function isNvidiaHostedApi(baseUrl: string): boolean {
 }
 
 /**
- * Resolve the exact public NVIDIA endpoint attached to the model contract.
- * Custom/enterprise NIM gateways are intentionally not rewritten: their saved
- * base URL remains authoritative and is normalized by the compatible adapter.
+ * Custom and enterprise NIM gateways keep their saved URL. Public NVIDIA
+ * hosted models use the exact endpoint recorded in NVIDIA's OpenAPI contract.
  */
 export function resolveNvidiaHostedModelEndpoint(
   baseUrl: string,
@@ -205,5 +172,5 @@ export function resolveNvidiaHostedModelEndpoint(
 }
 
 export function nvidiaHostedAgentModelIds(): string[] {
-  return NVIDIA_HOSTED_AGENT_MODEL_CONTRACTS.map(entry => entry.id)
+  return agentContracts.map(entry => entry.id)
 }

@@ -84,7 +84,7 @@ describe('NVIDIA hosted one-shot task runtime', () => {
     ])
     expect(result).toMatchObject({
       model: 'black-forest-labs/flux.1-schnell',
-      taskKind: 'text-to-image',
+      taskKind: 'image-generation',
       outputPath: join(cwd, '.ur', 'artifacts', 'nvidia', '1234.jpg'),
       mediaType: 'image/jpeg',
       seed: 42,
@@ -133,7 +133,7 @@ describe('NVIDIA hosted one-shot task runtime', () => {
     expect(result.outputPath).toBe(join(cwd, 'result.mp4'))
     expect(await readFile(result.outputPath!, 'utf8')).toBe('mp4-bytes')
     expect(result).toMatchObject({
-      taskKind: 'image-to-video',
+      taskKind: 'video-generation',
       mediaType: 'video/mp4',
       finishReason: 'SUCCESS',
       seed: 9,
@@ -186,10 +186,8 @@ describe('NVIDIA hosted one-shot task runtime', () => {
     })
   })
 
-  test('rejects unimplemented models and NVIDIA contract violations before network I/O', async () => {
+  test('rejects unknown models and schema violations before network I/O', async () => {
     const cwd = await temporaryDirectory()
-    const largeImage = join(cwd, 'large.png')
-    await writeFile(largeImage, Buffer.alloc(200 * 1024))
     let fetched = false
     const options = {
       apiKey: 'nvapi-test',
@@ -202,19 +200,10 @@ describe('NVIDIA hosted one-shot task runtime', () => {
 
     await expect(
       runNvidiaHostedTask(
-        { model: 'nvidia/vila', prompt: 'Describe it.', imagePath: largeImage },
+        { model: 'vendor/not-hosted', prompt: 'Describe it.' },
         options,
       ),
-    ).rejects.toThrow('has no implemented one-shot UR adapter')
-    await expect(
-      runNvidiaHostedTask(
-        {
-          model: 'stabilityai/stable-video-diffusion',
-          imagePath: largeImage,
-        },
-        options,
-      ),
-    ).rejects.toThrow('smaller than 200 KB')
+    ).rejects.toThrow('has no public hosted task contract')
     await expect(
       runNvidiaHostedTask(
         {
@@ -224,8 +213,102 @@ describe('NVIDIA hosted one-shot task runtime', () => {
         },
         options,
       ),
-    ).rejects.toThrow('width must be one of')
+    ).rejects.toThrow('must be one of')
     expect(fetched).toBe(false)
+  })
+
+  test('uploads large media through NVIDIA Assets and removes the temporary asset after inference', async () => {
+    const cwd = await temporaryDirectory()
+    const imagePath = join(cwd, 'large.png')
+    await writeFile(imagePath, Buffer.alloc(200 * 1024, 7))
+    const requests: Array<{ url: string; method: string; body?: string }> = []
+    const result = await runNvidiaHostedTask(
+      {
+        model: 'nvidia/vila',
+        prompt: 'Describe the image.',
+        imagePath,
+      },
+      {
+        apiKey: 'nvapi-test',
+        cwd,
+        fetch: async (input, init) => {
+          const url = String(input)
+          requests.push({
+            url,
+            method: init?.method ?? 'GET',
+            ...(typeof init?.body === 'string' ? { body: init.body } : {}),
+          })
+          if (url === 'https://api.nvcf.nvidia.com/v2/nvcf/assets') {
+            return Response.json({
+              assetId: 'asset-123',
+              uploadUrl: 'https://uploads.example/asset-123',
+            })
+          }
+          if (url === 'https://uploads.example/asset-123') {
+            return new Response('', { status: 200 })
+          }
+          if (url.endsWith('/assets/asset-123')) {
+            return new Response('', { status: 204 })
+          }
+          expect(url).toBe('https://ai.api.nvidia.com/v1/vlm/nvidia/vila')
+          const payload = JSON.parse(String(init?.body))
+          expect(payload.messages[0].content[1].image_url.url).toBe(
+            'data:image/png;asset_id,asset-123',
+          )
+          return Response.json({
+            choices: [{ message: { content: 'A large test image.' } }],
+          })
+        },
+      },
+    )
+
+    expect(result.text).toBe('A large test image.')
+    expect(requests.map(request => [request.method, request.url])).toEqual([
+      ['POST', 'https://api.nvcf.nvidia.com/v2/nvcf/assets'],
+      ['PUT', 'https://uploads.example/asset-123'],
+      ['POST', 'https://ai.api.nvidia.com/v1/vlm/nvidia/vila'],
+      ['DELETE', 'https://api.nvcf.nvidia.com/v2/nvcf/assets/asset-123'],
+    ])
+  })
+
+  test('routes structured reranking and healthcare payloads to their exact API families', async () => {
+    const cwd = await temporaryDirectory()
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        url: String(input),
+        body: JSON.parse(String(init?.body)),
+      })
+      return Response.json({ result: 'ok' })
+    }
+    await runNvidiaHostedTask(
+      {
+        model: 'nvidia/llama-nemotron-rerank-1b-v2',
+        query: 'best route',
+        passages: ['first', 'second'],
+      },
+      { apiKey: 'nvapi-test', cwd, fetch },
+    )
+    await runNvidiaHostedTask(
+      {
+        model: 'arc/evo2-40b',
+        payload: { sequence: 'ACGT', num_tokens: 8 },
+      },
+      { apiKey: 'nvapi-test', cwd, fetch },
+    )
+
+    expect(requests[0]).toMatchObject({
+      url: 'https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking',
+      body: {
+        model: 'nvidia/llama-nemotron-rerank-1b-v2',
+        query: { text: 'best route' },
+        passages: [{ text: 'first' }, { text: 'second' }],
+      },
+    })
+    expect(requests[1]).toMatchObject({
+      url: 'https://health.api.nvidia.com/v1/biology/arc/evo2-40b/generate',
+      body: { sequence: 'ACGT', num_tokens: 8 },
+    })
   })
 
   test('redacts NVIDIA function and account identifiers from task failures', async () => {
@@ -239,9 +322,9 @@ describe('NVIDIA hosted one-shot task runtime', () => {
           }),
       },
     })
-    expect(available.models.map(model => model.id)).toEqual([
-      'black-forest-labs/flux.1-schnell',
-    ])
+    expect(available.models.map(model => model.id)).toEqual(
+      expect.arrayContaining(['black-forest-labs/flux.1-schnell']),
+    )
     let caught: unknown
     try {
       await runNvidiaHostedTask(
@@ -266,7 +349,7 @@ describe('NVIDIA hosted one-shot task runtime', () => {
       caught = error
     }
     expect(caught).toBeInstanceOf(ProviderHTTPError)
-    expect((caught as Error).message).toContain('unavailable to this account')
+    expect((caught as Error).message).toContain('not enabled for this API key')
     expect((caught as Error).message).not.toContain('23bd454d')
     expect((caught as Error).message).not.toContain('VSB91X1')
     expect((caught as ProviderHTTPError).body).toBeUndefined()
@@ -279,6 +362,7 @@ describe('NVIDIA hosted one-shot task runtime', () => {
         },
       },
     })
-    expect(afterFailure.models).toEqual([])
+    expect(afterFailure.models.some(model => model.id === 'black-forest-labs/flux.1-schnell')).toBe(false)
+    expect(afterFailure.models.length).toBeGreaterThan(80)
   })
 })
