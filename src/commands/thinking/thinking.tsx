@@ -33,7 +33,7 @@ function capabilityMessage(
     return `${model} advertises thinking, but the ${provider} runtime has no provider-native on/off mapping. ${modelSupportsEffort(model, provider) ? 'Use /effort for its advertised graded control.' : 'UR will not invent a boolean wire field.'}`
   }
   if (!modelSupportsEffort(model, provider)) {
-    return `${model} on ${provider} accepts thinking on/off only; no graded effort is sent.`
+    return `${model} on ${provider} advertises thinking but no model-specific graded ladder. UR uses the provider-native on/off control and sends no graded effort.`
   }
   return enabled
     ? `${model} on ${provider} also advertises graded effort; use /effort status to inspect its independently selected level.`

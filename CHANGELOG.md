@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.84.1
+
+- Made dynamic reasoning discovery capability-truthful across local and
+  OpenAI-compatible providers. vLLM now uses its non-generating server-info
+  contract to expose `minimal→none|low|medium|high` only when a reasoning
+  parser is configured, and the adapter serializes all provider-authored effort
+  aliases rather than translating Ultra alone. llama.cpp records its template
+  support flag without fabricating a finite level set that the endpoint does
+  not publish.
+- Refined Ollama's thinking presentation: a generic `thinking` capability now
+  reports thinking support and UR's verified native on/off control without
+  claiming the model supports only booleans. Exact graded levels and Ultra
+  remain model-scoped and provider-advertised. Added provider-matrix, discovery,
+  picker, command-message, and request-wire regression coverage and synchronized
+  the public site, user guides, validation guide, and technical specification.
+
 ## 1.84.0
 
 - Added production npm marketplace sources with scoped-package and version

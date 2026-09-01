@@ -193,32 +193,39 @@ UR's normalized selector ladder is
 `minimal | low | medium | high | xhigh | max | ultra | auto`. The selectable rows are
 computed for the active provider/model pair from normalized live metadata (including
 snake_case and camelCase capability fields), curated official model contracts, or a
-model-scoped local probe. Empty or boolean-only capability metadata does not create a
-graded selector.
+model-scoped local probe. Empty metadata or a thinking flag without explicit
+level names does not create a graded selector.
 
 - `max` is provider-neutral: it resolves to the selected model's highest supported
   non-Ultra tier, commonly `high`, `xhigh`, or `max`.
 - `ultra` is UR's visible beyond-high ceiling selector. It appears only when the provider
   advertises native `ultra`, `max`, `xhigh`, or an explicit provider-authored alias. The UI
   exposes the translation (for example, `ultra→max`) and serialization sends that exact
-  wire value. Models whose graded ladder tops out at `high`, boolean-thinking models, and
+  wire value. Models whose graded ladder tops out at `high`, models without an
+  advertised beyond-high value, and
   unknown-capability models never get Ultra.
 - In `/model`, Up/Down changes the focused model. For a graded model, Left/Right cycles only
-  that model's capability-backed selectors. For a boolean-thinking model on a runtime with a
-  native two-state mapping, Left turns thinking off and Right turns it on; `t` also toggles it.
+  that model's capability-backed selectors. For a model with thinking but no
+  advertised graded ladder on a runtime with a native two-state mapping, Left
+  turns thinking off and Right turns it on; `t` also toggles it.
   Enter applies the model and selected control
   atomically. `/effort status`, the
   picker confirmation, status UI, SDK state, and outbound request share the same resolver.
 - Direct OpenAI, Anthropic, and Gemini use model-specific documented ladders. OpenRouter
   preserves live reasoning metadata. OpenAI-compatible servers receive
-  `reasoning_effort`. Ollama uses native `think`: generic `thinking` capability
-  metadata selects its boolean contract, while GPT-OSS uses the documented
-  `low|medium|high` ladder and therefore omits Ultra. Other graded ladders or
-  Ultra aliases require explicit model metadata. llama.cpp is probed
-  lazily through its model-scoped `/props` contract.
+  `reasoning_effort`, including provider-authored aliases. Ollama uses native
+  `think`: generic `thinking` capability metadata establishes thinking but not
+  a finite ladder, so UR uses verified on/off control; GPT-OSS uses the
+  documented `low|medium|high` ladder and therefore omits Ultra. vLLM is probed
+  through non-generating `/server_info?config_format=json`; a configured
+  reasoning parser exposes `minimal→none|low|medium|high`. llama.cpp is probed
+  lazily through model-scoped `/props`, whose current boolean support flag does
+  not identify accepted level names. Other ladders or aliases require explicit
+  model metadata.
 
 Unknown/future models are fail-closed for thinking request shaping: UR first consumes live
-provider metadata, curated contracts, `/api/show` (Ollama), or `/props` (llama.cpp). If none
+provider metadata, curated contracts, `/api/show` (Ollama), `/props` (llama.cpp),
+or `/server_info` (vLLM). If none
 of those sources establishes thinking support, UR omits the thinking field instead of sending
 a speculative production request and interpreting a 400 response. Boolean thinking metadata
 enables `/thinking on|off` and the picker's two-state control only when the selected runtime has

@@ -438,7 +438,7 @@ describe('OpenAI-compatible reasoning discovery', () => {
     const settings = {
       provider: {
         active: 'llama.cpp' as const,
-        baseUrl: 'http://cluster.local:8080/v1',
+        baseUrl: 'http://cluster.local:8080/v1/chat/completions',
       },
     }
     const result = await listModelsForProviderWithSource('llama.cpp', {
@@ -474,7 +474,7 @@ describe('OpenAI-compatible reasoning discovery', () => {
     })
   })
 
-  test('queries focused llama.cpp models through /props and caches the template capability', async () => {
+  test('queries llama.cpp /props without inventing an unadvertised effort ladder', async () => {
     const settings = {
       provider: {
         active: 'llama.cpp' as const,
@@ -505,7 +505,7 @@ describe('OpenAI-compatible reasoning discovery', () => {
       },
     )
 
-    expect(reasoning).toEqual({ supportedEfforts: null })
+    expect(reasoning).toEqual({ supportsThinking: true })
     expect(seen).toHaveLength(1)
     const propsUrl = new URL(seen[0]!)
     expect(propsUrl.pathname).toBe('/props')
@@ -516,7 +516,7 @@ describe('OpenAI-compatible reasoning discovery', () => {
         'llama.cpp',
         settings,
       ),
-    ).toEqual({ supportedEfforts: null })
+    ).toEqual({ supportsThinking: true })
   })
 
   test('does not invent graded effort when llama.cpp rejects it', async () => {
@@ -543,6 +543,44 @@ describe('OpenAI-compatible reasoning discovery', () => {
       },
     )
     expect(reasoning).toEqual({ supportedEfforts: [] })
+  })
+
+  test('discovers vLLM graded reasoning from server configuration without inference', async () => {
+    const settings = {
+      provider: {
+        active: 'vllm' as const,
+        baseUrl: 'http://cluster.local:8000/v1/chat/completions',
+      },
+    }
+    const seen: Array<{ url: string; method?: string }> = []
+    const reasoning = await ensureProviderReasoningCapabilitiesForModel(
+      'vllm',
+      'Qwen/Qwen3.5-35B-A3B',
+      {
+        settings,
+        adapters: {
+          fetch: (async (input, init) => {
+            seen.push({ url: String(input), method: init?.method })
+            return new Response(JSON.stringify({
+              vllm_config: {
+                structured_outputs_config: { reasoning_parser: 'qwen3' },
+              },
+            }))
+          }) as typeof fetch,
+        },
+      },
+    )
+
+    expect(reasoning).toEqual({
+      supportsThinking: true,
+      supportedEfforts: ['none', 'low', 'medium', 'high'],
+      effortAliases: { minimal: 'none' },
+    })
+    expect(seen).toHaveLength(1)
+    const serverInfoUrl = new URL(seen[0]!.url)
+    expect(serverInfoUrl.pathname).toBe('/server_info')
+    expect(serverInfoUrl.searchParams.get('config_format')).toBe('json')
+    expect(seen[0]!.method).toBe('GET')
   })
 })
 

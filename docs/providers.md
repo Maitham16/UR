@@ -182,8 +182,9 @@ For OpenRouter, UR preserves the live `/models` reasoning metadata and sends
 the unified `reasoning.effort` request. OpenAI-compatible servers receive the
 resolved value as `reasoning_effort`. The command confirmation, status
 indicator, active-work spinner, SDK settings response, and provider request all
-use the same resolved value. If a provider advertises only boolean thinking and
-its runtime has a real native on/off mapping, UR does not invent a graded effort
+use the same resolved value. If a provider advertises thinking without a
+model-specific graded ladder and its runtime has a real native on/off mapping,
+UR does not invent a graded effort
 selector. Use `/thinking on|off` directly;
 in `/model`, Left selects off, Right selects on, and `t` toggles. A graded
 `/effort` request on that model enables boolean thinking while clearly reporting
@@ -194,7 +195,8 @@ so metadata alone does not make this toggle appear and UR sends no invented para
 when the provider/model advertises `ultra`, `max`, `xhigh`, or an explicit
 provider-authored equivalent. UR shows the native mapping (for example,
 `ultra→max`) and sends that exact wire value; it never enables Ultra for a model
-whose graded ladder tops out at `high`, boolean thinking, or unknown capability metadata. Arbitrary
+whose graded ladder tops out at `high`, lacks an advertised beyond-high value,
+or has unknown capability metadata. Arbitrary
 labels such as `deep` still require an explicit provider alias because UR
 cannot infer their rank.
 
@@ -209,16 +211,30 @@ the model advertises `supports_max_tokens`.
 
 For Ollama, UR lazily reads the focused model's `/api/show` capabilities and
 sends the resolved control through native `think`. A generic `thinking`
-capability means boolean thinking only. GPT-OSS uses Ollama's documented
+capability proves thinking support but does not identify a model-specific
+graded ladder; UR therefore exposes the verified native on/off control without
+claiming that the model cannot also support levels. GPT-OSS uses Ollama's documented
 `low|medium|high` ladder and does not expose Ultra. Other graded ladders and
 Ultra aliases are used only when the endpoint explicitly returns them in model
-reasoning metadata. Direct OpenAI,
+reasoning metadata.
+
+For vLLM, UR lazily reads the non-generating
+`/server_info?config_format=json` endpoint for the focused model. A configured
+reasoning parser establishes vLLM's documented Chat Completions contract:
+`none|low|medium|high`, displayed as `minimal→none|low|medium|high` and sent
+through `reasoning_effort`. This discovery never launches a completion and
+does not add Ultra. A richer provider-authored model record can add exact
+levels or aliases. For llama.cpp, `/props` can establish that the active chat
+template consumes reasoning effort, but the current capability flag does not
+publish its finite accepted values; UR does not fabricate a ladder from that
+boolean. Direct OpenAI,
 Anthropic, and Gemini models use curated model-specific ladders from their
 official documentation; live discovery rows are merged with those contracts.
 See [Ollama thinking](https://docs.ollama.com/capabilities/thinking),
 [OpenAI model guidance](https://developers.openai.com/api/docs/guides/latest-model),
 [Claude effort](https://platform.claude.com/docs/en/build-with-claude/effort),
-and [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking).
+[Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking), and
+[vLLM reasoning outputs](https://docs.vllm.ai/en/latest/features/reasoning_outputs/).
 
 The provider-first `/model` picker supports the same control directly: use
 Left/Right to move through the capability-backed selectors UR can map to a
@@ -249,12 +265,13 @@ file and MCP size checks retain the local estimate rather than disabling their
 limits.
 
 For llama.cpp, `/v1/models` metadata is preserved when the server supplies it.
-Because stock llama.cpp exposes chat-template effort support per loaded model,
 UR also resolves the model currently under the Up/Down cursor through
-`/props?model=<id>`. Left/Right is enabled only after that focused template
-advertises `supports_reasoning_effort`; the selected value is then sent
-unchanged in `reasoning_effort`. This works with llama.cpp router/cluster mode
-and does not assume that port 8080 limits UR to one worker.
+`/props?model=<id>`. `supports_reasoning_effort` establishes template support,
+but current llama.cpp does not expose the accepted value set through that flag,
+so it does not by itself enable Left/Right. Exact effort metadata from the
+model endpoint still enables the corresponding selectors and is sent unchanged
+as `reasoning_effort`. This works with llama.cpp router/cluster mode and does
+not assume that port 8080 limits UR to one worker.
 
 ### Provider-aware research calls
 

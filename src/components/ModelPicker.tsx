@@ -178,7 +178,7 @@ export function ModelPicker({
     return () => controller.abort()
   }, [currentProvider, modelReloadToken])
 
-  // llama.cpp and Ollama publish decisive reasoning capabilities outside their
+  // llama.cpp, Ollama, and vLLM publish decisive reasoning capabilities outside their
   // ordinary model-list rows. Resolve the model under the arrow cursor, not the
   // active model, so Left/Right gets the focused model's exact level list.
   useEffect(() => {
@@ -295,8 +295,11 @@ export function ModelPicker({
   const focusedSupportsEffort = focusedModel
     ? modelSupportsEffort(focusedModel, currentProvider)
     : false
+  const focusedAdvertisesThinking = focusedModel
+    ? modelSupportsThinking(focusedModel, currentProvider)
+    : false
   const focusedSupportsThinking = focusedModel
-    ? modelSupportsThinking(focusedModel, currentProvider) &&
+    ? focusedAdvertisesThinking &&
       providerSupportsThinkingToggle(currentProvider)
     : false
   const focusedDefaultEffort = getDefaultEffortLevelForOption(
@@ -511,8 +514,10 @@ export function ModelPicker({
             <Text color="subtle">
               <EffortLevelIndicator effort={undefined} />{' '}
               {focusedSupportsThinking
-                ? 'No graded effort · provider offers on/off thinking'
-                : 'Effort not supported'}
+                ? 'Thinking supported · no model-specific graded ladder advertised · using provider-native on/off'
+                : focusedAdvertisesThinking
+                  ? 'Thinking supported · this runtime advertises no controllable graded ladder or on/off mapping'
+                  : 'Effort not supported'}
               {focusedModelName ? ` for ${focusedModelName}` : ''}
               {effortCapabilityLoading ? ' · checking provider…' : ''}
             </Text>
@@ -587,7 +592,7 @@ export function providerNeedsFocusedEffortProbe(
   focusedModel: string | null | undefined,
 ): boolean {
   return (
-    (provider === 'llama.cpp' || provider === 'ollama') &&
+    (provider === 'llama.cpp' || provider === 'ollama' || provider === 'vllm') &&
     Boolean(focusedModel)
   )
 }

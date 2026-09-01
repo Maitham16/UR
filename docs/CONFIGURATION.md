@@ -182,15 +182,19 @@ entry. Its endpoint-scoped catalog is reused for five minutes, while Ctrl+R
 forces an immediate live refresh; a failed forced refresh never silently
 displays cached entries. API-provider secret
 entry stays on one masked row and stores the value through the keychain flow.
-Ollama and llama.cpp capabilities are loaded lazily for the focused model from
-`/api/show` and `/props`, respectively, so the arrow selector reflects the
-actual model rather than a provider-wide guess.
+Ollama, llama.cpp, and vLLM capabilities are loaded lazily for the focused
+model from `/api/show`, `/props`, and `/server_info?config_format=json`,
+respectively, so the arrow selector reflects live runtime evidence rather than
+a provider-wide guess. llama.cpp's current boolean support flag does not name
+accepted levels, while a configured vLLM reasoning parser exposes its
+documented `minimal→none|low|medium|high` mapping.
 
 The effort row contains only capability-backed selectors UR can map to native
 provider values. Ultra appears only when metadata advertises `ultra`, `max`,
 `xhigh`, or an explicit alias; mappings such as `ultra→max` are shown and sent
-exactly. Models that top out at `high`, boolean-thinking models, and unknown
-capabilities omit Ultra. See [Reasoning effort](providers.md#reasoning-effort).
+exactly. Models that top out at `high`, models without an advertised
+beyond-high value, and unknown capabilities omit Ultra. See
+[Reasoning effort](providers.md#reasoning-effort).
 
 Boolean-thinking models on runtimes with a native toggle expose a two-state
 control instead: Left selects off, Right selects on, and `t` toggles in

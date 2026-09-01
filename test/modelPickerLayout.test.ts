@@ -20,9 +20,10 @@ describe('direct model picker layout', () => {
     expect(getAdaptiveModelVisibleCount(Number.NaN, 24)).toBe(0)
   })
 
-  test('probes focused Ollama and llama.cpp models before effort arrows are used', () => {
+  test('probes focused local-runtime models before effort arrows are used', () => {
     expect(providerNeedsFocusedEffortProbe('ollama', 'kimi-k3:cloud')).toBe(true)
     expect(providerNeedsFocusedEffortProbe('llama.cpp', 'local-model')).toBe(true)
+    expect(providerNeedsFocusedEffortProbe('vllm', 'Qwen/Qwen3.5')).toBe(true)
     expect(providerNeedsFocusedEffortProbe('openrouter', 'openai/gpt-5.6')).toBe(
       false,
     )

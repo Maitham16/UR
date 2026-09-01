@@ -43,7 +43,7 @@ function setEffortValue(effortValue: EffortValue, model?: string, provider: Prov
         effort: effortValue as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
       return {
-        message: `Requested ${effortValue} was not sent: ${model} on ${provider} accepts thinking on/off, not graded effort. Thinking is now ON. Use /thinking off to disable it or /thinking status to inspect it.`,
+        message: `Requested ${effortValue} was not sent: ${model} on ${provider} advertises thinking but no model-specific graded ladder. UR used the provider-native on/off control and thinking is now ON. Use /thinking off to disable it or /thinking status to inspect it.`,
         thinkingUpdate: {
           value: true
         }
@@ -131,7 +131,7 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
     if (!modelSupportsEffort(model, provider)) {
       if (modelSupportsThinking(model, provider) && providerSupportsThinkingToggle(provider)) {
         return {
-          message: `Effort: graded levels unavailable — ${model} on ${provider} accepts thinking on/off only. Thinking is ${thinkingEnabled === false ? 'OFF' : 'ON'}; use /thinking on|off to change it.`
+          message: `Effort: no model-specific graded ladder advertised for ${model} on ${provider}. UR is using the provider-native on/off control; thinking is ${thinkingEnabled === false ? 'OFF' : 'ON'}. Use /thinking on|off to change it.`
         };
       }
       if (modelSupportsThinking(model, provider)) {
@@ -157,7 +157,7 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
   if (!modelSupportsEffort(model, provider)) {
     if (modelSupportsThinking(model, provider) && providerSupportsThinkingToggle(provider)) {
       return {
-        message: `Requested effort: ${effectiveValue}; not sent — ${model} on ${provider} accepts thinking on/off only. Thinking is ${thinkingEnabled === false ? 'OFF' : 'ON'}; use /thinking on|off to change it.`
+        message: `Requested effort: ${effectiveValue}; not sent — ${model} on ${provider} advertises thinking but no model-specific graded ladder. UR is using the provider-native on/off control; thinking is ${thinkingEnabled === false ? 'OFF' : 'ON'}. Use /thinking on|off to change it.`
       };
     }
     if (modelSupportsThinking(model, provider)) {

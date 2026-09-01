@@ -84,7 +84,8 @@ describe('provider-truthful boolean thinking controls', () => {
     const result = executeEffort('max', 'kimi-k3:cloud', 'ollama')
 
     expect(result.message).toContain('Requested max was not sent')
-    expect(result.message).toContain('accepts thinking on/off, not graded effort')
+    expect(result.message).toContain('advertises thinking but no model-specific graded ladder')
+    expect(result.message).toContain('provider-native on/off control')
     expect(result.message).toContain('/thinking off')
     expect(result.effortUpdate).toBeUndefined()
     expect(result.thinkingUpdate).toEqual({ value: true })
@@ -135,7 +136,7 @@ describe('provider-truthful boolean thinking controls', () => {
     expect(
       showCurrentEffort(undefined, 'kimi-k3:cloud', 'ollama', false).message,
     ).toBe(
-      'Effort: graded levels unavailable — kimi-k3:cloud on ollama accepts thinking on/off only. Thinking is OFF; use /thinking on|off to change it.',
+      'Effort: no model-specific graded ladder advertised for kimi-k3:cloud on ollama. UR is using the provider-native on/off control; thinking is OFF. Use /thinking on|off to change it.',
     )
   })
 
@@ -148,7 +149,7 @@ describe('provider-truthful boolean thinking controls', () => {
     )
     expect(enabled.thinkingUpdate).toEqual({ value: true })
     expect(enabled.message).toContain('Thinking ON for this session')
-    expect(enabled.message).toContain('accepts thinking on/off only')
+    expect(enabled.message).toContain('advertises thinking but no model-specific graded ladder')
     resetSettingsCache()
     expect(
       getSettingsForSource('userSettings')?.alwaysThinkingEnabled,

@@ -172,6 +172,36 @@ describe('model entry construction', () => {
     })
   })
 
+  test('nested provider capability metadata preserves advertised reasoning options', () => {
+    const model = toDiscoveredModel({
+      id: 'provider/reasoner',
+      capabilities: {
+        reasoning: {
+          allowed_options: ['off', 'on', 'low', 'medium', 'high'],
+          default: 'medium',
+        },
+      },
+    }, 'Compatible provider')
+
+    expect(model?.reasoning).toEqual({
+      supportedEfforts: ['off', 'on', 'low', 'medium', 'high'],
+      defaultEffort: 'medium',
+    })
+  })
+
+  test('a generic model default is not misread as a reasoning default', () => {
+    expect(
+      toDiscoveredModel(
+        {
+          id: 'ordinary-model',
+          default: 'chat',
+          capabilities: { tools: true },
+        },
+        'Compatible',
+      )?.reasoning,
+    ).toBeUndefined()
+  })
+
   test('unusable entries are dropped rather than rendered blank', () => {
     expect(toDiscoveredModel(null, 'X')).toBeNull()
     expect(toDiscoveredModel({}, 'X')).toBeNull()

@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.84.0 (UR-Nexus)"
+# expected for this release: "1.84.1 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -82,15 +82,18 @@ between models that top out at high, xhigh, max, and native-ultra models; the le
 selected ceiling must update immediately. Models that top out at high must omit Ultra, while
 xhigh/max entries must show `ultra→xhigh` or `ultra→max`, and the
 confirmation must match `/effort status` and the request wire value. For
-an Ollama model that advertises boolean thinking without a ladder, verify that
+an Ollama model that advertises thinking without a model-specific ladder, verify that
 Left selects off, Right selects on, `t` toggles, and `/effort max` reports that
 max was not sent while enabling `think: true`; `/thinking off` must produce
 `think: false`. For
-llama.cpp, verify focus requests
-`/props?model=<focused-id>` and that a template reporting
-`supports_reasoning_effort: false` has no graded selector. Open the OpenAI API or Claude
-API connection flow and verify the masked `API key` label and entry remain on
-one horizontal row.
+llama.cpp, verify focus requests `/props?model=<focused-id>` and that both an
+unsupported template and a bare `supports_reasoning_effort: true` flag have no
+graded selector unless exact levels are also returned. For vLLM, verify one
+focus request to `/server_info?config_format=json`; a non-empty reasoning parser
+must expose `minimal→none`, `low`, `medium`, and `high`, serialize
+`minimal` as `reasoning_effort: "none"`, and omit Ultra. Open the OpenAI API or
+Claude API connection flow and verify the masked `API key` label and entry
+remain on one horizontal row.
 
 Then ask UR to research a current topic with WebSearch and WebFetch. Expected:
 the auxiliary request stays on the active OpenRouter model, no `modelH` error

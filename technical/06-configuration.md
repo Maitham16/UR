@@ -78,7 +78,7 @@ are session-only, and every selection is capability-gated. Ultra is shown only w
 active model advertises `ultra`, `max`, `xhigh`, or an explicit alias, and UR sends the exact
 advertised wire value (for example, `ultra→max`).
 
-For a model that advertises boolean thinking but no graded effort ladder on a
+For a model that advertises thinking but no model-specific graded effort ladder on a
 runtime with a native on/off mapping, `/thinking on|off` is the direct control.
 In `/model`, Left selects off, Right
 selects on, and `t` toggles. If `/effort max` (or another graded value) is used
@@ -86,7 +86,11 @@ for that model, UR enables boolean thinking but explicitly reports that no
 graded value was sent. The choice updates `alwaysThinkingEnabled` for future
 sessions as well as the live session.
 Generic OpenAI-compatible runtimes do not receive an invented boolean field;
-they expose this control only if their real adapter defines one.
+they expose this control only if their real adapter defines one. Focused vLLM
+models are checked through `/server_info?config_format=json`; a configured
+reasoning parser exposes `minimal→none|low|medium|high`. llama.cpp's `/props`
+support flag is recorded as thinking support but creates no graded selectors
+until exact accepted values are advertised.
 
 The two `redteamWarning*` fields only record that the user saw a particular
 warning revision. They do not activate redteam mode, approve a target, relax a

@@ -281,13 +281,15 @@ export function ProviderFirstModelPicker({
     }
   }, [selectedProvider, modelReloadToken])
 
-  // llama.cpp and Ollama publish decisive reasoning capabilities outside their
+  // llama.cpp, Ollama, and vLLM publish decisive reasoning capabilities outside their
   // ordinary model-list rows. Resolve only the focused model so arrow browsing
   // stays truthful without eagerly probing a whole local or cloud catalogue.
   useEffect(() => {
     const capabilityProvider = selectedProvider?.value
     if (
-      (capabilityProvider !== 'llama.cpp' && capabilityProvider !== 'ollama') ||
+      (capabilityProvider !== 'llama.cpp' &&
+        capabilityProvider !== 'ollama' &&
+        capabilityProvider !== 'vllm') ||
       !focusedModelValue
     ) {
       setEffortCapabilityLoading(false)
@@ -431,8 +433,11 @@ export function ProviderFirstModelPicker({
   const focusedSupportsEffort = focusedResolvedModel
     ? modelSupportsEffort(focusedResolvedModel, focusedProviderId)
     : false
+  const focusedAdvertisesThinking = focusedResolvedModel && focusedProviderId
+    ? modelSupportsThinking(focusedResolvedModel, focusedProviderId)
+    : false
   const focusedSupportsThinking = focusedResolvedModel && focusedProviderId
-    ? modelSupportsThinking(focusedResolvedModel, focusedProviderId) &&
+    ? focusedAdvertisesThinking &&
       providerSupportsThinkingToggle(focusedProviderId)
     : false
   const focusedDefaultEffort = focusedResolvedModel
@@ -1155,8 +1160,10 @@ export function ProviderFirstModelPicker({
                 {!focusedSupportsEffort && !effortCapabilityLoading && (
                   <Text dimColor color="subtle">
                     {focusedSupportsThinking
-                      ? 'No graded effort advertised; this model accepts on/off thinking.'
-                      : 'Graded effort not advertised for this model.'}
+                      ? 'Thinking supported; no model-specific graded ladder advertised. Using provider-native on/off control.'
+                      : focusedAdvertisesThinking
+                        ? 'Thinking supported; this runtime advertises no controllable graded ladder or on/off mapping.'
+                        : 'Graded effort not advertised for this model.'}
                   </Text>
                 )}
                 {focusedSupportsThinking && (

@@ -2336,7 +2336,11 @@ function providerModelCacheKey(
 ): string {
   const definition = getProviderDefinition(provider)
   let endpoint = providerBaseUrl(provider, definition, settings)
-  if (definition.accessType === 'api' && definition.modelDiscoveryType === 'live') {
+  if (
+    definition.accessType === 'api' &&
+    definition.modelDiscoveryType === 'live' &&
+    !definition.endpointKind
+  ) {
     endpoint = apiModelsRequest(provider, '', settings).url
   }
   if (!endpoint) return provider
@@ -2457,11 +2461,73 @@ function providerPropsUrl(baseUrl: string, model: string): string {
   url.hash = ''
   url.search = ''
   let path = url.pathname.replace(/\/+$/, '')
+  path = path.replace(
+    /\/(?:v\d+(?:beta)?|api\/v\d+)\/(?:chat\/completions|models|responses|props)$/i,
+    '',
+  )
   path = path.replace(/\/(?:v\d+(?:beta)?|api\/v\d+)$/i, '')
   path = path.replace(/\/(?:chat\/completions|models|props)$/i, '')
   url.pathname = `${path}/props`
   url.searchParams.set('model', model)
   return url.toString()
+}
+
+function vllmServerInfoUrl(baseUrl: string): string {
+  const url = new URL(normalizeBaseUrl(baseUrl))
+  url.hash = ''
+  url.search = ''
+  let path = url.pathname.replace(/\/+$/, '')
+  path = path.replace(
+    /\/(?:v\d+(?:beta)?|api\/v\d+)\/(?:chat\/completions|models|responses)$/i,
+    '',
+  )
+  path = path.replace(/\/(?:v\d+(?:beta)?|api\/v\d+)$/i, '')
+  path = path.replace(/\/(?:chat\/completions|models|responses)$/i, '')
+  url.pathname = `${path}/server_info`
+  url.searchParams.set('config_format', 'json')
+  return url.toString()
+}
+
+function vllmServerAdvertisesReasoning(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const pending: unknown[] = [value]
+  const seen = new Set<object>()
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (!current || typeof current !== 'object' || seen.has(current)) continue
+    seen.add(current)
+    for (const [key, nested] of Object.entries(current)) {
+      const normalizedKey = key.replace(/-/g, '_').toLowerCase()
+      if (
+        normalizedKey === 'reasoning_parser' &&
+        typeof nested === 'string' &&
+        nested.trim() &&
+        !/^(?:none|null|false)$/i.test(nested.trim())
+      ) {
+        return true
+      }
+      if (normalizedKey === 'enable_reasoning' && nested === true) {
+        return true
+      }
+      if (nested && typeof nested === 'object') pending.push(nested)
+    }
+  }
+  return false
+}
+
+function reasoningCapabilitiesFromVllmServerInfo(
+  value: unknown,
+): ModelReasoningCapabilities | undefined {
+  if (!vllmServerAdvertisesReasoning(value)) return undefined
+  // vLLM's current Chat Completions contract accepts none/low/medium/high and
+  // injects enable_thinking for the graded values. The server-info parser flag
+  // proves that the running endpoint was configured to return reasoning for
+  // its served model; no inference request is used for discovery.
+  return {
+    supportsThinking: true,
+    supportedEfforts: ['none', 'low', 'medium', 'high'],
+    effortAliases: { minimal: 'none' },
+  }
 }
 
 function ollamaShowUrl(baseUrl: string): string {
@@ -2515,10 +2581,10 @@ function reasoningCapabilitiesFromOllamaShow(
     .filter((entry): entry is string => typeof entry === 'string')
     .join(' ')
 
-  // Ollama's `thinking` capability is boolean for most model families. GPT-OSS
-  // is the documented exception with a low/medium/high string ladder. Never
-  // turn a generic capability flag or a model-name guess into graded levels;
-  // other ladders are accepted only through explicit provider metadata above.
+  // A generic Ollama `thinking` capability does not identify whether this
+  // model accepts booleans, graded strings, or both. GPT-OSS has a documented
+  // low/medium/high contract. Never turn the generic flag or a model-name guess
+  // into other graded levels; those require explicit provider metadata above.
   if (/gpt[-_]?oss/i.test(identity)) {
     return {
       supportsThinking: true,
@@ -2554,13 +2620,19 @@ function reasoningCapabilitiesFromProps(
       ? (root.chat_template_caps as Record<string, unknown>)
       : undefined
   if (caps?.supports_reasoning_effort === true) {
-    // llama.cpp documents the accepted normalized vocabulary globally and
-    // exposes this per-template capability through /props. `null` is UR's
-    // existing "accepts every normalized effort" representation.
-    return { supportedEfforts: null }
+    // `/props` proves that the template consumes an effort value, but current
+    // llama.cpp does not report which values the template accepts. Keep the
+    // model thinking-capable without inventing a selectable ladder.
+    return { supportsThinking: true }
   }
   if (caps?.supports_reasoning_effort === false) {
-    return { supportedEfforts: [] }
+    const supportsThinking =
+      caps.supports_reasoning === true ||
+      caps.supports_thinking === true ||
+      caps.supports_preserve_reasoning === true
+    return supportsThinking
+      ? { supportsThinking: true, supportedEfforts: [] }
+      : { supportedEfforts: [] }
   }
   return undefined
 }
@@ -2593,9 +2665,9 @@ function rememberProviderModelReasoning(
 
 /**
  * Load the focused model's provider-authored reasoning contract. llama.cpp
- * exposes it through /props and Ollama exposes the thinking capability through
- * /api/show rather than their list endpoints, so both checks are lazy and
- * model-scoped.
+ * exposes template support through /props, Ollama exposes thinking through
+ * /api/show, and vLLM exposes its configured reasoning parser through
+ * /server_info. These checks are lazy and never launch inference.
  */
 export async function ensureProviderReasoningCapabilitiesForModel(
   providerId: ProviderId | string,
@@ -2616,7 +2688,11 @@ export async function ensureProviderReasoningCapabilitiesForModel(
   )
   if (cached !== undefined) return cached
 
-  if (provider !== 'llama.cpp' && provider !== 'ollama') {
+  if (
+    provider !== 'llama.cpp' &&
+    provider !== 'ollama' &&
+    provider !== 'vllm'
+  ) {
     await ensureProviderModelsFresh(provider, options)
     return getProviderReasoningCapabilitiesForModel(model, provider, settings)
   }
@@ -2635,10 +2711,14 @@ export async function ensureProviderReasoningCapabilitiesForModel(
   if (!apiKey) {
     apiKey = await storedProviderApiKey(provider, env, options.adapters)
   }
-  const response = await fetchImpl(
+  const capabilityUrl =
     provider === 'ollama'
       ? ollamaShowUrl(baseUrl)
-      : providerPropsUrl(baseUrl, model),
+      : provider === 'vllm'
+        ? vllmServerInfoUrl(baseUrl)
+        : providerPropsUrl(baseUrl, model)
+  const response = await fetchImpl(
+    capabilityUrl,
     {
       method: provider === 'ollama' ? 'POST' : 'GET',
       signal: options.signal,
@@ -2657,14 +2737,16 @@ export async function ensureProviderReasoningCapabilitiesForModel(
   )
   if (!response.ok) {
     throw new Error(
-      `${provider === 'ollama' ? 'Ollama /api/show' : 'llama.cpp /props'} returned HTTP ${response.status}.`,
+      `${provider === 'ollama' ? 'Ollama /api/show' : provider === 'vllm' ? 'vLLM /server_info' : 'llama.cpp /props'} returned HTTP ${response.status}.`,
     )
   }
   const body = await response.json().catch(() => null)
   const reasoning =
     provider === 'ollama'
       ? reasoningCapabilitiesFromOllamaShow(model, body)
-      : reasoningCapabilitiesFromProps(body)
+      : provider === 'vllm'
+        ? reasoningCapabilitiesFromVllmServerInfo(body)
+        : reasoningCapabilitiesFromProps(body)
   if (reasoning) {
     rememberProviderModelReasoning(provider, model, reasoning, settings)
   }

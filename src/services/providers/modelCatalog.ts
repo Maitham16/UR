@@ -86,6 +86,7 @@ export function parseModelReasoningCapabilities(
     value.supported_efforts !== undefined
       ? value.supported_efforts
       : value.supportedEfforts
+        ?? value.allowed_options
   const supportedEfforts =
     rawSupportedEfforts === null
       ? null
@@ -102,7 +103,8 @@ export function parseModelReasoningCapabilities(
   const defaultEffort = asString(
     value.default_effort !== undefined
       ? value.default_effort
-      : value.defaultEffort,
+      : value.defaultEffort ??
+        (rawSupportedEfforts !== undefined ? value.default : undefined),
   )?.toLowerCase()
   const rawAliases = isRecord(value.effort_aliases)
     ? value.effort_aliases
@@ -258,7 +260,14 @@ export function toDiscoveredModel(entry: unknown, providerLabel: string): Discov
       ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string')
       : undefined
   const capabilities = isRecord(raw.capabilities) ? raw.capabilities : undefined
-  const parsedReasoning = parseModelReasoningCapabilities(raw.reasoning)
+  const parsedReasoning =
+    parseModelReasoningCapabilities(raw.reasoning) ??
+    parseModelReasoningCapabilities(
+      capabilities && isRecord(capabilities.reasoning)
+        ? capabilities.reasoning
+        : undefined,
+    ) ??
+    parseModelReasoningCapabilities(raw)
   const advertisesReasoning = supportedParameters?.some(parameter =>
     /^(?:reasoning|reasoning_effort|thinking)$/iu.test(parameter.trim()),
   )

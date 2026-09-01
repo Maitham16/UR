@@ -548,7 +548,7 @@ const slashGroups = [
   {
     title: 'Models, tools, and interop',
     items: ['/model', '/provider', '/effort', '/thinking', '/fast', '/model-doctor', '/model-route', '/escalate', '/mcp', '/plugin', '/skills', '/skill', '/sdk', '/a2a-card'],
-    text: 'Pick providers and models, cycle only capability-backed effort selectors or provider-native boolean thinking, inspect capabilities, manage MCP/plugin extensions, browse prompt skills with /skills, run executable workflows with /skill, and expose interop surfaces.',
+    text: 'Pick providers and models, cycle only capability-backed effort selectors or a verified provider-native thinking toggle, inspect capabilities, manage MCP/plugin extensions, browse prompt skills with /skills, run executable workflows with /skill, and expose interop surfaces.',
   },
   {
     title: 'Security operations',

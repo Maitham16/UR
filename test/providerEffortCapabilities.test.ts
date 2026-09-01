@@ -1,5 +1,8 @@
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
+import { toOpenAICompatibleRequest } from '../src/services/api/openaiCompatible.js'
 import {
+  cacheProviderModelsForProvider,
+  clearProviderModelCacheForTests,
   getProviderReasoningCapabilitiesForModel,
 } from '../src/services/providers/providerRegistry.js'
 import {
@@ -10,6 +13,8 @@ import {
 } from '../src/utils/effort.js'
 
 describe('provider effort capability audit', () => {
+  beforeEach(() => clearProviderModelCacheForTests())
+
   test('OpenAI direct models expose their exact documented ladders', () => {
     expect(getSupportedEffortLevelsForModel('gpt-5.6-sol', 'openai-api')).toEqual([
       'minimal',
@@ -91,5 +96,93 @@ describe('provider effort capability audit', () => {
         'gemini-api',
       )?.defaultEffort,
     ).toBe('medium')
+  })
+
+  test('vLLM runtime metadata maps none/low/medium/high without fabricating Ultra', () => {
+    cacheProviderModelsForProvider('vllm', [{
+      id: 'Qwen/Qwen3.5-35B-A3B',
+      displayName: 'Qwen/Qwen3.5-35B-A3B',
+      description: 'vLLM server-info reasoning contract',
+      reasoning: {
+        supportsThinking: true,
+        supportedEfforts: ['none', 'low', 'medium', 'high'],
+        effortAliases: { minimal: 'none' },
+      },
+    }])
+
+    expect(
+      getSupportedEffortLevelsForModel('Qwen/Qwen3.5-35B-A3B', 'vllm'),
+    ).toEqual(['minimal', 'low', 'medium', 'high'])
+    expect(
+      getProviderEffortWireValue('Qwen/Qwen3.5-35B-A3B', 'minimal', 'vllm'),
+    ).toBe('none')
+    expect(
+      getProviderEffortWireValue('Qwen/Qwen3.5-35B-A3B', 'ultra', 'vllm'),
+    ).toBeUndefined()
+    expect(
+      toOpenAICompatibleRequest(
+        {
+          model: 'Qwen/Qwen3.5-35B-A3B',
+          messages: [],
+          output_config: { effort: 'minimal' },
+        },
+        'vllm',
+      ).reasoning_effort,
+    ).toBe('none')
+    expect(
+      toOpenAICompatibleRequest(
+        {
+          model: 'Qwen/Qwen3.5-35B-A3B',
+          messages: [],
+          output_config: { effort: 'high' },
+        },
+        'vllm',
+      ).reasoning_effort,
+    ).toBe('high')
+    expect(
+      toOpenAICompatibleRequest(
+        {
+          model: 'Qwen/Qwen3.5-35B-A3B',
+          messages: [],
+          output_config: { effort: 'ultra' },
+        },
+        'vllm',
+      ).reasoning_effort,
+    ).toBeUndefined()
+  })
+
+  test('compatible providers honor explicit metadata and keep unknown models disabled', () => {
+    for (const provider of [
+      'lmstudio',
+      'llama.cpp',
+      'vllm',
+      'unsloth',
+      'openai-compatible',
+    ] as const) {
+      expect(getSupportedEffortLevelsForModel('unknown-model', provider)).toEqual([])
+      cacheProviderModelsForProvider(provider, [{
+        id: 'provider/model',
+        displayName: 'provider/model',
+        description: 'provider-authored reasoning contract',
+        reasoning: { supportedEfforts: ['low', 'high', 'max'] },
+      }])
+      expect(
+        getSupportedEffortLevelsForModel('provider/model', provider),
+      ).toEqual(['low', 'high', 'max', 'ultra'])
+      expect(
+        getProviderEffortWireValue('provider/model', 'ultra', provider),
+      ).toBe('max')
+    }
+  })
+
+  test('external subscription CLIs do not claim UR-owned effort controls', () => {
+    for (const provider of [
+      'codex-cli',
+      'claude-code-cli',
+      'gemini-cli',
+      'antigravity-cli',
+    ] as const) {
+      expect(getSupportedEffortLevelsForModel('provider/model', provider)).toEqual([])
+    }
   })
 })

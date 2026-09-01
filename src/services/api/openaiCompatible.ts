@@ -277,18 +277,25 @@ export function toOpenAICompatibleRequest(
       ? toOpenRouterReasoning(params, openRouterWireEffort)
       : undefined
   const compatibleReasoningEffort =
-    reasoningEffort === 'ultra'
+    reasoningEffort && providerName !== 'openrouter'
       ? (() => {
           const provider = resolveProviderId(providerName)
-          return provider
+          const advertisedWireValue = provider
             ? getProviderEffortWireValue(
                 String(params.model ?? ''),
                 reasoningEffort,
                 provider,
               )
             : undefined
+          // Normal requests arrive here after the session resolver has
+          // capability-gated the selected level. Translate any explicit
+          // provider alias (for example vLLM minimal→none). Ultra is the one
+          // selector that may never pass through without an advertised wire
+          // equivalent.
+          return advertisedWireValue ??
+            (reasoningEffort === 'ultra' ? undefined : reasoningEffort)
         })()
-      : reasoningEffort
+      : undefined
   const openRouterServerSearch =
     providerName === 'openrouter' &&
     tools.some(tool => tool?.type === 'openrouter:web_search')
