@@ -280,6 +280,7 @@ const PROVIDER_SETTING_IDS = [
   'anthropic-api',
   'gemini-api',
   'openrouter',
+  'nvidia-nim',
   'openai-compatible',
   'ollama',
   'lmstudio',

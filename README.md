@@ -288,6 +288,7 @@ ur config set provider openai-api
 ur config set provider anthropic-api
 ur config set provider gemini-api
 ur config set provider openrouter
+ur config set provider nvidia-nim
 ur config set provider unsloth
 ur config set model qwen2.5-coder:7b
 ur provider select-model ollama qwen2.5-coder:7b --json
@@ -304,7 +305,7 @@ select the recovery provider explicitly with `ur config set provider <id>`.
 provider before the URL to configure it without switching first, for example
 `ur config set base_url llama.cpp http://localhost:9931/v1`. UR remembers each
 provider's address independently, so switching among Ollama, LM Studio,
-llama.cpp, vLLM, Unsloth, or another compatible endpoint restores that
+llama.cpp, vLLM, Unsloth, NVIDIA NIM, or another compatible endpoint restores that
 provider's last URL automatically. Existing single-URL settings are migrated
 to the previously active provider on the first provider switch or scoped
 base-URL write.
@@ -328,7 +329,7 @@ when `UR_OPENAI_RESPONSES_STATE_KEY` contains a 32-byte encryption key. Return
 to the default with `ur config set openai_transport chat-completions`.
 
 Provider config accepts canonical IDs and common aliases. Examples:
-`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
+`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `nvidia-nim` (`NVIDIA Build`), `ollama`,
 `lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, `unsloth` (`Unsloth Studio`), and the subscription CLIs
 `codex-cli` (`chatgpt`), `claude-code-cli` (`claude`), `gemini-cli` (`gemini`),
 and `antigravity-cli` (`agy`). Use quotes for shell values with spaces.
@@ -348,6 +349,7 @@ ur connect logout openai-api          # clear a stored key
 | Claude API | API key | UR-native | `ANTHROPIC_API_KEY` or `ur connect anthropic-api` |
 | Gemini API | API key | UR-native | `GEMINI_API_KEY` or `ur connect gemini-api` |
 | OpenRouter | API/router | UR-native | `OPENROUTER_API_KEY` or `ur connect openrouter` |
+| NVIDIA NIM | hosted/server API | UR-native | `NVIDIA_API_KEY` or `ur connect nvidia-nim`; configurable `base_url` |
 | Ollama | local/server | UR-native | configurable local, LAN, or hosted endpoint; optional `OLLAMA_API_KEY` |
 | LM Studio | local/server | UR-native | configurable endpoint; optional `LMSTUDIO_API_KEY` |
 | llama.cpp | local/server | UR-native | configurable endpoint; optional `LLAMA_CPP_API_KEY` |
@@ -370,7 +372,7 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    by source: `live` (discovered from the endpoint), `cache` (last discovery),
    `static` (predefined), or `unavailable` after a failed discovery with no
    fallback. Local/server providers (Ollama, LM Studio,
-   llama.cpp, vLLM, Unsloth) and OpenAI-compatible endpoints are discovered live; API
+   llama.cpp, vLLM, Unsloth) and OpenAI-compatible endpoints, including NVIDIA NIM, are discovered live; API
    providers use live discovery from their `/models` endpoint once a key is
    connected (with a curated fallback list before that). Subscription CLIs show
    their curated model list because the official CLIs expose no models API. The
@@ -420,7 +422,7 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    provider's address untouched.
 
 Model lists never cross providers: OpenAI API, Claude API, Gemini API,
-OpenRouter, Ollama, and OpenAI-compatible local/server endpoints are separate
+OpenRouter, NVIDIA NIM, Ollama, and OpenAI-compatible local/server endpoints are separate
 access paths. API keys, local runtimes, and subscription logins are not
 interchangeable. The provider/model pair is validated before it is saved and
 again before every request; changing provider clears an incompatible model.
@@ -437,8 +439,9 @@ identity line in the system prompt reflects it too:
 - **API** providers call each service in its native wire format — Anthropic
   `x-api-key` + `anthropic-version` on `/v1/messages`, OpenAI `Bearer` on
   `/v1/chat/completions` by default or `/v1/responses` when explicitly
-  selected, Gemini `x-goog-api-key` on `:generateContent`, and OpenRouter on its
-  OpenAI-compatible chat endpoint.
+  selected, Gemini `x-goog-api-key` on `:generateContent`, OpenRouter on its
+  OpenAI-compatible chat endpoint, and NVIDIA NIM on its official hosted or
+  user-selected OpenAI-compatible endpoint.
 - **Local/server** providers call the configured endpoint (`/v1/chat/completions`
   for LM Studio/llama.cpp/vLLM/Unsloth; the native API for Ollama). Unsloth is
   provider-only: UR never starts, installs, updates, trains, or loads models in
@@ -453,6 +456,15 @@ identity line in the system prompt reflects it too:
 - **Subscription** access does not list fake models. If no independent
   subscription backend is configured, `/model` marks it unavailable and asks you
   to choose a connected local, server, or API provider.
+
+Image-bearing tool results use each UR-native provider's valid multimodal wire
+shape. OpenAI Chat Completions, OpenRouter, NVIDIA NIM, LM Studio, llama.cpp,
+vLLM, Unsloth, and generic compatible endpoints keep the tool response textual and
+place its image in the immediately following user turn; Gemini nests the image
+parts in its function response; OpenAI Responses, Anthropic, and Ollama use their
+native rich-result forms. The selected model must still support vision.
+External subscription CLIs remain text-only because their official prompt
+interfaces do not expose a portable binary-image channel.
 
 Ollama is used only when Ollama is selected. There is no silent cross-provider
 fallback: if dispatch fails, UR reports the selected provider, model, and runtime

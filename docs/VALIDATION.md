@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.84.1 (UR-Nexus)"
+# expected for this release: "1.84.2 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -178,6 +178,29 @@ With `verifier.askBeforeGates` enabled, complete a task that edits a source
 file. Expected: UR asks once whether to run the detected compile/test/lint
 commands. After answering, the same approval question is not shown again. A
 separate user task that edits files may ask once for its own verification.
+
+### 0.1.3 Portable deadlines and provider tool images (1.84.2)
+
+Run the deterministic adapter and shell coverage:
+
+```sh
+bun test test/bashCommandExecution.test.ts \
+  test/providerNvidiaNim.test.ts \
+  test/providerMultimodal.test.ts \
+  test/openaiResponses.test.ts \
+  test/ollamaToolResultImages.test.ts
+```
+
+Expected: macOS can execute `timeout 0.1 …` without GNU coreutils and reports
+124 when the deadline expires. Image-bearing tool results retain their text and
+image bytes across OpenAI Chat/Responses, Anthropic, Gemini, OpenRouter,
+NVIDIA NIM, Ollama, LM Studio, llama.cpp, vLLM, Unsloth, and generic OpenAI-compatible
+request shapes.
+
+The NVIDIA fixture also verifies hosted/default and overridden endpoints,
+Bearer discovery, native dispatch, documented effort aliases, and no Ultra on
+an unknown model. In `/model`, select `openai-compatible` and verify `K` can
+add or replace its optional key while `E` continues to edit only its endpoint.
 
 ## 0.2 Permission safety and context pack (1.19.0)
 

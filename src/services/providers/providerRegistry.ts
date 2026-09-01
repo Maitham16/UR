@@ -32,6 +32,7 @@ export const PROVIDER_IDS = [
   'anthropic-api',
   'gemini-api',
   'openrouter',
+  'nvidia-nim',
   'codex-cli',
   'claude-code-cli',
   'gemini-cli',
@@ -265,8 +266,6 @@ export type ProviderModelDiscoveryResult = {
   warning?: string
 }
 
-const LOCALHOST_RE = /^(https?:\/\/)?(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?(\/|$)/i
-
 export const UR_NATIVE_PROVIDER_BOUNDARY =
   'UR-native runtime: UR owns provider request shaping, native tool-call parsing, native streaming, and UR-run tool permission/sandbox/verifier flow.'
 
@@ -477,6 +476,27 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     envKey: 'OPENROUTER_API_KEY',
     defaultBaseUrl: 'https://openrouter.ai/api/v1',
   },
+  'nvidia-nim': {
+    id: 'nvidia-nim',
+    displayName: 'NVIDIA NIM',
+    statusBarName: 'NVIDIA NIM',
+    accessType: 'api',
+    accessTypeLabel: 'hosted/server',
+    credentialType: 'api-key',
+    modelDiscoveryType: 'live',
+    statusCheck: 'endpoint',
+    listModels: 'openai-compatible-models',
+    validateModel: 'discovered-list',
+    runtimeKind: 'ur-native',
+    ...UR_NATIVE_CAPABILITIES,
+    authMode: 'api',
+    legalPath: 'NVIDIA API key from build.nvidia.com or an authenticated NVIDIA NIM endpoint',
+    accessPathLabel: 'NVIDIA NIM OpenAI-compatible endpoint',
+    envKey: 'NVIDIA_API_KEY',
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://integrate.api.nvidia.com/v1',
+    endpointKind: 'openai-compatible',
+  },
   'openai-compatible': {
     id: 'openai-compatible',
     displayName: 'OpenAI-compatible',
@@ -634,6 +654,10 @@ const PROVIDER_ALIAS_ENTRIES: ProviderAliasEntry[] = [
   {
     canonical: 'openrouter',
     aliases: ['openrouter api'],
+  },
+  {
+    canonical: 'nvidia-nim',
+    aliases: ['nvidia', 'nvidia api', 'nvidia build', 'nvidia nim', 'nim'],
   },
   {
     canonical: 'openai-compatible',
@@ -796,6 +820,8 @@ export function getProviderRuntimeBackend(providerId: ProviderId | string): stri
       return 'api:gemini'
     case 'openrouter':
       return 'api:openrouter'
+    case 'nvidia-nim':
+      return 'api:nvidia-nim'
     default:
       return `unknown:${providerId}`
   }
@@ -811,6 +837,7 @@ const PROVIDER_FAMILIES: Record<ProviderId, ProviderFamily> = {
   'gemini-cli': 'google',
   'antigravity-cli': 'google',
   openrouter: 'openai-compatible',
+  'nvidia-nim': 'openai-compatible',
   'openai-compatible': 'openai-compatible',
   lmstudio: 'openai-compatible',
   'llama.cpp': 'openai-compatible',
@@ -1277,10 +1304,6 @@ function openAiCompatibleModelUrls(baseUrl: string): string[] {
   return [versioned, url.toString().replace(/\/$/, '')]
 }
 
-function isLocalBaseUrl(value: string): boolean {
-  return LOCALHOST_RE.test(value)
-}
-
 async function checkEndpoint(
   definition: ProviderDefinition,
   settings: ProviderSettings,
@@ -1381,10 +1404,14 @@ async function checkEndpoint(
         status: 'fail',
         message: `${candidates[0]} returned HTTP ${lastStatus}.`,
       })
+      const authenticationFailure =
+        (lastStatus === 401 || lastStatus === 403) && definition.envKey
       addFailure(
         result,
         `endpoint returned HTTP ${lastStatus}`,
-        `Start the provider server or update base_url: ur config set base_url ${definition.id} ${baseUrl}`,
+        authenticationFailure
+          ? `Add or replace this endpoint's key with: ur connect ${definition.id} (or set ${definition.envKey}).`
+          : `Start the provider server or update base_url: ur config set base_url ${definition.id} ${baseUrl}`,
       )
     } else {
       result.checks.push({
@@ -1549,9 +1576,9 @@ async function checkApiProvider(
   const env = adapters.env ?? process.env
   const baseUrl = settings.baseUrl ?? definition.defaultBaseUrl
   const requiresKey =
-    definition.id !== 'openai-compatible' ||
-    !baseUrl ||
-    !isLocalBaseUrl(baseUrl)
+    definition.requiresApiKey === true ||
+    (definition.credentialType === 'api-key' &&
+      definition.endpointKind !== 'openai-compatible')
   let apiKey = definition.envKey ? env[definition.envKey] : undefined
   let keySource: 'env' | 'stored' = 'env'
   if (!apiKey && (!adapters.env || adapters.getApiKey)) {
@@ -2038,6 +2065,21 @@ const OPENAI_GPT_56_EFFORTS: ModelReasoningCapabilities = {
 const GEMINI_MINIMAL_TO_HIGH: ModelReasoningCapabilities = {
   supportedEfforts: ['minimal', 'low', 'medium', 'high'],
 }
+const NVIDIA_NONE_LOW_HIGH: ModelReasoningCapabilities = {
+  supportedEfforts: ['none', 'low', 'high'],
+  effortAliases: { minimal: 'none' },
+  defaultEffort: 'high',
+}
+const NVIDIA_NONE_HIGH_MAX: ModelReasoningCapabilities = {
+  supportedEfforts: ['none', 'high', 'max'],
+  effortAliases: { minimal: 'none', ultra: 'max' },
+  defaultEffort: 'high',
+}
+const NVIDIA_FULL_EFFORT_RANGE: ModelReasoningCapabilities = {
+  supportedEfforts: ['none', 'minimal', 'low', 'medium', 'high', 'max'],
+  effortAliases: { ultra: 'max' },
+  defaultEffort: 'high',
+}
 
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   // Generic subscription entry. No models are listed because this build has no
@@ -2124,6 +2166,18 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
     { id: 'google/gemini-3.6-flash', displayName: 'Gemini 3.6 Flash', description: 'Google Gemini via OpenRouter', reasoning: { ...GEMINI_MINIMAL_TO_HIGH, defaultEffort: 'medium' } },
     { id: 'google/gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Google Gemini via OpenRouter' },
     { id: 'google/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Google Gemini via OpenRouter' },
+  ],
+  // NVIDIA NIM is live-discovery only. These hidden entries are capability
+  // overlays for model contracts NVIDIA documents explicitly; they never
+  // become an offline model catalogue or imply account availability.
+  'nvidia-nim': [
+    { id: 'openai/gpt-oss-20b', displayName: 'openai/gpt-oss-20b', description: 'NVIDIA-documented reasoning contract', isDynamic: true, reasoning: { supportedEfforts: ['low', 'medium', 'high'], defaultEffort: 'medium' } },
+    { id: 'openai/gpt-oss-120b', displayName: 'openai/gpt-oss-120b', description: 'NVIDIA-documented reasoning contract', isDynamic: true, reasoning: { supportedEfforts: ['low', 'medium', 'high'], defaultEffort: 'medium' } },
+    { id: 'nvidia/nemotron-3-super-120b-a12b', displayName: 'nvidia/nemotron-3-super-120b-a12b', description: 'NVIDIA-documented reasoning contract', isDynamic: true, reasoning: NVIDIA_NONE_LOW_HIGH },
+    { id: 'nvidia/nemotron-3-ultra-550b-a55b', displayName: 'nvidia/nemotron-3-ultra-550b-a55b', description: 'NVIDIA-documented reasoning contract', isDynamic: true, reasoning: NVIDIA_NONE_LOW_HIGH },
+    { id: 'deepseek-ai/deepseek-v4-flash', displayName: 'deepseek-ai/deepseek-v4-flash', description: 'NVIDIA-documented reasoning contract', isDynamic: true, reasoning: NVIDIA_NONE_HIGH_MAX },
+    { id: 'deepseek-ai/deepseek-v4-flash-0731', displayName: 'deepseek-ai/deepseek-v4-flash-0731', description: 'NVIDIA-documented reasoning contract', isDynamic: true, reasoning: NVIDIA_NONE_HIGH_MAX },
+    { id: 'meta/muse-glimmer-30b', displayName: 'meta/muse-glimmer-30b', description: 'NVIDIA-documented reasoning contract', isDynamic: true, reasoning: NVIDIA_FULL_EFFORT_RANGE },
   ],
   // OpenAI-compatible endpoint - dynamic discovery from custom base_url
   'openai-compatible': [

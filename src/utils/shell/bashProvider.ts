@@ -23,6 +23,10 @@ import {
 } from '../tmuxSocket.js'
 import { windowsPathToPosixPath } from '../windowsPaths.js'
 import type { ShellProvider } from './shellProvider.js'
+import {
+  getPortableTimeoutCompatibilityCommand,
+  getPortableTimeoutEnvironment,
+} from './portableTimeout.js'
 
 /**
  * Returns a shell command to disable extended glob patterns for security.
@@ -202,6 +206,11 @@ export async function createBashShellProvider(
         commandParts.push(disableZshNomatchCmd)
       }
 
+      const portableTimeoutCmd = getPortableTimeoutCompatibilityCommand()
+      if (portableTimeoutCmd) {
+        commandParts.push(portableTimeoutCmd)
+      }
+
       // When sourcing a file with aliases, they won't be expanded in the same command line
       // because the shell parses the entire line before execution. Using eval after
       // sourcing causes a second parsing pass where aliases are now available for expansion.
@@ -266,6 +275,7 @@ export async function createBashShellProvider(
       }
       const urTmuxEnv = getURTmuxEnv()
       const env: Record<string, string> = {}
+      Object.assign(env, getPortableTimeoutEnvironment())
       // CRITICAL: Override TMUX to isolate ALL tmux commands to UR's socket.
       // This is NOT the user's TMUX value - it points to UR's isolated socket.
       // When null (before socket initializes), user's TMUX is preserved.

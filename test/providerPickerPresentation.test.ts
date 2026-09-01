@@ -5,6 +5,7 @@ import {
   formatProviderModelDescription,
   getProviderKeyInputColumns,
   providerPickerStatusWithoutNetwork,
+  providerSupportsApiKeyEditing,
   providerSupportsEndpointEditing,
 } from '../src/components/ProviderFirstModelPicker.js'
 import { getProviderSelectionRefreshPolicy } from '../src/components/ProviderPicker.js'
@@ -95,11 +96,18 @@ describe('provider-first model picker presentation', () => {
     })
 
     expect(providerSupportsEndpointEditing(unsloth)).toBe(true)
+    expect(providerSupportsApiKeyEditing(unsloth)).toBe(true)
+    expect(
+      providerSupportsApiKeyEditing(getProviderDefinition('openai-compatible')),
+    ).toBe(true)
     expect(
       providerSupportsEndpointEditing(getProviderDefinition('openai-api')),
     ).toBe(true)
     expect(
       providerSupportsEndpointEditing(getProviderDefinition('subscription')),
+    ).toBe(false)
+    expect(
+      providerSupportsApiKeyEditing(getProviderDefinition('subscription')),
     ).toBe(false)
   })
 

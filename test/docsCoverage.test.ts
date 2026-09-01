@@ -108,6 +108,10 @@ describe('documentation coverage', () => {
     }
 
     expect(readme).toContain('ur config set provider openai-api')
+    expect(readme).toContain('ur config set provider nvidia-nim')
+    for (const doc of [readme, usage, providers, site]) {
+      expect(doc).toContain('NVIDIA NIM')
+    }
     expect(readme).toContain('does not invent subscription models')
     expect(readme).toContain('external app bridge')
     expect(providers).toContain('ur provider doctor agy')
@@ -181,6 +185,7 @@ describe('documentation coverage', () => {
     )
     expect(models).toContain('provider-scoped `provider.baseUrls`')
     expect(models).toContain('Unsloth is an inference provider only')
+    expect(models).toContain('NVIDIA NIM is a UR-native')
     expect(models).toContain('five-minute cache')
     expect(configuration).toContain(
       '`ur config set base_url <provider> <url>`',

@@ -45,7 +45,7 @@
     <main id="content" class="content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.84.1</p>
+          <p class="eyebrow">Version 1.84.2</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -165,6 +165,7 @@ ur provider doctor agy</code></pre>
             <h3>API and local providers</h3>
             <pre><code>ur config set provider openai-compatible
 ur config set provider openai-api
+ur config set provider nvidia-nim
 ur config set base_url ollama http://localhost:11434
 ur config set base_url llama.cpp http://localhost:9931/v1
 ur config set provider unsloth
@@ -172,7 +173,7 @@ ur config set model qwen3-coder:480b-cloud
 ur config set provider.fallback ollama
 ur config set openai_transport responses
 ur config set responses.store false</code></pre>
-            <p>API providers require explicit selection and read keys from a key stored via <code>ur connect</code> (OS keychain) or from environment variables. Each configurable provider keeps its own <code>base_url</code>, so switching among Ollama, LM Studio, llama.cpp, vLLM, Unsloth, and API gateways restores the matching address. OpenAI Responses is opt-in and privacy-first; Chat Completions remains the default. Unsloth is an authenticated inference provider only.</p>
+            <p>API providers require explicit selection and read keys from a key stored via <code>ur connect</code> (OS keychain) or from environment variables. Each configurable provider keeps its own <code>base_url</code>, so switching among Ollama, LM Studio, llama.cpp, vLLM, Unsloth, NVIDIA NIM, and API gateways restores the matching address. NVIDIA NIM uses live discovery from build.nvidia.com's official OpenAI-compatible API. OpenAI Responses is opt-in and privacy-first; Chat Completions remains the default. Unsloth is an authenticated inference provider only.</p>
           </article>
           <article>
             <h3>Capability-driven reasoning effort</h3>
@@ -187,6 +188,25 @@ ur --model kimi-k3:cloud --effort high
             <pre><code>ur config set provider openrouter
 /model  # cached catalog; Ctrl+R forces live refresh</code></pre>
             <p>The endpoint-scoped model catalog is reused for five minutes, while forced refresh never substitutes stale data. Interactive requests prefer OpenRouter latency routing, a stable session ID, and provider-authored prompt-cache markers; explicit routing preferences and model variants still win.</p>
+          </article>
+          <article>
+            <h3>NVIDIA NIM and compatible API keys</h3>
+            <pre><code>ur connect nvidia-nim
+ur config set provider nvidia-nim
+ur config set base_url nvidia-nim https://integrate.api.nvidia.com/v1
+/model  # K API key · E endpoint</code></pre>
+            <p>NVIDIA NIM is a UR-native provider with live models, streaming, tools, images, configurable endpoints, and only NVIDIA-documented effort ladders. Generic OpenAI-compatible endpoints can also store an optional dedicated key; anonymous endpoints remain valid.</p>
+          </article>
+          <article>
+            <h3>Portable shell deadlines</h3>
+            <pre><code>timeout 60 long-command
+# or use the Bash tool timeout field in milliseconds</code></pre>
+            <p>Generated Linux-style timeout commands also work on macOS. UR uses Homebrew <code>gtimeout</code> when present or supplies a process-group-aware compatibility command with status 124 on expiry; it does not modify your shell profile.</p>
+          </article>
+          <article>
+            <h3>Tool images across providers</h3>
+            <pre><code>Computer screenshot → tool result → vision model</code></pre>
+            <p>Every UR-native provider preserves image-bearing tool output in its valid wire shape. OpenRouter, NVIDIA NIM, and other Chat-Completions backends keep the tool result textual and send the image in the next multimodal user turn; Gemini, OpenAI Responses, Anthropic, and Ollama use their native rich forms. Vision still depends on the selected model.</p>
           </article>
           <article>
             <h3>Status bar and updates</h3>

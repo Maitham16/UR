@@ -157,6 +157,7 @@ describe('provider effort capability audit', () => {
       'llama.cpp',
       'vllm',
       'unsloth',
+      'nvidia-nim',
       'openai-compatible',
     ] as const) {
       expect(getSupportedEffortLevelsForModel('unknown-model', provider)).toEqual([])

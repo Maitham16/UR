@@ -80,7 +80,7 @@ Inside an interactive session:
 
 | Trend | UR status | Current coverage | Professional next step |
 | --- | --- | --- | --- |
-| Provider-flexible, local-first runtime | Covered | Local Ollama; direct OpenAI, Anthropic, Gemini, OpenRouter, and OpenAI-compatible APIs; authenticated subscription-CLI adapters; explicit provider selection | Normalize capability discovery across providers and make automatic per-step routing opt-in |
+| Provider-flexible, local-first runtime | Covered | Local Ollama; direct OpenAI, Anthropic, Gemini, OpenRouter, NVIDIA NIM, and OpenAI-compatible APIs; authenticated subscription-CLI adapters; explicit provider selection | Normalize capability discovery across providers and make automatic per-step routing opt-in |
 | Model Context Protocol ecosystem | Covered | Stable TypeScript SDK v2 split client/server/core runtime; `ur mcp`, OAuth/XAA, fail-closed bounded tools, final `input_required` continuation, all workspace roots with change notifications, and the opt-in stateless web server | Broaden independent-client interoperability fixtures |
 | Protocol Tasks and Apps | Covered | Negotiated Tasks lifecycle, owner-isolated durable state, and a self-contained Apps resource through `ur mcp serve-web` | Broaden independent-client interoperability fixtures |
 | A2A / Agent Card interoperability | Covered | Stable official v1.1 SDK, native ProtoJSON JSON-RPC/HTTP+JSON, SSE streaming, task resubscription, authenticated push delivery with validated destinations, negotiated cards, tenant isolation, durable artifacts, and explicit v0.3 compatibility | Broaden independent-client/TCK fixtures; keep gRPC and extended cards unadvertised until deployed and tested |
@@ -168,7 +168,7 @@ compatibility transport rather than relabeling either wire schema.
 ## Model Runtime Position
 
 UR is local-first, not local-only. Ollama supports private on-device execution;
-direct adapters support OpenAI, Anthropic, Gemini, OpenRouter, and compatible
+direct adapters support OpenAI, Anthropic, Gemini, OpenRouter, NVIDIA NIM, and compatible
 endpoints; subscription adapters use the provider's authenticated CLI. Provider
 and model selection are explicit, credentials are resolved through the
 credential layer, and the optional fallback setting is diagnostic advice rather

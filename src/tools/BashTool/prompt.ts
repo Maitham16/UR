@@ -333,6 +333,7 @@ export function getSimplePrompt(): string {
     'Always quote file paths that contain spaces with double quotes in your command (e.g., cd "path with spaces/file.txt")',
     'Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of `cd`. You may use `cd` if the User explicitly requests it.',
     `You may specify an optional timeout in milliseconds (up to ${getMaxTimeoutMs()}ms / ${getMaxTimeoutMs() / 60000} minutes). By default, your command will timeout after ${getDefaultTimeoutMs()}ms (${getDefaultTimeoutMs() / 60000} minutes).`,
+    'Prefer this tool’s `timeout` parameter over wrapping a command with the GNU `timeout` executable. UR supplies a compatible wrapper on macOS when a command genuinely needs an inner deadline.',
     ...(backgroundNote !== null ? [backgroundNote] : []),
     'When issuing multiple commands:',
     multipleCommandsSubitems,

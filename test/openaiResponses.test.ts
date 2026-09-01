@@ -15,6 +15,7 @@ import {
   createOpenAIResponsesClient,
   createOpenAIResponsesWebSocketSession,
   parseOpenAIResponsesMessage,
+  toOpenAIResponsesInput,
   toOpenAIResponsesRequest,
   type OpenAIResponsesWebSocketLike,
 } from '../src/services/api/openaiResponses.js'
@@ -196,6 +197,46 @@ describe('OpenAI Responses request and response mapping', () => {
     expect(body.text.verbosity).toBe('high')
     expect(body.context_management).toEqual([
       { type: 'compaction', compact_threshold: 20_000 },
+    ])
+  })
+
+  test('keeps images in rich function-call output', () => {
+    const input = toOpenAIResponsesInput([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'call_image',
+            content: [
+              { type: 'text', text: 'screenshot captured' },
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/png',
+                  data: 'aGVsbG8=',
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ])
+    expect(input).toEqual([
+      {
+        type: 'function_call_output',
+        call_id: 'call_image',
+        status: 'completed',
+        output: [
+          { type: 'input_text', text: 'screenshot captured' },
+          {
+            type: 'input_image',
+            detail: 'auto',
+            image_url: 'data:image/png;base64,aGVsbG8=',
+          },
+        ],
+      },
     ])
   })
 

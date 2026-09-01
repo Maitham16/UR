@@ -594,6 +594,27 @@ describe('provider registry legal access paths', () => {
     expect(result.failureReason).toBe('API key missing')
   })
 
+  test('an authenticated compatible gateway asks for its optional key only after rejecting anonymous access', async () => {
+    const result = await doctorProvider('openai-compatible', {
+      adapters: adapters({
+        env: {},
+        fetch: async () => new Response('{}', { status: 401 }),
+      }),
+      settings: {
+        provider: {
+          active: 'openai-compatible',
+          baseUrls: {
+            'openai-compatible': 'https://gateway.example/v1',
+          },
+        },
+      },
+    })
+
+    expect(result.failureReason).toBe('endpoint returned HTTP 401')
+    expect(result.suggestedFix).toContain('ur connect openai-compatible')
+    expect(result.checks.some(check => check.name === 'api_key')).toBe(false)
+  })
+
   test('reports recovery provider guidance without claiming an automatic switch', async () => {
     const disabled = await doctorProvider('codex-cli', {
       adapters: adapters({ missing: ['codex'] }),

@@ -207,7 +207,7 @@ Use `ur provider status` or `ur provider doctor <provider>` to see provider
 kind, external CLI usage, native tool/streaming support, and the boundary text.
 
 Provider values accept canonical IDs and common aliases. For example,
-`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
+`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `nvidia-nim`, `ollama`,
 `lmstudio`, `llama.cpp`, `vllm`, and `unsloth` are UR-native runtime providers, and
 `codex-cli` (`chatgpt`), `claude-code-cli` (`claude`), `gemini-cli` (`gemini`),
 and `antigravity-cli` (`agy`) are subscription CLI providers.
@@ -215,7 +215,7 @@ and `antigravity-cli` (`agy`) are subscription CLI providers.
 API modes are explicit. Keys are read from a key stored via
 `ur connect <provider>` (OS keychain) or from the environment variables
 `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
-`OPENROUTER_API_KEY`, and `UNSLOTH_API_KEY`. Subscription CLIs are optional, never required
+`OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, and `UNSLOTH_API_KEY`. Subscription CLIs are optional, never required
 dependencies, and never used as a silent fallback. UR-Nexus never scrapes
 browser sessions, extracts OAuth tokens, or bypasses provider restrictions.
 OpenAI-compatible local or cloud endpoints use `base_url` plus `model`.
@@ -224,7 +224,7 @@ and is inference-only: UR does not manage Unsloth and disables its server-side
 tools while retaining standard function calls inside UR's guarded tool loop.
 
 UR stores `base_url` per provider. You can set different addresses for
-Ollama, LM Studio, llama.cpp, vLLM, and Unsloth once, then switch providers without
+Ollama, LM Studio, llama.cpp, vLLM, Unsloth, and NVIDIA NIM once, then switch providers without
 re-entering any of them. `ur config get base_url` reports the active provider's
 saved scoped override when one exists; use `ur provider status` or
 `ur provider doctor <provider>` to inspect the effective endpoint.
@@ -233,9 +233,16 @@ without making it active first. The `/model` picker offers the same endpoint
 entry flow for a disconnected local/server provider.
 
 Use `/model` in an interactive session to select provider first and model
-second. OpenAI API, Claude API, Gemini API, OpenRouter, Ollama, and
+second. OpenAI API, Claude API, Gemini API, OpenRouter, NVIDIA NIM, Ollama, and
 OpenAI-compatible endpoints stay separate; a subscription login does not grant
 API-key access, and an API key does not grant subscription CLI access.
+
+NVIDIA NIM uses the build.nvidia.com key and hosted
+`https://integrate.api.nvidia.com/v1` endpoint by default. Connect it with
+`ur connect nvidia-nim`; use `ur config set base_url nvidia-nim <url>` for a
+different NIM deployment. On the `/model` model screen, `K` adds or replaces a
+provider API key and `E` edits its endpoint. This also makes optional
+authentication practical for generic OpenAI-compatible gateways.
 
 ## Project Instructions
 

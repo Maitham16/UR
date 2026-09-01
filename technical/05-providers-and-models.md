@@ -16,6 +16,7 @@ Source of truth: `src/services/providers/providerRegistry.ts`, `src/utils/model/
 | `anthropic-api` | Claude API | api | `ANTHROPIC_API_KEY` | enabled |
 | `gemini-api` | Gemini API | api | `GEMINI_API_KEY` | enabled |
 | `openrouter` | OpenRouter | api | `OPENROUTER_API_KEY` | enabled |
+| `nvidia-nim` | NVIDIA NIM | hosted/server API | `NVIDIA_API_KEY`; configurable `https://integrate.api.nvidia.com/v1` default | enabled |
 | `subscription` | Subscription | subscription login | OAuth | placeholder |
 | `codex-cli` | Codex CLI | subscription via official CLI | `codex login` | `disabled: true` in registry |
 | `claude-code-cli` | Claude Code | subscription via official CLI | `claude auth login` | `disabled: true` |
@@ -41,6 +42,12 @@ Unsloth is an inference provider only. UR discovers and calls an authenticated, 
 Unsloth Studio OpenAI-compatible endpoint, sends `enable_tools: false` on every inference request, and does not
 start training, download models, or enable Unsloth's server-side tools.
 
+NVIDIA NIM is a UR-native OpenAI-compatible provider. The build.nvidia.com
+hosted path defaults to `https://integrate.api.nvidia.com/v1`, while the scoped
+endpoint can target enterprise or self-hosted NIM. Discovery is always live;
+hidden curated entries enrich only exact, NVIDIA-documented reasoning
+contracts and never act as an offline model list.
+
 ### How to use
 
 ```
@@ -48,6 +55,8 @@ start training, download models, or enable Unsloth's server-side tools.
 /provider ollama          # switch provider
 /connect status           # show all provider connection states
 /connect openrouter --key sk-or-…    # store an API key (keychain-backed)
+/connect nvidia-nim --key nvapi-…    # NVIDIA hosted NIM
+/connect openai-compatible --key …   # optional compatible-gateway key
 /connect logout openrouter
 ur provider models openrouter        # list models a provider serves
 ur provider doctor ollama            # diagnose connectivity
@@ -102,7 +111,7 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   settings are intentionally insufficient for a new workspace.
 - Top-level `model`, `availableModels`, and `modelOverrides`, plus `provider.active`,
   `provider.model`, and provider-scoped `provider.baseUrls`, persist choices per scope. A
-  switch preserves the independently saved Ollama, LM Studio, llama.cpp, vLLM, Unsloth,
+  switch preserves the independently saved Ollama, LM Studio, llama.cpp, vLLM, Unsloth, NVIDIA NIM,
   `openai-compatible`, and direct-API addresses.
 - `src/utils/model/aliases.ts` maps friendly aliases; `validateModel.ts` checks against the
   provider's discovered list; `ollamaTuning.ts` adjusts context/params for local models.
@@ -117,6 +126,14 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   reasoning, metadata, and structured-output settings supported by each
   provider. Provider error payloads, empty responses, and truncated streams fail
   instead of becoming synthetic empty successes.
+- Image-bearing tool output follows each provider family's legal wire shape:
+  Anthropic keeps native rich `tool_result` blocks, OpenAI Responses uses rich
+  function output, Gemini nests `inlineData` in its function response,
+  Ollama moves images to its next native user message, and Chat-Completions
+  providers (OpenAI, OpenRouter, NVIDIA NIM, LM Studio, llama.cpp, vLLM, Unsloth, generic)
+  preserve textual tool pairing before an adjacent multimodal user message.
+  `test/providerMultimodal.test.ts`, `test/openaiResponses.test.ts`, and
+  `test/ollamaToolResultImages.test.ts` enforce the complete UR-native matrix.
 - OpenRouter model discovery uses an endpoint-scoped five-minute cache. Opening the picker
   reuses a fresh entry; Ctrl+R invalidates it and requires a live response instead of
   silently substituting stale results. Interactive requests default to latency routing,
@@ -211,7 +228,12 @@ level names does not create a graded selector.
   Enter applies the model and selected control
   atomically. `/effort status`, the
   picker confirmation, status UI, SDK state, and outbound request share the same resolver.
-- Direct OpenAI, Anthropic, and Gemini use model-specific documented ladders. OpenRouter
+- In the model step, `E` edits the provider-scoped endpoint and `K` securely
+  adds or replaces the selected HTTP provider's key. The generic
+  `openai-compatible` key remains optional: storage and request forwarding work
+  when a gateway requires authentication, while anonymous endpoints are not
+  reclassified as key-required.
+- Direct OpenAI, Anthropic, Gemini, and NVIDIA NIM use model-specific documented ladders. OpenRouter
   preserves live reasoning metadata. OpenAI-compatible servers receive
   `reasoning_effort`, including provider-authored aliases. Ollama uses native
   `think`: generic `thinking` capability metadata establishes thinking but not
@@ -243,7 +265,8 @@ Context analysis, file limits, and MCP-output truncation use the selected model'
 family. OpenAI calls `POST /responses/input_tokens`; Anthropic calls
 `POST /messages/count_tokens`; Gemini calls `models.countTokens`; llama.cpp uses
 `POST /v1/chat/completions/input_tokens`; and vLLM uses its Anthropic-compatible
-`POST /v1/messages/count_tokens`. The same translated messages, system instructions, images,
+`POST /v1/messages/count_tokens`; NVIDIA NIM uses the same NIM Messages count
+endpoint when available. The same translated messages, system instructions, images,
 and tool schemas used for inference are supplied to the count endpoint.
 
 Ollama, OpenRouter, LM Studio, Unsloth, and subscription CLIs do not expose one universal,
@@ -256,7 +279,8 @@ Primary contracts: [OpenAI input tokens](https://developers.openai.com/api/refer
 [Anthropic token counting](https://platform.claude.com/docs/en/build-with-claude/token-counting),
 [Gemini token counting](https://ai.google.dev/gemini-api/docs/generate-content/tokens),
 [llama.cpp server API](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md),
-and [vLLM online serving](https://docs.vllm.ai/en/latest/serving/openai_compatible_server/).
+and [vLLM online serving](https://docs.vllm.ai/en/latest/serving/openai_compatible_server/),
+plus [NVIDIA NIM LLM APIs](https://docs.api.nvidia.com/nim/reference/llm-apis).
 
 ## Session behavior knobs
 

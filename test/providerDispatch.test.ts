@@ -664,6 +664,7 @@ describe('real provider identity', () => {
       'llama.cpp': 'openai-compatible',
       vllm: 'openai-compatible',
       unsloth: 'openai-compatible',
+      'nvidia-nim': 'openai-compatible',
       ollama: 'ollama',
     }
     for (const id of PROVIDER_IDS) {

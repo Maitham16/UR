@@ -19,6 +19,7 @@ import {
   contentToText,
   estimateProviderInputTokens,
   estimateSerializedInputTokens,
+  imageBlocksFromContent,
   normalizeImageBlockSource,
   parseOpenAICompatibleResponse,
   systemToText,
@@ -916,17 +917,23 @@ function contentToGeminiParts(content: any, toolNamesById: Map<string, string>):
         break
       case 'tool_result':
         flushTextPart()
-        assertNoImageBlocks(
-          block.content,
-          'gemini',
-          `tool_result ${block.tool_use_id ?? index} content`,
-        )
+        const toolResultName =
+          toolNamesById.get(block.tool_use_id) ?? block.tool_use_id ?? index
+        const toolResultImages = imageBlocksFromContent(block.content)
         parts.push({
           functionResponse: {
-            name: toolNamesById.get(block.tool_use_id) ?? block.tool_use_id,
+            name: toolResultName,
             response: { result: contentToText(block.content) },
             ...(typeof block.tool_use_id === 'string' &&
               block.tool_use_id.length > 0 && { id: block.tool_use_id }),
+            ...(toolResultImages.length > 0 && {
+              parts: toolResultImages.map((image, imageIndex) =>
+                imageBlockToGeminiPart(
+                  image,
+                  `tool_result ${block.tool_use_id ?? index} image ${imageIndex}`,
+                ),
+              ),
+            }),
           },
         })
         break

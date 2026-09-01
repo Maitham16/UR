@@ -88,7 +88,7 @@ receives general-purpose tools through this path.
 
 UR-Nexus supports official provider access paths only:
 
-- Explicit API providers: OpenAI, Anthropic, Gemini, OpenRouter, and
+- Explicit API providers: OpenAI, Anthropic, Gemini, OpenRouter, NVIDIA NIM, and
   OpenAI-compatible endpoints.
 - Local/server providers: Ollama, LM Studio, llama.cpp, vLLM, and Unsloth OpenAI-compatible
   server mode.
@@ -132,6 +132,7 @@ ur config set provider openai-api
 ur config set provider anthropic-api
 ur config set provider gemini-api
 ur config set provider openrouter
+ur config set provider nvidia-nim
 ur config set provider openai-compatible
 ur config set provider unsloth
 ur provider doctor agy
@@ -147,7 +148,7 @@ When the active provider fails, `ur provider doctor` shows the configured
 recovery command; changing providers remains an explicit user action.
 
 Provider values accept canonical IDs and common aliases. Examples:
-`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `ollama`,
+`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `nvidia-nim` (`NVIDIA Build`), `ollama`,
 `lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, `unsloth` (`Unsloth Studio`), and the subscription CLI
 providers `codex-cli` (`chatgpt`), `claude-code-cli` (`claude`), `gemini-cli`
 (`gemini`), and `antigravity-cli` (`agy`). Values with spaces should be quoted
@@ -162,21 +163,22 @@ saved provider/model pair controls the runtime backend for the next agent
 request; Ollama is only used when `ollama` is the selected provider.
 
 The configured `base_url` is provider-scoped. Setting an address while vLLM is
-active does not replace the saved Ollama, llama.cpp, or Unsloth address;
+active does not replace the saved Ollama, llama.cpp, Unsloth, or NVIDIA NIM address;
 returning to any provider restores its own URL. Legacy `provider.baseUrl`
 settings are migrated to the old active provider on the first provider switch
 or scoped base-URL write.
 To configure a provider that is not active, use
 `ur config set base_url <provider> <url>`; the success message names the target
 provider. This applies to direct API providers and gateways (OpenAI, Anthropic,
-Gemini, and OpenRouter) as well as local/server providers; built-in vendor URLs
+Gemini, OpenRouter, and NVIDIA NIM) as well as local/server providers; built-in vendor URLs
 are fallbacks only. Discovery, doctor output, and request dispatch all resolve
 the same per-provider override. `/model` also opens an endpoint field when a
 disconnected local/server provider is selected.
 
 In the model step, Up/Down browses, Left/Right changes the focused model's
-supported effort level, Enter confirms, Ctrl+R refreshes the catalog, and Esc
-returns to providers. OpenRouter entries show pricing tier, context size,
+supported effort level, Enter confirms, Ctrl+R refreshes the catalog, `E`
+edits the provider endpoint, `K` adds or replaces its API key, and Esc returns
+to providers. OpenRouter entries show pricing tier, context size,
 tool/reasoning capability, compact names, and the exact ID for the focused
 entry. Its endpoint-scoped catalog is reused for five minutes, while Ctrl+R
 forces an immediate live refresh; a failed forced refresh never silently
@@ -230,12 +232,20 @@ OPENAI_COMPATIBLE_API_KEY=...
 ANTHROPIC_API_KEY=...
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
+NVIDIA_API_KEY=...
 OLLAMA_API_KEY=...             # optional for authenticated Ollama gateways
 LMSTUDIO_API_KEY=...           # optional when required by the endpoint
 LLAMA_CPP_API_KEY=...          # optional when required by the endpoint
 VLLM_API_KEY=...               # optional when required by the endpoint
 UNSLOTH_API_KEY=...
 ```
+
+NVIDIA NIM defaults to `https://integrate.api.nvidia.com/v1`, discovers the
+connected account's models live, and accepts a provider-scoped override for an
+enterprise or self-hosted NIM. Generic `openai-compatible` authentication is
+optional: `ur connect openai-compatible` or the picker's `K` key stores a
+credential when the chosen gateway needs one, without breaking anonymous
+local endpoints.
 
 Unsloth is an inference-provider integration only. Start Unsloth Studio and
 load the model outside UR, connect its generated key with `ur connect unsloth`,
@@ -503,6 +513,15 @@ After a turn that modified files, every `afterEdit` command must exit 0
 before the agent can declare the task complete. A failing command surfaces
 to the model as a structured reminder with the command name and the trimmed
 stdout/stderr.
+
+## Shell command deadlines
+
+Set the Bash tool's `timeout` input in milliseconds for a whole-command
+deadline. If a generated command uses the common Linux form `timeout 60 cmd`,
+UR also makes that command work on macOS: it uses Homebrew `gtimeout` when
+installed, otherwise supplies an in-process compatibility implementation with
+process-group cleanup and GNU-style status 124 on expiry. No package install or
+shell-profile change is required. Native Linux `timeout` remains untouched.
 
 ## Project Safety Policy
 

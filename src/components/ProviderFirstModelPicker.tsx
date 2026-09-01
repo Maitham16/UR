@@ -380,6 +380,25 @@ export function ProviderFirstModelPicker({
     { isActive: step === 'model' && !loadingModels },
   )
 
+  // Generic OpenAI-compatible endpoints may be anonymous locally and require
+  // authentication remotely. Keep optional key entry available without
+  // changing the provider into a key-required provider.
+  useInput(
+    (input, _key, event) => {
+      if (input.toLowerCase() !== 'k' || !selectedProvider) return
+      if (!providerSupportsApiKeyEditing(selectedProvider.provider)) return
+      setConnectingProvider(selectedProvider)
+      setApiKeyInput('')
+      setApiKeyCursorOffset(0)
+      setConnectionMode('api-key')
+      setConnectReturnStep('model')
+      setConnectError(null)
+      setStep('connect')
+      event.stopImmediatePropagation()
+    },
+    { isActive: step === 'model' && !loadingModels },
+  )
+
   // Ctrl+R re-runs discovery so a transient network failure or a provider that
   // has just published a model does not require leaving and reopening /model.
   useInput(
@@ -1096,6 +1115,10 @@ export function ProviderFirstModelPicker({
             providerSupportsEndpointEditing(selectedProvider.provider)
               ? ' · E endpoint'
               : ''}
+            {selectedProvider &&
+            providerSupportsApiKeyEditing(selectedProvider.provider)
+              ? ' · K API key'
+              : ''}
           </Text>
         </Box>
 
@@ -1201,7 +1224,7 @@ export function ProviderFirstModelPicker({
                   No models available for this provider.
                 </Text>
                 <Text dimColor color="subtle">
-                  Press ctrl+r to retry{selectedProvider && providerSupportsEndpointEditing(selectedProvider.provider) ? ', press E to change the endpoint' : ''}, or run `ur provider doctor {selectedProvider?.value}` to troubleshoot.
+                  Press ctrl+r to retry{selectedProvider && providerSupportsEndpointEditing(selectedProvider.provider) ? ', E to change the endpoint' : ''}{selectedProvider && providerSupportsApiKeyEditing(selectedProvider.provider) ? ', or K to add/change its API key' : ''}, or run `ur provider doctor {selectedProvider?.value}` to troubleshoot.
                 </Text>
               </Box>
             )}
@@ -1245,6 +1268,13 @@ export function providerSupportsEndpointEditing(
     provider.credentialType === 'local-runtime' ||
     provider.defaultBaseUrl !== undefined
   )
+}
+
+/** Whether the picker can securely add or replace this provider's API key. */
+export function providerSupportsApiKeyEditing(
+  provider: ProviderDefinition,
+): boolean {
+  return provider.accessType !== 'subscription' && Boolean(provider.envKey)
 }
 
 /**

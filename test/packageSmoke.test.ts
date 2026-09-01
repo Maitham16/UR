@@ -33,6 +33,8 @@ function packageSmokeEnv(temporaryRoot: string) {
     ANTHROPIC_API_KEY: '',
     GEMINI_API_KEY: '',
     OPENROUTER_API_KEY: '',
+    OPENAI_COMPATIBLE_API_KEY: '',
+    NVIDIA_API_KEY: '',
   }
 }
 

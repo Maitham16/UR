@@ -200,9 +200,15 @@ ur provider doctor <provider-id>
 curl http://localhost:11434/api/tags        # Ollama
 curl http://localhost:1234/v1/models        # LM Studio (llama.cpp: 8080, vLLM: 8000)
 curl -H "Authorization: Bearer $UNSLOTH_API_KEY" http://localhost:8888/v1/models
+curl -H "Authorization: Bearer $NVIDIA_API_KEY" https://integrate.api.nvidia.com/v1/models
 ur connect openai-api                       # store an API key securely
 ur provider doctor
 ```
+
+For an authenticated generic gateway, run `ur connect openai-compatible` or
+press `K` on its `/model` screen; the key is optional and stored separately
+from `OPENAI_API_KEY`. NVIDIA NIM uses `ur connect nvidia-nim` and keeps any
+custom `base_url` scoped to that provider.
 
 ### Unsloth is selected but unavailable
 

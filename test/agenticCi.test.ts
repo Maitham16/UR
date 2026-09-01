@@ -381,6 +381,7 @@ test('headless parent keeps provider credentials but strips platform/other secre
     LLAMA_CPP_API_KEY: 'llama-value',
     VLLM_API_KEY: 'vllm-value',
     UNSLOTH_API_KEY: 'unsloth-value',
+    NVIDIA_API_KEY: 'nvidia-value',
     GITHUB_TOKEN: 'platform-value',
     NPM_TOKEN: 'registry-value',
     RANDOM_PASSWORD: 'password-value',
@@ -391,6 +392,7 @@ test('headless parent keeps provider credentials but strips platform/other secre
   expect(env.LLAMA_CPP_API_KEY).toBe('llama-value')
   expect(env.VLLM_API_KEY).toBe('vllm-value')
   expect(env.UNSLOTH_API_KEY).toBe('unsloth-value')
+  expect(env.NVIDIA_API_KEY).toBe('nvidia-value')
   expect(env.GITHUB_TOKEN).toBeUndefined()
   expect(env.NPM_TOKEN).toBeUndefined()
   expect(env.RANDOM_PASSWORD).toBeUndefined()

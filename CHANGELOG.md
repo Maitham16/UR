@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.84.2
+
+- Added NVIDIA NIM as a real UR-native provider for build.nvidia.com. It uses
+  NVIDIA's hosted `https://integrate.api.nvidia.com/v1` default, live model
+  discovery, Bearer authentication from `NVIDIA_API_KEY` or `ur connect
+  nvidia-nim`, configurable provider-scoped endpoints, streaming, tool calls,
+  multimodal input, NIM token counting with a local-estimate fallback, and an
+  optional live smoke target. Only NVIDIA-documented per-model effort ladders
+  are overlaid; future/unknown models do not inherit Ultra.
+- Made authentication fully usable on the generic `openai-compatible`
+  provider. `/connect openai-compatible` stores its optional key, and the
+  `/model` screen now exposes `K API key` to add or replace one without making
+  anonymous local endpoints key-required. Stored endpoints and credentials
+  remain provider-scoped across switches.
+- Added a real GNU-compatible `timeout` command inside UR's spawned macOS
+  shell when neither native `timeout` nor Homebrew `gtimeout` is available.
+  It uses the Bash tool's current Node/Bun runtime, supervises an isolated
+  process group, supports the common GNU duration/signal/kill-after flags, and
+  returns status 124 on expiry. The Bash prompt now prefers its native
+  millisecond timeout field, while generated Linux-style commands remain
+  executable on macOS instead of failing with `command not found: timeout`.
+- Made image-bearing tool results portable across every UR-native provider.
+  OpenAI Chat Completions, OpenRouter, NVIDIA NIM, LM Studio, llama.cpp, vLLM, Unsloth,
+  and generic compatible endpoints keep a textual `role: tool` result and send
+  the image bytes in the immediately following multimodal user turn; Gemini
+  nests the image parts in its function response; OpenAI Responses, Anthropic,
+  and Ollama retain their native rich-result paths. Added a provider matrix and
+  real shell deadline regressions so screenshots are neither rejected nor
+  silently discarded.
+
 ## 1.84.1
 
 - Made dynamic reasoning discovery capability-truthful across local and

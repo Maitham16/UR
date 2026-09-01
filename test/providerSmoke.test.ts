@@ -35,6 +35,9 @@ describe('provider smoke command', () => {
       'UNSLOTH_BASE_URL',
       'UNSLOTH_API_KEY',
       'UNSLOTH_MODEL',
+      'NVIDIA_API_KEY',
+      'NVIDIA_MODEL',
+      'NVIDIA_BASE_URL',
     ]) {
       delete env[name]
     }
@@ -46,7 +49,7 @@ describe('provider smoke command', () => {
     })
 
     expect(result.status).toBe(0)
-    expect(result.stdout).toContain('Provider smoke summary: 0 passed, 10 skipped, 0 failed')
+    expect(result.stdout).toContain('Provider smoke summary: 0 passed, 11 skipped, 0 failed')
   })
 
   test('writes JSON skip report without credentials', () => {
@@ -80,6 +83,9 @@ describe('provider smoke command', () => {
       'UNSLOTH_BASE_URL',
       'UNSLOTH_API_KEY',
       'UNSLOTH_MODEL',
+      'NVIDIA_API_KEY',
+      'NVIDIA_MODEL',
+      'NVIDIA_BASE_URL',
     ]) {
       delete env[name]
     }
@@ -93,14 +99,14 @@ describe('provider smoke command', () => {
 
       expect(result.status).toBe(0)
       const parsed = JSON.parse(result.stdout)
-      expect(parsed.summary).toMatchObject({ passed: 0, skipped: 10, failed: 0 })
+      expect(parsed.summary).toMatchObject({ passed: 0, skipped: 11, failed: 0 })
       expect(parsed.providers[0]).toMatchObject({
         provider: 'openai-compatible',
         configured: false,
         skipped: true,
       })
       expect(existsSync(output)).toBe(true)
-      expect(JSON.parse(readFileSync(output, 'utf8')).summary.skipped).toBe(10)
+      expect(JSON.parse(readFileSync(output, 'utf8')).summary.skipped).toBe(11)
     } finally {
       rmSync(outputDirectory, { recursive: true, force: true })
     }
@@ -133,6 +139,9 @@ describe('provider smoke command', () => {
       'UNSLOTH_BASE_URL',
       'UNSLOTH_API_KEY',
       'UNSLOTH_MODEL',
+      'NVIDIA_API_KEY',
+      'NVIDIA_MODEL',
+      'NVIDIA_BASE_URL',
     ]) {
       delete env[name]
     }

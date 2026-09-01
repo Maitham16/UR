@@ -56,12 +56,13 @@ async function runThroughProvider(
     useSandbox: false,
   })
   const args = provider.getSpawnArgs(commandString)
+  const envOverrides = await provider.getEnvironmentOverrides(command)
   const started = Date.now()
 
   return await new Promise<RunResult>(resolve => {
     const child = spawn(shellPath, args, {
       cwd: options.cwd ?? workdir,
-      env: { ...process.env },
+      env: { ...process.env, ...envOverrides },
       // Own process group, so a timeout can reap the whole tree rather than
       // orphaning grandchildren that keep the output pipes open.
       detached: true,
@@ -296,6 +297,23 @@ describe('signals, timeouts and cleanup', () => {
     expect(r.stdout.trim()).toBe('launched')
     expect(r.code).toBe(0)
   })
+
+  test.skipIf(process.platform !== 'darwin')(
+    'macOS supplies a working timeout command when GNU coreutils is absent',
+    async () => {
+      const completed = await runThroughProvider(
+        `PATH=/usr/bin:/bin timeout 2 /bin/sh -c 'printf portable'`,
+      )
+      expect(completed.code).toBe(0)
+      expect(completed.stdout).toBe('portable')
+
+      const expired = await runThroughProvider(
+        `PATH=/usr/bin:/bin timeout 0.1 /bin/sh -c 'sleep 5'`,
+      )
+      expect(expired.code).toBe(124)
+      expect(expired.durationMs).toBeLessThan(3000)
+    },
+  )
 })
 
 describe('command construction is deterministic', () => {
@@ -329,6 +347,21 @@ describe('command construction is deterministic', () => {
     expect(compatibility).toBeGreaterThan(-1)
     expect(evaluation).toBeGreaterThan(compatibility)
   })
+
+  test.skipIf(process.platform !== 'darwin')(
+    'macOS timeout compatibility is installed before command evaluation',
+    async () => {
+      const provider = await createBashShellProvider(BASH, { skipSnapshot: true })
+      const { commandString } = await provider.buildExecCommand('timeout 1 true', {
+        id: 'macos-timeout-shape',
+        useSandbox: false,
+      })
+      const compatibility = commandString.indexOf('timeout()')
+      const evaluation = commandString.indexOf('eval ')
+      expect(compatibility).toBeGreaterThan(-1)
+      expect(evaluation).toBeGreaterThan(compatibility)
+    },
+  )
 
   test.skipIf(!existsSync(ZSH))(
     'zsh passes an unmatched glob through instead of aborting eval',

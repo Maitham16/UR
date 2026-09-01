@@ -46,6 +46,22 @@ const providers = [
       }),
   },
   {
+    id: 'nvidia-nim',
+    required: ['NVIDIA_API_KEY', 'NVIDIA_MODEL'],
+    model: process.env.NVIDIA_MODEL,
+    endpoint: () =>
+      process.env.NVIDIA_BASE_URL ?? 'https://integrate.api.nvidia.com/v1',
+    toolCallsSupported: true,
+    create: () =>
+      createOpenAICompatibleClient({
+        baseUrl:
+          process.env.NVIDIA_BASE_URL ?? 'https://integrate.api.nvidia.com/v1',
+        apiKey: process.env.NVIDIA_API_KEY,
+        maxRetries,
+        providerId: 'nvidia-nim',
+      }),
+  },
+  {
     id: 'openai-api',
     required: ['OPENAI_API_KEY', 'OPENAI_MODEL'],
     model: process.env.OPENAI_MODEL,

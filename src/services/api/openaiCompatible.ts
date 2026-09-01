@@ -182,7 +182,11 @@ export async function createOpenAICompatibleClient(
               source: 'local-estimate' as const,
             }
           }
-          if (providerId !== 'llama.cpp' && providerId !== 'vllm') {
+          if (
+            providerId !== 'llama.cpp' &&
+            providerId !== 'vllm' &&
+            providerId !== 'nvidia-nim'
+          ) {
             return estimate()
           }
 
@@ -310,6 +314,12 @@ export function toOpenAICompatibleRequest(
     providerName === 'openrouter'
       ? resolveOpenRouterSessionId(params)
       : undefined
+  const nvidiaCodingAgentTemplate =
+    providerName === 'nvidia-nim' &&
+    /^nvidia\/nemotron-3-(?:super|ultra)(?:-|$)/iu.test(String(params.model ?? '')) &&
+    tools.length > 0
+      ? { force_nonempty_content: true }
+      : undefined
   return {
     model: params.model,
     messages: toOpenAIMessages(params, providerName),
@@ -333,6 +343,9 @@ export function toOpenAICompatibleRequest(
       provider: openRouterProviderPreferences,
     }),
     ...(openRouterSessionId && { session_id: openRouterSessionId }),
+    ...(nvidiaCodingAgentTemplate && {
+      chat_template_kwargs: nvidiaCodingAgentTemplate,
+    }),
     stream: Boolean(params.stream),
     // OpenRouter now always includes usage in its final streaming chunk; its
     // former `usage.include` and `stream_options.include_usage` switches are
@@ -548,11 +561,11 @@ export function contentToText(content: any): string {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
   return content
-    .map(block => {
-      if (typeof block === 'string') return block
-      if (block?.type === 'text') return block.text ?? ''
-      if (block?.type === 'tool_result') return contentToText(block.content)
-      return ''
+    .flatMap(block => {
+      if (typeof block === 'string') return [block]
+      if (block?.type === 'text') return [block.text ?? '']
+      if (block?.type === 'tool_result') return [contentToText(block.content)]
+      return []
     })
     .join('\n')
 }
@@ -575,6 +588,17 @@ export function containsImageBlock(content: any): boolean {
     if (block?.type === 'image') return true
     if (block?.type === 'tool_result') return containsImageBlock(block.content)
     return false
+  })
+}
+
+export function imageBlocksFromContent(content: any): any[] {
+  if (!Array.isArray(content)) return []
+  return content.flatMap(block => {
+    if (block?.type === 'image') return [block]
+    if (block?.type === 'tool_result') {
+      return imageBlocksFromContent(block.content)
+    }
+    return []
   })
 }
 
@@ -878,6 +902,7 @@ function messageToOpenAIMessages(
   let hasStructuredContent = false
   const toolCalls: any[] = []
   const toolResults: any[] = []
+  const toolResultImageParts: any[] = []
   const flushTextPart = () => {
     if (pendingTextParts.length === 0) return
     if (pendingTextParts.some(part => part.cacheControl)) {
@@ -938,16 +963,14 @@ function messageToOpenAIMessages(
         })
         break
       case 'tool_result':
-        assertNoImageBlocks(
-          block.content,
-          providerName,
-          `tool_result ${block.tool_use_id ?? index} content`,
-        )
+        const toolResultImages = imageBlocksFromContent(block.content)
         const toolResultCacheControl =
           providerName === 'openrouter'
             ? toOpenRouterCacheControl(block.cache_control)
             : undefined
         const toolResultText = contentToText(block.content)
+        const toolResultName =
+          toolNamesById.get(block.tool_use_id) ?? block.tool_use_id ?? index
         toolResults.push({
           role: 'tool',
           tool_call_id: block.tool_use_id,
@@ -962,6 +985,26 @@ function messageToOpenAIMessages(
             ? { name: toolNamesById.get(block.tool_use_id) }
             : {}),
         })
+        if (toolResultImages.length > 0) {
+          // Chat Completions tool messages accept textual function output,
+          // while multimodal input belongs in a user message. Keep the tool
+          // result paired with its call, then carry every byte in an adjacent
+          // user turn. This is accepted by OpenRouter/OpenAI-compatible vision
+          // models and never silently discards a screenshot.
+          toolResultImageParts.push({
+            type: 'text',
+            text: `Image output from tool ${toolResultName}:`,
+          })
+          toolResultImageParts.push(
+            ...toolResultImages.map((image, imageIndex) =>
+              imageBlockToOpenAIContentPart(
+                image,
+                providerName,
+                `tool_result ${block.tool_use_id ?? index} image ${imageIndex}`,
+              ),
+            ),
+          )
+        }
         break
       default:
         break
@@ -982,13 +1025,23 @@ function messageToOpenAIMessages(
   }
 
   if (toolResults.length > 0) {
-    const result: any[] = []
-    if (hasStructuredContent) {
+    // OpenAI-compatible APIs require tool messages immediately after the
+    // assistant tool_calls they answer. Any sibling user text/images follow
+    // those results, including images lifted out of a tool_result above.
+    const result: any[] = [...toolResults]
+    if (toolResultImageParts.length > 0) {
+      const followupParts = hasStructuredContent
+        ? [...multimodalParts]
+        : text
+          ? [{ type: 'text', text }]
+          : []
+      followupParts.push(...toolResultImageParts)
+      result.push({ role: 'user', content: followupParts })
+    } else if (hasStructuredContent) {
       result.push({ role: message.role, content: messageContent })
     } else if (text) {
       result.push({ role: message.role, content: text })
     }
-    result.push(...toolResults)
     return result
   }
 

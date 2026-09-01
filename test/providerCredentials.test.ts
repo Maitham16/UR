@@ -59,11 +59,24 @@ describe('provider credential store', () => {
       LMSTUDIO_API_KEY: 'lmstudio-key',
       LLAMA_CPP_API_KEY: 'llama-cpp-key',
       VLLM_API_KEY: 'vllm-key',
+      OPENAI_COMPATIBLE_API_KEY: 'compatible-key',
+      NVIDIA_API_KEY: 'nvidia-key',
     }
     expect(getProviderApiKey('ollama', { storage, env })).toBe('ollama-key')
     expect(getProviderApiKey('lmstudio', { storage, env })).toBe('lmstudio-key')
     expect(getProviderApiKey('llama.cpp', { storage, env })).toBe('llama-cpp-key')
     expect(getProviderApiKey('vllm', { storage, env })).toBe('vllm-key')
+    expect(getProviderApiKey('openai-compatible', { storage, env })).toBe(
+      'compatible-key',
+    )
+    expect(getProviderApiKey('nvidia-nim', { storage, env })).toBe(
+      'nvidia-key',
+    )
+
+    setProviderApiKey('openai-compatible', 'stored-compatible-key', { storage })
+    expect(getProviderApiKey('openai-compatible', { storage, env })).toBe(
+      'stored-compatible-key',
+    )
   })
 
   test('clear removes only that provider and preserves other stored data', () => {
