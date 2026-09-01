@@ -120,7 +120,7 @@ export function ConfirmStep(t0) {
     T1 = WizardDialogLayout;
     t18 = "Confirm and save";
     if ($[34] === Symbol.for("react.memo_cache_sentinel")) {
-      t19 = <Byline><KeyboardShortcutHint shortcut="s/Enter" action="save" /><KeyboardShortcutHint shortcut="e" action="edit in your editor" /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" /></Byline>;
+      t19 = <Byline><KeyboardShortcutHint shortcut="s/Enter" action="save" /><KeyboardShortcutHint shortcut="e" action="edit in your editor" /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="cancel" /></Byline>;
       $[34] = t19;
     } else {
       t19 = $[34];

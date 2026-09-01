@@ -35,6 +35,7 @@ export type Output = z.infer<OutputSchema>
 
 export const EnterPlanModeTool: Tool<InputSchema, Output> = buildTool({
   name: ENTER_PLAN_MODE_TOOL_NAME,
+  permissionRequestKind: 'enter-plan-mode',
   searchHint: 'switch to plan mode to design an approach before coding',
   maxResultSizeChars: 100_000,
   async description() {

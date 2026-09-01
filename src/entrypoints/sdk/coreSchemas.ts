@@ -1292,7 +1292,7 @@ export const AgentInfoSchema = lazySchema(() =>
         ),
     })
     .describe(
-      'Information about an available subagent that can be invoked via the Task tool.',
+      'Information about an available subagent that can be invoked via the Agent tool.',
     ),
 )
 

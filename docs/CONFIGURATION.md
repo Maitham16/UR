@@ -192,6 +192,12 @@ provider values. Ultra appears only when metadata advertises `ultra`, `max`,
 exactly. Models that top out at `high`, boolean-thinking models, and unknown
 capabilities omit Ultra. See [Reasoning effort](providers.md#reasoning-effort).
 
+Boolean-thinking models on runtimes with a native toggle expose a two-state
+control instead: Left selects off, Right selects on, and `t` toggles in
+`/model`; `/thinking on|off|status` is the direct command. This updates the live
+session and `alwaysThinkingEnabled`. Generic OpenAI-compatible transports do
+not receive an invented boolean field.
+
 The same provider-first picker is mandatory on the first interactive run in a
 workspace with no model in `.ur/settings.json` or `.ur/settings.local.json`.
 The result is validated and written to the gitignored local settings file.

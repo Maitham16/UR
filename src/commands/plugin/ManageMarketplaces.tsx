@@ -555,8 +555,8 @@ export function ManageMarketplaces({
         <Box marginLeft={3}>
           <Text dimColor italic>
             {exitState.pending ? <>Press {exitState.keyName} again to go back</> : <Byline>
-                <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="select" />
-                <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+                <ConfigurableShortcutHint action="select:accept" context="Select" description="select" />
+                <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="go back" />
               </Byline>}
           </Text>
         </Box>
@@ -666,8 +666,8 @@ export function ManageMarketplaces({
         <Box marginLeft={3}>
           <Text dimColor italic>
             {isUpdating ? <>Please wait…</> : <Byline>
-                <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="select" />
-                <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+                <ConfigurableShortcutHint action="select:accept" context="Select" description="select" />
+                <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="go back" />
               </Byline>}
           </Text>
         </Box>
@@ -782,7 +782,7 @@ function ManageMarketplacesKeyHints(t0) {
   }
   let t1;
   if ($[2] !== hasPendingActions) {
-    t1 = hasPendingActions && <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="apply changes" />;
+    t1 = hasPendingActions && <ConfigurableShortcutHint action="select:accept" context="Select" description="apply changes" />;
     $[2] = hasPendingActions;
     $[3] = t1;
   } else {
@@ -790,7 +790,7 @@ function ManageMarketplacesKeyHints(t0) {
   }
   let t2;
   if ($[4] !== hasPendingActions) {
-    t2 = !hasPendingActions && <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="select" />;
+    t2 = !hasPendingActions && <ConfigurableShortcutHint action="select:accept" context="Select" description="select" />;
     $[4] = hasPendingActions;
     $[5] = t2;
   } else {
@@ -815,7 +815,7 @@ function ManageMarketplacesKeyHints(t0) {
   const t5 = hasPendingActions ? "cancel" : "go back";
   let t6;
   if ($[10] !== t5) {
-    t6 = <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description={t5} />;
+    t6 = <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description={t5} />;
     $[10] = t5;
     $[11] = t6;
   } else {

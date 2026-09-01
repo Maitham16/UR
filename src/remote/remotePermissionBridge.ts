@@ -1,9 +1,12 @@
-// @ts-nocheck
 import { randomUUID } from 'crypto'
+import { z } from 'zod/v4'
 import type { SDKControlPermissionRequest } from '../entrypoints/sdk/controlTypes.js'
-import type { Tool } from '../Tool.js'
+import { buildTool, type Tool, type ToolDef } from '../Tool.js'
 import type { AssistantMessage } from '../types/message.js'
 import { jsonStringify } from '../utils/slowOperations.js'
+
+const remoteToolInputSchema = z.record(z.string(), z.unknown())
+const remoteToolOutputSchema = z.string()
 
 /**
  * Create a synthetic AssistantMessage for remote permission requests.
@@ -52,9 +55,12 @@ export function createSyntheticAssistantMessage(
  * local CLI doesn't know about. The stub routes to FallbackPermissionRequest.
  */
 export function createToolStub(toolName: string): Tool {
-  return {
+  return buildTool({
     name: toolName,
-    inputSchema: {} as Tool['inputSchema'],
+    inputSchema: remoteToolInputSchema,
+    outputSchema: remoteToolOutputSchema,
+    permissionRequestKind: 'fallback',
+    maxResultSizeChars: 100_000,
     isEnabled: () => true,
     userFacingName: () => toolName,
     renderToolUseMessage: (input: Record<string, unknown>) => {
@@ -70,10 +76,14 @@ export function createToolStub(toolName: string): Tool {
         .join(', ')
     },
     call: async () => ({ data: '' }),
+    mapToolResultToToolResultBlockParam: (output, toolUseID) => ({
+      type: 'tool_result',
+      tool_use_id: toolUseID,
+      content: output,
+    }),
     description: async () => '',
-    prompt: () => '',
+    prompt: async () => '',
     isReadOnly: () => false,
     isMcp: false,
-    needsPermissions: () => true,
-  } as unknown as Tool
+  } satisfies ToolDef<typeof remoteToolInputSchema, string>) as Tool
 }

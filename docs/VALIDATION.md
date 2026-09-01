@@ -82,6 +82,10 @@ between models that top out at high, xhigh, max, and native-ultra models; the le
 selected ceiling must update immediately. Models that top out at high must omit Ultra, while
 xhigh/max entries must show `ultra→xhigh` or `ultra→max`, and the
 confirmation must match `/effort status` and the request wire value. For
+an Ollama model that advertises boolean thinking without a ladder, verify that
+Left selects off, Right selects on, `t` toggles, and `/effort max` reports that
+max was not sent while enabling `think: true`; `/thinking off` must produce
+`think: false`. For
 llama.cpp, verify focus requests
 `/props?model=<focused-id>` and that a template reporting
 `supports_reasoning_effort: false` has no graded selector. Open the OpenAI API or Claude

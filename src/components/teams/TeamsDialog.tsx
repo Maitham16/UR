@@ -251,7 +251,7 @@ function TeamDetailView(t0) {
   } = t0;
   const subtitle = `${teammates.length} ${teammates.length === 1 ? "teammate" : "teammates"}`;
   const supportsHideShow = getCachedBackend()?.supportsHideShow ?? false;
-  const cycleModeShortcut = useShortcutDisplay("confirm:cycleMode", "Confirmation", "shift+tab");
+  const cycleModeShortcut = useShortcutDisplay("confirm:cycleMode", "Confirmation");
   const t1 = `Team ${teamName}`;
   let t2;
   if ($[0] !== selectedIndex || $[1] !== teammates) {
@@ -383,7 +383,7 @@ function TeammateDetailView(t0) {
     onCancel
   } = t0;
   const [promptExpanded, setPromptExpanded] = useState(false);
-  const cycleModeShortcut = useShortcutDisplay("confirm:cycleMode", "Confirmation", "shift+tab");
+  const cycleModeShortcut = useShortcutDisplay("confirm:cycleMode", "Confirmation");
   const themeColor = teammate.color ? AGENT_COLOR_TO_THEME_COLOR[teammate.color as keyof typeof AGENT_COLOR_TO_THEME_COLOR] : undefined;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {

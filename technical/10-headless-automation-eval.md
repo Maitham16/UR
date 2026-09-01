@@ -50,6 +50,11 @@ subprocess example from `/sdk init` using `ur -p` plus stream-json. `ur mcp
 serve` exposes UR as an MCP server so other agents/apps can drive it; `ur
 server` exposes an HTTP session API (see doc 02).
 
+The first stream event (`system/init`) and permission-denial records emit each
+tool's canonical runtime name. The delegation tool is therefore `Agent` on the
+wire; `Task` remains an accepted legacy alias at input/permission boundaries but
+is never synthesized into new SDK output.
+
 ## CI loop (`/ci-loop`, alias `/heal`)
 
 Run a command, let the agent fix failures, rerun until green — or prove cannot-fix with

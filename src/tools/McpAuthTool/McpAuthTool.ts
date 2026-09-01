@@ -14,7 +14,7 @@ import type {
   McpSSEServerConfig,
   ScopedMcpServerConfig,
 } from '../../services/mcp/types.js'
-import type { Tool } from '../../Tool.js'
+import { buildTool, type Tool, type ToolDef } from '../../Tool.js'
 import { errorMessage } from '../../utils/errors.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logMCPDebug, logMCPError } from '../../utils/log.js'
@@ -22,6 +22,15 @@ import type { PermissionDecision } from '../../utils/permissions/PermissionResul
 
 const inputSchema = lazySchema(() => z.object({}))
 type InputSchema = ReturnType<typeof inputSchema>
+
+const outputSchema = lazySchema(() =>
+  z.object({
+    status: z.enum(['auth_url', 'unsupported', 'error']),
+    message: z.string(),
+    authUrl: z.string().optional(),
+  }),
+)
+type OutputSchema = ReturnType<typeof outputSchema>
 
 export type McpAuthOutput = {
   status: 'auth_url' | 'unsupported' | 'error'
@@ -59,7 +68,7 @@ export function createMcpAuthTool(
     `Call this tool to start the OAuth flow — you'll receive an authorization URL to share with the user. ` +
     `Once the user completes authorization in their browser, the server's real tools will become available automatically.`
 
-  return {
+  return buildTool({
     name: buildMcpToolName(serverName, 'authenticate'),
     isMcp: true,
     mcpInfo: { serverName, toolName: 'authenticate' },
@@ -78,6 +87,9 @@ export function createMcpAuthTool(
     },
     get inputSchema(): InputSchema {
       return inputSchema()
+    },
+    get outputSchema(): OutputSchema {
+      return outputSchema()
     },
     async checkPermissions(input): Promise<PermissionDecision> {
       return { behavior: 'allow', updatedInput: input }
@@ -211,5 +223,5 @@ export function createMcpAuthTool(
         content: data.message,
       }
     },
-  } satisfies Tool<InputSchema, McpAuthOutput>
+  } satisfies ToolDef<InputSchema, McpAuthOutput>)
 }

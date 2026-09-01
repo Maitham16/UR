@@ -20,6 +20,40 @@ export type ThinkingConfig =
   | { type: 'enabled'; budgetTokens: number }
   | { type: 'disabled' }
 
+/** Left/Right is a truthful two-state control for boolean-thinking models. */
+export function resolveThinkingArrowValue(
+  direction: 'left' | 'right',
+): boolean {
+  return direction === 'right'
+}
+
+/**
+ * Whether UR has a real provider-native on/off mapping for this runtime.
+ *
+ * Model metadata alone is not enough: generic OpenAI-compatible transports
+ * deliberately omit boolean thinking because that protocol has no universal
+ * field. Anthropic enables extended thinking by including/removing its native
+ * `thinking` block, while Ollama uses the native boolean `think` field.
+ */
+export function providerSupportsThinkingToggle(
+  provider: ProviderId,
+): boolean {
+  return provider === 'ollama' || provider === 'anthropic-api'
+}
+
+/**
+ * Apply the live session toggle without losing an explicit CLI budget. A
+ * session that started with thinking disabled still needs a real enabled
+ * config when `/thinking on` (or the model picker) turns it on later.
+ */
+export function resolveSessionThinkingConfig(
+  configured: ThinkingConfig,
+  enabled: boolean | undefined,
+): ThinkingConfig {
+  if (enabled === false) return { type: 'disabled' }
+  return configured.type === 'disabled' ? { type: 'adaptive' } : configured
+}
+
 /**
  * Build-time gate (feature) + runtime gate (GrowthBook). The build flag
  * controls code inclusion in external builds; the GB flag controls rollout.

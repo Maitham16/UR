@@ -98,7 +98,7 @@ export function MCPAgentServerMenu({
         <Box marginLeft={3}>
           <Text dimColor>
             Return here after authenticating in your browser.{' '}
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="go back" />
           </Text>
         </Box>
       </Box>;
@@ -119,7 +119,7 @@ export function MCPAgentServerMenu({
   return <Dialog title={`${capitalizedServerName} MCP Server`} subtitle="agent-only" onCancel={onCancel} inputGuide={exitState => exitState.pending ? <Text>Press {exitState.keyName} again to exit</Text> : <Byline>
             <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
             <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="go back" />
           </Byline>}>
       <Box flexDirection="column" gap={0}>
         <Box>

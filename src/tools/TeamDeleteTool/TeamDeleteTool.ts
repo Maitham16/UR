@@ -21,6 +21,15 @@ import { renderToolResultMessage, renderToolUseMessage } from './UI.js'
 const inputSchema = lazySchema(() => z.strictObject({}))
 type InputSchema = ReturnType<typeof inputSchema>
 
+const outputSchema = lazySchema(() =>
+  z.object({
+    success: z.boolean(),
+    message: z.string(),
+    team_name: z.string().optional(),
+  }),
+)
+type OutputSchema = ReturnType<typeof outputSchema>
+
 export type Output = {
   success: boolean
   message: string
@@ -41,6 +50,10 @@ export const TeamDeleteTool: Tool<InputSchema, Output> = buildTool({
 
   get inputSchema(): InputSchema {
     return inputSchema()
+  },
+
+  get outputSchema(): OutputSchema {
+    return outputSchema()
   },
 
   isEnabled() {

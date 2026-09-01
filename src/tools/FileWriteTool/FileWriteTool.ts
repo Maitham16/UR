@@ -150,6 +150,7 @@ export type FileWriteToolInput = InputSchema
 
 export const FileWriteTool = buildTool({
   name: FILE_WRITE_TOOL_NAME,
+  permissionRequestKind: 'file-write',
   searchHint: 'create or overwrite files',
   maxResultSizeChars: 100_000,
   strict: true,

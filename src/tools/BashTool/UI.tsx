@@ -68,7 +68,7 @@ export function BackgroundHint(t0) {
     t3 = $[6];
   }
   useKeybinding("task:background", handleBackground, t3);
-  const baseShortcut = useShortcutDisplay("task:background", "Task", "ctrl+b");
+  const baseShortcut = useShortcutDisplay("task:background", "Task");
   const shortcut = env.terminal === "tmux" && baseShortcut === "ctrl+b" ? "ctrl+b ctrl+b (twice)" : baseShortcut;
   if (isEnvTruthy(process.env.UR_CODE_DISABLE_BACKGROUND_TASKS)) {
     return null;

@@ -4,7 +4,7 @@ import { Box, Text } from '../../ink.js';
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 export function CompactBoundaryMessage() {
   const $ = _c(2);
-  const historyShortcut = useShortcutDisplay("app:toggleTranscript", "Global", "ctrl+o");
+  const historyShortcut = useShortcutDisplay("app:toggleTranscript", "Global");
   let t0;
   if ($[0] !== historyShortcut) {
     t0 = <Box marginY={1}><Text dimColor={true}>⌂ Conversation compacted ({historyShortcut} for history)</Text></Box>;

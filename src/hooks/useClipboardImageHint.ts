@@ -55,7 +55,7 @@ export function useClipboardImageHint(
           lastHintTimeRef.current = now
           addNotification({
             key: NOTIFICATION_KEY,
-            text: `Image in clipboard · ${getShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v')} to paste`,
+            text: `Image in clipboard · ${getShortcutDisplay('chat:imagePaste', 'Chat')} to paste`,
             priority: 'immediate',
             timeoutMs: 8000,
           })

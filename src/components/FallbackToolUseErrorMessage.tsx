@@ -63,7 +63,7 @@ export function FallbackToolUseErrorMessage({
   result,
   verbose,
 }: Props): React.ReactNode {
-  const transcriptShortcut = useShortcutDisplay("app:toggleTranscript", "Global", "ctrl+o");
+  const transcriptShortcut = useShortcutDisplay("app:toggleTranscript", "Global");
   const { error, hiddenLineCount, showDetailsHint } =
     formatFallbackToolUseError(result, verbose);
   const visibleError = stripUnderlineAnsi(

@@ -329,7 +329,6 @@ export async function* handleStopHooks(
         const expandShortcut = getShortcutDisplay(
           'app:toggleTranscript',
           'Global',
-          'ctrl+o',
         )
         toolUseContext.addNotification?.({
           key: 'stop-hook-error',

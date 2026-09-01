@@ -6,7 +6,7 @@
 // independent verification subagent before yielding the final response.
 //
 // This is "automatic" in that the verifier always asks for the spawn,
-// but the spawn itself is performed by the model via its existing Task
+// but the spawn itself is performed by the model via its existing Agent
 // tool — keeping the L1/L2 wiring small and reusing AgentTool's
 // well-tested machinery.
 //
@@ -50,7 +50,7 @@ export function buildSubagentNudge(args: {
     `The deterministic verifier (L1) just passed for this turn. Before you ` +
     `tell the user you are done, you MUST spawn the independent verifier ` +
     `subagent and wait for its verdict.\n\n` +
-    `How: call the Task tool with subagent_type="${VERIFIER_AGENT_TYPE}". ` +
+    `How: call the Agent tool with subagent_type="${VERIFIER_AGENT_TYPE}". ` +
     `In the description field, write a short label (e.g. "verify changes"). ` +
     `In the prompt field, include:\n` +
     `1. The original user request below.\n` +

@@ -544,8 +544,8 @@ export function DiscoverPlugins({
         <Box marginTop={1}>
           <Text dimColor>
             <Byline>
-              <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="select" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+              <ConfigurableShortcutHint action="select:accept" context="Select" description="select" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />
             </Byline>
           </Text>
         </Box>
@@ -656,7 +656,7 @@ function DiscoverPluginsKeyHint(t0) {
   } = t0;
   let t1;
   if ($[0] !== hasSelection) {
-    t1 = hasSelection && <ConfigurableShortcutHint action="plugin:install" context="Plugin" fallback="i" description="install" bold={true} />;
+    t1 = hasSelection && <ConfigurableShortcutHint action="plugin:install" context="Plugin" description="install" bold={true} />;
     $[0] = hasSelection;
     $[1] = t1;
   } else {
@@ -671,7 +671,7 @@ function DiscoverPluginsKeyHint(t0) {
   }
   let t3;
   if ($[3] !== canToggle) {
-    t3 = canToggle && <ConfigurableShortcutHint action="plugin:toggle" context="Plugin" fallback="Space" description="toggle" />;
+    t3 = canToggle && <ConfigurableShortcutHint action="plugin:toggle" context="Plugin" description="toggle" />;
     $[3] = canToggle;
     $[4] = t3;
   } else {
@@ -680,8 +680,8 @@ function DiscoverPluginsKeyHint(t0) {
   let t4;
   let t5;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="details" />;
-    t5 = <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />;
+    t4 = <ConfigurableShortcutHint action="select:accept" context="Select" description="details" />;
+    t5 = <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />;
     $[5] = t4;
     $[6] = t5;
   } else {

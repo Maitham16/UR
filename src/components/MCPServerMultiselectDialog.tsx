@@ -109,7 +109,7 @@ export function MCPServerMultiselectDialog(t0) {
   }
   let t8;
   if ($[18] === Symbol.for("react.memo_cache_sentinel")) {
-    t8 = <Box paddingX={1}><Text dimColor={true} italic={true}><Byline><KeyboardShortcutHint shortcut="Space" action="select" /><KeyboardShortcutHint shortcut="Enter" action="confirm" /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="reject all" /></Byline></Text></Box>;
+    t8 = <Box paddingX={1}><Text dimColor={true} italic={true}><Byline><KeyboardShortcutHint shortcut="Space" action="select" /><KeyboardShortcutHint shortcut="Enter" action="confirm" /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="reject all" /></Byline></Text></Box>;
     $[18] = t8;
   } else {
     t8 = $[18];

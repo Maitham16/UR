@@ -66,6 +66,7 @@ import { GrepTool } from './tools/GrepTool/GrepTool.js'
 import { CodeSearchTool } from './tools/CodeSearchTool/CodeSearchTool.js'
 import { isCodeIndexEnabled } from './utils/codeIndex/index.js'
 import { TungstenTool } from './tools/TungstenTool/TungstenTool.js'
+import { isTungstenEnabled } from './tools/TungstenTool/availability.js'
 // Lazy require to break circular dependency: tools.ts -> TeamCreateTool/TeamDeleteTool -> ... -> tools.ts
 /* eslint-disable @typescript-eslint/no-require-imports */
 const getTeamCreateTool = () =>
@@ -199,6 +200,9 @@ export function getToolsForDefaultPreset(): string[] {
  * NOTE: This MUST stay in sync with https://console.statsig.com/4aF3Ewatb6xPVpCwxb5nA3/dynamic_configs/ur_global_system_caching, in order to cache the system prompt across users.
  */
 export function getAllBaseTools(): Tools {
+  // Resolve once: availability checks can inspect the host shell and should
+  // not run twice while assembling one pool.
+  const powerShellTool = getPowerShellTool()
   return [
     AgentTool,
     BashTool,
@@ -229,7 +233,7 @@ export function getAllBaseTools(): Tools {
     SkillTool,
     EnterPlanModeTool,
     ...(process.env.USER_TYPE === 'ant' ? [ConfigTool] : []),
-    ...(process.env.USER_TYPE === 'ant' ? [TungstenTool] : []),
+    ...(isTungstenEnabled() ? [TungstenTool] : []),
     ...(SuggestBackgroundPRTool ? [SuggestBackgroundPRTool] : []),
     ...(WebBrowserTool ? [WebBrowserTool] : []),
     ...(isTodoV2Enabled()
@@ -256,7 +260,7 @@ export function getAllBaseTools(): Tools {
     ...(SendUserFileTool ? [SendUserFileTool] : []),
     ...(PushNotificationTool ? [PushNotificationTool] : []),
     ...(SubscribePRTool ? [SubscribePRTool] : []),
-    ...(getPowerShellTool() ? [getPowerShellTool()] : []),
+    ...(powerShellTool ? [powerShellTool] : []),
     ...(SnipTool ? [SnipTool] : []),
     ...(process.env.NODE_ENV === 'test' ? [TestingPermissionTool] : []),
     ListMcpResourcesTool,

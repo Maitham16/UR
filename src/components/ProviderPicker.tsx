@@ -165,7 +165,6 @@ export function ProviderPicker({
             <ConfigurableShortcutHint
               action="select:cancel"
               context="Select"
-              fallback="Esc"
               description="exit"
             />
           </Byline>

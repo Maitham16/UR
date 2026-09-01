@@ -1,13 +1,105 @@
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import {
+  builtInCommandNames,
   clearCommandsCache,
   getCommands,
+  INTERNAL_ONLY_COMMANDS,
   normalizeCommandTokens,
 } from '../src/commands.js'
 import { initBundledSkills } from '../src/skills/bundled/index.js'
 import { clearBundledSkills } from '../src/skills/bundledSkills.js'
 import type { Command } from '../src/types/command.js'
+
+type DocumentedOptionalImplementation = {
+  path: string
+  tokens: readonly string[]
+}
+
+const OPTIONAL_IMPLEMENTATIONS: readonly DocumentedOptionalImplementation[] = [
+  {
+    path: 'src/commands/proactive.ts',
+    tokens: ['proactive'],
+  },
+  {
+    path: 'src/commands/brief.ts',
+    tokens: ['brief'],
+  },
+  {
+    path: 'src/commands/assistant/index.ts',
+    tokens: ['assistant'],
+  },
+  {
+    path: 'src/commands/bridge/index.ts',
+    tokens: ['remote-control', 'rc'],
+  },
+  {
+    path: 'src/commands/voice/index.ts',
+    tokens: ['voice'],
+  },
+  {
+    path: 'src/commands/remote-setup/index.ts',
+    tokens: ['web-setup'],
+  },
+  {
+    path: 'src/skills/bundled/loop.ts',
+    tokens: ['loop'],
+  },
+  {
+    path: 'src/skills/bundled/scheduleRemoteAgents.ts',
+    tokens: ['schedule'],
+  },
+  {
+    path: 'src/skills/bundled/urApi.ts',
+    tokens: ['ur-api'],
+  },
+  {
+    path: 'src/skills/bundled/urInChrome.ts',
+    tokens: ['ur-in-chrome'],
+  },
+  {
+    path: 'src/skills/bundled/skillify.ts',
+    tokens: ['skillify'],
+  },
+  {
+    path: 'src/skills/bundled/remember.ts',
+    tokens: ['remember'],
+  },
+  {
+    path: 'src/skills/bundled/verify.ts',
+    tokens: ['verify'],
+  },
+  {
+    path: 'src/skills/bundled/loremIpsum.ts',
+    tokens: ['lorem-ipsum'],
+  },
+  {
+    path: 'src/skills/bundled/stuck.ts',
+    tokens: ['stuck'],
+  },
+  {
+    path: 'src/skills/bundled/keybindings.ts',
+    tokens: ['keybindings-help'],
+  },
+  {
+    path: 'src/skills/bundled/dream.ts',
+    tokens: ['dream'],
+  },
+] as const
+
+function addCommandTokens(target: Set<string>, command: Command): void {
+  target.add(command.name)
+  target.add(command.userFacingName?.() ?? command.name)
+  for (const alias of command.aliases ?? []) target.add(alias)
+}
+
+function documentedSlashTokens(reference: string): Set<string> {
+  return new Set(
+    [...reference.matchAll(/`\/([a-z][a-z0-9-]*)/gu)].map(
+      match => match[1]!,
+    ),
+  )
+}
 
 function localCommand(name: string, aliases: string[] = []): Command {
   return {
@@ -117,15 +209,43 @@ describe('command registry integrity', () => {
         'technical/03-slash-commands.md',
         'utf8',
       )
-      const shippedVisibleCommands = commands.filter(
+      const documentedTokens = documentedSlashTokens(reference)
+      const shippedCommands = commands.filter(
         command =>
-          !command.isHidden &&
           (command.loadedFrom === undefined || command.loadedFrom === 'bundled'),
       )
-      for (const command of shippedVisibleCommands) {
-        const name = command.userFacingName?.() ?? command.name
-        expect(reference).toContain(`/${name}`)
+      const undocumentedShippedTokens = new Set<string>()
+      for (const command of shippedCommands.filter(command => !command.isHidden)) {
+        const tokens = [
+          command.name,
+          command.userFacingName?.() ?? command.name,
+          ...(command.aliases ?? []),
+        ]
+        for (const token of tokens) {
+          if (!documentedTokens.has(token)) undocumentedShippedTokens.add(token)
+        }
       }
+      expect([...undocumentedShippedTokens].sort()).toEqual([])
+
+      const implementedTokens = new Set<string>()
+      for (const token of builtInCommandNames()) implementedTokens.add(token)
+      for (const command of [...shippedCommands, ...INTERNAL_ONLY_COMMANDS]) {
+        addCommandTokens(implementedTokens, command)
+      }
+      for (const implementation of OPTIONAL_IMPLEMENTATIONS) {
+        expect(existsSync(implementation.path)).toBe(true)
+        const source = readFileSync(implementation.path, 'utf8')
+        for (const token of implementation.tokens) {
+          expect(source).toContain(`'${token}'`)
+          implementedTokens.add(token)
+          expect(documentedTokens.has(token)).toBe(true)
+        }
+      }
+
+      const unsupportedClaims = [...documentedTokens]
+        .filter(token => !implementedTokens.has(token))
+        .sort()
+      expect(unsupportedClaims).toEqual([])
     } finally {
       clearCommandsCache()
       clearBundledSkills()

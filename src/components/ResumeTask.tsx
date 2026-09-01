@@ -39,7 +39,7 @@ export function ResumeTask({
 
   // Track focused index for scroll position display in title
   const [focusedIndex, setFocusedIndex] = useState(1);
-  const escKey = useShortcutDisplay('confirm:no', 'Confirmation', 'Esc');
+  const escKey = useShortcutDisplay('confirm:no', 'Confirmation');
   const loadSessions = useCallback(async () => {
     try {
       setLoading(true);
@@ -214,7 +214,7 @@ export function ResumeTask({
           <Byline>
             <KeyboardShortcutHint shortcut="↑/↓" action="select" />
             <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="cancel" />
           </Byline>
         </Text>
       </Box>

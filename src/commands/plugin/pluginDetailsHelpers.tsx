@@ -83,7 +83,7 @@ export function PluginSelectionKeyHint(t0) {
   } = t0;
   let t1;
   if ($[0] !== hasSelection) {
-    t1 = hasSelection && <ConfigurableShortcutHint action="plugin:install" context="Plugin" fallback="i" description="install" bold={true} />;
+    t1 = hasSelection && <ConfigurableShortcutHint action="plugin:install" context="Plugin" description="install" bold={true} />;
     $[0] = hasSelection;
     $[1] = t1;
   } else {
@@ -93,9 +93,9 @@ export function PluginSelectionKeyHint(t0) {
   let t3;
   let t4;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = <ConfigurableShortcutHint action="plugin:toggle" context="Plugin" fallback="Space" description="toggle" />;
-    t3 = <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="details" />;
-    t4 = <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />;
+    t2 = <ConfigurableShortcutHint action="plugin:toggle" context="Plugin" description="toggle" />;
+    t3 = <ConfigurableShortcutHint action="select:accept" context="Select" description="details" />;
+    t4 = <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />;
     $[2] = t2;
     $[3] = t3;
     $[4] = t4;

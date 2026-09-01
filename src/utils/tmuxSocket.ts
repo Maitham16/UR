@@ -69,6 +69,36 @@ async function execTmux(
   }
 }
 
+export type URTmuxCommandResult = {
+  stdout: string
+  stderr: string
+  code: number
+}
+
+/**
+ * Execute a tmux subcommand against UR's isolated server.
+ *
+ * Callers provide arguments, never a shell command string. This preserves
+ * tmux argument boundaries and guarantees that UR cannot accidentally target
+ * a user's own tmux server. The socket is initialized lazily and the result is
+ * returned without throwing so tool/UI callers can surface actionable errors.
+ */
+export async function executeURTmuxCommand(
+  args: readonly string[],
+): Promise<URTmuxCommandResult> {
+  markTmuxToolUsed()
+  await ensureSocketInitialized()
+  if (!isSocketInitialized()) {
+    return {
+      stdout: '',
+      stderr:
+        'tmux is unavailable or UR could not initialize its isolated tmux socket',
+      code: 127,
+    }
+  }
+  return execTmux(['-L', getURSocketName(), ...args])
+}
+
 // Socket state - initialized lazily when Tmux tool is first used or a tmux command is run
 let socketName: string | null = null
 let socketPath: string | null = null

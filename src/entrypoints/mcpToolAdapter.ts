@@ -88,6 +88,7 @@ export async function formatMcpToolResult(
   maxOutputChars: number,
 ): Promise<CallToolResult> {
   let structuredContent = result.mcpMeta?.structuredContent
+  let validatedData: unknown = result.data
 
   if (tool.outputSchema) {
     const candidate = structuredContent ?? result.data
@@ -97,18 +98,18 @@ export async function formatMcpToolResult(
         `Tool ${tool.name} returned output that does not match its schema: ${formatIssues(parsed.error.issues)}`,
       )
     }
-    if (!isRecord(parsed.data)) {
-      throw new Error(
-        `Tool ${tool.name} declares an object output schema but returned a non-object value`,
-      )
+    if (structuredContent === undefined) {
+      validatedData = parsed.data
     }
-    structuredContent = parsed.data
+    // MCP structuredContent is object-only. Array and primitive schemas are
+    // still validated, but their value is represented by the text content.
+    structuredContent = isRecord(parsed.data) ? parsed.data : undefined
   }
 
   const text =
-    typeof result.data === 'string'
-      ? result.data
-      : jsonStringify(result.data)
+    typeof validatedData === 'string'
+      ? validatedData
+      : jsonStringify(validatedData)
   const structuredText = structuredContent
     ? jsonStringify(structuredContent)
     : ''

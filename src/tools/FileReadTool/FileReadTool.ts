@@ -337,6 +337,7 @@ export type Output = z.infer<OutputSchema>
 
 export const FileReadTool = buildTool({
   name: FILE_READ_TOOL_NAME,
+  permissionRequestKind: 'filesystem',
   searchHint: 'read files, images, PDFs, notebooks',
   // Output is bounded by maxTokens (validateContentTokens). Persisting to a
   // file the model reads back with Read is circular — never persist.

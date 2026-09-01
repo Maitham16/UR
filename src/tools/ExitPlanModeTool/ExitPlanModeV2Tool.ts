@@ -244,6 +244,7 @@ export type Output = z.infer<OutputSchema>
 
 export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
   name: EXIT_PLAN_MODE_V2_TOOL_NAME,
+  permissionRequestKind: 'exit-plan-mode',
   searchHint: 'present plan for approval and start coding (plan mode only)',
   maxResultSizeChars: 100_000,
   async description() {

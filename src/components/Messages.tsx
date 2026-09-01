@@ -376,7 +376,7 @@ const MessagesImpl = ({
   const {
     columns
   } = useTerminalSize();
-  const toggleShowAllShortcut = useShortcutDisplay('transcript:toggleShowAll', 'Transcript', 'Ctrl+E');
+  const toggleShowAllShortcut = useShortcutDisplay('transcript:toggleShowAll', 'Transcript');
   const normalizedMessages = useMemo(() => normalizeMessages(messages).filter(isNotEmptyMessage), [messages]);
 
   // Check if streaming thinking should be visible (streaming or within 30s timeout)

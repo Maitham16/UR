@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { Key } from '../ink.js'
 import { getKeyName, matchesBinding } from './match.js'
 import { chordToString } from './parser.js'
@@ -19,6 +18,30 @@ export type ChordResolveResult =
   | { type: 'unbound' }
   | { type: 'chord_started'; pending: ParsedKeystroke[] }
   | { type: 'chord_cancelled' }
+
+export type BindingDisplayResolution =
+  | { type: 'bound'; display: string }
+  | { type: 'unbound' }
+  | { type: 'missing' }
+
+/**
+ * Canonical identity used anywhere bindings are collapsed with last-wins
+ * semantics. Alt and meta intentionally share one bit because runtime input
+ * matching cannot distinguish them in legacy terminals.
+ */
+export function chordMatchKey(chord: readonly ParsedKeystroke[]): string {
+  return chord
+    .map(keystroke =>
+      [
+        keystroke.key,
+        keystroke.ctrl ? '1' : '0',
+        keystroke.alt || keystroke.meta ? '1' : '0',
+        keystroke.shift ? '1' : '0',
+        keystroke.super ? '1' : '0',
+      ].join('\u0000'),
+    )
+    .join('\u0001')
+}
 
 /**
  * Resolve a key input to an action.
@@ -70,11 +93,37 @@ export function getBindingDisplayText(
   context: KeybindingContextName,
   bindings: ParsedBinding[],
 ): string | undefined {
-  // Find the last binding for this action in this context
-  const binding = bindings.findLast(
-    b => b.action === action && b.context === context,
-  )
-  return binding ? chordToString(binding.chord) : undefined
+  const resolution = resolveBindingDisplay(action, context, bindings)
+  return resolution.type === 'bound' ? resolution.display : undefined
+}
+
+/**
+ * Resolve an action label after collapsing bindings by context+chord with
+ * last-write-wins semantics. This mirrors input resolution: a later null or
+ * rebind shadows the default chord instead of leaving a stale label visible.
+ */
+export function resolveBindingDisplay(
+  action: string,
+  context: KeybindingContextName,
+  bindings: readonly ParsedBinding[],
+): BindingDisplayResolution {
+  const decidedChords = new Set<string>()
+  let actionWasRegistered = false
+
+  for (let index = bindings.length - 1; index >= 0; index--) {
+    const binding = bindings[index]
+    if (!binding || binding.context !== context) continue
+    if (binding.action === action) actionWasRegistered = true
+
+    const matchKey = chordMatchKey(binding.chord)
+    if (decidedChords.has(matchKey)) continue
+    decidedChords.add(matchKey)
+    if (binding.action === action) {
+      return { type: 'bound', display: chordToString(binding.chord) }
+    }
+  }
+
+  return actionWasRegistered ? { type: 'unbound' } : { type: 'missing' }
 }
 
 /**
@@ -204,7 +253,7 @@ export function resolveKeyWithChordState(
       binding.chord.length > testChord.length &&
       chordPrefixMatches(testChord, binding)
     ) {
-      chordWinners.set(chordToString(binding.chord), binding.action)
+      chordWinners.set(chordMatchKey(binding.chord), binding.action)
     }
   }
   let hasLongerChords = false

@@ -11,7 +11,7 @@ export function WizardNavigationFooter({
   instructions = <Byline>
       <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
       <KeyboardShortcutHint shortcut="Enter" action="select" />
-      <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+      <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="go back" />
     </Byline>
 }: Props): ReactNode {
   const exitState = useExitOnCtrlCDWithKeybindings();

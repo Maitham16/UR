@@ -1490,7 +1490,7 @@ export function Config({
             <Text dimColor italic>
               <Byline>
                 <KeyboardShortcutHint shortcut="Enter" action="select" />
-                <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+                <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="cancel" />
               </Byline>
             </Text>
           </Box>
@@ -1507,7 +1507,7 @@ export function Config({
           <Text dimColor>
             <Byline>
               <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="cancel" />
             </Byline>
           </Text>
         </> : showSubmenu === 'TeammateModel' ? <>
@@ -1543,7 +1543,7 @@ export function Config({
           <Text dimColor>
             <Byline>
               <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="cancel" />
             </Byline>
           </Text>
         </> : showSubmenu === 'ExternalIncludes' ? <>
@@ -1551,7 +1551,7 @@ export function Config({
           <Text dimColor>
             <Byline>
               <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="close" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="close" />
             </Byline>
           </Text>
         </> : showSubmenu === 'OutputStyle' ? <>
@@ -1577,7 +1577,7 @@ export function Config({
           <Text dimColor>
             <Byline>
               <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="cancel" />
             </Byline>
           </Text>
         </> : showSubmenu === 'Language' ? <>
@@ -1602,7 +1602,7 @@ export function Config({
           <Text dimColor>
             <Byline>
               <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-              <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+              <ConfigurableShortcutHint action="confirm:no" context="Settings" description="cancel" />
             </Byline>
           </Text>
         </> : showSubmenu === 'EnableAutoUpdates' ? <Dialog title="Enable Auto-Updates" onCancel={() => {
@@ -1740,21 +1740,21 @@ export function Config({
               <Byline>
                 <KeyboardShortcutHint shortcut="←/→ tab" action="switch" />
                 <KeyboardShortcutHint shortcut="↓" action="return" />
-                <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="close" />
+                <ConfigurableShortcutHint action="confirm:no" context="Settings" description="close" />
               </Byline>
             </Text> : isSearchMode ? <Text dimColor>
               <Byline>
                 <Text>Type to filter</Text>
                 <KeyboardShortcutHint shortcut="Enter/↓" action="select" />
                 <KeyboardShortcutHint shortcut="↑" action="tabs" />
-                <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="clear" />
+                <ConfigurableShortcutHint action="confirm:no" context="Settings" description="clear" />
               </Byline>
             </Text> : <Text dimColor>
               <Byline>
-                <ConfigurableShortcutHint action="select:accept" context="Settings" fallback="Space" description="change" />
-                <ConfigurableShortcutHint action="settings:close" context="Settings" fallback="Enter" description="save" />
-                <ConfigurableShortcutHint action="settings:search" context="Settings" fallback="/" description="search" />
-                <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+                <ConfigurableShortcutHint action="select:accept" context="Settings" description="change" />
+                <ConfigurableShortcutHint action="settings:close" context="Settings" description="save" />
+                <ConfigurableShortcutHint action="settings:search" context="Settings" description="search" />
+                <ConfigurableShortcutHint action="confirm:no" context="Settings" description="cancel" />
               </Byline>
             </Text>}
         </Box>}

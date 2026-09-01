@@ -70,6 +70,9 @@ import {
   parseUserSpecifiedModel,
 } from '../utils/model/model.js'
 import {
+  modelSupportsThinking,
+  providerSupportsThinkingToggle,
+  resolveThinkingArrowValue,
   shouldEnableThinkingByDefault,
 } from '../utils/thinking.js'
 import { resolveActiveProviderModel } from '../services/api/providerClient.js'
@@ -164,8 +167,8 @@ export function ProviderFirstModelPicker({
   )
   const [hasToggledEffort, setHasToggledEffort] = useState(false)
   const appThinkingEnabled = useAppState(selectThinkingEnabled)
-  const hasToggledThinking = false
-  const [thinkingEnabled] = useState(
+  const [hasToggledThinking, setHasToggledThinking] = useState(false)
+  const [thinkingEnabled, setThinkingEnabled] = useState(
     () => appThinkingEnabled ?? shouldEnableThinkingByDefault(),
   )
 
@@ -428,6 +431,10 @@ export function ProviderFirstModelPicker({
   const focusedSupportsEffort = focusedResolvedModel
     ? modelSupportsEffort(focusedResolvedModel, focusedProviderId)
     : false
+  const focusedSupportsThinking = focusedResolvedModel && focusedProviderId
+    ? modelSupportsThinking(focusedResolvedModel, focusedProviderId) &&
+      providerSupportsThinkingToggle(focusedProviderId)
+    : false
   const focusedDefaultEffort = focusedResolvedModel
     ? convertEffortValueToLevel(
         getDefaultEffortForModel(focusedResolvedModel, focusedProviderId) ??
@@ -456,7 +463,13 @@ export function ProviderFirstModelPicker({
   }
 
   function handleCycleEffort(direction: 'left' | 'right') {
-    if (!focusedSupportsEffort) return
+    if (!focusedSupportsEffort) {
+      if (focusedSupportsThinking) {
+        setThinkingEnabled(resolveThinkingArrowValue(direction))
+        setHasToggledThinking(true)
+      }
+      return
+    }
     setEffort(previous =>
       cycleProviderPickerEffort(
         resolveProviderEffortLevel(
@@ -481,7 +494,20 @@ export function ProviderFirstModelPicker({
       isActive:
         step === 'model' &&
         !loadingModels &&
-        focusedSupportsEffort,
+        (focusedSupportsEffort || focusedSupportsThinking),
+    },
+  )
+
+  useInput(
+    (input, _key, event) => {
+      if (input.toLowerCase() !== 't' || !focusedSupportsThinking) return
+      setThinkingEnabled(previous => !previous)
+      setHasToggledThinking(true)
+      event.stopImmediatePropagation()
+    },
+    {
+      isActive:
+        step === 'model' && !loadingModels && focusedSupportsThinking,
     },
   )
 
@@ -657,6 +683,12 @@ export function ProviderFirstModelPicker({
           effortLevel: persistable,
         })
       }
+    }
+
+    if (hasToggledThinking) {
+      updateSettingsForSource('userSettings', {
+        alwaysThinkingEnabled: thinkingEnabled ? undefined : false,
+      })
     }
 
     // Update app state
@@ -1015,7 +1047,6 @@ export function ProviderFirstModelPicker({
               <ConfigurableShortcutHint
                 action="select:cancel"
                 context="Select"
-                fallback="Esc"
                 description="exit"
               />
             </Byline>
@@ -1055,7 +1086,7 @@ export function ProviderFirstModelPicker({
             <Text dimColor color="subtle">{credentialNotice}</Text>
           )}
           <Text dimColor color="subtle">
-            ↑↓ browse · Enter select · ←→ effort · Ctrl+R refresh · Esc providers
+            ↑↓ browse · Enter select · ←→ effort/thinking · Ctrl+R refresh · Esc providers
             {selectedProvider &&
             providerSupportsEndpointEditing(selectedProvider.provider)
               ? ' · E endpoint'
@@ -1123,7 +1154,22 @@ export function ProviderFirstModelPicker({
                 )}
                 {!focusedSupportsEffort && !effortCapabilityLoading && (
                   <Text dimColor color="subtle">
-                    Graded effort not advertised for this model.
+                    {focusedSupportsThinking
+                      ? 'No graded effort advertised; this model accepts on/off thinking.'
+                      : 'Graded effort not advertised for this model.'}
+                  </Text>
+                )}
+                {focusedSupportsThinking && (
+                  <Text dimColor>
+                    <Text color={thinkingEnabled ? 'ur' : 'subtle'}>
+                      {thinkingEnabled ? '◆' : '◇'}
+                    </Text>{' '}
+                    Thinking {thinkingEnabled ? 'ON' : 'OFF'}{' '}
+                    <Text dimColor color="subtle">
+                      {focusedSupportsEffort
+                        ? 't to toggle'
+                        : '← off · → on · t toggle'}
+                    </Text>
                   </Text>
                 )}
                 {effortCapabilityWarning && (

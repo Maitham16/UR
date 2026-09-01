@@ -78,7 +78,6 @@ export function OllamaHostPicker({
             <ConfigurableShortcutHint
               action="select:cancel"
               context="Select"
-              fallback="Esc"
               description="use localhost"
             />
           </Byline>

@@ -255,7 +255,6 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     const shortcut = getShortcutDisplay(
       'chat:killAgents',
       'Chat',
-      'ctrl+x ctrl+k',
     )
     addNotification({
       key: 'kill-agents-confirm',

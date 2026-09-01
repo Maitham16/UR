@@ -101,13 +101,13 @@ export function ExportDialog({
     if (showFilenameInput) {
       return <Byline>
           <KeyboardShortcutHint shortcut="Enter" action="save" />
-          <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+          <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="go back" />
         </Byline>;
     }
     if (exitState.pending) {
       return <Text>Press {exitState.keyName} again to exit</Text>;
     }
-    return <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />;
+    return <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="cancel" />;
   }
 
   // Use Settings context so 'n' key doesn't cancel (allows typing 'n' in filename input)

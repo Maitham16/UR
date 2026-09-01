@@ -235,7 +235,6 @@ function buildDisplayText(
   const expandShortcut = getShortcutDisplay(
     'app:toggleTranscript',
     'Global',
-    'ctrl+o',
   )
   const dimmed = [
     ...(context.options.verbose

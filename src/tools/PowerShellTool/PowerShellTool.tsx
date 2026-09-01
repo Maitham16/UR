@@ -278,6 +278,7 @@ function getCommandTypeForLogging(command: string): AnalyticsMetadata_I_VERIFIED
 }
 export const PowerShellTool = buildTool({
   name: POWERSHELL_TOOL_NAME,
+  permissionRequestKind: 'powershell',
   searchHint: 'execute Windows PowerShell commands',
   maxResultSizeChars: 30_000,
   strict: true,

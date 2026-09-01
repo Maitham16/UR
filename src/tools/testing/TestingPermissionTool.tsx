@@ -9,6 +9,8 @@ import { lazySchema } from '../../utils/lazySchema.js';
 const NAME = 'TestingPermission';
 const inputSchema = lazySchema(() => z.strictObject({}));
 type InputSchema = ReturnType<typeof inputSchema>;
+const outputSchema = lazySchema(() => z.string());
+type OutputSchema = ReturnType<typeof outputSchema>;
 export const TestingPermissionTool: Tool<InputSchema, string> = buildTool({
   name: NAME,
   maxResultSizeChars: 100_000,
@@ -20,6 +22,9 @@ export const TestingPermissionTool: Tool<InputSchema, string> = buildTool({
   },
   get inputSchema(): InputSchema {
     return inputSchema();
+  },
+  get outputSchema(): OutputSchema {
+    return outputSchema();
   },
   userFacingName() {
     return 'TestingPermission';

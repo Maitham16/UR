@@ -68,13 +68,15 @@ the tool pool, and are not supported user-facing tools.
 | `TeamCreate` / `TeamDelete` | Create/remove agent teams (swarm mode, `isAgentSwarmsEnabled`) | "Spin up a team for this migration" |
 | `Skill` | Invoke a skill programmatically (model-triggered skills) | "Use the dockerize skill" |
 
-## Scheduling (implemented, feature-gated)
+## Automation and communication (implemented, feature-gated)
 
 | Tool | Gate | Purpose |
 |---|---|---|
 | `CronCreate` / `CronDelete` / `CronList` | AGENT_TRIGGERS | Local scheduled jobs (used by `/loop`, `/automation`) |
 | `RemoteTrigger` | AGENT_TRIGGERS_REMOTE | Manage scheduled remote agents via API |
 | `Sleep` | PROACTIVE/KAIROS | Wait for a duration |
+| `SendUserFile` | KAIROS | Deliver validated local files to the user, including bridge upload metadata when available |
+| `PushNotification` | KAIROS/KAIROS_PUSH_NOTIFICATION | Send an opt-in OS/terminal notification when a notification transport is available |
 
 ## MCP & discovery
 
@@ -89,11 +91,11 @@ the tool pool, and are not supported user-facing tools.
 | Tool | Gate | Purpose |
 |---|---|---|
 | `Config` | USER_TYPE=ant | Get/set UR settings programmatically |
+| `Tungsten` | USER_TYPE=ant + tmux | Create, drive, capture, list, and stop persistent terminal sessions on UR's isolated tmux socket; literal text and special keys use separate argument-safe operations, and the active pane has a live panel |
 | `REPL` | REPL mode | Wraps Bash/Read/Edit inside a persistent VM; hides the primitives |
 | `StructuredOutput` | synthetic | Enforces structured output schemas in headless runs |
 
-`ListPeers`, `Workflow`, `Monitor`, `PushNotification`, `SendUserFile`,
-`SubscribePR`, `Tungsten`, `SuggestBackgroundPR`, `CtxInspect`,
+`ListPeers`, `Workflow`, `Monitor`, `SubscribePR`, `SuggestBackgroundPR`, `CtxInspect`,
 `TerminalCapture`, `WebBrowser`, `Snip`, `overflow_test`, and
 `VerifyPlanExecution` are internal overlay names only. Their public-source
 modules are inert placeholders and they are intentionally excluded from the

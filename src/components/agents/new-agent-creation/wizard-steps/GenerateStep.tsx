@@ -129,7 +129,7 @@ export function GenerateStep({ tools }: Props): ReactNode {
   };
   const subtitle = 'Describe what this agent should do and when it should be used (be comprehensive for best results)';
   if (isGenerating) {
-    return <WizardDialogLayout subtitle={subtitle} footerText={<ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />}>
+    return <WizardDialogLayout subtitle={subtitle} footerText={<ConfigurableShortcutHint action="confirm:no" context="Settings" description="cancel" />}>
         <Box flexDirection="row" alignItems="center">
           <Spinner />
           <Text color="suggestion"> Generating agent from description...</Text>
@@ -137,9 +137,9 @@ export function GenerateStep({ tools }: Props): ReactNode {
       </WizardDialogLayout>;
   }
   return <WizardDialogLayout subtitle={subtitle} footerText={<Byline>
-          <ConfigurableShortcutHint action="confirm:yes" context="Confirmation" fallback="Enter" description="submit" />
-          <ConfigurableShortcutHint action="chat:externalEditor" context="Chat" fallback="ctrl+g" description="open in editor" />
-          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="go back" />
+          <ConfigurableShortcutHint action="confirm:yes" context="Confirmation" description="submit" />
+          <ConfigurableShortcutHint action="chat:externalEditor" context="Chat" description="open in editor" />
+          <ConfigurableShortcutHint action="confirm:no" context="Settings" description="go back" />
         </Byline>}>
       <Box flexDirection="column">
         {error && <Box marginBottom={1}>

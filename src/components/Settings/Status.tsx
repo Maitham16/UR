@@ -170,7 +170,7 @@ export function Status(t0) {
   }
   let t7;
   if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = <Text dimColor={true}><ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" /></Text>;
+    t7 = <Text dimColor={true}><ConfigurableShortcutHint action="confirm:no" context="Settings" description="cancel" /></Text>;
     $[16] = t7;
   } else {
     t7 = $[16];

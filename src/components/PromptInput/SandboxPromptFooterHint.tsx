@@ -8,7 +8,7 @@ export function SandboxPromptFooterHint() {
   const $ = _c(6);
   const [recentViolationCount, setRecentViolationCount] = useState(0);
   const timerRef = useRef(null);
-  const detailsShortcut = useShortcutDisplay("app:toggleTranscript", "Global", "ctrl+o");
+  const detailsShortcut = useShortcutDisplay("app:toggleTranscript", "Global");
   let t0;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {

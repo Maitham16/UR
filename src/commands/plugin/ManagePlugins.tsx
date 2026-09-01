@@ -1832,8 +1832,8 @@ export function ManagePlugins({
         </Box>
 
         <Byline>
-          <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="dismiss" />
-          <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+          <ConfigurableShortcutHint action="select:accept" context="Select" description="dismiss" />
+          <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />
         </Byline>
       </Box>;
   }
@@ -1858,8 +1858,8 @@ export function ManagePlugins({
           </Box>}
         <Box marginTop={1}>
           {isProcessing ? <Text dimColor>Disabling…</Text> : <Byline>
-              <ConfigurableShortcutHint action="confirm:yes" context="Confirmation" fallback="y" description="disable" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+              <ConfigurableShortcutHint action="confirm:yes" context="Confirmation" description="disable" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="cancel" />
             </Byline>}
         </Box>
       </Box>;
@@ -1983,9 +1983,9 @@ export function ManagePlugins({
         <Box marginTop={1}>
           <Text dimColor italic>
             <Byline>
-              <ConfigurableShortcutHint action="select:previous" context="Select" fallback="↑" description="navigate" />
-              <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="select" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+              <ConfigurableShortcutHint action="select:previous" context="Select" description="navigate" />
+              <ConfigurableShortcutHint action="select:accept" context="Select" description="select" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />
             </Byline>
           </Text>
         </Box>
@@ -2020,8 +2020,8 @@ export function ManagePlugins({
         <Box marginTop={1}>
           <Text dimColor italic>
             <Byline>
-              {failedPlugin_0.scope !== 'managed' && <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="remove" />}
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+              {failedPlugin_0.scope !== 'managed' && <ConfigurableShortcutHint action="select:accept" context="Select" description="remove" />}
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />
             </Byline>
           </Text>
         </Box>
@@ -2278,9 +2278,9 @@ export function ManagePlugins({
         <Text dimColor italic>
           <Byline>
             <Text>type to search</Text>
-            <ConfigurableShortcutHint action="plugin:toggle" context="Plugin" fallback="Space" description="toggle" />
-            <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="details" />
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+            <ConfigurableShortcutHint action="plugin:toggle" context="Plugin" description="toggle" />
+            <ConfigurableShortcutHint action="select:accept" context="Select" description="details" />
+            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />
           </Byline>
         </Text>
       </Box>

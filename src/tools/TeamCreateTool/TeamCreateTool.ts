@@ -49,6 +49,15 @@ const inputSchema = lazySchema(() =>
 )
 type InputSchema = ReturnType<typeof inputSchema>
 
+const outputSchema = lazySchema(() =>
+  z.object({
+    team_name: z.string(),
+    team_file_path: z.string(),
+    lead_agent_id: z.string(),
+  }),
+)
+type OutputSchema = ReturnType<typeof outputSchema>
+
 export type Output = {
   team_name: string
   team_file_path: string
@@ -83,6 +92,10 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
 
   get inputSchema(): InputSchema {
     return inputSchema()
+  },
+
+  get outputSchema(): OutputSchema {
+    return outputSchema()
   },
 
   isEnabled() {

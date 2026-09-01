@@ -55,6 +55,25 @@ function getDisableExtglobCommand(shellPath: string): string | null {
   return null
 }
 
+/**
+ * Makes unmatched globs behave consistently across bash and zsh.
+ *
+ * Bash passes an unmatched pattern through as a literal argument, while zsh's
+ * default NOMATCH option aborts the command before tools such as rg can report
+ * the missing path themselves. Disable NOMATCH only inside UR's spawned shell;
+ * the user's global zsh configuration is never changed.
+ *
+ * When a shell prefix is configured, the wrapper may execute zsh even when the
+ * detected shell path says otherwise, so use the same harmless best-effort
+ * command there as well.
+ */
+function getDisableZshNomatchCommand(shellPath: string): string | null {
+  if (process.env.UR_CODE_SHELL_PREFIX || shellPath.includes('zsh')) {
+    return 'unsetopt nomatch 2>/dev/null || true'
+  }
+  return null
+}
+
 export async function createBashShellProvider(
   shellPath: string,
   options?: { skipSnapshot?: boolean },
@@ -176,6 +195,11 @@ export async function createBashShellProvider(
       const disableExtglobCmd = getDisableExtglobCommand(shellPath)
       if (disableExtglobCmd) {
         commandParts.push(disableExtglobCmd)
+      }
+
+      const disableZshNomatchCmd = getDisableZshNomatchCommand(shellPath)
+      if (disableZshNomatchCmd) {
+        commandParts.push(disableZshNomatchCmd)
       }
 
       // When sourcing a file with aliases, they won't be expanded in the same command line

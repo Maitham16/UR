@@ -138,7 +138,7 @@ import { textForResubmit, handleMessageFromStream, type StreamingToolUse, type S
 import { generateSessionTitle } from '../utils/sessionTitle.js';
 import { BASH_INPUT_TAG, COMMAND_MESSAGE_TAG, COMMAND_NAME_TAG, LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js';
 import { escapeXml } from '../utils/xml.js';
-import type { ThinkingConfig } from '../utils/thinking.js';
+import { resolveSessionThinkingConfig, type ThinkingConfig } from '../utils/thinking.js';
 import { gracefulShutdownSync } from '../utils/gracefulShutdown.js';
 import { handlePromptSubmit, type PromptInputHelpers } from '../utils/handlePromptSubmit.js';
 import { useQueueProcessor } from '../hooks/useQueueProcessor.js';
@@ -269,8 +269,8 @@ import { useTeammateLifecycleNotification } from 'src/hooks/notifs/useTeammateSh
 import { useFastModeNotification } from 'src/hooks/notifs/useFastModeNotification.js';
 import { AutoRunIssueNotification, shouldAutoRunIssue, getAutoRunIssueReasonText, getAutoRunCommand, type AutoRunIssueReason } from '../utils/autoRunIssue.js';
 import type { HookProgress } from '../types/hooks.js';
-import { TungstenLiveMonitor as TungstenLiveMonitorImpl } from '../tools/TungstenTool/TungstenLiveMonitor.js';
-const TungstenLiveMonitor: any = TungstenLiveMonitorImpl;
+import { TungstenLiveMonitor } from '../tools/TungstenTool/TungstenLiveMonitor.js';
+import { isTungstenEnabled } from '../tools/TungstenTool/availability.js';
 /* eslint-disable @typescript-eslint/no-require-imports */
 const WebBrowserPanelModule = feature('WEB_BROWSER_TOOL') ? require('../tools/WebBrowserTool/WebBrowserPanel.js') as typeof import('../tools/WebBrowserTool/WebBrowserPanel.js') : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -331,8 +331,8 @@ function TranscriptModeFooter(t0) {
     status
   } = t0;
   const suppressShowAll = t1 === undefined ? false : t1;
-  const toggleShortcut = useShortcutDisplay("app:toggleTranscript", "Global", "ctrl+o");
-  const showAllShortcut = useShortcutDisplay("transcript:toggleShowAll", "Transcript", "ctrl+e");
+  const toggleShortcut = useShortcutDisplay("app:toggleTranscript", "Global");
+  const showAllShortcut = useShortcutDisplay("transcript:toggleShowAll", "Transcript");
   const t2 = searchBadge ? " \xB7 n/N to navigate" : virtualScroll ? ` · ${figures.arrowUp}${figures.arrowDown} scroll · home/end top/bottom` : suppressShowAll ? "" : ` · ${showAllShortcut} to ${showAllInTranscript ? "collapse" : "show all"}`;
   let t3;
   if ($[0] !== t2 || $[1] !== toggleShortcut) {
@@ -2407,9 +2407,10 @@ export function REPL({
         debug,
         verbose: s.verbose,
         mainLoopModel,
-        thinkingConfig: s.thinkingEnabled !== false ? thinkingConfig : {
-          type: 'disabled'
-        },
+        thinkingConfig: resolveSessionThinkingConfig(
+          thinkingConfig,
+          s.thinkingEnabled,
+        ),
         // Merge fresh from store rather than closing over useMergedClients'
         // memoized output. initialMcpClients is a prop (session-constant).
         mcpClients: mergeClients(initialMcpClients, s.mcp.clients),
@@ -2933,7 +2934,7 @@ export function REPL({
         // minutes — wiping the session made the pill disappear entirely, forcing
         // the user to re-invoke Tmux just to peek. Skip on abort so the panel
         // stays open for inspection (matches the turn-duration guard below).
-        if (("external" as string) === 'ant' && !abortController.signal.aborted) {
+        if (isTungstenEnabled() && !abortController.signal.aborted) {
           setAppState(prev => {
             if (prev.tungstenActiveSession === undefined) return prev;
             if (prev.tungstenPanelAutoHidden === true) return prev;
@@ -4075,11 +4076,15 @@ export function REPL({
       isLoading,
       onSubmitTask: handleIncomingPrompt
     });
+  }
 
-    // Loop mode: auto-tick when enabled (via /job command)
+  if (feature('PROACTIVE') || feature('KAIROS')) {
+    // Proactive mode is a shipped feature, not an ant-only task watcher.
+    // Keep the hook in a build-time feature branch so external KAIROS builds
+    // actually schedule ticks while preserving rules-of-hooks per build.
     // eslint-disable-next-line react-hooks/rules-of-hooks
     // biome-ignore lint/correctness/useHookAtTopLevel: conditional for dead code elimination in external builds
-    useProactive?.({
+    useProactive!({
       // Suppress ticks while an initial message is pending — the initial
       // message will be processed asynchronously and a premature tick would
       // race with it, causing concurrent-query enqueue of expanded skill text.
@@ -4582,7 +4587,7 @@ export function REPL({
               {toolJSX && !(toolJSX.isLocalJSXCommand && toolJSX.isImmediate) && !toolJsxCentered && <Box flexDirection="column" width="100%">
                     {toolJSX.jsx}
                   </Box>}
-              {("external" as string) === 'ant' && <TungstenLiveMonitor />}
+              {isTungstenEnabled() && <TungstenLiveMonitor />}
               {feature('WEB_BROWSER_TOOL') ? WebBrowserPanelModule && <WebBrowserPanelModule.WebBrowserPanel /> : null}
               <Box flexGrow={1} />
               {showSpinner && <SpinnerWithVerb mode={streamMode} spinnerTip={spinnerTip} responseLengthRef={responseLengthRef} apiMetricsRef={apiMetricsRef} overrideMessage={spinnerMessage} spinnerSuffix={stopHookSpinnerSuffix} verbose={verbose} loadingStartTimeRef={loadingStartTimeRef} totalPausedMsRef={totalPausedMsRef} pauseStartTimeRef={pauseStartTimeRef} overrideColor={spinnerColor} overrideShimmerColor={spinnerShimmerColor} hasActiveTools={inProgressToolUseIDs.size > 0} leaderIsIdle={!isLoading} />}
@@ -4943,7 +4948,7 @@ export function REPL({
             }
 
             // Show notification with ctrl+o hint
-            const historyShortcut = getShortcutDisplay('app:toggleTranscript', 'Global', 'ctrl+o');
+            const historyShortcut = getShortcutDisplay('app:toggleTranscript', 'Global');
             addNotification({
               key: 'summarize-ctrl-o-hint',
               text: `Conversation summarized (${historyShortcut} for history)`,

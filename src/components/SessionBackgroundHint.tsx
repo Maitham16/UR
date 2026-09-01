@@ -83,7 +83,7 @@ export function SessionBackgroundHint(t0) {
     t4 = $[7];
   }
   useKeybinding("task:background", handleBackground, t4);
-  const baseShortcut = useShortcutDisplay("task:background", "Task", "ctrl+b");
+  const baseShortcut = useShortcutDisplay("task:background", "Task");
   const shortcut = env.terminal === "tmux" && baseShortcut === "ctrl+b" ? "ctrl+b ctrl+b" : baseShortcut;
   if (!isLoading || !showSessionHint) {
     return null;

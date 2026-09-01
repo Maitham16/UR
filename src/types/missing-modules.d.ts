@@ -150,16 +150,6 @@ declare module 'src/cli/up.js' {
 
 // Catch-all for any other internal module path that has no file backing it.
 // These are dead-import paths in feature-gated code that does not execute.
-declare module '*/assistant/index.js' {
-  const value: any
-  export = value
-}
-
-declare module '*/proactive/index.js' {
-  const value: any
-  export = value
-}
-
 declare module '*/services/compact/reactiveCompact.js' {
   const value: any
   export = value
@@ -225,16 +215,6 @@ declare module '*/services/skillSearch/telemetry.js' {
   export = value
 }
 
-declare module '*/services/sessionTranscript/sessionTranscript.js' {
-  const value: any
-  export = value
-}
-
-declare module '*/sessionTranscript/sessionTranscript.js' {
-  const value: any
-  export = value
-}
-
 declare module '*/skills/mcpSkills.js' {
   const value: any
   export = value
@@ -261,11 +241,6 @@ declare module '*/tools/WorkflowTool/WorkflowPermissionRequest.js' {
 }
 
 declare module '*/tools/WorkflowTool/createWorkflowCommand.js' {
-  const value: any
-  export = value
-}
-
-declare module '*/tools/SendUserFileTool/prompt.js' {
   const value: any
   export = value
 }
@@ -496,11 +471,6 @@ declare module '*/commands/workflows/index.js' {
 }
 
 declare module '*/assistant/AssistantSessionChooser.js' {
-  const value: any
-  export = value
-}
-
-declare module '*/assistant/gate.js' {
   const value: any
   export = value
 }

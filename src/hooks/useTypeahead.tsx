@@ -372,7 +372,7 @@ export function useTypeahead({
   const {
     addNotification
   } = useNotifications();
-  const thinkingToggleShortcut = useShortcutDisplay('chat:thinkingToggle', 'Chat', 'alt+t');
+  const thinkingToggleShortcut = useShortcutDisplay('chat:thinkingToggle', 'Chat');
   const [suggestionType, setSuggestionType] = useState<SuggestionType>('none');
 
   // Compute max column width from ALL commands once (not filtered results)

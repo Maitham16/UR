@@ -68,7 +68,7 @@ export function getFilePermissionOptions({
   noInputMode?: boolean;
 }): PermissionOptionWithLabel[] {
   const options: PermissionOptionWithLabel[] = [];
-  const modeCycleShortcut = getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab');
+  const modeCycleShortcut = getShortcutDisplay('chat:cycleMode', 'Chat');
 
   // When in input mode, show input field
   if (yesInputMode && onAcceptFeedbackChange) {

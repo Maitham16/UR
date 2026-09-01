@@ -154,7 +154,7 @@ export function Notifications(t0) {
         logEvent("tengu_external_editor_hint_shown", {});
         addNotification({
           key: "external-editor-hint",
-          jsx: <Text dimColor={true}><ConfigurableShortcutHint action="chat:externalEditor" context="Chat" fallback="ctrl+g" description={`edit in ${toIDEDisplayName(editor)}`} /></Text>,
+          jsx: <Text dimColor={true}><ConfigurableShortcutHint action="chat:externalEditor" context="Chat" description={`edit in ${toIDEDisplayName(editor)}`} /></Text>,
           priority: "immediate",
           timeoutMs: 5000
         });

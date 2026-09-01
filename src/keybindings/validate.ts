@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { plural } from '../utils/stringUtils.js'
 import { chordToString, parseChord, parseKeystroke } from './parser.js'
+import { KEYBINDING_CONTEXTS } from './schema.js'
 import {
   getReservedShortcuts,
   normalizeKeyForComparison,
@@ -58,26 +59,8 @@ function isKeybindingBlockArray(arr: unknown): arr is KeybindingBlock[] {
  * Valid context names for keybindings.
  * Must match KeybindingContextName in types.ts
  */
-const VALID_CONTEXTS: KeybindingContextName[] = [
-  'Global',
-  'Chat',
-  'Autocomplete',
-  'Confirmation',
-  'Help',
-  'Transcript',
-  'HistorySearch',
-  'Task',
-  'ThemePicker',
-  'Settings',
-  'Tabs',
-  'Attachments',
-  'Footer',
-  'MessageSelector',
-  'DiffDialog',
-  'ModelPicker',
-  'Select',
-  'Plugin',
-]
+const VALID_CONTEXTS: readonly KeybindingContextName[] =
+  KEYBINDING_CONTEXTS
 
 /**
  * Type guard to check if a string is a valid context name.

@@ -69,7 +69,7 @@ const featureGroups = [
     title: 'Providers and auth',
     tags: ['subscription', 'API', 'local', 'effort', 'status bar'],
     text: 'UR-native API/local/OpenAI-compatible runtimes, provider-scoped endpoints, provider-only Unsloth inference, capability-driven reasoning effort, responsive OpenRouter routing, first-class subscription CLI providers dispatched through the official vendor CLIs, provider doctor checks, secure API-key connect, non-secret config, fallback hints, and provider-aware status-bar output.',
-    commands: ['ur provider list', 'ur provider status', 'ur provider doctor agy', 'ur connect status', 'ur config set provider openai-api', 'ur config set provider ollama', 'ur config set base_url llama.cpp http://localhost:9931/v1', '/effort ultra'],
+    commands: ['ur provider list', 'ur provider status', 'ur provider doctor agy', 'ur connect status', 'ur config set provider openai-api', 'ur config set provider ollama', 'ur config set base_url llama.cpp http://localhost:9931/v1', '/effort ultra', '/thinking on'],
   },
   {
     title: 'Security and operations',
@@ -547,8 +547,8 @@ const slashGroups = [
   },
   {
     title: 'Models, tools, and interop',
-    items: ['/model', '/provider', '/effort', '/fast', '/model-doctor', '/model-route', '/escalate', '/mcp', '/plugin', '/skills', '/skill', '/sdk', '/a2a-card'],
-    text: 'Pick providers and models, cycle only capability-backed effort selectors that map to provider-native values, inspect capabilities, manage MCP/plugin extensions, browse prompt skills with /skills, run executable workflows with /skill, and expose interop surfaces.',
+    items: ['/model', '/provider', '/effort', '/thinking', '/fast', '/model-doctor', '/model-route', '/escalate', '/mcp', '/plugin', '/skills', '/skill', '/sdk', '/a2a-card'],
+    text: 'Pick providers and models, cycle only capability-backed effort selectors or provider-native boolean thinking, inspect capabilities, manage MCP/plugin extensions, browse prompt skills with /skills, run executable workflows with /skill, and expose interop surfaces.',
   },
   {
     title: 'Security operations',

@@ -115,7 +115,7 @@ export function useArrowKeyHistory(onSetInput: (value: string, mode: HistoryMode
     addNotification({
       key: 'search-history-hint',
       jsx: <Text dimColor>
-          <ConfigurableShortcutHint action="history:search" context="Global" fallback="ctrl+r" description="search history" />
+          <ConfigurableShortcutHint action="history:search" context="Global" description="search history" />
         </Text>,
       priority: 'immediate',
       timeoutMs: FOOTER_TEMPORARY_STATUS_TIMEOUT

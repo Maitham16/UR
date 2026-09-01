@@ -407,7 +407,7 @@ export function MCPRemoteServerMenu({
             Press <Text bold>Enter</Text> after authenticating in your browser.
           </Text>
           <Text dimColor italic>
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />
           </Text>
         </Box>
       </Box>;
@@ -437,7 +437,7 @@ export function MCPRemoteServerMenu({
                 Press <Text bold>Enter</Text> when done.
               </Text>
               <Text dimColor italic>
-                <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+                <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />
               </Text>
             </Box>
           </> : <>
@@ -450,7 +450,7 @@ export function MCPRemoteServerMenu({
                 Press <Text bold>Enter</Text> to open the browser.
               </Text>
               <Text dimColor italic>
-                <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+                <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />
               </Text>
             </Box>
           </>}
@@ -641,7 +641,7 @@ export function MCPRemoteServerMenu({
           {exitState.pending ? <>Press {exitState.keyName} again to exit</> : <Byline>
               <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
               <KeyboardShortcutHint shortcut="Enter" action="select" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />
             </Byline>}
         </Text>
       </Box>

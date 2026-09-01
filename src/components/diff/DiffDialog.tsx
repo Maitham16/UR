@@ -273,7 +273,7 @@ export function DiffDialog(t0) {
     t18 = $[42];
   }
   const sourceSelector = t18;
-  const dismissShortcut = useShortcutDisplay("diff:dismiss", "DiffDialog", "esc");
+  const dismissShortcut = useShortcutDisplay("diff:dismiss", "DiffDialog");
   let t19;
   bb0: {
     if (diffData.loading) {

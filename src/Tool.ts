@@ -10,6 +10,8 @@ import type {
 import type { UUID } from 'crypto'
 import type { z } from 'zod/v4'
 import type { Command } from './commands.js'
+import type { PermissionRequestProps } from './components/permissions/PermissionRequest.js'
+import type { ToolPermissionRequestKind } from './components/permissions/toolPermissionRenderer.js'
 import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import type { ThinkingConfig } from './utils/thinking.js'
 
@@ -393,9 +395,8 @@ export type Tool<
   // Type for MCP tools that can specify their input schema directly in JSON Schema format
   // rather than converting from Zod schema
   readonly inputJSONSchema?: ToolInputJSONSchema
-  // Optional because TungstenTool doesn't define this. TODO: Make it required.
-  // When we do that, we can also go through and make this a bit more type-safe.
-  outputSchema?: z.ZodType<unknown>
+  /** Runtime schema for validating and documenting tool results. */
+  readonly outputSchema: z.ZodType<Output>
   inputsEquivalent?(a: z.infer<Input>, b: z.infer<Input>): boolean
   isConcurrencySafe(input: z.infer<Input>): boolean
   isEnabled(): boolean
@@ -507,6 +508,16 @@ export type Tool<
     input: z.infer<Input>,
     context: ToolUseContext,
   ): Promise<PermissionResult>
+
+  /**
+   * Permission-dialog presentation owned by the tool contract. `buildTool`
+   * supplies a complete fallback renderer, so a newly added or dynamically
+   * loaded tool can never produce an empty approval prompt.
+   */
+  readonly permissionRequestKind?: ToolPermissionRequestKind
+  renderPermissionRequest(
+    props: PermissionRequestProps<Input>,
+  ): React.ReactNode
 
   // Optional method for tools that operate on a file path
   getPath?(input: z.infer<Input>): string
@@ -718,6 +729,7 @@ type DefaultableToolKeys =
   | 'checkPermissions'
   | 'toAutoClassifierInput'
   | 'userFacingName'
+  | 'renderPermissionRequest'
 
 /**
  * Tool definition accepted by `buildTool`. Same shape as `Tool` but with the
@@ -772,6 +784,27 @@ const TOOL_DEFAULTS = {
     Promise.resolve({ behavior: 'allow', updatedInput: input }),
   toAutoClassifierInput: (_input?: unknown) => '',
   userFacingName: (_input?: unknown) => '',
+  renderPermissionRequest(
+    this: Tool,
+    props: PermissionRequestProps,
+  ): React.ReactNode {
+    // Lazy loading avoids a core Tool -> permission UI -> concrete Tool import
+    // cycle during module initialization while keeping every built tool's
+    // renderer synchronous at the point React needs it.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const {
+      permissionRequestKindForTool,
+      renderToolPermissionRequest,
+    } = require(
+      './components/permissions/toolPermissionRenderer.js'
+    ) as typeof import('./components/permissions/toolPermissionRenderer.js')
+    return renderToolPermissionRequest(
+      this.permissionRequestKind ??
+        permissionRequestKindForTool(this) ??
+        'fallback',
+      props,
+    )
+  },
 }
 
 // The defaults type is the ACTUAL shape of TOOL_DEFAULTS (optional params so

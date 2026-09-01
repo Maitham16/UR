@@ -46,6 +46,7 @@ import type { ToolPermissionContext } from '../../Tool.js';
 import { getRunningTeammatesSorted } from '../../tasks/InProcessTeammateTask/InProcessTeammateTask.js';
 import type { InProcessTeammateTaskState } from '../../tasks/InProcessTeammateTask/types.js';
 import { isPanelAgentTask, type LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
+import { isTungstenEnabled } from '../../tools/TungstenTool/availability.js';
 import { isBackgroundTask } from '../../tasks/types.js';
 import { AGENT_COLOR_TO_THEME_COLOR, AGENT_COLORS, type AgentColorName } from '../../tools/AgentTool/agentColorManager.js';
 import type { AgentDefinition } from '../../tools/AgentTool/loadAgentsDir.js';
@@ -294,8 +295,8 @@ function PromptInput({
   // otherwise bridge becomes an invisible selection stop.
   const bridgeFooterVisible = replBridgeConnected && (replBridgeExplicit || replBridgeReconnecting);
   // Tmux pill (ant-only) — visible when there's an active tungsten session
-  const hasTungstenSession = useAppState(s => ("external" as string) === 'ant' && s.tungstenActiveSession !== undefined);
-  const tmuxFooterVisible = ("external" as string) === 'ant' && hasTungstenSession;
+  const hasTungstenSession = useAppState(s => isTungstenEnabled() && s.tungstenActiveSession !== undefined);
+  const tmuxFooterVisible = isTungstenEnabled() && hasTungstenSession;
   // WebBrowser pill — visible when a browser is open
   const bagelFooterVisible = useAppState(s => false);
   const teamContext = useAppState(s => s.teamContext);
@@ -790,7 +791,7 @@ function PromptInput({
           key: 'stash-hint',
           jsx: <Text dimColor>
               Tip:{' '}
-              <ConfigurableShortcutHint action="chat:stash" context="Chat" fallback="ctrl+s" description="stash" />
+              <ConfigurableShortcutHint action="chat:stash" context="Chat" description="stash" />
             </Text>,
           priority: 'immediate',
           timeoutMs: FOOTER_TEMPORARY_STATUS_TIMEOUT
@@ -1593,7 +1594,7 @@ function PromptInput({
       if (imageData) {
         onImagePaste(imageData.base64, imageData.mediaType);
       } else {
-        const shortcutDisplay = getShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v');
+        const shortcutDisplay = getShortcutDisplay('chat:imagePaste', 'Chat');
         const message = env.isSSH() ? "No image found in clipboard. You're SSH'd; try scp?" : `No image found in clipboard. Copy an image (e.g. a screenshot) first, then press ${shortcutDisplay} to paste it.`;
         addNotification({
           key: 'no-image-in-clipboard',
@@ -1791,7 +1792,7 @@ function PromptInput({
           }
           break;
         case 'tmux':
-          if (("external" as string) === 'ant') {
+          if (isTungstenEnabled()) {
             setAppState(prev => prev.tungstenPanelAutoHidden ? {
               ...prev,
               tungstenPanelAutoHidden: false

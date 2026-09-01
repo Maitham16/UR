@@ -376,9 +376,14 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    their curated model list because the official CLIs expose no models API. The
    generic `subscription` entry is an internal placeholder hidden from listings.
 
-   In the model catalog, use **Up/Down** to browse. The effort row updates to
+   In the model catalog, use **Up/Down** to browse. For graded models, the effort row updates to
    the focused model's capability-backed selectors; use **Left/Right** to cycle
-   only values UR can map to provider-native levels before pressing Enter. `ultra` is UR's visible
+   only values UR can map to provider-native levels before pressing Enter. For
+   boolean-thinking models on runtimes with a native two-state mapping (currently
+   Ollama and direct Anthropic), Left selects off, Right selects on, and `t`
+   toggles. The same state is available directly through `/thinking on|off`.
+   Generic OpenAI-compatible runtimes never receive an invented boolean field.
+   `ultra` is UR's visible
    beyond-high ceiling selector. It appears only when the provider/model
    advertises `ultra`, `max`, `xhigh`, or an explicit equivalent, and the row
    shows the exact mapping (for example, `ultra→max`). Models whose graded
@@ -388,6 +393,8 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    are checked lazily through their model-scoped `/props` capability while the
    cursor moves. Ollama models are checked through `/api/show`; its `thinking`
    capability enables boolean thinking without inventing a graded ladder.
+   If `/effort max` or another graded request is used for a boolean-only model,
+   UR enables thinking but reports that no graded level was sent.
    GPT-OSS uses its documented `low|medium|high` values, while any other graded
    values or Ultra aliases must be explicitly present in provider metadata.
    The resolved value is sent through Ollama's native `think` field. OpenRouter additionally

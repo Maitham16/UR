@@ -30,7 +30,7 @@ export function CtrlOToExpand() {
   const $ = _c(2);
   const isInSubAgent = useContext(SubAgentContext);
   const inVirtualList = useContext(InVirtualListContext);
-  const expandShortcut = useShortcutDisplay("app:toggleTranscript", "Global", "ctrl+o");
+  const expandShortcut = useShortcutDisplay("app:toggleTranscript", "Global");
   if (isInSubAgent || inVirtualList) {
     return null;
   }
@@ -45,6 +45,6 @@ export function CtrlOToExpand() {
   return t0;
 }
 export function ctrlOToExpand(): string {
-  const shortcut = getShortcutDisplay('app:toggleTranscript', 'Global', 'ctrl+o');
+  const shortcut = getShortcutDisplay('app:toggleTranscript', 'Global');
   return chalk.dim(`(${shortcut} to expand)`);
 }

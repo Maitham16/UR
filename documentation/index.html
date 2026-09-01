@@ -177,9 +177,10 @@ ur config set responses.store false</code></pre>
           <article>
             <h3>Capability-driven reasoning effort</h3>
             <pre><code>/effort ultra
+/thinking on
 ur --model kimi-k3:cloud --effort high
-/model  # Up/Down model · Left/Right effort · Enter apply</code></pre>
-            <p>The normalized vocabulary is <code>minimal</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>, <code>max</code>, and <code>ultra</code>; <code>/effort auto</code> clears an explicit choice. UR lists only capability-backed selectors it can map to the focused model's provider-native levels. <code>max</code> resolves to the highest supported non-Ultra tier. Ultra appears only for native <code>ultra</code>, advertised <code>max</code>/<code>xhigh</code>, or an explicit provider alias; the picker shows translations such as <code>ultra→max</code> and sends that exact provider value. Models that top out at <code>high</code>, boolean-thinking models, and unknown capabilities do not get Ultra.</p>
+/model  # Up/Down model · Left/Right effort or boolean thinking · Enter apply</code></pre>
+            <p>The normalized vocabulary is <code>minimal</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>, <code>max</code>, and <code>ultra</code>; <code>/effort auto</code> clears an explicit choice. UR lists only capability-backed selectors it can map to the focused model's provider-native levels. <code>max</code> resolves to the highest supported non-Ultra tier. Ultra appears only for native <code>ultra</code>, advertised <code>max</code>/<code>xhigh</code>, or an explicit provider alias; the picker shows translations such as <code>ultra→max</code> and sends that exact provider value. Models that top out at <code>high</code>, boolean-thinking models, and unknown capabilities do not get Ultra. For boolean-thinking models on runtimes with a native toggle, Left selects off, Right selects on, and <code>t</code> toggles; <code>/thinking on|off</code> is the direct control. A graded <code>/effort</code> request on such a model enables thinking while reporting that no graded value was sent. Generic OpenAI-compatible runtimes receive no invented boolean field.</p>
           </article>
           <article>
             <h3>OpenRouter responsive routing</h3>

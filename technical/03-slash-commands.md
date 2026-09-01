@@ -1,11 +1,18 @@
 # 03 — Slash Command Reference
 
-Source of truth: `src/commands.ts` (registry) and each command definition.
-Every command below exists in the registry; descriptions and argument hints are taken from
-the command definitions in code. Aliases are shown in parentheses. Commands of type `local`
-are also runnable from the shell as `ur <command>` when wired in `src/main.tsx` (see doc 02).
-Registry integrity tests require unique invocation tokens, non-empty descriptions, valid
-names/aliases, loadable implementations, and coverage in this document.
+Source of truth: `src/commands.ts`, `src/skills/bundled/`, and each command
+definition. Sections 1–12 describe commands in the standard runtime registry;
+section 13 separately identifies bundled prompt skills; sections 14–15 list
+implemented internal and compile-time-gated surfaces. Aliases are shown in
+parentheses. Commands of type `local` are also runnable from the shell as
+`ur <command>` when wired in `src/main.tsx` (see doc 02).
+
+Registry integrity tests require unique invocation tokens, non-empty
+descriptions, valid names/aliases, loadable implementations, forward coverage
+(every shipped command is documented), and reverse coverage (every command
+claimed here has a real implementation). This prevents optional skills and
+unavailable upstream-only commands from being presented as ordinary slash
+commands.
 
 Command types: **prompt** = expands to model input · **local** = runs locally, prints text ·
 **jsx** = interactive Ink dialog.
@@ -32,7 +39,6 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/exit` (`/quit`) | jsx | Exit the REPL | `/exit` |
 | `/session status\|list\|archive\|unarchive [id]` | jsx | View, archive, and restore local conversations; archiving the current session exits cleanly | `/session archive` |
 | `/desktop` (`/app`) | jsx | Continue this session in UR Desktop | `/desktop` |
-| `/summary` | internal | Summarize conversation (internal builds) | — |
 
 ## 2. Context & memory
 
@@ -63,6 +69,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/model-route <task>` (`/model-pick`) | local | Recommend best model for a task from cheap/strong/default pools | `/model-route "large refactor across 40 files"` |
 | `/local-first` (`/offline-readiness`, `/local`) | local | Report readiness for no-cloud/offline/lab environments | `/local-first --json` |
 | `/effort [minimal\|low\|medium\|high\|xhigh\|max\|ultra\|auto]` | jsx | Inspect or set the active model's capability-driven, provider-native effort level | `/effort ultra` |
+| `/thinking [on\|off\|toggle\|status]` | jsx | Control provider-native thinking where the active adapter has a real on/off mapping; generic compatible transports get no invented field | `/thinking on` |
 | `/fast [on\|off]` | jsx | Toggle fast mode | `/fast on` |
 | `/advisor [<model>\|off]` | local | Configure a second "advisor" model that critiques the main model | `/advisor gpt-5.5` |
 | `/escalate plan\|run\|oracle\|policy "<task>"` | local | Run on a fast model, auto-escalate hard steps to an oracle model | `/escalate run "prove this lock-free queue is correct" --oracle gpt-5.5` |
@@ -83,7 +90,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/agents` | jsx | Manage agent (subagent) configurations | `/agents` |
 | `/agent-inspect` (`/inspect-agents`) | local | Per-subagent timeline: spawns, prompts, results, verdicts, tools, tokens | `/agent-inspect --file transcript.jsonl` |
 | `/agent-task status\|diff\|pr` (`/task-pr`) | local | Task state, git diff status, PR handoff (`--create --draft --base`) | `/agent-task pr --create --base main` |
-| `/agent-templates [list\|install]` | local | Install reusable project agent templates | `/agent-templates install reviewer` |
+| `/agent-templates [list\|install]` (`/agent-template`) | local | Install reusable project agent templates | `/agent-templates install reviewer` |
 | `/agent-features [init]` (`/agent-roadmap`) | local | Show/initialize agent feature expansion scaffolds | `/agent-features --json` |
 | `/agent-trends` (`/trends`) | local | UR coverage of current agent-tech trends | `/agent-trends` |
 | `/bg run\|fanout\|list\|status\|logs\|attach\|steer\|kill` (`/background-agent`) | local | Detached local background agents with bounded live steering; PR creation requires an isolated worktree | `/bg steer bg_123 --message "run the parser tests"` |
@@ -93,14 +100,14 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/goal add\|list\|resume\|…` (`/goals`) | local | Long-horizon objectives persisting across sessions | `/goal add v2-launch --objective "ship v2" --workflow release` |
 | `/task start\|run\|pr\|list\|status` | local | Worktree-per-task sessions with PR handoff | `/task start rate-limiter --worktree` |
 | `/worktree list\|status\|clean` (`/worktrees`) | local | Manage agent worktrees | `/worktree clean` |
-| `/role-mode list\|show\|install` (`/roles`) | local | Built-in role modes (Architect, Code, Debug, Ask) installed as scoped agents | `/role-mode install architect` |
+| `/role-mode list\|show\|install` (`/roles`, `/rolemode`) | local | Built-in role modes (Architect, Code, Debug, Ask) installed as scoped agents | `/role-mode install architect` |
 | `/mode [code\|research\|debug\|browser\|image\|video\|data]` | local | Switch working mode | `/mode research` |
 
 ## 5. Automation, workflows & specs
 
 | Command | Type | What it does | Example |
 |---|---|---|---|
-| `/workflow init\|list\|show\|validate\|graph\|plan\|run\|next\|done\|reset` (`/wf`) | local | Declarative agent workflows (steps with dependencies) | `/workflow run release --resume` |
+| `/workflow init\|list\|show\|validate\|graph\|plan\|run\|next\|done\|reset` (`/workflows`, `/wf`) | local | Declarative agent workflows (steps with dependencies) | `/workflow run release --resume` |
 | `/agent-ci init\|validate\|workflow\|run` | local | Policy-gated agents in isolated CI worktrees with bounded patch artifacts | `/agent-ci init` |
 | `/automation list\|create\|show\|run\|run-due\|enable\|disable\|delete` (`/automations`) | local | Project-local scheduled automations (cron), installable into launchd/systemd/cron | `/automation create nightly --schedule "0 3 * * *" --prompt "run tests and report"` |
 | `/spec init\|generate\|approve\|next\|run\|verify\|…` (`/specs`) | local | Spec-driven development: requirements → design → tasks in `.ur/specs`, executed task-by-task with proof gates | `/spec init checkout --goal "one-click checkout"` |
@@ -114,6 +121,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/sdk info\|init` (`/embed`) | local | Show headless/programmatic usage; scaffold TS/Python SDK examples | `/sdk init` |
 | `/toolsmith <name> <python\|bash\|node\|go\|rust>` | local | Scaffold a local helper tool under `.ur/tools`, run via UR with approval | `/toolsmith csv-differ python` |
 | `/skill list\|show\|run\|init` | local | Executable skill workflows | `/skill run deploy-checklist` |
+| `/skills` | jsx | Browse the currently available skills | `/skills` |
 | `/create-skill <name> [description]` (`/new-skill`) | local | Scaffold a new SKILL.md | `/create-skill release-notes "draft release notes" --project` |
 
 ## 6. Code quality & verification
@@ -125,7 +133,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/verify` | prompt | Spawn the verification subagent on current state | `/verify` |
 | `/diff` | jsx | View uncommitted changes and per-turn diffs | `/diff` |
 | `/pr-comments` | prompt | Fetch comments from a GitHub PR | `/pr-comments` |
-| `/repo-edit index\|search\|rename\|move\|organize-imports\|unused\|callers\|impact` (`/reliable-edit`) | local | Compiler/graph change-impact mapping, indexed search, compiler-API edits, patch previews, rollback-safe apply | `/repo-edit impact getUser --depth 5` |
+| `/repo-edit index\|search\|rename\|move\|organize-imports\|unused\|callers\|impact` (`/repoedit`, `/reliable-edit`) | local | Compiler/graph change-impact mapping, indexed search, compiler-API edits, patch previews, rollback-safe apply | `/repo-edit impact getUser --depth 5` |
 | `/code-index build\|watch\|search\|status\|repo` (`/codeindex`) | local | Local semantic code index (embeddings via Ollama) | `/code-index search "retry with backoff"` |
 | `/guardrails list\|init\|validate\|check` (`/guardrail`) | local | Declarative I/O guardrails: regex/contains/PII/LLM rules with tripwires | `/guardrails check "email me at x@y.z" --phase output` |
 | `/claim-ledger add\|list\|validate` (`/claims`) | local | Claim-to-source provenance ledger | `/claim-ledger add --claim "p99 < 200ms" --source bench:latest` |
@@ -138,15 +146,12 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/evidence [n]` | local | Stability evidence/action ledger | `/evidence 20` |
 | `/actions [n]` | local | Recent stability action log | `/actions 10` |
 | `/learn run\|stats\|apply\|playbooks …` | local | Mine proof-backed outcomes, review learned playbook candidates, and run only explicitly approved workflows | `/learn playbooks mine --min-runs 3` |
-| `/commit` | prompt (internal) | Create a git commit | `/commit` |
-| `/commit-push-pr` | prompt (internal) | Commit, push, open PR | `/commit-push-pr` |
 
 ## 7. Security suite
 
 | Command | Type | What it does | Example |
 |---|---|---|---|
 | `/security scan\|code\|secrets\|threat-model\|vuln\|scope\|status\|rules\|report` | local | Umbrella security toolkit | `/security secrets` |
-| `/security-review` (`/secure-review`, `/sec-review`) | prompt | Audit code in an isolated worktree, fix low-risk issues, and report findings without publishing | `/security-review` |
 | `/scope` | local | Define/approve an authorized security test scope | `/scope set local` |
 | `/threat-model` | local | STRIDE/ATT&CK threat model | `/threat-model` |
 | `/vuln` | local | Dependency vulnerability audit (OSV) | `/vuln` |
@@ -197,11 +202,13 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/browser-qa list\|validate\|run` | local | Browser QA replay fixtures | `/browser-qa run login-flow` |
 | `/desktop-qa init\|list\|validate\|run\|schema\|doctor` (`/qa-desktop`) | local | Bounded Electron fixtures with teardown, masked screenshots, and raw recordings only when selector masking is off | `/desktop-qa run smoke.json` |
 | `/install-slack-app` | local | Install the UR Slack app | `/install-slack-app` |
-| `/remote-control [name]` (`/rc`) | jsx | Connect terminal for remote-control (mobile/web) sessions | `/remote-control` |
 | `/remote-env` | jsx | Default remote environment for teleport sessions | `/remote-env` |
-| `/web-setup` | jsx | Set up UR on the web (GitHub account link) | `/web-setup` |
 | `/devcontainer status\|init\|exec` (`/exec-target`) | local | Reproducible container execution target for commands and ci-loop | `/devcontainer exec -- npm test` |
 | `/connect` | local | (see Models & providers) | — |
+
+`/mcp enable|disable` is an explicit desired-state operation, not a blind
+toggle. It skips servers already in that state, excludes the IDE transport from
+bulk changes, awaits every connect/disconnect, and reports partial failures.
 
 ## 10. Project & environment info
 
@@ -211,7 +218,6 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/workspace init\|add\|task\|show\|validate\|run\|status\|verify\|pr-plan\|rollback-plan` | local | Coordinate dependency-aware tasks across isolated worktrees in multiple repositories | `/workspace run release --max-concurrency 4` |
 | `/dna` | local | Detect language/package-manager/build/test/lint, save to `.ur` | `/dna` |
 | `/os` | local | OS, shell, runtime, detected tools | `/os` |
-| `/env` | internal | Environment dump (internal builds) | — |
 | `/ur-init` | local | Generate the `.ur` asset folder (docs, superpowers, brainstorming, memory, prompts) | `/ur-init` |
 | `/ur-doctor` | local | Full health check: OS, tools, Ollama, `.ur`, MCP, Playwright | `/ur-doctor` |
 | `/doctor` | jsx | Diagnose installation and settings | `/doctor` |
@@ -237,7 +243,6 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/passes` | jsx | Passes UI | `/passes` |
 | `/tasks` (`/bashes`) | jsx | List/manage background tasks | `/tasks` |
 | `/think-back` / `/thinkback-play` | jsx/local | Year-in-review animation | `/think-back` |
-| `/voice` | local | Toggle voice mode (feature-gated) | `/voice` |
 | `/speak <text>` (`/say`) | local | Read text aloud with the system speech synthesiser (`--voice`, `--rate`) | `/speak build finished` |
 | `/computer screenshot\|click\|type` (`/desktop-control`) | local | Desktop control; state-changing actions require `--yes` | `/computer screenshot ~/shot.png` |
 | `/heapdump` | local | Dump JS heap to ~/Desktop (debugging) | `/heapdump` |
@@ -250,51 +255,58 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/stability metrics\|firewall\|why <error>\|policy\|evidence\|actions\|cooldown` | local | Stability-aware MAPE-K controls and root-cause | `/stability why "ECONNRESET"` |
 | `/actions`, `/evidence` | local | (see §6) | — |
 
-## 13. Bundled skills (prompt commands shipped in the binary)
+## 13. Bundled prompt skills
 
-Registered in `src/skills/bundled/` at startup:
+These are registered from `src/skills/bundled/` and are intentionally separate
+from the local/JSX command registry above. “Standard” means present in the
+normal build; “conditional” means registration also depends on the stated
+runtime or compile-time capability.
 
-| Skill | What it does | Example |
+| Skill | Availability | What it does | Example |
+|---|---|---|---|
+| `/batch` | standard | Research + plan a large change, then execute across parallel local worktrees | `/batch migrate all API handlers to zod validation` |
+| `/debug` | standard | Enable/read the current session debug log and diagnose runtime issues | `/debug provider request stalled` |
+| `/fix-bug` | standard | Reproduce, root-cause, and fix a bug in an isolated worktree | `/fix-bug login 500s when password has emoji` |
+| `/refactor` | standard | Safe, test-backed refactor in an isolated worktree | `/refactor extract retry logic into a helper` |
+| `/research-pro` (`/evidence-research`) | standard | Current primary-source research with a durable evidence workspace and corroboration checks | `/research-pro compare current coding-agent plugin systems` |
+| `/dcc-design` (`/professional-3d`) | standard | Unit-aware 3D/DCC/CAD workflow with build and format validation | `/dcc-design create a dimensioned glTF product enclosure` |
+| `/benchmark` (`/bench`, `/perf`) | standard | Add and run reproducible benchmarks in an isolated worktree | `/benchmark the JSON parser hot path` |
+| `/dockerize` (`/docker`) | standard | Add Dockerfile, compose, health checks, and `.dockerignore` | `/dockerize` |
+| `/security-review` (`/secure-review`, `/sec-review`) | standard | Audit code in an isolated worktree and report verified findings | `/security-review` |
+| `/latex-paper` (`/latex`) | standard | Generate and compile a LaTeX paper with a reproducible build script | `/latex-paper systems paper skeleton` |
+| `/paper-implementation` (`/implement-paper`) | standard | Implement an algorithm/system from a paper or URL with tests and notes | `/paper-implementation https://arxiv.org/abs/…` |
+| `/simplify` | standard | Review changed code for reuse, quality, and efficiency, then apply fixes | `/simplify` |
+| `/update-config` | standard | Configure settings and hooks through natural language | `/update-config allow npm commands without prompting` |
+| `/keybindings-help` | standard, model-only | Supply the model with the generated keybinding reference | — |
+| `/dream [focus]` | `KAIROS` or `KAIROS_DREAM` + auto-memory enabled | Consolidate recent session signal into durable auto-memory | `/dream focus on provider decisions` |
+| `/loop <interval> <prompt>` | `AGENT_TRIGGERS` + cron enabled | Run a prompt/command on a recurring interval | `/loop 5m /ci-loop` |
+| `/schedule` | `AGENT_TRIGGERS_REMOTE` + remote tasks enabled | Create, update, or list scheduled remote agents | `/schedule run tests every morning at 8` |
+| `/ur-api` | `BUILDING_UR_APPS` | Guidance for building apps on the UR API/SDK | `/ur-api` |
+| `/ur-in-chrome` | configured Chrome extension | Chrome-extension driving skill | — |
+
+## 14. Internal-only implementations
+
+With `USER_TYPE=ant` (and outside demo mode), this checkout adds the concrete
+internal commands `/commit`, `/commit-push-pr`, `/init-verifiers`,
+`/bridge-kick`, and `/version`. It also registers the internal bundled skills
+`/skillify`, `/remember`, `/verify`, `/lorem-ipsum`, and `/stuck` when their
+own runtime gates allow them. These are not advertised as standard user
+commands.
+
+## 15. Implemented feature-gated commands
+
+| Command | Build capability | What it does |
 |---|---|---|
-| `/batch` | Research + plan a large change, then execute across 5–30 parallel local worktrees; asks before final integration tests and does not publish | `/batch migrate all API handlers to zod validation` |
-| `/debug` | Enable/read the current session debug log and diagnose runtime issues | `/debug provider request stalled` |
-| `/fix-bug` | Reproduce, root-cause, and fix a bug in an isolated worktree; ask before the full suite and keep publishing explicit | `/fix-bug login 500s when password has emoji` |
-| `/refactor` | Safe, test-backed refactor in a worktree; ask before the full suite and keep publishing explicit | `/refactor extract retry logic into a helper` |
-| `/research-pro` (`/evidence-research`) | Current primary-source research with a durable evidence workspace, disconfirming evidence, and corroboration verification | `/research-pro compare current coding-agent plugin systems` |
-| `/dcc-design` (`/professional-3d`) | Unit-aware 3D/DCC/CAD workflow for Blender, OpenSCAD, 3ds Max, and reviewed app adapters with build and format validation | `/dcc-design create a dimensioned glTF product enclosure` |
-| `/benchmark` (`/bench`, `/perf`) | Add/run benchmarks in a worktree; ask before the full sequence and keep publishing explicit | `/benchmark the JSON parser hot path` |
-| `/dockerize` | Add Dockerfile, compose, health checks, and .dockerignore in a worktree; keep publishing explicit | `/dockerize` |
-| `/security-review` | Audit code in a worktree, fix low-risk issues, and report findings without publishing | `/security-review` |
-| `/latex-paper` (`/latex`) | Generate/compile a LaTeX paper with a build script; ask before final verification and keep publishing explicit | `/latex-paper systems paper skeleton` |
-| `/paper-implementation` (`/implement-paper`) | Implement an algorithm/system from a paper or URL with tests and notes; keep publishing explicit | `/paper-implementation https://arxiv.org/abs/… ` |
-| `/loop <interval> <prompt>` | Run a prompt/command on a recurring interval (default 10m) | `/loop 5m /ci-loop` |
-| `/remember` | Review auto-memory; promote entries to UR.md/UR.local.md; detect stale/duplicates | `/remember` |
-| `/simplify` | Review changed code for reuse/quality/efficiency, apply fixes | `/simplify` |
-| `/skillify` | Turn the current workflow into a reusable skill | `/skillify` |
-| `/update-config` | Configure settings.json/hooks via natural language | `/update-config allow npm commands without prompting` |
-| `/keybindings-help` | Keybinding customization help | `/keybindings-help` |
-| `/schedule` | Create/update/list scheduled remote agents (cron triggers) | `/schedule run tests every morning at 8` |
-| `/ur-api` | Guidance for building apps on the UR API/SDK | `/ur-api` |
-| `/ur-in-chrome` | Chrome-extension driving skill (auto-enabled when configured) | — |
-| `/verify` | Verify a change end-to-end by running the app (internal gate) | `/verify` |
-| `/lorem-ipsum <tokens>` | Filler text for context testing (internal) | `/lorem-ipsum 50000` |
-| `/stuck` | Diagnose frozen/slow sessions (internal) | — |
-| `/dream`, `/hunter`, `/run` | Feature-gated skills (KAIROS idle tasks, review artifact hunter, run-skill generator) | — |
+| `/proactive` | `PROACTIVE` or `KAIROS` | Control proactive-agent operation |
+| `/brief` | `KAIROS` or `KAIROS_BRIEF` | Toggle brief-only mode when entitled |
+| `/assistant` | `KAIROS` | Enter or leave the assistant runtime |
+| `/remote-control` (`/rc`) | `BRIDGE_MODE` | Connect this terminal to remote-control sessions |
+| `/voice` | `VOICE_MODE` | Toggle voice mode when the runtime capability is enabled |
+| `/web-setup` | `CCR_REMOTE_SETUP` | Set up UR on the web when remote sessions are permitted |
 
-## 14. Internal-only commands (`USER_TYPE=ant`, stripped from external builds)
-
-`/backfill-sessions`, `/break-cache`, `/bughunter`, `/commit`, `/commit-push-pr`, `/ctx_viz`,
-`/good-ur`, `/issue`, `/init-verifiers`, `/force-snip`, `/mock-limits`, `/bridge-kick`,
-`/version`, `/subscribe-pr`, `/reset-limits`, `/onboarding`, `/share`,
-`/summary`, `/teleport`, `/ant-trace`, `/perf-issue`, `/env`, `/oauth-refresh`,
-`/debug-tool-call`, `/autofix-pr`.
-
-## 15. Feature-gated commands
-
-Compiled in only when the corresponding `feature(...)` flag is on:
-`/proactive`, `/brief`, `/assistant` (KAIROS) · `/remote-control` (BRIDGE_MODE) ·
-`/voice` (VOICE_MODE) · `/workflows` (WORKFLOW_SCRIPTS) · `/web-setup` (CCR_REMOTE_SETUP) ·
-`/peers` (UDS_INBOX) · `/fork` (FORK_SUBAGENT) · `/buddy` (BUDDY) · `/torch` (TORCH).
+Only feature commands with an implementation in this checkout are listed.
+Compile-time branches whose optional source package is absent are not presented
+as available commands.
 
 ## 16. Custom command sources
 

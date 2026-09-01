@@ -105,7 +105,7 @@ export function SessionPreview(t0) {
     }
     let t9;
     if ($[13] === Symbol.for("react.memo_cache_sentinel")) {
-      t9 = <Box flexDirection="column" padding={1}>{t8}<Text dimColor={true}><Byline><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" /></Byline></Text></Box>;
+      t9 = <Box flexDirection="column" padding={1}>{t8}<Text dimColor={true}><Byline><ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="cancel" /></Byline></Text></Box>;
       $[13] = t9;
     } else {
       t9 = $[13];
@@ -167,7 +167,7 @@ export function SessionPreview(t0) {
   }
   let t16;
   if ($[27] === Symbol.for("react.memo_cache_sentinel")) {
-    t16 = <Text dimColor={true}><Byline><KeyboardShortcutHint shortcut="Enter" action="resume" /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" /></Byline></Text>;
+    t16 = <Text dimColor={true}><Byline><KeyboardShortcutHint shortcut="Enter" action="resume" /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="cancel" /></Byline></Text>;
     $[27] = t16;
   } else {
     t16 = $[27];

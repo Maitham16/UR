@@ -7,7 +7,7 @@ const VERIFY_PROMPT = (focus: string) => {
     : `Verify the changes from the most recent task.`
   return `Spawn the verification subagent now.
 
-How: call the Task tool with subagent_type="verification".
+How: call the Agent tool with subagent_type="verification".
 Description: a short label like "verify recent changes".
 Prompt to the subagent must include:
   1. ${focusLine}

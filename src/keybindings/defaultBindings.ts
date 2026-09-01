@@ -70,7 +70,7 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       enter: 'chat:submit',
       up: 'history:previous',
       down: 'history:next',
-      // Editing shortcuts (defined here, migration in progress)
+      // Editing shortcuts.
       // Undo has two bindings to support different terminal behaviors:
       // - ctrl+_ for legacy terminals (send \x1f control char)
       // - ctrl+shift+- for Kitty protocol (sends physical key with modifiers)
@@ -85,8 +85,7 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       ...(feature('MESSAGE_ACTIONS')
         ? { 'shift+up': 'chat:messageActions' as const }
         : {}),
-      // Voice activation (hold-to-talk). Registered so getShortcutDisplay
-      // finds it without hitting the fallback analytics log. To rebind,
+      // Voice activation (hold-to-talk). To rebind,
       // add a voice:pushToTalk entry (last wins); to disable, use /voice
       // — null-unbinding space hits a pre-existing useKeybinding.ts trap
       // where 'unbound' swallows the event (space dead for typing).

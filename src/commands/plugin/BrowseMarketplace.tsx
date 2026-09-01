@@ -588,7 +588,7 @@ export function BrowseMarketplace({
           </Text>
           <Box marginTop={1} paddingLeft={1}>
             <Text dimColor>
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="go back" />
             </Text>
           </Box>
         </Box>;
@@ -624,8 +624,8 @@ export function BrowseMarketplace({
         <Box marginTop={1}>
           <Text dimColor italic>
             <Byline>
-              <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="select" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+              <ConfigurableShortcutHint action="select:accept" context="Select" description="select" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="go back" />
             </Byline>
           </Text>
         </Box>
@@ -736,8 +736,8 @@ export function BrowseMarketplace({
         <Box marginTop={1} paddingLeft={1}>
           <Text dimColor>
             <Byline>
-              <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="select" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+              <ConfigurableShortcutHint action="select:accept" context="Select" description="select" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />
             </Byline>
           </Text>
         </Box>
@@ -756,7 +756,7 @@ export function BrowseMarketplace({
         </Text>
         <Box marginLeft={3}>
           <Text dimColor italic>
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="go back" />
           </Text>
         </Box>
       </Box>;

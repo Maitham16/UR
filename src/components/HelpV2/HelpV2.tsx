@@ -51,7 +51,7 @@ export function HelpV2(t0) {
   }
   useKeybinding("help:dismiss", close, t2);
   const exitState = useExitOnCtrlCDWithKeybindings(close);
-  const dismissShortcut = useShortcutDisplay("help:dismiss", "Help", "esc");
+  const dismissShortcut = useShortcutDisplay("help:dismiss", "Help");
   let antOnlyCommands;
   let builtinCommands;
   let t3;

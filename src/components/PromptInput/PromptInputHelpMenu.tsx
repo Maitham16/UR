@@ -27,7 +27,7 @@ export function PromptInputHelpMenu(props) {
     gap,
     paddingX
   } = props;
-  const t0 = useShortcutDisplay("app:toggleTranscript", "Global", "ctrl+o");
+  const t0 = useShortcutDisplay("app:toggleTranscript", "Global");
   let t1;
   if ($[0] !== t0) {
     t1 = formatShortcut(t0);
@@ -37,7 +37,7 @@ export function PromptInputHelpMenu(props) {
     t1 = $[1];
   }
   const transcriptShortcut = t1;
-  const t2 = useShortcutDisplay("app:toggleTodos", "Global", "ctrl+t");
+  const t2 = useShortcutDisplay("app:toggleTodos", "Global");
   let t3;
   if ($[2] !== t2) {
     t3 = formatShortcut(t2);
@@ -47,7 +47,7 @@ export function PromptInputHelpMenu(props) {
     t3 = $[3];
   }
   const todosShortcut = t3;
-  const t4 = useShortcutDisplay("chat:undo", "Chat", "ctrl+_");
+  const t4 = useShortcutDisplay("chat:undo", "Chat");
   let t5;
   if ($[4] !== t4) {
     t5 = formatShortcut(t4);
@@ -57,7 +57,7 @@ export function PromptInputHelpMenu(props) {
     t5 = $[5];
   }
   const undoShortcut = t5;
-  const t6 = useShortcutDisplay("chat:stash", "Chat", "ctrl+s");
+  const t6 = useShortcutDisplay("chat:stash", "Chat");
   let t7;
   if ($[6] !== t6) {
     t7 = formatShortcut(t6);
@@ -67,7 +67,7 @@ export function PromptInputHelpMenu(props) {
     t7 = $[7];
   }
   const stashShortcut = t7;
-  const t8 = useShortcutDisplay("chat:cycleMode", "Chat", "shift+tab");
+  const t8 = useShortcutDisplay("chat:cycleMode", "Chat");
   let t9;
   if ($[8] !== t8) {
     t9 = formatShortcut(t8);
@@ -77,7 +77,7 @@ export function PromptInputHelpMenu(props) {
     t9 = $[9];
   }
   const cycleModeShortcut = t9;
-  const t10 = useShortcutDisplay("chat:modelPicker", "Chat", "alt+p");
+  const t10 = useShortcutDisplay("chat:modelPicker", "Chat");
   let t11;
   if ($[10] !== t10) {
     t11 = formatShortcut(t10);
@@ -87,7 +87,7 @@ export function PromptInputHelpMenu(props) {
     t11 = $[11];
   }
   const modelPickerShortcut = t11;
-  const t12 = useShortcutDisplay("chat:fastMode", "Chat", "alt+o");
+  const t12 = useShortcutDisplay("chat:fastMode", "Chat");
   let t13;
   if ($[12] !== t12) {
     t13 = formatShortcut(t12);
@@ -97,7 +97,7 @@ export function PromptInputHelpMenu(props) {
     t13 = $[13];
   }
   const fastModeShortcut = t13;
-  const t14 = useShortcutDisplay("chat:externalEditor", "Chat", "ctrl+g");
+  const t14 = useShortcutDisplay("chat:externalEditor", "Chat");
   let t15;
   if ($[14] !== t14) {
     t15 = formatShortcut(t14);
@@ -107,7 +107,10 @@ export function PromptInputHelpMenu(props) {
     t15 = $[15];
   }
   const externalEditorShortcut = t15;
-  const t16 = useShortcutDisplay("app:toggleTerminal", "Global", "meta+j");
+  const terminalPanelEnabled = feature("TERMINAL_PANEL") ? getFeatureValue_CACHED_MAY_BE_STALE("tengu_terminal_panel", false) : false;
+  const t16 = useShortcutDisplay("app:toggleTerminal", "Global", {
+    enabled: terminalPanelEnabled
+  });
   let t17;
   if ($[16] !== t16) {
     t17 = formatShortcut(t16);
@@ -117,7 +120,7 @@ export function PromptInputHelpMenu(props) {
     t17 = $[17];
   }
   const terminalShortcut = t17;
-  const t18 = useShortcutDisplay("chat:imagePaste", "Chat", "ctrl+v");
+  const t18 = useShortcutDisplay("chat:imagePaste", "Chat");
   let t19;
   if ($[18] !== t18) {
     t19 = formatShortcut(t18);
@@ -129,7 +132,7 @@ export function PromptInputHelpMenu(props) {
   const imagePasteShortcut = t19;
   let t20;
   if ($[20] !== dimColor || $[21] !== terminalShortcut) {
-    t20 = feature("TERMINAL_PANEL") ? getFeatureValue_CACHED_MAY_BE_STALE("tengu_terminal_panel", false) ? <Box><Text dimColor={dimColor}>{terminalShortcut} for terminal</Text></Box> : null : null;
+    t20 = terminalPanelEnabled && terminalShortcut ? <Box><Text dimColor={dimColor}>{terminalShortcut} for terminal</Text></Box> : null;
     $[20] = dimColor;
     $[21] = terminalShortcut;
     $[22] = t20;

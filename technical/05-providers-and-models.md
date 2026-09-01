@@ -203,8 +203,11 @@ graded selector.
   exposes the translation (for example, `ultra→max`) and serialization sends that exact
   wire value. Models whose graded ladder tops out at `high`, boolean-thinking models, and
   unknown-capability models never get Ultra.
-- In `/model`, Up/Down changes the focused model and Left/Right cycles only that model's
-  capability-backed selectors; Enter applies the model and effort atomically. `/effort status`, the
+- In `/model`, Up/Down changes the focused model. For a graded model, Left/Right cycles only
+  that model's capability-backed selectors. For a boolean-thinking model on a runtime with a
+  native two-state mapping, Left turns thinking off and Right turns it on; `t` also toggles it.
+  Enter applies the model and selected control
+  atomically. `/effort status`, the
   picker confirmation, status UI, SDK state, and outbound request share the same resolver.
 - Direct OpenAI, Anthropic, and Gemini use model-specific documented ladders. OpenRouter
   preserves live reasoning metadata. OpenAI-compatible servers receive
@@ -218,7 +221,11 @@ Unknown/future models are fail-closed for thinking request shaping: UR first con
 provider metadata, curated contracts, `/api/show` (Ollama), or `/props` (llama.cpp). If none
 of those sources establishes thinking support, UR omits the thinking field instead of sending
 a speculative production request and interpreting a 400 response. Boolean thinking metadata
-can enable the thinking toggle without fabricating graded effort levels. For OpenRouter, that
+enables `/thinking on|off` and the picker's two-state control only when the selected runtime has
+a real native mapping (for example, Ollama `think`); it never fabricates a generic
+OpenAI-compatible wire field or graded effort
+levels. A graded `/effort` request made while such a model is active is not sent as a level;
+UR enables boolean thinking and explains the exact on/off contract instead. For OpenRouter, that
 maps to its documented [`reasoning.enabled`](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens);
 when the model instead advertises
 `supports_max_tokens`, UR preserves the configured budget as `reasoning.max_tokens`.
@@ -249,9 +256,10 @@ and [vLLM online serving](https://docs.vllm.ai/en/latest/serving/openai_compatib
 | Feature | Command | Notes |
 |---|---|---|
 | Effort level | `/effort minimal·low·medium·high·xhigh·max·ultra·auto` | capability-gated; provider-native wire value; persistable choices use `effortLevel` |
+| Thinking | `/thinking on·off·toggle·status` | provider-native on/off control; persists through `alwaysThinkingEnabled` |
 | Fast mode | `/fast on` | `fastMode` / `fastModePerSessionOptIn` settings |
 | Advisor model | `/advisor <model>` / `/advisor off` | secondary model that critiques answers (`advisorModel` setting) |
-| Always thinking | `alwaysThinkingEnabled` setting | force extended thinking |
+| Always thinking | `alwaysThinkingEnabled` setting | durable backing setting for `/thinking` |
 | Thinking summaries | `showThinkingSummaries` setting | UI display of thinking |
 | Fallback model | `--fallback-model` (print mode) | on overload |
 

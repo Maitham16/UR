@@ -514,6 +514,7 @@ function _temp(t0) {
 }
 export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
   name: ASK_USER_QUESTION_TOOL_NAME,
+  permissionRequestKind: 'ask-user-question',
   searchHint: 'prompt the user with a multiple-choice question',
   maxResultSizeChars: 100_000,
   shouldDefer: false,

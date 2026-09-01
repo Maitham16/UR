@@ -185,7 +185,7 @@ export function MCPServerDesktopImportDialog(t0) {
   }
   let t17;
   if ($[33] === Symbol.for("react.memo_cache_sentinel")) {
-    t17 = <Box paddingX={1}><Text dimColor={true} italic={true}><Byline><KeyboardShortcutHint shortcut="Space" action="select" /><KeyboardShortcutHint shortcut="Enter" action="confirm" /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" /></Byline></Text></Box>;
+    t17 = <Box paddingX={1}><Text dimColor={true} italic={true}><Byline><KeyboardShortcutHint shortcut="Space" action="select" /><KeyboardShortcutHint shortcut="Enter" action="confirm" /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="cancel" /></Byline></Text></Box>;
     $[33] = t17;
   } else {
     t17 = $[33];

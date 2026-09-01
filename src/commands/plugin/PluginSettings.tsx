@@ -525,7 +525,7 @@ function ErrorsTabContent(t0) {
     }
     let t11;
     if ($[10] === Symbol.for("react.memo_cache_sentinel")) {
-      t11 = <Box flexDirection="column">{t10}<Box marginTop={1}><Text dimColor={true} italic={true}><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" /></Text></Box></Box>;
+      t11 = <Box flexDirection="column">{t10}<Box marginTop={1}><Text dimColor={true} italic={true}><ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" /></Text></Box></Box>;
       $[10] = t11;
     } else {
       t11 = $[10];
@@ -556,14 +556,14 @@ function ErrorsTabContent(t0) {
   }
   let t14;
   if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
-    t14 = <ConfigurableShortcutHint action="select:previous" context="Select" fallback={"\u2191"} description="navigate" />;
+    t14 = <ConfigurableShortcutHint action="select:previous" context="Select" description="navigate" />;
     $[15] = t14;
   } else {
     t14 = $[15];
   }
   let t15;
   if ($[16] !== hasAction) {
-    t15 = hasAction && <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="resolve" />;
+    t15 = hasAction && <ConfigurableShortcutHint action="select:accept" context="Select" description="resolve" />;
     $[16] = hasAction;
     $[17] = t15;
   } else {
@@ -571,7 +571,7 @@ function ErrorsTabContent(t0) {
   }
   let t16;
   if ($[18] === Symbol.for("react.memo_cache_sentinel")) {
-    t16 = <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />;
+    t16 = <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />;
     $[18] = t16;
   } else {
     t16 = $[18];

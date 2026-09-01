@@ -169,7 +169,7 @@ export function MCPStdioServerMenu({
           {exitState.pending ? <>Press {exitState.keyName} again to exit</> : <Byline>
               <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
               <KeyboardShortcutHint shortcut="Enter" action="select" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="back" />
             </Byline>}
         </Text>
       </Box>

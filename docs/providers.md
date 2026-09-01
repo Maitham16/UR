@@ -182,8 +182,14 @@ For OpenRouter, UR preserves the live `/models` reasoning metadata and sends
 the unified `reasoning.effort` request. OpenAI-compatible servers receive the
 resolved value as `reasoning_effort`. The command confirmation, status
 indicator, active-work spinner, SDK settings response, and provider request all
-use the same resolved value. If a provider advertises only boolean thinking,
-UR does not invent a graded effort selector.
+use the same resolved value. If a provider advertises only boolean thinking and
+its runtime has a real native on/off mapping, UR does not invent a graded effort
+selector. Use `/thinking on|off` directly;
+in `/model`, Left selects off, Right selects on, and `t` toggles. A graded
+`/effort` request on that model enables boolean thinking while clearly reporting
+that the requested level was not sent.
+Generic OpenAI-compatible endpoints have no universal boolean thinking field,
+so metadata alone does not make this toggle appear and UR sends no invented parameter.
 `ultra` is UR's visible beyond-high ceiling selector. It is selectable only
 when the provider/model advertises `ultra`, `max`, `xhigh`, or an explicit
 provider-authored equivalent. UR shows the native mapping (for example,
@@ -215,8 +221,10 @@ See [Ollama thinking](https://docs.ollama.com/capabilities/thinking),
 and [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking).
 
 The provider-first `/model` picker supports the same control directly: use
-Left/Right to move through the capability-backed selectors UR can map to the focused model's native levels,
-then Enter to apply the model and effort together. OpenRouter's live catalog
+Left/Right to move through the capability-backed selectors UR can map to a
+graded model's native levels, or to choose off/on for a boolean-thinking model
+when its runtime has a native two-state mapping, then Enter to apply the model
+and reasoning control together. OpenRouter's live catalog
 shows pricing tier, context size, tool capability, reasoning capability, and
 the full, untruncated model ID immediately below the focused entry. Opening the
 OpenRouter catalog reuses its endpoint-scoped five-minute cache; Ctrl+R forces

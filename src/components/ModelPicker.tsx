@@ -42,6 +42,8 @@ import {
 } from '../utils/settings/settings.js'
 import {
   modelSupportsThinking,
+  providerSupportsThinkingToggle,
+  resolveThinkingArrowValue,
   shouldEnableThinkingByDefault,
 } from '../utils/thinking.js'
 import {
@@ -294,7 +296,8 @@ export function ModelPicker({
     ? modelSupportsEffort(focusedModel, currentProvider)
     : false
   const focusedSupportsThinking = focusedModel
-    ? modelSupportsThinking(focusedModel)
+    ? modelSupportsThinking(focusedModel, currentProvider) &&
+      providerSupportsThinkingToggle(currentProvider)
     : false
   const focusedDefaultEffort = getDefaultEffortLevelForOption(
     focusedValue,
@@ -317,6 +320,10 @@ export function ModelPicker({
 
   const handleCycleEffort = (direction: 'left' | 'right') => {
     if (!focusedSupportsEffort) {
+      if (focusedSupportsThinking) {
+        setThinkingEnabled(resolveThinkingArrowValue(direction))
+        setHasToggledThinking(true)
+      }
       return
     }
     setEffort(prev =>
@@ -502,7 +509,10 @@ export function ModelPicker({
             </>
           ) : (
             <Text color="subtle">
-              <EffortLevelIndicator effort={undefined} /> Effort not supported
+              <EffortLevelIndicator effort={undefined} />{' '}
+              {focusedSupportsThinking
+                ? 'No graded effort · provider offers on/off thinking'
+                : 'Effort not supported'}
               {focusedModelName ? ` for ${focusedModelName}` : ''}
               {effortCapabilityLoading ? ' · checking provider…' : ''}
             </Text>
@@ -516,7 +526,11 @@ export function ModelPicker({
                 {thinkingEnabled ? '◆' : '◇'}
               </Text>{' '}
               Thinking {thinkingEnabled ? 'on' : 'off'}{' '}
-              <Text color="subtle">t to toggle</Text>
+              <Text color="subtle">
+                {focusedSupportsEffort
+                  ? 't to toggle'
+                  : '← off · → on · t toggle'}
+              </Text>
             </Text>
           ) : (
             <Text color="subtle">
@@ -542,7 +556,6 @@ export function ModelPicker({
               <ConfigurableShortcutHint
                 action="select:cancel"
                 context="Select"
-                fallback="Esc"
                 description="exit"
               />
             </Byline>

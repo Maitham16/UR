@@ -50,7 +50,7 @@ export function AddMarketplace({
     }
     const parsed = await parseMarketplaceInput(input);
     if (!parsed) {
-      setError('Invalid marketplace source format. Try: owner/repo, https://..., or ./path');
+      setError('Invalid marketplace source format. Try: owner/repo, npm:package, https://..., or ./path');
       return;
     }
 
@@ -130,6 +130,7 @@ export function AddMarketplace({
           <Text dimColor>Examples:</Text>
           <Text dimColor> · owner/repo (GitHub)</Text>
           <Text dimColor> · git@example.com:owner/repo.git (SSH)</Text>
+          <Text dimColor> · npm:@scope/marketplace@latest</Text>
           <Text dimColor> · https://example.com/marketplace.json</Text>
           <Text dimColor> · ./path/to/marketplace</Text>
           <Box marginTop={1}>
@@ -153,7 +154,7 @@ export function AddMarketplace({
         <Text dimColor italic>
           <Byline>
             <KeyboardShortcutHint shortcut="Enter" action="add" />
-            <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+            <ConfigurableShortcutHint action="confirm:no" context="Settings" description="cancel" />
           </Byline>
         </Text>
       </Box>

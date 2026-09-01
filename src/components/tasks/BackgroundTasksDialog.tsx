@@ -133,7 +133,7 @@ export function BackgroundTasksDialog({
   const foregroundedTaskId = useAppState(s_0 => s_0.foregroundedTaskId);
   const showSpinnerTree = useAppState(s_1 => s_1.expandedView) === 'teammates';
   const setAppState = useSetAppState();
-  const killAgentsShortcut = useShortcutDisplay('chat:killAgents', 'Chat', 'ctrl+x ctrl+k');
+  const killAgentsShortcut = useShortcutDisplay('chat:killAgents', 'Chat');
   const typedTasks = tasks as Record<string, TaskState> | undefined;
 
   // Track if we skipped list view on mount (for back button behavior)

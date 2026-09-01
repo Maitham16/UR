@@ -46,7 +46,7 @@ type ToolBuckets = {
   MCP: ToolBucket;
   OTHER: ToolBucket;
 };
-function getToolBuckets(): ToolBuckets {
+export function getToolBuckets(): ToolBuckets {
   return {
     READ_ONLY: {
       name: 'Read-only tools',
@@ -58,7 +58,11 @@ function getToolBuckets(): ToolBuckets {
     },
     EXECUTION: {
       name: 'Execution tools',
-      toolNames: new Set([BashTool.name, "external" === 'ant' ? TungstenTool.name : undefined].filter(n => n !== undefined))
+      // The available `tools` collection is already build/feature filtered.
+      // Keeping this taxonomy environment-agnostic ensures ant builds classify
+      // Tungsten correctly without coupling render-time behavior to a replaced
+      // USER_TYPE constant.
+      toolNames: new Set([BashTool.name, TungstenTool.name])
     },
     MCP: {
       name: 'MCP tools',

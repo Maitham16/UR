@@ -108,7 +108,7 @@ export function SkillsMenu(t0) {
     }
     let t4;
     if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
-      t4 = <Text dimColor={true} italic={true}><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="close" /></Text>;
+      t4 = <Text dimColor={true} italic={true}><ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="close" /></Text>;
       $[7] = t4;
     } else {
       t4 = $[7];
@@ -205,7 +205,7 @@ export function SkillsMenu(t0) {
   }
   let t13;
   if ($[30] === Symbol.for("react.memo_cache_sentinel")) {
-    t13 = <Text dimColor={true} italic={true}><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="close" /></Text>;
+    t13 = <Text dimColor={true} italic={true}><ConfigurableShortcutHint action="confirm:no" context="Confirmation" description="close" /></Text>;
     $[30] = t13;
   } else {
     t13 = $[30];

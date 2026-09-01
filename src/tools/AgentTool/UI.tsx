@@ -352,7 +352,7 @@ export function renderToolResultMessage(data: Output, progressMessagesForMessage
                 {' ('}
                 <Byline>
                   <KeyboardShortcutHint shortcut="↓" action="manage" />
-                  {prompt && <ConfigurableShortcutHint action="app:toggleTranscript" context="Global" fallback="ctrl+o" description="expand" />}
+                  {prompt && <ConfigurableShortcutHint action="app:toggleTranscript" context="Global" description="expand" />}
                 </Byline>
                 {')'}
               </Text>}
@@ -499,7 +499,7 @@ export function renderToolUseProgressMessage(progressMessages: ProgressMessage<P
           In progress… · <Text bold>{toolUseCount}</Text> tool{' '}
           {toolUseCount === 1 ? 'use' : 'uses'}
           {tokens && ` · ${formatNumber(tokens)} tokens`} ·{' '}
-          <ConfigurableShortcutHint action="app:toggleTranscript" context="Global" fallback="ctrl+o" description="expand" parens />
+          <ConfigurableShortcutHint action="app:toggleTranscript" context="Global" description="expand" parens />
         </Text>
       </MessageResponse>;
   }

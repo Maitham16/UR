@@ -1078,15 +1078,14 @@ async function run(): Promise<CommanderCommand> {
     // apply as normal. REPL-typed messages already default to 'next'
     // priority (messageQueueManager.enqueue) so they drain mid-turn between
     // tool calls. SendUserMessage (BriefTool) is enabled via the brief env
-    // var. SleepTool stays disabled (its isEnabled() gates on proactive).
+    // var. Assistant mode also opts into proactive scheduling, which makes
+    // Sleep available before the tool pool is assembled.
     // kairosEnabled is computed once here and reused at the
     // getAssistantSystemPromptAddendum() call site further down.
     //
-    // Trust gate: .ur/settings.json is attacker-controllable in an
-    // untrusted clone. We run ~1000 lines before showSetupScreens() shows
-    // the trust dialog, and by then we've already appended
-    // .ur/agents/assistant.md to the system prompt. Refuse to activate
-    // until the directory has been explicitly trusted.
+    // Project-local assistant.md is deferred until the normal trust dialog is
+    // accepted. Assistant activation itself follows the same permissions and
+    // trust flow as every other mode.
     let kairosEnabled = false;
     let assistantTeamContext: Awaited<ReturnType<NonNullable<typeof assistantModule>['initializeAssistantTeam']>> | undefined;
     if (feature('KAIROS') && (options as {
@@ -1106,27 +1105,24 @@ async function run(): Promise<CommanderCommand> {
     !(options as {
       agentId?: unknown;
     }).agentId && kairosGate) {
-      if (!checkHasTrustDialogAccepted()) {
-        // biome-ignore lint/suspicious/noConsole:: intentional console output
-        console.warn(chalk.yellow('Assistant mode disabled: directory is not trusted. Accept the trust dialog and restart.'));
-      } else {
-        // Blocking gate check — returns cached `true` instantly; if disk
-        // cache is false/missing, lazily inits GrowthBook and fetches fresh
-        // (max ~5s). --assistant skips the gate entirely (daemon is
-        // pre-entitled).
-        kairosEnabled = assistantModule.isAssistantForced() || (await kairosGate.isKairosEnabled());
-        if (kairosEnabled) {
-          const opts = options as {
-            brief?: boolean;
-          };
-          opts.brief = true;
-          setKairosActive(true);
-          // Pre-seed an in-process team so Agent(name: "foo") spawns
-          // teammates without TeamCreate. Must run BEFORE setup() captures
-          // the teammateMode snapshot (initializeAssistantTeam calls
-          // setCliTeammateModeOverride internally).
-          assistantTeamContext = await assistantModule.initializeAssistantTeam();
-        }
+      // Blocking gate check — returns cached `true` instantly; if disk
+      // cache is false/missing, lazily inits GrowthBook and fetches fresh
+      // (max ~5s). --assistant skips the gate entirely (daemon is
+      // pre-entitled).
+      kairosEnabled = assistantModule.isAssistantForced() || (await kairosGate.isKairosEnabled());
+      if (kairosEnabled) {
+        const opts = options as {
+          brief?: boolean;
+          proactive?: boolean;
+        };
+        opts.brief = true;
+        opts.proactive = true;
+        setKairosActive(true);
+        // Pre-seed an in-process team so Agent(name: "foo") spawns
+        // teammates without TeamCreate. Must run BEFORE setup() captures
+        // the teammateMode snapshot (initializeAssistantTeam calls
+        // setCliTeammateModeOverride internally).
+        assistantTeamContext = await assistantModule.initializeAssistantTeam();
       }
     }
     const {
@@ -2285,7 +2281,9 @@ async function run(): Promise<CommanderCommand> {
       appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${proactivePrompt}` : proactivePrompt;
     }
     if (feature('KAIROS') && kairosEnabled && assistantModule) {
-      const assistantAddendum = assistantModule.getAssistantSystemPromptAddendum();
+      const assistantAddendum = assistantModule.getAssistantSystemPromptAddendum({
+        includeProjectInstructions: checkHasTrustDialogAccepted()
+      });
       appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${assistantAddendum}` : assistantAddendum;
     }
 

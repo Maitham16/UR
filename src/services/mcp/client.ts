@@ -2214,8 +2214,24 @@ export async function getMcpToolsCommandsAndResources(
     resources?: ServerResource[]
   }) => void,
   mcpConfigs?: Record<string, ScopedMcpServerConfig>,
+  lifecycleOverrides?: {
+    isServerDisabled?: (name: string) => boolean
+    connectServer?: (
+      name: string,
+      config: ScopedMcpServerConfig,
+      serverStats?: Parameters<typeof connectToServer>[2],
+    ) => Promise<MCPServerConnection>
+    clearServer?: (
+      name: string,
+      config: ScopedMcpServerConfig,
+    ) => Promise<void>
+  },
 ): Promise<void> {
   let resourceToolsAdded = false
+  const isServerDisabled =
+    lifecycleOverrides?.isServerDisabled ?? isMcpServerDisabled
+  const connectServer = lifecycleOverrides?.connectServer ?? connectToServer
+  const clearServer = lifecycleOverrides?.clearServer ?? clearServerCache
 
   const allConfigEntries = Object.entries(
     mcpConfigs ?? (await getAllMcpConfigs()).servers,
@@ -2225,7 +2241,7 @@ export async function getMcpToolsCommandsAndResources(
   // never generate HTTP connections or flow through batch processing
   const configEntries: typeof allConfigEntries = []
   for (const entry of allConfigEntries) {
-    if (isMcpServerDisabled(entry[0])) {
+    if (isServerDisabled(entry[0])) {
       onConnectionAttempt({
         client: { name: entry[0], type: 'disabled', config: entry[1] },
         tools: [],
@@ -2262,13 +2278,38 @@ export async function getMcpToolsCommandsAndResources(
     wsIdeCount,
   }
 
+  const abandonIfDisabled = async (
+    name: string,
+    config: ScopedMcpServerConfig,
+    client?: MCPServerConnection,
+  ): Promise<boolean> => {
+    if (!isServerDisabled(name)) return false
+
+    // A startup connection may finish after `/mcp disable`. Close and evict
+    // the stale client before it can republish tools. If the user re-enabled
+    // while cleanup was in flight, discard this result and let the new
+    // explicit reconnect publish its own state.
+    if (client?.type === 'connected') {
+      await clearServer(name, config)
+    }
+    if (isServerDisabled(name)) {
+      onConnectionAttempt({
+        client: { name, type: 'disabled', config },
+        tools: [],
+        commands: [],
+      })
+    }
+    return true
+  }
+
   const processServer = async ([name, config]: [
     string,
     ScopedMcpServerConfig,
   ]): Promise<void> => {
+    let latestClient: MCPServerConnection | undefined
     try {
       // Check if server is disabled - if so, just add it to state without connecting
-      if (isMcpServerDisabled(name)) {
+      if (isServerDisabled(name)) {
         onConnectionAttempt({
           client: {
             name,
@@ -2287,14 +2328,15 @@ export async function getMcpToolsCommandsAndResources(
       // we re-probe servers that cannot succeed until the user runs /mcp.
       // Each probe is a network round-trip for connect-401 plus OAuth
       // discovery, and print mode awaits the whole batch (main.tsx:3503).
-      if (
+      const hasCachedAuthFailure =
         (config.type === 'urai-proxy' ||
           config.type === 'http' ||
           config.type === 'sse') &&
         ((await isMcpAuthCached(name)) ||
           ((config.type === 'http' || config.type === 'sse') &&
             hasMcpDiscoveryButNoToken(name, config)))
-      ) {
+      if (await abandonIfDisabled(name, config)) return
+      if (hasCachedAuthFailure) {
         logMCPDebug(name, `Skipping connection (cached needs-auth)`)
         onConnectionAttempt({
           client: { name, type: 'needs-auth' as const, config },
@@ -2304,7 +2346,9 @@ export async function getMcpToolsCommandsAndResources(
         return
       }
 
-      const client = await connectToServer(name, config, serverStats)
+      const client = await connectServer(name, config, serverStats)
+      latestClient = client
+      if (await abandonIfDisabled(name, config, client)) return
 
       if (client.type !== 'connected') {
         onConnectionAttempt({
@@ -2336,6 +2380,7 @@ export async function getMcpToolsCommandsAndResources(
           ? fetchResourcesForClient(client)
           : Promise.resolve([]),
       ])
+      if (await abandonIfDisabled(name, config, client)) return
       const commands = [...mcpCommands, ...mcpSkills]
 
       // If this server resources and we haven't added resource tools yet,
@@ -2353,6 +2398,7 @@ export async function getMcpToolsCommandsAndResources(
         resources: resources.length > 0 ? resources : undefined,
       })
     } catch (error) {
+      if (await abandonIfDisabled(name, config, latestClient)) return
       // Handle errors gracefully - connection might have closed during fetch
       logMCPError(
         name,

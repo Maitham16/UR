@@ -75,6 +75,12 @@ import {
   fetchURAIMcpConfigsIfEligible,
 } from './urai.js'
 import { registerElicitationHandler } from './elicitationHandler.js'
+import {
+  applyMcpEnablementPlan,
+  type MCPEnablementResult,
+  planMcpServerEnablement,
+  reconcileMcpConnectionWithDesiredState,
+} from './enablement.js'
 import { getMcpPrefix } from './mcpStringUtils.js'
 import { commandBelongsToServer, excludeStalePluginClients } from './utils.js'
 
@@ -313,6 +319,22 @@ export function useManageMCPConnections(
       commands: Command[]
       resources?: ServerResource[]
     }) => {
+      const desiredClient = reconcileMcpConnectionWithDesiredState(
+        client,
+        isMcpServerDisabled(client.name),
+      )
+      if (desiredClient !== client) {
+        if (client.type === 'connected') {
+          void clearServerCache(client.name, client.config).catch(() => {})
+        }
+        updateServer({
+          ...desiredClient,
+          tools: [],
+          commands: [],
+          resources: [],
+        })
+        return
+      }
       updateServer({ ...client, tools, commands, resources })
 
       // Handle side effects based on client state
@@ -432,7 +454,12 @@ export function useManageMCPConnections(
                         `Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached, giving up`,
                       )
                       reconnectTimersRef.current.delete(client.name)
-                      updateServer({ ...client, type: 'failed' })
+                      updateServer(
+                        reconcileMcpConnectionWithDesiredState(
+                          { ...client, type: 'failed' },
+                          isMcpServerDisabled(client.name),
+                        ),
+                      )
                       return
                     }
                   }
@@ -1064,9 +1091,11 @@ export function useManageMCPConnections(
     [store, onConnectionAttempt],
   )
 
-  // Expose function to toggle server enabled/disabled state
-  const toggleMcpServer = useCallback(
-    async (serverName: string): Promise<void> => {
+  const setMcpServerEnabledState = useCallback(
+    async (
+      serverName: string,
+      enabled: boolean,
+    ): Promise<MCPServerConnection> => {
       const client = store
         .getState()
         .mcp.clients.find(c => c.name === serverName)
@@ -1074,9 +1103,12 @@ export function useManageMCPConnections(
         throw new Error(`MCP server ${serverName} not found`)
       }
 
-      const isCurrentlyDisabled = client.type === 'disabled'
+      const isInRequestedState = enabled
+        ? client.type === 'connected'
+        : client.type === 'disabled'
+      if (isInRequestedState) return client
 
-      if (!isCurrentlyDisabled) {
+      if (!enabled) {
         // Cancel any pending automatic reconnection attempt
         const existingTimer = reconnectTimersRef.current.get(serverName)
         if (existingTimer) {
@@ -1094,11 +1126,13 @@ export function useManageMCPConnections(
         }
 
         // Update to disabled state (tools/commands/resources auto-cleared)
-        updateServer({
+        const disabledClient: MCPServerConnection = {
           name: serverName,
           type: 'disabled',
           config: client.config,
-        })
+        }
+        updateServer(disabledClient)
+        return disabledClient
       } else {
         // Enabling: persist enabled state to disk first
         setMcpServerEnabled(serverName, true)
@@ -1114,12 +1148,54 @@ export function useManageMCPConnections(
         const result = await reconnectMcpServerImpl(serverName, client.config)
 
         onConnectionAttempt(result)
+        return reconcileMcpConnectionWithDesiredState(
+          result.client,
+          isMcpServerDisabled(serverName),
+        )
       }
     },
     [store, updateServer, onConnectionAttempt],
   )
 
-  return { reconnectMcpServer, toggleMcpServer }
+  // Preserve the interactive toggle API while implementing it through the
+  // explicit desired-state transition used by command automation.
+  const toggleMcpServer = useCallback(
+    async (serverName: string): Promise<void> => {
+      const client = store
+        .getState()
+        .mcp.clients.find(c => c.name === serverName)
+      if (!client) throw new Error(`MCP server ${serverName} not found`)
+      await setMcpServerEnabledState(
+        serverName,
+        client.type === 'disabled',
+      )
+    },
+    [setMcpServerEnabledState, store],
+  )
+
+  /**
+   * Set one or all MCP servers to an explicit state. Unlike repeated toggle
+   * calls from UI components, this plans against one store snapshot, skips
+   * servers already in the requested state, waits for every transition, and
+   * reports partial failures to the caller.
+   */
+  const setMcpServersEnabled = useCallback(
+    async (target: string, enabled: boolean): Promise<MCPEnablementResult> => {
+      const plan = planMcpServerEnablement(
+        store.getState().mcp.clients,
+        target,
+        enabled,
+      )
+      return applyMcpEnablementPlan(
+        plan,
+        enabled,
+        setMcpServerEnabledState,
+      )
+    },
+    [setMcpServerEnabledState, store],
+  )
+
+  return { reconnectMcpServer, toggleMcpServer, setMcpServersEnabled }
 }
 
 function getTransportDisplayName(type: string): string {

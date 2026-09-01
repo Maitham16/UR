@@ -78,6 +78,16 @@ are session-only, and every selection is capability-gated. Ultra is shown only w
 active model advertises `ultra`, `max`, `xhigh`, or an explicit alias, and UR sends the exact
 advertised wire value (for example, `ultra→max`).
 
+For a model that advertises boolean thinking but no graded effort ladder on a
+runtime with a native on/off mapping, `/thinking on|off` is the direct control.
+In `/model`, Left selects off, Right
+selects on, and `t` toggles. If `/effort max` (or another graded value) is used
+for that model, UR enables boolean thinking but explicitly reports that no
+graded value was sent. The choice updates `alwaysThinkingEnabled` for future
+sessions as well as the live session.
+Generic OpenAI-compatible runtimes do not receive an invented boolean field;
+they expose this control only if their real adapter defines one.
+
 The two `redteamWarning*` fields only record that the user saw a particular
 warning revision. They do not activate redteam mode, approve a target, relax a
 permission, or override provider/model policy. Redteam activation and scope
@@ -355,6 +365,12 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 `~/.claude`-style keybindings live at `~/.ur/keybindings.json`; open with `/keybindings`,
 get help with `/keybindings-help`. Managed by `src/keybindings/` (chords supported,
 global + command-scoped bindings; see `useGlobalKeybindings.tsx` / `useCommandKeybindings.tsx`).
+Shortcut labels resolve from this same registry, including defaults and user overrides;
+UI code no longer carries independent hardcoded fallback labels. A missing action/context
+registration raises `MissingKeybindingError`, making configuration drift visible in tests
+instead of displaying a shortcut that may not work. Resolution collapses later overrides by
+context and chord: an explicit `null` hides the corresponding routine UI hint, while a later
+rebind becomes the displayed shortcut.
 
 ## Output styles
 

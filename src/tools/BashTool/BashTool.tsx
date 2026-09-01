@@ -450,6 +450,7 @@ async function applySedEdit(simulatedEdit: {
 }
 export const BashTool = buildTool({
   name: BASH_TOOL_NAME,
+  permissionRequestKind: 'bash',
   searchHint: 'execute shell commands',
   // 30K chars - tool result persistence threshold
   maxResultSizeChars: 30_000,
@@ -616,6 +617,7 @@ export const BashTool = buildTool({
     backgroundedByUser,
     assistantAutoBackgrounded,
     structuredContent,
+    returnCodeInterpretation,
     persistedOutputPath,
     persistedOutputSize
   }, toolUseID): ToolResultBlockParam {
@@ -672,7 +674,14 @@ export const BashTool = buildTool({
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: [processedStdout, errorMessage, backgroundInfo].filter(Boolean).join('\n'),
+      content: [
+        processedStdout,
+        returnCodeInterpretation?.trim(),
+        errorMessage,
+        backgroundInfo,
+      ]
+        .filter(Boolean)
+        .join('\n'),
       is_error: interrupted
     };
   },
@@ -803,11 +812,12 @@ export const BashTool = buildTool({
 
       const isInterrupt = result.interrupted && abortController.signal.reason === 'interrupt';
 
-      stdoutAccumulator.append((result.stdout || '').trimEnd() + EOL);
-      stderrForShellReset = result.stderr || '';
-
       // Interpret the command result using semantic rules
       interpretationResult = interpretCommandResult(input.command, result.code, result.stdout || '', result.stderr || '');
+      const displayStdout = interpretationResult.displayStdout ?? result.stdout ?? '';
+      const displayStderr = interpretationResult.displayStderr ?? result.stderr ?? '';
+      stdoutAccumulator.append(displayStdout.trimEnd() + EOL);
+      stderrForShellReset = displayStderr;
 
       if (`${result.stdout}\n${result.stderr}`.includes(".git/index.lock': File exists")) {
         logEvent('tengu_git_index_lock_error', {});
@@ -911,7 +921,7 @@ export const BashTool = buildTool({
       logEvent('tengu_code_indexing_tool_used', {
         tool: codeIndexingTool as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         source: 'cli' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        success: result.code === 0
+        success: interpretationResult?.isError === false
       });
     }
     let strippedStdout = stripEmptyLines(stdout);
@@ -970,13 +980,13 @@ export const BashTool = buildTool({
       dangerouslyDisableSandbox: 'dangerouslyDisableSandbox' in input ? input.dangerouslyDisableSandbox as boolean | undefined : undefined,
       persistedOutputPath,
       persistedOutputSize,
-      persistedStderrPath: result.stderrFilePath,
-      persistedStderrSize: result.stderrFileSize,
+      persistedStderrPath: interpretationResult?.displayStderr === undefined ? result.stderrFilePath : undefined,
+      persistedStderrSize: interpretationResult?.displayStderr === undefined ? result.stderrFileSize : undefined,
       exitCode: result.backgroundTaskId ? undefined : result.code,
       durationMs: result.backgroundTaskId ? undefined : result.durationMs,
       command: input.command,
       cwd: commandCwd,
-      executionState: result.backgroundTaskId ? 'running' : result.timedOut ? 'timed_out' : result.interrupted ? 'cancelled' : result.code === 0 ? 'completed' : 'failed',
+      executionState: result.backgroundTaskId ? 'running' : result.timedOut ? 'timed_out' : result.interrupted ? 'cancelled' : interpretationResult?.isError === false ? 'completed' : 'failed',
       signal: result.signal
     };
     return {

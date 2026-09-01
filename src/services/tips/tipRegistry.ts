@@ -106,7 +106,7 @@ const externalTips: Tip[] = [
   {
     id: 'plan-mode-for-complex-tasks',
     content: async () =>
-      `Use Plan Mode to prepare for a complex request before making changes. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to enable.`,
+      `Use Plan Mode to prepare for a complex request before making changes. Press ${getShortcutDisplay('chat:cycleMode', 'Chat')} twice to enable.`,
     cooldownSessions: 5,
     isRelevant: async () => {
       if (process.env.USER_TYPE === 'ant') return false
@@ -395,15 +395,15 @@ const externalTips: Tip[] = [
     id: 'shift-tab',
     content: async () =>
       process.env.USER_TYPE === 'ant'
-        ? `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default mode and auto mode`
-        : `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default mode, auto-accept edit mode, and plan mode`,
+        ? `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat')} to cycle between default mode and auto mode`
+        : `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat')} to cycle between default mode, auto-accept edit mode, and plan mode`,
     cooldownSessions: 10,
     isRelevant: async () => true,
   },
   {
     id: 'image-paste',
     content: async () =>
-      `Use ${getShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v')} to paste images from your clipboard`,
+      `Use ${getShortcutDisplay('chat:imagePaste', 'Chat')} to paste images from your clipboard`,
     cooldownSessions: 20,
     isRelevant: async () => true,
   },
@@ -558,7 +558,7 @@ const externalTips: Tip[] = [
   {
     id: 'modelOplan-mode-reminder',
     content: async () =>
-      `Your default model setting is plan mode. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to activate Plan Mode.`,
+      `Your default model setting is plan mode. Press ${getShortcutDisplay('chat:cycleMode', 'Chat')} twice to activate Plan Mode.`,
     cooldownSessions: 2,
     async isRelevant() {
       if (process.env.USER_TYPE === 'ant') return false

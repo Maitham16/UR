@@ -213,8 +213,8 @@ export function Usage(): React.ReactNode {
         <Text color="error">Error: {error}</Text>
         <Text dimColor>
           <Byline>
-            <ConfigurableShortcutHint action="settings:retry" context="Settings" fallback="r" description="retry" />
-            <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+            <ConfigurableShortcutHint action="settings:retry" context="Settings" description="retry" />
+            <ConfigurableShortcutHint action="confirm:no" context="Settings" description="cancel" />
           </Byline>
         </Text>
       </Box>;
@@ -223,7 +223,7 @@ export function Usage(): React.ReactNode {
     return <Box flexDirection="column" gap={1}>
         <Text dimColor>Loading usage data…</Text>
         <Text dimColor>
-          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+          <ConfigurableShortcutHint action="confirm:no" context="Settings" description="cancel" />
         </Text>
       </Box>;
   }
@@ -259,7 +259,7 @@ export function Usage(): React.ReactNode {
       {isEligibleForOverageCreditGrant() && <OverageCreditUpsell maxWidth={maxWidth} />}
 
       <Text dimColor>
-        <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+        <ConfigurableShortcutHint action="confirm:no" context="Settings" description="cancel" />
       </Text>
     </Box>;
 }

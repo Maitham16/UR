@@ -76,6 +76,30 @@ describe('MCP tool adapter', () => {
     })
   })
 
+  test('validates array output as text without invalid structuredContent', async () => {
+    const result = await formatMcpToolResult(
+      fakeTool({ outputSchema: z.array(z.string()) }),
+      { data: ['one', 'two'] },
+      1_000,
+    )
+
+    expect(result.content).toEqual([
+      { type: 'text', text: '["one","two"]' },
+    ])
+    expect(result).not.toHaveProperty('structuredContent')
+  })
+
+  test('validates primitive output and emits the parsed value as text', async () => {
+    const result = await formatMcpToolResult(
+      fakeTool({ outputSchema: z.coerce.number() }),
+      { data: '42' },
+      1_000,
+    )
+
+    expect(result.content).toEqual([{ type: 'text', text: '42' }])
+    expect(result).not.toHaveProperty('structuredContent')
+  })
+
   test('turns oversized results into actionable tool errors', async () => {
     const result = await formatMcpToolResult(
       fakeTool({ outputSchema: undefined }),

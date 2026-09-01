@@ -19,6 +19,7 @@ import { createBashShellProvider } from '../src/utils/shell/bashProvider.js'
  */
 
 const BASH = '/bin/bash'
+const ZSH = '/bin/zsh'
 let workdir: string
 let counter = 0
 
@@ -45,9 +46,10 @@ type RunResult = {
 
 async function runThroughProvider(
   command: string,
-  options: { cwd?: string; timeoutMs?: number } = {},
+  options: { cwd?: string; timeoutMs?: number; shellPath?: string } = {},
 ): Promise<RunResult> {
-  const provider = await createBashShellProvider(BASH, { skipSnapshot: true })
+  const shellPath = options.shellPath ?? BASH
+  const provider = await createBashShellProvider(shellPath, { skipSnapshot: true })
   const id = `test-${process.pid}-${counter++}`
   const { commandString, cwdFilePath } = await provider.buildExecCommand(command, {
     id,
@@ -57,7 +59,7 @@ async function runThroughProvider(
   const started = Date.now()
 
   return await new Promise<RunResult>(resolve => {
-    const child = spawn(BASH, args, {
+    const child = spawn(shellPath, args, {
       cwd: options.cwd ?? workdir,
       env: { ...process.env },
       // Own process group, so a timeout can reap the whole tree rather than
@@ -314,6 +316,33 @@ describe('command construction is deterministic', () => {
     const b = await provider.buildExecCommand('echo hi', { id: 'x', useSandbox: false })
     expect(a.commandString).toBe(b.commandString)
   })
+
+  test('zsh compatibility disables NOMATCH before evaluating the command', async () => {
+    const provider = await createBashShellProvider(ZSH, { skipSnapshot: true })
+    const { commandString } = await provider.buildExecCommand('printf ok', {
+      id: 'zsh-nomatch-shape',
+      useSandbox: false,
+    })
+
+    const compatibility = commandString.indexOf('unsetopt nomatch')
+    const evaluation = commandString.indexOf('eval ')
+    expect(compatibility).toBeGreaterThan(-1)
+    expect(evaluation).toBeGreaterThan(compatibility)
+  })
+
+  test.skipIf(!existsSync(ZSH))(
+    'zsh passes an unmatched glob through instead of aborting eval',
+    async () => {
+      const unmatched = `definitely-missing-ur-glob-${process.pid}-*`
+      const result = await runThroughProvider(`printf '<%s>' ${unmatched}`, {
+        shellPath: ZSH,
+      })
+
+      expect(result.code).toBe(0)
+      expect(result.stdout).toBe(`<${unmatched}>`)
+      expect(result.stderr).toBe('')
+    },
+  )
 
   test('a command runs exactly once', async () => {
     const counterFile = path.join(workdir, 'run-count')
