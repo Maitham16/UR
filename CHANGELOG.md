@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.84.3
+
+- Updated both production and release artifact uploads to the current official
+  `actions/upload-artifact` v7.0.1 commit. The immutable workflow pin now uses
+  the action's Node 24 runtime, removing the Node 20 deprecation annotation
+  while preserving the verified-tarball handoff used for npm and GitHub
+  publication.
+
 ## 1.84.2
 
 - Added NVIDIA NIM as a real UR-native provider for build.nvidia.com. It uses

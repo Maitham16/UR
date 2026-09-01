@@ -762,7 +762,7 @@ runner; \`ur trigger\` is the inbound parser that decides what to run.
     root: 'project',
     content: compileAgenticCiWorkflow('default', {
       packageVersion:
-        typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.84.2',
+        typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.84.3',
     }),
   },
   {
