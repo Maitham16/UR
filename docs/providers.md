@@ -37,7 +37,8 @@ multimodal input, external CLI boundary, and sandbox scope:
 | Claude API | API | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:anthropic` | `ANTHROPIC_API_KEY` |
 | Gemini API | API | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:gemini` | `GEMINI_API_KEY` |
 | OpenRouter | API/router | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:openrouter` | `OPENROUTER_API_KEY` |
-| NVIDIA NIM | hosted/server API | UR-native | no | yes | yes | model-dependent | UR Bash/File sandbox | `api:nvidia-nim` | `NVIDIA_API_KEY`; configurable NIM endpoint |
+| NVIDIA Agentic | hosted/server API | UR-native | no | yes | yes | model-dependent | UR Bash/File sandbox | `api:nvidia-nim` | `NVIDIA_API_KEY`; public per-card endpoints or configurable NIM gateway |
+| NVIDIA Special | hosted/focused-task API | UR-native | no | task-specific | task-specific | task-specific | UR tool permission flow | `api:nvidia-special` | shared `NVIDIA_API_KEY`; exact HTTP/NVCF/gRPC contracts |
 | OpenAI-compatible | server/API | UR-native | no | yes | yes | endpoint-dependent | UR Bash/File sandbox | `openai-compatible` | optional `OPENAI_COMPATIBLE_API_KEY`; never reuses `OPENAI_API_KEY` |
 | Ollama | local/server | UR-native | no | yes | yes | yes* | UR Bash/File sandbox | `ollama` | configured local, LAN, or hosted endpoint; optional `OLLAMA_API_KEY` |
 | LM Studio | local/server | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `openai-compatible:lmstudio` | configured endpoint; optional `LMSTUDIO_API_KEY` |
@@ -161,7 +162,7 @@ migrated to the previously active provider on the first provider switch or
 scoped base-URL write.
 
 The override is not limited to local runtimes. OpenAI API, Anthropic API,
-Gemini API, OpenRouter, and NVIDIA NIM can each target a separate compatible gateway using
+Gemini API, OpenRouter, and NVIDIA Agentic can each target a separate compatible gateway using
 the same command. Their official URLs are defaults, not hardcoded dispatch
 destinations; model discovery and inference use the selected provider's saved
 URL. Subscription CLI providers remain vendor-managed and do not accept a base
@@ -212,15 +213,14 @@ or has unknown capability metadata. Arbitrary
 labels such as `deep` still require an explicit provider alias because UR
 cannot infer their rank.
 
-NVIDIA NIM is live-discovery first. UR enriches a discovered model only when
-NVIDIA's current model API reference documents that exact model's
-`reasoning_effort` values. Documented `none` appears as Minimal and `max`
-appears as Ultra while the request preserves NVIDIA's wire values. An unknown
-NIM model never inherits an invented graded ladder.
-Hosted discovery is also a positive agent-contract intersection: a row in the
-mixed NVIDIA `/v1/models` inventory is not sufficient by itself to enter the
-ongoing agent picker. Verified dedicated media/VLM endpoints are exposed only
-as one-shot task contracts and cannot pass provider/model validation.
+Public NVIDIA Agentic discovery comes from current Build Free Endpoint cards
+that advertise agent/tool use. NVIDIA's account inventory can enrich but never
+filter or remove those models. UR applies only model-specific documented
+reasoning ladders: `none` appears as Minimal and a documented `max` can map to
+Ultra while preserving NVIDIA's wire value. Unknown models never inherit a
+ladder. Focused media, analysis, embedding, safety, translation, and gRPC
+contracts are isolated in NVIDIA Special and cannot pass ongoing-agent model
+validation.
 
 For an unknown or newly released model, UR waits for provider-authored model
 metadata or a supported model-scoped probe before adding thinking parameters.
@@ -298,10 +298,10 @@ and [fast mode](https://platform.claude.com/docs/en/build-with-claude/fast-mode)
 UR uses only provider-documented acceleration controls. OpenAI Responses
 already has native streaming and WebSocket continuation; Gemini 2.5+ implicit
 caching is automatic. Google's Priority tier requires the Interactions API and
-is not a valid `generateContent` option. NVIDIA NIM and local servers publish
+is not a valid `generateContent` option. NVIDIA Agentic and local servers publish
 no universal OpenRouter-style routing field, so UR does not invent one.
 API-key entry for
-OpenAI, Claude, Gemini, OpenRouter, NVIDIA NIM, and authenticated compatible
+OpenAI, Claude, Gemini, OpenRouter, NVIDIA Agentic/Special, and authenticated compatible
 endpoints is a single aligned masked row; the key is stored in the OS keychain
 flow and is never written to settings. On the model screen, `K` adds or
 replaces the selected HTTP provider's key and `E` edits its endpoint. Generic
@@ -313,7 +313,7 @@ UR uses each provider's non-generating count endpoint when one covers the full
 request: OpenAI Responses input tokens, Anthropic Messages token counting,
 Gemini `countTokens`, llama.cpp chat input tokens, and vLLM Messages token
 counting. NVIDIA's hosted NIM API has no documented token-count route;
-NVIDIA NIM, Ollama, OpenRouter, LM Studio, Unsloth, and subscription CLIs use a
+NVIDIA Agentic, Ollama, OpenRouter, LM Studio, Unsloth, and subscription CLIs use a
 provider-wire local estimate because those runtimes do not share a dependable
 preflight tokenizer for complete chat history plus tools. UR never launches a
 hidden completion for token counting. If a native count call is unavailable,
@@ -344,7 +344,7 @@ error, not a successful `Did 0 searches` result.
 When you select a UR-native provider and model, every agent request is routed
 through that provider's backend:
 
-- **API providers** make direct HTTP calls in each provider's native wire format: Anthropic uses `x-api-key` + `anthropic-version` against `/v1/messages`; OpenAI uses `Authorization: Bearer` against `/v1/chat/completions` by default or `/v1/responses` when explicitly selected; Gemini uses `x-goog-api-key` against `…:generateContent`; OpenRouter and NVIDIA NIM use their OpenAI-compatible chat endpoints.
+- **API providers** make direct calls in each provider's native wire format: Anthropic uses `x-api-key` + `anthropic-version` against `/v1/messages`; OpenAI uses `Authorization: Bearer` against `/v1/chat/completions` by default or `/v1/responses` when explicitly selected; Gemini uses `x-goog-api-key` against `…:generateContent`; OpenRouter and NVIDIA Agentic use documented chat endpoints; NVIDIA Special uses per-card HTTP, NVCF, or gRPC inference.
 - **Local/server providers** connect to the configured local or OpenAI-compatible endpoint (`/v1/chat/completions` for LM Studio, llama.cpp and vLLM; the native tags/chat API for Ollama)
 - **Subscription CLI providers** (Codex CLI, Claude Code, Gemini CLI,
   Antigravity) dispatch the turn through the vendor's official CLI using your
@@ -455,7 +455,8 @@ ur config set provider anthropic-api
 | --- | --- | --- |
 | API providers (openai-api, anthropic-api, gemini-api) | Live discovery from the provider's `/models` endpoint using your connected key (curated fallback until connected) | live |
 | OpenRouter | Live `/models` discovery with an endpoint-scoped five-minute cache; Ctrl+R forces a fresh request with no stale fallback | live/cache |
-| NVIDIA NIM | Hosted: live `/models` availability intersected with audited agent contracts, plus a generated official OpenAPI catalog for dedicated one-shot APIs. Configured NIM gateway: its own live `/models` catalog | live agents + official task contracts |
+| NVIDIA Agentic | Public Build: generated per-card agent contracts, never narrowed by account inventory. Configured NIM gateway: its own live `/models` catalog | live card contracts or gateway live |
+| NVIDIA Special | Generated from every current focused Free Endpoint card, including exact HTTP/NVCF/gRPC inference metadata | static generated contracts |
 | Local/server providers (ollama, lmstudio, llama.cpp, vllm, unsloth) | Dynamic discovery from the selected provider endpoint | live |
 | OpenAI-compatible | Dynamic discovery from configured endpoint | live |
 | Subscription CLIs (codex-cli, claude-code-cli, gemini-cli, antigravity-cli) | Curated list (the official CLIs expose no models API); first-class in `/model`, dispatched via the official CLI. External CLI behavior depends on the vendor CLI. Log in with `ur auth <provider>` | static |
@@ -482,7 +483,7 @@ provider's successful live catalog remains authoritative for that account.
 - `anthropic-api` — requires `ANTHROPIC_API_KEY`
 - `gemini-api` — requires `GEMINI_API_KEY`
 - `openrouter` — requires `OPENROUTER_API_KEY`
-- `nvidia-nim` — requires `NVIDIA_API_KEY` for build.nvidia.com; endpoint is configurable
+- `nvidia-nim` / `nvidia-special` — share `NVIDIA_API_KEY`; Agentic's enterprise endpoint is configurable, while Special routes each public model to its card-specific contract
 
 **Local/server providers** require local runtime or endpoint:
 - `ollama` — configurable local, LAN, or hosted Ollama server
@@ -616,6 +617,7 @@ Provider config and doctor commands accept canonical IDs and common aliases:
 | `gemini-api` | `gemini api`, `google gemini api` |
 | `openrouter` | `openrouter api` |
 | `nvidia-nim` | `nvidia`, `NVIDIA Build`, `nvidia api`, `nim` |
+| `nvidia-special` | `NVIDIA Special`, `nvidia task`, `nvidia one-shot` |
 | `openai-compatible` | `compatible`, `openai compatible` |
 | `ollama` | `ollama local` |
 | `lmstudio` | `LM Studio`, `lm-studio` |
@@ -680,36 +682,35 @@ The compatible provider's key is optional and provider-scoped. Add or replace
 it with `ur connect openai-compatible`, `/connect openai-compatible`, or `K`
 in the `/model` model screen. Anonymous endpoints continue to work without it.
 
-### NVIDIA NIM / build.nvidia.com
+### NVIDIA Agentic and NVIDIA Special / build.nvidia.com
 
-NVIDIA NIM is a UR-native, OpenAI-compatible provider with live discovery:
+NVIDIA is exposed through two UR-native providers sharing one stored key:
 
 ```sh
 echo "$NVIDIA_API_KEY" | ur connect nvidia-nim
 ur config set provider nvidia-nim
 ur provider doctor nvidia-nim
+# Focused inference uses the same key:
+ur config set provider nvidia-special
 # Optional self-hosted/enterprise gateway:
 ur config set base_url nvidia-nim https://nim-gateway.example/v1
 ```
 
-The default is `https://integrate.api.nvidia.com/v1`. NVIDIA's authenticated
-`/v1/models` response proves current account availability but mixes agents,
-utilities, VLMs, and generation functions. UR intersects it with a reviewed
-positive agent registry before allowing a model to own the multi-turn tool
-loop. It does not intersect the result with NVCF's separate deployment-function
-inventory. A custom enterprise or self-hosted NIM remains independent and uses
-only that configured gateway's `/models` response.
-
-The Build web catalog also contains download-only NIMs. UR does not add those
-cards to the hosted picker: only IDs returned by the authenticated hosted
-`/v1/models` endpoint can appear. UR focuses
+NVIDIA Agentic defaults to `https://integrate.api.nvidia.com/v1`. For the
+public service, UR generates its agent catalog from every current Free Endpoint
+card that explicitly advertises agent/tool use. `/v1/models` is not an
+allowlist: account entitlement failures are reported and never remove a model.
+A custom enterprise or self-hosted NIM remains independent and uses only that
+configured gateway's live `/models` response. Download-only cards never enter
+either hosted provider. UR focuses
 `nvidia/nemotron-3.5-lightning-30b-a3b` first because NVIDIA documents it as
 its fastest 30B model for long-running agents. Left/Right can turn that exact
 model's thinking off/on through NVIDIA's documented
 `chat_template_kwargs.enable_thinking`; other NIM models receive only their
 own advertised reasoning contract.
 
-UR calls `/models` and `/chat/completions`. It counts NVIDIA requests with a
+Agentic uses each generated card's documented chat endpoint (or the configured
+gateway). It counts NVIDIA requests with a
 provider-wire local estimate instead of first calling the unsupported hosted
 `/messages/count_tokens` route, and never launches a hidden completion.
 Streaming, standard tool calls, and image input use the
@@ -719,32 +720,29 @@ documented Nemotron coding-agent models, UR includes NVIDIA's
 [NIM LLM API reference](https://docs.api.nvidia.com/nim/reference/llm-apis)
 and [NIM endpoint guide](https://docs.nvidia.com/nim/large-language-models/latest/tutorials.html).
 
-NVIDIA's dedicated APIs are a separate one-shot surface. `/model` labels them
-`ONE-SHOT`, shows each task's real purpose, and keeps the current agent model
-when one is selected. UR generates the executable catalog from NVIDIA's
-official LLM, retrieval, visual, multimodal, healthcare, route-optimization,
-and climate OpenAPI indexes. The current catalog has 92 tasks and routes each
-one to its documented endpoint on `integrate.api.nvidia.com`,
-`ai.api.nvidia.com`, `health.api.nvidia.com`, `optimize.api.nvidia.com`, or
-`climate.api.nvidia.com`.
+NVIDIA Special is a separate focused-task provider. Selecting a row stores a
+one-shot preference and keeps the current chat provider/model. The generator
+crawls all 100 current Build cards and preserves every card labelled Free
+Endpoint: 36 total, split into 13 Agentic and 23 Special. Thirty-five publish a
+complete executable contract; 22 are Special. The remaining VoiceChat card is
+kept visible with `unpublished` transport because NVIDIA currently provides no
+public request/response protocol.
 
-`NvidiaNimTask` accepts convenience prompt/image/query/passages fields, or its
-`describe` action exposes the exact request schema before an advanced
-`payload_json` call. `file_inputs` can bind local files into that payload by
-JSON pointer. UR automatically inlines small media or creates an NVIDIA Asset
-UUID/reference for larger and asset-based contracts, polls documented
-asynchronous responses, and saves binary or large JSON results under
-`.ur/artifacts/nvidia/`. It reuses `NVIDIA_API_KEY` and returns text/path
-metadata to the enclosing agent. Download-only cards, status routes,
-staging-only URLs, broken references, and operations without a documented
-public hosted POST endpoint never appear as usable choices.
+Every executable row records the purpose, input/output hints, exact endpoint,
+HTTP or RPC method, card-specific function ID, request and response schemas,
+documentation, and current NVIDIA availability flag. HTTP cards use their own
+`integrate.api.nvidia.com`, `ai.api.nvidia.com`, or direct
+`{function-id}.invocation.api.nvcf.nvidia.com` route. Five Maxine/Riva cards use
+their exact public service/method on `grpc.nvcf.nvidia.com:443`.
 
-`ur provider doctor nvidia-nim` verifies the hosted agent catalog and selected
-agent model against live `/v1/models`, and reports the generated task-contract
-count. Dedicated API entitlement can be verified only with that task's valid
-payload. If NVIDIA rejects a listed model after selection, UR redacts internal
-function/account IDs and removes only that endpoint-scoped model until
-`Ctrl+R` explicitly retries discovery.
+`NvidiaSpecial` exposes `describe` for the full contract and `run` for
+convenience text/image/audio/video inputs or exact `payload_json` with
+JSON-pointer file bindings. UR inlines small media, uses NVIDIA Assets for
+larger inputs, polls documented asynchronous requests, decodes single or
+multiple returned artifacts, and saves output under `.ur/artifacts/nvidia/`
+unless the caller supplies a path. Both providers reuse `NVIDIA_API_KEY`.
+NVIDIA availability and entitlement errors are redacted and reported, but no
+model is ever removed from either generated catalog.
 
 Local/server providers use their normal endpoints:
 
@@ -802,7 +800,7 @@ Required variables:
 | --- | --- | --- |
 | OpenAI-compatible | `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_MODEL` | `OPENAI_COMPATIBLE_API_KEY` |
 | Unsloth | `UNSLOTH_API_KEY`, `UNSLOTH_MODEL` | `UNSLOTH_BASE_URL` (defaults to `http://localhost:8888/v1`) |
-| NVIDIA NIM | `NVIDIA_API_KEY`, `NVIDIA_MODEL` | `NVIDIA_BASE_URL` (defaults to `https://integrate.api.nvidia.com/v1`) |
+| NVIDIA Agentic | `NVIDIA_API_KEY`, `NVIDIA_MODEL` | `NVIDIA_BASE_URL` (defaults to `https://integrate.api.nvidia.com/v1`) |
 | OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL` | `OPENAI_BASE_URL` |
 | OpenRouter | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | `OPENROUTER_BASE_URL` |
 | Anthropic | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | `ANTHROPIC_BASE_URL` |

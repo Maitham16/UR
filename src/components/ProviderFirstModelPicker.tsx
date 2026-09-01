@@ -192,7 +192,9 @@ export function ProviderFirstModelPicker({
   useEffect(() => {
     function loadProviderStatus() {
       setLoadingProviders(true)
-      const providers = listProviders({ includeExternalAppBridges: true })
+      const providers = listProviders({ includeExternalAppBridges: true }).filter(
+        provider => provider.id !== 'nvidia-special' || onTaskSelect !== undefined,
+      )
       const settings = getInitialSettings()
 
       // Keep opening /model instantaneous. Endpoint verification and the live
@@ -221,7 +223,7 @@ export function ProviderFirstModelPicker({
     }
 
     loadProviderStatus()
-  }, [])
+  }, [onTaskSelect])
 
   // Step 2: Load models for selected provider
   useEffect(() => {
@@ -1146,15 +1148,21 @@ export function ProviderFirstModelPicker({
             {selectedProvider?.value === 'openrouter'
               ? `${modelOptions.length} models · live catalog cached for 5 minutes · Ctrl+R refreshes now`
               : selectedProvider?.value === 'nvidia-nim'
-                ? `${modelOptions.filter(model => model.usageMode !== 'task').length} ongoing agent models · ${modelOptions.filter(model => model.usageMode === 'task').length} one-shot task models`
+                ? `${modelOptions.length} ongoing agent models · exact NVIDIA agent endpoints`
+                : selectedProvider?.value === 'nvidia-special'
+                  ? `${modelOptions.length} focused-task entries · exact per-card NVIDIA inference contracts where published`
               : `Showing models for ${selectedProvider?.label} (${selectedProvider?.accessType})`}
           </Text>
           <Text color={modelSource === 'live' ? 'success' : modelSource === 'unavailable' ? 'error' : 'subtle'}>
             {selectedProvider?.value === 'nvidia-nim' && modelSource === 'live'
-              ? '● LIVE AGENTS + OFFICIAL TASK APIs'
+              ? '● NVIDIA AGENT ENDPOINTS'
+              : selectedProvider?.value === 'nvidia-special'
+                ? '○ NVIDIA SPECIAL CONTRACTS'
               : formatModelSourceLabel(modelSource)}
             <Text dimColor color="subtle">
-              {' '}· agent models continue chat; NVIDIA task models run one specialized job
+              {' '}· {selectedProvider?.value === 'nvidia-special'
+                ? 'selecting a model prepares one task and keeps the current chat model'
+                : 'agent models continue the UR tool loop'}
             </Text>
           </Text>
           {credentialNotice && (
@@ -1213,13 +1221,13 @@ export function ProviderFirstModelPicker({
                 {focusedIsTaskModel && (
                   <Box flexDirection="column">
                     <Text color="remember" bold>
-                      ONE-SHOT NVIDIA TASK · {focusedModel.taskKind}
+                      NVIDIA SPECIAL TASK · {focusedModel.taskKind}
                     </Text>
                     <Text dimColor>
                       {focusedModel.purpose}
                     </Text>
                     <Text dimColor color="subtle">
-                      Enter chooses this model for the next matching NVIDIA task. It never replaces the ongoing agent model.
+                      Enter prepares this model's exact inference contract for the next matching NVIDIA task. It never replaces the ongoing agent model.
                     </Text>
                   </Box>
                 )}
@@ -1422,8 +1430,15 @@ export function formatProviderModelDescription(
   source: ProviderModelSource,
   providerId: ProviderId,
 ): string {
-  if (providerId === 'nvidia-nim' && model.usageMode === 'task') {
-    return `${model.description} · official NVIDIA OpenAPI contract`
+  if (providerId === 'nvidia-special' && model.usageMode === 'task') {
+    const executable = model.capabilities?.executable !== false
+    const transport =
+      typeof model.capabilities?.transport === 'string'
+        ? model.capabilities.transport.toUpperCase()
+        : 'NVIDIA'
+    return executable
+      ? `${model.description} · ${transport} · exact NVIDIA inference contract`
+      : `${model.description} · NVIDIA has not published an invocation contract`
   }
   if (providerId !== 'openrouter') {
     return `${model.description} · ${source}`

@@ -13,7 +13,6 @@ import {
 import { logForDebugging } from '../../utils/debug.js'
 import {
   getProviderReasoningCapabilitiesForModel,
-  markProviderModelUnavailable,
   resolveProviderId,
   type OpenRouterSettings,
 } from '../providers/providerRegistry.js'
@@ -89,7 +88,7 @@ export async function createOpenAICompatibleClient(
       : undefined
     if (!endpoint) {
       throw new ProviderCapabilityError(
-        `NVIDIA NIM model "${modelId || 'unknown'}" has no documented UR-compatible agent endpoint and cannot be used as the session model. Refresh /model and choose a listed NVIDIA agent model.`,
+        `NVIDIA model "${modelId || 'unknown'}" has no documented Agentic endpoint and cannot own the session. Choose it under NVIDIA Special for focused inference, or select a listed NVIDIA Agentic model.`,
         { providerId, model: modelId, capability: 'agent_tool_loop' },
       )
     }
@@ -112,8 +111,7 @@ export async function createOpenAICompatibleClient(
       const modelId = typeof model === 'string' && model.trim()
         ? model.trim()
         : 'selected model'
-      markProviderModelUnavailable(providerId, modelId, options.baseUrl)
-      return `NVIDIA NIM model "${modelId}" is unavailable to this account. UR removed it from this session's catalog; refresh /model and choose another NVIDIA-hosted model.`
+      return `NVIDIA Agentic model "${modelId}" is not enabled for this API key. UR kept it in the catalog and used its documented endpoint (${endpoint}); NVIDIA rejected this invocation for the current account.`
     }
     return `OpenAI-compatible${streaming ? ' streaming' : ''} request failed for ${endpoint} (${response.status}): ${body || response.statusText}`
   }

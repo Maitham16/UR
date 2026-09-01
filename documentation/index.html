@@ -166,6 +166,7 @@ ur provider doctor agy</code></pre>
             <pre><code>ur config set provider openai-compatible
 ur config set provider openai-api
 ur config set provider nvidia-nim
+ur config set provider nvidia-special
 ur config set base_url ollama http://localhost:11434
 ur config set base_url llama.cpp http://localhost:9931/v1
 ur config set provider unsloth
@@ -174,7 +175,7 @@ ur config set provider.fallback ollama
 ur config set openai_transport responses
 ur config set responses.store false
 ur config set anthropic.speed fast</code></pre>
-            <p>API providers require explicit selection and read keys from a key stored via <code>ur connect</code> (OS keychain) or from environment variables. Each configurable provider keeps its own <code>base_url</code>, so switching among Ollama, LM Studio, llama.cpp, vLLM, Unsloth, NVIDIA NIM, and API gateways restores the matching address. OpenAI Responses is opt-in and privacy-first; Chat Completions remains the default. Direct Anthropic preserves prompt-cache breakpoints, streams tool inputs with its per-tool control, and enables the documented premium fast tier only when explicitly configured for a supported model. Unsloth is an authenticated inference provider only.</p>
+            <p>API providers require explicit selection and read keys from a key stored via <code>ur connect</code> (OS keychain) or from environment variables. Each configurable provider keeps its own <code>base_url</code>, so switching among Ollama, LM Studio, llama.cpp, vLLM, Unsloth, NVIDIA Agentic, and API gateways restores the matching address. OpenAI Responses is opt-in and privacy-first; Chat Completions remains the default. Direct Anthropic preserves prompt-cache breakpoints, streams tool inputs with its per-tool control, and enables the documented premium fast tier only when explicitly configured for a supported model. Unsloth is an authenticated inference provider only.</p>
           </article>
           <article>
             <h3>Capability-driven reasoning effort</h3>
@@ -191,12 +192,13 @@ ur --model kimi-k3:cloud --effort high
             <p>The endpoint-scoped model catalog is reused for five minutes, while forced refresh never substitutes stale data. Tool turns preserve OpenRouter Auto Exacto for live throughput and tool-call reliability; non-tool turns prefer end-to-end throughput. Stable session affinity keeps prompt caches warm, while configurable routing preferences and the <code>:nitro</code>, <code>:floor</code>, and <code>:exacto</code> variants remain authoritative.</p>
           </article>
           <article>
-            <h3>NVIDIA NIM and compatible API keys</h3>
+            <h3>NVIDIA Agentic, NVIDIA Special, and compatible API keys</h3>
             <pre><code>ur connect nvidia-nim
 ur config set provider nvidia-nim
+ur config set provider nvidia-special
 ur config set base_url nvidia-nim https://integrate.api.nvidia.com/v1
 /model  # K API key · E endpoint</code></pre>
-            <p>NVIDIA NIM separates ongoing agents from specialized one-shot models. Hosted agent discovery intersects live <code>/v1/models</code> inventory with audited tool-loop contracts. The separately labelled one-shot catalog is generated from NVIDIA's official public OpenAPI indexes and currently covers 92 executable AI, retrieval, health, optimization, and climate contracts. Each entry shows its purpose and routes to its exact documented endpoint with the same stored NVIDIA key; schema validation, NVIDIA Asset upload, asynchronous polling, and binary/large-JSON artifact saving are built in. Download-only, staging-only, broken, and non-executable operations stay hidden, and choosing a task never changes the ongoing agent. Nemotron 3.5 Lightning retains its documented on/off thinking field; unknown models inherit no fabricated effort. Generic OpenAI-compatible endpoints can store an optional dedicated key, while anonymous endpoints remain valid.</p>
+            <p>NVIDIA is split into NVIDIA Agentic for the ongoing tool loop and NVIDIA Special for focused inference; both share one stored <code>NVIDIA_API_KEY</code>. UR audits all 100 current Build cards and preserves every Free Endpoint card: 13 Agentic and 23 Special. Thirty-five publish executable contracts; the one unpublished protocol stays visible and labelled. Each row shows purpose, input, and output, and uses that card's exact HTTP, direct NVCF, or gRPC endpoint, method, function ID, and request/response schema. NVIDIA Assets, asynchronous polling, five native Maxine/Riva gRPC services, and media/binary/JSON artifact saving are built in. Account errors never remove models, and choosing a Special task never changes the ongoing agent. Nemotron 3.5 Lightning retains its documented on/off thinking field; unknown models inherit no fabricated effort. Generic OpenAI-compatible endpoints can store an optional dedicated key, while anonymous endpoints remain valid.</p>
           </article>
           <article>
             <h3>Portable shell deadlines</h3>
@@ -207,7 +209,7 @@ ur config set base_url nvidia-nim https://integrate.api.nvidia.com/v1
           <article>
             <h3>Tool images across providers</h3>
             <pre><code>Computer screenshot → tool result → vision model</code></pre>
-            <p>Every UR-native provider preserves image-bearing tool output in its valid wire shape. OpenRouter, NVIDIA NIM, and other Chat-Completions backends keep the tool result textual and send the image in the next multimodal user turn; Gemini, OpenAI Responses, Anthropic, and Ollama use their native rich forms. Vision still depends on the selected model.</p>
+            <p>Every UR-native provider preserves image-bearing tool output in its valid wire shape. OpenRouter, NVIDIA Agentic, and other Chat-Completions backends keep the tool result textual and send the image in the next multimodal user turn; Gemini, OpenAI Responses, Anthropic, and Ollama use their native rich forms. Vision still depends on the selected model.</p>
           </article>
           <article>
             <h3>Status bar and updates</h3>

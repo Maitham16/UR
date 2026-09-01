@@ -88,7 +88,8 @@ receives general-purpose tools through this path.
 
 UR-Nexus supports official provider access paths only:
 
-- Explicit API providers: OpenAI, Anthropic, Gemini, OpenRouter, NVIDIA NIM, and
+- Explicit API providers: OpenAI, Anthropic, Gemini, OpenRouter, NVIDIA
+  Agentic/Special, and
   OpenAI-compatible endpoints.
 - Local/server providers: Ollama, LM Studio, llama.cpp, vLLM, and Unsloth OpenAI-compatible
   server mode.
@@ -133,6 +134,7 @@ ur config set provider anthropic-api
 ur config set provider gemini-api
 ur config set provider openrouter
 ur config set provider nvidia-nim
+ur config set provider nvidia-special
 ur config set provider openai-compatible
 ur config set provider unsloth
 ur provider doctor agy
@@ -188,7 +190,8 @@ When the active provider fails, `ur provider doctor` shows the configured
 recovery command; changing providers remains an explicit user action.
 
 Provider values accept canonical IDs and common aliases. Examples:
-`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `nvidia-nim` (`NVIDIA Build`), `ollama`,
+`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `nvidia-nim`
+(`NVIDIA Agentic`), `nvidia-special` (`NVIDIA Special`), `ollama`,
 `lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, `unsloth` (`Unsloth Studio`), and the subscription CLI
 providers `codex-cli` (`chatgpt`), `claude-code-cli` (`claude`), `gemini-cli`
 (`gemini`), and `antigravity-cli` (`agy`). Values with spaces should be quoted
@@ -203,14 +206,14 @@ saved provider/model pair controls the runtime backend for the next agent
 request; Ollama is only used when `ollama` is the selected provider.
 
 The configured `base_url` is provider-scoped. Setting an address while vLLM is
-active does not replace the saved Ollama, llama.cpp, Unsloth, or NVIDIA NIM address;
+active does not replace the saved Ollama, llama.cpp, Unsloth, or NVIDIA Agentic address;
 returning to any provider restores its own URL. Legacy `provider.baseUrl`
 settings are migrated to the old active provider on the first provider switch
 or scoped base-URL write.
 To configure a provider that is not active, use
 `ur config set base_url <provider> <url>`; the success message names the target
 provider. This applies to direct API providers and gateways (OpenAI, Anthropic,
-Gemini, OpenRouter, and NVIDIA NIM) as well as local/server providers; built-in vendor URLs
+Gemini, OpenRouter, and NVIDIA Agentic) as well as local/server providers; built-in vendor URLs
 are fallbacks only. Discovery, doctor output, and request dispatch all resolve
 the same per-provider override. `/model` also opens an endpoint field when a
 disconnected local/server provider is selected.
@@ -280,29 +283,28 @@ VLLM_API_KEY=...               # optional when required by the endpoint
 UNSLOTH_API_KEY=...
 ```
 
-NVIDIA NIM defaults to `https://integrate.api.nvidia.com/v1`, discovers the
-connected account's models live, and accepts a provider-scoped override for an
-enterprise or self-hosted NIM. On NVIDIA's hosted endpoint, `/v1/models`
-establishes account availability and UR's audited positive contract registry
-establishes agent compatibility; only their intersection can become the
-ongoing model. It does not narrow hosted models using the separate NVCF
-deployment inventory; a configured NIM gateway uses its own model feed. Generic
+NVIDIA Agentic defaults to `https://integrate.api.nvidia.com/v1` and accepts a
+provider-scoped override for an enterprise or self-hosted NIM. Public Build
+models come from the current per-card Agentic contracts and are never filtered
+or removed by an account inventory or entitlement failure. A configured NIM
+gateway uses its own live model feed. Generic
 `openai-compatible` authentication is
 optional: `ur connect openai-compatible` or the picker's `K` key stores a
 credential when the chosen gateway needs one, without breaking anonymous
 local endpoints.
 
-The broader Build web page includes download-only NIMs; those are not valid
-hosted choices unless the authenticated `/v1/models` endpoint returns them.
-For the hosted service, UR focuses NVIDIA's documented fastest 30B agent model,
+Download-only Build cards are not hosted choices. For the public Agentic
+service, UR focuses NVIDIA's documented fastest 30B agent model,
 `nvidia/nemotron-3.5-lightning-30b-a3b`, first. Its thinking toggle maps to
 NVIDIA's model-specific `chat_template_kwargs.enable_thinking` field.
-The same key authorizes the separately labelled one-shot catalog generated from
-NVIDIA's public OpenAPI reference. Its 92 task contracts use the exact
-`integrate.api`, `ai.api`, `health.api`, `optimize.api`, or `climate.api`
-NVIDIA path for each model. They never replace `provider.model`; large inputs
-use NVIDIA Assets and binary or large JSON output is saved under
-`.ur/artifacts/nvidia/` unless an output path is supplied.
+The same key authorizes NVIDIA Special. The current generator audits 100 Build
+cards and preserves all 36 Free Endpoint entries across both providers: 13
+Agentic and 23 Special. Every executable entry uses that card's exact URL,
+HTTP/RPC method, function ID, and request/response schema. Twenty-two Special
+entries are executable through HTTP, direct NVCF, or five native gRPC services;
+the one unpublished protocol stays visible and labelled. Special selection
+never replaces `provider.model`; large inputs use NVIDIA Assets and returned
+artifacts are saved under `.ur/artifacts/nvidia/` unless a path is supplied.
 
 Unsloth is an inference-provider integration only. Start Unsloth Studio and
 load the model outside UR, connect its generated key with `ur connect unsloth`,

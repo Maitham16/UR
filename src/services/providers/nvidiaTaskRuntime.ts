@@ -1,13 +1,12 @@
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { dirname, extname, isAbsolute, join, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { fetchWithProviderReliability } from '../api/providerHttp.js'
-import { markProviderModelUnavailable } from './providerRegistry.js'
 import {
   getNvidiaHostedTaskModelContract,
-  NVIDIA_HOSTED_API_BASE_URL,
   type NvidiaHostedTaskKind,
   type NvidiaHostedTaskModelContract,
 } from './nvidiaHostedModels.js'
+import { runNvidiaGrpcTask } from './nvidiaGrpcRuntime.js'
 
 const INLINE_ASSET_LIMIT_BYTES = 200 * 1024
 const NVIDIA_ASSET_ENDPOINT = 'https://api.nvcf.nvidia.com/v2/nvcf/assets'
@@ -24,6 +23,11 @@ export type NvidiaTaskRequest = {
   model: string
   prompt?: string
   imagePath?: string
+  inputPath?: string
+  audioPath?: string
+  videoPath?: string
+  referenceAudioPath?: string
+  diarizationPath?: string
   outputPath?: string
   width?: number
   height?: number
@@ -46,6 +50,13 @@ export type NvidiaTaskResult = {
   text?: string
   seed?: number
   finishReason?: string
+  artifacts?: NvidiaTaskArtifact[]
+}
+
+export type NvidiaTaskArtifact = {
+  label: string
+  path: string
+  mediaType: string
 }
 
 export type NvidiaTaskRuntimeOptions = {
@@ -86,6 +97,13 @@ function mimeType(path: string): string {
       return 'image/webp'
     case '.mp4':
       return 'video/mp4'
+    case '.wav':
+      return 'audio/wav'
+    case '.mp3':
+      return 'audio/mpeg'
+    case '.ogg':
+    case '.opus':
+      return 'audio/ogg'
     case '.json':
       return 'application/json'
     case '.txt':
@@ -275,6 +293,9 @@ function schemaErrors(
   if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
     return [`${path} must be one of ${schema.enum.map(item => JSON.stringify(item)).join(', ')}`]
   }
+  if (Object.hasOwn(schema, 'const') && value !== schema.const) {
+    return [`${path} must equal ${JSON.stringify(schema.const)}`]
+  }
   const types = Array.isArray(schema.type) ? schema.type : [schema.type]
   const hasType = types.some(type => typeof type === 'string')
   const matchesType = (type: unknown): boolean => {
@@ -320,6 +341,14 @@ function schemaErrors(
     ) {
       errors.push(`${path} must be less than ${schema.exclusiveMaximum}`)
     }
+    if (
+      typeof schema.multipleOf === 'number' &&
+      schema.multipleOf > 0 &&
+      Math.abs(value / schema.multipleOf - Math.round(value / schema.multipleOf)) >
+        Number.EPSILON * 10
+    ) {
+      errors.push(`${path} must be a multiple of ${schema.multipleOf}`)
+    }
   }
   if (typeof value === 'string') {
     if (typeof schema.minLength === 'number' && value.length < schema.minLength) {
@@ -327,6 +356,16 @@ function schemaErrors(
     }
     if (typeof schema.maxLength === 'number' && value.length > schema.maxLength) {
       errors.push(`${path} is longer than ${schema.maxLength} characters`)
+    }
+    if (typeof schema.pattern === 'string') {
+      try {
+        if (!new RegExp(schema.pattern, 'u').test(value)) {
+          errors.push(`${path} does not match the documented pattern`)
+        }
+      } catch {
+        // Preserve compatibility if an upstream JSON Schema uses a regular
+        // expression feature that JavaScript does not implement.
+      }
     }
   }
   if (Array.isArray(value)) {
@@ -355,6 +394,8 @@ function schemaErrors(
       for (const [name, entry] of Object.entries(object)) {
         if (properties[name]) {
           errors.push(...schemaErrors(entry, properties[name], `${path}.${name}`))
+        } else if (schema.additionalProperties === false) {
+          errors.push(`${path}.${name} is not part of NVIDIA's documented schema`)
         }
       }
     }
@@ -362,16 +403,16 @@ function schemaErrors(
   return errors
 }
 
-async function inlineOrAssetImage(
-  imagePath: string,
+async function inlineOrAssetMedia(
+  path: string,
   options: NvidiaTaskRuntimeOptions,
   uploadedAssetIds: string[],
 ): Promise<string> {
-  const file = await localFile(imagePath, options.cwd)
+  const file = await localFile(path, options.cwd)
   if (file.bytes.length < INLINE_ASSET_LIMIT_BYTES) {
     return `data:${file.mediaType};base64,${file.bytes.toString('base64')}`
   }
-  const asset = await uploadAsset(imagePath, options)
+  const asset = await uploadAsset(path, options)
   uploadedAssetIds.push(asset.id)
   return `data:${asset.mediaType};asset_id,${asset.id}`
 }
@@ -380,12 +421,20 @@ function clonePayload(payload: JsonObject | undefined): JsonObject {
   return payload ? structuredClone(payload) : {}
 }
 
-function addGenerationOptions(payload: JsonObject, request: NvidiaTaskRequest): void {
+function addGenerationOptions(
+  payload: JsonObject,
+  request: NvidiaTaskRequest,
+  properties: JsonObject,
+): void {
   if (request.width !== undefined) payload.width = request.width
   if (request.height !== undefined) payload.height = request.height
   if (request.steps !== undefined) payload.steps = request.steps
   if (request.seed !== undefined) payload.seed = request.seed
-  if (request.cfgScale !== undefined) payload.cfg_scale = request.cfgScale
+  if (request.cfgScale !== undefined) {
+    if (properties.cfg_scale) payload.cfg_scale = request.cfgScale
+    else if (properties.guidance_scale) payload.guidance_scale = request.cfgScale
+    else payload.cfg_scale = request.cfgScale
+  }
   if (request.maxTokens !== undefined) payload.max_tokens = request.maxTokens
 }
 
@@ -398,13 +447,27 @@ async function buildPayload(
   const properties = schemaProperties(contract)
   const uploadedAssetIds: string[] = []
   const prompt = request.prompt?.trim()
+  const genericPath = request.inputPath?.trim()
+  const genericExtension = genericPath ? extname(genericPath).toLowerCase() : ''
+  const imagePath =
+    request.imagePath ??
+    (/^\.(?:jpe?g|png|webp)$/u.test(genericExtension) ? genericPath : undefined)
+  const videoPath =
+    request.videoPath ?? (genericExtension === '.mp4' ? genericPath : undefined)
+  const audioPath =
+    request.audioPath ??
+    (/^\.(?:wav|mp3|ogg|opus)$/u.test(genericExtension) ? genericPath : undefined)
   let image: string | undefined
-  if (request.imagePath) {
-    image = await inlineOrAssetImage(
-      request.imagePath,
-      options,
-      uploadedAssetIds,
-    )
+  let video: string | undefined
+  let audio: string | undefined
+  if (imagePath) {
+    image = await inlineOrAssetMedia(imagePath, options, uploadedAssetIds)
+  }
+  if (videoPath) {
+    video = await inlineOrAssetMedia(videoPath, options, uploadedAssetIds)
+  }
+  if (audioPath) {
+    audio = await inlineOrAssetMedia(audioPath, options, uploadedAssetIds)
   }
 
   for (const [name, rawProperty] of Object.entries(properties)) {
@@ -416,27 +479,14 @@ async function buildPayload(
   if (properties.model && payload.model === undefined) payload.model = contract.id
   if (properties.stream && payload.stream === undefined) payload.stream = false
   if (properties.messages && payload.messages === undefined) {
-    if (image) {
-      const imageKey = contract.taskKind === 'object-detection' ? 'media_url' : 'image_url'
-      const messageSchema = jsonObject(properties.messages)
-      const messageItem = jsonObject(messageSchema?.items)
-      const messageProperties = jsonObject(messageItem?.properties)
-      const contentSchema = jsonObject(messageProperties?.content)
-      const mediaContent = {
-        type: imageKey === 'media_url' ? 'media_url' : 'image_url',
-        [imageKey]: { url: image },
-      }
-      payload.messages = contentSchema?.type === 'object'
-        ? [{ content: mediaContent }]
-        : [
-            {
-              role: 'user',
-              content: [
-                ...(prompt ? [{ type: 'text', text: prompt }] : []),
-                mediaContent,
-              ],
-            },
-          ]
+    const content = [
+      ...(prompt ? [{ type: 'text', text: prompt }] : []),
+      ...(image ? [{ type: 'image_url', image_url: { url: image } }] : []),
+      ...(video ? [{ type: 'video_url', video_url: { url: video } }] : []),
+      ...(audio ? [{ type: 'audio_url', audio_url: { url: audio } }] : []),
+    ]
+    if (content.some(part => part.type !== 'text')) {
+      payload.messages = [{ role: 'user', content }]
     } else if (prompt) {
       payload.messages = [{ role: 'user', content: prompt }]
     }
@@ -456,6 +506,8 @@ async function buildPayload(
       : prompt
   }
   if (properties.image && payload.image === undefined && image) payload.image = image
+  if (properties.video && payload.video === undefined && video) payload.video = video
+  if (properties.audio && payload.audio === undefined && audio) payload.audio = audio
   if (properties.query && payload.query === undefined) {
     const query = request.query?.trim() || prompt
     payload.query = jsonObject(properties.query)?.type === 'object' && query
@@ -474,13 +526,14 @@ async function buildPayload(
     'contigs',
     'text',
     'input_text',
+    'scene_id',
   ]
   for (const field of simplePromptFields) {
     if (required.includes(field) && payload[field] === undefined && prompt) {
       payload[field] = prompt
     }
   }
-  addGenerationOptions(payload, request)
+  addGenerationOptions(payload, request, properties)
 
   for (const fileInput of request.fileInputs ?? []) {
     setJsonPointer(
@@ -520,12 +573,7 @@ function nvidiaFailureMessage(
       body,
     )
   if (unavailable) {
-    markProviderModelUnavailable(
-      'nvidia-nim',
-      model,
-      NVIDIA_HOSTED_API_BASE_URL,
-    )
-    return `NVIDIA model "${model}" is not enabled for this API key. UR used its documented endpoint (${endpoint}) and removed it from this endpoint-scoped catalog until refresh.`
+    return `NVIDIA Special model "${model}" is not enabled for this API key. UR kept it in the catalog and used its documented endpoint (${endpoint}); NVIDIA rejected this invocation for the current account.`
   }
   const detail = body
     .replace(/account\s+['"][^'"]+['"]/giu, 'account [redacted]')
@@ -628,28 +676,90 @@ function responseText(body: JsonObject): string | undefined {
   return undefined
 }
 
-function encodedArtifact(
-  body: JsonObject,
-): { encoded: string; seed?: number; finishReason?: string } | undefined {
-  const artifacts = Array.isArray(body.artifacts) ? body.artifacts : []
-  const artifact = jsonObject(artifacts[0])
-  const candidates = [artifact?.base64, body.video, body.image, body.base64]
-  const encoded = candidates.find(value => typeof value === 'string' && value.length > 0)
-  if (typeof encoded !== 'string') return undefined
-  const comma = encoded.startsWith('data:') ? encoded.indexOf(',') : -1
+type EncodedArtifact = {
+  label: string
+  encoded: string
+  mediaType: string
+  seed?: number
+  finishReason?: string
+}
+
+function stripDataUrl(value: string): { encoded: string; mediaType?: string } {
+  if (!value.startsWith('data:')) return { encoded: value }
+  const comma = value.indexOf(',')
+  if (comma < 0) return { encoded: value }
+  const metadata = value.slice(5, comma)
   return {
-    encoded: comma >= 0 ? encoded.slice(comma + 1) : encoded,
-    ...(typeof artifact?.seed === 'number'
-      ? { seed: artifact.seed }
-      : typeof body.seed === 'number'
-        ? { seed: body.seed }
-        : {}),
-    ...(typeof artifact?.finishReason === 'string'
-      ? { finishReason: artifact.finishReason }
-      : typeof body.finish_reason === 'string'
-        ? { finishReason: body.finish_reason }
-        : {}),
+    encoded: value.slice(comma + 1),
+    ...(metadata.split(';')[0] ? { mediaType: metadata.split(';')[0] } : {}),
   }
+}
+
+function encodedArtifacts(
+  body: JsonObject,
+  fallbackMediaType: string,
+): EncodedArtifact[] {
+  const output: EncodedArtifact[] = []
+  const common = {
+    ...(typeof body.seed === 'number' ? { seed: body.seed } : {}),
+    ...(typeof body.finish_reason === 'string'
+      ? { finishReason: body.finish_reason }
+      : {}),
+  }
+  const add = (
+    label: string,
+    value: unknown,
+    mediaType: string,
+    metadata: JsonObject | undefined = undefined,
+  ) => {
+    if (typeof value !== 'string' || value.length === 0) return
+    const normalized = stripDataUrl(value)
+    output.push({
+      label,
+      encoded: normalized.encoded,
+      mediaType: normalized.mediaType ?? mediaType,
+      ...common,
+      ...(typeof metadata?.seed === 'number' ? { seed: metadata.seed } : {}),
+      ...(typeof metadata?.finishReason === 'string'
+        ? { finishReason: metadata.finishReason }
+        : {}),
+    })
+  }
+
+  for (const [index, value] of (Array.isArray(body.artifacts)
+    ? body.artifacts
+    : []).entries()) {
+    const artifact = jsonObject(value)
+    add(
+      typeof artifact?.label === 'string' ? artifact.label : `artifact-${index + 1}`,
+      artifact?.base64,
+      typeof artifact?.mime_type === 'string'
+        ? artifact.mime_type
+        : fallbackMediaType,
+      artifact,
+    )
+  }
+  add('video', body.b64_video, 'video/mp4')
+  add('image', body.b64_image, 'image/png')
+  add('audio', body.b64_audio, 'audio/wav')
+  add('artifact', body.base64, fallbackMediaType)
+
+  for (const [field, defaultMediaType] of [
+    ['camera_video', 'video/mp4'],
+    ['bev_video', 'video/mp4'],
+    ['bbox_video', 'video/mp4'],
+    ['map_video', 'video/mp4'],
+  ] as const) {
+    const nested = jsonObject(body[field])
+    add(
+      field.replace(/_/gu, '-'),
+      nested?.data ?? nested?.file,
+      typeof nested?.mime_type === 'string'
+        ? nested.mime_type
+        : defaultMediaType,
+    )
+  }
+  return output
 }
 
 function extensionForMediaType(mediaType: string, fallback = '.bin'): string {
@@ -662,6 +772,20 @@ function extensionForMediaType(mediaType: string, fallback = '.bin'): string {
   return fallback
 }
 
+function requestedArtifactPath(
+  requestedPath: string | undefined,
+  label: string,
+  index: number,
+  total: number,
+  mediaType: string,
+): string | undefined {
+  if (!requestedPath) return undefined
+  if (total === 1 || index === 0) return requestedPath
+  const extension = extname(requestedPath) || extensionForMediaType(mediaType)
+  const filename = basename(requestedPath, extname(requestedPath))
+  return join(dirname(requestedPath), `${filename}-${label}${extension}`)
+}
+
 export async function runNvidiaHostedTask(
   request: NvidiaTaskRequest,
   options: NvidiaTaskRuntimeOptions,
@@ -672,11 +796,43 @@ export async function runNvidiaHostedTask(
       `NVIDIA model "${request.model}" has no public hosted task contract in UR's generated NVIDIA catalog.`,
     )
   }
+  if (!contract.executable || contract.transport === 'unpublished') {
+    throw new Error(
+      `NVIDIA lists ${contract.id} as a Free Endpoint but has not published an inference request/response contract for it. UR kept the model visible and will not invent a transport. See ${contract.documentation}`,
+    )
+  }
   const apiKey = options.apiKey.trim()
   if (!apiKey) {
     throw new Error(
-      'NVIDIA_API_KEY is required. Run `ur connect nvidia-nim` or set NVIDIA_API_KEY.',
+      'NVIDIA_API_KEY is required. Run `ur connect nvidia-special` (or `ur connect nvidia-nim`) or set NVIDIA_API_KEY.',
     )
+  }
+  if (contract.transport === 'grpc') {
+    const result = await runNvidiaGrpcTask(
+      contract,
+      {
+        prompt: request.prompt,
+        inputPath: request.inputPath,
+        audioPath: request.audioPath,
+        videoPath: request.videoPath,
+        referenceAudioPath: request.referenceAudioPath,
+        diarizationPath: request.diarizationPath,
+        outputPath: request.outputPath,
+        payload: request.payload,
+      },
+      {
+        apiKey,
+        cwd: options.cwd,
+        signal: options.signal,
+        now: options.now,
+      },
+    )
+    return {
+      model: contract.id,
+      taskKind: contract.taskKind,
+      purpose: contract.purpose,
+      ...result,
+    }
   }
   const prepared = await buildPayload(request, contract, options)
   const binaryResponse = contract.responseMediaTypes.find(
@@ -696,7 +852,7 @@ export async function runNvidiaHostedTask(
     const initial = await reliableFetch(
       contract.endpoint,
       {
-        method: 'POST',
+        method: contract.method,
         headers,
         body: JSON.stringify(prepared.payload),
       },
@@ -734,24 +890,41 @@ export async function runNvidiaHostedTask(
 
     const body = jsonObject(await response.json())
     if (!body) throw new Error(`NVIDIA ${contract.id} returned malformed JSON.`)
-    const artifact = encodedArtifact(body)
-    if (artifact && contract.outputExtension) {
-      const outputPath = await saveBytes(
-        Buffer.from(artifact.encoded, 'base64'),
-        request.outputPath,
-        contract.outputExtension,
-        options.cwd,
-        now,
+    const encoded = encodedArtifacts(body, contract.outputMediaType)
+    if (encoded.length > 0) {
+      const artifacts = await Promise.all(
+        encoded.map(async (artifact, index) => ({
+          label: artifact.label,
+          path: await saveBytes(
+            Buffer.from(artifact.encoded, 'base64'),
+            requestedArtifactPath(
+              request.outputPath,
+              artifact.label,
+              index,
+              encoded.length,
+              artifact.mediaType,
+            ),
+            extensionForMediaType(
+              artifact.mediaType,
+              contract.outputExtension ?? '.bin',
+            ),
+            options.cwd,
+            () => now() + index,
+          ),
+          mediaType: artifact.mediaType,
+        })),
       )
+      const first = encoded[0]
       return {
         model: contract.id,
         taskKind: contract.taskKind,
         purpose: contract.purpose,
-        outputPath,
-        mediaType: contract.outputMediaType,
-        ...(artifact.seed !== undefined ? { seed: artifact.seed } : {}),
-        ...(artifact.finishReason
-          ? { finishReason: artifact.finishReason }
+        outputPath: artifacts[0]?.path,
+        mediaType: artifacts[0]?.mediaType,
+        artifacts,
+        ...(first?.seed !== undefined ? { seed: first.seed } : {}),
+        ...(first?.finishReason
+          ? { finishReason: first.finishReason }
           : {}),
       }
     }

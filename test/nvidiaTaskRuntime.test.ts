@@ -2,8 +2,13 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runNvidiaHostedTask } from '../src/services/providers/nvidiaTaskRuntime.js'
 import { ProviderHTTPError } from '../src/services/api/providerHttp.js'
+import { inspectNativeNvidiaGrpcContract } from '../src/services/providers/nvidiaGrpcRuntime.js'
+import {
+  getNvidiaHostedTaskModelContract,
+  NVIDIA_HOSTED_TASK_MODEL_CONTRACTS,
+} from '../src/services/providers/nvidiaHostedModels.js'
+import { runNvidiaHostedTask } from '../src/services/providers/nvidiaTaskRuntime.js'
 import {
   clearProviderModelCacheForTests,
   listModelsForProviderWithSource,
@@ -26,121 +31,27 @@ afterEach(async () => {
   )
 })
 
-describe('NVIDIA hosted one-shot task runtime', () => {
-  test('routes FLUX to its exact endpoint and writes the JPEG artifact', async () => {
-    const cwd = await temporaryDirectory()
-    const requests: Array<{
-      url: string
-      authorization: string | null
-      body: Record<string, unknown>
-    }> = []
-    const result = await runNvidiaHostedTask(
-      {
-        model: 'black-forest-labs/flux.1-schnell',
-        prompt: 'A clean product photograph of a brass compass',
-        width: 1216,
-        height: 832,
-        steps: 3,
-        seed: 42,
-      },
-      {
-        apiKey: 'nvapi-test',
-        cwd,
-        now: () => 1234,
-        fetch: async (input, init) => {
-          requests.push({
-            url: String(input),
-            authorization: new Headers(init?.headers).get('authorization'),
-            body: JSON.parse(String(init?.body)),
-          })
-          return Response.json({
-            artifacts: [
-              {
-                base64: Buffer.from('jpeg-bytes').toString('base64'),
-                finishReason: 'SUCCESS',
-                seed: 42,
-              },
-            ],
-          })
-        },
-      },
+describe('NVIDIA Special exact-contract runtime', () => {
+  test('every executable task has a model-card inference contract', () => {
+    const executable = NVIDIA_HOSTED_TASK_MODEL_CONTRACTS.filter(
+      contract => contract.executable,
     )
-
-    expect(requests).toEqual([
-      {
-        url: 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell',
-        authorization: 'Bearer nvapi-test',
-        body: {
-          prompt: 'A clean product photograph of a brass compass',
-          width: 1216,
-          height: 832,
-          cfg_scale: 0,
-          mode: 'base',
-          samples: 1,
-          seed: 42,
-          steps: 3,
-        },
-      },
-    ])
-    expect(result).toMatchObject({
-      model: 'black-forest-labs/flux.1-schnell',
-      taskKind: 'image-generation',
-      outputPath: join(cwd, '.ur', 'artifacts', 'nvidia', '1234.jpg'),
-      mediaType: 'image/jpeg',
-      seed: 42,
-      finishReason: 'SUCCESS',
-    })
-    expect(await readFile(result.outputPath!, 'utf8')).toBe('jpeg-bytes')
+    expect(NVIDIA_HOSTED_TASK_MODEL_CONTRACTS).toHaveLength(23)
+    expect(executable).toHaveLength(22)
+    expect(
+      executable.every(
+        contract =>
+          contract.endpoint &&
+          contract.method &&
+          contract.documentation &&
+          contract.buildCard &&
+          Object.keys(contract.requestSchema).length > 0 &&
+          Object.keys(contract.responseSchema).length > 0,
+      ),
+    ).toBe(true)
   })
 
-  test('polls an asynchronous video job and writes the MP4 artifact', async () => {
-    const cwd = await temporaryDirectory()
-    const imagePath = join(cwd, 'source.png')
-    await writeFile(imagePath, Buffer.from('small-png'))
-    const requests: string[] = []
-    const result = await runNvidiaHostedTask(
-      {
-        model: 'stabilityai/stable-video-diffusion',
-        imagePath,
-        outputPath: 'result.mp4',
-        cfgScale: 2.5,
-      },
-      {
-        apiKey: 'nvapi-test',
-        cwd,
-        pollDelayMs: 0,
-        fetch: async input => {
-          requests.push(String(input))
-          if (requests.length === 1) {
-            return new Response('', {
-              status: 202,
-              headers: { 'NVCF-REQID': 'request-123' },
-            })
-          }
-          return Response.json({
-            video: Buffer.from('mp4-bytes').toString('base64'),
-            finish_reason: 'SUCCESS',
-            seed: 9,
-          })
-        },
-      },
-    )
-
-    expect(requests).toEqual([
-      'https://ai.api.nvidia.com/v1/genai/stabilityai/stable-video-diffusion',
-      'https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/request-123',
-    ])
-    expect(result.outputPath).toBe(join(cwd, 'result.mp4'))
-    expect(await readFile(result.outputPath!, 'utf8')).toBe('mp4-bytes')
-    expect(result).toMatchObject({
-      taskKind: 'video-generation',
-      mediaType: 'video/mp4',
-      finishReason: 'SUCCESS',
-      seed: 9,
-    })
-  })
-
-  test('routes PaliGemma as one image plus one prompt and returns text', async () => {
+  test('routes PaliGemma to its documented VLM endpoint', async () => {
     const cwd = await temporaryDirectory()
     const imagePath = join(cwd, 'diagram.jpg')
     await writeFile(imagePath, Buffer.from('jpeg'))
@@ -159,6 +70,7 @@ describe('NVIDIA hosted one-shot task runtime', () => {
           expect(String(input)).toBe(
             'https://ai.api.nvidia.com/v1/vlm/google/paligemma',
           )
+          expect(init?.method).toBe('POST')
           body = JSON.parse(String(init?.body))
           return Response.json({
             choices: [
@@ -169,16 +81,15 @@ describe('NVIDIA hosted one-shot task runtime', () => {
       },
     )
 
-    expect(body.messages).toHaveLength(1)
-    expect(body.messages[0]).toMatchObject({ role: 'user' })
     expect(body.messages[0].content[0]).toEqual({
       type: 'text',
       text: 'What does this diagram show?',
     })
+    expect(body.messages[0].content[1].type).toBe('image_url')
     expect(body.messages[0].content[1].image_url.url).toStartWith(
       'data:image/jpeg;base64,',
     )
-    expect(body.max_tokens).toBe(256)
+    expect(body).toMatchObject({ max_tokens: 256, stream: false })
     expect(result).toMatchObject({
       model: 'google/paligemma',
       taskKind: 'image-understanding',
@@ -186,8 +97,236 @@ describe('NVIDIA hosted one-shot task runtime', () => {
     })
   })
 
-  test('rejects unknown models and schema violations before network I/O', async () => {
+  test('uses the exact Cosmos Transfer request and decodes its MP4 response', async () => {
     const cwd = await temporaryDirectory()
+    const videoPath = join(cwd, 'source.mp4')
+    await writeFile(videoPath, Buffer.from('mp4-input'))
+    let body: any
+    const result = await runNvidiaHostedTask(
+      {
+        model: 'nvidia/cosmos-transfer1-7b',
+        prompt: 'Turn the scene into a rainy night.',
+        videoPath,
+        seed: 42,
+        cfgScale: 7,
+        steps: 20,
+      },
+      {
+        apiKey: 'nvapi-test',
+        cwd,
+        now: () => 1_000,
+        fetch: async (input, init) => {
+          expect(String(input)).toBe(
+            'https://ai.api.nvidia.com/v1/cosmos/nvidia/cosmos-transfer1-7b',
+          )
+          body = JSON.parse(String(init?.body))
+          return Response.json({
+            b64_video: Buffer.from('mp4-output').toString('base64'),
+            seed: 42,
+          })
+        },
+      },
+    )
+
+    expect(body).toMatchObject({
+      prompt: 'Turn the scene into a rainy night.',
+      seed: 42,
+      guidance_scale: 7,
+      steps: 20,
+    })
+    expect(body.video).toStartWith('data:video/mp4;base64,')
+    expect(result).toMatchObject({
+      model: 'nvidia/cosmos-transfer1-7b',
+      taskKind: 'video-generation',
+      outputPath: join(cwd, '.ur', 'artifacts', 'nvidia', '1000.mp4'),
+      mediaType: 'video/mp4',
+      seed: 42,
+    })
+    expect(await readFile(result.outputPath!, 'utf8')).toBe('mp4-output')
+  })
+
+  test('polls the documented asynchronous NVCF status route', async () => {
+    const cwd = await temporaryDirectory()
+    const requests: string[] = []
+    const result = await runNvidiaHostedTask(
+      {
+        model: 'nvidia/cosmos3-nano',
+        prompt: 'A robot walks through a warehouse.',
+      },
+      {
+        apiKey: 'nvapi-test',
+        cwd,
+        now: () => 1_500,
+        pollDelayMs: 0,
+        fetch: async input => {
+          requests.push(String(input))
+          if (requests.length === 1) {
+            return new Response('', {
+              status: 202,
+              headers: { 'NVCF-REQID': 'request-123' },
+            })
+          }
+          return Response.json({
+            b64_video: Buffer.from('cosmos-video').toString('base64'),
+          })
+        },
+      },
+    )
+
+    expect(requests).toEqual([
+      'https://ai.api.nvidia.com/v1/infer',
+      'https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/request-123',
+    ])
+    expect(await readFile(result.outputPath!, 'utf8')).toBe('cosmos-video')
+  })
+
+  test('uses the card-specific NVCF function route and saves all BEV artifacts', async () => {
+    const cwd = await temporaryDirectory()
+    let requestBody: unknown
+    const result = await runNvidiaHostedTask(
+      {
+        model: 'nvidia/bevformer',
+        prompt: 'scene-0103',
+      },
+      {
+        apiKey: 'nvapi-test',
+        cwd,
+        now: () => 2_000,
+        fetch: async (input, init) => {
+          expect(String(input)).toBe(
+            'https://9b12b22f-f97f-4141-86af-a7deb04a21a5.invocation.api.nvcf.nvidia.com/v1/bevformer/process',
+          )
+          requestBody = JSON.parse(String(init?.body))
+          return Response.json({
+            inference_metadata: { data: { scene_id: 'scene-0103' } },
+            camera_video: {
+              data: Buffer.from('camera-video').toString('base64'),
+              mime_type: 'video/mp4',
+            },
+            bev_video: {
+              data: Buffer.from('bev-video').toString('base64'),
+              mime_type: 'video/mp4',
+            },
+          })
+        },
+      },
+    )
+
+    expect(requestBody).toEqual({ scene_id: 'scene-0103' })
+    expect(result.artifacts).toEqual([
+      {
+        label: 'camera-video',
+        path: join(cwd, '.ur', 'artifacts', 'nvidia', '2000.mp4'),
+        mediaType: 'video/mp4',
+      },
+      {
+        label: 'bev-video',
+        path: join(cwd, '.ur', 'artifacts', 'nvidia', '2001.mp4'),
+        mediaType: 'video/mp4',
+      },
+    ])
+    expect(await readFile(result.artifacts![0]!.path, 'utf8')).toBe('camera-video')
+    expect(await readFile(result.artifacts![1]!.path, 'utf8')).toBe('bev-video')
+  })
+
+  test('uploads oversized media through NVIDIA Assets and always deletes it', async () => {
+    const cwd = await temporaryDirectory()
+    const imagePath = join(cwd, 'large.png')
+    await writeFile(imagePath, Buffer.alloc(200 * 1024, 7))
+    const requests: Array<{ url: string; method: string }> = []
+    const result = await runNvidiaHostedTask(
+      {
+        model: 'google/paligemma',
+        prompt: 'Describe this image.',
+        imagePath,
+      },
+      {
+        apiKey: 'nvapi-test',
+        cwd,
+        fetch: async (input, init) => {
+          const url = String(input)
+          requests.push({ url, method: init?.method ?? 'GET' })
+          if (url === 'https://api.nvcf.nvidia.com/v2/nvcf/assets') {
+            return Response.json({
+              assetId: 'asset-123',
+              uploadUrl: 'https://uploads.example/asset-123',
+            })
+          }
+          if (url === 'https://uploads.example/asset-123') {
+            return new Response('', { status: 200 })
+          }
+          if (url.endsWith('/assets/asset-123')) {
+            return new Response('', { status: 204 })
+          }
+          const payload = JSON.parse(String(init?.body))
+          expect(payload.messages[0].content[1].image_url.url).toBe(
+            'data:image/png;asset_id,asset-123',
+          )
+          return Response.json({
+            choices: [{ message: { content: 'A large test image.' } }],
+          })
+        },
+      },
+    )
+
+    expect(result.text).toBe('A large test image.')
+    expect(requests).toEqual([
+      { method: 'POST', url: 'https://api.nvcf.nvidia.com/v2/nvcf/assets' },
+      { method: 'PUT', url: 'https://uploads.example/asset-123' },
+      {
+        method: 'POST',
+        url: 'https://ai.api.nvidia.com/v1/vlm/google/paligemma',
+      },
+      {
+        method: 'DELETE',
+        url: 'https://api.nvcf.nvidia.com/v2/nvcf/assets/asset-123',
+      },
+    ])
+  })
+
+  test('routes embeddings with the exact documented payload', async () => {
+    const cwd = await temporaryDirectory()
+    let body: unknown
+    const result = await runNvidiaHostedTask(
+      {
+        model: 'nvidia/nemotron-3-embed-1b',
+        prompt: 'semantic search input',
+        payload: { input_type: 'query' },
+      },
+      {
+        apiKey: 'nvapi-test',
+        cwd,
+        fetch: async (input, init) => {
+          expect(String(input)).toBe(
+            'https://integrate.api.nvidia.com/v1/embeddings',
+          )
+          body = JSON.parse(String(init?.body))
+          return Response.json({
+            object: 'list',
+            data: [{ object: 'embedding', index: 0, embedding: [0.1, 0.2] }],
+            model: 'nvidia/nemotron-3-embed-1b',
+            usage: { prompt_tokens: 3, total_tokens: 3 },
+          })
+        },
+      },
+    )
+
+    expect(body).toEqual({
+      input_type: 'query',
+      encoding_format: 'float',
+      truncate: 'NONE',
+      model: 'nvidia/nemotron-3-embed-1b',
+      input: 'semantic search input',
+    })
+    expect(JSON.parse(result.text!)).toMatchObject({
+      data: [{ embedding: [0.1, 0.2] }],
+    })
+  })
+
+  test('rejects unknown, unpublished, and schema-invalid requests before I/O', async () => {
+    const cwd = await temporaryDirectory()
+    const videoPath = join(cwd, 'source.mp4')
+    await writeFile(videoPath, Buffer.from('mp4'))
     let fetched = false
     const options = {
       apiKey: 'nvapi-test',
@@ -207,131 +346,89 @@ describe('NVIDIA hosted one-shot task runtime', () => {
     await expect(
       runNvidiaHostedTask(
         {
-          model: 'black-forest-labs/flux.1-schnell',
+          model: 'nvidia/cosmos-transfer1-7b',
           prompt: 'test',
-          width: 1000,
+          videoPath,
+          cfgScale: 21,
         },
         options,
       ),
-    ).rejects.toThrow('must be one of')
+    ).rejects.toThrow('must be at most 20')
+    await expect(
+      runNvidiaHostedTask(
+        {
+          model: 'nvidia/cosmos-transfer1-7b',
+          prompt: 'test',
+          videoPath,
+          payload: { undocumented_option: true },
+        },
+        options,
+      ),
+    ).rejects.toThrow("is not part of NVIDIA's documented schema")
+    await expect(
+      runNvidiaHostedTask(
+        { model: 'nvidia/nemotron-voicechat' },
+        { ...options, apiKey: '' },
+      ),
+    ).rejects.toThrow('has not published an inference request/response contract')
     expect(fetched).toBe(false)
   })
 
-  test('uploads large media through NVIDIA Assets and removes the temporary asset after inference', async () => {
-    const cwd = await temporaryDirectory()
-    const imagePath = join(cwd, 'large.png')
-    await writeFile(imagePath, Buffer.alloc(200 * 1024, 7))
-    const requests: Array<{ url: string; method: string; body?: string }> = []
-    const result = await runNvidiaHostedTask(
+  test('loads all five exact public gRPC services and streaming shapes', async () => {
+    const expected = [
       {
-        model: 'nvidia/vila',
-        prompt: 'Describe the image.',
-        imagePath,
+        model: 'nvidia/active-speaker-detection',
+        path: '/nvidia.ai4m.activespeakerdetection.v1.ActiveSpeakerDetectionService/DetectActiveSpeaker',
+        requestStream: true,
+        responseStream: true,
       },
       {
-        apiKey: 'nvapi-test',
-        cwd,
-        fetch: async (input, init) => {
-          const url = String(input)
-          requests.push({
-            url,
-            method: init?.method ?? 'GET',
-            ...(typeof init?.body === 'string' ? { body: init.body } : {}),
-          })
-          if (url === 'https://api.nvcf.nvidia.com/v2/nvcf/assets') {
-            return Response.json({
-              assetId: 'asset-123',
-              uploadUrl: 'https://uploads.example/asset-123',
-            })
-          }
-          if (url === 'https://uploads.example/asset-123') {
-            return new Response('', { status: 200 })
-          }
-          if (url.endsWith('/assets/asset-123')) {
-            return new Response('', { status: 204 })
-          }
-          expect(url).toBe('https://ai.api.nvidia.com/v1/vlm/nvidia/vila')
-          const payload = JSON.parse(String(init?.body))
-          expect(payload.messages[0].content[1].image_url.url).toBe(
-            'data:image/png;asset_id,asset-123',
-          )
-          return Response.json({
-            choices: [{ message: { content: 'A large test image.' } }],
-          })
-        },
+        model: 'nvidia/bnr',
+        path: '/nvidia.ai4m.bnr.v1.BNR/EnhanceAudio',
+        requestStream: true,
+        responseStream: true,
       },
-    )
+      {
+        model: 'nvidia/magpie-tts-zeroshot',
+        path: '/nvidia.riva.tts.RivaSpeechSynthesis/Synthesize',
+        requestStream: false,
+        responseStream: false,
+      },
+      {
+        model: 'nvidia/studiovoice',
+        path: '/nvidia.ai4m.studiovoice.v1.StudioVoice/EnhanceAudio',
+        requestStream: true,
+        responseStream: true,
+      },
+      {
+        model: 'nvidia/synthetic-video-detector',
+        path: '/nvidia.maxine.syntheticvideodetector.v1.SyntheticVideoDetectorService/DetectSyntheticVideo',
+        requestStream: true,
+        responseStream: true,
+      },
+    ] as const
 
-    expect(result.text).toBe('A large test image.')
-    expect(requests.map(request => [request.method, request.url])).toEqual([
-      ['POST', 'https://api.nvcf.nvidia.com/v2/nvcf/assets'],
-      ['PUT', 'https://uploads.example/asset-123'],
-      ['POST', 'https://ai.api.nvidia.com/v1/vlm/nvidia/vila'],
-      ['DELETE', 'https://api.nvcf.nvidia.com/v2/nvcf/assets/asset-123'],
-    ])
-  })
-
-  test('routes structured reranking and healthcare payloads to their exact API families', async () => {
-    const cwd = await temporaryDirectory()
-    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
-    const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      requests.push({
-        url: String(input),
-        body: JSON.parse(String(init?.body)),
+    for (const entry of expected) {
+      const contract = getNvidiaHostedTaskModelContract(entry.model)!
+      const inspected = await inspectNativeNvidiaGrpcContract(entry.model)
+      expect(inspected).toMatchObject({
+        path: entry.path,
+        requestStream: entry.requestStream,
+        responseStream: entry.responseStream,
       })
-      return Response.json({ result: 'ok' })
+      expect(inspected?.service).toBe(contract.rpcService)
+      expect(inspected?.method).toBe(contract.rpcMethod)
+      expect(contract.endpoint).toBe('grpc.nvcf.nvidia.com:443')
+      expect(contract.functionId).toBeTruthy()
     }
-    await runNvidiaHostedTask(
-      {
-        model: 'nvidia/llama-nemotron-rerank-1b-v2',
-        query: 'best route',
-        passages: ['first', 'second'],
-      },
-      { apiKey: 'nvapi-test', cwd, fetch },
-    )
-    await runNvidiaHostedTask(
-      {
-        model: 'arc/evo2-40b',
-        payload: { sequence: 'ACGT', num_tokens: 8 },
-      },
-      { apiKey: 'nvapi-test', cwd, fetch },
-    )
-
-    expect(requests[0]).toMatchObject({
-      url: 'https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking',
-      body: {
-        model: 'nvidia/llama-nemotron-rerank-1b-v2',
-        query: { text: 'best route' },
-        passages: [{ text: 'first' }, { text: 'second' }],
-      },
-    })
-    expect(requests[1]).toMatchObject({
-      url: 'https://health.api.nvidia.com/v1/biology/arc/evo2-40b/generate',
-      body: { sequence: 'ACGT', num_tokens: 8 },
-    })
   })
 
-  test('redacts NVIDIA function and account identifiers from task failures', async () => {
+  test('redacts account identifiers and never removes a rejected model', async () => {
     const cwd = await temporaryDirectory()
-    const available = await listModelsForProviderWithSource('nvidia-nim', {
-      adapters: {
-        env: { NVIDIA_API_KEY: 'nvapi-test' },
-        fetch: async () =>
-          Response.json({
-            data: [{ id: 'black-forest-labs/flux.1-schnell' }],
-          }),
-      },
-    })
-    expect(available.models.map(model => model.id)).toEqual(
-      expect.arrayContaining(['black-forest-labs/flux.1-schnell']),
-    )
     let caught: unknown
     try {
       await runNvidiaHostedTask(
-        {
-          model: 'black-forest-labs/flux.1-schnell',
-          prompt: 'test',
-        },
+        { model: 'google/paligemma', prompt: 'test' },
         {
           apiKey: 'nvapi-test',
           cwd,
@@ -349,20 +446,13 @@ describe('NVIDIA hosted one-shot task runtime', () => {
       caught = error
     }
     expect(caught).toBeInstanceOf(ProviderHTTPError)
-    expect((caught as Error).message).toContain('not enabled for this API key')
+    expect((caught as Error).message).toContain('UR kept it in the catalog')
     expect((caught as Error).message).not.toContain('23bd454d')
     expect((caught as Error).message).not.toContain('VSB91X1')
     expect((caught as ProviderHTTPError).body).toBeUndefined()
 
-    const afterFailure = await listModelsForProviderWithSource('nvidia-nim', {
-      adapters: {
-        env: { NVIDIA_API_KEY: 'nvapi-test' },
-        fetch: async () => {
-          throw new Error('fresh discovery should not run while cache is warm')
-        },
-      },
-    })
-    expect(afterFailure.models.some(model => model.id === 'black-forest-labs/flux.1-schnell')).toBe(false)
-    expect(afterFailure.models.length).toBeGreaterThan(80)
+    const afterFailure = await listModelsForProviderWithSource('nvidia-special')
+    expect(afterFailure.models.map(model => model.id)).toContain('google/paligemma')
+    expect(afterFailure.models).toHaveLength(23)
   })
 })

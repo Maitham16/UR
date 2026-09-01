@@ -240,7 +240,8 @@ Use `ur provider status` or `ur provider doctor <provider>` to see provider
 kind, external CLI usage, native tool/streaming support, and the boundary text.
 
 Provider values accept canonical IDs and common aliases. For example,
-`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `nvidia-nim`, `ollama`,
+`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `nvidia-nim`,
+`nvidia-special`, `ollama`,
 `lmstudio`, `llama.cpp`, `vllm`, and `unsloth` are UR-native runtime providers, and
 `codex-cli` (`chatgpt`), `claude-code-cli` (`claude`), `gemini-cli` (`gemini`),
 and `antigravity-cli` (`agy`) are subscription CLI providers.
@@ -257,7 +258,7 @@ and is inference-only: UR does not manage Unsloth and disables its server-side
 tools while retaining standard function calls inside UR's guarded tool loop.
 
 UR stores `base_url` per provider. You can set different addresses for
-Ollama, LM Studio, llama.cpp, vLLM, Unsloth, and NVIDIA NIM once, then switch providers without
+Ollama, LM Studio, llama.cpp, vLLM, Unsloth, and NVIDIA Agentic once, then switch providers without
 re-entering any of them. `ur config get base_url` reports the active provider's
 saved scoped override when one exists; use `ur provider status` or
 `ur provider doctor <provider>` to inspect the effective endpoint.
@@ -266,34 +267,30 @@ without making it active first. The `/model` picker offers the same endpoint
 entry flow for a disconnected local/server provider.
 
 Use `/model` in an interactive session to select provider first and model
-second. OpenAI API, Claude API, Gemini API, OpenRouter, NVIDIA NIM, Ollama, and
+second. OpenAI API, Claude API, Gemini API, OpenRouter, NVIDIA Agentic, Ollama, and
 OpenAI-compatible endpoints stay separate; a subscription login does not grant
 API-key access, and an API key does not grant subscription CLI access.
 
-NVIDIA NIM uses the build.nvidia.com key and hosted
+NVIDIA Agentic and NVIDIA Special share the build.nvidia.com key. Agentic uses
 `https://integrate.api.nvidia.com/v1` endpoint by default. Connect it with
-`ur connect nvidia-nim`; use `ur config set base_url nvidia-nim <url>` for a
-different NIM deployment. For the hosted endpoint, `/model` intersects the
-account's live `/v1/models` feed with exact NVIDIA-documented agent contracts.
-This excludes utility endpoints and dedicated single-use APIs from the ongoing
-agent list even when NVIDIA returns them. NVCF deployment functions are a
-separate API and do not narrow this hosted catalog. A custom NIM gateway
-retains its own independent catalog.
+`ur connect nvidia-nim` (or `ur connect nvidia-special`); use
+`ur config set base_url nvidia-nim <url>` for a
+different NIM deployment. Public Agentic entries come from exact per-card
+contracts and are not filtered or removed by NVIDIA account inventory errors.
+A custom NIM gateway retains its own independent live catalog.
 Download-only cards from the Build web catalog are not inserted into the
 hosted picker. NVIDIA's live `nemotron-3.5-lightning-30b-a3b` endpoint is
 focused first as its documented fastest 30B agent model; Left/Right controls
 that model's advertised on/off thinking switch.
-Specialized public hosted contracts appear separately as `ONE-SHOT`, with
-their purpose visible before selection. The catalog is generated from
-NVIDIA's official OpenAPI indexes and currently covers 92 task models across
-generation, vision, retrieval, safety, translation, biology, molecular and
-medical inference, optimization, and climate APIs. Selecting one leaves the
-ongoing agent unchanged; describe the task normally and UR uses
-`NvidiaNimTask` with the same stored NVIDIA key and exact model endpoint. For
-advanced schemas the tool can describe required fields before running exact
-JSON and file bindings. Large inputs use NVIDIA Assets; binary or large JSON
-output defaults to `.ur/artifacts/nvidia/`. Download-only and non-executable
-cards remain hidden.
+NVIDIA Special appears as its own provider, with purpose and input/output hints
+before selection. The current Build audit preserves all 23 focused Free
+Endpoint cards. `NvidiaSpecial` describes or runs each card's exact inference
+URL, HTTP/RPC method, function ID, and request/response schema using the shared
+key. It supports HTTP, direct NVCF, async polling, NVIDIA Assets, and five
+documented Maxine/Riva gRPC services. Selecting one leaves the ongoing agent
+unchanged. Returned media/binary/JSON defaults to `.ur/artifacts/nvidia/`.
+Cards are never removed; an unpublished protocol remains visible and clearly
+cannot be invoked until NVIDIA publishes its contract.
 On the `/model` model screen, `K` adds or replaces a
 provider API key and `E` edits its endpoint. This also makes optional
 authentication practical for generic OpenAI-compatible gateways.

@@ -24,6 +24,7 @@ import {
   isNvidiaHostedApi,
   NVIDIA_HOSTED_API_BASE_URL,
   NVIDIA_HOSTED_TASK_MODEL_CONTRACTS,
+  nvidiaHostedAgentModelIds,
 } from './nvidiaHostedModels.js'
 
 export const PROVIDER_IDS = [
@@ -39,6 +40,7 @@ export const PROVIDER_IDS = [
   'gemini-api',
   'openrouter',
   'nvidia-nim',
+  'nvidia-special',
   'codex-cli',
   'claude-code-cli',
   'gemini-cli',
@@ -511,8 +513,8 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
   },
   'nvidia-nim': {
     id: 'nvidia-nim',
-    displayName: 'NVIDIA NIM',
-    statusBarName: 'NVIDIA NIM',
+    displayName: 'NVIDIA Agentic',
+    statusBarName: 'NVIDIA Agentic',
     accessType: 'api',
     accessTypeLabel: 'hosted/server',
     credentialType: 'api-key',
@@ -524,11 +526,30 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     ...UR_NATIVE_CAPABILITIES,
     authMode: 'api',
     legalPath: 'NVIDIA API key from build.nvidia.com or an authenticated NVIDIA NIM endpoint',
-    accessPathLabel: 'NVIDIA NIM OpenAI-compatible endpoint',
+    accessPathLabel: 'NVIDIA agent endpoints documented by build.nvidia.com',
     envKey: 'NVIDIA_API_KEY',
     requiresApiKey: true,
     defaultBaseUrl: NVIDIA_HOSTED_API_BASE_URL,
     endpointKind: 'openai-compatible',
+  },
+  'nvidia-special': {
+    id: 'nvidia-special',
+    displayName: 'NVIDIA Special',
+    statusBarName: 'NVIDIA Special',
+    accessType: 'api',
+    accessTypeLabel: 'hosted/single-shot',
+    credentialType: 'api-key',
+    modelDiscoveryType: 'static',
+    statusCheck: 'api-key',
+    listModels: 'static',
+    validateModel: 'static-list',
+    runtimeKind: 'ur-native',
+    ...UR_NATIVE_CAPABILITIES,
+    authMode: 'api',
+    legalPath: 'NVIDIA API key from build.nvidia.com',
+    accessPathLabel: 'Exact per-model NVIDIA inference endpoints documented by build.nvidia.com',
+    envKey: 'NVIDIA_API_KEY',
+    requiresApiKey: true,
   },
   'openai-compatible': {
     id: 'openai-compatible',
@@ -690,7 +711,25 @@ const PROVIDER_ALIAS_ENTRIES: ProviderAliasEntry[] = [
   },
   {
     canonical: 'nvidia-nim',
-    aliases: ['nvidia', 'nvidia api', 'nvidia build', 'nvidia nim', 'nim'],
+    aliases: [
+      'nvidia',
+      'nvidia agent',
+      'nvidia agentic',
+      'nvidia api',
+      'nvidia build',
+      'nvidia nim',
+      'nim',
+    ],
+  },
+  {
+    canonical: 'nvidia-special',
+    aliases: [
+      'nvidia special',
+      'nvidia task',
+      'nvidia tasks',
+      'nvidia one shot',
+      'nvidia one-shot',
+    ],
   },
   {
     canonical: 'openai-compatible',
@@ -859,6 +898,8 @@ export function getProviderRuntimeBackend(providerId: ProviderId | string): stri
       return 'api:openrouter'
     case 'nvidia-nim':
       return 'api:nvidia-nim'
+    case 'nvidia-special':
+      return 'api:nvidia-special'
     default:
       return `unknown:${providerId}`
   }
@@ -875,6 +916,7 @@ const PROVIDER_FAMILIES: Record<ProviderId, ProviderFamily> = {
   'antigravity-cli': 'google',
   openrouter: 'openai-compatible',
   'nvidia-nim': 'openai-compatible',
+  'nvidia-special': 'openai-compatible',
   'openai-compatible': 'openai-compatible',
   lmstudio: 'openai-compatible',
   'llama.cpp': 'openai-compatible',
@@ -1437,13 +1479,22 @@ function openAiCompatibleModelUrls(baseUrl: string): string[] {
 function filterNvidiaHostedModels(
   models: ProviderModelDefinition[],
 ): ProviderModelDefinition[] {
-  // `/v1/models` proves account availability, but NVIDIA's hosted response
-  // mixes agent LLMs with utility and dedicated inference functions. Intersect
-  // it with the audited positive contracts so unsupported models never appear
-  // in UR's agent picker. Custom NIM gateways bypass this hosted-only filter.
-  return models.flatMap(model => {
-    const contract = getNvidiaHostedAgentModelContract(model.id)
+  // Build cards are the catalogue source of truth. `/v1/models` is merely
+  // optional enrichment because NVIDIA can omit a documented endpoint for a
+  // particular key. A key/account failure must never remove that model.
+  const discoveredById = new Map(
+    models.map(model => [model.id.toLowerCase(), model] as const),
+  )
+  return nvidiaHostedAgentModelIds().flatMap(id => {
+    const contract = getNvidiaHostedAgentModelContract(id)
     if (!contract) return []
+    const model = discoveredById.get(id.toLowerCase()) ?? {
+      id: contract.id,
+      displayName: contract.displayName,
+      description: `NVIDIA Build Free Endpoint · ${contract.purpose}`,
+      isDynamic: true,
+      isDefault: contract.id === 'nvidia/nemotron-3.5-lightning-30b-a3b',
+    }
     return [{
       ...model,
       supportedParameters: [
@@ -1457,9 +1508,7 @@ function filterNvidiaHostedModels(
         ...contract.capabilities,
         endpoint: contract.endpoint,
       },
-      description: model.isDefault
-        ? `${model.description} · NVIDIA-documented agent contract · NVIDIA's fastest 30B agent model`
-        : `${model.description} · NVIDIA-documented agent contract`,
+      description: `${contract.purpose} · exact ${contract.endpoint} · ${contract.available ? 'NVIDIA available' : 'NVIDIA currently unavailable'}`,
     }]
   }).sort((left, right) =>
     Number(Boolean(right.isDefault)) - Number(Boolean(left.isDefault)),
@@ -1470,27 +1519,28 @@ function nvidiaHostedTaskModels(): ProviderModelDefinition[] {
   return NVIDIA_HOSTED_TASK_MODEL_CONTRACTS.map(contract => ({
     id: contract.id,
     displayName: contract.displayName,
-    description: `ONE-SHOT ${contract.taskKind} · ${contract.purpose}`,
+    description: `ONE-SHOT ${contract.taskKind} · ${contract.purpose} · Input: ${contract.inputHint} · Output: ${contract.outputHint} · ${contract.available ? 'NVIDIA available' : 'NVIDIA currently unavailable'}${contract.executable ? '' : ' · inference protocol unpublished'}`,
     usageMode: 'task',
     taskKind: contract.taskKind,
     purpose: contract.purpose,
     supportedParameters: [],
     capabilities: {
       oneShotTask: true,
+      transport: contract.transport,
       endpoint: contract.endpoint,
+      method: contract.method,
+      rpcService: contract.rpcService,
+      rpcMethod: contract.rpcMethod,
+      functionId: contract.functionId,
+      available: contract.available,
+      executable: contract.executable,
+      documentation: contract.documentation,
+      inputHint: contract.inputHint,
+      outputHint: contract.outputHint,
       inputMediaTypes: [...contract.inputMediaTypes],
       outputMediaType: contract.outputMediaType,
     },
   }))
-}
-
-function addAvailableNvidiaHostedTaskModels(
-  agentModels: ProviderModelDefinition[],
-): ProviderModelDefinition[] {
-  return [
-    ...agentModels,
-    ...nvidiaHostedTaskModels(),
-  ]
 }
 
 async function checkEndpoint(
@@ -1641,20 +1691,20 @@ async function checkEndpoint(
       })
       addFailure(
         result,
-        'NVIDIA hosted catalog has no agent-capable chat models',
+        'NVIDIA Agentic catalog has no agent-capable models',
         'Refresh the key at build.nvidia.com, then reconnect with: ur connect nvidia-nim',
       )
     } else {
       result.checks.push({
         name: 'chat_models',
         status: 'pass',
-        message: `${detectedModels.length} NVIDIA hosted chat models are selectable.`,
+        message: `${detectedModels.length} NVIDIA Agentic models are selectable.`,
       })
     }
     result.checks.push({
       name: 'task_models',
       status: 'pass',
-      message: `${NVIDIA_HOSTED_TASK_MODEL_CONTRACTS.length} public NVIDIA task APIs have generated exact-endpoint contracts; key entitlement is verified when each task runs.`,
+      message: `${NVIDIA_HOSTED_TASK_MODEL_CONTRACTS.length} NVIDIA Special entries are preserved from Build; ${NVIDIA_HOSTED_TASK_MODEL_CONTRACTS.filter(contract => contract.executable).length} publish executable exact-endpoint contracts and key entitlement is checked only when invoked.`,
     })
   }
   if (settings.model) {
@@ -1670,8 +1720,8 @@ async function checkEndpoint(
       if (verifiesNvidiaHostedCatalog) {
         addFailure(
           result,
-          'selected NVIDIA NIM model is unavailable',
-          'Refresh /model, choose NVIDIA NIM, and select a model returned by NVIDIA.',
+          'selected NVIDIA Agentic model is unavailable',
+          'Refresh /model, choose NVIDIA Agentic, and select a documented agent model.',
         )
       }
     } else if (modelsUrl) {
@@ -2398,7 +2448,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
     { id: 'google/gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Google Gemini via OpenRouter' },
     { id: 'google/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Google Gemini via OpenRouter' },
   ],
-  // NVIDIA NIM is live-discovery only. These hidden entries are capability
+  // NVIDIA Agentic is live-discovery only. These hidden entries are capability
   // overlays for model contracts NVIDIA documents explicitly; they never
   // become an offline model catalogue or imply account availability.
   'nvidia-nim': [
@@ -2412,6 +2462,10 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
     { id: 'deepseek-ai/deepseek-v4-flash-0731', displayName: 'deepseek-ai/deepseek-v4-flash-0731', description: 'NVIDIA-documented reasoning contract', isDynamic: true, reasoning: NVIDIA_NONE_HIGH_MAX },
     { id: 'meta/muse-glimmer-30b', displayName: 'meta/muse-glimmer-30b', description: 'NVIDIA-documented reasoning contract', isDynamic: true, reasoning: NVIDIA_FULL_EFFORT_RANGE },
   ],
+  // NVIDIA Special is generated from each eligible Build card's own inference
+  // contract in staticModelsForProvider(). Keeping it out of this hand-written
+  // table prevents documentation drift and generic endpoint guessing.
+  'nvidia-special': [],
   // OpenAI-compatible endpoint - dynamic discovery from custom base_url
   'openai-compatible': [
     { id: 'custom', displayName: 'Custom Model', description: 'Model name from provider endpoint', isDynamic: true },
@@ -2441,8 +2495,6 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
 const cachedModelsByProvider = new Map<string, ProviderModelDefinition[]>()
 /** Wall-clock time each cache entry was written, so age can be reported. */
 const cachedModelsWrittenAt = new Map<string, number>()
-/** Runtime-rejected models stay hidden until the user explicitly refreshes. */
-const unavailableModelsByEndpoint = new Map<string, Set<string>>()
 /** Collapses concurrent identical discovery requests onto one fetch. */
 const modelDiscoveryCoalescer = new RequestCoalescer<ProviderModelDefinition[]>()
 
@@ -2452,7 +2504,6 @@ export const MODEL_DISCOVERY_TIMEOUT_MS = 15_000
 export function clearProviderModelCacheForTests(): void {
   cachedModelsByProvider.clear()
   cachedModelsWrittenAt.clear()
-  unavailableModelsByEndpoint.clear()
   modelDiscoveryCoalescer.clear()
 }
 
@@ -2469,11 +2520,6 @@ export function clearProviderModelCache(providerId: ProviderId | string): void {
       cachedModelsWrittenAt.delete(key)
     }
   }
-  for (const key of unavailableModelsByEndpoint.keys()) {
-    if (key === provider || key.startsWith(prefix)) {
-      unavailableModelsByEndpoint.delete(key)
-    }
-  }
 }
 
 /** Number of discovery requests currently in flight. Exposed for tests. */
@@ -2481,51 +2527,9 @@ export function inFlightModelDiscoveryCount(): number {
   return modelDiscoveryCoalescer.size
 }
 
-function withoutRuntimeUnavailableModels(
-  key: string,
-  models: ProviderModelDefinition[],
-): ProviderModelDefinition[] {
-  const unavailable = unavailableModelsByEndpoint.get(key)
-  if (!unavailable?.size) return models
-  return models.filter(model => !unavailable.has(model.id.toLowerCase()))
-}
-
 function rememberModels(key: string, models: ProviderModelDefinition[]): void {
-  cachedModelsByProvider.set(key, withoutRuntimeUnavailableModels(key, models))
+  cachedModelsByProvider.set(key, models)
   cachedModelsWrittenAt.set(key, Date.now())
-}
-
-/**
- * Hide a model that a compatible runtime has definitively rejected. This is
- * endpoint-scoped: switching to another saved server cannot inherit the
- * failure. Clearing/refreshing the provider catalog intentionally retries it.
- */
-export function markProviderModelUnavailable(
-  providerId: ProviderId | string,
-  modelId: string,
-  baseUrl?: string,
-): void {
-  const provider = resolveProviderId(providerId)
-  const normalizedModel = modelId.trim().toLowerCase()
-  if (!provider || !normalizedModel) return
-  const keys = baseUrl
-    ? [providerEndpointCacheKey(provider, baseUrl)]
-    : [...cachedModelsByProvider.keys()].filter(
-        key => key === provider || key.startsWith(`${provider}@`),
-      )
-  for (const key of keys) {
-    const unavailable = unavailableModelsByEndpoint.get(key) ?? new Set<string>()
-    unavailable.add(normalizedModel)
-    unavailableModelsByEndpoint.set(key, unavailable)
-    const cached = cachedModelsByProvider.get(key)
-    if (cached) {
-      cachedModelsByProvider.set(
-        key,
-        cached.filter(model => model.id.toLowerCase() !== normalizedModel),
-      )
-    }
-    modelDiscoveryCoalescer.cancel(key)
-  }
 }
 
 /** Age of a cache entry in ms, or undefined when nothing is cached. */
@@ -3124,6 +3128,7 @@ export function cacheProviderModelsForProvider(
 }
 
 function staticModelsForProvider(provider: ProviderId): ProviderModelDefinition[] {
+  if (provider === 'nvidia-special') return nvidiaHostedTaskModels()
   return (PROVIDER_MODELS[provider] ?? []).filter(model => !model.isDynamic)
 }
 
@@ -3199,6 +3204,9 @@ async function discoverLiveModelsForProvider(
   if (!baseUrl) {
     throw new Error(`No base_url configured for provider "${provider}".`)
   }
+  if (provider === 'nvidia-nim' && isNvidiaHostedApi(baseUrl)) {
+    return filterNvidiaHostedModels([])
+  }
   const env = options.adapters?.env ?? process.env
   const fetchImpl = options.adapters?.fetch ?? fetch
   let apiKey = definition.envKey ? env[definition.envKey] : undefined
@@ -3244,7 +3252,7 @@ async function discoverLiveModelsForProvider(
     if (discovered.length > 0) {
       const models = modelDefinitionsFromDiscovered(discovered, provider)
       if (provider === 'nvidia-nim' && isNvidiaHostedApi(baseUrl)) {
-        return addAvailableNvidiaHostedTaskModels(filterNvidiaHostedModels(models))
+        return filterNvidiaHostedModels(models)
       }
       return models
     }
@@ -3253,7 +3261,7 @@ async function discoverLiveModelsForProvider(
     throw lastError
   }
   if (provider === 'nvidia-nim' && isNvidiaHostedApi(baseUrl)) {
-    return addAvailableNvidiaHostedTaskModels([])
+    return filterNvidiaHostedModels([])
   }
   return []
 }
@@ -3479,12 +3487,11 @@ export async function listModelsForProviderWithSource(
         ),
       options.signal,
     )
-    const selectableLiveModels = withoutRuntimeUnavailableModels(cacheKey, liveModels)
-    if (selectableLiveModels.length > 0) {
-      rememberModels(cacheKey, selectableLiveModels)
+    if (liveModels.length > 0) {
+      rememberModels(cacheKey, liveModels)
       return {
         provider,
-        models: selectableLiveModels,
+        models: liveModels,
         source: 'live',
       }
     }
@@ -3719,7 +3726,7 @@ export function validateProviderModelPair(
     const defaultModel = getDefaultModelForProvider(provider)
     return {
       valid: false,
-      error: `Model "${modelId}" is a one-shot ${selectedDefinition.taskKind ?? 'task'} model, not an ongoing agent model. It remains available through the NVIDIA task tool without replacing the active chat model.`,
+      error: `Model "${modelId}" is a one-shot ${selectedDefinition.taskKind ?? 'task'} model, not an ongoing agent model. It remains available through NVIDIA Special without replacing the active chat model.`,
       validModels: validModelIds,
       suggestedModel: defaultModel,
     }

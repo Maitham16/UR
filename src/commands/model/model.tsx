@@ -104,7 +104,7 @@ function ModelPickerWrapper(t0) {
   let taskHandler;
   if ($[17] !== onDone) {
     taskHandler = function handleTaskSelect(selection: NvidiaTaskSelectionMetadata) {
-      onDone(`Selected NVIDIA one-shot model: ${chalk.bold(selection.displayName)}\nPurpose: ${selection.purpose}\nThe ongoing agent model is unchanged. Describe the matching ${selection.taskKind} job and UR will run it with the NVIDIA task tool.`);
+      onDone(`Selected NVIDIA Special model: ${chalk.bold(selection.displayName)}\nPurpose: ${selection.purpose}\nThe ongoing agent model is unchanged. Describe the matching ${selection.taskKind} job and UR will run it with the exact NVIDIA Special inference contract.`);
     };
     $[17] = onDone;
     $[18] = taskHandler;

@@ -8,7 +8,7 @@
 UR-Nexus is an autonomous engineering workflow engine: a terminal (Ink/React) coding agent
 with a plan → execute → test → verify → document → benchmark loop, local-first model support
 (Ollama / llama.cpp / vLLM / LM Studio), cloud API providers (OpenAI, Anthropic, Gemini,
-OpenRouter, NVIDIA NIM, any OpenAI-compatible endpoint), a multi-agent orchestration layer, and a large
+OpenRouter, NVIDIA Agentic/Special, any OpenAI-compatible endpoint), a multi-agent orchestration layer, and a large
 built-in command/tool surface.
 
 ## Document map

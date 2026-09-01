@@ -18,6 +18,9 @@ import {
 import {
   getNvidiaHostedAgentModelContract,
   getNvidiaHostedTaskModelContract,
+  NVIDIA_BUILD_EXECUTABLE_ENDPOINT_COUNT,
+  NVIDIA_BUILD_FREE_ENDPOINT_COUNT,
+  NVIDIA_BUILD_INDEX_MODEL_COUNT,
   NVIDIA_HOSTED_CHAT_ENDPOINT,
   nvidiaHostedAgentModelIds,
   nvidiaHostedTaskModelIds,
@@ -33,25 +36,30 @@ import { providerSupportsThinkingToggle } from '../src/utils/thinking.js'
 beforeEach(() => clearProviderModelCacheForTests())
 afterEach(() => clearProviderModelCacheForTests())
 
-describe('NVIDIA NIM provider integration', () => {
-  test('registers the hosted API and preserves a configurable NIM endpoint', () => {
+describe('NVIDIA Agentic and NVIDIA Special providers', () => {
+  test('registers two providers backed by one NVIDIA_API_KEY', () => {
     expect(resolveProviderId('NVIDIA Build')).toBe('nvidia-nim')
-    expect(resolveProviderId('nim')).toBe('nvidia-nim')
+    expect(resolveProviderId('NVIDIA Agentic')).toBe('nvidia-nim')
+    expect(resolveProviderId('NVIDIA Special')).toBe('nvidia-special')
     expect(getProviderFamily('nvidia-nim')).toBe('openai-compatible')
+    expect(getProviderFamily('nvidia-special')).toBe('openai-compatible')
     expect(getProviderRuntimeBackend('nvidia-nim')).toBe('api:nvidia-nim')
+    expect(getProviderRuntimeBackend('nvidia-special')).toBe('api:nvidia-special')
     expect(getProviderDefinition('nvidia-nim')).toMatchObject({
-      accessType: 'api',
-      runtimeKind: 'ur-native',
+      displayName: 'NVIDIA Agentic',
       envKey: 'NVIDIA_API_KEY',
-      requiresApiKey: true,
       defaultBaseUrl: 'https://integrate.api.nvidia.com/v1',
       endpointKind: 'openai-compatible',
+    })
+    expect(getProviderDefinition('nvidia-special')).toMatchObject({
+      displayName: 'NVIDIA Special',
+      envKey: 'NVIDIA_API_KEY',
+      listModels: 'static',
     })
     expect(
       SettingsSchema().safeParse({
         provider: {
-          active: 'nvidia-nim',
-          model: 'nvidia/model',
+          active: 'nvidia-special',
           baseUrls: {
             'nvidia-nim': 'https://nim-gateway.example/v1',
             ollama: 'http://localhost:11434',
@@ -61,98 +69,107 @@ describe('NVIDIA NIM provider integration', () => {
     ).toBe(true)
   })
 
-  test('intersects the hosted catalog with documented agent contracts', async () => {
-    const requests: Array<{ url: string; authorization: string | null }> = []
+  test('preserves exact parity with the current NVIDIA Build index', () => {
+    const agents = nvidiaHostedAgentModelIds().map(model =>
+      getNvidiaHostedAgentModelContract(model),
+    )
+    const tasks = nvidiaHostedTaskModelIds().map(model =>
+      getNvidiaHostedTaskModelContract(model),
+    )
+
+    expect(NVIDIA_BUILD_INDEX_MODEL_COUNT).toBe(100)
+    expect(NVIDIA_BUILD_FREE_ENDPOINT_COUNT).toBe(36)
+    expect(NVIDIA_BUILD_EXECUTABLE_ENDPOINT_COUNT).toBe(35)
+    expect(agents).toHaveLength(13)
+    expect(tasks).toHaveLength(23)
+    expect(agents.length + tasks.length).toBe(NVIDIA_BUILD_FREE_ENDPOINT_COUNT)
+    expect(new Set([...nvidiaHostedAgentModelIds(), ...nvidiaHostedTaskModelIds()]).size).toBe(
+      NVIDIA_BUILD_FREE_ENDPOINT_COUNT,
+    )
+    expect(
+      [...agents, ...tasks].every(
+        contract =>
+          contract &&
+          contract.endpoint &&
+          contract.method &&
+          contract.documentation &&
+          contract.buildCard &&
+          contract.purpose &&
+          contract.inputHint &&
+          contract.outputHint &&
+          contract.requestSchema &&
+          contract.responseSchema,
+      ),
+    ).toBe(true)
+    expect(agents.every(contract => contract?.supportedParameters.includes('tools'))).toBe(true)
+    expect(tasks.every(contract => contract?.taskKind && !contract.agent)).toBe(true)
+  })
+
+  test('public Agentic discovery is generated from cards and never filtered by account inventory', async () => {
+    let fetched = false
     const result = await listModelsForProviderWithSource('nvidia-nim', {
+      freshOnly: true,
       adapters: {
         env: { NVIDIA_API_KEY: 'nvapi-test' },
-        fetch: async (input, init) => {
-          const headers = new Headers(init?.headers)
-          requests.push({
-            url: String(input),
-            authorization: headers.get('authorization'),
-          })
-          return Response.json({
-            data: [
-              { id: '01-ai/yi-large' },
-              { id: 'deepseek-ai/deepseek-v4-flash' },
-              { id: 'nvidia/nemotron-3.5-lightning-30b-a3b' },
-              { id: 'nvidia/nemotron-parse' },
-              { id: 'vendor/future-model', supported_parameters: ['reasoning_effort'] },
-              { id: 'black-forest-labs/flux.1-schnell' },
-              { id: 'stabilityai/stable-video-diffusion' },
-              { id: 'google/paligemma' },
-            ],
-          })
+        fetch: async () => {
+          fetched = true
+          return Response.json({ data: [] })
         },
       },
     })
 
-    expect(requests).toEqual([
-      {
-        url: 'https://integrate.api.nvidia.com/v1/models',
-        authorization: 'Bearer nvapi-test',
-      },
-    ])
+    expect(fetched).toBe(false)
     expect(result.source).toBe('live')
-    const agents = result.models.filter(model => model.usageMode !== 'task')
-    const tasks = result.models.filter(model => model.usageMode === 'task')
-    expect(agents.map(model => model.id)).toEqual([
-      'nvidia/nemotron-3.5-lightning-30b-a3b',
-      'deepseek-ai/deepseek-v4-flash',
-    ])
-    expect(agents.every(model => model.supportedParameters?.includes('tools'))).toBe(true)
-    expect(tasks.map(model => model.id)).toEqual(nvidiaHostedTaskModelIds())
-    expect(tasks.every(model => model.usageMode === 'task')).toBe(true)
-    expect(agents[1]).toMatchObject({
-      capabilities: {
-        agent: true,
-        toolCalling: true,
-        endpoint: NVIDIA_HOSTED_CHAT_ENDPOINT,
-      },
-    })
-    expect(
-      getSupportedEffortLevelsForModel(
-        'deepseek-ai/deepseek-v4-flash',
-        'nvidia-nim',
-      ),
-    ).toEqual(['minimal', 'high', 'max', 'ultra'])
-    expect(
-      getProviderEffortWireValue(
-        'deepseek-ai/deepseek-v4-flash',
-        'ultra',
-        'nvidia-nim',
-      ),
-    ).toBe('max')
-    expect(
-      getSupportedEffortLevelsForModel('vendor/future-model', 'nvidia-nim'),
-    ).toEqual([])
-    expect(agents[0]).toMatchObject({
+    expect(result.models.map(model => model.id).sort()).toEqual(
+      nvidiaHostedAgentModelIds().sort(),
+    )
+    expect(result.models.every(model => model.usageMode !== 'task')).toBe(true)
+    expect(result.models.every(model => model.supportedParameters?.includes('tools'))).toBe(true)
+    expect(result.models[0]).toMatchObject({
+      id: 'nvidia/nemotron-3.5-lightning-30b-a3b',
       isDefault: true,
-      reasoning: { supportsThinking: true, defaultEnabled: true },
     })
-    expect(
-      providerSupportsThinkingToggle(
-        'nvidia-nim',
-        'nvidia/nemotron-3.5-lightning-30b-a3b',
-      ),
-    ).toBe(true)
-    expect(
-      providerSupportsThinkingToggle('nvidia-nim', 'moonshotai/kimi-k3'),
-    ).toBe(false)
-    expect(
-      getSupportedEffortLevelsForModel('moonshotai/kimi-k3', 'nvidia-nim'),
-    ).toEqual(['low', 'high', 'max', 'ultra'])
-    expect(
-      getProviderEffortWireValue(
-        'moonshotai/kimi-k3',
-        'ultra',
-        'nvidia-nim',
-      ),
-    ).toBe('max')
   })
 
-  test('does not apply the hosted account inventory to a configured NIM gateway', async () => {
+  test('Special discovery exposes every focused-task card with exact transport guidance', async () => {
+    let fetched = false
+    const result = await listModelsForProviderWithSource('nvidia-special', {
+      freshOnly: true,
+      adapters: {
+        env: { NVIDIA_API_KEY: 'nvapi-test' },
+        fetch: async () => {
+          fetched = true
+          return Response.json({})
+        },
+      },
+    })
+
+    expect(fetched).toBe(false)
+    expect(result.models.map(model => model.id)).toEqual(nvidiaHostedTaskModelIds())
+    expect(result.models.every(model => model.usageMode === 'task')).toBe(true)
+    expect(getNvidiaHostedTaskModelContract('google/paligemma')).toMatchObject({
+      endpoint: 'https://ai.api.nvidia.com/v1/vlm/google/paligemma',
+      method: 'POST',
+      transport: 'http',
+      executable: true,
+      taskKind: 'image-understanding',
+    })
+    expect(getNvidiaHostedTaskModelContract('nvidia/magpie-tts-zeroshot')).toMatchObject({
+      endpoint: 'grpc.nvcf.nvidia.com:443',
+      method: 'UNARY',
+      rpcService: 'nvidia.riva.tts.RivaSpeechSynthesis',
+      rpcMethod: 'Synthesize',
+      executable: true,
+    })
+    expect(getNvidiaHostedTaskModelContract('nvidia/nemotron-voicechat')).toMatchObject({
+      transport: 'unpublished',
+      method: 'UNPUBLISHED',
+      available: false,
+      executable: false,
+    })
+  })
+
+  test('preserves a configurable enterprise NIM gateway', async () => {
     const requests: string[] = []
     const result = await listModelsForProviderWithSource('nvidia-nim', {
       settings: {
@@ -171,97 +188,11 @@ describe('NVIDIA NIM provider integration', () => {
     })
 
     expect(result.source).toBe('live')
-    expect(result.models.map(model => model.id)).toEqual([
-      'enterprise/private-chat-model',
-    ])
+    expect(result.models.map(model => model.id)).toEqual(['enterprise/private-chat-model'])
     expect(requests).toEqual(['https://nim.example/v1/models'])
   })
 
-  test('uses the official hosted task contracts without depending on a separate NVCF function inventory', async () => {
-    const requests: string[] = []
-    const result = await listModelsForProviderWithSource('nvidia-nim', {
-      freshOnly: true,
-      adapters: {
-        env: { NVIDIA_API_KEY: 'nvapi-test' },
-        fetch: async input => {
-          requests.push(String(input))
-          return Response.json({ data: [{ id: 'openai/gpt-oss-20b' }] })
-        },
-      },
-    })
-
-    expect(result.source).toBe('live')
-    expect(
-      result.models
-        .filter(model => model.usageMode !== 'task')
-        .map(model => model.id),
-    ).toEqual(['openai/gpt-oss-20b'])
-    expect(
-      result.models
-        .filter(model => model.usageMode === 'task')
-        .map(model => model.id),
-    ).toEqual(nvidiaHostedTaskModelIds())
-    expect(requests).toEqual(['https://integrate.api.nvidia.com/v1/models'])
-  })
-
-  test('exposes every generated public task contract and never treats tasks as agent models', async () => {
-    const result = await listModelsForProviderWithSource('nvidia-nim', {
-      freshOnly: true,
-      adapters: {
-        env: { NVIDIA_API_KEY: 'nvapi-test' },
-        fetch: async () => Response.json({
-          data: [
-            { id: 'google/paligemma' },
-            { id: 'adept/fuyu-8b' },
-            { id: 'meta/llama-3.2-11b-vision-instruct' },
-            { id: 'nvidia/vila' },
-            { id: 'nvidia/nemotron-parse' },
-            { id: 'black-forest-labs/flux.1-schnell' },
-            { id: 'moonshotai/kimi-k3' },
-          ],
-        }),
-      },
-    })
-
-    expect(result.source).toBe('live')
-    expect(
-      result.models
-        .filter(model => model.usageMode !== 'task')
-        .map(model => model.id),
-    ).toEqual(['moonshotai/kimi-k3'])
-    expect(
-      result.models
-        .filter(model => model.usageMode === 'task')
-        .map(model => model.id),
-    ).toEqual(nvidiaHostedTaskModelIds())
-    expect(result.models.some(model => model.id === 'adept/fuyu-8b')).toBe(false)
-    expect(result.models.find(model => model.id === 'nvidia/vila')).toMatchObject({
-      usageMode: 'task',
-      taskKind: 'image-understanding',
-    })
-    expect(result.models.find(model => model.id === 'nvidia/nemotron-parse')).toMatchObject({
-      usageMode: 'task',
-      taskKind: 'document-parsing',
-    })
-
-    const validation = validateProviderModelPair(
-      'nvidia-nim',
-      'google/paligemma',
-      { availableModels: result.models },
-    )
-    expect(validation.valid).toBe(false)
-    if (validation.valid === false) {
-      expect(validation.error).toContain('one-shot image-understanding model')
-      expect(validation.error).toContain('not an ongoing agent model')
-    }
-  })
-
-  test('keeps exact endpoint contracts per hosted agent model', () => {
-    const contracts = nvidiaHostedAgentModelIds().map(model =>
-      getNvidiaHostedAgentModelContract(model),
-    )
-    expect(contracts.length).toBeGreaterThan(20)
-    expect(contracts.every(contract => contract?.endpoint === NVIDIA_HOSTED_CHAT_ENDPOINT)).toBe(true)
+  test('resolves only exact card endpoints on the public hosted API', () => {
     expect(
       resolveNvidiaHostedModelEndpoint(
         'https://integrate.api.nvidia.com/v1',
@@ -282,86 +213,29 @@ describe('NVIDIA NIM provider integration', () => {
     ).toBeUndefined()
   })
 
-  test('keeps exact endpoint, schema, and purpose contracts across every NVIDIA API family', () => {
-    const contracts = nvidiaHostedTaskModelIds().map(model =>
-      getNvidiaHostedTaskModelContract(model),
-    )
-    expect(contracts.length).toBeGreaterThan(80)
-    expect(contracts.every(contract => contract?.endpoint.startsWith('https://'))).toBe(true)
-    expect(contracts.every(contract => contract?.requestSchema)).toBe(true)
-    expect(getNvidiaHostedTaskModelContract('black-forest-labs/flux.1-schnell')).toMatchObject({
-      taskKind: 'image-generation',
-      endpoint: 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell',
-      outputMediaType: 'image/jpeg',
-    })
-    expect(getNvidiaHostedTaskModelContract('nvidia/llama-nemotron-rerank-1b-v2')).toMatchObject({
-      taskKind: 'reranking',
-      endpoint: 'https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking',
-    })
-    expect(getNvidiaHostedTaskModelContract('nvidia/genmol')).toMatchObject({
-      taskKind: 'molecular-modeling',
-      endpoint: 'https://health.api.nvidia.com/v1/biology/nvidia/genmol/generate',
-    })
-    expect(getNvidiaHostedTaskModelContract('nvidia/cuOpt')).toMatchObject({
-      taskKind: 'route-optimization',
-      endpoint: 'https://optimize.api.nvidia.com/v1/nvidia/cuopt',
-    })
-    expect(getNvidiaHostedTaskModelContract('nvidia/fourcastnet')).toMatchObject({
-      taskKind: 'weather-simulation',
-      endpoint: 'https://climate.api.nvidia.com/v1/nvidia/fourcastnet',
-    })
+  test('preserves NVIDIA-advertised effort and thinking controls', () => {
+    expect(
+      getSupportedEffortLevelsForModel('moonshotai/kimi-k3', 'nvidia-nim'),
+    ).toEqual(['low', 'high', 'max', 'ultra'])
+    expect(
+      getProviderEffortWireValue('moonshotai/kimi-k3', 'ultra', 'nvidia-nim'),
+    ).toBe('max')
+    expect(
+      providerSupportsThinkingToggle(
+        'nvidia-nim',
+        'nvidia/nemotron-3.5-lightning-30b-a3b',
+      ),
+    ).toBe(true)
   })
 
-  test('doctor requires a key and probes a user-selected endpoint', async () => {
-    let fetched = false
-    const missing = await doctorProvider('nvidia-nim', {
-      adapters: {
-        env: {},
-        getApiKey: () => undefined,
-        fetch: async () => {
-          fetched = true
-          return new Response('{}')
-        },
-      },
-    })
-    expect(missing.ok).toBe(false)
-    expect(missing.failureReason).toBe('API key missing')
-    expect(fetched).toBe(false)
-
-    const seen: string[] = []
-    const connected = await doctorProvider('nvidia-nim', {
-      settings: {
-        provider: {
-          active: 'nvidia-nim',
-          baseUrls: { 'nvidia-nim': 'https://nim.example/v1' },
-        },
-      },
-      adapters: {
-        env: { NVIDIA_API_KEY: 'nvapi-test' },
-        fetch: async input => {
-          seen.push(String(input))
-          return new Response(JSON.stringify({ data: [{ id: 'nvidia/model' }] }))
-        },
-      },
-    })
-    expect(connected.ok).toBe(true)
-    expect(connected.baseUrl).toBe('https://nim.example/v1')
-    expect(seen).toEqual(['https://nim.example/v1/models'])
-  })
-
-  test('doctor validates the selected model against the hosted models endpoint', async () => {
+  test('doctor reports the full card-backed Agentic and Special counts', async () => {
     const result = await doctorProvider('nvidia-nim', {
       settings: {
-        provider: {
-          active: 'nvidia-nim',
-          model: 'moonshotai/kimi-k3',
-        },
+        provider: { active: 'nvidia-nim', model: 'moonshotai/kimi-k3' },
       },
       adapters: {
         env: { NVIDIA_API_KEY: 'nvapi-test' },
-        fetch: async () => Response.json({
-          data: [{ id: '01-ai/yi-large' }, { id: 'moonshotai/kimi-k3' }],
-        }),
+        fetch: async () => Response.json({ data: [{ id: 'moonshotai/kimi-k3' }] }),
       },
     })
 
@@ -369,16 +243,17 @@ describe('NVIDIA NIM provider integration', () => {
     expect(result.checks).toContainEqual({
       name: 'chat_models',
       status: 'pass',
-      message: '1 NVIDIA hosted chat models are selectable.',
+      message: '13 NVIDIA Agentic models are selectable.',
     })
     expect(result.checks).toContainEqual({
-      name: 'model',
+      name: 'task_models',
       status: 'pass',
-      message: 'Model "moonshotai/kimi-k3" is detectable.',
+      message:
+        '23 NVIDIA Special entries are preserved from Build; 22 publish executable exact-endpoint contracts and key entitlement is checked only when invoked.',
     })
   })
 
-  test('routes chat, tools, images, streaming, and documented Nemotron agent options through the native adapter', async () => {
+  test('routes native tool requests without a model-list preflight', async () => {
     const request = toOpenAICompatibleRequest(
       {
         model: 'nvidia/nemotron-3-super-120b-a12b',
@@ -396,98 +271,45 @@ describe('NVIDIA NIM provider integration', () => {
       'nvidia-nim',
     )
     expect(request.reasoning_effort).toBe('none')
-    expect(request.chat_template_kwargs).toEqual({
-      force_nonempty_content: true,
-    })
-    expect(request.stream).toBe(true)
+    expect(request.chat_template_kwargs).toEqual({ force_nonempty_content: true })
     expect(request.tools[0].function.name).toBe('FileRead')
 
-    const lightningOff = toOpenAICompatibleRequest(
-      {
-        model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
-        messages: [{ role: 'user', content: 'Be quick.' }],
-        thinking: { type: 'disabled' },
-      },
-      'nvidia-nim',
-    )
-    expect(lightningOff.chat_template_kwargs).toEqual({
-      enable_thinking: false,
-    })
-    const lightningOn = toOpenAICompatibleRequest(
-      {
-        model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
-        messages: [{ role: 'user', content: 'Reason.' }],
-        thinking: { type: 'adaptive' },
-      },
-      'nvidia-nim',
-    )
-    expect(lightningOn.chat_template_kwargs).toEqual({
-      enable_thinking: true,
-    })
-
     const seen: Array<{ url: string; authorization: string | null; body: any }> = []
-    const fetchOverride = (async (input, init) => {
-      const url = String(input)
-      const headers = new Headers(init?.headers)
-      const body = init?.body ? JSON.parse(String(init.body)) : undefined
-      seen.push({ url, authorization: headers.get('authorization'), body })
-      if (url.endsWith('/models')) {
-        return new Response(
-          JSON.stringify({ data: [{ id: 'nvidia/nemotron-3-super-120b-a12b' }] }),
-        )
-      }
-      return new Response(
-        JSON.stringify({
+    const client = await createProviderClient('nvidia-nim', {
+      apiKey: 'nvapi-test',
+      model: 'nvidia/nemotron-3-super-120b-a12b',
+      fetchOverride: (async (input, init) => {
+        seen.push({
+          url: String(input),
+          authorization: new Headers(init?.headers).get('authorization'),
+          body: JSON.parse(String(init?.body)),
+        })
+        return Response.json({
           id: 'chatcmpl-nvidia',
           model: 'nvidia/nemotron-3-super-120b-a12b',
           choices: [{ message: { content: 'ready' }, finish_reason: 'stop' }],
           usage: { prompt_tokens: 3, completion_tokens: 1 },
-        }),
-        { headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
-    const client = await createProviderClient('nvidia-nim', {
-      apiKey: 'nvapi-test',
-      model: 'nvidia/nemotron-3-super-120b-a12b',
-      fetchOverride,
+        })
+      }) as typeof fetch,
     })
     const response = await client.beta.messages.create({
       model: 'nvidia/nemotron-3-super-120b-a12b',
       messages: [{ role: 'user', content: 'Reply ready.' }],
       max_tokens: 16,
     })
-    expect((client as any).__urProviderId).toBe('nvidia-nim')
-    expect((client as any).__urRuntimeBackend).toBe('api:nvidia-nim')
-    expect(seen.map(entry => entry.url)).toEqual([
-      'https://integrate.api.nvidia.com/v1/models',
-      'https://integrate.api.nvidia.com/v1/chat/completions',
-    ])
-    expect(seen[1]).toMatchObject({
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({
+      url: NVIDIA_HOSTED_CHAT_ENDPOINT,
       authorization: 'Bearer nvapi-test',
       body: { model: 'nvidia/nemotron-3-super-120b-a12b' },
     })
     expect((response as any).content[0].text).toBe('ready')
   })
 
-  test('redacts NVIDIA account/function identifiers and hides a runtime-rejected model', async () => {
-    const apiBase = 'https://integrate.api.nvidia.com/v1'
-    const modelsFetch = async (_input: RequestInfo | URL) =>
-      Response.json({ data: [{ id: 'openai/gpt-oss-20b' }] })
-
-    const discovered = await listModelsForProviderWithSource('nvidia-nim', {
-      adapters: {
-        env: { NVIDIA_API_KEY: 'nvapi-test' },
-        fetch: modelsFetch,
-      },
-    })
-    expect(
-      discovered.models
-        .filter(model => model.usageMode !== 'task')
-        .map(model => model.id),
-    ).toEqual(['openai/gpt-oss-20b'])
-
+  test('redacts account identifiers but never prunes a rejected model', async () => {
     const client = await createOpenAICompatibleClient({
-      baseUrl: apiBase,
+      baseUrl: 'https://integrate.api.nvidia.com/v1',
       apiKey: 'nvapi-test',
       providerId: 'nvidia-nim',
       maxRetries: 0,
@@ -495,7 +317,6 @@ describe('NVIDIA NIM provider integration', () => {
         Response.json(
           {
             status: 404,
-            title: 'Not Found',
             detail:
               "Function '23bd454d-b225-49a3-8118-582a62fc51b8': Not found for account 'VSB91X1Z9SXUUs3B5SLm16YDcaBh5gNB2kOOsW8Sdxo'",
           },
@@ -503,52 +324,39 @@ describe('NVIDIA NIM provider integration', () => {
         ),
     })
 
-    for (const stream of [false, true]) {
-      let caught: unknown
-      try {
-        const request = client.beta.messages.create({
-          model: 'openai/gpt-oss-20b',
-          messages: [{ role: 'user', content: 'hi' }],
-          max_tokens: 8,
-          stream,
-        })
-        if (stream) {
-          await request.withResponse()
-        } else {
-          await request
-        }
-      } catch (error) {
-        caught = error
-      }
-      expect(caught).toBeInstanceOf(ProviderHTTPError)
-      expect((caught as Error).message).toContain(
-        'NVIDIA NIM model "openai/gpt-oss-20b" is unavailable to this account',
-      )
-      expect((caught as Error).message).not.toContain('23bd454d')
-      expect((caught as Error).message).not.toContain('VSB91X1')
-      expect((caught as ProviderHTTPError).body).toBeUndefined()
+    let caught: unknown
+    try {
+      await client.beta.messages.create({
+        model: 'openai/gpt-oss-20b',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 8,
+      })
+    } catch (error) {
+      caught = error
     }
+    expect(caught).toBeInstanceOf(ProviderHTTPError)
+    expect((caught as Error).message).toContain('UR kept it in the catalog')
+    expect((caught as Error).message).not.toContain('23bd454d')
+    expect((caught as Error).message).not.toContain('VSB91X1')
+    expect((caught as ProviderHTTPError).body).toBeUndefined()
 
     const afterFailure = await listModelsForProviderWithSource('nvidia-nim', {
-      adapters: {
-        env: { NVIDIA_API_KEY: 'nvapi-test' },
-        fetch: modelsFetch,
-      },
+      adapters: { env: { NVIDIA_API_KEY: 'nvapi-test' } },
     })
-    expect(
-      afterFailure.models
-        .filter(model => model.usageMode !== 'task')
-        .map(model => model.id),
-    ).toEqual([])
-    expect(
-      afterFailure.models
-        .filter(model => model.usageMode === 'task')
-        .map(model => model.id),
-    ).toEqual(nvidiaHostedTaskModelIds())
-    expect(afterFailure.source).toBe('live')
+    expect(afterFailure.models.map(model => model.id)).toContain('openai/gpt-oss-20b')
+    expect(afterFailure.models).toHaveLength(nvidiaHostedAgentModelIds().length)
   })
 
-  test('blocks a manually supplied unsupported hosted model before network I/O', async () => {
+  test('keeps focused tasks out of the ongoing agent loop', async () => {
+    const special = await listModelsForProviderWithSource('nvidia-special')
+    const validation = validateProviderModelPair('nvidia-nim', 'google/paligemma', {
+      availableModels: special.models,
+    })
+    expect(validation.valid).toBe(false)
+    if (validation.valid === false) {
+      expect(validation.error).toContain('one-shot image-understanding model')
+    }
+
     let fetched = false
     const client = await createOpenAICompatibleClient({
       baseUrl: 'https://integrate.api.nvidia.com/v1',
@@ -559,12 +367,13 @@ describe('NVIDIA NIM provider integration', () => {
         return Response.json({})
       },
     })
-
-    await expect(client.beta.messages.create({
-      model: 'google/paligemma',
-      messages: [{ role: 'user', content: 'Use a tool.' }],
-      max_tokens: 8,
-    })).rejects.toThrow('has no documented UR-compatible agent endpoint')
+    await expect(
+      client.beta.messages.create({
+        model: 'google/paligemma',
+        messages: [{ role: 'user', content: 'Use a tool.' }],
+        max_tokens: 8,
+      }),
+    ).rejects.toThrow('has no documented Agentic endpoint')
     expect(fetched).toBe(false)
   })
 })

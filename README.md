@@ -289,6 +289,7 @@ ur config set provider anthropic-api
 ur config set provider gemini-api
 ur config set provider openrouter
 ur config set provider nvidia-nim
+ur config set provider nvidia-special
 ur config set provider unsloth
 ur config set model qwen2.5-coder:7b
 ur provider select-model ollama qwen2.5-coder:7b --json
@@ -308,7 +309,7 @@ select the recovery provider explicitly with `ur config set provider <id>`.
 provider before the URL to configure it without switching first, for example
 `ur config set base_url llama.cpp http://localhost:9931/v1`. UR remembers each
 provider's address independently, so switching among Ollama, LM Studio,
-llama.cpp, vLLM, Unsloth, NVIDIA NIM, or another compatible endpoint restores that
+llama.cpp, vLLM, Unsloth, NVIDIA Agentic, or another compatible endpoint restores that
 provider's last URL automatically. Existing single-URL settings are migrated
 to the previously active provider on the first provider switch or scoped
 base-URL write.
@@ -361,7 +362,8 @@ The account must have Anthropic fast-mode access. Unsupported Claude models
 stay on standard speed instead of receiving a fabricated provider option.
 
 Provider config accepts canonical IDs and common aliases. Examples:
-`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `nvidia-nim` (`NVIDIA Build`), `ollama`,
+`openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `nvidia-nim` (`NVIDIA Agentic`),
+`nvidia-special` (`NVIDIA Special`), `ollama`,
 `lmstudio`, `LM Studio`, `llama.cpp`, `vllm`, `unsloth` (`Unsloth Studio`), and the subscription CLIs
 `codex-cli` (`chatgpt`), `claude-code-cli` (`claude`), `gemini-cli` (`gemini`),
 and `antigravity-cli` (`agy`). Use quotes for shell values with spaces.
@@ -381,7 +383,8 @@ ur connect logout openai-api          # clear a stored key
 | Claude API | API key | UR-native | `ANTHROPIC_API_KEY` or `ur connect anthropic-api` |
 | Gemini API | API key | UR-native | `GEMINI_API_KEY` or `ur connect gemini-api` |
 | OpenRouter | API/router | UR-native | `OPENROUTER_API_KEY` or `ur connect openrouter` |
-| NVIDIA NIM | hosted/server API | UR-native | `NVIDIA_API_KEY` or `ur connect nvidia-nim`; configurable `base_url` |
+| NVIDIA Agentic | hosted/server API | UR-native | `NVIDIA_API_KEY` or `ur connect nvidia-nim`; configurable `base_url` |
+| NVIDIA Special | hosted/focused-task API | UR-native | the same `NVIDIA_API_KEY`; exact per-card HTTP/NVCF/gRPC inference contract |
 | Ollama | local/server | UR-native | configurable local, LAN, or hosted endpoint; optional `OLLAMA_API_KEY` |
 | LM Studio | local/server | UR-native | configurable endpoint; optional `LMSTUDIO_API_KEY` |
 | llama.cpp | local/server | UR-native | configurable endpoint; optional `LLAMA_CPP_API_KEY` |
@@ -404,30 +407,30 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    by source: `live` (discovered from the endpoint), `cache` (last discovery),
    `static` (predefined), or `unavailable` after a failed discovery with no
    fallback. Local/server providers (Ollama, LM Studio,
-   llama.cpp, vLLM, Unsloth) and OpenAI-compatible endpoints are discovered live. Hosted NVIDIA NIM
-   intersects its authenticated `/v1/models` response with UR's audited positive
-   agent contracts, so presence in NVIDIA's mixed inventory never makes an
-   embedding, parser, VLM, generator, or download-only card an ongoing chat model.
-   The separate NVCF deployment inventory does not narrow the hosted list. API
+   llama.cpp, vLLM, Unsloth) and OpenAI-compatible endpoints are discovered live. Public
+   NVIDIA Agentic discovery is generated from each current Build Free Endpoint
+   card that explicitly advertises agent/tool use; NVIDIA's account `/v1/models`
+   inventory does not narrow it, and a runtime entitlement error never removes a
+   model. A configured enterprise/self-hosted NIM gateway continues to use that
+   gateway's live `/models` response. API
    providers use live discovery from their `/models` endpoint once a key is
    connected (with a curated fallback list before that). Subscription CLIs show
    their curated model list because the official CLIs expose no models API. The
    generic `subscription` entry is an internal placeholder hidden from listings.
 
-   NVIDIA is split into two visibly labelled modes. `AGENT` models own the
-   ongoing tool-calling conversation. `ONE-SHOT` models run one specialized
-   job and never replace that agent. The latter come from a checked-in catalog
-   generated from NVIDIA's current public OpenAPI indexes, not from the chat-only
-   `/v1/models` feed. This release implements 92 exact task contracts spanning
-   text/image/video/3D generation, visual analysis, embeddings, reranking,
-   parsing, safety, translation, biology, molecular modeling, medical imaging,
-   route optimization, and climate simulation. Broken, staging-only,
-   status-only, download-only, and undocumented operations stay absent.
-   Focusing a task model shows what it is for; Enter remembers it for the next
-   matching NVIDIA task. UR validates its documented schema, routes to the exact
-   `integrate`, `ai`, `health`, `optimize`, or `climate` host, uploads large or
-   UUID-based files with NVIDIA Assets, polls asynchronous work, and writes
-   binary/large JSON results under `.ur/artifacts/nvidia/`.
+   NVIDIA is split into two provider entries. NVIDIA Agentic owns the ongoing
+   tool-calling conversation. NVIDIA Special selects one focused task and never
+   replaces that agent. The checked-in catalog is regenerated from all 100
+   currently visible Build cards and preserves all 36 cards labelled Free
+   Endpoint: 13 Agentic and 23 Special. Thirty-five publish executable
+   inference contracts; the one card whose invocation protocol is unpublished
+   remains visible and is labelled accordingly instead of being guessed or
+   removed. Every row shows its purpose, accepted input, and produced output.
+   Each executable Special model uses the URL, HTTP/RPC method, function ID,
+   request schema, and response schema in that model's own inference reference.
+   UR supports direct HTTP, model-specific NVCF invocation, NVIDIA Assets,
+   asynchronous polling, and the five documented Maxine/Riva gRPC services;
+   artifacts are written under `.ur/artifacts/nvidia/` unless a path is supplied.
 
    In the model catalog, use **Up/Down** to browse. For graded models, the effort row updates to
    the focused model's capability-backed selectors; use **Left/Right** to cycle
@@ -477,7 +480,7 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    provider's address untouched.
 
 Model lists never cross providers: OpenAI API, Claude API, Gemini API,
-OpenRouter, NVIDIA NIM, Ollama, and OpenAI-compatible local/server endpoints are separate
+OpenRouter, NVIDIA Agentic, NVIDIA Special, Ollama, and OpenAI-compatible local/server endpoints are separate
 access paths. API keys, local runtimes, and subscription logins are not
 interchangeable. The provider/model pair is validated before it is saved and
 again before every request; changing provider clears an incompatible model.
@@ -495,12 +498,11 @@ identity line in the system prompt reflects it too:
   `x-api-key` + `anthropic-version` on `/v1/messages`, OpenAI `Bearer` on
   `/v1/chat/completions` by default or `/v1/responses` when explicitly
   selected, Gemini `x-goog-api-key` on `:generateContent`, OpenRouter on its
-  OpenAI-compatible chat endpoint, and NVIDIA NIM agent models on their exact
+  OpenAI-compatible chat endpoint, and NVIDIA Agentic models on their exact
   documented hosted chat endpoint or a user-selected compatible NIM gateway.
-  NVIDIA one-shot models use their documented model endpoint across NVIDIA's
-  AI, retrieval, health, optimization, and climate APIs with the same stored
-  `NVIDIA_API_KEY`; asynchronous jobs are polled through NVIDIA's request ID
-  until completion or user cancellation.
+  NVIDIA Special uses each card's documented HTTP, direct NVCF, or gRPC
+  endpoint with the same stored `NVIDIA_API_KEY`; asynchronous jobs are polled
+  through NVIDIA's request ID until completion or user cancellation.
 - **Local/server** providers call the configured endpoint (`/v1/chat/completions`
   for LM Studio/llama.cpp/vLLM/Unsloth; the native API for Ollama). Unsloth is
   provider-only: UR never starts, installs, updates, trains, or loads models in
@@ -517,7 +519,7 @@ identity line in the system prompt reflects it too:
   to choose a connected local, server, or API provider.
 
 Image-bearing tool results use each UR-native provider's valid multimodal wire
-shape. OpenAI Chat Completions, OpenRouter, NVIDIA NIM, LM Studio, llama.cpp,
+shape. OpenAI Chat Completions, OpenRouter, NVIDIA Agentic, LM Studio, llama.cpp,
 vLLM, Unsloth, and generic compatible endpoints keep the tool response textual and
 place its image in the immediately following user turn; Gemini nests the image
 parts in its function response; OpenAI Responses, Anthropic, and Ollama use their

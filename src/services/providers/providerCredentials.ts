@@ -25,6 +25,11 @@ const STORE_KEY = 'providerCredentials'
 type StoredCredential = { apiKey?: string; updatedAt?: string }
 type CredentialMap = Record<string, StoredCredential>
 
+/** NVIDIA Agentic and NVIDIA Special intentionally share one Build API key. */
+function credentialOwner(provider: ProviderId): ProviderId {
+  return provider === 'nvidia-special' ? 'nvidia-nim' : provider
+}
+
 export type CredentialOptions = {
   storage?: SecureStorage
   env?: Record<string, string | undefined>
@@ -63,7 +68,10 @@ export function setProviderApiKey(
   }
   const storage = store(options)
   const creds = readCredentials(storage)
-  creds[provider] = { apiKey: key, updatedAt: new Date().toISOString() }
+  creds[credentialOwner(provider)] = {
+    apiKey: key,
+    updatedAt: new Date().toISOString(),
+  }
   const result = writeCredentials(storage, creds)
   if (!result.success) {
     return { ok: false, message: result.warning ?? 'Failed to store API key.' }
@@ -77,7 +85,7 @@ export function getStoredProviderApiKey(
 ): string | undefined {
   const provider = resolveProviderId(providerId)
   if (!provider) return undefined
-  return readCredentials(store(options))[provider]?.apiKey
+  return readCredentials(store(options))[credentialOwner(provider)]?.apiKey
 }
 
 /**
@@ -113,10 +121,11 @@ export function clearProviderApiKey(
   }
   const storage = store(options)
   const creds = readCredentials(storage)
-  if (!creds[provider]?.apiKey) {
+  const owner = credentialOwner(provider)
+  if (!creds[owner]?.apiKey) {
     return { ok: true, message: `No stored API key for ${provider}.` }
   }
-  delete creds[provider]
+  delete creds[owner]
   const result = writeCredentials(storage, creds)
   if (!result.success) {
     return { ok: false, message: result.warning ?? 'Failed to clear API key.' }

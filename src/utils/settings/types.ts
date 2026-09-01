@@ -281,6 +281,7 @@ const PROVIDER_SETTING_IDS = [
   'gemini-api',
   'openrouter',
   'nvidia-nim',
+  'nvidia-special',
   'openai-compatible',
   'ollama',
   'lmstudio',

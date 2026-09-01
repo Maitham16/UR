@@ -20,7 +20,7 @@ describe('built-in tool registry coverage', () => {
       'Bash',
       'WebFetch',
       'WebSearch',
-      'NvidiaNimTask',
+      'NvidiaSpecial',
     ]) {
       expect(names).toContain(name)
     }

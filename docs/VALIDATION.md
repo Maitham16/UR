@@ -258,20 +258,18 @@ bun test test/bashCommandExecution.test.ts \
 Expected: macOS can execute `timeout 0.1 …` without GNU coreutils and reports
 124 when the deadline expires. Image-bearing tool results retain their text and
 image bytes across OpenAI Chat/Responses, Anthropic, Gemini, OpenRouter,
-NVIDIA NIM, Ollama, LM Studio, llama.cpp, vLLM, Unsloth, and generic OpenAI-compatible
+NVIDIA Agentic/Special, Ollama, LM Studio, llama.cpp, vLLM, Unsloth, and generic OpenAI-compatible
 request shapes.
 
-The NVIDIA fixture also verifies hosted/default and overridden endpoints,
-Bearer discovery from NVIDIA's live `/v1/models` endpoint, positive agent
-contract intersection, selected-model doctor diagnostics, redaction of
-internal NVIDIA account/function IDs, endpoint-scoped runtime invalidation,
-native dispatch, the preferred Lightning endpoint and its model-scoped
-`enable_thinking` switch, documented effort aliases, and no Ultra on an unknown model.
-`nvidiaTaskRuntime.test.ts` verifies exact AI, retrieval, and healthcare
-endpoint routing; generated-schema defaults and validation; FLUX, Stable Video
-Diffusion, and PaliGemma conveniences; Bearer reuse; NVIDIA Asset upload and
-cleanup; async request-ID polling; artifact decoding; and rejection of models
-without a generated public hosted contract. In
+The NVIDIA fixtures verify the 100-card/36-Free-Endpoint audit, the 13 Agentic
+and 23 Special split, shared credential ownership, exact per-card endpoint
+routing, public-catalog preservation after entitlement failures, enterprise
+gateway isolation, redaction of internal NVIDIA account/function IDs, native
+dispatch, Lightning thinking, documented effort aliases, and no Ultra on an
+unknown model. `nvidiaTaskRuntime.test.ts` verifies PaliGemma, Cosmos Transfer,
+Cosmos3 async polling, direct-function BEV multi-artifacts, embeddings,
+NVIDIA Asset upload/cleanup, generated-schema validation, and all five exact
+public gRPC service/method and streaming shapes. In
 `/model`, select `openai-compatible` and verify `K` can
 add or replace its optional key while `E` continues to edit only its endpoint.
 

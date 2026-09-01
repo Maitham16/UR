@@ -72,11 +72,27 @@ describe('provider credential store', () => {
     expect(getProviderApiKey('nvidia-nim', { storage, env })).toBe(
       'nvidia-key',
     )
+    expect(getProviderApiKey('nvidia-special', { storage, env })).toBe(
+      'nvidia-key',
+    )
 
     setProviderApiKey('openai-compatible', 'stored-compatible-key', { storage })
     expect(getProviderApiKey('openai-compatible', { storage, env })).toBe(
       'stored-compatible-key',
     )
+  })
+
+  test('NVIDIA Agentic and Special share one stored credential', () => {
+    const storage = memoryStorage()
+    expect(setProviderApiKey('nvidia-special', 'nvapi-shared', { storage }).ok).toBe(
+      true,
+    )
+    expect(getStoredProviderApiKey('nvidia-nim', { storage })).toBe('nvapi-shared')
+    expect(getStoredProviderApiKey('nvidia-special', { storage })).toBe(
+      'nvapi-shared',
+    )
+    clearProviderApiKey('nvidia-nim', { storage })
+    expect(getStoredProviderApiKey('nvidia-special', { storage })).toBeUndefined()
   })
 
   test('clear removes only that provider and preserves other stored data', () => {

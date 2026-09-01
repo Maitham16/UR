@@ -207,19 +207,17 @@ ur provider doctor
 
 For an authenticated generic gateway, run `ur connect openai-compatible` or
 press `K` on its `/model` screen; the key is optional and stored separately
-from `OPENAI_API_KEY`. NVIDIA NIM uses `ur connect nvidia-nim` and keeps any
+from `OPENAI_API_KEY`. NVIDIA Agentic/Special use one key stored with
+`ur connect nvidia-nim` or `ur connect nvidia-special`; Agentic keeps any
 custom `base_url` scoped to that provider.
 
 ### NVIDIA lists a model but inference returns `Function … Not found for account`
 
-- Cause: NVIDIA's hosted `/v1/models` feed can change, or a listed model's
-  backing function can become unavailable for the connected account.
-- Fix: upgrade UR, run `ur provider doctor nvidia-nim`, then open `/model` and
-  press `Ctrl+R`. Hosted discovery intersects NVIDIA's live `/v1/models`
-  availability with UR's audited agent contracts. It does not intersect the
-  catalog with the separate NVCF deployment-function inventory. A definitive
-  runtime 404 removes only that model from the current endpoint-scoped session
-  catalog until the next explicit refresh.
+- Cause: the card is documented by NVIDIA, but its backing function is not
+  entitled or temporarily available for this API key/account.
+- Fix: verify the model card and key with `ur provider doctor nvidia-nim`, then
+  retry. UR uses the exact per-card endpoint and keeps the model visible. A 404
+  never removes it from the current or future catalog.
 - Privacy: UR does not display or retain the internal NVIDIA function UUID and
   account identifier from this error response.
 
@@ -229,19 +227,20 @@ validated only against that gateway's own `/models` response.
 
 ### An NVIDIA specialized model is missing from `/model`
 
-- Ongoing models appear only when NVIDIA returns them live and their exact
-  documented contract supports UR's multi-turn streaming tool loop.
-- Dedicated models come from UR's generated NVIDIA OpenAPI catalog and appear
-  in the `ONE-SHOT` section without relying on the chat `/v1/models` response.
+- Ongoing public models come from exact Build cards that advertise agent/tool
+  use; a configured enterprise NIM uses its own live `/models` feed.
+- Dedicated models appear under NVIDIA Special without relying on a chat
+  `/v1/models` response.
   Run `bun run provider:nvidia-catalog` in a source checkout to refresh the
   checked-in contracts from NVIDIA's current public reference.
-- Download-only cards, status-only routes, staging URLs, broken documentation,
-  and operations without a public hosted POST contract are intentionally absent.
+- Download-only cards are absent. Every Free Endpoint card is preserved. If a
+  card lacks a published invocation protocol, it remains visible with
+  `unpublished` status rather than receiving a guessed endpoint.
 - UR inlines small supported media and automatically uses NVIDIA's Asset API
   for larger files or contracts that require an asset UUID/reference.
-- A task-specific entitlement failure removes only that model until `Ctrl+R`;
-  the exact endpoint and documentation link are available through the
-  `NvidiaNimTask` describe action.
+- A task-specific entitlement failure never removes the model. Exact endpoint,
+  HTTP/RPC method, function ID, request/response schemas, and documentation are
+  available through the `NvidiaSpecial` describe action.
 
 ### A provider says the previous answer was empty after successful tool calls
 
