@@ -172,6 +172,22 @@ Anthropic's supported cache-control shape. Streaming requests also set
 arrive as Claude generates them instead of waiting for server-side buffering.
 Both behaviors use Anthropic's documented native fields and require no setting.
 
+An Anthropic identity-linked API key can act across more than one workspace and
+requires `anthropic-workspace-id` on every API call. Set its non-secret Console
+workspace ID once:
+
+```sh
+ur config set anthropic.workspace_id wrkspc_...
+# environment-only alternative
+export ANTHROPIC_WORKSPACE_ID=wrkspc_...
+```
+
+The selected ID is applied consistently to `/v1/models`, `/v1/messages`,
+streaming messages, `/v1/messages/count_tokens`, and provider diagnostics.
+Workspace-scoped keys need no extra setting. Clear the saved value with
+`ur config set anthropic.workspace_id auto`. When adding a key and workspace
+together, use `ur connect anthropic-api --workspace-id wrkspc_...`.
+
 Anthropic fast mode is a separate, premium research-preview tier. It is off by
 default and can be requested explicitly:
 
@@ -273,6 +289,7 @@ it in the environment when you explicitly choose API mode:
 OPENAI_API_KEY=...
 OPENAI_COMPATIBLE_API_KEY=...
 ANTHROPIC_API_KEY=...
+ANTHROPIC_WORKSPACE_ID=wrkspc_... # identity-linked Anthropic keys only
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
 NVIDIA_API_KEY=...
@@ -334,6 +351,11 @@ model, mode, and cursors are the only plaintext durable fields. To retain an
 opaque compacted window, set `UR_OPENAI_RESPONSES_STATE_KEY` to exactly 32
 bytes encoded as 64 hexadecimal characters or base64. Without that key UR
 refuses to persist compacted context.
+
+HTTP 429 remains retryable for real transient rate limits. Machine-readable
+account, billing, and exhausted-quota failures such as `billing_not_active` and
+`insufficient_quota` are permanent for the unchanged request, so UR reports
+them immediately instead of spending the retry window in `requesting`.
 
 ### Reconfiguring the Ollama host
 

@@ -13,7 +13,7 @@ Source of truth: `src/services/providers/providerRegistry.ts`, `src/utils/model/
 | `unsloth` | Unsloth | local/server | authenticated OpenAI-compatible endpoint (localhost:8888/v1) | provider-only inference |
 | `openai-compatible` | OpenAI-compatible | server/api | any base URL + optional `OPENAI_COMPATIBLE_API_KEY` | enabled |
 | `openai-api` | OpenAI API | api | `OPENAI_API_KEY` | enabled |
-| `anthropic-api` | Claude API | api | `ANTHROPIC_API_KEY` | enabled |
+| `anthropic-api` | Claude API | api | `ANTHROPIC_API_KEY`; optional `ANTHROPIC_WORKSPACE_ID` for identity-linked keys | enabled |
 | `gemini-api` | Gemini API | api | `GEMINI_API_KEY` | enabled |
 | `openrouter` | OpenRouter | api | `OPENROUTER_API_KEY` | enabled |
 | `nvidia-nim` | NVIDIA Agentic | hosted/server API | `NVIDIA_API_KEY`; configurable `https://integrate.api.nvidia.com/v1` default | enabled |
@@ -205,6 +205,12 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   opt-in: the adapter adds `speed: fast` plus the
   `fast-mode-2026-02-01` beta only for exact Opus 5/4.8 model IDs and preserves
   the provider-reported `usage.speed`. No other Claude model inherits it.
+  Identity-linked keys use the validated non-secret
+  `provider.anthropic.workspaceId`/`ANTHROPIC_WORKSPACE_ID` value on discovery,
+  doctor, Messages inference/streaming, and token counting. Model-cache keys
+  include the workspace so two workspaces cannot share a discovered catalog.
+  Missing-workspace 400 payloads remain intact and include an actionable
+  `anthropic.workspace_id` fix.
 - OpenAI Responses already provides native SSE/WebSocket continuation and
   Gemini 2.5+ receives Google's automatic implicit caching. Gemini Priority is
   an Interactions-API service tier, not a legal `generateContent` field;
@@ -217,6 +223,11 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   retrieve/poll/cancel, WebSocket continuation, compaction, deferred tool
   search, and bounded private cursor state. Compacted context persistence
   requires a 32-byte `UR_OPENAI_RESPONSES_STATE_KEY`.
+- Provider HTTP retries inspect bounded structured error bodies, including
+  Axios streaming error bodies. True rate-limit 429s remain retryable;
+  permanent billing, quota, or account machine codes stop after the first
+  response and preserve the provider message. This prevents an inactive
+  OpenAI project from appearing as a minute-long model latency problem.
 - `ollama.ts` allows 900 seconds for `/api/chat` response headers so cold loads
   and large prefills can start. Once headers arrive, `readOllamaChunks` applies
   a rearmed inactivity deadline: 300 seconds for local and `:cloud` models,

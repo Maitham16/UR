@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.85.0 (UR-Nexus)"
+# expected for this release: "1.85.1 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -135,6 +135,18 @@ Opus 5/4.8 must receive `speed="fast"` and
 `anthropic-beta: fast-mode-2026-02-01`; Sonnet, Fable, Haiku, and unsupported
 Opus versions must receive neither. A non-stream response must retain
 `usage.speed`.
+
+With an identity-linked test key, first omit the workspace. Discovery and
+doctor must preserve Anthropic's `anthropic-workspace-id is required` detail
+and show the `anthropic.workspace_id` fix. Then configure a `wrkspc_...` value
+and verify the same header on model pagination, streaming/non-streaming
+Messages, and token counting. A workspace-scoped key must remain valid with no
+workspace setting.
+
+For OpenAI retry classification, mock a 429 `billing_not_active` streaming body
+and verify exactly one transport call plus the provider's actionable message.
+A 429 `rate_limit_exceeded` fixture must remain retryable. The deterministic
+coverage is in `test/providerReliability.test.ts`.
 
 Deterministic coverage:
 

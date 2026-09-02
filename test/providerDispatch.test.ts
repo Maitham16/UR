@@ -419,6 +419,7 @@ describe('standard API wire formats', () => {
       apiKey: 'sk-ant-test',
       baseUrl: 'https://gateway.example/anthropic',
       maxRetries: 1,
+      anthropic: { workspaceId: 'wrkspc_01TestWorkspace' },
     })
     const res = await client.beta.messages.create({
       model: 'claude-sonnet-5',
@@ -431,6 +432,7 @@ describe('standard API wire formats', () => {
     expect(url).toBe('https://gateway.example/anthropic/v1/messages')
     expect(config.headers['x-api-key']).toBe('sk-ant-test')
     expect(config.headers['anthropic-version']).toBeDefined()
+    expect(config.headers['anthropic-workspace-id']).toBe('wrkspc_01TestWorkspace')
     expect(config.headers.Authorization).toBeUndefined()
     expect(body.system).toBe('be terse')
     expect(body.messages).toEqual(userMessages())

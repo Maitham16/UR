@@ -82,12 +82,19 @@ describe('API provider live model discovery', () => {
 
   test('anthropic-api follows guarded has_more/last_id pagination', async () => {
     const urls: string[] = []
+    const workspaceHeaders: Array<string | null> = []
     const result = await listModelsForProviderWithSource('anthropic-api', {
       adapters: {
-        env: { ANTHROPIC_API_KEY: 'sk-ant' },
-        fetch: (async input => {
+        env: {
+          ANTHROPIC_API_KEY: 'sk-ant',
+          ANTHROPIC_WORKSPACE_ID: 'wrkspc_01TestWorkspace',
+        },
+        fetch: (async (input, init) => {
           const url = String(input)
           urls.push(url)
+          workspaceHeaders.push(
+            new Headers(init?.headers).get('anthropic-workspace-id'),
+          )
           const after = new URL(url).searchParams.get('after_id')
           return new Response(JSON.stringify(after
             ? { data: [{ id: 'claude-page-2', max_input_tokens: 200000 }], has_more: false }
@@ -98,7 +105,31 @@ describe('API provider live model discovery', () => {
     expect(result.models.map(model => model.id)).toEqual(['claude-page-1', 'claude-page-2'])
     expect(new URL(urls[0]!).searchParams.get('limit')).toBe('1000')
     expect(new URL(urls[1]!).searchParams.get('after_id')).toBe('claude-page-1')
+    expect(workspaceHeaders).toEqual([
+      'wrkspc_01TestWorkspace',
+      'wrkspc_01TestWorkspace',
+    ])
     expect(result.models.find(model => model.id === 'claude-page-2')?.contextLength).toBe(200000)
+  })
+
+  test('anthropic-api preserves workspace-required errors with an actionable fix', async () => {
+    const result = await listModelsForProviderWithSource('anthropic-api', {
+      freshOnly: true,
+      adapters: {
+        env: { ANTHROPIC_API_KEY: 'sk-ant' },
+        fetch: async () => new Response(JSON.stringify({
+          type: 'error',
+          error: {
+            type: 'invalid_request_error',
+            message: 'anthropic-workspace-id is required when authenticating with an identity-linked API key; send the id of the workspace this request acts in.',
+          },
+        }), { status: 400 }),
+      },
+    })
+
+    expect(result.source).toBe('unavailable')
+    expect(result.warning).toContain('anthropic-workspace-id is required')
+    expect(result.warning).toContain('ur config set anthropic.workspace_id wrkspc_...')
   })
 
   test('gemini-api discovers models and filters to generateContent', async () => {

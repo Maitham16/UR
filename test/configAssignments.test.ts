@@ -49,6 +49,7 @@ describe('/config assignments', () => {
     expect(keys).toContain('provider')
     expect(keys).toContain('responses.tool_search')
     expect(keys).toContain('anthropic.speed')
+    expect(keys).toContain('anthropic.workspace_id')
     expect(new Set(keys).size).toBe(keys.length)
   })
 })

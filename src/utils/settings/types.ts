@@ -598,6 +598,13 @@ export const SettingsSchema = lazySchema(() =>
             .describe('OpenRouter performance and routing controls.'),
           anthropic: z
             .object({
+              workspaceId: z
+                .string()
+                .regex(/^wrkspc_[A-Za-z0-9]+$/u)
+                .optional()
+                .describe(
+                  'Claude API workspace selected for an identity-linked multi-workspace key.',
+                ),
               speed: z
                 .enum(['standard', 'fast'])
                 .optional()

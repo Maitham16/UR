@@ -186,6 +186,7 @@ ur config set openrouter.preferred_min_throughput 40
 ur config set openrouter.preferred_max_latency 3
 ur config set openrouter.service_tier priority
 ur config set openrouter.speed fast
+ur config set anthropic.workspace_id wrkspc_...
 ```
 
 `auto` is the recommended default. `priority`/`fast` are optional paid upstream
@@ -195,6 +196,17 @@ throughput-, price-, or tool-quality-first virtual route.
 
 Direct Anthropic sessions preserve prompt-cache breakpoints and stream large
 tool arguments with Anthropic's per-tool `eager_input_streaming` control.
+If Anthropic identifies the key as identity-linked, select the Console
+workspace before refreshing models or sending a turn:
+
+```sh
+ur config set anthropic.workspace_id wrkspc_...
+# or: export ANTHROPIC_WORKSPACE_ID=wrkspc_...
+```
+
+The selection is shared by discovery, doctor, inference, streaming, and token
+counting. Workspace-scoped keys require no extra value; use
+`ur config set anthropic.workspace_id auto` to clear it.
 Accounts admitted to Anthropic's premium fast-mode research preview can opt in
 for its supported Opus models:
 
@@ -216,6 +228,9 @@ background/poll/cancel support, WebSocket continuation, server compaction, and
 deferred tool search. Remote storage is off by default. Local state contains
 only bounded identifiers/status/cursors unless a 32-byte
 `UR_OPENAI_RESPONSES_STATE_KEY` is supplied for AES-256-GCM compacted context.
+Permanent billing/account 429s are shown immediately on both OpenAI transports;
+UR retries only responses that can plausibly succeed without configuration or
+billing changes.
 
 In the interactive app, `/model` chooses a provider first and then a model from
 that provider only. The saved pair controls the runtime backend for the next
@@ -249,7 +264,9 @@ and `antigravity-cli` (`agy`) are subscription CLI providers.
 API modes are explicit. Keys are read from a key stored via
 `ur connect <provider>` (OS keychain) or from the environment variables
 `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
-`OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, and `UNSLOTH_API_KEY`. Subscription CLIs are optional, never required
+`OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, and `UNSLOTH_API_KEY`.
+`ANTHROPIC_WORKSPACE_ID` selects a workspace for identity-linked Anthropic
+keys. Subscription CLIs are optional, never required
 dependencies, and never used as a silent fallback. UR-Nexus never scrapes
 browser sessions, extracts OAuth tokens, or bypasses provider restrictions.
 OpenAI-compatible local or cloud endpoints use `base_url` plus `model`.

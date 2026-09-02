@@ -8,6 +8,7 @@ import {
   ensureProviderModelsFresh,
   PROVIDER_IDS,
   resolveProviderId,
+  setSafeProviderConfig,
   type ProviderId,
 } from '../../services/providers/providerRegistry.js'
 import {
@@ -26,7 +27,7 @@ function option(tokens: string[], name: string): string | undefined {
 }
 
 function positionals(tokens: string[]): string[] {
-  const withValue = new Set(['--key'])
+  const withValue = new Set(['--key', '--workspace-id'])
   const values: string[] = []
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]!
@@ -46,14 +47,23 @@ function usage(): string {
     '  ur connect status [--json]           Show connection status for every provider',
     '  ur connect <provider>                Connect (subscription: official login; API: prompts for a key)',
     '  ur connect <provider> --key <KEY>    Store an API key (or pipe it: echo $KEY | ur connect <provider>)',
+    '  ur connect anthropic-api --workspace-id <wrkspc_...>  Select a Claude workspace',
     '  ur connect logout <provider>         Disconnect (clear stored key / CLI logout hint)',
     '',
     `Providers: ${PROVIDER_IDS.join(', ')}`,
   ].join('\n')
 }
 
-async function connectProvider(provider: ProviderId, keyFlag?: string): Promise<string> {
+async function connectProvider(
+  provider: ProviderId,
+  keyFlag?: string,
+  workspaceFlag?: string,
+): Promise<string> {
   const def = getProviderDefinition(provider)
+
+  if (workspaceFlag !== undefined && provider !== 'anthropic-api') {
+    return '--workspace-id is supported only by anthropic-api.'
+  }
 
   if (def.accessType === 'subscription') {
     const alias = authAliasForProvider(provider)
@@ -65,6 +75,13 @@ async function connectProvider(provider: ProviderId, keyFlag?: string): Promise<
   }
 
   if (def.envKey) {
+    if (provider === 'anthropic-api' && workspaceFlag !== undefined) {
+      const workspace = setSafeProviderConfig(
+        'anthropic.workspace_id',
+        workspaceFlag,
+      )
+      if (!workspace.ok) return workspace.message
+    }
     let key = keyFlag
     if (key === undefined) {
       try {
@@ -133,5 +150,12 @@ export const call: LocalCommandCall = async (args: string) => {
   if (!provider) {
     return { type: 'text', value: usage() }
   }
-  return { type: 'text', value: await connectProvider(provider, option(tokens, '--key')) }
+  return {
+    type: 'text',
+    value: await connectProvider(
+      provider,
+      option(tokens, '--key'),
+      option(tokens, '--workspace-id'),
+    ),
+  }
 }

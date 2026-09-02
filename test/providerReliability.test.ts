@@ -3,6 +3,7 @@ import axios from 'axios'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import {
   resetStateForTests,
   setCwdState,
@@ -18,6 +19,7 @@ import {
   fetchWithProviderReliability,
   getProviderRequestTimeoutMs,
   getProviderStreamTimeoutMs,
+  hasNonRetryableProviderCode,
   isRetryableProviderError,
   normalizeOpenAICompatibleBaseUrl,
   normalizeProviderEndpoint,
@@ -332,6 +334,76 @@ describe('provider timeout, retry, and base URL reliability', () => {
         new ProviderHTTPError('unsupported tool use', { status: 422 }),
       ),
     ).toBe(false)
+  })
+
+  test('permanent billing 429s fail immediately while real rate limits remain retryable', () => {
+    const inactiveBilling = new ProviderHTTPError('OpenAI request failed', {
+      status: 429,
+      body: JSON.stringify({
+        error: {
+          type: 'billing_not_active',
+          code: 'billing_not_active',
+          message: 'Account billing is not active.',
+        },
+      }),
+    })
+    const transientRateLimit = new ProviderHTTPError('OpenAI request failed', {
+      status: 429,
+      body: JSON.stringify({
+        error: {
+          type: 'rate_limit_error',
+          code: 'rate_limit_exceeded',
+        },
+      }),
+    })
+
+    expect(hasNonRetryableProviderCode(inactiveBilling)).toBe(true)
+    expect(isRetryableProviderError(inactiveBilling)).toBe(false)
+    expect(hasNonRetryableProviderCode(transientRateLimit)).toBe(false)
+    expect(isRetryableProviderError(transientRateLimit)).toBe(true)
+  })
+
+  test('streaming Axios errors are buffered and permanent 429s are not replayed', async () => {
+    process.env.UR_PROVIDER_RETRY_BASE_MS = '0'
+    const response = {
+      data: Readable.from([
+        JSON.stringify({
+          error: {
+            type: 'billing_not_active',
+            code: 'billing_not_active',
+            message: 'Account billing is not active.',
+          },
+        }),
+      ]),
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: {},
+      config: {} as any,
+    }
+    const error = new axios.AxiosError(
+      'Request failed with status code 429',
+      'ERR_BAD_REQUEST',
+      {} as any,
+      undefined,
+      response,
+    )
+    const post = spyOn(axios, 'post').mockRejectedValue(error)
+    const client = await createStandardAPIClient({
+      providerId: 'openai-api',
+      apiKey: 'sk-openai',
+      maxRetries: 3,
+    })
+
+    const stream = client.beta.messages.create({
+      model: 'gpt-5.6-sol',
+      messages: userMessages(),
+      max_tokens: 16,
+      stream: true,
+    })
+    await expect(stream.withResponse()).rejects.toThrow(
+      'Provider request failed (429): Account billing is not active.',
+    )
+    expect(post).toHaveBeenCalledTimes(1)
   })
 
   test('standard OpenAI root base URL is completed with /v1/chat/completions', async () => {

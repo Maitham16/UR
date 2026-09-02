@@ -20,9 +20,25 @@ export const DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS = 120_000
 export const DEFAULT_PROVIDER_STREAM_TIMEOUT_MS = 900_000
 const DEFAULT_PROVIDER_MAX_RETRIES = 3
 const DEFAULT_RETRY_BASE_DELAY_MS = 250
+const MAX_PROVIDER_ERROR_BODY_BYTES = 1024 * 1024
+const PROVIDER_ERROR_BODY_READ_TIMEOUT_MS = 10_000
 
 const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504, 529])
 const NON_RETRYABLE_STATUSES = new Set([400, 401, 403, 404, 422])
+/**
+ * Machine-readable provider failures that cannot succeed by replaying the same
+ * request. Some APIs report account or billing failures with HTTP 429 even
+ * though they are not rate limits. Retrying those responses only hides the
+ * actionable error behind a long spinner.
+ */
+const NON_RETRYABLE_PROVIDER_CODES = new Set([
+  'account_deactivated',
+  'access_terminated',
+  'billing_hard_limit_reached',
+  'billing_not_active',
+  'insufficient_quota',
+  'organization_deactivated',
+])
 const TRANSIENT_NETWORK_CODES = new Set([
   'ECONNRESET',
   'ECONNREFUSED',
@@ -167,17 +183,81 @@ function errorCode(error: unknown): string | undefined {
 function errorText(error: unknown): string {
   if (error instanceof ProviderHTTPError) return `${error.message}\n${error.body ?? ''}`
   if (axios.isAxiosError(error)) {
-    const body =
-      typeof error.response?.data === 'string'
-        ? error.response.data
-        : JSON.stringify(error.response?.data ?? '')
+    let body = ''
+    if (typeof error.response?.data === 'string') {
+      body = error.response.data
+    } else {
+      try {
+        body = JSON.stringify(error.response?.data ?? '')
+      } catch {
+        body = ''
+      }
+    }
     return `${error.message}\n${body}`
   }
   return error instanceof Error ? error.message : String(error)
 }
 
+function providerErrorPayload(error: unknown): unknown {
+  if (error instanceof ProviderHTTPError) return error.body
+  if (axios.isAxiosError(error)) return error.response?.data
+  if (error && typeof error === 'object' && 'body' in error) {
+    return (error as { body?: unknown }).body
+  }
+  return undefined
+}
+
+function collectProviderErrorCodes(
+  value: unknown,
+  codes: Set<string>,
+  depth = 0,
+): void {
+  if (depth > 4 || value === null || value === undefined) return
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        collectProviderErrorCodes(JSON.parse(trimmed), codes, depth + 1)
+      } catch {
+        // Fall through to the exact-code scan for plain or malformed bodies.
+      }
+    }
+    const lower = trimmed.toLowerCase()
+    for (const code of NON_RETRYABLE_PROVIDER_CODES) {
+      if (new RegExp(`(?:^|[^a-z0-9_])${code}(?:$|[^a-z0-9_])`, 'u').test(lower)) {
+        codes.add(code)
+      }
+    }
+    return
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectProviderErrorCodes(item, codes, depth + 1)
+    return
+  }
+  if (typeof value !== 'object') return
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if ((key === 'code' || key === 'type') && typeof nested === 'string') {
+      codes.add(nested.trim().toLowerCase())
+    }
+    if (key === 'error' || key === 'errors' || key === 'detail' || key === 'details') {
+      collectProviderErrorCodes(nested, codes, depth + 1)
+    }
+  }
+}
+
+export function hasNonRetryableProviderCode(error: unknown): boolean {
+  const codes = new Set<string>()
+  collectProviderErrorCodes(providerErrorPayload(error), codes)
+  // Streaming/provider adapters sometimes retain only the human-readable
+  // error. Scan that text too, but match exact machine-code boundaries.
+  collectProviderErrorCodes(errorText(error), codes)
+  return [...codes].some(code => NON_RETRYABLE_PROVIDER_CODES.has(code))
+}
+
 export function isRetryableProviderError(error: unknown): boolean {
   if (error instanceof ProviderTimeoutError) return true
+
+  if (hasNonRetryableProviderCode(error)) return false
 
   const status = errorStatus(error)
   if (status !== undefined) {
@@ -373,14 +453,137 @@ export async function axiosPostWithProviderReliability<T = unknown>(
     ? getProviderStreamTimeoutMs(options.timeoutMs)
     : getProviderRequestTimeoutMs(options.timeoutMs)
   return withProviderRetry(
-    () =>
-      axios.post<T>(url, body, {
-        ...config,
-        timeout,
-        signal: options.signal ?? config.signal,
-      }),
+    async () => {
+      try {
+        return await axios.post<T>(url, body, {
+          ...config,
+          timeout,
+          signal: options.signal ?? config.signal,
+        })
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response) {
+          let responseData: unknown = error.response.data
+          if (options.streaming && isAsyncIterable(responseData)) {
+            // Axios exposes non-2xx bodies as a Node stream when responseType is
+            // "stream". Buffer that small error payload before classifying it;
+            // otherwise a permanent 429 (for example billing_not_active) looks
+            // indistinguishable from a transient rate limit and gets replayed.
+            responseData = await readProviderErrorBody(responseData, options.signal)
+          }
+          const responseBody = serializeProviderErrorData(responseData)
+          const detail = providerErrorMessage(responseBody)
+          throw new ProviderHTTPError(
+            `Provider request failed (${error.response.status})${detail ? `: ${detail}` : ''}`,
+            {
+              status: error.response.status,
+              body: responseBody,
+              headers: axiosResponseHeaders(error.response.headers),
+              cause: error,
+            },
+          )
+        }
+        throw error
+      }
+    },
     { maxRetries: options.maxRetries, signal: options.signal },
   )
+}
+
+function serializeProviderErrorData(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (value instanceof Uint8Array) return new TextDecoder().decode(value)
+  try {
+    return JSON.stringify(value ?? '')
+  } catch {
+    return ''
+  }
+}
+
+function providerErrorMessage(body: string): string {
+  const trimmed = body.trim()
+  if (!trimmed) return ''
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      error?: { message?: unknown }
+      message?: unknown
+      detail?: unknown
+    }
+    const message = parsed.error?.message ?? parsed.message ?? parsed.detail
+    if (typeof message === 'string') {
+      return message.replace(/\s+/gu, ' ').trim().slice(0, 1_000)
+    }
+  } catch {
+    // Plain-text provider responses are already useful diagnostics.
+  }
+  return trimmed.replace(/\s+/gu, ' ').slice(0, 1_000)
+}
+
+function axiosResponseHeaders(value: unknown): Headers {
+  const headers = new Headers()
+  if (!value || typeof value !== 'object') return headers
+  const raw = typeof (value as { toJSON?: unknown }).toJSON === 'function'
+    ? (value as { toJSON: () => unknown }).toJSON()
+    : value
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return headers
+  for (const [name, header] of Object.entries(raw as Record<string, unknown>)) {
+    if (header === undefined || header === null) continue
+    headers.set(name, Array.isArray(header) ? header.join(', ') : String(header))
+  }
+  return headers
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    Symbol.asyncIterator in value &&
+    typeof (value as AsyncIterable<unknown>)[Symbol.asyncIterator] === 'function',
+  )
+}
+
+async function readProviderErrorBody(
+  source: AsyncIterable<unknown>,
+  signal?: AbortSignal,
+): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const read = async (): Promise<string> => {
+    const chunks: Uint8Array[] = []
+    let bytes = 0
+    for await (const chunk of source) {
+      if (signal?.aborted) throw signal.reason ?? new Error('aborted')
+      const encoded = typeof chunk === 'string'
+        ? new TextEncoder().encode(chunk)
+        : chunk instanceof Uint8Array
+          ? chunk
+          : new TextEncoder().encode(String(chunk ?? ''))
+      const remaining = MAX_PROVIDER_ERROR_BODY_BYTES - bytes
+      if (remaining <= 0) break
+      const accepted = encoded.byteLength > remaining
+        ? encoded.subarray(0, remaining)
+        : encoded
+      chunks.push(accepted)
+      bytes += accepted.byteLength
+      if (bytes >= MAX_PROVIDER_ERROR_BODY_BYTES) break
+    }
+    const merged = new Uint8Array(bytes)
+    let offset = 0
+    for (const chunk of chunks) {
+      merged.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return new TextDecoder().decode(merged)
+  }
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error('Timed out reading provider error response body.')),
+      PROVIDER_ERROR_BODY_READ_TIMEOUT_MS,
+    )
+  })
+  try {
+    return await Promise.race([read(), deadline])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
 }
 
 function trimmedUrl(value: string): URL {

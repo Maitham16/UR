@@ -109,6 +109,11 @@ function providerConfigEntries(): CliConfigEntry[] {
       value: configured.anthropic?.speed ?? 'standard',
       category: 'provider',
     },
+    {
+      key: 'anthropic.workspace_id',
+      value: configured.anthropic?.workspaceId ?? null,
+      category: 'provider',
+    },
     { key: 'model', value: active.model ?? null, category: 'provider' },
     { key: 'base_url', value: active.baseUrl ?? null, category: 'provider' },
   ]

@@ -229,6 +229,7 @@ export const PROVIDER_CONFIG_KEYS = [
   'openrouter.service_tier',
   'openrouter.speed',
   'anthropic.speed',
+  'anthropic.workspace_id',
   'model',
   'base_url',
 ] as const

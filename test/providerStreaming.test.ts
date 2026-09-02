@@ -352,6 +352,7 @@ describe('provider real streaming', () => {
       apiKey: 'sk-ant',
       baseUrl: 'https://gateway.example/anthropic',
       maxRetries: 1,
+      anthropic: { workspaceId: 'wrkspc_01TestWorkspace' },
     })
 
     const { data, request_id } = await client.beta.messages.create({
@@ -368,6 +369,7 @@ describe('provider real streaming', () => {
     expect(url).toBe('https://gateway.example/anthropic/v1/messages')
     expect(body.stream).toBe(true)
     expect(config.responseType).toBe('stream')
+    expect(config.headers['anthropic-workspace-id']).toBe('wrkspc_01TestWorkspace')
     expect(textDeltas(events)).toEqual(['Hi', ' there'])
     expect(events.find(event => event.type === 'content_block_start' && event.index === 1)?.content_block)
       .toMatchObject({ type: 'tool_use', id: 'toolu_1', name: 'Edit' })

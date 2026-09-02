@@ -15,6 +15,7 @@ import {
   resolveProviderId,
   type AnthropicSettings,
 } from '../providers/providerRegistry.js'
+import { anthropicWorkspaceHeaders } from '../providers/anthropicWorkspace.js'
 import {
   assertNoImageBlocks,
   contentToText,
@@ -92,7 +93,7 @@ export async function createStandardAPIClient(options: {
       {
         headers: {
           'Content-Type': 'application/json',
-          ...buildAuthHeaders(family, apiKey, wireParams),
+          ...buildAuthHeaders(family, apiKey, wireParams, options.anthropic),
           ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
           ...(requestOptions?.headers ?? {}),
         },
@@ -125,7 +126,7 @@ export async function createStandardAPIClient(options: {
       {
         headers: {
           'Content-Type': 'application/json',
-          ...buildAuthHeaders(family, apiKey, wireParams),
+          ...buildAuthHeaders(family, apiKey, wireParams, options.anthropic),
           ...(clientRequestId && { 'x-client-request-id': clientRequestId }),
           ...(requestOptions?.headers ?? {}),
         },
@@ -197,7 +198,7 @@ export async function createStandardAPIClient(options: {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              ...buildAuthHeaders(family, apiKey, params),
+              ...buildAuthHeaders(family, apiKey, params, options.anthropic),
               ...(requestOptions?.headers ?? {}),
             },
             body: JSON.stringify(body),
@@ -367,12 +368,14 @@ function buildAuthHeaders(
   family: string,
   apiKey: string | undefined,
   params: any,
+  anthropic: AnthropicSettings | undefined,
 ): Record<string, string> {
   switch (family) {
     case 'anthropic': {
       const headers: Record<string, string> = {
         'x-api-key': apiKey ?? '',
         'anthropic-version': ANTHROPIC_VERSION,
+        ...anthropicWorkspaceHeaders(anthropic?.workspaceId, {}),
       }
       if (Array.isArray(params.betas) && params.betas.length > 0) {
         headers['anthropic-beta'] = params.betas.join(',')

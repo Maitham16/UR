@@ -44,6 +44,7 @@ function adapters(options: {
   env?: Record<string, string | undefined>
   run?: (file: string, args: string[]) => Promise<CommandResult>
   fetch?: ProviderDoctorAdapters['fetch']
+  getApiKey?: ProviderDoctorAdapters['getApiKey']
 } = {}): ProviderDoctorAdapters {
   const missing = new Set(options.missing ?? [])
   return {
@@ -59,6 +60,7 @@ function adapters(options: {
     fetch:
       options.fetch ??
       (async () => new Response(JSON.stringify({ data: [], models: [] }))),
+    getApiKey: options.getApiKey,
   }
 }
 
@@ -594,6 +596,40 @@ describe('provider registry legal access paths', () => {
     expect(result.failureReason).toBe('API key missing')
   })
 
+  test('Anthropic doctor sends the selected workspace and explains identity-linked keys', async () => {
+    const seenHeaders: Array<string | null> = []
+    const ready = await doctorProvider('anthropic-api', {
+      adapters: adapters({
+        env: {
+          ANTHROPIC_API_KEY: 'sk-ant-test',
+          ANTHROPIC_WORKSPACE_ID: 'wrkspc_01TestWorkspace',
+        },
+        fetch: async (_input, init) => {
+          seenHeaders.push(new Headers(init?.headers).get('anthropic-workspace-id'))
+          return new Response(JSON.stringify({ data: [{ id: 'claude-opus-5' }] }))
+        },
+      }),
+      settings: { provider: { active: 'anthropic-api' } },
+    })
+    expect(ready.ok).toBe(true)
+    expect(seenHeaders).toEqual(['wrkspc_01TestWorkspace'])
+
+    const missingWorkspace = await doctorProvider('anthropic-api', {
+      adapters: adapters({
+        env: { ANTHROPIC_API_KEY: 'sk-ant-test' },
+        fetch: async () => new Response(JSON.stringify({
+          type: 'error',
+          error: {
+            message: 'anthropic-workspace-id is required when authenticating with an identity-linked API key; send the id of the workspace this request acts in.',
+          },
+        }), { status: 400 }),
+      }),
+      settings: { provider: { active: 'anthropic-api' } },
+    })
+    expect(missingWorkspace.failureReason).toContain('anthropic-workspace-id is required')
+    expect(missingWorkspace.suggestedFix).toContain('anthropic.workspace_id')
+  })
+
   test('an authenticated compatible gateway asks for its optional key only after rejecting anonymous access', async () => {
     const result = await doctorProvider('openai-compatible', {
       adapters: adapters({
@@ -855,7 +891,9 @@ describe('provider-scoped model listing', () => {
   })
 
   test('selecting provider A shows only provider A models', async () => {
-    const result = await listModelsForProviderWithSource('openai-api')
+    const result = await listModelsForProviderWithSource('openai-api', {
+      adapters: adapters({ getApiKey: () => undefined }),
+    })
     const ids = result.models.map(model => model.id)
 
     expect(result.source).toBe('static')
@@ -865,7 +903,9 @@ describe('provider-scoped model listing', () => {
   })
 
   test('selecting provider B shows only provider B models', async () => {
-    const result = await listModelsForProviderWithSource('anthropic-api')
+    const result = await listModelsForProviderWithSource('anthropic-api', {
+      adapters: adapters({ getApiKey: () => undefined }),
+    })
     const ids = result.models.map(model => model.id)
 
     expect(result.source).toBe('static')
@@ -1313,7 +1353,7 @@ describe('provider-scoped model listing', () => {
     }
   })
 
-  test('Anthropic premium fast mode is explicit, validated, and persisted', () => {
+  test('Anthropic performance and workspace selection are validated and persisted', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ur-provider-anthropic-config-'))
     try {
       resetStateForTests()
@@ -1323,6 +1363,18 @@ describe('provider-scoped model listing', () => {
 
       expect(setSafeProviderConfig('anthropic.speed', 'fast').ok).toBe(true)
       expect(setSafeProviderConfig('anthropic.speed', 'turbo').ok).toBe(false)
+      expect(
+        setSafeProviderConfig(
+          'anthropic.workspace_id',
+          'wrkspc_01TestWorkspace',
+        ).ok,
+      ).toBe(true)
+      expect(setSafeProviderConfig('anthropic.workspace_id', 'workspace-1').ok).toBe(false)
+      expect(getActiveProviderSettings().anthropic).toEqual({
+        speed: 'fast',
+        workspaceId: 'wrkspc_01TestWorkspace',
+      })
+      expect(setSafeProviderConfig('anthropic.workspace_id', 'auto').ok).toBe(true)
       expect(getActiveProviderSettings().anthropic).toEqual({ speed: 'fast' })
     } finally {
       rmSync(dir, { recursive: true, force: true })

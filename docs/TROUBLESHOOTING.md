@@ -211,6 +211,35 @@ from `OPENAI_API_KEY`. NVIDIA Agentic/Special use one key stored with
 `ur connect nvidia-nim` or `ur connect nvidia-special`; Agentic keeps any
 custom `base_url` scoped to that provider.
 
+### Anthropic says `anthropic-workspace-id is required`
+
+- Cause: the API key is identity-linked and can act across workspaces. Anthropic
+  requires the target workspace on model discovery and every runtime request.
+- Fix: copy the `wrkspc_...` ID from Claude Console → Settings → Workspaces,
+  then configure it and re-run doctor. The workspace ID is not the API key.
+
+```sh
+ur config set anthropic.workspace_id wrkspc_...
+ur provider doctor anthropic-api
+```
+
+`ANTHROPIC_WORKSPACE_ID` is the environment-only alternative. If the key was
+created inside one workspace and is already workspace-scoped, no header is
+needed. `auto` clears an incorrect saved selection. UR cannot safely infer the
+Default Workspace ID because Anthropic omits that workspace from its list API.
+
+### OpenAI stays on `requesting` and then reports a billing 429
+
+- Cause: older retry classification treated every HTTP 429 as a temporary rate
+  limit. OpenAI also uses 429 for permanent request-state failures such as
+  `billing_not_active` and `insufficient_quota`.
+- Current behavior: UR reads the machine error code, reports permanent account
+  or billing failures immediately, and still retries genuine transient rate
+  limits. The same rule applies to Chat Completions and Responses.
+- Fix for `billing_not_active`: activate API billing for the project/account or
+  connect a key belonging to an active billed project. Changing models or
+  transports cannot activate the account.
+
 ### NVIDIA lists a model but inference returns `Function … Not found for account`
 
 - Cause: the card is documented by NVIDIA, but its backing function is not

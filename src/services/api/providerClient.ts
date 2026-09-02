@@ -25,6 +25,7 @@ import {
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
 import { getProviderApiKey } from '../providers/providerCredentials.js'
+import { resolveAnthropicWorkspaceId } from '../providers/anthropicWorkspace.js'
 import { isNetworkRestricted, offlineBlockReason } from '../../utils/offlineMode.js'
 import {
   getOllamaBaseUrl,
@@ -531,6 +532,15 @@ async function createAPIClient(
   }
 
   const { createStandardAPIClient } = await import('./standardAPI.js')
+  const anthropic = providerId === 'anthropic-api'
+    ? {
+        ...providerSettings.anthropic,
+        workspaceId: resolveAnthropicWorkspaceId(
+          providerSettings.anthropic?.workspaceId,
+          process.env,
+        ),
+      }
+    : providerSettings.anthropic
   return await createStandardAPIClient({
     providerId,
     apiKey,
@@ -538,7 +548,7 @@ async function createAPIClient(
     maxRetries: options.maxRetries ?? 3,
     model: options.model,
     fetch: options.fetchOverride,
-    anthropic: providerSettings.anthropic,
+    anthropic,
   }) as ProviderMessageClient
 }
 

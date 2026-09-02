@@ -58,6 +58,10 @@ restore their session model without showing the picker.
       "serviceTier": "priority",     // auto | default | flex | priority | fast
       "speed": "fast"                // standard | fast
     },
+    "anthropic": {
+      "workspaceId": "wrkspc_...",   // identity-linked API keys only
+      "speed": "standard"             // standard | fast
+    },
     "preferences": {},
     "availableModels": [], "modelOverrides": {}
   },
@@ -323,6 +327,7 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 | `API_TIMEOUT_MS` | Explicit provider request timeout; also overrides Ollama request/stream defaults |
 | `UR_STREAM_IDLE_TIMEOUT_MS` | Maximum silent gap inside an open provider stream (default 300000 ms; rearmed for every chunk) |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `OPENAI_COMPATIBLE_API_KEY`, `LMSTUDIO_API_KEY`, `LLAMA_CPP_API_KEY`, `VLLM_API_KEY`, `UNSLOTH_API_KEY` | Provider credentials; also allowlisted for Agentic CI |
+| `ANTHROPIC_WORKSPACE_ID` | Non-secret `wrkspc_...` selection required by identity-linked Anthropic API keys |
 
 ### Core behavior
 | Variable | Effect |
@@ -355,6 +360,7 @@ Hook types: `command` (shell), plus prompt/agent hooks (`execPromptHook.ts`,
 | Variable | Effect |
 |---|---|
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `OPENROUTER_API_KEY` / `NVIDIA_API_KEY` / `OPENAI_COMPATIBLE_API_KEY` / `LMSTUDIO_API_KEY` / `LLAMA_CPP_API_KEY` / `VLLM_API_KEY` / `UNSLOTH_API_KEY` | API-key and authenticated compatible/local providers |
+| `ANTHROPIC_WORKSPACE_ID` | Workspace selection for an identity-linked Anthropic key; saved `provider.anthropic.workspaceId` takes precedence |
 | `UR_MODEL_POOL_CHEAP/STRONG/DEFAULT` | Model pools for routing |
 | `UR_CODE_USE_BEDROCK` / `UR_CODE_USE_VERTEX` | AWS Bedrock / GCP Vertex backends |
 | `UR_CODE_OAUTH_TOKEN` / `UR_CODE_OAUTH_REFRESH_TOKEN` / `UR_CODE_OAUTH_SCOPES` | OAuth token injection |

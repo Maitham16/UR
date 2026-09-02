@@ -299,6 +299,7 @@ ur config set provider.fallback ollama
 ur config set openrouter.routing auto
 ur config set openrouter.preferred_min_throughput 40
 ur config set openrouter.preferred_max_latency 3
+ur config set anthropic.workspace_id wrkspc_...
 ```
 
 `provider.fallback` records a recovery provider for `ur provider doctor`
@@ -332,6 +333,11 @@ store records identifiers and status only. Compacted context is persisted only
 when `UR_OPENAI_RESPONSES_STATE_KEY` contains a 32-byte encryption key. Return
 to the default with `ur config set openai_transport chat-completions`.
 
+Both OpenAI transports retry genuine temporary rate limits. Permanent
+machine-coded account or billing responses such as `billing_not_active` and
+`insufficient_quota` are reported immediately, so an inactive project does not
+look like minute-long model latency.
+
 OpenRouter `auto` routing leaves tool turns to Auto Exacto and optimizes
 non-tool turns for end-to-end throughput. The routing, fallback,
 strict-parameter, rolling performance preference, service-tier, and supported
@@ -351,6 +357,21 @@ ur config set openrouter.speed fast            # standard | fast
 Direct Anthropic requests automatically preserve UR's prompt-cache
 breakpoints and enable per-tool fine-grained input streaming, reducing repeat
 prefill work and exposing large tool arguments as Claude generates them.
+Anthropic identity-linked keys that can act across workspaces also require a
+workspace on discovery, inference, streaming, and token-count calls. Configure
+the Console workspace ID once (it is not a secret):
+
+```sh
+ur config set anthropic.workspace_id wrkspc_...
+# or for one environment:
+export ANTHROPIC_WORKSPACE_ID=wrkspc_...
+```
+
+UR sends `anthropic-workspace-id` only when configured. Workspace-scoped keys
+continue to work without it. Use `auto` to clear the saved selection. If the
+key and workspace are being connected together, `ur connect anthropic-api
+--workspace-id wrkspc_...` accepts the same value.
+
 Anthropic's premium research-preview fast tier is opt-in and is sent only for
 Claude Opus 5 or Opus 4.8:
 
@@ -380,7 +401,7 @@ ur connect logout openai-api          # clear a stored key
 | Provider | Access type | Runtime kind | Legal path |
 | --- | --- | --- | --- |
 | OpenAI API | API key | UR-native | `OPENAI_API_KEY` or `ur connect openai-api` |
-| Claude API | API key | UR-native | `ANTHROPIC_API_KEY` or `ur connect anthropic-api` |
+| Claude API | API key | UR-native | `ANTHROPIC_API_KEY` or `ur connect anthropic-api`; identity-linked keys also use `ANTHROPIC_WORKSPACE_ID` or `anthropic.workspace_id` |
 | Gemini API | API key | UR-native | `GEMINI_API_KEY` or `ur connect gemini-api` |
 | OpenRouter | API/router | UR-native | `OPENROUTER_API_KEY` or `ur connect openrouter` |
 | NVIDIA Agentic | hosted/server API | UR-native | `NVIDIA_API_KEY` or `ur connect nvidia-nim`; configurable `base_url` |

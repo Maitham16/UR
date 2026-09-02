@@ -11,6 +11,13 @@ import type { SettingsJson } from '../../utils/settings/types.js'
 import { which } from '../../utils/which.js'
 import { normalizeGeminiBaseUrl } from '../api/providerHttp.js'
 import {
+  anthropicWorkspaceFix,
+  anthropicWorkspaceHeaders,
+  isAnthropicWorkspaceRequiredError,
+  resolveAnthropicWorkspaceId,
+  validateAnthropicWorkspaceId,
+} from './anthropicWorkspace.js'
+import {
   describeCacheAge,
   MODEL_CACHE_TTL_MS,
   parseDiscoveredModels,
@@ -123,6 +130,7 @@ export type OpenRouterSettings = {
 
 export type AnthropicSettings = {
   speed?: 'standard' | 'fast'
+  workspaceId?: string
 }
 
 export type ProviderSettings = {
@@ -470,8 +478,8 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     runtimeKind: 'ur-native',
     ...UR_NATIVE_CAPABILITIES,
     authMode: 'api',
-    legalPath: 'ANTHROPIC_API_KEY',
-    accessPathLabel: 'API key from ANTHROPIC_API_KEY',
+    legalPath: 'ANTHROPIC_API_KEY with ANTHROPIC_WORKSPACE_ID when required',
+    accessPathLabel: 'API key from ANTHROPIC_API_KEY and optional workspace selection',
     envKey: 'ANTHROPIC_API_KEY',
     defaultBaseUrl: 'https://api.anthropic.com/v1',
   },
@@ -1091,6 +1099,7 @@ export function setSafeProviderConfig(
     | 'openrouter.service_tier'
     | 'openrouter.speed'
     | 'anthropic.speed'
+    | 'anthropic.workspace_id'
     | 'model'
     | 'base_url',
   value: string,
@@ -1288,6 +1297,18 @@ export function setSafeProviderConfig(
           },
         },
       } as SettingsJson
+    } else if (key === 'anthropic.workspace_id') {
+      if (trimmed === 'auto') {
+        settings = {
+          provider: { anthropic: { workspaceId: undefined } },
+        } as SettingsJson
+      } else {
+        const workspace = validateAnthropicWorkspaceId(trimmed)
+        if (workspace.ok === false) return workspace
+        settings = {
+          provider: { anthropic: { workspaceId: workspace.value } },
+        } as SettingsJson
+      }
     } else if (key === 'model') {
       // Validate model against current provider
       const currentSettings = getInitialSettings()
@@ -1884,7 +1905,23 @@ async function checkApiProvider(
   }
   if (!apiKey || !baseUrl) return
 
-  const request = apiModelsRequestForBase(definition.id, apiKey, baseUrl)
+  let workspaceId: string | undefined
+  try {
+    workspaceId = definition.id === 'anthropic-api'
+      ? resolveAnthropicWorkspaceId(settings.anthropic?.workspaceId, env)
+      : undefined
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    result.checks.push({ name: 'workspace', status: 'fail', message })
+    addFailure(result, message, anthropicWorkspaceFix())
+    return
+  }
+  const request = apiModelsRequestForBase(
+    definition.id,
+    apiKey,
+    baseUrl,
+    workspaceId,
+  )
   try {
     const response = await (adapters.fetch ?? fetch)(request.url, {
       method: 'GET',
@@ -1892,15 +1929,21 @@ async function checkApiProvider(
       signal: AbortSignal.timeout(10_000),
     })
     if (!response.ok) {
+      const detail = await providerHttpErrorDetail(response)
+      const failure = detail
+        ? `endpoint returned HTTP ${response.status}: ${detail}`
+        : `endpoint returned HTTP ${response.status}`
       result.checks.push({
         name: 'endpoint',
         status: 'fail',
-        message: `${request.url} returned HTTP ${response.status}.`,
+        message: `${request.url} returned HTTP ${response.status}${detail ? `: ${detail}` : '.'}`,
       })
       addFailure(
         result,
-        `endpoint returned HTTP ${response.status}`,
-        `Check the API key or update base_url: ur config set base_url ${definition.id} ${baseUrl}`,
+        failure,
+        definition.id === 'anthropic-api' && isAnthropicWorkspaceRequiredError(detail)
+          ? anthropicWorkspaceFix()
+          : `Check the API key or update base_url: ur config set base_url ${definition.id} ${baseUrl}`,
       )
       return
     }
@@ -1921,6 +1964,27 @@ async function checkApiProvider(
       message,
       `Update base_url or start the configured gateway: ur config set base_url ${definition.id} ${baseUrl}`,
     )
+  }
+}
+
+async function providerHttpErrorDetail(response: Response): Promise<string> {
+  try {
+    const raw = (await response.text()).trim()
+    if (!raw) return ''
+    let detail = raw
+    try {
+      const parsed = JSON.parse(raw) as {
+        error?: { message?: unknown }
+        message?: unknown
+      }
+      const providerMessage = parsed.error?.message ?? parsed.message
+      if (typeof providerMessage === 'string') detail = providerMessage
+    } catch {
+      // A plain-text provider response is already the most useful diagnostic.
+    }
+    return detail.replace(/\s+/gu, ' ').trim().slice(0, 1_000)
+  } catch {
+    return ''
   }
 }
 
@@ -2686,7 +2750,13 @@ function providerModelCacheKey(
     endpoint = apiModelsRequest(provider, '', settings).url
   }
   if (!endpoint) return provider
-  return providerEndpointCacheKey(provider, endpoint)
+  const endpointKey = providerEndpointCacheKey(provider, endpoint)
+  if (provider !== 'anthropic-api') return endpointKey
+  const workspaceId = resolveAnthropicWorkspaceId(
+    getActiveProviderSettings(settings).anthropic?.workspaceId,
+    process.env,
+  )
+  return `${endpointKey}|workspace:${workspaceId ?? 'implicit'}`
 }
 
 function providerEndpointCacheKey(
@@ -3270,6 +3340,7 @@ function apiModelsRequestForBase(
   provider: ProviderId,
   apiKey: string,
   configuredBase: string | undefined,
+  anthropicWorkspaceId?: string,
 ): { url: string; headers: Record<string, string> } {
   const providerDefault = getProviderDefinition(provider).defaultBaseUrl
   const modelsUrl = (baseUrl: string, version: string): string => {
@@ -3288,7 +3359,11 @@ function apiModelsRequestForBase(
     case 'anthropic-api':
       return {
         url: modelsUrl(configuredBase ?? providerDefault!, 'v1'),
-        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          ...anthropicWorkspaceHeaders(anthropicWorkspaceId, {}),
+        },
       }
     case 'gemini-api':
       return {
@@ -3312,11 +3387,16 @@ function apiModelsRequest(
   provider: ProviderId,
   apiKey: string,
   settings: SettingsJson,
+  env: Record<string, string | undefined> = process.env,
 ): { url: string; headers: Record<string, string> } {
+  const providerSettings = getActiveProviderSettings(settings)
   return apiModelsRequestForBase(
     provider,
     apiKey,
     getScopedProviderBaseUrl(provider, settings),
+    provider === 'anthropic-api'
+      ? resolveAnthropicWorkspaceId(providerSettings.anthropic?.workspaceId, env)
+      : undefined,
   )
 }
 
@@ -3398,6 +3478,7 @@ async function discoverApiProviderModels(
     provider,
     apiKey,
     options.settings ?? getInitialSettings(),
+    env,
   )
   const fetchImpl = options.adapters?.fetch ?? fetch
   const entries: Array<Record<string, unknown>> = []
@@ -3411,7 +3492,14 @@ async function discoverApiProviderModels(
       headers,
     })
     if (!response.ok) {
-      throw new Error(`${pageUrl} returned HTTP ${response.status}.`)
+      const detail = await providerHttpErrorDetail(response)
+      const workspaceHelp =
+        provider === 'anthropic-api' && isAnthropicWorkspaceRequiredError(detail)
+          ? ` ${anthropicWorkspaceFix()}`
+          : ''
+      throw new Error(
+        `${pageUrl} returned HTTP ${response.status}${detail ? `: ${detail}` : '.'}${workspaceHelp}`,
+      )
     }
     let body: unknown
     try {

@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.85.1
+
+- Added complete Anthropic workspace routing for identity-linked Claude API
+  keys. A validated workspace ID can be configured with
+  `anthropic.workspace_id`, `ANTHROPIC_WORKSPACE_ID`, or
+  `ur connect anthropic-api --workspace-id`; UR applies the matching header to
+  model discovery, diagnostics, streaming and non-streaming Messages requests,
+  and token counting while leaving workspace-scoped keys unchanged.
+- Preserved Anthropic's real missing-workspace response and replaced the
+  misleading provider/model compatibility failure with an actionable setup
+  instruction. Live model caches are partitioned by workspace so one workspace
+  cannot reuse another workspace's catalog.
+- Made OpenAI permanent account failures fail immediately instead of looking
+  like slow inference. Streaming HTTP error bodies are decoded safely, exact
+  provider error codes such as `billing_not_active` and `insufficient_quota`
+  are treated as non-retryable, and genuine transient rate limits continue to
+  use retry and backoff behavior.
+- Isolated provider-discovery tests from live keychain credentials and updated
+  public, configuration, troubleshooting, validation, provider, and technical
+  documentation for both behaviors.
+
 ## 1.85.0
 
 - Split NVIDIA Build into two truthful provider surfaces backed by one saved

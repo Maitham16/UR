@@ -105,19 +105,23 @@ describe('provider-native token counting', () => {
 
   test('uses the native standard-provider endpoint and identifies its source', async () => {
     let requestUrl = ''
+    let workspaceHeader: string | null = null
     const client = await createStandardAPIClient({
       providerId: 'anthropic-api',
       apiKey: 'test-key',
       baseUrl: 'https://example.test/v1',
       maxRetries: 0,
-      fetch: async input => {
+      anthropic: { workspaceId: 'wrkspc_01TestWorkspace' },
+      fetch: async (input, init) => {
         requestUrl = String(input)
+        workspaceHeader = new Headers(init?.headers).get('anthropic-workspace-id')
         return Response.json({ input_tokens: 31 })
       },
     })
 
     const result = await client.beta.messages.countTokens(params)
     expect(requestUrl).toBe('https://example.test/v1/messages/count_tokens')
+    expect(workspaceHeader).toBe('wrkspc_01TestWorkspace')
     expect(result).toEqual({ input_tokens: 31, source: 'provider' })
   })
 

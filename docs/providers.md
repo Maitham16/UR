@@ -34,7 +34,7 @@ multimodal input, external CLI boundary, and sandbox scope:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Subscription | subscription | subscription-placeholder | no | no | no | n/a | n/a (no runtime) | `subscription:unconfigured` | independent subscription runtime only |
 | OpenAI API | API | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:openai` | `OPENAI_API_KEY` |
-| Claude API | API | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:anthropic` | `ANTHROPIC_API_KEY` |
+| Claude API | API | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:anthropic` | `ANTHROPIC_API_KEY`; identity-linked keys also select `ANTHROPIC_WORKSPACE_ID` |
 | Gemini API | API | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:gemini` | `GEMINI_API_KEY` |
 | OpenRouter | API/router | UR-native | no | yes | yes | yes | UR Bash/File sandbox | `api:openrouter` | `OPENROUTER_API_KEY` |
 | NVIDIA Agentic | hosted/server API | UR-native | no | yes | yes | model-dependent | UR Bash/File sandbox | `api:nvidia-nim` | `NVIDIA_API_KEY`; public per-card endpoints or configurable NIM gateway |
@@ -173,6 +173,8 @@ explicit opt-in to the native Responses adapter; it defaults to `store=false`
 and supports semantic streaming, background polling/cancellation, WebSocket
 continuation, server compaction, and deferred tool search. It does not change
 OpenAI-compatible, OpenRouter, local, or subscription-CLI providers.
+Both transports fail immediately for machine-readable permanent account or
+billing 429s; ordinary transient rate limits still honor provider retry timing.
 
 ## Provider-scoped model selection
 
@@ -281,7 +283,18 @@ remain authoritative. See OpenRouter's
 Direct Anthropic requests retain supported prompt-cache breakpoints and enable
 per-tool `eager_input_streaming` on streaming turns. This reduces repeated
 prefill work and avoids waiting for a complete large tool argument before its
-deltas arrive. Anthropic's premium fast tier remains explicit:
+deltas arrive.
+
+Identity-linked Anthropic keys additionally need a workspace selection. UR
+accepts `provider.anthropic.workspaceId` through
+`ur config set anthropic.workspace_id wrkspc_...` or
+`ANTHROPIC_WORKSPACE_ID`, validates the `wrkspc_` resource ID, partitions the
+model cache by workspace, and sends `anthropic-workspace-id` on model
+discovery, doctor, message, streaming, and token-count requests. A provider
+400 that names this requirement is preserved with the exact configuration fix
+instead of being reduced to an unverifiable model-list failure.
+
+Anthropic's premium fast tier remains explicit:
 
 ```sh
 ur config set anthropic.speed fast
@@ -291,6 +304,8 @@ UR sends `speed: "fast"` with the `fast-mode-2026-02-01` beta only for Claude
 Opus 5 and Opus 4.8, and retains `usage.speed` so accounting can distinguish the
 tier actually served. Enabled account access is still required. Unsupported
 models stay on standard speed. See Anthropic's
+[authentication](https://platform.claude.com/docs/en/manage-claude/authentication),
+[workspace management](https://platform.claude.com/docs/en/manage-claude/workspaces),
 [prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching),
 [fine-grained tool streaming](https://platform.claude.com/docs/en/agents-and-tools/tool-use/fine-grained-tool-streaming),
 and [fast mode](https://platform.claude.com/docs/en/build-with-claude/fast-mode).
@@ -480,7 +495,8 @@ provider's successful live catalog remains authoritative for that account.
 
 **API providers** require environment variable with API key:
 - `openai-api` — requires `OPENAI_API_KEY`
-- `anthropic-api` — requires `ANTHROPIC_API_KEY`
+- `anthropic-api` — requires `ANTHROPIC_API_KEY`; identity-linked keys also
+  select `ANTHROPIC_WORKSPACE_ID` (or saved `anthropic.workspace_id`)
 - `gemini-api` — requires `GEMINI_API_KEY`
 - `openrouter` — requires `OPENROUTER_API_KEY`
 - `nvidia-nim` / `nvidia-special` — share `NVIDIA_API_KEY`; Agentic's enterprise endpoint is configurable, while Special routes each public model to its card-specific contract
@@ -656,6 +672,7 @@ API providers require explicit user selection and environment keys:
 OPENAI_API_KEY=...
 OPENAI_COMPATIBLE_API_KEY=...
 ANTHROPIC_API_KEY=...
+ANTHROPIC_WORKSPACE_ID=wrkspc_... # identity-linked Anthropic keys only
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
 NVIDIA_API_KEY=...
@@ -803,7 +820,7 @@ Required variables:
 | NVIDIA Agentic | `NVIDIA_API_KEY`, `NVIDIA_MODEL` | `NVIDIA_BASE_URL` (defaults to `https://integrate.api.nvidia.com/v1`) |
 | OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL` | `OPENAI_BASE_URL` |
 | OpenRouter | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | `OPENROUTER_BASE_URL` |
-| Anthropic | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | `ANTHROPIC_BASE_URL` |
+| Anthropic | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | `ANTHROPIC_BASE_URL`; `ANTHROPIC_WORKSPACE_ID` for identity-linked keys |
 | Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL` | `GEMINI_BASE_URL` |
 | Ollama | `OLLAMA_MODEL` | `OLLAMA_BASE_URL` or `OLLAMA_HOST`; `OLLAMA_API_KEY` when required |
 | LM Studio | `LMSTUDIO_BASE_URL`, `LMSTUDIO_MODEL` | `LMSTUDIO_API_KEY` |
