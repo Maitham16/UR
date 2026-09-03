@@ -18,6 +18,7 @@ import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { ensureProviderModelsFresh, getActiveProviderSettings, type ProviderId, setProviderModel, validateProviderModelPair } from '../../services/providers/providerRegistry.js';
 import { getInitialSettings, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { executePostModelSwitchHooks, executePreModelSwitchHooks, hasBlockingResult } from '../../utils/hooks.js';
+import { getNvidiaHostedTaskModelContract } from '../../services/providers/nvidiaHostedModels.js';
 function ModelPickerWrapper(t0) {
   const $ = _c(20);
   const {
@@ -53,20 +54,6 @@ function ModelPickerWrapper(t0) {
         from_model: mainLoopModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         to_model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
-      setAppState(prev => ({
-        ...prev,
-        mainLoopModel: model,
-        mainLoopModelForSession: null,
-        ...(model && metadata
-          ? {
-              provider: {
-                ...prev.provider,
-                active: metadata.providerId,
-                model,
-              },
-            }
-          : {})
-      }));
       let message = metadata ? `Selected provider: ${chalk.bold(metadata.providerName)} (${metadata.accessType})\nSelected model: ${chalk.bold(renderModelLabel(model))}\nModel source: ${metadata.modelSource}\nRuntime backend: ${metadata.runtimeBackend}` : `Set model to ${chalk.bold(renderModelLabel(model))}`;
       if (effort !== undefined) {
         message = message + ` with ${chalk.bold(effort)} effort`;
@@ -104,7 +91,11 @@ function ModelPickerWrapper(t0) {
   let taskHandler;
   if ($[17] !== onDone) {
     taskHandler = function handleTaskSelect(selection: NvidiaTaskSelectionMetadata) {
-      onDone(`Selected NVIDIA Special model: ${chalk.bold(selection.displayName)}\nPurpose: ${selection.purpose}\nThe ongoing agent model is unchanged. Describe the matching ${selection.taskKind} job and UR will run it with the exact NVIDIA Special inference contract.`);
+      const contract = getNvidiaHostedTaskModelContract(selection.modelId);
+      const required = Array.isArray(contract?.requestSchema.required)
+        ? contract.requestSchema.required.filter(value => typeof value === 'string')
+        : [];
+      onDone(`Selected NVIDIA Special model: ${chalk.bold(selection.displayName)}\nPurpose: ${selection.purpose}\nRequired input: ${required.join(', ') || 'none beyond the task description'}\nNVIDIA Special task mode is active; the ongoing agent model is unchanged. Your next non-command prompt runs this exact NVIDIA inference contract directly. For media inputs, use fields such as \`video_path: /path/file.mp4\` or \`image_path: /path/file.png\`.`);
     };
     $[17] = onDone;
     $[18] = taskHandler;
@@ -252,6 +243,7 @@ function SetModelAndClose({
         ...prev,
         mainLoopModel: modelValue,
         mainLoopModelForSession: null,
+        nvidiaTaskModel: undefined,
         ...(provider
           ? {
               provider: {

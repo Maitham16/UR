@@ -84,10 +84,15 @@ describe('API provider live model discovery', () => {
     const urls: string[] = []
     const workspaceHeaders: Array<string | null> = []
     const result = await listModelsForProviderWithSource('anthropic-api', {
+      settings: {
+        provider: {
+          active: 'anthropic-api',
+          anthropic: { workspaceId: 'wrkspc_01TestWorkspace' },
+        },
+      },
       adapters: {
         env: {
           ANTHROPIC_API_KEY: 'sk-ant',
-          ANTHROPIC_WORKSPACE_ID: 'wrkspc_01TestWorkspace',
         },
         fetch: (async (input, init) => {
           const url = String(input)

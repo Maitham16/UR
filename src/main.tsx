@@ -2158,6 +2158,7 @@ async function run(): Promise<CommanderCommand> {
     // Compute effective model early so hooks can run in parallel with MCP
     // If user didn't specify a model but agent has one, use the agent's model
     let effectiveModel = userSpecifiedModel;
+    let startupNvidiaTaskModel: string | undefined;
     if (!effectiveModel && mainThreadAgentDefinition?.model && mainThreadAgentDefinition.model !== 'inherit') {
       effectiveModel = parseUserSpecifiedModel(mainThreadAgentDefinition.model);
     }
@@ -2443,10 +2444,14 @@ async function run(): Promise<CommanderCommand> {
       const selectedModel = await showSetupDialog<string>(root, done => (
         <ProviderFirstModelPicker
           initial={null}
-          headerText="Choose a provider and model for this workspace. The validated choice is saved locally before the first session starts."
+          headerText="Choose an ordinary agent provider/model for this workspace. You may also activate an NVIDIA Special one-shot task first; UR will then return here for the ordinary agent model."
           onSelect={model => {
             if (model) done(model);
           }}
+          onTaskSelect={selection => {
+            startupNvidiaTaskModel = selection.modelId;
+          }}
+          continueAfterTaskSelect={true}
         />
       ));
       effectiveModel = selectedModel;
@@ -3100,6 +3105,7 @@ async function run(): Promise<CommanderCommand> {
       verbose: verbose ?? getGlobalConfig().verbose ?? false,
       mainLoopModel: initialMainLoopModel,
       mainLoopModelForSession: null,
+      ...(startupNvidiaTaskModel ? { nvidiaTaskModel: startupNvidiaTaskModel } : {}),
       isBriefOnly: initialIsBriefOnly,
       expandedView: getGlobalConfig().showSpinnerTree ? 'teammates' : getGlobalConfig().showExpandedTodos ? 'tasks' : 'none',
       showTeammateMessagePreview: isAgentSwarmsEnabled() ? false : undefined,

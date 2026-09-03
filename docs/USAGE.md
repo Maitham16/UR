@@ -300,12 +300,18 @@ hosted picker. NVIDIA's live `nemotron-3.5-lightning-30b-a3b` endpoint is
 focused first as its documented fastest 30B agent model; Left/Right controls
 that model's advertised on/off thinking switch.
 NVIDIA Special appears as its own provider, with purpose and input/output hints
-before selection. The current Build audit preserves all 23 focused Free
+before selection, including during first-workspace setup. Setup returns to the
+provider list after a Special selection so the session also has an ordinary
+agent model. The current Build audit preserves all 23 focused Free
 Endpoint cards. `NvidiaSpecial` describes or runs each card's exact inference
 URL, HTTP/RPC method, function ID, and request/response schema using the shared
 key. It supports HTTP, direct NVCF, async polling, NVIDIA Assets, and five
 documented Maxine/Riva gRPC services. Selecting one leaves the ongoing agent
-unchanged. Returned media/binary/JSON defaults to `.ur/artifacts/nvidia/`.
+unchanged and activates direct task mode: the next non-command prompt calls
+NVIDIA without first calling that agent. Plain prompts supply `prompt`; use
+newline inputs such as `video_path: /path/source.mp4` or exact JSON when the
+selected contract requires media or specialized fields. Returned
+media/binary/JSON defaults to `.ur/artifacts/nvidia/`.
 Cards are never removed; an unpublished protocol remains visible and clearly
 cannot be invoked until NVIDIA publishes its contract.
 On the `/model` model screen, `K` adds or replaces a

@@ -10,6 +10,11 @@ import {
 } from '../src/services/providers/nvidiaHostedModels.js'
 import { runNvidiaHostedTask } from '../src/services/providers/nvidiaTaskRuntime.js'
 import {
+  formatNvidiaDirectTaskResult,
+  parseNvidiaDirectTaskInput,
+  runNvidiaDirectTask,
+} from '../src/services/providers/nvidiaDirectTask.js'
+import {
   clearProviderModelCacheForTests,
   listModelsForProviderWithSource,
 } from '../src/services/providers/providerRegistry.js'
@@ -32,6 +37,82 @@ afterEach(async () => {
 })
 
 describe('NVIDIA Special exact-contract runtime', () => {
+  test('parses plain and structured direct task prompts without a chat model', () => {
+    expect(
+      parseNvidiaDirectTaskInput(
+        'nvidia/cosmos-transfer1-7b',
+        'Turn the source into an 8mm projector film.',
+      ),
+    ).toEqual({
+      model: 'nvidia/cosmos-transfer1-7b',
+      prompt: 'Turn the source into an 8mm projector film.',
+    })
+
+    expect(
+      parseNvidiaDirectTaskInput(
+        'nvidia/cosmos-transfer1-7b',
+        [
+          'prompt: Turn the source into an 8mm projector film.',
+          'video_path: /tmp/source.mp4',
+          'steps: 20',
+          'seed: 42',
+        ].join('\n'),
+      ),
+    ).toEqual({
+      model: 'nvidia/cosmos-transfer1-7b',
+      prompt: 'Turn the source into an 8mm projector film.',
+      videoPath: '/tmp/source.mp4',
+      steps: 20,
+      seed: 42,
+    })
+
+    expect(
+      parseNvidiaDirectTaskInput(
+        'nvidia/specialized-model',
+        '{"custom_input":{"value":1}}',
+      ),
+    ).toEqual({
+      model: 'nvidia/specialized-model',
+      payload: { custom_input: { value: 1 } },
+    })
+  })
+
+  test('runs direct task text against NVIDIA instead of an ongoing provider', async () => {
+    const cwd = await temporaryDirectory()
+    const requests: string[] = []
+    const result = await runNvidiaDirectTask(
+      'google/diffusiongemma-26b-a4b-it',
+      'Write one sentence about an 8mm projector.',
+      {
+        apiKey: 'nvapi-test',
+        cwd,
+        fetch: async (input, init) => {
+          requests.push(String(input))
+          expect(JSON.parse(String(init?.body))).toMatchObject({
+            model: 'google/diffusiongemma-26b-a4b-it',
+            messages: [
+              {
+                role: 'user',
+                content: 'Write one sentence about an 8mm projector.',
+              },
+            ],
+            stream: false,
+          })
+          return Response.json({
+            choices: [{ message: { content: 'A projector flickers to life.' } }],
+          })
+        },
+      },
+    )
+
+    expect(requests).toEqual([
+      'https://integrate.api.nvidia.com/v1/chat/completions',
+    ])
+    expect(formatNvidiaDirectTaskResult(result)).toContain(
+      'A projector flickers to life.',
+    )
+  })
+
   test('every executable task has a model-card inference contract', () => {
     const executable = NVIDIA_HOSTED_TASK_MODEL_CONTRACTS.filter(
       contract => contract.executable,

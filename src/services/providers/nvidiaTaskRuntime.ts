@@ -547,8 +547,14 @@ async function buildPayload(
   )
   if (missing.length > 0) {
     await deleteAssets(uploadedAssetIds, options)
+    const convenienceFields = missing.map(field => {
+      if (field === 'image') return 'image_path'
+      if (field === 'video') return 'video_path'
+      if (field === 'audio') return 'audio_path'
+      return field
+    })
     throw new Error(
-      `NVIDIA ${contract.id} requires ${missing.join(', ')}. Supply prompt/image_path for standard inputs or payload_json/file_inputs for its exact documented schema.`,
+      `NVIDIA ${contract.id} requires ${missing.join(', ')}. Submit the missing input as ${convenienceFields.join(', ')} fields on separate lines, or provide exact JSON matching the model's documented schema.`,
     )
   }
   const validationErrors = schemaErrors(payload, contract.requestSchema)

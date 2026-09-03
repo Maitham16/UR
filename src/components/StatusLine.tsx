@@ -274,6 +274,7 @@ function StatusLineInner({
   const setAppState = useSetAppState();
   const settings = useSettings();
   const providerSelection = useAppState(s => s.provider);
+  const nvidiaTaskModel = useAppState(s => s.nvidiaTaskModel);
   const [branch, setBranch] = useState<string | null>(null);
   const [runtimeMs, setRuntimeMs] = useState<number | null>(null);
   const [customStatusReady, setCustomStatusReady] = useState(false);
@@ -305,13 +306,13 @@ function StatusLineInner({
   const terminalSize = React.useContext(TerminalSizeContext);
   const defaultStatusLineText = buildDefaultStatusBar({
     version: MACRO.VERSION,
-    providerLabel: providerRuntime.providerLabel,
-    authMode: providerRuntime.authLabel,
+    providerLabel: nvidiaTaskModel ? 'NVIDIA Special' : providerRuntime.providerLabel,
+    authMode: nvidiaTaskModel ? 'API key' : providerRuntime.authLabel,
     // The live session model wins. getProviderRuntimeInfo reports the
     // *persisted* provider.model, which /model does not write — it sets a
     // session override that getMainLoopModel resolves. Preferring the setting
     // showed a stale model in the status bar while requests used the new one.
-    model: renderModelName(mainLoopModel) || providerRuntime.model || '',
+    model: nvidiaTaskModel ?? (renderModelName(mainLoopModel) || providerRuntime.model || ''),
     mode: permissionMode,
     branch,
     // Running and pending are distinct: a pending task is not consuming

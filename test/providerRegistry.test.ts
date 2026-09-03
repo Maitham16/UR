@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   resetStateForTests,
+  setAllowedSettingSources,
   setCwdState,
   setOriginalCwd,
 } from '../src/bootstrap/state.js'
@@ -989,6 +990,40 @@ describe('provider-scoped model listing', () => {
     }
   })
 
+  test('a valid picker selection recovers a workspace from an invalid saved pair', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ur-provider-model-recovery-'))
+    try {
+      resetStateForTests()
+      setOriginalCwd(dir)
+      setCwdState(dir)
+      setAllowedSettingSources(['localSettings'])
+      resetSettingsCache()
+      updateSettingsForSource('localSettings', {
+        model: 'claude-opus-5',
+        provider: { active: 'ollama', model: 'claude-opus-5' },
+      })
+
+      const selected = setProviderModel('ollama', 'kimi-k3:cloud', {
+        availableModels: ['kimi-k3:cloud'],
+        modelSource: 'live',
+      })
+
+      expect(selected).toMatchObject({
+        ok: true,
+        provider: 'ollama',
+        model: 'kimi-k3:cloud',
+      })
+      expect(getActiveProviderSettings()).toMatchObject({
+        active: 'ollama',
+        model: 'kimi-k3:cloud',
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      resetStateForTests()
+      resetSettingsCache()
+    }
+  })
+
   test('live discovery failure falls back only to same-provider cached models', async () => {
     cacheProviderModelsForProvider('lmstudio', ['lmstudio-local'])
     const result = await listModelsForProviderWithSource('lmstudio', {
@@ -1359,6 +1394,7 @@ describe('provider-scoped model listing', () => {
       resetStateForTests()
       setOriginalCwd(dir)
       setCwdState(dir)
+      setAllowedSettingSources(['localSettings'])
       resetSettingsCache()
 
       expect(setSafeProviderConfig('anthropic.speed', 'fast').ok).toBe(true)

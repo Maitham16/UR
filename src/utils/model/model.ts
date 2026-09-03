@@ -42,6 +42,7 @@ import {
   getDefaultModelForProvider,
   type ProviderSettings,
 } from '../../services/providers/providerRegistry.js'
+import type { SettingsJson } from '../settings/types.js'
 
 export type ModelShortName = string
 export type ModelName = string
@@ -145,7 +146,14 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
     specifiedModel = modelOverride
   } else {
     const settings = getSettings_DEPRECATED() || {}
-    specifiedModel = process.env.URHQ_MODEL || settings.model || undefined
+    // A model belongs to its selected provider. Reading the merged top-level
+    // legacy field here could combine (for example) provider=ollama from one
+    // scope with claude-opus from another. Provider-aware settings deliberately
+    // ignore that stale field whenever an explicit provider is configured.
+    specifiedModel =
+      process.env.URHQ_MODEL ||
+      getConfiguredModelForActiveProvider(settings) ||
+      undefined
   }
 
   // Ignore the user-specified model if it's not in the availableModels allowlist.
@@ -154,6 +162,17 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   }
 
   return specifiedModel
+}
+
+/**
+ * Resolve a persisted model only through its provider-scoped pair. Legacy
+ * top-level model remains supported when no explicit provider was configured,
+ * but can never be combined with a different explicit provider.
+ */
+export function getConfiguredModelForActiveProvider(
+  settings: SettingsJson,
+): ModelSetting | undefined {
+  return getActiveProviderSettings(settings).model
 }
 
 /**

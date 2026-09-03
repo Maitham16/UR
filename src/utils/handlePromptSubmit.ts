@@ -31,6 +31,13 @@ import type { ProcessUserInputContext } from './processUserInput/processUserInpu
 import { processUserInput } from './processUserInput/processUserInput.js'
 import type { QueryGuard } from './QueryGuard.js'
 import { queryCheckpoint, startQueryProfile } from './queryProfiler.js'
+import { getProviderApiKey } from '../services/providers/providerCredentials.js'
+import {
+  formatNvidiaDirectTaskResult,
+  runNvidiaDirectTask,
+} from '../services/providers/nvidiaDirectTask.js'
+import { getCwd } from './cwd.js'
+import { createAssistantMessage, createUserMessage } from './messages.js'
 import { runWithWorkload } from './workloadContext.js'
 import {
   getTaskListRunForCommand,
@@ -83,6 +90,12 @@ type BaseExecutionParams = {
   setAppState: (updater: (prev: AppState) => AppState) => void
   onBeforeQuery?: (input: string, newMessages: Message[]) => Promise<boolean>
   canUseTool?: CanUseToolFn
+  addNotification?: (notification: {
+    key: string
+    text: string
+    priority: 'low' | 'medium' | 'high' | 'immediate'
+  }) => void
+  setMessages?: (updater: (prev: Message[]) => Message[]) => void
 }
 
 /**
@@ -110,12 +123,6 @@ export type HandlePromptSubmitParams = BaseExecutionParams & {
     React.SetStateAction<Record<number, PastedContent>>
   >
   abortController?: AbortController | null
-  addNotification?: (notification: {
-    key: string
-    text: string
-    priority: 'low' | 'medium' | 'high' | 'immediate'
-  }) => void
-  setMessages?: (updater: (prev: Message[]) => Message[]) => void
   streamMode?: SpinnerMode
   hasInterruptibleToolInProgress?: boolean
   uuid?: UUID
@@ -149,6 +156,8 @@ export async function handlePromptSubmit(
     onBeforeQuery,
     canUseTool,
     queuedCommands,
+    addNotification,
+    setMessages,
     uuid,
     skipSlashCommands,
   } = params
@@ -177,6 +186,8 @@ export async function handlePromptSubmit(
       resetHistory,
       canUseTool,
       onInputChange,
+      addNotification,
+      setMessages,
     })
     return
   }
@@ -398,6 +409,8 @@ export async function handlePromptSubmit(
     resetHistory,
     canUseTool,
     onInputChange,
+    addNotification,
+    setMessages,
   })
 }
 
@@ -425,6 +438,8 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     resetHistory,
     canUseTool,
     queuedCommands,
+    addNotification,
+    setMessages,
   } = params
 
   // Note: paste references are already processed before calling this function
@@ -455,6 +470,64 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     }) ?? undefined
     if (reservationToken === undefined) {
       throw new Error('Prompt dispatch could not reserve the active query slot.')
+    }
+
+    // NVIDIA Special is a task runtime, not a chat provider. Once selected in
+    // /model, a plain prompt must go straight to the model card's exact
+    // inference contract. Never ask the ongoing Anthropic/Ollama/OpenAI model
+    // to interpret or dispatch it: that creates unrelated credential and
+    // provider/model validation failures before NVIDIA is contacted.
+    const firstCommand = queuedCommands?.[0]
+    const firstCommandInput =
+      typeof firstCommand?.value === 'string' ? firstCommand.value : undefined
+    const nvidiaTaskModel = makeContext().getAppState().nvidiaTaskModel
+    const isDirectNvidiaTask =
+      Boolean(nvidiaTaskModel) &&
+      firstCommand?.mode === 'prompt' &&
+      firstCommandInput !== undefined &&
+      !firstCommandInput.trimStart().startsWith('/')
+    if (
+      isDirectNvidiaTask &&
+      firstCommand &&
+      firstCommandInput !== undefined &&
+      nvidiaTaskModel
+    ) {
+      const input = firstCommandInput.trim()
+      let responseText: string
+      try {
+        const result = await runNvidiaDirectTask(nvidiaTaskModel, input, {
+          apiKey: getProviderApiKey('nvidia-special') ?? '',
+          cwd: getCwd(),
+          signal: abortController.signal,
+        })
+        responseText = formatNvidiaDirectTaskResult(result)
+      } catch (error) {
+        responseText = `NVIDIA Special could not run ${nvidiaTaskModel}: ${error instanceof Error ? error.message : String(error)}`
+      }
+
+      const userMessage = createUserMessage({
+        content: input,
+        uuid: firstCommand.uuid,
+      })
+      const assistantMessage = createAssistantMessage({ content: responseText })
+      if (setMessages) {
+        setMessages(previous => [...previous, userMessage, assistantMessage])
+      } else {
+        addNotification?.({
+          key: `nvidia-special-${assistantMessage.uuid}`,
+          text: responseText,
+          priority: 'immediate',
+        })
+      }
+      for (const command of queuedCommands?.slice(1) ?? []) enqueue(command)
+      resetHistory()
+      setToolJSX({
+        jsx: null,
+        shouldHidePromptInput: false,
+        clearLocalJSX: true,
+      })
+      setAbortController(null)
+      return
     }
     queryCheckpoint('query_process_user_input_start')
 

@@ -738,7 +738,13 @@ documented Nemotron coding-agent models, UR includes NVIDIA's
 and [NIM endpoint guide](https://docs.nvidia.com/nim/large-language-models/latest/tutorials.html).
 
 NVIDIA Special is a separate focused-task provider. Selecting a row stores a
-one-shot preference and keeps the current chat provider/model. The generator
+task-mode selection and keeps the current chat provider/model. The next
+non-command prompt is dispatched directly to NVIDIA, so an unavailable or
+misconfigured chat provider cannot intercept the task. Plain text maps to the
+contract's `prompt`; newline convenience fields (`video_path`, `image_path`,
+`audio_path`, `output_path`, and generation options) or exact JSON cover richer
+contracts. NVIDIA Special is also visible during first-workspace setup; after a
+task is chosen, setup returns to the ordinary provider/model picker. The generator
 crawls all 100 current Build cards and preserves every card labelled Free
 Endpoint: 36 total, split into 13 Agentic and 23 Special. Thirty-five publish a
 complete executable contract; 22 are Special. The remaining VoiceChat card is

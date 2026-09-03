@@ -97,7 +97,7 @@ export type AppState = DeepImmutable<{
   verbose: boolean
   mainLoopModel: ModelSetting
   mainLoopModelForSession: ModelSetting
-  /** Preferred one-shot NVIDIA model; never used for the ongoing agent loop. */
+  /** Active one-shot NVIDIA task mode; never used for the ongoing agent loop. */
   nvidiaTaskModel?: string
   statusLineText: string | undefined
   expandedView: 'none' | 'tasks' | 'teammates'

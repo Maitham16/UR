@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.85.2
+
+- Made NVIDIA Special selections directly executable from the next prompt. UR
+  now sends focused image, video, audio, vision, retrieval, and other one-shot
+  jobs through the selected model's exact NVIDIA inference contract without
+  invoking or depending on the ongoing Anthropic, OpenAI, Ollama, or other
+  conversation provider. Structured prompt, file, passage, output-path, and
+  exact-JSON inputs are accepted, and missing required media produces targeted
+  guidance instead of an unrelated provider error.
+- Restored reliable model switching across providers. Provider and model now
+  change atomically, selecting an ordinary model exits NVIDIA Special mode,
+  provider-scoped models take precedence over stale legacy global settings,
+  and a saved model from one backend can no longer be paired accidentally with
+  another backend.
+- Added NVIDIA Special to first-run and new-folder provider selection while
+  keeping a normal agent model available for the conversation, and made the
+  active focused-task model visible in the status line. Updated public,
+  troubleshooting, provider, validation, and technical documentation, with
+  end-to-end regression coverage proving focused tasks bypass the conversation
+  provider and stale provider/model pairs recover correctly.
+- Refreshed the locked `fast-uri` dependency to its compatible 3.1.6 release so
+  the production dependency audit remains clean without changing runtime policy.
+
 ## 1.85.1
 
 - Added complete Anthropic workspace routing for identity-linked Claude API

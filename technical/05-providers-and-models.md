@@ -57,9 +57,15 @@ NVIDIA identifies it as its fastest 30B agent model. Its model-scoped
 `chat_template_kwargs.enable_thinking` contract powers the real on/off picker
 control; no other NVIDIA model inherits that boolean field.
 `nvidia-special` (NVIDIA Special) is the focused execution surface. Its models
-are not eligible for `provider.model`, startup selection, or the ongoing
-OpenAI-compatible loop. Enter stores only `AppState.nvidiaTaskModel`; the
-current agent/provider pair is unchanged.
+are not eligible for `provider.model` or the ongoing OpenAI-compatible loop.
+They appear in both `/model` and first-workspace setup. First-workspace setup
+records the Special task and then returns to provider selection because UR
+still needs an ordinary agent model for non-task conversations. Enter stores
+only session `AppState.nvidiaTaskModel`; the current agent/provider pair is
+unchanged. The next non-command prompt bypasses the agent provider and invokes
+the selected card's exact contract directly. Plain text supplies `prompt`;
+newline fields such as `video_path: /path/source.mp4`, `image_path: ...`, and
+`output_path: ...`, or an exact JSON object, supply specialized inputs.
 
 `scripts/update-nvidia-hosted-catalog.mjs` crawls the live Build index and
 matches each Free Endpoint card to that same card's embedded inference
@@ -92,12 +98,11 @@ compact; generated/binary and large JSON results are written under
 `.ur/artifacts/nvidia/` (or an explicit output path). Provider-facing tool
 results contain text/path metadata rather than embedded binary content.
 
-The provider doctor applies the same live-catalog filter to the selected model. A
+The provider doctor applies the same catalog rules to the selected model. A
 hosted 404 whose detail says an internal function is missing for an account is
-classified as catalog churn: request-visible and retained error text is
-redacted, and the rejected model is removed from that endpoint's in-memory
-catalog until an explicit refresh. This invalidation is endpoint-scoped, so a
-different saved NIM gateway remains unaffected.
+reported as an account entitlement/runtime rejection with request-visible text
+redacted. It never mutates the generated catalog or hides the model from a
+later session or refresh.
 
 ### How to use
 
@@ -160,13 +165,18 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
 - The startup picker validates the provider/model pair through the provider
   registry and persists it to `.ur/settings.local.json`. User-global model
   settings are intentionally insufficient for a new workspace.
-- NVIDIA Special is omitted from startup setup because focused tasks cannot own
-  an agent session. In normal `/model`, every entry shows purpose, input, and
-  output before selection and never replaces the active agent/provider pair.
+- NVIDIA Special appears in startup setup as a task runtime. Selecting it keeps
+  the task active for the first session, then returns to the provider screen so
+  the user can choose the ordinary agent model. In `/model`, every entry shows
+  purpose and required input before selection and never replaces the active
+  agent/provider pair.
 - Top-level `model`, `availableModels`, and `modelOverrides`, plus `provider.active`,
   `provider.model`, and provider-scoped `provider.baseUrls`, persist choices per scope. A
   switch preserves the independently saved Ollama, LM Studio, llama.cpp, vLLM, Unsloth, NVIDIA Agentic,
   `openai-compatible`, and direct-API addresses.
+- Runtime model resolution reads the model scoped to `provider.active`; an
+  inherited legacy top-level model cannot be combined with a different active
+  provider.
 - `src/utils/model/aliases.ts` maps friendly aliases; `validateModel.ts` checks against the
   provider's discovered list; `ollamaTuning.ts` adjusts context/params for local models.
 - Deprecation warnings and 1M-context upgrade checks live in `deprecation.ts` /

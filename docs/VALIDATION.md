@@ -19,7 +19,7 @@ You need:
 
 ```sh
 ur --version
-# expected for this release: "1.85.1 (UR-Nexus)"
+# expected for this release: "1.85.2 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)

@@ -452,6 +452,13 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    UR supports direct HTTP, model-specific NVCF invocation, NVIDIA Assets,
    asynchronous polling, and the five documented Maxine/Riva gRPC services;
    artifacts are written under `.ur/artifacts/nvidia/` unless a path is supplied.
+   Selecting a Special row activates a real task mode: the next non-command
+   prompt goes directly to that card's inference endpoint and never passes
+   through the ongoing Anthropic, OpenAI, Ollama, or other chat provider. Plain
+   text becomes `prompt`. Models requiring media accept newline fields such as
+   `video_path: /path/source.mp4` or `image_path: /path/image.png`; exact JSON is
+   also accepted. First-workspace setup shows NVIDIA Special too, then returns
+   to the provider list so an ordinary agent model can be chosen for other work.
 
    In the model catalog, use **Up/Down** to browse. For graded models, the effort row updates to
    the focused model's capability-backed selectors; use **Left/Right** to cycle
@@ -523,7 +530,9 @@ identity line in the system prompt reflects it too:
   documented hosted chat endpoint or a user-selected compatible NIM gateway.
   NVIDIA Special uses each card's documented HTTP, direct NVCF, or gRPC
   endpoint with the same stored `NVIDIA_API_KEY`; asynchronous jobs are polled
-  through NVIDIA's request ID until completion or user cancellation.
+  through NVIDIA's request ID until completion or user cancellation. While a
+  Special task is selected, the next plain prompt is dispatched directly and
+  does not require the ongoing agent provider to be connected.
 - **Local/server** providers call the configured endpoint (`/v1/chat/completions`
   for LM Studio/llama.cpp/vLLM/Unsloth; the native API for Ollama). Unsloth is
   provider-only: UR never starts, installs, updates, trains, or loads models in

@@ -133,6 +133,8 @@ type Props = {
   ) => void
   onCancel?: () => void
   onTaskSelect?: (selection: NvidiaTaskSelectionMetadata) => void
+  /** First-run setup still needs an agent model after choosing a task runtime. */
+  continueAfterTaskSelect?: boolean
   isStandaloneCommand?: boolean
   headerText?: string
 }
@@ -142,6 +144,7 @@ export function ProviderFirstModelPicker({
   onSelect,
   onCancel,
   onTaskSelect,
+  continueAfterTaskSelect = false,
   isStandaloneCommand,
   headerText,
 }: Props): React.ReactNode {
@@ -655,6 +658,15 @@ export function ProviderFirstModelPicker({
         taskKind: selectedOption.taskKind,
         purpose: selectedOption.purpose,
       })
+      if (continueAfterTaskSelect) {
+        setSelectedProvider(null)
+        setModelOptions([])
+        setFocusedModelValue(null)
+        setProviderWarning(
+          'NVIDIA Special task mode is ready. Now choose the provider and model UR should use for ordinary agent conversations.',
+        )
+        setStep('provider')
+      }
       return
     }
     const selectedProviderId = selectedProvider?.value as ProviderId | undefined
@@ -767,6 +779,9 @@ export function ProviderFirstModelPicker({
     // Update app state
     setAppState(prev => ({
       ...prev,
+      mainLoopModel: value,
+      mainLoopModelForSession: null,
+      nvidiaTaskModel: undefined,
       provider: {
         ...(prev.provider ?? {}),
         ...(savedProviderSettings ?? {

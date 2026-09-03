@@ -211,6 +211,16 @@ from `OPENAI_API_KEY`. NVIDIA Agentic/Special use one key stored with
 `ur connect nvidia-nim` or `ur connect nvidia-special`; Agentic keeps any
 custom `base_url` scoped to that provider.
 
+When NVIDIA Special is selected, plain prompts are sent directly to its exact
+model-card endpoint. They must not produce Anthropic/Ollama connection or
+provider-model errors. If a contract needs media, provide its required field,
+for example:
+
+```text
+prompt: Turn this source into an 8mm-film scene.
+video_path: /absolute/path/source.mp4
+```
+
 ### Anthropic says `anthropic-workspace-id is required`
 
 - Cause: the API key is identity-linked and can act across workspaces. Anthropic
