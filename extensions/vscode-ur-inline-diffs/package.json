@@ -51,9 +51,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/vscode": "^1.92.0",
-    "bun-types": "^1.2.0",
-    "esbuild": "^0.28.1",
+    "@types/vscode": "^1.136.0",
+    "bun-types": "^1.4.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.7.0"
   },
   "contributes": {
