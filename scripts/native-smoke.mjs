@@ -17,7 +17,10 @@ function option(name, fallback) {
 const platform = option('--target', `${process.platform}-${process.arch}`)
 const offlineOnly = process.argv.includes('--offline-only')
 const source = resolve(root, option('--out-dir', 'dist-native'), platform)
-const temporary = mkdtempSync(join(tmpdir(), 'ur native release smoke '))
+// Hosted Windows TEMP may be an 8.3 alias (RUNNER~1), which correctly requires
+// explicit approval in UR. Qualify an ordinary canonical workspace instead.
+const temporaryBase = realpathSync.native(process.env.RUNNER_TEMP || tmpdir())
+const temporary = mkdtempSync(join(temporaryBase, 'ur native release smoke '))
 const installation = join(temporary, 'installed application')
 const workspace = join(temporary, 'workspace')
 const home = join(temporary, 'home')
@@ -90,6 +93,7 @@ const results = []
 const commandTrace = join(temporary, 'native-commands.jsonl')
 const requestTrace = join(temporary, 'provider-requests.jsonl')
 const providerDebugFiles = [join(temporary, 'provider-session.debug.log'), join(temporary, 'provider-resume.debug.log')]
+let commandSequence = 0
 writeFileSync(commandTrace, '')
 writeFileSync(requestTrace, '')
 const trace = (path, event) => appendFileSync(path, `${JSON.stringify({ time: new Date().toISOString(), ...event })}\n`)
@@ -97,13 +101,22 @@ const trace = (path, event) => appendFileSync(path, `${JSON.stringify({ time: ne
 function run(args, timeout = 120_000) {
   return new Promise((resolveRun, reject) => {
     const child = spawn(binary, args, { cwd: workspace, env, stdio: ['ignore', 'pipe', 'pipe'] })
-    trace(commandTrace, { event: 'start', command: args[0], pid: child.pid, debugFile: args.includes('--debug-file') ? args[args.indexOf('--debug-file') + 1] : undefined })
+    const label = `command-${String(++commandSequence).padStart(2, '0')}-${String(args[0] ?? 'default').replace(/[^a-z0-9_-]/gi, '')}`
+    const stdoutPath = join(temporary, `${label}.stdout.log`)
+    const stderrPath = join(temporary, `${label}.stderr.log`)
+    trace(commandTrace, { event: 'start', command: args[0], pid: child.pid, stdoutPath, stderrPath, debugFile: args.includes('--debug-file') ? args[args.indexOf('--debug-file') + 1] : undefined })
     let stdout = '', stderr = ''
     const timer = setTimeout(() => { trace(commandTrace, { event: 'timeout', command: args[0], pid: child.pid }); child.kill('SIGKILL'); reject(new Error(`Native command timed out: ${args[0]}; diagnostics: ${temporary}`)) }, timeout)
     child.stdout.on('data', data => { stdout += data; if (stdout.length > 8_000_000) child.kill('SIGKILL') })
     child.stderr.on('data', data => { stderr += data; if (stderr.length > 8_000_000) child.kill('SIGKILL') })
     child.once('error', error => { clearTimeout(timer); trace(commandTrace, { event: 'spawn-error', command: args[0], error: String(error) }); reject(error) })
-    child.once('close', code => { clearTimeout(timer); trace(commandTrace, { event: 'close', command: args[0], pid: child.pid, code, stdoutBytes: stdout.length, stderrBytes: stderr.length }); resolveRun({ code, stdout, stderr }) })
+    child.once('close', code => {
+      clearTimeout(timer)
+      writeFileSync(stdoutPath, stdout, { mode: 0o600 })
+      writeFileSync(stderrPath, stderr, { mode: 0o600 })
+      trace(commandTrace, { event: 'close', command: args[0], pid: child.pid, code, stdoutBytes: stdout.length, stderrBytes: stderr.length })
+      resolveRun({ code, stdout, stderr })
+    })
   })
 }
 
@@ -223,7 +236,7 @@ try {
         const chunks = []
         for await (const chunk of request) chunks.push(chunk)
         const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-        trace(requestTrace, { event: 'completion', model: body.model, stream: body.stream, messageRoles: body.messages?.map(message => message.role), toolNames: body.tools?.map(tool => tool.function?.name) })
+        trace(requestTrace, { event: 'completion', model: body.model, stream: body.stream, messageRoles: body.messages?.map(message => message.role), toolNames: body.tools?.map(tool => tool.function?.name), toolResults: body.messages?.filter(message => message.role === 'tool') })
         requests.push(body)
         const toolResults = body.messages.filter(message => message.role === 'tool')
         const completed = toolResults.length
@@ -281,7 +294,20 @@ try {
       const output = requireSuccess(await run(['-p', '--debug-file', providerDebugFiles[0], ...common, 'Write release-proof.txt containing native release write proof, then read it back and verify it.']))
       const result = JSON.parse(output)
       if (result.is_error) throw new Error(result.result ?? output)
-      if (!existsSync(proof) || readFileSync(proof, 'utf8') !== proofContent) throw new Error('Native Write did not create the expected proof')
+      const proofExists = existsSync(proof)
+      const actualProof = proofExists ? readFileSync(proof) : undefined
+      if (!actualProof || actualProof.toString('utf8') !== proofContent) {
+        const diagnostics = {
+          proof, proofExists, expectedContent: proofContent,
+          actualContent: actualProof?.toString('utf8') ?? null,
+          actualBytesHex: actualProof?.toString('hex') ?? null,
+          cliResult: result,
+          lastToolResults: requests.at(-1)?.messages.filter(message => message.role === 'tool') ?? [],
+          workspaceFiles: readdirSync(workspace),
+        }
+        writeFileSync(join(temporary, 'provider-proof-diagnostics.json'), `${JSON.stringify(diagnostics, null, 2)}\n`, { mode: 0o600 })
+        throw new Error(`Native Write proof mismatch: ${JSON.stringify(diagnostics)}`)
+      }
       if (requests.length < 6 || !requests.some(body => body.messages.some(message => message.role === 'tool'))) throw new Error('No complete native tool loop was observed')
       if (!requests.some(body => body.stream === true)) throw new Error('Native streaming was not exercised')
       const task = JSON.parse(readFileSync(join(home, '.ur', 'tasks', 'native-release-smoke', `${createdTaskId}.json`), 'utf8'))
