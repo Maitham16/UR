@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -25,7 +25,7 @@ describe('installed native resources', () => {
     writeFileSync(join(resources, 'modules', 'helper.cjs'), 'module.exports = "generated module"')
     writeFileSync(join(directory, 'outside.cjs'), 'module.exports = "must not load"')
     writeFileSync(join(resources, 'marker.txt'), 'installation resource')
-    writeFileSync(join(resources, 'manifest.json'), '{"schemaVersion":1,"version":"fixture","files":{}}')
+    writeFileSync(join(resources, 'manifest.json'), JSON.stringify({ schemaVersion: 1, version: 'fixture', platform: `${process.platform}-${process.arch}`, files: {} }))
     for (const [base, value] of [[resources, 'installed module'], [join(project, 'resources'), 'project impostor']]) {
       writeFileSync(join(base!, 'node_modules', 'fixture-sidecar', 'package.json'), '{"name":"fixture-sidecar","main":"index.js"}')
       writeFileSync(join(base!, 'node_modules', 'fixture-sidecar', 'index.js'), `module.exports = ${JSON.stringify(value)}`)
@@ -41,7 +41,7 @@ else if (process.argv[2] === 'generated-module') { console.log(loadNativeModule(
 else if (process.argv[2] === 'unsafe-module') { loadNativeModule('unsafe-sidecar'); }
 else console.log(JSON.stringify({text:readFileSync(requireNativeResource('marker.txt'),'utf8'),module:loadNativeModule('fixture-sidecar'),version:readNativeResourceManifest()?.version}));
 `)
-    execFileSync(process.execPath, ['build', entry, '--compile', '--define', 'UR_NATIVE_BUILD=true', '--outfile', executable], { stdio: 'pipe' })
+    execFileSync(process.execPath, ['build', entry, '--compile', '--define', 'UR_NATIVE_BUILD=true', '--define', 'MACRO.VERSION="fixture"', '--outfile', executable], { stdio: 'pipe' })
   }, 120_000)
 
   afterAll(() => {
@@ -73,6 +73,19 @@ else console.log(JSON.stringify({text:readFileSync(requireNativeResource('marker
     const result = spawnSync(executable, ['generated-module'], { cwd: project, env: { PATH: '' }, encoding: 'utf8' })
     expect(result.status).toBe(0)
     expect(result.stdout.trim()).toBe('generated module')
+  })
+
+  test('rejects same-platform resources from a different executable version', () => {
+    const manifestPath = join(directory, 'resources', 'manifest.json')
+    const original = readFileSync(manifestPath, 'utf8')
+    try {
+      writeFileSync(manifestPath, JSON.stringify({ ...JSON.parse(original), version: 'old-release' }))
+      const result = spawnSync(executable, [], { cwd: project, env: { PATH: '' }, encoding: 'utf8' })
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain('executable and resources have different versions')
+    } finally {
+      writeFileSync(manifestPath, original)
+    }
   })
 
   test.skipIf(process.platform === 'win32')('stable executable symlinks retain their version resources', () => {

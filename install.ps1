@@ -59,7 +59,7 @@ try {
     New-Item -ItemType Directory -Path $Staging | Out-Null
   $Archive = Join-Path $Staging $File
   Invoke-WebRequest -UseBasicParsing -Uri "$Url/$File" -OutFile $Archive
-  if ((Get-Item $Archive).Length -ne $Artifact.size -or (Get-FileHash -Algorithm SHA256 $Archive).Hash.ToLowerInvariant() -cne $Artifact.sha256) { throw 'Native release checksum or size mismatch' }
+  if ((Get-Item -LiteralPath $Archive).Length -ne $Artifact.size -or (Get-FileHash -Algorithm SHA256 -LiteralPath $Archive).Hash.ToLowerInvariant() -cne $Artifact.sha256) { throw 'Native release checksum or size mismatch' }
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   $Zip = [IO.Compression.ZipFile]::OpenRead($Archive)
   try {

@@ -151004,6 +151004,16 @@ var init_apiLimits = __esm(() => {
   PDF_MAX_EXTRACT_SIZE = 100 * 1024 * 1024;
 });
 
+// src/utils/buildVersion.ts
+function getBuildVersion(fallback = "unknown") {
+  try {
+    const version2 = "1.86.0";
+    return typeof version2 === "string" && version2.trim() ? version2 : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 // src/utils/nativeResources.ts
 import { existsSync as existsSync9, readFileSync as readFileSync14, realpathSync as realpathSync6 } from "fs";
 import { createRequire } from "module";
@@ -151094,7 +151104,7 @@ function readNativeResourceManifest() {
   if (manifest.schemaVersion !== 1 || typeof manifest.version !== "string" || !manifest.files) {
     throw new Error("UR resource manifest is invalid. Reinstall this version of UR.");
   }
-  if (typeof MACRO !== "undefined" && manifest.version !== "1.86.0") {
+  if (manifest.version !== getBuildVersion()) {
     throw new Error("UR executable and resources have different versions. Reinstall this version of UR.");
   }
   return manifest;
@@ -378490,7 +378500,7 @@ function detectLinuxGlobPatternWarnings() {
 }
 async function getDoctorDiagnostic() {
   const installationType = await getCurrentInstallationType();
-  const version2 = typeof MACRO !== "undefined" ? "1.86.0" : "unknown";
+  const version2 = getBuildVersion();
   const installationPath = await getInstallationPath();
   const invokedBinary = getInvokedBinary();
   const multipleInstallations = await detectMultipleInstallations();
@@ -781573,7 +781583,7 @@ function generateHtmlReport(data, insights) {
 </html>`;
 }
 function buildExportData(data, insights, facets, remoteStats) {
-  const version3 = typeof MACRO !== "undefined" ? "1.86.0" : "unknown";
+  const version3 = getBuildVersion();
   const remote_hosts_collected = remoteStats?.hosts.filter((h2) => h2.sessionCount > 0).map((h2) => h2.name);
   const facets_summary = {
     total: facets.size,
@@ -785888,7 +785898,7 @@ var init_sessionStorage = __esm(() => {
   init_settings2();
   init_slowOperations();
   init_uuid();
-  VERSION8 = typeof MACRO !== "undefined" ? "1.86.0" : "unknown";
+  VERSION8 = getBuildVersion();
   MAX_TOMBSTONE_REWRITE_BYTES = 50 * 1024 * 1024;
   SKIP_FIRST_PROMPT_PATTERN = /^(?:\s*<[a-z][\w-]*[\s>]|\[Request interrupted by user[^\]]*\])/;
   EPHEMERAL_PROGRESS_TYPES = new Set([

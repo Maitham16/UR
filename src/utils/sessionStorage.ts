@@ -65,6 +65,7 @@ import type {
 import type { QueueOperationMessage } from '../types/messageQueueTypes.js'
 import { uniq } from './array.js'
 import { registerCleanup } from './cleanupRegistry.js'
+import { getBuildVersion } from './buildVersion.js'
 import { updateSessionName } from './concurrentSessions.js'
 import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
@@ -95,7 +96,7 @@ import type { ContentReplacementRecord } from './toolResultStorage.js'
 import { validateUuid } from './uuid.js'
 
 // Cache MACRO.VERSION at module level to work around bun --define bug in async contexts
-const VERSION = typeof MACRO !== 'undefined' ? MACRO.VERSION : 'unknown'
+const VERSION = getBuildVersion()
 
 type Transcript = (
   | UserMessage

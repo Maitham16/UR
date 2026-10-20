@@ -20,6 +20,7 @@ import {
   LEGACY_AGENT_TOOL_NAME,
 } from '../tools/AgentTool/constants.js'
 import type { LogOption } from '../types/logs.js'
+import { getBuildVersion } from '../utils/buildVersion.js'
 import { getURConfigHomeDir } from '../utils/envUtils.js'
 import { toError } from '../utils/errors.js'
 import { execFileNoThrow } from '../utils/execFileNoThrow.js'
@@ -2682,7 +2683,7 @@ export function buildExportData(
   facets: Map<string, SessionFacets>,
   remoteStats?: { hosts: RemoteHostInfo[]; totalCopied: number },
 ): InsightsExport {
-  const version = typeof MACRO !== 'undefined' ? MACRO.VERSION : 'unknown'
+  const version = getBuildVersion()
 
   const remote_hosts_collected = remoteStats?.hosts
     .filter(h => h.sessionCount > 0)

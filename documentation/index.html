@@ -129,6 +129,10 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ur --version</code></pre>
             <p>The PATH command applies to this terminal. Add it once to your zsh or bash startup file for future terminals; see the <a href="../docs/NATIVE_INSTALL.md#install">shell startup instructions</a>.</p>
+            <p>Windows x64 (PowerShell):</p>
+            <pre><code>Invoke-WebRequest https://github.com/Maitham16/UR/releases/latest/download/install.ps1 -OutFile install-ur.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-ur.ps1</code></pre>
+            <p>The execution-policy option applies only to the installer process and leaves your saved policy unchanged. Open a new terminal after installation. See <a href="../docs/NATIVE_INSTALL.md#install">Windows installation details</a>.</p>
           </article>
           <article class="step">
             <span>2</span>

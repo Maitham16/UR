@@ -9,7 +9,7 @@ const root = resolve(import.meta.dirname, '..')
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
 const artifactIndex = process.argv.indexOf('--artifact-dir')
 const artifacts = resolve(artifactIndex < 0 ? 'dist-release/native' : process.argv[artifactIndex + 1])
-const work = mkdtempSync(join(tmpdir(), 'ur bootstrap café! '))
+const work = mkdtempSync(join(tmpdir(), 'ur bootstrap [café!] '))
 const bin = join(work, 'application bin'), data = join(work, 'application data'), home = join(work, 'private home')
 mkdirSync(home)
 const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? 'C:\\Windows'

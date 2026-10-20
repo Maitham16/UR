@@ -10,12 +10,13 @@ import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertVersionConsistency } from './version-consistency.mjs'
+import { NATIVE_BUN_VERSION, prepareNativeCompileExecutable } from './native-compiler.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(join(root, 'package.json'))
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const bun = process.env.BUN_BIN || process.env.BUN_EXECUTABLE || 'bun'
-const nativeBunVersion = '1.3.14'
+const nativeBunVersion = NATIVE_BUN_VERSION
 
 function option(name, fallback) {
   const index = process.argv.indexOf(name)
@@ -140,11 +141,35 @@ function bundleSharp(resources, copied) {
   const source = readFileSync(destination, 'utf8')
   const shim = `// Generated native resource export map; no project module lookup.\nconst urOriginalRequire = require;\nconst urNativeExports = ${JSON.stringify(mappings)};\nrequire = Object.assign(specifier => urOriginalRequire(urNativeExports[specifier] ?? specifier), urOriginalRequire);\n`
   writeFileSync(destination, shim + source)
-  const sharp = stagedRequire(destination)
-  if (typeof sharp !== 'function' || !sharp.versions?.vips) throw new Error('Bundled sharp/libvips did not load')
 }
 
-function build() {
+function validateNativeModules(resources) {
+  // A child releases its dlopen handles before Windows renames/cleans the stage.
+  execFileSync(process.execPath, ['--input-type=commonjs', '-e', `
+    const {createRequire} = require('node:module');
+    const {realpathSync} = require('node:fs');
+    const {join,relative,sep,isAbsolute} = require('node:path');
+    const root = process.argv[1];
+    const req = createRequire(join(root, 'package.json'));
+    const modules = realpathSync(join(root, 'node_modules'));
+    function staged(name) {
+      const entry = realpathSync(req.resolve(name));
+      const rel = relative(modules, entry);
+      if (rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) throw new Error('Staged module escapes release: ' + name);
+      return req(entry);
+    }
+    (async () => {
+      for (const sharp of [staged('sharp'), req(join(root, 'modules', 'sharp.cjs'))]) {
+        if (typeof sharp !== 'function' || !sharp.versions?.vips) throw new Error('Staged sharp/libvips did not load');
+        const image = await sharp({create:{width:2,height:2,channels:3,background:{r:1,g:2,b:3}}}).png().toBuffer();
+        if ((await sharp(image).metadata()).width !== 2) throw new Error('Staged native image processing failed');
+      }
+      if (!staged('playwright-core').chromium) throw new Error('Staged browser engine did not load');
+    })().catch(error => {console.error(error); process.exitCode=1});
+  `, resources], { cwd: root, stdio: 'inherit', timeout: 30_000 })
+}
+
+async function build() {
   const compilerVersion = execFileSync(bun, ['--version'], { encoding: 'utf8' }).trim()
   if (compilerVersion !== nativeBunVersion) throw new Error(`Native releases require the tested Bun ${nativeBunVersion} compiler; found ${compilerVersion}`)
   const target = option('--target', `${process.platform}-${process.arch}`)
@@ -163,6 +188,7 @@ function build() {
     throw new Error('Choose a separate native build output directory')
   }
   mkdirSync(out, { recursive: true })
+  const compileExecutable = await prepareNativeCompileExecutable(target, join(out, '.compiler-cache'))
   const stage = mkdtempSync(join(out, `.build-${target}-`))
   const resources = join(stage, 'resources')
   mkdirSync(resources, { recursive: true })
@@ -223,18 +249,8 @@ function build() {
     }))
     copyModule('sharp')
     copyModule('playwright-core')
-    // Resolve and test addons before compiling; a wrong-architecture binary must fail the build.
-    const stagedRequire = createRequire(join(resources, 'package.json'))
-    function stagedModule(name) {
-      const entry = realpathSync(stagedRequire.resolve(name))
-      const rel = relative(realpathSync(join(resources, 'node_modules')), entry)
-      if (rel === '..' || rel.startsWith(`..${sep}`)) throw new Error(`Staged ${name} resolved outside the release`)
-      return stagedRequire(entry)
-    }
-    const sharp = stagedModule('sharp')
-    if (typeof sharp !== 'function' || !sharp.versions?.vips) throw new Error('Staged sharp/libvips did not load')
-    if (!stagedModule('playwright-core').chromium) throw new Error('Staged browser engine did not load')
     bundleSharp(resources, copied)
+    validateNativeModules(resources)
 
     mkdirSync(join(resources, 'bin'), { recursive: true })
     const { rgPath } = require('@vscode/ripgrep')
@@ -300,6 +316,8 @@ function build() {
     const executable = join(stage, process.platform === 'win32' ? 'ur.exe' : 'ur')
     execFileSync(bun, [
       'build', 'src/entrypoints/cli.tsx', '--compile', '--target', config.bun,
+      ...(compileExecutable ? ['--compile-executable-path', compileExecutable] : []),
+      '--no-compile-autoload-bunfig',
       '--outfile', executable,
       '--external', 'sharp', '--external', 'audio-capture-napi', '--external', 'playwright-core',
       '--define', 'UR_NATIVE_BUILD=true',
@@ -328,12 +346,13 @@ function build() {
     renameSync(stage, destination)
     console.log(`Native release built: ${destination}`)
   } catch (error) {
-    rmSync(stage, { recursive: true, force: true })
+    try { rmSync(stage, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) }
+    catch (cleanupError) { console.warn(`Native build stage cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`) }
     throw error
   }
 }
 
-try { build() } catch (error) {
+try { await build() } catch (error) {
   console.error(error instanceof Error ? error.stack : String(error))
   process.exitCode = 1
 }

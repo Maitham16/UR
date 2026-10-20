@@ -4,6 +4,7 @@ import { homedir } from 'os'
 import { delimiter, join, posix, win32 } from 'path'
 import { checkGlobalInstallPermissions } from './autoUpdater.js'
 import { isInBundledMode } from './bundledMode.js'
+import { getBuildVersion } from './buildVersion.js'
 import {
   formatAutoUpdaterDisabledReason,
   getAutoUpdaterDisabledReason,
@@ -511,8 +512,7 @@ export function detectLinuxGlobPatternWarnings(): Array<{
 
 export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
   const installationType = await getCurrentInstallationType()
-  const version =
-    typeof MACRO !== 'undefined' && MACRO.VERSION ? MACRO.VERSION : 'unknown'
+  const version = getBuildVersion()
   const installationPath = await getInstallationPath()
   const invokedBinary = getInvokedBinary()
   const multipleInstallations = await detectMultipleInstallations()

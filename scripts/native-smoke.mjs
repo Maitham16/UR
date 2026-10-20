@@ -2,7 +2,7 @@
 // Qualify the installed artifact, not the checkout. The child PATH has no runtimes.
 import { execFileSync, spawn } from 'node:child_process'
 import { createServer } from 'node:http'
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -80,6 +80,12 @@ const env = {
   OPENAI_COMPATIBLE_API_KEY: 'ur-native-smoke-no-secret',
   TERM: 'dumb', NO_COLOR: '1', CI: '1',
 }
+const preloadMarker = join(workspace, 'untrusted-bunfig-executed')
+const preloadScript = join(workspace, 'untrusted-preload.cjs')
+writeFileSync(preloadScript, `require('node:fs').writeFileSync(${JSON.stringify(preloadMarker)}, 'unexpected project code execution')`)
+const untrustedBunfig = `preload = [${JSON.stringify(preloadScript.replaceAll('\\', '/'))}]\n`
+writeFileSync(join(workspace, 'bunfig.toml'), untrustedBunfig)
+writeFileSync(join(home, '.bunfig.toml'), untrustedBunfig)
 const results = []
 const commandTrace = join(temporary, 'native-commands.jsonl')
 const requestTrace = join(temporary, 'provider-requests.jsonl')
@@ -115,11 +121,33 @@ function requireSuccess(result) {
   return result.stdout
 }
 
+function assertSessionVersion(sessionId) {
+  const matches = []
+  function visit(directory) {
+    if (!existsSync(directory)) return
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name)
+      if (entry.isDirectory()) visit(path)
+      else if (entry.isFile() && entry.name === `${sessionId}.jsonl`) matches.push(path)
+    }
+  }
+  visit(join(home, '.ur', 'projects'))
+  if (matches.length !== 1) throw new Error(`Expected one persisted native session; found ${matches.length}`)
+  const messages = readFileSync(matches[0], 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(entry => entry.type === 'user' || entry.type === 'assistant')
+  if (!messages.some(entry => entry.type === 'user') || !messages.some(entry => entry.type === 'assistant') || messages.some(entry => entry.version !== packageVersion || entry.sessionId !== sessionId)) {
+    throw new Error(`Installed native transcript has incorrect release metadata: ${JSON.stringify(messages.map(({ type, version, sessionId }) => ({ type, version, sessionId })))}`)
+  }
+}
+
 let server
 try {
   await check('installed version without Node or Bun', async () => {
     const output = requireSuccess(await run(['--version']))
     if (output.trim() !== `${manifest.version} (UR-Nexus)`) throw new Error(`Unexpected version: ${output}`)
+  })
+  await check('untrusted Bun configuration cannot preload code', async () => {
+    requireSuccess(await run(['--help']))
+    if (existsSync(preloadMarker)) throw new Error('Project or home Bun configuration executed an untrusted preload')
   })
   await check('installed help and configuration', async () => {
     if (!requireSuccess(await run(['--help'])).includes('Usage: ur')) throw new Error('Missing CLI help')
@@ -137,6 +165,15 @@ try {
     const output = requireSuccess(await run(['--ur-native-self-test']))
     const report = JSON.parse(output)
     if (!report.passed) throw new Error(JSON.stringify(report))
+  })
+  await check('installed executable rejects another version of its resources', async () => {
+    const path = join(installation, 'resources', 'manifest.json')
+    const original = readFileSync(path)
+    try {
+      writeFileSync(path, JSON.stringify({ ...manifest, version: `${packageVersion}-incompatible` }))
+      const result = await run(['--ur-native-self-test'])
+      if (result.code === 0 || !`${result.stdout}\n${result.stderr}`.includes('executable and resources have different versions')) throw new Error('Installed native resource version guard did not reject a stale manifest')
+    } finally { writeFileSync(path, original) }
   })
   await check('installed subprocess supervisor without external runtime', async () => {
     const output = requireSuccess(await run(['--internal-timeout', '10s', binary, '--version']))
@@ -253,14 +290,19 @@ try {
       if (!JSON.stringify(completedResults).includes('native release write proof')) throw new Error('Native Read did not return the written proof')
       sessionId = result.session_id
       if (!sessionId) throw new Error('Native session was not persisted')
+      assertSessionVersion(sessionId)
     })
     await check('native session resume', async () => {
       if (!sessionId) throw new Error('First native session failed')
       const output = requireSuccess(await run(['-p', '--debug-file', providerDebugFiles[1], ...common, '--resume', sessionId, 'Confirm the prior verification.']))
       const result = JSON.parse(output)
       if (result.is_error || !requests.at(-1).messages.some(message => JSON.stringify(message.content).includes('Write release-proof.txt'))) throw new Error('Resume did not restore the prior conversation')
+      assertSessionVersion(sessionId)
     })
   }
+  await check('native child processes preserve Bun configuration isolation', async () => {
+    if (existsSync(preloadMarker)) throw new Error('A native child executed an untrusted Bun preload')
+  })
 } finally {
   if (server) await new Promise(resolveServer => server.close(resolveServer))
   const failed = results.some(result => !result.passed)

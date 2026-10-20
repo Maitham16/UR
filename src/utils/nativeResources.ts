@@ -2,6 +2,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { isInBundledMode } from './bundledMode.js'
+import { getBuildVersion } from './buildVersion.js'
 
 /** Native releases install their executable and resources together. Never use cwd. */
 let nativeResourcesRoot: string | undefined
@@ -100,7 +101,7 @@ export function readNativeResourceManifest(): NativeResourceManifest | null {
   if (manifest.schemaVersion !== 1 || typeof manifest.version !== 'string' || !manifest.files) {
     throw new Error('UR resource manifest is invalid. Reinstall this version of UR.')
   }
-  if (typeof MACRO !== 'undefined' && manifest.version !== MACRO.VERSION) {
+  if (manifest.version !== getBuildVersion()) {
     throw new Error('UR executable and resources have different versions. Reinstall this version of UR.')
   }
   return manifest

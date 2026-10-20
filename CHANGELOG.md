@@ -21,6 +21,8 @@
   they do not require an unrelated URHQ OAuth token. Generated automation
   examples now call the installed CLI without importing an unpublished SDK.
 - Updated affected dependencies to compatible security fixes.
+- Session logs, diagnostics, and insights now record the compiled release
+  version, and native validation rejects resources from a different version.
 - Backported the node-forge RSA signature-verification fix and verified it in
   the actual packed and native CLIs. The upstream registry advisory remains
   open, and npm's dependency tree does not receive Bun's patch.

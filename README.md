@@ -187,8 +187,11 @@ Windows x64 PowerShell:
 
 ```powershell
 Invoke-WebRequest https://github.com/Maitham16/UR/releases/latest/download/install.ps1 -OutFile install-ur.ps1
-.\install-ur.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-ur.ps1
 ```
+
+The Windows execution-policy option applies only to that installer process;
+it does not change your saved user or machine policy.
 
 The Unix `export` command makes UR available in the current terminal. Follow
 the [shell startup instructions](docs/NATIVE_INSTALL.md#install) to preserve it

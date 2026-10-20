@@ -45,8 +45,16 @@ Windows x64 PowerShell:
 
 ```powershell
 Invoke-WebRequest https://github.com/Maitham16/UR/releases/latest/download/install.ps1 -OutFile install-ur.ps1
-.\install-ur.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-ur.ps1
 ```
+
+The Windows command permits the downloaded installer in a new PowerShell
+process. It needs no administrator elevation and does not change the execution
+policy saved for your user or machine. Microsoft documents this
+[per-session execution-policy option](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1#-executionpolicy-executionpolicy).
+An organization's Group Policy can still override it; use your organization's
+approved installation path if script execution is restricted by policy. See
+[execution-policy precedence](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-5.1#execution-policy-scope-and-precedence).
 
 Unix installation creates `~/.local/bin/ur` pointing to a version under
 `${XDG_DATA_HOME:-~/.local/share}/ur/versions/`. The `export` command above adds
@@ -85,7 +93,12 @@ sh install-ur.sh 1.86.0
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-PowerShell supports `.\install-ur.ps1 -Version 1.86.0`.
+For the same pinned installation in PowerShell:
+
+```powershell
+Invoke-WebRequest https://github.com/Maitham16/UR/releases/download/v1.86.0/install.ps1 -OutFile install-ur.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-ur.ps1 -Version 1.86.0
+```
 
 ## Verify a download
 
