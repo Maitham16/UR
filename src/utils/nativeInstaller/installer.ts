@@ -33,6 +33,7 @@ import { getMaxVersion, shouldSkipVersion } from '../autoUpdater.js'
 import { registerCleanup } from '../cleanupRegistry.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { fetchNativeVersion, getNativeInstallDirectories, installNativeRelease, validateNativeVersion } from '../nativeRelease.js'
+import { getManagedWindowsNativeExecutable } from '../urExecutable.js'
 import { logForDebugging } from '../debug.js'
 import { getCurrentInstallationType } from '../doctorDiagnostic.js'
 import { env } from '../env.js'
@@ -121,7 +122,7 @@ function getBaseDirectories() {
     locks: join(getXDGStateHome(), 'ur', 'locks'),
 
     // User bin
-    executable: join(nativeDirectories.binDir, platform.startsWith('win32') ? 'ur.cmd' : executableName),
+    executable: join(nativeDirectories.binDir, platform.startsWith('win32') ? 'ur.exe' : executableName),
   }
 }
 
@@ -321,7 +322,7 @@ export async function checkInstall(
   // isPossibleURBinary stats the path internally, so we don't pre-check
   // with access() — that would be a TOCTOU between access and the stat.
   if (isWindows) {
-    // On Windows the managed launcher is a command script, not a symlink.
+    // Windows uses an immutable native shim with an adjacent activation file.
     if (!(await isPossibleURBinary(dirs.executable))) {
       messages.push({
         message: `installMethod is native, but ur command is missing or invalid at ${dirs.executable}`,
@@ -458,7 +459,7 @@ async function installLatestImpl(
       try {
         const launcher = getBaseDirectories().executable
         const active = getPlatform().startsWith('win32')
-          ? (await readFile(launcher, 'utf8')).includes(`"${process.execPath.replace(/%/g, '%%')}"`)
+          ? getManagedWindowsNativeExecutable(process.execPath) === launcher
           : await realpath(launcher) === await realpath(process.execPath)
         if (active) {
           markNativeInstallation()

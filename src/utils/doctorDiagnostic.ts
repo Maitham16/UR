@@ -174,7 +174,7 @@ async function getInstallationPath(): Promise<string> {
 
     // If we can't find it, check common locations
     try {
-      const launcher = join(getNativeInstallDirectories().binDir, process.platform === 'win32' ? 'ur.cmd' : 'ur')
+      const launcher = join(getNativeInstallDirectories().binDir, process.platform === 'win32' ? 'ur.exe' : 'ur')
       await getFsImplementation().stat(launcher)
       return launcher
     } catch {
@@ -293,7 +293,7 @@ async function detectMultipleInstallations(): Promise<
 
   // Check common native installation paths
   const nativeDirectories = getNativeInstallDirectories()
-  const nativeBinPath = join(nativeDirectories.binDir, process.platform === 'win32' ? 'ur.cmd' : 'ur')
+  const nativeBinPath = join(nativeDirectories.binDir, process.platform === 'win32' ? 'ur.exe' : 'ur')
   try {
     await fs.stat(nativeBinPath)
     installations.push({ type: 'native', path: nativeBinPath })

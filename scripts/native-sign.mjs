@@ -67,8 +67,10 @@ try {
     writeFileSync(certificate,Buffer.from(process.env.WINDOWS_CERTIFICATE_PFX_BASE64,'base64'),{mode:0o600})
     const tool = run('powershell.exe',['-NoProfile','-Command',"(Get-ChildItem 'C:\\Program Files (x86)\\Windows Kits\\10\\bin\\*\\x64\\signtool.exe' | Sort-Object FullName -Descending | Select-Object -First 1).FullName"]).trim()
     if (!tool) throw new Error('Windows SDK signtool was not found')
-    run(tool,['sign','/fd','SHA256','/td','SHA256','/tr','http://timestamp.digicert.com','/f',certificate,'/p',process.env.WINDOWS_CERTIFICATE_PASSWORD,join(directory,'ur.exe')])
-    run(tool,['verify','/pa',join(directory,'ur.exe')])
+    for (const executable of [join(directory,'ur.exe'), join(directory,'resources','windows','ur-launcher.exe')]) {
+      run(tool,['sign','/fd','SHA256','/td','SHA256','/tr','http://timestamp.digicert.com','/f',certificate,'/p',process.env.WINDOWS_CERTIFICATE_PASSWORD,executable])
+      run(tool,['verify','/pa',executable])
+    }
     status.codeSigned = true
     status.reason = 'Authenticode signature verified'
   } else if (target.startsWith('linux')) status.reason = 'OS code signing is not applicable to Linux binaries'

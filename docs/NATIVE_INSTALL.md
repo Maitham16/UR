@@ -69,9 +69,15 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Save the file, then open a new terminal. The installer leaves these shell
-startup files for you to manage. Windows installs a `~/.local/bin/ur.cmd`
-launcher and adds its directory to your user PATH; open a new terminal there
-after installation.
+startup files for you to manage. Windows installs a native
+`~/.local/bin/ur.exe` launcher and adds its directory to your user PATH; open a
+new terminal there after installation. This launcher reads the adjacent
+`ur.cmd` activation file directly, so PowerShell and programs can run UR even
+when its installation path contains Unicode or percent characters. Updates
+atomically replace that activation file; the launcher executable stays in
+place. `.ur-native-launcher-v1.sha256` records its ownership and integrity.
+Normal `ur` commands run this native executable and need no PowerShell
+execution-policy option.
 
 ```sh
 ur --version
@@ -113,11 +119,18 @@ the release version and platform, archive SHA-256, safe extraction paths,
 executable version, and packaged-resource self-test before activation.
 
 Manual installation can extract the matching archive into a user-owned
-directory. Keep `ur` or `ur.exe` beside `resources/` and run:
+directory. Keep `ur` or `ur.exe` beside `resources/`. On macOS and Linux, run:
 
 ```sh
 ./ur --version
 ./ur --ur-native-self-test
+```
+
+In Windows PowerShell, run:
+
+```powershell
+.\ur.exe --version
+.\ur.exe --ur-native-self-test
 ```
 
 The downloaded `resources/signing.json` records whether OS signing and Apple
@@ -175,15 +188,16 @@ binary rollback does not undo configuration migrations.
 
 Download the matching `uninstall.sh` or `uninstall.ps1` release asset and run it.
 On Windows, use `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1`.
-Uninstall removes the owned launcher while preserving configuration, sessions,
+Uninstall removes the owned launcher files while preserving configuration, sessions,
 credentials, and immutable versions. The script prints any optional manual
 cleanup path. Other npm installations, aliases, project data, and dependencies
 are preserved.
 
 If the wrong `ur` starts, inspect `command -v ur` on Unix or `Get-Command ur`
 on Windows. A shell alias or an old package-manager install may precede the
-native launcher. Windows installation refuses an existing `ur.exe`/`ur.ps1`
-that would hide `ur.cmd` and explains how to resolve the conflict.
+native launcher. Windows installation refuses a foreign or damaged `ur.exe`
+or ownership record, and a conflicting `ur.ps1`, and explains how to resolve
+the conflict. It reuses an intact managed native launcher during updates.
 
 For missing or corrupted resources, rerun the pinned installer. A resource
 integrity failure must be repaired with the matching release; copying a new

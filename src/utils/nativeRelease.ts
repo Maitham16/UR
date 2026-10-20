@@ -160,18 +160,67 @@ export async function extractNativeArchive(archive: string, destination: string,
   await inspect(destination)
 }
 
+async function ensureWindowsNativeShim(executable: string, launcher: string): Promise<boolean> {
+  const source = join(dirname(executable), 'resources', 'windows', 'ur-launcher.exe')
+  const shim = join(dirname(launcher), 'ur.exe')
+  const marker = join(dirname(launcher), '.ur-native-launcher-v1.sha256')
+  if (!(await lstat(source)).isFile()) throw new Error('Verified Windows release launcher is not a regular file')
+  const bytes = await readFile(source)
+  if (bytes.length === 0) throw new Error('Verified Windows release launcher is empty')
+  const expected = createHash('sha256').update(bytes).digest('hex')
+  async function entry(path: string) {
+    try { return await lstat(path) }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error }
+  }
+  const shimEntry = await entry(shim), markerEntry = await entry(marker)
+  if (shimEntry || markerEntry) {
+    const identity = markerEntry?.isFile() ? (await readFile(marker, 'utf8')).match(/^UR-Nexus native launcher v1\n([a-f0-9]{64})\n(?![\s\S])/) : null
+    if (!shimEntry?.isFile() || !identity || createHash('sha256').update(await readFile(shim)).digest('hex') !== identity[1]) {
+      throw new Error(`Existing ${shim} or ${marker} is not an intact managed native launcher. Move that previous installation aside and retry.`)
+    }
+    return false
+  }
+  // The shim is immutable. Never replace a running Windows executable: all
+  // subsequent upgrades and rollbacks activate only the adjacent ur.cmd file.
+  // Its ownership record retains the original hash when a future compiler or
+  // platform signature changes the verified candidate's bytes, preserving v1.
+  let createdShim = false, createdMarker = false
+  try {
+    const output = await open(shim, 'wx', 0o755)
+    createdShim = true
+    try { await output.writeFile(bytes) } finally { await output.close() }
+    const identity = await open(marker, 'wx', 0o600)
+    createdMarker = true
+    try { await identity.writeFile(`UR-Nexus native launcher v1\n${expected}\n`) } finally { await identity.close() }
+    return true
+  }
+  catch (error) {
+    if (createdMarker) await retryWindowsFileOperation(() => rm(marker, { force: true }), true).catch(() => {})
+    if (createdShim) await retryWindowsFileOperation(() => rm(shim, { force: true }), true).catch(() => {})
+    throw error
+  }
+}
+
 /** Atomically replace launcher. Keeping the old name until rename also handles equal-sized binaries. */
 export async function activateNativeRelease(executable: string, launcher: string, windows: boolean, dataDir?: string): Promise<void> {
   await mkdir(dirname(launcher), { recursive: true })
   const temporary = `${launcher}.tmp.${randomUUID()}`
+  let createdWindowsShim = false
   try {
     if (windows) {
       const directories = getNativeInstallDirectories({ binDir: dirname(launcher), dataDir: dataDir ?? dirname(dirname(dirname(executable))) })
       if (/[\0\r\n"]/.test(executable)) throw new Error('Unsupported installation path')
       const escape = (value: string) => value.replace(/%/g, '%%')
       await writeFile(temporary, `@echo off\r\n@setlocal DisableDelayedExpansion\r\n@"%SystemRoot%\\System32\\chcp.com" 65001 >nul\r\n@set "UR_NATIVE_BIN_DIR=${escape(directories.binDir)}"\r\n@set "UR_NATIVE_DATA_DIR=${escape(directories.dataDir)}"\r\n"${escape(executable)}" %*\r\n`, { mode: 0o755 })
+      createdWindowsShim = await ensureWindowsNativeShim(executable, launcher)
     } else await symlink(executable, temporary)
     await retryWindowsFileOperation(() => rename(temporary, launcher), windows)
+    createdWindowsShim = false
+  } catch (error) {
+    if (createdWindowsShim) {
+      for (const name of ['.ur-native-launcher-v1.sha256', 'ur.exe']) await retryWindowsFileOperation(() => rm(join(dirname(launcher), name), { force: true }), true).catch(() => {})
+    }
+    throw error
   } finally { await retryWindowsFileOperation(() => rm(temporary, { force: true }), windows).catch(() => {}) }
 }
 
@@ -199,7 +248,7 @@ export async function installNativeRelease(target = 'latest', options: { force?:
   const windows = platform.startsWith('win32-')
   const executableName = windows ? 'ur.exe' : 'ur'
   const launcher = join(binDir, windows ? 'ur.cmd' : 'ur')
-  if (windows) for (const name of ['ur.exe', 'ur.ps1']) {
+  if (windows) for (const name of ['ur.ps1']) {
     const conflict = join(dirname(launcher), name)
     try { await lstat(conflict) } catch { continue }
     throw new Error(`Existing ${conflict} would hide the native launcher. Move that previous installation aside and retry.`)

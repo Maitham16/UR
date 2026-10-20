@@ -41,7 +41,7 @@ type InstallState = {
 };
 function getInstallationPath(): string {
   const isWindows = env.platform === 'win32';
-  const path = join(getNativeInstallDirectories().binDir, isWindows ? 'ur.cmd' : 'ur');
+  const path = join(getNativeInstallDirectories().binDir, isWindows ? 'ur.exe' : 'ur');
   return isWindows ? path.replace(/\//g, '\\') : path;
 }
 function SetupNotes(t0) {

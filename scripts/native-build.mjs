@@ -11,6 +11,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertVersionConsistency } from './version-consistency.mjs'
 import { NATIVE_BUN_VERSION, prepareNativeCompileExecutable, renameNativeBuildStage } from './native-compiler.mjs'
+import { buildWindowsNativeLauncher } from './native-windows-launcher-build.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(join(root, 'package.json'))
@@ -243,6 +244,7 @@ async function build() {
   }
 
   try {
+    if (process.platform === 'win32') buildWindowsNativeLauncher(join(resources, 'windows', 'ur-launcher.exe'))
     writeFileSync(join(resources, 'package.json'), JSON.stringify({
       name: 'ur-native-resources', private: true, version: pkg.version,
       urNativeModuleEntrypoints: { sharp: 'modules/sharp.cjs' },

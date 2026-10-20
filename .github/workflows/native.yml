@@ -75,6 +75,9 @@ jobs:
       - name: Test shipped archive without JavaScript runtime on PATH
         if: ${{ !cancelled() && steps.archive.outcome == 'success' }}
         run: node scripts/native-smoke.mjs --target ${{ matrix.target }} --artifact-dir dist-release/native
+      - name: Test Windows native launcher contract
+        if: ${{ !cancelled() && runner.os == 'Windows' && steps.archive.outcome == 'success' }}
+        run: node scripts/native-windows-launcher-smoke.mjs --artifact-dir dist-release/native
       - name: Test Windows PowerShell bootstrap and native launcher
         if: ${{ !cancelled() && runner.os == 'Windows' && steps.archive.outcome == 'success' }}
         run: node scripts/native-windows-install-smoke.mjs --artifact-dir dist-release/native

@@ -195,7 +195,8 @@ it does not change your saved user or machine policy.
 
 The Unix `export` command makes UR available in the current terminal. Follow
 the [shell startup instructions](docs/NATIVE_INSTALL.md#install) to preserve it
-in new terminals. On Windows, open a new terminal after installation, then verify:
+in new terminals. Windows installs a native `ur.exe` launcher; open a new
+terminal after installation, then verify:
 
 ```sh
 ur --version

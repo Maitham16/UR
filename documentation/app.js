@@ -948,8 +948,8 @@ const examples = [
   },
   {
     title: 'Headless JavaScript',
-    text: 'Drive installed UR from a Node.js program. The caller needs Node.js; native UR includes its own runtime. On Windows, set UR_EXECUTABLE to the installed ur.exe path.',
-    code: "import { execFileSync } from 'node:child_process'\n\nconst executable = process.env.UR_EXECUTABLE ?? (process.platform === 'win32' ? undefined : 'ur')\nif (!executable) throw new Error('Set UR_EXECUTABLE to your installed ur.exe path')\nconst output = execFileSync(executable, ['-p', '--model', '<model>', '--output-format', 'json', 'Review the current git diff'], { encoding: 'utf8' })\nconsole.log(JSON.parse(output).result)",
+    text: 'Drive installed UR from a Node.js program. The caller needs Node.js; native UR includes its own runtime. Windows native installs provide ur.exe on PATH; UR_EXECUTABLE can override its path.',
+    code: "import { execFileSync } from 'node:child_process'\n\nconst executable = process.env.UR_EXECUTABLE ?? (process.platform === 'win32' ? 'ur.exe' : 'ur')\nconst output = execFileSync(executable, ['-p', '--model', '<model>', '--output-format', 'json', 'Review the current git diff'], { encoding: 'utf8' })\nconsole.log(JSON.parse(output).result)",
   },
   {
     title: 'Eval suite',

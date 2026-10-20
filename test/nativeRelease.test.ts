@@ -1,13 +1,29 @@
 import { afterEach, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { chmod, mkdtemp, mkdir, readFile, readlink, readdir, rm, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdtemp, mkdir, readFile, readlink, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zipSync } from 'fflate'
 import { activateNativeRelease, cleanupNativeInstallation, fetchNativeVersion, getNativeInstallDirectories, installNativeRelease, nativeAssetUrl, parseNativeManifest, retryWindowsFileOperation, validateArchiveEntry, validateNativeVersion } from '../src/utils/nativeRelease.js'
 
 const temporary: string[] = []
+const windowsShim = Buffer.alloc(256)
+windowsShim.write('MZ'); windowsShim.writeUInt32LE(0x80, 0x3c); windowsShim.write('PE\0\0', 0x80); windowsShim.writeUInt16LE(3, 0x80 + 24 + 68)
+const shimMarkerName = '.ur-native-launcher-v1.sha256'
+const shimMarker = `UR-Nexus native launcher v1\n${createHash('sha256').update(windowsShim).digest('hex')}\n`
+function windowsReleaseEntries(version: string, shim: Uint8Array = windowsShim) {
+  return {
+    'ur.exe': new TextEncoder().encode(`native fixture ${version}`),
+    'resources/manifest.json': new TextEncoder().encode(JSON.stringify({ version })),
+    'resources/windows/ur-launcher.exe': shim,
+  }
+}
+async function writeShimResource(executable: string, shim: Uint8Array = windowsShim) {
+  const resources = join(executable, '..', 'resources', 'windows')
+  await mkdir(resources, { recursive: true })
+  await writeFile(join(resources, 'ur-launcher.exe'), shim)
+}
 afterEach(async () => { for (const path of temporary.splice(0)) await rm(path, { recursive: true, force: true }) })
 async function directory() { const path = await mkdtemp(join(tmpdir(), 'ur-native-release-test-')); temporary.push(path); return path }
 async function withEnvironment(values: Record<string, string>, action: () => unknown | Promise<unknown>) {
@@ -114,11 +130,56 @@ test('Windows launcher activates different equal-size executables without overwr
   const old = join(root,'version1','ur.exe'), next = join(root,'version2','ur.exe'), launcher = join(root,'bin','ur.cmd')
   await mkdir(join(root,'version1')); await mkdir(join(root,'version2'))
   await writeFile(old,'old!'); await writeFile(next,'new!')
+  await writeShimResource(old); await writeShimResource(next)
   await activateNativeRelease(old,launcher,true)
+  const shimBefore = await lstat(join(root,'bin','ur.exe'))
   await activateNativeRelease(next,launcher,true)
   expect(await readFile(launcher,'utf8')).toContain(next)
   expect(await readFile(old,'utf8')).toBe('old!')
   expect(await readFile(next,'utf8')).toBe('new!')
+  expect(await readFile(join(root,'bin','ur.exe'))).toEqual(windowsShim)
+  expect(await readFile(join(root,'bin',shimMarkerName),'utf8')).toBe(shimMarker)
+  expect((await lstat(join(root,'bin','ur.exe'))).mtimeMs).toBe(shimBefore.mtimeMs)
+})
+
+test('Windows activation rolls back only a new shim and marker, preserving an existing managed shim and prior launcher', async () => {
+  const root = await directory(), executable = join(root,'version','ur.exe'), launcher = join(root,'bin','ur.cmd')
+  await mkdir(join(root,'version')); await writeFile(executable,'native fixture'); await writeShimResource(executable)
+  await mkdir(launcher,{recursive:true}); await writeFile(join(launcher,'preserved'),'prior launcher fixture')
+  await expect(activateNativeRelease(executable,launcher,true)).rejects.toThrow()
+  expect(await readFile(join(launcher,'preserved'),'utf8')).toBe('prior launcher fixture')
+  expect((await readdir(join(root,'bin'))).sort()).toEqual(['ur.cmd'])
+  await rm(launcher,{recursive:true})
+  await activateNativeRelease(executable,launcher,true)
+  const previous = await readFile(launcher,'utf8')
+  await rm(launcher); await mkdir(launcher); await writeFile(join(launcher,'preserved'),previous)
+  await expect(activateNativeRelease(executable,launcher,true)).rejects.toThrow()
+  expect(await readFile(join(launcher,'preserved'),'utf8')).toBe(previous)
+  expect(await readFile(join(root,'bin','ur.exe'))).toEqual(windowsShim)
+  expect(await readFile(join(root,'bin',shimMarkerName),'utf8')).toBe(shimMarker)
+  expect((await readdir(join(root,'bin'))).some(name=>name.includes('.tmp.'))).toBe(false)
+})
+
+test('Windows activation refuses foreign executables, orphan markers and altered ownership without overwriting them', async () => {
+  const root = await directory(), executable = join(root,'version','ur.exe')
+  await mkdir(join(root,'version')); await writeFile(executable,'native fixture'); await writeShimResource(executable)
+  for (const [index, files] of [
+    { 'ur.exe': Buffer.from('foreign executable') },
+    { 'ur.exe': Buffer.from('foreign executable'), [shimMarkerName]: Buffer.from(shimMarker) },
+    { [shimMarkerName]: Buffer.from(shimMarker) },
+    { 'ur.exe': windowsShim, [shimMarkerName]: Buffer.from('UR-Nexus native launcher v1\n'+'0'.repeat(64)+'\n') },
+    { 'ur.exe': windowsShim, [shimMarkerName]: Buffer.from(shimMarker+'extra') },
+    { 'ur.exe': windowsShim, [shimMarkerName]: Buffer.from(shimMarker+'\n') },
+    { 'ur.exe': windowsShim, [shimMarkerName]: Buffer.from(shimMarker.replace(/\n/g,'\r\n')) },
+  ].entries()) {
+    const bin = join(root,`foreign-${index}`), launcher = join(bin,'ur.cmd')
+    await mkdir(bin); await writeFile(launcher,'prior good launcher')
+    for (const [name, bytes] of Object.entries(files)) await writeFile(join(bin,name),bytes)
+    await expect(activateNativeRelease(executable,launcher,true)).rejects.toThrow('intact managed native launcher')
+    expect(await readFile(launcher,'utf8')).toBe('prior good launcher')
+    for (const [name, bytes] of Object.entries(files)) expect(await readFile(join(bin,name))).toEqual(bytes)
+    expect((await readdir(bin)).some(name=>name.includes('.tmp.'))).toBe(false)
+  }
 })
 
 test('failed activation preserves previous launcher and removes temporary files', async () => {
@@ -191,7 +252,7 @@ test.skipIf(process.platform === 'win32')('shell bootstrap installs and repeats 
 
 test('Windows ZIP install keeps resources with the executable and rejects traversal before extraction', async () => {
   const root = await directory(), version = '1.86.0', file = `ur-${version}-win32-x64.zip`
-  let bytes = zipSync({'ur.exe':new TextEncoder().encode('native fixture'),'resources/manifest.json':new TextEncoder().encode('{}')})
+  let bytes = zipSync(windowsReleaseEntries(version))
   const request = (async (input: string | URL | Request) => String(input).endsWith('manifest.json')
     ? Response.json({schemaVersion:1,version,sourceCommit:'a'.repeat(40),platforms:{'win32-x64':{file,executable:'ur.exe',size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')}}})
     : new Response(bytes)) as unknown as typeof fetch
@@ -202,7 +263,8 @@ test('Windows ZIP install keeps resources with the executable and rejects traver
   expect(initialLauncher).toContain(executable)
   expect(initialLauncher).toContain(`@set "UR_NATIVE_BIN_DIR=${options.binDir}"`)
   expect(initialLauncher).toContain(`@set "UR_NATIVE_DATA_DIR=${options.dataDir}"`)
-  expect(await readFile(join(executable,'..','resources','manifest.json'),'utf8')).toBe('{}')
+  expect(JSON.parse(await readFile(join(executable,'..','resources','manifest.json'),'utf8')).version).toBe(version)
+  expect(await readFile(join(root,'bin','ur.exe'))).toEqual(windowsShim)
   await installNativeRelease(version,{...options,force:true})
   const repairedLauncher = await readFile(join(root,'bin','ur.cmd'),'utf8')
   expect(repairedLauncher).toContain('-repair-')
@@ -228,7 +290,8 @@ test('custom launcher directories survive repeat, upgrade and offline rollback w
   const downloads: string[] = []
   let offline = false
   const archives = new Map<string,Uint8Array>()
-  for (const version of ['1.86.0','1.86.1']) archives.set(version,zipSync({'ur.exe':new TextEncoder().encode(`native fixture ${version}`),'resources/manifest.json':new TextEncoder().encode(JSON.stringify({version}))}))
+  const newerShim = Buffer.from(windowsShim); newerShim[250] = 1
+  for (const version of ['1.86.0','1.86.1']) archives.set(version,zipSync(windowsReleaseEntries(version,version==='1.86.0'?windowsShim:newerShim)))
   const request = (async (input: string | URL | Request) => {
     if (offline) throw new Error('Network disabled for retained release rollback')
     const url = String(input), version = url.match(/\/v(1\.86\.[01])\//)?.[1]
@@ -242,6 +305,7 @@ test('custom launcher directories survive repeat, upgrade and offline rollback w
   await withEnvironment({ UR_NATIVE_BIN_DIR: binDir, UR_NATIVE_DATA_DIR: dataDir, HOME: join(root, 'private home'), XDG_DATA_HOME: defaultData }, async () => {
     expect(getNativeInstallDirectories()).toEqual({ binDir, dataDir })
     await installNativeRelease('1.86.0',options)
+    const originalShim = await lstat(join(binDir,'ur.exe'))
     expect((await installNativeRelease('1.86.0',options)).wasUpdated).toBe(false)
     await installNativeRelease('1.86.1',options)
     expect(await readFile(join(binDir,'ur.cmd'),'utf8')).toContain('1.86.1-win32-x64')
@@ -252,6 +316,10 @@ test('custom launcher directories survive repeat, upgrade and offline rollback w
     expect(launcher).toContain('1.86.0-win32-x64')
     expect(launcher).toContain(`@set "UR_NATIVE_BIN_DIR=${binDir.replace(/%/g, '%%')}"`)
     expect(launcher).toContain(`@set "UR_NATIVE_DATA_DIR=${dataDir.replace(/%/g, '%%')}"`)
+    expect(await readFile(join(binDir,'ur.exe'))).toEqual(windowsShim)
+    expect(await readFile(join(binDir,shimMarkerName),'utf8')).toBe(shimMarker)
+    expect((await lstat(join(binDir,'ur.exe'))).mtimeMs).toBe(originalShim.mtimeMs)
+    expect(await readFile(join(dataDir,'versions','1.86.1-win32-x64','resources','windows','ur-launcher.exe'))).toEqual(newerShim)
     expect(downloads).toEqual(['1.86.0','1.86.1'])
     expect(process.env.XDG_DATA_HOME).toBe(defaultData)
     await expect(readFile(join(defaultData, 'ur', 'versions'))).rejects.toThrow()

@@ -17,6 +17,9 @@
 - Hardened Windows installation against temporary file locks and unsafe archive
   names. Custom installation paths are retained during updates and supported
   by uninstall, including paths containing Unicode and percent characters.
+- Windows installs a native `ur.exe` launcher so PowerShell and external
+  programs can run UR from these paths. Updates activate versions through its
+  adjacent atomic `ur.cmd` file and preserve the owned launcher executable.
 - Added native artifact qualification across supported platforms, including
   resource checks and a local mock-provider streaming, task, write/read, and
   resume workflow without external JavaScript runtimes on PATH.

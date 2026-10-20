@@ -55,7 +55,7 @@ shell commands. Use `ur context-pack scan` when a change adds new manifests,
 command surfaces, or architecture rules that should be captured as project
 context.
 
-The GitHub install path uses the bundled launcher in `dist/cli.js`, so `bun run bundle` must be run before packaging or pushing a release. `bun run release:check` verifies that `package.json`, `bunfig.toml`, the bundle, docs, and `node ./bin/ur.js --version` agree. The GitHub workflow keeps production bundle, release, package, and global-install checks behind the Bun test step; do not publish, tag, or push release artifacts until that workflow is green.
+The npm and GitHub-source package paths use the bundled launcher in `dist/cli.js`, so `bun run bundle` must be run before packaging or pushing a release. `bun run release:check` verifies that `package.json`, `bunfig.toml`, the bundle, docs, and `node ./bin/ur.js --version` agree. The GitHub workflow keeps production bundle, release, package, and global-install checks behind the Bun test step; do not publish, tag, or push release artifacts until that workflow is green.
 
 For a patch release, keep the version synchronized in `package.json`,
 `bunfig.toml`, the VS Code extension manifest, the JetBrains Gradle build,
@@ -77,6 +77,9 @@ bun run native:smoke -- --artifact-dir dist-release/native
 
 Use the repository's pinned Bun version (`1.3.14`). The extension build is
 required before native packaging because the release includes its local VSIX.
+Windows build hosts also need Visual Studio 2022 with the x64 C++ build tools;
+the build discovers them with `vswhere` and compiles the launcher with a static
+C runtime. Installed native UR users do not need Visual Studio or a compiler.
 The native archive contains the executable and its versioned `resources/` tree.
 The release workflow qualifies this exact archive without Node/Bun on PATH.
 See [Native installation and recovery](NATIVE_INSTALL.md) and [Release runbook](../RELEASE.md).
@@ -87,7 +90,7 @@ See [Native installation and recovery](NATIVE_INSTALL.md) and [Release runbook](
 bun run bundle
 ```
 
-The build output goes to `dist/cli.js`. The directory is ignored by default, but `dist/cli.js` is intentionally tracked because GitHub installs run the bundled CLI.
+The build output goes to `dist/cli.js`. The directory is ignored by default, but `dist/cli.js` is intentionally tracked because npm and GitHub-source package installs run the bundled CLI.
 
 ## Documentation Maintenance
 

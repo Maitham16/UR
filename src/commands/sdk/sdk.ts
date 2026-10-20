@@ -10,8 +10,7 @@ import { execFileSync } from 'node:child_process'
 
 const model = process.env.UR_MODEL
 if (!model) throw new Error('Set UR_MODEL to a model available from your configured provider')
-const executable = process.env.UR_EXECUTABLE ?? (process.platform === 'win32' ? undefined : 'ur')
-if (!executable) throw new Error('Set UR_EXECUTABLE to the installed ur.exe path on Windows')
+const executable = process.env.UR_EXECUTABLE ?? (process.platform === 'win32' ? 'ur.exe' : 'ur')
 const output = execFileSync(executable, [
   '-p', '--model', model, '--max-turns', '4', '--output-format', 'json',
   'Summarize the README in one sentence',
@@ -62,8 +61,8 @@ MCP configuration, and local Ollama routing as the interactive CLI.
 
 - \`example.ts\` — TypeScript, using the calling program's Node.js/Bun runtime
   and built-in child-process API. Set \`UR_MODEL\` before running it.
-  On Windows, also set \`UR_EXECUTABLE\` to the installed version's \`ur.exe\`
-  path; Node.js cannot directly execute the \`ur.cmd\` shell launcher.
+  Windows native installations provide \`ur.exe\` on PATH. Set \`UR_EXECUTABLE\`
+  to its full path when the installed launcher directory is absent from PATH.
 - \`example.py\` — Python, no dependencies, shells out to \`ur\`.
 
 There is no separately published \`ur-agent/sdk\` package entry. Native UR
@@ -79,14 +78,14 @@ function infoText(): string {
     '',
     'TypeScript:',
     "  import { execFileSync } from 'node:child_process'",
-    "  const executable = process.env.UR_EXECUTABLE ?? 'ur'",
+    "  const executable = process.env.UR_EXECUTABLE ?? (process.platform === 'win32' ? 'ur.exe' : 'ur')",
     "  const output = execFileSync(executable, ['-p', '--model', '<model>', '--output-format', 'json', 'Fix the failing test'])",
     '',
     'Python (no deps): shell out to `ur -p --output-format json` (see example.py).',
     '',
     'Both reuse the CLI permission model, MCP config, and local Ollama routing.',
     'External calling programs use their own runtime; native UR includes its runtime.',
-    'Windows Node.js callers must set UR_EXECUTABLE to the actual installed ur.exe path.',
+    'Windows native installs provide ur.exe on PATH; UR_EXECUTABLE can override its path.',
     'For HTTP agent-to-agent hand-off instead, use `ur a2a serve`.',
     '',
     'Scaffold runnable examples into .ur/sdk/ with:  ur sdk init',

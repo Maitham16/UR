@@ -15,7 +15,13 @@ search, compiler-library, task/write/read, streaming, timeout, and resume checks
 The release publishes no npm package or GitHub release until the native matrix
 and existing verification gate succeed for the same immutable tag.
 
-On a matching local development host:
+On a matching local development host, use the pinned Bun version. Windows
+build hosts additionally require Visual
+Studio 2022 with the x64 C++ build tools, discovered through `vswhere`; the
+launcher is compiled with a static C runtime. This additional tooling is used
+only during release builds.
+
+Build and qualify the archive:
 
 ```sh
 bun ci

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { resolveUrExecutable } from '../src/utils/urExecutable.ts'
@@ -27,7 +28,7 @@ describe('standalone process launch and timeout contract', () => {
     writeFileSync(fixture, `
 import { execFileSync, spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-import { resolveUrExecutable } from ${JSON.stringify(resolve('src/utils/urExecutable.ts'))};
+import { getManagedWindowsNativeExecutable, resolveUrExecutable } from ${JSON.stringify(resolve('src/utils/urExecutable.ts'))};
 import { isInBundledMode } from ${JSON.stringify(resolve('src/utils/bundledMode.ts'))};
 import { runInternalTimeout } from ${JSON.stringify(resolve('src/utils/shell/internalTimeout.ts'))};
 const args = process.argv.slice(2);
@@ -38,6 +39,7 @@ else if (args[0] === '--internal-timeout-with-missing-root') {
   process.exitCode = await runInternalTimeout(args.slice(2));
 }
 else if (args[0] === '--child') console.log(JSON.stringify(args.slice(1)));
+else if (args[0] === '--inspect-managed') console.log(JSON.stringify(getManagedWindowsNativeExecutable(process.execPath)));
 else if (args[0] === '--exit') process.exitCode = Number(args[1]);
 else if (args[0] === '--tree-descendant') {
   writeFileSync(args[2]!, String(process.pid));
@@ -83,6 +85,50 @@ else {
     const result = run(['--stable'], { HOME: workDir })
     expect(result.status).toBe(0)
     expect(JSON.parse(result.stdout).entry.file).toBe(stable)
+  })
+
+  test('managed Windows shim selection verifies ownership, exact activation, and the running target', () => {
+    const binDir = join(workDir, '100% User %UR_NATIVE_FIXTURE% [caf\u00e9!]', 'bin')
+    const dataDir = join(workDir, 'custom data')
+    mkdirSync(binDir, { recursive: true })
+    const actual = join(dataDir, 'versions', 'fixture-release', 'ur.exe')
+    mkdirSync(join(dataDir, 'versions', 'fixture-release'), { recursive: true })
+    copyFileSync(binary, actual)
+    const shim = join(binDir, 'ur.exe')
+    const marker = join(binDir, '.ur-native-launcher-v1.sha256')
+    const activation = join(binDir, 'ur.cmd')
+    copyFileSync(binary, shim)
+    const digest = createHash('sha256').update(readFileSync(shim)).digest('hex')
+    const identity = `UR-Nexus native launcher v1\n${digest}\n`
+    writeFileSync(marker, identity)
+    const escape = (value: string) => value.replace(/%/g, '%%')
+    const config = `@echo off\r\n@setlocal DisableDelayedExpansion\r\n@"%SystemRoot%\\System32\\chcp.com" 65001 >nul\r\n@set "UR_NATIVE_BIN_DIR=${escape(binDir)}"\r\n@set "UR_NATIVE_DATA_DIR=${escape(dataDir)}"\r\n"${escape(actual)}" %*\r\n`
+    writeFileSync(activation, config)
+    const environment = { UR_NATIVE_BIN_DIR: binDir, UR_NATIVE_DATA_DIR: dataDir, UR_NATIVE_FIXTURE: 'wrong path' }
+    const inspect = (args = ['--inspect-managed']) => spawnSync(actual, args, {
+      cwd: workDir, env: { ...process.env, PATH: '', ...environment }, encoding: 'utf8', timeout: 10_000,
+    })
+    const selected = inspect()
+    expect(selected.status, selected.stderr).toBe(0)
+    expect(JSON.parse(selected.stdout)).toBe(shim)
+    if (process.platform === 'win32') {
+      const launched = inspect(['--stable'])
+      expect(launched.status, launched.stderr).toBe(0)
+      expect(JSON.parse(launched.stdout).entry.file).toBe(shim)
+      expect(JSON.parse(launched.stdout).child).toEqual(['prompt with spaces', '--model', 'fixture'])
+    }
+    writeFileSync(marker, identity.replace(digest, '0'.repeat(64)))
+    expect(JSON.parse(inspect().stdout)).toBeNull()
+    writeFileSync(marker, identity)
+    writeFileSync(activation, config + 'echo unexpected command\r\n')
+    expect(JSON.parse(inspect().stdout)).toBeNull()
+    writeFileSync(activation, config.replace(escape(actual), escape(shim)))
+    expect(JSON.parse(inspect().stdout)).toBeNull()
+    const other = join(dataDir, 'versions', 'other-release', 'ur.exe')
+    mkdirSync(join(dataDir, 'versions', 'other-release'), { recursive: true })
+    copyFileSync(binary, other)
+    writeFileSync(activation, config.replace(escape(actual), escape(other)))
+    expect(JSON.parse(inspect().stdout)).toBeNull()
   })
 
   test.skipIf(process.platform === 'win32')('typed timeout preserves command status and validates arguments', () => {

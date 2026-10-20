@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -9,7 +10,7 @@ const binDir = join(root, 'custom bin')
 const dataDir = join(root, 'custom data')
 const release = join(dataDir, 'versions', 'fixture-release')
 const executable = join(release, process.platform === 'win32' ? 'ur.exe' : 'ur')
-const launcher = join(binDir, process.platform === 'win32' ? 'ur.cmd' : 'ur')
+const launcher = join(binDir, process.platform === 'win32' ? 'ur.exe' : 'ur')
 
 beforeAll(() => {
   mkdirSync(binDir, { recursive: true })
@@ -34,7 +35,13 @@ console.log(JSON.stringify({diagnostic:await getDoctorDiagnostic(), setup:await 
     '--external', 'sharp', '--external', 'audio-capture-napi', '--external', 'playwright-core', '--outfile', executable,
   ], { encoding: 'utf8', timeout: 120_000, env: { ...process.env, NODE_ENV: 'production' } })
   if (built.status !== 0) throw new Error(`Diagnostic fixture compilation failed: ${built.stderr}`)
-  if (process.platform === 'win32') writeFileSync(launcher, `@echo off\r\n"${executable}" %*\r\n`)
+  if (process.platform === 'win32') {
+    copyFileSync(executable, launcher)
+    const digest = createHash('sha256').update(readFileSync(launcher)).digest('hex')
+    writeFileSync(join(binDir, '.ur-native-launcher-v1.sha256'), `UR-Nexus native launcher v1\n${digest}\n`)
+    const escape = (value: string) => value.replace(/%/g, '%%')
+    writeFileSync(join(binDir, 'ur.cmd'), `@echo off\r\n@setlocal DisableDelayedExpansion\r\n@"%SystemRoot%\\System32\\chcp.com" 65001 >nul\r\n@set "UR_NATIVE_BIN_DIR=${escape(binDir)}"\r\n@set "UR_NATIVE_DATA_DIR=${escape(dataDir)}"\r\n"${escape(executable)}" %*\r\n`)
+  }
   else symlinkSync(executable, launcher)
 }, 130_000)
 afterAll(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
