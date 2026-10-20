@@ -4,10 +4,14 @@ UR is a terminal agent. Running `ur` opens an interactive session in the current
 
 ## Installation
 
-Use the [native installer](NATIVE_INSTALL.md) for a self-contained application;
+Use the [native installer](NATIVE_INSTALL.md) on macOS or Linux ARM64/x64 for a self-contained application;
 Node.js, npm, and Bun are not required by native UR. Project toolchains and
 optional integrations retain their own prerequisites. Native updates use
 `ur upgrade`, and `ur install <version>` supports a pinned release.
+
+Windows native installation is unavailable in 1.86.0. Bun-based source and npm
+compatibility workflows remain optional for Windows developers; see the
+[Development Guide](DEVELOPMENT.md) for their runtime requirements.
 
 ## Interactive Mode
 

@@ -2,7 +2,7 @@
 
 UR is a local-first terminal coding agent. Development and release verification
 use the repository's pinned Bun and documented build tools from a clean checkout.
-The standalone application includes its runtime and is qualified without
+The standalone application for macOS/Linux ARM64 and x64 includes its runtime and is qualified without
 external Node.js, npm, or Bun. Users select a provider separately; Ollama is
 required only when using its local/server backend.
 
@@ -63,11 +63,13 @@ Public feature releases should update the full documentation set:
 
 The native release includes its runtime and required resources. Qualification
 must execute the archived installation with no external Node, npm, Bun, source
-checkout, or node_modules available. The five-target native workflow checks
+checkout, or node_modules available. The four-target macOS/Linux native workflow checks
 resource integrity, images, search, compiler libraries, protocol contracts, real
 streaming/task/write/read behavior, restart/resume, and timeout cleanup before
-publication. Native installer tests cover checksum/path rejection, locking,
-same-sized Windows replacements, and failed activation preserving the old CLI.
+publication. Windows native distribution is unavailable in 1.86.0. Native
+installer tests cover checksum/path rejection, locking, and failed activation
+preserving the old CLI; retained Windows development tests are outside the
+public release qualification.
 
 ## Runtime Assumptions
 

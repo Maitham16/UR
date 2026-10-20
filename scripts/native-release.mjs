@@ -10,12 +10,14 @@ const args = process.argv.slice(2)
 const arg = (name, fallback) => args.includes(name) ? args[args.indexOf(name) + 1] : fallback
 const root = resolve(import.meta.dirname, '..')
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
-const platforms = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64']
+const platforms = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64']
+// Windows packaging remains available only for explicit development builds.
+const developmentPlatforms = [...platforms, 'win32-x64']
 const input = resolve(arg('--input', join(root, 'dist-native')))
 const output = resolve(arg('--out-dir', join(root, 'dist-release', 'native')))
 mkdirSync(output, { recursive: true })
 const selected = arg('--target', null)
-if (selected && !platforms.includes(selected)) throw new Error(`Unsupported target ${selected}`)
+if (selected && !developmentPlatforms.includes(selected)) throw new Error(`Unsupported target ${selected}`)
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 if (!/^[0-9a-f]{40}$/.test(sourceCommit)) throw new Error('Cannot identify native release source commit')
 const manifest = { schemaVersion: 1, version, sourceCommit, platforms: {} }

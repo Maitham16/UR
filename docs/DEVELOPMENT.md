@@ -17,6 +17,11 @@
 
 ## Install
 
+Windows native installation is unavailable in 1.86.0. Windows developers can
+optionally use this Bun-based source workflow, or the npm compatibility package
+with separate Node.js and Bun installations. Windows native build and test
+code remains experimental and is outside the public standalone release.
+
 ```sh
 bun install
 ```
@@ -64,7 +69,8 @@ For a patch release, keep the version synchronized in `package.json`,
 
 ## Native release builds
 
-Build on the target OS/CPU so native addons and shared libraries match:
+Public native releases target macOS and Linux on ARM64 and x64. Build on the
+target OS/CPU so native addons and shared libraries match:
 
 ```sh
 bun ci
@@ -77,9 +83,10 @@ bun run native:smoke -- --artifact-dir dist-release/native
 
 Use the repository's pinned Bun version (`1.3.14`). The extension build is
 required before native packaging because the release includes its local VSIX.
-Windows build hosts also need Visual Studio 2022 with the x64 C++ build tools;
-the build discovers them with `vswhere` and compiles the launcher with a static
-C runtime. Installed native UR users do not need Visual Studio or a compiler.
+Experimental Windows native development builds need Visual Studio 2022 with
+the x64 C++ build tools; the build discovers them with `vswhere` and compiles
+the launcher with a static C runtime. No Windows native artifact is published
+for 1.86.0. Installed macOS/Linux users do not need a compiler.
 The native archive contains the executable and its versioned `resources/` tree.
 The release workflow qualifies this exact archive without Node/Bun on PATH.
 See [Native installation and recovery](NATIVE_INSTALL.md) and [Release runbook](../RELEASE.md).

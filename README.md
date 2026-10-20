@@ -170,8 +170,8 @@ Planning defaults are safe and can be configured with:
 
 The native application includes its JavaScript runtime, repository search,
 image libraries, and required resources. **Node.js, npm, and Bun are not required
-on the user's machine.** Supported releases are macOS Intel/Apple Silicon,
-Linux x64/ARM64 with glibc, and Windows x64. Linux x64 requires an
+on the user's machine.** Supported releases are macOS Intel/Apple Silicon
+and Linux x64/ARM64 with glibc. Linux x64 requires an
 x86-64-v2 CPU (including SSE4.2); see the exact qualification environments in
 [Native installation](docs/NATIVE_INSTALL.md#supported-platforms).
 
@@ -183,20 +183,13 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Windows x64 PowerShell:
-
-```powershell
-Invoke-WebRequest https://github.com/Maitham16/UR/releases/latest/download/install.ps1 -OutFile install-ur.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-ur.ps1
-```
-
-The Windows execution-policy option applies only to that installer process;
-it does not change your saved user or machine policy.
+Windows native installation is unavailable in 1.86.0 and has been deferred.
+Windows developers can optionally use the Bun-based source or npm compatibility
+workflows below; these require separate runtime installations.
 
 The Unix `export` command makes UR available in the current terminal. Follow
 the [shell startup instructions](docs/NATIVE_INSTALL.md#install) to preserve it
-in new terminals. Windows installs a native `ur.exe` launcher; open a new
-terminal after installation, then verify:
+in new terminals. After installation, verify:
 
 ```sh
 ur --version
@@ -219,8 +212,8 @@ read from the environment.
 Git, shells, browsers, Docker, IDEs, microphones, and third-party plugin tools
 remain prerequisites only for the workflows that use them. A user's own project
 may require Node.js, Bun, Python, or another toolchain independently of UR.
-Windows native UR is supported, but its OS sandbox is unavailable in this
-release. Use UR on Linux inside WSL2 when a supported sandbox is required.
+Windows development workflows have no supported native OS sandbox. Required
+sandbox mode fails closed when confinement is unavailable.
 
 ### npm and source installs
 

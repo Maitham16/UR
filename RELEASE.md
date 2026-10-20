@@ -8,18 +8,18 @@ Release target:
 
 ## Standalone artifacts
 
-Native releases are built on five matching OS/CPU runners and contain the
+Native releases are built on four matching OS/CPU runners for macOS and Linux,
+each on ARM64 and x64, and contain the
 executable, runtime, and a versioned resource tree. `native.yml` tests the exact
 archived payload with Node, npm, and Bun absent from PATH, including real image,
 search, compiler-library, task/write/read, streaming, timeout, and resume checks.
 The release publishes no npm package or GitHub release until the native matrix
 and existing verification gate succeed for the same immutable tag.
 
-On a matching local development host, use the pinned Bun version. Windows
-build hosts additionally require Visual
-Studio 2022 with the x64 C++ build tools, discovered through `vswhere`; the
-launcher is compiled with a static C runtime. This additional tooling is used
-only during release builds.
+Windows native artifacts and PowerShell installers are excluded from 1.86.0.
+Windows native development code remains in the repository and is outside the
+public standalone release. On a matching macOS/Linux development host, use
+the pinned Bun version.
 
 Build and qualify the archive:
 
@@ -34,11 +34,11 @@ bun run native:smoke -- --artifact-dir dist-release/native
 
 Keep native output in ignored `dist-native/` and `dist-release/`. The GitHub
 release includes all target archives, merged `manifest.json`, `SHA256SUMS`,
-install/uninstall scripts, and build-provenance attestations. All manifests
+`install.sh`/`uninstall.sh`, and build-provenance attestations. All manifests
 must identify the exact source commit. Channel selection uses GitHub's latest
 non-prerelease release; a failed qualification must never advance it.
 
-OS signing uses configured Apple/Windows publisher credentials. An incomplete
+macOS signing uses configured Apple publisher credentials. An incomplete
 signing configuration fails; absent credentials produce an explicit unsigned
 status in `resources/signing.json`. Never claim an unsigned artifact is signed
 or notarized. See [native installation](docs/NATIVE_INSTALL.md) for verification,

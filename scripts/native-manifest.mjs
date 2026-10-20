@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 const directory = resolve(process.argv[2] ?? 'dist-release/native')
 const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
-const platforms = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64']
+const platforms = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64']
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
 const manifest = { schemaVersion: 1, version, sourceCommit, platforms: {} }
 for (const name of readdirSync(directory).filter(name => /^manifest-.+\.json$/.test(name))) {
@@ -13,8 +13,7 @@ for (const name of readdirSync(directory).filter(name => /^manifest-.+\.json$/.t
   if (part.schemaVersion !== 1 || part.version !== version || part.sourceCommit !== sourceCommit) throw new Error(`Invalid manifest ${name}`)
   for (const [platform, artifact] of Object.entries(part.platforms)) {
     if (!platforms.includes(platform) || manifest.platforms[platform]) throw new Error(`Unexpected or duplicate platform ${platform}`)
-    const windows = platform.startsWith('win32')
-    if (artifact.file !== `ur-${version}-${platform}.${windows ? 'zip' : 'tar.gz'}` || artifact.executable !== (windows ? 'ur.exe' : 'ur')) throw new Error(`Invalid artifact ${platform}`)
+    if (artifact.file !== `ur-${version}-${platform}.tar.gz` || artifact.executable !== 'ur') throw new Error(`Invalid artifact ${platform}`)
     const bytes = readFileSync(join(directory, artifact.file))
     if (bytes.length !== artifact.size || createHash('sha256').update(bytes).digest('hex') !== artifact.sha256) throw new Error(`Artifact integrity check failed: ${platform}`)
     manifest.platforms[platform] = artifact

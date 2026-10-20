@@ -8,9 +8,12 @@ verifies the fix.
 ### `ur: command not found`
 
 - Likely cause: UR is not installed, or its launcher directory is not on `PATH`.
-- Native install: follow [Native installation](NATIVE_INSTALL.md), add
-  `~/.local/bin` to PATH if requested, and open a new terminal. On Windows,
-  inspect `Get-Command ur`; on Unix, inspect `command -v ur`.
+- Native install on macOS/Linux ARM64/x64: follow
+  [Native installation](NATIVE_INSTALL.md), add `~/.local/bin` to PATH if
+  requested, and inspect `command -v ur`.
+- Windows native installation is unavailable in 1.86.0. For optional Windows
+  source/npm development workflows, inspect `Get-Command ur` and follow the
+  runtime prerequisites in the [Development Guide](DEVELOPMENT.md).
 - npm compatibility install: check the npm global bin path, then reinstall if
   needed. This path requires separate Node.js and Bun installations.
 
@@ -34,7 +37,7 @@ ur --version
 
 ### Bun is missing or too old (npm/source distribution only)
 
-The native release includes its runtime. If a native installation reports a
+The macOS/Linux native release includes its runtime. If a native installation reports a
 missing `bun`, run `command -v ur` (PowerShell: `Get-Command ur`) to find an older
 npm installation or alias earlier on PATH. Prefer the native `~/.local/bin`
 launcher, or reinstall from [Native installation](NATIVE_INSTALL.md).
@@ -384,7 +387,7 @@ ur -p --allowed-tools "Read,Edit,Bash(git:*)" "run the task"
 - Fix: inspect the policy and the sandbox status; install missing sandbox
   dependencies, or relax `sandbox.enabled`/`sandbox.failIfUnavailable` in
   settings if required mode is not intended.
-- Windows native sandboxing is unavailable in this release. Run the Linux
+- Windows development workflows have no supported native sandbox. Run the Linux
   distribution inside WSL2 when sandboxing is required; installing a Windows
   helper does not enable this release's unsupported backend.
 

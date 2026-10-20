@@ -575665,7 +575665,8 @@ function infoText() {
     "",
     "Both reuse the CLI permission model, MCP config, and local Ollama routing.",
     "External calling programs use their own runtime; native UR includes its runtime.",
-    "Windows native installs provide ur.exe on PATH; UR_EXECUTABLE can override its path.",
+    "Native UR 1.86 supports macOS and Linux; standalone Windows is unavailable.",
+    "Set UR_EXECUTABLE to the installed executable path when it is absent from PATH.",
     "For HTTP agent-to-agent hand-off instead, use `ur a2a serve`.",
     "",
     "Scaffold runnable examples into .ur/sdk/ with:  ur sdk init"
@@ -575673,7 +575674,8 @@ function infoText() {
 `);
 }
 var TS_EXAMPLE = `// Drive installed UR headlessly from a TypeScript-capable Node.js/Bun runtime.
-// Requires the global \`ur\` binary on PATH and an explicit model choice.
+// Native UR 1.86 supports macOS and Linux; standalone Windows is unavailable.
+// Requires an installed \`ur\` executable and an explicit model choice.
 import { execFileSync } from 'node:child_process'
 
 const model = process.env.UR_MODEL
@@ -575725,8 +575727,9 @@ MCP configuration, and local Ollama routing as the interactive CLI.
 
 - \`example.ts\` \u2014 TypeScript, using the calling program's Node.js/Bun runtime
   and built-in child-process API. Set \`UR_MODEL\` before running it.
-  Windows native installations provide \`ur.exe\` on PATH. Set \`UR_EXECUTABLE\`
-  to its full path when the installed launcher directory is absent from PATH.
+  Native UR 1.86 supports macOS and Linux; standalone Windows is unavailable.
+  Set \`UR_EXECUTABLE\` to its full path when the installed launcher directory
+  is absent from PATH.
 - \`example.py\` \u2014 Python, no dependencies, shells out to \`ur\`.
 
 There is no separately published \`ur-agent/sdk\` package entry. Native UR

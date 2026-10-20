@@ -43,7 +43,7 @@
     </aside>
 
     <main id="content" class="content">
-      <aside class="callout"><strong>Standalone installation:</strong> native UR includes its runtime and needs no separate Node.js, npm, or Bun. Download the installer for macOS/Linux or Windows from the <a href="https://github.com/Maitham16/UR/releases/latest">latest GitHub release</a>. Keep the executable and resources together. npm/source installations retain their development runtime prerequisites. Native updates use <code>ur upgrade</code>.</aside>
+      <aside class="callout"><strong>Standalone installation:</strong> native UR for macOS/Linux ARM64 and x64 includes its runtime and needs no separate Node.js, npm, or Bun. Download the installer from the <a href="https://github.com/Maitham16/UR/releases/latest">latest GitHub release</a>. Keep the executable and resources together. Windows native installation is unavailable in 1.86.0; source/npm development workflows retain their separate runtime prerequisites. Native updates use <code>ur upgrade</code>.</aside>
       <header class="topbar">
         <div>
           <p class="eyebrow">Version 1.86.0</p>
@@ -118,7 +118,7 @@
         <div class="section-heading">
           <p class="eyebrow">Install And Run</p>
           <h2>Quickstart</h2>
-          <p>Install the standalone application, verify the binary, then choose interactive or print mode. Windows installers and recovery instructions are available in the <a href="../docs/NATIVE_INSTALL.md">native installation guide</a>.</p>
+          <p>Install the standalone application on macOS/Linux ARM64 or x64, verify the binary, then choose interactive or print mode. See the <a href="../docs/NATIVE_INSTALL.md">native installation guide</a> for supported platforms and recovery.</p>
         </div>
         <div class="steps">
           <article class="step">
@@ -129,10 +129,7 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ur --version</code></pre>
             <p>The PATH command applies to this terminal. Add it once to your zsh or bash startup file for future terminals; see the <a href="../docs/NATIVE_INSTALL.md#install">shell startup instructions</a>.</p>
-            <p>Windows x64 (PowerShell):</p>
-            <pre><code>Invoke-WebRequest https://github.com/Maitham16/UR/releases/latest/download/install.ps1 -OutFile install-ur.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-ur.ps1</code></pre>
-            <p>The execution-policy option applies only to the installer process and leaves your saved policy unchanged. Open a new terminal after installation to run the native <code>ur.exe</code> launcher with <code>ur</code>; normal UR commands need no PowerShell execution-policy option. See <a href="../docs/NATIVE_INSTALL.md#install">Windows installation details</a>.</p>
+            <p>Windows native installation is unavailable in 1.86.0 and has been deferred. Windows developers can optionally use the <a href="../docs/DEVELOPMENT.md">Bun-based source or npm compatibility workflows</a>, which require separate runtimes.</p>
           </article>
           <article class="step">
             <span>2</span>
@@ -149,7 +146,7 @@ ur -p --model qwen3-coder:480b-cloud --output-format json "Review the current di
         </div>
         <div class="callout">
           <strong>Runtime requirement</strong>
-          <p>Native UR includes its runtime; no separate Node.js, npm, or Bun is required. npm/source installations require Node.js and Bun. Linux x64 needs an x86-64-v2 CPU, including SSE4.2; see the <a href="../docs/NATIVE_INSTALL.md#supported-platforms">qualified platforms</a>. On the first interactive run in a workspace, choose a provider and model; UR validates and saves the pair locally before starting the session. Fresh print-mode workspaces require <code>--model</code> or another explicit model source.</p>
+          <p>Native UR on macOS/Linux includes its runtime; no separate Node.js, npm, or Bun is required. npm/source installations require Node.js and Bun. Linux x64 needs an x86-64-v2 CPU, including SSE4.2; see the <a href="../docs/NATIVE_INSTALL.md#supported-platforms">qualified platforms</a>. On the first interactive run in a workspace, choose a provider and model; UR validates and saves the pair locally before starting the session. Fresh print-mode workspaces require <code>--model</code> or another explicit model source.</p>
         </div>
       </section>
 

@@ -2,7 +2,7 @@
 
 ## 1.86.0
 
-- Added standalone UR installations for macOS, Linux, and Windows. Native
+- Added standalone UR installations for macOS and Linux on ARM64 and x64. Native
   releases include the application runtime, repository search, image libraries,
   TypeScript resources, and integration assets; users do not need to install
   Node.js or Bun to run the native application.
@@ -14,12 +14,8 @@
 - Added verified GitHub native downloads, version pinning, atomic installation
   and upgrades, conservative uninstall, resource integrity checks, and native
   release provenance. Platform signing is recorded accurately when configured.
-- Hardened Windows installation against temporary file locks and unsafe archive
-  names. Custom installation paths are retained during updates and supported
-  by uninstall, including paths containing Unicode and percent characters.
-- Windows installs a native `ur.exe` launcher so PowerShell and external
-  programs can run UR from these paths. Updates activate versions through its
-  adjacent atomic `ur.cmd` file and preserve the owned launcher executable.
+- Deferred Windows native distribution; it is unavailable in 1.86.0. Windows
+  source/npm workflows remain optional for developers with separate runtimes.
 - Added native artifact qualification across supported platforms, including
   resource checks and a local mock-provider streaming, task, write/read, and
   resume workflow without external JavaScript runtimes on PATH.

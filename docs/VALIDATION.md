@@ -10,11 +10,15 @@ You need:
   in the local Ollama app. Local models and Ollama Cloud-backed models both
   work because UR talks to the configured Ollama host.
 - A second Ollama server on the LAN if you want to test network discovery.
-- The [native UR application](NATIVE_INSTALL.md), which includes its runtime;
+- The [native UR application](NATIVE_INSTALL.md) on macOS or Linux ARM64/x64,
+  which includes its runtime;
   or the npm/GitHub package (`npm install -g ur-agent` or
   `bun add -g github:Maitham16/UR`); or a local checkout (`bun run dev`).
   npm/source paths require separate Node.js and Bun installations; their
   launcher detects and execs Bun automatically.
+
+Windows native installation is unavailable in 1.86.0. Windows developers can
+optionally use the source/npm workflows with their separate Node.js/Bun runtimes.
 
 ## 0. Smoke
 

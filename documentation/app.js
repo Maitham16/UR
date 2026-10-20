@@ -497,7 +497,7 @@ const commands = [
     name: 'update',
     category: 'Ops',
     aliases: ['upgrade'],
-    summary: 'Upgrade a native installation from verified GitHub releases, or check for npm updates. Interactive sessions can show update status for the installation channel.',
+    summary: 'Upgrade a native macOS or Linux installation from verified GitHub releases, or check for npm updates. Interactive sessions can show update status for the installation channel.',
     examples: ['ur update', 'ur upgrade'],
   },
   {
@@ -609,7 +609,7 @@ const commands = [
     name: 'install',
     category: "Core",
     aliases: [],
-    summary: "Install or activate a verified standalone UR release without Node.js or Bun.",
+    summary: "Install or activate a verified standalone UR release for macOS or Linux without Node.js or Bun. Standalone Windows is unavailable in 1.86.",
     examples: ["ur install latest", "ur install 1.86.0"],
   },
 ];
@@ -948,7 +948,7 @@ const examples = [
   },
   {
     title: 'Headless JavaScript',
-    text: 'Drive installed UR from a Node.js program. The caller needs Node.js; native UR includes its own runtime. Windows native installs provide ur.exe on PATH; UR_EXECUTABLE can override its path.',
+    text: 'Drive installed UR from a Node.js program. The caller needs Node.js; native UR includes its own runtime. Native UR 1.86 supports macOS and Linux; standalone Windows is unavailable. UR_EXECUTABLE can override the installed executable path.',
     code: "import { execFileSync } from 'node:child_process'\n\nconst executable = process.env.UR_EXECUTABLE ?? (process.platform === 'win32' ? 'ur.exe' : 'ur')\nconst output = execFileSync(executable, ['-p', '--model', '<model>', '--output-format', 'json', 'Review the current git diff'], { encoding: 'utf8' })\nconsole.log(JSON.parse(output).result)",
   },
   {

@@ -210,7 +210,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist-release/native
-          for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
+          for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
             gh run download "$GITHUB_RUN_ID" --name "native-$target" --dir dist-release/native
           done
           node scripts/native-manifest.mjs dist-release/native
@@ -245,14 +245,14 @@ jobs:
               --title "UR-Nexus $VERSION" \
               --prerelease="$PRERELEASE" \
               --notes-file release-notes.md
-            gh release upload "$TAG" dist-release/*.tgz dist-release/native/ur-* dist-release/native/manifest.json dist-release/native/SHA256SUMS install.sh install.ps1 uninstall.sh uninstall.ps1 --clobber
+            gh release upload "$TAG" dist-release/*.tgz dist-release/native/ur-*.tar.gz dist-release/native/manifest.json dist-release/native/SHA256SUMS install.sh uninstall.sh --clobber
           else
             gh release create "$TAG" \
               --title "UR-Nexus $VERSION" \
               --prerelease="$PRERELEASE" \
               --notes-file release-notes.md \
               --verify-tag \
-              dist-release/*.tgz dist-release/native/ur-* dist-release/native/manifest.json dist-release/native/SHA256SUMS install.sh install.ps1 uninstall.sh uninstall.ps1
+              dist-release/*.tgz dist-release/native/ur-*.tar.gz dist-release/native/manifest.json dist-release/native/SHA256SUMS install.sh uninstall.sh
           fi
 
   npm-publish:
