@@ -34,7 +34,9 @@ function Test-VerifiedRelease([string]$Directory) {
   $Candidate = Join-Path $Directory 'ur.exe'
   if (!(Test-Path -LiteralPath $Candidate) -or !(Test-Path -LiteralPath (Join-Path $Directory 'resources/manifest.json'))) { return $false }
   try {
-    if ((& $Candidate --version) -cne "$Version (UR-Nexus)" -or $LASTEXITCODE -ne 0) { return $false }
+    $ActualVersionOutput = @(& $Candidate --version)
+    $VersionExitCode = $LASTEXITCODE
+    if ($VersionExitCode -ne 0 -or $ActualVersionOutput.Count -ne 1 -or $ActualVersionOutput[0] -cne "$Version (UR-Nexus)") { return $false }
     $Report = (& $Candidate --ur-native-self-test) | ConvertFrom-Json
     return ($LASTEXITCODE -eq 0 -and $Report.passed -eq $true)
   } catch { return $false }
@@ -75,7 +77,12 @@ try {
   Expand-Archive -LiteralPath $Archive -DestinationPath $Extracted
   $StagedExecutable = Join-Path $Extracted 'ur.exe'
   if (!(Test-Path -LiteralPath (Join-Path $Extracted 'resources/manifest.json'))) { throw 'Release resources are missing' }
-  if ((& $StagedExecutable --version) -cne "$Version (UR-Nexus)" -or $LASTEXITCODE -ne 0) { throw 'Downloaded executable failed version check' }
+  $ActualVersionOutput = @(& $StagedExecutable --version)
+  $VersionExitCode = $LASTEXITCODE
+  if ($VersionExitCode -ne 0 -or $ActualVersionOutput.Count -ne 1 -or $ActualVersionOutput[0] -cne "$Version (UR-Nexus)") {
+    $VersionDiagnostics = @{ expected = "$Version (UR-Nexus)"; actual = $ActualVersionOutput; exitCode = $VersionExitCode; executable = $StagedExecutable } | ConvertTo-Json -Compress
+    throw "Downloaded executable failed version check: $VersionDiagnostics"
+  }
   $SelfTest = (& $StagedExecutable --ur-native-self-test) | ConvertFrom-Json
   if ($LASTEXITCODE -ne 0 -or $SelfTest.passed -ne $true) { throw 'Downloaded executable failed resource verification' }
     if (Test-Path -LiteralPath $Destination) { $Destination = Join-Path $Versions ("$Version-$Platform-repair-" + [guid]::NewGuid()) }

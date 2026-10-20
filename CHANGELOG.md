@@ -9,6 +9,8 @@
 - Made agent, workflow, background-worker, protocol-adapter, scheduler, and
   shell-timeout launches work from the installed executable. Source and npm
   development workflows remain available.
+- Windows shell timeouts now terminate the command's process tree, preventing
+  child commands from continuing after the timeout expires.
 - Added verified GitHub native downloads, version pinning, atomic installation
   and upgrades, conservative uninstall, resource integrity checks, and native
   release provenance. Platform signing is recorded accurately when configured.

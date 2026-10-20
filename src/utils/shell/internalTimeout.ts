@@ -1,5 +1,7 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { constants } from 'node:os'
+import { win32 } from 'node:path'
 
 type Signal = NodeJS.Signals | number
 
@@ -59,14 +61,38 @@ export async function runInternalTimeout(argv: string[]): Promise<number> {
   const command = args.shift()
   if (limit === null || !command) return fail('expected a duration and command')
 
+  let windowsTreeKiller: string | undefined
+  if (process.platform === 'win32') {
+    const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || 'C:\\Windows'
+    if (!win32.isAbsolute(systemRoot)) return fail('SystemRoot must be an absolute Windows directory')
+    windowsTreeKiller = win32.join(systemRoot, 'System32', 'taskkill.exe')
+    // Refuse to start a command that this supervisor cannot clean up.
+    if (!existsSync(windowsTreeKiller)) return fail('Windows process-tree termination is unavailable')
+  }
+
   return await new Promise(resolve => {
     const child = spawn(command, args, { stdio: 'inherit', detached: true })
     let expired = false
+    let cleanupFailed = false
     let settled = false
     let timer: ReturnType<typeof setTimeout> | undefined
     let killTimer: ReturnType<typeof setTimeout> | undefined
     const send = (requested: Signal): void => {
       if (!child.pid) return
+      if (windowsTreeKiller) {
+        // Windows has no POSIX process groups, and child.kill() leaves its
+        // descendants alive. Windows termination is forceful even for SIGTERM;
+        // wait for the whole tree to be terminated before settling the timeout.
+        const result = spawnSync(windowsTreeKiller, ['/PID', String(child.pid), '/T', '/F'], {
+          stdio: 'ignore', windowsHide: true, timeout: 10_000,
+        })
+        if (result.status !== 0 && child.exitCode === null && child.signalCode === null) {
+          cleanupFailed = true
+          console.error('timeout: Windows process-tree termination failed')
+          try { child.kill(requested) } catch { /* Child already exited. */ }
+        }
+        return
+      }
       try { process.kill(-child.pid, requested) }
       catch { try { child.kill(requested) } catch { /* Child already exited. */ } }
     }
@@ -91,14 +117,14 @@ export async function runInternalTimeout(argv: string[]): Promise<number> {
       process.off('SIGINT', onInterrupt)
       process.off('SIGHUP', onHangup)
       process.off('SIGTERM', onTerminate)
-      resolve(status)
+      resolve(cleanupFailed ? 125 : status)
     }
     if (limit > 0) {
       timer = setTimeout(() => {
         expired = true
         if (verbose) console.error(`timeout: sending signal ${signal} to command ${command}`)
         send(signal)
-        if (killAfter !== null) killTimer = setTimeout(() => send('SIGKILL'), killAfter)
+        if (killAfter !== null && !windowsTreeKiller) killTimer = setTimeout(() => send('SIGKILL'), killAfter)
       }, limit)
     }
     child.on('error', error => {

@@ -825188,8 +825188,10 @@ var exports_internalTimeout = {};
 __export(exports_internalTimeout, {
   runInternalTimeout: () => runInternalTimeout
 });
-import { spawn as spawn21 } from "child_process";
+import { spawn as spawn21, spawnSync as spawnSync12 } from "child_process";
+import { existsSync as existsSync106 } from "fs";
 import { constants as constants11 } from "os";
+import { win32 as win326 } from "path";
 function durationMs(value2) {
   const match = /^(\d+(?:\.\d+)?)([smhd]?)$/.exec(value2 ?? "");
   if (!match)
@@ -825259,15 +825261,40 @@ async function runInternalTimeout(argv) {
   const command8 = args.shift();
   if (limit === null || !command8)
     return fail("expected a duration and command");
+  let windowsTreeKiller;
+  if (process.platform === "win32") {
+    const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || "C:\\Windows";
+    if (!win326.isAbsolute(systemRoot))
+      return fail("SystemRoot must be an absolute Windows directory");
+    windowsTreeKiller = win326.join(systemRoot, "System32", "taskkill.exe");
+    if (!existsSync106(windowsTreeKiller))
+      return fail("Windows process-tree termination is unavailable");
+  }
   return await new Promise((resolve81) => {
     const child = spawn21(command8, args, { stdio: "inherit", detached: true });
     let expired = false;
+    let cleanupFailed = false;
     let settled = false;
     let timer;
     let killTimer;
     const send = (requested) => {
       if (!child.pid)
         return;
+      if (windowsTreeKiller) {
+        const result = spawnSync12(windowsTreeKiller, ["/PID", String(child.pid), "/T", "/F"], {
+          stdio: "ignore",
+          windowsHide: true,
+          timeout: 1e4
+        });
+        if (result.status !== 0 && child.exitCode === null && child.signalCode === null) {
+          cleanupFailed = true;
+          console.error("timeout: Windows process-tree termination failed");
+          try {
+            child.kill(requested);
+          } catch {}
+        }
+        return;
+      }
       try {
         process.kill(-child.pid, requested);
       } catch {
@@ -825302,7 +825329,7 @@ async function runInternalTimeout(argv) {
       process.off("SIGINT", onInterrupt);
       process.off("SIGHUP", onHangup);
       process.off("SIGTERM", onTerminate);
-      resolve81(status2);
+      resolve81(cleanupFailed ? 125 : status2);
     };
     if (limit > 0) {
       timer = setTimeout(() => {
@@ -825310,7 +825337,7 @@ async function runInternalTimeout(argv) {
         if (verbose)
           console.error(`timeout: sending signal ${signal} to command ${command8}`);
         send(signal);
-        if (killAfter !== null)
+        if (killAfter !== null && !windowsTreeKiller)
           killTimer = setTimeout(() => send("SIGKILL"), killAfter);
       }, limit);
     }
@@ -825336,7 +825363,7 @@ __export(exports_nativeSelfTest, {
   runNativeSelfTest: () => runNativeSelfTest
 });
 import { createHash as createHash55 } from "crypto";
-import { spawn as spawn22, spawnSync as spawnSync12 } from "child_process";
+import { spawn as spawn22, spawnSync as spawnSync13 } from "child_process";
 import { mkdtemp as mkdtemp4, readFile as readFile60, rm as rm17, stat as stat48, writeFile as writeFile48 } from "fs/promises";
 import { tmpdir as tmpdir27 } from "os";
 import { join as join252 } from "path";
@@ -825382,7 +825409,7 @@ async function runNativeSelfTest() {
       await writeFile48(join252(workspace2, "search.txt"), `native resource needle42
 `);
       const { rgPath, rgArgs, argv0 } = ripgrepCommand();
-      const result = spawnSync12(rgPath, [...rgArgs, "-n", "needle[0-9]+", workspace2], { encoding: "utf8", argv0 });
+      const result = spawnSync13(rgPath, [...rgArgs, "-n", "needle[0-9]+", workspace2], { encoding: "utf8", argv0 });
       if (result.status !== 0 || !result.stdout.includes("native resource needle42")) {
         throw new Error(result.stderr || "Packaged rg could not search a fixture");
       }
@@ -852223,7 +852250,7 @@ var init_useApiKeyVerification = __esm(() => {
 });
 
 // src/utils/terminalPanel.ts
-import { spawn as spawn24, spawnSync as spawnSync13 } from "child_process";
+import { spawn as spawn24, spawnSync as spawnSync14 } from "child_process";
 function getTerminalPanelSocket() {
   const sessionId = getSessionId();
   return `ur-panel-${sessionId.slice(0, 8)}`;
@@ -852244,7 +852271,7 @@ class TerminalPanel {
   checkTmux() {
     if (this.hasTmux !== undefined)
       return this.hasTmux;
-    const result = spawnSync13("tmux", ["-V"], { encoding: "utf-8" });
+    const result = spawnSync14("tmux", ["-V"], { encoding: "utf-8" });
     this.hasTmux = result.status === 0;
     if (!this.hasTmux) {
       logForDebugging("Terminal panel: tmux not found, falling back to non-persistent shell");
@@ -852252,14 +852279,14 @@ class TerminalPanel {
     return this.hasTmux;
   }
   hasSession() {
-    const result = spawnSync13("tmux", ["-L", getTerminalPanelSocket(), "has-session", "-t", TMUX_SESSION], { encoding: "utf-8" });
+    const result = spawnSync14("tmux", ["-L", getTerminalPanelSocket(), "has-session", "-t", TMUX_SESSION], { encoding: "utf-8" });
     return result.status === 0;
   }
   createSession() {
     const shell = process.env.SHELL || "/bin/bash";
     const cwd2 = pwd();
     const socket = getTerminalPanelSocket();
-    const result = spawnSync13("tmux", [
+    const result = spawnSync14("tmux", [
       "-L",
       socket,
       "new-session",
@@ -852275,7 +852302,7 @@ class TerminalPanel {
       logForDebugging(`Terminal panel: failed to create tmux session: ${result.stderr}`);
       return false;
     }
-    spawnSync13("tmux", [
+    spawnSync14("tmux", [
       "-L",
       socket,
       "bind-key",
@@ -852315,7 +852342,7 @@ class TerminalPanel {
     return true;
   }
   attachSession() {
-    spawnSync13("tmux", ["-L", getTerminalPanelSocket(), "attach-session", "-t", TMUX_SESSION], { stdio: "inherit" });
+    spawnSync14("tmux", ["-L", getTerminalPanelSocket(), "attach-session", "-t", TMUX_SESSION], { stdio: "inherit" });
   }
   showShell() {
     const inkInstance = instances_default.get(process.stdout);
@@ -852342,7 +852369,7 @@ class TerminalPanel {
   runShellDirect() {
     const shell = process.env.SHELL || "/bin/bash";
     const cwd2 = pwd();
-    spawnSync13(shell, ["-i", "-l"], {
+    spawnSync14(shell, ["-i", "-l"], {
       stdio: "inherit",
       cwd: cwd2,
       env: process.env
@@ -895427,7 +895454,7 @@ import {
   chmodSync as chmodSync12,
   closeSync as closeSync11,
   constants as constants12,
-  existsSync as existsSync106,
+  existsSync as existsSync107,
   fsyncSync as fsyncSync7,
   lstatSync as lstatSync21,
   mkdirSync as mkdirSync74,
@@ -895480,7 +895507,7 @@ function quarantineTaskManifest(path28) {
   return destination;
 }
 function assertNotSymlink(path28) {
-  if (existsSync106(path28) && lstatSync21(path28).isSymbolicLink()) {
+  if (existsSync107(path28) && lstatSync21(path28).isSymbolicLink()) {
     throw new Error(`Refusing to use symlinked MCP task state path: ${path28}`);
   }
 }
@@ -895534,7 +895561,7 @@ class DurableMcp2026TaskStore {
   }
   #load() {
     const path28 = taskManifestPath(this.#cwd);
-    if (!existsSync106(path28))
+    if (!existsSync107(path28))
       return { version: TASK_MANIFEST_VERSION, tasks: [] };
     assertNotSymlink(path28);
     try {
@@ -895557,7 +895584,7 @@ class DurableMcp2026TaskStore {
         tasks: validTasks.slice(-MAX_TASKS2)
       };
     } catch {
-      if (existsSync106(path28))
+      if (existsSync107(path28))
         quarantineTaskManifest(path28);
       return { version: TASK_MANIFEST_VERSION, tasks: [] };
     }
@@ -895607,7 +895634,7 @@ class DurableMcp2026TaskStore {
       renameSync21(temporary, destination);
       chmodSync12(destination, 384);
     } finally {
-      if (existsSync106(temporary))
+      if (existsSync107(temporary))
         unlinkSync17(temporary);
     }
   }
@@ -897954,11 +897981,11 @@ var init_pluginDiscovery = __esm(() => {
 });
 
 // src/utils/plugins/pluginDoctor.ts
-import { existsSync as existsSync107, readdirSync as readdirSync42, readFileSync as readFileSync98, statSync as statSync39 } from "fs";
+import { existsSync as existsSync108, readdirSync as readdirSync42, readFileSync as readFileSync98, statSync as statSync39 } from "fs";
 import { basename as basename70, join as join270 } from "path";
 function manifestPathFor3(dir) {
   const p2 = join270(dir, ".ur-plugin", "plugin.json");
-  return existsSync107(p2) ? p2 : null;
+  return existsSync108(p2) ? p2 : null;
 }
 function discoverPluginDirs(roots) {
   const dirs = [];
@@ -897970,7 +897997,7 @@ function discoverPluginDirs(roots) {
     }
   };
   for (const root2 of roots) {
-    if (!root2 || !existsSync107(root2))
+    if (!root2 || !existsSync108(root2))
       continue;
     if (manifestPathFor3(root2)) {
       add(root2);

@@ -25,13 +25,23 @@ describe('standalone process launch and timeout contract', () => {
     const fixture = join(workDir, 'fixture.ts')
     binary = join(workDir, process.platform === 'win32' ? 'UR test.exe' : 'UR test')
     writeFileSync(fixture, `
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { resolveUrExecutable } from ${JSON.stringify(resolve('src/utils/urExecutable.ts'))};
 import { isInBundledMode } from ${JSON.stringify(resolve('src/utils/bundledMode.ts'))};
 import { runInternalTimeout } from ${JSON.stringify(resolve('src/utils/shell/internalTimeout.ts'))};
 const args = process.argv.slice(2);
 if (args[0] === '--internal-timeout') process.exitCode = await runInternalTimeout(args.slice(1));
 else if (args[0] === '--child') console.log(JSON.stringify(args.slice(1)));
+else if (args[0] === '--exit') process.exitCode = Number(args[1]);
+else if (args[0] === '--tree-descendant') {
+  writeFileSync(args[2]!, String(process.pid));
+  setTimeout(() => writeFileSync(args[1]!, 'descendant survived'), 3000);
+}
+else if (args[0] === '--tree-command') {
+  spawn(process.execPath, ['--tree-descendant', args[1]!, args[2]!], { stdio: 'ignore', windowsHide: true });
+  setTimeout(() => {}, 6000);
+}
 else {
   const entry = resolveUrExecutable({ preferStable: args[0] === '--stable' });
   const output = execFileSync(entry.file, [...entry.baseArgs, '--child', 'prompt with spaces', '--model', 'fixture'], { encoding: 'utf8' });
@@ -92,5 +102,28 @@ else {
     })
     expect(result.status).toBe(124)
     expect(result.error).toBeUndefined()
+  })
+
+  test.skipIf(process.platform !== 'win32')('Windows timeout preserves command statuses with an empty PATH', () => {
+    expect(run(['--internal-timeout', '5s', binary, '--exit', '7']).status).toBe(7)
+    expect(run(['--internal-timeout', 'bad', binary]).status).toBe(125)
+    expect(run(['--internal-timeout', '1s', join(workDir, 'missing-command.exe')]).status).toBe(127)
+    const ready = join(workDir, 'must-not-start-without-tree-cleanup.txt')
+    const missingRoot = join(workDir, 'missing Windows directory')
+    expect(run(['--internal-timeout', '1s', binary, '--tree-descendant', join(workDir, 'unused-marker'), ready], {
+      SystemRoot: missingRoot, SYSTEMROOT: missingRoot,
+    }).status).toBe(125)
+    expect(existsSync(ready)).toBe(false)
+  })
+
+  test.skipIf(process.platform !== 'win32')('Windows timeout kills actual descendants without an external runtime', async () => {
+    const marker = join(workDir, 'windows-descendant-escaped.txt')
+    const ready = join(workDir, 'windows-descendant-ready.txt')
+    const result = run(['--internal-timeout', '--kill-after=30s', '1.5s', binary, '--tree-command', marker, ready])
+    expect(result.status, result.stderr).toBe(124)
+    expect(result.error).toBeUndefined()
+    expect(existsSync(ready)).toBe(true)
+    await new Promise(resolve => setTimeout(resolve, 3200))
+    expect(existsSync(marker)).toBe(false)
   })
 })

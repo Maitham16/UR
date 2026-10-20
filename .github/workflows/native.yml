@@ -78,6 +78,7 @@ jobs:
             ${{ runner.temp }}/ur native release smoke */*.log
             ${{ runner.temp }}/ur native release smoke */*.json
             ${{ runner.temp }}/ur native release smoke */*.jsonl
+            ${{ runner.temp }}/ur bootstrap */*.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Attest tested native archive
