@@ -4,9 +4,9 @@
   "agent": {
     "name": "ur-nexus",
     "version": "1.86.0",
-    "commit": "c8f26b688d03a39a6343af38a374c9f741c6f22b"
+    "commit": "2d157ceff3ed5ef6018e3bfaafb4ba9ee8422050"
   },
-  "date": "2026-10-20T21:55:59.159Z",
+  "date": "2026-10-20T22:27:18.764Z",
   "benchmark": {
     "name": "local-smoke",
     "category": "internal-regression",
@@ -33,7 +33,7 @@
         "name": "simple file edit task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 30,
+        "wallTimeMs": 29,
         "failureCategory": null
       },
       {
@@ -41,7 +41,7 @@
         "name": "failing test repair task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 217,
+        "wallTimeMs": 197,
         "failureCategory": null
       },
       {
@@ -49,7 +49,7 @@
         "name": "provider routing task",
         "category": "provider-routing",
         "passed": true,
-        "wallTimeMs": 309,
+        "wallTimeMs": 223,
         "failureCategory": null
       },
       {
@@ -57,7 +57,7 @@
         "name": "sandbox denial task",
         "category": "sandbox-safety",
         "passed": true,
-        "wallTimeMs": 692,
+        "wallTimeMs": 617,
         "failureCategory": null
       },
       {
@@ -65,7 +65,7 @@
         "name": "tool-call parsing task",
         "category": "tool-use",
         "passed": true,
-        "wallTimeMs": 226,
+        "wallTimeMs": 193,
         "failureCategory": null
       },
       {
@@ -73,13 +73,13 @@
         "name": "multi-step coding task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 8651,
+        "wallTimeMs": 7146,
         "failureCategory": null
       }
     ],
     "failedTasks": [],
     "failureCategories": {},
-    "wallTimeMs": 10126,
+    "wallTimeMs": 8407,
     "tokenUsage": null,
     "costUSD": null
   },
