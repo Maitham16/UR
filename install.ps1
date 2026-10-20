@@ -52,6 +52,7 @@ $OwnerTemporary = Join-Path $Bin ('.ur-shim-' + [guid]::NewGuid() + '.sha256')
 $CreatedNativeShim = $false
 $CreatedNativeShimOwner = $false
 $Activated = $false
+$NewReleaseDirectory = $null
 function Invoke-NativeInstallFileOperation {
   param([scriptblock]$Operation, [ValidateRange(0,15000)][int]$TimeoutMilliseconds = 15000)
   $Timer = [Diagnostics.Stopwatch]::StartNew()
@@ -191,7 +192,13 @@ try {
       if ($Expanded -gt 2147483648) { throw 'Native release exceeds extraction limit' }
     }
   } finally { $Zip.Dispose() }
-  $Extracted = Join-Path $Staging 'release'
+  # Running an executable or loading its DLLs can prevent Windows from moving
+  # its parent directory. Extract into a fresh final version directory first;
+  # only the launcher is activated after that exact directory passes checks.
+  if (Test-Path -LiteralPath $Destination) { $Destination = Join-Path $Versions ("$Version-$Platform-repair-" + [guid]::NewGuid()) }
+  $Extracted = $Destination
+  New-Item -ItemType Directory -Path $Extracted -ErrorAction Stop | Out-Null
+  $NewReleaseDirectory = $Extracted
   Expand-Archive -LiteralPath $Archive -DestinationPath $Extracted
   $StagedExecutable = Join-Path $Extracted 'ur.exe'
   if (!(Test-Path -LiteralPath (Join-Path $Extracted 'resources/manifest.json'))) { throw 'Release resources are missing' }
@@ -204,8 +211,6 @@ try {
   $ResourceResult = Invoke-NativeReleaseVerification $StagedExecutable '--ur-native-self-test'
   try { $SelfTest = $ResourceResult.stdout | ConvertFrom-Json } catch { throw "Downloaded executable returned invalid resource verification JSON: $($ResourceResult | ConvertTo-Json -Compress)" }
   if ($ResourceResult.exitCode -ne 0 -or $SelfTest.passed -isnot [bool] -or $SelfTest.passed -ne $true) { throw "Downloaded executable failed resource verification: $($ResourceResult | ConvertTo-Json -Compress)" }
-    if (Test-Path -LiteralPath $Destination) { $Destination = Join-Path $Versions ("$Version-$Platform-repair-" + [guid]::NewGuid()) }
-    Invoke-NativeInstallFileOperation { Move-Item -LiteralPath $Extracted -Destination $Destination }
   }
   $Executable = Join-Path $Destination 'ur.exe'
   if ($Executable -match '["\r\n]') { throw 'Unsupported installation path' }
@@ -242,6 +247,7 @@ try {
     if (!$Activated) {
       if ($CreatedNativeShim) { $CleanupPaths += $NativeShim }
       if ($CreatedNativeShimOwner) { $CleanupPaths += $NativeShimOwner }
+      if ($NewReleaseDirectory) { $CleanupPaths += $NewReleaseDirectory }
     }
     foreach ($CleanupPath in $CleanupPaths) {
       try {
