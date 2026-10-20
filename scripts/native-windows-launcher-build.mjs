@@ -62,7 +62,8 @@ export function buildWindowsNativeLauncher(outFile) {
     copyFileSync(executable, destination)
     return destination
   } finally {
-    rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    try { rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) }
+    catch (error) { console.warn(`Windows launcher compiler temporary files remain at ${work}: ${error instanceof Error ? error.message : String(error)}`) }
   }
 }
 

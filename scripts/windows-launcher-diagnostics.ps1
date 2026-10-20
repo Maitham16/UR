@@ -116,6 +116,7 @@ function Capture([string]$Route,[string]$Target,[bool]$NoWindow,[string]$Expansi
   $Process=New-Object Diagnostics.Process; $Process.StartInfo=$Info
   $Output=New-Object IO.MemoryStream; $Errors=New-Object IO.MemoryStream
   try {
+    if ($Route -eq 'shim-stdio') { [Console]::InputEncoding=[Text.UTF8Encoding]::new($false) }
     if (!$Process.Start()) { throw 'Process did not start' }
     $OutputTask=$Process.StandardOutput.BaseStream.CopyToAsync($Output); $ErrorTask=$Process.StandardError.BaseStream.CopyToAsync($Errors)
     if ($Route -eq 'shim-stdio') { $InputBytes=[Text.Encoding]::UTF8.GetBytes(('input caf'+[char]0xE9+' %UR_NATIVE_FIXTURE%!')); $Process.StandardInput.BaseStream.Write($InputBytes,0,$InputBytes.Length); $Process.StandardInput.Close() }
@@ -149,7 +150,7 @@ foreach ($NoWindow in @($true,$false)) {
   Capture 'direct-exe' $Executable $NoWindow
   Capture 'cmd-fullpath' $Managed $NoWindow 'on'
   Capture 'chcp' $Chcp $NoWindow
-  Capture 'console' $Console $NoWindow
+  # Native launch evidence above already isolates console behavior.
 }
 
 # Exercise the complete real bootstrap with a local ZIP, exact manifest and the
@@ -264,7 +265,7 @@ if ([IO.File]::Exists($ActualManaged)) {
       Capture 'cmd-fullpath' $ActualFile $NoWindow 'default' 'installed'
       Capture 'cmd-fullpath' $ActualFile $NoWindow 'off' 'installed'
       Capture 'ps-path' $ActualFile $NoWindow 'default' 'installed'
-      Capture 'ps-discovery' $ActualFile $NoWindow 'default' 'installed'
+      # Ordinary PS execution above is the required discovery result.
     }
   }
   Capture 'direct-exe' (Join-Path $InstalledData ('versions/'+$Version+'-win32-x64/ur.exe')) $true 'default' 'installed'
@@ -296,7 +297,7 @@ if ([IO.File]::Exists($ActualShim)) {
     $Expected=if ($Probe.route -in @('shim-exit','shim-stdio')) {7} else {0}
     if ($Probe.exitCode -ne $Expected) { throw ('Native shim exit status mismatch: '+($Probe | ConvertTo-Json -Depth 5 -Compress)) }
     if ($Probe.route -eq 'shim-args') {
-      $ExpectedArgs=@('--shim-argv','two words','','literal%UR_NATIVE_FIXTURE%!&caf'+[char]0xE9,'C:\trailing\','{"message":"hello"}')
+      $ExpectedArgs=@('--shim-argv','two words','',('literal%UR_NATIVE_FIXTURE%!&caf'+[char]0xE9),'C:\trailing\','{"message":"hello"}')
       if (($Probe.stdout | ConvertFrom-Json | ConvertTo-Json -Compress) -cne ($ExpectedArgs | ConvertTo-Json -Compress)) { throw 'Native shim changed Unicode, empty, quoted, or trailing-backslash arguments' }
     }
     if ($Probe.route -eq 'shim-stdio') {

@@ -18,7 +18,7 @@ if ($ShimExists -or $OwnerExists) {
   if (!$Ownership.Success -or (Get-FileHash -LiteralPath $NativeShim -Algorithm SHA256).Hash.ToLowerInvariant() -cne $Ownership.Groups[1].Value) { throw 'Native launcher does not match its ownership record; leaving it unchanged.' }
 }
 if (Test-Path -LiteralPath $Launcher) {
-  $Content = [IO.File]::ReadAllText($Launcher)
+  $Content = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($Launcher))
   $Targets = [regex]::Matches($Content, '(?m)^"([^"\r\n]+)" %\*\r?$')
   $BinTargets = [regex]::Matches($Content, '(?m)^@set "UR_NATIVE_BIN_DIR=([^"\r\n]+)"\r?$')
   $DataTargets = [regex]::Matches($Content, '(?m)^@set "UR_NATIVE_DATA_DIR=([^"\r\n]+)"\r?$')
