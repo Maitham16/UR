@@ -59,6 +59,33 @@ foreach ($Path in @($env:UR_BOOTSTRAP_INSTALL_SCRIPT, (Join-Path (Split-Path $en
   if ($ParseErrors.Count) { throw "PowerShell installer syntax error: $ParseErrors" }
   if ($Path -eq $env:UR_BOOTSTRAP_INSTALL_SCRIPT) { $InstallAst = $Ast }
 }
+function Invoke-RestMethod {
+  param([string]$Uri, $Headers)
+  if (!$Uri.EndsWith('/manifest.json')) { throw 'Unexpected bootstrap metadata request' }
+  return ([IO.File]::ReadAllText($global:UrNativeBootstrapFixtureManifestPath) | ConvertFrom-Json)
+}
+function Invoke-WebRequest {
+  param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+  if (!$Uri.EndsWith('/' + [IO.Path]::GetFileName($env:UR_BOOTSTRAP_ARCHIVE))) { throw 'Unexpected bootstrap asset request' }
+  [IO.File]::Copy($global:UrNativeBootstrapFixtureArchivePath, $OutFile)
+  $global:UrNativeBootstrapFixtureDownloadCount++
+}
+$global:UrNativeBootstrapFixtureManifestPath = $env:UR_BOOTSTRAP_MANIFEST
+$global:UrNativeBootstrapFixtureArchivePath = $env:UR_BOOTSTRAP_ARCHIVE
+$global:UrNativeBootstrapFixtureDownloadCount = 0
+for ($Attempt = 0; $Attempt -lt 2; $Attempt++) {
+  & $env:UR_BOOTSTRAP_INSTALL_SCRIPT -Version $env:UR_BOOTSTRAP_VERSION -BinDirectory $env:UR_BOOTSTRAP_BIN -DataDirectory $env:UR_BOOTSTRAP_DATA -NoPathUpdate
+}
+if ($global:UrNativeBootstrapFixtureDownloadCount -ne 1) { throw 'Repeated bootstrap downloaded the native archive again' }
+$Output = & (Join-Path $env:UR_BOOTSTRAP_BIN 'ur.cmd') --version
+if ($LASTEXITCODE -ne 0 -or $Output -cne ($env:UR_BOOTSTRAP_VERSION + ' (UR-Nexus)')) { throw 'Installed Windows launcher returned the wrong version' }
+# The managed launcher supplies its custom directories to the native updater.
+# A pinned version already installed locally must reuse that cache offline.
+$InstallOutput = & (Join-Path $env:UR_BOOTSTRAP_BIN 'ur.cmd') install $env:UR_BOOTSTRAP_VERSION
+if ($LASTEXITCODE -ne 0) { throw "Native cached install did not reuse the custom installation: $InstallOutput" }
+$OutputAfterInstall = & (Join-Path $env:UR_BOOTSTRAP_BIN 'ur.cmd') --version
+if ($LASTEXITCODE -ne 0 -or $OutputAfterInstall -cne ($env:UR_BOOTSTRAP_VERSION + ' (UR-Nexus)')) { throw 'Native cached install changed the custom launcher incorrectly' }
+if (Test-Path -LiteralPath (Join-Path $HOME '.local/bin/ur.cmd')) { throw 'Native cached install escaped to the default home launcher' }
 # Exercise the exact installer retry helper without executing an installation.
 $RetryDefinition = $InstallAst.Find({ param($Node) $Node -is [Management.Automation.Language.FunctionDefinitionAst] -and $Node.Name -eq 'Invoke-NativeInstallFileOperation' }, $true)
 if (!$RetryDefinition) { throw 'Installer file-operation retry helper is missing' }
@@ -86,21 +113,10 @@ try {
   Invoke-NativeInstallFileOperation -TimeoutMilliseconds 0 -Operation { $script:RetryAttempts++; throw [IO.IOException]::new('Fixture bounded sharing violation', -2147024864) }
 } catch { $Failure = $_ }
 if (!$Failure -or $script:RetryAttempts -ne 1 -or $Failure.Exception.Message -ne 'Fixture bounded sharing violation') { throw 'Windows file-operation retry deadline did not preserve the original error' }
-function Invoke-RestMethod {
-  param([string]$Uri, $Headers)
-  if (!$Uri.EndsWith('/manifest.json')) { throw 'Unexpected bootstrap metadata request' }
-  return ([IO.File]::ReadAllText($script:BootstrapManifestPath) | ConvertFrom-Json)
-}
-function Invoke-WebRequest {
-  param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
-  if (!$Uri.EndsWith('/' + [IO.Path]::GetFileName($env:UR_BOOTSTRAP_ARCHIVE))) { throw 'Unexpected bootstrap asset request' }
-  [IO.File]::Copy($script:BootstrapArchivePath, $OutFile)
-  $script:NativeDownloadCount++
-}
 $Cases = [IO.File]::ReadAllText($env:UR_BOOTSTRAP_HOSTILE_CASES) | ConvertFrom-Json
 foreach ($Case in $Cases) {
-  $script:BootstrapManifestPath = $Case.manifest
-  $script:BootstrapArchivePath = $Case.archive
+  $global:UrNativeBootstrapFixtureManifestPath = $Case.manifest
+  $global:UrNativeBootstrapFixtureArchivePath = $Case.archive
   $Failure = $null
   try {
     & $env:UR_BOOTSTRAP_INSTALL_SCRIPT -Version $env:UR_BOOTSTRAP_VERSION -BinDirectory (Join-Path $Case.directory 'bin') -DataDirectory (Join-Path $Case.directory 'data') -NoPathUpdate
@@ -108,22 +124,8 @@ foreach ($Case in $Cases) {
   if (!$Failure -or !$Failure.Exception.Message.StartsWith('Unsafe native archive entry:')) { throw "Hostile archive entry was not rejected before extraction: $($Case.entry); $Failure" }
   if (Test-Path -LiteralPath (Join-Path $Case.directory 'bin/ur.cmd')) { throw 'Hostile archive activated a launcher' }
 }
-$script:BootstrapManifestPath = $env:UR_BOOTSTRAP_MANIFEST
-$script:BootstrapArchivePath = $env:UR_BOOTSTRAP_ARCHIVE
-$script:NativeDownloadCount = 0
-for ($Attempt = 0; $Attempt -lt 2; $Attempt++) {
-  & $env:UR_BOOTSTRAP_INSTALL_SCRIPT -Version $env:UR_BOOTSTRAP_VERSION -BinDirectory $env:UR_BOOTSTRAP_BIN -DataDirectory $env:UR_BOOTSTRAP_DATA -NoPathUpdate
-}
-if ($script:NativeDownloadCount -ne 1) { throw 'Repeated bootstrap downloaded the native archive again' }
-$Output = & (Join-Path $env:UR_BOOTSTRAP_BIN 'ur.cmd') --version
-if ($LASTEXITCODE -ne 0 -or $Output -cne ($env:UR_BOOTSTRAP_VERSION + ' (UR-Nexus)')) { throw 'Installed Windows launcher returned the wrong version' }
-# The managed launcher supplies its custom directories to the native updater.
-# A pinned version already installed locally must reuse that cache offline.
-$InstallOutput = & (Join-Path $env:UR_BOOTSTRAP_BIN 'ur.cmd') install $env:UR_BOOTSTRAP_VERSION
-if ($LASTEXITCODE -ne 0) { throw "Native cached install did not reuse the custom installation: $InstallOutput" }
-$OutputAfterInstall = & (Join-Path $env:UR_BOOTSTRAP_BIN 'ur.cmd') --version
-if ($LASTEXITCODE -ne 0 -or $OutputAfterInstall -cne ($env:UR_BOOTSTRAP_VERSION + ' (UR-Nexus)')) { throw 'Native cached install changed the custom launcher incorrectly' }
-if (Test-Path -LiteralPath (Join-Path $HOME '.local/bin/ur.cmd')) { throw 'Native cached install escaped to the default home launcher' }
+$global:UrNativeBootstrapFixtureManifestPath = $env:UR_BOOTSTRAP_MANIFEST
+$global:UrNativeBootstrapFixtureArchivePath = $env:UR_BOOTSTRAP_ARCHIVE
 $Launcher = Join-Path $env:UR_BOOTSTRAP_BIN 'ur.cmd'
 $ManagedContent = [IO.File]::ReadAllText($Launcher)
 if (!$ManagedContent.Contains('100%% User')) { throw 'Percent-containing installation path was not escaped in the launcher' }

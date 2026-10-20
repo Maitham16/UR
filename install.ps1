@@ -118,7 +118,9 @@ try {
   # Rename into place only after the complete immutable release passes validation.
   $Launcher = Join-Path $Bin 'ur.cmd'
   Invoke-NativeInstallFileOperation {
-    if (Test-Path -LiteralPath $Launcher) { [IO.File]::Replace($Temporary, $Launcher, $null) } else { [IO.File]::Move($Temporary, $Launcher) }
+    # A plain PowerShell $null converts to an empty string for .NET string
+    # arguments. File.Replace needs an actual CLR null for its backup filename.
+    if (Test-Path -LiteralPath $Launcher) { [IO.File]::Replace($Temporary, $Launcher, [System.Management.Automation.Language.NullString]::Value) } else { [IO.File]::Move($Temporary, $Launcher) }
   }
   if (!$NoPathUpdate) {
     $UserPath = [Environment]::GetEnvironmentVariable('Path','User')
