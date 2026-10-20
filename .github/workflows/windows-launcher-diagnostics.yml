@@ -20,6 +20,8 @@ jobs:
           bun-version: 1.3.14
       - name: Build native Windows console launcher
         run: node scripts/native-windows-launcher-build.mjs --out-file artifacts/windows-launcher-diagnostics/ur-launcher.exe
+      - name: Verify permanent native launcher contract
+        run: node scripts/native-windows-launcher-smoke.mjs --launcher-executable "${{ github.workspace }}/artifacts/windows-launcher-diagnostics/ur-launcher.exe"
       - name: Capture exact launcher behavior (diagnostic only)
         shell: pwsh
         run: |
