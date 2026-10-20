@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zipSync } from 'fflate'
-import { stagePinnedCompiler } from '../scripts/native-compiler.mjs'
+import { renameNativeBuildStage, stagePinnedCompiler } from '../scripts/native-compiler.mjs'
 
 const directories: string[] = []
 function fixtureDirectory() {
@@ -86,4 +86,49 @@ describe('pinned Windows baseline compiler', () => {
     expect(result.stdout.trim()).toBe('compiled fixture')
     expect(existsSync(marker)).toBe(false)
   }, 120_000)
+})
+
+describe('Windows native build stage promotion', () => {
+  test('retries transient Windows locks and succeeds once the handle releases', async () => {
+    let clock = 0
+    let calls = 0
+    await renameNativeBuildStage('stage', 'release', {
+      platform: 'win32', now: () => clock,
+      pause: async (milliseconds: number) => { clock += milliseconds },
+      rename: async () => { if (++calls <= 3) throw Object.assign(new Error('locked'), { code: ['EPERM', 'EACCES', 'EBUSY'][calls - 1] }) },
+    })
+    expect(calls).toBe(4)
+    expect(clock).toBe(300)
+  })
+
+  test('preserves a permanent error without retrying', async () => {
+    const original = Object.assign(new Error('wrong destination'), { code: 'ENOENT' })
+    let calls = 0
+    await expect(renameNativeBuildStage('stage', 'release', {
+      platform: 'win32', rename: async () => { calls++; throw original },
+    })).rejects.toBe(original)
+    expect(calls).toBe(1)
+  })
+
+  test('fails with the original lock error when the deadline expires', async () => {
+    const original = Object.assign(new Error('permanently locked'), { code: 'EPERM' })
+    let clock = 0
+    let calls = 0
+    await expect(renameNativeBuildStage('stage', 'release', {
+      platform: 'win32', now: () => clock, timeoutMs: 250,
+      pause: async (milliseconds: number) => { clock += milliseconds },
+      rename: async () => { calls++; throw original },
+    })).rejects.toBe(original)
+    expect(calls).toBe(4)
+    expect(clock).toBe(250)
+  })
+
+  test('leaves non-Windows filesystem errors unchanged', async () => {
+    const original = Object.assign(new Error('permission denied'), { code: 'EPERM' })
+    let calls = 0
+    await expect(renameNativeBuildStage('stage', 'release', {
+      platform: 'linux', rename: async () => { calls++; throw original },
+    })).rejects.toBe(original)
+    expect(calls).toBe(1)
+  })
 })

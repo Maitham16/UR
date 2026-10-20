@@ -4,13 +4,13 @@ import { createHash } from 'node:crypto'
 import { execFileSync, spawnSync } from 'node:child_process'
 import {
   chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync,
-  readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync,
+  readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertVersionConsistency } from './version-consistency.mjs'
-import { NATIVE_BUN_VERSION, prepareNativeCompileExecutable } from './native-compiler.mjs'
+import { NATIVE_BUN_VERSION, prepareNativeCompileExecutable, renameNativeBuildStage } from './native-compiler.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(join(root, 'package.json'))
@@ -343,7 +343,9 @@ async function build() {
       if (!existsSync(join(destination, 'resources', 'manifest.json'))) throw new Error(`Refusing to replace non-release directory ${destination}`)
       rmSync(destination, { recursive: true })
     }
-    renameSync(stage, destination)
+    await renameNativeBuildStage(stage, destination, { onRetry(error, attempt) {
+      if (attempt === 1) console.warn(`Windows native build directory is temporarily locked (${error.code}); retrying for up to 15 seconds`)
+    } })
     console.log(`Native release built: ${destination}`)
   } catch (error) {
     try { rmSync(stage, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) }

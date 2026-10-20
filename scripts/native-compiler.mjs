@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
+import { rename as renameDirectory } from 'node:fs/promises'
 import { unzipSync } from 'fflate'
 
 export const NATIVE_BUN_VERSION = '1.3.14'
@@ -18,6 +19,25 @@ export const WINDOWS_BASELINE_COMPILER = Object.freeze({
 const MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
 const MAX_EXECUTABLE_BYTES = 256 * 1024 * 1024
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
+
+/** Windows scanners can retain a handle briefly after the version probe exits. */
+export async function renameNativeBuildStage(source, destination, {
+  platform = process.platform, rename = renameDirectory,
+  now = Date.now, pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
+  timeoutMs = 15000, retryDelayMs = 100, onRetry,
+} = {}) {
+  const deadline = now() + timeoutMs
+  let attempts = 0
+  while (true) {
+    try { await rename(source, destination); return }
+    catch (error) {
+      const remaining = deadline - now()
+      if (platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(error?.code) || remaining <= 0) throw error
+      onRetry?.(error, ++attempts)
+      await pause(Math.min(retryDelayMs, remaining))
+    }
+  }
+}
 
 export async function stagePinnedCompiler(artifact, cache, { request = fetch, verifyExecutable } = {}) {
   mkdirSync(cache, { recursive: true, mode: 0o700 })
