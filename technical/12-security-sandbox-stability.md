@@ -29,6 +29,9 @@ Every tool call is checked (doc 04 §Permission model):
 ## OS sandbox (`/sandbox`)
 
 `src/utils/sandbox/` wraps shell execution in an OS sandbox where supported.
+The Windows native CLI is supported, but its sandbox backend is unavailable in
+this release. Required sandbox mode fails closed; Linux under WSL2 is the
+supported Windows-hosted path for OS confinement.
 ```
 /sandbox status          # architecture + dependency check
 /sandbox check           # sandbox deps present?
@@ -251,21 +254,30 @@ claim-to-source provenance; `validate` checks all claims still resolve.
 
 ## Release publication integrity
 
-The tag workflow verifies and packs once, then publishes that exact tarball to
-GitHub and npm. Its `publish-preflight` job checks `NPM_TOKEN` before the GitHub
-Release job when the package version is not already registered. Both publish
-jobs depend on the preflight, and a missing token fails closed instead of
-leaving a successful-looking partial release. The guarded local tag command
-still requires a clean, pushed release commit and never moves an existing tag.
+The tag workflow verifies and packs once, then publishes that exact npm tarball
+after all native release targets pass their installed-archive qualification.
+npm publication uses GitHub OIDC trusted publishing with `id-token: write`,
+without a long-lived `NPM_TOKEN`. The GitHub Release depends on successful
+verification, the native matrix, and npm publication. Registry authentication
+failure therefore blocks that GitHub Release. The guarded local tag command
+requires a clean, pushed release commit and never moves an existing tag.
 Publication passes the verified artifact as an explicit `./dist-release/...`
 path; without the `./`, npm's package-spec parser treats the slash-containing
 value as GitHub shorthand and tries an unrelated SSH clone.
 
-Release preflight also runs `bun audit` against the exact lockfile. Security
-overrides keep transitive parser, HTTP, and address-classification packages on
-patched floors even when their parents allow older vulnerable ranges. A new
-registry advisory therefore blocks publication until both `package.json` and
-`bun.lock` resolve cleanly; the audit is not converted into a warning.
+Release preflight runs `bun run dependencies:audit`, which invokes the registry
+audit against the exact lockfile. Overrides keep transitive dependencies on
+patched floors. One reviewed `node-forge@1.4.0` RSA advisory currently has no
+upstream fixed npm release. The gate permits only that exact advisory after
+verifying the registered backport, installed version, patch/source hashes,
+seven real RSA behavior checks, and the review deadline. The raw advisory stays
+visible. All other advisories and audit transport/format failures block release.
+
+The CLI bundles the patched RSA verifier, while npm does not apply Bun's patch
+to its installed dependency tree. Packed/npm and compiled/native acceptance
+therefore run `--ur-security-self-test` against the actual shipped application.
+See [backport status and evidence](../patches/README.md), including the review
+expiry and upstream references.
 
 ## Shell task-output resilience
 

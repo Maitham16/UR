@@ -2,6 +2,8 @@ node_modules/
 .git/
 .bun/
 build/
+dist-native/
+dist-release/
 coverage/
 .nyc_output/
 test-results/

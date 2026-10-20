@@ -1,10 +1,8 @@
 import { buildComputerUseTools } from './computerUseCompat.js'
-import { join } from 'path'
-import { fileURLToPath } from 'url'
 import { buildMcpToolName } from '../../services/mcp/mcpStringUtils.js'
 import type { ScopedMcpServerConfig } from '../../services/mcp/types.js'
 
-import { isInBundledMode } from '../bundledMode.js'
+import { resolveUrExecutable } from '../urExecutable.js'
 import { CLI_CU_CAPABILITIES, COMPUTER_USE_MCP_SERVER_NAME } from './common.js'
 import { getChicagoCoordinateMode } from './gates.js'
 
@@ -32,18 +30,14 @@ export function setupComputerUseMCP(): {
   // command/args are never spawned — client.ts intercepts by name and
   // uses the in-process server. The config just needs to exist with
   // type 'stdio' to hit the right branch. Mirrors Chrome's setup.
-  const args = isInBundledMode()
-    ? ['--computer-use-mcp']
-    : [
-        join(fileURLToPath(import.meta.url), '..', 'cli.js'),
-        '--computer-use-mcp',
-      ]
+  const entry = resolveUrExecutable()
+  const args = [...entry.baseArgs, '--computer-use-mcp']
 
   return {
     mcpConfig: {
       [COMPUTER_USE_MCP_SERVER_NAME]: {
         type: 'stdio',
-        command: process.execPath,
+        command: entry.file,
         args,
         scope: 'dynamic',
       } as const,

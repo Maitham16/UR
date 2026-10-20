@@ -11,6 +11,8 @@ import { buildTool, type ToolDef } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { assertPublicUrl } from '../WebFetchTool/utils.js'
+import { loadPlaywright } from '../../utils/playwrightRuntime.js'
+import { isInBundledMode } from '../../utils/bundledMode.js'
 
 const BROWSER_TOOL_NAME = 'Browser'
 
@@ -105,18 +107,17 @@ type BrowserSession = { browser: Browser; context: BrowserContext; page: Page }
 let activeSession: BrowserSession | undefined
 let sessionPromise: Promise<BrowserSession> | undefined
 
-let playwrightModule: typeof import('playwright-core') | null = null
-
 /** Lazy, optional playwright loader — interactive actions need it; fetch does not. */
 async function loadChromium(): Promise<ChromiumLauncher> {
   try {
-    playwrightModule ??= await import('playwright-core')
+    return (await loadPlaywright()).chromium
   } catch {
     throw new Error(
-      'Interactive browser actions need playwright-core (npm i -g playwright-core, or use action: "fetch" / the /chrome integration).',
+      isInBundledMode()
+        ? 'UR could not load its packaged browser engine. Reinstall UR, or use action: "fetch" / the /chrome integration.'
+        : 'Interactive browser actions need playwright-core, or use action: "fetch" / the /chrome integration.',
     )
   }
-  return playwrightModule.chromium
 }
 
 function findBrowserExecutable(chromium: ChromiumLauncher): string | undefined {
@@ -130,6 +131,11 @@ function findBrowserExecutable(chromium: ChromiumLauncher): string | undefined {
     '/usr/bin/google-chrome',
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
+    ...(process.platform === 'win32' ? [
+      join(process.env.PROGRAMFILES ?? 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      join(process.env.LOCALAPPDATA ?? '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      join(process.env['PROGRAMFILES(X86)'] ?? 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    ] : []),
   ]
   for (const dir of (process.env.PATH ?? '').split(delimiter)) {
     for (const binary of ['google-chrome', 'chromium', 'chromium-browser', 'msedge']) {
@@ -142,6 +148,9 @@ function findBrowserExecutable(chromium: ChromiumLauncher): string | undefined {
 async function createSession(): Promise<BrowserSession> {
   const chromium = await loadChromium()
   const executablePath = findBrowserExecutable(chromium)
+  if (!executablePath && isInBundledMode()) {
+    throw new Error('Browser automation requires Chrome, Chromium, or Edge. Install one of these browsers or set PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH to its executable. UR itself requires no Node.js or Bun installation. HTTP fetch remains available.')
+  }
   const browser = await chromium.launch({
     headless: true,
     ...(executablePath ? { executablePath } : {}),

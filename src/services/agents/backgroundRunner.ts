@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 import { spawn } from 'node:child_process'
 import {
   closeSync,
@@ -451,10 +452,7 @@ function cliEntry(bin?: { file: string; baseArgs: string[] }): {
   file: string
   baseArgs: string[]
 } {
-  return {
-    file: bin?.file ?? process.execPath,
-    baseArgs: bin?.baseArgs ?? [process.argv[1] ?? ''],
-  }
+  return bin ?? resolveUrExecutable()
 }
 
 function quote(arg: string): string {

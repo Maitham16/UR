@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { spawnSync } from 'node:child_process'
 
 const REPO = join(import.meta.dir, '..')
 
@@ -111,13 +112,16 @@ describe('documentation commands and links', () => {
 
   test('static documentation site has one card for every shipped CLI command', () => {
     const names = staticSiteCommandNames()
-    expect(names).toHaveLength(61) // `ur`, `ur -p`, and 59 shipped subcommands
     expect(new Set(names).size).toBe(names.length)
 
     const commandNames = names.filter(name => name !== 'ur' && name !== 'ur -p')
-    expect(commandNames).toHaveLength(59)
     for (const name of commandNames) expect(commands.has(name)).toBe(true)
-    for (const required of ['audit', 'cloud', 'recipe', 'thread', 'wiki']) {
+    const help = spawnSync(process.execPath, [join(REPO, 'dist/cli.js'), '--help'], { encoding: 'utf8', env: { ...process.env, UR_CODE_SIMPLE: '1' }, timeout: 30_000 })
+    expect(help.status, help.stderr).toBe(0)
+    const publicCommands = [...(help.stdout.split('Commands:')[1] ?? '').matchAll(/^  ([a-z][a-z0-9-]*)[ |\[<]/gm)].map(match => match[1]!).filter(name => name !== 'help')
+    expect(publicCommands.length).toBeGreaterThan(70)
+    expect([...new Set(commandNames)].sort()).toEqual([...new Set(publicCommands)].sort())
+    for (const required of ['audit', 'cloud', 'recipe', 'thread', 'wiki', 'session', 'agent-ci', 'install']) {
       expect(commandNames).toContain(required)
     }
   })

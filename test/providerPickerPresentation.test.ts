@@ -8,6 +8,7 @@ import {
   providerSupportsApiKeyEditing,
   providerSupportsEndpointEditing,
   shouldIncludeProviderModelInPicker,
+  saveProviderPickerWorkspace,
 } from '../src/components/ProviderFirstModelPicker.js'
 import { getProviderSelectionRefreshPolicy } from '../src/components/ProviderPicker.js'
 import { getProviderDefinition } from '../src/services/providers/providerRegistry.js'
@@ -18,6 +19,23 @@ import {
 } from '../src/utils/model/modelPresentation.js'
 
 describe('provider-first model picker presentation', () => {
+  test('workspace editing validates identity-linked scope before saving and never writes a key or model', () => {
+    const saved: string[] = []
+    const persist = (value: string) => { saved.push(value); return { ok: true, message: 'saved' } }
+    expect(saveProviderPickerWorkspace('workspace-1', persist).ok).toBe(false)
+    expect(saveProviderPickerWorkspace('sk-ant-not-a-workspace', persist).ok).toBe(false)
+    expect(saved).toEqual([])
+    expect(saveProviderPickerWorkspace('  wrkspc_01Fixture  ', persist).ok).toBe(true)
+    expect(saved).toEqual(['wrkspc_01Fixture'])
+    expect(saveProviderPickerWorkspace('', persist).ok).toBe(true)
+    expect(saved).toEqual(['wrkspc_01Fixture', 'auto'])
+  })
+
+  test('workspace editing preserves a persistence failure instead of starting discovery', () => {
+    expect(saveProviderPickerWorkspace('wrkspc_01Fixture', () => ({ ok: false, message: 'Settings are read-only' })))
+      .toEqual({ ok: false, message: 'Settings are read-only' })
+  })
+
   test('one-shot task models appear only in a picker with a task-selection handler', () => {
     const agent = { usageMode: 'agent' as const }
     const task = { usageMode: 'task' as const }

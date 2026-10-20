@@ -26,6 +26,8 @@ them are published.
 | [`skill-forge`](./skill-forge) | `/forge-skill` (+1) | The active model authors a complete `SKILL.md` from your description and saves it to your skills directory. |
 | [`engineering-discipline`](./engineering-discipline) | `/discipline-check` | Reference plugin that ships a command, executable skill, agent template, validator, and Markdown language adapter metadata. |
 
+| [`reverse-skills`](./reverse-skills) | `/reverse-skills:start` | Scope-aware security and reverse-engineering research, available only after explicit redteam activation. |
+
 Seven of these are **integration plugins**: each bundles an official MCP server,
 several slash commands, and a methodology skill, and prompts for its config
 (tokens, vault path, output folders) on enable. The Office plugins run their MCP

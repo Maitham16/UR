@@ -10,6 +10,7 @@ import { isNetworkRestricted, offlineBlockReason } from 'src/utils/offlineMode.j
 import { writeToStdout } from 'src/utils/process.js'
 import { gte } from 'src/utils/semver.js'
 import { formatUpdateAvailableMessage } from 'src/utils/updateNotice.js'
+import { fetchNativeVersion, installNativeRelease } from 'src/utils/nativeRelease.js'
 
 export const UR_AGENT_PACKAGE_NAME = 'ur-agent'
 
@@ -49,6 +50,7 @@ export function parseNpmVersion(value: string): string | null {
 }
 
 function isDevelopmentBuild(installationType: InstallationType): boolean {
+  if (installationType === 'native' || installationType === 'package-manager') return false
   if (installationType === 'development') {
     return true
   }
@@ -157,6 +159,26 @@ export async function update() {
 
   logEvent('tengu_update_check', {})
   const diagnostic = await getDoctorDiagnostic()
+  if (diagnostic.installationType === 'native') {
+    try {
+      const latest = await fetchNativeVersion()
+      if (gte(MACRO.VERSION, latest)) writeToStdout(`UR-Nexus ${MACRO.VERSION} is up to date.\n`)
+      else {
+        const result = await installNativeRelease(latest)
+        writeToStdout(`Installed UR-Nexus ${result.latestVersion}. Restart UR to use the update.\n`)
+      }
+      await gracefulShutdown(0)
+    } catch (error) {
+      writeToStdout(`Native update failed: ${error instanceof Error ? error.message : String(error)}\nYour current installation remains available.\n`)
+      await gracefulShutdown(1)
+    }
+    return
+  }
+  if (diagnostic.installationType === 'package-manager') {
+    writeToStdout(`Update UR-Nexus using your package manager (${diagnostic.packageManager ?? 'managed installation'}).\n`)
+    await gracefulShutdown(0)
+    return
+  }
   const result = await checkUpgradeStatus({
     currentVersion: MACRO.VERSION,
     packageName: UR_AGENT_PACKAGE_NAME,

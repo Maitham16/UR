@@ -6,6 +6,38 @@ Release target:
 - npm package: `ur-agent`
 - CLI binary: `ur`
 
+## Standalone artifacts
+
+Native releases are built on five matching OS/CPU runners and contain the
+executable, runtime, and a versioned resource tree. `native.yml` tests the exact
+archived payload with Node, npm, and Bun absent from PATH, including real image,
+search, compiler-library, task/write/read, streaming, timeout, and resume checks.
+The release publishes no npm package or GitHub release until the native matrix
+and existing verification gate succeed for the same immutable tag.
+
+On a matching local development host:
+
+```sh
+bun ci
+npm --prefix extensions/vscode-ur-inline-diffs ci
+npm --prefix extensions/vscode-ur-inline-diffs run build
+bun run native:build
+bun run native:pack
+bun run native:smoke -- --artifact-dir dist-release/native
+```
+
+Keep native output in ignored `dist-native/` and `dist-release/`. The GitHub
+release includes all target archives, merged `manifest.json`, `SHA256SUMS`,
+install/uninstall scripts, and build-provenance attestations. All manifests
+must identify the exact source commit. Channel selection uses GitHub's latest
+non-prerelease release; a failed qualification must never advance it.
+
+OS signing uses configured Apple/Windows publisher credentials. An incomplete
+signing configuration fails; absent credentials produce an explicit unsigned
+status in `resources/signing.json`. Never claim an unsigned artifact is signed
+or notarized. See [native installation](docs/NATIVE_INSTALL.md) for verification,
+platform support, recovery, and user-facing install commands.
+
 ## Required checks
 
 Run from the repository root:

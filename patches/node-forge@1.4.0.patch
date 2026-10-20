@@ -1,0 +1,38 @@
+diff --git a/lib/rsa.js b/lib/rsa.js
+--- a/lib/rsa.js
++++ b/lib/rsa.js
+@@ -1208,6 +1208,34 @@
+             }
+           }
+ 
++          // UR security backport: CVE-2026-85393 / GHSA-86w9-cpqp-85rv.
++          // Reconstruct canonical DER instead of trusting BER validation, which
++          // permits nested extra elements, nonempty NULL values, and excess
++          // length octets. Based on digitalbazaar/forge PR #1160 (unmerged).
++          var algorithm = [asn1.create(
++            asn1.Class.UNIVERSAL, asn1.Type.OID, false,
++            asn1.oidToDer(oid).getBytes())];
++          if('parameters' in capture) {
++            algorithm.push(asn1.create(
++              asn1.Class.UNIVERSAL, asn1.Type.NULL, false, ''));
++          }
++          var expected = asn1.toDer(asn1.create(
++            asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
++              asn1.create(
++                asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, algorithm),
++              asn1.create(
++                asn1.Class.UNIVERSAL, asn1.Type.OCTETSTRING, false,
++                capture.digest)
++            ])).getBytes();
++          // The unsupported _parseAllDigestBytes=false test option preserves
++          // its trailing-byte behavior. Default parsing already requires the
++          // whole block to be consumed, making this comparison an exact match.
++          if(d.substring(0, expected.length) !== expected) {
++            throw new Error(
++              'ASN.1 object does not contain a valid RSASSA-PKCS1-v1_5 ' +
++              'DigestInfo value.');
++          }
++
+           // compare the given digest to the decrypted one
+           return digest === capture.digest;
+         }

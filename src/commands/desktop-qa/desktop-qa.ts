@@ -25,6 +25,7 @@ import {
 import { desktopQaFixtureJsonSchema } from '../../services/qa/desktopQaSchema.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { getCwd } from '../../utils/cwd.js'
+import { loadPlaywright } from '../../utils/playwrightRuntime.js'
 
 const FLAGS_WITH_VALUES = new Set(['--fixture', '--run-id'])
 
@@ -306,7 +307,7 @@ export async function runDesktopQaCommand(
     try {
       available = dependencies.driverAvailable
         ? await dependencies.driverAvailable()
-        : Boolean((await import('playwright-core'))._electron)
+        : Boolean((await loadPlaywright())._electron)
       detail = available
         ? 'Playwright Electron driver is available. Supply launch.executablePath unless Electron is installed for this project.'
         : 'playwright-core loaded without an Electron driver.'

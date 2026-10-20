@@ -6,6 +6,7 @@ import type {
   Page,
 } from 'playwright-core'
 import { isSecretLikeSubprocessEnvName } from '../../utils/subprocessEnv.js'
+import { loadPlaywright } from '../../utils/playwrightRuntime.js'
 import {
   desktopQaRecordingPrivacyError,
   type DesktopQaFixture,
@@ -302,7 +303,7 @@ export const electronDesktopQaDriver: DesktopQaDriver = {
   ): Promise<DesktopQaDriverSession> {
     const privacyError = desktopQaRecordingPrivacyError(fixture.recording)
     if (privacyError) throw new Error(privacyError)
-    const { _electron } = await import('playwright-core')
+    const { _electron } = await loadPlaywright()
     const videoDir = join(options.runDir, 'video')
     mkdirSync(options.runDir, { recursive: true, mode: 0o700 })
     if (fixture.recording.video) {

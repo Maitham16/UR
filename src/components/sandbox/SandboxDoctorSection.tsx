@@ -5,6 +5,9 @@ import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
 export function SandboxDoctorSection() {
   const $ = _c(2);
   if (!SandboxManager.isSupportedPlatform()) {
+    if (SandboxManager.isSandboxEnabledInSettings()) {
+      return <Box flexDirection="column"><Text bold>Sandbox</Text><Text color={SandboxManager.isSandboxRequired() ? 'error' : 'warning'}>{SandboxManager.getSandboxUnavailableReason() ?? 'Sandbox is unavailable on this platform.'}</Text></Box>;
+    }
     return null;
   }
   if (!SandboxManager.isSandboxEnabledInSettings()) {

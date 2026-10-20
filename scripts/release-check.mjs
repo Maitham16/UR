@@ -56,7 +56,7 @@ if (!packageJson.homepage?.includes(expectedRepo)) {
   fail(`package.json homepage must point at ${expectedRepo}`)
 }
 
-const expectedFiles = ['bin', 'dist', 'docs', 'documentation', 'extensions', 'examples', 'plugins', 'CHANGELOG.md', 'CONTRIBUTING.md', 'QUALITY.md', 'README.md', 'RELEASE.md', 'SECURITY.md', 'LICENSE']
+const expectedFiles = ['bin', 'dist', 'docs', 'documentation', 'extensions', 'examples', 'plugins', 'patches', 'CHANGELOG.md', 'CONTRIBUTING.md', 'QUALITY.md', 'README.md', 'RELEASE.md', 'SECURITY.md', 'LICENSE']
 for (const file of expectedFiles) {
   if (!packageJson.files?.includes(file)) {
     fail(`package.json files is missing ${file}`)
@@ -173,7 +173,7 @@ try {
 
 if (failures.length === 0) {
   try {
-    execFileSync('bun', ['audit'], {
+    execFileSync('node', ['scripts/dependency-audit.mjs'], {
       cwd: root,
       stdio: 'inherit',
     })

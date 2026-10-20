@@ -36,6 +36,7 @@ import {
   describeApiKeyProblem,
   sanitizeApiKeyInput,
 } from 'src/services/providers/apiKeyInput.js'
+import { validateAnthropicWorkspaceId } from '../services/providers/anthropicWorkspace.js'
 import { TerminalSizeContext } from '../ink/components/TerminalSizeContext.js'
 import { useAppState, useSetAppState } from 'src/state/AppState.js'
 import {
@@ -88,7 +89,7 @@ const selectEffortValue = (s: { effortValue?: unknown }) => s.effortValue
 const selectThinkingEnabled = (s: { thinkingEnabled?: boolean }) => s.thinkingEnabled
 
 type Step = 'provider' | 'connect' | 'manage' | 'model'
-type ConnectionMode = 'api-key' | 'endpoint'
+type ConnectionMode = 'api-key' | 'endpoint' | 'workspace'
 
 type ProviderStatusOption = {
   value: string
@@ -166,6 +167,8 @@ export function ProviderFirstModelPicker({
   const [apiKeyCursorOffset, setApiKeyCursorOffset] = useState(0)
   const [endpointInput, setEndpointInput] = useState('')
   const [endpointCursorOffset, setEndpointCursorOffset] = useState(0)
+  const [workspaceInput, setWorkspaceInput] = useState('')
+  const [workspaceCursorOffset, setWorkspaceCursorOffset] = useState(0)
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>('api-key')
   const [connectReturnStep, setConnectReturnStep] = useState<Step>('provider')
   const [connectError, setConnectError] = useState<string | null>(null)
@@ -408,6 +411,15 @@ export function ProviderFirstModelPicker({
       setEndpointCursorOffset(0)
       setConnectError(null)
       setStep('connect')
+      event.stopImmediatePropagation()
+    },
+    { isActive: step === 'model' && !loadingModels },
+  )
+
+  useInput(
+    (input, _key, event) => {
+      if (input.toLowerCase() !== 'w' || selectedProvider?.value !== 'anthropic-api') return
+      beginWorkspaceEntry(selectedProvider, 'model')
       event.stopImmediatePropagation()
     },
     { isActive: step === 'model' && !loadingModels },
@@ -848,6 +860,12 @@ export function ProviderFirstModelPicker({
     setApiKeyCursorOffset(0)
     setConnectError(null)
     setCredentialNotice(saved.message)
+    if (readyProvider.value === 'anthropic-api') {
+      // Identity-linked keys need a workspace before their first model request.
+      // Ordinary workspace-scoped keys can continue with an empty selection.
+      beginWorkspaceEntry(readyProvider, selectedProvider ? 'model' : 'provider')
+      return
+    }
     // Selecting the provider triggers live model discovery with the new key.
     setSelectedProvider(readyProvider)
     setStep('model')
@@ -858,11 +876,43 @@ export function ProviderFirstModelPicker({
     setApiKeyCursorOffset(0)
     setEndpointInput('')
     setEndpointCursorOffset(0)
+    setWorkspaceInput('')
+    setWorkspaceCursorOffset(0)
     if (connectReturnStep !== 'manage') {
       setConnectingProvider(null)
     }
     setConnectError(null)
     setStep(connectReturnStep)
+  }
+
+  function beginWorkspaceEntry(provider: ProviderStatusOption, returnStep: Step) {
+    setConnectingProvider(provider)
+    setConnectionMode('workspace')
+    setConnectReturnStep(returnStep)
+    setWorkspaceInput(getActiveProviderSettings(getInitialSettings()).anthropic?.workspaceId ?? '')
+    setWorkspaceCursorOffset(0)
+    setConnectError(null)
+    setStep('connect')
+  }
+
+  function handleWorkspaceSubmit() {
+    if (!connectingProvider || connectingProvider.value !== 'anthropic-api') return
+    const saved = saveProviderPickerWorkspace(workspaceInput)
+    if (!saved.ok) {
+      setConnectError(saved.message)
+      return
+    }
+    clearProviderModelCache('anthropic-api')
+    setWorkspaceInput('')
+    setWorkspaceCursorOffset(0)
+    setConnectError(null)
+    setCredentialNotice(workspaceInput.trim()
+      ? 'Anthropic workspace saved. Choose a model to continue.'
+      : 'Using the environment or default Anthropic workspace. Choose a model to continue.')
+    setSelectedProvider({ ...connectingProvider })
+    setFocusedModelValue(null)
+    setModelReloadToken(token => token + 1)
+    setStep('model')
   }
 
   function handleEndpointSubmit() {
@@ -921,6 +971,10 @@ export function ProviderFirstModelPicker({
       setStep('connect')
       return
     }
+    if (action === 'workspace' && connectingProvider.value === 'anthropic-api') {
+      beginWorkspaceEntry(connectingProvider, 'manage')
+      return
+    }
     if (action === 'disconnect') {
       const cleared = clearProviderApiKey(connectingProvider.value)
       if (!cleared.ok) {
@@ -971,6 +1025,11 @@ export function ProviderFirstModelPicker({
               label: 'Change API key',
               description: 'Replace the stored key with a new one',
             },
+            ...(connectingProvider.value === 'anthropic-api' ? [{
+              value: 'workspace',
+              label: 'Configure workspace',
+              description: 'Select the workspace for an identity-linked API key',
+            }] : []),
             {
               value: 'disconnect',
               label: 'Disconnect',
@@ -979,7 +1038,7 @@ export function ProviderFirstModelPicker({
           ]}
           onChange={handleManageSelect}
           onCancel={handleManageCancel}
-          visibleOptionCount={3}
+          visibleOptionCount={connectingProvider.value === 'anthropic-api' ? 4 : 3}
         />
         {credentialNotice && (
           <Box marginTop={1}>
@@ -994,19 +1053,27 @@ export function ProviderFirstModelPicker({
   // API key entry view (add a token from inside UR while it is running).
   if (step === 'connect' && connectingProvider) {
     const endpointConnection = connectionMode === 'endpoint'
+    const workspaceConnection = connectionMode === 'workspace'
     const envKey = connectingProvider.provider.envKey
     const content = (
       <Box flexDirection="column">
         <Box marginBottom={1} flexDirection="column">
           <Text color="remember" bold>
-            {endpointConnection ? 'Configure' : 'Connect'} {connectingProvider.label}
+            {endpointConnection || workspaceConnection ? 'Configure' : 'Connect'} {connectingProvider.label}
           </Text>
           <Text dimColor>
-            {endpointConnection
+            {workspaceConnection
+              ? 'Identity-linked API keys need a workspace ID from Claude Console → Settings → Workspaces. This ID is not a secret.'
+              : endpointConnection
               ? 'Enter this provider’s endpoint. UR stores it separately, so switching providers never overwrites another local/server address.'
               : 'Paste your API key to use your own account. It is stored securely in your OS keychain and reused automatically — you only do this once.'}
           </Text>
-          {!endpointConnection && envKey && (
+          {workspaceConnection && (
+            <Text dimColor color="subtle">
+              Enter wrkspc_… or leave blank to use ANTHROPIC_WORKSPACE_ID when set, otherwise the key’s default workspace. Your API key stays in secure storage.
+            </Text>
+          )}
+          {!endpointConnection && !workspaceConnection && envKey && (
             <Text dimColor color="subtle">
               Equivalent to setting {envKey}. Get a key from the provider's dashboard.
             </Text>
@@ -1014,10 +1081,23 @@ export function ProviderFirstModelPicker({
         </Box>
         <Box width="100%" flexDirection="row">
           <Box width={12} flexShrink={0}>
-            <Text bold color="subtle">{endpointConnection ? 'Endpoint' : 'API key'}</Text>
+            <Text bold color="subtle">{workspaceConnection ? 'Workspace' : endpointConnection ? 'Endpoint' : 'API key'}</Text>
           </Box>
           <Box flexGrow={1}>
-            {!endpointConnection ? (
+            {workspaceConnection ? (
+              <TextInput
+                value={workspaceInput}
+                onChange={setWorkspaceInput}
+                onSubmit={handleWorkspaceSubmit}
+                placeholder="wrkspc_… (optional)"
+                focus={true}
+                showCursor={true}
+                multiline={false}
+                columns={keyInputColumns}
+                cursorOffset={workspaceCursorOffset}
+                onChangeCursorOffset={setWorkspaceCursorOffset}
+              />
+            ) : !endpointConnection ? (
               <TextInput
                 value={apiKeyInput}
                 onChange={setApiKeyInput}
@@ -1054,7 +1134,7 @@ export function ProviderFirstModelPicker({
         )}
         <Box marginTop={1}>
           <Byline>
-            <KeyboardShortcutHint shortcut="Enter" action={endpointConnection ? 'save endpoint & load models' : 'store key & load models'} />
+            <KeyboardShortcutHint shortcut="Enter" action={workspaceConnection ? 'save workspace & load models' : endpointConnection ? 'save endpoint & load models' : 'store key & continue'} />
             <KeyboardShortcutHint shortcut="Esc" action="back" />
           </Byline>
         </Box>
@@ -1193,6 +1273,7 @@ export function ProviderFirstModelPicker({
             providerSupportsApiKeyEditing(selectedProvider.provider)
               ? ' · K API key'
               : ''}
+            {selectedProvider?.value === 'anthropic-api' ? ' · W workspace' : ''}
           </Text>
         </Box>
 
@@ -1431,6 +1512,19 @@ export function cycleProviderPickerEffort(
   const currentIndex = index >= 0 ? index : levels.indexOf('high')
   const delta = direction === 'right' ? 1 : -1
   return levels[(currentIndex + delta + levels.length) % levels.length]!
+}
+
+/** Save only the non-secret workspace scope; model and credentials stay separate. */
+export function saveProviderPickerWorkspace(
+  input: string,
+  save: (value: string) => { ok: boolean; message: string } = value =>
+    setSafeProviderConfig('anthropic.workspace_id', value),
+): { ok: boolean; message: string } {
+  const value = input.trim()
+  if (!value || value === 'auto') return save('auto')
+  const validated = validateAnthropicWorkspaceId(value)
+  if (validated.ok === false) return validated
+  return save(validated.value)
 }
 
 export function formatModelSourceLabel(source: ProviderModelSource): string {

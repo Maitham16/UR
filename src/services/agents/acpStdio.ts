@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 /**
  * Native Agent Client Protocol (ACP) agent over newline-delimited stdio.
  *
@@ -963,8 +964,9 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
   if (ctx.signal.aborted) return { stopReason: 'cancelled' }
 
   const temporaryMcpConfig = createTemporaryMcpConfig(ctx.mcpServers)
+  const { file, baseArgs } = resolveUrExecutable()
   const args = [
-    process.argv[1] ?? '',
+    ...baseArgs,
     '-p',
     '--input-format',
     'stream-json',
@@ -1001,7 +1003,7 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
 
   try {
     return await new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, args, {
+      const child = spawn(file, args, {
         cwd: ctx.cwd,
         shell: false,
         stdio: ['pipe', 'pipe', 'pipe'],

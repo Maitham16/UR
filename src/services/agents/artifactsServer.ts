@@ -10,6 +10,7 @@ import { createReadStream, readFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { handleDashboardRequest } from './dashboardRoutes.js'
 import { createRequire } from 'node:module'
+import { getNativeResourcePath, requireNativeResource } from '../../utils/nativeResources.js'
 import { escapeXmlAttr as escapeHtml } from '../../utils/xml.js'
 import {
   captureDiff,
@@ -67,7 +68,10 @@ function loadAsset(path: string): string | null {
   const entry = ASSET_SPECS[path]
   if (entry) {
     try {
-      content = readFileSync(createRequire(import.meta.url).resolve(entry.spec), 'utf-8')
+      const nativePath = getNativeResourcePath(`viewer/${path.slice('/assets/'.length)}`)
+      content = readFileSync(nativePath === null
+        ? createRequire(import.meta.url).resolve(entry.spec)
+        : requireNativeResource(`viewer/${path.slice('/assets/'.length)}`), 'utf-8')
     } catch {
       content = null
     }

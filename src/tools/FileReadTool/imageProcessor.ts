@@ -1,5 +1,6 @@
 import type { Buffer } from 'buffer'
 import { isInBundledMode } from '../../utils/bundledMode.js'
+import { loadNativeModule } from '../../utils/nativeResources.js'
 
 export type SharpInstance = {
   metadata(): Promise<{ width: number; height: number; format: string }>
@@ -40,20 +41,9 @@ export async function getImageProcessor(): Promise<SharpFunction> {
   }
 
   if (isInBundledMode()) {
-    // Try to load the native image processor first
-    try {
-      // Use the native image processor module
-      const imageProcessor = await import('image-processor-napi')
-      const sharp = imageProcessor.sharp || imageProcessor.default
-      imageProcessorModule = { default: sharp }
-      return sharp
-    } catch {
-      // Fall back to sharp if native module is not available
-      // biome-ignore lint/suspicious/noConsole: intentional warning
-      console.warn(
-        'Native image processor not available, falling back to sharp',
-      )
-    }
+    const sharp = unwrapDefault(loadNativeModule<MaybeDefault<SharpFunction>>('sharp'))
+    imageProcessorModule = { default: sharp }
+    return sharp
   }
 
   // Use sharp for non-bundled builds or as fallback.
@@ -76,9 +66,9 @@ export async function getImageCreator(): Promise<SharpCreator> {
     return imageCreatorModule.default
   }
 
-  const imported = (await import(
-    'sharp'
-  )) as unknown as MaybeDefault<SharpCreator>
+  const imported = isInBundledMode()
+    ? loadNativeModule<MaybeDefault<SharpCreator>>('sharp')
+    : (await import('sharp')) as unknown as MaybeDefault<SharpCreator>
   const sharp = unwrapDefault(imported)
   imageCreatorModule = { default: sharp }
   return sharp

@@ -1,3 +1,5 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
+import { isInBundledMode } from '../../utils/bundledMode.js'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -151,19 +153,28 @@ export const DRILLS: Drill[] = [
  * which is everywhere a user actually is. It reported 0/5 with empty details,
  * looking like five broken features rather than one broken path.
  *
- * This process was launched as `execPath argv[1] ...`, so re-spawning that
- * exact pair is valid by construction, global install included.
+ * Use the shared resolver: native builds have a virtual argv[1] that must
+ * never be passed back to the executable as a script or prompt.
  */
-function urBinary(): string {
-  return process.env.UR_BIN ?? process.argv[1] ?? './bin/ur.js'
-}
-
 function runCli(args: string[], cwd?: string) {
-  return spawnSync(process.execPath, [urBinary(), ...args], {
+  const entry = resolveUrExecutable()
+  if (process.env.UR_BIN) {
+    // Preserve the drill override for deliberately broken fixtures and native
+    // binaries, while JS installations still invoke a script through Bun.
+    if (isInBundledMode()) entry.file = process.env.UR_BIN
+    else entry.baseArgs = [process.env.UR_BIN]
+  }
+  const result = spawnSync(entry.file, [...entry.baseArgs, ...args], {
     encoding: 'utf8',
     timeout: 90_000,
     cwd,
   })
+  return {
+    ...result,
+    status: result.status ?? 1,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? result.error?.message ?? '',
+  }
 }
 
 function tempStore(): string {

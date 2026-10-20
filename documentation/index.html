@@ -43,9 +43,10 @@
     </aside>
 
     <main id="content" class="content">
+      <aside class="callout"><strong>Standalone installation:</strong> native UR includes its runtime and needs no separate Node.js, npm, or Bun. Download the installer for macOS/Linux or Windows from the <a href="https://github.com/Maitham16/UR/releases/latest">latest GitHub release</a>. Keep the executable and resources together. npm/source installations retain their development runtime prerequisites. Native updates use <code>ur upgrade</code>.</aside>
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.85.2</p>
+          <p class="eyebrow">Version 1.86.0</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -117,14 +118,17 @@
         <div class="section-heading">
           <p class="eyebrow">Install And Run</p>
           <h2>Quickstart</h2>
-          <p>Install from npm, verify the binary, then choose interactive or print mode.</p>
+          <p>Install the standalone application, verify the binary, then choose interactive or print mode. Windows installers and recovery instructions are available in the <a href="../docs/NATIVE_INSTALL.md">native installation guide</a>.</p>
         </div>
         <div class="steps">
           <article class="step">
             <span>1</span>
             <h3>Install</h3>
-            <pre><code>npm install -g ur-agent
+            <pre><code>curl -fsSL https://github.com/Maitham16/UR/releases/latest/download/install.sh -o install-ur.sh
+sh install-ur.sh
+export PATH="$HOME/.local/bin:$PATH"
 ur --version</code></pre>
+            <p>The PATH command applies to this terminal. Add it once to your zsh or bash startup file for future terminals; see the <a href="../docs/NATIVE_INSTALL.md#install">shell startup instructions</a>.</p>
           </article>
           <article class="step">
             <span>2</span>
@@ -141,7 +145,7 @@ ur -p --model qwen3-coder:480b-cloud --output-format json "Review the current di
         </div>
         <div class="callout">
           <strong>Runtime requirement</strong>
-          <p>UR expects Bun. On the first interactive run in a workspace, choose a provider and model; UR validates and saves the pair locally before starting the session. Fresh print-mode workspaces require <code>--model</code> or another explicit model source.</p>
+          <p>Native UR includes its runtime; no separate Node.js, npm, or Bun is required. npm/source installations require Node.js and Bun. Linux x64 needs an x86-64-v2 CPU, including SSE4.2; see the <a href="../docs/NATIVE_INSTALL.md#supported-platforms">qualified platforms</a>. On the first interactive run in a workspace, choose a provider and model; UR validates and saves the pair locally before starting the session. Fresh print-mode workspaces require <code>--model</code> or another explicit model source.</p>
         </div>
       </section>
 
@@ -178,6 +182,8 @@ ur config set anthropic.speed fast</code></pre>
             <p>API providers require explicit selection and read keys from a key stored via <code>ur connect</code> (OS keychain) or from environment variables. Each configurable provider keeps its own <code>base_url</code>, so switching among Ollama, LM Studio, llama.cpp, vLLM, Unsloth, NVIDIA Agentic, and API gateways restores the matching address. OpenAI Responses is opt-in and privacy-first; Chat Completions remains the default. Direct Anthropic preserves prompt-cache breakpoints, streams tool inputs with its per-tool control, and enables the documented premium fast tier only when explicitly configured for a supported model. Unsloth is an authenticated inference provider only.</p>
           </article>
           <article>
+            <h3>Anthropic workspace setup</h3>
+            <p>Identity-linked Anthropic keys need a workspace ID. Configure it in provider setup, with <code>ur connect anthropic-api --workspace-id wrkspc_...</code>, or through <code>ANTHROPIC_WORKSPACE_ID</code>. Workspace-scoped keys continue to work without a separate selection.</p>
             <h3>Capability-driven reasoning effort</h3>
             <pre><code>/effort ultra
 /thinking on
@@ -675,17 +681,17 @@ ur ide diff show &lt;id&gt;</code></pre>
         <div class="reference-grid">
           <article>
             <h3>Installed version is old</h3>
-            <pre><code>npm uninstall -g ur-agent
-npm install -g ur-agent@latest --registry=https://registry.npmjs.org/
+            <pre><code>ur upgrade
 hash -r
-which -a ur
+command -v ur
 ur --version</code></pre>
+            <p>Native installations download and verify the new release. npm installations print the compatible <code>npm install -g ur-agent@latest</code> command; their separate Node.js/Bun requirements remain. On Windows, use <code>Get-Command ur</code> to inspect the active launcher.</p>
           </article>
           <article>
             <h3>Source checkout update message</h3>
             <pre><code>ur upgrade
 # Development build detected. To update, pull latest source or install from npm.</code></pre>
-            <p>Source checkouts do not self-mutate. npm-installed builds compare against the latest <code>ur-agent</code> version and print the exact install command when an update is available.</p>
+            <p>Source checkouts report development-build guidance. Native installations update from verified GitHub releases. npm-installed builds compare against the latest <code>ur-agent</code> version and print the exact install command when an update is available.</p>
           </article>
           <article>
             <h3>Ollama model not found</h3>
@@ -718,8 +724,8 @@ ur ci-loop --command "bun test" --cwd ./packages/app --max-attempts 3</code></pr
             <h3>New agent-platform command is missing</h3>
             <pre><code>ur --version
 ur --help | grep -E "repo-edit|test-first|safety|context-pack|spec|arena|escalate|ci-loop|artifacts"
-npm install -g ur-agent@latest --registry=https://registry.npmjs.org/
-hash -r</code></pre>
+ur upgrade</code></pre>
+            <p>Check the active launcher if an older npm installation or shell alias hides the native installation. See <a href="../docs/NATIVE_INSTALL.md#uninstall-and-recover">installation recovery</a>.</p>
           </article>
         </div>
       </section>

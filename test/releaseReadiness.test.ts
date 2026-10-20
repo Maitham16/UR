@@ -67,8 +67,14 @@ test('release gate audits the Bun lockfile used by shipped builds', () => {
     'utf8',
   )
 
-  expect(packageJson.scripts?.['dependencies:audit']).toBe('bun audit')
-  expect(releaseCheck).toContain("execFileSync('bun', ['audit']")
+  expect(packageJson.scripts?.['dependencies:audit']).toBe('node scripts/dependency-audit.mjs')
+  expect(releaseCheck).toContain("execFileSync('node', ['scripts/dependency-audit.mjs']")
+  const audit = readFileSync(join(REPO, 'scripts/dependency-audit.mjs'), 'utf8')
+  expect(audit).toContain("['audit', '--json']")
+  expect(audit).toContain('evaluateAuditReport(report)')
+  expect(audit).toContain('Unpatched dependency advisories')
+  const packed = readFileSync(join(REPO, 'scripts/package-check.mjs'), 'utf8')
+  expect(packed).toContain("['--ur-security-self-test']")
 })
 
 test('development and release bundles ship the core Explore and Plan registry', () => {
@@ -187,8 +193,8 @@ test('release workflow downloads artifacts with permission and keeps prereleases
   const npmPublish = workflow.slice(workflow.indexOf('  npm-publish:'))
 
   expect(workflow).not.toContain('  publish-preflight:')
-  expect(githubRelease).toContain('needs: [verify, npm-publish]')
-  expect(npmPublish).toContain('needs: verify')
+  expect(githubRelease).toContain('needs: [verify, native, npm-publish]')
+  expect(npmPublish).toContain('needs: [verify, native]')
   expect(npmPublish).toContain('id-token: write')
   expect(npmPublish).not.toContain('NODE_AUTH_TOKEN')
   expect(npmPublish).not.toContain('secrets.NPM_TOKEN')

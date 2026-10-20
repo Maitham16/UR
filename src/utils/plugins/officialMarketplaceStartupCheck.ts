@@ -29,6 +29,7 @@ import {
   OFFICIAL_MARKETPLACE_SOURCE,
 } from './officialMarketplace.js'
 import { fetchOfficialMarketplaceFromGcs } from './officialMarketplaceGcs.js'
+import { registerNativeOfficialMarketplace } from './nativeMarketplace.js'
 
 /**
  * Reason why the official marketplace was not installed
@@ -145,6 +146,8 @@ export type OfficialMarketplaceCheckResult = {
  * @returns Result indicating whether installation succeeded or was skipped
  */
 export async function checkAndInstallOfficialMarketplace(): Promise<OfficialMarketplaceCheckResult> {
+  const native = await registerNativeOfficialMarketplace()
+  if (native) return native
   // UR is Ollama-only and self-contained: never auto-install the external
   // (URHQ) plugin marketplace. Return a silent skip so no install is
   // attempted and no failure/retry notification is shown.

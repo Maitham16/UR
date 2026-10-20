@@ -2,6 +2,13 @@
 
 UR is a terminal agent. Running `ur` opens an interactive session in the current directory, while `ur -p` runs one non-interactive prompt and exits.
 
+## Installation
+
+Use the [native installer](NATIVE_INSTALL.md) for a self-contained application;
+Node.js, npm, and Bun are not required by native UR. Project toolchains and
+optional integrations retain their own prerequisites. Native updates use
+`ur upgrade`, and `ur install <version>` supports a pinned release.
+
 ## Interactive Mode
 
 ```sh
@@ -534,10 +541,10 @@ UR includes slash commands and CLI subcommands for common workflows:
   compatibility task routes
 - `ur sdk ...` to scaffold TS/Python headless SDK examples
 - `ur doctor` to inspect CLI health
-- `ur update` or `ur upgrade` to check for updates
+- `ur update` or `ur upgrade` to upgrade native UR or check npm updates
 
-Interactive sessions also check the published package version and show
-`Update available: <current> -> <latest>` when a newer release is available.
+Interactive sessions use the installation's update channel: verified GitHub
+releases for native UR, or the npm registry for compatibility installs.
 Source checkouts print
 `Development build detected. To update, pull latest source or install from npm.`
 instead of attempting to mutate the checkout.
@@ -654,8 +661,9 @@ terminal:
 Ollama | llama3 | ask | main
 ```
 
-When a newer npm release exists, the bar appends an
-`update <version> available` segment. The bar is not rendered in
+The updater can show an `update <version> available` segment and update progress
+for the installation's channel. Native installations use verified GitHub
+releases; npm installations check the registry. The bar is not rendered in
 non-interactive mode, CI, dumb terminals, or assistant viewer mode. Custom
 status-line hooks override the built-in bar.
 

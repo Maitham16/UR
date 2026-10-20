@@ -104,6 +104,7 @@ describe('release hygiene file-list checks', () => {
       'UR-1.37.2/src/index.ts',
       'UR-1.37.2/bin/ur.js',
       'UR-1.37.2/scripts/release-check.mjs',
+      'UR-1.37.2/patches/node-forge@1.4.0.patch',
       'UR-1.37.2/README.md',
       'UR-1.37.2/CHANGELOG.md',
       'UR-1.37.2/SECURITY.md',
@@ -111,6 +112,8 @@ describe('release hygiene file-list checks', () => {
     expect(missingRequiredSourceZipEntries(cleanEntries)).toEqual([])
     expect(releasePathViolations(normalizeArchiveRootPaths(cleanEntries))).toEqual([])
     expect(requiredSourceZipEntries).toContain('bun.lock')
+    expect(requiredSourceZipEntries).toContain('patches/')
+    expect(missingRequiredSourceZipEntries(cleanEntries.filter(entry => !entry.includes('/patches/')))).toContain('patches/')
   })
 
   test('source zip checks report missing source entries', () => {

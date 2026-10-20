@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   existsSync,
@@ -1499,9 +1500,10 @@ type TaskRequestBody = {
 }
 
 function headlessCommand(): string[] {
+  const { file, baseArgs } = resolveUrExecutable()
   return [
-    process.execPath,
-    process.argv[1] ?? '',
+    file,
+    ...baseArgs,
     '-p',
     '--output-format',
     'json',

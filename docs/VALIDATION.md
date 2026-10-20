@@ -10,16 +10,17 @@ You need:
   in the local Ollama app. Local models and Ollama Cloud-backed models both
   work because UR talks to the configured Ollama host.
 - A second Ollama server on the LAN if you want to test network discovery.
-- UR installed globally (`npm install -g ur-agent`) or this repo installed
-  globally (`bun add -g github:Maitham16/UR`) or a
-  local checkout (`bun run dev`). Bun is required at runtime for every path —
-  the npm launcher detects and execs Bun automatically; UR is not Node-native.
+- The [native UR application](NATIVE_INSTALL.md), which includes its runtime;
+  or the npm/GitHub package (`npm install -g ur-agent` or
+  `bun add -g github:Maitham16/UR`); or a local checkout (`bun run dev`).
+  npm/source paths require separate Node.js and Bun installations; their
+  launcher detects and execs Bun automatically.
 
 ## 0. Smoke
 
 ```sh
 ur --version
-# expected for this release: "1.85.2 (UR-Nexus)"
+# expected for this release: "1.86.0 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -678,5 +679,6 @@ with `--cwd` guidance and must not launch a fix agent.
   the literal output and file an issue.
 - Step 9 (direct commands): run `ur --help` and confirm `spec`, `arena`,
   `escalate`, `test-first`, `safety`, `context-pack`, `ci-loop`, and `artifacts` appear. If `unknown option` or
-  `too many arguments` appears, reinstall `ur-agent@latest` and verify the
-  npm version with `npm view ur-agent version`.
+  `too many arguments` appears, run `ur upgrade` and verify the active launcher
+  with `command -v ur` (PowerShell: `Get-Command ur`). npm compatibility installs
+  print their `npm install -g ur-agent@latest` update command.

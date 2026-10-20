@@ -42,6 +42,7 @@ import {
 } from './shellConfig.js'
 import { jsonParse } from './slowOperations.js'
 import { which } from './which.js'
+import { getUserBinDir, getXDGDataHome } from './xdg.js'
 
 export type InstallationType =
   | 'npm-global'
@@ -84,7 +85,7 @@ function getNormalizedPaths(): [invokedPath: string, execPath: string] {
 }
 
 export async function getCurrentInstallationType(): Promise<InstallationType> {
-  if (process.env.NODE_ENV === 'development') {
+  if (!isInBundledMode() && process.env.NODE_ENV === 'development') {
     return 'development'
   }
 
@@ -148,7 +149,7 @@ export async function getCurrentInstallationType(): Promise<InstallationType> {
 }
 
 async function getInstallationPath(): Promise<string> {
-  if (process.env.NODE_ENV === 'development') {
+  if (!isInBundledMode() && process.env.NODE_ENV === 'development') {
     return getCwd()
   }
 
@@ -172,8 +173,9 @@ async function getInstallationPath(): Promise<string> {
 
     // If we can't find it, check common locations
     try {
-      await getFsImplementation().stat(join(homedir(), '.local/bin/ur'))
-      return join(homedir(), '.local/bin/ur')
+      const launcher = join(getUserBinDir(), process.platform === 'win32' ? 'ur.cmd' : 'ur')
+      await getFsImplementation().stat(launcher)
+      return launcher
     } catch {
       // Not found
     }
@@ -289,7 +291,7 @@ async function detectMultipleInstallations(): Promise<
   // Check for native installation
 
   // Check common native installation paths
-  const nativeBinPath = join(homedir(), '.local', 'bin', 'ur')
+  const nativeBinPath = join(getUserBinDir(), process.platform === 'win32' ? 'ur.cmd' : 'ur')
   try {
     await fs.stat(nativeBinPath)
     installations.push({ type: 'native', path: nativeBinPath })
@@ -300,7 +302,7 @@ async function detectMultipleInstallations(): Promise<
   // Also check if config indicates native installation
   const config = getGlobalConfig()
   if (config.installMethod === 'native') {
-    const nativeDataPath = join(homedir(), '.local', 'share', 'ur')
+    const nativeDataPath = join(getXDGDataHome(), 'ur')
     try {
       await fs.stat(nativeDataPath)
       if (!installations.some(i => i.type === 'native')) {
@@ -439,12 +441,8 @@ async function detectConfigurationIssues(
       })
     }
 
-    if (type === 'native' && config.installMethod !== 'native') {
-      warnings.push({
-        issue: `Running native installation but config install method is '${config.installMethod}'`,
-        fix: 'Run ur install to update configuration',
-      })
-    }
+    // Compiled identity is authoritative. A clean bootstrap or migration can
+    // legitimately have no legacy installMethod marker yet.
   }
 
   if (type === 'npm-global' && (await localInstallationExists())) {
@@ -519,6 +517,10 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
   const invokedBinary = getInvokedBinary()
   const multipleInstallations = await detectMultipleInstallations()
   const warnings = await detectConfigurationIssues(installationType)
+  const sandboxUnavailableReason = SandboxManager.getSandboxUnavailableReason()
+  if (sandboxUnavailableReason && SandboxManager.isSandboxRequired()) {
+    warnings.push({ issue: 'Required sandbox unavailable', fix: sandboxUnavailableReason })
+  }
 
   // Add glob pattern warnings for Linux sandboxing
   warnings.push(...detectLinuxGlobPatternWarnings())

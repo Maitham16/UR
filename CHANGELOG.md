@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.86.0
+
+- Added standalone UR installations for macOS, Linux, and Windows. Native
+  releases include the application runtime, repository search, image libraries,
+  TypeScript resources, and integration assets; users do not need to install
+  Node.js or Bun to run the native application.
+- Made agent, workflow, background-worker, protocol-adapter, scheduler, and
+  shell-timeout launches work from the installed executable. Source and npm
+  development workflows remain available.
+- Added verified GitHub native downloads, version pinning, atomic installation
+  and upgrades, conservative uninstall, resource integrity checks, and native
+  release provenance. Platform signing is recorded accurately when configured.
+- Added native artifact qualification across supported platforms, including
+  resource checks and a local mock-provider streaming, task, write/read, and
+  resume workflow without external JavaScript runtimes on PATH.
+- Improved optional-feature recovery, first-run provider setup, and public
+  installation, update, command, and plugin documentation.
+- Fixed headless CI startup for direct API, local, and vendor CLI providers so
+  they do not require an unrelated URHQ OAuth token. Generated automation
+  examples now call the installed CLI without importing an unpublished SDK.
+- Updated affected dependencies to compatible security fixes.
+- Backported the node-forge RSA signature-verification fix and verified it in
+  the actual packed and native CLIs. The upstream registry advisory remains
+  open, and npm's dependency tree does not receive Bun's patch.
+  The release gate permits only this reviewed, hash-checked backport until its
+  review deadline; see [the security record](patches/README.md).
+
 ## 1.85.2
 
 - Made NVIDIA Special selections directly executable from the next prompt. UR

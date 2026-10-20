@@ -88,8 +88,8 @@ test('drills work from outside the repo, where users actually run them', () => {
 
 test('the binary is resolved from the running process, not the cwd', () => {
   const source = readFileSync('src/services/agents/selfTest.ts', 'utf8')
-  expect(source).toContain('process.execPath')
-  expect(source).toContain('process.argv[1]')
+  expect(source).toContain('resolveUrExecutable()')
+  expect(source).toContain('spawnSync(entry.file, [...entry.baseArgs, ...args]')
   // A bare relative path is the defect; it must not be the primary source.
   expect(source).not.toContain("spawnSync('node', [process.env.UR_BIN")
 })

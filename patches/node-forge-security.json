@@ -1,0 +1,14 @@
+{
+  "package": "node-forge",
+  "version": "1.4.0",
+  "advisory": "GHSA-86w9-cpqp-85rv",
+  "advisoryUrl": "https://github.com/advisories/GHSA-86w9-cpqp-85rv",
+  "upstreamStatus": "No patched release; proposals remain unmerged as of 2026-10-20",
+  "source": "https://github.com/digitalbazaar/forge/pull/1160",
+  "reviewedAt": "2026-10-20",
+  "reviewBy": "2026-11-20",
+  "patch": "patches/node-forge@1.4.0.patch",
+  "patchSha256": "5e25a400a85f67840cde311a33f91a347f28245eaacb1f3f9a616624e0be888a",
+  "originalRsaSha256": "fd4740238145ec26470eb3f06a627c72039538ce1307dbdce40521f94dfd0a50",
+  "patchedRsaSha256": "6d42c2de51cf3eea1cf828af06bf35ae3c7b2b4577ce817269ea5f0402556e9f"
+}

@@ -236,6 +236,11 @@ export function getURHQApiKeyWithSource(
   key: null | string
   source: ApiKeySource
 } {
+  // This helper describes URHQ subscription credentials, including in SDK
+  // system/init metadata. API, local/server, and vendor CLI providers own their
+  // authentication and must not require an unrelated URHQ token in CI.
+  if (!usesURHQSubscriptionAuth()) return { key: null, source: 'none' }
+
   // --bare: hermetic auth. Only URHQ_API_KEY env or apiKeyHelper from
   // the --settings flag. Never touches keychain, config file, or approval
   // lists. 3P (Bedrock/Vertex/Foundry) uses provider creds, not this path.

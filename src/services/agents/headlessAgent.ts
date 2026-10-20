@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 /**
  * Single-shot headless agent runner.
  *
@@ -32,8 +33,7 @@ export type HeadlessRunner = (options: HeadlessRunOptions) => Promise<StepRunOut
 
 export function defaultHeadlessRunner(): HeadlessRunner {
   return async (options: HeadlessRunOptions): Promise<StepRunOutput> => {
-    const file = options.bin?.file ?? process.execPath
-    const baseArgs = options.bin?.baseArgs ?? [process.argv[1] ?? '']
+    const { file, baseArgs } = options.bin ?? resolveUrExecutable()
     const args = [...baseArgs, '-p', '--output-format', 'json']
     if (options.maxTurns && options.maxTurns > 0) {
       args.push('--max-turns', String(options.maxTurns))

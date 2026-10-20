@@ -211,6 +211,20 @@ function main() {
       fail('packed ur --help did not print CLI usage')
     }
 
+    // Verify the RSA implementation inside the actual packed bundle. npm
+    // ignores Bun patchedDependencies, so source-tree checks alone cannot
+    // establish that a published CLI contains the reviewed security backport.
+    const security = runPackagedBin(packageRoot, ['--ur-security-self-test'])
+    expectStatus('packed RSA security regression', security, 0)
+    try {
+      const report = JSON.parse(security.stdout)
+      if (report.passed !== true || report.checks?.length !== 7) {
+        fail('packed RSA security regression did not verify all seven checks')
+      }
+    } catch {
+      fail(`packed RSA security regression did not return JSON: ${security.stdout}`)
+    }
+
     const doctor = runPackagedBin(packageRoot, ['doctor', '--help'])
     expectStatus('packed ur doctor --help', doctor, 0)
     if (!doctor.stdout.includes('Usage: ur doctor')) {

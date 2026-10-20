@@ -7,9 +7,12 @@ verifies the fix.
 
 ### `ur: command not found`
 
-- Likely cause: the package is not installed globally, or the npm/bun global
-  bin directory is not on `PATH`.
-- Fix: reinstall globally and check the global bin path.
+- Likely cause: UR is not installed, or its launcher directory is not on `PATH`.
+- Native install: follow [Native installation](NATIVE_INSTALL.md), add
+  `~/.local/bin` to PATH if requested, and open a new terminal. On Windows,
+  inspect `Get-Command ur`; on Unix, inspect `command -v ur`.
+- npm compatibility install: check the npm global bin path, then reinstall if
+  needed. This path requires separate Node.js and Bun installations.
 
 ```sh
 npm install -g ur-agent
@@ -29,10 +32,15 @@ npm install -g ur-agent
 ur --version
 ```
 
-### Bun is missing or too old
+### Bun is missing or too old (npm/source distribution only)
 
-- Likely cause: UR is not Node-native. Every install path — npm, GitHub, and
-  source checkouts — executes the CLI through Bun (this repository pins
+The native release includes its runtime. If a native installation reports a
+missing `bun`, run `command -v ur` (PowerShell: `Get-Command ur`) to find an older
+npm installation or alias earlier on PATH. Prefer the native `~/.local/bin`
+launcher, or reinstall from [Native installation](NATIVE_INSTALL.md).
+
+- Likely cause: UR is not Node-native. The npm, GitHub-package, and
+  source-checkout install paths execute the CLI through Bun (this repository pins
   `bun@1.3.14`). The npm-installed `bin/ur.js` launcher starts under Node
   only to detect Bun and re-exec into it; if Bun is missing or too old, the
   launcher prints `UR-Nexus requires Bun ... at runtime` and exits instead of
@@ -376,6 +384,9 @@ ur -p --allowed-tools "Read,Edit,Bash(git:*)" "run the task"
 - Fix: inspect the policy and the sandbox status; install missing sandbox
   dependencies, or relax `sandbox.enabled`/`sandbox.failIfUnavailable` in
   settings if required mode is not intended.
+- Windows native sandboxing is unavailable in this release. Run the Linux
+  distribution inside WSL2 when sandboxing is required; installing a Windows
+  helper does not enable this release's unsupported backend.
 
 ```sh
 ur safety check --command "<the command>"

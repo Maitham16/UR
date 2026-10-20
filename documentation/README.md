@@ -32,3 +32,5 @@ For public feature patches, also check the project-wide docs set:
 - `documentation/`
 - `examples/`
 - extension or marketplace docs when the feature affects them
+
+Native installation and updates must match `docs/NATIVE_INSTALL.md`. Keep npm/source runtime requirements explicitly scoped; native users need no separate Node/Bun installation. `test/docsCommands.test.ts` compares the complete static command catalog against the shipped help output.

@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import type { StepRunInput, StepRunOutput, StepRunner, Verdict } from './executor.js'
 
@@ -78,8 +79,7 @@ export type CliStepRunnerOptions = {
 export function makeCliStepRunner(options: CliStepRunnerOptions): StepRunner {
   return async (input: StepRunInput): Promise<StepRunOutput> => {
     const prompt = compileStepPrompt(input)
-    const file = options.bin?.file ?? process.execPath
-    const baseArgs = options.bin?.baseArgs ?? [process.argv[1] ?? '']
+    const { file, baseArgs } = options.bin ?? resolveUrExecutable()
     const args = [...baseArgs, '-p', '--output-format', 'json']
     if (options.maxTurns && options.maxTurns > 0) {
       args.push('--max-turns', String(options.maxTurns))

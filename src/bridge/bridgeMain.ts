@@ -11,7 +11,7 @@ import {
   logEvent,
   logEventAsync,
 } from '../services/analytics/index.js'
-import { isInBundledMode } from '../utils/bundledMode.js'
+import { resolveUrExecutable } from '../utils/urExecutable.js'
 import { logForDebugging } from '../utils/debug.js'
 import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
 import { isEnvTruthy, isInProtectedNamespace } from '../utils/envUtils.js'
@@ -117,10 +117,7 @@ function pollSleepDetectionThresholdMs(backoff: BackoffConfig): number {
  * and exits with "bad option: --sdk-url". See urhqs/ur#28334.
  */
 function spawnScriptArgs(): string[] {
-  if (isInBundledMode() || !process.argv[1]) {
-    return []
-  }
-  return [process.argv[1]]
+  return resolveUrExecutable().baseArgs
 }
 
 /** Attempt to spawn a session; returns error string if spawn throws. */

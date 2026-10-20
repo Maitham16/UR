@@ -14,6 +14,8 @@ backup/
 dist/*
 !dist/cli.js
 build/
+dist-native/
+dist-release/
 coverage/
 .nyc_output/
 *.tsbuildinfo

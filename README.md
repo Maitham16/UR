@@ -166,45 +166,72 @@ Planning defaults are safe and can be configured with:
 
 ## Quick Start
 
-### Requirements
+### Native install (recommended)
 
-- Bun `>=1.3.0` (this repository pins `bun@1.3.14`). Bun is mandatory: every
-  install path — npm, GitHub, or source checkout — runs the CLI through Bun,
-  not Node. UR-Nexus is not Node-native.
-- Node.js `>=22.12` to start the npm-installed launcher script
-  (`bin/ur.js`), which immediately checks for Bun and re-execs into it. If Bun
-  is missing, the launcher errors out instead of falling back to Node.
-- `sharp` installs automatically as a native runtime dependency (image
-  resizing for file reads, pasted images, and multimodal provider input).
-- For the default local setup: a running Ollama app or server
-  (`http://localhost:11434/api`). Any other supported provider (API key,
-  OpenAI-compatible server, or subscription CLI) works without Ollama.
-- Optional tools for specific workflows: GitHub CLI, tmux, and supported IDE
-  integrations.
+The native application includes its JavaScript runtime, repository search,
+image libraries, and required resources. **Node.js, npm, and Bun are not required
+on the user's machine.** Supported releases are macOS Intel/Apple Silicon,
+Linux x64/ARM64 with glibc, and Windows x64. Linux x64 requires an
+x86-64-v2 CPU (including SSE4.2); see the exact qualification environments in
+[Native installation](docs/NATIVE_INSTALL.md#supported-platforms).
 
-### Install
-
-Remove old global installs first if needed:
+macOS and Linux:
 
 ```sh
-npm uninstall -g ur-agent
-bun remove -g ur-agent
+curl -fsSL https://github.com/Maitham16/UR/releases/latest/download/install.sh -o install-ur.sh
+sh install-ur.sh
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Install the global `ur` command:
+Windows x64 PowerShell:
+
+```powershell
+Invoke-WebRequest https://github.com/Maitham16/UR/releases/latest/download/install.ps1 -OutFile install-ur.ps1
+.\install-ur.ps1
+```
+
+The Unix `export` command makes UR available in the current terminal. Follow
+the [shell startup instructions](docs/NATIVE_INSTALL.md#install) to preserve it
+in new terminals. On Windows, open a new terminal after installation, then verify:
 
 ```sh
-npm install -g ur-agent
 ur --version
 ur --help
 ```
 
-Install directly from GitHub when you want this repository build:
+Installers verify release checksums, the executable version, and packaged
+resources before activating the complete versioned installation. Native updates
+use `ur upgrade`; install a specific release with `ur install 1.86.0`.
+See [Native installation and recovery](docs/NATIVE_INSTALL.md) for manual
+downloads, signing status, supported targets, rollback, and uninstall.
+
+### Provider and optional tool requirements
+
+Choose an API provider, an existing local server, or an official subscription
+CLI during setup. A local Ollama setup needs its running app/server; other
+providers work without Ollama. API-provider credentials are stored securely or
+read from the environment.
+
+Git, shells, browsers, Docker, IDEs, microphones, and third-party plugin tools
+remain prerequisites only for the workflows that use them. A user's own project
+may require Node.js, Bun, Python, or another toolchain independently of UR.
+Windows native UR is supported, but its OS sandbox is unavailable in this
+release. Use UR on Linux inside WSL2 when a supported sandbox is required.
+
+### npm and source installs
+
+The compatibility npm distribution remains available:
 
 ```sh
-bun add -g github:Maitham16/UR
+npm install -g ur-agent
 ur --version
 ```
+
+This distribution requires Node.js `>=22.12` for its launcher and Bun `>=1.3.0`
+(the repository pins `bun@1.3.14`) for the bundled CLI. It installs `sharp` as a
+native runtime dependency. Source checkouts also require the development tools
+listed in [Development Guide](docs/DEVELOPMENT.md). Use the native installer to
+run UR without separately installing Node.js or Bun.
 
 ### Start A Session
 
@@ -231,7 +258,7 @@ ur --continue
 ur --resume
 ```
 
-Check for npm updates:
+Update the native installation, or check for npm updates:
 
 ```sh
 ur upgrade
@@ -644,7 +671,7 @@ as first-class subcommands in the shipped CLI.
 | `ur agent-trends` | Show UR coverage for current agent technology trends. |
 | `ur agents` | List configured agents. |
 | `ur doctor` | Check the health of the UR installation and auto-updater. |
-| `ur update` | Check npm for UR-Nexus updates (`ur upgrade` is an alias). |
+| `ur update` | Upgrade a native installation, or check for npm updates (`ur upgrade` is an alias). |
 
 ### Status Bar
 
@@ -880,7 +907,9 @@ settings, generated indexes, memory, logs, and secrets out of Git.
 
 ## Architecture
 
-- `bin/ur.js` is the global launcher, invoked via Node's shebang. It always
+- Native releases execute the compiled application with its packaged runtime
+  and adjacent resources. `bin/ur.js` is the npm/source launcher, invoked via
+  Node's shebang. It always
   executes the CLI through Bun — `bun dist/cli.js` when the bundle is present,
   otherwise `bun run` against the TypeScript entrypoint — and exits with an
   install error if Bun is not found. Node never runs the CLI itself.
@@ -1037,6 +1066,7 @@ release until that GitHub run is green.
 
 ## Documentation
 
+- [Native installation and recovery](docs/NATIVE_INSTALL.md)
 - [Usage Guide](docs/USAGE.md)
 - [Configuration](docs/CONFIGURATION.md)
 - [Provider Guide](docs/providers.md)

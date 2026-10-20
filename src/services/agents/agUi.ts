@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 import {
   type RunAgentInput,
   RunAgentInputSchema,
@@ -469,8 +470,9 @@ function controlResponse(message: unknown): Record<string, unknown> | undefined 
  */
 export const runAgUiPrompt: AgUiPromptRunner = async (prompt, context) => {
   if (context.signal.aborted) return { stopReason: 'cancelled' }
+  const { file, baseArgs } = resolveUrExecutable()
   const args = [
-    process.argv[1] ?? '',
+    ...baseArgs,
     '-p',
     '--input-format',
     'stream-json',
@@ -498,7 +500,7 @@ export const runAgUiPrompt: AgUiPromptRunner = async (prompt, context) => {
   )
 
   return await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, args, {
+    const child = spawn(file, args, {
       cwd: context.cwd,
       shell: false,
       stdio: ['pipe', 'pipe', 'pipe'],

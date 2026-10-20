@@ -20,6 +20,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { runDueAutomations } from '../../commands/automation/automation.js'
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 
 export type SchedulerPlatform = 'launchd' | 'systemd' | 'cron'
 
@@ -33,7 +34,8 @@ export type SchedulerConfig = {
 }
 
 export function defaultBin(): { file: string; args: string[] } {
-  return { file: process.execPath, args: [process.argv[1] ?? ''] }
+  const { file, baseArgs } = resolveUrExecutable({ preferStable: true })
+  return { file, args: baseArgs }
 }
 
 /** Stable per-project label so multiple projects don't collide. */

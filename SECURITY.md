@@ -5,7 +5,18 @@ issue.
 
 ## Supported release
 
-Only the latest npm release of `ur-nexus` is supported for security fixes.
+Only the latest stable UR release is supported for security fixes, distributed
+as native applications on GitHub Releases and as `ur-agent` on npm.
+
+## Dependency security status
+
+UR's release gate audits the locked dependency graph and verifies the code in
+the packed and native CLIs. The current node-forge RSA fix is an explicitly
+reviewed backport; the upstream registry advisory remains present, including
+in npm's unpatched dependency tree. See the
+[backport record](patches/README.md) for exact scope, behavior checks, upstream
+status, and review deadline. This record must be updated or removed when an
+upstream fixed release becomes available.
 
 ## Handling secrets
 

@@ -2,7 +2,7 @@
 
 ## Repository Layout
 
-- `bin/ur.js` launches the TypeScript CLI through Bun.
+- `bin/ur.js` launches the bundled CLI through Bun, with a source fallback for development.
 - `src/entrypoints/cli.tsx` handles fast startup paths before loading the full CLI.
 - `src/main.tsx` defines top-level CLI flags and subcommands.
 - `src/commands.ts` registers slash commands and command modules.
@@ -62,6 +62,25 @@ For a patch release, keep the version synchronized in `package.json`,
 `documentation/index.html`, `technical/README.md`, and `CHANGELOG.md`. Rebuild
 `dist/cli.js` after changing the version.
 
+## Native release builds
+
+Build on the target OS/CPU so native addons and shared libraries match:
+
+```sh
+bun ci
+npm --prefix extensions/vscode-ur-inline-diffs ci
+npm --prefix extensions/vscode-ur-inline-diffs run build
+bun run native:build
+bun run native:pack
+bun run native:smoke -- --artifact-dir dist-release/native
+```
+
+Use the repository's pinned Bun version (`1.3.14`). The extension build is
+required before native packaging because the release includes its local VSIX.
+The native archive contains the executable and its versioned `resources/` tree.
+The release workflow qualifies this exact archive without Node/Bun on PATH.
+See [Native installation and recovery](NATIVE_INSTALL.md) and [Release runbook](../RELEASE.md).
+
 ## Build
 
 ```sh
@@ -112,4 +131,4 @@ This package is configured for install without cloning:
 bun add -g github:Maitham16/UR
 ```
 
-The package exposes the global `ur` command from `bin/ur.js`. That launcher reads `package.json` for version and repository metadata, then runs `src/entrypoints/cli.tsx` with Bun.
+The package exposes the global `ur` command from `bin/ur.js`. That launcher reads `package.json` for version and repository metadata, then runs `dist/cli.js` with Bun when available; the TypeScript entrypoint is a development fallback. Native releases execute the compiled application directly.

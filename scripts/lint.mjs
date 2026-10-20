@@ -14,6 +14,8 @@ const skipPrefixes = [
   '.npm/',
   'node_modules/',
   'dist/',
+  'dist-native/',
+  'dist-release/',
   'build/',
   'coverage/',
   'test-results/',

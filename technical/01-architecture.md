@@ -135,3 +135,13 @@ task board, learning stats), `/threads/<id>` (shared session transcripts via
 - `src/upstreamproxy/` — proxying model traffic through a configured upstream.
 - `src/voice/` — voice input mode (ships enabled as of 1.45; native audio backend optional).
 - `src/buddy/` — companion sprite UI (feature-gated `BUDDY`).
+
+## Standalone distribution
+
+Native builds compile the CLI with an explicit build identity and install an
+immutable executable/resources pair. `urExecutable.ts` centralizes child launch
+arguments; `nativeResources.ts` anchors packaged libraries and assets to the
+physical executable directory; `nativeRelease.ts` validates GitHub manifests,
+archives, resource integrity, and atomic stable-launcher activation. Shell
+timeouts use a typed internal entrypoint. Repository search uses a separately
+packaged ripgrep executable. npm/source execution retains its Bun launcher.

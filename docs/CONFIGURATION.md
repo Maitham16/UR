@@ -661,7 +661,9 @@ ur config set sandbox.enabled false
 You can also inspect the current state with `ur sandbox status`.
 
 OS confinement depends on platform support: `sandbox-exec` (Seatbelt) on
-macOS and `bwrap` (bubblewrap) on Linux/WSL2. `ur sandbox check` reports
+macOS and `bwrap` (bubblewrap) on Linux/WSL2. Windows native sandboxing is
+unavailable in this release; required mode refuses to proceed there.
+`ur sandbox check` reports
 missing dependencies for the current platform.
 
 This sandbox covers UR-run Bash/File tool commands only. For subscription CLI

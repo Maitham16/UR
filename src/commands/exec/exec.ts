@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 import type { LocalCommandCall } from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { getCwd } from '../../utils/cwd.js'
@@ -212,7 +213,8 @@ export function execCommandForPrompt(
     args.push('--worktree')
   }
   args.push(prompt)
-  return [process.execPath, process.argv[1] ?? '', ...args]
+  const { file, baseArgs } = resolveUrExecutable()
+  return [file, ...baseArgs, ...args]
 }
 
 function planPrompt(

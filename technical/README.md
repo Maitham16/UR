@@ -33,7 +33,7 @@ built-in command/tool surface.
 ## Quick facts (from code)
 
 - **Package**: `ur-agent`, binary `ur` (`bin/ur.js` → `dist/cli.js`, bundled from `src/entrypoints/cli.tsx`).
-- **Runtime**: Node ≥ 22.12 or Bun ≥ 1.3; TUI built with React 19 + a vendored Ink fork (`src/ink`).
+- **Runtime**: native releases include Bun and require no separate Node/Bun installation; the npm launcher requires Node ≥ 22.12 plus Bun ≥ 1.3; TUI built with React 19 + a vendored Ink fork (`src/ink`).
 - **Local-first**: default model backend is the local Ollama runtime (`http://localhost:11434`); `--offline` disables all cloud paths.
 - **Registered commands**: the source-derived slash-command reference is checked in both directions against the shipped registry, aliases, bundled skills, internal commands, and feature-gated implementations; user/project skills, installed plugins, workflows, and MCP prompts are additive and normalized by source priority.
 - **Registered tools**: ~40 always-on tools plus ~20 feature-flagged tools (`src/tools.ts:getAllBaseTools`).

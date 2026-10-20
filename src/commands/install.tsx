@@ -9,7 +9,7 @@ import { Box, render, Text } from '../ink.js';
 import { logForDebugging } from '../utils/debug.js';
 import { env } from '../utils/env.js';
 import { errorMessage } from '../utils/errors.js';
-import { checkInstall, cleanupNpmInstallations, cleanupShellAliases, installLatest } from '../utils/nativeInstaller/index.js';
+import { checkInstall, installLatest } from '../utils/nativeInstaller/index.js';
 import { getInitialSettings, updateSettingsForSource } from '../utils/settings/settings.js';
 interface InstallProps {
   onDone: (result: string, options?: {
@@ -44,7 +44,7 @@ function getInstallationPath(): string {
   const homeDir = homedir();
   if (isWindows) {
     // Convert to Windows-style path
-    const windowsPath = join(homeDir, '.local', 'bin', 'ur.exe');
+    const windowsPath = join(homeDir, '.local', 'bin', 'ur.cmd');
     // Replace forward slashes with backslashes for Windows display
     return windowsPath.replace(/\//g, '\\');
   }
@@ -136,26 +136,10 @@ function Install({
           setupMessages.forEach(msg => logForDebugging(`Install: Setup message: ${msg.message}`));
         }
 
-        // Now that native installation succeeded, clean up old npm installations
-        logForDebugging('Install: Cleaning up npm installations after successful install');
-        const {
-          removed,
-          errors,
-          warnings
-        } = await cleanupNpmInstallations();
-        if (removed > 0) {
-          logForDebugging(`Cleaned up ${removed} npm installation(s)`);
-        }
-        if (errors.length > 0) {
-          logForDebugging(`Cleanup errors: ${errors.join(', ')}`);
-          // Continue despite cleanup errors - native install already succeeded
-        }
-
-        // Clean up old shell aliases
-        const aliasMessages = await cleanupShellAliases();
-        if (aliasMessages.length > 0) {
-          logForDebugging(`Shell alias cleanup: ${aliasMessages.map(m => m.message).join('; ')}`);
-        }
+        // Preserve existing npm installations and shell configuration. Native
+        // installation must not invoke npm or remove another installation.
+        const warnings: string[] = [];
+        const aliasMessages: Array<{ message: string }> = [];
 
         // Log success event
         logEvent('tengu_ur_install_command', {

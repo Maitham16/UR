@@ -17,13 +17,22 @@ on:
         required: true
         type: string
 
-permissions: {}
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
 
 concurrency:
   group: release-${{ github.event.inputs.tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
+  native:
+    needs: verify
+    uses: ./.github/workflows/native.yml
+    with:
+      ref: ${{ needs.verify.outputs.tag }}
+    secrets: inherit
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -102,6 +111,7 @@ jobs:
           set -euo pipefail
           bun run typecheck
           bun run lint
+          bun run secrets:scan
           # Bun's parallel workers can collide on server.listen(0), producing
           # EADDRINUSE in tests that correctly request an ephemeral port.
           bun test --timeout 120000
@@ -169,12 +179,14 @@ jobs:
   github-release:
     # npm must succeed first. A registry authentication failure must never
     # create another partial GitHub-only release.
-    needs: [verify, npm-publish]
+    needs: [verify, native, npm-publish]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       actions: read
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout tag
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -191,6 +203,24 @@ jobs:
           gh run download "$GITHUB_RUN_ID" \
             --name "ur-agent-${{ needs.verify.outputs.version }}" \
             --dir dist-release
+
+      - name: Download and merge tested native artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist-release/native
+          for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
+            gh run download "$GITHUB_RUN_ID" --name "native-$target" --dir dist-release/native
+          done
+          node scripts/native-manifest.mjs dist-release/native
+
+      - name: Attest the public native manifest
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: |
+            dist-release/native/manifest.json
+            dist-release/native/SHA256SUMS
 
       - name: Publish the GitHub Release
         env:
@@ -215,18 +245,18 @@ jobs:
               --title "UR-Nexus $VERSION" \
               --prerelease="$PRERELEASE" \
               --notes-file release-notes.md
-            gh release upload "$TAG" dist-release/*.tgz --clobber
+            gh release upload "$TAG" dist-release/*.tgz dist-release/native/ur-* dist-release/native/manifest.json dist-release/native/SHA256SUMS install.sh install.ps1 uninstall.sh uninstall.ps1 --clobber
           else
             gh release create "$TAG" \
               --title "UR-Nexus $VERSION" \
               --prerelease="$PRERELEASE" \
               --notes-file release-notes.md \
               --verify-tag \
-              dist-release/*.tgz
+              dist-release/*.tgz dist-release/native/ur-* dist-release/native/manifest.json dist-release/native/SHA256SUMS install.sh install.ps1 uninstall.sh uninstall.ps1
           fi
 
   npm-publish:
-    needs: verify
+    needs: [verify, native]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

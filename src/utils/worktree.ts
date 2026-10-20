@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from './urExecutable.js'
 import { feature } from 'bun:bundle'
 import chalk from 'chalk'
 import { spawnSync } from 'child_process'
@@ -1337,6 +1338,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
     `${repoName}_${worktreeBranchName(worktreeName)}`.replace(/[/.]/g, '_')
 
   // Build new args without --tmux and --worktree (we're already in the worktree)
+  const cliEntry = resolveUrExecutable()
   const newArgs: string[] = []
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
@@ -1436,7 +1438,8 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
         '-c',
         worktreeDir,
         '--',
-        process.execPath,
+        cliEntry.file,
+        ...cliEntry.baseArgs,
         ...newArgs,
       ],
       { cwd: worktreeDir, env: tmuxEnv },
@@ -1508,7 +1511,8 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
             '-c',
             worktreeDir,
             '--',
-            process.execPath,
+            cliEntry.file,
+            ...cliEntry.baseArgs,
             ...newArgs,
           ],
           { cwd: worktreeDir, env: tmuxEnv },
@@ -1530,7 +1534,8 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
         '-c',
         worktreeDir,
         '--', // Separator before command
-        process.execPath,
+        cliEntry.file,
+        ...cliEntry.baseArgs,
         ...newArgs,
       ]
 

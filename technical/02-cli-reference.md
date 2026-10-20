@@ -163,3 +163,12 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
   registered in `src/main.tsx` (the list above) — e.g. `ur agent-trends --json`.
 - `ur new / list / reply` are template-job commands (feature-gated `TEMPLATES`).
 - Exit codes: fatal startup errors print `Fatal startup error: …` and exit 1.
+
+## Native installation
+
+`ur install [latest|stable|version]` installs and activates a verified GitHub
+native release without npm/Bun. Native `ur upgrade` retrieves the same public
+release metadata directly; npm installs retain package-manager guidance.
+`--internal-timeout`, `--internal-thinkback-player`, and `--ur-native-self-test`
+are typed internal/qualification entrypoints, not general JavaScript execution
+interfaces. See [native installation](../docs/NATIVE_INSTALL.md).

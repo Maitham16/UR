@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from './urExecutable.js'
 import chalk from 'chalk'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { homedir } from 'os'
@@ -89,8 +90,9 @@ export async function setupShellCompletion(theme: ThemeName): Promise<string> {
   // Generate the completion script by writing directly to the cache file.
   // Using --output avoids piping through stdout where process.exit() can
   // truncate output before the pipe buffer drains.
-  const urBin = process.argv[1] || 'ur'
-  const result = await execFileNoThrow(urBin, [
+  const { file, baseArgs } = resolveUrExecutable()
+  const result = await execFileNoThrow(file, [
+    ...baseArgs,
     'completion',
     shell.shellFlag,
     '--output',
@@ -145,8 +147,9 @@ export async function regenerateCompletionCache(): Promise<void> {
 
   logForDebugging(`update: Regenerating ${shell.name} completion cache`)
 
-  const urBin = process.argv[1] || 'ur'
-  const result = await execFileNoThrow(urBin, [
+  const { file, baseArgs } = resolveUrExecutable()
+  const result = await execFileNoThrow(file, [
+    ...baseArgs,
     'completion',
     shell.shellFlag,
     '--output',

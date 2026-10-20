@@ -1,7 +1,7 @@
 {
   "name": "ur-agent",
-  "version": "1.85.2",
-  "description": "UR-Nexus — autonomous engineering workflow engine (plan, execute, test, verify, document, benchmark, reproduce)",
+  "version": "1.86.0",
+  "description": "UR-Nexus \u2014 autonomous engineering workflow engine (plan, execute, test, verify, document, benchmark, reproduce)",
   "type": "module",
   "packageManager": "bun@1.3.14",
   "engines": {
@@ -41,13 +41,17 @@
     "README.md",
     "RELEASE.md",
     "SECURITY.md",
-    "LICENSE"
+    "LICENSE",
+    "patches"
   ],
   "scripts": {
     "start": "node ./bin/ur.js",
     "dev": "bun --watch run src/entrypoints/cli.tsx",
     "bundle": "node scripts/bundle.mjs",
     "build": "node scripts/bundle.mjs",
+    "native:build": "node scripts/native-build.mjs",
+    "native:pack": "node scripts/native-release.mjs",
+    "native:smoke": "node scripts/native-smoke.mjs",
     "release:check": "node scripts/release-check.mjs",
     "release:tag": "node scripts/release-tag.mjs",
     "release:create-source-zip": "bun scripts/source-zip-create.mjs",
@@ -58,7 +62,7 @@
     "test": "bun test --timeout 120000",
     "smoke": "node ./bin/ur.js --version",
     "secrets:scan": "bash scripts/secret-scan.sh",
-    "dependencies:audit": "bun audit",
+    "dependencies:audit": "node scripts/dependency-audit.mjs",
     "benchmark:report": "node scripts/benchmark-report.mjs",
     "benchmark:smoke": "node scripts/benchmark-smoke.mjs",
     "benchmark:local": "node scripts/benchmark-local.mjs",
@@ -75,32 +79,35 @@
   "overrides": {
     "@hono/node-server": "2.0.12",
     "body-parser": "2.3.0",
-    "fast-uri": "3.1.6",
+    "fast-uri": "3.1.9",
     "form-data": "4.0.6",
     "hono": "4.13.0",
     "ip-address": "10.4.0",
-    "qs": "6.15.3"
+    "qs": "6.15.3",
+    "follow-redirects": "1.16.1"
   },
   "dependencies": {
     "@a2a-js/sdk": "1.1.0",
     "@ag-ui/core": "0.0.57",
     "@ag-ui/encoder": "0.0.57",
     "@anthropic-ai/sandbox-runtime": "0.0.71",
-    "@grpc/grpc-js": "^1.14.0",
+    "@grpc/grpc-js": "^1.14.6",
     "@grpc/proto-loader": "^0.8.0",
     "diff2html": "^3.4.56",
     "playwright-core": "^1.61.1",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.5",
+    "node-forge": "1.4.0"
   },
   "devDependencies": {
+    "@vscode/ripgrep": "1.18.0",
     "@agentclientprotocol/sdk": "1.2.1",
     "@alcalzone/ansi-tokenize": "^0.1.3",
     "@aws-sdk/credential-provider-node": "^3.972.68",
     "@commander-js/extra-typings": "^13.1.0",
     "@growthbook/growthbook": "1.6.5",
-    "@modelcontextprotocol/client": "^2.0.0",
-    "@modelcontextprotocol/core": "^2.0.0",
-    "@modelcontextprotocol/server": "^2.0.0",
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@modelcontextprotocol/core": "^2.3.1",
+    "@modelcontextprotocol/server": "^2.3.1",
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/api-logs": "0.220.0",
     "@opentelemetry/core": "2.9.0",
@@ -126,7 +133,7 @@
     "ajv": "^8.20.0",
     "asciichart": "^1.5.25",
     "auto-bind": "^5.0.1",
-    "axios": "^1.18.1",
+    "axios": "^1.20.0",
     "bidi-js": "^1.0.3",
     "bun-types": "^1.3.14",
     "chalk": "^5.6.2",
@@ -161,7 +168,7 @@
     "react-compiler-runtime": "^1.0.0",
     "react-reconciler": "^0.33.0",
     "semver": "^7.8.5",
-    "shell-quote": "^1.10.0",
+    "shell-quote": "^1.12.0",
     "signal-exit": "^4.1.0",
     "stack-utils": "^2.0.6",
     "strip-ansi": "^7.2.0",
@@ -169,7 +176,7 @@
     "tree-kill": "^1.2.2",
     "type-fest": "^4.41.0",
     "typescript": "^5.9.3",
-    "undici": "^7.29.0",
+    "undici": "^7.30.1",
     "usehooks-ts": "^3.1.1",
     "vscode-jsonrpc": "^8.2.1",
     "vscode-languageserver-protocol": "^3.18.2",
@@ -179,5 +186,8 @@
     "xss": "^1.0.15",
     "yaml": "^2.9.0",
     "zod": "^4.2.0"
+  },
+  "patchedDependencies": {
+    "node-forge@1.4.0": "patches/node-forge@1.4.0.patch"
   }
 }

@@ -4,19 +4,20 @@ import type { LocalCommandCall } from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { getCwd } from '../../utils/cwd.js'
 
-const TS_EXAMPLE = `// UR SDK (TypeScript) — drive the agent headlessly.
-// Requires the global \`ur\` binary on PATH.
-import { query, UrClient } from 'ur-agent/sdk'
+const TS_EXAMPLE = `// Drive installed UR headlessly from a TypeScript-capable Node.js/Bun runtime.
+// Requires the global \`ur\` binary on PATH and an explicit model choice.
+import { execFileSync } from 'node:child_process'
 
-const { text, ok } = await query('Summarize the README in one sentence', {
-  maxTurns: 4,
-})
-console.log(ok ? text : 'run failed')
-
-// Reuse defaults across calls:
-const client = new UrClient({ model: process.env.UR_MODEL, cwd: process.cwd() })
-const review = await client.query('Review the current git diff for bugs')
-console.log(review.text)
+const model = process.env.UR_MODEL
+if (!model) throw new Error('Set UR_MODEL to a model available from your configured provider')
+const executable = process.env.UR_EXECUTABLE ?? (process.platform === 'win32' ? undefined : 'ur')
+if (!executable) throw new Error('Set UR_EXECUTABLE to the installed ur.exe path on Windows')
+const output = execFileSync(executable, [
+  '-p', '--model', model, '--max-turns', '4', '--output-format', 'json',
+  'Summarize the README in one sentence',
+], { encoding: 'utf8', timeout: 1800000, maxBuffer: 64 * 1024 * 1024 })
+const result = JSON.parse(output)
+console.log(result.result ?? result.text ?? output)
 `
 
 const PY_EXAMPLE = `"""UR SDK (Python) — a thin wrapper over headless \`ur -p\`.
@@ -59,8 +60,14 @@ These show how to call UR programmatically. Both wrap headless mode
 (\`ur -p --output-format json\`), so they inherit the same permission model,
 MCP configuration, and local Ollama routing as the interactive CLI.
 
-- \`example.ts\` — TypeScript, importing \`ur-agent/sdk\` (\`query\`, \`queryJSON\`, \`UrClient\`).
+- \`example.ts\` — TypeScript, using the calling program's Node.js/Bun runtime
+  and built-in child-process API. Set \`UR_MODEL\` before running it.
+  On Windows, also set \`UR_EXECUTABLE\` to the installed version's \`ur.exe\`
+  path; Node.js cannot directly execute the \`ur.cmd\` shell launcher.
 - \`example.py\` — Python, no dependencies, shells out to \`ur\`.
+
+There is no separately published \`ur-agent/sdk\` package entry. Native UR
+itself includes its runtime; these external calling programs use their own.
 
 For agent-to-agent hand-off over HTTP instead of in-process scripting, use the
 A2A server: \`ur a2a serve\`.
@@ -71,12 +78,15 @@ function infoText(): string {
     'UR SDK — drive UR programmatically (headless).',
     '',
     'TypeScript:',
-    "  import { query } from 'ur-agent/sdk'",
-    "  const { text } = await query('Fix the failing test', { maxTurns: 6 })",
+    "  import { execFileSync } from 'node:child_process'",
+    "  const executable = process.env.UR_EXECUTABLE ?? 'ur'",
+    "  const output = execFileSync(executable, ['-p', '--model', '<model>', '--output-format', 'json', 'Fix the failing test'])",
     '',
     'Python (no deps): shell out to `ur -p --output-format json` (see example.py).',
     '',
     'Both reuse the CLI permission model, MCP config, and local Ollama routing.',
+    'External calling programs use their own runtime; native UR includes its runtime.',
+    'Windows Node.js callers must set UR_EXECUTABLE to the actual installed ur.exe path.',
     'For HTTP agent-to-agent hand-off instead, use `ur a2a serve`.',
     '',
     'Scaffold runnable examples into .ur/sdk/ with:  ur sdk init',

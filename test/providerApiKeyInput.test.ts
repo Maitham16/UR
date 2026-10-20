@@ -146,10 +146,25 @@ describe('TextInput call sites', () => {
       path.join(repoRoot, 'src/components/ProviderFirstModelPicker.tsx'),
       'utf8',
     )
-    const element = source.match(/<TextInput\b[\s\S]*?\/>/)?.[0] ?? ''
+    const element = (source.match(/<TextInput\b[\s\S]*?\/>/g) ?? [])
+      .find(input => /value=\{apiKeyInput\}/.test(input)) ?? ''
     expect(element).toMatch(/columns=\{keyInputColumns\}/)
     expect(element).toMatch(/cursorOffset=\{apiKeyCursorOffset\}/)
     expect(element).toMatch(/onChangeCursorOffset=\{setApiKeyCursorOffset\}/)
     expect(element).toMatch(/mask="\*"/)
+  })
+
+  test('the non-secret workspace field has its own width, cursor and validated submit handler', () => {
+    const source = readFileSync(
+      path.join(repoRoot, 'src/components/ProviderFirstModelPicker.tsx'),
+      'utf8',
+    )
+    const element = (source.match(/<TextInput\b[\s\S]*?\/>/g) ?? [])
+      .find(input => /value=\{workspaceInput\}/.test(input)) ?? ''
+    expect(element).toMatch(/columns=\{keyInputColumns\}/)
+    expect(element).toMatch(/cursorOffset=\{workspaceCursorOffset\}/)
+    expect(element).toMatch(/onChangeCursorOffset=\{setWorkspaceCursorOffset\}/)
+    expect(element).toMatch(/onSubmit=\{handleWorkspaceSubmit\}/)
+    expect(element).not.toMatch(/\bmask=/)
   })
 })

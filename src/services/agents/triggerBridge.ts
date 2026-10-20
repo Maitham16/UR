@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 /**
  * Inbound trigger bridge.
  *
@@ -271,8 +272,7 @@ export function buildTriggerCommand(
   prompt: string,
   options: TriggerCommandOptions = {},
 ): { file: string; args: string[] } {
-  const file = options.bin?.file ?? process.execPath
-  const baseArgs = options.bin?.baseArgs ?? [process.argv[1] ?? '']
+  const { file, baseArgs } = options.bin ?? resolveUrExecutable()
   const args = [...baseArgs, '-p', '--output-format', options.outputFormat ?? 'json']
   if (options.maxTurns && options.maxTurns > 0) args.push('--max-turns', String(options.maxTurns))
   if (options.skipPermissions) args.push('--dangerously-skip-permissions')

@@ -46,6 +46,7 @@ import {
 } from './idePathConversion.js'
 import { sleep } from './sleep.js'
 import { jsonParse } from './slowOperations.js'
+import { getNativeResourcePath, requireNativeResource } from './nativeResources.js'
 
 function isProcessRunning(pid: number): boolean {
   try {
@@ -1044,6 +1045,9 @@ function collectExtensionFiles(
 }
 
 export async function createBundledVSCodeExtensionVsix(): Promise<string> {
+  if (getNativeResourcePath('ide/ur-inline-diffs.vsix') !== null) {
+    return requireNativeResource('ide/ur-inline-diffs.vsix')
+  }
   const extensionDir = findBundledVSCodeExtensionDir()
   if (!extensionDir) {
     throw new Error(
@@ -1098,7 +1102,9 @@ async function installBundledVSCodeExtension(command: string): Promise<void> {
     }
   } finally {
     try {
-      await getFsImplementation().unlink(tempVsixPath)
+      if (getNativeResourcePath('ide/ur-inline-diffs.vsix') === null) {
+        await getFsImplementation().unlink(tempVsixPath)
+      }
     } catch {
       // Ignore cleanup errors.
     }

@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 import { randomUUID } from 'node:crypto'
 import { realpath, stat } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
@@ -644,9 +645,10 @@ async function handleIdeSelect(
 }
 
 function headlessCommand(): string[] {
+  const { file, baseArgs } = resolveUrExecutable()
   return [
-    process.execPath,
-    process.argv[1] ?? '',
+    file,
+    ...baseArgs,
     '-p',
     '--output-format',
     'json',

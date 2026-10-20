@@ -1,3 +1,7 @@
+// The standalone build sets this explicitly. Bun.embeddedFiles contains assets,
+// not the compiled JavaScript, and can be empty in a valid native executable.
+declare const UR_NATIVE_BUILD: boolean
+
 /**
  * Detects if the current runtime is Bun.
  * Returns true when:
@@ -11,12 +15,13 @@ export function isRunningWithBun(): boolean {
 
 /**
  * Detects if running as a Bun-compiled standalone executable.
- * This checks for embedded files which are present in compiled binaries.
+ * The asset fallback preserves compatibility with older native distributions.
  */
 export function isInBundledMode(): boolean {
   return (
-    typeof Bun !== 'undefined' &&
-    Array.isArray(Bun.embeddedFiles) &&
-    Bun.embeddedFiles.length > 0
+    (typeof UR_NATIVE_BUILD !== 'undefined' && UR_NATIVE_BUILD) ||
+    (typeof Bun !== 'undefined' &&
+      Array.isArray(Bun.embeddedFiles) &&
+      Bun.embeddedFiles.length > 0)
   )
 }

@@ -15,6 +15,9 @@ export const requiredPackageFiles = [
   'docs/providers.md',
   'documentation/index.html',
   'plugins/core/README.md',
+  'patches/README.md',
+  'patches/node-forge-security.json',
+  'patches/node-forge@1.4.0.patch',
 ]
 
 export const requiredSourceZipEntries = [
@@ -23,6 +26,7 @@ export const requiredSourceZipEntries = [
   'src/',
   'bin/',
   'scripts/',
+  'patches/',
   'README.md',
   'CHANGELOG.md',
   'SECURITY.md',
@@ -39,7 +43,7 @@ const forbiddenRules = [
   },
   {
     label: 'generated build directory',
-    test: path => /(^|\/)build(\/|$)/.test(path),
+    test: path => /(^|\/)(?:build|dist-native|dist-release)(\/|$)/.test(path),
   },
   {
     label: 'local IDE state',

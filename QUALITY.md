@@ -1,8 +1,10 @@
 # UR Quality Notes
 
-UR is a local-first terminal coding agent. Production releases should be
-verifiable from a clean checkout and should not depend on local machine state
-other than Bun and the local Ollama app.
+UR is a local-first terminal coding agent. Development and release verification
+use the repository's pinned Bun and documented build tools from a clean checkout.
+The standalone application includes its runtime and is qualified without
+external Node.js, npm, or Bun. Users select a provider separately; Ollama is
+required only when using its local/server backend.
 
 ## Release Gate
 
@@ -33,8 +35,15 @@ compress` preserves task decisions, constraints, commands, and diffs.
 
 `bun run dependencies:audit` checks the committed `bun.lock`, including
 development dependencies that are compiled into `dist/cli.js`. `bun run
-release:check` repeats that audit and is also wired into `prepack`, so known
+release:check` repeats that audit and is also wired into `prepack`, so unreviewed
 dependency advisories, stale bundles, and version drift fail before packaging.
+The current `node-forge@1.4.0` RSA advisory has no upstream fixed npm release;
+UR verifies a narrowly scoped backport, exact source/patch hashes, seven RSA
+behavior checks, and its review deadline. The raw registry advisory remains
+visible, and npm does not apply Bun's patch to its dependency tree.
+The actual packed and native CLIs must pass the bundled verifier self-test.
+See the [reviewed backport record](patches/README.md); this exception does not
+permit unrelated advisories or audit network/format failures.
 The GitHub workflow must keep production
 bundle, release, package, and global-install checks after the Bun test step;
 do not tag or publish until that workflow is green.
@@ -50,11 +59,22 @@ Public feature releases should update the full documentation set:
 - examples
 - extension or marketplace docs when affected
 
+## Standalone release gate
+
+The native release includes its runtime and required resources. Qualification
+must execute the archived installation with no external Node, npm, Bun, source
+checkout, or node_modules available. The five-target native workflow checks
+resource integrity, images, search, compiler libraries, protocol contracts, real
+streaming/task/write/read behavior, restart/resume, and timeout cleanup before
+publication. Native installer tests cover checksum/path rejection, locking,
+same-sized Windows replacements, and failed activation preserving the old CLI.
+
 ## Runtime Assumptions
 
-- UR runs through Bun.
-- The default provider is the local Ollama app at `http://localhost:11434/api`;
-  it may expose local models or Ollama Cloud-backed models.
+- Native UR embeds Bun. The compatibility npm/source distribution runs through an external Bun executable.
+- The Ollama backend defaults to `http://localhost:11434/api` when selected;
+  it may expose local models or Ollama Cloud-backed models. A new workspace
+  requires an explicit provider/model choice.
 - Selecting an API provider (OpenAI, Anthropic, Gemini, OpenRouter) makes UR
   call that provider's API directly, using a key stored via `ur connect`
   (OS keychain) or read from an environment variable. Keys are never written
@@ -62,8 +82,9 @@ Public feature releases should update the full documentation set:
 - Selecting a subscription CLI provider (Codex CLI, Claude Code, Gemini CLI,
   Antigravity) dispatches turns through the vendor's official CLI. There is no
   silent cross-provider fallback.
-- The GitHub install path runs `dist/cli.js`, so the bundle must match the
-  package version.
+- The GitHub-source-package and npm compatibility install paths run
+  `dist/cli.js`, so the bundle must match the package version. GitHub native
+  releases execute the compiled application and its matching resources.
 
 ## Safety Boundaries
 
@@ -91,7 +112,9 @@ Public feature releases should update the full documentation set:
 
 - `dist/cli.js` is generated and must be rebuilt after source, version, or macro
   changes.
-- A failed Ollama model-list lookup falls back to `qwen3-coder:480b-cloud`.
+- Model discovery requires a reachable configured endpoint and usable provider
+  credentials when authentication is required. A discovery failure does not
+  supply a workspace's deliberate model choice.
 - MCP servers can access external systems; only enable servers you trust.
 - Live model behavior should be validated manually with `docs/VALIDATION.md`
   before major releases.

@@ -23,6 +23,7 @@ import { addMarketplaceSource, clearMarketplacesCache, loadKnownMarketplacesConf
 import { OFFICIAL_MARKETPLACE_NAME } from '../../utils/plugins/officialMarketplace.js';
 import { loadAllPlugins } from '../../utils/plugins/pluginLoader.js';
 import { installSelectedPlugins } from '../../utils/plugins/pluginStartupCheck.js';
+import { resolveUrExecutable } from '../../utils/urExecutable.js';
 
 // Marketplace and plugin identifiers - varies by user type
 const INTERNAL_MARKETPLACE_NAME = 'ur-marketplace';
@@ -63,7 +64,7 @@ export async function playAnimation(skillDir: string): Promise<{
   const dataPath = join(skillDir, 'year_in_review.js');
   const playerPath = join(skillDir, 'player.js');
 
-  // Both files are prerequisites for the node subprocess. Read them here
+  // Both files are prerequisites for the embedded player. Read them here
   // (not at call sites) so all callers get consistent error messaging. The
   // subprocess runs with reject: false, so a missing file would otherwise
   // silently return success. Using readFile (not access) per UR.md.
@@ -110,15 +111,27 @@ export async function playAnimation(skillDir: string): Promise<{
       message: 'Failed to access terminal instance'
     };
   }
+  const entry = resolveUrExecutable();
   inkInstance.enterAlternateScreen();
   try {
-    await execa('node', [playerPath], {
+    const result = await execa(entry.file, [...entry.baseArgs, '--internal-thinkback-player', playerPath], {
       stdio: 'inherit',
       cwd: skillDir,
       reject: false
     });
-  } catch {
-    // Animation may have been interrupted (e.g., Ctrl+C)
+    if (result.exitCode !== 0) {
+      return {
+        success: false,
+        message: result.signal
+          ? 'Thinkback playback was interrupted.'
+          : `Thinkback playback failed (exit ${result.exitCode ?? 'unknown'}). Check the optional plugin player and its dependencies.`
+      };
+    }
+  } catch (error: unknown) {
+    return {
+      success: false,
+      message: `Thinkback playback backend unavailable: ${toError(error).message}`
+    };
   } finally {
     inkInstance.exitAlternateScreen();
   }

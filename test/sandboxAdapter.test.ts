@@ -10,6 +10,7 @@ import {
 import { SandboxManager as BaseSandboxManager } from '../src/utils/sandbox/sandboxRuntimeCompat.js'
 import { resetSettingsCache } from '../src/utils/settings/settingsCache.js'
 import { updateSettingsForSource } from '../src/utils/settings/settings.js'
+import * as platformUtils from '../src/utils/platform.js'
 
 function tempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -132,6 +133,23 @@ describe('sandbox-adapter (direct regression coverage)', () => {
     const refusesWhenRecommended = Boolean(recommendedReason) && SandboxManager.isSandboxRequired()
     expect(recommendedReason).toBeDefined() // still warns...
     expect(refusesWhenRecommended).toBe(false) // ...but never refuses to start
+  })
+
+  test('Windows remains unavailable and required sandbox mode fails closed even if upstream supports it', async () => {
+    const platform = spyOn(platformUtils, 'getPlatform').mockReturnValue('windows')
+    const upstream = spyOn(BaseSandboxManager, 'isSupportedPlatform').mockReturnValue(true)
+    try {
+      await SandboxManager.reset()
+      setSandboxSettings({ enabled: true, failIfUnavailable: true })
+      expect(SandboxManager.isSupportedPlatform()).toBe(false)
+      expect(SandboxManager.isSandboxingEnabled()).toBe(false)
+      expect(SandboxManager.isSandboxRequired()).toBe(true)
+      expect(SandboxManager.getSandboxUnavailableReason()).toContain('packaged helper is not configured')
+      expect(SandboxManager.checkDependencies().errors[0]).toContain('Windows sandboxing is unavailable')
+    } finally {
+      platform.mockRestore()
+      upstream.mockRestore()
+    }
   })
 
   test('wrapWithSandbox forwards network/filesystem customConfig to the base runtime unchanged', async () => {

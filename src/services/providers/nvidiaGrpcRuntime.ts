@@ -9,15 +9,29 @@
  * https://github.com/nvidia-riva/common.
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
 import type { NvidiaHostedTaskModelContract } from './nvidiaHostedModels.js'
+import { registerCleanup } from '../../utils/cleanupRegistry.js'
 
 const CHUNK_BYTES = 64 * 1024
-const PROTO_DIR = join(tmpdir(), 'ur-nexus-nvidia-protos-v1')
+let protoDirectory: Promise<string> | undefined
+const protoFiles = new Map<string, Promise<string>>()
+
+function getProtoDirectory(): Promise<string> {
+  protoDirectory ??= mkdtemp(join(tmpdir(), 'ur-nexus-nvidia-protos-')).then(directory => {
+    registerCleanup(async () => {
+      await rm(directory, { recursive: true, force: true })
+      protoDirectory = undefined
+      protoFiles.clear()
+    })
+    return directory
+  })
+  return protoDirectory
+}
 
 const PROTOS: Record<string, string> = {
   'bnr.proto': `
@@ -151,10 +165,16 @@ function jsonObject(value: unknown): JsonObject | undefined {
 }
 
 async function ensureProto(name: keyof typeof PROTOS): Promise<string> {
-  const path = join(PROTO_DIR, name)
-  await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, PROTOS[name], { encoding: 'utf8', flag: 'w' })
-  return path
+  let result = protoFiles.get(name)
+  if (!result) {
+    result = getProtoDirectory().then(async directory => {
+      const path = join(directory, name)
+      await writeFile(path, PROTOS[name], { encoding: 'utf8', flag: 'wx', mode: 0o600 })
+      return path
+    })
+    protoFiles.set(name, result)
+  }
+  return result
 }
 
 function nested(root: unknown, path: string): unknown {

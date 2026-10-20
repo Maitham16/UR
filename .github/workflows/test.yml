@@ -14,6 +14,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  native:
+    uses: ./.github/workflows/native.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30

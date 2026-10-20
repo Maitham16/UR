@@ -14,6 +14,7 @@ import { findExecutable } from './findExecutable.js'
 import { logError } from './log.js'
 import { getPlatform } from './platform.js'
 import { countCharInString } from './stringUtils.js'
+import { requireNativeResource } from './nativeResources.js'
 
 const __filename = fileURLToPath(import.meta.url)
 // we use node:path.join instead of node:url.resolve because the former doesn't encode spaces
@@ -45,14 +46,13 @@ const getRipgrepConfig = memoize((): RipgrepConfig => {
     }
   }
 
-  // In bundled (native) mode, ripgrep is statically compiled into bun-internal
-  // and dispatches based on argv[0]. We spawn ourselves with argv0='rg'.
+  // Stock Bun executables do not implement the old bun-internal rg dispatcher.
+  // The release contains a verified platform binary next to the executable.
   if (isInBundledMode()) {
     return {
-      mode: 'embedded',
-      command: process.execPath,
+      mode: 'builtin',
+      command: requireNativeResource(process.platform === 'win32' ? 'bin/rg.exe' : 'bin/rg'),
       args: ['--no-config'],
-      argv0: 'rg',
     }
   }
 

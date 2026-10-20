@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 import {
   existsSync,
   mkdirSync,
@@ -1239,8 +1240,7 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
     try {
     materializeEvalSetup(caseCwd, evalCase)
     const started = Date.now()
-    const file = process.execPath
-    const baseArgs = [process.argv[1] ?? '']
+    const { file, baseArgs } = resolveUrExecutable()
     const args = [
       ...baseArgs,
       '-p',
@@ -1356,8 +1356,7 @@ export function makeDryEvalRunner(): EvalRunner {
 /** Production judge: a headless `ur -p` scores the output against the rubric. */
 export function makeCliJudgeRunner(options: CliEvalRunnerOptions): JudgeRunner {
   return async ({ evalCase, rubric, output }) => {
-    const file = process.execPath
-    const baseArgs = [process.argv[1] ?? '']
+    const { file, baseArgs } = resolveUrExecutable()
     const prompt =
       `You are grading an AI agent's answer against a rubric. Be strict.\n\n` +
       `Task: ${redactAgenticCiText(evalCase.prompt).slice(0, 64 * 1024)}\n\n` +

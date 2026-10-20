@@ -20,10 +20,21 @@ import type {
   WorkspaceEdit,
 } from './types.js'
 import { resolveWorkspaceFile, workspaceRelativePath } from './workspaceEdit.js'
+import { getNativeResourcePath, requireNativeResource } from '../../../utils/nativeResources.js'
 
 export type TypeScriptEngineContext = {
   program: ts.Program
   checker: ts.TypeChecker
+}
+
+function createCompilerHost(options: ts.CompilerOptions): ts.CompilerHost {
+  const host = ts.createCompilerHost(options)
+  if (getNativeResourcePath('typescript/lib') !== null) {
+    const libraryRoot = requireNativeResource('typescript/lib')
+    host.getDefaultLibLocation = () => libraryRoot
+    host.getDefaultLibFileName = compilerOptions => join(libraryRoot, ts.getDefaultLibFileName(compilerOptions))
+  }
+  return host
 }
 
 export function loadProgram(root: string, files?: string[]): TypeScriptEngineContext {
@@ -33,7 +44,7 @@ export function loadProgram(root: string, files?: string[]): TypeScriptEngineCon
     const read = ts.readConfigFile(configPath, ts.sys.readFile)
     if (read.error) throw new Error(ts.flattenDiagnosticMessageText(read.error.messageText, '\n'))
     const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, root)
-    const host = ts.createCompilerHost(parsed.options)
+    const host = createCompilerHost(parsed.options)
     program = ts.createProgram(parsed.fileNames, parsed.options, host)
   } else {
     const compilerOptions: ts.CompilerOptions = {
@@ -45,7 +56,7 @@ export function loadProgram(root: string, files?: string[]): TypeScriptEngineCon
       strict: false,
       jsx: ts.JsxEmit.React,
     }
-    const host = ts.createCompilerHost(compilerOptions)
+    const host = createCompilerHost(compilerOptions)
     const fileNames = files?.length ? files.map(f => join(root, f)) : []
     program = ts.createProgram(fileNames, compilerOptions, host)
   }

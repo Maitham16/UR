@@ -86,7 +86,7 @@ export function Onboarding({
             <Text dimColor wrap="wrap">
               For more details see:
               <Newline />
-              <Link url="https://docs.ur.com/docs/en/security" />
+              <Link url="https://github.com/Maitham16/UR/blob/master/SECURITY.md" />
             </Text>
           </OrderedList.Item>
         </OrderedList>

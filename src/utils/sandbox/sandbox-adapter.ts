@@ -56,6 +56,7 @@ import { errorMessage } from '../errors.js'
 import { getURTempDir } from '../permissions/filesystem.js'
 import type { PermissionRuleValue } from '../permissions/PermissionRule.js'
 import { ripgrepCommand } from '../ripgrep.js'
+import { getNativeResourcePath, requireNativeResource } from '../nativeResources.js'
 
 // Local copies to avoid circular dependency
 // (permissions.ts imports SandboxManager, bashPermissions.ts imports permissions.ts)
@@ -422,6 +423,10 @@ export function convertToSandboxRuntimeConfig(
     args: rgArgs,
     argv0,
   }
+  const nativeSeccomp = process.platform === 'linux' &&
+    getNativeResourcePath(`sandbox/seccomp/${process.arch}/apply-seccomp`) !== null
+    ? { applyPath: requireNativeResource(`sandbox/seccomp/${process.arch}/apply-seccomp`) }
+    : undefined
 
   return SandboxRuntimeConfigSchema.parse({
     network: {
@@ -450,6 +455,7 @@ export function convertToSandboxRuntimeConfig(
     enableWeakerNetworkIsolation:
       settings.sandbox?.enableWeakerNetworkIsolation,
     ripgrep: ripgrepConfig,
+    ...(nativeSeccomp ? { seccomp: nativeSeccomp } : {}),
   })
 }
 
@@ -547,6 +553,9 @@ async function detectWorktreeMainRepoPath(cwd: string): Promise<string | null> {
  * Returns { errors, warnings } - errors mean sandbox cannot run
  */
 const checkDependencies = memoize((): SandboxDependencyCheck => {
+  if (getPlatform() === 'windows') {
+    return { errors: ['Windows sandboxing is unavailable in this release; the packaged helper is not configured. Use UR inside WSL2 for sandboxed commands.'], warnings: [] }
+  }
   if (typeof BaseSandboxManager.checkDependencies !== 'function') {
     return { errors: [], warnings: [] }
   }
@@ -590,6 +599,9 @@ function isSandboxRequired(): boolean {
  * Supports: macOS, Linux, and WSL2+ (WSL1 is not supported)
  */
 const isSupportedPlatform = memoize((): boolean => {
+  // The upstream helper also requires privileged provisioning and WFP setup.
+  // Packaging it does not qualify a Windows sandbox integration for UR.
+  if (getPlatform() === 'windows') return false
   if (typeof BaseSandboxManager.isSupportedPlatform !== 'function') {
     return false
   }
@@ -675,6 +687,9 @@ function getSandboxUnavailableReason(): string | undefined {
 
   if (!isSupportedPlatform()) {
     const platform = getPlatform()
+    if (platform === 'windows') {
+      return 'sandbox.enabled is set but Windows sandboxing is unavailable in this release; the packaged helper is not configured. Use UR inside WSL2 for sandboxed commands.'
+    }
     if (platform === 'wsl') {
       return 'sandbox.enabled is set but WSL1 is not supported (requires WSL2)'
     }

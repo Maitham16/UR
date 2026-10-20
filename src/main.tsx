@@ -940,6 +940,11 @@ async function run(): Promise<CommanderCommand> {
     profileCheckpoint('preAction_after_mdm');
     await init();
     profileCheckpoint('preAction_after_init');
+    const { isInBundledMode } = await import('./utils/bundledMode.js');
+    if (isInBundledMode()) {
+      const { registerNativeOfficialMarketplace } = await import('./utils/plugins/nativeMarketplace.js');
+      await registerNativeOfficialMarketplace();
+    }
 
     // process.title on Windows sets the console title directly; on POSIX,
     // terminal shell integration may mirror the process name to the tab.
@@ -1015,7 +1020,7 @@ async function run(): Promise<CommanderCommand> {
     return Number.isFinite(n) ? n : undefined;
   }).hideHelp()).option('--from-pr [value]', 'Resume a session linked to a PR by PR number/URL, or open interactive picker with optional search term', value => value || true).option('--no-session-persistence', 'Disable session persistence - sessions will not be saved to disk and cannot be resumed (only works with --print)').addOption(new Option('--resume-session-at <message id>', 'When resuming, only messages up to and including the assistant message with <message.id> (use with --resume in print mode)').argParser(String).hideHelp()).addOption(new Option('--rewind-files <user-message-id>', 'Restore files to state at the specified user message and exit (requires --resume)').hideHelp())
   // @[MODEL LAUNCH]: Update the example model ID in the --model help text.
-  .option('--model <model>', `Local Ollama app model for the current session (for example, 'qwen3-coder:480b-cloud' or 'qwen2.5-coder:latest').`).addOption(new Option('--effort <level>', `Effort level for the current session (minimal, low, medium, high, xhigh, max, ultra; ultra requires explicit model support)`).argParser((rawValue: string) => {
+  .option('--model <model>', `Model for the selected provider, using its model ID (for example, 'qwen3-coder:480b-cloud' for Ollama).`).addOption(new Option('--effort <level>', `Effort level for the current session (minimal, low, medium, high, xhigh, max, ultra; ultra requires explicit model support)`).argParser((rawValue: string) => {
     const value = rawValue.toLowerCase();
     const allowed = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
     if (!allowed.includes(value)) {
@@ -5687,7 +5692,7 @@ async function run(): Promise<CommanderCommand> {
   // - We perform exact string comparison (including SHA) to detect any change
   // - This ensures users always get the latest build, even when only the SHA changes
   // - UI shows both versions including build metadata for clarity
-  program.command('update').alias('upgrade').description('Check npm for UR-Nexus updates').action(async () => {
+  program.command('update').alias('upgrade').description('Update native UR or check for package-manager updates').action(async () => {
     const {
       update
     } = await import('src/cli/update.js');
@@ -5720,10 +5725,9 @@ async function run(): Promise<CommanderCommand> {
   }
 
   // ur install
-  // Hidden: the native-build installer has no published native package
-  // (MACRO.NATIVE_PACKAGE_URL is undefined in all builds). Use `ur update`.
+  // Public native installer uses verified GitHub release archives.
   program.command('install [target]', {
-    hidden: true
+    hidden: false
   }).description('Install UR native build. Use [target] to specify version (stable, latest, or specific version)').option('--force', 'Force installation even if already installed').action(async (target: string | undefined, options: {
     force?: boolean;
   }) => {

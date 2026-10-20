@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import {
@@ -684,8 +685,7 @@ export function spawnCloudWorker(
 ): number | null {
   assertSafeTaskId(id)
   if (!claimCloudTaskForWorkerSpawn(cwd, id)) return null
-  const file = bin?.file ?? process.execPath
-  const baseArgs = bin?.baseArgs ?? [process.argv[1] ?? '']
+  const { file, baseArgs } = bin ?? resolveUrExecutable()
   ensureCloudDirectory(cwd)
   const destination = logPath(cwd, id)
   assertSafeStateNode(destination, 'file')

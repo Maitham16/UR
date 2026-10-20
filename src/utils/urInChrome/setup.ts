@@ -2,7 +2,6 @@ import { BROWSER_TOOLS } from './chromeMcpCompat.js'
 import { chmod, mkdir, readFile, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
-import { fileURLToPath } from 'url'
 import {
   getIsInteractive,
   getIsNonInteractiveSession,
@@ -10,7 +9,8 @@ import {
 } from '../../bootstrap/state.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import type { ScopedMcpServerConfig } from '../../services/mcp/types.js'
-import { isInBundledMode } from '../bundledMode.js'
+import { resolveUrExecutable } from '../urExecutable.js'
+import { quote } from '../bash/shellQuote.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import {
@@ -93,7 +93,7 @@ export function setupURInChrome(): {
   allowedTools: string[]
   systemPrompt: string
 } {
-  const isNativeBuild = isInBundledMode()
+  const entry = resolveUrExecutable({ preferStable: true })
   const allowedTools = BROWSER_TOOLS.map(
     tool => `mcp__ur-in-chrome__${tool.name}`,
   )
@@ -104,69 +104,28 @@ export function setupURInChrome(): {
   }
   const hasEnv = Object.keys(env).length > 0
 
-  if (isNativeBuild) {
-    // Create a wrapper script that calls the same binary with --chrome-native-host. This
-    // is needed because the native host manifest "path" field cannot contain arguments.
-    const execCommand = `"${process.execPath}" --chrome-native-host`
+  // Browser manifests require a wrapper because their path field has no argv.
+  // Use the stable installed entry when available so upgrades preserve the host.
+  const hostCommand = getPlatform() === 'windows'
+    ? [entry.file, ...entry.baseArgs, '--chrome-native-host']
+        .map(arg => `"${arg.replaceAll('"', '""')}"`).join(' ')
+    : quote([entry.file, ...entry.baseArgs, '--chrome-native-host'])
+  void createWrapperScript(hostCommand)
+    .then(manifestBinaryPath => installChromeNativeHostManifest(manifestBinaryPath))
+    .catch(e => logForDebugging(`[UR in Chrome] Failed to install native host: ${e}`, { level: 'error' }))
 
-    // Run asynchronously without blocking; best-effort so swallow errors
-    void createWrapperScript(execCommand)
-      .then(manifestBinaryPath =>
-        installChromeNativeHostManifest(manifestBinaryPath),
-      )
-      .catch(e =>
-        logForDebugging(
-          `[UR in Chrome] Failed to install native host: ${e}`,
-          { level: 'error' },
-        ),
-      )
-
-    return {
-      mcpConfig: {
-        [UR_IN_CHROME_MCP_SERVER_NAME]: {
-          type: 'stdio' as const,
-          command: process.execPath,
-          args: ['--ur-in-chrome-mcp'],
-          scope: 'dynamic' as const,
-          ...(hasEnv && { env }),
-        },
-      },
-      allowedTools,
-      systemPrompt: getChromeSystemPrompt(),
-    }
-  } else {
-    const __filename = fileURLToPath(import.meta.url)
-    const __dirname = join(__filename, '..')
-    const cliPath = join(__dirname, 'cli.js')
-
-    void createWrapperScript(
-      `"${process.execPath}" "${cliPath}" --chrome-native-host`,
-    )
-      .then(manifestBinaryPath =>
-        installChromeNativeHostManifest(manifestBinaryPath),
-      )
-      .catch(e =>
-        logForDebugging(
-          `[UR in Chrome] Failed to install native host: ${e}`,
-          { level: 'error' },
-        ),
-      )
-
-    const mcpConfig = {
+  return {
+    mcpConfig: {
       [UR_IN_CHROME_MCP_SERVER_NAME]: {
         type: 'stdio' as const,
-        command: process.execPath,
-        args: [`${cliPath}`, '--ur-in-chrome-mcp'],
+        command: entry.file,
+        args: [...entry.baseArgs, '--ur-in-chrome-mcp'],
         scope: 'dynamic' as const,
         ...(hasEnv && { env }),
       },
-    }
-
-    return {
-      mcpConfig,
-      allowedTools,
-      systemPrompt: getChromeSystemPrompt(),
-    }
+    },
+    allowedTools,
+    systemPrompt: getChromeSystemPrompt(),
   }
 }
 

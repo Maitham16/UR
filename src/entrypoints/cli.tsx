@@ -33,6 +33,47 @@ if (feature('ABLATION_BASELINE') && process.env.UR_CODE_ABLATION_BASELINE) {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
+  if (args[0] === '--ur-security-self-test') {
+    try {
+      const { assertForgeRsaSecurity } = await import('../utils/forgeSecurity.js');
+      console.log(JSON.stringify({ passed: true, checks: assertForgeRsaSecurity() }));
+    } catch (error) {
+      console.log(JSON.stringify({ passed: false, error: String(error) }));
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (args[0] === '--internal-thinkback-player') {
+    if (args.length !== 2) {
+      console.error('Thinkback playback requires one installed player.');
+      process.exitCode = 1;
+      return;
+    }
+    const { loadInstalledPluginsV2 } = await import('../utils/plugins/installedPluginsManager.js');
+    const roots = Object.entries(loadInstalledPluginsV2().plugins)
+      .filter(([id]) => id.startsWith('thinkback@'))
+      .flatMap(([, entries]) => entries.map(entry => entry.installPath));
+    const { runThinkbackPlayer } = await import('../utils/thinkbackPlayer.js');
+    process.exitCode = await runThinkbackPlayer(args[1]!, roots);
+    return;
+  }
+
+  // Re-enter compiled code instead of treating this executable as `bun -e`.
+  if (args[0] === '--internal-timeout') {
+    const { runInternalTimeout } = await import('../utils/shell/internalTimeout.js');
+    process.exitCode = await runInternalTimeout(args.slice(1));
+    return;
+  }
+  if (args[0] === '--ur-native-self-test') {
+    const { isInBundledMode } = await import('../utils/bundledMode.js');
+    if (isInBundledMode()) {
+      const { runNativeSelfTest } = await import('../utils/nativeSelfTest.js');
+      process.exitCode = await runNativeSelfTest();
+      return;
+    }
+  }
+
   // Fast-path for --version/-v: zero module loading needed
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-v' || args[0] === '-V')) {
     // MACRO.VERSION is inlined at build time

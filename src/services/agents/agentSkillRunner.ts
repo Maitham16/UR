@@ -1,3 +1,4 @@
+import { resolveUrExecutable } from '../../utils/urExecutable.js'
 import {
   createBackgroundTask,
   createPullRequest,
@@ -220,10 +221,7 @@ export function previewAgentSkill(options: AgentSkillOptions): { id: string; com
     maxTurns,
     bin,
   })
-  const entry = bin ?? {
-    file: process.execPath,
-    baseArgs: [process.argv[1] ?? ''],
-  }
+  const entry = bin ?? resolveUrExecutable()
   return {
     id: task.id,
     command: [entry.file, ...entry.baseArgs, 'bg', 'worker', task.id],
