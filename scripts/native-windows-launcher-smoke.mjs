@@ -28,6 +28,7 @@ const env = {
   CI: '1', DO_NOT_TRACK: '1', DISABLE_TELEMETRY: '1', UR_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
 }
 const evidence = { work, shim, bin, data, probes: [] }
+writeFileSync(join(work, 'launcher-contract.json'), JSON.stringify(evidence, null, 2))
 const digest = value => createHash('sha256').update(value).digest('hex')
 function run(probe, file, arguments_, options = {}) {
   const result = spawnSync(file, arguments_, { cwd: home, env, encoding: 'utf8', timeout: 30_000, maxBuffer: 2 * 1024 * 1024, windowsHide: true, ...options })
@@ -89,8 +90,8 @@ else process.exit(90);
   const input = '日本語 café % & "quoted"\\tail\n'.repeat(16000)
   const io = run('utf8-stdin-and-large-pipes', shim, ['io'], { input })
   assert.equal(io.status, 0)
-  assert.equal(io.stdout, input + 'O'.repeat(320000))
-  assert.equal(io.stderr, 'E'.repeat(320000))
+  assert.ok(io.stdout === input + 'O'.repeat(320000), 'UTF-8 stdin/stdout bytes changed; see evidence sizes and hashes')
+  assert.ok(io.stderr === 'E'.repeat(320000), 'Large stderr bytes changed; see evidence sizes and hashes')
   const normal = run('restricted-powershell-bare-ur', powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Restricted', '-Command', 'ur --version; exit $LASTEXITCODE'])
   assert.equal(normal.status, 0)
   assert.equal(normal.stdout.replace(/\r?\n$/, ''), 'launcher-probe-v1')

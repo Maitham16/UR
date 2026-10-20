@@ -298,7 +298,7 @@ if ([IO.File]::Exists($ActualShim)) {
     if ($Probe.exitCode -ne $Expected) { throw ('Native shim exit status mismatch: '+($Probe | ConvertTo-Json -Depth 5 -Compress)) }
     if ($Probe.route -eq 'shim-args') {
       $ExpectedArgs=@('--shim-argv','two words','',('literal%UR_NATIVE_FIXTURE%!&caf'+[char]0xE9),'C:\trailing\','{"message":"hello"}')
-      $ActualArgs=@(ConvertFrom-Json -InputObject $Probe.stdout)
+      $ActualArgs=ConvertFrom-Json -InputObject $Probe.stdout
       if ($ActualArgs.Count -ne $ExpectedArgs.Count) { throw ('Native shim argv count mismatch: '+$ActualArgs.Count+' / '+$ExpectedArgs.Count) }
       for ($Index=0;$Index -lt $ExpectedArgs.Count;$Index++) {
         if ([string]$ActualArgs[$Index] -cne [string]$ExpectedArgs[$Index]) { throw ('Native shim argv mismatch at '+$Index+': actual='+([string]$ActualArgs[$Index])+' expected='+([string]$ExpectedArgs[$Index])) }
