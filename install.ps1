@@ -49,15 +49,74 @@ function Invoke-NativeInstallFileOperation {
     }
   }
 }
+function Stop-NativeVerificationProcess {
+  param([Diagnostics.Process]$Process)
+  try {
+    if (!$Process.HasExited) {
+      $KillInfo = New-Object Diagnostics.ProcessStartInfo
+      $KillInfo.FileName = Join-Path $env:SystemRoot 'System32/taskkill.exe'
+      $KillInfo.Arguments = '/PID ' + $Process.Id + ' /T /F'
+      $KillInfo.UseShellExecute = $false
+      $KillInfo.CreateNoWindow = $true
+      $KillInfo.RedirectStandardOutput = $true
+      $KillInfo.RedirectStandardError = $true
+      $Killer = New-Object Diagnostics.Process
+      $Killer.StartInfo = $KillInfo
+      try {
+        if ($Killer.Start()) {
+          $KillOutput = $Killer.StandardOutput.ReadToEndAsync()
+          $KillError = $Killer.StandardError.ReadToEndAsync()
+          if (!$Killer.WaitForExit(5000)) { try { $Killer.Kill() } catch {} }
+        }
+      } finally { $Killer.Dispose() }
+    }
+  } catch {} finally {
+    try { if (!$Process.HasExited) { $Process.Kill() }; [void]$Process.WaitForExit(5000) } catch {}
+  }
+}
+function Invoke-NativeReleaseVerification {
+  param([string]$Executable, [ValidateSet('--version','--ur-native-self-test')][string]$Argument)
+  $StartInfo = New-Object Diagnostics.ProcessStartInfo
+  $StartInfo.FileName = $Executable
+  $StartInfo.Arguments = $Argument
+  $StartInfo.UseShellExecute = $false
+  $StartInfo.CreateNoWindow = $true
+  $StartInfo.RedirectStandardOutput = $true
+  $StartInfo.RedirectStandardError = $true
+  $StartInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false, $true)
+  $StartInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false, $true)
+  $Process = New-Object Diagnostics.Process
+  $Process.StartInfo = $StartInfo
+  $Started = $false
+  $Timer = [Diagnostics.Stopwatch]::StartNew()
+  try {
+    $Started = $Process.Start()
+    if (!$Started) { throw 'Native verification process did not start' }
+    # Read both pipes concurrently. PowerShell 5.1 native command discovery and
+    # its automatic LASTEXITCODE are bypassed for literal installed paths.
+    $OutputTask = $Process.StandardOutput.ReadToEndAsync()
+    $ErrorTask = $Process.StandardError.ReadToEndAsync()
+    $Remaining = [Math]::Max(0, 120000 - $Timer.ElapsedMilliseconds)
+    if (!$Process.WaitForExit([int]$Remaining)) { throw 'Native verification exceeded its 120 second deadline' }
+    $Remaining = [Math]::Max(0, 120000 - $Timer.ElapsedMilliseconds)
+    if (![Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($OutputTask,$ErrorTask), [int]$Remaining)) { throw 'Native verification output exceeded its 120 second deadline' }
+    return [pscustomobject]@{ exitCode = $Process.ExitCode; stdout = $OutputTask.Result; stderr = $ErrorTask.Result }
+  } catch { throw "Unable to verify native executable '$Executable' ($Argument): $($_.Exception.Message)" }
+  finally {
+    if ($Started) { Stop-NativeVerificationProcess $Process }
+    $Process.Dispose()
+  }
+}
 function Test-VerifiedRelease([string]$Directory) {
   $Candidate = Join-Path $Directory 'ur.exe'
   if (!(Test-Path -LiteralPath $Candidate) -or !(Test-Path -LiteralPath (Join-Path $Directory 'resources/manifest.json'))) { return $false }
   try {
-    $ActualVersionOutput = @(& $Candidate --version)
-    $VersionExitCode = $LASTEXITCODE
-    if ($VersionExitCode -ne 0 -or $ActualVersionOutput.Count -ne 1 -or $ActualVersionOutput[0] -cne "$Version (UR-Nexus)") { return $false }
-    $Report = (& $Candidate --ur-native-self-test) | ConvertFrom-Json
-    return ($LASTEXITCODE -eq 0 -and $Report.passed -eq $true)
+    $VersionResult = Invoke-NativeReleaseVerification $Candidate '--version'
+    $ActualVersion = $VersionResult.stdout -creplace '\r?\n\z',''
+    if ($VersionResult.exitCode -ne 0 -or $ActualVersion -cne "$Version (UR-Nexus)") { return $false }
+    $ResourceResult = Invoke-NativeReleaseVerification $Candidate '--ur-native-self-test'
+    $Report = $ResourceResult.stdout | ConvertFrom-Json
+    return ($ResourceResult.exitCode -eq 0 -and $Report.passed -is [bool] -and $Report.passed -eq $true)
   } catch { return $false }
 }
 try {
@@ -79,7 +138,20 @@ try {
   if (!$Cached) {
     New-Item -ItemType Directory -Path $Staging | Out-Null
   $Archive = Join-Path $Staging $File
-  Invoke-WebRequest -UseBasicParsing -Uri "$Url/$File" -OutFile $Archive
+  $Download = Invoke-WebRequest -UseBasicParsing -Uri "$Url/$File"
+  $DownloadStream = $Download.RawContentStream
+  $ArchiveStream = $null
+  try {
+    if ($DownloadStream -isnot [IO.Stream]) { throw 'Native download did not provide a binary response stream' }
+    if ($DownloadStream.CanSeek) { $DownloadStream.Position = 0 }
+    # Windows PowerShell 5.1's -OutFile expands wildcard path characters.
+    # .NET file streams preserve the literal installation directory instead.
+    $ArchiveStream = [IO.File]::Open($Archive, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    $DownloadStream.CopyTo($ArchiveStream)
+  } finally {
+    if ($ArchiveStream) { $ArchiveStream.Dispose() }
+    if ($DownloadStream -is [IO.Stream]) { $DownloadStream.Dispose() }
+  }
   if ((Get-Item -LiteralPath $Archive).Length -ne $Artifact.size -or (Get-FileHash -Algorithm SHA256 -LiteralPath $Archive).Hash.ToLowerInvariant() -cne $Artifact.sha256) { throw 'Native release checksum or size mismatch' }
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   $Zip = [IO.Compression.ZipFile]::OpenRead($Archive)
@@ -101,14 +173,15 @@ try {
   Expand-Archive -LiteralPath $Archive -DestinationPath $Extracted
   $StagedExecutable = Join-Path $Extracted 'ur.exe'
   if (!(Test-Path -LiteralPath (Join-Path $Extracted 'resources/manifest.json'))) { throw 'Release resources are missing' }
-  $ActualVersionOutput = @(& $StagedExecutable --version)
-  $VersionExitCode = $LASTEXITCODE
-  if ($VersionExitCode -ne 0 -or $ActualVersionOutput.Count -ne 1 -or $ActualVersionOutput[0] -cne "$Version (UR-Nexus)") {
-    $VersionDiagnostics = @{ expected = "$Version (UR-Nexus)"; actual = $ActualVersionOutput; exitCode = $VersionExitCode; executable = $StagedExecutable } | ConvertTo-Json -Compress
+  $VersionResult = Invoke-NativeReleaseVerification $StagedExecutable '--version'
+  $ActualVersion = $VersionResult.stdout -creplace '\r?\n\z',''
+  if ($VersionResult.exitCode -ne 0 -or $ActualVersion -cne "$Version (UR-Nexus)") {
+    $VersionDiagnostics = @{ expected = "$Version (UR-Nexus)"; actual = $VersionResult.stdout; stderr = $VersionResult.stderr; exitCode = $VersionResult.exitCode; executable = $StagedExecutable } | ConvertTo-Json -Compress
     throw "Downloaded executable failed version check: $VersionDiagnostics"
   }
-  $SelfTest = (& $StagedExecutable --ur-native-self-test) | ConvertFrom-Json
-  if ($LASTEXITCODE -ne 0 -or $SelfTest.passed -ne $true) { throw 'Downloaded executable failed resource verification' }
+  $ResourceResult = Invoke-NativeReleaseVerification $StagedExecutable '--ur-native-self-test'
+  try { $SelfTest = $ResourceResult.stdout | ConvertFrom-Json } catch { throw "Downloaded executable returned invalid resource verification JSON: $($ResourceResult | ConvertTo-Json -Compress)" }
+  if ($ResourceResult.exitCode -ne 0 -or $SelfTest.passed -isnot [bool] -or $SelfTest.passed -ne $true) { throw "Downloaded executable failed resource verification: $($ResourceResult | ConvertTo-Json -Compress)" }
     if (Test-Path -LiteralPath $Destination) { $Destination = Join-Path $Versions ("$Version-$Platform-repair-" + [guid]::NewGuid()) }
     Invoke-NativeInstallFileOperation { Move-Item -LiteralPath $Extracted -Destination $Destination }
   }

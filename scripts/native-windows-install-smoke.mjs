@@ -12,7 +12,7 @@ const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).ver
 const artifactIndex = process.argv.indexOf('--artifact-dir')
 const artifacts = resolve(artifactIndex < 0 ? 'dist-release/native' : process.argv[artifactIndex + 1])
 const temporaryBase = realpathSync.native(process.env.RUNNER_TEMP || tmpdir())
-const work = mkdtempSync(join(temporaryBase, 'ur bootstrap 100% User [café!] '))
+const work = mkdtempSync(join(temporaryBase, 'ur bootstrap 100% User %UR_NATIVE_FIXTURE% [café!] '))
 const bin = join(work, 'application bin'), data = join(work, 'application data'), home = join(work, 'private home')
 mkdirSync(home)
 const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? 'C:\\Windows'
@@ -23,12 +23,13 @@ const env = {
   APPDATA: join(home, 'AppData', 'Roaming'), LOCALAPPDATA: join(home, 'AppData', 'Local'),
   SYSTEMROOT: systemRoot, SystemRoot: systemRoot, COMSPEC: cmd,
   PSModulePath: join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'Modules'),
-  PATH: '', TEMP: work, TMP: work, UR_CONFIG_DIR: join(home, '.ur'),
+  PATH: '', PATHEXT: process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD', TEMP: work, TMP: work, UR_CONFIG_DIR: join(home, '.ur'),
   CI: '1', DO_NOT_TRACK: '1', DISABLE_TELEMETRY: '1', UR_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
   UR_BOOTSTRAP_INSTALL_SCRIPT: join(root, 'install.ps1'), UR_BOOTSTRAP_BIN: bin, UR_BOOTSTRAP_DATA: data,
   UR_BOOTSTRAP_ARCHIVE: join(artifacts, `ur-${version}-win32-x64.zip`),
   UR_BOOTSTRAP_MANIFEST: join(artifacts, 'manifest-win32-x64.json'), UR_BOOTSTRAP_VERSION: version,
   PROCESSOR_ARCHITECTURE: 'AMD64',
+  UR_NATIVE_FIXTURE: 'percent expansion must not select this path',
 }
 const hostileEntries = [
   'resources/CON', 'resources/con.txt', 'resources/CON .txt', 'resources/COM1.dll', 'resources/LPT9',
@@ -59,16 +60,60 @@ foreach ($Path in @($env:UR_BOOTSTRAP_INSTALL_SCRIPT, (Join-Path (Split-Path $en
   if ($ParseErrors.Count) { throw "PowerShell installer syntax error: $ParseErrors" }
   if ($Path -eq $env:UR_BOOTSTRAP_INSTALL_SCRIPT) { $InstallAst = $Ast }
 }
+$StopDefinition = $InstallAst.Find({ param($Node) $Node -is [Management.Automation.Language.FunctionDefinitionAst] -and $Node.Name -eq 'Stop-NativeVerificationProcess' }, $true)
+if (!$StopDefinition) { throw 'Installer process cleanup helper is missing' }
+. ([ScriptBlock]::Create($StopDefinition.Extent.Text))
 function Invoke-RestMethod {
   param([string]$Uri, $Headers)
   if (!$Uri.EndsWith('/manifest.json')) { throw 'Unexpected bootstrap metadata request' }
   return ([IO.File]::ReadAllText($global:UrNativeBootstrapFixtureManifestPath) | ConvertFrom-Json)
 }
 function Invoke-WebRequest {
-  param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+  param([switch]$UseBasicParsing, [string]$Uri)
   if (!$Uri.EndsWith('/' + [IO.Path]::GetFileName($env:UR_BOOTSTRAP_ARCHIVE))) { throw 'Unexpected bootstrap asset request' }
-  [IO.File]::Copy($global:UrNativeBootstrapFixtureArchivePath, $OutFile)
   $global:UrNativeBootstrapFixtureDownloadCount++
+  return [pscustomobject]@{ RawContentStream = [IO.File]::OpenRead($global:UrNativeBootstrapFixtureArchivePath) }
+}
+function Invoke-BootstrapLauncher {
+  param([ValidateSet('--version','install','powershell-path-version')][string]$Command)
+  $Arguments = if ($Command -eq 'install') { 'install ' + $env:UR_BOOTSTRAP_VERSION } else { '--version' }
+  $StartInfo = New-Object Diagnostics.ProcessStartInfo
+  $StartInfo.FileName = Join-Path $env:SystemRoot 'System32/cmd.exe'
+  # Expand exactly one fixed environment variable in cmd.exe. Its literal path
+  # value is not reparsed as further percent-variable expansion (no CALL).
+  $StartInfo.Arguments = '/d /s /c ""%UR_NATIVE_BOOTSTRAP_LAUNCHER%" ' + $Arguments + '"'
+  $StartInfo.EnvironmentVariables['UR_NATIVE_BOOTSTRAP_LAUNCHER'] = Join-Path $env:UR_BOOTSTRAP_BIN 'ur.cmd'
+  if ($Command -eq 'powershell-path-version') {
+    $StartInfo.FileName = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    $StartInfo.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "ur --version; exit $LASTEXITCODE"'
+    $StartInfo.EnvironmentVariables['PATH'] = $env:UR_BOOTSTRAP_BIN
+  }
+  $StartInfo.UseShellExecute = $false
+  $StartInfo.CreateNoWindow = $true
+  $StartInfo.RedirectStandardOutput = $true
+  $StartInfo.RedirectStandardError = $true
+  $StartInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false, $true)
+  $StartInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false, $true)
+  $Process = New-Object Diagnostics.Process
+  $Process.StartInfo = $StartInfo
+  $Started = $false
+  $Timer = [Diagnostics.Stopwatch]::StartNew()
+  try {
+    $Started = $Process.Start()
+    if (!$Started) { throw 'Native launcher process did not start' }
+    $OutputTask = $Process.StandardOutput.ReadToEndAsync()
+    $ErrorTask = $Process.StandardError.ReadToEndAsync()
+    $Remaining = [Math]::Max(0, 120000 - $Timer.ElapsedMilliseconds)
+    if (!$Process.WaitForExit([int]$Remaining)) { throw 'Native launcher exceeded its 120 second deadline' }
+    $Remaining = [Math]::Max(0, 120000 - $Timer.ElapsedMilliseconds)
+    if (![Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($OutputTask,$ErrorTask), [int]$Remaining)) { throw 'Native launcher output exceeded its 120 second deadline' }
+    $Result = [pscustomobject]@{ exitCode = $Process.ExitCode; stdout = $OutputTask.Result; stderr = $ErrorTask.Result }
+    if ($Result.exitCode -ne 0) { throw "Native launcher failed: $($Result | ConvertTo-Json -Compress)" }
+    return $Result.stdout
+  } finally {
+    if ($Started) { Stop-NativeVerificationProcess $Process }
+    $Process.Dispose()
+  }
 }
 $global:UrNativeBootstrapFixtureManifestPath = $env:UR_BOOTSTRAP_MANIFEST
 $global:UrNativeBootstrapFixtureArchivePath = $env:UR_BOOTSTRAP_ARCHIVE
@@ -77,14 +122,15 @@ for ($Attempt = 0; $Attempt -lt 2; $Attempt++) {
   & $env:UR_BOOTSTRAP_INSTALL_SCRIPT -Version $env:UR_BOOTSTRAP_VERSION -BinDirectory $env:UR_BOOTSTRAP_BIN -DataDirectory $env:UR_BOOTSTRAP_DATA -NoPathUpdate
 }
 if ($global:UrNativeBootstrapFixtureDownloadCount -ne 1) { throw 'Repeated bootstrap downloaded the native archive again' }
-$Output = & (Join-Path $env:UR_BOOTSTRAP_BIN 'ur.cmd') --version
-if ($LASTEXITCODE -ne 0 -or $Output -cne ($env:UR_BOOTSTRAP_VERSION + ' (UR-Nexus)')) { throw 'Installed Windows launcher returned the wrong version' }
+$Output = (Invoke-BootstrapLauncher '--version') -creplace '\\r?\\n\\z',''
+if ($Output -cne ($env:UR_BOOTSTRAP_VERSION + ' (UR-Nexus)')) { throw "Installed Windows launcher returned the wrong version: $Output" }
 # The managed launcher supplies its custom directories to the native updater.
 # A pinned version already installed locally must reuse that cache offline.
-$InstallOutput = & (Join-Path $env:UR_BOOTSTRAP_BIN 'ur.cmd') install $env:UR_BOOTSTRAP_VERSION
-if ($LASTEXITCODE -ne 0) { throw "Native cached install did not reuse the custom installation: $InstallOutput" }
-$OutputAfterInstall = & (Join-Path $env:UR_BOOTSTRAP_BIN 'ur.cmd') --version
-if ($LASTEXITCODE -ne 0 -or $OutputAfterInstall -cne ($env:UR_BOOTSTRAP_VERSION + ' (UR-Nexus)')) { throw 'Native cached install changed the custom launcher incorrectly' }
+$InstallOutput = Invoke-BootstrapLauncher 'install'
+$OutputAfterInstall = (Invoke-BootstrapLauncher '--version') -creplace '\\r?\\n\\z',''
+if ($OutputAfterInstall -cne ($env:UR_BOOTSTRAP_VERSION + ' (UR-Nexus)')) { throw 'Native cached install changed the custom launcher incorrectly' }
+$PathOutput = (Invoke-BootstrapLauncher 'powershell-path-version') -creplace '\\r?\\n\\z',''
+if ($PathOutput -cne ($env:UR_BOOTSTRAP_VERSION + ' (UR-Nexus)')) { throw "Normal Windows PowerShell PATH invocation returned the wrong version: $PathOutput" }
 if (Test-Path -LiteralPath (Join-Path $HOME '.local/bin/ur.cmd')) { throw 'Native cached install escaped to the default home launcher' }
 # Exercise the exact installer retry helper without executing an installation.
 $RetryDefinition = $InstallAst.Find({ param($Node) $Node -is [Management.Automation.Language.FunctionDefinitionAst] -and $Node.Name -eq 'Invoke-NativeInstallFileOperation' }, $true)
@@ -160,6 +206,11 @@ try {
   // failures from PowerShell's pipeline output and exit-code handling.
   const executableBytes = unzipSync(new Uint8Array(readFileSync(env.UR_BOOTSTRAP_ARCHIVE)), { filter: entry => entry.name === 'ur.exe' })['ur.exe']
   if (!executableBytes) throw new Error('Windows release archive has no native executable')
+  if (executableBytes.byteLength < 0x40) throw new Error('Windows release executable has no PE header')
+  const executableView = new DataView(executableBytes.buffer, executableBytes.byteOffset, executableBytes.byteLength)
+  const peOffset = executableView.getUint32(0x3c, true)
+  if (executableView.getUint16(0, true) !== 0x5a4d || peOffset + 94 > executableBytes.byteLength || executableView.getUint32(peOffset, true) !== 0x00004550) throw new Error('Windows release executable has an invalid PE header')
+  const peSubsystem = executableView.getUint16(peOffset + 24 + 68, true)
   const controlDirectory = mkdtempSync(join(temporaryBase, 'ur-native-ascii-probe-'))
   try {
     const probes = []
@@ -168,7 +219,7 @@ try {
       const executable = join(directory, 'ur.exe')
       writeFileSync(executable, executableBytes)
       const result = spawnSync(executable, ['--version'], { env, encoding: 'utf8', timeout: 30_000, windowsHide: true })
-      probes.push({ label, executable, expected: `${version} (UR-Nexus)`, status: result.status, signal: result.signal, error: result.error?.message, stdout: result.stdout, stderr: result.stderr })
+      probes.push({ label, executable, peSubsystem, expected: `${version} (UR-Nexus)`, status: result.status, signal: result.signal, error: result.error?.message, stdout: result.stdout, stderr: result.stderr })
     }
     writeFileSync(join(work, 'native-version-probes.json'), `${JSON.stringify(probes, null, 2)}\n`, { mode: 0o600 })
     console.log(`Native direct version probes: ${JSON.stringify(probes)}`)
