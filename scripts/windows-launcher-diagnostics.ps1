@@ -12,8 +12,11 @@ foreach ($Directory in @($Control,$Bin,[IO.Path]::GetDirectoryName($Executable))
 $Version = ([IO.File]::ReadAllText((Join-Path $Repository 'package.json')) | ConvertFrom-Json).version
 $Fixture = Join-Path $Control 'fixture.ts'
 $FixtureSource = @'
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 if (process.env.UR_DIAG_ARGV_FILE) writeFileSync(process.env.UR_DIAG_ARGV_FILE, JSON.stringify({argv:process.argv,execPath:process.execPath,cwd:process.cwd(),nativeBin:process.env.UR_NATIVE_BIN_DIR,nativeData:process.env.UR_NATIVE_DATA_DIR}));
+if (process.argv.includes('--shim-argv')) { console.log(JSON.stringify(process.argv.slice(2))); process.exit(0); }
+if (process.argv.includes('--shim-exit')) process.exit(7);
+if (process.argv.includes('--shim-stdio')) { const input=readFileSync(0,'utf8'); process.stdout.write('OUT:'+input+'x'.repeat(300000)); process.stderr.write('ERR:'+input+'y'.repeat(300000)); process.exit(7); }
 console.log(process.argv.includes('--ur-native-self-test') ? JSON.stringify({passed:true,diagnosticFixture:true}) : process.argv.includes('--version') ? __UR_DIAGNOSTIC_VERSION__ + ' (UR-Nexus)' : JSON.stringify(process.argv));
 '@
 [IO.File]::WriteAllText($Fixture, $FixtureSource.Replace('__UR_DIAGNOSTIC_VERSION__', ($Version | ConvertTo-Json -Compress)), [Text.UTF8Encoding]::new($false))
@@ -82,6 +85,9 @@ function Capture([string]$Route,[string]$Target,[bool]$NoWindow,[string]$Expansi
   if ($Route -eq 'cmd-path') { $Info.Arguments='/d' + $Mode + ' /s /c "ur --version"' }
   if ($Route -eq 'ps-path') { $Info.FileName=$PowerShell; $Info.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "ur --version; exit $LASTEXITCODE"' }
   if ($Route -eq 'direct-exe') { $Info.FileName=$Target; $Info.Arguments='--version' }
+  if ($Route -eq 'shim-args') { $Info.FileName=$Target; $Info.Arguments='--shim-argv "two words" "" "literal%UR_NATIVE_FIXTURE%!&caf' + [char]0xE9 + '" "C:\trailing\\" "{\"message\":\"hello\"}"' }
+  if ($Route -eq 'shim-exit') { $Info.FileName=$Target; $Info.Arguments='--shim-exit' }
+  if ($Route -eq 'shim-stdio') { $Info.FileName=$Target; $Info.Arguments='--shim-stdio'; $Info.RedirectStandardInput=$true }
   if ($Route -eq 'chcp') { $Info.Arguments='/d /s /c ""%UR_DIAG_TARGET%""' }
   if ($Route -in @('bootstrap-install','ps-discovery')) { $Info.FileName=$PowerShell; $Script=if ($Route -eq 'bootstrap-install') { $BootstrapFixture } else { $Discovery }; $Info.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $Script + '"' }
   if ($Route -eq 'console') { $Info.FileName=$PowerShell; $Info.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $Target + '"' }
@@ -112,6 +118,7 @@ function Capture([string]$Route,[string]$Target,[bool]$NoWindow,[string]$Expansi
   try {
     if (!$Process.Start()) { throw 'Process did not start' }
     $OutputTask=$Process.StandardOutput.BaseStream.CopyToAsync($Output); $ErrorTask=$Process.StandardError.BaseStream.CopyToAsync($Errors)
+    if ($Route -eq 'shim-stdio') { $InputBytes=[Text.Encoding]::UTF8.GetBytes(('input caf'+[char]0xE9+' %UR_NATIVE_FIXTURE%!')); $Process.StandardInput.BaseStream.Write($InputBytes,0,$InputBytes.Length); $Process.StandardInput.Close() }
     $Deadline=if ($Route -eq 'bootstrap-install') { 120000 } else { 8000 }
     if (!$Process.WaitForExit($Deadline)) { throw 'Process deadline exceeded' }
     $Result.exitCode=$Process.ExitCode
@@ -151,6 +158,8 @@ $ReleaseDirectory=Join-Path $Control 'tiny-release'
 $ResourceDirectory=Join-Path $ReleaseDirectory 'resources'
 [IO.Directory]::CreateDirectory($ResourceDirectory) | Out-Null
 [IO.File]::Copy($AsciiExecutable,(Join-Path $ReleaseDirectory 'ur.exe'))
+[IO.Directory]::CreateDirectory((Join-Path $ResourceDirectory 'windows')) | Out-Null
+[IO.File]::Copy($env:UR_DIAG_NATIVE_SHIM,(Join-Path $ResourceDirectory 'windows/ur-launcher.exe'))
 [IO.File]::WriteAllText((Join-Path $ResourceDirectory 'manifest.json'),'{"diagnosticFixture":true}',[Text.UTF8Encoding]::new($false))
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $FixtureArchive=Join-Path $Control ("ur-$Version-win32-x64.zip")
@@ -165,7 +174,7 @@ $BootstrapReport=Join-Path $Artifacts 'bootstrap-install.json'
 $BootstrapFixture=Join-Path $Control 'bootstrap-fixture.ps1'
 [IO.File]::WriteAllText($BootstrapFixture,@'
 $ErrorActionPreference='Stop'
-$Result=[ordered]@{diagnosticOnly=$true;attempts=@();downloadCount=0;launcher=$null;target=$null;environment=@{path=$env:PATH;temp=$env:TEMP;home=$env:HOME;userprofile=$env:USERPROFILE}}
+$Result=[ordered]@{diagnosticOnly=$true;attempts=@();downloadCount=0;launcher=$null;target=$null;nestedProbes=@();environment=@{path=$env:PATH;temp=$env:TEMP;home=$env:HOME;userprofile=$env:USERPROFILE}}
 function Invoke-RestMethod {
   param([string]$Uri,$Headers)
   if (!$Uri.EndsWith('/manifest.json')) { throw 'Unexpected bootstrap metadata request' }
@@ -185,6 +194,39 @@ try {
     $Entry=[ordered]@{attempt=$Attempt;passed=$false;error=$null}
     try { & $env:UR_BOOTSTRAP_INSTALL_SCRIPT -Version $env:UR_BOOTSTRAP_VERSION -BinDirectory $env:UR_BOOTSTRAP_BIN -DataDirectory $env:UR_BOOTSTRAP_DATA -NoPathUpdate; $Entry.passed=$true } catch { $Entry.error=$_.Exception.ToString() }
     $Result.attempts += [pscustomobject]$Entry
+  }
+  $NestedLauncher=Join-Path $env:UR_BOOTSTRAP_BIN 'ur.cmd'
+  if ([IO.File]::Exists($NestedLauncher)) {
+    $NestedAscii=Join-Path ([IO.Path]::GetDirectoryName($env:UR_BOOTSTRAP_ARCHIVE)) 'nested-actual-ur.cmd'
+    [IO.File]::Copy($NestedLauncher,$NestedAscii)
+    foreach ($NestedTarget in @($NestedLauncher,$NestedAscii)) {
+      foreach ($NoWindow in @($true,$false)) {
+        foreach ($Route in @('cmd-fullpath','ps-path')) {
+          $Start=New-Object Diagnostics.ProcessStartInfo
+          $Start.FileName=Join-Path $env:SystemRoot 'System32/cmd.exe'
+          $Start.Arguments='/d /s /c ""%UR_NATIVE_BOOTSTRAP_LAUNCHER%" --version"'
+          $Start.EnvironmentVariables['UR_NATIVE_BOOTSTRAP_LAUNCHER']=$NestedTarget
+          if ($Route -eq 'ps-path') {
+            $Start.FileName=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+            $Start.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "ur --version; exit $LASTEXITCODE"'
+            $Start.EnvironmentVariables['PATH']=[IO.Path]::GetDirectoryName($NestedTarget)
+          }
+          $Start.UseShellExecute=$false; $Start.CreateNoWindow=$NoWindow; $Start.RedirectStandardOutput=$true; $Start.RedirectStandardError=$true
+          $Probe=[ordered]@{route=$Route;target=$NestedTarget;createNoWindow=$NoWindow;fileName=$Start.FileName;arguments=$Start.Arguments;parentPath=$env:PATH;parentTemp=$env:TEMP;exitCode=$null;stdout='';stderr='';error=$null}
+          $Process=New-Object Diagnostics.Process; $Process.StartInfo=$Start
+          try {
+            if (!$Process.Start()) { throw 'Nested launcher did not start' }
+            $Out=$Process.StandardOutput.ReadToEndAsync(); $Err=$Process.StandardError.ReadToEndAsync()
+            if (!$Process.WaitForExit(10000)) { throw 'Nested launcher deadline exceeded' }
+            $Probe.exitCode=$Process.ExitCode
+            if (![Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($Out,$Err),10000)) { throw 'Nested output deadline exceeded' }
+            $Probe.stdout=$Out.Result; $Probe.stderr=$Err.Result
+          } catch { $Probe.error=$_.Exception.Message }
+          finally { try { if (!$Process.HasExited) { $Process.Kill() } } catch {}; $Process.Dispose() }
+          $Result.nestedProbes += [pscustomobject]$Probe
+        }
+      }
+    }
   }
 } finally {
   $Result.downloadCount=$global:UrNativeBootstrapFixtureDownloadCount
@@ -228,7 +270,46 @@ if ([IO.File]::Exists($ActualManaged)) {
   Capture 'direct-exe' (Join-Path $InstalledData ('versions/'+$Version+'-win32-x64/ur.exe')) $true 'default' 'installed'
 }
 
+# Qualify the immutable native shim itself, including arbitrary Unicode argv,
+# both pipes exceeding pipe capacity, stdin, exact child status and fail-closed
+# parsing. The earlier batch-only PS failures remain in this diagnostic report.
+$ActualShim=Join-Path $InstalledBin 'ur.exe'
+if ([IO.File]::Exists($ActualShim)) {
+  foreach ($NoWindow in @($true,$false)) {
+    Capture 'shim-args' $ActualShim $NoWindow 'default' 'installed'
+    Capture 'shim-exit' $ActualShim $NoWindow 'default' 'installed'
+    Capture 'shim-stdio' $ActualShim $NoWindow 'default' 'installed'
+    Capture 'direct-exe' $ActualShim $NoWindow 'default' 'installed'
+    Capture 'cmd-path' $ActualShim $NoWindow 'off' 'installed'
+    Capture 'ps-path' $ActualShim $NoWindow 'default' 'installed'
+  }
+  $Original=[IO.File]::ReadAllBytes($ActualManaged)
+  try {
+    $Bad=[Text.Encoding]::UTF8.GetString($Original)+'echo invalid added command'
+    [IO.File]::WriteAllText($ActualManaged,$Bad,[Text.UTF8Encoding]::new($false))
+    Capture 'direct-exe' $ActualShim $true 'default' 'installed'
+    $Report['malformedActivation']=$Report.probes[-1]
+  } finally { [IO.File]::WriteAllBytes($ActualManaged,$Original) }
+  $Qualified=@($Report.probes | Where-Object { $_.target -ceq $ActualShim -and $_ -ne $Report.malformedActivation })
+  foreach ($Probe in $Qualified) {
+    if ($Probe.error) { throw ('Native shim qualification error: '+($Probe | ConvertTo-Json -Depth 5 -Compress)) }
+    $Expected=if ($Probe.route -in @('shim-exit','shim-stdio')) {7} else {0}
+    if ($Probe.exitCode -ne $Expected) { throw ('Native shim exit status mismatch: '+($Probe | ConvertTo-Json -Depth 5 -Compress)) }
+    if ($Probe.route -eq 'shim-args') {
+      $ExpectedArgs=@('--shim-argv','two words','','literal%UR_NATIVE_FIXTURE%!&caf'+[char]0xE9,'C:\trailing\','{"message":"hello"}')
+      if (($Probe.stdout | ConvertFrom-Json | ConvertTo-Json -Compress) -cne ($ExpectedArgs | ConvertTo-Json -Compress)) { throw 'Native shim changed Unicode, empty, quoted, or trailing-backslash arguments' }
+    }
+    if ($Probe.route -eq 'shim-stdio') {
+      $InputText='input caf'+[char]0xE9+' %UR_NATIVE_FIXTURE%!'
+      if ($Probe.stdout -cne ('OUT:'+$InputText+('x'*300000)) -or $Probe.stderr -cne ('ERR:'+$InputText+('y'*300000))) { throw 'Native shim changed redirected stdin/stdout/stderr' }
+    }
+  }
+  if ($Report.malformedActivation.exitCode -ne 125) { throw 'Native shim accepted an unmanaged activation file' }
+  $Report['nativeShimQualified']=$true
+} else { throw 'Actual bootstrap did not install the native console shim' }
 $Report.captureComplete=$true; Save-Report
-$Printed=[regex]::Replace(($Report | ConvertTo-Json -Depth 20 -Compress),'[^\x00-\x7F]',{param($Match) '\u' + ([int][char]$Match.Value).ToString('x4')})
+$LogReport=$Report | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+foreach ($Probe in $LogReport.probes) { if ($Probe.route -eq 'shim-stdio') { $Probe.stdout='[full pipe contents retained in artifact]'; $Probe.stderr='[full pipe contents retained in artifact]'; $Probe.stdoutBytesBase64='[artifact]'; $Probe.stderrBytesBase64='[artifact]' } }
+$Printed=[regex]::Replace(($LogReport | ConvertTo-Json -Depth 20 -Compress),'[^\x00-\x7F]',{param($Match) '\u' + ([int][char]$Match.Value).ToString('x4')})
 Write-Output $Printed
 Write-Output 'Diagnostic capture completed; this does not qualify a release.'

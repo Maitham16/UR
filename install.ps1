@@ -25,11 +25,33 @@ $DataRoot = if ($DataDirectory) { [IO.Path]::GetFullPath($DataDirectory) } elsei
 $Versions = Join-Path $DataRoot 'versions'
 $Bin = if ($BinDirectory) { [IO.Path]::GetFullPath($BinDirectory) } else { Join-Path $HOME '.local/bin' }
 New-Item -ItemType Directory -Force -Path $Versions,$Bin | Out-Null
-foreach ($Name in @('ur.exe','ur.ps1')) { if (Test-Path -LiteralPath (Join-Path $Bin $Name)) { throw "Existing $(Join-Path $Bin $Name) would hide the native launcher. Move that previous installation aside and retry." } }
+if (Test-Path -LiteralPath (Join-Path $Bin 'ur.ps1')) { throw "Existing $(Join-Path $Bin 'ur.ps1') would hide the native launcher. Move that previous installation aside and retry." }
+$NativeShim = Join-Path $Bin 'ur.exe'
+$NativeShimOwner = Join-Path $Bin '.ur-native-launcher-v1.sha256'
+function Test-ManagedNativeShim {
+  $ShimExists = Test-Path -LiteralPath $NativeShim
+  $OwnerExists = Test-Path -LiteralPath $NativeShimOwner
+  if (!$ShimExists -and !$OwnerExists) { return $false }
+  if (!$ShimExists -or !$OwnerExists) { throw 'Existing native launcher has no matching ownership record; leaving it unchanged.' }
+  foreach ($Path in @($NativeShim,$NativeShimOwner)) {
+    $Item = Get-Item -LiteralPath $Path -Force
+    if ($Item.PSIsContainer -or ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Existing native launcher is not a regular managed file; leaving it unchanged.' }
+  }
+  $Owner = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($NativeShimOwner))
+  $Ownership = [regex]::Match($Owner, '\AUR-Nexus native launcher v1\n([a-f0-9]{64})\n\z')
+  if (!$Ownership.Success -or (Get-FileHash -LiteralPath $NativeShim -Algorithm SHA256).Hash.ToLowerInvariant() -cne $Ownership.Groups[1].Value) { throw 'Existing native launcher does not match its ownership record; leaving it unchanged.' }
+  return $true
+}
+$ExistingNativeShim = Test-ManagedNativeShim
 $Lock = Join-Path $Versions '.install-lock'
 try { New-Item -ItemType Directory -Path $Lock -ErrorAction Stop | Out-Null } catch { throw "Another native installation is active. If no installer is running, remove $Lock and retry." }
 $Staging = Join-Path $Versions ('.bootstrap-' + [guid]::NewGuid())
 $Temporary = Join-Path $Bin ('.ur-install-' + [guid]::NewGuid() + '.cmd')
+$ShimTemporary = Join-Path $Bin ('.ur-shim-' + [guid]::NewGuid() + '.exe')
+$OwnerTemporary = Join-Path $Bin ('.ur-shim-' + [guid]::NewGuid() + '.sha256')
+$CreatedNativeShim = $false
+$CreatedNativeShimOwner = $false
+$Activated = $false
 function Invoke-NativeInstallFileOperation {
   param([scriptblock]$Operation, [ValidateRange(0,15000)][int]$TimeoutMilliseconds = 15000)
   $Timer = [Diagnostics.Stopwatch]::StartNew()
@@ -187,6 +209,19 @@ try {
   }
   $Executable = Join-Path $Destination 'ur.exe'
   if ($Executable -match '["\r\n]') { throw 'Unsupported installation path' }
+  # The immutable console shim avoids PowerShell's batch-file path expansion.
+  # Only ur.cmd changes on updates, including when the shim is still running.
+  $ShimSource = Join-Path $Destination 'resources/windows/ur-launcher.exe'
+  if (!(Test-Path -LiteralPath $ShimSource -PathType Leaf)) { throw 'Release is missing its native Windows launcher' }
+  if (!$ExistingNativeShim) {
+    [IO.File]::Copy($ShimSource, $ShimTemporary, $false)
+    $Owner = "UR-Nexus native launcher v1`n$((Get-FileHash -LiteralPath $ShimTemporary -Algorithm SHA256).Hash.ToLowerInvariant())`n"
+    [IO.File]::WriteAllText($OwnerTemporary, $Owner, [Text.UTF8Encoding]::new($false))
+    Invoke-NativeInstallFileOperation { [IO.File]::Move($OwnerTemporary, $NativeShimOwner) }
+    $CreatedNativeShimOwner = $true
+    Invoke-NativeInstallFileOperation { [IO.File]::Move($ShimTemporary, $NativeShim) }
+    $CreatedNativeShim = $true
+  }
   [IO.File]::WriteAllText($Temporary, "@echo off`r`n@setlocal DisableDelayedExpansion`r`n@`"%SystemRoot%\System32\chcp.com`" 65001 >nul`r`n@set `"UR_NATIVE_BIN_DIR=$($Bin.Replace('%','%%'))`"`r`n@set `"UR_NATIVE_DATA_DIR=$($DataRoot.Replace('%','%%'))`"`r`n`"$($Executable.Replace('%','%%'))`" %*`r`n", (New-Object Text.UTF8Encoding($false)))
   # Rename into place only after the complete immutable release passes validation.
   $Launcher = Join-Path $Bin 'ur.cmd'
@@ -195,6 +230,7 @@ try {
     # arguments. File.Replace needs an actual CLR null for its backup filename.
     if (Test-Path -LiteralPath $Launcher) { [IO.File]::Replace($Temporary, $Launcher, [System.Management.Automation.Language.NullString]::Value) } else { [IO.File]::Move($Temporary, $Launcher) }
   }
+  $Activated = $true
   if (!$NoPathUpdate) {
     $UserPath = [Environment]::GetEnvironmentVariable('Path','User')
     if (!($UserPath -split ';' | Where-Object { $_.TrimEnd('\') -ieq $Bin.TrimEnd('\') })) { [Environment]::SetEnvironmentVariable('Path', "$Bin;$UserPath", 'User') }
@@ -202,7 +238,12 @@ try {
   Write-Host "Installed UR-Nexus $Version. Open a new terminal and run ur."
 } finally {
   try {
-    foreach ($CleanupPath in @($Staging,$Temporary)) {
+    $CleanupPaths = @($Staging,$Temporary,$ShimTemporary,$OwnerTemporary)
+    if (!$Activated) {
+      if ($CreatedNativeShim) { $CleanupPaths += $NativeShim }
+      if ($CreatedNativeShimOwner) { $CleanupPaths += $NativeShimOwner }
+    }
+    foreach ($CleanupPath in $CleanupPaths) {
       try {
         Invoke-NativeInstallFileOperation {
           if (Test-Path -LiteralPath $CleanupPath) { Remove-Item -LiteralPath $CleanupPath -Recurse -Force -ErrorAction Stop }
