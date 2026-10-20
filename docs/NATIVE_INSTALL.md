@@ -9,7 +9,7 @@ directory belong to the same immutable release.
 
 | Target | Native release qualification |
 | --- | --- |
-| macOS Apple Silicon | macOS 14 ARM64 runner |
+| macOS Apple Silicon | macOS 15 ARM64 runner |
 | macOS Intel | macOS 15 Intel runner |
 | Linux x64 with glibc | Ubuntu 22.04 runner |
 | Linux ARM64 with glibc | Ubuntu 24.04 ARM64 runner |
