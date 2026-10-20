@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { chmod, lstat, mkdir, open, readFile, readdir, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { unzipSync } from 'fflate'
 import { getUserBinDir, getXDGDataHome } from './xdg.js'
 
@@ -13,6 +13,54 @@ export type NativeArtifact = { file: string; sha256: string; size: number; execu
 export type NativeManifest = { schemaVersion: 1; version: string; sourceCommit: string; platforms: Partial<Record<NativePlatform, NativeArtifact>> }
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/
 const MAX_ARCHIVE_SIZE = 1024 * 1024 * 1024
+type FileRetryOptions = { timeoutMs?: number; now?: () => number; wait?: (milliseconds: number) => Promise<void> }
+
+export function getNativeInstallDirectories(overrides: { binDir?: string; dataDir?: string } = {}): { binDir: string; dataDir: string } {
+  function directory(value: string, name: string): string {
+    if (!isAbsolute(value) || /[\0\r\n"]/.test(value) || (process.platform === 'win32' && !/^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+(?:[\\/]|$))/.test(value))) {
+      throw new Error(`${name} must be an absolute native installation directory`)
+    }
+    return resolve(value)
+  }
+  return {
+    binDir: directory(overrides.binDir ?? process.env.UR_NATIVE_BIN_DIR ?? getUserBinDir(), 'UR_NATIVE_BIN_DIR'),
+    dataDir: directory(overrides.dataDir ?? process.env.UR_NATIVE_DATA_DIR ?? join(getXDGDataHome(), 'ur'), 'UR_NATIVE_DATA_DIR'),
+  }
+}
+
+/** Windows scanners can retain handles briefly after verification or writes. */
+export async function retryWindowsFileOperation<T>(operation: () => Promise<T>, windows: boolean, options: FileRetryOptions = {}): Promise<T> {
+  if (!windows) return operation()
+  const now = options.now ?? (() => performance.now())
+  const wait = options.wait ?? (milliseconds => new Promise(resolveWait => setTimeout(resolveWait, milliseconds)))
+  const timeout = options.timeoutMs ?? 15_000
+  if (!Number.isFinite(timeout) || timeout < 0) throw new Error('Invalid Windows filesystem retry timeout')
+  const deadline = now() + Math.min(timeout, 15_000)
+  let attempts = 0
+  for (;;) {
+    try { return await operation() }
+    catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined
+      const remaining = deadline - now()
+      if (!['EPERM', 'EACCES', 'EBUSY', 'ENOTEMPTY'].includes(String(code)) || remaining <= 0) throw error
+      await wait(Math.min(50 * ++attempts, 250, remaining))
+    }
+  }
+}
+
+/** Releasing the install lock must not depend on successful staging cleanup. */
+export async function cleanupNativeInstallation(staging: string, lock: string, windows: boolean, options: FileRetryOptions & { remove?: (path: string) => Promise<void> } = {}): Promise<void> {
+  const remove = options.remove ?? (path => rm(path, { recursive: true, force: true }))
+  let stagingError: unknown
+  try { await retryWindowsFileOperation(() => remove(staging), windows, options) }
+  catch (error) { stagingError = error }
+  try { await retryWindowsFileOperation(() => remove(lock), windows, options) }
+  catch (error) {
+    if (stagingError) throw new AggregateError([stagingError, error], 'Native staging cleanup and install lock removal failed')
+    throw error
+  }
+  if (stagingError) throw stagingError
+}
 
 export function validateNativeVersion(value: unknown): string {
   if (typeof value !== 'string' || !VERSION.test(value) || value.length > 100) throw new Error('Invalid native release version')
@@ -67,7 +115,11 @@ export async function fetchNativeManifest(version: string, request: typeof fetch
 
 export function validateArchiveEntry(entry: string): string {
   const normalized = entry.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '')
-  if (!normalized || normalized.startsWith('/') || normalized.includes('\0') || normalized.split('/').some(part => !part || part === '..' || part === '.') || /^[A-Za-z]:/.test(normalized) || !(normalized === 'ur' || normalized === 'ur.exe' || normalized === 'resources' || normalized.startsWith('resources/'))) throw new Error(`Unsafe native archive entry: ${entry}`)
+  const unsafeComponent = normalized.split('/').some(part => {
+    const deviceName = part.split('.')[0]!.replace(/ +$/, '')
+    return !part || part === '..' || part === '.' || /[<>:"|?*\x00-\x1f]/.test(part) || /[ .]$/.test(part) || /^(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])$/i.test(deviceName)
+  })
+  if (!normalized || normalized.startsWith('/') || unsafeComponent || !(normalized === 'ur' || normalized === 'ur.exe' || normalized === 'resources' || normalized.startsWith('resources/'))) throw new Error(`Unsafe native archive entry: ${entry}`)
   return normalized
 }
 
@@ -109,23 +161,25 @@ export async function extractNativeArchive(archive: string, destination: string,
 }
 
 /** Atomically replace launcher. Keeping the old name until rename also handles equal-sized binaries. */
-export async function activateNativeRelease(executable: string, launcher: string, windows: boolean): Promise<void> {
+export async function activateNativeRelease(executable: string, launcher: string, windows: boolean, dataDir?: string): Promise<void> {
   await mkdir(dirname(launcher), { recursive: true })
   const temporary = `${launcher}.tmp.${randomUUID()}`
   try {
     if (windows) {
-      if (/[\r\n"]/.test(executable)) throw new Error('Unsupported installation path')
-      await writeFile(temporary, `@echo off\r\n@setlocal DisableDelayedExpansion\r\n@"%SystemRoot%\\System32\\chcp.com" 65001 >nul\r\n"${executable.replace(/%/g, '%%')}" %*\r\n`, { mode: 0o755 })
+      const directories = getNativeInstallDirectories({ binDir: dirname(launcher), dataDir: dataDir ?? dirname(dirname(dirname(executable))) })
+      if (/[\0\r\n"]/.test(executable)) throw new Error('Unsupported installation path')
+      const escape = (value: string) => value.replace(/%/g, '%%')
+      await writeFile(temporary, `@echo off\r\n@setlocal DisableDelayedExpansion\r\n@"%SystemRoot%\\System32\\chcp.com" 65001 >nul\r\n@set "UR_NATIVE_BIN_DIR=${escape(directories.binDir)}"\r\n@set "UR_NATIVE_DATA_DIR=${escape(directories.dataDir)}"\r\n"${escape(executable)}" %*\r\n`, { mode: 0o755 })
     } else await symlink(executable, temporary)
-    await rename(temporary, launcher)
-  } finally { await rm(temporary, { force: true }).catch(() => {}) }
+    await retryWindowsFileOperation(() => rename(temporary, launcher), windows)
+  } finally { await retryWindowsFileOperation(() => rm(temporary, { force: true }), windows).catch(() => {}) }
 }
 
-async function acquireInstallLock(lock: string): Promise<void> {
+async function acquireInstallLock(lock: string, windows: boolean): Promise<void> {
   try { await mkdir(lock) }
   catch { throw new Error(`Another native installation is active. If no installer is running, remove ${lock} and retry.`) }
   try { await writeFile(join(lock, 'owner.pid'), `${process.pid}\n`) }
-  catch (error) { await rm(lock, { recursive: true, force: true }); throw error }
+  catch (error) { await retryWindowsFileOperation(() => rm(lock, { recursive: true, force: true }), windows).catch(() => {}); throw error }
 }
 
 async function activeNativeExecutable(launcher: string, windows: boolean): Promise<string | null> {
@@ -140,10 +194,11 @@ export async function installNativeRelease(target = 'latest', options: { force?:
   const request = options.request ?? fetch
   const version = await fetchNativeVersion(target, request)
   const platform = options.platform ?? nativePlatform()
-  const versions = join(options.dataDir ?? join(getXDGDataHome(), 'ur'), 'versions')
+  const { binDir, dataDir } = getNativeInstallDirectories(options)
+  const versions = join(dataDir, 'versions')
   const windows = platform.startsWith('win32-')
   const executableName = windows ? 'ur.exe' : 'ur'
-  const launcher = join(options.binDir ?? getUserBinDir(), windows ? 'ur.cmd' : 'ur')
+  const launcher = join(binDir, windows ? 'ur.cmd' : 'ur')
   if (windows) for (const name of ['ur.exe', 'ur.ps1']) {
     const conflict = join(dirname(launcher), name)
     try { await lstat(conflict) } catch { continue }
@@ -159,8 +214,9 @@ export async function installNativeRelease(target = 'latest', options: { force?:
   })
   await mkdir(versions, { recursive: true })
   const lock = join(versions, '.install-lock')
-  await acquireInstallLock(lock)
+  await acquireInstallLock(lock, windows)
   const staging = join(versions, `.staging-${randomUUID()}`)
+  let installationFailed = false
   try {
     const previousExecutable = await activeNativeExecutable(launcher, windows)
     let installed = false
@@ -230,13 +286,16 @@ export async function installNativeRelease(target = 'latest', options: { force?:
       await lstat(join(extracted, 'resources', 'manifest.json'))
       verify(stagedExecutable, version)
       // Unique immutable version directories; no active binary is overwritten.
-      await rename(extracted, releaseDir)
+      await retryWindowsFileOperation(() => rename(extracted, releaseDir), windows)
     }
-    await activateNativeRelease(executable, launcher, windows)
+    await activateNativeRelease(executable, launcher, windows, dataDir)
     if (!windows && resolve(dirname(launcher), await readlink(launcher)) !== resolve(executable)) throw new Error('Native launcher activation failed')
     return { latestVersion: version, wasUpdated: !installed || !!options.force || previousExecutable !== executable }
+  } catch (error) {
+    installationFailed = true
+    throw error
   } finally {
-    await rm(staging, { recursive: true, force: true })
-    await rm(lock, { recursive: true, force: true })
+    try { await cleanupNativeInstallation(staging, lock, windows) }
+    catch (error) { if (!installationFailed) throw error }
   }
 }

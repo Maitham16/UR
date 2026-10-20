@@ -5,11 +5,23 @@ import { chmod, mkdtemp, mkdir, readFile, readlink, readdir, rm, writeFile } fro
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zipSync } from 'fflate'
-import { activateNativeRelease, fetchNativeVersion, installNativeRelease, nativeAssetUrl, parseNativeManifest, validateArchiveEntry, validateNativeVersion } from '../src/utils/nativeRelease.js'
+import { activateNativeRelease, cleanupNativeInstallation, fetchNativeVersion, getNativeInstallDirectories, installNativeRelease, nativeAssetUrl, parseNativeManifest, retryWindowsFileOperation, validateArchiveEntry, validateNativeVersion } from '../src/utils/nativeRelease.js'
 
 const temporary: string[] = []
 afterEach(async () => { for (const path of temporary.splice(0)) await rm(path, { recursive: true, force: true }) })
 async function directory() { const path = await mkdtemp(join(tmpdir(), 'ur-native-release-test-')); temporary.push(path); return path }
+async function withEnvironment(values: Record<string, string>, action: () => unknown | Promise<unknown>) {
+  const original = new Map(Object.keys(values).map(key => [key, process.env[key]]))
+  try {
+    for (const [key, value] of Object.entries(values)) process.env[key] = value
+    await action()
+  } finally {
+    for (const [key, value] of original) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+}
 
 test('release metadata rejects traversal, malformed versions, wrong versions and untrusted artifact names', () => {
   for (const value of ['../1.2.3','1.2','v1.2.3','01.2.3','1.2.3/ur','1.2.3\n']) expect(() => validateNativeVersion(value)).toThrow()
@@ -20,8 +32,74 @@ test('release metadata rejects traversal, malformed versions, wrong versions and
   expect(parseNativeManifest(valid,'1.86.0').version).toBe('1.86.0')
   expect(() => parseNativeManifest(valid,'1.86.1')).toThrow()
   for (const replacement of [{...artifact,file:'https://attacker.invalid/ur'},{...artifact,sha256:'bad'},{...artifact,size:Infinity},{...artifact,size:-1}]) expect(() => parseNativeManifest({...valid,platforms:{'linux-x64':replacement}},'1.86.0')).toThrow()
-  for (const entry of ['../ur','resources/../../outside','/ur','resources/../ur','C:\\ur','resources//bad','resources/./bad','node_modules/a','resources\\..\\outside']) expect(() => validateArchiveEntry(entry)).toThrow()
-  expect(validateArchiveEntry('resources/plugins/core/README.md')).toBe('resources/plugins/core/README.md')
+  for (const entry of [
+    '../ur','resources/../../outside','/ur','resources/../ur','C:\\ur','resources//bad','resources/./bad','node_modules/a','resources\\..\\outside',
+    'resources/manifest.json:stream','resources/NUL','resources/con.txt','resources/COM1.json','resources/LPT¹.dat',
+    'resources/CON .txt','resources/CONOUT$','resources/file.','resources/file ','resources/a\u0001b','resources/a?b','resources/a|b',
+  ]) expect(() => validateArchiveEntry(entry)).toThrow()
+  for (const entry of ['resources/plugins/core/README.md','resources/café [docs]/100% coverage.md','resources/CONNECTION.md','resources/COM10.json']) expect(validateArchiveEntry(entry)).toBe(entry)
+})
+
+test('Windows transient filesystem locks retry within a bounded deadline; other failures do not retry', async () => {
+  for (const code of ['EPERM', 'EACCES', 'EBUSY', 'ENOTEMPTY']) {
+    let attempts = 0, elapsed = 0
+    const failure = Object.assign(new Error('temporary Windows lock'), { code })
+    const result = await retryWindowsFileOperation(async () => {
+      if (++attempts < 3) throw failure
+      return 'activated'
+    }, true, { timeoutMs: 500, now: () => elapsed, wait: async milliseconds => { elapsed += milliseconds } })
+    expect(result).toBe('activated')
+    expect(attempts).toBe(3)
+    expect(elapsed).toBe(150)
+  }
+  let attempts = 0, elapsed = 0
+  const locked = Object.assign(new Error('persistent Windows lock'), { code: 'EPERM' })
+  await expect(retryWindowsFileOperation(async () => { attempts++; throw locked }, true, {
+    timeoutMs: 120, now: () => elapsed, wait: async milliseconds => { elapsed += milliseconds },
+  })).rejects.toBe(locked)
+  expect(attempts).toBe(3)
+  expect(elapsed).toBe(120)
+  for (const [windows, code] of [[false, 'EPERM'], [true, 'ENOENT'], [true, 'EIO']] as const) {
+    let count = 0
+    const error = Object.assign(new Error('not retryable'), { code })
+    await expect(retryWindowsFileOperation(async () => { count++; throw error }, windows, {
+      wait: async () => { throw new Error('Unexpected retry') },
+    })).rejects.toBe(error)
+    expect(count).toBe(1)
+  }
+})
+
+test('managed install directories require absolute paths and explicit options override launcher environment', async () => {
+  const root = await directory(), binDir = join(root, 'explicit bin'), dataDir = join(root, 'explicit data')
+  await withEnvironment({ UR_NATIVE_BIN_DIR: 'relative-bin', UR_NATIVE_DATA_DIR: 'relative-data' }, () => {
+    expect(() => getNativeInstallDirectories()).toThrow('absolute')
+    expect(getNativeInstallDirectories({ binDir, dataDir })).toEqual({ binDir, dataDir })
+  })
+  for (const value of ['relative', `${root}\ninvalid`, `${root}\0invalid`, `${root}"invalid`]) {
+    expect(() => getNativeInstallDirectories({ binDir: value, dataDir })).toThrow('absolute')
+  }
+})
+
+test('failed staging cleanup still releases the installation lock and preserves the active launcher', async () => {
+  const root = await directory(), staging = join(root, 'staging'), lock = join(root, '.install-lock'), launcher = join(root, 'ur.cmd')
+  await mkdir(staging); await writeFile(join(staging, 'locked-file'), 'cleanup fixture')
+  await mkdir(lock); await writeFile(join(lock, 'owner.pid'), `${process.pid}\n`)
+  await writeFile(launcher, 'previous launcher')
+  let elapsed = 0
+  const attempted: string[] = []
+  const failure = Object.assign(new Error('staging locked beyond deadline'), { code: 'EPERM' })
+  await expect(cleanupNativeInstallation(staging, lock, true, {
+    timeoutMs: 100, now: () => elapsed, wait: async milliseconds => { elapsed += milliseconds },
+    remove: async path => {
+      attempted.push(path)
+      if (path === staging) throw failure
+      await rm(path, { recursive: true, force: true })
+    },
+  })).rejects.toBe(failure)
+  expect(attempted.at(-1)).toBe(lock)
+  expect((await readdir(root)).includes('.install-lock')).toBe(false)
+  expect(await readFile(launcher, 'utf8')).toBe('previous launcher')
+  expect(await readFile(join(staging, 'locked-file'), 'utf8')).toBe('cleanup fixture')
 })
 
 test('stable release check rejects prerelease/draft and malformed remote version', async () => {
@@ -120,7 +198,10 @@ test('Windows ZIP install keeps resources with the executable and rejects traver
   const options = {dataDir:join(root,'data'),binDir:join(root,'bin'),platform:'win32-x64' as const,request,verify:()=>{}}
   await installNativeRelease(version,options)
   const executable = join(root,'data','versions',`${version}-win32-x64`,'ur.exe')
-  expect(await readFile(join(root,'bin','ur.cmd'),'utf8')).toContain(executable)
+  const initialLauncher = await readFile(join(root,'bin','ur.cmd'),'utf8')
+  expect(initialLauncher).toContain(executable)
+  expect(initialLauncher).toContain(`@set "UR_NATIVE_BIN_DIR=${options.binDir}"`)
+  expect(initialLauncher).toContain(`@set "UR_NATIVE_DATA_DIR=${options.dataDir}"`)
   expect(await readFile(join(executable,'..','resources','manifest.json'),'utf8')).toBe('{}')
   await installNativeRelease(version,{...options,force:true})
   const repairedLauncher = await readFile(join(root,'bin','ur.cmd'),'utf8')
@@ -129,13 +210,16 @@ test('Windows ZIP install keeps resources with the executable and rejects traver
   const reused = await installNativeRelease(version,{...options,request:noNetwork})
   expect(reused.wasUpdated).toBe(false)
   expect(await readFile(join(root,'bin','ur.cmd'),'utf8')).toBe(repairedLauncher)
-  bytes = zipSync({'ur.exe':new TextEncoder().encode('native fixture'),'resources/../../escaped':new Uint8Array([1])})
-  await expect(installNativeRelease(version,{...options,force:true})).rejects.toThrow('Unsafe native archive entry')
-  expect(await readFile(join(root,'bin','ur.cmd'),'utf8')).toBe(repairedLauncher)
+  for (const invalid of ['resources/../../escaped', 'resources/manifest.json:stream', 'resources/NUL.txt', 'resources/file.']) {
+    bytes = zipSync({'ur.exe':new TextEncoder().encode('native fixture'),[invalid]:new Uint8Array([1])})
+    await expect(installNativeRelease(version,{...options,force:true})).rejects.toThrow('Unsafe native archive entry')
+    expect(await readFile(join(root,'bin','ur.cmd'),'utf8')).toBe(repairedLauncher)
+  }
 })
 
-test('pinned upgrade and rollback retain both releases and preserve user configuration and sessions', async () => {
+test('custom launcher directories survive repeat, upgrade and offline rollback without changing XDG or user data', async () => {
   const root = await directory(), config = join(root,'private home','.ur')
+  const binDir = join(root, 'custom [café!] 100% bin'), dataDir = join(root, 'custom [café!] 100% data'), defaultData = join(root, 'unused XDG data')
   await mkdir(join(config,'projects'),{recursive:true})
   const settings = '{"provider":{"active":"ollama"},"customSetting":"preserve"}\n'
   const session = '{"type":"user","message":"prior session fixture"}\n'
@@ -154,16 +238,26 @@ test('pinned upgrade and rollback retain both releases and preserve user configu
     downloads.push(version)
     return new Response(Buffer.from(bytes))
   }) as unknown as typeof fetch
-  const options = {dataDir:join(root,'application data'),binDir:join(root,'bin'),platform:'win32-x64' as const,request,verify:()=>{}}
-  await installNativeRelease('1.86.0',options)
-  await installNativeRelease('1.86.1',options)
-  expect(await readFile(join(root,'bin','ur.cmd'),'utf8')).toContain('1.86.1-win32-x64')
-  offline = true
-  const rollback = await installNativeRelease('1.86.0',options)
-  expect(rollback.wasUpdated).toBe(true)
-  expect(await readFile(join(root,'bin','ur.cmd'),'utf8')).toContain('1.86.0-win32-x64')
-  expect(downloads).toEqual(['1.86.0','1.86.1'])
-  expect(await readFile(join(config,'settings.json'),'utf8')).toBe(settings)
-  expect(await readFile(join(config,'projects','prior-session.jsonl'),'utf8')).toBe(session)
-  expect((await readdir(join(root,'application data','versions'))).sort()).toEqual(['1.86.0-win32-x64','1.86.1-win32-x64'])
+  const options = {platform:'win32-x64' as const,request,verify:()=>{}}
+  await withEnvironment({ UR_NATIVE_BIN_DIR: binDir, UR_NATIVE_DATA_DIR: dataDir, HOME: join(root, 'private home'), XDG_DATA_HOME: defaultData }, async () => {
+    expect(getNativeInstallDirectories()).toEqual({ binDir, dataDir })
+    await installNativeRelease('1.86.0',options)
+    expect((await installNativeRelease('1.86.0',options)).wasUpdated).toBe(false)
+    await installNativeRelease('1.86.1',options)
+    expect(await readFile(join(binDir,'ur.cmd'),'utf8')).toContain('1.86.1-win32-x64')
+    offline = true
+    const rollback = await installNativeRelease('1.86.0',options)
+    expect(rollback.wasUpdated).toBe(true)
+    const launcher = await readFile(join(binDir,'ur.cmd'),'utf8')
+    expect(launcher).toContain('1.86.0-win32-x64')
+    expect(launcher).toContain(`@set "UR_NATIVE_BIN_DIR=${binDir.replace(/%/g, '%%')}"`)
+    expect(launcher).toContain(`@set "UR_NATIVE_DATA_DIR=${dataDir.replace(/%/g, '%%')}"`)
+    expect(downloads).toEqual(['1.86.0','1.86.1'])
+    expect(process.env.XDG_DATA_HOME).toBe(defaultData)
+    await expect(readFile(join(defaultData, 'ur', 'versions'))).rejects.toThrow()
+    await expect(readFile(join(root, 'private home', '.local', 'bin', 'ur.cmd'))).rejects.toThrow()
+    expect(await readFile(join(config,'settings.json'),'utf8')).toBe(settings)
+    expect(await readFile(join(config,'projects','prior-session.jsonl'),'utf8')).toBe(session)
+    expect((await readdir(join(dataDir,'versions'))).sort()).toEqual(['1.86.0-win32-x64','1.86.1-win32-x64'])
+  })
 })

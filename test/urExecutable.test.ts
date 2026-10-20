@@ -32,6 +32,11 @@ import { isInBundledMode } from ${JSON.stringify(resolve('src/utils/bundledMode.
 import { runInternalTimeout } from ${JSON.stringify(resolve('src/utils/shell/internalTimeout.ts'))};
 const args = process.argv.slice(2);
 if (args[0] === '--internal-timeout') process.exitCode = await runInternalTimeout(args.slice(1));
+else if (args[0] === '--internal-timeout-with-missing-root') {
+  process.env.SystemRoot = args[1]!;
+  process.env.SYSTEMROOT = args[1]!;
+  process.exitCode = await runInternalTimeout(args.slice(2));
+}
 else if (args[0] === '--child') console.log(JSON.stringify(args.slice(1)));
 else if (args[0] === '--exit') process.exitCode = Number(args[1]);
 else if (args[0] === '--tree-descendant') {
@@ -110,9 +115,9 @@ else {
     expect(run(['--internal-timeout', '1s', join(workDir, 'missing-command.exe')]).status).toBe(127)
     const ready = join(workDir, 'must-not-start-without-tree-cleanup.txt')
     const missingRoot = join(workDir, 'missing Windows directory')
-    expect(run(['--internal-timeout', '1s', binary, '--tree-descendant', join(workDir, 'unused-marker'), ready], {
-      SystemRoot: missingRoot, SYSTEMROOT: missingRoot,
-    }).status).toBe(125)
+    // Bun itself needs a valid SystemRoot to start on Windows. Invalidate it
+    // only inside the already-running fixture so this checks UR's refusal.
+    expect(run(['--internal-timeout-with-missing-root', missingRoot, '1s', binary, '--tree-descendant', join(workDir, 'unused-marker'), ready]).status).toBe(125)
     expect(existsSync(ready)).toBe(false)
   })
 

@@ -30,6 +30,25 @@ $Lock = Join-Path $Versions '.install-lock'
 try { New-Item -ItemType Directory -Path $Lock -ErrorAction Stop | Out-Null } catch { throw "Another native installation is active. If no installer is running, remove $Lock and retry." }
 $Staging = Join-Path $Versions ('.bootstrap-' + [guid]::NewGuid())
 $Temporary = Join-Path $Bin ('.ur-install-' + [guid]::NewGuid() + '.cmd')
+function Invoke-NativeInstallFileOperation {
+  param([scriptblock]$Operation, [ValidateRange(0,15000)][int]$TimeoutMilliseconds = 15000)
+  $Timer = [Diagnostics.Stopwatch]::StartNew()
+  $FirstFailure = $null
+  while ($true) {
+    try { & $Operation; return } catch {
+      $Exception = $_.Exception
+      while ($Exception.InnerException) { $Exception = $Exception.InnerException }
+      # Defender and indexers can briefly retain the verified executable or
+      # launcher. Retry sharing/access locks only; preserve all other failures.
+      $Code = $Exception.HResult -band 65535
+      if (($Exception -isnot [IO.IOException] -and $Exception -isnot [UnauthorizedAccessException]) -or $Code -notin @(5,32,33)) { throw }
+      if (!$FirstFailure) { $FirstFailure = $_ }
+      $Remaining = $TimeoutMilliseconds - $Timer.ElapsedMilliseconds
+      if ($Remaining -le 0) { throw $FirstFailure }
+      Start-Sleep -Milliseconds ([Math]::Min(100, $Remaining))
+    }
+  }
+}
 function Test-VerifiedRelease([string]$Directory) {
   $Candidate = Join-Path $Directory 'ur.exe'
   if (!(Test-Path -LiteralPath $Candidate) -or !(Test-Path -LiteralPath (Join-Path $Directory 'resources/manifest.json'))) { return $false }
@@ -67,8 +86,13 @@ try {
   try {
     $Expanded = 0L
     foreach ($Entry in $Zip.Entries) {
-      $Name = $Entry.FullName.Replace('\','/').TrimEnd('/')
-      if (!$Name -or $Name -cmatch '(^/|^[A-Za-z]:|(^|/)\.\.?(/|$)|//|:)' -or ($Name -cne 'ur.exe' -and $Name -cne 'resources' -and !$Name.StartsWith('resources/')) -or (($Entry.ExternalAttributes -shr 16) -band 61440) -eq 40960) { throw "Unsafe native archive entry: $Name" }
+      $Name = $Entry.FullName.Replace('\','/')
+      if ($Name.EndsWith('/')) { $Name = $Name.Substring(0, $Name.Length - 1) }
+      if (!$Name -or $Name -cmatch '(^/|^[A-Za-z]:|(^|/)\.\.?(/|$)|//|[\p{Cc}<>:"|?*])' -or ($Name -cne 'ur.exe' -and $Name -cne 'resources' -and !$Name.StartsWith('resources/')) -or (($Entry.ExternalAttributes -shr 16) -band 61440) -eq 40960) { throw "Unsafe native archive entry: $Name" }
+      foreach ($Component in $Name.Split('/')) {
+        $DeviceName = $Component.Split('.')[0].TrimEnd(' ')
+        if (!$Component -or $Component -match '[. ]$' -or $DeviceName -match '^(?i:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9\u00b9\u00b2\u00b3]|LPT[1-9\u00b9\u00b2\u00b3])$') { throw "Unsafe native archive entry: $Name" }
+      }
       $Expanded += $Entry.Length
       if ($Expanded -gt 2147483648) { throw 'Native release exceeds extraction limit' }
     }
@@ -86,21 +110,29 @@ try {
   $SelfTest = (& $StagedExecutable --ur-native-self-test) | ConvertFrom-Json
   if ($LASTEXITCODE -ne 0 -or $SelfTest.passed -ne $true) { throw 'Downloaded executable failed resource verification' }
     if (Test-Path -LiteralPath $Destination) { $Destination = Join-Path $Versions ("$Version-$Platform-repair-" + [guid]::NewGuid()) }
-    Move-Item -LiteralPath $Extracted -Destination $Destination
+    Invoke-NativeInstallFileOperation { Move-Item -LiteralPath $Extracted -Destination $Destination }
   }
   $Executable = Join-Path $Destination 'ur.exe'
   if ($Executable -match '["\r\n]') { throw 'Unsupported installation path' }
-  [IO.File]::WriteAllText($Temporary, "@echo off`r`n@setlocal DisableDelayedExpansion`r`n@`"%SystemRoot%\System32\chcp.com`" 65001 >nul`r`n`"$($Executable.Replace('%','%%'))`" %*`r`n", (New-Object Text.UTF8Encoding($false)))
+  [IO.File]::WriteAllText($Temporary, "@echo off`r`n@setlocal DisableDelayedExpansion`r`n@`"%SystemRoot%\System32\chcp.com`" 65001 >nul`r`n@set `"UR_NATIVE_BIN_DIR=$($Bin.Replace('%','%%'))`"`r`n@set `"UR_NATIVE_DATA_DIR=$($DataRoot.Replace('%','%%'))`"`r`n`"$($Executable.Replace('%','%%'))`" %*`r`n", (New-Object Text.UTF8Encoding($false)))
   # Rename into place only after the complete immutable release passes validation.
   $Launcher = Join-Path $Bin 'ur.cmd'
-  if (Test-Path -LiteralPath $Launcher) { [IO.File]::Replace($Temporary, $Launcher, $null) } else { [IO.File]::Move($Temporary, $Launcher) }
+  Invoke-NativeInstallFileOperation {
+    if (Test-Path -LiteralPath $Launcher) { [IO.File]::Replace($Temporary, $Launcher, $null) } else { [IO.File]::Move($Temporary, $Launcher) }
+  }
   if (!$NoPathUpdate) {
     $UserPath = [Environment]::GetEnvironmentVariable('Path','User')
     if (!($UserPath -split ';' | Where-Object { $_.TrimEnd('\') -ieq $Bin.TrimEnd('\') })) { [Environment]::SetEnvironmentVariable('Path', "$Bin;$UserPath", 'User') }
   }
   Write-Host "Installed UR-Nexus $Version. Open a new terminal and run ur."
 } finally {
-  Remove-Item -LiteralPath $Staging -Recurse -Force -ErrorAction SilentlyContinue
-  Remove-Item -LiteralPath $Temporary -Force -ErrorAction SilentlyContinue
-  Remove-Item -LiteralPath $Lock -Recurse -Force -ErrorAction SilentlyContinue
+  try {
+    foreach ($CleanupPath in @($Staging,$Temporary)) {
+      try {
+        Invoke-NativeInstallFileOperation {
+          if (Test-Path -LiteralPath $CleanupPath) { Remove-Item -LiteralPath $CleanupPath -Recurse -Force -ErrorAction Stop }
+        }
+      } catch { Write-Warning -WarningAction Continue "Temporary installer files remain at $CleanupPath : $($_.Exception.Message)" }
+    }
+  } finally { Remove-Item -LiteralPath $Lock -Recurse -Force -ErrorAction SilentlyContinue }
 }

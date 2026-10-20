@@ -1,5 +1,4 @@
 import { c as _c } from "react/compiler-runtime";
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import React, { useEffect, useState } from 'react';
 import type { CommandResultDisplay } from 'src/commands.js';
@@ -10,6 +9,7 @@ import { logForDebugging } from '../utils/debug.js';
 import { env } from '../utils/env.js';
 import { errorMessage } from '../utils/errors.js';
 import { checkInstall, installLatest } from '../utils/nativeInstaller/index.js';
+import { getNativeInstallDirectories } from '../utils/nativeRelease.js';
 import { getInitialSettings, updateSettingsForSource } from '../utils/settings/settings.js';
 interface InstallProps {
   onDone: (result: string, options?: {
@@ -41,14 +41,8 @@ type InstallState = {
 };
 function getInstallationPath(): string {
   const isWindows = env.platform === 'win32';
-  const homeDir = homedir();
-  if (isWindows) {
-    // Convert to Windows-style path
-    const windowsPath = join(homeDir, '.local', 'bin', 'ur.cmd');
-    // Replace forward slashes with backslashes for Windows display
-    return windowsPath.replace(/\//g, '\\');
-  }
-  return '~/.local/bin/ur';
+  const path = join(getNativeInstallDirectories().binDir, isWindows ? 'ur.cmd' : 'ur');
+  return isWindows ? path.replace(/\//g, '\\') : path;
 }
 function SetupNotes(t0) {
   const $ = _c(5);

@@ -40,17 +40,24 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - name: Install frozen dependencies
+        id: dependencies
         run: bun ci
       - name: Test native installation and executable routing
-        run: bun test test/nativeRelease.test.ts test/urExecutable.test.ts
+        run: bun test test/nativeRelease.test.ts test/nativeInstallationDiagnostics.test.ts test/urExecutable.test.ts
       - name: Build bundled VS Code integration
+        id: ide
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         working-directory: extensions/vscode-ur-inline-diffs
         run: |
           npm ci
           npm run build
       - name: Compile native application and resources
+        id: compile
+        if: ${{ !cancelled() && steps.ide.outcome == 'success' }}
         run: node scripts/native-build.mjs --target ${{ matrix.target }} --out-dir dist-native
       - name: Sign native application when publisher identities are configured
+        id: sign
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         env:
           APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -63,8 +70,10 @@ jobs:
         run: node scripts/native-sign.mjs --target ${{ matrix.target }}
       - name: Archive native application
         id: archive
+        if: ${{ !cancelled() && steps.sign.outcome == 'success' }}
         run: node scripts/native-release.mjs --target ${{ matrix.target }}
       - name: Test shipped archive without JavaScript runtime on PATH
+        if: ${{ !cancelled() && steps.archive.outcome == 'success' }}
         run: node scripts/native-smoke.mjs --target ${{ matrix.target }} --artifact-dir dist-release/native
       - name: Test Windows PowerShell bootstrap and native launcher
         if: ${{ !cancelled() && runner.os == 'Windows' && steps.archive.outcome == 'success' }}

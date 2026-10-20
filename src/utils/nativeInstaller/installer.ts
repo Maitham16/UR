@@ -32,7 +32,7 @@ import {
 import { getMaxVersion, shouldSkipVersion } from '../autoUpdater.js'
 import { registerCleanup } from '../cleanupRegistry.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
-import { fetchNativeVersion, installNativeRelease, validateNativeVersion } from '../nativeRelease.js'
+import { fetchNativeVersion, getNativeInstallDirectories, installNativeRelease, validateNativeVersion } from '../nativeRelease.js'
 import { logForDebugging } from '../debug.js'
 import { getCurrentInstallationType } from '../doctorDiagnostic.js'
 import { env } from '../env.js'
@@ -52,9 +52,7 @@ import {
 } from '../shellConfig.js'
 import { sleep } from '../sleep.js'
 import {
-  getUserBinDir,
   getXDGCacheHome,
-  getXDGDataHome,
   getXDGStateHome,
 } from '../xdg.js'
 import {
@@ -110,10 +108,11 @@ export function getBinaryName(platform: string): string {
 function getBaseDirectories() {
   const platform = getPlatform()
   const executableName = getBinaryName(platform)
+  const nativeDirectories = getNativeInstallDirectories()
 
   return {
     // Data directories (permanent storage)
-    versions: join(getXDGDataHome(), 'ur', 'versions'),
+    versions: join(nativeDirectories.dataDir, 'versions'),
 
     // Cache directories (can be deleted)
     staging: join(getXDGCacheHome(), 'ur', 'staging'),
@@ -122,7 +121,7 @@ function getBaseDirectories() {
     locks: join(getXDGStateHome(), 'ur', 'locks'),
 
     // User bin
-    executable: join(getUserBinDir(), platform.startsWith('win32') ? 'ur.cmd' : executableName),
+    executable: join(nativeDirectories.binDir, platform.startsWith('win32') ? 'ur.cmd' : executableName),
   }
 }
 
@@ -322,7 +321,7 @@ export async function checkInstall(
   // isPossibleURBinary stats the path internally, so we don't pre-check
   // with access() — that would be a TOCTOU between access and the stat.
   if (isWindows) {
-    // On Windows it's a copied executable, not a symlink
+    // On Windows the managed launcher is a command script, not a symlink.
     if (!(await isPossibleURBinary(dirs.executable))) {
       messages.push({
         message: `installMethod is native, but ur command is missing or invalid at ${dirs.executable}`,
@@ -398,7 +397,7 @@ export async function checkInstall(
         : 'your shell config file'
 
       messages.push({
-        message: `Native installation exists but ~/.local/bin is not in your PATH. Run:\n\necho 'export PATH="$HOME/.local/bin:$PATH"' >> ${displayPath} && source ${displayPath}`,
+        message: `Native installation exists but ${localBinDir} is not in your PATH. Add this line to ${displayPath}, then open a new terminal:\n\nexport PATH='${localBinDir.replace(/'/g, "'\\''")}':"$PATH"`,
         userActionRequired: true,
         type: 'path',
       })

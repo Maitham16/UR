@@ -100,6 +100,11 @@ Invoke-WebRequest https://github.com/Maitham16/UR/releases/download/v1.86.0/inst
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-ur.ps1 -Version 1.86.0
 ```
 
+For a custom Windows location, pass `-BinDirectory` and `-DataDirectory` to the
+installer. The installed launcher preserves these locations for later updates.
+Use the same directory arguments with `uninstall.ps1` when removing that
+installation.
+
 ## Verify a download
 
 Every release publishes target archives, `manifest.json`, `SHA256SUMS`,
@@ -169,6 +174,7 @@ binary rollback does not undo configuration migrations.
 ## Uninstall and recover
 
 Download the matching `uninstall.sh` or `uninstall.ps1` release asset and run it.
+On Windows, use `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1`.
 Uninstall removes the owned launcher while preserving configuration, sessions,
 credentials, and immutable versions. The script prints any optional manual
 cleanup path. Other npm installations, aliases, project data, and dependencies

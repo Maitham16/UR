@@ -14,6 +14,9 @@
 - Added verified GitHub native downloads, version pinning, atomic installation
   and upgrades, conservative uninstall, resource integrity checks, and native
   release provenance. Platform signing is recorded accurately when configured.
+- Hardened Windows installation against temporary file locks and unsafe archive
+  names. Custom installation paths are retained during updates and supported
+  by uninstall, including paths containing Unicode and percent characters.
 - Added native artifact qualification across supported platforms, including
   resource checks and a local mock-provider streaming, task, write/read, and
   resume workflow without external JavaScript runtimes on PATH.
