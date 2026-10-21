@@ -107,6 +107,14 @@ Bash/File tool execution, and sandbox guarantees apply to UR-run tools and
 final UR output, not to actions the external CLI performs internally. See
 [Provider Guide](providers.md) for the full provider capability matrix.
 
+Use `ur model-doctor <model> --provider <provider> --profile --json` to inspect
+saved capability evidence without inference. Add `--probe` instead of
+`--profile` to make small real provider requests, which may incur normal
+provider charges; `--timeout-ms` bounds each probe. Profiles are advisory and
+never change the selected model or execution permissions. See the
+[measured capability reference](../technical/05-providers-and-models.md#measured-model-capability-profiles)
+for freshness, recorded usage and measurement limits.
+
 UR-Nexus never scrapes browser sessions, extracts OAuth refresh tokens, reads
 hidden provider auth files, bypasses provider restrictions, or proxies consumer
 web sessions as APIs.

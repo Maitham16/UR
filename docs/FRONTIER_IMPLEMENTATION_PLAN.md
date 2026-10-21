@@ -1,6 +1,6 @@
 # UR-Nexus competitive implementation plan
 
-Started: 2026-10-21. Baseline: `e81469b4554d5c209081df72d0350ffe8e59eca7`.
+Started and completed: 2026-10-21. Shipped: 1.87.1. Baseline: `e81469b4554d5c209081df72d0350ffe8e59eca7`.
 
 ## Contract and completion rules
 
@@ -39,7 +39,7 @@ in the execution log. No item may silently disappear from this plan.
 | F11 | Supported SDK and editor distribution | Versioned event/approval/cancellation/resume/local-remote contract; actual usable client package; packaged editor host integration tests; publication requirements explicit | technical/11, extensions, SDK examples | release verified |
 | F12 | Dependable remote environments and control | Reproducible worker provisioning, artifacts/logs/previews, reconnection, authenticated approvals and device revocation; real local remote-worker integration tests; avoid provider-specific-only backend | technical/09, technical/11 | release verified |
 | F13 | Team operations and distribution maturity | Identity, shared budgets, secret management, audit export and reviewed automation; clear commercial licensing route without changing license; platform/install evidence; preserve explicit Windows/signing deferrals unless prerequisites supplied | technical/11, technical/12, RELEASE, docs/NATIVE_INSTALL | release verified |
-| F14 | Canonical commands, documentation and release | Audit command registry/help for duplicate/obsolete alternatives; update every affected technical/doc surface; full tests/typecheck/lint/build/audits/native checks; push verified commit, immutable tag, green GitHub/npm/Homebrew publication and installed smoke checks | all affected docs, CHANGELOG, RELEASE | implementing |
+| F14 | Canonical commands, documentation and release | Audit command registry/help for duplicate/obsolete alternatives; update every affected technical/doc surface; full tests/typecheck/lint/build/audits/native checks; push verified commit, immutable tag, green GitHub/npm/Homebrew publication and installed smoke checks | all affected docs, CHANGELOG, RELEASE | release verified |
 
 ## Resources and design use
 
@@ -142,3 +142,12 @@ integrating changing external interfaces.
   passed. Published interactive first-use reached a real Ollama task.
   That final UI check found hidden command placeholders in slash readiness output;
   the small 1.87.1 presentation patch keeps F14 open until its publication.
+
+- 2026-10-21: The 1.87.1 follow-up shipped at
+  `87b55809dff709c1054dd0d31f84bbb80ef1fb9a`. Production and tagged release CI
+  again each passed 3,121 tests with zero failures; all native and SDK/editor
+  jobs passed. Public npm latest, a fresh no-Bun install and SDK imports passed.
+  Homebrew passed all four platforms, published tap commit `1c66bac`, and the
+  separately installed published macOS upgrade/test passed. F14 is release
+  verified; all planned implementation/release work is closed. External
+  publisher/hosting prerequisites and measured-quality limits remain explicit.
