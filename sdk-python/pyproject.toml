@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ur-agent-sdk"
+version = "1.87.0"
+description = "Dependency-free local and authenticated ACP clients for installed UR-Nexus"
+requires-python = ">=3.10"
+readme = "README.md"
+license = "LicenseRef-UR-Nexus-Non-Commercial-Self-Responsibility"
+license-files = ["LICENSE"]
+authors = [{name = "UR-Nexus"}]
+classifiers = ["Programming Language :: Python :: 3", "Operating System :: MacOS", "Operating System :: POSIX :: Linux"]
+
+[project.urls]
+Repository = "https://github.com/Maitham16/UR"
+
+[tool.setuptools.packages.find]
+include = ["ur_agent*"]

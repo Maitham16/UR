@@ -4752,7 +4752,7 @@ async function run(): Promise<CommanderCommand> {
       // biome-ignore lint/suspicious/noConsole:: CLI command output
       console.log(result.displayText);
     }
-    process.exit(process.exitCode ?? 0);
+    process.exit(result.type === 'text' ? result.exitCode ?? process.exitCode ?? 0 : process.exitCode ?? 0);
   };
   program.command('agent-features [action]').alias('agent-roadmap').description('Show or initialize UR agent feature expansion scaffolds').option('--json', 'Output as JSON').option('--force', 'Overwrite existing scaffold files').action(async (action: string | undefined, opts: {
     json?: boolean;
@@ -4868,10 +4868,14 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, id ? quoteLocalCommandArg(id) : undefined, opts.dryRun ? '--dry-run' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/worktree/worktree.js'), args);
   });
-  program.command('model-doctor [model]').alias('model-capabilities').description('Inspect local Ollama models and report likely agent capabilities').option('--json', 'Output as JSON').action(async (model: string | undefined, opts: {
+  program.command('model-doctor [model]').alias('model-capabilities').description('Inspect advertised capabilities or probe a selected provider and model').option('--probe', 'Run live capability probes and save measured evidence').option('--profile', 'Read saved evidence for this provider, endpoint and model').option('--provider <id>', 'Provider to inspect or probe').option('--timeout-ms <n>', 'Timeout for each live capability probe').option('--json', 'Output as JSON').action(async (model: string | undefined, opts: {
+    probe?: boolean;
+    profile?: boolean;
+    provider?: string;
+    timeoutMs?: string;
     json?: boolean;
   }) => {
-    const args = [model ? quoteLocalCommandArg(model) : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const args = [model ? quoteLocalCommandArg(model) : undefined, opts.probe ? '--probe' : undefined, opts.profile ? '--profile' : undefined, localCommandOption('--provider', opts.provider), localCommandOption('--timeout-ms', opts.timeoutMs), opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/model-doctor/model-doctor.js'), args);
   });
   program.command('semantic-memory [action] [query...]').alias('memory-index').description('Build and search the project-local memory index').option('--json', 'Output as JSON').action(async (action: string | undefined, query: string[] = [], opts: {
@@ -4899,7 +4903,7 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, opts.claim ? `--claim ${quoteLocalCommandArg(opts.claim)}` : undefined, opts.source ? `--source ${quoteLocalCommandArg(opts.source)}` : undefined, opts.confidence ? `--confidence ${quoteLocalCommandArg(opts.confidence)}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/claim-ledger/claim-ledger.js'), args);
   });
-  program.command('browser-qa [action] [fixture]').description('Validate and smoke-run browser QA replay fixtures').option('--dry-run', 'Show what would run without fetching the target').option('--json', 'Output as JSON').action(async (action: string | undefined, fixture: string | undefined, opts: {
+  program.command('browser-qa [action] [fixture]').description('Execute browser QA assertions with viewport screenshots and traces').option('--dry-run', 'Validate and show assertions without launching a browser').option('--json', 'Output as JSON').action(async (action: string | undefined, fixture: string | undefined, opts: {
     dryRun?: boolean;
     json?: boolean;
   }) => {
@@ -5026,16 +5030,22 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, opts.goal ? `--goal ${quoteLocalCommandArg(opts.goal)}` : undefined, opts.task ? `--task ${quoteLocalCommandArg(opts.task)}` : undefined, opts.lead ? `--lead ${quoteLocalCommandArg(opts.lead)}` : undefined, opts.workers ? `--workers ${quoteLocalCommandArg(opts.workers)}` : undefined, opts.worktrees ? '--worktrees' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.resume ? '--resume' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/crew/crew.js'), args);
   });
-  program.command('goal [action] [name]').alias('goals').description('Track long-horizon objectives that persist across sessions and resume their workflow').option('--objective <text>', 'Objective text for add').option('--workflow <name>', 'Workflow that advances this goal').option('--pattern <id>', 'Collaboration pattern associated with this goal').option('--note <text>', 'Progress note text').option('--max-turns <n>', 'Max agentic turns per step when resuming').option('--dry-run', 'Resume offline without calling any model').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, opts: {
+  program.command('goal [action] [name]').alias('goals').description('Persist objectives and run model-directed progress and outcome verification').option('--objective <text>', 'Objective text for add').option('--criterion <text>', 'Outcome criterion for add (repeatable)', collectLocalCommandOption, []).option('--workflow <name>', 'Workflow that can advance this goal').option('--pattern <id>', 'Collaboration pattern associated with this goal').option('--note <text>', 'Progress note text').option('--max-turns <n>', 'Aggregate agentic turn budget for this goal').option('--max-calls <n>', 'Aggregate agent invocation budget for this goal').option('--max-budget-usd <usd>', 'Aggregate reported cost budget for this goal').option('--max-duration-ms <ms>', 'Aggregate execution time budget for this goal').option('--model <id>', 'Model used when resuming this goal').option('--skip-permissions', 'Pass --dangerously-skip-permissions to goal execution').option('--dry-run', 'Preview resume without calling any model').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, opts: {
     objective?: string;
+    criterion?: string[];
     workflow?: string;
     pattern?: string;
     note?: string;
     maxTurns?: string;
+    maxCalls?: string;
+    maxBudgetUsd?: string;
+    maxDurationMs?: string;
+    model?: string;
+    skipPermissions?: boolean;
     dryRun?: boolean;
     json?: boolean;
   }) => {
-    const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, opts.objective ? `--objective ${quoteLocalCommandArg(opts.objective)}` : undefined, opts.workflow ? `--workflow ${quoteLocalCommandArg(opts.workflow)}` : undefined, opts.pattern ? `--pattern ${quoteLocalCommandArg(opts.pattern)}` : undefined, opts.note ? `--note ${quoteLocalCommandArg(opts.note)}` : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.dryRun ? '--dry-run' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const args = [action ? quoteLocalCommandArg(action) : undefined, name ? quoteLocalCommandArg(name) : undefined, localCommandOption('--objective', opts.objective), ...(opts.criterion ?? []).map(value => localCommandOption('--criterion', value)), localCommandOption('--workflow', opts.workflow), localCommandOption('--pattern', opts.pattern), localCommandOption('--note', opts.note), localCommandOption('--max-turns', opts.maxTurns), localCommandOption('--max-calls', opts.maxCalls), localCommandOption('--max-budget-usd', opts.maxBudgetUsd), localCommandOption('--max-duration-ms', opts.maxDurationMs), localCommandOption('--model', opts.model), opts.skipPermissions ? '--skip-permissions' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/goal/goal.js'), args);
   });
   program.command('spec [action] [name] [phase]').alias('specs').description('Spec-driven development: scaffold requirements/design/tasks in .ur/specs and drive execution task-by-task').option('--goal <text>', 'Goal text for init').option('--all', 'Run all open tasks, not just the next one').option('--dry-run', 'Run offline without calling any model').option('--kernel', 'Run tasks through the agent kernel loop').option('--max-turns <n>', 'Max agentic turns per task when running').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each task (sandboxes only)').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, phase: string | undefined, opts: {
@@ -5124,11 +5134,13 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, opts.maxAttempts ? `--max-attempts ${quoteLocalCommandArg(opts.maxAttempts)}` : undefined, opts.installGates ? '--install-gates' : undefined, opts.dryRun ? '--dry-run' : undefined, opts.skipPermissions ? '--skip-permissions' : undefined, opts.maxTurns ? `--max-turns ${quoteLocalCommandArg(opts.maxTurns)}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/test-first/test-first.js'), args);
   });
-  program.command('safety [action] [rest...]').alias('safety-policy').description('Inspect project shell safety policy, initialize .ur/safety-policy.json, and evaluate risky commands').option('--command <cmd>', 'Command to evaluate with the project safety policy').option('--json', 'Output as JSON').action(async (action: string | undefined, rest: string[] = [], opts: {
+  program.command('safety [action] [rest...]').alias('safety-policy').description('Inspect safety policy, generate optional presets, and audit attack and benign fixtures').option('--command <cmd>', 'Command to evaluate with the project safety policy').option('--preset <name>', 'Generate an optional reviewed settings preset').option('--allow-domain <hostname>', 'Allow an endpoint in the generated preset (repeatable)', collectLocalCommandOption, []).option('--json', 'Output as JSON').action(async (action: string | undefined, rest: string[] = [], opts: {
     command?: string;
+    preset?: string;
+    allowDomain?: string[];
     json?: boolean;
   }) => {
-    const args = [action ? quoteLocalCommandArg(action) : undefined, ...rest.map(quoteLocalCommandArg), opts.command ? `--command ${quoteLocalCommandArg(opts.command)}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const args = [action ? quoteLocalCommandArg(action) : undefined, ...rest.map(quoteLocalCommandArg), localCommandOption('--command', opts.command), localCommandOption('--preset', opts.preset), ...(opts.allowDomain ?? []).map(value => localCommandOption('--allow-domain', value)), opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/safety/safety.js'), args);
   });
   program.command('sandbox [action] [commandArg...]').alias('sandboxctl').description('Inspect and manage the real sandbox / permission architecture: status, dependency check, policy init, and command approval levels').option('--json', 'Output as JSON').action(async (action: string | undefined, commandArg: string[] = [], opts: {
@@ -5295,7 +5307,7 @@ async function run(): Promise<CommanderCommand> {
     const args = [action ? quoteLocalCommandArg(action) : undefined, ...rest.map(quoteLocalCommandArg), opts.note ? '--note' : undefined, opts.label ? `--label ${quoteLocalCommandArg(opts.label)}` : undefined, opts.embeddings ? '--embeddings' : undefined, opts.embedModel ? `--embed-model ${quoteLocalCommandArg(opts.embedModel)}` : undefined, opts.olderThan ? `--older-than ${quoteLocalCommandArg(opts.olderThan)}` : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/knowledge/knowledge.js'), args);
   });
-  program.command('eval [action] [name] [rest...]').alias('evals').description('Isolated agent evals with redacted trajectory grading, reliability reports, and CI gates').option('--file <path>', 'Local benchmark JSON/JSONL or prompt-candidate JSON file').option('--name <suite>', 'Suite name when importing a benchmark adapter').option('--limit <n>', 'Limit imported benchmark records').option('--dry-run', 'Run offline without calling any model').option('--metrics', 'Write per-case metrics files after running').option('--model <model>', 'Model override for eval runs').option('--models <models>', 'Comma-separated model matrix for prompt optimization').option('--efforts <efforts>', 'Comma-separated effort matrix for prompt optimization').option('--judge-model <model>', 'Model override for rubric judging').option('--strategy <auto|cheap|strong|default>', 'Model routing strategy for eval route').option('--repeat <n>', 'Repeat eval run for reliability scoring and paired prompt optimization').option('--format <format>', 'Leaderboard format: html, json, or md').option('--dashboard', 'Render report as a local dashboard').option('--category <c>', 'Only run cases in this category').option('--max-turns <n>', 'Max agentic turns per case when running').option('--no-isolate', 'Run eval cases in the current worktree instead of detached worktrees').option('--min-pass-rate <n>', 'Eval gate minimum pass rate (default 1)').option('--min-trajectory-score <n>', 'Eval gate minimum normalized trajectory score').option('--min-test-pass-rate <n>', 'Eval gate minimum test pass rate').option('--max-cost-usd <n>', 'Eval gate maximum aggregate cost').option('--max-duration-ms <n>', 'Eval gate maximum aggregate duration').option('--max-pass-rate-regression <n>', 'Maximum pass-rate decrease versus baseline').option('--baseline <report>', 'Saved report used as the regression baseline').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each case (sandboxes only)').option('--offline', 'Run eval in local-first mode (cloud APIs disabled)').option('--force', 'Overwrite existing files on init/import').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, rest: string[] = [], opts: {
+  program.command('eval [action] [name] [rest...]').alias('evals').description('Isolated agent evals with redacted trajectory grading, reliability reports, and CI gates').option('--file <path>', 'Local benchmark JSON/JSONL or prompt-candidate JSON file').option('--name <suite>', 'Suite name when importing a benchmark adapter').option('--limit <n>', 'Limit imported benchmark records').option('--dry-run', 'Run offline without calling any model').option('--metrics', 'Write per-case metrics files after running').option('--model <model>', 'Model override for eval runs').option('--models <models>', 'Comma-separated model matrix for prompt optimization').option('--efforts <efforts>', 'Comma-separated effort matrix for prompt optimization').option('--judge-model <model>', 'Model override for rubric judging').option('--strategy <auto|cheap|strong|default>', 'Model routing strategy for eval route').option('--repeat <n>', 'Repeat eval run for reliability scoring and paired prompt optimization').option('--format <format>', 'Leaderboard format: html, json, or md').option('--dashboard', 'Render report as a local dashboard').option('--category <c>', 'Only run cases in this category').option('--max-turns <n>', 'Max agentic turns per case when running').option('--max-budget-usd <amount>', 'Per-case cost budget; unknown provider pricing stops a capped run').option('--timeout-ms <n>', 'Per-case execution timeout').option('--no-isolate', 'Run eval cases in the current worktree instead of detached worktrees').option('--min-pass-rate <n>', 'Eval gate minimum pass rate (default 1)').option('--min-trajectory-score <n>', 'Eval gate minimum normalized trajectory score').option('--min-test-pass-rate <n>', 'Eval gate minimum test pass rate').option('--max-cost-usd <n>', 'Eval gate maximum aggregate cost').option('--max-duration-ms <n>', 'Eval gate maximum aggregate duration').option('--max-pass-rate-regression <n>', 'Maximum pass-rate decrease versus baseline').option('--baseline <report>', 'Saved report used as the regression baseline').option('--skip-permissions', 'Pass --dangerously-skip-permissions to each case (sandboxes only)').option('--offline', 'Run eval in local-first mode (cloud APIs disabled)').option('--force', 'Overwrite existing files on init/import').option('--json', 'Output as JSON').action(async (action: string | undefined, name: string | undefined, rest: string[] = [], opts: {
     file?: string;
     name?: string;
     limit?: string;
@@ -5311,6 +5323,8 @@ async function run(): Promise<CommanderCommand> {
     dashboard?: boolean;
     category?: string;
     maxTurns?: string;
+    maxBudgetUsd?: string;
+    timeoutMs?: string;
     isolate?: boolean;
     minPassRate?: string;
     minTrajectoryScore?: string;
@@ -5324,7 +5338,7 @@ async function run(): Promise<CommanderCommand> {
     force?: boolean;
     json?: boolean;
   }) => {
-    const args = [action !== undefined ? quoteLocalCommandArg(action) : undefined, name !== undefined ? quoteLocalCommandArg(name) : undefined, ...rest.map(quoteLocalCommandArg), localCommandOption('--file', opts.file), localCommandOption('--name', opts.name), localCommandOption('--limit', opts.limit), opts.dryRun ? '--dry-run' : undefined, opts.metrics ? '--metrics' : undefined, localCommandOption('--model', opts.model), localCommandOption('--models', opts.models), localCommandOption('--efforts', opts.efforts), localCommandOption('--judge-model', opts.judgeModel), localCommandOption('--strategy', opts.strategy), localCommandOption('--repeat', opts.repeat), localCommandOption('--format', opts.format), opts.dashboard ? '--dashboard' : undefined, localCommandOption('--category', opts.category), localCommandOption('--max-turns', opts.maxTurns), opts.isolate === false ? '--no-isolate' : undefined, localCommandOption('--min-pass-rate', opts.minPassRate), localCommandOption('--min-trajectory-score', opts.minTrajectoryScore), localCommandOption('--min-test-pass-rate', opts.minTestPassRate), localCommandOption('--max-cost-usd', opts.maxCostUsd), localCommandOption('--max-duration-ms', opts.maxDurationMs), localCommandOption('--max-pass-rate-regression', opts.maxPassRateRegression), localCommandOption('--baseline', opts.baseline), opts.skipPermissions ? '--skip-permissions' : undefined, opts.offline ? '--offline' : undefined, opts.force ? '--force' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
+    const args = [action !== undefined ? quoteLocalCommandArg(action) : undefined, name !== undefined ? quoteLocalCommandArg(name) : undefined, ...rest.map(quoteLocalCommandArg), localCommandOption('--file', opts.file), localCommandOption('--name', opts.name), localCommandOption('--limit', opts.limit), opts.dryRun ? '--dry-run' : undefined, opts.metrics ? '--metrics' : undefined, localCommandOption('--model', opts.model), localCommandOption('--models', opts.models), localCommandOption('--efforts', opts.efforts), localCommandOption('--judge-model', opts.judgeModel), localCommandOption('--strategy', opts.strategy), localCommandOption('--repeat', opts.repeat), localCommandOption('--format', opts.format), opts.dashboard ? '--dashboard' : undefined, localCommandOption('--category', opts.category), localCommandOption('--max-turns', opts.maxTurns), localCommandOption('--max-budget-usd', opts.maxBudgetUsd), localCommandOption('--timeout-ms', opts.timeoutMs), opts.isolate === false ? '--no-isolate' : undefined, localCommandOption('--min-pass-rate', opts.minPassRate), localCommandOption('--min-trajectory-score', opts.minTrajectoryScore), localCommandOption('--min-test-pass-rate', opts.minTestPassRate), localCommandOption('--max-cost-usd', opts.maxCostUsd), localCommandOption('--max-duration-ms', opts.maxDurationMs), localCommandOption('--max-pass-rate-regression', opts.maxPassRateRegression), localCommandOption('--baseline', opts.baseline), opts.skipPermissions ? '--skip-permissions' : undefined, opts.offline ? '--offline' : undefined, opts.force ? '--force' : undefined, opts.json ? '--json' : undefined].filter(Boolean).join(' ');
     await runLocalTextCommand(() => import('./commands/eval/eval.js'), args);
   });
   program.command('code-index [action] [query...]').alias('codeindex').description('Build and query a local semantic code index (embeddings via the local Ollama app)').option('--graph', 'Also build or watch the structural code graph').option('--repo', 'Also build or watch the semantic repo index').option('--dry-run', 'Preview watch mode without starting a watcher').option('--json', 'Output as JSON').action(async (action: string | undefined, query: string[] = [], opts: {
@@ -5423,17 +5437,15 @@ async function run(): Promise<CommanderCommand> {
     await runLocalTextCommand(() => import('./commands/role-mode/role-mode.js'), args);
   });
   const a2a = program.command('a2a').description('Agent-to-Agent interoperability, discovery, and delegation utilities').configureHelp(createSortedHelpConfig());
-  a2a.command('card').description('Print an A2A Agent Card preview').option('--base-url <url>', 'Base URL to use for the Agent Card endpoint').option('--v1', 'Print the current A2A 1.0 Agent Card instead of the legacy 0.3 card').option('--compact', 'Output compact JSON').action(async (opts: {
+  a2a.command('card').description('Print an A2A Agent Card preview').option('--base-url <url>', 'Base URL to use for the Agent Card endpoint').option('--compact', 'Output compact JSON').action(async (opts: {
     baseUrl?: string;
-    v1?: boolean;
     compact?: boolean;
   }) => {
     const {
-      formatA2AAgentCard,
       formatA2AV1AgentCard
     } = await import('./services/agents/trends.js');
     // biome-ignore lint/suspicious/noConsole:: CLI command output
-    console.log((opts.v1 ? formatA2AV1AgentCard : formatA2AAgentCard)({
+    console.log(formatA2AV1AgentCard({
       baseUrl: opts.baseUrl
     }, !opts.compact));
     process.exit(0);
@@ -5676,7 +5688,13 @@ async function run(): Promise<CommanderCommand> {
   }
 
   // Doctor command - check installation health
-  program.command('doctor').description('Check the health of your UR auto-updater. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.').action(async () => {
+  program.command('doctor').description('Check installation health, or inspect provider and workspace readiness. Installation checks may spawn configured MCP servers; use them in trusted directories.').option('--readiness', 'Inspect connection, progress, changes and verification without spawning MCP servers').option('--json', 'Output the readiness report as JSON').action(async (options: { readiness?: boolean; json?: boolean }) => {
+    if (options.readiness || options.json) {
+      const { collectReadiness, formatReadiness } = await import('./services/readiness.js');
+      const report = await collectReadiness(getCwd());
+      console.log(formatReadiness(report, options.json === true));
+      return;
+    }
     const [{
       doctorHandler
     }, {

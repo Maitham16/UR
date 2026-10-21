@@ -60,6 +60,7 @@ export function collectVersionConsistencyErrors(root, expectedVersion) {
   }
 
   const requiredText = [
+    { path: 'sdk-python/pyproject.toml', needle: `version = "${expectedVersion}"`, label: 'Python SDK version' },
     {
       path: 'bunfig.toml',
       needle: `"MACRO.VERSION" = '"${expectedVersion}"'`,

@@ -9,6 +9,7 @@ import {
 
 const REPO = join(import.meta.dir, '..')
 const SURFACES = [
+  'sdk-python/pyproject.toml',
   'package.json',
   'bunfig.toml',
   'CHANGELOG.md',

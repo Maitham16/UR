@@ -4,94 +4,66 @@ import type { LocalCommandCall } from '../../types/command.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { getCwd } from '../../utils/cwd.js'
 
-const TS_EXAMPLE = `// Drive installed UR headlessly from a TypeScript-capable Node.js/Bun runtime.
-// Native UR 1.86 supports macOS and Linux; standalone Windows is unavailable.
-// Requires an installed \`ur\` executable and an explicit model choice.
-import { execFileSync } from 'node:child_process'
-
+const TS_EXAMPLE = `// npm install ur-agent in your project; the installed native ur executable runs the task.
+import { UrClient } from 'ur-agent/sdk'
 const model = process.env.UR_MODEL
 if (!model) throw new Error('Set UR_MODEL to a model available from your configured provider')
-const executable = process.env.UR_EXECUTABLE ?? (process.platform === 'win32' ? 'ur.exe' : 'ur')
-const output = execFileSync(executable, [
-  '-p', '--model', model, '--max-turns', '4', '--output-format', 'json',
-  'Summarize the README in one sentence',
-], { encoding: 'utf8', timeout: 1800000, maxBuffer: 64 * 1024 * 1024 })
-const result = JSON.parse(output)
-console.log(result.result ?? result.text ?? output)
+const client = new UrClient({ model, maxTurns: 4, ...(process.env.UR_EXECUTABLE ? { bin: { file: process.env.UR_EXECUTABLE } } : {}) })
+const result = await client.query('Summarize the README in one sentence')
+if (!result.ok) throw new Error(result.error)
+console.log(result.text)
 `
 
-const PY_EXAMPLE = `"""UR SDK (Python) — a thin wrapper over headless \`ur -p\`.
-
-No third-party dependencies; shells out to the installed \`ur\` binary.
-"""
-import json
-import subprocess
-from typing import Optional
-
-
-def query(prompt: str, *, model: Optional[str] = None, max_turns: Optional[int] = None,
-          output_format: str = "json", cwd: Optional[str] = None, timeout: int = 1800) -> str:
-    args = ["ur", "-p", "--output-format", output_format]
-    if max_turns:
-        args += ["--max-turns", str(max_turns)]
-    args.append(prompt)
-    env = None
-    if model:
-        import os
-        env = {**os.environ, "UR_MODEL": model}
-    proc = subprocess.run(args, capture_output=True, text=True, cwd=cwd, env=env, timeout=timeout)
-    out = proc.stdout.strip()
-    try:
-        parsed = json.loads(out)
-        if isinstance(parsed, dict):
-            return parsed.get("result") or parsed.get("text") or out
-    except json.JSONDecodeError:
-        pass
-    return out
-
-
-if __name__ == "__main__":
-    print(query("Summarize the README in one sentence", max_turns=4))
+const PY_EXAMPLE = `"""Install the bundled SDK with python3 -m pip install /path/to/ur-agent/sdk/python."""
+import os
+from ur_agent import UrClient
+model = os.environ.get("UR_MODEL")
+if not model:
+    raise RuntimeError("Set UR_MODEL to a model available from your configured provider")
+result = UrClient(model=model, max_turns=4).query("Summarize the README in one sentence")
+if not result.ok:
+    raise RuntimeError(result.error)
+print(result.text)
 `
 
-const README = `# UR SDK examples
+const README = `# Supported UR SDK examples
 
-These show how to call UR programmatically. Both wrap headless mode
-(\`ur -p --output-format json\`), so they inherit the same permission model,
-MCP configuration, and local Ollama routing as the interactive CLI.
+Install the Node client in your project with \`npm install ur-agent\`, then run
+\`example.ts\` in a TypeScript-capable Node runtime. The public \`ur-agent/sdk\`
+entry provides \`UrClient\`, \`query\`, \`stream\`, and \`UrRemoteClient\`.
+The SDK uses Node built-ins; the installed native UR executable includes its
+own runtime. No separate Bun installation is required.
 
-- \`example.ts\` — TypeScript, using the calling program's Node.js/Bun runtime
-  and built-in child-process API. Set \`UR_MODEL\` before running it.
-  Native UR 1.86 supports macOS and Linux; standalone Windows is unavailable.
-  Set \`UR_EXECUTABLE\` to its full path when the installed launcher directory
-  is absent from PATH.
-- \`example.py\` — Python, no dependencies, shells out to \`ur\`.
+Install the bundled standard-library Python client from
+\`$(npm root)/ur-agent/sdk/python\` with \`python3 -m pip install <path>\`.
+Python 3.10+ is required. A separately published PyPI package is not assumed.
 
-There is no separately published \`ur-agent/sdk\` package entry. Native UR
-itself includes its runtime; these external calling programs use their own.
+Set UR_MODEL and optionally UR_EXECUTABLE, then run example.ts or example.py.
+Local macOS/Linux runs use the same CLI configuration, model choice and
+permissions. query declines interactive permission requests unless its caller
+provides a permission callback; stream exposes requests for explicit decisions.
+Both SDKs support events, cancellation and native session resume.
 
-For agent-to-agent hand-off over HTTP instead of in-process scripting, use the
-A2A server: \`ur a2a serve\`.
+For remote control, use the authenticated canonical \`ur acp serve\` HTTP
+endpoint and UrRemoteClient / Python RemoteClient. Persist sessionId and the
+last observed sequence to reconnect without resubmitting a prompt. Remote
+approval decisions are allow_once/deny. A2A remains available for task handoff.
+
+See technical/11-integrations.md and the package SDK documentation for the full
+wire revision 1 contract, bounds, errors and examples.
 `
 
 function infoText(): string {
   return [
-    'UR SDK — drive UR programmatically (headless).',
+    'UR SDK — supported Node/TypeScript and Python clients.',
     '',
-    'TypeScript:',
-    "  import { execFileSync } from 'node:child_process'",
-    "  const executable = process.env.UR_EXECUTABLE ?? (process.platform === 'win32' ? 'ur.exe' : 'ur')",
-    "  const output = execFileSync(executable, ['-p', '--model', '<model>', '--output-format', 'json', 'Fix the failing test'])",
-    '',
-    'Python (no deps): shell out to `ur -p --output-format json` (see example.py).',
-    '',
-    'Both reuse the CLI permission model, MCP config, and local Ollama routing.',
-    'External calling programs use their own runtime; native UR includes its runtime.',
-    'Native UR 1.86 supports macOS and Linux; standalone Windows is unavailable.',
-    'Set UR_EXECUTABLE to the installed executable path when it is absent from PATH.',
-    'For HTTP agent-to-agent hand-off instead, use `ur a2a serve`.',
-    '',
-    'Scaffold runnable examples into .ur/sdk/ with:  ur sdk init',
+    'Node: npm install ur-agent; import { UrClient } from "ur-agent/sdk"',
+    'Python: python3 -m pip install <ur-agent package>/sdk/python',
+    'Local: events, explicit approvals, cancel and native session resume.',
+    'Remote: authenticated canonical ur acp serve HTTP transport with event cursors.',
+    'No runtime library dependencies; native UR includes its runtime on macOS/Linux.',
+    'Set UR_MODEL and optionally UR_EXECUTABLE for the generated examples.',
+    'Scaffold examples into .ur/sdk/: ur sdk init',
   ].join('\n')
 }
 

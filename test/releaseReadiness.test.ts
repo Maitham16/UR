@@ -46,12 +46,13 @@ test('GitHub production checks run only after the test step succeeds', () => {
   expect(workflow).toContain('name: Package Check\n        if: success()')
   expect(workflow).toContain('name: Test developer source global installation\n        if: success()')
   expect(workflow).toContain('permissions:\n  contents: read')
-  expect(workflow).toContain('npm audit --audit-level=high')
-  expect(workflow).toContain(
-    'gradle --no-daemon buildPlugin verifyPluginConfiguration verifyPlugin',
-  )
+  expect(workflow).toContain('uses: ./.github/workflows/integrations.yml')
+  const integrations = readFileSync(join(REPO, '.github/workflows/integrations.yml'), 'utf8')
+  expect(integrations).toContain('npm audit --audit-level=high')
+  expect(integrations).toContain('scripts/editor-host-smoke.mjs')
+  expect(integrations).toContain('buildPlugin verifyPluginProjectConfiguration verifyPluginStructure verifyPlugin')
 
-  const actionReferences = [...workflow.matchAll(/uses:\s+[^@\s]+@([^\s#]+)/g)]
+  const actionReferences = [...(workflow + integrations).matchAll(/uses:\s+[^@\s]+@([^\s#]+)/g)]
   expect(actionReferences.length).toBeGreaterThan(0)
   for (const [, reference] of actionReferences) {
     expect(reference).toMatch(/^[0-9a-f]{40}$/)
@@ -193,7 +194,8 @@ test('release workflow downloads artifacts with permission and keeps prereleases
   const npmPublish = workflow.slice(workflow.indexOf('  npm-publish:'))
 
   expect(workflow).not.toContain('  publish-preflight:')
-  expect(githubRelease).toContain('needs: [verify, native, prepare-npm]')
+  expect(githubRelease).toContain('needs: [verify, native, prepare-npm, integrations]')
+  expect(githubRelease).toContain('--name integration-distributions')
   expect(npmPublish).toContain('needs: [verify, prepare-npm, github-release]')
   const prepareNpm = workflow.slice(workflow.indexOf('  prepare-npm:'), workflow.indexOf('  github-release:'))
   expect(prepareNpm).toContain('needs: [verify, native]')

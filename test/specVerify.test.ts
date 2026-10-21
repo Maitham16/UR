@@ -29,7 +29,7 @@ function tempDir(prefix: string): string {
 }
 
 describe('spec verifier', () => {
-  test('dry-run verification returns mock verdict', async () => {
+  test('dry-run verification previews without claiming execution proof', async () => {
     const dir = tempDir('ur-spec-verify-')
     createSpec(dir, 'auth-refactor', 'refactor login without changing behavior')
     const runner: HeadlessRunner = async () => ({
@@ -38,13 +38,13 @@ describe('spec verifier', () => {
       isError: false,
     })
     const result = await runSpecVerification(dir, 'auth-refactor', { dryRun: true, runner })
-    expect(result.verdict).toBe('PASS')
+    expect(result.verdict).toBe('PARTIAL')
     expect(result.summary).toContain('proofs')
-    expect(loadVerificationRecord(dir, 'auth-refactor')).toBeNull()
+    expect(await loadVerificationRecord(dir, 'auth-refactor')).toBeNull()
     rmSync(dir, { recursive: true, force: true })
   })
 
-  test('verification record round-trips', () => {
+  test('legacy verification records migrate without preserving an unsupported PASS', async () => {
     const dir = tempDir('ur-spec-record-')
     createSpec(dir, 'feat', 'do a thing')
     const record: SpecVerifyRecord = {
@@ -55,9 +55,11 @@ describe('spec verifier', () => {
       generatedAt: new Date().toISOString(),
     }
     saveVerificationRecord(dir, 'feat', record)
-    const loaded = loadVerificationRecord(dir, 'feat')
-    expect(loaded?.verdict).toBe('PASS')
-    expect(loaded?.summary).toBe('ok')
+    const loaded = await loadVerificationRecord(dir, 'feat')
+    expect(loaded?.verdict).toBe('PARTIAL')
+    expect(loaded?.legacyVerdict).toBe('PASS')
+    expect(loaded?.version).toBe(2)
+    expect(loaded?.summary).toContain('ok')
     rmSync(dir, { recursive: true, force: true })
   })
 
@@ -103,15 +105,15 @@ describe('spec verifier', () => {
     expect(result.verdict).toBe('FAIL')
     expect(result.commandFailures).toBe(1)
     expect(result.subagentOutput).toContain('PASS was claimed without required proof')
-    expect(loadVerificationRecord(dir, 'feat')?.verdict).toBe('FAIL')
+    expect((await loadVerificationRecord(dir, 'feat'))?.verdict).toBe('FAIL')
     rmSync(dir, { recursive: true, force: true })
   })
 
   test('proof evaluator requires compile, test, lint, diff, and runtime evidence', () => {
     const missing = evaluateVerificationProofs('Compile proof: command `tsc` exited 0.')
     expect(missing.ok).toBe(false)
-    expect(missing.present).toEqual(['compile'])
-    expect(missing.missing).toEqual(['test', 'lint', 'diff', 'runtime'])
+    expect(missing.present).toEqual([])
+    expect(missing.missing).toEqual(['compile', 'test', 'lint', 'diff', 'runtime'])
 
     const labelsOnly = evaluateVerificationProofs([
       'Compile proof',
@@ -125,8 +127,8 @@ describe('spec verifier', () => {
     expect(labelsOnly.present).toEqual([])
 
     const complete = evaluateVerificationProofs(allProofsOutput())
-    expect(complete.ok).toBe(true)
-    expect(complete.missing).toEqual([])
+    expect(complete.ok).toBe(false)
+    expect(complete.present).toEqual([])
   })
 
   test('fails fast when deterministic gates fail', async () => {
@@ -146,7 +148,7 @@ describe('spec verifier', () => {
     expect(result.gateResults).toHaveLength(1)
     expect(result.gateResults[0].ok).toBe(false)
     expect(result.commandFailures).toBe(1)
-    expect(loadVerificationRecord(dir, 'feat')?.verdict).toBe('FAIL')
+    expect((await loadVerificationRecord(dir, 'feat'))?.verdict).toBe('FAIL')
     rmSync(dir, { recursive: true, force: true })
   })
 
@@ -161,7 +163,7 @@ describe('spec verifier', () => {
     const result = await runSpecVerification(dir, 'feat', { runner })
     expect(result.verdict).toBe('FAIL')
     expect(result.summary).toContain('failing evidence')
-    const loaded = loadVerificationRecord(dir, 'feat')
+    const loaded = await loadVerificationRecord(dir, 'feat')
     expect(loaded?.verdict).toBe('FAIL')
     expect(loaded?.commandFailures).toBe(0)
     rmSync(dir, { recursive: true, force: true })

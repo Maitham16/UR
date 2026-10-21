@@ -5,8 +5,8 @@ const codeIndex = {
   name: 'code-index',
   aliases: ['codeindex'],
   description:
-    'Build and query a local semantic code index (embeddings via the local Ollama app)',
-  argumentHint: 'build|watch|search|status|repo [query] [--graph] [--repo] [--dry-run] [--json]',
+    'Build and query current code with text, symbols, dependencies, and optional local embeddings',
+  argumentHint: 'build|watch|search|status|repo [query] [--graph] [--repo] [--dry-run] [--json] [--lexical] [--max-files=N]',
   supportsNonInteractive: true,
   load: () => import('./code-index.js'),
 } satisfies Command

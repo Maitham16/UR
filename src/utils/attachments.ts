@@ -2304,7 +2304,7 @@ export function collectSurfacedMemories(messages: ReadonlyArray<Message>): {
  * Exported for direct testing without mocking the ranker + GB gates.
  */
 export async function readMemoriesForSurfacing(
-  selected: ReadonlyArray<{ path: string; mtimeMs: number }>,
+  selected: ReadonlyArray<{ path: string; mtimeMs: number; sourceDigest?: string; excerpt?: string }>,
   signal?: AbortSignal,
 ): Promise<
   Array<{
@@ -2316,8 +2316,13 @@ export async function readMemoriesForSurfacing(
   }>
 > {
   const results = await Promise.all(
-    selected.map(async ({ path: filePath, mtimeMs }) => {
+    selected.map(async ({ path: filePath, mtimeMs, sourceDigest, excerpt }) => {
       try {
+        if (sourceDigest) {
+          const { readMemoryDocument } = await import('../memdir/retrieval.js')
+          const current = await readMemoryDocument(filePath, getCwd())
+          if (current.digest !== sourceDigest || current.status !== 'active') return null
+        }
         const result = await readFileInRange(
           filePath,
           0,
@@ -2328,10 +2333,13 @@ export async function readMemoriesForSurfacing(
         )
         const truncated =
           result.totalLines > MAX_MEMORY_LINES || result.truncatedByBytes
-        const content = truncated
+        const openingContent = truncated
           ? result.content +
             `\n\n> This memory file was truncated (${result.truncatedByBytes ? `${MAX_MEMORY_BYTES} byte limit` : `first ${MAX_MEMORY_LINES} lines`}). Use the ${FILE_READ_TOOL_NAME} tool to view the complete file at: ${filePath}`
           : result.content
+        const content = excerpt && !openingContent.includes(excerpt)
+          ? `${openingContent}\n\nRelevance-selected body excerpt (recalled data):\n${excerpt.slice(0, 1400)}`
+          : openingContent
         return {
           path: filePath,
           content,

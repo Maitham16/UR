@@ -742,7 +742,7 @@ var ActionsTreeProvider = class {
 };
 
 // src/chat/chatController.ts
-var import_node_crypto4 = require("node:crypto");
+var import_node_crypto5 = require("node:crypto");
 var vscode6 = __toESM(require("vscode"));
 
 // src/bridge/types.ts
@@ -758,6 +758,8 @@ function isCanUseToolRequest(message) {
 
 // src/bridge/urProcess.ts
 var import_node_child_process3 = require("node:child_process");
+var import_node_string_decoder = require("node:string_decoder");
+var import_node_crypto2 = require("node:crypto");
 var NdjsonBuffer = class {
   buffer = "";
   discardingOversizedLine = false;
@@ -834,6 +836,8 @@ function parseNdjsonLine(line) {
 function buildUrArgs(request) {
   const args = [
     "-p",
+    "--input-format",
+    "stream-json",
     "--output-format",
     "stream-json",
     "--verbose",
@@ -842,7 +846,6 @@ function buildUrArgs(request) {
   ];
   if (request.resumeSessionId) args.push("--resume", request.resumeSessionId);
   if (request.model) args.push("--model", request.model);
-  args.push(request.prompt);
   return args;
 }
 function buildControlResponse(requestId, decision) {
@@ -889,6 +892,10 @@ function runUrTurn(request, handlers, deps = {}) {
     } };
   }
   const stdoutBuffer = new NdjsonBuffer();
+  const stdoutDecoder = new import_node_string_decoder.StringDecoder("utf8");
+  const stderrDecoder = new import_node_string_decoder.StringDecoder("utf8");
+  const pendingPermissions = /* @__PURE__ */ new Set();
+  let killTimer;
   let stderrTail = "";
   let omittedStderrChars = 0;
   let sawResult = false;
@@ -898,6 +905,8 @@ function runUrTurn(request, handlers, deps = {}) {
   const finish = (exitCode, signal, spawnError) => {
     if (settled) return;
     settled = true;
+    clearTimeout(killTimer);
+    pendingPermissions.clear();
     const stderr = omittedStderrChars > 0 ? `[${omittedStderrChars} earlier stderr characters omitted]
 ${stderrTail}` : stderrTail;
     const protocolError = stdoutBuffer.droppedOversizedLine ? "UR emitted an oversized stream-JSON line; the extension refused to buffer unbounded output." : void 0;
@@ -931,12 +940,17 @@ ${stderrTail}` : stderrTail;
   const handleMessage = (message) => {
     if (message.type === "result") {
       sawResult = true;
-      resultIsError = message.is_error === true;
+      child.stdin?.end?.();
+      resultIsError = message.is_error === true || typeof message.subtype === "string" && message.subtype.startsWith("error");
     }
+    if (message.type === "control_cancel_request" && typeof message.request_id === "string") pendingPermissions.delete(message.request_id);
     if (isControlRequest(message) && isCanUseToolRequest(message)) {
+      pendingPermissions.add(message.request_id);
       void handlers.onControlRequest(message).then((decision) => {
+        if (settled || canceled || !pendingPermissions.delete(message.request_id)) return;
         writeControlResponse(child, message.request_id, decision);
       }).catch((error) => {
+        if (settled || canceled || !pendingPermissions.delete(message.request_id)) return;
         writeControlResponse(child, message.request_id, {
           behavior: "deny",
           message: `Permission prompt failed in the extension: ${errorMessage2(error)}`
@@ -945,13 +959,18 @@ ${stderrTail}` : stderrTail;
     }
     handlers.onMessage(message);
   };
+  child.stdin?.on?.("error", (error) => {
+    if (settled || canceled) return;
+    child.kill("SIGTERM");
+    finish(null, null, `UR input stream failed: ${errorMessage2(error)}`);
+  });
   child.stdout?.on("data", (chunk) => {
-    for (const message of stdoutBuffer.push(chunk.toString("utf8"))) {
+    for (const message of stdoutBuffer.push(stdoutDecoder.write(chunk))) {
       handleMessage(message);
     }
   });
   child.stderr?.on("data", (chunk) => {
-    const text = chunk.toString("utf8");
+    const text = stderrDecoder.write(chunk);
     const combined = stderrTail + text;
     if (combined.length > MAX_CAPTURED_STDERR_CHARS) {
       const excess = combined.length - MAX_CAPTURED_STDERR_CHARS;
@@ -976,17 +995,26 @@ ${stderrTail}` : stderrTail,
       })
     );
   });
-  child.on("exit", (code, signal) => {
-    for (const message of stdoutBuffer.flush()) {
+  child.on("close", (code, signal) => {
+    stderrTail = (stderrTail + stderrDecoder.end()).slice(-MAX_CAPTURED_STDERR_CHARS);
+    for (const message of [...stdoutBuffer.push(stdoutDecoder.end()), ...stdoutBuffer.flush()]) {
       handleMessage(message);
     }
     finish(code, signal);
   });
+  child.stdin?.write(`${JSON.stringify({ type: "control_request", request_id: (0, import_node_crypto2.randomUUID)(), request: { subtype: "initialize" } })}
+`);
+  child.stdin?.write(`${JSON.stringify({ type: "user", session_id: "", message: { role: "user", content: request.prompt }, parent_tool_use_id: null })}
+`);
   return {
     cancel: () => {
       if (settled) return;
       canceled = true;
       child.kill("SIGTERM");
+      killTimer = setTimeout(() => {
+        if (!settled) child.kill("SIGKILL");
+      }, 2e3);
+      killTimer.unref();
     }
   };
 }
@@ -1083,7 +1111,7 @@ function captureEditorSnapshot() {
 }
 
 // src/sessions/sessionStore.ts
-var import_node_crypto2 = require("node:crypto");
+var import_node_crypto3 = require("node:crypto");
 var fs3 = __toESM(require("node:fs"));
 var path4 = __toESM(require("node:path"));
 var SESSION_ID_PATTERN = /^[a-zA-Z0-9-]{1,128}$/;
@@ -1159,7 +1187,7 @@ function createSession(root, options = {}) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const requestedTitle = typeof options.title === "string" ? options.title.trim() : "";
   const session = {
-    id: (0, import_node_crypto2.randomUUID)(),
+    id: (0, import_node_crypto3.randomUUID)(),
     title: requestedTitle ? requestedTitle.slice(0, TITLE_MAX_LENGTH) : DEFAULT_TITLE,
     workspaceRoot: root,
     createdAt: now,
@@ -1257,7 +1285,7 @@ function isValidContentBlock(value) {
 }
 
 // src/chat/chatPanel.ts
-var import_node_crypto3 = require("node:crypto");
+var import_node_crypto4 = require("node:crypto");
 var vscode5 = __toESM(require("vscode"));
 
 // src/chat/webviewProtocol.ts
@@ -1324,7 +1352,7 @@ var ChatPanel = class _ChatPanel {
   }
 };
 function nonce() {
-  return (0, import_node_crypto3.randomBytes)(24).toString("base64url");
+  return (0, import_node_crypto4.randomBytes)(24).toString("base64url");
 }
 function renderChatHtml(webview) {
   const scriptNonce = nonce();
@@ -1902,7 +1930,7 @@ var ChatController = class {
     this.ensurePanel();
     const sessionId = this.record.session.id;
     const userMessage = {
-      id: (0, import_node_crypto4.randomUUID)(),
+      id: (0, import_node_crypto5.randomUUID)(),
       sessionId,
       role: "user",
       content: [{ type: "text", text: promptText }],
@@ -1961,7 +1989,7 @@ var ChatController = class {
   }
   appendChatMessage(root, sessionId, role, content) {
     if (!this.record || this.record.session.id !== sessionId) return;
-    const message = { id: (0, import_node_crypto4.randomUUID)(), sessionId, role, content, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+    const message = { id: (0, import_node_crypto5.randomUUID)(), sessionId, role, content, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
     appendMessage(root, sessionId, message);
     this.record.messages.push(message);
     this.panel?.post({ type: "messageAppended", message });

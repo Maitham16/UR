@@ -11,6 +11,7 @@ import {
   getOllamaBaseUrl,
 } from '../model/ollamaConfig.js'
 import { getProviderApiKey } from '../../services/providers/providerCredentials.js'
+import { validateEmbeddings } from '../retrieval.js'
 
 export const DEFAULT_EMBED_MODEL = 'nomic-embed-text'
 
@@ -72,6 +73,7 @@ export async function embedTexts(
       `Ollama returned ${json.embeddings?.length ?? 0} embeddings for ${texts.length} inputs`,
     )
   }
+  validateEmbeddings(json.embeddings, texts.length)
   return json.embeddings
 }
 

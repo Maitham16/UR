@@ -119,3 +119,57 @@ File Edit/Write/NotebookEdit require the exact content snapshot the model read,
 not only a modification timestamp. Full and ranged reads are compared at the
 final write boundary, preventing same-timestamp external replacements from
 being overwritten.
+
+## Execution-bound verification
+
+The shared tool executor records actual foreground `Bash`/`PowerShell`
+executions for a verification run: tool-use ID, exact command and cwd, run
+nonce, exit code, interruption, and source fingerprints before and after.
+PowerShell reports its real exit code; background/unknown completion cannot
+establish a successful proof. Shell command text alone does not count as an
+edit: the turn ledger compares workspace contents, including partial writes
+from failed commands, so `ls` is not a mutation and a Python/shell write is.
+
+`ur spec verify` and the kernel spec verifier use the same proof evaluator and
+persistence path. Compile/test/lint/diff/runtime citations must name an exact
+executed command in backticks or `execution:<tool-use-id>`, succeed in this run
+and cwd, and match the final source state. A runner error, fabricated prose,
+foreign run, failed command or source mutation cannot produce PASS. The model
+continues to choose the verification commands and engineering strategy; these
+checks qualify the result rather than imposing an execution approval gate.
+
+Schema-2 records store source and command digests plus execution references.
+Loading an old prose-only PASS migrates it to unverifiable PARTIAL; changed
+source makes a saved PASS stale/PARTIAL. Readiness inspection performs the same
+assessment without rewriting legacy records. The state covers Git-visible
+source contents/modes/index/HEAD and explicit spec/verify inputs, not arbitrary
+outside files or external services. Concurrent writers and the semantic
+appropriateness of commands still require review; this is runtime evidence,
+not cryptographic attestation of a trusted custom runner.
+
+Regression coverage: `test/executionVerification.test.ts`,
+`test/specVerify.test.ts`, `test/kernel.test.ts`, `test/verifier.test.ts`.
+
+## Provider-neutral tool discovery
+
+Large tool catalogs can now use the existing `ToolSearch` on every native UR
+provider. Portable results are ordinary text JSON with a versioned
+`ur.tool-discovery/1` envelope and complete selected schemas. The next model
+request includes those schemas in its normal tool array; no unsupported
+`tool_reference`, `defer_loading`, or beta headers are sent to native providers.
+The model chooses which tools to discover and invoke. Discovery changes prompt
+visibility only; tool calls still pass through the existing registry and its
+permission checks, including explicitly denied tools.
+
+Native default is automatic sizing: defer eligible tool schemas once their
+estimated size exceeds 10% of model context. `ENABLE_TOOL_SEARCH=true` enables
+portable discovery explicitly, `false` sends all schemas, and `auto:N` selects a
+percentage. `alwaysLoad` tools stay available. Selected names persist through
+conversation history and compaction; removed tools are not reintroduced.
+Malformed/failed discovery output does not add names. Small catalogs can remain
+inline to avoid an unnecessary discovery turn.
+
+`test/portableToolDiscovery.test.ts` measures a 100-tool fixture: selected schema
+characters versus all schema characters, preserved schemas and permissions,
+compaction carryover and ordinary text wire format. This is a prompt-payload
+regression measurement, not a measured LLM task-success improvement.

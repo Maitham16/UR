@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "dev.urnexus"
-version = "1.86.2"
+version = "1.87.0"
 
 repositories {
     mavenCentral()
@@ -32,6 +32,13 @@ dependencies {
 }
 
 intellijPlatform {
+    pluginVerification {
+        // Verify the declared build target explicitly; avoid silently changing
+        // compatibility coverage as the recommended IDE list advances.
+        ides {
+            current()
+        }
+    }
     pluginConfiguration {
         ideaVersion {
             sinceBuild.set("243")

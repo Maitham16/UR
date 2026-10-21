@@ -153,6 +153,14 @@ The worker count is a ceiling, not permission for conflicting work. Read-only
 claims can fill it; shared-checkout writers are claimed one at a time. Terminal
 non-dry-run crew results are recorded in the local learning store.
 
+Claims persist scheduler identity, a fencing token, heartbeat and child PID.
+A live scheduler or child retains ownership even with an old heartbeat; a stale
+owner cannot complete another scheduler's claim. Full dependency outputs survive
+restart. When both known processes are dead, the next attempt receives previous
+output/worktree location and unknown-outcome context for model-led reconciliation.
+Completed tasks remain complete. Foreign-host or unidentifiable ownership is
+conservative: inspect processes and effects before an explicit crew reset.
+
 ## Arena (`/arena`) — best-of-N with a judge
 
 N agents attempt the same task in isolated worktrees, a deterministic judge compares the
@@ -198,11 +206,30 @@ separately requests publishing. `agentSkillRunner.createPr` defaults to false.
 ## Goals — long-horizon persistence (`/goal`)
 
 ```
-/goal add v2-launch --objective "ship v2" --workflow release
-/goal list · /goal show v2-launch · /goal note v2-launch "auth blocked on infra"
-/goal resume v2-launch      # re-enter the goal workflow in a new session
-/goal pause|done|abandon|delete v2-launch
+/goal add release --objective "prepare the release" --criterion "release checks pass"
+/goal list · /goal show release · /goal note release "auth blocked on infra"
+/goal resume release       # model chooses work, replanning and verification
+/goal pause|done|abandon|delete release
 ```
+
+A linked `--workflow` is optional. The model can work directly, select a saved
+workflow, replan, request independent outcome verification or record a concrete
+blocker. Workflow completion is progress, not proof that the objective is done.
+Repeated `--criterion` flags define outcomes; otherwise the objective is the
+criterion. Automatic completion requires evidence for every criterion. Current
+command receipts bind successful execution to the workspace state; observed
+files require exact excerpts and hashes. Failed, stale, fabricated or inaccessible
+evidence cannot authorize completion. `goal done` is explicit manual attestation.
+
+`--max-calls`, `--max-turns`, `--max-budget-usd` and `--max-duration-ms` are
+optional aggregate limits shared by work, workflow steps and verification across
+resumes. Increasing a cap preserves prior consumption. Without a configured
+cap, useful progress has no fixed invocation ceiling. Unknown pricing stays
+unknown, and an unenforceable requested budget becomes a persistent blocker.
+SDK turns are reported usage units; external programs/services are outside this
+ledger. Two replayed responses against unchanged observed source persist a stall
+blocker. Pausing cancels the active child; an interrupted run resumes its saved
+session with uncertainty disclosed. Dry run does not change state or usage.
 
 ## Verification layer (`src/services/verifier/`)
 
@@ -211,3 +238,8 @@ loop-detector (agent stuck in a repeat cycle), project quality gates
 (`projectGates.ts`, installed by `/test-first install --install-gates`), and subagent
 nudges. `verifier.askBeforeGates` setting controls prompting. Proofs are recorded by
 `verificationProofs.ts` and consumed by `/spec verify` and `/ci-loop` evidence output.
+
+Verification receipts identify actual successful executions and the exact tested
+state. Shell/Python writes invalidate prior proof just as editor-tool writes do.
+Natural-language completion claims do not create evidence. These checks assess
+provenance and observed outcomes; they do not prove arbitrary model judgments.

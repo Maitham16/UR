@@ -221,7 +221,9 @@ import {
   extractDiscoveredToolNames,
   isDeferredToolsDeltaEnabled,
   isToolSearchEnabled,
+  supportsToolReferenceExpansion,
 } from 'src/utils/toolSearch.js'
+import { selectToolCatalog } from '../../utils/portableToolDiscovery.js'
 import { API_MAX_MEDIA_PER_REQUEST } from '../../constants/apiLimits.js'
 import { ADVISOR_BETA_HEADER } from '../../constants/betas.js'
 import {
@@ -1287,14 +1289,7 @@ async function* queryModel(
     // to predeclare all deferred tools upfront and removes limits on tool quantity.
     const discoveredToolNames = extractDiscoveredToolNames(messages)
 
-    filteredTools = tools.filter(tool => {
-      // Always include non-deferred tools
-      if (!deferredToolNames.has(tool.name)) return true
-      // Always include ToolSearchTool (so it can discover more tools)
-      if (toolMatchesName(tool, TOOL_SEARCH_TOOL_NAME)) return true
-      // Only include deferred tools that have been discovered
-      return discoveredToolNames.has(tool.name)
-    })
+    filteredTools = selectToolCatalog(tools, deferredToolNames, discoveredToolNames)
   } else {
     filteredTools = tools.filter(
       t => !toolMatchesName(t, TOOL_SEARCH_TOOL_NAME),
@@ -1304,7 +1299,8 @@ async function* queryModel(
   // Add tool search beta header if enabled - required for defer_loading to be accepted
   // Header differs by provider: 1P/Foundry use advanced-tool-use, Vertex/Bedrock use tool-search-tool
   // For Bedrock, this header must go in extraBodyParams, not the betas array
-  const toolSearchHeader = useToolSearch ? getToolSearchBetaHeader() : null
+  const nativeToolReferences = useToolSearch && supportsToolReferenceExpansion()
+  const toolSearchHeader = nativeToolReferences ? getToolSearchBetaHeader() : null
   if (toolSearchHeader && !isBedrockRuntime()) {
     if (!betas.includes(toolSearchHeader)) {
       betas.push(toolSearchHeader)
@@ -1317,7 +1313,7 @@ async function* queryModel(
 
   const useGlobalCacheFeature = shouldUseGlobalCacheScope()
   const willDefer = (t: Tool) =>
-    useToolSearch && (deferredToolNames.has(t.name) || shouldDeferLspTool(t))
+    nativeToolReferences && (deferredToolNames.has(t.name) || shouldDeferLspTool(t))
   // MCP tools are per-user → dynamic tool section → can't globally cache.
   // Only gate when an MCP tool will actually render (not defer_loading).
   const needsToolBasedCacheMarker =
@@ -1394,7 +1390,7 @@ async function* queryModel(
   // Note: For assistant messages, normalizeMessagesForAPI already normalized the
   // tool inputs, so stripCallerFieldFromAssistantMessage only needs to remove the
   // 'caller' field (not re-normalize inputs).
-  if (!useToolSearch) {
+  if (!nativeToolReferences) {
     messagesForAPI = messagesForAPI.map(msg => {
       switch (msg.type) {
         case 'user':

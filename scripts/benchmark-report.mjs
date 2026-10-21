@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
@@ -54,6 +55,21 @@ function gitCommit() {
   } catch {
     return null
   }
+}
+
+function sourceIdentity() {
+  try {
+    const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 16 * 1024 * 1024 })
+    const paths = [...new Set(git(['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', 'src', 'scripts', 'package.json', 'bun.lock', 'tsconfig.json']).split('\0').filter(Boolean))].sort()
+    const hash = createHash('sha256')
+    let files = 0
+    for (const path of paths) {
+      if (!existsSync(join(root, path))) { hash.update(JSON.stringify([path, 'deleted'])); continue }
+      if (!lstatSync(join(root, path)).isFile()) throw new Error('Unsupported source file kind')
+      hash.update(JSON.stringify(path)).update(createHash('sha256').update(readFileSync(join(root, path))).digest()); files++
+    }
+    return { dirty: git(['status', '--porcelain']).trim().length > 0, sha256: hash.digest('hex'), files, scope: 'src,scripts,package.json,bun.lock,tsconfig.json at report generation' }
+  } catch { return null }
 }
 
 function bunVersion() {
@@ -124,6 +140,28 @@ function taskResults(report) {
         ? Math.max(0, Math.round(item.durationMs))
         : null,
     failureCategory: item.passed === true ? null : failureCategory(item),
+    ...(item.metrics?.evaluationMode ? {
+      evidence: {
+        evaluationMode: item.metrics.evaluationMode,
+        executableSha256: item.metrics.executableSha256 ?? null,
+        patchSha256: item.metrics.patchSha256 ?? null,
+        verificationSha256: item.metrics.verificationSha256 ?? null,
+        completionClaim: item.metrics.completionClaim ?? 'unspecified',
+        falseCompletion: item.metrics.falseCompletion ?? null,
+        exitCode: item.metrics.exitCode ?? null,
+        testPassed: item.metrics.testPassed ?? null,
+        configuration: item.metrics.configuration ?? null,
+        provenance: item.metrics.provenance ?? null,
+        toolCalls: item.trajectory?.toolCalls ?? null,
+        failedToolCalls: item.trajectory?.failedToolCalls ?? null,
+        turns: item.trajectory?.turns ?? null,
+        humanInterventions: item.metrics.humanInterventions ?? null,
+        rollbacks: item.metrics.rollbacks ?? null,
+        costUSD: item.metrics.costUSD ?? null,
+        inputTokens: item.metrics.inputTokens ?? null,
+        outputTokens: item.metrics.outputTokens ?? null,
+      },
+    } : {}),
   }))
 }
 
@@ -135,8 +173,8 @@ function tokenUsage(report) {
     inputTokens: input ?? null,
     outputTokens: output ?? null,
     totalTokens:
-      typeof input === 'number' || typeof output === 'number'
-        ? (input ?? 0) + (output ?? 0)
+      typeof input === 'number' && typeof output === 'number'
+        ? input + output
         : null,
   }
 }
@@ -168,6 +206,7 @@ export function buildBenchmarkReport(report, options = {}) {
       name: 'ur-nexus',
       version,
       commit: options.commit ?? gitCommit(),
+      source: options.sourceIdentity ?? sourceIdentity(),
     },
     date: options.date ?? new Date().toISOString(),
     benchmark: {
@@ -196,6 +235,9 @@ export function buildBenchmarkReport(report, options = {}) {
       wallTimeMs: report.totalDurationMs ?? 0,
       tokenUsage: tokenUsage(report),
       costUSD: typeof report.totalCostUSD === 'number' ? report.totalCostUSD : null,
+      completionClaims: report.completionClaims ?? null,
+      falseCompletions: report.falseCompletions ?? null,
+      falseCompletionRate: report.falseCompletionRate ?? null,
     },
     reproduction: {
       command:

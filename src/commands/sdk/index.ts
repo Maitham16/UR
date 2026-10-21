@@ -5,7 +5,7 @@ const sdk = {
   name: 'sdk',
   aliases: ['embed'],
   description:
-    'Show how to drive UR programmatically (headless) and scaffold TS/Python SDK examples',
+    'Use supported Node/Python clients for local and remote events, approvals, cancellation and resume',
   argumentHint: 'info|init [--force] [--json]',
   supportsNonInteractive: true,
   load: () => import('./sdk.js'),

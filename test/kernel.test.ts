@@ -80,14 +80,14 @@ describe('AgentKernel', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  test('verifier stage accepts PASS with compile, test, lint, diff, and runtime proofs', async () => {
+  test('verifier stage rejects manufactured proof prose without recorded executions', async () => {
     const dir = tempDir('ur-kernel-proof-pass-')
     createSpec(dir, 'feat', 'do a thing')
     const runner: HeadlessRunner = async () => ({ output: allProofsOutput(), verdict: 'PASS', isError: false })
     const kernel = createAgentKernel({ cwd: dir, runner })
     const result = await runKernelStage(kernel, planSpecVerify(dir, 'feat'), { cwd: dir, runner })
-    expect(result.verdict).toBe('PASS')
-    expect(result.isError).toBe(false)
+    expect(result.verdict).toBe('FAIL')
+    expect(result.isError).toBe(true)
     rmSync(dir, { recursive: true, force: true })
   })
 

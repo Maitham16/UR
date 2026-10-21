@@ -273,7 +273,7 @@ Run on a fast model, auto-escalate hard steps to an "oracle":
 /escalate policy                                    # view escalation policy
 ```
 
-### `/model-doctor` (ollamaModels.ts + modelCapabilities.ts)
+### `/model-doctor` (model-doctor.ts + providers/modelProfiles.ts)
 Probes an installed Ollama model: tool-call support, context length, speed class, and
 reports "likely agent capabilities":
 ```
@@ -434,3 +434,34 @@ plus [NVIDIA NIM LLM APIs](https://docs.api.nvidia.com/nim/reference/llm-apis).
 - `--bare` forces the minimal local pipeline (`UR_CODE_SIMPLE=1`) and always uses Ollama.
 - Ollama config: `ollama.host` and `ollama.lanDiscovery` settings; per-session
   `--ollama-host`; router in `ollamaRouter.ts` load-balances across discovered hosts.
+
+## Measured model capability profiles
+
+`ur model-doctor` retains installed Ollama inspection. The same command now
+supports measured evidence for the selected native provider:
+
+```sh
+ur model-doctor <model> --provider <provider> --probe --json
+ur model-doctor <model> --provider <provider> --profile --json
+```
+
+`--probe` makes small real requests: typed tool call and echoed tool-result
+round trip, schema-constrained JSON, output-boundary continuation, and active
+stream cancellation. It never executes a filesystem or external tool and sends
+no repository contents. Provider inference may incur its normal charges.
+`--timeout-ms` bounds each check (default 60,000; accepted 1,000–300,000).
+`--profile` reads saved evidence without inference. Reports distinguish
+`verified`, `failed`, and `unobserved`; for example, no exposed output boundary
+cannot prove continuation works. Context limits remain explicitly labeled
+provider-advertised, not stress-tested by these small probes.
+
+Profiles are private atomic files in `.ur/model-profiles/`, keyed by provider,
+model and endpoint. Endpoints omit embedded credentials/query parameters.
+Evidence older than seven days is marked stale. Completed-response token usage
+is recorded; interrupted stream usage and provider-side compute/billing after
+cancellation may be unavailable. A few successful probes establish protocol
+compatibility, not general coding quality. Profiles never forbid choosing a
+model or impose an execution strategy. Reported defaults use the provider's
+context metadata, automatic tool-catalog sizing, and native structured output
+only when the probe observed a valid response; otherwise they recommend text
+validation.

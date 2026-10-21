@@ -10,16 +10,22 @@
  * Stored next to the semantic index under `.ur/code-index/graph.json`.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { posix, resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { join } from 'node:path'
 import { safeParseJSON } from '../../utils/json.js'
 import { listIndexableFiles } from './indexer.js'
+import { sha1 } from './store.js'
+import type { IndexCoverage } from './types.js'
+import { writeIndexJson } from './snapshot.js'
 
 export type CodeGraph = {
   version: 1
   builtAt: string
   files: string[]
+  hashes?: Record<string, string>
+  coverage?: IndexCoverage
+  staleFiles?: string[]
   /** file -> internal files it imports. */
   imports: Record<string, string[]>
   /** file -> internal files that import it (reverse of `imports`). */
@@ -28,85 +34,8 @@ export type CodeGraph = {
   symbols: Record<string, string[]>
 }
 
-const SRC_EXT = ['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs', '.py']
-
-const IMPORT_RES = [
-  /\bimport\s+[^'"]*?from\s*['"]([^'"]+)['"]/g,
-  /\bimport\s*['"]([^'"]+)['"]/g,
-  /\bexport\s+[^'"]*?from\s*['"]([^'"]+)['"]/g,
-  /\brequire\(\s*['"]([^'"]+)['"]\s*\)/g,
-  /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g,
-  /^\s*from\s+([.\w]+)\s+import\b/gm,
-  /^\s*import\s+([.\w]+)/gm,
-]
-
-const SYMBOL_RES = [
-  /\bexport\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/g,
-  /\bexport\s+(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g,
-  /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g,
-  /\bexport\s+(?:type|interface|enum)\s+([A-Za-z_$][\w$]*)/g,
-  /\bexport\s+default\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/g,
-  /^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gm,
-  /^\s*class\s+([A-Za-z_$][\w$]*)/gm,
-  /^\s*def\s+([A-Za-z_][\w]*)/gm,
-  /^\s*class\s+([A-Za-z_][\w]*)\s*[:(]/gm,
-]
-
-function matchAll(text: string, regexes: RegExp[]): string[] {
-  const out: string[] = []
-  for (const re of regexes) {
-    re.lastIndex = 0
-    let m: RegExpExecArray | null
-    while ((m = re.exec(text)) !== null) {
-      if (m[1]) out.push(m[1])
-    }
-  }
-  return out
-}
-
-export function extractImports(content: string): string[] {
-  return [...new Set(matchAll(content, IMPORT_RES))]
-}
-
-export function extractSymbols(content: string): string[] {
-  return [...new Set(matchAll(content, SYMBOL_RES))]
-}
-
-/** Candidate file paths for an import target path (handles .js→.ts, index, ext-less). */
-function candidates(targetNoExt: string): string[] {
-  const list: string[] = []
-  for (const ext of SRC_EXT) list.push(`${targetNoExt}${ext}`)
-  for (const ext of SRC_EXT) list.push(posix.join(targetNoExt, `index${ext}`))
-  return list
-}
-
-/** Resolve an import specifier to an internal repo file, or null if external. Pure. */
-export function resolveImport(
-  fromFile: string,
-  spec: string,
-  fileSet: Set<string>,
-): string | null {
-  let rel: string | null = null
-  if (spec.startsWith('.') && /[\\/]/.test(spec)) {
-    // JS/TS relative path import.
-    rel = posix.normalize(posix.join(posix.dirname(fromFile), spec))
-  } else if (spec.startsWith('.')) {
-    // Python relative import: leading dots = parent levels, rest = path segments.
-    const dots = spec.match(/^\.+/)?.[0].length ?? 1
-    const rest = spec.slice(dots).replace(/\./g, '/')
-    let base = posix.dirname(fromFile)
-    for (let i = 1; i < dots; i++) base = posix.dirname(base)
-    rel = posix.normalize(posix.join(base, rest))
-  } else {
-    return null // bare/external specifier
-  }
-  if (fileSet.has(rel)) return rel
-  const noExt = rel.replace(/\.(?:m|c)?[jt]sx?$/, '').replace(/\.py$/, '')
-  for (const candidate of candidates(noExt)) {
-    if (fileSet.has(candidate)) return candidate
-  }
-  return null
-}
+export { extractImports, extractSymbols, resolveImport } from './structure.js'
+import { extractImports, extractSymbols, resolveImport } from './structure.js'
 
 export type SourceFile = { path: string; content: string }
 
@@ -143,6 +72,7 @@ export function buildGraphFromFiles(sources: SourceFile[]): CodeGraph {
     version: 1,
     builtAt: new Date().toISOString(),
     files,
+    hashes: Object.fromEntries(sources.map(source => [source.path, sha1(source.content)])),
     imports,
     importedBy,
     symbols,
@@ -232,21 +162,22 @@ export type BuildGraphOptions = {
 export async function buildCodeGraph(options: BuildGraphOptions): Promise<CodeGraph> {
   const signal = options.signal ?? new AbortController().signal
   const read = options.readFile ?? ((abs: string) => readFileSync(abs, 'utf-8'))
-  const rels = (await listIndexableFiles(options.root, signal)).slice(
-    0,
-    options.maxFiles ?? 5000,
-  )
+  const candidates = await listIndexableFiles(options.root, signal)
+  const rels = candidates.slice(0, options.maxFiles)
+  const skipped: IndexCoverage['skipped'] = []
   const sources: SourceFile[] = []
   for (const rel of rels) {
+    signal.throwIfAborted()
     try {
       sources.push({ path: rel, content: read(resolve(options.root, rel)) })
     } catch {
-      // unreadable file — skip
+      skipped.push({ file: rel, reason: "Unreadable source" })
     }
   }
   const graph = buildGraphFromFiles(sources)
+  graph.coverage = { candidates: candidates.length, indexed: sources.length, omittedByLimit: candidates.length - rels.length, skipped, truncatedFiles: [], maxFiles: options.maxFiles ?? null, complete: candidates.length === sources.length }
   mkdirSync(join(options.root, '.ur', 'code-index'), { recursive: true })
-  writeFileSync(graphPath(options.root), `${JSON.stringify(graph, null, 2)}\n`)
+  writeIndexJson(graphPath(options.root), graph)
   return graph
 }
 
@@ -254,7 +185,20 @@ export function loadGraph(root: string): CodeGraph | null {
   const path = graphPath(root)
   if (!existsSync(path)) return null
   const parsed = safeParseJSON(readFileSync(path, 'utf-8'), false)
-  return parsed && typeof parsed === 'object' ? (parsed as CodeGraph) : null
+  if (!parsed || typeof parsed !== 'object') return null
+  const graph = structuredClone(parsed) as CodeGraph
+  if (!Array.isArray(graph.files) || !graph.hashes || !graph.imports || !graph.importedBy || !graph.symbols) return null
+  const current = new Set(graph.files.filter(file => {
+    try { return sha1(readFileSync(resolve(root, file), 'utf8')) === graph.hashes![file] } catch { return false }
+  }))
+  graph.staleFiles = graph.files.filter(file => !current.has(file))
+  graph.files = graph.files.filter(file => current.has(file))
+  for (const edges of [graph.imports, graph.importedBy]) for (const file of Object.keys(edges)) {
+    if (!current.has(file)) delete edges[file]
+    else edges[file] = edges[file]!.filter(target => current.has(target))
+  }
+  for (const symbol of Object.keys(graph.symbols)) graph.symbols[symbol] = graph.symbols[symbol]!.filter(file => current.has(file))
+  return graph
 }
 
 export function formatGraphStats(graph: CodeGraph): string {
@@ -265,5 +209,7 @@ export function formatGraphStats(graph: CodeGraph): string {
     `  files:   ${graph.files.length}`,
     `  imports: ${edges} internal edges`,
     `  symbols: ${symbols}`,
+    `  coverage: ${graph.coverage ? `${graph.coverage.indexed}/${graph.coverage.candidates} candidates; ${graph.coverage.omittedByLimit} omitted by limit; ${graph.coverage.skipped.length} skipped` : 'unknown (rebuild to measure)'}`,
+    `  stale sources excluded: ${graph.staleFiles?.length ?? 0}`,
   ].join('\n')
 }

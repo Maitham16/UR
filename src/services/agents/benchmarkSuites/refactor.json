@@ -1,33 +1,61 @@
 {
   "version": 1,
   "name": "builtin-refactor",
-  "description": "Small refactoring benchmark. Each case asks UR to clean up code in a fresh worktree and keep tests green.",
+  "description": "Behavior-preserving refactors graded by independent function calls against deterministic starting code.",
   "cases": [
     {
       "id": "extract-function",
       "category": "refactor",
-      "prompt": "You are in a fresh TypeScript repo. Create src/checkout.ts with a long calculateTotal(price, quantity, tax, discount) function that mixes subtotal, tax, and discount math inline. Refactor it by extracting helper functions (subtotal, taxAmount, discountAmount) while preserving behavior. Add tests and run them. Finish with VERDICT: PASS if tests pass.",
+      "prompt": "Refactor existing src/checkout.ts to export subtotal(price, quantity), taxAmount(subtotal, taxRate), discountAmount(subtotal, discountRate), and calculateTotal(price, quantity, taxRate, discountRate). Preserve total = subtotal + subtotal * taxRate - subtotal * discountRate. Keep zero and fractional inputs working. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "src/checkout.ts": "export function calculateTotal(price: number, quantity: number, tax: number, discount: number) { return price*quantity + price*quantity*tax - price*quantity*discount; }\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "cd src && (ls checkout.ts checkout.test.ts && echo present)"
+        "verdict": "PASS",
+        "testCommand": "node --experimental-strip-types \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nconst m=await load('src/checkout.ts'); for(const [p,q,t,d] of [[10,2,.2,.1],[0,8,.2,.1],[2.5,3,0,.25]]) { const s=p*q; assert.equal(m.subtotal(p,q),s); assert.equal(m.taxAmount(s,t),s*t); assert.equal(m.discountAmount(s,d),s*d); assert.ok(Math.abs(m.calculateTotal(p,q,t,d)-(s+s*t-s*d))<1e-9); }"
+        }
       }
     },
     {
       "id": "rename-fields",
       "category": "refactor",
-      "prompt": "You are in a fresh TypeScript repo. Create src/user.ts with an interface using abbreviated field names (fn, ln, em). Refactor to readable names (firstName, lastName, email) and update a small usage file. Add tests and run them. Finish with VERDICT: PASS if tests pass.",
+      "prompt": "Refactor src/user.ts User fields fn, ln, em to firstName, lastName, email. Preserve display(user) output and update src/example.ts example usage. Do not retain the abbreviated public fields. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "src/user.ts": "export interface User { fn: string; ln: string; em: string }\nexport function display(u: User) { return `${u.fn} ${u.ln} <${u.em}>`; }\n",
+          "src/example.ts": "import {display} from './user.ts'; export const example = display({fn:'Ada',ln:'Lovelace',em:'ada@example.test'});\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "cd src && (ls user.ts user.test.ts && echo present)"
+        "verdict": "PASS",
+        "testCommand": "node --experimental-strip-types \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nconst {display}=await load('src/user.ts'); assert.equal(display({firstName:'Grace',lastName:'Hopper',email:'grace@example.test'}),'Grace Hopper <grace@example.test>'); assert.equal((await load('src/example.ts')).example,'Ada Lovelace <ada@example.test>');"
+        }
       }
     },
     {
       "id": "remove-duplication",
       "category": "refactor",
-      "prompt": "You are in a fresh JavaScript repo. Create src/validators.js with three form validation functions that duplicate the same empty-check logic. Refactor to share a single isEmpty helper. Add tests and run them. Finish with VERDICT: PASS if tests pass.",
+      "prompt": "Refactor src/validators.js to export a shared isEmpty helper, used by validateName, validateEmail and validateCity. Keep their boolean behavior: null, undefined and whitespace-only strings invalid; nonblank strings valid. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "src/validators.js": "export function validateName(v){return v != null && v.trim() !== ''}\nexport function validateEmail(v){return v != null && v.trim() !== ''}\nexport function validateCity(v){return v != null && v.trim() !== ''}\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "cd src && (ls validators.js validators.test.js && echo present)"
+        "verdict": "PASS",
+        "testCommand": "node --experimental-strip-types \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nconst m=await load('src/validators.js'); for(const v of [null,undefined,'',' \\t','Ada',' X ']) { const empty=v==null || !v.trim(); assert.equal(m.isEmpty(v),empty); for(const f of ['validateName','validateEmail','validateCity']) assert.equal(m[f](v),!empty); }\nimport {readFileSync} from 'node:fs'; assert.ok((readFileSync('src/validators.js','utf8').match(/isEmpty\\s*\\(/g)||[]).length>=4,'validators must share isEmpty');"
+        }
       }
     }
   ]

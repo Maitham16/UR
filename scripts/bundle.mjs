@@ -123,3 +123,4 @@ if (
   process.exit(1)
 }
 console.log(`OK: built and verified dist at v${version} (${hits} occurrences).`)
+execFileSync(process.execPath, [join(root, 'scripts/build-sdk.mjs')], { cwd: root, stdio: 'inherit' })

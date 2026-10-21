@@ -117,13 +117,14 @@ Public eval harness (`src/services/agents/evals.ts`) with project suites under
 /eval leaderboard
 ```
 
-Cases run in fresh detached worktrees by default. `--no-isolate` is an
+Cases run in fresh detached worktrees outside UR's reserved `.ur` directory by default. `--no-isolate` is an
 explicit opt-out. A case can add `expect.trajectory` rules for required,
 forbidden, ordered, and successfully completed tools, plus tool-call,
 failure, repetition, permission-denial, and turn limits. Stream-JSON capture
 stores only control-flow metadata: normalized tool names, opaque call IDs,
-success flags, counts, and the terminal result. It does not retain prompts,
-assistant prose, paths, tool inputs, or tool outputs.
+success flags, counts, and the terminal result. The trajectory does not retain prompts, assistant prose, paths, tool inputs or
+tool outputs. The report separately retains a redacted short output preview and
+redacted verifier stdout/stderr for debugging.
 
 Use a saved report as a CI gate:
 
@@ -150,12 +151,37 @@ skipped.
 /eval builtin bug-fix --json
 ```
 
+Starting files and grader files have separate roles: `setup.files` is materialized
+before execution; `expect.testFiles` is materialized afterward in a private
+verifier directory. `UR_EVAL_VERIFY_DIR` locates those grader files. Setup survives
+save/load. All 18 built-in tasks use independent behavioral verification, including
+mutation testing, strict TypeScript compilation, real Docker execution and fresh
+Python installation. The JSON fixtures are the single suite definition.
+
+Each case records executable/patch/verifier digests, actual tool outcomes,
+completion claim, independent false-completion outcome and execution budgets.
+Unobserved human interventions and rollbacks stay unknown; text mentions are only
+diagnostics. `--timeout-ms` and `--max-budget-usd` are execution limits per case;
+`--max-duration-ms` and `--max-cost-usd` remain aggregate CI gate thresholds.
+Unknown provider pricing prevents enforcement of an explicit cost budget and
+stops that capped run. SDK `cost_status: unknown` must not be interpreted as a
+known zero price, including Ollama Cloud. Offline runs have `offline-replay`
+metrics and are not model performance measurements.
+
 ### External benchmark adapters
 `/eval bench <adapter>` plus npm scripts:
 ```
 npm run benchmark:smoke | benchmark:local | benchmark:compare | benchmark:report
 npm run benchmark:swe-bench-lite | benchmark:terminal-bench | benchmark:aider-polyglot
 ```
+Missing external runners fail unless explicitly allowed to skip. Runner exit
+status alone is not a score. The Harbor adapter runs UR's actual native agent;
+SWE-bench evaluates provided predictions; Aider requires an explicit UR runner.
+Imported task descriptions require executable verification and cannot pass on a
+plausible model answer. Full contracts and prerequisites are in
+[benchmarks/README](../benchmarks/README.md) and the
+[Harbor adapter](../benchmarks/harbor/README.md).
+
 Results are stored under `benchmarks/results/<version>/` against
 `benchmarks/result.schema.json`. The active checkout retains only the package
 version's result directory; historical result files belong to their immutable
@@ -315,6 +341,61 @@ artifact store and records their hashes. The loopback artifact server resolves
 downloads inside that store, sends `private, no-store` and sandbox CSP headers,
 serves only a small image/video MIME allow-list inline, and forces every other
 declared type to `application/octet-stream` attachment delivery.
+
+### Browser fixture execution
+
+`ur browser-qa list|validate|run <fixture> [--dry-run] [--json]` uses the same
+command for real browser verification. Fixtures live in `.ur/browser-qa/*.json`.
+`validate` checks the executable schema. `run` creates an isolated Chromium
+context for every viewport, performs the declared steps, and checks every
+assertion. It saves a JSON report, screenshot and Playwright trace for each
+viewport under `.ur/browser-qa/.results/<run-id>/`; the report includes the
+normalized fixture hash, artifact hashes, actual URL/status, errors and checks.
+CLI validation/execution failures exit nonzero. `--dry-run` validates and prints
+the exact scenario without launching a browser or implying a passing result.
+
+```json
+{
+  "name": "checkout",
+  "target": "http://localhost:3000",
+  "viewports": [{ "name": "mobile", "width": 390, "height": 844 }],
+  "steps": [{ "action": "click", "selector": "#checkout" }],
+  "assertions": [
+    { "type": "visible", "selector": "#confirmation" },
+    { "type": "text", "selector": "#confirmation", "contains": "Order received" },
+    { "type": "expression", "expression": "window.orderComplete === true" },
+    "no console errors",
+    "no horizontal overflow"
+  ]
+}
+```
+
+Assertions support `nonblank`, `visible`, `text`, `count`, `title`, `url`,
+`expression`, `no-console-errors`, `no-page-errors`, and
+`no-horizontal-overflow`. Expressions are synchronous JavaScript predicates
+executed in the page and must return boolean `true`; `js:` strings are shorthand.
+Steps support `click`, `fill`, `press`, `waitFor` and page-local `evaluate`.
+The model can write application-specific steps/predicates; UR does not choose
+an application workflow. Unknown prose assertions are rejected instead of
+reported as verified. Supported legacy strings include `page is nonblank`,
+`primary navigation is visible`, `no console errors`, and `no page errors`.
+Replace old subjective prose such as overlap expectations with a concrete
+predicate or an independently reviewed visual check.
+
+The default viewport is 1440x900, per-operation timeout is 10 seconds, and
+post-interaction settling is 100 milliseconds. Fixtures can set `timeoutMs`,
+`settleMs`, `failOnConsoleError` and `failOnPageError`; console and page errors
+fail by default. HTTP errors, navigation failures, cancellation and artifact
+capture failures also fail the run. Contexts and the browser close in `finally`.
+Install Chrome/Chromium/Edge or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to an
+existing executable. UR packages Playwright's runtime; Bun is not required by
+installed users. Each fixture runs with a fresh browser profile. Traces and
+screenshots remain local and can contain the application's displayed data.
+
+Implementation: `src/services/agents/browserQa.ts`,
+`src/commands/browser-qa/browser-qa.ts`, `src/utils/browserExecutable.ts`.
+API references: [Playwright contexts](https://playwright.dev/docs/api/class-browsercontext)
+and [page predicates](https://playwright.dev/docs/api/class-page#page-wait-for-function).
 
 ### 8. Durable side chats
 

@@ -106,3 +106,33 @@ sending anything large, and opens chat with a structured review prompt.
 and report a verdict; there is no standalone verifier CLI command today, so
 this always goes through chat, and a failed run is always shown as a
 failure, never a false success.
+
+## Packaging and host verification
+
+Build with `bun install` and `bun run build` inside this extension directory.
+`bun run package` runs the pinned official VSCE packager and produces an
+installable VSIX containing the compiled extension, manifest, README, license
+and icon. Development sources and dependencies are excluded. Users can install
+this artifact from VS Code's **Extensions: Install from VSIX**, or through
+`ur ide install` using UR's bundled artifact.
+
+From the repository root, test that exact artifact in a real isolated editor:
+
+```sh
+node scripts/editor-host-smoke.mjs --vsix /path/to/ur-inline-diffs.vsix
+# Linux: run under xvfb-run and provide --code /path/to/code if needed.
+```
+
+The host test checks packaged activation/all commands, selection-to-child
+execution, Unicode persisted chat, native session resume on the next turn, and
+cancellation. It uses a controlled CLI fixture, not paid model inference, and
+keeps test workspace/settings separate. Failed host runs retain their logs.
+Bridge tests separately exercise permission replies, withdrawn approvals,
+failed result/exit detection and output bounds. Stream bytes are decoded across
+UTF-8 boundaries and completion waits for stdout to drain after process exit.
+
+Marketplace publishing is a separate operation requiring access to the
+`ur-nexus` publisher and publisher credentials. A valid packaged VSIX does not
+mean that Marketplace publication has occurred. The supported CLI/native
+platforms remain macOS and Linux; the extension does not enable an unverified
+Windows native release.

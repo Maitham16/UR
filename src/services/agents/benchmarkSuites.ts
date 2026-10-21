@@ -26,268 +26,28 @@ const BUILTIN_SUITE_IDS: BuiltinSuiteId[] = [
   'py-package-repair',
 ]
 
-const BUILTIN_SUITES: Record<BuiltinSuiteId, EvalSuite> = {
-  'bug-fix': {
-    version: 1,
-    name: 'builtin-bug-fix',
-    description:
-      'Small bug-fixing benchmark. Each case asks UR to fix a known defect in a fresh worktree and verify with a test command.',
-    cases: [
-      {
-        id: 'off-by-one',
-        category: 'bug-fix',
-        prompt:
-          'Fix the off-by-one defect in the existing src/findIndex.js without changing its public API. Add focused tests covering first, middle, last, and missing elements, run them, and finish with VERDICT: PASS only if they pass.',
-        setup: {
-          files: {
-            'package.json': '{"type":"module"}\n',
-            'src/findIndex.js':
-              'export function findIndex(values, target) {\n  for (let i = 0; i < values.length - 1; i++) {\n    if (values[i] === target) return i\n  }\n  return -1\n}\n',
-          },
-        },
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand:
-            "node --input-type=module -e \"import {findIndex} from './src/findIndex.js'; import assert from 'node:assert/strict'; assert.equal(findIndex(['a','b','c'],'c'),2); assert.equal(findIndex(['a'],'a'),0); assert.equal(findIndex(['a'],'x'),-1)\"",
-        },
-      },
-      {
-        id: 'null-guard',
-        category: 'bug-fix',
-        prompt:
-          "Fix the existing src/greet.js so null, undefined, and blank input return 'Hello, stranger' while names keep the documented uppercase greeting. Add focused tests, run them, and finish with VERDICT: PASS only if they pass.",
-        setup: {
-          files: {
-            'package.json': '{"type":"module"}\n',
-            'src/greet.js':
-              "export function greet(name) {\n  return `Hello, ${name.toUpperCase()}`\n}\n",
-          },
-        },
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand:
-            "node --input-type=module -e \"import {greet} from './src/greet.js'; import assert from 'node:assert/strict'; assert.equal(greet(null),'Hello, stranger'); assert.equal(greet(undefined),'Hello, stranger'); assert.equal(greet('  '),'Hello, stranger'); assert.equal(greet('Ada'),'Hello, ADA')\"",
-        },
-      },
-      {
-        id: 'missing-await',
-        category: 'bug-fix',
-        prompt:
-          "Fix the existing src/fetcher.js so its try/catch handles a loader's asynchronous rejection and returns the documented fallback. Preserve the public API, add focused resolved/rejected tests, run them, and finish with VERDICT: PASS only if they pass.",
-        setup: {
-          files: {
-            'package.json': '{"type":"module"}\n',
-            'src/fetcher.js':
-              "export async function fetchData(load) {\n  try {\n    return load()\n  } catch {\n    return 'fallback'\n  }\n}\n",
-          },
-        },
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand:
-            "node --input-type=module -e \"import {fetchData} from './src/fetcher.js'; import assert from 'node:assert/strict'; assert.equal(await fetchData(async()=>42),42); assert.equal(await fetchData(async()=>{throw new Error('x')}),'fallback')\"",
-        },
-      },
-    ],
-  },
-  refactor: {
-    version: 1,
-    name: 'builtin-refactor',
-    description:
-      'Small refactoring benchmark. Each case asks UR to clean up code in a fresh worktree and keep tests green.',
-    cases: [
-      {
-        id: 'extract-function',
-        category: 'refactor',
-        prompt:
-          'You are in a fresh TypeScript repo. Create src/checkout.ts with a long calculateTotal(price, quantity, tax, discount) function that mixes subtotal, tax, and discount math inline. Refactor it by extracting helper functions (subtotal, taxAmount, discountAmount) while preserving behavior. Add tests and run them. Finish with VERDICT: PASS if tests pass.',
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: 'cd src && (ls checkout.ts checkout.test.ts && echo present)',
-        },
-      },
-      {
-        id: 'rename-fields',
-        category: 'refactor',
-        prompt:
-          'You are in a fresh TypeScript repo. Create src/user.ts with an interface using abbreviated field names (fn, ln, em). Refactor to readable names (firstName, lastName, email) and update a small usage file. Add tests and run them. Finish with VERDICT: PASS if tests pass.',
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: 'cd src && (ls user.ts user.test.ts && echo present)',
-        },
-      },
-      {
-        id: 'remove-duplication',
-        category: 'refactor',
-        prompt:
-          'You are in a fresh JavaScript repo. Create src/validators.js with three form validation functions that duplicate the same empty-check logic. Refactor to share a single isEmpty helper. Add tests and run them. Finish with VERDICT: PASS if tests pass.',
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: 'cd src && (ls validators.js validators.test.js && echo present)',
-        },
-      },
-    ],
-  },
-  'test-gen': {
-    version: 1,
-    name: 'builtin-test-gen',
-    description:
-      'Small test-generation benchmark. Each case asks UR to read existing code and add tests.',
-    cases: [
-      {
-        id: 'calc-tests',
-        category: 'test-gen',
-        prompt:
-          'You are in a fresh TypeScript repo. Create src/calc.ts with add(a,b), subtract(a,b), multiply(a,b), and divide(a,b). Ask UR to read the file and add tests in src/calc.test.ts that cover normal cases, division by zero, and at least one negative-number case. Run the tests. Finish with VERDICT: PASS if tests pass.',
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: 'cd src && (ls calc.ts calc.test.ts && echo present)',
-        },
-      },
-      {
-        id: 'string-utils-tests',
-        category: 'test-gen',
-        prompt:
-          'You are in a fresh JavaScript repo. Create src/strings.js with slugify(text) and truncate(text, max). Ask UR to add tests in src/strings.test.js covering empty strings, long strings, and non-alphanumeric input. Run the tests. Finish with VERDICT: PASS if tests pass.',
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: 'cd src && (ls strings.js strings.test.js && echo present)',
-        },
-      },
-      {
-        id: 'async-tests',
-        category: 'test-gen',
-        prompt:
-          'You are in a fresh TypeScript repo. Create src/cache.ts with an async getOrFetch(key, fetcher) cache. Ask UR to add tests in src/cache.test.ts using mocked fetchers and covering cache hits, misses, and errors. Run the tests. Finish with VERDICT: PASS if tests pass.',
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: 'cd src && (ls cache.ts cache.test.ts && echo present)',
-        },
-      },
-    ],
-  },
-  'docker-repair': {
-    version: 1,
-    name: 'builtin-docker-repair',
-    description:
-      'Small Docker repair benchmark. Each case asks UR to fix a broken Dockerfile in a fresh worktree.',
-    cases: [
-      {
-        id: 'base-image-typo',
-        category: 'docker-repair',
-        prompt:
-          "You are in a fresh repo with a broken Dockerfile that uses FROM node:22-sllm (typo). Fix the base image to node:22-slim, add a small src/index.js that prints 'ok', and make the image build. Run docker build -t test-repair . if Docker is available, otherwise check syntax with 'docker --version'. Finish with VERDICT: PASS if the Dockerfile is valid and index.js exists.",
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: "cat Dockerfile | grep -q 'FROM node:22-slim' && ls src/index.js",
-        },
-      },
-      {
-        id: 'missing-cmd',
-        category: 'docker-repair',
-        prompt:
-          "You are in a fresh repo with a Dockerfile that copies files but has no CMD or ENTRYPOINT, so the container exits immediately. Add a CMD that runs node src/server.js, create src/server.js that listens on port 3000 and responds with 'hello', and verify the files exist. Finish with VERDICT: PASS.",
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: 'cat Dockerfile | grep -qE "CMD|ENTRYPOINT" && ls src/server.js',
-        },
-      },
-      {
-        id: 'cache-layer-order',
-        category: 'docker-repair',
-        prompt:
-          'You are in a fresh repo with a Dockerfile that copies package.json after copying the entire source tree, ruining Docker layer caching. Reorder the instructions so dependencies are installed before source code is copied. Create package.json with a single dependency (e.g., leftpad) and src/index.js. Finish with VERDICT: PASS if the Dockerfile copies package.json before src/.',
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand:
-            "cat Dockerfile | awk '/COPY package\\.json/{a=NR}/COPY src\\//{b=NR} END{exit !(a && b && a < b)}' && ls package.json src/index.js",
-        },
-      },
-    ],
-  },
-  'ts-migrate': {
-    version: 1,
-    name: 'builtin-ts-migrate',
-    description:
-      'Small TypeScript migration benchmark. Each case asks UR to convert JavaScript to typed TypeScript.',
-    cases: [
-      {
-        id: 'add-types',
-        category: 'ts-migrate',
-        prompt:
-          'You are in a fresh repo. Create src/person.js with a function createPerson(name, age) that returns an object and a usage file. Ask UR to rename it to src/person.ts, add TypeScript interface Person { name: string; age: number }, annotate the function, and run npx tsc --noEmit (or a local tsc if available). Finish with VERDICT: PASS if no type errors are reported.',
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: 'ls src/person.ts',
-        },
-      },
-      {
-        id: 'null-types',
-        category: 'ts-migrate',
-        prompt:
-          'You are in a fresh repo. Create src/config.js with getConfig(key) that may return undefined. Ask UR to migrate it to src/config.ts, add strict null checks via type annotations, and create a usage file that handles undefined. Run type check. Finish with VERDICT: PASS if types are sound.',
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: 'ls src/config.ts',
-        },
-      },
-      {
-        id: 'module-types',
-        category: 'ts-migrate',
-        prompt:
-          'You are in a fresh repo. Create src/math.js with CommonJS exports (module.exports = { add, subtract }). Ask UR to migrate to src/math.ts using ESM exports, add TypeScript types, create src/math.test.ts, and run tests. Finish with VERDICT: PASS if tests pass.',
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: 'ls src/math.ts',
-        },
-      },
-    ],
-  },
-  'py-package-repair': {
-    version: 1,
-    name: 'builtin-py-package-repair',
-    description:
-      'Small Python package repair benchmark. Each case asks UR to fix packaging metadata in a fresh worktree.',
-    cases: [
-      {
-        id: 'missing-dep',
-        category: 'py-package-repair',
-        prompt:
-          "You are in a fresh Python repo with a setup.py that installs a package but forgets install_requires=['requests']. Create src/mypkg/__init__.py that imports requests. Ask UR to fix setup.py, install the package in editable mode (or write the fix), and verify the import would work. Finish with VERDICT: PASS if setup.py references requests.",
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: "grep -q 'requests' setup.py",
-        },
-      },
-      {
-        id: 'missing-pyproject',
-        category: 'py-package-repair',
-        prompt:
-          'You are in a fresh Python repo with only setup.py and no pyproject.toml. Ask UR to add a minimal pyproject.toml with build-system requires, project name, and version. Finish with VERDICT: PASS if pyproject.toml exists with [project] section.',
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: "grep -q '\\[project\\]' pyproject.toml",
-        },
-      },
-      {
-        id: 'entrypoint',
-        category: 'py-package-repair',
-        prompt:
-          "You are in a fresh Python repo with a CLI script src/mypkg/cli.py but no console_scripts entry point. Ask UR to fix setup.py or pyproject.toml so it exposes a 'mypkg' command, and create a minimal package structure. Finish with VERDICT: PASS if an entry point references mypkg.cli:main or similar.",
-        expect: {
-          contains: ['VERDICT:'],
-          testCommand: "grep -qE 'console_scripts|mypkg.cli' setup.py pyproject.toml 2>/dev/null",
-        },
-      },
-    ],
-  },
-}
+import bugFix from './benchmarkSuites/bug-fix.json'
+import refactor from './benchmarkSuites/refactor.json'
+import testGen from './benchmarkSuites/test-gen.json'
+import dockerRepair from './benchmarkSuites/docker-repair.json'
+import tsMigrate from './benchmarkSuites/ts-migrate.json'
+import pyPackageRepair from './benchmarkSuites/py-package-repair.json'
+
+const BUILTIN_SUITES = {
+  'bug-fix': bugFix,
+  'refactor': refactor,
+  'test-gen': testGen,
+  'docker-repair': dockerRepair,
+  'ts-migrate': tsMigrate,
+  'py-package-repair': pyPackageRepair,
+} as Record<BuiltinSuiteId, EvalSuite>
 
 export function listBuiltinSuiteIds(): BuiltinSuiteId[] {
   return [...BUILTIN_SUITE_IDS]
 }
 
 export function getBuiltinSuite(id: BuiltinSuiteId): EvalSuite | undefined {
-  return BUILTIN_SUITES[id]
+  return BUILTIN_SUITES[id] ? structuredClone(BUILTIN_SUITES[id]) : undefined
 }
 
 export function installBuiltinSuite(

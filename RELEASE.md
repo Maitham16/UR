@@ -20,7 +20,23 @@ with no external Bun available. The public npm package has no dependencies or
 lifecycle scripts; its Node.js launcher verifies and caches the pinned native
 release on first use.
 
-Windows native artifacts and PowerShell installers are excluded from 1.86.2.
+Both Linux runners also build the remote-worker container from their native
+payload and test actual approvals, device revocation, durable event replay and
+native session resume after container replacement. The recipe in
+`deployment/acp/` documents persistent volumes, model configuration and private
+remote access. It requires no additional Node/Bun runtime inside the image.
+
+The same immutable tag builds the Node SDK, Python wheel/source distribution,
+VS Code VSIX and JetBrains plugin archive. The integration workflow exercises
+local/remote SDK transport, the installed wheel, the packaged VSIX in an actual
+editor host, and JetBrains structure/API compatibility against its declared
+IDE target. The verified Python/editor archives are attached to the GitHub
+release and covered by build provenance. GitHub release creation waits for
+these checks as well as native/npm qualification. Marketplace and PyPI
+publication are separate publisher-account operations and are not implied by
+these downloadable assets.
+
+Windows native artifacts and PowerShell installers are excluded from 1.87.0.
 Windows native development code remains in the repository and is outside the
 public standalone release. On a matching macOS/Linux development host, use
 the pinned Bun version.
@@ -55,6 +71,7 @@ Run from the repository root:
 ```bash
 bun ci
 bun run dependencies:audit
+bunx --no-install playwright-core install chromium
 bun test
 bun run typecheck
 bun run lint
@@ -66,6 +83,15 @@ node ./bin/ur.js upgrade
 npm pack --dry-run
 npm publish --dry-run
 ```
+
+For the complete browser and functional-fixture qualification, run tests with
+`UR_REQUIRE_BROWSER_QA_TESTS=1 UR_REQUIRE_FULL_BENCHMARK_FIXTURES=1`. This requires
+a running Docker daemon, Python 3.11+ with venv support, and network access to
+install the pinned Python and TypeScript fixture dependencies. CI provides
+these prerequisites and treats missing prerequisites as failures. Internal
+regression fixtures do not measure model task-solving performance; publish
+real-provider results separately with their source/executable identity and
+known/unknown usage.
 
 A source `npm pack` is a developer bundle input, not the official production
 npm artifact. After all four native archives pass, assemble the public package
@@ -118,11 +144,14 @@ Version bump checklist (all versioned release surfaces must move together):
 4. `extensions/vscode-ur-inline-diffs/package.json` and its lockfile version
    fields (the VSIX test requires them to match the root package version)
 5. `extensions/jetbrains-ur/build.gradle.kts` `version`
-6. The `MACRO.VERSION` fallbacks in `src/commands/agent-ci/agent-ci.ts`,
+6. `sdk-python/pyproject.toml` project version and the rebuilt Node SDK output
+7. The `MACRO.VERSION` fallbacks in `src/commands/agent-ci/agent-ci.ts`,
    `src/services/agents/agenticCi.ts`, and
    `src/services/agents/featureScaffolds.ts`, and
    `src/services/agents/trends.ts`
-7. Add a `CHANGELOG.md` entry, then run `bun run build` so `dist/cli.js`
+8. Add a `CHANGELOG.md` entry, update current installation examples and regenerate
+   measured release fixtures (older evidence remains in its historical tag),
+   then run `bun run build` so `dist/cli.js`
    embeds the new version (`bun run release:check` verifies all of this).
 
 Do not publish if the package version already exists on npm.

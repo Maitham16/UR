@@ -1,4 +1,4 @@
-import { formatA2AAgentCard } from '../../services/agents/trends.js'
+import { formatA2AV1AgentCard } from '../../services/agents/trends.js'
 import type { LocalCommandCall } from '../../types/command.js'
 
 export const call: LocalCommandCall = async (args: string) => {
@@ -8,6 +8,6 @@ export const call: LocalCommandCall = async (args: string) => {
 
   return {
     type: 'text',
-    value: formatA2AAgentCard({ baseUrl }, !compact),
+    value: formatA2AV1AgentCard({ baseUrl }, !compact),
   }
 }

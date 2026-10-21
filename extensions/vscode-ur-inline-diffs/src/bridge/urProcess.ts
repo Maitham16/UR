@@ -6,6 +6,8 @@
 // new vocabulary.
 
 import { spawn as nodeSpawn } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
+import { randomUUID } from 'node:crypto'
 import type {
   ControlRequestEnvelope,
   PermissionDecision,
@@ -22,7 +24,7 @@ export interface UrChildProcess {
   stdout: NodeJS.ReadableStream | null
   stderr: NodeJS.ReadableStream | null
   stdin: NodeJS.WritableStream | null
-  on(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): void
+  on(event: 'close', listener: (code: number | null, signal: NodeJS.Signals | null) => void): void
   on(event: 'error', listener: (error: Error) => void): void
   kill(signal?: NodeJS.Signals): boolean
 }
@@ -140,6 +142,8 @@ export interface UrTurnRequest {
 export function buildUrArgs(request: Pick<UrTurnRequest, 'prompt' | 'resumeSessionId' | 'model'>): string[] {
   const args = [
     '-p',
+    '--input-format',
+    'stream-json',
     '--output-format',
     'stream-json',
     '--verbose',
@@ -148,7 +152,6 @@ export function buildUrArgs(request: Pick<UrTurnRequest, 'prompt' | 'resumeSessi
   ]
   if (request.resumeSessionId) args.push('--resume', request.resumeSessionId)
   if (request.model) args.push('--model', request.model)
-  args.push(request.prompt)
   return args
 }
 
@@ -241,6 +244,10 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
   }
 
   const stdoutBuffer = new NdjsonBuffer()
+  const stdoutDecoder = new StringDecoder('utf8')
+  const stderrDecoder = new StringDecoder('utf8')
+  const pendingPermissions = new Set<string>()
+  let killTimer: ReturnType<typeof setTimeout> | undefined
   let stderrTail = ''
   let omittedStderrChars = 0
   let sawResult = false
@@ -251,6 +258,8 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
   const finish = (exitCode: number | null, signal: NodeJS.Signals | null, spawnError?: string) => {
     if (settled) return
     settled = true
+    clearTimeout(killTimer)
+    pendingPermissions.clear()
     const stderr =
       omittedStderrChars > 0
         ? `[${omittedStderrChars} earlier stderr characters omitted]\n${stderrTail}`
@@ -306,17 +315,22 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
   const handleMessage = (message: StdoutMessage) => {
     if (message.type === 'result') {
       sawResult = true
-      resultIsError = message.is_error === true
+      child.stdin?.end?.()
+      resultIsError = message.is_error === true || (typeof message.subtype === 'string' && message.subtype.startsWith('error'))
     }
+    if (message.type === 'control_cancel_request' && typeof message.request_id === 'string') pendingPermissions.delete(message.request_id)
     if (isControlRequest(message) && isCanUseToolRequest(message)) {
+      pendingPermissions.add(message.request_id)
       void handlers
         .onControlRequest(message)
         .then(decision => {
+          if (settled || canceled || !pendingPermissions.delete(message.request_id)) return
           writeControlResponse(child, message.request_id, decision)
         })
         .catch(error => {
           // Treat a handler failure as a deny so the child never hangs
           // waiting on a prompt the extension silently dropped.
+          if (settled || canceled || !pendingPermissions.delete(message.request_id)) return
           writeControlResponse(child, message.request_id, {
             behavior: 'deny',
             message: `Permission prompt failed in the extension: ${errorMessage(error)}`,
@@ -326,13 +340,18 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
     handlers.onMessage(message)
   }
 
+  child.stdin?.on?.('error', error => {
+    if (settled || canceled) return
+    child.kill('SIGTERM')
+    finish(null, null, `UR input stream failed: ${errorMessage(error)}`)
+  })
   child.stdout?.on('data', (chunk: Buffer) => {
-    for (const message of stdoutBuffer.push(chunk.toString('utf8'))) {
+    for (const message of stdoutBuffer.push(stdoutDecoder.write(chunk))) {
       handleMessage(message)
     }
   })
   child.stderr?.on('data', (chunk: Buffer) => {
-    const text = chunk.toString('utf8')
+    const text = stderrDecoder.write(chunk)
     const combined = stderrTail + text
     if (combined.length > MAX_CAPTURED_STDERR_CHARS) {
       const excess = combined.length - MAX_CAPTURED_STDERR_CHARS
@@ -359,18 +378,24 @@ export function runUrTurn(request: UrTurnRequest, handlers: UrTurnHandlers, deps
       }),
     )
   })
-  child.on('exit', (code, signal) => {
-    for (const message of stdoutBuffer.flush()) {
+  child.on('close', (code, signal) => {
+    stderrTail = (stderrTail + stderrDecoder.end()).slice(-MAX_CAPTURED_STDERR_CHARS)
+    for (const message of [...stdoutBuffer.push(stdoutDecoder.end()), ...stdoutBuffer.flush()]) {
       handleMessage(message)
     }
     finish(code, signal)
   })
+
+  child.stdin?.write(`${JSON.stringify({ type: 'control_request', request_id: randomUUID(), request: { subtype: 'initialize' } })}\n`)
+  child.stdin?.write(`${JSON.stringify({ type: 'user', session_id: '', message: { role: 'user', content: request.prompt }, parent_tool_use_id: null })}\n`)
 
   return {
     cancel: () => {
       if (settled) return
       canceled = true
       child.kill('SIGTERM')
+      killTimer = setTimeout(() => { if (!settled) child.kill('SIGKILL') }, 2000)
+      killTimer.unref()
     },
   }
 }

@@ -14,8 +14,11 @@
         }
       },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "node --input-type=module -e \"import {findIndex} from './src/findIndex.js'; import assert from 'node:assert/strict'; assert.equal(findIndex(['a','b','c'],'c'),2); assert.equal(findIndex(['a'],'a'),0); assert.equal(findIndex(['a'],'x'),-1)\""
+        "verdict": "PASS",
+        "testCommand": "node \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nconst {findIndex}=await load('src/findIndex.js'); for(const [a,x,n] of [[[],1,-1],[[1],1,0],[[1,2,3],1,0],[[1,2,3],2,1],[[1,2,3],3,2],[[1,2,3],9,-1],[[2,2],2,0]]) assert.equal(findIndex(a,x),n);"
+        }
       }
     },
     {
@@ -29,8 +32,11 @@
         }
       },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "node --input-type=module -e \"import {greet} from './src/greet.js'; import assert from 'node:assert/strict'; assert.equal(greet(null),'Hello, stranger'); assert.equal(greet(undefined),'Hello, stranger'); assert.equal(greet('  '),'Hello, stranger'); assert.equal(greet('Ada'),'Hello, ADA')\""
+        "verdict": "PASS",
+        "testCommand": "node \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nconst {greet}=await load('src/greet.js'); for(const [x,y] of [[null,'Hello, stranger'],[undefined,'Hello, stranger'],['','Hello, stranger'],[' \\t','Hello, stranger'],['Ada','Hello, ADA'],['\u00e9va','Hello, \u00c9VA']]) assert.equal(greet(x),y);"
+        }
       }
     },
     {
@@ -44,8 +50,11 @@
         }
       },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "node --input-type=module -e \"import {fetchData} from './src/fetcher.js'; import assert from 'node:assert/strict'; assert.equal(await fetchData(async()=>42),42); assert.equal(await fetchData(async()=>{throw new Error('x')}),'fallback')\""
+        "verdict": "PASS",
+        "testCommand": "node \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nconst {fetchData}=await load('src/fetcher.js'); assert.equal(await fetchData(async()=>42),42); assert.equal(await fetchData(()=>null),null); assert.equal(await fetchData(async()=>{throw Error('async')}),'fallback'); assert.equal(await fetchData(()=>{throw Error('sync')}),'fallback');"
+        }
       }
     }
   ]

@@ -35,6 +35,7 @@ import { getInitialSettings } from '../../utils/settings/settings.js'
 import { detectProjectQualityStack } from '../projectQuality.js'
 import { detectDoneClaim, evaluateDoneGate } from './doneDetector.js'
 import { ToolEffectLedger } from './ledger.js'
+import { captureVerificationState, changedVerificationFiles, type VerificationState } from './executionEvidence.js'
 import { LoopDetector, type LoopHit } from './loopDetector.js'
 import {
   hasNonIgnoredEdits,
@@ -104,6 +105,7 @@ export class Verifier {
   private nudgedTurns = new Set<string>()
   private gateApprovalRequestedTurns = new Set<string>()
   private userTaskHintByTurn = new Map<string, string>()
+  private sourceBeforeByTurn = new Map<string, Promise<VerificationState | undefined>>()
   private maxRejections: number
   private cwd: string
   private enableSubagentNudge: boolean
@@ -151,12 +153,17 @@ export class Verifier {
   }
 
   /** Reset per-turn state at the start of each new user request. */
-  beginTurn(turnId: string, userTaskHint?: string): void {
+  async beginTurn(turnId: string, userTaskHint?: string): Promise<void> {
     this.loops.reset()
     this.rejectionsByTurn.delete(turnId)
     this.nudgedTurns.delete(turnId)
     this.gateApprovalRequestedTurns.delete(turnId)
     if (userTaskHint) this.userTaskHintByTurn.set(turnId, userTaskHint)
+    if (this.mode !== 'off') {
+      const before = captureVerificationState(this.cwd).catch(() => undefined)
+      this.sourceBeforeByTurn.set(turnId, before)
+      await before
+    }
   }
 
   /**
@@ -185,6 +192,14 @@ export class Verifier {
     hadToolCalls: boolean,
   ): Promise<CheckResult> {
     if (this.mode === 'off') return { ok: true }
+    const before = await this.sourceBeforeByTurn.get(turnId)
+    if (before && this.ledger.get(turnId)?.effects.some(effect =>
+      effect.toolName === 'Bash' || effect.toolName === 'PowerShell')) {
+      try {
+        const after = await captureVerificationState(this.cwd)
+        this.ledger.recordObservedChanges(turnId, changedVerificationFiles(before, after))
+      } catch { /* An unavailable observation is never recorded as proof of mutation. */ }
+    }
     if (this.shouldBail(turnId)) {
       return { ok: true }
     }
@@ -353,6 +368,7 @@ export class Verifier {
     this.nudgedTurns.delete(turnId)
     this.gateApprovalRequestedTurns.delete(turnId)
     this.userTaskHintByTurn.delete(turnId)
+    this.sourceBeforeByTurn.delete(turnId)
   }
 
   private bumpRejection(turnId: string): void {

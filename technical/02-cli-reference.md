@@ -70,6 +70,7 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | `ur update` / `ur up` | Self-update (`autoUpdatesChannel` setting selects channel) | `ur update` |
 | `ur rollback [target]` | Roll back an update | `ur rollback` |
 | `ur doctor` | Installation health check | `ur doctor` |
+| `ur doctor --readiness [--json]` | Read-only active-provider diagnostics, sandbox availability, changed files, proof freshness, goal costs and recovery; no model generation or MCP startup | `ur doctor --readiness --json` |
 | `ur log` / `ur error` | Show logs / recent errors | — |
 | `ur export` | Export conversation data | — |
 | `ur session status [id]` | Inspect an explicit session, or the latest resumable session for the current project | `ur session status --json` |
@@ -86,9 +87,34 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | `ur provider models [provider]` | List models a provider offers | `ur provider models openrouter` |
 | `ur provider select-model <provider> <model...>` | Pin a model for a provider | — |
 | `ur connect [action] [provider]` | Connect/store credentials (also `/connect` in REPL) | `ur connect openrouter --key sk-…` |
-| `ur model-doctor [model]` | Probe a local Ollama model's agent capabilities | `ur model-doctor llama3.3` |
+| `ur model-doctor [model]` | Default: Ollama metadata estimates. `--profile [--provider ID]`: saved endpoint-bound evidence. `--probe [--provider ID]`: explicit real tool/JSON/continuation/cancellation requests and saved profile; may incur provider usage, does not restrict model choice | `ur model-doctor --profile` |
 | `ur model-route [task...]` | Recommend best model for a task | `ur model-route "refactor auth"` |
 | `ur local-first` | Report offline/no-cloud readiness | `ur local-first --json` |
+
+Interactive `/ur-doctor [--json]` uses the same readiness service as
+`ur doctor --readiness`. A passed diagnostic does not establish that the model
+can complete a task or call tools. Choose the provider/model with `/model`,
+then submit a small task. The report preserves unknown cost separately from
+reported cost, and treats stale/unverifiable spec proof as PARTIAL. Saved goal
+verification is labeled current/stale/unverifiable without rewriting history.
+
+### Optional safety configuration
+
+```sh
+ur safety status --json
+ur safety check --command "bun test" --json
+ur safety audit --json
+ur safety init --preset sandboxed --allow-domain example.com
+ur --settings .ur/sandboxed.settings.json
+```
+
+`init --preset sandboxed` creates a separate file and refuses overwrite.
+Repeated `--allow-domain` values are exact hostnames. Selecting the reviewed
+file with `--settings` opts into its required sandbox, strict proxy host policy,
+private-file and current credential-name restrictions. Generation changes no
+active permission mode. See [scope and exceptions](12-security-sandbox-stability.md#opt-in-sandboxed-preset).
+`audit` is an offline detector/policy regression report, not model-attack or
+OS-enforcement attestation.
 
 ### MCP
 | Command | Purpose | Example |
@@ -128,15 +154,15 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 | Command | Purpose | Example |
 |---|---|---|
 | `ur a2a serve` | Negotiated Agent-to-Agent server with automatic client compatibility | `UR_A2A_TOKEN=… ur a2a serve --port 8765` |
-| `ur a2a card` | Print the legacy A2A card; `--v1` previews the current A2A 1.0 card | `ur a2a card --v1 --base-url https://host` |
+| `ur a2a card` | Print the current A2A 1.0 card | `ur a2a card --base-url https://host` |
 | `ur a2a token mint / verify <token>` | Mint/verify A2A tokens | — |
 | `ur ag-ui serve` | Secure AG-UI HTTP/SSE adapter with capability discovery | `ur ag-ui serve --allow-origin https://app.example` |
 | `ur acp stdio` | Standard Agent Client Protocol editor connection with durable lifecycle/replay, modes, permissions, tools, and streaming | `ur acp stdio` |
 | `ur acp serve / stop / status` | UR HTTP compatibility API used by the bundled IDE extensions | `ur acp serve --port 9100` |
-| `ur server` | Direct-connect HTTP session server (`--port`, `--host`, `--auth-token`, `--unix`, `--workspace`, `--idle-timeout`, `--max-sessions`, `--permission-mode`) | `ur server --port 8080 --auth-token t0k3n` |
+| Internal direct-connect server | Source implementation requires `DIRECT_CONNECT`, excluded from public builds | Use `ur acp serve` for public remote sessions |
 | `ur ssh <host> [dir]` | Run UR against a remote host over SSH | `ur ssh devbox ~/repo` |
 | `ur open <cc-url>` | Open a deep link | — |
-| `ur remote-control` (`rc`, `remote`, `sync`, `bridge`) | Serve this machine for remote-control clients (mobile/web) | `ur rc` |
+| Internal remote-control bridge | Source implementation requires `BRIDGE_MODE`, excluded from public builds | Use `ur acp serve` and its scoped device credentials |
 | `ur daemon [subcommand]` | Supervisor daemon (feature-gated) | — |
 | `ur environment-runner` / `ur self-hosted-runner` | Headless runner processes (feature-gated) | — |
 

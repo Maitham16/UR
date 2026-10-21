@@ -23,10 +23,14 @@ export type IndexedFile = {
   /** sha1 of the file's UTF-8 content at index time (incremental-update key). */
   hash: string
   chunkIds: string[]
+  symbols?: string[]
+  imports?: string[]
+  /** Last indexed source line; coverage reports files with omitted chunks. */
+  indexedThroughLine?: number
 }
 
 export type CodeIndex = {
-  version: 1
+  version: 1 | 2
   /** Embedding model the vectors were produced with. */
   model: string
   /** Vector dimensionality (0 until the first chunk is embedded). */
@@ -38,15 +42,29 @@ export type CodeIndex = {
   files: Record<string, IndexedFile>
   /** chunk id -> chunk. */
   chunks: Record<string, CodeChunk>
+  coverage?: IndexCoverage
+  embedding?: { available: boolean; reason?: string }
+}
+
+export type IndexCoverage = {
+  candidates: number
+  indexed: number
+  omittedByLimit: number
+  skipped: Array<{ file: string; reason: string }>
+  truncatedFiles: string[]
+  maxFiles: number | null
+  complete: boolean
 }
 
 export type CodeSearchHit = {
   file: string
   startLine: number
   endLine: number
-  /** Cosine similarity in [-1, 1]; higher is more relevant. */
+  /** Hybrid relevance score; higher is more relevant, not a probability. */
   score: number
   preview: string
+  sourceHash?: string
+  reasons?: string[]
 }
 
 export type IndexBuildStats = {
@@ -58,4 +76,6 @@ export type IndexBuildStats = {
   reused: boolean
   model: string
   dim: number
+  coverage: IndexCoverage
+  embedding: { available: boolean; reason?: string }
 }

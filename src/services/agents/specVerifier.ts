@@ -13,9 +13,9 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { safeParseJSON } from '../../utils/json.js'
-import { extractVerdict } from './cliStepRunner.js'
 import {
   defaultHeadlessRunner,
   makeDryHeadlessRunner,
@@ -25,14 +25,25 @@ import type { AgentKernel } from './kernel.js'
 import type { SpecMeta, SpecTask } from './spec.js'
 import { loadVerifyConfig, runGateCommands } from '../verifier/projectGates.js'
 import type { Verdict } from './executor.js'
-import { enforceNoPassWithoutProof } from './verificationProofs.js'
+import { runExecutionBoundVerification } from './runVerification.js'
+import { captureVerificationState, type VerificationEvidence } from '../verifier/executionEvidence.js'
+import { evaluateVerificationProofs, REQUIRED_VERIFICATION_PROOFS, type VerificationProofCheck } from './verificationProofs.js'
 
 export type SpecVerifyRecord = {
-  version: 1
+  version: 1 | 2
   verdict: Verdict
   summary: string
   commandFailures: number
   generatedAt: string
+  freshness?: 'current' | 'stale' | 'unverifiable'
+  stateSha256?: string
+  runId?: string
+  legacyVerdict?: Verdict
+  executions?: Array<{
+    id: string; commandSha256: string; exitCode: number | null
+    beforeStateSha256?: string; afterStateSha256?: string
+  }>
+  proofs?: VerificationProofCheck['executionIds']
 }
 
 export type GateResult =
@@ -56,6 +67,7 @@ export type SpecVerifyResult = {
   gateResults: GateResult[]
   subagentOutput: string
   generatedAt: string
+  evidence?: VerificationEvidence
 }
 
 export type SpecVerifyOptions = {
@@ -78,17 +90,45 @@ function reportPath(cwd: string, name: string): string {
   return join(cwd, '.ur', 'specs', name, REPORT_FILE)
 }
 
-export function loadVerificationRecord(cwd: string, name: string): SpecVerifyRecord | null {
+export async function loadVerificationRecord(cwd: string, name: string, options: { migrateLegacy?: boolean } = {}): Promise<SpecVerifyRecord | null> {
   const path = recordPath(cwd, name)
   if (!existsSync(path)) return null
   const parsed = safeParseJSON(readFileSync(path, 'utf-8'), false)
   if (!parsed || typeof parsed !== 'object') return null
-  return parsed as SpecVerifyRecord
+  const record = parsed as SpecVerifyRecord
+  if (![1, 2].includes(record.version) || !['PASS', 'FAIL', 'PARTIAL'].includes(record.verdict) ||
+    typeof record.summary !== 'string' || typeof record.generatedAt !== 'string' ||
+    !Number.isSafeInteger(record.commandFailures) || record.commandFailures < 0) return null
+  if (record.version === 1) {
+    const migrated: SpecVerifyRecord = {
+      ...record, version: 2, freshness: 'unverifiable', legacyVerdict: record.verdict,
+      verdict: record.verdict === 'PASS' ? 'PARTIAL' : record.verdict,
+      summary: `${record.summary} [Legacy verification has no execution-bound source evidence; rerun verification.]`,
+    }
+    if (options.migrateLegacy !== false) saveVerificationRecord(cwd, name, migrated)
+    return migrated
+  }
+  let current: string | undefined
+  try { current = (await captureVerificationState(cwd)).sha256 } catch { /* Unavailable evidence cannot establish a current PASS. */ }
+  const proofBound = REQUIRED_VERIFICATION_PROOFS.every(kind =>
+    Array.isArray(record.executions) && record.executions.some(execution =>
+      execution.id === record.proofs?.[kind] && execution.exitCode === 0 &&
+      /^[a-f0-9]{64}$/u.test(execution.commandSha256) &&
+      execution.beforeStateSha256 === record.stateSha256 && execution.afterStateSha256 === record.stateSha256))
+  const freshness = record.verdict === 'PASS' && !proofBound ? 'unverifiable' : record.stateSha256 && current
+    ? record.stateSha256 === current ? 'current' : 'stale'
+    : 'unverifiable'
+  return {
+    ...record, freshness,
+    ...(record.verdict === 'PASS' && freshness !== 'current'
+      ? { verdict: 'PARTIAL' as const, summary: `${record.summary} [${freshness} source evidence; rerun verification.]` }
+      : {}),
+  }
 }
 
-export function listVerificationRecords(cwd: string, name: string): SpecVerifyRecord[] {
+export async function listVerificationRecords(cwd: string, name: string): Promise<SpecVerifyRecord[]> {
   const records: SpecVerifyRecord[] = []
-  let current = loadVerificationRecord(cwd, name)
+  const current = await loadVerificationRecord(cwd, name)
   // Future: append-only log. For now, one current record.
   if (current) records.push(current)
   return records
@@ -98,6 +138,24 @@ export function saveVerificationRecord(cwd: string, name: string, record: SpecVe
   const path = recordPath(cwd, name)
   mkdirSync(join(cwd, '.ur', 'specs', name), { recursive: true })
   writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`)
+}
+
+/** One persistence path for direct and kernel spec verification. Raw command output stays in its existing transcript. */
+export function persistVerificationResult(cwd: string, name: string, result: SpecVerifyResult): void {
+  const evidence = result.evidence
+  saveVerificationRecord(cwd, name, {
+    version: 2, verdict: result.verdict, summary: result.summary,
+    commandFailures: result.commandFailures, generatedAt: result.generatedAt,
+    freshness: evidence?.stateSha256 ? 'current' : 'unverifiable',
+    stateSha256: evidence?.stateSha256, runId: evidence?.runId,
+    proofs: evaluateVerificationProofs(result.subagentOutput, evidence).executionIds,
+    executions: evidence?.executions.map(execution => ({
+      id: execution.id, commandSha256: createHash('sha256').update(execution.command).digest('hex'),
+      exitCode: execution.exitCode, beforeStateSha256: execution.beforeStateSha256,
+      afterStateSha256: execution.afterStateSha256,
+    })),
+  })
+  writeVerificationReport(cwd, name, result)
 }
 
 export function writeVerificationReport(
@@ -123,6 +181,12 @@ export function writeVerificationReport(
         ? `- ✓ \`${g.command}\` passed`
         : `- ✗ \`${g.command}\` failed (exit ${(g as GateResult & { ok: false }).exitCode ?? 'killed'})`,
     ),
+    '',
+    '## Execution evidence',
+    `Run: ${result.evidence?.runId ?? 'unavailable'}`,
+    `Source SHA-256: ${result.evidence?.stateSha256 ?? 'unavailable'}`,
+    ...(result.evidence?.executions ?? []).map(execution =>
+      `- execution:${execution.id}: exit=${execution.exitCode ?? 'unknown'}; before=${execution.beforeStateSha256 ?? 'unknown'}; after=${execution.afterStateSha256 ?? 'unknown'}`),
     '',
     '## Subagent output',
     '',
@@ -233,18 +297,6 @@ async function runDeterministicGates(cwd: string): Promise<{ results: GateResult
   return { results, failed: true }
 }
 
-function countCommandFailures(output: string): number {
-  const markers = ['[ERROR]', 'Command failed', 'exit code 1', 'Error:', 'FAILED']
-  let count = 0
-  const lower = output.toLowerCase()
-  for (const marker of markers) {
-    const re = new RegExp(marker.replace(/\[/g, '\\[').replace(/\]/g, '\\]').toLowerCase(), 'g')
-    const matches = lower.match(re)
-    if (matches) count += matches.length
-  }
-  return count
-}
-
 export async function runSpecVerification(
   cwd: string,
   name: string,
@@ -268,7 +320,7 @@ export async function runSpecVerification(
   if (!spec) throw new Error(`Spec not found: ${name}`)
 
   // 1. Deterministic gates first.
-  const gateRun = await runDeterministicGates(cwd)
+  const gateRun = options.dryRun ? { results: [] as GateResult[], failed: false } : await runDeterministicGates(cwd)
   if (gateRun.failed) {
     const generatedAt = new Date().toISOString()
     const summary = `Verification failed at project gates: ${gateRun.results.filter(r => !r.ok).map(r => r.command).join(', ')}`
@@ -280,15 +332,7 @@ export async function runSpecVerification(
       subagentOutput: '',
       generatedAt,
     }
-    const record: SpecVerifyRecord = {
-      version: 1,
-      verdict: 'FAIL',
-      summary,
-      commandFailures: result.commandFailures,
-      generatedAt,
-    }
-    saveVerificationRecord(cwd, name, record)
-    writeVerificationReport(cwd, name, result)
+    persistVerificationResult(cwd, name, result)
     return result
   }
 
@@ -298,7 +342,7 @@ export async function runSpecVerification(
   const tasksMd = readPhase(cwd, name, 'tasks') ?? ''
   const tasks = parseTasks(tasksMd)
   const { diff, changedFiles } = await captureDiff(cwd)
-  const priorVerifications = listVerificationRecords(cwd, name)
+  const priorVerifications = await listVerificationRecords(cwd, name)
 
   const evidence: SpecVerifyEvidence = {
     spec,
@@ -312,22 +356,24 @@ export async function runSpecVerification(
 
   // 3. Deep verification subagent.
   const prompt = buildVerifierPrompt(evidence)
-  const out = await runner({
+  const { out, evidence: executionEvidence, strict } = await runExecutionBoundVerification(runner, {
     cwd,
     prompt,
     maxTurns: options.maxTurns,
     skipPermissions: options.skipPermissions,
   })
 
-  const initialVerdict = extractVerdict(out.output) ?? 'PARTIAL'
-  const strict = enforceNoPassWithoutProof(initialVerdict, out.output)
-  const verdict = strict.verdict
-  const commandFailures = countCommandFailures(strict.output) + (strict.proofFailure ? 1 : 0)
+  const verdict = options.dryRun && !out.isError ? 'PARTIAL' : strict.verdict
+  const commandFailures = Math.max(
+    executionEvidence.executions.filter(execution => execution.exitCode !== 0 || execution.interrupted).length,
+    out.isError || strict.proofFailure ? 1 : 0,
+  )
   const generatedAt = new Date().toISOString()
 
-  const summary =
-    verdict === 'PASS'
-      ? 'All required proofs (compile, test, lint, diff, runtime) were demonstrated by the verifier.'
+  const summary = options.dryRun
+    ? 'Dry-run preview: no execution proofs were established.'
+    : verdict === 'PASS'
+      ? 'All required proofs (compile, test, lint, diff, runtime) reference successful recorded executions of the current source state.'
       : verdict === 'FAIL'
         ? 'The verifier found failing evidence. See subagent output for details.'
         : 'The verifier could not reach a definitive PASS/FAIL verdict.'
@@ -339,19 +385,11 @@ export async function runSpecVerification(
     gateResults: gateRun.results,
     subagentOutput: strict.output,
     generatedAt,
-  }
-
-  const record: SpecVerifyRecord = {
-    version: 1,
-    verdict,
-    summary,
-    commandFailures,
-    generatedAt,
+    evidence: executionEvidence,
   }
 
   if (!options.dryRun) {
-    saveVerificationRecord(cwd, name, record)
-    writeVerificationReport(cwd, name, result)
+    persistVerificationResult(cwd, name, result)
   }
 
   return result

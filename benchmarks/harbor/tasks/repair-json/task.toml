@@ -1,0 +1,20 @@
+schema_version = "1.4"
+
+[metadata]
+name = "ur-adapter-repair-json"
+description = "Small original task for qualifying the UR Harbor adapter; not a Terminal-Bench leaderboard task."
+
+[agent]
+timeout_sec = 240
+
+[verifier]
+timeout_sec = 30
+
+[environment]
+build_timeout_sec = 300
+cpus = 2
+memory_mb = 2048
+storage_mb = 4096
+
+[[artifacts]]
+source = "/app/normalize.py"

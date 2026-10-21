@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.87.0
+
+- Verification now binds command receipts to the actual execution and source
+  state. Stale, failed, unrelated or fabricated evidence cannot mark a task
+  verified; shell and script mutations participate in change tracking.
+- Workflows, crews, background work and persistent goals retain ownership and
+  progress across interruption. Goals support model-directed replanning,
+  criterion-specific outcomes and optional aggregate budgets without imposing
+  a fixed task strategy or a default total invocation ceiling.
+- Browser QA executes assertions and interactions in a real browser, records
+  viewport screenshots, traces and console errors, and fails on broken behavior.
+  Evaluation suites use independent behavioral graders, record provenance and
+  false completion, and can invoke real external benchmark runners through
+  the Harbor adapter or an explicitly configured runner.
+- Memory retrieval searches content with multilingual and structural signals,
+  tracks provenance, conflict and expiry, and invalidates stale repository
+  entries. Optional embeddings remain optional. Provider profiles record tested
+  capabilities, and selective tool discovery works across native providers.
+- Added dependency-free Node and Python SDKs with events, approvals, cancellation
+  and session resume. Editor integrations use the bidirectional CLI transport;
+  remote clients share authenticated ACP sessions and replay cursors.
+- Remote sessions persist events and pending approvals, support scoped device
+  access and revocation, and expose explicit interrupted states. Optional team
+  policy adds roles, shared request quotas, scoped environment secrets, reviewed
+  automation and a verifiable local audit trail.
+- Added a first-task guide, shared readiness diagnostics and an opt-in sandbox
+  preset. Fixed filesystem permission matching and report unknown cloud pricing
+  as unknown in SDK results, goal accounting and evaluation reports.
+- Kept one canonical command per capability and updated technical documentation,
+  installation and release guidance. Native macOS/Linux, npm and Homebrew
+  installations continue to run without a separate Bun installation. Windows
+  native publication, Apple notarization and marketplace publication remain
+  outside this release pending their respective prerequisites.
+
 ## 1.86.2
 
 - Fixed stalled output-limit recovery in the shared native-provider agent loop.

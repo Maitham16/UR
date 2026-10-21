@@ -31,7 +31,7 @@ import { extractVerdict } from './cliStepRunner.js'
 import type { Verdict } from './executor.js'
 import { loadVerifyConfig, runGateCommands } from '../verifier/projectGates.js'
 import type { SpecMeta, SpecTask } from './spec.js'
-import { enforceNoPassWithoutProof } from './verificationProofs.js'
+import { runExecutionBoundVerification } from './runVerification.js'
 import { readTaskMemory } from '../context/projectContextManifest.js'
 import {
   formatResolvedMemory,
@@ -222,14 +222,13 @@ function defaultVerifier(): Verifier {
       }
 
       const runner = options.runner ?? defaultHeadlessRunner()
-      const out = await runner({
+      const { out, evidence, strict } = await runExecutionBoundVerification(runner, {
         cwd: stage.context.cwd,
         prompt: stage.instructions ?? stage.goal,
         maxTurns: options.maxTurns,
         skipPermissions: options.skipPermissions,
       })
-      const initialVerdict = out.verdict ?? extractVerdict(out.output) ?? 'PARTIAL'
-      const strict = enforceNoPassWithoutProof(initialVerdict, out.output)
+      gateResults.push({ kind: 'record', path: 'verification-evidence', record: evidence })
       if (strict.proofFailure) {
         gateResults.push({
           kind: 'note',

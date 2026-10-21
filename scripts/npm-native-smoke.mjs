@@ -6,7 +6,7 @@ import { createServer } from 'node:http'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { assembleNativeNpmPackage } from './npm-native-package.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -86,6 +86,8 @@ try {
   assert(!existsSync(join(packageRoot, 'node_modules')), 'Public npm package installed a dependency tree')
   const absentBun = await run('/bin/sh', ['-c', 'if command -v bun >/dev/null 2>&1; then exit 1; fi'])
   assert.equal(absentBun.status, 0)
+  const sdkModule = pathToFileURL(join(packageRoot, 'sdk/index.js')).href
+  await run(process.execPath, ['--input-type=module', '-e', `const sdk=await import(${JSON.stringify(sdkModule)}); for (const name of ['UrClient','UrRemoteClient','stream','query']) if(typeof sdk[name]!=='function') throw new Error('Missing SDK export '+name);`])
   server = createServer((request, response) => {
     requests.push({ method: request.method, url: request.url })
     writeFileSync(join(work, 'requests.json'), `${JSON.stringify(requests, null, 2)}\n`)

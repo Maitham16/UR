@@ -1,5 +1,15 @@
+import type { AcpHttpSessionManager } from './acpHttpSessions.js'
+
 export type AcpMethod =
   | 'initialize'
+  | 'session/events'
+  | 'session/resume'
+  | 'session/approve'
+  | 'device/new'
+  | 'device/revoke'
+  | 'team/status'
+  | 'team/audit'
+  | 'team/reconcile'
   | 'session/new'
   | 'session/prompt'
   | 'session/cancel'
@@ -83,4 +93,8 @@ export type AcpServeOptions = {
   cwd: string
   dryRun?: boolean
   debug?: boolean
+  /** Internal injectable runtime for authenticated transport integration tests. */
+  sessionManager?: AcpHttpSessionManager
+  /** Trusted server policy path; defaults to UR_ACP_TEAM_POLICY. */
+  teamPolicyPath?: string
 }

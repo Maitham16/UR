@@ -57,10 +57,71 @@ UR.md / UR.local.md and detects stale/duplicate/conflicting entries.
 
 ### Semantic memory index
 ```
-/semantic-memory build            # embed project memory (local Ollama embeddings)
+/semantic-memory build            # current bodies + optional local Ollama embeddings
 /semantic-memory search "how do we rotate tokens"
 /semantic-memory status
+/semantic-memory build --lexical  # explicit offline text retrieval
 ```
+
+The canonical command refreshes source content on every build/search. Sources are
+`UR.md`, `README.md`, and recursive Markdown/text/JSONL files under `.ur/memory`
+and `.ur/docs`; quarantine and hidden directories are excluded. Search combines
+Unicode-aware lexical scores with cosine similarity when embeddings are available.
+Arabic, accented words, camelCase identifiers and space-less East Asian text are
+retained. Query-time hash validation also rejects stale entries from an older
+in-memory index. Each hit includes its source path, actual line range, SHA-256
+source digest and any explicitly declared competing facts.
+
+Embeddings use `UR_MEMORY_EMBED_MODEL`, falling back to the code-index embedding
+model (`UR_CODE_INDEX_EMBED_MODEL`, default `nomic-embed-text`). Requests use the
+configured Ollama endpoint and existing authentication. Missing models, network
+errors, non-finite vectors and dimension mismatches yield explicit lexical mode
+and an explanation in JSON/text output. UR does not silently download a model.
+`--lexical` avoids embedding requests. Each embedding request has a 10-second
+bound and obeys cancellation. Actual semantic/paraphrase quality depends on the
+chosen embedding model; lexical fallback does not promise paraphrase recall.
+
+Auto-memory recall uses the same current-body retrieval and consistency rules,
+then lets the configured selector model choose up to three memories from up to
+40 candidates. It no longer filters solely on filename/description keywords.
+Set `UR_MEMORY_EMBED_MODEL` to enable embeddings in automatic recall; without it,
+body lexical ranking supplies candidates and the selector still judges meaning.
+This avoids automatic embedding requests for users who have not configured a
+memory embedding model. Retrieval mode is recorded in debug logs. Candidate
+excerpts carry conflict annotations, and files changed during selection are
+excluded. The extraction manifest keeps its separate 200-file display limit;
+recall scans all eligible memory files before ranking.
+
+Optional Markdown frontmatter makes consistency explicit:
+
+```yaml
+---
+id: deployment-policy
+supersedes: previous-deployment-policy
+conflict-key: production-deployment
+valid-until: "2027-01-01T00:00:00Z"
+anchors:
+  - path: src/deploy.ts
+    sha256: "<SHA-256 of the source file's UTF-8 content>"
+---
+Deployment policy and the evidence supporting it.
+```
+
+`supersedes` accepts one ID or a list; absent IDs default to the project-relative
+memory path. `status: deleted` and `status: superseded` exclude a document.
+Expired/invalid validity dates, missing anchors, and mismatched source digests
+exclude stale evidence. Competing active documents with the same `conflict-key`
+(or duplicate ID with different bodies) remain labeled for model/user judgment;
+the retriever does not invent a resolution to arbitrary natural-language
+contradictions. Explicit supersession is evaluated across the whole store,
+including memories already surfaced earlier in a session.
+
+Deleting or editing a source removes its old text/vectors from the next
+persisted refresh. This is cache invalidation, not secure erasure from filesystem
+backups. Index writes are private and atomic. Old lexical-only indexes are
+rebuilt automatically from sources at the same command and location; no parallel
+versioned command exists. Integrity signatures remain the separate
+`memory-integrity` facility, not a property inferred from a content hash.
 
 ### Knowledge base (`/knowledge`, alias `/kb`) — curated, with provenance
 ```
@@ -136,6 +197,38 @@ injected into the system prompt automatically (zero tokens until generated).
 /code-index watch # keep it fresh
 /code-index search "debounce input"
 ```
+Code search uses current file hashes before returning results. Changed, deleted,
+or unreadable indexed files are excluded; diagnostics identify them and suggest
+`/code-index build` to refresh. Path filtering happens before top-k selection.
+Every hit has a source hash and ranking reasons (text, embedding, symbol,
+dependency). Local symbol declarations and resolved relative imports contribute
+to ranking and one-hop context. Extraction is dependency-free and heuristic;
+it is not a language server's complete semantic call graph.
+
+All eligible files are indexed by default. `build --max-files=N` is an explicit
+optional cap; `build --lexical` works without an embedding service. Build/status
+and CodeSearch results report candidate/indexed counts, omitted files, unreadable
+or oversized files, and chunk truncation. Files larger than 200,000 bytes are
+skipped; line-window chunking caps a file at 200 chunks, and affected paths are
+reported. Candidate enumeration honors ripgrep's ignore rules when available.
+The fallback filesystem walk excludes generated/hidden trees; its ignore
+semantics are narrower. Coverage describes eligible candidates at build time;
+new files become searchable after build/watch refresh.
+
+The semantic index is atomically upgraded in place from the previous format.
+Unchanged compatible vectors are reused; model changes require rebuilding.
+Invalid/unavailable embeddings produce explicit lexical fallback. Structural
+`code-index graph` and `code-index repo` queries also validate source hashes and
+exclude stale source artifacts. Old graph files without provenance require a
+rebuild. Repository artifacts from mismatched build generations are rejected.
+
+`test/codeRetrievalFreshness.test.ts` generates 5,201 source files and records
+build latency, query latency, full coverage, and exact-symbol recall. This is a
+reproducible retrieval regression fixture, not a real-model engineering benchmark.
+`test/memoryRetrieval.test.ts` covers body-only and multilingual retrieval,
+controlled embedding paraphrases, unrelated queries, source changes/deletions,
+expiry, explicit conflicts/supersession, cancellation, and schema migration.
+
 `/project` and `/workspace` display the recorded DNA + workspace facts.
 
 ## What gets injected into the system prompt

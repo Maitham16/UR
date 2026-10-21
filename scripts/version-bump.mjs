@@ -42,6 +42,7 @@ const JSON_FILES = [
  * caused the incident this script prevents.
  */
 const TEXT_FILES = [
+  { file: 'sdk-python/pyproject.toml', pattern: /(^version = ")[^"]+(")/m },
   { file: 'bunfig.toml', pattern: /("MACRO\.VERSION" = ')"[^"]+"(')/ },
   { file: 'extensions/jetbrains-ur/build.gradle.kts', pattern: /(^version = ")[^"]+(")/m },
   {

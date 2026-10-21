@@ -379,7 +379,7 @@ async function* queryLoop(
       }
     }
     if (!verifierTurnId) verifierTurnId = deps.uuid()
-    verifier.beginTurn(verifierTurnId, userTaskHint)
+    await verifier.beginTurn(verifierTurnId, userTaskHint)
   }
   // Rejection injection counter — bail out of verifier after a couple
   // rounds even if the Verifier's own cap missed (defense in depth).

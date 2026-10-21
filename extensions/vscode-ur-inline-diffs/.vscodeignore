@@ -1,0 +1,13 @@
+node_modules/**
+src/**
+test/**
+tests/**
+*.ts
+*.map
+esbuild.js
+tsconfig.json
+package-lock.json
+bun.lock
+*.vsix
+
+.npmignore

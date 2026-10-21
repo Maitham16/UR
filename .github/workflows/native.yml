@@ -54,6 +54,9 @@ jobs:
         id: compile
         if: ${{ !cancelled() && steps.ide.outcome == 'success' }}
         run: node scripts/native-build.mjs --target ${{ matrix.target }} --out-dir dist-native
+      - name: Build dependency-free SDK for npm qualification
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: node scripts/build-sdk.mjs
       - name: Sign native application when publisher identities are configured
         id: sign
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
@@ -77,6 +80,9 @@ jobs:
       - name: Test npm installation without Bun or lifecycle scripts
         if: ${{ !cancelled() && steps.archive.outcome == 'success' }}
         run: node scripts/npm-native-smoke.mjs --target ${{ matrix.target }} --artifact-dir dist-release/native
+      - name: Test native remote worker deployment and durable recovery
+        if: ${{ !cancelled() && steps.archive.outcome == 'success' && startsWith(matrix.target, 'linux-') }}
+        run: node scripts/acp-container-smoke.mjs --native-dir dist-native/${{ matrix.target }}
       - name: Preserve native failure diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -88,6 +94,7 @@ jobs:
             ${{ runner.temp }}/ur native release smoke */*.jsonl
             ${{ runner.temp }}/ur bootstrap */*.json
             ${{ runner.temp }}/ur npm native smoke */*.json
+            /tmp/ur-acp-container-*/diagnostics.log
           if-no-files-found: ignore
           retention-days: 7
       - name: Attest tested native archive

@@ -1,33 +1,60 @@
 {
   "version": 1,
   "name": "builtin-test-gen",
-  "description": "Small test-generation benchmark. Each case asks UR to read existing code and add tests.",
+  "description": "Generated tests must pass correct implementations and detect two independent held-out mutations per task. Node.js with TypeScript stripping is required.",
   "cases": [
     {
       "id": "calc-tests",
       "category": "test-gen",
-      "prompt": "You are in a fresh TypeScript repo. Create src/calc.ts with add(a,b), subtract(a,b), multiply(a,b), and divide(a,b). Ask UR to read the file and add tests in src/calc.test.ts that cover normal cases, division by zero, and at least one negative-number case. Run the tests. Finish with VERDICT: PASS if tests pass.",
+      "prompt": "Write Node node:test tests in src/calc.test.ts for existing calc.ts, covering arithmetic, negative operands, and divide by zero throwing RangeError. Keep production code unchanged. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "src/calc.ts": "export const add=(a:number,b:number)=>a+b;\nexport const subtract=(a:number,b:number)=>a-b;\nexport const multiply=(a:number,b:number)=>a*b;\nexport function divide(a:number,b:number){if(b===0)throw new RangeError('zero');return a/b;}\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "cd src && (ls calc.ts calc.test.ts && echo present)"
+        "verdict": "PASS",
+        "testCommand": "node --experimental-strip-types \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nimport {createHash} from 'node:crypto';\nconst source=\"src/calc.ts\"; const test=\"src/calc.test.ts\"; const mutants=[\"export const add=(a:number,b:number)=>a-b;\\nexport const subtract=(a:number,b:number)=>a-b;\\nexport const multiply=(a:number,b:number)=>a*b;\\nexport function divide(a:number,b:number){if(b===0)throw new RangeError('zero');return a/b;}\\n\", \"export const add=(a:number,b:number)=>a+b;\\nexport const subtract=(a:number,b:number)=>a-b;\\nexport const multiply=(a:number,b:number)=>a*b;\\nexport function divide(a:number,b:number){return a/b;}\\n\"];\nimport {cpSync,mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync} from 'node:fs';\nimport {tmpdir} from 'node:os';\nimport {join} from 'node:path';\nimport {spawnSync} from 'node:child_process';\nconst run=dir=>spawnSync(process.execPath,['--experimental-strip-types','--test',test],{cwd:dir,encoding:'utf8',timeout:30000});\nconst root=mkdtempSync(join(tmpdir(),'ur-mutation-'));\ntry {\n const original=readFileSync(source,'utf8'); assert.equal(original,\"export const add=(a:number,b:number)=>a+b;\\nexport const subtract=(a:number,b:number)=>a-b;\\nexport const multiply=(a:number,b:number)=>a*b;\\nexport function divide(a:number,b:number){if(b===0)throw new RangeError('zero');return a/b;}\\n\",'production source must remain unchanged');\n assert.equal(run(process.cwd()).status,0,'generated tests must pass against original code');\n for(let i=0;i<mutants.length;i++) {const dir=join(root,String(i)); mkdirSync(dir); cpSync('src',join(dir,'src'),{recursive:true}); writeFileSync(join(dir,'package.json'),'{\"type\":\"module\"}'); writeFileSync(join(dir,source),mutants[i]); const result=run(dir); assert.ok(!result.error && result.status!==null && result.status!==0,'generated tests failed to detect mutation '+i); }\n} finally {rmSync(root,{recursive:true,force:true});}\n"
+        }
       }
     },
     {
       "id": "string-utils-tests",
       "category": "test-gen",
-      "prompt": "You are in a fresh JavaScript repo. Create src/strings.js with slugify(text) and truncate(text, max). Ask UR to add tests in src/strings.test.js covering empty strings, long strings, and non-alphanumeric input. Run the tests. Finish with VERDICT: PASS if tests pass.",
+      "prompt": "Write Node node:test tests in src/strings.test.js for existing slugify(text) and truncate(text,max), covering empty strings, punctuation, lowercasing, whitespace and truncation boundaries. Keep production code unchanged. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "src/strings.js": "export function slugify(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');}\nexport function truncate(s,max){return s.length>max?s.slice(0,max):s;}\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "cd src && (ls strings.js strings.test.js && echo present)"
+        "verdict": "PASS",
+        "testCommand": "node --experimental-strip-types \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nimport {createHash} from 'node:crypto';\nconst source=\"src/strings.js\"; const test=\"src/strings.test.js\"; const mutants=[\"export function slugify(s){return s.replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');}\\nexport function truncate(s,max){return s.length>max?s.slice(0,max):s;}\\n\", \"export function slugify(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');}\\nexport function truncate(s,max){return s.length>max?s.slice(0,max+1):s;}\\n\"];\nimport {cpSync,mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync} from 'node:fs';\nimport {tmpdir} from 'node:os';\nimport {join} from 'node:path';\nimport {spawnSync} from 'node:child_process';\nconst run=dir=>spawnSync(process.execPath,['--experimental-strip-types','--test',test],{cwd:dir,encoding:'utf8',timeout:30000});\nconst root=mkdtempSync(join(tmpdir(),'ur-mutation-'));\ntry {\n const original=readFileSync(source,'utf8'); assert.equal(original,\"export function slugify(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');}\\nexport function truncate(s,max){return s.length>max?s.slice(0,max):s;}\\n\",'production source must remain unchanged');\n assert.equal(run(process.cwd()).status,0,'generated tests must pass against original code');\n for(let i=0;i<mutants.length;i++) {const dir=join(root,String(i)); mkdirSync(dir); cpSync('src',join(dir,'src'),{recursive:true}); writeFileSync(join(dir,'package.json'),'{\"type\":\"module\"}'); writeFileSync(join(dir,source),mutants[i]); const result=run(dir); assert.ok(!result.error && result.status!==null && result.status!==0,'generated tests failed to detect mutation '+i); }\n} finally {rmSync(root,{recursive:true,force:true});}\n"
+        }
       }
     },
     {
       "id": "async-tests",
       "category": "test-gen",
-      "prompt": "You are in a fresh TypeScript repo. Create src/cache.ts with an async getOrFetch(key, fetcher) cache. Ask UR to add tests in src/cache.test.ts using mocked fetchers and covering cache hits, misses, and errors. Run the tests. Finish with VERDICT: PASS if tests pass.",
+      "prompt": "Write Node node:test tests in src/cache.test.ts for existing createCache(): independent instances expose getOrFetch(key,fetcher). Cover hits without fetching again, misses, and rejected fetches not being cached. Keep production code unchanged. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "src/cache.ts": "export function createCache(){const cache=new Map<string,unknown>();return {async getOrFetch(key:string,fetcher:()=>Promise<unknown>){if(cache.has(key))return cache.get(key);const value=await fetcher();cache.set(key,value);return value;}};}\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "cd src && (ls cache.ts cache.test.ts && echo present)"
+        "verdict": "PASS",
+        "testCommand": "node --experimental-strip-types \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nimport {createHash} from 'node:crypto';\nconst source=\"src/cache.ts\"; const test=\"src/cache.test.ts\"; const mutants=[\"export function createCache(){const cache=new Map<string,unknown>();return {async getOrFetch(key:string,fetcher:()=>Promise<unknown>){const value=await fetcher();cache.set(key,value);return value;}};}\\n\", \"export function createCache(){const cache=new Map<string,unknown>();return {async getOrFetch(key:string,fetcher:()=>Promise<unknown>){if(cache.has(key))return cache.get(key);const value=await fetcher().catch(()=>null);cache.set(key,value);return value;}};}\\n\"];\nimport {cpSync,mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync} from 'node:fs';\nimport {tmpdir} from 'node:os';\nimport {join} from 'node:path';\nimport {spawnSync} from 'node:child_process';\nconst run=dir=>spawnSync(process.execPath,['--experimental-strip-types','--test',test],{cwd:dir,encoding:'utf8',timeout:30000});\nconst root=mkdtempSync(join(tmpdir(),'ur-mutation-'));\ntry {\n const original=readFileSync(source,'utf8'); assert.equal(original,\"export function createCache(){const cache=new Map<string,unknown>();return {async getOrFetch(key:string,fetcher:()=>Promise<unknown>){if(cache.has(key))return cache.get(key);const value=await fetcher();cache.set(key,value);return value;}};}\\n\",'production source must remain unchanged');\n assert.equal(run(process.cwd()).status,0,'generated tests must pass against original code');\n for(let i=0;i<mutants.length;i++) {const dir=join(root,String(i)); mkdirSync(dir); cpSync('src',join(dir,'src'),{recursive:true}); writeFileSync(join(dir,'package.json'),'{\"type\":\"module\"}'); writeFileSync(join(dir,source),mutants[i]); const result=run(dir); assert.ok(!result.error && result.status!==null && result.status!==0,'generated tests failed to detect mutation '+i); }\n} finally {rmSync(root,{recursive:true,force:true});}\n"
+        }
       }
     }
   ]

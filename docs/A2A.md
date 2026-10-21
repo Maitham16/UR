@@ -54,12 +54,11 @@ Inspect the live card:
 curl -s http://127.0.0.1:8765/.well-known/agent-card.json
 ```
 
-Preview either card without starting the server:
+Preview the current card without starting the server:
 
 ```sh
-ur a2a card --v1                         # current A2A 1.0 card
-ur a2a card                              # legacy 0.3 compatibility card
-ur a2a card --v1 --base-url https://agent.example.com
+ur a2a card                              # current A2A 1.0 card
+ur a2a card --base-url https://agent.example.com
 ```
 
 Without a version header, discovery returns the v1 ProtoJSON card with

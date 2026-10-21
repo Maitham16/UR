@@ -1,5 +1,7 @@
 import { resolveUrExecutable } from '../../utils/urExecutable.js'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { createAcpHttpSessionManager, type AcpHttpSessionManager, type AcpPromptControl } from './acpHttpSessions.js'
+import { AcpTeamController, AcpTeamError } from './acpTeam.js'
 import { realpath, stat } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { getDefaultAppState } from 'src/state/AppStateStore.js'
@@ -56,6 +58,27 @@ import type {
   AcpTaskRecord,
   AcpTaskStatus,
 } from './acpTypes.js'
+
+const httpSessionManagers = new Map<string, AcpHttpSessionManager>()
+const managedHttpSessions = new Set<AcpHttpSessionManager>()
+export function getAcpHttpSessionManager(options: AcpServeOptions): AcpHttpSessionManager {
+  if (options.sessionManager) { managedHttpSessions.add(options.sessionManager); return options.sessionManager }
+  const key = createHash('sha256').update(`${resolve(options.cwd)}:${options.token ?? ''}:${options.dryRun === true}`).digest('hex')
+  let manager = httpSessionManagers.get(key)
+  if (!manager) {
+    manager = createAcpHttpSessionManager(options)
+    httpSessionManagers.set(key, manager); managedHttpSessions.add(manager)
+  }
+  return manager
+}
+
+function teamController(options: AcpServeOptions): AcpTeamController | undefined {
+  const path = options.teamPolicyPath ?? process.env.UR_ACP_TEAM_POLICY
+  if (!path) return undefined
+  if (!options.token) throw new AcpTeamError('Team mode requires an operator bearer token.')
+  try { return new AcpTeamController(path, options.cwd, getAcpHttpSessionManager(options).stateDirectory) }
+  catch (error) { if (error instanceof AcpTeamError) throw error; throw new AcpTeamError('Unable to load trusted team policy or accounting state.') }
+}
 
 const MCP_COMMANDS: Command[] = []
 const acpTasks = new Map<string, AcpTaskRecord>()
@@ -306,7 +329,11 @@ async function handleInitialize(options: AcpServeOptions): Promise<unknown> {
       tasks: true,
       sessions: true,
       ide: true,
-      streaming: false,
+      streaming: true,
+      durableSessions: true,
+      permissionRequests: true,
+      devicePairing: Boolean(options.token),
+      teamControls: Boolean(options.teamPolicyPath ?? process.env.UR_ACP_TEAM_POLICY),
       cancellation: true,
     },
   }
@@ -352,8 +379,9 @@ async function handleSessionNew(
   const cwd = await resolveSessionWorkspace(params?.cwd, options.cwd)
   reserveSessionCapacity()
   const createdAt = now()
+  const created = getAcpHttpSessionManager(options).newSession(cwd)
   const session: AcpSessionRecord = {
-    id: `sess_${randomUUID()}`,
+    id: created.sessionId,
     cwd,
     createdAt,
     lastUsedAt: createdAt,
@@ -366,8 +394,13 @@ async function handleSessionNew(
 async function handleSessionPrompt(
   params: Record<string, unknown> | undefined,
   options: AcpServeOptions,
+  control?: AcpPromptControl,
 ): Promise<unknown> {
   const sessionId = readOptionalIdentifier(params?.sessionId, 'sessionId')
+  if (params?.stream === true) {
+    if (!sessionId) throw new AcpRpcError(-32602, 'sessionId is required for streaming')
+    return getAcpHttpSessionManager(options).prompt(sessionId, params.prompt as string, readOptionalIdentifier(params.requestId, 'requestId'), control)
+  }
   const session = sessionId ? acpSessions.get(sessionId) : undefined
   if (sessionId && !session) {
     throw new AcpRpcError(-32602, `unknown session: ${sessionId}`)
@@ -413,12 +446,12 @@ async function handleSessionCancel(
   if (!sessionId) {
     throw new AcpRpcError(-32602, 'sessionId or taskId is required')
   }
+  const manager = getAcpHttpSessionManager(options)
+  const remoteCanceled = manager.has(sessionId) ? manager.cancel(sessionId).canceled : false
   const session = acpSessions.get(sessionId)
-  if (!session) {
-    return { sessionId, canceled: false }
-  }
+  if (!session) return { sessionId, canceled: remoteCanceled }
 
-  let canceled = false
+  let canceled = remoteCanceled
   if (session.abortController && !session.abortController.signal.aborted) {
     session.abortController.abort()
     canceled = true
@@ -443,14 +476,14 @@ async function handleSessionClose(
   if (!sessionId) {
     throw new AcpRpcError(-32602, 'sessionId is required')
   }
-  if (!acpSessions.has(sessionId)) {
-    return { sessionId, closed: false, canceled: false }
-  }
+  const manager = getAcpHttpSessionManager(options)
+  if (!acpSessions.has(sessionId) && !manager.has(sessionId)) return { sessionId, closed: false, canceled: false }
   const cancellation = await handleSessionCancel({ sessionId }, options) as {
     canceled: boolean
   }
   acpSessions.delete(sessionId)
-  return { sessionId, closed: true, canceled: cancellation.canceled }
+  const remote = manager.has(sessionId) ? await manager.close(sessionId) : { closed: false, canceled: false }
+  return { sessionId, closed: remote.closed, canceled: cancellation.canceled || remote.canceled }
 }
 
 async function handleToolsList(): Promise<unknown> {
@@ -907,14 +940,25 @@ async function dispatchMethod(
   method: string,
   params: Record<string, unknown> | undefined,
   options: AcpServeOptions,
+  control?: AcpPromptControl,
 ): Promise<unknown> {
   switch (method) {
     case 'initialize':
       return handleInitialize(options)
+    case 'session/events':
+      return getAcpHttpSessionManager(options).events(String(params?.sessionId ?? ''), params?.after === undefined ? 0 : params.after as number, params?.waitMs === undefined ? 0 : params.waitMs as number)
+    case 'session/resume':
+      return getAcpHttpSessionManager(options).resume(String(params?.sessionId ?? ''))
+    case 'session/approve':
+      return getAcpHttpSessionManager(options).approve(String(params?.sessionId ?? ''), String(params?.requestId ?? ''), params?.decision as { behavior?: unknown })
+    case 'device/new':
+      return getAcpHttpSessionManager(options).pair(params?.sessionIds as string[], params?.expiresInMs as number | undefined)
+    case 'device/revoke':
+      return getAcpHttpSessionManager(options).revoke(String(params?.deviceId ?? ''))
     case 'session/new':
       return handleSessionNew(params, options)
     case 'session/prompt':
-      return handleSessionPrompt(params, options)
+      return handleSessionPrompt(params, options, control)
     case 'session/cancel':
       return handleSessionCancel(params, options)
     case 'session/close':
@@ -961,8 +1005,10 @@ export async function handleAcpRequest(
     return response
   }
 
+  const manager = getAcpHttpSessionManager(options)
   const auth = authorizeAcp(request, options)
-  if (!auth.ok) {
+  const device = auth.ok ? undefined : manager.deviceFor(request)
+  if (!auth.ok && !device) {
     return jsonResponse(401, rpcError(null, -32001, auth.reason ?? 'unauthorized'))
   }
 
@@ -1054,13 +1100,43 @@ export async function handleAcpRequest(
     }
     const params = body.params as Record<string, unknown> | undefined
 
+    let team: AcpTeamController | undefined
+    try { team = teamController(options) } catch (error) {
+      return jsonResponse(403, rpcError(id, -32003, boundedErrorMessage(error)))
+    }
+    if (device && !(team && method === 'team/status') && !manager.deviceAllowed(device, method, params)) return jsonResponse(403, rpcError(id, -32003, 'device is not authorized for this method/session'))
+    if ((method === 'device/new' || method === 'device/revoke') && auth.kind !== 'static') return jsonResponse(403, rpcError(id, -32003, 'operator bearer token is required'))
+
     if (options.debug) {
       // eslint-disable-next-line no-console
       console.error(`[acp] ${method} id=${hasId ? String(id) : 'notification'}`)
     }
 
+    let reservation: ReturnType<AcpTeamController['reserve']> | undefined
+    let dispatched = false
+    const principal = device?.id ?? 'operator'
     try {
-      const result = await dispatchMethod(method, params, options)
+      if (team) {
+        if (!device && auth.kind !== 'static') throw new AcpTeamError('Team mode requires an authenticated operator or device.')
+        team.authorize(principal, method)
+        if (['tasks/send', 'tools/call'].includes(method)) throw new AcpTeamError('Team execution uses durable session/prompt with stream:true; legacy execution would bypass team accounting.')
+        if (method === 'session/prompt') {
+          if (!params || typeof params.sessionId !== 'string' || !manager.has(params.sessionId)) throw new AcpTeamError('Unknown team session.')
+          reservation = team.reserve(principal, params)
+          if (reservation.duplicate && !manager.promptReceipt(params.sessionId, String(params.requestId))) throw new AcpTeamError('Quota receipt has no matching durable prompt; inspect interrupted accounting before retrying.')
+        }
+        // Persist the accepted operation before any tool/model side effect.
+        team.audit(principal, method, 'accepted', params)
+      }
+      const result = team && method === 'team/status' ? team.status(principal)
+        : team && method === 'team/audit' ? team.exportAudit(principal, params?.after as number | undefined)
+        : team && method === 'team/reconcile' ? team.reconcile(principal, String(params?.receiptId ?? ''), String(params?.reason ?? ''))
+        : await dispatchMethod(method, params, options, reservation && !reservation.duplicate ? { env: reservation.env, onComplete: failed => reservation!.finish(failed) } : undefined)
+      dispatched = true
+      if (device && !manager.deviceFor(request)) return jsonResponse(401, rpcError(id, -32001, 'device credential was revoked or expired'))
+      if (team) teamController(options)?.authorize(principal, method)
+      if (team) team.audit(principal, method, method === 'session/prompt' ? 'run-accepted' : 'completed',
+        { ...params, ...(result && typeof result === 'object' && 'sessionId' in result ? { sessionId: result.sessionId } : {}) })
       if (options.debug) {
         // eslint-disable-next-line no-console
         console.error(`[acp] ${method} -> ok`)
@@ -1069,9 +1145,11 @@ export async function handleAcpRequest(
         ? new Response(null, { status: 204 })
         : jsonResponse(200, rpcResponse(id, result))
     } catch (error) {
+      if (!dispatched) { try { reservation?.finish(true) } catch { /* Preserve the primary failure; no execution was authorized. */ } }
+      try { team?.audit(principal, method, 'rejected-or-failed', params) } catch { /* A failed audit cannot authorize execution. */ }
       if (
         !(error instanceof RollingRateLimitError) &&
-        !(error instanceof AcpRpcError)
+        !(error instanceof AcpRpcError) && !(error instanceof AcpTeamError)
       ) {
         const category = error instanceof Error ? error.name : typeof error
         logError(new Error(`UR HTTP agent method ${method} failed (${category})`))
@@ -1088,11 +1166,12 @@ export async function handleAcpRequest(
       }
       const rateLimited = error instanceof RollingRateLimitError
       const rpcFailure = error instanceof AcpRpcError ? error : undefined
+      const teamFailure = error instanceof AcpTeamError ? error : undefined
       return jsonResponse(
-        rateLimited ? 429 : (rpcFailure?.status ?? 500),
+        rateLimited ? 429 : (teamFailure?.status ?? rpcFailure?.status ?? 500),
         rpcError(
           id,
-          rateLimited ? -32029 : (rpcFailure?.code ?? -32603),
+          rateLimited ? -32029 : teamFailure ? -32003 : (rpcFailure?.code ?? -32603),
           message,
         ),
       )
@@ -1109,6 +1188,8 @@ export function getAcpServerPort(): number | null {
 }
 
 export async function stopAcpServer(): Promise<void> {
+  await Promise.all([...managedHttpSessions].map(manager => manager.stop()))
+  httpSessionManagers.clear(); managedHttpSessions.clear()
   if (acpServer) {
     acpServer.stop()
     acpServer = null

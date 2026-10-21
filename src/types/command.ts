@@ -15,7 +15,7 @@ import type { Message } from './message.js'
 import type { PluginManifest } from './plugin.js'
 
 export type LocalCommandResult =
-  | { type: 'text'; value: string }
+  | { type: 'text'; value: string; exitCode?: number }
   | {
       type: 'compact'
       compactionResult: CompactionResult

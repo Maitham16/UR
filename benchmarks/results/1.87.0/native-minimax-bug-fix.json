@@ -1,0 +1,278 @@
+{
+  "schemaVersion": 1,
+  "template": false,
+  "agent": {
+    "name": "ur-nexus",
+    "version": "1.87.0",
+    "commit": "e81469b4554d5c209081df72d0350ffe8e59eca7",
+    "source": {
+      "dirty": true,
+      "sha256": "79386b84a20b31475034a09e397910ec93c2462110f135a23c8a6f776ab6a453",
+      "files": 2571,
+      "scope": "src,scripts,package.json,bun.lock,tsconfig.json at report generation"
+    }
+  },
+  "date": "2026-10-21T04:06:35.509Z",
+  "benchmark": {
+    "name": "builtin-bug-fix",
+    "category": "internal-regression",
+    "taskCount": 3
+  },
+  "runtime": {
+    "provider": "ollama",
+    "model": "minimax-m3.1-flash:cloud",
+    "environment": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "node": "v24.3.0",
+      "bun": null,
+      "cwd": "<source-checkout>"
+    }
+  },
+  "results": {
+    "passed": 3,
+    "failed": 0,
+    "passRate": 1,
+    "taskResults": [
+      {
+        "id": "off-by-one",
+        "name": "off-by-one",
+        "category": "bug-fix",
+        "passed": true,
+        "wallTimeMs": 44845,
+        "failureCategory": null,
+        "evidence": {
+          "evaluationMode": "native-agent",
+          "executableSha256": "32d3d9b1ff8b9b856f6d297a86107a5183999cf964f251e0798cc7e49b8a4412",
+          "patchSha256": "5fe93b19a869f70075a5470ab22cfd3e37304321548e17cd769a8fd82d32e9a4",
+          "verificationSha256": "91e3d4193a24d1dc8b3333c30b7a6b69c48fe977d4785759a4607ac6c3b6bb2c",
+          "completionClaim": "pass",
+          "falseCompletion": false,
+          "exitCode": 0,
+          "testPassed": true,
+          "configuration": {
+            "maxTurns": 16,
+            "maxBudgetUsd": null,
+            "timeoutMs": 180000,
+            "isolate": true,
+            "permissionMode": "bypass",
+            "effort": null
+          },
+          "provenance": {
+            "schemaVersion": 1,
+            "promptLifecycles": [
+              {
+                "promptVersion": "1.0.0",
+                "rationale": "Lean outcome-first agent contract with explicit completion evidence, cache-stable assembly, and governed custom-agent overlays.",
+                "sources": [
+                  {
+                    "title": "OpenAI GPT-5.6 prompting best practices",
+                    "url": "https://developers.openai.com/api/docs/guides/model-guidance?model=gpt-5.6#prompting-best-practices",
+                    "accessedAt": "2026-08-31"
+                  },
+                  {
+                    "title": "UR prompt-platform regression suite"
+                  }
+                ],
+                "supportedProfiles": [
+                  "default",
+                  "simple",
+                  "proactive",
+                  "ollama",
+                  "custom-overlay"
+                ],
+                "evalSuiteId": "prompt-platform-2026",
+                "rolloutId": "prompt-governance-2026-08-31"
+              }
+            ],
+            "promptHashes": [
+              "4e9b8890b10a662d7bc0539b8e394719d2999a5c28064a41ce6ac2ed4b52a8d4"
+            ],
+            "toolSchemaHashes": [
+              "c435273af39a039411ccb592acc025d813abdcef4f0e3d639ff6852840312e61"
+            ],
+            "contextPolicyHashes": [
+              "51ccd025f3bb5f52328cb4c9f1fd65fdf1019f6c0cdb147fd9e698d18c8cf9ee"
+            ],
+            "modelConfigHashes": [
+              "01b8a966be00d30e977c72f16fdeaff600acbdb84618c254c1c2450b82ae516f"
+            ]
+          },
+          "toolCalls": 13,
+          "failedToolCalls": 0,
+          "turns": 14,
+          "humanInterventions": null,
+          "rollbacks": null,
+          "costUSD": null,
+          "inputTokens": 317667,
+          "outputTokens": 2677
+        }
+      },
+      {
+        "id": "null-guard",
+        "name": "null-guard",
+        "category": "bug-fix",
+        "passed": true,
+        "wallTimeMs": 70255,
+        "failureCategory": null,
+        "evidence": {
+          "evaluationMode": "native-agent",
+          "executableSha256": "32d3d9b1ff8b9b856f6d297a86107a5183999cf964f251e0798cc7e49b8a4412",
+          "patchSha256": "5fc63ea8407dd0fafb262c722daa76d37f6421f48906947b65c7370c102c66b5",
+          "verificationSha256": "cb4604e497edfa7060731e5fcf857d1474d00c79fd82575e08918e52fc7b5829",
+          "completionClaim": "pass",
+          "falseCompletion": false,
+          "exitCode": 0,
+          "testPassed": true,
+          "configuration": {
+            "maxTurns": 16,
+            "maxBudgetUsd": null,
+            "timeoutMs": 180000,
+            "isolate": true,
+            "permissionMode": "bypass",
+            "effort": null
+          },
+          "provenance": {
+            "schemaVersion": 1,
+            "promptLifecycles": [
+              {
+                "promptVersion": "1.0.0",
+                "rationale": "Lean outcome-first agent contract with explicit completion evidence, cache-stable assembly, and governed custom-agent overlays.",
+                "sources": [
+                  {
+                    "title": "OpenAI GPT-5.6 prompting best practices",
+                    "url": "https://developers.openai.com/api/docs/guides/model-guidance?model=gpt-5.6#prompting-best-practices",
+                    "accessedAt": "2026-08-31"
+                  },
+                  {
+                    "title": "UR prompt-platform regression suite"
+                  }
+                ],
+                "supportedProfiles": [
+                  "default",
+                  "simple",
+                  "proactive",
+                  "ollama",
+                  "custom-overlay"
+                ],
+                "evalSuiteId": "prompt-platform-2026",
+                "rolloutId": "prompt-governance-2026-08-31"
+              }
+            ],
+            "promptHashes": [
+              "f2559d2a4c82eff1eb6f144a2dee85f0f7c6ec4dfaf29cb0953cc32c2b574b5f"
+            ],
+            "toolSchemaHashes": [
+              "c435273af39a039411ccb592acc025d813abdcef4f0e3d639ff6852840312e61"
+            ],
+            "contextPolicyHashes": [
+              "51ccd025f3bb5f52328cb4c9f1fd65fdf1019f6c0cdb147fd9e698d18c8cf9ee"
+            ],
+            "modelConfigHashes": [
+              "01b8a966be00d30e977c72f16fdeaff600acbdb84618c254c1c2450b82ae516f"
+            ]
+          },
+          "toolCalls": 16,
+          "failedToolCalls": 0,
+          "turns": 17,
+          "humanInterventions": null,
+          "rollbacks": null,
+          "costUSD": null,
+          "inputTokens": 375194,
+          "outputTokens": 7717
+        }
+      },
+      {
+        "id": "missing-await",
+        "name": "missing-await",
+        "category": "bug-fix",
+        "passed": true,
+        "wallTimeMs": 53053,
+        "failureCategory": null,
+        "evidence": {
+          "evaluationMode": "native-agent",
+          "executableSha256": "32d3d9b1ff8b9b856f6d297a86107a5183999cf964f251e0798cc7e49b8a4412",
+          "patchSha256": "087d3c4827f257090b222f129ae87c547c48cb3be7a1d29a4963405dc7ac94d1",
+          "verificationSha256": "dc589a44480f0fe414d6cf6179f7fb508d715d4d33b9fd469ec9d1f5f35a072f",
+          "completionClaim": "pass",
+          "falseCompletion": false,
+          "exitCode": 0,
+          "testPassed": true,
+          "configuration": {
+            "maxTurns": 16,
+            "maxBudgetUsd": null,
+            "timeoutMs": 180000,
+            "isolate": true,
+            "permissionMode": "bypass",
+            "effort": null
+          },
+          "provenance": {
+            "schemaVersion": 1,
+            "promptLifecycles": [
+              {
+                "promptVersion": "1.0.0",
+                "rationale": "Lean outcome-first agent contract with explicit completion evidence, cache-stable assembly, and governed custom-agent overlays.",
+                "sources": [
+                  {
+                    "title": "OpenAI GPT-5.6 prompting best practices",
+                    "url": "https://developers.openai.com/api/docs/guides/model-guidance?model=gpt-5.6#prompting-best-practices",
+                    "accessedAt": "2026-08-31"
+                  },
+                  {
+                    "title": "UR prompt-platform regression suite"
+                  }
+                ],
+                "supportedProfiles": [
+                  "default",
+                  "simple",
+                  "proactive",
+                  "ollama",
+                  "custom-overlay"
+                ],
+                "evalSuiteId": "prompt-platform-2026",
+                "rolloutId": "prompt-governance-2026-08-31"
+              }
+            ],
+            "promptHashes": [
+              "0b9f79ab51dbc808fe8d24de4e1c2170eb1ee6793eb40fa611c2634db799d6d3"
+            ],
+            "toolSchemaHashes": [
+              "c435273af39a039411ccb592acc025d813abdcef4f0e3d639ff6852840312e61"
+            ],
+            "contextPolicyHashes": [
+              "51ccd025f3bb5f52328cb4c9f1fd65fdf1019f6c0cdb147fd9e698d18c8cf9ee"
+            ],
+            "modelConfigHashes": [
+              "01b8a966be00d30e977c72f16fdeaff600acbdb84618c254c1c2450b82ae516f"
+            ]
+          },
+          "toolCalls": 14,
+          "failedToolCalls": 0,
+          "turns": 15,
+          "humanInterventions": null,
+          "rollbacks": null,
+          "costUSD": null,
+          "inputTokens": 310260,
+          "outputTokens": 3745
+        }
+      }
+    ],
+    "failedTasks": [],
+    "failureCategories": {},
+    "wallTimeMs": 168017,
+    "tokenUsage": {
+      "inputTokens": 1003121,
+      "outputTokens": 14139,
+      "totalTokens": 1017260
+    },
+    "costUSD": null,
+    "completionClaims": 3,
+    "falseCompletions": 0,
+    "falseCompletionRate": 0
+  },
+  "reproduction": {
+    "command": "ur eval builtin bug-fix && ur eval run builtin-bug-fix --model minimax-m3.1-flash:cloud --max-turns 16 --timeout-ms 180000 --skip-permissions --metrics --json",
+    "inputReport": null,
+    "generatedBy": "scripts/benchmark-report.mjs"
+  }
+}

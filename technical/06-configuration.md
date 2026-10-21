@@ -465,3 +465,18 @@ comes from somewhere the memory directory is not (password manager, CI secret).
 `ur memory-integrity verify` exits non-zero on an invalid signature, and also
 when a manifest is signed but no key is available: an unverifiable signature is
 not a pass.
+
+### Measured model profiles and portable tool catalogs
+
+`ur model-doctor <model> --provider <provider> --probe --json` makes bounded
+synthetic calls through the configured provider adapter and stores local evidence
+in `.ur/model-profiles/`. `--profile` reads it without model calls. Scope includes
+provider, model and credential-free endpoint; seven-day-old evidence is marked
+stale. `--timeout-ms` bounds each check. Advertised context and measured behavior
+are labeled separately; profile defaults remain advisory and never remove models.
+
+`ENABLE_TOOL_SEARCH=false` disables selective catalogs; `true` forces them;
+`auto` / `auto:N` select the existing context-relative schema threshold. Native
+providers use ordinary JSON ToolSearch results containing the selected actual
+schemas. Tool discovery never changes execution permissions. See technical/04
+and technical/05 for the wire and probe details.

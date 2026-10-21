@@ -293,6 +293,7 @@ import {
   setAllowedChannels,
   type ChannelEntry,
   getTotalCostUSD,
+  hasUnknownModelCost,
   getTotalInputTokens,
   getTotalOutputTokens,
   getTotalAPIDuration,
@@ -983,7 +984,7 @@ export async function runHeadless(
     const { getEvalProvenanceSnapshot } = await import('../services/agents/evalProvenance.js')
     const modelUsage = getModelUsage()
     const metrics = {
-      costUSD: getTotalCostUSD(),
+      costUSD: hasUnknownModelCost() ? undefined : getTotalCostUSD(),
       inputTokens: getTotalInputTokens(),
       outputTokens: getTotalOutputTokens(),
       model: Object.keys(modelUsage)[0],

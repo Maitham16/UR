@@ -718,7 +718,7 @@ Recommended flow:
           'page is nonblank',
           'primary navigation is visible',
           'no console errors',
-          'text does not overlap at configured viewports',
+          'no horizontal overflow',
         ],
         artifacts: ['screenshot', 'console-log'],
       },
@@ -732,7 +732,7 @@ Recommended flow:
 
 Store deterministic browser scenarios here. Good fixtures include target URL,
 viewport, setup command, user steps, screenshot expectations, and console error
-rules. These can be replayed by a browser-debugger agent or a Playwright test.
+rules. Run with \`ur browser-qa run <name>\`. Assertions execute in a real browser at every viewport; reports, screenshots and traces are saved in .results/. Use typed assertions or js: boolean expressions for application-specific checks.
 `,
   },
   {
@@ -762,7 +762,7 @@ runner; \`ur trigger\` is the inbound parser that decides what to run.
     root: 'project',
     content: compileAgenticCiWorkflow('default', {
       packageVersion:
-        typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.86.2',
+        typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.87.0',
     }),
   },
   {

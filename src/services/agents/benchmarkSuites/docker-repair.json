@@ -1,33 +1,64 @@
 {
   "version": 1,
   "name": "builtin-docker-repair",
-  "description": "Small Docker repair benchmark. Each case asks UR to fix a broken Dockerfile in a fresh worktree.",
+  "description": "Build and run each repaired image; verify stdout or HTTP behavior and layer ordering. Requires a working Docker daemon and registry access.",
   "cases": [
     {
       "id": "base-image-typo",
       "category": "docker-repair",
-      "prompt": "You are in a fresh repo with a broken Dockerfile that uses FROM node:22-sllm (typo). Fix the base image to node:22-slim, add a small src/index.js that prints 'ok', and make the image build. Run docker build -t test-repair . if Docker is available, otherwise check syntax with 'docker --version'. Finish with VERDICT: PASS if the Dockerfile is valid and index.js exists.",
+      "prompt": "Fix the broken base image to node:22-slim and preserve a container that prints ok when run. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "Dockerfile": "FROM node:22-sllm\nWORKDIR /app\nCOPY src/ ./src/\nCMD [\"node\",\"src/index.js\"]\n",
+          "src/index.js": "console.log('ok');\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "cat Dockerfile | grep -q 'FROM node:22-slim' && ls src/index.js"
+        "verdict": "PASS",
+        "testCommand": "node \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nimport {readFileSync} from 'node:fs';\nimport {execFileSync} from 'node:child_process';\nimport {randomUUID} from 'node:crypto';\nconst tag='ur-eval-'+randomUUID(); let container;\nconst docker=(args)=>execFileSync('docker',args,{encoding:'utf8',timeout:300000});\ntry { docker(['build','--quiet','--tag',tag,'.']); assert.equal(docker(['run','--rm',tag]).trim(),'ok'); } finally {if(container)try{docker(['rm','-f',container])}catch{} try{docker(['image','rm','-f',tag])}catch{}}\n"
+        }
       }
     },
     {
       "id": "missing-cmd",
       "category": "docker-repair",
-      "prompt": "You are in a fresh repo with a Dockerfile that copies files but has no CMD or ENTRYPOINT, so the container exits immediately. Add a CMD that runs node src/server.js, create src/server.js that listens on port 3000 and responds with 'hello', and verify the files exist. Finish with VERDICT: PASS.",
+      "prompt": "Fix the missing Docker startup command so the existing src/server.js serves hello on port 3000. Build and run the image to verify its HTTP response. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "Dockerfile": "FROM node:22-slim\nWORKDIR /app\nCOPY src/ ./src/\n",
+          "src/server.js": "require('node:http').createServer((req,res)=>res.end('hello')).listen(3000,'0.0.0.0');\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "cat Dockerfile | grep -qE 'CMD|ENTRYPOINT' && ls src/server.js"
+        "verdict": "PASS",
+        "testCommand": "node \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nimport {readFileSync} from 'node:fs';\nimport {execFileSync} from 'node:child_process';\nimport {randomUUID} from 'node:crypto';\nconst tag='ur-eval-'+randomUUID(); let container;\nconst docker=(args)=>execFileSync('docker',args,{encoding:'utf8',timeout:300000});\ntry { docker(['build','--quiet','--tag',tag,'.']); container=docker(['run','--detach','--publish','127.0.0.1::3000',tag]).trim(); const port=docker(['port',container,'3000/tcp']).trim().split(':').at(-1); let response; for(let i=0;i<40;i++){try{response=await fetch('http://127.0.0.1:'+port,{signal:AbortSignal.timeout(1000)});break}catch{await new Promise(r=>setTimeout(r,100));}} assert.ok(response,'server never became ready'); assert.equal(await response.text(),'hello'); } finally {if(container)try{docker(['rm','-f',container])}catch{} try{docker(['image','rm','-f',tag])}catch{}}\n"
+        }
       }
     },
     {
       "id": "cache-layer-order",
       "category": "docker-repair",
-      "prompt": "You are in a fresh repo with a Dockerfile that copies package.json after copying the entire source tree, ruining Docker layer caching. Reorder the instructions so dependencies are installed before source code is copied. Create package.json with a single dependency (e.g., leftpad) and src/index.js. Finish with VERDICT: PASS if the Dockerfile copies package.json before src/.",
+      "prompt": "Reorder the Dockerfile so package.json and package-lock.json are copied and npm ci runs before copying src/. Preserve the executable image and exact dependencies. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"name\":\"fixture\",\"version\":\"1.0.0\"}\n",
+          "Dockerfile": "FROM node:22-slim\nWORKDIR /app\nCOPY src/ ./src/\nCOPY package.json package-lock.json ./\nRUN npm ci --ignore-scripts\nCMD [\"node\",\"src/index.js\"]\n",
+          "src/index.js": "console.log('ok');\n",
+          "package-lock.json": "{\"name\":\"fixture\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"packages\":{\"\":{\"name\":\"fixture\",\"version\":\"1.0.0\"}}}\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "cat Dockerfile | awk '/COPY package\\.json/{a=NR}/COPY src\\//{b=NR} END{exit !(a && b && a < b)}' && ls package.json src/index.js"
+        "verdict": "PASS",
+        "testCommand": "node \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nimport {readFileSync} from 'node:fs';\nimport {execFileSync} from 'node:child_process';\nimport {randomUUID} from 'node:crypto';\nconst tag='ur-eval-'+randomUUID(); let container;\nconst docker=(args)=>execFileSync('docker',args,{encoding:'utf8',timeout:300000});\ntry { docker(['build','--quiet','--tag',tag,'.']); assert.equal(docker(['run','--rm',tag]).trim(),'ok'); const lines=readFileSync('Dockerfile','utf8').split(/\\r?\\n/).filter(x=>!x.trim().startsWith('#')); const pkg=lines.findIndex(x=>/^COPY.*package\\.json/.test(x)); const install=lines.findIndex(x=>/^RUN.*npm ci/.test(x)); const src=lines.findIndex(x=>/^COPY.*src\\//.test(x)); assert.ok(pkg>=0 && pkg<install && install<src,'dependency layer must precede source'); } finally {if(container)try{docker(['rm','-f',container])}catch{} try{docker(['image','rm','-f',tag])}catch{}}\n"
+        }
       }
     }
   ]

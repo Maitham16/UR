@@ -218,7 +218,7 @@ describe('benchmark report generator', () => {
     }
   })
 
-  test('external benchmark commands skip safely when dependency is missing', () => {
+  test('external benchmark commands fail explicitly when a required runner is missing', () => {
     const result = spawnSync(
       'node',
       [join(repoRoot, 'scripts', 'benchmark-external.mjs'), 'swe-bench-lite'],
@@ -229,7 +229,8 @@ describe('benchmark report generator', () => {
       },
     )
 
-    expect(result.status).toBe(0)
-    expect(result.stdout).toContain('skipped')
+    expect(result.status).toBe(127)
+    expect(result.stdout).toContain('"status": "failed"')
+    expect(result.stdout).toContain('"measured": false')
   })
 })

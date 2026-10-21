@@ -34,6 +34,7 @@ function writeFixture(root: string, version: string): void {
     },
   }
   const textFiles: Record<string, string> = {
+    'sdk-python/pyproject.toml': `version = "${version}"\n`,
     'bunfig.toml': `"MACRO.VERSION" = '"${version}"'\n`,
     'extensions/jetbrains-ur/build.gradle.kts': `version = "${version}"\n`,
     'documentation/index.html': `<p class="eyebrow">Version ${version}</p>\n`,
@@ -93,6 +94,7 @@ test('version bump moves every surface from one prerelease to another', () => {
     expect(lock.packages[''].version).toBe('2.0.0-beta.2')
 
     for (const path of [
+      'sdk-python/pyproject.toml',
       'bunfig.toml',
       'extensions/jetbrains-ur/build.gradle.kts',
       'documentation/index.html',

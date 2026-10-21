@@ -1,3 +1,6 @@
+import { makeProcessOwner, ownerMayBeAlive, isProcessAlive, type ProcessOwner } from './durableState.js'
+import { getURConfigHomeDir } from '../../utils/envUtils.js'
+import { sanitizePath } from '../../utils/sessionStoragePortable.js'
 import { resolveUrExecutable } from '../../utils/urExecutable.js'
 import { spawn } from 'node:child_process'
 import {
@@ -57,6 +60,14 @@ export type BackgroundTask = {
   skipPermissions?: boolean
   offline?: boolean
   workerPid?: number
+  owner?: ProcessOwner
+  /** Bound immutable task options; rejects resume after manual specification edits. */
+  executionDigest?: string
+  phase?: 'prepared' | 'agent-running' | 'agent-completed' | 'publishing' | 'completed'
+  session?: { id: string; transcriptPath: string; configHome?: string; started: boolean }
+  recovery?: { resumedAt?: string; reason: string; unknownEffects?: Array<{ id: string; name?: string; input?: unknown }> }
+  agentExitCode?: number
+  inboxOffset?: number
   agentPid?: number
   exitCode?: number
   error?: string
@@ -463,7 +474,103 @@ function formatCommand(args: string[]): string {
   return args.map(quote).join(' ')
 }
 
+function backgroundExecutionDigest(task: BackgroundTask): string {
+  return createHash('sha256').update(JSON.stringify({
+    id: task.id, task: task.task, cwd: task.cwd, model: task.model,
+    routeStrategy: task.routeStrategy, maxTurns: task.maxTurns,
+    skipPermissions: task.skipPermissions, offline: task.offline,
+    worktree: task.worktree, branch: task.branch,
+    pr: task.pr ? { enabled: task.pr.enabled, draft: task.pr.draft, base: task.pr.base,
+      title: task.pr.title, body: task.pr.body, push: task.pr.push } : undefined,
+  })).digest('hex')
+}
+
+/** Inspect the actual persisted tool journal, never infer completion from prose. */
+export function inspectBackgroundSession(task: BackgroundTask): { safe: boolean; reason: string; userIds: Set<string>; unknownEffects?: Array<{ id: string; name?: string; input?: unknown }> } {
+  const userIds = new Set<string>()
+  if (!task.session || !existsSync(task.session.transcriptPath)) return { safe: false, reason: 'Saved session transcript is missing; automatic replay was refused.', userIds }
+  if (statSync(task.session.transcriptPath).size > 64 * 1024 * 1024) return { safe: false, reason: 'Saved session exceeds recovery inspection limit; automatic replay was refused.', userIds }
+  const pending = new Map<string, { id: string; name?: string; input?: unknown }>()
+  let messages = 0
+  let text: string
+  try { text = new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(task.session.transcriptPath)) } catch { return { safe: false, reason: 'Saved session is not valid UTF-8; resume was refused.', userIds } }
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    let entry: { type?: string; uuid?: string; sessionId?: string; message?: { content?: unknown } }
+    try { entry = JSON.parse(line) } catch { return { safe: false, reason: 'Saved session contains a torn/invalid record; automatic replay was refused.', userIds } }
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return { safe: false, reason: 'Saved session contains an invalid record; resume was refused.', userIds }
+    if (entry.sessionId && entry.sessionId !== task.session.id) return { safe: false, reason: 'Saved session identity changed; automatic replay was refused.', userIds }
+    if (entry.type === 'user' || entry.type === 'assistant') messages++
+    if (entry.type === 'user' && entry.uuid) userIds.add(entry.uuid)
+    if (Array.isArray(entry.message?.content)) {
+      for (const block of entry.message.content as Array<{ type?: string; id?: string; name?: string; input?: unknown; tool_use_id?: string }>) {
+        if (block.type === 'tool_use' && block.id) pending.set(block.id, { id: block.id, name: block.name, input: block.input })
+        if (block.type === 'tool_result' && block.tool_use_id) pending.delete(block.tool_use_id)
+      }
+    }
+  }
+  return { safe: messages > 0, unknownEffects: pending.size ? [...pending.values()] : undefined,
+    reason: pending.size ? `Interrupted tool calls have unknown effects (${[...pending.keys()].join(', ')}). Resume the model to inspect and reconcile; do not blindly repeat them.` : messages ? 'Continue saved session; completed tool results are retained.' : 'Saved session has no conversation records; automatic replay was refused.', userIds }
+}
+
+function completedAgentResult(task: BackgroundTask): number | null {
+  if (!existsSync(task.outputFile) || statSync(task.outputFile).size > 64 * 1024 * 1024) return null
+  const lines = readFileSync(task.outputFile, 'utf8').trim().split('\n')
+  const last = safeParseJSON(lines.at(-1) ?? '', false) as { type?: string; session_id?: string; is_error?: boolean; subtype?: string } | null
+  return last?.type === 'result' && last.session_id === task.session?.id ? last.is_error || (last.subtype && last.subtype !== 'success') ? 1 : 0 : null
+}
+
+/** Reconcile only proven-dead local owners. Never signal or adopt persisted PIDs. */
+export function reconcileBackgroundTasks(cwd: string): BackgroundTask[] {
+  return withManifestLock(cwd, root => {
+    const manifest = loadManifest(root)
+    let changed = false
+    for (const task of manifest.tasks) {
+      if (task.status !== 'running') continue
+      if (ownerMayBeAlive(task.owner) || (!task.owner && isProcessAlive(task.workerPid))) continue
+      if (isProcessAlive(task.agentPid)) {
+        task.error = 'Worker exited while its agent is still alive; waiting for that process to exit before recovery.'
+        changed = true
+        continue
+      }
+      const fail = (reason: string): void => {
+        task.status = 'failed'; task.error = reason; task.completedAt = now()
+      }
+      if (!task.executionDigest || task.executionDigest !== backgroundExecutionDigest(task)) {
+        fail('Task specification changed or legacy execution has no bound specification; automatic replay was refused.')
+      } else if (task.phase === 'publishing') {
+        fail('Publication was interrupted and its external effects are uncertain; automatic replay was refused. Inspect the branch and pull request before retrying.')
+      } else {
+        const result = task.phase === 'agent-completed' ? task.agentExitCode : completedAgentResult(task)
+        if (typeof result === 'number') {
+          task.phase = 'agent-completed'; task.agentExitCode = result
+          if (result !== 0) fail('Saved agent result reports failure; automatic replay was refused.')
+          else if (!task.pr?.enabled) { task.status = 'completed'; task.phase = 'completed'; task.completedAt = now(); delete task.error }
+          else { task.status = 'queued'; delete task.error; task.recovery = { reason: 'Agent already completed; resume publication without rerunning the model.' } }
+        } else if (task.phase === 'prepared' && !task.session?.started) {
+          task.status = 'queued'; delete task.error
+        } else {
+          const inspection = inspectBackgroundSession(task)
+          if (inspection.safe) {
+            task.status = 'queued'; delete task.error
+            task.recovery = { reason: inspection.reason, unknownEffects: inspection.unknownEffects }
+          } else fail(inspection.reason)
+        }
+      }
+      delete task.owner; delete task.workerPid; delete task.agentPid
+      task.updatedAt = now(); changed = true
+    }
+    if (changed) saveManifest(root, manifest)
+    return manifest.tasks
+  })
+}
+
 export function listBackgroundTasks(cwd: string): BackgroundTask[] {
+  return reconcileBackgroundTasks(cwd).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
+/** Diagnostics must not reclaim ownership or rewrite state merely by inspecting it. */
+export function readBackgroundTasks(cwd: string): BackgroundTask[] {
   return loadManifest(cwd).tasks.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
@@ -812,7 +919,7 @@ async function spawnBackgroundWorker(
     child.unref()
     let shouldTerminate = false
     updateTask(task.cwd, task.id, t => {
-      if (t.status === 'queued' || t.status === 'running') {
+      if (t.status === 'queued') {
         t.workerPid = child.pid
       } else if (t.status === 'canceled') {
         shouldTerminate = true
@@ -859,8 +966,9 @@ export async function startExistingBackgroundTask(
   id: string,
   options: StartExistingBackgroundTaskOptions = {},
 ): Promise<StartBackgroundTaskResult | null> {
-  const task = getBackgroundTask(cwd, id)
+  const task = reconcileBackgroundTasks(cwd).find(task => task.id === id)
   if (!task) return null
+  if (task.status !== 'queued') throw new Error(`Task ${id} is ${task.status}; refusing duplicate execution. ${task.error ?? ''}`)
   const { entry, command } = buildWorkerCommand(task, options.bin)
   if (options.dryRun) {
     return { task, command: [entry.file, ...command], dryRun: true }
@@ -1010,13 +1118,13 @@ function childPrompt(task: BackgroundTask): string {
   return lines.join('\n')
 }
 
-export function streamUserMessage(content: string, priority: 'now' | 'later' = 'later'): string {
+export function streamUserMessage(content: string, priority: 'now' | 'later' = 'later', uuid: string = randomUUID()): string {
   return `${JSON.stringify({
     type: 'user',
     session_id: '',
     message: { role: 'user', content },
     parent_tool_use_id: null,
-    uuid: randomUUID(),
+    uuid,
     priority,
   })}\n`
 }
@@ -1130,8 +1238,8 @@ export function readInboxEntriesFromOffset(file: string, offset: number): {
   }
 }
 
-async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<number> {
-  const entry = cliEntry()
+async function runHeadlessAgent(task: BackgroundTask, cwd: string, bin?: { file: string; baseArgs: string[] }): Promise<number> {
+  const entry = cliEntry(bin)
   const args = [
     ...entry.baseArgs,
     '-p',
@@ -1140,13 +1248,24 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
     '--output-format',
     'stream-json',
     '--verbose',
+    '--replay-user-messages',
   ]
+  if (!task.session) throw new Error('Background session identity was not persisted before launch.')
+  if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/iu.test(task.session.id)) throw new Error('Invalid background session identity.')
+  const configHome = task.session.configHome ?? getURConfigHomeDir()
+  if (resolve(task.session.transcriptPath) !== resolve(join(configHome, 'projects', sanitizePath(cwd), `${task.session.id}.jsonl`))) throw new Error('Saved background session location changed; resume was refused.')
+  const resuming = task.session.started
+  const inspection = resuming ? inspectBackgroundSession(task) : undefined
+  if (inspection && !inspection.safe) throw new Error(inspection.reason)
+  args.push(resuming ? '--resume' : '--session-id', task.session.id)
   if (task.maxTurns && task.maxTurns > 0) args.push('--max-turns', String(task.maxTurns))
   if (task.skipPermissions) args.push('--dangerously-skip-permissions')
 
   const env = {
     ...process.env,
     UR_CODE_SUBPROCESS_ENV_SCRUB: '1',
+    UR_CONFIG_DIR: configHome,
+    ...(task.offline ? { UR_OFFLINE: '1' } : {}),
     ...(task.model
       ? { UR_MODEL: task.model, OLLAMA_MODEL: task.model }
       : {}),
@@ -1157,8 +1276,11 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
     const logFd = openSync(task.logFile, 'a', 0o600)
     // Steering can arrive after task creation but before the headless child
     // starts. Begin at zero so that backlog is deterministically delivered.
-    let inboxOffset = 0
+    let inboxOffset = task.inboxOffset ?? 0
     let sawResult = false
+    let resultFailed = false
+    const acknowledgedUsers = inspection?.userIds ?? new Set<string>()
+    const pendingOffsets = new Map<string, number>()
     let closedInput = false
     let cleanedUp = false
     let inboxFailed = false
@@ -1166,8 +1288,7 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
     let interval: ReturnType<typeof setInterval> | undefined
 
     const closeInputSoon = () => {
-      if (closedInput) return
-      if (closeTimer) clearTimeout(closeTimer)
+      if (closedInput || closeTimer) return
       closeTimer = setTimeout(() => {
         if (closedInput) return
         closedInput = true
@@ -1175,13 +1296,13 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
       }, 1000)
     }
 
-    const writeSteering = (text: string) => {
+    const writeSteering = (text: string, uuid: string) => {
       if (closedInput || child.stdin.destroyed) return
       if (closeTimer) {
         clearTimeout(closeTimer)
         closeTimer = undefined
       }
-      child.stdin.write(streamUserMessage(text, 'now'))
+      child.stdin.write(streamUserMessage(text, 'now', uuid))
       writeFileSync(task.logFile, `[${now()}] injected live steering into agent stdin\n`, {
         flag: 'a',
         mode: 0o600,
@@ -1204,8 +1325,16 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
         inboxOffset = read.nextOffset
         for (const entry of read.entries) {
           const steering = formatInboxSteering(entry)
-          if (steering) writeSteering(steering)
+          if (steering) {
+            const digest = createHash('sha256').update(`${task.id}:${entry.requestId ?? JSON.stringify(entry)}`).digest('hex')
+            const uuid = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`
+            if (!acknowledgedUsers.has(uuid)) {
+              pendingOffsets.set(uuid, read.nextOffset)
+              writeSteering(steering, uuid)
+            }
+          }
         }
+        if (pendingOffsets.size === 0 && inboxOffset > (task.inboxOffset ?? 0)) updateTask(task.cwd, task.id, t => { t.inboxOffset = Math.max(t.inboxOffset ?? 0, inboxOffset) })
         if (sawResult) closeInputSoon()
       } catch (error) {
         inboxFailed = true
@@ -1223,6 +1352,11 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
       }
     }
 
+    updateTask(task.cwd, task.id, t => {
+      if (t.owner?.token !== task.owner?.token) throw new Error('Background ownership changed before agent start.')
+      t.phase = 'agent-running'
+      t.session!.started = true
+    })
     const child = spawn(entry.file, args, {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -1231,22 +1365,43 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
     updateTask(task.cwd, task.id, t => {
       t.agentPid = child.pid
     })
-    child.stdin.write(streamUserMessage(childPrompt(task), 'later'))
-    interval = setInterval(pumpInbox, 500)
+    child.stdin.write(streamUserMessage(resuming
+      ? [
+          'Continue this saved background task from its persisted conversation. Preserve completed work and tool results; do not repeat completed effects. Resolve only the remaining user task and incorporate pending steering.',
+          inspection?.unknownEffects?.length ? `UNKNOWN OUTCOMES: these calls have no recorded tool result. This does not prove they failed or succeeded. Inspect repository/logs/external state, then choose how to reconcile within existing permissions. Never blindly repeat them.\n${JSON.stringify(inspection.unknownEffects)}` : '',
+        ].filter(Boolean).join('\n\n')
+      : childPrompt(task), 'later'))
+    interval = setInterval(() => {
+      pumpInbox()
+      updateTask(task.cwd, task.id, t => { if (t.owner?.token === task.owner?.token) t.owner.heartbeatAt = now() })
+    }, 500)
 
     let stdoutBuffer = ''
     child.stdout.on('data', chunk => {
       const text = Buffer.from(chunk).toString('utf-8')
       writeFileSync(outputFd, text)
       stdoutBuffer += text
+      if (Buffer.byteLength(stdoutBuffer, 'utf8') > 8 * 1024 * 1024) {
+        inboxFailed = true; child.kill('SIGTERM'); return
+      }
       for (;;) {
         const newline = stdoutBuffer.indexOf('\n')
         if (newline === -1) break
         const line = stdoutBuffer.slice(0, newline)
         stdoutBuffer = stdoutBuffer.slice(newline + 1)
         const parsed = safeParseJSON(line, false)
-        if (parsed && typeof parsed === 'object' && (parsed as { type?: string }).type === 'result') {
+        const event = parsed as { type?: string; uuid?: string; session_id?: string; is_error?: boolean; subtype?: string } | null
+        if (event?.type === 'user' && event.uuid && pendingOffsets.has(event.uuid)) {
+          const offset = pendingOffsets.get(event.uuid)!
+          acknowledgedUsers.add(event.uuid)
+          pendingOffsets.delete(event.uuid)
+          if (pendingOffsets.size === 0) updateTask(task.cwd, task.id, t => { t.inboxOffset = Math.max(t.inboxOffset ?? 0, inboxOffset, offset) })
+        }
+        if (event?.type === 'result') {
+          if (event.session_id !== task.session!.id) { inboxFailed = true; child.kill('SIGTERM'); continue }
+          fsyncSync(outputFd)
           sawResult = true
+          resultFailed = event.is_error === true || (!!event.subtype && event.subtype !== 'success')
           pumpInbox()
         }
       }
@@ -1294,7 +1449,7 @@ async function runHeadlessAgent(task: BackgroundTask, cwd: string): Promise<numb
           ? 'create PR if requested and mark task completed'
           : 'mark task failed and inspect background log',
       })
-      resolve(code ?? 1)
+      resolve(inboxFailed || resultFailed || !sawResult ? (code || 1) : code ?? 1)
     })
   })
 }
@@ -1640,18 +1795,23 @@ export async function createPullRequest(task: BackgroundTask, cwd: string): Prom
   }
 }
 
-export async function runBackgroundWorker(cwd: string, id: string): Promise<BackgroundTask> {
-  const task = getBackgroundTask(cwd, id)
+export async function runBackgroundWorker(cwd: string, id: string, options: { bin?: { file: string; baseArgs: string[] } } = {}): Promise<BackgroundTask> {
+  const task = reconcileBackgroundTasks(cwd).find(task => task.id === id)
   if (!task) throw new Error(`Background task not found: ${id}`)
   let claimed = false
   const claimedTask = updateTask(task.cwd, task.id, t => {
     if (t.status !== 'queued') return
     claimed = true
     t.status = 'running'
+    t.owner = makeProcessOwner()
+    t.executionDigest ??= backgroundExecutionDigest(t)
+    if (t.executionDigest !== backgroundExecutionDigest(t)) throw new Error('Background specification changed; resume was refused.')
+    t.phase ??= 'prepared'
     t.workerPid = process.pid
     t.startedAt = t.startedAt ?? now()
   })
   if (!claimed || !claimedTask) return claimedTask ?? task
+  Object.assign(task, claimedTask)
   writeFileSync(task.logFile, `[${now()}] worker started for ${id}\n`, {
     flag: 'a',
     mode: 0o600,
@@ -1659,7 +1819,7 @@ export async function runBackgroundWorker(cwd: string, id: string): Promise<Back
 
   try {
     const runCwd = await setupWorktree(task)
-    if (task.pr?.enabled) {
+    if (task.pr?.enabled && !task.pr.trust) {
       const trust = await establishPrTrust(task, runCwd)
       task.pr = { ...task.pr, trust }
       updateTask(task.cwd, task.id, current => {
@@ -1682,11 +1842,22 @@ export async function runBackgroundWorker(cwd: string, id: string): Promise<Back
       nextAction: 'run headless agent and collect output',
       data: { runCwd },
     })
-    const exitCode = await runHeadlessAgent(task, runCwd)
+    if (!task.session) {
+      task.session = { id: randomUUID(), transcriptPath: '', configHome: getURConfigHomeDir(), started: false }
+      task.session.transcriptPath = join(getURConfigHomeDir(), 'projects', sanitizePath(runCwd), `${task.session.id}.jsonl`)
+      updateTask(task.cwd, task.id, t => { t.session = task.session })
+    }
+    if (task.recovery) task.recovery.resumedAt = now()
+    const exitCode = task.phase === 'agent-completed' ? task.agentExitCode ?? 1 : await runHeadlessAgent(task, runCwd, options.bin)
+    updateTask(task.cwd, task.id, t => {
+      if (t.owner?.token !== task.owner?.token) throw new Error('Background scheduler ownership changed.')
+      t.phase = 'agent-completed'; t.agentExitCode = exitCode
+    })
     const afterRun = getBackgroundTask(task.cwd, task.id)
     if (!afterRun || afterRun.status === 'canceled') {
       return afterRun ?? claimedTask
     }
+    if (exitCode === 0 && task.pr?.enabled) updateTask(task.cwd, task.id, t => { t.phase = 'publishing' })
     const pr =
       exitCode === 0 && task.pr?.enabled
         ? await createPullRequest(task, runCwd)
@@ -1696,6 +1867,8 @@ export async function runBackgroundWorker(cwd: string, id: string): Promise<Back
       t.exitCode = exitCode
       t.status = exitCode === 0 && (!pr?.enabled || pr.created !== false) ? 'completed' : 'failed'
       t.completedAt = now()
+      t.phase = 'completed'
+      delete t.owner
       delete t.workerPid
       delete t.agentPid
       if (pr) t.pr = pr

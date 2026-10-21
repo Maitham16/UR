@@ -98,7 +98,7 @@ const commands = [
     name: 'acp',
     category: 'Interop',
     aliases: [],
-    summary: 'Run official-SDK ACP v1 over stdio, or manage the distinct UR HTTP JSON-RPC API used by bundled IDE integrations.',
+    summary: 'Run standard ACP over stdio or authenticated UR HTTP sessions with event replay, approvals, device revocation and optional team policy.',
     examples: ['ur acp stdio', 'ur acp serve --port 8123', 'ur acp status --json'],
   },
   {
@@ -203,7 +203,7 @@ const commands = [
     name: 'browser-qa',
     category: 'Verification',
     aliases: [],
-    summary: 'Validate and smoke-run browser replay fixtures under `.ur/browser-qa`.',
+    summary: 'Execute browser assertions and interactions at each viewport, with screenshots, traces and actual error results under `.ur/browser-qa`.',
     examples: ['ur browser-qa list', 'ur browser-qa validate', 'ur browser-qa run home-page-smoke --dry-run'],
   },
   {
@@ -280,7 +280,7 @@ const commands = [
     name: 'goal',
     category: 'Agent Platform',
     aliases: ['goals'],
-    summary: 'Track persistent long-horizon objectives with notes, linked workflows, and resumable execution.',
+    summary: 'Advance persistent objectives through model-directed work and replanning, criterion evidence, interruption recovery and optional aggregate budgets.',
     examples: ['ur goal add release-docs --objective "Ship professional docs" --workflow docs', 'ur goal note release-docs --note "Command reference drafted"', 'ur goal resume release-docs --dry-run', 'ur goal done release-docs'],
   },
   {
@@ -350,7 +350,7 @@ const commands = [
     name: 'model-doctor',
     category: 'Models',
     aliases: ['model-capabilities'],
-    summary: 'Inspect local Ollama models, context lengths, and likely capabilities such as coding, vision, tools, and embeddings.',
+    summary: 'Inspect model metadata or explicitly probe tool calls, structured output, cancellation and continuation; save evidence-scoped provider profiles.',
     examples: ['ur model-doctor', 'ur model-doctor qwen3-coder:480b-cloud', 'ur model-doctor --json'],
   },
   {
@@ -420,7 +420,7 @@ const commands = [
     name: 'sdk',
     category: 'Interop',
     aliases: ['embed'],
-    summary: 'Show or scaffold examples for driving UR programmatically from TypeScript or Python.',
+    summary: 'Use the dependency-free Node/TypeScript and Python SDKs for local or authenticated remote sessions, approvals, cancellation and resume; generate runnable examples.',
     examples: ['ur sdk', 'ur sdk init', 'ur sdk init --force', 'ur -p --output-format json --model <model> "Review the current git diff"'],
   },
   {

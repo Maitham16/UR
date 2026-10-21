@@ -1,9 +1,9 @@
-/** /ur-doctor — comprehensive UR environment check (toolchain, Ollama, .ur, MCP). */
+/** /ur-doctor — read-only active-provider readiness and workspace review. */
 import type { Command } from '../../types/command.js'
 const urDoctor = {
   type: 'local',
   name: 'ur-doctor',
-  description: 'Comprehensive UR health check: OS, tools, Ollama, .ur, MCP, playwright',
+  description: 'Read-only readiness and review: active provider, sandbox, diffs, current proof, costs and recovery [--json]',
   supportsNonInteractive: true,
   load: () => import('./ur-doctor.js'),
 } satisfies Command

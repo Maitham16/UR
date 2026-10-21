@@ -6,14 +6,17 @@ Source of truth: `src/entrypoints/cli.tsx`, `src/main.tsx`, `src/QueryEngine.ts`
 ## Process layout
 
 ```
-bin/ur.js  →  dist/cli.js (bundled from src/entrypoints/cli.tsx)
+Public native/Homebrew: ur (compiled runtime + versioned resources)
+Public npm: bin/ur.js → verified cached native ur (Node launcher; no external Bun)
+Source development: bin/ur.js → Bun → dist/cli.js
+All run the entrypoint compiled from src/entrypoints/cli.tsx:
                  │
                  ├─ fast paths (no full CLI load):
                  │    --version                     → prints "<version> (UR-Nexus)"
                  │    a2a serve                     → Agent-to-Agent HTTP server (src/services/agents/a2aServer.ts)
                  │    --ur-in-chrome-mcp            → Chrome-extension MCP server
                  │    --chrome-native-host          → Chrome native-messaging host
-                 │    remote-control|rc|remote|sync|bridge → bridge (remote-control) daemon
+                 │    remote-control|rc|remote|sync|bridge → internal BRIDGE_MODE branch, excluded from public builds
                  │    ps|logs|attach|kill, --bg     → background session registry (~/.ur/sessions/)
                  │    daemon [subcommand]           → long-running supervisor (feature-gated)
                  │    environment-runner            → headless BYOC runner (feature-gated)

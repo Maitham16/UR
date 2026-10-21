@@ -5,7 +5,7 @@ const goal = {
   name: 'goal',
   aliases: ['goals'],
   description:
-    'Track long-horizon objectives that persist across sessions and resume their workflow',
+    'Advance persistent goals with model-directed strategy, aggregate budgets and verified outcomes',
   argumentHint:
     'add|list|show|note|resume|pause|done|abandon|delete [name] [--objective ...] [--workflow ...] [--json]',
   supportsNonInteractive: true,

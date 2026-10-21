@@ -27,6 +27,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  integrations:
+    needs: verify
+    uses: ./.github/workflows/integrations.yml
+    with:
+      ref: ${{ needs.verify.outputs.tag }}
   native:
     needs: verify
     uses: ./.github/workflows/native.yml
@@ -106,7 +111,15 @@ jobs:
       - name: Install dependencies
         run: bun ci
 
+      - name: Install browser and Python fixtures
+        run: |
+          bunx --no-install playwright-core install --with-deps chromium
+          sudo apt-get install -y python3-venv
+
       - name: Full release gate
+        env:
+          UR_REQUIRE_BROWSER_QA_TESTS: '1'
+          UR_REQUIRE_FULL_BENCHMARK_FIXTURES: '1'
         run: |
           set -euo pipefail
           bun run typecheck
@@ -215,7 +228,7 @@ jobs:
   github-release:
     # npm's first invocation downloads its pinned native archive. Make all
     # verified public assets available before npm can expose that launcher.
-    needs: [verify, native, prepare-npm]
+    needs: [verify, native, prepare-npm, integrations]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -251,12 +264,21 @@ jobs:
           done
           node scripts/native-manifest.mjs dist-release/native
 
+      - name: Download verified SDK and editor distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist-release/integrations
+          gh run download "$GITHUB_RUN_ID" --name integration-distributions --dir dist-release/integrations
+
       - name: Attest the public native manifest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             dist-release/native/manifest.json
             dist-release/native/SHA256SUMS
+            dist-release/integrations/*
 
       - name: Publish the GitHub Release
         env:
@@ -281,14 +303,14 @@ jobs:
               --title "UR-Nexus $VERSION" \
               --prerelease="$PRERELEASE" \
               --notes-file release-notes.md
-            gh release upload "$TAG" dist-release/*.tgz dist-release/native/ur-*.tar.gz dist-release/native/manifest.json dist-release/native/SHA256SUMS install.sh uninstall.sh --clobber
+            gh release upload "$TAG" dist-release/*.tgz dist-release/native/ur-*.tar.gz dist-release/native/manifest.json dist-release/native/SHA256SUMS dist-release/integrations/* install.sh uninstall.sh --clobber
           else
             gh release create "$TAG" \
               --title "UR-Nexus $VERSION" \
               --prerelease="$PRERELEASE" \
               --notes-file release-notes.md \
               --verify-tag \
-              dist-release/*.tgz dist-release/native/ur-*.tar.gz dist-release/native/manifest.json dist-release/native/SHA256SUMS install.sh uninstall.sh
+              dist-release/*.tgz dist-release/native/ur-*.tar.gz dist-release/native/manifest.json dist-release/native/SHA256SUMS dist-release/integrations/* install.sh uninstall.sh
           fi
 
   npm-publish:

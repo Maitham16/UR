@@ -47,7 +47,7 @@ import type {
 import type { PermissionRule, PermissionRuleSource } from './PermissionRule.js'
 import { createReadRuleSuggestion } from './PermissionUpdate.js'
 import type { PermissionUpdate } from './PermissionUpdateSchema.js'
-import { getRuleByContentsForToolName } from './permissions.js'
+import { getAllowRules, getAskRules, getDenyRules } from './permissions.js'
 
 declare const MACRO: { VERSION: string }
 
@@ -947,14 +947,12 @@ function getPatternsByRoot(
     }
   })()
 
-  const rules = getRuleByContentsForToolName(
-    toolPermissionContext,
-    toolName,
-    behavior,
-  )
+  const rules = (behavior === 'allow' ? getAllowRules(toolPermissionContext) : behavior === 'deny' ? getDenyRules(toolPermissionContext) : getAskRules(toolPermissionContext))
+    .filter(rule => rule.ruleValue.toolName === toolName && rule.ruleValue.ruleContent !== undefined)
   // Resolve rules relative to path based on source
   const patternsByRoot = new Map<string | null, Map<string, PermissionRule>>()
-  for (const [pattern, rule] of rules.entries()) {
+  for (const rule of rules) {
+    const pattern = rule.ruleValue.ruleContent!
     const { relativePattern, root } = patternWithRoot(pattern, rule.source)
     let patternsForRoot = patternsByRoot.get(root)
     if (patternsForRoot === undefined) {
@@ -962,6 +960,8 @@ function getPatternsByRoot(
       patternsByRoot.set(root, patternsForRoot)
     }
     // Store the rule keyed by the root
+    // Repeated patterns must keep their LAST position relative to negations.
+    patternsForRoot.delete(relativePattern)
     patternsForRoot.set(relativePattern, rule)
   }
   return patternsByRoot
@@ -1021,17 +1021,20 @@ export function matchingRuleForInput(
 
     const igResult = ig.test(relativePathStr)
 
-    if (igResult.ignored && igResult.rule) {
-      // Map the matched pattern back to the original rule
-      const originalPattern = igResult.rule.pattern
-
-      // Check if this was a /** pattern we simplified
-      const withWildcard = originalPattern + '/**'
-      if (patternMap.has(withWildcard)) {
-        return patternMap.get(withWildcard) ?? null
+    if (igResult.ignored) {
+      // ignore 6's public test() result contains only ignored/unignored. Do not
+      // depend on ignore 7's optional rule metadata: that silently disabled
+      // matching Read/Edit deny and ask rules with our declared dependency.
+      // Evaluate the full ordered set first so negations keep their meaning,
+      // then identify the last positive matching rule for decision provenance.
+      const entries = [...patternMap.entries()]
+      for (let index = entries.length - 1; index >= 0; index--) {
+        const [originalPattern, rule] = entries[index]
+        const normalized = originalPattern.endsWith('/**')
+          ? originalPattern.slice(0, -3)
+          : originalPattern
+        if (ignore().add(normalized).test(relativePathStr).ignored) return rule
       }
-
-      return patternMap.get(originalPattern) ?? null
     }
   }
 

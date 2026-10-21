@@ -1,0 +1,60 @@
+{
+  "off-by-one": {
+    "src/findIndex.js": "export function findIndex(values,target){for(let i=0;i<values.length;i++)if(values[i]===target)return i;return -1;}\n"
+  },
+  "null-guard": {
+    "src/greet.js": "export function greet(name){return name==null || !name.trim()?'Hello, stranger':`Hello, ${name.toUpperCase()}`;}\n"
+  },
+  "missing-await": {
+    "src/fetcher.js": "export async function fetchData(load){try{return await load()}catch{return 'fallback'}}\n"
+  },
+  "extract-function": {
+    "src/checkout.ts": "export const subtotal=(p:number,q:number)=>p*q; export const taxAmount=(s:number,t:number)=>s*t; export const discountAmount=(s:number,d:number)=>s*d; export function calculateTotal(p:number,q:number,t:number,d:number){const s=subtotal(p,q);return s+taxAmount(s,t)-discountAmount(s,d);}\n"
+  },
+  "rename-fields": {
+    "src/user.ts": "export interface User {firstName:string;lastName:string;email:string}\nexport function display(u:User){return `${u.firstName} ${u.lastName} <${u.email}>`;}\n",
+    "src/example.ts": "import {display} from './user.ts';export const example=display({firstName:'Ada',lastName:'Lovelace',email:'ada@example.test'});\n"
+  },
+  "remove-duplication": {
+    "src/validators.js": "export function isEmpty(v){return v==null || !v.trim();} export function validateName(v){return !isEmpty(v)} export function validateEmail(v){return !isEmpty(v)} export function validateCity(v){return !isEmpty(v)}\n"
+  },
+  "calc-tests": {
+    "src/calc.test.ts": "import {test} from 'node:test';import assert from 'node:assert/strict';import {add,subtract,multiply,divide} from './calc.ts';test('arithmetic',()=>{assert.equal(add(-2,3),1);assert.equal(subtract(2,3),-1);assert.equal(multiply(-2,3),-6);assert.equal(divide(6,3),2);assert.throws(()=>divide(1,0),RangeError);});\n"
+  },
+  "string-utils-tests": {
+    "src/strings.test.js": "import {test} from 'node:test';import assert from 'node:assert/strict';import {slugify,truncate} from './strings.js';test('strings',()=>{assert.equal(slugify(' Hello, World! '),'hello-world');assert.equal(slugify(''),'');assert.equal(truncate('abcdef',3),'abc');assert.equal(truncate('',3),'');assert.equal(truncate('abc',3),'abc');});\n"
+  },
+  "async-tests": {
+    "src/cache.test.ts": "import {test} from 'node:test';import assert from 'node:assert/strict';import {createCache} from './cache.ts';test('cache',async()=>{const c=createCache();let calls=0;const fetcher=async()=>++calls;assert.equal(await c.getOrFetch('x',fetcher),1);assert.equal(await c.getOrFetch('x',fetcher),1);assert.equal(calls,1);await assert.rejects(c.getOrFetch('bad',async()=>{throw Error('x')}));assert.equal(await c.getOrFetch('bad',async()=>42),42);});\n"
+  },
+  "add-types": {
+    "src/person.js": null,
+    "src/person.ts": "export interface Person{name:string;age:number} export function createPerson(name:string,age:number):Person{return {name,age};}\n"
+  },
+  "null-types": {
+    "src/config.js": null,
+    "src/config.ts": "const config:Record<string,string>={region:'eu'};export function getConfig(key:string):string|undefined{return Object.hasOwn(config,key)?config[key]:undefined;}\n"
+  },
+  "module-types": {
+    "src/math.js": null,
+    "src/math.ts": "export const add=(a:number,b:number):number=>a+b;export const subtract=(a:number,b:number):number=>a-b;\n"
+  },
+  "base-image-typo": {
+    "Dockerfile": "FROM node:22-slim\nWORKDIR /app\nCOPY src/ ./src/\nCMD [\"node\",\"src/index.js\"]\n"
+  },
+  "missing-cmd": {
+    "Dockerfile": "FROM node:22-slim\nWORKDIR /app\nCOPY src/ ./src/\nCMD [\"node\",\"src/server.js\"]\n"
+  },
+  "cache-layer-order": {
+    "Dockerfile": "FROM node:22-slim\nWORKDIR /app\nCOPY package.json package-lock.json ./\nRUN npm ci --ignore-scripts\nCOPY src/ ./src/\nCMD [\"node\",\"src/index.js\"]\n"
+  },
+  "missing-dep": {
+    "setup.py": "from setuptools import setup\nsetup(name='ur-eval-mypkg',version='0.1.0',packages=['mypkg'],package_dir={'':'src'},install_requires=['requests==2.32.5'])\n"
+  },
+  "missing-pyproject": {
+    "pyproject.toml": "[build-system]\nrequires=[\"setuptools==75.8.0\",\"wheel==0.45.1\"]\nbuild-backend=\"setuptools.build_meta\"\n[project]\nname=\"ur-eval-mypkg\"\nversion=\"0.1.0\"\n"
+  },
+  "entrypoint": {
+    "setup.py": "from setuptools import setup\nsetup(name='ur-eval-mypkg',version='0.1.0',packages=['mypkg'],package_dir={'':'src'},entry_points={'console_scripts':['mypkg=mypkg.cli:main']})\n"
+  }
+}

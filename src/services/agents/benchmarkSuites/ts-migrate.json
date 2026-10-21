@@ -1,33 +1,60 @@
 {
   "version": 1,
   "name": "builtin-ts-migrate",
-  "description": "Small TypeScript migration benchmark. Each case asks UR to convert JavaScript to typed TypeScript.",
+  "description": "Strict TypeScript compiler acceptance/rejection and independent runtime tests; pinned TypeScript 5.9.3 is fetched with npx when absent.",
   "cases": [
     {
       "id": "add-types",
       "category": "ts-migrate",
-      "prompt": "You are in a fresh repo. Create src/person.js with a function createPerson(name, age) that returns an object and a usage file. Ask UR to rename it to src/person.ts, add TypeScript interface Person { name: string; age: number }, annotate the function, and run npx tsc --noEmit (or a local tsc if available). Finish with VERDICT: PASS if no type errors are reported.",
+      "prompt": "Migrate src/person.js to src/person.ts. Export interface Person with string name and number age; typed createPerson(name,age) returns Person. Preserve behavior and remove obsolete JS file. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "src/person.js": "export function createPerson(name,age){return {name,age};}\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "ls src/person.ts"
+        "verdict": "PASS",
+        "testCommand": "node --experimental-strip-types \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nconst typecheck=\"import {createPerson,type Person} from './src/person.ts'; const p:Person=createPerson('Ada',36);\\n// @ts-expect-error wrong argument types\\ncreatePerson(4,'bad');\\n// @ts-expect-error name is a string\\nconst bad:Person={name:5,age:3};\\n\";\nimport {spawnSync} from 'node:child_process';\nimport {writeFileSync,unlinkSync} from 'node:fs';\nconst checkPath='.ur-eval-typecheck.ts';\ntry {writeFileSync(checkPath,typecheck); const result=spawnSync('npx',['--yes','--package','typescript@5.9.3','tsc','--noEmit','--strict','--skipLibCheck','--target','ES2022','--module','NodeNext','--moduleResolution','NodeNext','--allowImportingTsExtensions',checkPath],{encoding:'utf8',timeout:120000}); assert.equal(result.status,0,result.stdout+result.stderr); } finally {try{unlinkSync(checkPath)}catch{}}\nconst {createPerson}=await load('src/person.ts'); assert.deepEqual(createPerson('Ada',36),{name:'Ada',age:36});\nimport {existsSync} from 'node:fs'; assert.equal(existsSync('src/person.js'),false);"
+        }
       }
     },
     {
       "id": "null-types",
       "category": "ts-migrate",
-      "prompt": "You are in a fresh repo. Create src/config.js with getConfig(key) that may return undefined. Ask UR to migrate it to src/config.ts, add strict null checks via type annotations, and create a usage file that handles undefined. Run type check. Finish with VERDICT: PASS if types are sound.",
+      "prompt": "Migrate src/config.js to strict src/config.ts. getConfig(key:string) returns string|undefined, region is eu, unknown keys including inherited object keys return undefined. Add usage that handles absent values and remove obsolete JS. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "src/config.js": "const config={region:'eu'}; export function getConfig(key){return config[key];}\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "ls src/config.ts"
+        "verdict": "PASS",
+        "testCommand": "node --experimental-strip-types \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nconst typecheck=\"import {getConfig} from './src/config.ts'; const a:string|undefined=getConfig('missing');\\n// @ts-expect-error absence must be checked\\nconst b:string=getConfig('region');\\n// @ts-expect-error only string keys\\ngetConfig(42);\\n\";\nimport {spawnSync} from 'node:child_process';\nimport {writeFileSync,unlinkSync} from 'node:fs';\nconst checkPath='.ur-eval-typecheck.ts';\ntry {writeFileSync(checkPath,typecheck); const result=spawnSync('npx',['--yes','--package','typescript@5.9.3','tsc','--noEmit','--strict','--skipLibCheck','--target','ES2022','--module','NodeNext','--moduleResolution','NodeNext','--allowImportingTsExtensions',checkPath],{encoding:'utf8',timeout:120000}); assert.equal(result.status,0,result.stdout+result.stderr); } finally {try{unlinkSync(checkPath)}catch{}}\nconst {getConfig}=await load('src/config.ts'); assert.equal(getConfig('region'),'eu'); assert.equal(getConfig('missing'),undefined); assert.equal(getConfig('toString'),undefined);\nimport {existsSync} from 'node:fs'; assert.equal(existsSync('src/config.js'),false);"
+        }
       }
     },
     {
       "id": "module-types",
       "category": "ts-migrate",
-      "prompt": "You are in a fresh repo. Create src/math.js with CommonJS exports (module.exports = { add, subtract }). Ask UR to migrate to src/math.ts using ESM exports, add TypeScript types, create src/math.test.ts, and run tests. Finish with VERDICT: PASS if tests pass.",
+      "prompt": "Migrate existing CommonJS src/math.js to src/math.ts with typed named ESM exports add and subtract taking/returning numbers. Preserve runtime behavior, add tests, and remove obsolete JS. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "src/math.js": "module.exports={add:(a,b)=>a+b,subtract:(a,b)=>a-b};\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "ls src/math.ts"
+        "verdict": "PASS",
+        "testCommand": "node --experimental-strip-types \"$UR_EVAL_VERIFY_DIR/check.mjs\"",
+        "testFiles": {
+          "check.mjs": "import assert from 'node:assert/strict';\nimport {pathToFileURL} from 'node:url';\nimport {resolve} from 'node:path';\nconst load = name => import(pathToFileURL(resolve(name)).href);\nconst typecheck=\"import {add,subtract} from './src/math.ts'; const a:number=add(1,2); const b:number=subtract(2,1);\\n// @ts-expect-error numeric API\\nadd('a','b');\\n// @ts-expect-error numeric API\\nsubtract(null,2);\\n\";\nimport {spawnSync} from 'node:child_process';\nimport {writeFileSync,unlinkSync} from 'node:fs';\nconst checkPath='.ur-eval-typecheck.ts';\ntry {writeFileSync(checkPath,typecheck); const result=spawnSync('npx',['--yes','--package','typescript@5.9.3','tsc','--noEmit','--strict','--skipLibCheck','--target','ES2022','--module','NodeNext','--moduleResolution','NodeNext','--allowImportingTsExtensions',checkPath],{encoding:'utf8',timeout:120000}); assert.equal(result.status,0,result.stdout+result.stderr); } finally {try{unlinkSync(checkPath)}catch{}}\nconst {add,subtract}=await load('src/math.ts'); assert.equal(add(-4,3),-1); assert.equal(subtract(3,7),-4);\nimport {existsSync} from 'node:fs'; assert.equal(existsSync('src/math.js'),false);"
+        }
       }
     }
   ]

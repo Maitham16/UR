@@ -31,6 +31,14 @@ export type TurnEffects = {
 
 export class ToolEffectLedger {
   private turns = new Map<string, TurnEffects>()
+  private observedFiles = new Map<string, Set<string>>()
+
+  /** Actual content changes, including failed shell commands with partial writes. */
+  recordObservedChanges(turnId: string, files: string[]): void {
+    const observed = this.observedFiles.get(turnId) ?? new Set<string>()
+    for (const file of files) observed.add(file)
+    this.observedFiles.set(turnId, observed)
+  }
 
   /**
    * Record one tool result. Called after the tool returns and we know
@@ -63,22 +71,20 @@ export class ToolEffectLedger {
   }
 
   /**
-   * Did this turn produce any successful side effect? "Side effect" means a
-   * mutating tool — Write/Edit/Bash/PowerShell/NotebookEdit. Read-only tools (Read,
-   * Grep, Glob, etc.) do not count.
+   * Direct successful writes or observed workspace changes. A successful shell
+   * command alone is not evidence that any file changed.
    */
   hasMutatingEffect(turnId: string): boolean {
     const t = this.turns.get(turnId)
-    if (!t) return false
-    return t.effects.some(e => e.succeeded && isMutatingTool(e.toolName))
+    return Boolean(this.observedFiles.get(turnId)?.size) ||
+      Boolean(t?.effects.some(e => e.succeeded && isMutatingTool(e.toolName)))
   }
 
   /** Distinct successful-write target paths for this turn (for gate filtering). */
   modifiedFiles(turnId: string): string[] {
     const t = this.turns.get(turnId)
-    if (!t) return []
-    const out = new Set<string>()
-    for (const e of t.effects) {
+    const out = new Set(this.observedFiles.get(turnId))
+    for (const e of t?.effects ?? []) {
       if (!e.succeeded) continue
       if (e.toolName !== 'Write' && e.toolName !== 'Edit' && e.toolName !== 'NotebookEdit') {
         continue
@@ -108,10 +114,12 @@ export class ToolEffectLedger {
   /** Drop turn state once it's no longer needed (e.g. session compaction). */
   forget(turnId: string): void {
     this.turns.delete(turnId)
+    this.observedFiles.delete(turnId)
   }
 
   clear(): void {
     this.turns.clear()
+    this.observedFiles.clear()
   }
 }
 
@@ -119,8 +127,6 @@ const MUTATING_TOOLS = new Set([
   'Write',
   'Edit',
   'NotebookEdit',
-  'Bash',
-  'PowerShell',
 ])
 
 function isMutatingTool(name: string): boolean {

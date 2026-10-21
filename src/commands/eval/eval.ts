@@ -104,6 +104,8 @@ const EVAL_FLAGS_WITH_VALUES = new Set([
   '--limit',
   '--category',
   '--max-turns',
+  '--max-budget-usd',
+  '--timeout-ms',
   '--model',
   '--models',
   '--efforts',
@@ -223,11 +225,17 @@ export const call: LocalCommandCall = async (args: string) => {
   const numericError =
     positiveIntegerError(tokens, '--limit', 1_000) ??
     positiveIntegerError(tokens, '--max-turns') ??
+    positiveIntegerError(tokens, '--timeout-ms') ??
     positiveIntegerError(tokens, '--repeat', 100)
   if (numericError) {
     process.exitCode = 1
     return { type: 'text', value: numericError }
   }
+  const budgetRaw = optionValue(tokens, '--max-budget-usd')
+  const maxBudgetUsd = budgetRaw === undefined ? undefined : Number(budgetRaw)
+  if (tokens.includes('--max-budget-usd') && (maxBudgetUsd === undefined || !Number.isFinite(maxBudgetUsd) || maxBudgetUsd <= 0)) return { type: 'text', value: '--max-budget-usd must be a positive finite amount.', exitCode: 1 }
+  const timeoutRaw = optionValue(tokens, '--timeout-ms')
+  const timeoutMs = timeoutRaw === undefined ? undefined : Number(timeoutRaw)
   const routeStrategy = optionValue(tokens, '--strategy')
   if (
     routeStrategy !== undefined &&
@@ -642,6 +650,7 @@ export const call: LocalCommandCall = async (args: string) => {
         const runner = dryRun
           ? makeDryEvalRunner()
           : makeCliEvalRunner({
+              maxBudgetUsd, timeoutMs,
               cwd,
               maxTurns,
               skipPermissions,
@@ -776,6 +785,7 @@ export const call: LocalCommandCall = async (args: string) => {
     const runner = dryRun
       ? makeDryEvalRunner()
       : makeCliEvalRunner({
+              maxBudgetUsd, timeoutMs,
           cwd,
           maxTurns,
           skipPermissions,
@@ -895,6 +905,7 @@ export const call: LocalCommandCall = async (args: string) => {
         const base = dryRun
           ? makeDryEvalRunner()
           : makeCliEvalRunner({
+              maxBudgetUsd, timeoutMs,
               cwd,
               maxTurns,
               skipPermissions,

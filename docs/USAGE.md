@@ -15,7 +15,7 @@ Use `brew upgrade ur-nexus` for Homebrew, `npm install -g ur-agent@latest`
 for npm, or `ur upgrade` for the standalone installer. Only standalone installs
 accept `ur install <version>`; package-manager installations reject it.
 
-Windows native and public npm installation are unavailable in 1.86.2.
+Windows native and public npm installation are unavailable in 1.87.0.
 Bun-based source development remains optional on Windows; see the
 [Development Guide](DEVELOPMENT.md).
 
@@ -53,6 +53,7 @@ Useful commands from inside UR:
 /session list
 /session archive
 /session unarchive <session-id>
+/ur-doctor
 /fix-bug describe the failure and reproduction steps
 /research init current-tools --question "What changed?"
 /mode redteam
@@ -60,6 +61,20 @@ Useful commands from inside UR:
 /design3d init product-shot --engine blender --units mm --format blend
 /design3d init studio-scene --engine 3dsmax --units cm --format max
 ```
+
+After choosing a provider/model, run `ur doctor --readiness` in a terminal
+or `/ur-doctor` inside UR. Add `--json` for a structured report. It checks the
+selected provider without generating model output or spawning MCP servers,
+then summarizes changed files, current spec proof, saved goals/background work,
+reported and unknown costs, cancellation and recovery commands. Optional tools
+are needed only for their workflows; an API setup does not need Ollama.
+
+Start with a small task: “Explain how this project runs its tests. Do not modify
+files.” In `/model`, **K** adds/replaces an API-provider key; local servers and
+official subscription CLIs use their own setup. Ctrl+C interrupts foreground
+work, `/cost` shows current-session usage, and `ur --resume` reopens a saved
+conversation. Review the diff and executed test evidence after changes.
+Provider diagnostics alone do not prove generation or tool-call compatibility.
 
 `/mode redteam` is a session-only security-research policy mode. Its first use
 shows a mandatory warning and requires `/mode redteam --accept-risk`. It removes
@@ -453,8 +468,8 @@ UR includes slash commands and CLI subcommands for common workflows:
   normal marketplace update command.
 - `ur agents` to list configured agents
 - `ur agent-trends` to inspect coverage for current agent technology trends
-- `ur a2a card` to print legacy Agent Card metadata, or
-  `ur a2a card --v1` to preview the current A2A 1.0 card
+- `ur a2a card` to print the current A2A 1.0 Agent Card; the server negotiates
+  legacy compatibility automatically from request headers
 - `ur bg ...` to run and idempotently steer detached local background agents
   with optional worktrees and PRs
 - `ur cloud ...` to run, synchronize, steer, and cancel local or managed
@@ -514,9 +529,13 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur semantic-memory ...` to build and search the project-local memory index
 - `ur claim-ledger ...` to map generated claims to their sources
 - `ur route ...` to classify a task and recommend a subagent and collaboration pattern
-- `ur model-doctor` and `ur model-route ...` to inspect local Ollama models and pick one by capability fit
+- `ur model-doctor` for Ollama metadata estimates, `--profile` for saved
+  endpoint-bound capability evidence, and explicit `--probe` for real
+  provider/model measurements (may incur usage); profiles never restrict model
+  selection. `ur model-route ...` recommends a model by task fit
 - `ur local-first` to report readiness for offline/no-cloud environments
-- `ur browser-qa ...` to validate and smoke-run browser QA replay fixtures
+- `ur browser-qa ...` to execute browser assertions at each viewport, capture
+  screenshots/traces, and return failure status when a check fails
 - `ur desktop-qa ...` to run Electron fixtures with hashed masked screenshots;
   raw video/trace requires selector redaction to be disabled
 - `ur trigger parse|run ...` to inspect GitHub/Slack/Teams/Gmail/generic payloads,
@@ -549,8 +568,12 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur a2a ...` for a negotiated Agent-to-Agent server with automatic compatibility
   binding, scoped delegation tokens, durable protocol state, and separate UR
   compatibility task routes
-- `ur sdk ...` to scaffold TS/Python headless SDK examples
-- `ur doctor` to inspect CLI health
+- `ur sdk ...` to inspect/scaffold the supported `ur-agent/sdk` Node client and
+  bundled Python client, with local stream-json events, typed approvals,
+  cancellation and native resume, plus authenticated ACP remote sessions and
+  event-cursor reconnect (no separate PyPI release is claimed)
+- `ur doctor --readiness` for active-provider setup and read-only workspace review;
+  plain `ur doctor` retains installation/auto-updater diagnostics
 - `ur update` or `ur upgrade` to upgrade standalone UR or show the package-manager update command
 
 Interactive sessions retain the installation's update channel: verified GitHub
@@ -782,3 +805,20 @@ scripts, docs, automations, or verifier gates. The safety policy separates
 read/write/execute/network permissions, asks before destructive operations,
 recommends sandboxing for risky commands, and denies common secret exfiltration
 patterns.
+
+For an opt-in shell boundary, generate a separate preset and review it before
+launching with it:
+
+```sh
+ur safety init --preset sandboxed --allow-domain example.com
+ur --settings .ur/sandboxed.settings.json
+```
+
+Generation does not change current settings or permission mode. The preset
+requires a working OS sandbox, disables unsandboxed fallback, scopes shell
+egress and denies current secret-like environment names without storing
+values. Existing permission-allowed hosts, read exceptions and separate MCP,
+hook, native-file-tool and external-CLI boundaries still apply. See the
+[full scope](../technical/12-security-sandbox-stability.md#opt-in-sandboxed-preset).
+`ur safety audit --json` reports bounded offline malicious/benign fixtures;
+it does not run a model or attest OS enforcement.

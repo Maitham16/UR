@@ -1,4 +1,5 @@
 import type { Verdict } from './executor.js'
+import type { VerificationEvidence, VerificationExecution } from '../verifier/executionEvidence.js'
 
 export type VerificationProofKind = 'compile' | 'test' | 'lint' | 'diff' | 'runtime'
 
@@ -6,6 +7,7 @@ export type VerificationProofCheck = {
   ok: boolean
   present: VerificationProofKind[]
   missing: VerificationProofKind[]
+  executionIds: Partial<Record<VerificationProofKind, string>>
 }
 
 export const REQUIRED_VERIFICATION_PROOFS: VerificationProofKind[] = [
@@ -23,9 +25,6 @@ const PROOF_PATTERNS: Record<VerificationProofKind, RegExp[]> = {
   diff: [/\bdiff proof\b/i],
   runtime: [/\bruntime proof\b/i],
 }
-
-const COMMAND_EVIDENCE_RE = /\b(command|ran|run)\b|`[^`]+`/i
-const OBSERVATION_EVIDENCE_RE = /\b(output|stdout|stderr|exit(?:ed| code)?|passed|failed|succeeded|ok|reviewed|showed)\b/i
 
 function proofBlocks(output: string): string[] {
   const lines = output.split('\n')
@@ -48,26 +47,45 @@ function proofBlocks(output: string): string[] {
   return blocks
 }
 
-function hasProof(output: string, kind: VerificationProofKind): boolean {
-  return proofBlocks(output).some(block =>
-    PROOF_PATTERNS[kind].some(pattern => pattern.test(block)) &&
-    COMMAND_EVIDENCE_RE.test(block) &&
-    OBSERVATION_EVIDENCE_RE.test(block),
-  )
+function usableExecution(execution: VerificationExecution, evidence: VerificationEvidence): boolean {
+  return execution.runId === evidence.runId && execution.cwd === evidence.cwd &&
+    execution.exitCode === 0 && !execution.interrupted && !execution.observationError &&
+    Boolean(evidence.stateSha256) && execution.beforeStateSha256 === evidence.stateSha256 &&
+    execution.afterStateSha256 === evidence.stateSha256 &&
+    Number.isFinite(Date.parse(execution.startedAt)) && Number.isFinite(Date.parse(execution.finishedAt)) &&
+    Date.parse(execution.finishedAt) >= Date.parse(execution.startedAt)
 }
 
-export function evaluateVerificationProofs(output: string): VerificationProofCheck {
-  const present = REQUIRED_VERIFICATION_PROOFS.filter(kind => hasProof(output, kind))
+export function evaluateVerificationProofs(output: string, evidence?: VerificationEvidence): VerificationProofCheck {
+  const executionIds: VerificationProofCheck['executionIds'] = {}
+  if (evidence?.version === 1 && !evidence.observationError) {
+    const unique = new Map(evidence.executions.map(execution => [execution.id, execution]))
+    if (unique.size === evidence.executions.length) for (const kind of REQUIRED_VERIFICATION_PROOFS) {
+      for (const block of proofBlocks(output)) {
+        if (!PROOF_PATTERNS[kind].some(pattern => pattern.test(block))) continue
+        const commands = [...block.matchAll(/`([^`\n]+)`/gu)].map(match => match[1])
+        const references = [...block.matchAll(/\bexecution:([a-zA-Z0-9_-]+)/gu)].map(match => match[1])
+        const execution = evidence.executions.find(item =>
+          usableExecution(item, evidence) &&
+          (references.length > 0 ? references.includes(item.id) : commands.includes(item.command)) &&
+          (commands.length === 0 || commands.includes(item.command)))
+        if (execution) { executionIds[kind] = execution.id; break }
+      }
+    }
+  }
+  const present = REQUIRED_VERIFICATION_PROOFS.filter(kind => executionIds[kind] !== undefined)
   const missing = REQUIRED_VERIFICATION_PROOFS.filter(kind => !present.includes(kind))
-  return { ok: missing.length === 0, present, missing }
+  return { ok: missing.length === 0, present, missing, executionIds }
 }
 
 export function enforceNoPassWithoutProof(
   verdict: Verdict,
   output: string,
+  evidence?: VerificationEvidence,
+  runnerIsError = false,
 ): { verdict: Verdict; output: string; proofCheck: VerificationProofCheck; proofFailure: boolean } {
-  const proofCheck = evaluateVerificationProofs(output)
-  if (verdict !== 'PASS' || proofCheck.ok) {
+  const proofCheck = evaluateVerificationProofs(output, evidence)
+  if (!runnerIsError && (verdict !== 'PASS' || proofCheck.ok)) {
     return { verdict, output, proofCheck, proofFailure: false }
   }
   return {
@@ -76,7 +94,10 @@ export function enforceNoPassWithoutProof(
       output,
       '',
       '[deterministic proof check]',
-      `VERDICT: FAIL because PASS was claimed without required proof: ${proofCheck.missing.join(', ')}`,
+      runnerIsError
+        ? 'VERDICT: FAIL because the verification runner failed; its prose cannot establish success.'
+        : `VERDICT: FAIL because PASS was claimed without required proof bound to successful executions of the current state: ${proofCheck.missing.join(', ')}`,
+      ...(evidence?.observationError ? [`Evidence unavailable: ${evidence.observationError}`] : []),
     ].join('\n'),
     proofCheck,
     proofFailure: true,

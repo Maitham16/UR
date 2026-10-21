@@ -14,9 +14,11 @@ function fixture() {
   const directory = join(work, 'package')
   mkdirSync(join(directory, 'bin'), { recursive: true })
   mkdirSync(join(directory, 'dist'))
+  mkdirSync(join(directory, 'sdk/python'), { recursive: true })
   const metadata = {
     name: 'ur-agent', version, type: 'module', bin: { ur: 'bin/ur.js' },
-    files: ['bin', 'dist', 'README.md'], engines: { node: '>=22.12', bun: '>=1.3.0' },
+    files: ['bin', 'dist', 'sdk', 'README.md'], engines: { node: '>=22.12', bun: '>=1.3.0' },
+    exports: { './sdk': { types: './sdk/index.d.ts', import: './sdk/index.js' } },
     dependencies: { protobufjs: '0.0.0-unavailable-fixture' }, devDependencies: { fixture: '*' },
     optionalDependencies: { optional: '*' }, peerDependencies: { peer: '*' },
     scripts: { prepack: 'exit 99', postinstall: 'exit 99' }, overrides: { fixture: '*' },
@@ -27,6 +29,9 @@ function fixture() {
   writeFileSync(join(directory, 'bin/ur.js'), '#!/usr/bin/env node\nif (metadata.urDistribution === "native") await import("./npm-native.mjs");\n', { mode: 0o755 })
   writeFileSync(join(directory, 'bin/npm-native.mjs'), 'export function launchNpmNative() {}\n')
   writeFileSync(join(directory, 'dist/cli.js'), 'verified source bundle fixture\n')
+  writeFileSync(join(directory, 'sdk/index.js'), 'export const sdkFixture = true;\n')
+  writeFileSync(join(directory, 'sdk/index.d.ts'), 'export declare const sdkFixture: true;\n')
+  writeFileSync(join(directory, 'sdk/python/pyproject.toml'), '[project]\nname="ur-agent-sdk"\nversion="0.0.0"\n')
   writeFileSync(join(directory, 'README.md'), 'verified release documentation\n')
   const source = join(work, 'source.tgz')
   execFileSync('tar', ['-czf', source, '-C', work, 'package'])
@@ -66,6 +71,8 @@ test('public npm assembler packs a dependency-free native bootstrap without muta
     expect(metadata.cpu).toEqual(['arm64', 'x64'])
     for (const key of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies', 'scripts', 'overrides', 'patchedDependencies', 'packageManager']) expect(metadata[key], key).toBeUndefined()
     expect(metadata.bin).toEqual({ ur: 'bin/ur.js' })
+    expect(metadata.exports['./sdk']).toEqual({ types: './sdk/index.d.ts', import: './sdk/index.js' })
+    expect(execFileSync('tar', ['-xOf', output.tarball, 'package/sdk/index.js'], { encoding: 'utf8' })).toContain('sdkFixture')
     expect(JSON.parse(execFileSync('tar', ['-xOf', output.tarball, 'package/bin/native-release.json'], { encoding: 'utf8' }))).toEqual(item.manifest)
     expect(execFileSync('tar', ['-xOf', output.tarball, 'package/dist/cli.js'], { encoding: 'utf8' })).toBe('verified source bundle fixture\n')
     expect(execFileSync('tar', ['-xOf', output.tarball, 'package/README.md'], { encoding: 'utf8' })).toBe('verified release documentation\n')

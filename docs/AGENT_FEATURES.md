@@ -4,10 +4,41 @@ This page tracks the agent-platform additions that were prioritized after
 comparing UR with current Codex, Claude Code, Copilot, and Jules-style agent
 workflows.
 
-UR's intended advantage is not being another generic coding agent. It is a
-reproducible autonomous software engineering agent: every substantial task can
-be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
-spec as the durable source of truth and command evidence as the success gate.
+UR combines model-directed engineering work with persisted context, tool
+execution, optional orchestration and evidence-based verification. The model
+chooses how to approach a task; a workflow status or a confident answer alone
+does not establish that its outcome was verified.
+For a task that benefits from an explicit specification,
+`spec -> plan -> patch -> test -> report -> rollback` is one available workflow.
+
+## Execution, recovery and integration improvements
+
+- Execution-bound verification associates successful checks with the source
+  state they tested, including changes made by shell commands and scripts.
+- Durable workflow and background checkpoints restore prior outputs and
+  distinguish interrupted, unknown and completed effects. Persistent goals use
+  explicit criteria, model-directed replanning and optional aggregate budgets.
+- Browser QA runs interactions and assertions in a real browser. Built-in evals
+  grade behavior independently; external benchmark adapters execute actual
+  runners and keep fixture results separate from real model measurements.
+- Memory and repository retrieval expose freshness, provenance and coverage.
+  Provider capability profiles record observed behavior, and selective tool
+  schemas work across the supported native protocols.
+- Dependency-free Node and Python SDKs support local and authenticated remote
+  sessions, events, approvals, cancellation and resume. Editor packages are
+  built and tested separately; marketplace availability is an external step.
+- Authenticated remote sessions retain replay cursors and scoped devices.
+  Optional team policy adds roles, request-unit quotas, environment allowlists,
+  reviewed automation and audit export. These controls do not constitute an OS
+  sandbox or a measured monetary budget.
+- The first-task guide and `ur doctor --readiness` expose connection, evidence
+  and recovery state. Optional isolation preserves the existing user permission
+  choices and reports unavailable enforcement explicitly.
+
+See the [implementation and validation plan](FRONTIER_IMPLEMENTATION_PLAN.md),
+[technical documentation](../technical/README.md), and
+[evaluation evidence guide](../benchmarks/README.md). These features are not a
+claim of benchmark parity with another agent.
 
 ## v1.86.2 Additions
 
@@ -99,7 +130,7 @@ spec as the durable source of truth and command evidence as the success gate.
 | --- | --- | --- |
 | Permanent-link circuit breaker | `WebFetch` | Stops repeat and alternating loops over dead 4xx URLs without disabling legitimate retries for transient network or server failures. URL identities are prompt-independent, hashed, bounded, and query-scoped. |
 | Plan/task recovery | `EnterPlanMode`, `TaskCreate` gate | Makes the distinction between an implementation plan and visible executable tasks explicit before workspace mutation. |
-| Safe CLI parity | `ur config set|get|list`, `ur a2a card --v1`, `ur session status` | Makes accessibility/editor configuration, current Agent Card preview, and conversation inspection available to scripts without weakening compatibility defaults. |
+| Safe CLI parity | `ur config set|get|list`, `ur a2a card`, `ur session status` | Makes accessibility/editor configuration, current Agent Card preview, and conversation inspection available to scripts without weakening compatibility defaults. |
 | Complete command display hardening | Background shell details | Escapes deceptive control, invisible, and bidirectional characters before truncation. |
 
 ## v1.80.3 Addition

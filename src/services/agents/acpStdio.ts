@@ -132,6 +132,9 @@ export type AcpPromptRunner = (
     additionalDirectories: string[]
     mcpServers: acp.McpServer[]
     mode: AcpSessionModeId
+    onSpawn?: (pid: number) => void
+    /** Literal per-run environment from the opted-in HTTP team controller. */
+    env?: NodeJS.ProcessEnv
     onChunk: (text: string) => void | Promise<void>
     onToolUpdate: (update: acp.SessionUpdate) => void | Promise<void>
     requestPermission: (
@@ -960,7 +963,7 @@ function streamSessionId(message: unknown): string | undefined {
  * argv. The bidirectional stream-json transport carries permission decisions
  * between UR's permission engine and the ACP client's native approval UI.
  */
-const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
+export const defaultAcpPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
   if (ctx.signal.aborted) return { stopReason: 'cancelled' }
 
   const temporaryMcpConfig = createTemporaryMcpConfig(ctx.mcpServers)
@@ -1005,8 +1008,15 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
     return await new Promise((resolve, reject) => {
       const child = spawn(file, args, {
         cwd: ctx.cwd,
+        env: ctx.env,
         shell: false,
         stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      child.once('spawn', () => {
+        try { if (child.pid) ctx.onSpawn?.(child.pid) } catch (error) {
+          child.kill('SIGKILL')
+          rejectOnce(error instanceof Error ? error : new Error(String(error)))
+        }
       })
       const decoder = new StringDecoder('utf8')
       let stdoutBuffer = ''
@@ -1016,6 +1026,8 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
       let settled = false
       let timedOut = false
       let resumeSessionId = ctx.resumeSessionId
+      let resultSeen = false
+      let resultError: string | undefined
       let killTimer: ReturnType<typeof setTimeout> | undefined
 
       const queueNotification = (
@@ -1135,6 +1147,9 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
               type?: unknown
               request_id?: unknown
               request?: { subtype?: unknown }
+              subtype?: unknown
+              is_error?: unknown
+              errors?: unknown
             }
             if (envelope.type === 'control_request') {
               if (
@@ -1155,8 +1170,15 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
                   )}`,
                 )
               }
-            } else if (envelope.type === 'result' && child.stdin.writable) {
-              child.stdin.end()
+            } else if (envelope.type === 'result') {
+              resultSeen = true
+              if (envelope.is_error === true || envelope.subtype !== 'success') {
+                const errors = Array.isArray(envelope.errors)
+                  ? envelope.errors.filter((value): value is string => typeof value === 'string').join('; ').slice(0, 2_000)
+                  : ''
+                resultError = `UR prompt returned ${String(envelope.subtype ?? 'an error result')}${errors ? `: ${errors}` : ''}`
+              }
+              if (child.stdin.writable) child.stdin.end()
             }
           }
         } catch {
@@ -1253,6 +1275,10 @@ const defaultPromptRunner: AcpPromptRunner = async (prompt, ctx) => {
               )
               return
             }
+            if (resultError || !resultSeen) {
+              reject(new Error(resultError ?? 'UR prompt exited without a terminal result; its outcome is unknown'))
+              return
+            }
             resolve({ stopReason: 'end_turn', resumeSessionId })
           },
           (error) =>
@@ -1303,7 +1329,7 @@ function createRuntime(deps: {
   sessionStoreRoot?: string
 }) {
   const sessions = new Map<string, SessionState>()
-  const runPrompt = deps.runPrompt ?? defaultPromptRunner
+  const runPrompt = deps.runPrompt ?? defaultAcpPromptRunner
   const shouldPersistSessions = deps.persistSessions !== false
   const sessionStoreRoot = deps.sessionStoreRoot ?? getURConfigHomeDir()
   const maxSessions =
@@ -2293,3 +2319,6 @@ export async function startAcpStdioAgent(options: {
   const connection = app.connect(acp.ndJsonStream(output, input))
   await connection.closed
 }
+
+/** Shared execution/session implementation for the canonical authenticated HTTP transport. */
+export const createAcpRuntime = createRuntime

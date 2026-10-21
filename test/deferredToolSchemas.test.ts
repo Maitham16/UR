@@ -8,8 +8,7 @@ import {
 
 // A mis-shaped Computer call was answered with "this tool's schema was not
 // sent to the API" and told to call ToolSearch. Both claims were false: tool
-// search is off on every UR runtime, so all schemas *are* sent and ToolSearch
-// isn't even in the tool list. The model believed the hint and lost a turn.
+// search is off on every UR runtime, so it cannot establish whether portable catalog discovery omitted a schema. The model believed the hint and lost a turn.
 // A wrong explanation is worse than none — the Zod error already names the
 // bad field.
 
@@ -29,7 +28,7 @@ test('no UR runtime can expand tool references', () => {
   expect(supportsToolReferenceExpansion()).toBe(false)
 })
 
-test('tool search stays off regardless of model name', () => {
+test('provider-native tool references stay off regardless of model name', () => {
   // Previously only Ollama was excluded, so LM Studio, vLLM and llama.cpp
   // enabled tool search and got tool_reference blocks they cannot expand —
   // which strands every deferred tool permanently.
@@ -39,8 +38,8 @@ test('tool search stays off regardless of model name', () => {
 })
 
 test('a bad tool call is not blamed on a missing schema', () => {
-  // Tool search is off, so the schema was sent and the model simply got the
-  // arguments wrong. Adding an explanation here would be inventing a cause.
+  // Native references are off. Without request-specific portable discovery
+  // evidence, claiming this schema was omitted would invent a cause.
   expect(buildSchemaNotSentHint(DEFERRED_TOOL, [], TOOLS)).toBeNull()
 })
 

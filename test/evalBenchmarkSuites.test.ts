@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   buildLeaderboard,
+  loadSuite,
   type EvalReport,
 } from '../src/services/agents/evals.js'
 import {
@@ -37,6 +38,7 @@ describe('eval benchmark suites', () => {
       const result = installBuiltinSuite(dir, 'bug-fix')
       expect(result.created).toBe(true)
       expect(result.suite?.name).toBe('builtin-bug-fix')
+      expect(loadSuite(dir, 'builtin-bug-fix')).toEqual(result.suite!)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

@@ -16,14 +16,14 @@ You need:
   `>=22.12` launcher verifies and caches the native application without Bun;
   or a local source checkout (`bun run dev`) with the pinned development Bun.
 
-Windows native and public npm installation are unavailable in 1.86.2. Windows
+Windows native and public npm installation are unavailable in 1.87.0. Windows
 developers can optionally use the Bun-based source workflow.
 
 ## 0. Smoke
 
 ```sh
 ur --version
-# expected for this release: "1.86.2 (UR-Nexus)"
+# expected for this release: "1.87.0 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -686,3 +686,50 @@ with `--cwd` guidance and must not launch a fix agent.
   with `command -v ur`. npm installs print `npm install -g ur-agent@latest`;
   Homebrew installs use `brew upgrade ur-nexus`. Windows source developers
   can inspect `Get-Command ur` in PowerShell.
+
+## Evidence-based agent qualification
+
+Run `ur doctor --readiness --json` before a live task. It reports the selected
+provider, workspace changes, current verification evidence, goal accounting and
+recoverable background state without invoking a model or MCP server. Use
+`ur model-doctor <model> --provider <id> --probe --json` for actual model capability
+checks; advertised, verified, failed and unobserved capabilities are distinct.
+
+For functional qualification in an otherwise empty committed test repository:
+
+```sh
+ur eval builtin bug-fix
+ur eval validate builtin-bug-fix
+ur eval run builtin-bug-fix --model <configured-model> --max-turns 20 --timeout-ms 180000 --metrics --json
+ur eval gate builtin-bug-fix --min-pass-rate 1 --min-test-pass-rate 1
+```
+
+Select the permissions appropriate for that disposable workspace; pass
+`--skip-permissions` only when that is the intended execution policy. The suite
+materializes each broken fixture in its own worktree and grades the repaired
+code with independent post-run checks. `--max-budget-usd` is an optional cost
+limit; unknown cloud pricing stops a capped run and remains unknown in reports.
+Do not substitute a successful dry run or plausible final answer for measured
+behavior. The [benchmark guide](../benchmarks/README.md) describes all six
+functional suites, required tools, score boundaries and external runners.
+
+Developer qualification includes real browser execution and grader checks:
+
+```sh
+UR_REQUIRE_BROWSER_QA_TESTS=1 bun test test/browserQa.test.ts
+UR_REQUIRE_FULL_BENCHMARK_FIXTURES=1 bun test test/builtinVerification.test.ts
+UR_REQUIRE_SANDBOX_PROBE=1 bun test test/safetyReadiness.test.ts --test-name-pattern 'actual sandbox'
+```
+
+The browser must be available to Playwright or configured through
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. The strict sandbox probe uses fake private
+files/credentials and a local HTTP server, and must report actual enforcement;
+a platform that cannot initialize isolation does not pass that strict probe.
+Ordinary `ur safety audit` measures its documented offline detector/policy
+fixtures, not OS enforcement or resistance against every possible attack.
+
+Use the [Harbor qualification](../benchmarks/harbor/README.md) to test native
+installation and UR's own loop in a fresh Linux task container. That original
+fixture is adapter evidence, not an official Terminal-Bench score. Keep failed
+attempts, exact model/configuration, executable digest and corrected reruns
+separate; publish only results actually produced by the tested artifact.

@@ -9,8 +9,8 @@ import {
   loadGoal,
   setGoalStatus,
 } from '../../services/agents/goals.js'
-import { runWorkflowSpec } from '../../services/agents/runWorkflow.js'
-import { loadWorkflow } from '../../services/agents/workflows.js'
+import { runGoalController } from '../../services/agents/goalController.js'
+import type { GoalBudget } from '../../services/agents/goals.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { getCwd } from '../../utils/cwd.js'
 
@@ -21,7 +21,7 @@ function option(tokens: string[], name: string): string | undefined {
 }
 
 function positionals(tokens: string[]): string[] {
-  const withValue = new Set(['--objective', '--workflow', '--pattern', '--note', '--max-turns'])
+  const withValue = new Set(['--objective', '--workflow', '--pattern', '--note', '--max-turns', '--criterion', '--max-calls', '--max-budget-usd', '--max-duration-ms', '--model'])
   const values: string[] = []
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]
@@ -35,14 +35,25 @@ function positionals(tokens: string[]): string[] {
   return values
 }
 
+function budgetOptions(tokens: string[]): GoalBudget {
+  const result: GoalBudget = {}
+  for (const [flag, key] of [['--max-calls', 'maxCalls'], ['--max-turns', 'maxTurns'], ['--max-budget-usd', 'maxCostUsd'], ['--max-duration-ms', 'maxDurationMs']] as const) {
+    if (!tokens.includes(flag)) continue
+    const raw = option(tokens, flag), value = Number(raw)
+    if (!raw || !Number.isFinite(value) || value <= 0 || (key !== 'maxCostUsd' && !Number.isSafeInteger(value))) throw new Error(`${flag} must be a positive ${key === 'maxCostUsd' ? 'number' : 'integer'}.`)
+    result[key] = value
+  }
+  return result
+}
+
 function usage(): string {
   return [
     'Usage:',
     '  ur goal list [--json]',
-    '  ur goal add <name> --objective "..." [--workflow <name>] [--pattern <id>] [--json]',
+    '  ur goal add <name> --objective "..." [--workflow <name>] [--pattern <id>] [--criterion "..."] [--max-calls N] [--max-turns N] [--max-budget-usd USD] [--max-duration-ms MS] [--json]',
     '  ur goal show <name> [--json]',
     '  ur goal note <name> --note "progress update"',
-    '  ur goal resume <name> [--dry-run] [--max-turns N]',
+    '  ur goal resume <name> [--dry-run] [--max-calls N] [--max-turns N] [--max-budget-usd USD] [--max-duration-ms MS] [--model ID] [--skip-permissions]',
     '  ur goal pause|done|abandon <name>',
     '  ur goal delete <name>',
   ].join('\n')
@@ -63,9 +74,12 @@ export const call: LocalCommandCall = async (args: string) => {
   if (action === 'add' || action === 'create') {
     const objective = option(tokens, '--objective')
     if (!name || !objective) return { type: 'text', value: usage() }
+    if (tokens.some((token, index) => token === '--criterion' && (!tokens[index + 1] || tokens[index + 1].startsWith('--')))) throw new Error('--criterion requires non-empty text.')
     const spec = createGoal(cwd, name, objective, {
       workflow: option(tokens, '--workflow'),
       pattern: option(tokens, '--pattern'),
+      criteria: tokens.flatMap((token, index) => token === '--criterion' && tokens[index + 1] ? [tokens[index + 1]] : []),
+      budget: budgetOptions(tokens),
     })
     return { type: 'text', value: json ? formatGoal(spec, true) : `Created goal ${spec.name}.\n\n${formatGoal(spec, false)}` }
   }
@@ -103,32 +117,14 @@ export const call: LocalCommandCall = async (args: string) => {
   if (action === 'resume') {
     const spec = loadGoal(cwd, name)
     if (!spec) return { type: 'text', value: `Goal not found: ${name}` }
-    if (!spec.workflow) {
-      return {
-        type: 'text',
-        value: `Goal ${spec.name} has no linked workflow. Run \`ur route ${JSON.stringify(spec.objective)}\` to pick an approach, then add one with --workflow.`,
-      }
-    }
-    const workflow = loadWorkflow(cwd, spec.workflow)
-    if (!workflow) {
-      return { type: 'text', value: `Linked workflow not found: ${spec.workflow}` }
-    }
     const dryRun = tokens.includes('--dry-run')
-    const maxTurnsRaw = option(tokens, '--max-turns')
-    const result = await runWorkflowSpec(workflow, {
-      cwd,
-      dryRun,
-      resume: true,
-      maxTurns: maxTurnsRaw ? Number(maxTurnsRaw) : undefined,
+    const result = await runGoalController(name, {
+      cwd, dryRun, budget: budgetOptions(tokens), model: option(tokens, '--model'),
+      skipPermissions: tokens.includes('--skip-permissions') || tokens.includes('--dangerously-skip-permissions'),
     })
-    addGoalNote(cwd, name, `Resumed workflow ${spec.workflow}: ${result.status} (${result.steps.filter(s => s.status === 'done').length}/${result.steps.length} steps)`)
-    if (result.status === 'completed') setGoalStatus(cwd, name, 'done')
-    return {
-      type: 'text',
-      value: json
-        ? JSON.stringify({ goal: spec.name, run: result }, null, 2)
-        : `Resumed goal ${spec.name} via workflow ${spec.workflow}: ${result.status} (${result.steps.filter(s => s.status === 'done').length}/${result.steps.length} steps done).`,
-    }
+    return { type: 'text', exitCode: result.status !== 'done' && !dryRun ? 1 : 0, value: json ? JSON.stringify(result, null, 2) :
+      `${dryRun ? 'Preview (no execution or outcome verification)' : 'Goal controller result'}\n\n${formatGoal(result, false)}` }
+
   }
 
   return { type: 'text', value: usage() }

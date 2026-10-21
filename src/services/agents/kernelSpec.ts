@@ -12,6 +12,8 @@ import { runKernelStage } from './kernel.js'
 import type { SpecMeta, SpecRunResult, SpecTask } from './spec.js'
 import { loadSpec, markTaskDone, parseTasks, readPhase, writePhase } from './spec.js'
 import type { SpecVerifyResult } from './specVerifier.js'
+import { persistVerificationResult } from './specVerifier.js'
+import type { VerificationEvidence } from '../verifier/executionEvidence.js'
 
 export type SpecRunStage = KernelStage & {
   role: 'executor'
@@ -164,18 +166,21 @@ export function planSpecVerify(cwd: string, name: string): KernelStage {
 }
 
 export function mapKernelResultToSpecVerifyResult(result: KernelResult): SpecVerifyResult {
+  const verdict = result.isError ? 'FAIL' : result.verdict ?? 'PARTIAL'
+  const evidence = result.artifacts.find(artifact => artifact.kind === 'record' && artifact.path === 'verification-evidence')
   return {
-    verdict: result.verdict ?? 'PARTIAL',
+    verdict,
     summary:
-      result.verdict === 'PASS'
+      verdict === 'PASS'
         ? 'All required proofs (compile, test, lint, diff, runtime) were demonstrated by the verifier.'
-        : result.verdict === 'FAIL'
+        : verdict === 'FAIL'
           ? 'The verifier found failing evidence. See subagent output for details.'
           : 'The verifier could not reach a definitive PASS/FAIL verdict.',
     commandFailures: result.artifacts.filter(a => a.kind === 'note' && a.text.startsWith('FAIL gate')).length,
     gateResults: [],
     subagentOutput: result.output,
     generatedAt: new Date().toISOString(),
+    ...(evidence?.kind === 'record' ? { evidence: evidence.record as VerificationEvidence } : {}),
   }
 }
 
@@ -193,5 +198,7 @@ export async function runSpecVerifyWithKernel(
     skipPermissions: options.skipPermissions,
     runner: options.runner,
   })
-  return mapKernelResultToSpecVerifyResult(result)
+  const mapped = mapKernelResultToSpecVerifyResult(result)
+  if (!options.dryRun) persistVerificationResult(cwd, name, mapped)
+  return mapped
 }

@@ -88,8 +88,9 @@ local processes. `--debug` logs method names and outcomes—not request params o
 secrets—to stderr. POST JSON-RPC to `/acp`; `GET /healthz` returns `{ ok: true }`.
 
 Tool calls are schema-validated and pass through the normal permission engine.
-Because the HTTP API has no interactive approval channel, requests that need an
-approval fail closed. Requests, prompts, tool I/O, task submission rate, tool
+Legacy unary tool/task requests have no interactive approval channel and fail
+closed when approval is required. Durable session prompts bridge approval through
+`session/events` and `session/approve`. Requests, prompts, tool I/O, task submission rate, tool
 call rate, concurrency, retained sessions/tasks, response size, and runtime are
 bounded. A session may select an existing subdirectory of the configured server
 workspace, but cannot escape that root (including through symlinks). Deployments
@@ -122,16 +123,155 @@ curl -s http://127.0.0.1:8123/acp \
   "result": { "name": "UR", "protocolVersion": "0.1.0",
     "workspaceRoot": "/path/to/project",
     "capabilities": { "tools": true, "tasks": true, "sessions": true,
-      "ide": true, "streaming": false, "cancellation": true } } }
+      "ide": true, "streaming": true, "durableSessions": true,
+      "permissionRequests": true, "devicePairing": true, "teamControls": false,
+      "cancellation": true } } }
 ```
 
 ## Capabilities and limitations
 
 - The stdio agent streams text deltas via `session/update`; chunk granularity
   depends on the active provider's stream.
-- The HTTP server returns unary responses (`streaming: false`); use the stdio
-  agent for incremental updates.
+- HTTP responses are JSON rather than SSE. Durable `stream:true` prompts return
+  a run ID immediately; poll `session/events` for incremental updates and replay.
 - Neither surface silently falls back to another provider; dispatch failures are
   reported with the selected provider, model, and runtime backend.
 - Errors use JSON-RPC error objects (`-32601` method not found, `-32602` bad
   params, `-32001` unauthorized, `-32603` internal).
+
+## Durable remote sessions (HTTP)
+
+The canonical endpoint also provides authenticated persistent control:
+
+| Method | Parameters | Behavior |
+|---|---|---|
+| `session/prompt` | `sessionId`, `prompt`, `stream:true`, unique `requestId` | Returns a durable run ID; identical delivery reuses the same run |
+| `session/events` | `sessionId`, `after` cursor, optional `waitMs` | Ordered incremental/replayed events, next cursor, completion/result |
+| `session/approve` | `sessionId`, permission `requestId`, `decision:{behavior:"allow"}` or `"deny"` | Resolves one pending approval; stale/repeated decisions fail |
+| `session/resume` | `sessionId` | Restores saved native session identity without resubmitting work |
+| `device/new` | `sessionIds`, optional `expiresInMs` | Operator creates an expiring session-scoped bearer credential |
+| `device/revoke` | `deviceId` | Operator invalidates subsequent credential use |
+
+Persist `UR_CONFIG_DIR` (CLI transcripts) and `UR_REMOTE_STATE_DIR` (control state)
+across server replacement. By default remote state is `.ur/remote/http` under the
+served workspace. Journals require contiguous sequences and reject torn/corrupt
+records; clients acknowledge only received events. Live worker ownership prevents
+duplicate launches. Interrupted work resumes with prior outcomes explicitly
+uncertain so the model can inspect effects. Revocation does not cancel an already
+running task; use `session/cancel` as needed. Provider errors and missing/failed
+terminal results remain failures even if partial output exists.
+
+See the [native container recipe](../deployment/acp/README.md) for persistent
+volumes, private configuration, logs, artifacts, previews and replacement.
+
+## Optional team policy (HTTP)
+
+Team controls are opt-in on this existing HTTP endpoint. Without a policy,
+existing ACP behavior is unchanged. Set an absolute `UR_ACP_TEAM_POLICY` path
+to an administrator-controlled JSON file **outside the served workspace**, and
+`UR_REMOTE_STATE_DIR` to a private external directory (0700 on Unix). Protect
+both from worker writes using the deployment's OS/container boundary. Keep the
+operator bearer token outside prompts and worker environments.
+
+```sh
+UR_ACP_TEAM_POLICY="$HOME/.config/ur/team-policy.json" \
+UR_REMOTE_STATE_DIR="$HOME/.local/state/ur-remote" \
+UR_ACP_TOKEN='<operator-secret>' ur acp serve --host 127.0.0.1 --port 8123
+```
+
+Example policy (replace the device ID with one returned by `device/new`):
+
+```json
+{
+  "version": 1,
+  "teamId": "research",
+  "budget": { "maxPrompts": 100, "maxConcurrentPrompts": 2 },
+  "operator": { "secretEnvNames": ["OPENAI_API_KEY"] },
+  "members": {
+    "replace-device-id": {
+      "role": "member",
+      "maxPrompts": 20,
+      "secretEnvNames": ["OPENAI_API_KEY"]
+    }
+  }
+}
+```
+
+An empty membership map initially permits only the operator, who can create
+sessions and pair devices; the administrator then adds the returned device IDs
+to the policy. Policy is reloaded on each request. Existing device expiry,
+session scope and revocation checks still apply. `viewer` reads assigned
+sessions/status, `member` submits/cancels/closes assigned work, and `reviewer`
+may answer assigned permission requests. None grants permanent tool approval.
+Only the operator pairs/revokes devices, exports the team audit, or reconciles
+unknown quota reservations. Revocation prevents subsequent authorized access;
+cancel active work separately when it must stop.
+
+Team execution uses `session/prompt` with `stream:true`. Legacy `tools/call`,
+`tasks/send` and non-streaming prompts are refused in team mode because they
+would bypass durable accounting. The unit is **accepted prompt attempts**,
+not model API calls, turns, tokens or dollars. All members and the operator
+share cumulative and concurrent limits; a member can have an additional
+cumulative limit. Subagent/model calls inside one prompt are not separate
+units. Request IDs are bound to exact prompt, session and principal; duplicate
+delivery reuses the durable run without another quota charge or execution.
+Failed accepted attempts remain charged. A dead controller's unknown
+reservation continues to consume concurrency until reviewed; no silent refund
+or automatic replay is inferred.
+
+Additional UR HTTP JSON-RPC methods:
+
+| Method | Parameters | Result/scope |
+|---|---|---|
+| `team/status` | `{}` | Shared budget/consumption, own usage, unknown reservations; operator also sees reservation IDs |
+| `team/audit` | `{ "after": 0 }` | Operator-only bounded cursor export, sequence/hash chain, no prompts, outputs or credential values |
+| `team/reconcile` | `{ "receiptId": "...", "reason": "review performed" }` | Operator acknowledges an unknown ended reservation after checking processes/effects; live owners cannot be released; total charge remains |
+
+Audit records include actor, operation, outcome, policy digest and opaque
+session/request IDs. Reconciliation stores a reason digest. Modified or torn
+records fail validation. This local hash chain is not an external signature or
+proof against administrator edits or valid-prefix truncation; export and anchor
+it externally when that assurance is required.
+
+### Scoped environment and reviewed automation
+
+For a team prompt, the child inherits OS/runtime essentials plus exactly the
+administrator's `secretEnvNames` for that principal. Ambient proxy URLs and
+unclassified variables are excluded too; this is not a name-pattern-only scrub.
+The operator token/control-state path never passes through, and each durable
+session gets a private `UR_CONFIG_DIR`. Configure the selected provider/model
+in the workspace and explicitly allow the provider's required environment
+names. Source and native children use the same literal environment forwarding;
+no global environment mutation is used.
+
+This scopes environment credentials and UR configuration. It does not isolate
+all host files, external CLI login stores, hooks, MCP processes or arbitrary
+same-user host access. Use the optional sandbox/container deployment where
+those boundaries are required. Existing tool permission choices still apply.
+
+For reviewed automation, set `requireReviewedAutomation:true` and add a trusted
+receipt under `automations`:
+
+```json
+{
+  "nightly-check": {
+    "sessionId": "sess_12345678-1234-1234-1234-123456789abc",
+    "promptSha256": "<64 lowercase SHA-256 hex characters of the exact prompt>",
+    "principals": ["replace-device-id"],
+    "reviewedBy": "operator",
+    "reviewedAt": "2026-10-21T10:00:00.000Z"
+  }
+}
+```
+
+Send `automationId:"nightly-check"` on the existing `session/prompt` call.
+Prompt/session/principal changes invalidate the receipt. Review records are
+administrator input, not approval claimed by task text. This integrates reviewed
+delivery with the existing control plane; it does not create a second scheduler
+or grant publication permission.
+
+Team features do not change the [license](../LICENSE). Commercial use requires
+prior written permission from copyright holder Maitham Al-rubaye; contact the
+maintainer for that permission before commercial deployment. No paid service,
+marketplace publication, Windows qualification or signing claim follows from
+this feature.

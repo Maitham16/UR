@@ -1,20 +1,9 @@
 // OS / environment + workspace info for /os and /workspace.
 import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
-import { arch, homedir, platform, release } from 'node:os'
+import { arch, platform, release } from 'node:os'
 import { join } from 'node:path'
 import { detectProjectDna, formatDna } from './projectDna.ts'
-import { parseOllamaModelNames } from '../utils/model/ollamaModels.js'
-import { getProviderApiKey } from '../services/providers/providerCredentials.js'
-import {
-  pickBestCoderModel,
-  pickSmallFastModel,
-  recommendedCoderModelToPull,
-} from '../utils/model/ollamaRouter.js'
-import {
-  getOllamaAuthHeaders,
-  getOllamaBaseUrl,
-} from '../utils/model/ollamaConfig.js'
 
 export function commandExists(bin: string): boolean {
   try {
@@ -60,46 +49,8 @@ export function workspaceInfo(cwd: string): string {
   return [`workspace: ${cwd}`, `entries:   ${fileCount}`, `git:       ${git}`, '', dna].join('\n')
 }
 
-/** Comprehensive UR environment check: toolchain, Ollama, .ur, MCP, playwright. */
+/** Compatibility API for the canonical active-provider readiness report. */
 export async function urDoctor(cwd: string): Promise<string> {
-  const lines: string[] = ['UR doctor', '', osInfo(), '']
-
-  const host = getOllamaBaseUrl()
-  let ollama: string
-  let ollamaModels: string[] = []
-  try {
-    const res = await fetch(`${host}/api/tags`, {
-      signal: AbortSignal.timeout(1500),
-      headers: getOllamaAuthHeaders(process.env, getProviderApiKey('ollama')),
-    })
-    if (res.ok) {
-      ollamaModels = parseOllamaModelNames(await res.json())
-      ollama = `ok — ${ollamaModels.length} model(s) @ ${host}`
-    } else ollama = `error ${res.status} @ ${host}`
-  } catch {
-    ollama = `unreachable @ ${host} (start with: ollama serve)`
-  }
-  lines.push(`ollama:     ${ollama}`)
-  if (ollamaModels.length > 0) {
-    lines.push(
-      `  routing:  main=${pickBestCoderModel(ollamaModels) ?? '?'} · fast=${pickSmallFastModel(ollamaModels) ?? '?'}`,
-    )
-    const pull = recommendedCoderModelToPull(ollamaModels)
-    if (pull) {
-      lines.push(`  tip:      no coder model found — consider: ollama pull ${pull}`)
-    }
-  }
-
-  const urDir = join(cwd, '.ur')
-  if (existsSync(urDir)) {
-    const have = ['actions.jsonl', 'project_dna.md', 'mode', 'graph', 'tools', 'research', 'memory', 'index'].filter((n) => existsSync(join(urDir, n)))
-    lines.push(`.ur:        present — ${have.join(', ') || '(empty)'}`)
-  } else {
-    lines.push('.ur:        missing (run /ur-init)')
-  }
-
-  const mcp = [join(cwd, '.ur', 'mcp', 'servers.toml'), join(homedir(), '.ur', 'mcp', 'servers.toml')].filter(existsSync)
-  lines.push(`mcp cfg:    ${mcp.length ? mcp.join(', ') : 'none (.ur/mcp/servers.toml)'}`)
-  lines.push(`playwright: ${existsSync(join(cwd, 'node_modules', 'playwright')) ? 'installed' : 'not installed'}`)
-  return lines.join('\n')
+  const { collectReadiness, formatReadiness } = await import('../services/readiness.js')
+  return formatReadiness(await collectReadiness(cwd))
 }

@@ -5,7 +5,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   missingRequiredPackageFiles,
   releasePathViolations,
@@ -183,6 +183,15 @@ function main() {
     const sourcePackage = readJson(join(root, 'package.json'))
     const packedPackage = readJson(join(packageRoot, 'package.json'))
 
+    if (packedPackage.exports?.['./sdk']?.import !== './sdk/index.js' ||
+        packedPackage.exports?.['./sdk']?.types !== './sdk/index.d.ts') {
+      fail('packed package must expose ur-agent/sdk JavaScript and declarations')
+    }
+    const sdkImport = run(nodeBin, ['--input-type=module', '-e',
+      `const sdk = await import(${JSON.stringify(pathToFileURL(join(packageRoot, 'sdk/index.js')).href)}); for (const name of ['UrClient', 'query', 'stream']) { if (typeof sdk[name] !== 'function') throw new Error('Missing SDK export: ' + name); }`,
+    ], { cwd: packageRoot, env: packageSmokeEnv(packageRoot) })
+    expectStatus('packed Node SDK import without installed dependencies', sdkImport, 0)
+
     if (!packedPackage.engines?.bun) {
       fail('packed package.json is missing engines.bun')
     }
@@ -255,7 +264,6 @@ function main() {
     const currentA2ACard = runPackagedBin(packageRoot, [
       'a2a',
       'card',
-      '--v1',
       '--compact',
     ])
     expectStatus('packed current A2A card', currentA2ACard, 0)

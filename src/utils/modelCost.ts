@@ -23,6 +23,8 @@ import {
   type ModelShortName,
 } from './model/model.js'
 import { getAPIProvider } from './model/providers.js'
+import { isOllamaCloudModel } from './model/ollamaModels.js'
+import { getOllamaBaseUrl } from './model/ollamaConfig.js'
 
 // @see https://claude.com/pricing
 export type ModelCosts = {
@@ -177,6 +179,14 @@ function trackUnknownModelCost(model: string, shortName: ModelShortName): void {
 // If the model's costs are not found, use the default model's costs.
 export function calculateUSDCost(resolvedModel: string, usage: Usage): number {
   if (getAPIProvider() === 'ollama') {
+    // Ollama's protocol does not report cloud billing. Keep the numeric legacy
+    // estimate while marking it unknown for budgets, SDK consumers and evals.
+    let host: string
+    try { host = new URL(getOllamaBaseUrl()).hostname } catch {
+      setHasUnknownModelCost()
+      return 0
+    }
+    if (isOllamaCloudModel(resolvedModel) || host === 'ollama.com' || host.endsWith('.ollama.com')) setHasUnknownModelCost()
     return 0
   }
   const modelCosts = getModelCosts(resolvedModel, usage)

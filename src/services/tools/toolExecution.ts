@@ -4,6 +4,7 @@ import type {
   ToolResultBlockParam,
   ToolUseBlock,
 } from '@urhq-ai/sdk/resources/index.mjs'
+import { beginVerificationExecution, finishVerificationExecution } from '../verifier/executionEvidence.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -1957,6 +1958,9 @@ async function checkPermissionsAndCallTool(
   startToolExecutionSpan()
 
   const startTime = Date.now()
+  const verificationPending = await beginVerificationExecution(
+    tool.name, toolUseID, callInput, getCwd(),
+  )
 
   startSessionActivity('tool_exec')
   try {
@@ -1977,6 +1981,7 @@ async function checkPermissionsAndCallTool(
       },
     )
     const durationMs = Date.now() - startTime
+    const verificationExecution = await finishVerificationExecution(verificationPending, result.data)
     addToToolDuration(durationMs)
 
     // Log tool content/output as span event if enabled
@@ -2223,7 +2228,9 @@ async function checkPermissionsAndCallTool(
           content: contentBlocks,
           imagePasteIds: allowImageIds,
           toolUseResult:
-            toolUseContext.agentId && !toolUseContext.preserveToolUseResults
+            verificationExecution
+              ? { ...(toolUseResult && typeof toolUseResult === 'object' ? toolUseResult : { output: toolUseResult }), _urVerification: verificationExecution }
+              : toolUseContext.agentId && !toolUseContext.preserveToolUseResults
               ? undefined
               : toolUseResult,
           mcpMeta: toolUseContext.agentId ? undefined : mcpMeta,
@@ -2506,7 +2513,9 @@ async function checkPermissionsAndCallTool(
               tool_use_id: toolUseID,
             },
           ],
-          toolUseResult: `Error: ${content}`,
+          toolUseResult: verificationPending
+            ? { output: `Error: ${content}`, _urVerification: await finishVerificationExecution(verificationPending, error, true) }
+            : `Error: ${content}`,
           mcpMeta: toolUseContext.agentId
             ? undefined
             : error instanceof

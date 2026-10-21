@@ -18,6 +18,7 @@ import { Select } from './CustomSelect/select.js';
 import { WelcomeV2 } from './LogoV2/WelcomeV2.js';
 import { PressEnterToContinue } from './PressEnterToContinue.js';
 import { ThemePicker } from './ThemePicker.js';
+import { FirstTaskGuide } from './FirstTaskGuide.js';
 import { OrderedList } from './ui/OrderedList.js';
 type StepId = 'preflight' | 'theme' | 'oauth' | 'api-key' | 'security' | 'terminal-setup';
 interface OnboardingStep {
@@ -90,6 +91,7 @@ export function Onboarding({
             </Text>
           </OrderedList.Item>
         </OrderedList>
+        <FirstTaskGuide />
       </Box>
       <PressEnterToContinue />
     </Box>;

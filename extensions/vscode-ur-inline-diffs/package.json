@@ -2,7 +2,7 @@
   "name": "ur-inline-diffs",
   "displayName": "UR Inline Diffs",
   "description": "Review, apply, and reject UR inline diff bundles from .ur/ide/diffs inside VS Code.",
-  "version": "1.86.2",
+  "version": "1.87.0",
   "publisher": "ur-nexus",
   "engines": {
     "vscode": "^1.92.0"
@@ -47,7 +47,9 @@
   "main": "./out/extension.js",
   "scripts": {
     "build": "node esbuild.js",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "package": "npx --yes @vscode/vsce@4.0.0 package --no-dependencies",
+    "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -364,5 +366,15 @@
         }
       ]
     }
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Maitham16/UR.git",
+    "directory": "extensions/vscode-ur-inline-diffs"
+  },
+  "homepage": "https://github.com/Maitham16/UR",
+  "bugs": {
+    "url": "https://github.com/Maitham16/UR/issues"
   }
 }

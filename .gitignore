@@ -95,6 +95,8 @@ UR.local.md
 .ur/evals/.worktrees/
 .ur/evals/.runs/
 .ur/evals/.results/
+.ur/evals/.external/
+.ur/browser-qa/.results/
 .ur/evals/.dashboards/
 .ur/learning/disabled/
 .ur/workspaces/.state/
@@ -119,6 +121,8 @@ UR.local.md
 artifacts/source/*.zip
 
 # OS and editor noise
+__pycache__/
+*.pyc
 .DS_Store
 Thumbs.db
 *.swp
@@ -145,3 +149,18 @@ extensions/jetbrains-ur/.intellijPlatform/
 # iCloud/Finder duplicates ("Config 2.tsx"), never source
 * [0-9]
 * [0-9].*
+
+# Measured provider profiles contain machine-specific endpoints
+.ur/model-profiles/
+
+# Private durable authenticated remote session/event/device state
+.ur/remote/http/
+
+# Generated SDK package and local external-benchmark outputs
+/sdk/
+/harbor-results/
+
+# Local Python SDK build metadata
+/sdk-python/build/
+/sdk-python/dist/
+/sdk-python/*.egg-info/

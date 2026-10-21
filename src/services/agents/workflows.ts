@@ -5,7 +5,10 @@ import {
   readdirSync,
   writeFileSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { createHash } from 'node:crypto'
+import { atomicWriteJson, makeProcessOwner, ownerMayBeAlive, withStateLock, type ProcessOwner } from './durableState.js'
+import type { ExecLoop, ExecutionSnapshot } from './executor.js'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { safeParseJSON } from '../../utils/json.js'
 
@@ -55,8 +58,11 @@ export type WorkflowValidation = {
 }
 
 export type RunState = {
-  version: 1
+  version: 1 | 2
   name: string
+  specDigest?: string
+  owner?: ProcessOwner
+  execution?: ExecutionSnapshot
   startedAt: string
   updatedAt: string
   completed: string[]
@@ -345,52 +351,91 @@ export function saveWorkflow(
   return { path, created: true }
 }
 
+/** Includes execution semantics and the checkout identity; formatting-only YAML edits are harmless. */
+export function workflowDigest(spec: WorkflowSpec, cwd: string, loop?: ExecLoop | null, options: { dryRun?: boolean } = {}): string {
+  return createHash('sha256').update(JSON.stringify({ cwd: resolve(cwd), spec, loop: loop ?? null, dryRun: options.dryRun === true })).digest('hex')
+}
+
 export function loadRunState(cwd: string, name: string): RunState | null {
   const path = statePath(cwd, name)
   if (!existsSync(path)) return null
-  const parsed = safeParseJSON(readFileSync(path, 'utf-8'), false)
-  return parsed && typeof parsed === 'object' ? (parsed as RunState) : null
+  const parsed = safeParseJSON(readFileSync(path, 'utf-8'), false) as RunState | null
+  if (!parsed || ![1, 2].includes(parsed.version) || !Array.isArray(parsed.completed) ||
+      parsed.completed.some(id => typeof id !== 'string')) {
+    throw new Error(`Invalid workflow checkpoint: ${path}. Restore a valid checkpoint or explicitly reset the run.`)
+  }
+  return parsed
 }
 
-export function markStepComplete(
-  cwd: string,
-  name: string,
-  stepId: string,
-): RunState {
-  const now = new Date().toISOString()
-  const existing = loadRunState(cwd, name)
-  const state: RunState = existing ?? {
-    version: 1,
-    name: slugifyWorkflowName(name),
-    startedAt: now,
-    updatedAt: now,
-    completed: [],
-  }
-  if (!state.completed.includes(stepId)) state.completed.push(stepId)
-  state.updatedAt = now
-  mkdirSync(stateDir(cwd), { recursive: true })
-  writeFileSync(statePath(cwd, name), `${JSON.stringify(state, null, 2)}\n`)
-  return state
+function mutateRunState<T>(cwd: string, name: string, operation: () => T): T {
+  return withStateLock(`${statePath(cwd, name)}.mutation-lock`, operation)
+}
+
+export function beginWorkflowRun(cwd: string, name: string, digest: string, resume: boolean): RunState {
+  return mutateRunState(cwd, name, () => {
+    const existing = loadRunState(cwd, name)
+    if (ownerMayBeAlive(existing?.owner)) throw new Error(`Workflow ${name} is owned by a live scheduler; refusing concurrent execution.`)
+    if (resume && existing) {
+      if (existing.version === 2 && !existing.specDigest && existing.completed.length === 0 && !existing.execution) existing.specDigest = digest
+      if (existing.version !== 2 || !existing.specDigest) throw new Error('Legacy workflow checkpoint has no specification digest or dependency outputs. Explicitly reset the run after reviewing prior effects; automatic replay was refused.')
+      if (existing.specDigest !== digest) throw new Error('Workflow specification or execution options changed; resume was refused. Explicitly reset to start a new run.')
+      if (existing.completed.some(id => typeof existing.execution?.outputs[id] !== 'string')) throw new Error('Workflow checkpoint is missing completed dependency outputs; automatic replay was refused.')
+    }
+    const at = new Date().toISOString()
+    const state: RunState = resume && existing ? existing : { version: 2, name: slugifyWorkflowName(name), startedAt: at, updatedAt: at, completed: [], specDigest: digest }
+    state.owner = makeProcessOwner()
+    state.updatedAt = at
+    atomicWriteJson(statePath(cwd, name), state)
+    return state
+  })
+}
+
+export function checkpointWorkflowRun(cwd: string, name: string, token: string, execution: ExecutionSnapshot): void {
+  mutateRunState(cwd, name, () => {
+    const state = loadRunState(cwd, name)
+    if (!state || state.owner?.token !== token) throw new Error('Workflow scheduler ownership changed; refusing stale checkpoint.')
+    state.execution = execution
+    state.completed = execution.completed
+    state.updatedAt = new Date().toISOString()
+    state.owner.heartbeatAt = state.updatedAt
+    atomicWriteJson(statePath(cwd, name), state)
+  })
+}
+
+export function releaseWorkflowRun(cwd: string, name: string, token: string): void {
+  mutateRunState(cwd, name, () => {
+    const state = loadRunState(cwd, name)
+    if (!state || state.owner?.token !== token) return
+    delete state.owner
+    state.updatedAt = new Date().toISOString()
+    atomicWriteJson(statePath(cwd, name), state)
+  })
+}
+
+/** Manual completion is explicit operator attestation, with an empty output when none was supplied. */
+export function markStepComplete(cwd: string, name: string, stepId: string): RunState {
+  return mutateRunState(cwd, name, () => {
+    const existing = loadRunState(cwd, name)
+    if (ownerMayBeAlive(existing?.owner)) throw new Error('Cannot manually complete a step owned by a live workflow scheduler.')
+    const at = new Date().toISOString()
+    const spec = loadWorkflow(cwd, name)
+    const state: RunState = existing ?? { version: 2, name: slugifyWorkflowName(name), startedAt: at, updatedAt: at, completed: [], specDigest: spec ? workflowDigest(spec, cwd) : undefined }
+    if (!state.completed.includes(stepId)) state.completed.push(stepId)
+    state.execution ??= { completed: [], outputs: {}, results: [], inFlight: [], cycle: 1 }
+    state.execution.completed = [...state.completed]
+    state.execution.outputs[stepId] ??= ''
+    state.updatedAt = at
+    atomicWriteJson(statePath(cwd, name), state)
+    return state
+  })
 }
 
 export function resetRunState(cwd: string, name: string): void {
-  const path = statePath(cwd, name)
-  if (existsSync(path)) {
-    writeFileSync(
-      path,
-      `${JSON.stringify(
-        {
-          version: 1,
-          name: slugifyWorkflowName(name),
-          startedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          completed: [],
-        },
-        null,
-        2,
-      )}\n`,
-    )
-  }
+  mutateRunState(cwd, name, () => {
+    if (ownerMayBeAlive(loadRunState(cwd, name)?.owner)) throw new Error('Cannot reset a workflow owned by a live scheduler.')
+    const at = new Date().toISOString()
+    atomicWriteJson(statePath(cwd, name), { version: 2, name: slugifyWorkflowName(name), startedAt: at, updatedAt: at, completed: [] })
+  })
 }
 
 export function buildRunPlan(spec: WorkflowSpec, state?: RunState | null): RunPlan {

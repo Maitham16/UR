@@ -97,6 +97,7 @@ describe('eval child metrics', () => {
       process.env[key] = 'must-not-reach-hook'
 
       isolated = await createEvalWorktree(repo, 'hook-case')
+      expect(isolated.cwd.split(/[\\/]/)).not.toContain('.ur')
       expect(existsSync(ran)).toBe(false)
       expect(existsSync(leaked)).toBe(false)
     } finally {

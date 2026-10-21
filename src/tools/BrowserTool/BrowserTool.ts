@@ -1,6 +1,4 @@
 import { z } from 'zod/v4'
-import { existsSync } from 'node:fs'
-import { delimiter, join } from 'node:path'
 // Type-only import (erased at compile). playwright-core is optional at
 // runtime: loading it eagerly would crash the whole CLI at startup for
 // users without it and force the bundler to inline playwright.
@@ -12,6 +10,7 @@ import { lazySchema } from '../../utils/lazySchema.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { assertPublicUrl } from '../WebFetchTool/utils.js'
 import { loadPlaywright } from '../../utils/playwrightRuntime.js'
+import { findBrowserExecutable } from '../../utils/browserExecutable.js'
 import { isInBundledMode } from '../../utils/bundledMode.js'
 
 const BROWSER_TOOL_NAME = 'Browser'
@@ -118,31 +117,6 @@ async function loadChromium(): Promise<ChromiumLauncher> {
         : 'Interactive browser actions need playwright-core, or use action: "fetch" / the /chrome integration.',
     )
   }
-}
-
-function findBrowserExecutable(chromium: ChromiumLauncher): string | undefined {
-  const configured = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-  if (configured && existsSync(configured)) return configured
-  const candidates = [
-    chromium.executablePath(),
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-    ...(process.platform === 'win32' ? [
-      join(process.env.PROGRAMFILES ?? 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-      join(process.env.LOCALAPPDATA ?? '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-      join(process.env['PROGRAMFILES(X86)'] ?? 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-    ] : []),
-  ]
-  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
-    for (const binary of ['google-chrome', 'chromium', 'chromium-browser', 'msedge']) {
-      candidates.push(join(dir, binary))
-    }
-  }
-  return candidates.find(candidate => candidate && existsSync(candidate))
 }
 
 async function createSession(): Promise<BrowserSession> {

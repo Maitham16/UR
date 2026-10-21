@@ -3,10 +3,16 @@
   "template": false,
   "agent": {
     "name": "ur-nexus",
-    "version": "1.86.2",
-    "commit": "f47f5e480de4c8c0483e2bc8651d065bb24eeb52"
+    "version": "1.87.0",
+    "commit": "e81469b4554d5c209081df72d0350ffe8e59eca7",
+    "source": {
+      "dirty": true,
+      "sha256": "79386b84a20b31475034a09e397910ec93c2462110f135a23c8a6f776ab6a453",
+      "files": 2571,
+      "scope": "src,scripts,package.json,bun.lock,tsconfig.json at report generation"
+    }
   },
-  "date": "2026-10-21T01:31:54.432Z",
+  "date": "2026-10-21T04:03:19.822Z",
   "benchmark": {
     "name": "local-smoke",
     "category": "internal-regression",
@@ -20,7 +26,7 @@
       "arch": "arm64",
       "node": "v26.10.0",
       "bun": "1.3.14",
-      "cwd": "/private/tmp/ur-standalone-release"
+      "cwd": "/Users/maith/Desktop/ur3-dev/UR-1.81.1"
     }
   },
   "results": {
@@ -33,7 +39,7 @@
         "name": "simple file edit task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 31,
+        "wallTimeMs": 186,
         "failureCategory": null
       },
       {
@@ -41,7 +47,7 @@
         "name": "failing test repair task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 202,
+        "wallTimeMs": 447,
         "failureCategory": null
       },
       {
@@ -49,7 +55,7 @@
         "name": "provider routing task",
         "category": "provider-routing",
         "passed": true,
-        "wallTimeMs": 229,
+        "wallTimeMs": 313,
         "failureCategory": null
       },
       {
@@ -57,7 +63,7 @@
         "name": "sandbox denial task",
         "category": "sandbox-safety",
         "passed": true,
-        "wallTimeMs": 687,
+        "wallTimeMs": 716,
         "failureCategory": null
       },
       {
@@ -65,7 +71,7 @@
         "name": "tool-call parsing task",
         "category": "tool-use",
         "passed": true,
-        "wallTimeMs": 237,
+        "wallTimeMs": 238,
         "failureCategory": null
       },
       {
@@ -73,15 +79,18 @@
         "name": "multi-step coding task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 7589,
+        "wallTimeMs": 10232,
         "failureCategory": null
       }
     ],
     "failedTasks": [],
     "failureCategories": {},
-    "wallTimeMs": 8976,
+    "wallTimeMs": 12134,
     "tokenUsage": null,
-    "costUSD": null
+    "costUSD": null,
+    "completionClaims": null,
+    "falseCompletions": null,
+    "falseCompletionRate": null
   },
   "reproduction": {
     "command": "bun run benchmark:smoke",

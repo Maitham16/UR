@@ -12,10 +12,10 @@ import type { StepRunInput, StepRunOutput, StepRunner, Verdict } from './executo
  *   verdict so a workflow can be previewed (and the engine exercised) offline.
  */
 
-const VERDICT_RE = /\bVERDICT:\s*(PASS|FAIL|PARTIAL)\b/i
+const VERDICT_RE = /^\s*VERDICT:\s*(PASS|FAIL|PARTIAL)\s*$/gim
 
 export function extractVerdict(text: string): Verdict | null {
-  const match = VERDICT_RE.exec(text)
+  const match = [...text.matchAll(VERDICT_RE)].at(-1)
   return match ? (match[1].toUpperCase() as Verdict) : null
 }
 
@@ -31,6 +31,14 @@ export function compileStepPrompt(input: StepRunInput): string {
   prompt = prompt.replace(/\{\{[a-z0-9_-]+\}\}/gi, '').trim()
   if (input.feedback) {
     prompt += `\n\nReviewer feedback from the previous iteration — address it directly:\n${input.feedback}`
+  }
+  if (input.recovery) {
+    prompt = [
+      'Recovery: the previous attempt was interrupted and its effects are UNKNOWN.',
+      'Do not assume failure or success, and do not blindly repeat its commands. Inspect saved work, current repository state and relevant external state before deciding what remains. Choose your own reconciliation strategy within the existing permissions.',
+      input.recovery.priorOutput ? `Previous partial output (unverified):\n${input.recovery.priorOutput}` : '',
+      'Original task and dependency results:', prompt,
+    ].filter(Boolean).join('\n\n')
   }
   return prompt
 }
@@ -72,6 +80,7 @@ export type CliStepRunnerOptions = {
   maxTurns?: number
   timeoutMs?: number
   skipPermissions?: boolean
+  onSpawn?: (pid: number) => void
   /** Override the `ur` entry. Defaults to re-invoking this process's CLI. */
   bin?: { file: string; baseArgs: string[] }
 }
@@ -93,6 +102,7 @@ export function makeCliStepRunner(options: CliStepRunnerOptions): StepRunner {
       cwd: options.cwd,
       timeout: options.timeoutMs ?? 30 * 60 * 1000,
       preserveOutputOnError: true,
+      onSpawn: options.onSpawn,
     })
     const output = parseHeadlessOutput(result.stdout) || result.stderr || result.error || ''
     return {

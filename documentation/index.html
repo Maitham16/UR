@@ -43,10 +43,10 @@
     </aside>
 
     <main id="content" class="content">
-      <aside class="callout"><strong>Install on macOS/Linux ARM64 or x64:</strong> complete the <a href="#quickstart">one-time Homebrew setup</a>, then use <code>brew install Maitham16/ur/ur-nexus</code>, or use the <a href="https://github.com/Maitham16/UR/releases/latest">standalone installer</a> without Node.js or Bun. The launch command remains <code>ur</code>. The official npm package requires Node.js 22.12+ only and verifies/caches the pinned native application on first launch. Windows native and public npm installation are unavailable in 1.86.2; Bun-based source development remains optional.</aside>
+      <aside class="callout"><strong>Install on macOS/Linux ARM64 or x64:</strong> complete the <a href="#quickstart">one-time Homebrew setup</a>, then use <code>brew install Maitham16/ur/ur-nexus</code>, or use the <a href="https://github.com/Maitham16/UR/releases/latest">standalone installer</a> without Node.js or Bun. The launch command remains <code>ur</code>. The official npm package requires Node.js 22.12+ only and verifies/caches the pinned native application on first launch. Windows native and public npm installation are unavailable in 1.87.0; Bun-based source development remains optional.</aside>
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.86.2</p>
+          <p class="eyebrow">Version 1.87.0</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -140,7 +140,7 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ur --version</code></pre>
             <p>The PATH command applies to this terminal. Add it once to your zsh or bash startup file for future terminals; see the <a href="../docs/NATIVE_INSTALL.md#install">shell startup instructions</a>.</p>
-            <p>Windows native and public npm installation are unavailable in 1.86.2. Windows developers can optionally use the <a href="../docs/DEVELOPMENT.md">Bun-based source workflow</a>.</p>
+            <p>Windows native and public npm installation are unavailable in 1.87.0. Windows developers can optionally use the <a href="../docs/DEVELOPMENT.md">Bun-based source workflow</a>.</p>
           </article>
           <article class="step">
             <span>2</span>
@@ -285,7 +285,15 @@ ur config set base_url nvidia-nim https://integrate.api.nvidia.com/v1
           </article>
           <article>
             <h3>Evidence and verification</h3>
-            <p>Self-review, verifier gates, evals, claim ledgers, browser QA, and traces help keep outputs auditable.</p>
+            <p>Spec/kernel verification binds successful commands to their run, cwd and unchanged source. Fabricated, failed or stale proof cannot establish PASS. Self-review, evals, browser QA and traces retain their own evidence scopes.</p>
+          </article>
+          <article>
+            <h3>Readiness and review</h3>
+            <p>Choose a provider/model with <code>/model</code>; API providers support <strong>K</strong> to add a key. <code>/ur-doctor</code> or <code>ur doctor --readiness --json</code> reports active-provider diagnostics, diffs, verification freshness, reported/unknown costs and recovery commands. It does not generate model output or start MCP servers. Try a small read-only task, review executed evidence, and use Ctrl+C or <code>ur --resume</code> for interruption and recovery.</p>
+          </article>
+          <article>
+            <h3>Optional sandbox preset</h3>
+            <p><code>ur safety init --preset sandboxed --allow-domain example.com</code> creates a separate settings file. Review it and explicitly select <code>ur --settings .ur/sandboxed.settings.json</code>. Existing permission choices remain unchanged; external CLI, MCP, hook and native file-tool boundaries remain separate. <code>ur safety audit --json</code> measures small offline malicious/benign fixtures, not model attack resistance or OS confinement.</p>
           </article>
         </div>
       </section>

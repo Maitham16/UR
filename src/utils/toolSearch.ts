@@ -42,6 +42,7 @@ import {
 } from './model/providers.js'
 import { jsonStringify } from './slowOperations.js'
 import { zodToJsonSchema } from './zodToJsonSchema.js'
+import { parsePortableToolDiscovery } from './portableToolDiscovery.js'
 
 /**
  * Default percentage of context window at which to auto-enable tool search.
@@ -169,7 +170,7 @@ export type ToolSearchMode = 'tst' | 'tst-auto' | 'standard'
  *   auto / auto:1-99      tst-auto
  *   true / auto:0         tst
  *   false / auto:100      standard
- *   (unset)               tst (default: always defer MCP and shouldDefer tools)
+ *   (unset)               tst-auto for native providers; tst for native-reference runtimes
  */
 export function getToolSearchMode(): ToolSearchMode {
   // UR_CODE_DISABLE_EXPERIMENTAL_BETAS is a kill switch for beta API
@@ -195,7 +196,7 @@ export function getToolSearchMode(): ToolSearchMode {
 
   if (isEnvTruthy(value)) return 'tst'
   if (isEnvDefinedFalsy(process.env.ENABLE_TOOL_SEARCH)) return 'standard'
-  return 'tst' // default: always defer MCP and shouldDefer tools
+  return supportsToolReferenceExpansion() ? 'tst' : 'tst-auto'
 }
 
 /**
@@ -434,7 +435,7 @@ export async function isToolSearchEnabled(
   }
 
   // Check if model supports tool_reference
-  if (!modelSupportsToolReference(model)) {
+  if (!modelSupportsToolReference(model) && supportsToolReferenceExpansion()) {
     logForDebugging(
       `Tool search disabled for model '${model}': model does not support tool_reference blocks. ` +
         `This feature is only available on provider models that support tool_reference blocks.`,
@@ -460,6 +461,13 @@ export async function isToolSearchEnabled(
       return true
 
     case 'tst-auto': {
+      if (!supportsToolReferenceExpansion()) {
+        // Portable discovery never needs beta flags or a token-counting API.
+        const chars = await calculateDeferredToolDescriptionChars(tools, getToolPermissionContext, agents)
+        const enabled = chars > getAutoToolSearchCharThreshold(model)
+        logModeDecision(enabled, mode, enabled ? 'portable_above_threshold' : 'portable_below_threshold', { chars })
+        return enabled
+      }
       const { enabled, debugDescription, metrics } = await checkAutoThreshold(
         tools,
         getToolPermissionContext,
@@ -584,6 +592,9 @@ export function extractDiscoveredToolNames(messages: Message[]): Set<string> {
     if (!Array.isArray(content)) continue
 
     for (const block of content) {
+      if (block && block.type === 'tool_result' && !block.is_error) {
+        for (const name of parsePortableToolDiscovery(block.content)) discoveredTools.add(name)
+      }
       // tool_reference blocks only appear inside tool_result content, specifically
       // in results from ToolSearchTool. The API expands these references into full
       // tool definitions in the model's context.

@@ -49,7 +49,7 @@ async function graphCommand(
     const graph = await buildCodeGraph({ root, signal })
     return {
       type: 'text',
-      value: json ? JSON.stringify({ files: graph.files.length }, null, 2) : formatGraphStats(graph),
+      value: json ? JSON.stringify({ files: graph.files.length, coverage: graph.coverage }, null, 2) : formatGraphStats(graph),
     }
   }
 
@@ -68,7 +68,7 @@ async function graphCommand(
   if (sub === 'impact' || sub === 'deps') {
     if (!arg) return { type: 'text', value: `Usage: ur code-index graph ${sub} <file>` }
     const result = sub === 'impact' ? impactOf(graph, arg) : dependenciesOf(graph, arg)
-    if (json) return { type: 'text', value: JSON.stringify({ file: arg, [sub]: result }, null, 2) }
+    if (json) return { type: 'text', value: JSON.stringify({ file: arg, [sub]: result, staleFiles: graph.staleFiles, coverage: graph.coverage }, null, 2) }
     const label = sub === 'impact' ? 'Impacted by changes to' : 'Dependencies of'
     return {
       type: 'text',
@@ -81,7 +81,7 @@ async function graphCommand(
   if (sub === 'where') {
     if (!arg) return { type: 'text', value: 'Usage: ur code-index graph where <symbol>' }
     const files = whereDefined(graph, arg)
-    if (json) return { type: 'text', value: JSON.stringify({ symbol: arg, files }, null, 2) }
+    if (json) return { type: 'text', value: JSON.stringify({ symbol: arg, files, staleFiles: graph.staleFiles, coverage: graph.coverage }, null, 2) }
     return {
       type: 'text',
       value: files.length
@@ -93,7 +93,7 @@ async function graphCommand(
   if (sub === 'search') {
     if (!arg) return { type: 'text', value: 'Usage: ur code-index graph search <query>' }
     const hits = graphSearch(graph, arg)
-    if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
+    if (json) return { type: 'text', value: JSON.stringify({ hits, staleFiles: graph.staleFiles, coverage: graph.coverage }, null, 2) }
     return {
       type: 'text',
       value: hits.length
@@ -122,7 +122,7 @@ async function repoCommand(
     return {
       type: 'text',
       value: json
-        ? JSON.stringify({ files: repo.files.length, path: repoIndexPath(root) }, null, 2)
+        ? JSON.stringify({ files: repo.files.length, coverage: repo.coverage, path: repoIndexPath(root) }, null, 2)
         : `Built repo index at ${repoIndexPath(root)}\n${formatRepoStats(repo)}`,
     }
   }
@@ -143,6 +143,8 @@ async function repoCommand(
             {
               builtAt: repo.builtAt,
               files: repo.files.length,
+              coverage: repo.coverage,
+              staleFiles: repo.staleFiles,
               path: repoIndexPath(root),
             },
             null,
@@ -155,7 +157,7 @@ async function repoCommand(
   if (sub === 'search') {
     if (!arg) return { type: 'text', value: 'Usage: ur code-index repo search <query>' }
     const hits = repoSearch(repo, arg)
-    if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
+    if (json) return { type: 'text', value: JSON.stringify({ hits, staleFiles: repo.staleFiles, coverage: repo.coverage }, null, 2) }
     return {
       type: 'text',
       value: hits.length
@@ -169,7 +171,7 @@ async function repoCommand(
     const symbols = loadSymbolIndex(root)
     if (!symbols) return { type: 'text', value: 'No symbol index found.' }
     const hits = symbolSearch(symbols, arg)
-    if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
+    if (json) return { type: 'text', value: JSON.stringify({ hits, staleFiles: repo.staleFiles, coverage: repo.coverage }, null, 2) }
     return {
       type: 'text',
       value: hits.length
@@ -183,7 +185,7 @@ async function repoCommand(
     const calls = loadCallIndex(root)
     if (!calls) return { type: 'text', value: 'No call index found.' }
     const hits = findCallers(calls, arg)
-    if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
+    if (json) return { type: 'text', value: JSON.stringify({ hits, staleFiles: repo.staleFiles, coverage: repo.coverage }, null, 2) }
     return {
       type: 'text',
       value: hits.length
@@ -197,7 +199,7 @@ async function repoCommand(
     const tests = loadTestIndex(root)
     if (!tests) return { type: 'text', value: 'No test index found.' }
     const hits = findTestsForFile(tests, arg)
-    if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
+    if (json) return { type: 'text', value: JSON.stringify({ hits, staleFiles: repo.staleFiles, coverage: repo.coverage }, null, 2) }
     return {
       type: 'text',
       value: hits.length
@@ -211,7 +213,7 @@ async function repoCommand(
     const docs = loadDocIndex(root)
     if (!docs) return { type: 'text', value: 'No doc index found.' }
     const hits = docSearch(docs, arg)
-    if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
+    if (json) return { type: 'text', value: JSON.stringify({ hits, staleFiles: repo.staleFiles, coverage: repo.coverage }, null, 2) }
     return {
       type: 'text',
       value: hits.length
@@ -231,7 +233,7 @@ async function repoCommand(
         c.kind.toLowerCase().includes(q) ||
         c.keys?.some(k => k.toLowerCase().includes(q)),
     )
-    if (json) return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
+    if (json) return { type: 'text', value: JSON.stringify({ hits, staleFiles: repo.staleFiles, coverage: repo.coverage }, null, 2) }
     return {
       type: 'text',
       value: hits.length
@@ -264,7 +266,8 @@ export const call: LocalCommandCall = async (args: string) => {
 
   if (command === 'build') {
     try {
-      const { stats } = await buildOrUpdateIndex({ root, signal })
+      const maxFilesArg = tokens.find(token => token.startsWith('--max-files='))?.split('=')[1]
+      const { stats } = await buildOrUpdateIndex({ root, signal, lexical: tokens.includes('--lexical'), ...(maxFilesArg ? { maxFiles: Number(maxFilesArg) } : {}) })
       let graphLine = ''
       if (tokens.includes('--graph')) {
         const graph = await buildCodeGraph({ root, signal })
@@ -285,6 +288,8 @@ export const call: LocalCommandCall = async (args: string) => {
           `  model:    ${stats.model} (dim ${stats.dim})\n` +
           `  files:    ${stats.filesIndexed} indexed, ${stats.filesSkipped} skipped, ${stats.filesRemoved} removed\n` +
           `  chunks:   ${stats.chunksTotal} total, ${stats.chunksEmbedded} (re)embedded\n` +
+          `  coverage: ${stats.coverage.indexed}/${stats.coverage.candidates} candidates, ${stats.coverage.omittedByLimit} omitted by limit, ${stats.coverage.truncatedFiles.length} truncated files\n` +
+          `  embeddings: ${stats.embedding.available ? 'available' : stats.embedding.reason}\n` +
           `  ${stats.reused ? 'incremental update' : 'full build'}` +
           graphLine +
           repoLine,
@@ -336,6 +341,9 @@ export const call: LocalCommandCall = async (args: string) => {
           dim: index.dim,
           files: Object.keys(index.files).length,
           chunks: Object.keys(index.chunks).length,
+          coverage: index.coverage ?? { known: false, action: "Rebuild to measure coverage" },
+          embedding: index.embedding,
+          freshness: "Search revalidates source hashes; status describes last build",
           path: indexPath(root),
         }
       : { missing: true, path: indexPath(root), model: getEmbeddingModel() }
@@ -350,7 +358,7 @@ export const call: LocalCommandCall = async (args: string) => {
       return { type: 'text', value: 'Usage: ur code-index search <query> [--json]' }
     }
     try {
-      const { hits, index } = await searchCode({ root, query, signal })
+      const { hits, index, diagnostics } = await searchCode({ root, query, signal, lexical: tokens.includes('--lexical') })
       if (!index) {
         return {
           type: 'text',
@@ -358,14 +366,15 @@ export const call: LocalCommandCall = async (args: string) => {
         }
       }
       if (json) {
-        return { type: 'text', value: JSON.stringify({ hits }, null, 2) }
+        return { type: 'text', value: JSON.stringify({ hits, diagnostics }, null, 2) }
       }
+      const detail = `${diagnostics.mode} retrieval; ${diagnostics.staleFiles.length} changed and ${diagnostics.missingFiles.length} missing files excluded${diagnostics.embeddingReason ? `; ${diagnostics.embeddingReason}` : ""}`
       if (hits.length === 0) {
-        return { type: 'text', value: 'No semantically similar code found.' }
+        return { type: 'text', value: `${detail}\nNo matching current code found. Refresh with ur code-index build.` }
       }
       return {
         type: 'text',
-        value: hits
+        value: `${detail}\n\n` + hits
           .map(
             hit =>
               `${hit.file}:${hit.startLine}-${hit.endLine} (score ${hit.score.toFixed(3)})\n${hit.preview}`,
@@ -385,7 +394,7 @@ export const call: LocalCommandCall = async (args: string) => {
   return {
     type: 'text',
     value:
-      'Usage: ur code-index build [--graph] [--repo] | search <query> | status | ' +
+      'Usage: ur code-index build [--graph] [--repo] [--lexical] [--max-files=N] | search <query> [--lexical] | status | ' +
       'watch [--graph] [--repo] | graph build|impact <file>|deps <file>|where <symbol>|search <query> | ' +
       'repo build|status|search <query>|symbols <query>|callers <symbol>|tests <file>|docs <query>|configs <query> [--json]',
   }

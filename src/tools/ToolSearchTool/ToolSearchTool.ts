@@ -15,7 +15,9 @@ import {
 import { logForDebugging } from '../../utils/debug.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { escapeRegExp } from '../../utils/stringUtils.js'
-import { isToolSearchEnabledOptimistic } from '../../utils/toolSearch.js'
+import { isToolSearchEnabledOptimistic, supportsToolReferenceExpansion } from '../../utils/toolSearch.js'
+import { formatPortableToolDiscovery, type PortableToolDefinition } from '../../utils/portableToolDiscovery.js'
+import { zodToJsonSchema } from '../../utils/zodToJsonSchema.js'
 import { getPrompt, isDeferredTool, TOOL_SEARCH_TOOL_NAME } from './prompt.js'
 
 export const inputSchema = lazySchema(() =>
@@ -40,6 +42,7 @@ export const outputSchema = lazySchema(() =>
     query: z.string(),
     total_deferred_tools: z.number(),
     pending_mcp_servers: z.array(z.string()).optional(),
+    definitions: z.array(z.object({ name: z.string(), description: z.string(), input_schema: z.record(z.string(), z.unknown()) })).optional(),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -325,11 +328,25 @@ export const ToolSearchTool = buildTool({
   get outputSchema(): OutputSchema {
     return outputSchema()
   },
-  async call(input, { options: { tools }, getAppState }) {
+  async call(input, { options: { tools, agentDefinitions }, getAppState }) {
     const { query, max_results = 5 } = input
 
     const deferredTools = tools.filter(isDeferredTool)
     maybeInvalidateCache(deferredTools)
+    const resultWithSchemas = async (matches: string[], pending?: string[]) => {
+      const result = buildSearchResult(matches, query, deferredTools.length, pending)
+      if (!supportsToolReferenceExpansion()) {
+        result.data.definitions = await Promise.all(matches.map(async name => {
+          const tool = findToolByName(tools, name)!
+          return {
+            name,
+            description: await tool.prompt({ getToolPermissionContext: async () => getAppState().toolPermissionContext, tools, agents: agentDefinitions?.activeAgents ?? [] }),
+            input_schema: (tool.inputJSONSchema ?? zodToJsonSchema(tool.inputSchema)) as Record<string, unknown>,
+          }
+        }))
+      }
+      return result
+    }
 
     // Check for MCP servers still connecting
     function getPendingServerNames(): string[] | undefined {
@@ -386,12 +403,7 @@ export const ToolSearchTool = buildTool({
         )
         logSearchOutcome([], 'select')
         const pendingServers = getPendingServerNames()
-        return buildSearchResult(
-          [],
-          query,
-          deferredTools.length,
-          pendingServers,
-        )
+        return resultWithSchemas([], pendingServers)
       }
 
       if (missing.length > 0) {
@@ -402,7 +414,7 @@ export const ToolSearchTool = buildTool({
         logForDebugging(`ToolSearchTool: selected ${found.join(', ')}`)
       }
       logSearchOutcome(found, 'select')
-      return buildSearchResult(found, query, deferredTools.length)
+      return resultWithSchemas(found)
     }
 
     // Keyword search
@@ -422,15 +434,10 @@ export const ToolSearchTool = buildTool({
     // Include pending server info when search finds no matches
     if (matches.length === 0) {
       const pendingServers = getPendingServerNames()
-      return buildSearchResult(
-        matches,
-        query,
-        deferredTools.length,
-        pendingServers,
-      )
+      return resultWithSchemas(matches, pendingServers)
     }
 
-    return buildSearchResult(matches, query, deferredTools.length)
+    return resultWithSchemas(matches)
   },
   renderToolUseMessage() {
     return null
@@ -458,6 +465,10 @@ export const ToolSearchTool = buildTool({
         tool_use_id: toolUseID,
         content: text,
       }
+    }
+    if (!supportsToolReferenceExpansion()) return {
+      type: 'tool_result', tool_use_id: toolUseID,
+      content: formatPortableToolDiscovery((content.definitions ?? []) as PortableToolDefinition[]),
     }
     return {
       type: 'tool_result',

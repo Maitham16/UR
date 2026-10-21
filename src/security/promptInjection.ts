@@ -58,7 +58,7 @@ const DETECTORS: Detector[] = [
   {
     rule: 'exfiltration-request',
     pattern:
-      /\b(?:print|reveal|show|output|send|post|upload|email)\b[^.\n]{0,40}\b(?:your\s+)?(?:system\s+prompt|instructions|api[_-]?key|token|secret|credential|\.env|ssh\s+key|password)/i,
+      /\b(?:print|reveal|show|output|send|post|upload|email)\b[^.\n]{0,40}\b(?:your\s+)?(?:system\s+prompt|instructions|api[\s_-]?key|token|secret|credential|\.env|ssh\s+key|password)/i,
     severity: 0.95,
   },
   {
@@ -150,6 +150,7 @@ export function wrapUntrusted(
   content: string,
   source: string,
   nonceFactory: () => string = () => randomBytes(16).toString('hex'),
+  options: { recordEvidence?: boolean } = {},
 ): ContentBoundary {
   const nonce = nonceFactory()
   const cleaned = stripHiddenCharacters(content)
@@ -162,7 +163,9 @@ export function wrapUntrusted(
     : ''
   // Recorded here rather than at each call site: this is the single choke
   // point every untrusted block passes through, so the ledger cannot miss one.
-  recordEvidence({
+  // Offline qualification must not invent fetched sources in the active
+  // session. Runtime call sites retain recording by default.
+  if (options.recordEvidence !== false) recordEvidence({
     nonce,
     source,
     content: cleaned,

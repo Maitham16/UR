@@ -42,8 +42,11 @@ ur mcp reset-project-choices        # re-prompt for .mcp.json approvals
 | UR HTTP agent API | `UR_ACP_TOKEN=… ur acp serve`; `/acp` | UR-specific HTTP JSON-RPC for scripts, tools/tasks, and the experimental JetBrains plugin; not an ACP binding |
 | A2A server | `UR_A2A_TOKEN=… ur a2a serve --port 8765` | negotiated strict v1 JSON-RPC/HTTP+JSON, stable-SDK v0.3 at `/a2a/jsonrpc`, and separate UR compatibility routes under `/a2a/tasks` |
 | AG-UI adapter | `UR_AG_UI_TOKEN=… ur ag-ui serve --host 0.0.0.0` | official-schema HTTP/SSE at `/ag-ui` with truthful discovery at `/ag-ui/capabilities` |
-| HTTP session server | `ur server --port … --auth-token …` | direct-connect sessions (`src/server/`), unix-socket option, idle timeouts, max sessions |
-| Remote control bridge | `ur remote-control` (`rc`) or `/remote-control` | pairs this machine with mobile/web clients (`src/bridge/`); org policy `allow_remote_control` gates it |
+
+Public remote sessions use the canonical `ur acp serve` endpoint. The source
+tree also contains `DIRECT_CONNECT` and `BRIDGE_MODE` implementations under
+`src/server/` and `src/bridge/`; those build-gated implementations are excluded
+from the public distribution and are not additional installation commands.
 
 `ur mcp serve` exposes built-in tools only. Every call is schema-validated,
 rechecked by the normal permission engine, and executed without an interactive
@@ -127,3 +130,128 @@ Three tiers:
 
 - `/voice` toggles voice input (feature `VOICE_MODE`, `voiceEnabled` setting, `src/voice/`).
 - `/buddy` companion sprite (BUDDY gate); `/think-back` year in review.
+
+## Supported programmatic clients
+
+`ur-agent/sdk` is the public dependency-free Node/TypeScript export. Install the
+package in the calling project (`npm install ur-agent`); a global CLI install
+does not automatically make imports available to arbitrary projects. Its JS and
+TypeScript declarations are built by `node scripts/build-sdk.mjs` and included in
+the native npm package. End users need Node 22.12+ for this client, and an
+native UR launcher bundled in that npm package for local runs. The SDK finds
+its sibling launcher even when the project `node_modules/.bin` is absent from
+PATH. Explicit `bin` or `UR_EXECUTABLE` overrides take precedence; source
+development falls back to PATH. No separate Bun is required.
+
+```js
+import { UrClient } from 'ur-agent/sdk'
+const client = new UrClient({ model: 'your-configured-model', cwd: process.cwd() })
+const run = client.stream('Investigate the failing test')
+for await (const frame of run) {
+  if (frame.event.type === 'control_request') {
+    // Supply your own approval UI; this example explicitly declines.
+    await run.approve(frame.event.request_id, { behavior: 'deny', message: 'Declined' })
+  }
+}
+const result = await run.result
+if (!result.ok) throw new Error(result.error)
+console.log(result.text)
+```
+
+`query` consumes events and returns the complete result. Interactive permissions
+are explicitly declined if `onPermission` is absent; `stream` leaves decisions
+to its consumer or callback. Existing user permission configuration applies.
+`UrClient.resume(sessionId, prompt)` starts the next native CLI turn with
+`--resume`; the session ID comes from UR, never a fabricated local identifier.
+`run.cancel()` or AbortSignal cancellation terminates the child, escalating to
+SIGKILL after two seconds if needed. Breaking stream iteration cancels local
+work. A successful result requires a result frame without a reported error and
+a clean exit after draining output. It is not independent proof of task success.
+
+Local envelopes are `{protocolVersion:1,sequence,sessionId,transport:'local',event}`;
+`event` is the native stream-json frame. Permission input and exact raw request
+are exposed. The Node SDK preserves split UTF-8, rejects malformed frames,
+and both SDKs fill a bare allow decision with an independent original input
+copy; only explicit `updatedInput` replaces it. Bare denials receive the required
+message before transmission to the native permission engine. The Node SDK
+requires one consumer and bounds queued events (4096), one line (16 MiB), captured
+stdout (64 MiB) and retained stderr (64 KiB). Exceeding a bound reports failure,
+not truncated successful results. `maxQueuedEvents`, `maxOutputBytes` and
+`timeoutMs` are caller-configurable; default timeout is 30 minutes. `bin` and
+`env` are explicit subprocess overrides, and no shell interprets the prompt.
+
+The standard-library Python package is bundled at `sdk/python`, with source at
+`sdk-python/`. Install it using `python3 -m pip install <package-path>/sdk/python`;
+Python 3.10+ is required. A separate PyPI publication is not assumed. `UrClient`,
+`stream`, `query`, permission callbacks, cancellation, local resume and
+`RemoteClient` expose the same semantics with Python naming. Use `with
+client.stream(...) as run:` to ensure cleanup after caller exceptions.
+
+`ur sdk init` creates examples using these actual packages. SDK wire revision 1
+is independent of the CLI release number. No version-suffixed commands exist.
+
+### Remote SDK transport
+
+`UrRemoteClient({endpoint,token})` and Python `RemoteClient(endpoint,token)` use
+only the existing authenticated `ur acp serve` JSON-RPC POST `/acp` endpoint.
+They send bearer tokens in headers, reject redirects, validate response IDs and
+report transport/JSON-RPC errors. This HTTP API is UR-specific, not a claim that
+ACP standardizes HTTP transport. ACP stdio remains the standard editor binding.
+
+`stream(prompt)` uses `session/new` (or `session/resume`) then
+`session/prompt` with `stream:true`; event polling uses `session/events` with
+`after` and bounded long polling. SDKs validate contiguous sequence, session ID,
+wire revision and nextCursor; a gap or unknown revision is an error, never
+silently skipped content. Remote envelopes have `transport:'acp'`, and expose
+real ACP `session/update` and permission payloads intact rather than pretending
+they are native stream-json frames. Approvals are allow_once/deny through
+`session/approve`, with no silent input rewriting or permanent grants.
+
+Persist `{sessionId,lastSequence}`; `remote.resume(sessionId,after)` reconnects
+without replaying the prompt. `disconnect()` stops observing and leaves remote
+work running; `cancel()` invokes server cancellation. Neither client retries
+mutating calls automatically. Remote stop reasons describe the model turn;
+provider usage and independent verification must be read from actual events.
+Native final result frames retain `cost_status`. Treat `unknown` or an absent
+price as unknown rather than free; the SDK does not invent a cost estimate.
+`session/close` detaches/cancels and preserves history; explicit resume may reopen
+it. Device revocation is a separate server operation.
+
+## ACP team operations
+
+`src/services/agents/acpTeam.ts` adds opt-in policy around the existing ACP HTTP
+dispatcher. `UR_ACP_TEAM_POLICY` must point outside the workspace to trusted
+administrator policy; external private `UR_REMOTE_STATE_DIR` stores quota
+receipts and a redacted, validated hash-chain audit. The device registry and
+revocation logic remain the F12 source of identity/session scope. No policy
+means no new role/quota checks or environment changes.
+
+Roles are viewer/member/reviewer plus the existing operator token. Shared and
+per-member quotas count accepted durable prompt attempts and concurrent/unknown
+reservations, not dollars or nested model calls. Exact prompt/session/principal
+request binding preserves duplicate delivery without another execution or
+charge. A killed owner retains an unknown concurrent reservation until operator
+review; `team/reconcile` preserves the total charge and stores a reason digest.
+`team/status` and operator-only `team/audit` use the same `/acp` endpoint.
+
+The optional team runner environment is an explicit allowlist plus OS/runtime
+essentials, with private per-session UR config. The operator token and control
+path are removed. Host files and external CLI/MCP/hook credentials remain
+separate OS/deployment boundaries. Administrator-reviewed automation receipts
+bind exact prompt SHA-256, session and principal on `session/prompt`; they never
+grant tool or publication approval. See the [team setup/protocol](../docs/ACP.md#optional-team-policy-http).
+
+`test/acpTeam.test.ts` includes durable quotas, role/revocation enforcement,
+reviewed-prompt tampering, real killed-owner recovery, hash-chain corruption and
+an actual default-runner child environment fixture. No real model or external
+credential is used. Team functionality does not amend the non-commercial
+license; commercial use needs the copyright holder's prior written permission.
+
+## Native remote deployment
+
+The [container recipe](../deployment/acp/README.md) packages an extracted, verified
+Linux native release with private persistent state and workspace volumes. It runs
+as an unprivileged user with a read-only application and requires no separate
+Node/Bun runtime. Provider settings, bearer credentials, project build tools and
+TLS/tunneling are explicit deployment inputs. Its integration smoke test drives
+the real native approval/tool loop and replacement-container session recovery.

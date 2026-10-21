@@ -56,11 +56,19 @@ if (!packageJson.homepage?.includes(expectedRepo)) {
   fail(`package.json homepage must point at ${expectedRepo}`)
 }
 
-const expectedFiles = ['bin', 'dist', 'docs', 'documentation', 'extensions', 'examples', 'plugins', 'patches', 'CHANGELOG.md', 'CONTRIBUTING.md', 'QUALITY.md', 'README.md', 'RELEASE.md', 'SECURITY.md', 'LICENSE']
+const expectedFiles = ['bin', 'dist', 'sdk', 'docs', 'documentation', 'extensions', 'examples', 'plugins', 'patches', 'CHANGELOG.md', 'CONTRIBUTING.md', 'QUALITY.md', 'README.md', 'RELEASE.md', 'SECURITY.md', 'LICENSE']
 for (const file of expectedFiles) {
   if (!packageJson.files?.includes(file)) {
     fail(`package.json files is missing ${file}`)
   }
+}
+
+if (packageJson.exports?.['./sdk']?.import !== './sdk/index.js' ||
+    packageJson.exports?.['./sdk']?.types !== './sdk/index.d.ts') {
+  fail('package.json must expose the Node SDK JavaScript and TypeScript declarations at ur-agent/sdk')
+}
+for (const path of ['sdk/index.js', 'sdk/index.d.ts', 'sdk/python/pyproject.toml']) {
+  if (!existsSync(join(root, path))) fail(`${path} is missing; run bun run build`)
 }
 
 const bunfig = read('bunfig.toml')

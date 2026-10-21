@@ -7,6 +7,11 @@ import { request as httpsRequest } from 'node:https'
 import type { LocalCommandCall } from '../../types/command.js'
 import { getProviderApiKey } from '../../services/providers/providerCredentials.js'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
+import { getCwd } from '../../utils/cwd.js'
+import { getInitialSettings } from '../../utils/settings/settings.js'
+import { createProviderClient, resolveActiveProviderModel } from '../../services/api/providerClient.js'
+import { getProviderContextLengthForModel, getProviderDefinition, getScopedProviderBaseUrl, resolveProviderId } from '../../services/providers/providerRegistry.js'
+import { loadModelProfile, probeModelProfile, saveModelProfile } from '../../services/providers/modelProfiles.js'
 import {
   getOllamaAuthHeaders,
   getOllamaBaseUrl,
@@ -243,7 +248,28 @@ export async function listModelCapabilities(
 export const call: LocalCommandCall = async (args: string) => {
   const tokens = parseArguments(args)
   const json = tokens.includes('--json')
-  const requestedModel = tokens.find(token => !token.startsWith('--'))
+  const valueFlags = new Set(['--provider', '--timeout-ms'])
+  const positional = tokens.filter((token, i) => !token.startsWith('--') && !valueFlags.has(tokens[i - 1] ?? ''))
+  const requestedModel = positional[0]
+  const value = (flag: string) => tokens.includes(flag) ? tokens[tokens.indexOf(flag) + 1] : undefined
+  if (tokens.includes('--probe') || tokens.includes('--profile') || tokens.includes('--provider')) {
+    const provider = value('--provider')
+    const providerId = provider ? resolveProviderId(provider) : undefined
+    if (provider && !providerId) return { type: 'text', value: `Unknown provider: ${provider}` }
+    if (providerId === 'subscription') return { type: 'text', value: 'Choose a configured subscription CLI provider or a native API provider.' }
+    const saved = getInitialSettings()
+    const settings = providerId ? { ...saved, provider: { ...saved.provider, active: providerId } } : saved
+    const runtime = resolveActiveProviderModel({ settings, model: requestedModel })
+    const endpoint = getScopedProviderBaseUrl(runtime.providerId, settings) ?? getProviderDefinition(runtime.providerId).defaultBaseUrl ?? 'configured-provider'
+    const previous = await loadModelProfile(getCwd(), runtime.providerId, runtime.model, endpoint)
+    if (!tokens.includes('--probe')) return { type: 'text', value: JSON.stringify({ runtime, profile: previous, action: 'Use --probe to measure tools, JSON output, continuation and cancellation with small real model requests.' }, null, 2) }
+    const timeoutMs = value('--timeout-ms') ? Number(value('--timeout-ms')) : undefined
+    if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs < 1000 || timeoutMs > 300_000)) return { type: 'text', value: '--timeout-ms must be between 1000 and 300000' }
+    const client = await createProviderClient(runtime.providerId, { settings, model: runtime.model, maxRetries: 0 })
+    const profile = await probeModelProfile({ provider: runtime.providerId, model: runtime.model, endpoint, client, timeoutMs, contextWindow: getProviderContextLengthForModel(runtime.model, runtime.providerId, settings) })
+    await saveModelProfile(getCwd(), profile)
+    return { type: 'text', value: json ? JSON.stringify(profile, null, 2) : `${profile.provider} / ${profile.model}\n${Object.entries(profile.checks).map(([name, check]) => `${name}: ${check.status} — ${check.detail}`).join('\n')}\nRecorded ${profile.usage.requests} requests; ${profile.usage.inputTokens} input and ${profile.usage.outputTokens} output tokens reported by completed responses. Partial stream usage may be unavailable.\nProfiles describe observations; they never restrict model selection.` }
+  }
   const { endpoint, models } = await listModelCapabilities(requestedModel)
 
   return {

@@ -253,7 +253,6 @@ describe('package runtime contract', () => {
       const currentA2ACard = runPackagedBin(packageRoot, [
         'a2a',
         'card',
-        '--v1',
         '--compact',
       ])
       expect(currentA2ACard.status).toBe(0)

@@ -86,9 +86,10 @@ describe('buildUrArgs', () => {
     expect(args[permissionIndex + 1]).toBe('stdio')
   })
 
-  test('appends the prompt as the final positional argument, unquoted', () => {
+  test('keeps prompt text out of argv and enables bidirectional stream JSON', () => {
     const args = buildUrArgs({ prompt: 'fix the "bug" in main.ts' })
-    expect(args.at(-1)).toBe('fix the "bug" in main.ts')
+    expect(args).not.toContain('fix the "bug" in main.ts')
+    expect(args[args.indexOf('--input-format') + 1]).toBe('stream-json')
   })
 
   test('adds --resume only when a cliSessionId is known', () => {
@@ -136,7 +137,7 @@ describe('buildControlResponse', () => {
 class FakeChildProcess extends EventEmitter {
   stdout = new EventEmitter()
   stderr = new EventEmitter()
-  stdin = { writes: [] as string[], write: (data: string) => { this.stdin.writes.push(data) } }
+  stdin = { ended: false, end: () => { this.stdin.ended = true }, writes: [] as string[], write: (data: string) => { this.stdin.writes.push(data) } }
   killed = false
   killSignal: string | undefined
 
@@ -156,6 +157,7 @@ class FakeChildProcess extends EventEmitter {
 
   exit(code: number | null, signal: NodeJS.Signals | null = null) {
     this.emit('exit', code, signal)
+    this.emit('close', code, signal)
   }
 }
 
@@ -184,14 +186,14 @@ describe('runUrTurn spawn options', () => {
   })
 
   test('spawns `ur` with cwd from the request', () => {
-    const { spawn, calls } = spawnRecorder()
+    const { spawn, calls, getChild } = spawnRecorder()
     runUrTurn({ cwd: '/some/workspace', prompt: 'hi' }, noopHandlers(), { spawn })
     expect(calls[0]!.command).toBe('ur')
     expect((calls[0]!.options as { cwd: string }).cwd).toBe('/some/workspace')
   })
 
   test('uses resolved executable prefix args while preserving chat protocol args', () => {
-    const { spawn, calls } = spawnRecorder()
+    const { spawn, calls, getChild } = spawnRecorder()
     runUrTurn(
       { cwd: '/repo', prompt: 'hello' },
       noopHandlers(),
@@ -214,7 +216,8 @@ describe('runUrTurn spawn options', () => {
     expect(calls[0]!.args).toContain('--verbose')
     expect(calls[0]!.args).toContain('--permission-prompt-tool')
     expect(calls[0]!.args).toContain('stdio')
-    expect(calls[0]!.args.at(-1)).toBe('hello')
+    expect(calls[0]!.args).not.toContain('hello')
+    expect(JSON.parse(getChild().stdin.writes[1]!).message.content).toBe('hello')
   })
 })
 
@@ -370,8 +373,8 @@ describe('runUrTurn control_request handling', () => {
     await flushMicrotasks()
     expect(received?.request_id).toBe('req-9')
     expect(received?.request.tool_name).toBe('Bash')
-    expect(getChild().stdin.writes).toHaveLength(1)
-    const written = JSON.parse(getChild().stdin.writes[0]!.trim())
+    expect(getChild().stdin.writes).toHaveLength(3)
+    const written = JSON.parse(getChild().stdin.writes[2]!.trim())
     expect(written.type).toBe('control_response')
     expect(written.response.request_id).toBe('req-9')
     expect(written.response.subtype).toBe('success')
@@ -390,7 +393,7 @@ describe('runUrTurn control_request handling', () => {
       '{"type":"control_request","request_id":"req-2","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{}}}\n',
     )
     await flushMicrotasks()
-    const written = JSON.parse(getChild().stdin.writes[0]!.trim())
+    const written = JSON.parse(getChild().stdin.writes[2]!.trim())
     expect(written.response.response).toEqual({ behavior: 'deny', message: 'User denied' })
     getChild().exit(0)
   })
@@ -406,7 +409,7 @@ describe('runUrTurn control_request handling', () => {
     runUrTurn({ cwd: '/work', prompt: 'hi' }, handlers, { spawn })
     getChild().emitStdout('{"type":"control_request","request_id":"req-3","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{}}}\n')
     await flushMicrotasks()
-    const written = JSON.parse(getChild().stdin.writes[0]!.trim())
+    const written = JSON.parse(getChild().stdin.writes[2]!.trim())
     expect(written.response.response.behavior).toBe('deny')
     getChild().exit(0)
   })
@@ -443,3 +446,42 @@ function noopHandlers() {
 function flushMicrotasks(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 0))
 }
+
+
+test('drains UTF-8 output arriving after process exit before reporting completion', () => {
+  const { spawn, getChild } = spawnRecorder()
+  const messages: StdoutMessage[] = []
+  let completed = false
+  runUrTurn({ cwd: '/work', prompt: 'hi' }, { ...noopHandlers(), onMessage: message => messages.push(message), onExit: result => { completed = result.ok } }, { spawn })
+  const bytes = Buffer.from(JSON.stringify({ type: 'result', is_error: false, result: 'العربية café こんにちは' }) + '\n')
+  getChild().emit('exit', 0, null)
+  expect(completed).toBe(false)
+  for (const byte of bytes) getChild().stdout.emit('data', Buffer.from([byte]))
+  getChild().emit('close', 0, null)
+  expect(completed).toBe(true)
+  expect((messages[0] as unknown as { result: string }).result).toBe('العربية café こんにちは')
+})
+
+test('withdrawn approvals cannot send a delayed allow decision', async () => {
+  const { spawn, getChild } = spawnRecorder()
+  let decide!: (decision: PermissionDecision) => void
+  runUrTurn({ cwd: '/work', prompt: 'hi' }, { ...noopHandlers(), onControlRequest: () => new Promise(resolve => { decide = resolve }) }, { spawn })
+  getChild().emitStdout('{"type":"control_request","request_id":"withdrawn","request":{"subtype":"can_use_tool","tool_name":"Read","input":{}}}\n')
+  getChild().emitStdout('{"type":"control_cancel_request","request_id":"withdrawn"}\n')
+  decide({ behavior: 'allow', updatedInput: {} })
+  await flushMicrotasks()
+  expect(getChild().stdin.writes).toHaveLength(2)
+  getChild().exit(0)
+})
+
+
+test('sends initialize and user frames on stdin, then closes input after result', () => {
+  const {spawn, getChild} = spawnRecorder()
+  runUrTurn({cwd:'/work',prompt:'--dangerously-skip-permissions'}, noopHandlers(), {spawn})
+  const messages = getChild().stdin.writes.map(line => JSON.parse(line))
+  expect(messages[0].request.subtype).toBe('initialize')
+  expect(messages[1]).toMatchObject({type:'user',message:{role:'user',content:'--dangerously-skip-permissions'}})
+  getChild().emitStdout('{"type":"result","is_error":false}\n')
+  expect(getChild().stdin.ended).toBe(true)
+  getChild().exit(0)
+})

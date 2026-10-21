@@ -20,7 +20,8 @@ import kotlinx.serialization.json.jsonPrimitive
 /** Project-scoped JSON-RPC client for UR's HTTP compatibility endpoint. */
 @Service(Service.Level.PROJECT)
 class UrAcpClient(private val project: Project) {
-    private val baseUrl = "http://127.0.0.1:9100"
+    private val baseUrl = (System.getenv("UR_ACP_URL")?.takeIf { it.isNotBlank() } ?: "http://127.0.0.1:9100").trimEnd('/')
+    private val token = System.getenv("UR_ACP_TOKEN")?.takeIf { it.isNotBlank() }
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
     private val ids = AtomicLong()
     private val promptInFlight = AtomicBoolean(false)
@@ -58,6 +59,9 @@ class UrAcpClient(private val project: Project) {
             val status = task["status"]?.jsonPrimitive?.content ?: "unknown"
             val output = task["result"]?.jsonObject?.get("stdout")?.jsonPrimitive?.content
             val failure = task["result"]?.jsonObject?.get("stderr")?.jsonPrimitive?.content
+            if (status == "failed" || status == "canceled") {
+                error(failure?.takeIf { it.isNotBlank() } ?: "UR task $status")
+            }
             return output?.takeIf { it.isNotBlank() }
                 ?: failure?.takeIf { it.isNotBlank() }
                 ?: "UR task $status (${task["id"]?.jsonPrimitive?.content ?: "unknown id"})"
@@ -111,16 +115,20 @@ class UrAcpClient(private val project: Project) {
             put("method", JsonPrimitive(method))
             if (params != null) put("params", params)
         }
-        val request = HttpRequest.newBuilder(URI.create("$baseUrl/acp"))
+        val builder = HttpRequest.newBuilder(URI.create("$baseUrl/acp"))
             .timeout(timeout)
             .header("content-type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
-            .build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+        token?.let { builder.header("authorization", "Bearer $it") }
+        val response = http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
         if (response.statusCode() !in 200..299) {
             error("ACP HTTP ${response.statusCode()}: ${response.body().take(500)}")
         }
         val payload = json.parseToJsonElement(response.body()).jsonObject
+        check(payload["jsonrpc"]?.jsonPrimitive?.content == "2.0" &&
+            payload["id"]?.jsonPrimitive?.content == requestId.toString()) {
+            "ACP response identity does not match the request."
+        }
         payload["error"]?.jsonObject?.let { rpcError ->
             error("ACP ${rpcError["code"]?.jsonPrimitive?.content}: ${rpcError["message"]?.jsonPrimitive?.content}")
         }

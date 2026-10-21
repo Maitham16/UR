@@ -3,6 +3,36 @@
 Each entry lists the symptom, the likely cause, the fix, and a command that
 verifies the fix.
 
+## Readiness, review and recorded evidence
+
+Run `ur doctor --readiness` or interactive `/ur-doctor` after choosing a
+provider/model. `--json` returns the same structured report. It checks the
+active provider, not an unrelated local Ollama server, and does not generate
+model output or start MCP servers. Resolve failed checks with the displayed
+`ur provider doctor <provider>` command or `/model`; **K** in an API provider's
+model picker adds/replaces its key. Submit a small read-only task to verify
+actual generation after diagnostics pass.
+
+A historical verification PASS can become stale after source changes.
+`ur spec verify <name>` reruns execution-bound verification. Prose-only legacy
+PASS records are unverifiable/PARTIAL. Readiness reports that assessment
+without rewriting old records; ordinary verification loading migrates them.
+Source-current evidence does not prove external services or outside files.
+
+Reported cost plus unknown-cost calls means some provider results omitted
+usage/billing metadata. It is not a complete zero-dollar bill. `/cost` shows
+current-session reporting; saved goals show their own cumulative usage.
+Ctrl+C interrupts foreground work, `ur bg cancel <id>` cancels background
+work, and `ur --resume <session-id>`, `ur bg resume <id>` or
+`ur goal resume <name>` resume their respective saved state. Unknown side
+effects need reconciliation before an effect can safely be repeated.
+
+The sandboxed preset takes effect only when explicitly passed with
+`--settings .ur/sandboxed.settings.json`. `ur sandbox status` and the readiness
+report distinguish disabled, available and unavailable enforcement. A required
+but unavailable sandbox fails closed; an offline `ur safety audit` PASS does
+not establish OS confinement. Review the [preset scope and exceptions](../technical/12-security-sandbox-stability.md#opt-in-sandboxed-preset).
+
 ## Install and startup
 
 ### `ur: command not found`
@@ -14,7 +44,7 @@ verifies the fix.
 - Homebrew install: inspect `brew list ur-nexus` and `command -v ur`; update with
   `brew upgrade ur-nexus`. For a first installation, follow the
   [tap and formula-trust setup](NATIVE_INSTALL.md#homebrew).
-- Windows native and public npm installation are unavailable in 1.86.2. For
+- Windows native and public npm installation are unavailable in 1.87.0. For
   optional Windows source development, inspect `Get-Command ur` and follow the
   [Development Guide](DEVELOPMENT.md).
 - npm install: check the npm global bin path, then reinstall if needed. The

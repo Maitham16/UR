@@ -1,33 +1,64 @@
 {
   "version": 1,
   "name": "builtin-py-package-repair",
-  "description": "Small Python package repair benchmark. Each case asks UR to fix packaging metadata in a fresh worktree.",
+  "description": "Install the repaired package in a fresh venv and execute its import or console script. Requires Python 3.11+, venv/pip, and package-index access.",
   "cases": [
     {
       "id": "missing-dep",
       "category": "py-package-repair",
-      "prompt": "You are in a fresh Python repo with a setup.py that installs a package but forgets install_requires=['requests']. Create src/mypkg/__init__.py that imports requests. Ask UR to fix setup.py, install the package in editable mode (or write the fix), and verify the import would work. Finish with VERDICT: PASS if setup.py references requests.",
+      "prompt": "Fix setup.py so installing ur-eval-mypkg automatically installs its missing requests dependency; keep the src-layout package and public API. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "setup.py": "from setuptools import setup\nsetup(name='ur-eval-mypkg',version='0.1.0',packages=['mypkg'],package_dir={'':'src'})\n",
+          "src/mypkg/__init__.py": "import requests\ndef dependency_name(): return requests.__name__\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "grep -q 'requests' setup.py"
+        "verdict": "PASS",
+        "testCommand": "python3 \"$UR_EVAL_VERIFY_DIR/check.py\"",
+        "testFiles": {
+          "check.py": "import pathlib, subprocess, sys, tempfile, venv\nwith tempfile.TemporaryDirectory(prefix='ur-package-') as tmp:\n    venv.create(tmp, with_pip=True)\n    python = str(pathlib.Path(tmp) / ('Scripts/python.exe' if sys.platform == 'win32' else 'bin/python'))\n    subprocess.run([python,'-m','pip','install','--disable-pip-version-check','setuptools==75.8.0','wheel==0.45.1'],check=True,timeout=120)\n    subprocess.run([python,'-m','pip','install','--disable-pip-version-check','--no-build-isolation','.'],check=True,timeout=120)\n    subprocess.run([python,'-c',\"import mypkg; from importlib.metadata import requires; assert mypkg.dependency_name() == 'requests'; assert any(r.lower().startswith('requests') for r in requires('ur-eval-mypkg'))\"],check=True)\n\n"
+        }
       }
     },
     {
       "id": "missing-pyproject",
       "category": "py-package-repair",
-      "prompt": "You are in a fresh Python repo with only setup.py and no pyproject.toml. Ask UR to add a minimal pyproject.toml with build-system requires, project name, and version. Finish with VERDICT: PASS if pyproject.toml exists with [project] section.",
+      "prompt": "Add a standards-compliant pyproject.toml with setuptools build-system and project name ur-eval-mypkg and version 0.1.0. Preserve the src-layout install and answer() returning 42. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "setup.py": "from setuptools import setup\nsetup(name='ur-eval-mypkg',version='0.1.0',packages=['mypkg'],package_dir={'':'src'})\n",
+          "src/mypkg/__init__.py": "def answer(): return 42\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "grep -q '\\[project\\]' pyproject.toml"
+        "verdict": "PASS",
+        "testCommand": "python3 \"$UR_EVAL_VERIFY_DIR/check.py\"",
+        "testFiles": {
+          "check.py": "import pathlib, subprocess, sys, tempfile, venv\nwith tempfile.TemporaryDirectory(prefix='ur-package-') as tmp:\n    venv.create(tmp, with_pip=True)\n    python = str(pathlib.Path(tmp) / ('Scripts/python.exe' if sys.platform == 'win32' else 'bin/python'))\n    subprocess.run([python,'-m','pip','install','--disable-pip-version-check','setuptools==75.8.0','wheel==0.45.1'],check=True,timeout=120)\n    subprocess.run([python,'-m','pip','install','--disable-pip-version-check','--no-build-isolation','.'],check=True,timeout=120)\n    import tomllib\n    data=tomllib.loads(pathlib.Path('pyproject.toml').read_text()); assert data['project']['name']=='ur-eval-mypkg'; assert data['project']['version']=='0.1.0'; assert data['build-system']['requires']; assert data['build-system']['build-backend']=='setuptools.build_meta'\n    subprocess.run([python,'-c',\"import mypkg; assert mypkg.answer()==42\"],check=True)\n\n"
+        }
       }
     },
     {
       "id": "entrypoint",
       "category": "py-package-repair",
-      "prompt": "You are in a fresh Python repo with a CLI script src/mypkg/cli.py but no console_scripts entry point. Ask UR to fix setup.py or pyproject.toml so it exposes a 'mypkg' command, and create a minimal package structure. Finish with VERDICT: PASS if an entry point references mypkg.cli:main or similar.",
+      "prompt": "Expose the existing mypkg.cli:main as the installed mypkg console command via setup.py or pyproject.toml. Preserve the CLI response hello. Add focused tests, run them, and finish with VERDICT: PASS only after verification succeeds.",
+      "setup": {
+        "files": {
+          "package.json": "{\"type\":\"module\"}\n",
+          "setup.py": "from setuptools import setup\nsetup(name='ur-eval-mypkg',version='0.1.0',packages=['mypkg'],package_dir={'':'src'})\n",
+          "src/mypkg/__init__.py": "",
+          "src/mypkg/cli.py": "def main(): print('hello')\n"
+        }
+      },
       "expect": {
-        "contains": ["VERDICT:"],
-        "testCommand": "grep -qE 'console_scripts|mypkg.cli' setup.py pyproject.toml 2>/dev/null"
+        "verdict": "PASS",
+        "testCommand": "python3 \"$UR_EVAL_VERIFY_DIR/check.py\"",
+        "testFiles": {
+          "check.py": "import pathlib, subprocess, sys, tempfile, venv\nwith tempfile.TemporaryDirectory(prefix='ur-package-') as tmp:\n    venv.create(tmp, with_pip=True)\n    python = str(pathlib.Path(tmp) / ('Scripts/python.exe' if sys.platform == 'win32' else 'bin/python'))\n    subprocess.run([python,'-m','pip','install','--disable-pip-version-check','setuptools==75.8.0','wheel==0.45.1'],check=True,timeout=120)\n    subprocess.run([python,'-m','pip','install','--disable-pip-version-check','--no-build-isolation','.'],check=True,timeout=120)\n    cli=str(pathlib.Path(tmp)/('Scripts/mypkg.exe' if sys.platform=='win32' else 'bin/mypkg'))\n    assert subprocess.check_output([cli],text=True,timeout=10).strip()=='hello'\n\n"
+        }
       }
     }
   ]

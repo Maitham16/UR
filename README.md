@@ -198,7 +198,7 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Windows native installation is unavailable in 1.86.2 and has been deferred.
+Windows native installation is unavailable in 1.87.0 and has been deferred.
 Windows developers can optionally use the Bun-based source workflow in the
 [Development Guide](docs/DEVELOPMENT.md); the public npm package also supports
 only macOS and Linux.
@@ -215,7 +215,7 @@ ur --help
 Installers verify release checksums, the executable version, and packaged
 resources before activating the complete versioned installation. Standalone
 installer updates use `ur upgrade`; select a specific standalone release with
-`ur install 1.86.2`. Homebrew and npm installations retain their own update
+`ur install 1.87.0`. Homebrew and npm installations retain their own update
 commands and reject `ur install` to avoid creating a second installation.
 See [Native installation and recovery](docs/NATIVE_INSTALL.md) for manual
 downloads, signing status, supported targets, rollback, and uninstall.
@@ -306,6 +306,22 @@ gitignored `.ur/settings.local.json`. Fresh print-mode runs require an explicit
 For Ollama sessions, explicit environment precedence is `OLLAMA_MODEL`, then
 `UR_MODEL`. Once selected, runtime requests use that provider backend; they do
 not fall back to Ollama unless `ollama` is the selected provider.
+
+After choosing a provider/model, check readiness and try a small read-only task:
+
+```sh
+ur doctor --readiness
+ur -p "Explain how this project runs its tests. Do not modify files." --max-turns 3
+```
+
+Inside a session, `/ur-doctor` shows the same readiness and review report;
+`/model` changes the provider/model and **K** adds or replaces an API key in the
+model picker. Readiness checks the active provider without generating an answer
+or starting MCP servers. It shows changed files, verification freshness,
+persisted goal costs (including unknown-cost calls), and recovery commands.
+Use `/cost` for current-session usage, Ctrl+C to interrupt foreground work,
+and `ur --resume` to reopen a saved session. Review the diff and executed test
+evidence before accepting a change.
 
 ### Legal Provider Auth
 
@@ -654,14 +670,14 @@ as first-class subcommands in the shipped CLI.
 | `ur knowledge` | Manage a curated project knowledge base with provenance. |
 | `ur artifacts` | Capture diffs, test runs, notes, and review feedback under `.ur/artifacts/`; `serve` opens a local web page per artifact ID. |
 | `ur claim-ledger` | Map generated claims to file, web, MCP, tool, or user sources. |
-| `ur browser-qa` | Validate and smoke-run browser QA replay fixtures. |
+| `ur browser-qa` | Execute browser assertions at each viewport, with screenshots, traces, and failure exit status. |
 | `ur desktop-qa` | Validate and run bounded Electron QA fixtures with teardown, masked screenshots, and optional raw video/trace only when selector redaction is disabled. |
 | `ur eval run` | Run isolated eval cases and grade outputs plus redacted tool trajectories; optionally capture cost/tokens/files/test metrics. |
 | `ur eval gate` | Enforce pass-rate, trajectory, test, cost, duration, and baseline-regression thresholds in CI. |
 | `ur eval report` | Show a saved eval report; `--dashboard` writes a single-suite HTML timeline. |
 | `ur eval dashboard` | Generate the local-first HTML dashboard across all saved reports. |
 | `ur eval bench` | Import local SWE-bench, Terminal-Bench, or Aider Polyglot exports. |
-| `ur model-doctor` | Inspect Ollama models and report likely agent capabilities. |
+| `ur model-doctor` | Inspect Ollama metadata; `--profile` reads endpoint-bound evidence and `--probe` explicitly measures the configured model with real requests. Profiles do not restrict selection. |
 | `ur model-route` | Recommend a local model for a task by capability fit. |
 | `ur route` | Classify a task and recommend the best subagent and collaboration pattern. |
 | `ur local-first` | Show readiness for no-cloud, private, lab, offline, and edge/server environments. |
@@ -680,9 +696,9 @@ as first-class subcommands in the shipped CLI.
 | `ur acp` | Connect editors through the Agent Client Protocol, or manage the separate UR HTTP JSON-RPC server. |
 | `ur exec` | Run one or more prompts in non-interactive mode with optional concurrency. |
 | `ur ide diff` | Capture editor-readable inline diff bundles. |
-| `ur a2a card` | Print legacy Agent-to-Agent discovery metadata; add `--v1` to preview the current A2A 1.0 card. |
+| `ur a2a card` | Print current A2A 1.0 discovery metadata; server headers negotiate legacy compatibility. |
 | `ur a2a serve` | Start the negotiated Agent-to-Agent server with automatic client compatibility. |
-| `ur sdk` | Show programmatic headless usage and scaffold SDK examples. |
+| `ur sdk` | Inspect/scaffold the supported `ur-agent/sdk` Node client and bundled Python client: local streams, approvals, cancellation/resume, and authenticated ACP remote control. |
 | `ur trigger` | Parse a GitHub/Slack webhook payload and optionally launch a headless UR run. |
 | `ur agent-templates` | List or install reusable project agent templates. |
 | `ur agent-task` | Summarize task state, git diff status, and PR handoff commands. |
@@ -691,6 +707,7 @@ as first-class subcommands in the shipped CLI.
 | `ur agent-trends` | Show UR coverage for current agent technology trends. |
 | `ur agents` | List configured agents. |
 | `ur doctor` | Check the health of the UR installation and auto-updater. |
+| `ur doctor --readiness [--json]` | Read-only active-provider readiness, source-current proof, diff summary, goal costs and recovery. |
 | `ur update` | Upgrade a standalone installation or show the npm/Homebrew update command (`ur upgrade` is an alias). |
 
 ### Status Bar
@@ -993,6 +1010,15 @@ the permission boundary matters.
   for risky operations, and blocks common secret exfiltration paths.
 - `ur safety init` writes `.ur/safety-policy.json` for project-specific safety
   rules.
+- `ur safety init --preset sandboxed --allow-domain example.com` creates a
+  separate, opt-in settings file. Review it and select it with
+  `ur --settings .ur/sandboxed.settings.json`; it requires an available OS
+  sandbox, disables unsandboxed fallback and scopes shell egress/credentials.
+  Existing permission choices remain unchanged. See the
+  [preset boundary and exceptions](technical/12-security-sandbox-stability.md#opt-in-sandboxed-preset).
+- `ur safety audit --json` reports bounded offline attack/benign detector and
+  shell-policy fixtures. Its counts do not measure a model's attack resistance
+  or attest that commands ran inside an OS sandbox.
 - `ur context-pack scan` writes a repo architecture manifest from package
   scripts, instruction files, `.ur/verify.json`, and safety config.
 - Auto-memory and automatic learning are enabled by default. Auto-memory can be
@@ -1008,10 +1034,15 @@ the permission boundary matters.
   fails closed and refuses to start if OS sandbox support is unavailable.
   OS confinement uses `sandbox-exec` (Seatbelt) on macOS and `bwrap`
   (bubblewrap) on Linux/WSL2; see `ur sandbox status` for the active policy.
-- This sandbox wraps UR-run Bash/File tool commands only. It does not extend
+- This OS sandbox wraps UR-run shell commands. Native file tools retain their
+  application permission checks. It does not extend
   to actions a subscription CLI provider performs internally — see
   [Provider Guide](docs/providers.md).
 - MCP servers can access external services; only enable servers you trust.
+- Teams can opt into [ACP team policy](docs/ACP.md#optional-team-policy-http)
+  with existing device identities, scoped environment credentials, shared
+  prompt-attempt quotas, reviewed automation delivery and redacted audit export.
+  These controls do not amend the non-commercial license or replace OS isolation.
 
 See [Frontier Agent Workflows](docs/FRONTIER_AGENT_FEATURES.md),
 [Configuration](docs/CONFIGURATION.md), [Validation](docs/VALIDATION.md), and
@@ -1035,6 +1066,7 @@ fix, and a verification command in the
 
 ```sh
 ur --version
+ur doctor --readiness
 ur provider status
 ur provider doctor
 ```

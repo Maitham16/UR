@@ -1,13 +1,16 @@
-import { resolveUrExecutable } from '../../utils/urExecutable.js'
+import { resolveUrExecutable, type UrExecutable } from '../../utils/urExecutable.js'
+import { explicitCompletionClaim, measureEvalDiff, prepareEvalVerification, validateEvalVerification } from './evalIntegrity.js'
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, normalize } from 'node:path'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { safeParseJSON } from '../../utils/json.js'
@@ -82,6 +85,10 @@ export type EvalExpectation = {
   judge?: string
   /** Optional command to run after the agent output to verify a patch/test fix. */
   testCommand?: string
+  /** Trusted grader files materialized only after the candidate exits. */
+  testFiles?: Record<string, string>
+  /** Imported benchmark tasks cannot pass on plausible prose alone. */
+  requiresVerification?: boolean
 }
 
 export type EvalCase = {
@@ -157,8 +164,19 @@ export type EvalRunMetrics = {
   commandFailures?: number
   humanEditsNeeded?: number
   humanInterventions?: number
+  /** Text mentions are diagnostics, not measured human actions. */
+  humanAssistanceMentions?: number
+  rollbackMentions?: number
   rollbacks?: number
   provenance?: EvalProvenance
+  completionClaim?: 'pass' | 'fail' | 'partial' | 'unspecified'
+  falseCompletion?: boolean
+  verificationSha256?: string
+  patchSha256?: string
+  executableSha256?: string
+  configuration?: { maxTurns: number | null; maxBudgetUsd: number | null; timeoutMs: number; isolate: boolean; permissionMode: 'default' | 'bypass'; effort: string | null }
+  exitCode?: number
+  evaluationMode?: 'native-agent' | 'offline-replay'
 }
 
 export type EvalCaseResult = {
@@ -202,6 +220,9 @@ export type EvalReport = {
   /** Exact prompt/tool/context/model fingerprints observed in child runs. */
   provenance?: EvalProvenance
   cases: EvalCaseResult[]
+  completionClaims?: number
+  falseCompletions?: number
+  falseCompletionRate?: number
 }
 
 export type EvalGateThresholds = {
@@ -334,6 +355,7 @@ function hasAnyExpectation(expect: EvalExpectation): boolean {
       typeof expect.maxSteps === 'number' ||
       Boolean(expect.trajectory) ||
       Boolean(expect.judge?.trim()) ||
+      expect.requiresVerification ||
       Boolean(expect.testCommand?.trim()),
   )
 }
@@ -386,6 +408,11 @@ export function validateEvalSuite(suite: EvalSuite): EvalValidation {
       errors.push(`case "${evalCase.id}" category exceeds 128 characters`)
     }
     const expect = evalCase.expect ?? {}
+    if (expect.testFiles) {
+      if (!expect.testCommand) errors.push(`case "${evalCase.id}" verification files require a test command`)
+      try { validateEvalVerification(expect.testFiles) }
+      catch (error) { errors.push(`case "${evalCase.id}": ${String(error)}`) }
+    }
     if (!hasAnyExpectation(expect)) {
       warnings.push(`case "${evalCase.id}" has no expectations (it will always pass)`)
     }
@@ -626,6 +653,11 @@ function buildReport(name: string, cases: EvalCaseResult[]): EvalReport {
           trajectoryCases.length
         : undefined,
     provenance: mergeEvalProvenance(metrics.map(item => item?.provenance)),
+    completionClaims: metrics.filter(item => item?.completionClaim === 'pass' && item.testPassed !== undefined).length,
+    falseCompletions: metrics.filter(item => item?.falseCompletion === true).length,
+    falseCompletionRate: metrics.some(item => item?.completionClaim === 'pass' && item.testPassed !== undefined)
+      ? metrics.filter(item => item?.falseCompletion === true).length / metrics.filter(item => item?.completionClaim === 'pass' && item.testPassed !== undefined).length
+      : undefined,
     cases,
   }
 }
@@ -668,6 +700,7 @@ export async function runSuite(
       ...gradeOutput(output, expect),
       ...trajectoryResult.checks,
     ]
+    if (expect.requiresVerification && !expect.testCommand) checks.push({ name: 'independent benchmark verification', passed: false, detail: 'Imported task has no executable grader. Configure expect.testCommand/testFiles, or use its official external harness.' })
     if (expect.judge && options.judge) {
       const verdict = await options.judge({ evalCase, rubric: expect.judge, output })
       checks.push({
@@ -985,6 +1018,9 @@ export type CliEvalRunnerOptions = {
   isolate?: boolean
   /** Candidate overlay used by the regression-safe prompt optimizer. */
   systemPrompt?: string
+  /** Explicit native executable for controlled evaluations and integration tests. */
+  bin?: UrExecutable
+  maxBudgetUsd?: number
 }
 
 type ChildMetrics = {
@@ -999,7 +1035,7 @@ type ChildMetrics = {
 }
 
 function metricsFile(): string {
-  return join(process.env.UR_EVAL_METRICS_DIR ?? process.cwd(), `.ur-eval-metrics-${process.pid}.json`)
+  return join(process.env.UR_EVAL_METRICS_DIR ?? process.cwd(), `.ur-eval-metrics-${process.pid}-${randomUUID()}.json`)
 }
 
 function readChildMetricsFile(path: string): ChildMetrics | undefined {
@@ -1021,51 +1057,10 @@ function deleteChildMetricsFile(path: string): void {
   }
 }
 
-async function gitDiffStats(cwd: string): Promise<{ filesChanged: number; insertions: number; deletions: number }> {
-  const result = await execFileNoThrowWithCwd(
-    'git',
-    [
-      ...SAFE_EVAL_GIT_ARGS,
-      'diff',
-      '--no-ext-diff',
-      '--no-textconv',
-      '--stat',
-      '--',
-    ],
-    {
-      cwd,
-      timeout: 30_000,
-      preserveOutputOnError: true,
-      env: strictSubprocessEnv(),
-      extendEnv: false,
-    },
-  )
-  if (result.code !== 0 || !result.stdout.trim()) {
-    return { filesChanged: 0, insertions: 0, deletions: 0 }
-  }
-  let filesChanged = 0
-  let insertions = 0
-  let deletions = 0
-  for (const line of result.stdout.trim().split('\n')) {
-    if (line.includes('|')) {
-      filesChanged += 1
-      const match = line.match(/(\d+)\s*insertion|\+(\d+)|(\d+)\s*deletion|-(\d+)/g)
-      if (match) {
-        for (const token of match) {
-          const num = Number(token.replace(/[^0-9]/g, ''))
-          if (Number.isNaN(num)) continue
-          if (token.includes('insertion') || token.includes('+')) insertions += num
-          if (token.includes('deletion') || token.includes('-')) deletions += num
-        }
-      }
-    }
-  }
-  return { filesChanged, insertions, deletions }
-}
-
 export async function runEvalTestCommand(
   cwd: string,
   command: string,
+  verificationDirectory?: string,
 ): Promise<{ testPassed: boolean; testStdout: string; testStderr: string }> {
   const env = Object.fromEntries(
     Object.entries(process.env).filter(
@@ -1075,6 +1070,7 @@ export async function runEvalTestCommand(
     ),
   )
   env.UR_CODE_SUBPROCESS_ENV_SCRUB = '1'
+  if (verificationDirectory) env.UR_EVAL_VERIFY_DIR = verificationDirectory
   const result = await execFileNoThrowWithCwd('sh', ['-c', command], {
     cwd,
     timeout: 5 * 60_000,
@@ -1110,18 +1106,6 @@ export function materializeEvalSetup(cwd: string, evalCase: EvalCase): void {
     mkdirSync(dirname(target), { recursive: true })
     writeFileSync(target, content, { encoding: 'utf8', mode: 0o600 })
   }
-}
-
-function countCommandFailures(output: string): number {
-  const markers = ['[ERROR]', 'Command failed', 'exit code 1', 'Error:', 'FAILED']
-  let count = 0
-  const lower = output.toLowerCase()
-  for (const marker of markers) {
-    const re = new RegExp(marker.replace(/\[/g, '\\[').replace(/\]/g, '\\]').toLowerCase(), 'g')
-    const matches = lower.match(re)
-    if (matches) count += matches.length
-  }
-  return count
 }
 
 function countHumanEdits(output: string): number {
@@ -1173,9 +1157,10 @@ export async function createEvalWorktree(
     throw new Error('isolated eval cases require a git repository with a valid HEAD')
   }
   const safeId = caseId.replace(/[^a-z0-9_-]/gi, '-').slice(0, 40)
-  const root = join(cwd, '.ur', 'evals', '.worktrees')
-  const path = join(root, `${safeId}-${randomUUID().slice(0, 8)}`)
-  ensurePrivateDirectory(join(cwd, '.ur'), root)
+  // Tool permissions reserve .ur for agent state. A project nested underneath
+  // it is not an editable code workspace, even when the caller selects bypass.
+  const root = mkdtempSync(join(tmpdir(), 'ur-eval-worktree-'))
+  const path = join(root, safeId)
   const created = await execFileNoThrowWithCwd(
     'git',
     [
@@ -1195,6 +1180,7 @@ export async function createEvalWorktree(
     },
   )
   if (created.code !== 0) {
+    rmSync(root, { recursive: true, force: true })
     throw new Error(
       `failed to create isolated eval worktree: ${created.stderr || created.error}`,
     )
@@ -1224,23 +1210,33 @@ export async function createEvalWorktree(
         env: gitEnv,
         extendEnv: false,
       })
-      rmSync(path, { recursive: true, force: true })
+      rmSync(root, { recursive: true, force: true })
     },
   }
 }
 
 /** Production runner: each case spawns a headless `ur -p` and is graded. */
 export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
+  const executable = options.bin ?? resolveUrExecutable()
+  let executableSha256: string | undefined
+  try {
+    const digest = createHash('sha256').update(readFileSync(executable.file))
+    // Developer execution uses a JS entrypoint; native execution has no such
+    // argument. Bind the actual bundle as well as the interpreter where present.
+    for (const arg of executable.baseArgs) if (isAbsolute(arg) && /\.[cm]?[jt]sx?$/.test(arg)) digest.update(readFileSync(arg))
+    executableSha256 = digest.digest('hex')
+  } catch { /* An unresolved PATH executable remains unknown. */ }
   return async (evalCase: EvalCase) => {
     const isolated =
       options.isolate === false
         ? null
         : await createEvalWorktree(options.cwd, evalCase.id)
     const caseCwd = isolated?.cwd ?? options.cwd
+    const childMetricsPath = metricsFile()
     try {
     materializeEvalSetup(caseCwd, evalCase)
     const started = Date.now()
-    const { file, baseArgs } = resolveUrExecutable()
+    const { file, baseArgs } = executable
     const args = [
       ...baseArgs,
       '-p',
@@ -1257,9 +1253,10 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
     if (options.systemPrompt) {
       args.push('--system-prompt', options.systemPrompt)
     }
+    if (options.model) args.push('--model', options.model)
+    if (options.maxBudgetUsd !== undefined) args.push('--max-budget-usd', String(options.maxBudgetUsd))
     args.push(evalCase.prompt)
 
-    const childMetricsPath = metricsFile()
     const childEnv: Record<string, string | undefined> = {
       ...process.env,
       UR_EVAL_METRICS_FILE: childMetricsPath,
@@ -1274,6 +1271,7 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
     }
     const result = await execFileNoThrowWithCwd(file, args, {
       cwd: caseCwd,
+      stdin: 'ignore',
       timeout: options.timeoutMs ?? 30 * 60 * 1000,
       preserveOutputOnError: true,
       env: childEnv,
@@ -1293,14 +1291,20 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
     const childMetrics = readChildMetricsFile(childMetricsPath)
     deleteChildMetricsFile(childMetricsPath)
 
-    const diffStats = await gitDiffStats(caseCwd)
+    const diffStats = await measureEvalDiff(caseCwd)
     let testResult:
       | { testPassed: boolean; testStdout: string; testStderr: string; testCommand: string }
       | undefined
+    let verificationSha256: string | undefined
     if (evalCase.expect.testCommand) {
-      const ran = await runEvalTestCommand(caseCwd, evalCase.expect.testCommand)
-      testResult = { ...ran, testCommand: evalCase.expect.testCommand }
+      const verification = prepareEvalVerification(evalCase.expect.testFiles)
+      verificationSha256 = createHash('sha256').update(evalCase.expect.testCommand).update(verification.sha256).digest('hex')
+      try {
+        const ran = await runEvalTestCommand(caseCwd, evalCase.expect.testCommand, verification.directory)
+        testResult = { ...ran, testCommand: evalCase.expect.testCommand }
+      } finally { verification.cleanup() }
     }
+    const completionClaim = explicitCompletionClaim(output)
 
     const modelUsage = getModelUsage()
     const metrics: EvalRunMetrics = {
@@ -1309,14 +1313,18 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
       inputTokens: childMetrics?.inputTokens,
       outputTokens: childMetrics?.outputTokens,
       model: options.model ?? childMetrics?.model ?? firstModelName(modelUsage),
-      filesChanged: diffStats.filesChanged,
-      editCount:
-        diffStats.insertions +
-        diffStats.deletions +
-        (childMetrics?.linesAdded ?? 0) +
-        (childMetrics?.linesRemoved ?? 0),
-      insertions: diffStats.insertions + (childMetrics?.linesAdded ?? 0),
-      deletions: diffStats.deletions + (childMetrics?.linesRemoved ?? 0),
+      filesChanged: diffStats?.filesChanged,
+      editCount: diffStats ? diffStats.insertions + diffStats.deletions : undefined,
+      insertions: diffStats?.insertions,
+      deletions: diffStats?.deletions,
+      patchSha256: diffStats?.patchSha256,
+      executableSha256,
+      configuration: { maxTurns: options.maxTurns ?? null, maxBudgetUsd: options.maxBudgetUsd ?? null, timeoutMs: options.timeoutMs ?? 30 * 60 * 1000, isolate: options.isolate !== false, permissionMode: options.skipPermissions ? 'bypass' : 'default', effort: options.effort ?? null },
+      verificationSha256,
+      completionClaim,
+      falseCompletion: testResult ? completionClaim === 'pass' && !testResult.testPassed : undefined,
+      exitCode: result.code,
+      evaluationMode: 'native-agent',
       testPassed: testResult?.testPassed,
       testsPassed: testResult ? (testResult.testPassed ? 1 : 0) : undefined,
       testsFailed: testResult ? (testResult.testPassed ? 0 : 1) : undefined,
@@ -1324,22 +1332,22 @@ export function makeCliEvalRunner(options: CliEvalRunnerOptions): EvalRunner {
       testStdout: testResult?.testStdout,
       testStderr: testResult?.testStderr,
       commandFailures:
-        countCommandFailures(output) +
+        captured.trajectory.failedToolCalls +
         (result.code !== 0 ? 1 : 0) +
         (testResult && !testResult.testPassed ? 1 : 0),
-      humanEditsNeeded: countHumanEdits(output),
-      humanInterventions: countHumanEdits(output),
-      rollbacks: countRollbacks(output),
+      humanAssistanceMentions: countHumanEdits(output),
+      rollbackMentions: countRollbacks(output),
       provenance: childMetrics?.provenance,
     }
 
     return {
       output,
-      isError: result.code !== 0 || captured.trajectory.isError,
+      isError: result.code !== 0 || captured.trajectory.isError || !captured.trajectory.events.some(event => event.kind === 'result') || captured.trajectory.truncated || captured.trajectory.malformedLines > 0,
       trajectory: captured.trajectory,
       metrics,
     }
     } finally {
+      deleteChildMetricsFile(childMetricsPath)
       await isolated?.cleanup()
     }
   }
@@ -1350,6 +1358,7 @@ export function makeDryEvalRunner(): EvalRunner {
   return async (evalCase: EvalCase) => ({
     output: `[dry-run] would run: ${evalCase.prompt}`,
     isError: false,
+    metrics: { durationMs: 0, evaluationMode: 'offline-replay' },
   })
 }
 
@@ -1726,6 +1735,7 @@ export function parseSuiteText(text: string): EvalSuite {
         category: String(item.category ?? 'general'),
         prompt: String(item.prompt ?? ''),
         expect: (item.expect ?? {}) as EvalExpectation,
+        ...(item.setup ? { setup: item.setup } : {}),
       }
     }),
   }
@@ -1808,6 +1818,15 @@ function parseBenchmarkRecords(text: string): Record<string, unknown>[] {
   return records
 }
 
+function importedBenchmarkVerification(record: Record<string, unknown>): EvalExpectation {
+  const testFiles = record.test_files
+  return {
+    requiresVerification: true,
+    testCommand: asString(record.test_command),
+    ...(testFiles && typeof testFiles === 'object' && !Array.isArray(testFiles) ? { testFiles: testFiles as Record<string, string> } : {}),
+  }
+}
+
 function sweBenchCase(record: Record<string, unknown>, index: number): EvalCase {
   const id = recordId(record, `swe-${index + 1}`)
   const repo = asString(record.repo) ?? asString(record.repository) ?? 'the target repository'
@@ -1833,11 +1852,7 @@ function sweBenchCase(record: Record<string, unknown>, index: number): EvalCase 
     ]
       .filter(Boolean)
       .join('\n'),
-    expect: {
-      notContains: ['I cannot'],
-      judge:
-        'Pass if the answer describes a concrete code fix, relevant tests, and does not refuse the software-engineering task. For full benchmark scoring, apply the produced patch and run the benchmark harness tests.',
-    },
+    expect: importedBenchmarkVerification(record),
   }
 }
 
@@ -1871,11 +1886,7 @@ function terminalBenchCase(record: Record<string, unknown>, index: number): Eval
     ]
       .filter(Boolean)
       .join('\n'),
-    expect: {
-      notContains: ['I cannot'],
-      judge:
-        'Pass if the answer gives a plausible terminal workflow, performs or names verification, and stays within the local task constraints.',
-    },
+    expect: importedBenchmarkVerification(record),
   }
 }
 
@@ -1905,11 +1916,7 @@ function aiderPolyglotCase(record: Record<string, unknown>, index: number): Eval
     ]
       .filter(Boolean)
       .join('\n'),
-    expect: {
-      notContains: ['I cannot'],
-      judge:
-        'Pass if the answer targets the requested language task, identifies changed files or patch intent, and includes relevant verification.',
-    },
+    expect: importedBenchmarkVerification(record),
   }
 }
 

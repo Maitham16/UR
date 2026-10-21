@@ -97,6 +97,27 @@ commands, subagents, workflows, and monitors. Each is stoppable with `TaskStop`;
 results are delivered by completion notifications and retained in internal task
 output storage for session views.
 
+Detached agents persist the session UUID/configuration before launch and use
+that same transcript on restart. Completed tool results and acknowledged steering
+messages are retained; completed work awaiting publication is not executed again.
+Unpaired tool calls are disclosed as unknown outcomes for model reconciliation.
+Surviving children prevent duplicate workers. Corrupt or mismatched transcripts
+cannot authorize recovery, and interrupted publication requires inspection of
+the actual branch/PR rather than an automatic repeat.
+
+Workflow and goal state is distinct from conversation history. Workflow schema-2
+checkpoints restore dependency outputs and validate the execution specification.
+Goal state persists criteria, model feedback, evidence, consumed budgets and
+blockers across resumes. See [multi-agent](09-multi-agent.md) and
+[workflows](08-skills-plugins-workflows.md) for their recovery semantics.
+
+HTTP remote sessions use `session/events` cursors for durable event replay and
+`session/resume` to reconnect without resubmitting work. Persist both UR config
+(including CLI transcripts) and remote-control state across container replacement.
+Approvals are authenticated and scoped to one pending request. Device revocation
+blocks subsequent access; cancel active work separately when required. See
+[ACP](../docs/ACP.md) and the [worker deployment](../deployment/acp/README.md).
+
 ## Multi-directory & trust
 
 - `/add-dir ../other-repo` or `ur --add-dir` — extend tool access beyond cwd.

@@ -26,6 +26,8 @@ export type StepRunInput = {
   priorOutputs: Record<string, string>
   /** Reviewer feedback injected when a loop re-opens this step. */
   feedback?: string
+  /** A prior attempt was interrupted. Ask the model to inspect/reconcile, never script its effects again. */
+  recovery?: { unknownOutcome: true; priorOutput?: string }
 }
 
 export type StepRunOutput = {
@@ -75,6 +77,18 @@ export type ExecResult = {
   steps: ExecStepResult[]
 }
 
+/** Complete executor state, persisted synchronously before launch and after completion. */
+export type ExecutionSnapshot = {
+  completed: string[]
+  outputs: Record<string, string>
+  results: ExecStepResult[]
+  inFlight: string[]
+  uncertain?: string[]
+  cycle: number
+  pendingFeedback?: string
+  pendingFeedbackFor?: string
+}
+
 export type ExecuteOptions = {
   runStep: StepRunner
   loop?: ExecLoop | null
@@ -83,6 +97,8 @@ export type ExecuteOptions = {
   onCheckpoint?: (stepId: string, completed: string[]) => void
   /** Step ids already completed (resume). */
   resumeCompleted?: string[]
+  resumeState?: ExecutionSnapshot
+  onState?: (snapshot: ExecutionSnapshot) => void
   /** Decide approval gates. Defaults to holding (false) so nothing auto-approves. */
   approve?: (step: WorkflowStep) => boolean | Promise<boolean>
   /** Stop the whole run if a step errors. */
@@ -111,14 +127,21 @@ export async function executeWorkflow(
 
   const order = validation.order
   const byId = new Map(spec.steps.map(step => [step.id, step]))
-  const done = new Set(options.resumeCompleted ?? [])
-  const outputs: Record<string, string> = {}
-  const results = new Map<string, ExecStepResult>()
+  const done = new Set(options.resumeState?.completed ?? options.resumeCompleted ?? [])
+  const outputs: Record<string, string> = { ...options.resumeState?.outputs }
+  const results = new Map<string, ExecStepResult>(options.resumeState?.results.map(result => [result.id, result]) ?? [])
+  const inFlight = new Set<string>(options.resumeState?.inFlight ?? [])
   const loop = options.loop ?? null
 
-  let cycle = 1
-  let pendingFeedback: string | undefined
-  let pendingFeedbackFor: string | undefined
+  let cycle = options.resumeState?.cycle ?? 1
+  let pendingFeedback = options.resumeState?.pendingFeedback
+  let pendingFeedbackFor = options.resumeState?.pendingFeedbackFor
+  const snapshot = (): void => options.onState?.({
+    completed: [...done], outputs: { ...outputs }, results: [...results.values()].map(result => ({ ...result })),
+    inFlight: [...inFlight], uncertain: [...uncertain], cycle, pendingFeedback, pendingFeedbackFor,
+  })
+  const uncertain = new Set([...inFlight, ...options.resumeState?.uncertain ?? []])
+  inFlight.clear()
 
   const recordResult = (
     step: WorkflowStep,
@@ -129,16 +152,17 @@ export async function executeWorkflow(
       id: step.id,
       agent: step.agent,
       status: patch.status ?? prior?.status ?? 'skipped',
-      verdict: patch.verdict ?? prior?.verdict ?? null,
+      verdict: Object.hasOwn(patch, 'verdict') ? patch.verdict : prior?.verdict ?? null,
       iterations: (prior?.iterations ?? 0) + (patch.iterations ?? 0),
       output: patch.output ?? prior?.output ?? '',
-      error: patch.error ?? prior?.error,
+      error: Object.hasOwn(patch, 'error') ? patch.error : prior?.error,
     }
     results.set(step.id, next)
     return next
   }
 
   const finish = (status: ExecStatus): ExecResult => {
+    snapshot()
     emit({ kind: 'finish', status })
     const steps = order.map(
       id =>
@@ -196,6 +220,8 @@ export async function executeWorkflow(
   // ExecResult when the run must stop, otherwise null.
   const runBatch = async (ids: string[]): Promise<ExecResult | null> => {
     emit({ kind: 'wave', ids: [...ids], iteration: cycle })
+    for (const id of ids) inFlight.add(id)
+    snapshot()
     const launched = ids.map(id => {
       const batchStep = byId.get(id) as WorkflowStep
       const stepFeedback = pendingFeedbackFor === id ? pendingFeedback : undefined
@@ -219,10 +245,12 @@ export async function executeWorkflow(
           iteration: cycle,
           priorOutputs: priorOutputsFor(batchStep),
           feedback: stepFeedback,
+          recovery: uncertain.has(batchStep.id) ? { unknownOutcome: true, priorOutput: outputs[batchStep.id] } : undefined,
         }),
       ),
     )
 
+    let failed = false
     for (let i = 0; i < ids.length; i++) {
       const batchStep = byId.get(ids[i]) as WorkflowStep
       const outcome = settled[i]
@@ -234,7 +262,9 @@ export async function executeWorkflow(
           error: reason instanceof Error ? reason.message : String(reason),
         })
         emit({ kind: 'step-done', id: batchStep.id, isError: true })
-        return finish('failed')
+        failed = true
+        snapshot()
+        continue
       }
       const run = outcome.value
       outputs[batchStep.id] = run.output
@@ -252,7 +282,9 @@ export async function executeWorkflow(
       })
       if (run.isError && options.stopOnError) {
         recordResult(batchStep, { status: 'failed' })
-        return finish('failed')
+        failed = true
+        snapshot()
+        continue
       }
       // Only non-enforcing verification gates can reach a batch (the enforcing
       // loop step is always handled sequentially), so this is advisory.
@@ -266,9 +298,12 @@ export async function executeWorkflow(
       }
       recordResult(batchStep, { status: 'done' })
       done.add(batchStep.id)
+      inFlight.delete(batchStep.id)
+      uncertain.delete(batchStep.id)
+      snapshot()
       options.onCheckpoint?.(batchStep.id, [...done])
     }
-    return null
+    return failed ? finish('failed') : null
   }
 
   while (safety++ < hardCap) {
@@ -298,6 +333,8 @@ export async function executeWorkflow(
     const step = byId.get(nextId)
     if (!step) break
 
+    const held = results.get(step.id)?.status === 'held' ? results.get(step.id) : undefined
+    if (!held) { inFlight.add(step.id); snapshot() }
     emit({ kind: 'step-start', id: step.id, agent: step.agent, iteration: cycle })
 
     const feedback =
@@ -314,11 +351,12 @@ export async function executeWorkflow(
 
     let run: StepRunOutput
     try {
-      run = await options.runStep({
+      run = held ? { output: held.output, verdict: held.verdict } : await options.runStep({
         step,
         iteration: cycle,
         priorOutputs,
         feedback,
+        recovery: uncertain.has(step.id) ? { unknownOutcome: true, priorOutput: outputs[step.id] } : undefined,
       })
     } catch (error) {
       recordResult(step, {
@@ -332,7 +370,7 @@ export async function executeWorkflow(
 
     outputs[step.id] = run.output
     recordResult(step, {
-      iterations: 1,
+      iterations: held ? 0 : 1,
       output: run.output,
       verdict: run.verdict ?? null,
       error: run.isError ? run.output : undefined,
@@ -360,6 +398,7 @@ export async function executeWorkflow(
       })
       if (!approved) {
         recordResult(step, { status: 'held' })
+        inFlight.delete(step.id)
         return finish('held')
       }
     }
@@ -375,10 +414,18 @@ export async function executeWorkflow(
           if (cycle < (loop as ExecLoop).maxIterations) {
             const start = order.indexOf((loop as ExecLoop).to)
             const end = order.indexOf((loop as ExecLoop).from)
-            for (const id of order.slice(start, end + 1)) done.delete(id)
+            for (const id of order.slice(start, end + 1)) {
+              done.delete(id)
+              uncertain.delete(id)
+              delete outputs[id]
+              const prior = results.get(id)
+              if (prior) results.set(id, { ...prior, status: 'skipped', output: '', verdict: null, error: undefined })
+            }
+            inFlight.delete(step.id)
             pendingFeedback = run.output
             pendingFeedbackFor = (loop as ExecLoop).to
             cycle++
+            snapshot()
             emit({
               kind: 'loop',
               from: (loop as ExecLoop).from,
@@ -397,6 +444,9 @@ export async function executeWorkflow(
 
     recordResult(step, { status: 'done' })
     done.add(step.id)
+    inFlight.delete(step.id)
+    uncertain.delete(step.id)
+    snapshot()
     options.onCheckpoint?.(step.id, [...done])
   }
 

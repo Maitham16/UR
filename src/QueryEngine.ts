@@ -1,3 +1,4 @@
+import { hasUnknownModelCost } from './bootstrap/state.js'
 import { feature } from 'bun:bundle'
 import type { ContentBlockParam } from '@urhq-ai/sdk/resources/messages.mjs'
 import { randomUUID } from 'crypto'
@@ -620,6 +621,7 @@ export class QueryEngine {
         stop_reason: null,
         session_id: getSessionId(),
         total_cost_usd: getTotalCost(),
+        cost_status: hasUnknownModelCost() ? 'unknown' : 'known',
         usage: this.totalUsage,
         modelUsage: getModelUsage(),
         permission_denials: this.permissionDenials,
@@ -852,6 +854,7 @@ export class QueryEngine {
               stop_reason: lastStopReason,
               session_id: getSessionId(),
               total_cost_usd: getTotalCost(),
+        cost_status: hasUnknownModelCost() ? 'unknown' : 'known',
               usage: this.totalUsage,
               modelUsage: getModelUsage(),
               permission_denials: this.permissionDenials,
@@ -963,7 +966,7 @@ export class QueryEngine {
       }
 
       // Check if USD budget has been exceeded
-      if (maxBudgetUsd !== undefined && getTotalCost() >= maxBudgetUsd) {
+      if (maxBudgetUsd !== undefined && (hasUnknownModelCost() || getTotalCost() >= maxBudgetUsd)) {
         if (persistSession) {
           if (
             isEnvTruthy(process.env.UR_CODE_EAGER_FLUSH) ||
@@ -982,6 +985,7 @@ export class QueryEngine {
           stop_reason: lastStopReason,
           session_id: getSessionId(),
           total_cost_usd: getTotalCost(),
+        cost_status: hasUnknownModelCost() ? 'unknown' : 'known',
           usage: this.totalUsage,
           modelUsage: getModelUsage(),
           permission_denials: this.permissionDenials,
@@ -990,7 +994,7 @@ export class QueryEngine {
             initialAppState.fastMode,
           ),
           uuid: randomUUID(),
-          errors: [`Reached maximum budget ($${maxBudgetUsd})`],
+          errors: [hasUnknownModelCost() ? 'Cannot enforce the requested USD budget because provider billing is unknown. Use a turn budget or configure a model with known pricing.' : `Reached maximum budget ($${maxBudgetUsd})`],
         }
         return
       }
@@ -1025,6 +1029,7 @@ export class QueryEngine {
             stop_reason: lastStopReason,
             session_id: getSessionId(),
             total_cost_usd: getTotalCost(),
+        cost_status: hasUnknownModelCost() ? 'unknown' : 'known',
             usage: this.totalUsage,
             modelUsage: getModelUsage(),
             permission_denials: this.permissionDenials,
@@ -1084,6 +1089,7 @@ export class QueryEngine {
         stop_reason: lastStopReason,
         session_id: getSessionId(),
         total_cost_usd: getTotalCost(),
+        cost_status: hasUnknownModelCost() ? 'unknown' : 'known',
         usage: this.totalUsage,
         modelUsage: getModelUsage(),
         permission_denials: this.permissionDenials,
@@ -1138,6 +1144,7 @@ export class QueryEngine {
       stop_reason: lastStopReason,
       session_id: getSessionId(),
       total_cost_usd: getTotalCost(),
+        cost_status: hasUnknownModelCost() ? 'unknown' : 'known',
       usage: this.totalUsage,
       modelUsage: getModelUsage(),
       permission_denials: this.permissionDenials,

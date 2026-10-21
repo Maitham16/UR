@@ -12,13 +12,12 @@
  * actual model spawning lives behind the injected step runner (see cliStepRunner).
  */
 
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
-  renameSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -32,6 +31,7 @@ import type { WorkflowStep } from './workflows.js'
 import type { DecomposedTask } from './decomposer.js'
 import { recordOutcomes } from './learning.js'
 import { isClearlyReadOnlyWork } from './parallelPolicy.js'
+import { atomicWriteJson, makeProcessOwner, ownerMayBeAlive, isProcessAlive, type ProcessOwner } from './durableState.js'
 
 export type CrewTaskStatus = 'todo' | 'claimed' | 'done' | 'failed' | 'blocked'
 
@@ -54,6 +54,9 @@ export type CrewTask = {
   result?: string
   verdict?: Verdict | null
   claimedAt?: string
+  owner?: ProcessOwner
+  agentPid?: number
+  recovery?: { unknownOutcome: true; priorOutput?: string }
   finishedAt?: string
   filesTouched?: string[]
   risk?: 'low' | 'medium' | 'high'
@@ -156,25 +159,21 @@ function withCrewLock<T>(cwd: string, name: string, operation: () => T): T {
 function writeCrew(cwd: string, spec: CrewSpec): void {
   mkdirSync(crewDir(cwd), { recursive: true })
   const destination = crewPath(cwd, spec.name)
-  const temporary = `${destination}.${process.pid}.${randomUUID()}.tmp`
-  try {
-    writeFileSync(temporary, `${JSON.stringify(spec, null, 2)}\n`, {
-      mode: 0o600,
-    })
-    renameSync(temporary, destination)
-  } finally {
-    if (existsSync(temporary)) unlinkSync(temporary)
-  }
+  atomicWriteJson(destination, spec)
 }
 
 export function saveCrew(cwd: string, spec: CrewSpec): void {
-  withCrewLock(cwd, spec.name, () => writeCrew(cwd, spec))
+  withCrewLock(cwd, spec.name, () => {
+    if (loadCrew(cwd, spec.name)?.tasks.some(task => task.status === 'claimed' && (ownerMayBeAlive(task.owner) || isProcessAlive(task.agentPid)))) throw new Error('Cannot replace a crew with live worker claims.')
+    writeCrew(cwd, spec)
+  })
 }
 
 export function deleteCrew(cwd: string, name: string): boolean {
   return withCrewLock(cwd, name, () => {
     const path = crewPath(cwd, name)
     if (!existsSync(path)) return false
+    if (loadCrew(cwd, name)?.tasks.some(task => task.status === 'claimed' && (ownerMayBeAlive(task.owner) || isProcessAlive(task.agentPid)))) throw new Error('Cannot delete a crew with live worker claims.')
     unlinkSync(path)
     return true
   })
@@ -306,6 +305,7 @@ function claimNextTaskUnlocked(
   policy: {
     serializeSharedMutations?: boolean
     isolatedWrites?: boolean
+    owner?: ProcessOwner
   } = {},
 ): CrewTask | null {
   const spec = loadCrew(cwd, name)
@@ -383,6 +383,7 @@ function claimNextTaskUnlocked(
   }
   if (!task) return null
   task.status = 'claimed'
+  task.owner = policy.owner ? { ...policy.owner } : undefined
   task.assignee = worker
   task.attempts = (task.attempts ?? 0) + 1
   task.attemptIsolation = undefined
@@ -402,6 +403,7 @@ export function claimNextTask(
   policy: {
     serializeSharedMutations?: boolean
     isolatedWrites?: boolean
+    owner?: ProcessOwner
   } = {},
 ): CrewTask | null {
   return withCrewLock(cwd, name, () =>
@@ -419,14 +421,19 @@ function completeTaskUnlocked(
     verdict?: Verdict | null
     worktree?: string
     error?: string
+    ownerToken?: string
   },
 ): CrewSpec | null {
   const spec = loadCrew(cwd, name)
   if (!spec) return null
   const task = spec.tasks.find(item => item.id === taskId)
   if (!task) return null
+  if (task.owner && task.owner.token !== result.ownerToken) return null
+  if (result.ownerToken && task.status !== 'claimed') return null
   task.status = result.status
-  task.result = result.output?.slice(0, 2000)
+  delete task.owner
+  delete task.agentPid
+  task.result = result.output
   task.verdict = result.verdict ?? null
   task.lastError = result.status === 'failed'
     ? (result.error ?? result.output)?.slice(0, 1000)
@@ -448,6 +455,7 @@ export function completeTask(
     verdict?: Verdict | null
     worktree?: string
     error?: string
+    ownerToken?: string
   },
 ): CrewSpec | null {
   return withCrewLock(cwd, name, () =>
@@ -462,8 +470,9 @@ export function reopenClaimed(cwd: string, name: string): CrewSpec | null {
     if (!spec) return null
     let changed = false
     for (const task of spec.tasks) {
-      if (task.status === 'claimed') {
+      if (task.status === 'claimed' && !ownerMayBeAlive(task.owner) && !isProcessAlive(task.agentPid)) {
         task.status = 'todo'
+        delete task.owner
         task.assignee = undefined
         task.claimedAt = undefined
         task.attemptIsolation = undefined
@@ -615,12 +624,13 @@ function updateClaimedTask(
   name: string,
   taskId: string,
   update: (task: CrewTask) => void,
+  ownerToken?: string,
 ): CrewTask | null {
   return withCrewLock(cwd, name, () => {
     const spec = loadCrew(cwd, name)
     if (!spec) return null
     const task = spec.tasks.find(item => item.id === taskId && item.status === 'claimed')
-    if (!task) return null
+    if (!task || task.owner?.token !== ownerToken) return null
     update(task)
     spec.updatedAt = new Date().toISOString()
     writeCrew(cwd, spec)
@@ -628,21 +638,22 @@ function updateClaimedTask(
   })
 }
 
-function beginRetry(cwd: string, name: string, taskId: string, worker: string): CrewTask | null {
+function beginRetry(cwd: string, name: string, taskId: string, worker: string, ownerToken: string): CrewTask | null {
   return updateClaimedTask(cwd, name, taskId, task => {
     task.assignee = worker
     task.attempts = (task.attempts ?? 1) + 1
     task.claimedAt = new Date().toISOString()
     task.attemptIsolation = undefined
     task.worktree = undefined
+    task.agentPid = undefined
     task.lastError = undefined
-  })
+  }, ownerToken)
 }
 
 /**
- * Recover tasks left claimed by a dead scheduler without replaying an agent
- * that may already have changed the shared workspace. Only isolated attempts
- * can be safely started again; ambiguous shared attempts become terminal.
+ * Retain live claims. A proven-dead child resumes through an explicit model
+ * reconciliation prompt, not automatic command replay. Unidentifiable children
+ * retain ownership until inspected; legacy unjournaled claims fail visibly.
  */
 function recoverClaimedSafely(cwd: string, name: string, maxAttempts: number): CrewSpec | null {
   return withCrewLock(cwd, name, () => {
@@ -651,16 +662,30 @@ function recoverClaimedSafely(cwd: string, name: string, maxAttempts: number): C
     let changed = false
     const now = new Date().toISOString()
     for (const task of spec.tasks) {
-      if (task.status !== 'claimed') continue
+      if (task.status !== 'claimed' || ownerMayBeAlive(task.owner) || isProcessAlive(task.agentPid)) continue
+      // A crash between launch intent and PID persistence cannot prove the child died.
+      if (task.owner && !task.owner.releasedAt && task.agentPid === undefined && task.attemptIsolation !== 'dry-run') {
+        task.lastError = 'Scheduler exited without a durable child process identity; claim retained to prevent concurrent effects. Inspect and explicitly reopen after reconciliation.'
+        changed = true
+        continue
+      }
+      const previousOwner = task.owner
+      delete task.owner
       const isolated =
-        task.attemptIsolation === 'worktree' || task.attemptIsolation === 'dry-run'
-      if (isolated && (task.attempts ?? 1) < maxAttempts) {
+        task.attemptIsolation === 'dry-run'
+      if ((isolated || previousOwner) && (task.attempts ?? 1) < maxAttempts) {
+        if (previousOwner && !isolated) task.recovery = {
+          unknownOutcome: true,
+          priorOutput: [task.result, task.worktree ? `Previous worktree: ${task.worktree}` : undefined,
+            'Previous worker exited before reporting completion. Its effects are unknown; inspect existing work before deciding what remains.'].filter(Boolean).join('\n'),
+        }
+        delete task.agentPid
         task.status = 'todo'
         task.assignee = undefined
         task.claimedAt = undefined
         task.attemptIsolation = undefined
         task.worktree = undefined
-        task.lastError = 'Previous isolated worker exited before reporting completion.'
+        task.lastError = isolated ? 'Previous isolated worker exited before reporting completion.' : 'Previous worker exited; model-directed reconciliation is required before continuing.'
       } else {
         task.status = 'failed'
         task.finishedAt = now
@@ -727,6 +752,25 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
   const maxAttempts = boundedInteger(options.maxAttempts, 2, 1, 5)
   const retryBackoffMs = boundedInteger(options.retryBackoffMs, 250, 0, 30_000)
   recoverClaimedSafely(cwd, name, maxAttempts)
+  const owner = makeProcessOwner()
+  const heartbeat = setInterval(() => {
+    try {
+      withCrewLock(cwd, name, () => {
+        const spec = loadCrew(cwd, name)
+        if (!spec) return
+        let changed = false
+        for (const task of spec.tasks) {
+          if (task.status === 'claimed' && task.owner?.token === owner.token) {
+            task.owner.heartbeatAt = new Date().toISOString()
+            changed = true
+          }
+        }
+        if (changed) writeCrew(cwd, spec)
+      })
+    } catch { /* Liveness remains authoritative; failure never authorizes stealing a live claim. */ }
+  }, 5_000)
+  heartbeat.unref()
+  try {
 
   const lead = baseSpec.lead
   const handled: RunCrewResult['handled'] = []
@@ -735,7 +779,7 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
     (options.worktrees === true && !options.runnerFor) ||
     (options.runnerFor !== undefined && options.retrySafe === true)
 
-  const makeRunner = (workerCwd: string): StepRunner => {
+  const makeRunner = (workerCwd: string, taskId: string): StepRunner => {
     if (options.runnerFor) return options.runnerFor(workerCwd)
     return options.dryRun
       ? makeDryRunner()
@@ -743,6 +787,9 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
           cwd: workerCwd,
           maxTurns: options.maxTurns,
           skipPermissions: options.skipPermissions,
+          onSpawn: pid => {
+            if (!updateClaimedTask(cwd, name, taskId, task => { task.agentPid = pid }, owner.token)) throw new Error('Crew ownership changed before child PID could be saved.')
+          },
         })
   }
 
@@ -752,6 +799,7 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
 
     while (!options.signal?.aborted) {
       let task = claimNextTask(cwd, name, workerId, maxAttempts, {
+        owner,
         serializeSharedMutations: true,
         isolatedWrites:
           options.dryRun === true ||
@@ -770,6 +818,7 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
         const attempt = task.attempts ?? 1
         if (options.signal?.aborted) {
           completeTask(cwd, name, task.id, {
+            ownerToken: owner.token,
             status: 'failed',
             output: 'Cancelled before the worker attempt started.',
             verdict: 'FAIL',
@@ -799,7 +848,7 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
         updateClaimedTask(cwd, name, task.id, current => {
           current.attemptIsolation = isolation
           current.worktree = workerCwd === cwd ? undefined : workerCwd
-        })
+        }, owner.token)
 
         let output = ''
         let verdict: Verdict | null | undefined = 'FAIL'
@@ -808,13 +857,14 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
         if (!setupError) {
           try {
             // A new runner means a new child-agent process for every retry.
-            const runner = makeRunner(workerCwd)
+            const runner = makeRunner(workerCwd, task.id)
             const out = await runner({
               step: isolation === 'worktree'
                 ? isolatedTaskToStep(task, lead)
                 : taskToStep(task, lead),
               iteration: attempt,
               priorOutputs: priorOutputsForTask(cwd, name, task),
+              recovery: task.recovery,
             })
             output = out.output
             verdict = out.verdict
@@ -834,6 +884,7 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
           isError || verdict === 'FAIL' ? 'failed' : 'done'
         if (status === 'done') {
           completeTask(cwd, name, task.id, {
+            ownerToken: owner.token,
             status,
             output,
             verdict,
@@ -865,6 +916,7 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
           })
           if (!(await retryDelay(delayMs, options.signal))) {
             completeTask(cwd, name, task.id, {
+            ownerToken: owner.token,
               status: 'failed',
               output: 'Cancelled while waiting to retry an isolated worker attempt.',
               verdict: 'FAIL',
@@ -877,9 +929,10 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
             count += 1
             break
           }
-          const next = beginRetry(cwd, name, task.id, workerId)
+          const next = beginRetry(cwd, name, task.id, workerId, owner.token)
           if (!next) {
             completeTask(cwd, name, task.id, {
+            ownerToken: owner.token,
               status: 'failed',
               output,
               verdict,
@@ -903,6 +956,7 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
           })
         }
         completeTask(cwd, name, task.id, {
+            ownerToken: owner.token,
           status: 'failed',
           output,
           verdict,
@@ -976,6 +1030,7 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
         active.add(p)
       }
       if (active.size === 0) {
+        if (loadCrew(cwd, name)?.tasks.some(task => task.status === 'claimed')) break
         // Give claimNextTask one chance to turn invalid/missing/cyclic
         // dependencies into terminal blocked tasks.
         if (todoCount() > 0) {
@@ -1017,6 +1072,21 @@ export async function runCrew(name: string, options: RunCrewOptions): Promise<Ru
     )
   }
   return { name, workers: spawned, progress: crewProgress(finalSpec), handled }
+  } finally {
+    clearInterval(heartbeat)
+    withCrewLock(cwd, name, () => {
+      const spec = loadCrew(cwd, name)
+      if (!spec) return
+      let changed = false
+      for (const task of spec.tasks) {
+        if (task.status === 'claimed' && task.owner?.token === owner.token && !isProcessAlive(task.agentPid)) {
+          task.owner.releasedAt = new Date().toISOString()
+          changed = true
+        }
+      }
+      if (changed) writeCrew(cwd, spec)
+    })
+  }
 }
 
 export function formatCrewList(crews: CrewSpec[], json: boolean): string {

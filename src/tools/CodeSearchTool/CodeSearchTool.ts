@@ -119,14 +119,14 @@ export const CodeSearchTool = buildTool({
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
-        content: 'No semantically similar code found.',
+        content: `${output.message ? `${output.message}\n` : ''}No matching current code found.`,
       }
     }
     const header = `Found ${output.hits.length} result${output.hits.length === 1 ? '' : 's'}${output.builtAt ? ` (index built ${output.builtAt})` : ''}:`
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: `${header}\n\n${output.hits.map(formatHit).join('\n\n')}`,
+      content: `${header}${output.message ? `\n${output.message}` : ""}\n\n${output.hits.map(formatHit).join('\n\n')}`,
     }
   },
   extractSearchText(output) {
@@ -134,10 +134,11 @@ export const CodeSearchTool = buildTool({
   },
   async call({ query, limit, path }, { abortController }) {
     const root = getCwd()
-    const { hits, index } = await searchCode({
+    const { hits, index, diagnostics } = await searchCode({
       root,
       query,
-      k: (limit ?? DEFAULT_LIMIT) + (path ? 40 : 0),
+      k: limit ?? DEFAULT_LIMIT,
+      path,
       signal: abortController.signal,
     })
 
@@ -145,7 +146,7 @@ export const CodeSearchTool = buildTool({
       const output: Output = {
         status: 'no_index',
         message:
-          'No code index found for this project. Build it with `ur code-index build` (requires a local Ollama embedding model, e.g. `ollama pull nomic-embed-text`).',
+          'No code index found for this project. Build it with `ur code-index build` (optional local Ollama embeddings; lexical search remains available).',
         hits: [],
       }
       return { data: output }
@@ -159,6 +160,7 @@ export const CodeSearchTool = buildTool({
     const output: Output = {
       status: limited.length === 0 ? 'empty' : 'ok',
       builtAt: index.builtAt,
+      message: `${diagnostics.mode} retrieval; ${diagnostics.staleFiles.length} changed and ${diagnostics.missingFiles.length} missing sources excluded.${diagnostics.embeddingReason ? ` ${diagnostics.embeddingReason}.` : ""} Coverage: ${diagnostics.coverage ? `${diagnostics.coverage.indexed}/${diagnostics.coverage.candidates} candidates, ${diagnostics.coverage.omittedByLimit} omitted by limit, ${diagnostics.coverage.skipped.length} skipped, ${diagnostics.coverage.truncatedFiles.length} truncated files.` : "unknown; rebuild the index to measure."}${diagnostics.staleFiles.length || diagnostics.missingFiles.length ? " Run ur code-index build to refresh." : ""}`,
       hits: limited,
     }
     return { data: output }

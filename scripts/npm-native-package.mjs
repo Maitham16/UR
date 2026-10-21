@@ -38,7 +38,8 @@ function pack(directory, destination, env) {
   const output = execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', destination], {
     cwd: directory, env, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
   })
-  const results = JSON.parse(output)
+  const report = JSON.parse(output)
+  const results = Array.isArray(report) ? report : Object.values(report ?? {})
   if (!Array.isArray(results) || results.length !== 1 || typeof results[0].filename !== 'string' || basename(results[0].filename) !== results[0].filename) throw new Error('npm pack returned invalid package metadata')
   return join(destination, results[0].filename)
 }
@@ -76,6 +77,10 @@ export function assembleNativeNpmPackage({ manifestPath, outDir, sourceTarball, 
     if (metadata.name !== 'ur-agent' || metadata.version !== version || metadata.bin?.ur !== 'bin/ur.js') throw new Error('Source npm package identity does not match the release')
     const launcher = readFileSync(join(directory, 'bin', 'ur.js'), 'utf8')
     if (!launcher.includes('urDistribution') || !launcher.includes('./npm-native.mjs') || !lstatSync(join(directory, 'bin', 'npm-native.mjs')).isFile()) throw new Error('Source package is missing the native npm bootstrap')
+    if (metadata.exports?.['./sdk']?.import !== './sdk/index.js' || metadata.exports?.['./sdk']?.types !== './sdk/index.d.ts') throw new Error('Source package is missing the public SDK export')
+    for (const file of ['sdk/index.js', 'sdk/index.d.ts', 'sdk/python/pyproject.toml']) {
+      if (!lstatSync(join(directory, file)).isFile()) throw new Error(`Source package is missing ${file}`)
+    }
     metadata.urDistribution = 'native'
     for (const key of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies', 'peerDependenciesMeta', 'scripts', 'overrides', 'patchedDependencies', 'packageManager', 'bundledDependencies', 'bundleDependencies']) delete metadata[key]
     metadata.engines = { node: metadata.engines?.node ?? '>=22.12' }
@@ -90,6 +95,7 @@ export function assembleNativeNpmPackage({ manifestPath, outDir, sourceTarball, 
     const publishedManifest = JSON.parse(execFileSync('tar', ['-xOf', packed, 'package/bin/native-release.json'], { encoding: 'utf8' }))
     if (publishedMetadata.urDistribution !== 'native' || JSON.stringify(publishedManifest) !== JSON.stringify(manifest)) throw new Error('Packed npm bootstrap metadata is missing or altered')
     execFileSync('tar', ['-xOf', packed, 'package/bin/npm-native.mjs'], { stdio: 'pipe' })
+    for (const file of ['sdk/index.js', 'sdk/index.d.ts', 'sdk/python/pyproject.toml']) execFileSync('tar', ['-xOf', packed, `package/${file}`], { stdio: 'pipe' })
     mkdirSync(outDir, { recursive: true })
     temporaryOutput = join(outDir, `.ur-native-npm-${randomUUID()}.tgz`)
     copyFileSync(packed, temporaryOutput)

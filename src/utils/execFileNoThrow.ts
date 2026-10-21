@@ -59,6 +59,8 @@ export function execFileNoThrow(
 }
 
 type ExecFileWithCwdOptions = {
+  /** Persist process ownership before the caller may consider a worker recoverable. */
+  onSpawn?: (pid: number) => void
   abortSignal?: AbortSignal
   timeout?: number
   preserveOutputOnError?: boolean
@@ -109,6 +111,7 @@ export function execFileNoThrowWithCwd(
   args: string[],
   {
     abortSignal,
+    onSpawn,
     timeout: finalTimeout = 10 * SECONDS_IN_MINUTE * MS_IN_SECOND,
     preserveOutputOnError: finalPreserveOutput = true,
     cwd: finalCwd,
@@ -134,7 +137,8 @@ export function execFileNoThrowWithCwd(
     }
 
     // Use execa for cross-platform .bat/.cmd compatibility on Windows
-    execa(file, args, {
+    let spawnError: unknown
+    const child = execa(file, args, {
       maxBuffer,
       cancelSignal: abortSignal,
       timeout: finalTimeout,
@@ -146,7 +150,17 @@ export function execFileNoThrowWithCwd(
       input: finalInput,
       reject: false, // Don't throw on non-zero exit codes
     })
-      .then(result => {
+    if (onSpawn) child.once('spawn', () => {
+      try { if (child.pid) onSpawn(child.pid) } catch (error) {
+        spawnError = error
+        child.kill('SIGTERM')
+      }
+    })
+    child.then(result => {
+        if (spawnError) {
+          resolveWithAudit({ stdout: result.stdout || '', stderr: String(spawnError), code: 1, error: String(spawnError) })
+          return
+        }
         if (result.failed) {
           if (finalPreserveOutput) {
             const errorCode = result.exitCode ?? 1

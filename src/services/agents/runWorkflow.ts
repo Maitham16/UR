@@ -1,3 +1,4 @@
+import type { StepRunner } from './executor.js'
 import { makeCliStepRunner, makeDryRunner } from './cliStepRunner.js'
 import {
   type ExecEvent,
@@ -8,9 +9,10 @@ import {
 import { getPattern } from './patterns.js'
 import {
   type WorkflowSpec,
-  loadRunState,
-  markStepComplete,
-  resetRunState,
+  beginWorkflowRun,
+  checkpointWorkflowRun,
+  releaseWorkflowRun,
+  workflowDigest,
   saveWorkflow,
 } from './workflows.js'
 import { getSessionId } from '../../bootstrap/state.js'
@@ -39,6 +41,8 @@ export type RunWorkflowOptions = {
   /** Max independent steps to run concurrently (1 = sequential). */
   maxConcurrency?: number
   onEvent?: (event: ExecEvent) => void
+  /** Embedding/test runner; identical checkpoint semantics to CLI execution. */
+  runStep?: StepRunner
 }
 
 /** Derive the review loop for a workflow compiled from a pattern (e.g. PEER). */
@@ -75,26 +79,25 @@ async function runWorkflowSpecUntraced(
     loop,
   })
 
-  let resumeCompleted: string[] = []
-  if (options.resume) {
-    resumeCompleted = loadRunState(options.cwd, stateName)?.completed ?? []
-  } else {
-    resetRunState(options.cwd, stateName)
-  }
+  const state = beginWorkflowRun(options.cwd, stateName,
+    workflowDigest(spec, options.cwd, loop, { dryRun: options.dryRun }), options.resume === true)
+  const token = state.owner!.token
 
-  const runStep = options.dryRun
+  const runStep = options.runStep ?? (options.dryRun
     ? makeDryRunner()
     : makeCliStepRunner({
         cwd: options.cwd,
         maxTurns: options.maxTurns,
         skipPermissions: options.skipPermissions,
-      })
+      }))
 
+  try {
   const result = await executeWorkflow(spec, {
     runStep,
     loop,
     stopOnError: true,
-    resumeCompleted,
+    resumeState: state.execution,
+    onState: snapshot => checkpointWorkflowRun(options.cwd, stateName, token, snapshot),
     maxConcurrency: options.maxConcurrency,
     onEvent: event => {
       options.onEvent?.(event)
@@ -111,12 +114,12 @@ async function runWorkflowSpecUntraced(
         data: event as unknown as Record<string, unknown>,
       })
     },
-    onCheckpoint: stepId => {
-      markStepComplete(options.cwd, stateName, stepId)
-    },
   })
   writeRunReport(options.cwd, runId, formatWorkflowTraceReport(result))
   return result
+  } finally {
+    releaseWorkflowRun(options.cwd, stateName, token)
+  }
 }
 
 export async function runWorkflowSpec(

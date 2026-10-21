@@ -14,16 +14,20 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join, posix } from 'node:path'
 import { safeParseJSON } from '../json.js'
 import { listIndexableFiles } from './indexer.js'
+import type { IndexCoverage } from './types.js'
+import { writeIndexJson } from './snapshot.js'
 
 export type RepoIndex = {
   version: 1
   builtAt: string
   root: string
   files: RepoFileEntry[]
+  coverage?: IndexCoverage
+  staleFiles?: string[]
 }
 
 export type RepoFileEntry = {
@@ -350,7 +354,9 @@ export async function buildRepoIndex(options: BuildRepoIndexOptions): Promise<{
 }> {
   const signal = options.signal ?? new AbortController().signal
   const read = options.readFile ?? ((abs: string) => readFileSync(abs, 'utf-8'))
-  const rels = (await listIndexableFiles(options.root, signal)).slice(0, options.maxFiles ?? 5000)
+  const candidates = await listIndexableFiles(options.root, signal)
+  const rels = candidates.slice(0, options.maxFiles)
+  const skipped: IndexCoverage['skipped'] = []
   const fileSet = new Set(rels)
 
   const files: RepoFileEntry[] = []
@@ -361,11 +367,13 @@ export async function buildRepoIndex(options: BuildRepoIndexOptions): Promise<{
   const configEntries: ConfigEntry[] = []
 
   for (const rel of rels) {
+    signal.throwIfAborted()
     const abs = join(options.root, rel)
     let content: string
     try {
       content = read(abs)
     } catch {
+      skipped.push({ file: rel, reason: "Unreadable source" })
       continue
     }
     const ext = posixExt(rel)
@@ -459,7 +467,7 @@ export async function buildRepoIndex(options: BuildRepoIndexOptions): Promise<{
   }
 
   const now = new Date().toISOString()
-  const repo: RepoIndex = { version: 1, builtAt: now, root: options.root, files }
+  const repo: RepoIndex = { version: 1, builtAt: now, root: options.root, files, coverage: { candidates: candidates.length, indexed: files.length, omittedByLimit: candidates.length - rels.length, skipped, truncatedFiles: [], maxFiles: options.maxFiles ?? null, complete: candidates.length === files.length } }
   const symbols: SymbolIndex = { version: 1, builtAt: now, symbols: symbolEntries }
   const calls: CallGraphIndex = { version: 1, builtAt: now, calls: callEntries }
   const tests: TestIndex = { version: 1, builtAt: now, tests: testEntries }
@@ -467,12 +475,13 @@ export async function buildRepoIndex(options: BuildRepoIndexOptions): Promise<{
   const configs: ConfigIndex = { version: 1, builtAt: now, configs: configEntries }
 
   mkdirSync(repoIndexDir(options.root), { recursive: true })
-  writeFileSync(repoIndexPath(options.root), `${JSON.stringify(repo, null, 2)}\n`)
-  writeFileSync(symbolIndexPath(options.root), `${JSON.stringify(symbols, null, 2)}\n`)
-  writeFileSync(callIndexPath(options.root), `${JSON.stringify(calls, null, 2)}\n`)
-  writeFileSync(testIndexPath(options.root), `${JSON.stringify(tests, null, 2)}\n`)
-  writeFileSync(docIndexPath(options.root), `${JSON.stringify(docs, null, 2)}\n`)
-  writeFileSync(configIndexPath(options.root), `${JSON.stringify(configs, null, 2)}\n`)
+  writeIndexJson(symbolIndexPath(options.root), symbols)
+  writeIndexJson(callIndexPath(options.root), calls)
+  writeIndexJson(testIndexPath(options.root), tests)
+  writeIndexJson(docIndexPath(options.root), docs)
+  writeIndexJson(configIndexPath(options.root), configs)
+  // Commit manifest last. Readers reject artifacts from a different generation.
+  writeIndexJson(repoIndexPath(options.root), repo)
 
   return { repo, symbols, calls, tests, docs, configs }
 }
@@ -506,33 +515,70 @@ export function configIndexPath(root: string): string {
 }
 
 export function loadRepoIndex(root: string): RepoIndex | null {
-  return loadJsonFile(repoIndexPath(root))
+  const repo = loadJsonFile<RepoIndex>(repoIndexPath(root))
+  if (!repo || !Array.isArray(repo.files)) return null
+  const original = repo.files
+  repo.files = original.filter(file => {
+    try { return sha1(readFileSync(join(root, file.path), 'utf8')) === file.hash } catch { return false }
+  })
+  repo.staleFiles = original.filter(file => !repo.files.includes(file)).map(file => file.path)
+  const current = new Set(repo.files.map(file => file.path))
+  for (const file of repo.files) {
+    file.imports = file.imports?.filter(path => current.has(path))
+    file.importedBy = file.importedBy?.filter(path => current.has(path))
+  }
+  return repo
 }
 
 export function loadSymbolIndex(root: string): SymbolIndex | null {
-  return loadJsonFile(symbolIndexPath(root))
+  const repo = loadRepoIndex(root)
+  const artifact = loadJsonFile<SymbolIndex>(symbolIndexPath(root))
+  if (!repo || !artifact || artifact.builtAt !== repo.builtAt || !Array.isArray(artifact.symbols)) return null
+  const current = new Set(repo.files.map(file => file.path))
+  artifact.symbols = artifact.symbols.filter(entry => current.has(entry.file))
+  return artifact
 }
 
 export function loadCallIndex(root: string): CallGraphIndex | null {
-  return loadJsonFile(callIndexPath(root))
+  const repo = loadRepoIndex(root)
+  const artifact = loadJsonFile<CallGraphIndex>(callIndexPath(root))
+  if (!repo || !artifact || artifact.builtAt !== repo.builtAt || !Array.isArray(artifact.calls)) return null
+  const current = new Set(repo.files.map(file => file.path))
+  artifact.calls = artifact.calls.filter(entry => current.has(entry.file))
+  return artifact
 }
 
 export function loadTestIndex(root: string): TestIndex | null {
-  return loadJsonFile(testIndexPath(root))
+  const repo = loadRepoIndex(root)
+  const artifact = loadJsonFile<TestIndex>(testIndexPath(root))
+  if (!repo || !artifact || artifact.builtAt !== repo.builtAt || !Array.isArray(artifact.tests)) return null
+  const current = new Set(repo.files.map(file => file.path))
+  artifact.tests = artifact.tests.filter(entry => current.has(entry.file))
+  return artifact
 }
 
 export function loadDocIndex(root: string): DocIndex | null {
-  return loadJsonFile(docIndexPath(root))
+  const repo = loadRepoIndex(root)
+  const artifact = loadJsonFile<DocIndex>(docIndexPath(root))
+  if (!repo || !artifact || artifact.builtAt !== repo.builtAt || !Array.isArray(artifact.docs)) return null
+  const current = new Set(repo.files.map(file => file.path))
+  artifact.docs = artifact.docs.filter(entry => current.has(entry.path))
+  return artifact
 }
 
 export function loadConfigIndex(root: string): ConfigIndex | null {
-  return loadJsonFile(configIndexPath(root))
+  const repo = loadRepoIndex(root)
+  const artifact = loadJsonFile<ConfigIndex>(configIndexPath(root))
+  if (!repo || !artifact || artifact.builtAt !== repo.builtAt || !Array.isArray(artifact.configs)) return null
+  const current = new Set(repo.files.map(file => file.path))
+  artifact.configs = artifact.configs.filter(entry => current.has(entry.path))
+  return artifact
 }
 
 function loadJsonFile<T>(path: string): T | null {
   if (!existsSync(path)) return null
   const parsed = safeParseJSON(readFileSync(path, 'utf-8'), false)
-  return parsed && typeof parsed === 'object' ? (parsed as T) : null
+  return parsed && typeof parsed === 'object' ? structuredClone(parsed) as T : null
 }
 
 export function repoSearch(repo: RepoIndex, query: string): RepoFileEntry[] {
@@ -577,7 +623,8 @@ export function formatRepoStats(repo: RepoIndex): string {
     {} as Record<RepoFileEntry['kind'], number>,
   )
   const lines = [
-    `Repo index: ${repo.files.length} files`,
+    `Repo index: ${repo.files.length} current files; ${repo.staleFiles?.length ?? 0} stale sources excluded`,
+    `Coverage: ${repo.coverage ? `${repo.coverage.indexed}/${repo.coverage.candidates} candidates; ${repo.coverage.omittedByLimit} omitted by limit; ${repo.coverage.skipped.length} skipped` : 'unknown (rebuild to measure)'}`,
     ...Object.entries(counts).map(([k, v]) => `  ${k}: ${v}`),
   ]
   return lines.join('\n')

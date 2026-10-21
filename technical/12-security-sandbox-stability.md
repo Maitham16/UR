@@ -29,8 +29,9 @@ Every tool call is checked (doc 04 §Permission model):
 ## OS sandbox (`/sandbox`)
 
 `src/utils/sandbox/` wraps shell execution in an OS sandbox where supported.
-The Windows native CLI is supported, but its sandbox backend is unavailable in
-this release. Required sandbox mode fails closed; Linux under WSL2 is the
+Windows native distribution is deferred, and the optional Windows source
+workflow has no supported sandbox backend. Required sandbox mode fails closed;
+Linux under WSL2 is the
 supported Windows-hosted path for OS confinement.
 ```
 /sandbox status          # architecture + dependency check
@@ -140,7 +141,50 @@ the privileged prompt canary remains a narrow hard denial.
 /safety status
 /safety init
 /safety check --command "rm -rf build" --json
+/safety audit --json
 ```
+
+`safety status` reports configured policy separately from actual sandbox
+availability. Availability means configuration and dependencies were checked;
+it does not prove an arbitrary command was confined. `safety audit` runs a
+versioned, offline set of eight malicious and four benign text fixtures plus
+five shell-policy decisions. It reports detections, false positives and failed
+expectations explicitly. It does not call a model, execute commands or measure
+attack success. Detection remains advisory and does not add approval prompts.
+
+### Opt-in sandboxed preset
+
+```sh
+ur safety init --preset sandboxed --allow-domain example.com
+# Review .ur/sandboxed.settings.json, then explicitly select it:
+ur --settings .ur/sandboxed.settings.json
+```
+
+The generator writes a new file with exclusive creation and private file mode;
+it does not overwrite an existing preset or modify active permission mode,
+project settings, or default safety policy. `--allow-domain` accepts repeatable
+exact hostnames. The preset requests required sandboxing, forbids unsandboxed
+fallback, enables the trusted strict host allowlist, denies shell reads of
+known secret paths, and denies current secret-like environment variable names.
+It stores names, never values. New variable names require regenerating or
+editing the reviewed preset. Shell egress includes domains explicitly allowed
+by existing permission rules; existing read exceptions and Unix-socket settings
+also remain relevant. Review merged settings with `ur sandbox status` and
+`ur doctor --readiness`; the file is not a claim of a hermetic container.
+
+Trusted credential and strict-egress settings take effect through `--settings`
+(flag settings), user settings, or managed policy. Merely copying this file
+into repository-local settings does not enable those trusted controls. Native
+file tools, subscription CLI internals, hooks and MCP processes retain their
+separate application/host trust boundaries. Publishing still requires the
+existing explicit `--push`/`--pr` or CI authorization; the preset grants none.
+
+`test/safetyReadiness.test.ts` qualifies the generated preset through the real
+sandbox wrapper in an isolated child using fake private data, denied
+outside-workspace writes and credentials, benign work and loopback HTTP hosts.
+Unsupported/blocked environments report enforcement unavailable. Set
+`UR_REQUIRE_SANDBOX_PROBE=1` to require the OS probe to pass; offline detector
+success does not substitute for this qualification.
 
 ## Guardrails (`/guardrails`)
 

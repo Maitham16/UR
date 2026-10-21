@@ -103,6 +103,20 @@ Each step: `id`, `name`, `agent` (subagent type), `prompt`, `dependsOn`, optiona
 ```
 Runs surface as `LocalWorkflowTask` background tasks in `/tasks`.
 
+Schema-2 run state atomically checkpoints full dependency outputs, completed
+siblings, loop feedback, held approval results and in-flight work. A digest binds
+that state to the workflow, loop, checkout and dry-run mode. Resume restores
+those outputs and reuses an approval-held result instead of executing it again.
+Changed specifications and legacy schema-1 state cannot silently authorize
+resume: inspect the previous effects, then use `workflow reset` for a new run.
+Manual `workflow done` records operator attestation rather than verified work.
+
+Scheduler/child ownership prevents a second process from duplicating live work.
+After a crash, uncertain steps receive their saved partial/dependency output and
+explicit unknown-outcome context. The model inspects and reconciles effects;
+the scheduler does not blindly replay commands. This cannot guarantee exactly
+once execution of arbitrary external effects across a crash.
+
 ## Collaboration patterns (`/pattern`)
 
 Prebuilt multi-agent topologies (`src/services/agents/patterns.ts`):

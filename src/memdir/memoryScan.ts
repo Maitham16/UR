@@ -35,6 +35,7 @@ const FRONTMATTER_MAX_LINES = 30
 export async function scanMemoryFiles(
   memoryDir: string,
   signal: AbortSignal,
+  options: { limit?: number } = {},
 ): Promise<MemoryHeader[]> {
   try {
     const entries = await readdir(memoryDir, { recursive: true })
@@ -70,7 +71,7 @@ export async function scanMemoryFiles(
       )
       .map(r => r.value)
       .sort((a, b) => b.mtimeMs - a.mtimeMs)
-      .slice(0, MAX_MEMORY_FILES)
+      .slice(0, options.limit ?? MAX_MEMORY_FILES)
   } catch {
     return []
   }
