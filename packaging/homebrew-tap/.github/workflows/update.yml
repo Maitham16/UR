@@ -43,12 +43,12 @@ jobs:
           else
             node scripts/update-homebrew-tap.mjs
           fi
-          ruby -c Formula/ur.rb
+          ruby -c Formula/ur-nexus.rb
       - name: Record candidate base and changes
         id: candidate
         run: |
           echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          if git diff --quiet -- Formula/ur.rb release-manifest.json; then
+          if git diff --quiet -- Formula/ur-nexus.rb release-manifest.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -59,7 +59,7 @@ jobs:
         with:
           name: native-formula-candidate
           path: |
-            Formula/ur.rb
+            Formula/ur-nexus.rb
             release-manifest.json
           if-no-files-found: error
           retention-days: 7
@@ -98,21 +98,23 @@ jobs:
           BASE_SHA: ${{ needs.update.outputs.base }}
         run: |
           test "$(git rev-parse HEAD)" = "$BASE_SHA"
-          git add Formula/ur.rb release-manifest.json
+          git add Formula/ur-nexus.rb release-manifest.json
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Test unpublished native formula candidate'
       - name: Install, reinstall and test the unpublished candidate
         run: |
-          brew install --build-from-source Maitham16/ur/ur
-          brew test Maitham16/ur/ur
-          brew reinstall --build-from-source Maitham16/ur/ur
-          brew test Maitham16/ur/ur
+          brew untrust Maitham16/ur
+          brew trust --formula Maitham16/ur/ur-nexus
+          brew install ur-nexus
+          brew test ur-nexus
+          brew reinstall ur-nexus
+          brew test ur-nexus
           if ur install latest > ownership.log 2>&1; then
             cat ownership.log
             echo 'Homebrew-managed UR accepted a shadow native installation' >&2
             exit 1
           fi
           grep -Ei 'Homebrew|brew' ownership.log
-          brew uninstall ur
+          brew uninstall ur-nexus
 
   publish:
     needs: [update, formula]
@@ -141,6 +143,6 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Formula/ur.rb release-manifest.json
+          git add Formula/ur-nexus.rb release-manifest.json
           git commit -m 'Update verified native UR release'
           git push origin "HEAD:$DEFAULT_BRANCH"

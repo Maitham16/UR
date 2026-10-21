@@ -175,15 +175,20 @@ and Linux x64/ARM64 with glibc. Linux x64 requires an
 x86-64-v2 CPU (including SSE4.2); see the exact qualification environments in
 [Native installation](docs/NATIVE_INSTALL.md#supported-platforms).
 
-With Homebrew on macOS or Linux:
+With Homebrew on macOS or Linux, add the personal tap and trust its formula
+once, then install:
 
 ```sh
-brew install Maitham16/ur/ur
+brew tap Maitham16/ur
+brew trust --formula Maitham16/ur/ur-nexus
+brew install ur-nexus
 ur --version
 ```
 
-Homebrew installs the standalone application without Node.js or Bun. Update it
-with `brew upgrade Maitham16/ur/ur`.
+Homebrew installs the standalone application without Node.js or Bun. The
+formula is `ur-nexus`; the launch command remains `ur`. Update it with
+`brew upgrade ur-nexus`. See [Homebrew tap trust](https://docs.brew.sh/Tap-Trust)
+for the formula-trust step used by current Homebrew.
 
 For a standalone installation without Homebrew:
 

@@ -185,8 +185,17 @@ publishes the GitHub native assets, then publishes that exact npm tarball.
 The `Maitham16/homebrew-ur` personal tap checks stable upstream releases hourly.
 Its committed updater verifies the manifest provenance against `release.yml`,
 the immutable tag, and source commit, and must pass all four platform formula
-checks before pushing an update. Users install with
-`brew install Maitham16/ur/ur` and update with `brew upgrade Maitham16/ur/ur`.
+checks before pushing an update. Users add the personal tap and trust its
+formula once, then install:
+
+```sh
+brew tap Maitham16/ur
+brew trust --formula Maitham16/ur/ur-nexus
+brew install ur-nexus
+```
+
+The launch command remains `ur`; updates use `brew upgrade ur-nexus`. See
+[Homebrew tap trust](https://docs.brew.sh/Tap-Trust) for the required trust step.
 
 If a tag was accidentally pushed from the wrong commit, keep it as failed
 release history and bump to a fresh patch version. Do not move a published tag.

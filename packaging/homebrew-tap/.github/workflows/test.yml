@@ -2,7 +2,7 @@ name: Test native UR formula
 
 on:
   push:
-    paths: [Formula/ur.rb, release-manifest.json, "scripts/**", ".github/workflows/**"]
+    paths: [Formula/ur-nexus.rb, release-manifest.json, "scripts/**", ".github/workflows/**"]
   pull_request:
   workflow_dispatch:
 
@@ -34,10 +34,12 @@ jobs:
           stable: true
       - name: Install exact published native formula
         run: |
-          brew install --build-from-source Maitham16/ur/ur
-          brew test Maitham16/ur/ur
-          brew reinstall --build-from-source Maitham16/ur/ur
-          brew test Maitham16/ur/ur
+          brew untrust Maitham16/ur
+          brew trust --formula Maitham16/ur/ur-nexus
+          brew install ur-nexus
+          brew test ur-nexus
+          brew reinstall ur-nexus
+          brew test ur-nexus
           if ur install latest > ownership.log 2>&1; then
             cat ownership.log
             echo 'Homebrew-managed UR accepted a shadow native installation' >&2
@@ -45,4 +47,4 @@ jobs:
           fi
           grep -Ei 'Homebrew|brew' ownership.log
           ur --version
-          brew uninstall ur
+          brew uninstall ur-nexus

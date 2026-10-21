@@ -29,7 +29,7 @@ export function generateHomebrewFormula(value, options = {}) {
   const artifact = target => `      url "${repository}/releases/download/v${manifest.version}/${manifest.platforms[target].file}"\n      sha256 "${manifest.platforms[target].sha256}"`
   return `# Generated from the immutable native release manifest. Do not edit checksums by hand.
 # Source commit: ${manifest.sourceCommit}
-class Ur < Formula
+class UrNexus < Formula
   desc "Terminal coding agent with a bundled runtime and local-first provider support"
   homepage "${repository}"
   version "${manifest.version}"
@@ -81,7 +81,7 @@ ${artifact('linux-x64')}
     <<~EOS
       UR includes its runtime; Node.js, npm, and Bun are not required.
       Choose a provider and model on the first run with: ur
-      Manage this installation with: brew upgrade Maitham16/ur/ur
+      Manage this installation with: brew upgrade ur-nexus
       UR uses its upstream non-commercial license; see #{libexec}/resources/LICENSE.
       macOS 15+ is required. Linux qualification: Ubuntu 22.04 x64 and 24.04 ARM64
       with glibc; Linux x64 additionally requires an x86-64-v2 CPU.
@@ -106,7 +106,7 @@ export function writeHomebrewTap(manifest, outputDirectory, options = {}) {
   const formula = generateHomebrewFormula(manifest, options)
   const output = resolve(outputDirectory)
   mkdirSync(join(output, 'Formula'), { recursive: true })
-  writeFileSync(join(output, 'Formula', 'ur.rb'), formula)
+  writeFileSync(join(output, 'Formula', 'ur-nexus.rb'), formula)
   writeFileSync(join(output, 'release-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   if (!options.updateOnly) {
     mkdirSync(join(output, '.github', 'workflows'), { recursive: true })
@@ -115,7 +115,7 @@ export function writeHomebrewTap(manifest, outputDirectory, options = {}) {
     for (const name of ['test.yml', 'update.yml']) copyFileSync(join(template, '.github', 'workflows', name), join(output, '.github', 'workflows', name))
     for (const name of ['homebrew-tap.mjs', 'update-homebrew-tap.mjs']) copyFileSync(fileURLToPath(new URL(`./${name}`, import.meta.url)), join(output, 'scripts', name))
   }
-  return join(output, 'Formula', 'ur.rb')
+  return join(output, 'Formula', 'ur-nexus.rb')
 }
 
 async function main() {

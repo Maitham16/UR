@@ -1,12 +1,18 @@
 # UR Homebrew tap
 
-Install the standalone terminal agent from this personal tap:
+Add this personal tap and trust its formula once, then install the standalone
+terminal agent:
 
 ```sh
-brew install Maitham16/ur/ur
+brew tap Maitham16/ur
+brew trust --formula Maitham16/ur/ur-nexus
+brew install ur-nexus
 ur --version
 ur
 ```
+
+The formula is `ur-nexus`; the launch command remains `ur`. Current Homebrew
+requires [formula trust](https://docs.brew.sh/Tap-Trust) for personal taps.
 
 The formula downloads the exact checksummed native release for macOS/Linux on
 ARM64 or x64. UR includes its Bun runtime, repository search, image libraries,
@@ -22,9 +28,9 @@ are unavailable. UR's upstream non-commercial license applies; see the
 
 ```sh
 brew update
-brew upgrade Maitham16/ur/ur
-brew test Maitham16/ur/ur
-brew uninstall ur
+brew upgrade ur-nexus
+brew test ur-nexus
+brew uninstall ur-nexus
 ```
 
 Uninstalling preserves your UR configuration, credentials, and sessions. If an

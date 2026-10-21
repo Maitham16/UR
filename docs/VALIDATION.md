@@ -684,5 +684,5 @@ with `--cwd` guidance and must not launch a fix agent.
   `escalate`, `test-first`, `safety`, `context-pack`, `ci-loop`, and `artifacts` appear. If `unknown option` or
   `too many arguments` appears, run `ur upgrade` and verify the active launcher
   with `command -v ur`. npm installs print `npm install -g ur-agent@latest`;
-  Homebrew installs use `brew upgrade Maitham16/ur/ur`. Windows source developers
+  Homebrew installs use `brew upgrade ur-nexus`. Windows source developers
   can inspect `Get-Command ur` in PowerShell.

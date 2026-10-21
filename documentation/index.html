@@ -43,7 +43,7 @@
     </aside>
 
     <main id="content" class="content">
-      <aside class="callout"><strong>Install on macOS/Linux ARM64 or x64:</strong> use <code>brew install Maitham16/ur/ur</code> or the <a href="https://github.com/Maitham16/UR/releases/latest">standalone installer</a> without Node.js or Bun. The official npm package requires Node.js 22.12+ only and verifies/caches the pinned native application on first launch. Windows native and public npm installation are unavailable in 1.86.1; Bun-based source development remains optional.</aside>
+      <aside class="callout"><strong>Install on macOS/Linux ARM64 or x64:</strong> complete the <a href="#quickstart">one-time Homebrew setup</a>, then use <code>brew install ur-nexus</code>, or use the <a href="https://github.com/Maitham16/UR/releases/latest">standalone installer</a> without Node.js or Bun. The launch command remains <code>ur</code>. The official npm package requires Node.js 22.12+ only and verifies/caches the pinned native application on first launch. Windows native and public npm installation are unavailable in 1.86.1; Bun-based source development remains optional.</aside>
       <header class="topbar">
         <div>
           <p class="eyebrow">Version 1.86.1</p>
@@ -124,9 +124,12 @@
           <article class="step">
             <span>1</span>
             <h3>Install</h3>
-            <p>Homebrew:</p>
-            <pre><code>brew install Maitham16/ur/ur
+            <p>Homebrew: add the personal tap and trust its formula once, then install. The formula is <code>ur-nexus</code>; the executable remains <code>ur</code>.</p>
+            <pre><code>brew tap Maitham16/ur
+brew trust --formula Maitham16/ur/ur-nexus
+brew install ur-nexus
 ur --version</code></pre>
+            <p>Current Homebrew requires <a href="https://docs.brew.sh/Tap-Trust">formula trust</a> for personal taps.</p>
             <p>Or npm, with Node.js 22.12+ and no separate Bun:</p>
             <pre><code>npm install -g ur-agent
 ur --version</code></pre>
@@ -694,7 +697,7 @@ ur ide diff show &lt;id&gt;</code></pre>
 hash -r
 command -v ur
 ur --version</code></pre>
-            <p>Standalone installations download and verify the new release. Use <code>npm install -g ur-agent@latest</code> for npm or <code>brew upgrade Maitham16/ur/ur</code> for Homebrew. Package-manager installs reject <code>ur install</code> to avoid creating another installation. npm needs Node.js 22.12+ only; it never launches a separate Bun.</p>
+            <p>Standalone installations download and verify the new release. Use <code>npm install -g ur-agent@latest</code> for npm or <code>brew upgrade ur-nexus</code> for Homebrew. Package-manager installs reject <code>ur install</code> to avoid creating another installation. npm needs Node.js 22.12+ only; it never launches a separate Bun.</p>
           </article>
           <article>
             <h3>Source checkout update message</h3>

@@ -39,12 +39,18 @@ browser, provider CLI, or model server automatically.
 
 ### Homebrew
 
+Add the personal tap and trust this formula once, then install it:
+
 ```sh
-brew install Maitham16/ur/ur
+brew tap Maitham16/ur
+brew trust --formula Maitham16/ur/ur-nexus
+brew install ur-nexus
 ur --version
 ur
 ```
 
+The formula is `ur-nexus`; its executable remains `ur`. Current Homebrew
+requires [formula trust](https://docs.brew.sh/Tap-Trust) for personal taps.
 The personal tap installs the checksummed native application and resources
 without Node.js or Bun dependencies. Its updater checks stable releases hourly,
 verifies the release manifest's GitHub provenance, and tests formula updates on
@@ -151,7 +157,7 @@ Use the command for the installation you chose:
 
 | Installation | Update command |
 | --- | --- |
-| Homebrew | `brew upgrade Maitham16/ur/ur` |
+| Homebrew | `brew upgrade ur-nexus` |
 | npm | `npm install -g ur-agent@latest` |
 | Standalone installer | `ur upgrade` |
 
@@ -194,17 +200,30 @@ binary rollback does not undo configuration migrations.
 
 ## Uninstall and recover
 
-For Homebrew, run `brew uninstall ur`. For npm, run
-`npm uninstall -g ur-agent`. For a standalone installation, download the
-matching `uninstall.sh` release asset and run it with `sh`.
-Uninstall removes the owned launcher files while preserving configuration, sessions,
-credentials, and immutable versions. The script prints any optional manual
-cleanup path. Other npm installations, aliases, project data, and dependencies
-are preserved.
+- Homebrew: `brew uninstall ur-nexus` removes the Homebrew application and its Cellar
+  versions.
+- npm: `npm uninstall -g ur-agent` removes the npm package and launcher. The
+  downloaded native cache under `~/.cache/ur/npm/` remains (`XDG_CACHE_HOME` is
+  honored).
+- Standalone installer: download the matching `uninstall.sh` release asset and
+  run it with `sh`. It removes the owned launcher while preserving immutable
+  application versions and prints their optional manual cleanup path.
+
+These uninstall commands preserve UR configuration, sessions, and credentials.
+Other installations, aliases, and project data remain unchanged.
 
 If the wrong `ur` starts, inspect `command -v ur`. A shell alias or an old
 package-manager install may precede the native launcher.
 
-For missing or corrupted resources, rerun the pinned installer. A resource
-integrity failure must be repaired with the matching release; copying a new
-executable over an older resource directory is unsupported.
+For missing or corrupted resources, repair through the original installation
+channel:
+
+- Homebrew: run `brew reinstall ur-nexus`.
+- npm: run `ur --version` with GitHub access available. The launcher checks its
+  cache and downloads the exact installed package version again when the cache
+  is missing or damaged. If the npm package or launcher itself is damaged,
+  reinstall with `npm install -g ur-agent@1.86.1`, then run `ur --version`.
+- Standalone installer: rerun the pinned installer for the matching release.
+
+Keep each executable with its matching resource directory; copying a new
+executable over older resources is unsupported.

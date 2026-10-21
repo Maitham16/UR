@@ -4,13 +4,14 @@ UR is a terminal agent. Running `ur` opens an interactive session in the current
 
 ## Installation
 
-On macOS or Linux ARM64/x64, use `brew install Maitham16/ur/ur` or the
-[standalone installer](NATIVE_INSTALL.md) without Node.js or a separate Bun.
+On macOS or Linux ARM64/x64, follow the [one-time Homebrew setup](NATIVE_INSTALL.md#homebrew)
+and run `brew install ur-nexus`, or use the [standalone installer](NATIVE_INSTALL.md),
+without Node.js or a separate Bun. The launch command remains `ur`.
 The official npm package (`npm install -g ur-agent`) needs Node.js `>=22.12`
 only; its first launch verifies and caches the pinned native application.
 Project toolchains and optional integrations retain their own prerequisites.
 
-Use `brew upgrade Maitham16/ur/ur` for Homebrew, `npm install -g ur-agent@latest`
+Use `brew upgrade ur-nexus` for Homebrew, `npm install -g ur-agent@latest`
 for npm, or `ur upgrade` for the standalone installer. Only standalone installs
 accept `ur install <version>`; package-manager installations reject it.
 
@@ -554,7 +555,7 @@ UR includes slash commands and CLI subcommands for common workflows:
 
 Interactive sessions retain the installation's update channel: verified GitHub
 releases for standalone installs, npm for the npm package, and Homebrew for the
-tap. Use `npm install -g ur-agent@latest` or `brew upgrade Maitham16/ur/ur` for
+tap. Use `npm install -g ur-agent@latest` or `brew upgrade ur-nexus` for
 those package-manager installations.
 Source checkouts print
 `Development build detected. To update, pull latest source or install from npm.`

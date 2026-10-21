@@ -11,8 +11,9 @@ verifies the fix.
 - Native install on macOS/Linux ARM64/x64: follow
   [Native installation](NATIVE_INSTALL.md), add `~/.local/bin` to PATH if
   requested, and inspect `command -v ur`.
-- Homebrew install: inspect `brew list ur` and `command -v ur`; update with
-  `brew upgrade Maitham16/ur/ur`.
+- Homebrew install: inspect `brew list ur-nexus` and `command -v ur`; update with
+  `brew upgrade ur-nexus`. For a first installation, follow the
+  [tap and formula-trust setup](NATIVE_INSTALL.md#homebrew).
 - Windows native and public npm installation are unavailable in 1.86.1. For
   optional Windows source development, inspect `Get-Command ur` and follow the
   [Development Guide](DEVELOPMENT.md).
@@ -43,7 +44,7 @@ The official npm package from 1.86.1 needs Node.js `>=22.12` and uses the pinned
 native application without a separate Bun. If it asks for Bun, inspect
 `command -v ur` for an older npm install, source checkout, or alias, then update
 with `npm install -g ur-agent@latest`. Homebrew uses
-`brew upgrade Maitham16/ur/ur`; standalone installs use `ur upgrade`.
+`brew upgrade ur-nexus`; standalone installs use `ur upgrade`.
 
 ### The first npm launch cannot download its native application
 

@@ -170,7 +170,7 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 native release without npm/Bun for standalone installations. npm and Homebrew
 installations reject this command to avoid creating a shadow installation.
 Standalone `ur upgrade` retrieves public release metadata directly; npm uses
-`npm install -g ur-agent@latest`, and Homebrew uses `brew upgrade Maitham16/ur/ur`.
+`npm install -g ur-agent@latest`, and Homebrew uses `brew upgrade ur-nexus`.
 The npm Node.js launcher caches the pinned native application without a separate
 Bun. Public native/npm releases support macOS/Linux ARM64 and x64; Windows
 remains deferred.
