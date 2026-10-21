@@ -15,7 +15,7 @@ Use `brew upgrade ur-nexus` for Homebrew, `npm install -g ur-agent@latest`
 for npm, or `ur upgrade` for the standalone installer. Only standalone installs
 accept `ur install <version>`; package-manager installations reject it.
 
-Windows native and public npm installation are unavailable in 1.87.0.
+Windows native and public npm installation are unavailable in 1.87.1.
 Bun-based source development remains optional on Windows; see the
 [Development Guide](DEVELOPMENT.md).
 
@@ -488,7 +488,7 @@ UR includes slash commands and CLI subcommands for common workflows:
   application projects
 - `ur safety ...` to inspect project shell safety policy and preview command risk
 - `ur context-pack ...` to summarize architecture and persist project memory (decisions, constraints, commands, diffs, architecture, preferences, attempts, accepted, rejected)
-- `ur code-index watch` to keep the local semantic code index fresh
+- `ur code-index watch` to refresh lexical/optional-embedding retrieval; searches exclude changed/deleted sources and report build coverage
 - `ur code-index repo build` to build a richer semantic repo index (files, symbols, calls, tests, docs, configs)
 - `ur skill init|run ...` for executable skill workflows, plus
   `ur skill verify|sign|keygen` for strict provenance and Ed25519 trust
@@ -526,7 +526,7 @@ UR includes slash commands and CLI subcommands for common workflows:
 - `ur automation ...` to store and run project-local scheduled automation specs
 - `ur sandbox ...` to inspect sandbox/permission architecture and command approval levels
 - `ur knowledge ...` to manage a curated project knowledge base with provenance
-- `ur semantic-memory ...` to build and search the project-local memory index
+- `ur semantic-memory ...` to search memory bodies with multilingual lexical retrieval, optional embeddings and source freshness
 - `ur claim-ledger ...` to map generated claims to their sources
 - `ur route ...` to classify a task and recommend a subagent and collaboration pattern
 - `ur model-doctor` for Ollama metadata estimates, `--profile` for saved

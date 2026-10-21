@@ -214,7 +214,7 @@ Primary runner contracts: [Harbor custom agents](https://docs.harborframework.co
 
 ### Native candidate measurement
 
-[`native-minimax-bug-fix.json`](results/1.87.0/native-minimax-bug-fix.json) records
+[`native-minimax-bug-fix.json`](https://github.com/Maitham16/UR/blob/v1.87.0/benchmarks/results/1.87.0/native-minimax-bug-fix.json) records
 three built-in bug-fix tasks against the actual macOS ARM64 native candidate with
 MiniMax through Ollama Cloud: 3/3 passed, zero observed false completions, 168,017 ms,
 1,003,121 input and 14,139 output tokens. Billing is unknown (`null`), not free.

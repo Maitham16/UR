@@ -16,14 +16,14 @@ You need:
   `>=22.12` launcher verifies and caches the native application without Bun;
   or a local source checkout (`bun run dev`) with the pinned development Bun.
 
-Windows native and public npm installation are unavailable in 1.87.0. Windows
+Windows native and public npm installation are unavailable in 1.87.1. Windows
 developers can optionally use the Bun-based source workflow.
 
 ## 0. Smoke
 
 ```sh
 ur --version
-# expected for this release: "1.87.0 (UR-Nexus)"
+# expected for this release: "1.87.1 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)

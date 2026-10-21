@@ -529,9 +529,9 @@ and route model work through the local Ollama-backed UR runtime.
 | Reusable agent templates | `ur agent-templates install` | Project agents for review, tests, browser QA, docs research, security, release notes, PR fixes, and memory curation |
 | GitHub agent runner | `.github/workflows/ur.yml` scaffold | Opt-in CI entry point for manual prompts or `/ur` issue comments |
 | A2A interoperability | `ur a2a serve` | Version-negotiated strict v1 JSON-RPC/HTTP+JSON plus stable-SDK v0.3, durable tenant-isolated protocol state, and a separate UR compatibility API |
-| Semantic memory index | `ur semantic-memory build|search` | Local memory index over durable memory, docs, README, and UR instructions |
+| Semantic memory index | `ur semantic-memory build|search` | Body-aware multilingual memory retrieval over durable memory, docs and instructions, with optional embeddings, source provenance/freshness and conflict/expiry metadata |
 | Claim provenance ledger | `ur claim-ledger add|list|validate` | Maps generated claims to web, file, MCP, tool, or user sources |
-| Browser replay evals | `ur browser-qa list|validate|run` | Validates replay fixtures and performs lightweight target smoke checks |
+| Browser replay evals | `ur browser-qa list|validate|run` | Executes fixture assertions in a real browser at each configured viewport, records console/page errors and captures per-check artifacts |
 | Permission and safety policy | `ur safety status|init|check` | Project-aware shell safety checks for destructive operations, sandbox recommendations, permission classes, and secret exfiltration denial |
 | Project context pack | `ur context-pack scan|remember|memory|compress` | Architecture manifest, provenance/hash-chained task memory with verify/quarantine/rollback, and compressed context summaries |
 
@@ -555,7 +555,7 @@ Cline/Roo, and Copilot workflows.
 | Addition | Surface | What it adds |
 | --- | --- | --- |
 | AGENTS.md runtime context | automatic | Loads `AGENTS.md` from project roots as project memory (before `UR.md`), for drop-in compatibility with the cross-tool standard |
-| Semantic code index | `ur code-index build\|search\|status` + `CodeSearch` tool | Local embedding-based code retrieval (Ollama embeddings, incremental). The opt-in `CodeSearch` tool (`UR_CODE_INDEX=1`) finds code by meaning alongside Grep/Glob |
+| Semantic code index | `ur code-index build\|search\|status` + `CodeSearch` tool | Source-validated lexical/embedding retrieval with symbol/import ranking, explicit coverage and incremental watch. `CodeSearch` is auto-enabled for a built index (`UR_CODE_INDEX=off` disables it); embeddings are optional |
 | OS-level execution sandbox | `sandbox.enabled` setting + `/sandbox` | Real enforcement on macOS (Seatbelt) and Linux/WSL (bubblewrap): writes confined to the workspace, optional network block (`UR_SANDBOX_BLOCK_NETWORK`) |
 | Self-review PR gate | `ur agent-task pr --create` | Deterministic diff review that blocks PR creation on merge-conflict markers, hardcoded secrets, and focused tests (override `--force`, skip `--no-review`) |
 | Named role modes | `ur role-mode list\|show\|install` | Architect / Code / Debug / Ask roles with scoped toolsets, installed as `.ur/agents/*.md` so they work with the existing Agent tool |

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.87.1
+
+- Keep command arguments such as `<id>` and `<name>` visible in `/ur-doctor`.
+  Readiness reports and JSON now render literally instead of interpreting
+  command placeholders or filenames as Markdown/HTML. CLI diagnostics and
+  execution permissions are unchanged.
+- Recorded the completed native, npm, Homebrew and interactive first-use
+  qualification from the preceding release.
+- Updated memory, code retrieval and browser verification summaries to match
+  the implemented behavior and documented measurement limits.
+
 ## 1.87.0
 
 - Verification now binds command receipts to the actual execution and source

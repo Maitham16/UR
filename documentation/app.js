@@ -245,7 +245,7 @@ const commands = [
     name: 'code-index',
     category: 'Knowledge',
     aliases: ['codeindex'],
-    summary: 'Build and query a local semantic code index using embeddings through the local Ollama app.',
+    summary: 'Build and query a source-validated lexical/embedding code index with symbol/import ranking and explicit coverage. Local embeddings are optional.',
     examples: ['ur code-index build', 'ur code-index search "where is auth handled"', 'UR_CODE_INDEX=1 ur'],
   },
   {
@@ -434,7 +434,7 @@ const commands = [
     name: 'semantic-memory',
     category: 'Knowledge',
     aliases: ['memory-index'],
-    summary: 'Build and search a project-local memory index over durable memory, docs, README, and instructions.',
+    summary: 'Search memory bodies, docs and instructions with multilingual lexical retrieval, optional embeddings, source freshness and conflict/expiry metadata.',
     examples: ['ur semantic-memory build', 'ur semantic-memory search "release process"', 'ur semantic-memory status --json'],
   },
   {

@@ -1,6 +1,6 @@
 # Native installation and recovery
 
-The 1.87.0 standalone release supports macOS and Linux on ARM64 and x64.
+The 1.87.1 standalone release supports macOS and Linux on ARM64 and x64.
 The application includes its Bun runtime and required resources.
 Homebrew and standalone-installer users need no Node.js, npm, separate Bun,
 source checkout, or compiler. The npm launcher requires Node.js `>=22.12` and
@@ -17,7 +17,7 @@ directory belong to the same immutable release.
 | Linux x64 with glibc | Ubuntu 22.04 runner |
 | Linux ARM64 with glibc | Ubuntu 24.04 ARM64 runner |
 
-Windows native installation is unavailable in 1.87.0 and has been deferred.
+Windows native installation is unavailable in 1.87.1 and has been deferred.
 Windows developers can optionally use the Bun-based source workflow in the
 [Development Guide](DEVELOPMENT.md). The public npm package supports the same
 four macOS/Linux targets and does not provide a Windows binary.
@@ -118,8 +118,8 @@ To pin the first installation, download the installer from a specific release
 and pass the version:
 
 ```sh
-curl -fsSL https://github.com/Maitham16/UR/releases/download/v1.87.0/install.sh -o install-ur.sh
-sh install-ur.sh 1.87.0
+curl -fsSL https://github.com/Maitham16/UR/releases/download/v1.87.1/install.sh -o install-ur.sh
+sh install-ur.sh 1.87.1
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
@@ -148,7 +148,7 @@ policy or a release carrying the required publisher signature.
 Users who already have GitHub CLI can independently verify provenance:
 
 ```sh
-gh attestation verify ur-1.87.0-darwin-arm64.tar.gz --repo Maitham16/UR
+gh attestation verify ur-1.87.1-darwin-arm64.tar.gz --repo Maitham16/UR
 ```
 
 ## Update and select a previous version
@@ -161,12 +161,12 @@ Use the command for the installation you chose:
 | npm | `npm install -g ur-agent@latest` |
 | Standalone installer | `ur upgrade` |
 
-Pin npm with `npm install -g ur-agent@1.87.0`. Homebrew and npm installations
+Pin npm with `npm install -g ur-agent@1.87.1`. Homebrew and npm installations
 reject `ur install`; use their package manager to avoid creating a second
 installation. For a standalone installation, select a native release with:
 
 ```sh
-ur install 1.87.0
+ur install 1.87.1
 ```
 
 Standalone upgrades retrieve public GitHub release metadata directly and require no
@@ -222,7 +222,7 @@ channel:
 - npm: run `ur --version` with GitHub access available. The launcher checks its
   cache and downloads the exact installed package version again when the cache
   is missing or damaged. If the npm package or launcher itself is damaged,
-  reinstall with `npm install -g ur-agent@1.87.0`, then run `ur --version`.
+  reinstall with `npm install -g ur-agent@1.87.1`, then run `ur --version`.
 - Standalone installer: rerun the pinned installer for the matching release.
 
 Keep each executable with its matching resource directory; copying a new

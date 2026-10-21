@@ -51,7 +51,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/memory-suggest` (`/suggest-memory`) | local | Propose durable facts from this session that are not already remembered | `/memory-suggest --turns 50` |
 | `/forget <text>` | local | Remove memory notes matching text | `/forget release branch` |
 | `/memory-retention` (`/retention`) | local | Show/set/prune memory retention policy (`--ttl-days`, `--max-entries`, `--decay-days`) | `/memory-retention set --ttl-days 90` |
-| `/semantic-memory` (`/memory-index`) | local | Build & search the project-local memory embedding index | `/semantic-memory search "auth token rotation"` |
+| `/semantic-memory` (`/memory-index`) | local | Body-aware multilingual memory retrieval with optional embeddings and source freshness | `/semantic-memory search "auth token rotation"` |
 | `/context-pack` (`/ctx-pack`, `/project-manifest`) | local | Scan repo architecture, remember decisions/constraints, compress project context under `.ur/` | `/context-pack remember --type decision --text "we use fastify"` |
 | `/wiki generate\|map\|install-hook\|status` (`/repo-wiki`) | local | Living repo wiki + prompt-injected repo map; post-merge hook keeps both fresh | `/wiki generate` |
 | `/knowledge` (`/kb`) | local | Curated knowledge base with provenance: add/remove/build/search/list/prune/status (`--embeddings`) | `/knowledge add src/auth/jwt.ts --note "token flow"` then `/knowledge search "refresh token"` |
@@ -134,7 +134,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/diff` | jsx | View uncommitted changes and per-turn diffs | `/diff` |
 | `/pr-comments` | prompt | Fetch comments from a GitHub PR | `/pr-comments` |
 | `/repo-edit index\|search\|rename\|move\|organize-imports\|unused\|callers\|impact` (`/repoedit`, `/reliable-edit`) | local | Compiler/graph change-impact mapping, indexed search, compiler-API edits, patch previews, rollback-safe apply | `/repo-edit impact getUser --depth 5` |
-| `/code-index build\|watch\|search\|status\|repo` (`/codeindex`) | local | Local semantic code index (embeddings via Ollama) | `/code-index search "retry with backoff"` |
+| `/code-index build\|watch\|search\|status\|repo` (`/codeindex`) | local | Source-validated lexical/embedding code index with structural ranking and explicit coverage | `/code-index search "retry with backoff"` |
 | `/guardrails list\|init\|validate\|check` (`/guardrail`) | local | Declarative I/O guardrails: regex/contains/PII/LLM rules with tripwires | `/guardrails check "email me at x@y.z" --phase output` |
 | `/claim-ledger add\|list\|validate` (`/claims`) | local | Claim-to-source provenance ledger | `/claim-ledger add --claim "p99 < 200ms" --source bench:latest` |
 | `/selftest [run\|list]` (`/drills`) | local | End-to-end drills that spawn the shipped binary against real directories, plus the prompts for drills needing a live model; exits non-zero on failure | `/selftest run` |

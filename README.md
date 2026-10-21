@@ -198,7 +198,7 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Windows native installation is unavailable in 1.87.0 and has been deferred.
+Windows native installation is unavailable in 1.87.1 and has been deferred.
 Windows developers can optionally use the Bun-based source workflow in the
 [Development Guide](docs/DEVELOPMENT.md); the public npm package also supports
 only macOS and Linux.
@@ -215,7 +215,7 @@ ur --help
 Installers verify release checksums, the executable version, and packaged
 resources before activating the complete versioned installation. Standalone
 installer updates use `ur upgrade`; select a specific standalone release with
-`ur install 1.87.0`. Homebrew and npm installations retain their own update
+`ur install 1.87.1`. Homebrew and npm installations retain their own update
 commands and reject `ur install` to avoid creating a second installation.
 See [Native installation and recovery](docs/NATIVE_INSTALL.md) for manual
 downloads, signing status, supported targets, rollback, and uninstall.
@@ -664,8 +664,8 @@ as first-class subcommands in the shipped CLI.
 | `ur repo-edit` | Build a repo edit index, map symbol/file blast radius and verification targets, plan AST-aware edits, preview patches, and apply with rollback. |
 | `ur research` | Create source-backed research workspaces, add cited findings/open questions, verify corroboration, and emit Markdown reports. |
 | `ur design3d` | Discover 3D apps and create, plan, build, inspect, or validate Blender, OpenSCAD, 3ds Max, and custom DCC/CAD projects. |
-| `ur code-index` | Build, query, or watch a local semantic code index using Ollama embeddings; `ur code-index repo` adds files/symbols/calls/tests/docs/configs. |
-| `ur semantic-memory` | Build and search a project-local memory index. |
+| `ur code-index` | Build, query, or watch a source-validated lexical/embedding index with symbol/import ranking and explicit coverage; `ur code-index repo` adds files/symbols/calls/tests/docs/configs. |
+| `ur semantic-memory` | Search memory bodies with multilingual lexical retrieval, optional embeddings, source freshness and conflict/expiry metadata. |
 | `ur memory retention` | Configure and apply local memory retention policies (TTL, max entries, decay). |
 | `ur knowledge` | Manage a curated project knowledge base with provenance. |
 | `ur artifacts` | Capture diffs, test runs, notes, and review feedback under `.ur/artifacts/`; `serve` opens a local web page per artifact ID. |
