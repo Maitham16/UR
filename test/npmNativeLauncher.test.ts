@@ -209,7 +209,11 @@ describe.skipIf(process.platform === 'win32')('npm native launcher without exter
   }, 90_000)
 
   test('extracts PAX Unicode paths and ignores binary BSD attributes without applying them', async () => {
-    const path = 'resources/' + '日本語'.repeat(40) + '.txt'
+    // Exercise a long PAX pathname without exceeding ext4's 255-byte limit
+    // for any individual filename (APFS permits more UTF-8 bytes here).
+    const path = `resources/${'日本語'.repeat(20)}/${'日本語'.repeat(20)}.txt`
+    expect(Buffer.byteLength(path)).toBeGreaterThan(255)
+    expect(path.split('/').every(part => Buffer.byteLength(part) <= 255)).toBe(true)
     const bytes = archive([...smallEntries, { name: 'PaxHeader', type: 'x', bytes: Buffer.concat([pax('path', Buffer.from(path)), pax('SCHILY.xattr.com.apple.provenance', Buffer.from([0xff, 0, 1]))]) }, { name: 'short', bytes: Buffer.from('unicode proof') }])
     const tar = join(temporary, 'pax.tar.gz'), destination = join(temporary, 'pax-extract')
     writeFileSync(tar, bytes)
