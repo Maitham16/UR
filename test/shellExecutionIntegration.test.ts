@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test'
+import { spawn } from 'node:child_process'
 import { existsSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { exec } from '../src/utils/Shell.js'
+import { wrapSpawn } from '../src/utils/ShellCommand.js'
 import { getTaskOutputDir } from '../src/utils/task/diskOutput.js'
+import { TaskOutput } from '../src/utils/task/TaskOutput.js'
 
 async function run(command: string, timeout = 5_000) {
   const controller = new AbortController()
@@ -16,6 +21,21 @@ async function run(command: string, timeout = 5_000) {
 }
 
 describe('production Shell execution', () => {
+  test('preserves asynchronous spawn failure diagnostics', async () => {
+    const id = `missing-shell-${crypto.randomUUID()}`
+    const child = spawn(join(tmpdir(), id), [], { stdio: 'ignore' })
+    const shell = wrapSpawn(child, new AbortController().signal, 5_000, new TaskOutput(id, null))
+    try {
+      const result = await shell.result
+      expect(result.code).toBe(1)
+      expect(result.stderr).toContain('ENOENT')
+      expect(result.interrupted).toBe(false)
+      expect(result.timedOut).toBe(false)
+    } finally {
+      shell.cleanup()
+    }
+  })
+
   test('preserves stdout and stderr as separate streams', async () => {
     const result = await run("printf 'out'; printf 'err' >&2")
     expect(result.stdout).toBe('out')

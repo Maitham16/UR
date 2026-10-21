@@ -132,6 +132,7 @@ class ShellCommandImpl implements ShellCommand {
   #timedOut = false
   #cancelled = false
   #terminalSignal: NodeJS.Signals | undefined
+  #processError: string | undefined
   #startedAt = Date.now()
   #killEscalation: NodeJS.Timeout | null = null
   #maxOutputBytes: number
@@ -214,7 +215,10 @@ class ShellCommandImpl implements ShellCommand {
     this.#resolveExitCode(exitCode)
   }
 
-  #errorHandler(): void {
+  #errorHandler(error: NodeJS.ErrnoException): void {
+    // Spawn errors are emitted asynchronously and may have no stderr stream.
+    // Preserve the OS diagnostic instead of turning them into a blank exit 1.
+    this.#processError = `Shell process error${error.code ? ` (${error.code})` : ''}: ${error.message}`
     this.#resolveExitCode(1)
   }
 
@@ -319,7 +323,9 @@ class ShellCommandImpl implements ShellCommand {
     const result: ExecResult = {
       code,
       stdout,
-      stderr: fileStderr.content,
+      stderr: this.#processError
+        ? prependStderr(this.#processError, fileStderr.content)
+        : fileStderr.content,
       interrupted: this.#cancelled || this.#killedForSize,
       backgroundTaskId: this.#backgroundTaskId,
       signal: this.#terminalSignal,

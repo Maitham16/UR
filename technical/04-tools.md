@@ -125,6 +125,8 @@ being overwritten.
 The shared tool executor records actual foreground `Bash`/`PowerShell`
 executions for a verification run: tool-use ID, exact command and cwd, run
 nonce, exit code, interruption, and source fingerprints before and after.
+Asynchronous shell launch failures preserve the operating system error code
+and message even when no child stderr stream exists.
 PowerShell reports its real exit code; background/unknown completion cannot
 establish a successful proof. Shell command text alone does not count as an
 edit: the turn ledger compares workspace contents, including partial writes

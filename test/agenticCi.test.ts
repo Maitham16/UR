@@ -96,7 +96,7 @@ test('compiled workflow is read-only, pinned, and never embeds event text', () =
   expect(workflow).toContain(
     'uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6',
   )
-  expect(workflow).toContain('bun-version: 1.3.14')
+  expect(workflow).toContain('bun-version: 1.4.3')
 })
 
 test('compiled workflow is valid YAML with a documented job graph', () => {

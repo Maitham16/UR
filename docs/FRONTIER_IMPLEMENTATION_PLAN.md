@@ -125,3 +125,11 @@ integrating changing external interfaces.
   passed, 0 failed, 6 environment/platform skips, 14,538 assertions. Final native
   Mac smoke, strict typecheck, lint, secret scan and source archive checks pass.
   Ready for the final GitHub CI run before tagging.
+
+- 2026-10-21: A further GitHub shell failure exposed a swallowed launch
+  diagnostic and matched the pinned runtime's upstream descriptor-ownership
+  bug after browser subprocesses. Upgraded CI/native builds to stable Bun 1.4.3
+  and retained OS shell errors. Full qualification passed on macOS (3,124)
+  and Linux (3,120), with zero failures; native and dependency-free npm checks
+  passed again. F14 records the upstream evidence and exact run provenance.
+  Publication still requires the corrected revision's entire GitHub workflow.

@@ -1847,7 +1847,7 @@ ${publishes ? '    needs: acknowledge\n' : ''}    if: >-
       - name: Setup Bun
         uses: oven-sh/setup-bun@${SETUP_BUN_SHA} # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.3
       - name: Setup Node.js
         uses: actions/setup-node@${SETUP_NODE_SHA} # v6.4.0
         with:

@@ -82,7 +82,7 @@ bun run native:pack
 bun run native:smoke -- --artifact-dir dist-release/native
 ```
 
-Use the repository's pinned Bun version (`1.3.14`). The extension build is
+Use the repository's pinned Bun version (`1.4.3`). The extension build is
 required before native packaging because the release includes its local VSIX.
 Experimental Windows native development builds need Visual Studio 2022 with
 the x64 C++ build tools; the build discovers them with `vswhere` and compiles

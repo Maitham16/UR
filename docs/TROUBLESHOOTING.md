@@ -88,7 +88,7 @@ network access independently.
 ### Bun is missing or too old (source development only)
 
 Source checkouts and GitHub-source packages execute through the pinned Bun
-(`1.3.14`). Install that development runtime, or set `BUN_BIN` to its absolute
+(`1.4.3`). Install that development runtime, or set `BUN_BIN` to its absolute
 path when it is outside PATH. Public Homebrew, npm, and standalone installs do
 not require it.
 

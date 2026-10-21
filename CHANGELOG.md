@@ -32,6 +32,9 @@
   commands avoid unused input pipes, and early process-launch failures return
   explicit errors without replay. Docker HTTP evaluation works with remote
   daemons as well as local engines.
+- Updated the embedded runtime to fix descriptor ownership after browser
+  subprocesses, which could break unrelated commands in long sessions. Shell
+  launch errors now retain the operating system diagnostic.
 - Kept one canonical command per capability and updated technical documentation,
   installation and release guidance. Native macOS/Linux, npm and Homebrew
   installations continue to run without a separate Bun installation. Windows

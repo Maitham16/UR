@@ -1,5 +1,5 @@
-// Pin the baseline runtime explicitly; Bun 1.3.14's Windows npm tar extraction
-// can fail during --compile even when its official release ZIP is intact.
+// Pin the runtime used by CI and native releases. The verified Windows baseline
+// ZIP avoids relying on npm tar extraction for the deferred Windows build path.
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
@@ -7,14 +7,14 @@ import { join } from 'node:path'
 import { rename as renameDirectory } from 'node:fs/promises'
 import { unzipSync } from 'fflate'
 
-export const NATIVE_BUN_VERSION = '1.3.14'
+export const NATIVE_BUN_VERSION = '1.4.3'
 export const WINDOWS_BASELINE_COMPILER = Object.freeze({
-  url: 'https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-windows-x64-baseline.zip',
-  // https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/SHASUMS256.txt
-  sha256: '538f9c846355d9e847b2671bc00c47da4229a0befb24df3282b739770f3b475f',
+  url: 'https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/bun-windows-x64-baseline.zip',
+  // https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/SHASUMS256.txt
+  sha256: 'd7a7d3eb216614544aab0cde2d8d9f2e4e87839bf5a30a1cd11d077f02d84e0c',
   entry: 'bun-windows-x64-baseline/bun.exe',
-  identity: 'bun-windows-x64-baseline-v1.3.14',
-  revision: '1.3.14+0d9b296af',
+  identity: 'bun-windows-x64-baseline-v1.4.3',
+  revision: '1.4.3+c6da4a4d3',
 })
 const MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
 const MAX_EXECUTABLE_BYTES = 256 * 1024 * 1024
