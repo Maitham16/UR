@@ -40,6 +40,7 @@ child.stdout.on('data', chunk => { output = (output + chunk).slice(-32000) }); c
 const timer = setTimeout(() => child.kill('SIGKILL'), 90_000)
 let status
 try { status = await new Promise((resolve, reject) => { child.on('error', reject); child.on('close', resolve) }) } finally { clearTimeout(timer) }
+writeFileSync(join(temporary, 'host.log'), output)
 if (status !== 0 || !existsSync(resultPath)) throw new Error(`Packaged editor host test failed (${status}); evidence ${temporary}\n${output}`)
 const result = JSON.parse(readFileSync(resultPath, 'utf8'))
 if (!result.ok) throw new Error(`Packaged editor host assertions failed: ${JSON.stringify(result)}; evidence ${temporary}\n${output}`)
