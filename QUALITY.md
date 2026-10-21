@@ -67,7 +67,7 @@ must execute the archived installation with no external Node, npm, Bun, source
 checkout, or node_modules available. The four-target macOS/Linux native workflow checks
 resource integrity, images, search, compiler libraries, protocol contracts, real
 streaming/task/write/read behavior, restart/resume, and timeout cleanup before
-publication. Windows native distribution is unavailable in 1.86.1. Native
+publication. Windows native distribution is unavailable in 1.86.2. Native
 installer tests cover checksum/path rejection, locking, and failed activation
 preserving the old CLI; retained Windows development tests are outside the
 public release qualification.

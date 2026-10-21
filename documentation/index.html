@@ -43,10 +43,10 @@
     </aside>
 
     <main id="content" class="content">
-      <aside class="callout"><strong>Install on macOS/Linux ARM64 or x64:</strong> complete the <a href="#quickstart">one-time Homebrew setup</a>, then use <code>brew install ur-nexus</code>, or use the <a href="https://github.com/Maitham16/UR/releases/latest">standalone installer</a> without Node.js or Bun. The launch command remains <code>ur</code>. The official npm package requires Node.js 22.12+ only and verifies/caches the pinned native application on first launch. Windows native and public npm installation are unavailable in 1.86.1; Bun-based source development remains optional.</aside>
+      <aside class="callout"><strong>Install on macOS/Linux ARM64 or x64:</strong> complete the <a href="#quickstart">one-time Homebrew setup</a>, then use <code>brew install Maitham16/ur/ur-nexus</code>, or use the <a href="https://github.com/Maitham16/UR/releases/latest">standalone installer</a> without Node.js or Bun. The launch command remains <code>ur</code>. The official npm package requires Node.js 22.12+ only and verifies/caches the pinned native application on first launch. Windows native and public npm installation are unavailable in 1.86.2; Bun-based source development remains optional.</aside>
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.86.1</p>
+          <p class="eyebrow">Version 1.86.2</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -127,7 +127,7 @@
             <p>Homebrew: add the personal tap and trust its formula once, then install. The formula is <code>ur-nexus</code>; the executable remains <code>ur</code>.</p>
             <pre><code>brew tap Maitham16/ur
 brew trust --formula Maitham16/ur/ur-nexus
-brew install ur-nexus
+brew install Maitham16/ur/ur-nexus
 ur --version</code></pre>
             <p>Current Homebrew requires <a href="https://docs.brew.sh/Tap-Trust">formula trust</a> for personal taps.</p>
             <p>Or npm, with Node.js 22.12+ and no separate Bun:</p>
@@ -140,7 +140,7 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ur --version</code></pre>
             <p>The PATH command applies to this terminal. Add it once to your zsh or bash startup file for future terminals; see the <a href="../docs/NATIVE_INSTALL.md#install">shell startup instructions</a>.</p>
-            <p>Windows native and public npm installation are unavailable in 1.86.1. Windows developers can optionally use the <a href="../docs/DEVELOPMENT.md">Bun-based source workflow</a>.</p>
+            <p>Windows native and public npm installation are unavailable in 1.86.2. Windows developers can optionally use the <a href="../docs/DEVELOPMENT.md">Bun-based source workflow</a>.</p>
           </article>
           <article class="step">
             <span>2</span>
@@ -158,6 +158,10 @@ ur -p --model qwen3-coder:480b-cloud --output-format json "Review the current di
         <div class="callout">
           <strong>Runtime requirement</strong>
           <p>Homebrew and standalone UR on macOS/Linux include their runtime; no Node.js or separate Bun is required. The official npm launcher needs Node.js 22.12+ and caches the same native application without Bun. Source development uses the pinned Bun. Linux x64 needs an x86-64-v2 CPU, including SSE4.2; see the <a href="../docs/NATIVE_INSTALL.md#supported-platforms">qualified platforms</a>. On the first interactive run in a workspace, choose a provider and model; UR validates and saves the pair locally before starting the session. Fresh print-mode workspaces require <code>--model</code> or another explicit model source.</p>
+        </div>
+        <div class="callout">
+          <strong>Long responses and provider limits</strong>
+          <p>UR's shared native-provider loop continues useful capped output without a fixed total continuation count. Empty, reasoning-only, or replayed chunks can grow by up to 2× within model, configured, and remaining-context limits. Once growth is exhausted, two unproductive attempts stop the loop. Actual request/usage metadata prevents repeated failed increases. Context-window stops use enabled automatic compaction with partial work preserved; Ollama keeps reasoning in its separate <code>thinking</code> field. Provider restrictions can still prevent completion. See <a href="../docs/TROUBLESHOOTING.md">output-limit troubleshooting</a>; deterministic tests do not establish a live MiniMax completion.</p>
         </div>
       </section>
 

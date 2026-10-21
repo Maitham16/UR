@@ -181,13 +181,13 @@ once, then install:
 ```sh
 brew tap Maitham16/ur
 brew trust --formula Maitham16/ur/ur-nexus
-brew install ur-nexus
+brew install Maitham16/ur/ur-nexus
 ur --version
 ```
 
 Homebrew installs the standalone application without Node.js or Bun. The
 formula is `ur-nexus`; the launch command remains `ur`. Update it with
-`brew upgrade ur-nexus`. See [Homebrew tap trust](https://docs.brew.sh/Tap-Trust)
+`brew upgrade Maitham16/ur/ur-nexus`. See [Homebrew tap trust](https://docs.brew.sh/Tap-Trust)
 for the formula-trust step used by current Homebrew.
 
 For a standalone installation without Homebrew:
@@ -198,7 +198,7 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Windows native installation is unavailable in 1.86.1 and has been deferred.
+Windows native installation is unavailable in 1.86.2 and has been deferred.
 Windows developers can optionally use the Bun-based source workflow in the
 [Development Guide](docs/DEVELOPMENT.md); the public npm package also supports
 only macOS and Linux.
@@ -215,7 +215,7 @@ ur --help
 Installers verify release checksums, the executable version, and packaged
 resources before activating the complete versioned installation. Standalone
 installer updates use `ur upgrade`; select a specific standalone release with
-`ur install 1.86.1`. Homebrew and npm installations retain their own update
+`ur install 1.86.2`. Homebrew and npm installations retain their own update
 commands and reject `ur install` to avoid creating a second installation.
 See [Native installation and recovery](docs/NATIVE_INSTALL.md) for manual
 downloads, signing status, supported targets, rollback, and uninstall.
@@ -1018,6 +1018,14 @@ See [Frontier Agent Workflows](docs/FRONTIER_AGENT_FEATURES.md),
 [Quality Notes](QUALITY.md) for operational guidance.
 
 ## Troubleshooting
+
+UR's shared agent loop continues useful output across provider response limits
+without a fixed total continuation count. For empty, reasoning-only, or replayed
+capped responses, it can double the response budget within model, configured,
+and remaining-context limits before declaring a stall. Once no larger budget
+is available, two unproductive attempts stop the loop. A full context window
+uses automatic compaction when enabled, preserving partial work. See the
+[output-limit guidance](docs/TROUBLESHOOTING.md) for recovery and configuration.
 
 Common problems — `ur` not found after install, a provider that is selected
 but not connected, a model that belongs to another provider, unreachable local

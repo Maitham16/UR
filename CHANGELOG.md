@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.86.2
+
+- Fixed stalled output-limit recovery in the shared native-provider agent loop.
+  Empty, reasoning-only, or replayed capped responses can grow the next chunk
+  by up to 2× within model, configured, and context limits. Useful output has no
+  fixed total continuation count; two unproductive attempts stop the loop only
+  after no larger usable budget remains. Actual request/usage metadata prevents
+  repeated failed increases.
+- Corrected replay fingerprints for visible output, split stream blocks, code
+  whitespace, and equal-sized opaque reasoning. Ollama reasoning-only history
+  now survives normalization in its native `thinking` field without becoming
+  answer text.
+- Preserved partial output during context-window compaction and aligned
+  streamed/buffered boundary handling, including Anthropic stop reasons and
+  fallback request budgets. Added deterministic provider and real-query
+  regressions covering recovery requests and provider response formats.
+- Kept Homebrew, standalone, and npm native distribution free of a separate Bun
+  requirement; Windows native distribution remains deferred.
+
 ## 1.86.1
 
 - Fixed npm installations requiring a separate Bun runtime. The published npm

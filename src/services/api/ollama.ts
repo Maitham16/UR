@@ -66,6 +66,7 @@ import { DEFAULT_STREAM_IDLE_TIMEOUT_MS } from './streamIdleTimeout.js'
 type OllamaMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
+  thinking?: string
   images?: string[]
   tool_calls?: OllamaToolCall[]
   tool_name?: string
@@ -565,6 +566,7 @@ export function toOllamaChatRequest(
       message =>
         message.role === 'tool' ||
         message.content.trim() !== '' ||
+        (message.thinking?.trim().length ?? 0) > 0 ||
         (message.images?.length ?? 0) > 0 ||
         (message.tool_calls?.length ?? 0) > 0,
     ),
@@ -638,6 +640,7 @@ function messagesToOllama(
   for (const message of messages) {
     if (message.role === 'assistant') {
       const textParts: string[] = []
+      const thinkingParts: string[] = []
       const toolCalls: OllamaToolCall[] = []
       const content = message.content
 
@@ -647,6 +650,14 @@ function messagesToOllama(
         for (const block of content) {
           if (block.type === 'text') {
             textParts.push(block.text)
+          } else if (
+            block.type === 'thinking' &&
+            typeof block.thinking === 'string'
+          ) {
+            // Ollama carries reasoning separately from visible content. Keep
+            // the original trace for continuation/tool followups; protected
+            // reasoning from other protocols is never converted to plaintext.
+            thinkingParts.push(block.thinking)
           } else if (block.type === 'tool_use') {
             toolNamesById.set(block.id, block.name)
             toolCalls.push({
@@ -659,9 +670,11 @@ function messagesToOllama(
         }
       }
 
+      const thinking = thinkingParts.join('')
       result.push({
         role: 'assistant',
         content: textParts.filter(Boolean).join('\n\n'),
+        ...(thinking ? { thinking } : {}),
         ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
       })
       continue

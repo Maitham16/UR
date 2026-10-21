@@ -486,6 +486,7 @@ function baseCreateAssistantMessage({
   apiError,
   error,
   errorDetails,
+  outputLimit,
   isVirtual,
   usage = {
     input_tokens: 0,
@@ -508,6 +509,7 @@ function baseCreateAssistantMessage({
   apiError?: AssistantMessage['apiError']
   error?: SDKAssistantMessageError | string
   errorDetails?: string
+  outputLimit?: AssistantMessage['outputLimit']
   isVirtual?: true
   usage?: Usage
 }): AssistantMessage {
@@ -531,6 +533,7 @@ function baseCreateAssistantMessage({
     apiError,
     error,
     errorDetails,
+    ...(outputLimit && { outputLimit }),
     isApiErrorMessage,
     isVirtual,
   }
@@ -565,11 +568,13 @@ export function createAssistantAPIErrorMessage({
   apiError,
   error,
   errorDetails,
+  outputLimit,
 }: {
   content: string
   apiError?: AssistantMessage['apiError']
   error?: SDKAssistantMessageError | string
   errorDetails?: string
+  outputLimit?: AssistantMessage['outputLimit']
 }): AssistantMessage {
   return baseCreateAssistantMessage({
     content: [
@@ -582,6 +587,7 @@ export function createAssistantAPIErrorMessage({
     apiError,
     error,
     errorDetails,
+    outputLimit,
   })
 }
 
@@ -2122,6 +2128,7 @@ function relocateToolReferenceSiblings(
 export function normalizeMessagesForAPI(
   messages: Message[],
   tools: Tools = [],
+  options: { preserveThinkingOnly?: boolean } = {},
 ): (UserMessage | AssistantMessage)[] {
   // Build set of available tool names for filtering unavailable tool references
   const availableToolNames = new Set(tools.map(t => t.name))
@@ -2441,7 +2448,12 @@ export function normalizeMessagesForAPI(
   // compaction slicing away intervening messages between a failed streaming
   // response and its retry). Without this, consecutive assistant messages with
   // mismatched thinking block signatures cause API 400 errors.
-  const withFilteredOrphans = filterOrphanedThinkingOnlyMessages(relocated)
+  // Ollama has an explicit assistant `thinking` field and can carry a capped
+  // reasoning-only response into the next request. Anthropic's signature and
+  // trailing-block restrictions remain the default for every other caller.
+  const withFilteredOrphans = options.preserveThinkingOnly
+    ? relocated
+    : filterOrphanedThinkingOnlyMessages(relocated)
 
   // Order matters: strip trailing thinking first, THEN filter whitespace-only
   // messages. The reverse order has a bug: a message like [text("\n\n"), thinking("...")]
@@ -2451,8 +2463,9 @@ export function normalizeMessagesForAPI(
   // These multi-pass normalizations are inherently fragile — each pass can create
   // conditions a prior pass was meant to handle. Consider unifying into a single
   // pass that cleans content, then validates in one shot.
-  const withFilteredThinking =
-    filterTrailingThinkingFromLastAssistant(withFilteredOrphans)
+  const withFilteredThinking = options.preserveThinkingOnly
+    ? withFilteredOrphans
+    : filterTrailingThinkingFromLastAssistant(withFilteredOrphans)
   const withFilteredWhitespace =
     filterWhitespaceOnlyAssistantMessages(withFilteredThinking)
   const withNonEmpty = ensureNonEmptyAssistantContent(withFilteredWhitespace)

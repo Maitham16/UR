@@ -9,6 +9,21 @@ reproducible autonomous software engineering agent: every substantial task can
 be driven as `spec -> plan -> patch -> test -> report -> rollback`, with the
 spec as the durable source of truth and command evidence as the success gate.
 
+## v1.86.2 Additions
+
+- Shared native-provider output recovery grows empty, reasoning-only, or
+  replayed capped chunks by up to 2× within model, configured, and context
+  limits. Useful output has no fixed total continuation count; after growth is
+  exhausted, two unproductive attempts stop the loop. Actual request/usage
+  metadata prevents repeated failed increases.
+- Replay detection separates visible output from hidden reasoning and compares
+  opaque payload digests instead of lengths. Ollama carries reasoning-only
+  history in its separate native `thinking` field without manufacturing answer
+  text. Context-window stops enter compaction, when enabled, preserving partial
+  work; buffered and streaming Anthropic stop reasons agree.
+- Deterministic provider and real-query fixtures cover recovery; they do not
+  assert a successful live completion for every model or for MiniMax.
+
 ## v1.81.6 Addition
 
 - File reads no longer inject a blanket instruction that blocks all code

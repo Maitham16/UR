@@ -14,7 +14,7 @@ verifies the fix.
 - Homebrew install: inspect `brew list ur-nexus` and `command -v ur`; update with
   `brew upgrade ur-nexus`. For a first installation, follow the
   [tap and formula-trust setup](NATIVE_INSTALL.md#homebrew).
-- Windows native and public npm installation are unavailable in 1.86.1. For
+- Windows native and public npm installation are unavailable in 1.86.2. For
   optional Windows source development, inspect `Get-Command ur` and follow the
   [Development Guide](DEVELOPMENT.md).
 - npm install: check the npm global bin path, then reinstall if needed. The
@@ -315,18 +315,36 @@ the API-bound copy receives conversation-unique IDs.
 
 This is not an input-context overflow and does not mean UR counted the text
 incorrectly. The provider ended the generation with its `max_tokens`/`length`
-finish reason on a response chunk whose boundary was the displayed value. The
-normal query loop silently continues from the exact cutoff with no fixed total
-continuation ceiling while every capped response adds novel work. It stops only
-after two consecutive empty or replayed capped responses, which indicates a
-stalled model loop rather than a long task.
+finish reason on a response chunk whose boundary was the displayed value.
+UR's shared loop for native API providers continues from the cutoff with no
+fixed total continuation count while responses add useful output.
 
-`UR_CODE_MAX_OUTPUT_TOKENS` changes only the per-response chunk, up to the
-model's discovered limit; it does not impose or remove a total task limit.
-Cloud requests use a practical chunk so routers retain fast endpoint choices,
-and local runtimes use a smaller reservation to avoid unnecessary KV-memory
-allocation. If the stalled-loop message appears, inspect the prompt/model for
-repetition before retrying.
+From 1.86.2, an empty, reasoning-only, or replayed capped response can trigger a
+larger response budget: normally twice the actual requested size, bounded by
+the model's output limit, an explicit `UR_CODE_MAX_OUTPUT_TOKENS` ceiling, and
+remaining context space. Actual request/usage metadata prevents UR from
+repeatedly requesting an increase that a lower-level context retry already
+reduced. Once no larger usable budget remains, two unproductive attempts stop
+the stalled loop. Changing hidden reasoning does not make a repeated visible
+answer count as progress; different equal-sized opaque reasoning blocks are
+no longer mistaken for identical output.
+
+`UR_CODE_MAX_OUTPUT_TOKENS` sets the initial chunk and the maximum allowed
+automatic chunk size, up to the model's limit. It is not a total task-output
+limit. An unusually low explicit value can leave no room for recovery. Cloud
+requests start with a practical chunk, while local runtimes use smaller
+reservations to limit KV-memory allocation. Retry after upgrading UR; if the
+stall persists, review the explicit ceiling, remaining context, and provider
+diagnostics rather than repeatedly submitting the same request.
+
+Ollama reasoning-only history is retained in its separate `thinking` field;
+UR does not turn it into visible answer text. A provider's
+`model_context_window_exceeded` stop instead takes the prompt-too-long path:
+with automatic compaction enabled, UR preserves the partial response, compacts,
+and retries. Disabled or unsuccessful compaction still reports the context
+failure. These are shared recovery rules, not a guarantee that every provider
+or model will finish; regression checks use deterministic fixtures, not a live
+MiniMax completion.
 
 ### Unsloth is selected but unavailable
 

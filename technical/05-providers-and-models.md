@@ -351,6 +351,41 @@ maps to its documented [`reasoning.enabled`](https://openrouter.ai/docs/guides/b
 when the model instead advertises
 `supports_max_tokens`, UR preserves the configured budget as `reasoning.max_tokens`.
 
+## Response-boundary recovery
+
+`src/query/outputLimitRecovery.ts`, `src/query/outputLimitBudget.ts`, and the
+shared loop in `src/query.ts` handle capped generations from UR-native API
+providers without model-name exceptions. Novel visible output can continue
+without a fixed total count. Empty, reasoning-only, or replayed capped chunks
+can grow the next response reservation to `min(current × 2, ceiling)`.
+The ceiling is the minimum of model output capacity, a valid explicit
+`UR_CODE_MAX_OUTPUT_TOKENS` cap, and remaining context after safety reserves.
+Ollama calculations respect its configured KV context and
+`UR_OLLAMA_NUM_CTX`, not only the advertised model context maximum.
+
+Provider boundary errors carry `outputLimit` metadata: `requestedMaxTokens`,
+`inputTokens` (fresh plus cache-read/cache-write input), and `outputTokens`.
+Recovery combines that usage with the continuation-history estimate and records
+the greatest attempted reservation. If a lower-level context retry reduced the
+actual budget, recovery does not repeatedly ask for an already attempted
+increase. Two unproductive attempts stop the loop once no larger usable budget
+remains. A completed tool phase or model/provider change resets recovery state.
+
+Visible content determines replay when present, so fresh hidden reasoning
+cannot disguise an identical answer. Fingerprints preserve code whitespace and
+ignore stream block boundaries; opaque reasoning is compared by content digest,
+not payload size. The request normalizer preserves thinking-only messages only
+for Ollama, whose adapter sends actual reasoning in `message.thinking` separately
+from visible `content` and omits empty/opaque-only messages. Other providers
+retain their default reasoning/signature normalization.
+
+Streaming and buffered fallback both classify `max_tokens` as output recovery.
+`model_context_window_exceeded` remains distinct and produces a prompt-too-long
+error, so enabled automatic compaction can preserve partial output and free
+context before retrying. Buffered Anthropic stop normalization matches its
+streaming path. Provider restrictions can still prevent completion; tests use
+deterministic fixtures rather than claiming live MiniMax validation.
+
 ## Provider-aware token accounting
 
 Context analysis, file limits, and MCP-output truncation use the selected model's runtime

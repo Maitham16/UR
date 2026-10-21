@@ -20,7 +20,7 @@ with no external Bun available. The public npm package has no dependencies or
 lifecycle scripts; its Node.js launcher verifies and caches the pinned native
 release on first use.
 
-Windows native artifacts and PowerShell installers are excluded from 1.86.1.
+Windows native artifacts and PowerShell installers are excluded from 1.86.2.
 Windows native development code remains in the repository and is outside the
 public standalone release. On a matching macOS/Linux development host, use
 the pinned Bun version.

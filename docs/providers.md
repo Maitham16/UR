@@ -808,6 +808,33 @@ the non-streaming fallback and retry chain; Cloud non-streaming fallback itself
 remains bounded at two minutes. `UR_STREAM_IDLE_TIMEOUT_MS`, `API_TIMEOUT_MS`,
 or an explicit request timeout can override the applicable default.
 
+## Output boundaries and continuation
+
+All native API providers using UR's agent loop share output-limit recovery;
+there is no model-name exception or fixed total useful-output continuation
+count. A capped response that adds useful output can continue. Empty,
+reasoning-only, or replayed chunks can grow the next response budget by up to
+2×, bounded by model output limits, an explicit `UR_CODE_MAX_OUTPUT_TOKENS`
+ceiling, and available context. Once no larger usable budget remains, two
+unproductive attempts stop the loop. The actual requested budget and reported
+input/output usage prevent repeated growth requests after a context retry has
+already reduced the reservation.
+
+Replay detection compares visible content independently of changing hidden
+reasoning and hashes opaque reasoning content instead of using its size.
+Ollama retains actual reasoning-only history in the native `thinking` field,
+separate from `content`; protected reasoning is never converted into answer
+text. Anthropic and other providers retain their own wire/signature rules.
+Buffered and streamed Anthropic responses preserve `max_tokens` and
+`model_context_window_exceeded`. The latter enters context compaction, when
+enabled, with the partial response preserved instead of growing the chunk.
+
+These rules cannot guarantee completion by every provider/model. Vendor CLI
+providers manage generation inside their own CLI, and focused NVIDIA Special
+jobs use their separate task contracts. Automated regressions use deterministic
+provider fixtures; no live MiniMax completion is claimed. See
+[troubleshooting](TROUBLESHOOTING.md) for a persistent stalled-loop diagnostic.
+
 ## Optional Live Provider Smoke
 
 `bun run provider:smoke` runs optional live checks only for providers with the

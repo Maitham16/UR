@@ -122,6 +122,9 @@ import {
 } from './bootstrap/state.js'
 import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
 import { OutputLimitRecoveryTracker } from './query/outputLimitRecovery.js'
+import { getOutputLimitBudget } from './query/outputLimitBudget.js'
+import { getMaxOutputTokensForModel } from './services/api/ur.js'
+import { getRuntimeProvider } from './utils/model/providers.js'
 import { count } from './utils/array.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -304,6 +307,17 @@ async function* queryLoop(
     transition: undefined,
   }
   const outputLimitRecovery = new OutputLimitRecoveryTracker()
+  let outputLimitAttemptedBudget = 0
+  let exhaustedOutputRetries = 0
+  let recoveryPromptUuid: string | undefined
+  let outputLimitModel: string | undefined
+  const resetOutputLimitRecovery = () => {
+    outputLimitRecovery.reset()
+    outputLimitAttemptedBudget = 0
+    exhaustedOutputRetries = 0
+    recoveryPromptUuid = undefined
+    outputLimitModel = undefined
+  }
   const budgetTracker = feature('TOKEN_BUDGET') ? createBudgetTracker() : null
 
   // task_budget.remaining tracking across compaction boundaries. Undefined
@@ -374,6 +388,9 @@ async function* queryLoop(
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    if (state.transition?.reason !== 'max_output_tokens_recovery') {
+      resetOutputLimitRecovery()
+    }
     // Destructure state at the top of each iteration. toolUseContext alone
     // is reassigned within an iteration (queryTracking, messages updates);
     // the rest are read-only between continue sites.
@@ -805,6 +822,9 @@ async function* queryLoop(
             // We could.. but then we'd have to merge assistant messages
             // with different ids and double up on full the tool_results
             if (streamingFallbackOccured) {
+              // Consume the transition once. A buffered partial response may
+              // be followed by a boundary diagnostic in the same fallback.
+              streamingFallbackOccured = false
               // Yield tombstones for orphaned messages so they're removed from UI and transcript.
               // These partial messages (especially thinking blocks) have invalid signatures
               // that would cause "thinking blocks cannot be modified" API errors.
@@ -1188,7 +1208,7 @@ async function* queryLoop(
     if (!needsFollowUp) {
       const lastMessage = assistantMessages.at(-1)
       const hitOutputLimit = isWithheldMaxOutputTokens(lastMessage)
-      if (!hitOutputLimit) outputLimitRecovery.reset()
+      if (!hitOutputLimit) resetOutputLimitRecovery()
 
       // Prompt-too-long recovery: the streaming loop withheld the error
       // (see withheldByCollapse / withheldByReactive above). Try collapse
@@ -1199,6 +1219,11 @@ async function* queryLoop(
         lastMessage?.type === 'assistant' &&
         lastMessage.isApiErrorMessage &&
         isPromptTooLongMessage(lastMessage)
+      // A context-window stop can follow useful generated content. Include it
+      // in the compacted history, but never summarize our synthetic diagnostic.
+      const contextRecoveryMessages = isWithheld413
+        ? [...messagesForQuery, ...assistantMessages.filter(m => !m.isApiErrorMessage)]
+        : messagesForQuery
       // Media-size rejections (image/PDF/many-image) are recoverable via
       // reactive compact's strip-retry. Unlike PTL, media errors skip the
       // collapse drain — collapse doesn't strip images. mediaRecoveryEnabled
@@ -1220,7 +1245,7 @@ async function* queryLoop(
           state.transition?.reason !== 'collapse_drain_retry'
         ) {
           const drained = contextCollapse.recoverFromOverflow(
-            messagesForQuery,
+            contextRecoveryMessages,
             querySource,
           )
           if (drained.committed > 0) {
@@ -1246,14 +1271,14 @@ async function* queryLoop(
       }
       if (isWithheld413 && universalContextRecoveryEnabled) {
         const recovery = await deps.autocompact(
-          messagesForQuery,
+          contextRecoveryMessages,
           toolUseContext,
           {
             systemPrompt,
             userContext,
             systemContext,
             toolUseContext,
-            forkContextMessages: messagesForQuery,
+            forkContextMessages: contextRecoveryMessages,
           },
           querySource,
           tracking,
@@ -1264,7 +1289,7 @@ async function* queryLoop(
         if (recovery.compactionResult) {
           if (params.taskBudget) {
             const preCompactContext =
-              finalContextTokensFromLastResponse(messagesForQuery)
+              finalContextTokensFromLastResponse(contextRecoveryMessages)
             taskBudgetRemaining = Math.max(
               0,
               (taskBudgetRemaining ?? params.taskBudget.total) -
@@ -1304,13 +1329,13 @@ async function* queryLoop(
           hasAttempted: hasAttemptedReactiveCompact,
           querySource,
           aborted: toolUseContext.abortController.signal.aborted,
-          messages: messagesForQuery,
+          messages: contextRecoveryMessages,
           cacheSafeParams: {
             systemPrompt,
             userContext,
             systemContext,
             toolUseContext,
-            forkContextMessages: messagesForQuery,
+            forkContextMessages: contextRecoveryMessages,
           },
         })
 
@@ -1320,7 +1345,7 @@ async function* queryLoop(
           // 413-failed attempt's input).
           if (params.taskBudget) {
             const preCompactContext =
-              finalContextTokensFromLastResponse(messagesForQuery)
+              finalContextTokensFromLastResponse(contextRecoveryMessages)
             taskBudgetRemaining = Math.max(
               0,
               (taskBudgetRemaining ?? params.taskBudget.total) -
@@ -1391,31 +1416,80 @@ async function* queryLoop(
         return { reason: 'prompt_too_long' }
       }
 
+      if (isWithheld413) {
+        // Recovery is disabled or already attempted. The stream surfaced this
+        // error above; keep its terminal classification without yielding twice.
+        void executeStopFailureHooks(lastMessage, toolUseContext)
+        return { reason: 'prompt_too_long' }
+      }
+
       // Check for max_output_tokens and inject recovery message. The error
       // was withheld from the stream above; only surface it if recovery
       // exhausts.
       if (hitOutputLimit) {
+        const provider = appState.provider?.active ?? getRuntimeProvider()
+        const modelKey = `${provider}:${currentModel}`
+        const previousRecoveryPromptUuid = recoveryPromptUuid
+        if (outputLimitModel !== modelKey) resetOutputLimitRecovery()
+        outputLimitModel = modelKey
         const recovery = outputLimitRecovery.record(assistantMessages)
-        if (recovery.shouldContinue) {
+        const partialMessages = assistantMessages.filter(m => !m.isApiErrorMessage)
+        // Keep one continuation instruction rather than teaching the model a
+        // transcript of repeated retry prompts and synthetic API errors.
+        const continuationMessages = [
+          ...messagesForQuery.filter(m => !previousRecoveryPromptUuid || m.uuid !== previousRecoveryPromptUuid),
+          ...partialMessages,
+        ]
+        const requestedMaxTokens = lastMessage.outputLimit?.requestedMaxTokens ??
+          maxOutputTokensOverride ?? getMaxOutputTokensForModel(currentModel, provider)
+        outputLimitAttemptedBudget = Math.max(
+          outputLimitAttemptedBudget,
+          requestedMaxTokens,
+          maxOutputTokensOverride ?? 0,
+        )
+        const budget = getOutputLimitBudget({
+          model: currentModel,
+          provider,
+          providerSettings: appState.provider,
+          currentMaxTokens: requestedMaxTokens,
+          inputTokens: Math.max(
+            tokenCountWithEstimation(continuationMessages),
+            (lastMessage.outputLimit?.inputTokens ?? 0) +
+              (lastMessage.outputLimit?.outputTokens ?? 0),
+          ) + 128,
+        })
+        const stalled = !recovery.hasVisibleContent || !!recovery.stallReason
+        // A lower-level context retry can reduce the actual request budget.
+        // Do not repeatedly request an increase that already failed there.
+        const increasedBudget = stalled && budget.nextMaxTokens !== undefined &&
+          budget.nextMaxTokens > outputLimitAttemptedBudget
+          ? budget.nextMaxTokens
+          : undefined
+        if (!stalled || increasedBudget !== undefined) exhaustedOutputRetries = 0
+        else exhaustedOutputRetries++
+        if (!stalled || increasedBudget !== undefined || exhaustedOutputRetries < 2) {
           const recoveryMessage = createUserMessage({
             content:
               `The provider ended this response at its per-response output boundary. ` +
               `Continue from the exact cutoff with only novel work—do not apologize, recap, restart, or repeat prior text. ` +
-              `Preserve the task and tool state; if the requested work is complete, finish now.`,
+              `Preserve the task and tool state. Deliver the remaining answer or the next necessary tool call; if the requested work is complete, finish now.`,
             isMeta: true,
           })
+          recoveryPromptUuid = recoveryMessage.uuid
 
           const next: State = {
             messages: [
-              ...messagesForQuery,
-              ...assistantMessages,
+              ...continuationMessages,
               recoveryMessage,
             ],
             toolUseContext,
             autoCompactTracking: tracking,
             maxOutputTokensRecoveryCount: maxOutputTokensRecoveryCount + 1,
             hasAttemptedReactiveCompact,
-            maxOutputTokensOverride: undefined,
+            maxOutputTokensOverride: increasedBudget ?? Math.min(
+              outputLimitAttemptedBudget,
+              Math.max(1, budget.ceiling),
+            ),
             pendingToolUseSummary: undefined,
             stopHookActive: undefined,
             turnCount,
@@ -1433,9 +1507,11 @@ async function* queryLoop(
         // which is a stalled loop rather than a long task.
         yield createAssistantAPIErrorMessage({
           content:
-            `Model "${currentModel}" repeatedly reached its per-response output boundary without novel progress ` +
-            `(${recovery.stallReason === 'empty' ? 'empty output' : 'replayed output'}). ` +
-            `UR has no fixed total-output continuation ceiling; it stopped this stalled loop to avoid repeating the same provider calls.`,
+            `Model "${currentModel}" reached its per-response output boundary without further usable progress ` +
+            `(${!recovery.hasVisibleContent ? (recovery.hasReasoningContent ? 'reasoning without an answer or tool call' : 'empty output') : 'replayed output'}). ` +
+            `UR tried the available response budget (last request: ${requestedMaxTokens} tokens) and stopped repeated stalled calls. ` +
+            `Your partial output is preserved. Try /compact to free context, lower the model's reasoning effort, or choose another model with /model. ` +
+            `Productive continuations have no fixed total-output ceiling.`,
           apiError: 'max_output_tokens',
           error: 'max_output_tokens',
         })
@@ -1641,7 +1717,7 @@ async function* queryLoop(
 
     // A tool call is concrete progress and begins a new output phase. Future
     // provider-boundary continuations should not be compared with pre-tool text.
-    outputLimitRecovery.reset()
+    resetOutputLimitRecovery()
 
     let shouldPreventContinuation = false
     let updatedToolUseContext = toolUseContext

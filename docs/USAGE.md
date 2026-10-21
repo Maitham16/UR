@@ -15,7 +15,7 @@ Use `brew upgrade ur-nexus` for Homebrew, `npm install -g ur-agent@latest`
 for npm, or `ur upgrade` for the standalone installer. Only standalone installs
 accept `ur install <version>`; package-manager installations reject it.
 
-Windows native and public npm installation are unavailable in 1.86.1.
+Windows native and public npm installation are unavailable in 1.86.2.
 Bun-based source development remains optional on Windows; see the
 [Development Guide](DEVELOPMENT.md).
 

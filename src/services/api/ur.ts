@@ -271,6 +271,7 @@ import { CLIENT_REQUEST_ID_HEADER, getURHQClient } from './client.js'
 import {
   API_ERROR_MESSAGE_PREFIX,
   CUSTOM_OFF_SWITCH_MESSAGE,
+  PROMPT_TOO_LONG_ERROR_MESSAGE,
   getAssistantMessageFromError,
   getErrorMessageIfRefusal,
 } from './errors.js'
@@ -825,6 +826,43 @@ export async function* queryModelWithStreaming({
   })
 }
 
+/** Shared by streaming and buffered fallback so recovery sees the same stop. */
+export function getResponseBoundaryError({
+  stopReason,
+  model,
+  requestedMaxTokens,
+  usage,
+}: {
+  stopReason: string | null
+  model: string
+  requestedMaxTokens: number
+  usage: Pick<NonNullableUsage, 'input_tokens' | 'cache_creation_input_tokens' | 'cache_read_input_tokens' | 'output_tokens'>
+}): AssistantMessage | undefined {
+  if (stopReason === 'max_tokens') {
+    return createAssistantAPIErrorMessage({
+      content: `${API_ERROR_MESSAGE_PREFIX}: ${formatOutputTokenLimitMessage(model, requestedMaxTokens)}`,
+      apiError: 'max_output_tokens',
+      error: 'max_output_tokens',
+      outputLimit: {
+        requestedMaxTokens,
+        inputTokens: (usage.input_tokens ?? 0) +
+          (usage.cache_creation_input_tokens ?? 0) +
+          (usage.cache_read_input_tokens ?? 0),
+        outputTokens: usage.output_tokens ?? 0,
+      },
+    })
+  }
+  if (stopReason === 'model_context_window_exceeded') {
+    return createAssistantAPIErrorMessage({
+      content: PROMPT_TOO_LONG_ERROR_MESSAGE,
+      apiError: 'prompt_too_long',
+      error: 'invalid_request',
+      errorDetails: 'The provider reached its context window while generating the response (model_context_window_exceeded).',
+    })
+  }
+  return undefined
+}
+
 /**
  * Determines if an LSP tool should be deferred (tool appears with defer_loading: true)
  * because LSP initialization is not yet complete.
@@ -943,13 +981,12 @@ export async function* executeNonStreamingRequest(
     async (urhq, attempt, context) => {
       const start = Date.now()
       const retryParams = paramsFromContext(context)
-      captureRequest(retryParams)
-      onAttempt(attempt, start, retryParams.max_tokens)
-
       const adjustedParams = adjustParamsForNonStreaming(
         retryParams,
         MAX_NON_STREAMING_TOKENS,
       )
+      captureRequest(adjustedParams)
+      onAttempt(attempt, start, adjustedParams.max_tokens)
 
       try {
         // biome-ignore lint/plugin: non-streaming API call
@@ -1337,7 +1374,10 @@ async function* queryModel(
   })
 
   queryCheckpoint('query_message_normalization_start')
-  let messagesForAPI = normalizeMessagesForAPI(messages, filteredTools)
+  let messagesForAPI = normalizeMessagesForAPI(messages, filteredTools, {
+    preserveThinkingOnly:
+      (options.providerSettings?.active ?? getRuntimeProvider()) === 'ollama',
+  })
   queryCheckpoint('query_message_normalization_end')
 
   // Model-specific post-processing: strip tool-search-specific fields if the
@@ -2472,14 +2512,6 @@ async function* queryModel(
               logEvent('tengu_max_tokens_reached', {
                 max_tokens: maxOutputTokens,
               })
-              yield createAssistantAPIErrorMessage({
-                content: `${API_ERROR_MESSAGE_PREFIX}: ${formatOutputTokenLimitMessage(
-                  options.model,
-                  maxOutputTokens,
-                )}`,
-                apiError: 'max_output_tokens',
-                error: 'max_output_tokens',
-              })
             }
 
             if (stopReason === 'model_context_window_exceeded') {
@@ -2487,15 +2519,14 @@ async function* queryModel(
                 max_tokens: maxOutputTokens,
                 output_tokens: usage.output_tokens,
               })
-              // Reuse the max_output_tokens recovery path — from the model's
-              // perspective, both mean "response was cut off, continue from
-              // where you left off."
-              yield createAssistantAPIErrorMessage({
-                content: `${API_ERROR_MESSAGE_PREFIX}: The model has reached its context window limit.`,
-                apiError: 'max_output_tokens',
-                error: 'max_output_tokens',
-              })
             }
+            const boundaryError = getResponseBoundaryError({
+              stopReason,
+              model: options.model,
+              requestedMaxTokens: maxOutputTokens,
+              usage,
+            })
+            if (boundaryError) yield boundaryError
             break
           }
           case 'message_stop':
@@ -3050,6 +3081,18 @@ async function* queryModel(
         options.model,
       )
     }
+  }
+
+  // Buffered fallback has no message_delta event. Report its boundary after
+  // yielding the partial response and accounting for its final usage above.
+  if (fallbackMessage) {
+    const boundaryError = getResponseBoundaryError({
+      stopReason,
+      model: options.model,
+      requestedMaxTokens: maxOutputTokens,
+      usage,
+    })
+    if (boundaryError) yield boundaryError
   }
 
   // Mark all registered tools as sent to API so they become eligible for deletion

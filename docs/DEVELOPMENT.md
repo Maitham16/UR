@@ -17,7 +17,7 @@
 
 ## Install
 
-Windows native and public npm installation are unavailable in 1.86.1. Windows
+Windows native and public npm installation are unavailable in 1.86.2. Windows
 developers can optionally use this Bun-based source workflow. Windows native
 build and test code remains experimental and is outside the public release.
 The official macOS/Linux npm package uses a Node launcher and cached native
@@ -87,7 +87,7 @@ required before native packaging because the release includes its local VSIX.
 Experimental Windows native development builds need Visual Studio 2022 with
 the x64 C++ build tools; the build discovers them with `vswhere` and compiles
 the launcher with a static C runtime. No Windows native artifact is published
-for 1.86.1. Installed macOS/Linux users do not need a compiler.
+for 1.86.2. Installed macOS/Linux users do not need a compiler.
 The native archive contains the executable and its versioned `resources/` tree.
 The release workflow qualifies this exact archive without Node/Bun on PATH.
 See [Native installation and recovery](NATIVE_INSTALL.md) and [Release runbook](../RELEASE.md).

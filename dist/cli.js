@@ -138748,7 +138748,7 @@ function getAttributionHeader(fingerprint) {
   if (!isAttributionHeaderEnabled()) {
     return "";
   }
-  const version2 = `${"1.86.1"}.${fingerprint}`;
+  const version2 = `${"1.86.2"}.${fingerprint}`;
   const entrypoint = process.env.UR_CODE_ENTRYPOINT ?? "unknown";
   const cch = "";
   const workload = getWorkload();
@@ -147548,7 +147548,7 @@ var init_metadata = __esm(() => {
   COMPOUND_OPERATOR_REGEX = /\s*(?:&&|\|\||[;|])\s*/;
   WHITESPACE_REGEX = /\s+/;
   getVersionBase = memoize_default(() => {
-    const match = "1.86.1".match(/^\d+\.\d+\.\d+(?:-[a-z]+)?/);
+    const match = "1.86.2".match(/^\d+\.\d+\.\d+(?:-[a-z]+)?/);
     return match ? match[0] : undefined;
   });
   buildEnvContext = memoize_default(async () => {
@@ -147588,7 +147588,7 @@ var init_metadata = __esm(() => {
       isGithubAction: isEnvTruthy(process.env.GITHUB_ACTIONS),
       isURCodeAction: isEnvTruthy(process.env.UR_CODE_ACTION),
       isURAiAuth: isURAISubscriber(),
-      version: "1.86.1",
+      version: "1.86.2",
       versionBase: getVersionBase(),
       buildTime: "",
       deploymentEnvironment: env2.detectDeploymentEnvironment(),
@@ -149310,7 +149310,7 @@ var init_filesystem = __esm(() => {
   });
   getBundledSkillsRoot = memoize_default(function getBundledSkillsRoot2() {
     const nonce = randomBytes8(16).toString("hex");
-    return join39(getURTempDir(), "bundled-skills", "1.86.1", nonce);
+    return join39(getURTempDir(), "bundled-skills", "1.86.2", nonce);
   });
   getResolvedWorkingDirPaths = memoize_default(getPathsForPermissionCheck);
 });
@@ -151007,7 +151007,7 @@ var init_apiLimits = __esm(() => {
 // src/utils/buildVersion.ts
 function getBuildVersion(fallback = "unknown") {
   try {
-    const version2 = "1.86.1";
+    const version2 = "1.86.2";
     return typeof version2 === "string" && version2.trim() ? version2 : fallback;
   } catch {
     return fallback;
@@ -297506,7 +297506,7 @@ function getTelemetryAttributes() {
     attributes["session.id"] = sessionId;
   }
   if (shouldIncludeAttribute("OTEL_METRICS_INCLUDE_VERSION")) {
-    attributes["app.version"] = "1.86.1";
+    attributes["app.version"] = "1.86.2";
   }
   const oauthAccount = getOauthAccountInfo();
   if (oauthAccount) {
@@ -300518,7 +300518,7 @@ var require_src3 = __commonJS((exports) => {
 function getInstruments() {
   if (instruments)
     return instruments;
-  const meter = import_api2.metrics.getMeter("ur-agent.gen_ai", "1.86.1");
+  const meter = import_api2.metrics.getMeter("ur-agent.gen_ai", "1.86.2");
   instruments = {
     operationDuration: meter.createHistogram("gen_ai.client.operation.duration", {
       description: "GenAI operation duration.",
@@ -300616,7 +300616,7 @@ function genAiAgentAttributes() {
     "gen_ai.operation.name": GEN_AI_OPERATION_INVOKE_AGENT,
     "gen_ai.provider.name": "ur",
     "gen_ai.agent.name": "UR-Nexus",
-    "gen_ai.agent.version": "1.86.1"
+    "gen_ai.agent.version": "1.86.2"
   };
 }
 function genAiWorkflowAttributes(workflowName, workflowRunId) {
@@ -300637,7 +300637,7 @@ function genAiWorkflowAttributes(workflowName, workflowRunId) {
 function startGenAiWorkflowSpan(workflowName, workflowRunId) {
   const attributes = genAiWorkflowAttributes(workflowName, workflowRunId);
   const name = typeof attributes["gen_ai.workflow.name"] === "string" ? `invoke_workflow ${attributes["gen_ai.workflow.name"]}` : GEN_AI_OPERATION_INVOKE_WORKFLOW;
-  return import_api2.trace.getTracer("ur-agent.gen_ai", "1.86.1").startSpan(name, { kind: import_api2.SpanKind.INTERNAL, attributes });
+  return import_api2.trace.getTracer("ur-agent.gen_ai", "1.86.2").startSpan(name, { kind: import_api2.SpanKind.INTERNAL, attributes });
 }
 function endGenAiWorkflowSpan(span, options2 = {}) {
   try {
@@ -300675,7 +300675,7 @@ function startGenAiMemorySpan(operation, options2 = {}) {
   if (options2.recordCount !== undefined && Number.isInteger(options2.recordCount) && options2.recordCount >= 0) {
     attributes["gen_ai.memory.record.count"] = options2.recordCount;
   }
-  return import_api2.trace.getTracer("ur-agent.gen_ai", "1.86.1").startSpan(operation, { kind: import_api2.SpanKind.INTERNAL, attributes });
+  return import_api2.trace.getTracer("ur-agent.gen_ai", "1.86.2").startSpan(operation, { kind: import_api2.SpanKind.INTERNAL, attributes });
 }
 function endGenAiMemorySpan(span, options2 = {}) {
   try {
@@ -315082,7 +315082,7 @@ async function createRuntime() {
   bootstrapTelemetry();
   const resource = defaultResource().merge(detectResources({ detectors: [envDetector] })).merge(resourceFromAttributes({
     [import_semantic_conventions6.ATTR_SERVICE_NAME]: "ur-agent",
-    [import_semantic_conventions6.ATTR_SERVICE_VERSION]: "1.86.1"
+    [import_semantic_conventions6.ATTR_SERVICE_VERSION]: "1.86.2"
   }));
   const tracerProvider = exporters.traces.length > 0 ? new BasicTracerProvider({
     resource,
@@ -315115,11 +315115,11 @@ async function createRuntime() {
   setMeterProvider(meterProvider);
   setLoggerProvider(loggerProvider);
   if (meterProvider) {
-    const meter = meterProvider.getMeter("ur-agent", "1.86.1");
+    const meter = meterProvider.getMeter("ur-agent", "1.86.2");
     setMeter(meter, (name, options2) => meter.createCounter(name, options2));
   }
   if (loggerProvider) {
-    setEventLogger(loggerProvider.getLogger("ur-agent.events", "1.86.1"));
+    setEventLogger(loggerProvider.getLogger("ur-agent.events", "1.86.2"));
   }
   if (!cleanupRegistered4) {
     cleanupRegistered4 = true;
@@ -315668,7 +315668,7 @@ function isAnyTracingEnabled() {
   return isTelemetryEnabled() || isEnhancedTelemetryEnabled() || isBetaTracingEnabled();
 }
 function getTracer() {
-  return import_api32.trace.getTracer("ur-agent.gen_ai", "1.86.1");
+  return import_api32.trace.getTracer("ur-agent.gen_ai", "1.86.2");
 }
 function createSpanAttributes(spanType, customAttributes = {}) {
   const baseAttributes = getTelemetryAttributes();
@@ -342900,7 +342900,7 @@ function getInstallationEnv() {
   return;
 }
 function getURCodeVersion() {
-  return "1.86.1";
+  return "1.86.2";
 }
 async function getInstalledVSCodeExtensionVersion(command) {
   const { stdout } = await execFileNoThrow(command, ["--list-extensions", "--show-versions"], {
@@ -359602,7 +359602,7 @@ var init_user = __esm(() => {
       deviceId,
       sessionId: getSessionId(),
       email: getEmail(),
-      appVersion: "1.86.1",
+      appVersion: "1.86.2",
       platform: getHostPlatformForAnalytics(),
       organizationUuid,
       accountUuid,
@@ -360362,7 +360362,7 @@ var init_growthbook_experiment_event = __esm(() => {
 
 // src/utils/userAgent.ts
 function getURCodeUserAgent() {
-  return `ur/${"1.86.1"}`;
+  return `ur/${"1.86.2"}`;
 }
 
 // src/services/analytics/firstPartyEventLoggingExporter.ts
@@ -361018,7 +361018,7 @@ function initialize1PEventLogging() {
   const platform5 = getPlatform();
   const attributes = {
     [import_semantic_conventions7.ATTR_SERVICE_NAME]: "ur",
-    [import_semantic_conventions7.ATTR_SERVICE_VERSION]: "1.86.1"
+    [import_semantic_conventions7.ATTR_SERVICE_VERSION]: "1.86.2"
   };
   if (platform5 === "wsl") {
     const wslVersion = getWslVersion();
@@ -361046,7 +361046,7 @@ function initialize1PEventLogging() {
       })
     ]
   });
-  firstPartyEventLogger = firstPartyEventLoggerProvider.getLogger("com.urhq.ur.events", "1.86.1");
+  firstPartyEventLogger = firstPartyEventLoggerProvider.getLogger("com.urhq.ur.events", "1.86.2");
 }
 async function reinitialize1PEventLoggingIfConfigChanged() {
   if (!is1PEventLoggingEnabled() || !firstPartyEventLoggerProvider) {
@@ -361170,7 +361170,7 @@ function computeFingerprint(messageText2, version2) {
 }
 function computeFingerprintFromMessages(messages) {
   const firstMessageText = extractFirstMessageText(messages);
-  return computeFingerprint(firstMessageText, "1.86.1");
+  return computeFingerprint(firstMessageText, "1.86.2");
 }
 var FINGERPRINT_SALT = "59cf53e54c78";
 var init_fingerprint = () => {};
@@ -361212,7 +361212,7 @@ async function sideQuery(opts) {
     betas.push(STRUCTURED_OUTPUTS_BETA_HEADER);
   }
   const messageText2 = extractFirstUserMessageText(messages);
-  const fingerprint = computeFingerprint(messageText2, "1.86.1");
+  const fingerprint = computeFingerprint(messageText2, "1.86.2");
   const attributionHeader = getAttributionHeader(fingerprint);
   const systemBlocks = [
     attributionHeader ? { type: "text", text: attributionHeader } : null,
@@ -362566,7 +362566,7 @@ async function setupSdkMcpClients(sdkMcpConfigs, sendMcpMessage) {
     const client = new Client({
       name: "ur",
       title: "UR",
-      version: "1.86.1",
+      version: "1.86.2",
       description: "UR-Nexus autonomous engineering workflow engine",
       websiteUrl: PRODUCT_URL
     }, {
@@ -362923,7 +362923,7 @@ var init_client2 = __esm(() => {
       const client = new Client({
         name: "ur",
         title: "UR",
-        version: "1.86.1",
+        version: "1.86.2",
         description: "UR-Nexus autonomous engineering workflow engine",
         websiteUrl: PRODUCT_URL
       }, {
@@ -368290,10 +368290,12 @@ class OutputLimitRecoveryTracker {
   seen = new Set;
   continuationCount = 0;
   consecutiveStalls = 0;
+  consecutiveInvisibleResponses = 0;
   record(messages) {
-    const fingerprint = progressFingerprint(messages);
+    const { fingerprint, hasVisibleContent, hasReasoningContent } = progressFingerprint(messages);
     const stallReason = !fingerprint ? "empty" : this.seen.has(fingerprint) ? "repeated" : undefined;
     this.continuationCount++;
+    this.consecutiveInvisibleResponses = hasVisibleContent ? 0 : this.consecutiveInvisibleResponses + 1;
     if (stallReason) {
       this.consecutiveStalls++;
     } else {
@@ -368304,6 +368306,9 @@ class OutputLimitRecoveryTracker {
       shouldContinue: this.consecutiveStalls < 2,
       continuationCount: this.continuationCount,
       consecutiveStalls: this.consecutiveStalls,
+      hasVisibleContent,
+      hasReasoningContent,
+      consecutiveInvisibleResponses: this.consecutiveInvisibleResponses,
       ...stallReason ? { stallReason } : {}
     };
   }
@@ -368311,43 +368316,192 @@ class OutputLimitRecoveryTracker {
     this.seen.clear();
     this.continuationCount = 0;
     this.consecutiveStalls = 0;
+    this.consecutiveInvisibleResponses = 0;
   }
 }
 function progressFingerprint(messages) {
-  const material = messages.filter((message) => !message.isApiErrorMessage).flatMap((message) => {
-    const content = message.message?.content;
-    return Array.isArray(content) ? content : content === undefined ? [] : [content];
-  }).map(projectProgressValue).filter((value) => value !== undefined && value !== "");
-  if (material.length === 0)
-    return;
-  return createHash24("sha256").update(JSON.stringify(material)).digest("hex");
-}
-function projectProgressValue(value) {
-  if (typeof value === "string")
-    return value.replace(/\s+/gu, " ").trim();
-  if (typeof value === "number" || typeof value === "boolean" || value === null) {
-    return value;
-  }
-  if (Array.isArray(value))
-    return value.map(projectProgressValue);
-  if (!value || typeof value !== "object")
-    return;
-  const record2 = value;
-  const type = typeof record2.type === "string" ? record2.type : undefined;
-  if (type === "redacted_thinking" && typeof record2.data === "string") {
-    return { type, opaqueBytes: record2.data.length };
-  }
-  const projected = {};
-  for (const key of Object.keys(record2).sort()) {
-    if (/^(?:id|request_id|signature|uuid)$/u.test(key))
+  const textParts = [];
+  const thinkingParts = [];
+  const opaqueParts = [];
+  for (const message of messages) {
+    if (message.isApiErrorMessage)
       continue;
-    const nested = projectProgressValue(record2[key]);
-    if (nested !== undefined && nested !== "")
-      projected[key] = nested;
+    const content = message.message?.content;
+    const blocks = Array.isArray(content) ? content : [content];
+    for (const block2 of blocks) {
+      if (typeof block2 === "string") {
+        textParts.push(block2);
+        continue;
+      }
+      if (!block2 || typeof block2 !== "object")
+        continue;
+      const value = block2;
+      if (value.type === "text" && typeof value.text === "string") {
+        textParts.push(value.text);
+      } else if (value.type === "thinking" && typeof value.thinking === "string") {
+        thinkingParts.push(value.thinking);
+      } else if (value.type === "redacted_thinking" && typeof value.data === "string") {
+        opaqueParts.push(value.data);
+      }
+    }
   }
-  return projected;
+  const text2 = textParts.join("").replace(/\r\n/gu, `
+`);
+  const thinking = thinkingParts.join("").replace(/\r\n/gu, `
+`);
+  const opaque = opaqueParts.join("");
+  const hasVisibleContent = text2.trim().length > 0;
+  const hasThinkingContent = thinking.trim().length > 0;
+  const hasReasoningContent = hasThinkingContent || opaque.length > 0;
+  if (!hasVisibleContent && !hasReasoningContent) {
+    return { hasVisibleContent, hasReasoningContent };
+  }
+  const progress = hasVisibleContent ? { text: text2 } : {
+    thinking: hasThinkingContent ? thinking : undefined,
+    opaqueDigest: opaque.length > 0 ? createHash24("sha256").update(opaque).digest("hex") : undefined
+  };
+  const fingerprint = createHash24("sha256").update(JSON.stringify(progress)).digest("hex");
+  return { fingerprint, hasVisibleContent, hasReasoningContent };
 }
 var init_outputLimitRecovery = () => {};
+
+// src/utils/envValidation.ts
+function validateBoundedIntEnvVar(name, value, defaultValue, upperLimit) {
+  if (!value) {
+    return { effective: defaultValue, status: "valid" };
+  }
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed) || parsed <= 0) {
+    const result = {
+      effective: defaultValue,
+      status: "invalid",
+      message: `Invalid value "${value}" (using default: ${defaultValue})`
+    };
+    logForDebugging(`${name} ${result.message}`);
+    return result;
+  }
+  if (parsed > upperLimit) {
+    const result = {
+      effective: upperLimit,
+      status: "capped",
+      message: `Capped from ${parsed} to ${upperLimit}`
+    };
+    logForDebugging(`${name} ${result.message}`);
+    return result;
+  }
+  return { effective: parsed, status: "valid" };
+}
+var init_envValidation = __esm(() => {
+  init_debug();
+});
+
+// src/utils/model/providerRequestTuning.ts
+function formatOutputTokenLimitMessage(model, requestedMaxTokens) {
+  return `The provider reported that model "${model}" reached its per-response output boundary on a ${requestedMaxTokens}-token response chunk. This is not a total task-output limit: UR's agent loop continues automatically while the model makes novel progress. UR_CODE_MAX_OUTPUT_TOKENS may change the chunk size up to the model's verified limit.`;
+}
+function usesConservativeOutputReservation(provider) {
+  return CONSERVATIVE_OUTPUT_PROVIDERS.has(provider);
+}
+var CONSERVATIVE_OUTPUT_PROVIDERS, SELF_HOSTED_DEFAULT_MAX_OUTPUT_TOKENS = 4096;
+var init_providerRequestTuning = __esm(() => {
+  CONSERVATIVE_OUTPUT_PROVIDERS = new Set([
+    "ollama",
+    "lmstudio",
+    "llama.cpp",
+    "vllm",
+    "unsloth",
+    "openai-compatible"
+  ]);
+});
+
+// src/query/outputLimitBudget.ts
+function calculateOutputLimitBudget(input2) {
+  const currentMaxTokens = positiveInteger(input2.currentMaxTokens) ?? 1;
+  const modelLimit = positiveInteger(input2.modelOutputLimit) ?? 0;
+  const contextWindow = positiveInteger(input2.contextWindow) ?? 0;
+  const inputTokens = Number.isFinite(input2.inputTokens) ? Math.max(0, Math.ceil(input2.inputTokens)) : contextWindow;
+  const headroom = Math.max(0, contextWindow - inputTokens - CONTEXT_SAFETY_TOKENS);
+  const explicitLimit = input2.explicitMaxTokens === undefined ? modelLimit : positiveInteger(input2.explicitMaxTokens) ?? 0;
+  const ceiling = Math.min(modelLimit, explicitLimit, headroom);
+  const nextMaxTokens = Math.min(currentMaxTokens * 2, ceiling);
+  return {
+    currentMaxTokens,
+    ceiling,
+    ...nextMaxTokens > currentMaxTokens ? { nextMaxTokens } : {}
+  };
+}
+function getOutputLimitBudget(input2) {
+  const env4 = input2.env ?? process.env;
+  const initialSettings = getInitialSettings();
+  const settings = {
+    ...initialSettings,
+    provider: {
+      ...input2.providerSettings ?? initialSettings.provider,
+      active: input2.provider
+    }
+  };
+  const limits = getModelMaxOutputTokens(input2.model, input2.provider, settings);
+  const defaultMaxTokens = usesConservativeOutputReservation(input2.provider) ? Math.min(limits.default, SELF_HOSTED_DEFAULT_MAX_OUTPUT_TOKENS) : limits.default;
+  const rawCap = env4.UR_CODE_MAX_OUTPUT_TOKENS;
+  const validatedCap = validateBoundedIntEnvVar("UR_CODE_MAX_OUTPUT_TOKENS", rawCap, defaultMaxTokens, limits.upperLimit);
+  const explicitMaxTokens = rawCap && validatedCap.status !== "invalid" ? validatedCap.effective : undefined;
+  const providerContext = getProviderContextLengthForModel(input2.model, input2.provider, settings);
+  let contextWindow = providerContext ?? fallbackContextWindow(input2.model, env4);
+  if (input2.provider === "ollama") {
+    const baseUrl = getOllamaBaseUrl(env4, settings);
+    const modelContextLength = getOllamaContextLengthForModel(input2.model, baseUrl) ?? providerContext;
+    contextWindow = computeOllamaNumCtx({
+      modelContextLength,
+      estimatedPromptTokens: input2.inputTokens,
+      maxTokens: positiveInteger(input2.currentMaxTokens) ?? defaultMaxTokens,
+      override: getOllamaNumCtxOverride(env4)
+    }) ?? contextWindow;
+  }
+  return calculateOutputLimitBudget({
+    currentMaxTokens: input2.currentMaxTokens,
+    modelOutputLimit: limits.upperLimit,
+    contextWindow,
+    inputTokens: input2.inputTokens,
+    ...explicitMaxTokens === undefined ? {} : { explicitMaxTokens }
+  });
+}
+function positiveInteger(value) {
+  return Number.isFinite(value) && value >= 1 ? Math.floor(value) : undefined;
+}
+function fallbackContextWindow(model, env4) {
+  const disable1m = isEnvTruthy(env4.UR_CODE_DISABLE_1M_CONTEXT);
+  if (env4.USER_TYPE === "ant") {
+    const override = Number.parseInt(env4.UR_CODE_MAX_CONTEXT_TOKENS ?? "", 10);
+    if (Number.isFinite(override) && override > 0)
+      return override;
+  }
+  if (!disable1m && /\[1m\]/iu.test(model))
+    return 1e6;
+  const capability = positiveInteger(getModelCapability(model)?.max_input_tokens ?? 0);
+  if (capability !== undefined) {
+    return disable1m ? Math.min(capability, MODEL_CONTEXT_WINDOW_DEFAULT) : capability;
+  }
+  if (env4.USER_TYPE === "ant") {
+    const contextWindow = resolveAntModel(model)?.contextWindow;
+    if (contextWindow !== undefined)
+      return contextWindow;
+  }
+  return MODEL_CONTEXT_WINDOW_DEFAULT;
+}
+var CONTEXT_SAFETY_TOKENS = 1024;
+var init_outputLimitBudget = __esm(() => {
+  init_providerRegistry();
+  init_context4();
+  init_envUtils();
+  init_envValidation();
+  init_antModels();
+  init_modelCapabilities();
+  init_ollamaConfig();
+  init_ollamaModels();
+  init_ollamaTuning();
+  init_providerRequestTuning();
+  init_settings2();
+});
 
 // src/query.ts
 function* yieldMissingToolResultBlocks(assistantMessages, errorMessage3) {
@@ -368412,6 +368566,17 @@ async function* queryLoop(params, consumedCommandUuids, ownedRepeatedFailureQuer
     transition: undefined
   };
   const outputLimitRecovery = new OutputLimitRecoveryTracker;
+  let outputLimitAttemptedBudget = 0;
+  let exhaustedOutputRetries = 0;
+  let recoveryPromptUuid;
+  let outputLimitModel;
+  const resetOutputLimitRecovery = () => {
+    outputLimitRecovery.reset();
+    outputLimitAttemptedBudget = 0;
+    exhaustedOutputRetries = 0;
+    recoveryPromptUuid = undefined;
+    outputLimitModel = undefined;
+  };
   const budgetTracker = null;
   let taskBudgetRemaining = undefined;
   const config3 = buildQueryConfig();
@@ -368446,6 +368611,9 @@ async function* queryLoop(params, consumedCommandUuids, ownedRepeatedFailureQuer
   let verifierInjections = 0;
   const VERIFIER_MAX_INJECTIONS = 3;
   while (true) {
+    if (state.transition?.reason !== "max_output_tokens_recovery") {
+      resetOutputLimitRecovery();
+    }
     let { toolUseContext } = state;
     const {
       messages,
@@ -368643,6 +368811,7 @@ async function* queryLoop(params, consumedCommandUuids, ownedRepeatedFailureQuer
             }
           })) {
             if (streamingFallbackOccured) {
+              streamingFallbackOccured = false;
               for (const msg of assistantMessages) {
                 yield { type: "tombstone", message: msg };
               }
@@ -368832,23 +369001,24 @@ async function* queryLoop(params, consumedCommandUuids, ownedRepeatedFailureQuer
       const lastMessage = assistantMessages.at(-1);
       const hitOutputLimit = isWithheldMaxOutputTokens(lastMessage);
       if (!hitOutputLimit)
-        outputLimitRecovery.reset();
+        resetOutputLimitRecovery();
       const isWithheld413 = lastMessage?.type === "assistant" && lastMessage.isApiErrorMessage && isPromptTooLongMessage(lastMessage);
+      const contextRecoveryMessages = isWithheld413 ? [...messagesForQuery, ...assistantMessages.filter((m) => !m.isApiErrorMessage)] : messagesForQuery;
       const isWithheldMedia = mediaRecoveryEnabled && reactiveCompact?.isWithheldMediaSizeError(lastMessage);
       if (isWithheld413) {
         if (false) {}
       }
       if (isWithheld413 && universalContextRecoveryEnabled) {
-        const recovery = await deps.autocompact(messagesForQuery, toolUseContext, {
+        const recovery = await deps.autocompact(contextRecoveryMessages, toolUseContext, {
           systemPrompt,
           userContext,
           systemContext,
           toolUseContext,
-          forkContextMessages: messagesForQuery
+          forkContextMessages: contextRecoveryMessages
         }, querySource, tracking, snipTokensFreed, "context_limit");
         if (recovery.compactionResult) {
           if (params.taskBudget) {
-            const preCompactContext = finalContextTokensFromLastResponse(messagesForQuery);
+            const preCompactContext = finalContextTokensFromLastResponse(contextRecoveryMessages);
             taskBudgetRemaining = Math.max(0, (taskBudgetRemaining ?? params.taskBudget.total) - preCompactContext);
           }
           const postCompactMessages = buildPostCompactMessages(recovery.compactionResult);
@@ -368878,18 +369048,18 @@ async function* queryLoop(params, consumedCommandUuids, ownedRepeatedFailureQuer
           hasAttempted: hasAttemptedReactiveCompact,
           querySource,
           aborted: toolUseContext.abortController.signal.aborted,
-          messages: messagesForQuery,
+          messages: contextRecoveryMessages,
           cacheSafeParams: {
             systemPrompt,
             userContext,
             systemContext,
             toolUseContext,
-            forkContextMessages: messagesForQuery
+            forkContextMessages: contextRecoveryMessages
           }
         });
         if (compacted) {
           if (params.taskBudget) {
-            const preCompactContext = finalContextTokensFromLastResponse(messagesForQuery);
+            const preCompactContext = finalContextTokensFromLastResponse(contextRecoveryMessages);
             taskBudgetRemaining = Math.max(0, (taskBudgetRemaining ?? params.taskBudget.total) - preCompactContext);
           }
           const postCompactMessages = buildPostCompactMessages(compacted);
@@ -368924,24 +369094,54 @@ async function* queryLoop(params, consumedCommandUuids, ownedRepeatedFailureQuer
         });
         return { reason: isWithheldMedia ? "image_error" : "prompt_too_long" };
       } else if (false) {}
+      if (isWithheld413) {
+        executeStopFailureHooks(lastMessage, toolUseContext);
+        return { reason: "prompt_too_long" };
+      }
       if (hitOutputLimit) {
+        const provider = appState.provider?.active ?? getRuntimeProvider();
+        const modelKey = `${provider}:${currentModel}`;
+        const previousRecoveryPromptUuid = recoveryPromptUuid;
+        if (outputLimitModel !== modelKey)
+          resetOutputLimitRecovery();
+        outputLimitModel = modelKey;
         const recovery = outputLimitRecovery.record(assistantMessages);
-        if (recovery.shouldContinue) {
+        const partialMessages = assistantMessages.filter((m) => !m.isApiErrorMessage);
+        const continuationMessages = [
+          ...messagesForQuery.filter((m) => !previousRecoveryPromptUuid || m.uuid !== previousRecoveryPromptUuid),
+          ...partialMessages
+        ];
+        const requestedMaxTokens = lastMessage.outputLimit?.requestedMaxTokens ?? maxOutputTokensOverride ?? getMaxOutputTokensForModel(currentModel, provider);
+        outputLimitAttemptedBudget = Math.max(outputLimitAttemptedBudget, requestedMaxTokens, maxOutputTokensOverride ?? 0);
+        const budget = getOutputLimitBudget({
+          model: currentModel,
+          provider,
+          providerSettings: appState.provider,
+          currentMaxTokens: requestedMaxTokens,
+          inputTokens: Math.max(tokenCountWithEstimation(continuationMessages), (lastMessage.outputLimit?.inputTokens ?? 0) + (lastMessage.outputLimit?.outputTokens ?? 0)) + 128
+        });
+        const stalled = !recovery.hasVisibleContent || !!recovery.stallReason;
+        const increasedBudget = stalled && budget.nextMaxTokens !== undefined && budget.nextMaxTokens > outputLimitAttemptedBudget ? budget.nextMaxTokens : undefined;
+        if (!stalled || increasedBudget !== undefined)
+          exhaustedOutputRetries = 0;
+        else
+          exhaustedOutputRetries++;
+        if (!stalled || increasedBudget !== undefined || exhaustedOutputRetries < 2) {
           const recoveryMessage = createUserMessage({
-            content: `The provider ended this response at its per-response output boundary. ` + `Continue from the exact cutoff with only novel work\u2014do not apologize, recap, restart, or repeat prior text. ` + `Preserve the task and tool state; if the requested work is complete, finish now.`,
+            content: `The provider ended this response at its per-response output boundary. ` + `Continue from the exact cutoff with only novel work\u2014do not apologize, recap, restart, or repeat prior text. ` + `Preserve the task and tool state. Deliver the remaining answer or the next necessary tool call; if the requested work is complete, finish now.`,
             isMeta: true
           });
+          recoveryPromptUuid = recoveryMessage.uuid;
           const next2 = {
             messages: [
-              ...messagesForQuery,
-              ...assistantMessages,
+              ...continuationMessages,
               recoveryMessage
             ],
             toolUseContext,
             autoCompactTracking: tracking,
             maxOutputTokensRecoveryCount: maxOutputTokensRecoveryCount + 1,
             hasAttemptedReactiveCompact,
-            maxOutputTokensOverride: undefined,
+            maxOutputTokensOverride: increasedBudget ?? Math.min(outputLimitAttemptedBudget, Math.max(1, budget.ceiling)),
             pendingToolUseSummary: undefined,
             stopHookActive: undefined,
             turnCount,
@@ -368954,7 +369154,7 @@ async function* queryLoop(params, consumedCommandUuids, ownedRepeatedFailureQuer
           continue;
         }
         yield createAssistantAPIErrorMessage({
-          content: `Model "${currentModel}" repeatedly reached its per-response output boundary without novel progress (${recovery.stallReason === "empty" ? "empty output" : "replayed output"}). UR has no fixed total-output continuation ceiling; it stopped this stalled loop to avoid repeating the same provider calls.`,
+          content: `Model "${currentModel}" reached its per-response output boundary without further usable progress (${!recovery.hasVisibleContent ? recovery.hasReasoningContent ? "reasoning without an answer or tool call" : "empty output" : "replayed output"}). UR tried the available response budget (last request: ${requestedMaxTokens} tokens) and stopped repeated stalled calls. Your partial output is preserved. Try /compact to free context, lower the model's reasoning effort, or choose another model with /model. Productive continuations have no fixed total-output ceiling.`,
           apiError: "max_output_tokens",
           error: "max_output_tokens"
         });
@@ -369066,7 +369266,7 @@ ${nudge.reminder}
       }
       return { reason: "completed" };
     }
-    outputLimitRecovery.reset();
+    resetOutputLimitRecovery();
     let shouldPreventContinuation = false;
     let updatedToolUseContext = toolUseContext;
     queryCheckpoint("query_tool_execution_start");
@@ -369336,6 +369536,9 @@ var init_query = __esm(() => {
   init_state();
   init_tokenBudget2();
   init_outputLimitRecovery();
+  init_outputLimitBudget();
+  init_ur2();
+  init_providers();
 });
 
 // src/services/api/emptyUsage.ts
@@ -378293,9 +378496,9 @@ async function assertMinVersion() {
   if (false) {}
   try {
     const versionConfig = await getDynamicConfig_BLOCKS_ON_INIT("tengu_version_config", { minVersion: "0.0.0" });
-    if (versionConfig.minVersion && lt("1.86.1", versionConfig.minVersion)) {
+    if (versionConfig.minVersion && lt("1.86.2", versionConfig.minVersion)) {
       console.error(`
-It looks like your version of UR (${"1.86.1"}) needs an update.
+It looks like your version of UR (${"1.86.2"}) needs an update.
 A newer version (${versionConfig.minVersion} or higher) is required to continue.
 
 To update, please run:
@@ -378514,7 +378717,7 @@ async function installGlobalPackage(specificVersion) {
     logError(new AutoUpdaterError("Another process is currently installing an update"));
     logEvent("tengu_auto_updater_lock_contention", {
       pid: process.pid,
-      currentVersion: "1.86.1"
+      currentVersion: "1.86.2"
     });
     return "in_progress";
   }
@@ -378524,7 +378727,7 @@ async function installGlobalPackage(specificVersion) {
     if (getGlobalPackageManager() === "npm" && env2.isNpmFromWindowsPath()) {
       logError(new Error("Windows NPM detected in WSL environment"));
       logEvent("tengu_auto_updater_windows_npm_in_wsl", {
-        currentVersion: "1.86.1"
+        currentVersion: "1.86.2"
       });
       console.error(`
 Error: Windows NPM detected in WSL
@@ -379649,8 +379852,8 @@ async function installLatestImpl(channelOrVersion, forceReinstall = false) {
     if (maximum && gt(target, validateNativeVersion(maximum)))
       target = maximum;
     if (shouldSkipVersion(target))
-      return { latestVersion: "1.86.1", wasUpdated: false };
-    if (target === "1.86.1") {
+      return { latestVersion: "1.86.2", wasUpdated: false };
+    if (target === "1.86.2") {
       try {
         const launcher = getBaseDirectories().executable;
         const active2 = getPlatform3().startsWith("win32") ? getManagedWindowsNativeExecutable(process.execPath) === launcher : await realpath6(launcher) === await realpath6(process.execPath);
@@ -415591,36 +415794,6 @@ class CircularBuffer {
     return this.size;
   }
 }
-
-// src/utils/envValidation.ts
-function validateBoundedIntEnvVar(name, value, defaultValue, upperLimit) {
-  if (!value) {
-    return { effective: defaultValue, status: "valid" };
-  }
-  const parsed = parseInt(value, 10);
-  if (isNaN(parsed) || parsed <= 0) {
-    const result = {
-      effective: defaultValue,
-      status: "invalid",
-      message: `Invalid value "${value}" (using default: ${defaultValue})`
-    };
-    logForDebugging(`${name} ${result.message}`);
-    return result;
-  }
-  if (parsed > upperLimit) {
-    const result = {
-      effective: upperLimit,
-      status: "capped",
-      message: `Capped from ${parsed} to ${upperLimit}`
-    };
-    logForDebugging(`${name} ${result.message}`);
-    return result;
-  }
-  return { effective: parsed, status: "valid" };
-}
-var init_envValidation = __esm(() => {
-  init_debug();
-});
 
 // src/utils/shell/outputLimits.ts
 function getMaxOutputLength() {
@@ -477717,6 +477890,7 @@ function baseCreateAssistantMessage({
   apiError,
   error: error61,
   errorDetails,
+  outputLimit,
   isVirtual,
   usage = {
     input_tokens: 0,
@@ -477754,6 +477928,7 @@ function baseCreateAssistantMessage({
     apiError,
     error: error61,
     errorDetails,
+    ...outputLimit && { outputLimit },
     isApiErrorMessage,
     isVirtual
   };
@@ -477778,7 +477953,8 @@ function createAssistantAPIErrorMessage({
   content,
   apiError,
   error: error61,
-  errorDetails
+  errorDetails,
+  outputLimit
 }) {
   return baseCreateAssistantMessage({
     content: [
@@ -477790,7 +477966,8 @@ function createAssistantAPIErrorMessage({
     isApiErrorMessage: true,
     apiError,
     error: error61,
-    errorDetails
+    errorDetails,
+    outputLimit
   });
 }
 function createUserMessage({
@@ -478607,7 +478784,7 @@ function relocateToolReferenceSiblings(messages) {
   }
   return result;
 }
-function normalizeMessagesForAPI(messages, tools = []) {
+function normalizeMessagesForAPI(messages, tools = [], options2 = {}) {
   const availableToolNames = new Set(tools.map((t) => t.name));
   const reorderedMessages = reorderAttachmentsForAPI(messages).filter((m) => !((m.type === "user" || m.type === "assistant") && m.isVirtual));
   const errorToBlockTypes = {
@@ -478780,8 +478957,8 @@ function normalizeMessagesForAPI(messages, tools = []) {
     }
   });
   const relocated = checkStatsigFeatureGate_CACHED_MAY_BE_STALE("tengu_toolref_defer_j8m") ? relocateToolReferenceSiblings(result) : result;
-  const withFilteredOrphans = filterOrphanedThinkingOnlyMessages(relocated);
-  const withFilteredThinking = filterTrailingThinkingFromLastAssistant(withFilteredOrphans);
+  const withFilteredOrphans = options2.preserveThinkingOnly ? relocated : filterOrphanedThinkingOnlyMessages(relocated);
+  const withFilteredThinking = options2.preserveThinkingOnly ? withFilteredOrphans : filterTrailingThinkingFromLastAssistant(withFilteredOrphans);
   const withFilteredWhitespace = filterWhitespaceOnlyAssistantMessages(withFilteredThinking);
   const withNonEmpty = ensureNonEmptyAssistantContent(withFilteredWhitespace);
   const smooshed = checkStatsigFeatureGate_CACHED_MAY_BE_STALE("tengu_chair_sermon") ? smooshSystemReminderSiblings(mergeAdjacentUserMessages(withNonEmpty)) : withNonEmpty;
@@ -482664,7 +482841,7 @@ function Feedback({
       platform: env2.platform,
       gitRepo: envInfo.isGit,
       terminal: env2.terminal,
-      version: "1.86.1",
+      version: "1.86.2",
       transcript: normalizeMessagesForAPI(messages),
       errors: sanitizedErrors,
       lastApiRequest: getLastAPIRequest(),
@@ -482854,7 +483031,7 @@ function Feedback({
                       ", ",
                       env2.terminal,
                       ", v",
-                      "1.86.1"
+                      "1.86.2"
                     ]
                   }, undefined, true, undefined, this)
                 ]
@@ -482960,7 +483137,7 @@ ${sanitizedDescription}
 ` + `**Environment Info**
 ` + `- Platform: ${env2.platform}
 ` + `- Terminal: ${env2.terminal}
-` + `- Version: ${"1.86.1"}
+` + `- Version: ${"1.86.2"}
 ` + `- Feedback ID: ${feedbackId}
 ` + `
 **Errors**
@@ -486070,7 +486247,7 @@ function buildPrimarySection() {
   }, undefined, false, undefined, this);
   return [{
     label: "Version",
-    value: "1.86.1"
+    value: "1.86.2"
   }, {
     label: "Session name",
     value: nameValue
@@ -489584,7 +489761,7 @@ function Config({
         }
       }, undefined, false, undefined, this)
     }, undefined, false, undefined, this) : showSubmenu === "ChannelDowngrade" ? /* @__PURE__ */ jsx_dev_runtime176.jsxDEV(ChannelDowngradeDialog, {
-      currentVersion: "1.86.1",
+      currentVersion: "1.86.2",
       onChoice: (choice) => {
         setShowSubmenu(null);
         setTabsHidden(false);
@@ -489596,7 +489773,7 @@ function Config({
           autoUpdatesChannel: "stable"
         };
         if (choice === "stay") {
-          newSettings.minimumVersion = "1.86.1";
+          newSettings.minimumVersion = "1.86.2";
         }
         updateSettingsForSource("userSettings", newSettings);
         setSettingsData((prev_27) => ({
@@ -497928,7 +498105,7 @@ function HelpV2(t0) {
   let t6;
   if ($2[31] !== tabs) {
     t6 = /* @__PURE__ */ jsx_dev_runtime203.jsxDEV(Tabs, {
-      title: `UR v${"1.86.1"}`,
+      title: `UR v${"1.86.2"}`,
       color: "professionalBlue",
       defaultTab: "general",
       children: tabs
@@ -510143,7 +510320,7 @@ function formatA2AV1AgentCard(options2 = {}, pretty = true) {
 var urVersion, researchSnapshotDate = "2026-08-10", coverage, priorityRoadmap;
 var init_trends = __esm(() => {
   init_a2aCardSignature();
-  urVersion = typeof MACRO !== "undefined" ? "1.86.1" : "1.86.1";
+  urVersion = typeof MACRO !== "undefined" ? "1.86.2" : "1.86.2";
   coverage = [
     {
       id: "local-runtime",
@@ -512040,7 +512217,7 @@ function buildToolUseContext(tools, readFileStateCache, toolPermissionContext, a
 async function handleInitialize(options2) {
   return {
     name: "UR",
-    version: "1.86.1",
+    version: "1.86.2",
     protocolVersion: "0.1.0",
     workspaceRoot: options2.cwd,
     capabilities: {
@@ -529175,7 +529352,7 @@ function getAllReleaseNotes(changelogContent = getStoredChangelogFromMemory()) {
     return [];
   }
 }
-async function checkForReleaseNotes(lastSeenVersion, currentVersion = "1.86.1") {
+async function checkForReleaseNotes(lastSeenVersion, currentVersion = "1.86.2") {
   if (process.env.USER_TYPE === "ant") {
     const changelog = "";
     if (changelog) {
@@ -529202,7 +529379,7 @@ async function checkForReleaseNotes(lastSeenVersion, currentVersion = "1.86.1") 
     releaseNotes
   };
 }
-function checkForReleaseNotesSync(lastSeenVersion, currentVersion = "1.86.1") {
+function checkForReleaseNotesSync(lastSeenVersion, currentVersion = "1.86.2") {
   if (process.env.USER_TYPE === "ant") {
     const changelog = "";
     if (changelog) {
@@ -532110,7 +532287,7 @@ function getRecentActivitySync() {
   return cachedActivity;
 }
 function getLogoDisplayData() {
-  const version2 = process.env.DEMO_VERSION ?? "1.86.1";
+  const version2 = process.env.DEMO_VERSION ?? "1.86.2";
   const serverUrl = getDirectConnectServerUrl();
   const displayPath = process.env.DEMO_VERSION ? "/code/ur" : getDisplayPath(getCwd());
   const cwd2 = serverUrl ? `${displayPath} in ${serverUrl.replace(/^https?:\/\//, "")}` : displayPath;
@@ -532998,7 +533175,7 @@ function LogoV2() {
   if ($2[2] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = () => {
       const currentConfig = getGlobalConfig();
-      if (currentConfig.lastReleaseNotesSeen === "1.86.1") {
+      if (currentConfig.lastReleaseNotesSeen === "1.86.2") {
         return;
       }
       saveGlobalConfig(_temp327);
@@ -533686,12 +533863,12 @@ function LogoV2() {
   return t41;
 }
 function _temp327(current) {
-  if (current.lastReleaseNotesSeen === "1.86.1") {
+  if (current.lastReleaseNotesSeen === "1.86.2") {
     return current;
   }
   return {
     ...current,
-    lastReleaseNotesSeen: "1.86.1"
+    lastReleaseNotesSeen: "1.86.2"
   };
 }
 function _temp240(s_0) {
@@ -548694,7 +548871,7 @@ import {
 } from "fs";
 import { tmpdir as tmpdir19 } from "os";
 import { dirname as dirname72, isAbsolute as isAbsolute38, join as join168, relative as relative39, resolve as resolve58, sep as sep38 } from "path";
-function positiveInteger(value, min, max2) {
+function positiveInteger2(value, min, max2) {
   return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max2;
 }
 function stringArray(value) {
@@ -548759,11 +548936,11 @@ function validateAgenticCiSpec(spec) {
     errors4.push(`prompt exceeds ${AGENTIC_CI_MAX_PROMPT_CHARS} characters`);
   }
   const maxTurns = spec.runner?.maxTurns;
-  if (maxTurns !== undefined && !positiveInteger(maxTurns, 1, 100)) {
+  if (maxTurns !== undefined && !positiveInteger2(maxTurns, 1, 100)) {
     errors4.push("runner.maxTurns must be an integer between 1 and 100");
   }
   const timeoutMinutes = spec.runner?.timeoutMinutes;
-  if (timeoutMinutes !== undefined && !positiveInteger(timeoutMinutes, 1, 120)) {
+  if (timeoutMinutes !== undefined && !positiveInteger2(timeoutMinutes, 1, 120)) {
     errors4.push("runner.timeoutMinutes must be an integer between 1 and 120");
   }
   const issue2 = spec.trigger?.issueComment;
@@ -548813,16 +548990,16 @@ function validateAgenticCiSpec(spec) {
     if (command5.args !== undefined && (!Array.isArray(command5.args) || command5.args.some((arg) => typeof arg !== "string" || /[\0]/.test(arg)))) {
       errors4.push(`verification.commands[${index2}].args is invalid`);
     }
-    if (command5.timeoutMs !== undefined && !positiveInteger(command5.timeoutMs, 1000, 30 * 60000)) {
+    if (command5.timeoutMs !== undefined && !positiveInteger2(command5.timeoutMs, 1000, 30 * 60000)) {
       errors4.push(`verification.commands[${index2}].timeoutMs must be between 1000 and 1800000`);
     }
   }
   const maxSummary = spec.outputs?.maxSummaryChars;
-  if (maxSummary !== undefined && !positiveInteger(maxSummary, 256, 64 * 1024)) {
+  if (maxSummary !== undefined && !positiveInteger2(maxSummary, 256, 64 * 1024)) {
     errors4.push("outputs.maxSummaryChars must be between 256 and 65536");
   }
   const maxPatch = spec.outputs?.maxPatchBytes;
-  if (maxPatch !== undefined && !positiveInteger(maxPatch, 1024, 20 * 1024 * 1024)) {
+  if (maxPatch !== undefined && !positiveInteger2(maxPatch, 1024, 20 * 1024 * 1024)) {
     errors4.push("outputs.maxPatchBytes must be between 1024 and 20971520");
   }
   if (!spec.trigger?.manual && !spec.trigger?.issueComment) {
@@ -549632,7 +549809,7 @@ function compileAgenticCiWorkflow(specName = "default", options2 = {}) {
   if (spec.name !== specName) {
     throw new Error("Agentic CI workflow spec name does not match");
   }
-  const packageVersion = options2.packageVersion ?? (typeof MACRO !== "undefined" ? "1.86.1" : "1.86.1");
+  const packageVersion = options2.packageVersion ?? (typeof MACRO !== "undefined" ? "1.86.2" : "1.86.2");
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(packageVersion)) {
     throw new Error("invalid ur-agent package version");
   }
@@ -550628,7 +550805,7 @@ runner; \`ur trigger\` is the inbound parser that decides what to run.
       path: ".github/workflows/ur.yml",
       root: "project",
       content: compileAgenticCiWorkflow("default", {
-        packageVersion: typeof MACRO !== "undefined" ? "1.86.1" : "1.86.1"
+        packageVersion: typeof MACRO !== "undefined" ? "1.86.2" : "1.86.2"
       })
     },
     {
@@ -550691,7 +550868,7 @@ function value(tokens, flag) {
   return index2 >= 0 ? tokens[index2 + 1] : undefined;
 }
 function cliVersion() {
-  return typeof MACRO !== "undefined" ? "1.86.1" : "1.86.1";
+  return typeof MACRO !== "undefined" ? "1.86.2" : "1.86.2";
 }
 function workflowPath(cwd2) {
   return join170(cwd2, ".github", "workflows", "ur-agentic-ci.yml");
@@ -556547,7 +556724,7 @@ function createAcpStdioApp(deps) {
       }
     },
     authMethods: [],
-    agentInfo: { name: "UR-Nexus", version: "1.86.1" }
+    agentInfo: { name: "UR-Nexus", version: "1.86.2" }
   })).onRequest("authenticate", () => ({})).onRequest("session/new", async (context6) => {
     const result = runtime2.newSession(context6.params.cwd, context6.params.mcpServers, context6.params.additionalDirectories);
     await runtime2.announce({
@@ -556644,7 +556821,7 @@ function createAcpStdioAgent(deps) {
               }
             },
             authMethods: [],
-            agentInfo: { name: "UR-Nexus", version: "1.86.1" }
+            agentInfo: { name: "UR-Nexus", version: "1.86.2" }
           });
           return;
         case "authenticate":
@@ -565152,7 +565329,7 @@ function positionals8(tokens) {
   }
   return values2;
 }
-function positiveInteger2(tokens, flag) {
+function positiveInteger3(tokens, flag) {
   const raw = option9(tokens, flag);
   if (!raw || !/^\d+$/u.test(raw))
     return;
@@ -565244,9 +565421,9 @@ async function runCloudCommand(args, cwd2, dependencies = {}) {
     }
     const task = createCloudTask(cwd2, {
       task: taskText,
-      attempts: positiveInteger2(tokens, "--attempts") ?? 3,
+      attempts: positiveInteger3(tokens, "--attempts") ?? 3,
       model: option9(tokens, "--model"),
-      maxTurns: positiveInteger2(tokens, "--max-turns"),
+      maxTurns: positiveInteger3(tokens, "--max-turns"),
       runner: runnerValue,
       environmentId: option9(tokens, "--environment"),
       permissionMode: permissionValue
@@ -565348,7 +565525,7 @@ Browse: ur cloud list \xB7 Result: ur cloud show ${task.id}${task.runner === "lo
       failCli();
       return { type: "text", value: `No log found for cloud task: ${id}` };
     }
-    const tail2 = positiveInteger2(tokens, "--tail");
+    const tail2 = positiveInteger3(tokens, "--tail");
     const value2 = tail2 ? log.split(`
 `).slice(-tail2).join(`
 `) : log;
@@ -769235,7 +769412,7 @@ async function captureMemoryDiagnostics(trigger2, dumpNumber = 0) {
     smapsRollup,
     platform: process.platform,
     nodeVersion: process.version,
-    ccVersion: "1.86.1"
+    ccVersion: "1.86.2"
   };
 }
 async function performHeapDump(trigger2 = "manual", dumpNumber = 0) {
@@ -769824,7 +770001,7 @@ var init_bridge_kick = __esm(() => {
 var call154 = async () => {
   return {
     type: "text",
-    value: "1.86.1"
+    value: "1.86.2"
   };
 }, version2, version_default;
 var init_version = __esm(() => {
@@ -787610,25 +787787,6 @@ var init_api3 = __esm(() => {
   };
 });
 
-// src/utils/model/providerRequestTuning.ts
-function formatOutputTokenLimitMessage(model, requestedMaxTokens) {
-  return `The provider reported that model "${model}" reached its per-response output boundary on a ${requestedMaxTokens}-token response chunk. This is not a total task-output limit: UR's agent loop continues automatically while the model makes novel progress. UR_CODE_MAX_OUTPUT_TOKENS may change the chunk size up to the model's verified limit.`;
-}
-function usesConservativeOutputReservation(provider) {
-  return CONSERVATIVE_OUTPUT_PROVIDERS.has(provider);
-}
-var CONSERVATIVE_OUTPUT_PROVIDERS, SELF_HOSTED_DEFAULT_MAX_OUTPUT_TOKENS = 4096;
-var init_providerRequestTuning = __esm(() => {
-  CONSERVATIVE_OUTPUT_PROVIDERS = new Set([
-    "ollama",
-    "lmstudio",
-    "llama.cpp",
-    "vllm",
-    "unsloth",
-    "openai-compatible"
-  ]);
-});
-
 // src/services/compact/apiMicrocompact.ts
 function getAPIContextManagement(options5) {
   const {
@@ -788005,6 +788163,34 @@ async function* queryModelWithStreaming({
     yield* queryModel(messages, systemPrompt, thinkingConfig, tools, signal, options5);
   });
 }
+function getResponseBoundaryError({
+  stopReason,
+  model,
+  requestedMaxTokens,
+  usage: usage30
+}) {
+  if (stopReason === "max_tokens") {
+    return createAssistantAPIErrorMessage({
+      content: `${API_ERROR_MESSAGE_PREFIX}: ${formatOutputTokenLimitMessage(model, requestedMaxTokens)}`,
+      apiError: "max_output_tokens",
+      error: "max_output_tokens",
+      outputLimit: {
+        requestedMaxTokens,
+        inputTokens: (usage30.input_tokens ?? 0) + (usage30.cache_creation_input_tokens ?? 0) + (usage30.cache_read_input_tokens ?? 0),
+        outputTokens: usage30.output_tokens ?? 0
+      }
+    });
+  }
+  if (stopReason === "model_context_window_exceeded") {
+    return createAssistantAPIErrorMessage({
+      content: PROMPT_TOO_LONG_ERROR_MESSAGE,
+      apiError: "prompt_too_long",
+      error: "invalid_request",
+      errorDetails: "The provider reached its context window while generating the response (model_context_window_exceeded)."
+    });
+  }
+  return;
+}
 function shouldDeferLspTool(tool) {
   if (!("isLsp" in tool) || !tool.isLsp) {
     return false;
@@ -788042,9 +788228,9 @@ async function* executeNonStreamingRequest(clientOptions, retryOptions, paramsFr
   }), async (urhq, attempt, context6) => {
     const start = Date.now();
     const retryParams = paramsFromContext(context6);
-    captureRequest(retryParams);
-    onAttempt(attempt, start, retryParams.max_tokens);
     const adjustedParams = adjustParamsForNonStreaming(retryParams, MAX_NON_STREAMING_TOKENS);
+    captureRequest(adjustedParams);
+    onAttempt(attempt, start, adjustedParams.max_tokens);
     try {
       return await urhq.beta.messages.create({
         ...adjustedParams,
@@ -788244,7 +788430,9 @@ async function* queryModel(messages, systemPrompt, thinkingConfig, tools, signal
     preNormalizedMessageCount: messages.length
   });
   queryCheckpoint("query_message_normalization_start");
-  let messagesForAPI = normalizeMessagesForAPI(messages, filteredTools);
+  let messagesForAPI = normalizeMessagesForAPI(messages, filteredTools, {
+    preserveThinkingOnly: (options5.providerSettings?.active ?? getRuntimeProvider()) === "ollama"
+  });
   queryCheckpoint("query_message_normalization_end");
   if (!useToolSearch) {
     messagesForAPI = messagesForAPI.map((msg) => {
@@ -788867,23 +789055,21 @@ ${deferredToolList}
               logEvent("tengu_max_tokens_reached", {
                 max_tokens: maxOutputTokens
               });
-              yield createAssistantAPIErrorMessage({
-                content: `${API_ERROR_MESSAGE_PREFIX}: ${formatOutputTokenLimitMessage(options5.model, maxOutputTokens)}`,
-                apiError: "max_output_tokens",
-                error: "max_output_tokens"
-              });
             }
             if (stopReason === "model_context_window_exceeded") {
               logEvent("tengu_context_window_exceeded", {
                 max_tokens: maxOutputTokens,
                 output_tokens: usage30.output_tokens
               });
-              yield createAssistantAPIErrorMessage({
-                content: `${API_ERROR_MESSAGE_PREFIX}: The model has reached its context window limit.`,
-                apiError: "max_output_tokens",
-                error: "max_output_tokens"
-              });
             }
+            const boundaryError = getResponseBoundaryError({
+              stopReason,
+              model: options5.model,
+              requestedMaxTokens: maxOutputTokens,
+              usage: usage30
+            });
+            if (boundaryError)
+              yield boundaryError;
             break;
           }
           case "message_stop":
@@ -789183,6 +789369,16 @@ ${deferredToolList}
       const fallbackCost = calculateUSDCost(resolvedModel, fallbackUsage);
       costUSD += addToTotalSessionCost(fallbackCost, fallbackUsage, options5.model);
     }
+  }
+  if (fallbackMessage) {
+    const boundaryError = getResponseBoundaryError({
+      stopReason,
+      model: options5.model,
+      requestedMaxTokens: maxOutputTokens,
+      usage: usage30
+    });
+    if (boundaryError)
+      yield boundaryError;
   }
   if (false) {}
   if (streamRequestId && !getAgentContext() && (options5.querySource.startsWith("repl_main_thread") || options5.querySource === "sdk")) {
@@ -803836,7 +804032,7 @@ function toOllamaChatRequest(params, stream5, capabilities, baseUrl = getEffecti
     messages: [
       systemMessage,
       ...messagesToOllama(params.messages, resolveVisionSupport(params.model, capabilities), params.model)
-    ].filter((message) => message.role === "tool" || message.content.trim() !== "" || (message.images?.length ?? 0) > 0 || (message.tool_calls?.length ?? 0) > 0),
+    ].filter((message) => message.role === "tool" || message.content.trim() !== "" || (message.thinking?.trim().length ?? 0) > 0 || (message.images?.length ?? 0) > 0 || (message.tool_calls?.length ?? 0) > 0),
     stream: stream5,
     ...tools.length > 0 ? { tools } : {},
     ...think !== undefined ? { think } : {}
@@ -803891,6 +804087,7 @@ function messagesToOllama(messages, visionSupport, model = "") {
   for (const message of messages) {
     if (message.role === "assistant") {
       const textParts2 = [];
+      const thinkingParts = [];
       const toolCalls = [];
       const content2 = message.content;
       if (typeof content2 === "string") {
@@ -803899,6 +804096,8 @@ function messagesToOllama(messages, visionSupport, model = "") {
         for (const block2 of content2) {
           if (block2.type === "text") {
             textParts2.push(block2.text);
+          } else if (block2.type === "thinking" && typeof block2.thinking === "string") {
+            thinkingParts.push(block2.thinking);
           } else if (block2.type === "tool_use") {
             toolNamesById.set(block2.id, block2.name);
             toolCalls.push({
@@ -803910,11 +804109,13 @@ function messagesToOllama(messages, visionSupport, model = "") {
           }
         }
       }
+      const thinking = thinkingParts.join("");
       result.push({
         role: "assistant",
         content: textParts2.filter(Boolean).join(`
 
 `),
+        ...thinking ? { thinking } : {},
         ...toolCalls.length > 0 ? { tool_calls: toolCalls } : {}
       });
       continue;
@@ -806779,9 +806980,12 @@ function mapStopReason(reason, includesToolUse = false) {
     return "tool_use";
   }
   switch (reason) {
+    case "max_tokens":
     case "length":
     case "MAX_TOKENS":
       return "max_tokens";
+    case "model_context_window_exceeded":
+      return "model_context_window_exceeded";
     case "stop":
     case "STOP":
     case "end":
@@ -818462,7 +818666,7 @@ function getUserAgent() {
   const clientApp = process.env.UR_AGENT_SDK_CLIENT_APP ? `, client-app/${process.env.UR_AGENT_SDK_CLIENT_APP}` : "";
   const workload = getWorkload();
   const workloadSuffix = workload ? `, workload/${workload}` : "";
-  return `ur-cli/${"1.86.1"} (${process.env.USER_TYPE}, ${process.env.UR_CODE_ENTRYPOINT ?? "cli"}${agentSdkVersion}${clientApp}${workloadSuffix})`;
+  return `ur-cli/${"1.86.2"} (${process.env.USER_TYPE}, ${process.env.UR_CODE_ENTRYPOINT ?? "cli"}${agentSdkVersion}${clientApp}${workloadSuffix})`;
 }
 function getMCPUserAgent() {
   const parts = [];
@@ -818476,7 +818680,7 @@ function getMCPUserAgent() {
     parts.push(`client-app/${process.env.UR_AGENT_SDK_CLIENT_APP}`);
   }
   const suffix = parts.length > 0 ? ` (${parts.join(", ")})` : "";
-  return `ur/${"1.86.1"}${suffix}`;
+  return `ur/${"1.86.2"}${suffix}`;
 }
 function getWebFetchUserAgent() {
   return `UR-User (${getURCodeUserAgent()})`;
@@ -830388,7 +830592,7 @@ function buildSystemInitMessage(inputs) {
     slash_commands: inputs.commands.filter((c4) => c4.userInvocable !== false).map((c4) => c4.name),
     apiKeySource: getURHQApiKeyWithSource().source,
     betas: getSdkBetas(),
-    ur_version: "1.86.1",
+    ur_version: "1.86.2",
     output_style: outputStyle,
     agents: inputs.agents.map((agent2) => agent2.agentType),
     skills: inputs.skills.filter((s) => s.userInvocable !== false).map((skill2) => skill2.name),
@@ -833929,7 +834133,7 @@ var init_useVoiceEnabled = __esm(() => {
 function getSemverPart(version3) {
   return `${import_semver13.major(version3, { loose: true })}.${import_semver13.minor(version3, { loose: true })}.${import_semver13.patch(version3, { loose: true })}`;
 }
-function useUpdateNotification(updatedVersion, initialVersion = "1.86.1") {
+function useUpdateNotification(updatedVersion, initialVersion = "1.86.2") {
   const [lastNotifiedSemver, setLastNotifiedSemver] = import_react225.useState(() => getSemverPart(initialVersion));
   if (!updatedVersion) {
     return null;
@@ -833978,7 +834182,7 @@ function AutoUpdater({
       return;
     }
     if (false) {}
-    const currentVersion = "1.86.1";
+    const currentVersion = "1.86.2";
     const channel = getInitialSettings()?.autoUpdatesChannel ?? "latest";
     let latestVersion = await getLatestVersion(channel);
     const isDisabled = isAutoUpdaterDisabled();
@@ -834203,12 +834407,12 @@ function NativeAutoUpdater({
     logEvent("tengu_native_auto_updater_start", {});
     try {
       const maxVersion = await getMaxVersion();
-      if (maxVersion && gt("1.86.1", maxVersion)) {
+      if (maxVersion && gt("1.86.2", maxVersion)) {
         const msg = await getMaxVersionMessage();
         setMaxVersionIssue(msg ?? "affects your version");
       }
       const result = await installLatest(channel);
-      const currentVersion = "1.86.1";
+      const currentVersion = "1.86.2";
       const latencyMs = Date.now() - startTime;
       if (result.lockFailed) {
         logEvent("tengu_native_auto_updater_lock_contention", {
@@ -834352,17 +834556,17 @@ function PackageManagerAutoUpdater(t0) {
       const maxVersion = await getMaxVersion();
       if (maxVersion && latest && gt(latest, maxVersion)) {
         logForDebugging(`PackageManagerAutoUpdater: maxVersion ${maxVersion} is set, capping update from ${latest} to ${maxVersion}`);
-        if (gte("1.86.1", maxVersion)) {
-          logForDebugging(`PackageManagerAutoUpdater: current version ${"1.86.1"} is already at or above maxVersion ${maxVersion}, skipping update`);
+        if (gte("1.86.2", maxVersion)) {
+          logForDebugging(`PackageManagerAutoUpdater: current version ${"1.86.2"} is already at or above maxVersion ${maxVersion}, skipping update`);
           setUpdateAvailable(false);
           return;
         }
         latest = maxVersion;
       }
-      const hasUpdate = latest && !gte("1.86.1", latest) && !shouldSkipVersion(latest);
+      const hasUpdate = latest && !gte("1.86.2", latest) && !shouldSkipVersion(latest);
       setUpdateAvailable(!!hasUpdate);
       if (hasUpdate) {
-        logForDebugging(`PackageManagerAutoUpdater: Update available ${"1.86.1"} -> ${latest}`);
+        logForDebugging(`PackageManagerAutoUpdater: Update available ${"1.86.2"} -> ${latest}`);
       }
     };
     $2[0] = t1;
@@ -834396,7 +834600,7 @@ function PackageManagerAutoUpdater(t0) {
       wrap: "truncate",
       children: [
         "currentVersion: ",
-        "1.86.1"
+        "1.86.2"
       ]
     }, undefined, true, undefined, this);
     $2[3] = verbose;
@@ -845247,7 +845451,7 @@ function buildStatusLineCommandInput(permissionMode, exceeds200kTokens, settings
       project_dir: getOriginalCwd(),
       added_dirs: addedDirs
     },
-    version: "1.86.1",
+    version: "1.86.2",
     output_style: {
       name: outputStyleName
     },
@@ -845383,7 +845587,7 @@ function StatusLineInner({
   const attention = customStatusError ?? taskAttention;
   const terminalSize = React138.useContext(TerminalSizeContext);
   const defaultStatusLineText = buildDefaultStatusBar({
-    version: "1.86.1",
+    version: "1.86.2",
     providerLabel: nvidiaTaskModel ? "NVIDIA Special" : providerRuntime.providerLabel,
     authMode: nvidiaTaskModel ? "API key" : providerRuntime.authLabel,
     model: nvidiaTaskModel ?? (renderModelName(mainLoopModel) || providerRuntime.model || ""),
@@ -857966,7 +858170,7 @@ async function submitTranscriptShare(messages, trigger2, appearanceId) {
     } catch {}
     const data = {
       trigger: trigger2,
-      version: "1.86.1",
+      version: "1.86.2",
       platform: process.platform,
       transcript,
       subagentTranscripts: Object.keys(subagentTranscripts).length > 0 ? subagentTranscripts : undefined,
@@ -870428,7 +870632,7 @@ function WelcomeV2() {
             dimColor: true,
             children: [
               "v",
-              "1.86.1"
+              "1.86.2"
             ]
           }, undefined, true, undefined, this)
         ]
@@ -871674,7 +871878,7 @@ function completeOnboarding() {
   saveGlobalConfig((current) => ({
     ...current,
     hasCompletedOnboarding: true,
-    lastOnboardingVersion: "1.86.1"
+    lastOnboardingVersion: "1.86.2"
   }));
 }
 function showDialog(root2, renderer) {
@@ -876671,7 +876875,7 @@ function appendToLog(path28, message) {
     cwd: getFsImplementation().cwd(),
     userType: process.env.USER_TYPE,
     sessionId: getSessionId(),
-    version: "1.86.1"
+    version: "1.86.2"
   };
   getLogWriter(path28).write(messageWithTimestamp);
 }
@@ -880831,8 +881035,8 @@ async function getEnvLessBridgeConfig() {
 }
 async function checkEnvLessBridgeMinVersion() {
   const cfg = await getEnvLessBridgeConfig();
-  if (cfg.min_version && lt("1.86.1", cfg.min_version)) {
-    return `Your version of UR (${"1.86.1"}) is too old for Remote Control.
+  if (cfg.min_version && lt("1.86.2", cfg.min_version)) {
+    return `Your version of UR (${"1.86.2"}) is too old for Remote Control.
 Version ${cfg.min_version} or higher is required. Run \`ur update\` to update.`;
   }
   return null;
@@ -881306,7 +881510,7 @@ async function initBridgeCore(params) {
   const rawApi = createBridgeApiClient({
     baseUrl,
     getAccessToken,
-    runnerVersion: "1.86.1",
+    runnerVersion: "1.86.2",
     onDebug: logForDebugging,
     onAuth401,
     getTrustedDeviceToken
@@ -894750,7 +894954,7 @@ function getAgUiCapabilities() {
       name: "UR-Nexus",
       type: "ur-nexus",
       description: "Provider-flexible, local-first autonomous engineering workflow agent.",
-      version: "1.86.1",
+      version: "1.86.2",
       provider: "UR",
       documentationUrl: "https://github.com/Maitham16/UR/blob/master/docs/AG_UI.md"
     },
@@ -895572,7 +895776,7 @@ function createMCPServer(cwd4, debug2, verbose) {
   };
   const server2 = new Server({
     name: "ur-nexus",
-    version: "1.86.1"
+    version: "1.86.2"
   }, {
     capabilities: {
       tools: {}
@@ -896775,7 +896979,7 @@ function thrownResponse(error61) {
 }
 async function createUrMcp2026Runtime(options5) {
   const server2 = createMCPServer(options5.cwd, options5.debug === true, options5.verbose === true);
-  const client2 = new Client({ name: "ur-mcp-2026-adapter", version: "1.86.1" }, { capabilities: {} });
+  const client2 = new Client({ name: "ur-mcp-2026-adapter", version: "1.86.2" }, { capabilities: {} });
   const [clientTransport, serverTransport] = createLinkedTransportPair();
   try {
     await server2.connect(serverTransport);
@@ -896786,7 +896990,7 @@ async function createUrMcp2026Runtime(options5) {
   }
   const runtime2 = new Mcp2026Runtime({
     cwd: options5.cwd,
-    version: "1.86.1",
+    version: "1.86.2",
     backend: {
       listTools: async () => {
         const listed = await client2.listTools();
@@ -899662,8 +899866,8 @@ async function update() {
   if (diagnostic2.installationType === "native") {
     try {
       const latest = await fetchNativeVersion();
-      if (gte("1.86.1", latest))
-        writeToStdout(`UR-Nexus ${"1.86.1"} is up to date.
+      if (gte("1.86.2", latest))
+        writeToStdout(`UR-Nexus ${"1.86.2"} is up to date.
 `);
       else {
         const result2 = await installNativeRelease(latest);
@@ -899688,7 +899892,7 @@ Your current installation remains available.
     return;
   }
   const result = await checkUpgradeStatus({
-    currentVersion: "1.86.1",
+    currentVersion: "1.86.2",
     packageName: UR_AGENT_PACKAGE_NAME,
     installationType: diagnostic2.installationType,
     latestVersion: () => getLatestNpmPackageVersion(UR_AGENT_PACKAGE_NAME)
@@ -901028,7 +901232,7 @@ ${customInstructions}` : customInstructions;
       }
     }
     logForDiagnosticsNoPII("info", "started", {
-      version: "1.86.1",
+      version: "1.86.2",
       is_native_binary: isInBundledMode()
     });
     registerCleanup(async () => {
@@ -901816,7 +902020,7 @@ Usage: ur --remote "your task description"`, () => gracefulShutdown(1));
         pendingHookMessages
       }, renderAndRun);
     }
-  }).version("1.86.1 (UR-Nexus)", "-v, --version", "Output the version number");
+  }).version("1.86.2 (UR-Nexus)", "-v, --version", "Output the version number");
   program2.option("-w, --worktree [name]", "Create a new git worktree for this session (optionally specify a name)");
   program2.option("--tmux", "Create a tmux session for the worktree (requires --worktree). Uses iTerm2 native panes when available; use --tmux=classic for traditional tmux.");
   if (canUserConfigureAdvisor()) {
@@ -902978,7 +903182,7 @@ async function main2() {
     }
   }
   if (args.length === 1 && (args[0] === "--version" || args[0] === "-v" || args[0] === "-V")) {
-    console.log("1.86.1 (UR-Nexus)");
+    console.log("1.86.2 (UR-Nexus)");
     return;
   }
   if (args[0] === "a2a" && args[1] === "serve" && !args.includes("--help") && !args.includes("-h")) {

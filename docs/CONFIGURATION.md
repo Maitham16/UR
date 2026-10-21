@@ -330,6 +330,28 @@ configured `base_url`). UR sends `enable_tools: false` on every inference reques
 function calls continue through UR's normal native tool flow, while Unsloth's
 server-side tools remain disabled so the integration stays provider-only.
 
+### Response chunks and output recovery
+
+`UR_CODE_MAX_OUTPUT_TOKENS` controls a response chunk, not the total output of
+an agent task. When explicitly set to a valid value, it also caps automatic
+chunk growth; model output limits and remaining context can impose smaller
+limits. Invalid values fall back to the normal default. Without an explicit
+ceiling, UR can grow a stalled chunk within those model/context limits.
+
+The shared native-provider agent loop continues useful capped output without a
+fixed total continuation count. Empty, reasoning-only, or replayed capped
+responses can increase the next budget by up to 2×. After growth is exhausted,
+two unproductive attempts stop the loop. Actual request budgets and input/output
+usage keep a lower-level retry's reduced budget from causing repeated failed
+growth requests. Provider-side restrictions can still prevent completion.
+
+Automatic context compaction is separate from chunk growth. A
+`model_context_window_exceeded` stop preserves partial work and enters
+prompt-too-long recovery when automatic compaction is enabled;
+`DISABLE_AUTO_COMPACT` disables that recovery. Ollama's native `thinking` field
+retains reasoning-only history separately from visible text. Other providers
+keep their own reasoning/signature rules.
+
 ### OpenAI Responses transport
 
 OpenAI uses Chat Completions unless the Responses transport is selected

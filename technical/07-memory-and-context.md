@@ -100,6 +100,23 @@ rollback preserve a private copy of the full original before replacement.
 | Clear | `/clear` (aliases `/reset`, `/new`) |
 | Read caps | Read tool truncates large files/lines; `/read`, `/analyze`, `/summarize` for deliberate loads |
 
+### Context exhaustion during a response
+
+A provider's `model_context_window_exceeded` stop is a prompt-too-long event,
+not an ordinary output chunk boundary. The recovery input includes partial
+assistant output already produced in that turn. With automatic compaction
+enabled, UR compacts that history and retries; disabled or unsuccessful
+compaction surfaces the context failure rather than appending repeated output
+continuation prompts.
+
+Output chunk recovery is separate: empty, reasoning-only, or replayed capped
+responses can double the response reservation within model, explicit environment,
+and remaining-context limits. Useful output has no fixed total continuation
+count. Actual request/usage metadata prevents repeated failed increases, and
+two unproductive attempts stop the loop once growth is exhausted. See
+[provider recovery](05-providers-and-models.md#response-boundary-recovery) for
+the budget, replay, and provider-specific reasoning rules.
+
 ## Repo wiki & map
 
 ```

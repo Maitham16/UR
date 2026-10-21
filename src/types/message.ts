@@ -43,6 +43,12 @@ export interface CompactMetadata {
   [key: string]: unknown
 }
 
+export interface OutputLimitMetadata {
+  requestedMaxTokens: number
+  inputTokens: number
+  outputTokens: number
+}
+
 export interface BaseMessage {
   type?: string
   uuid?: string
@@ -65,6 +71,7 @@ export interface BaseMessage {
   apiError?: any
   errorDetails?: string
   error?: any
+  outputLimit?: OutputLimitMetadata
   research?: unknown
   compactMetadata?: CompactMetadata
   mcpMeta?: AnyObject

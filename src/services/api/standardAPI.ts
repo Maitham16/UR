@@ -603,9 +603,14 @@ function mapStopReason(reason: string | undefined, includesToolUse = false): str
     return 'tool_use'
   }
   switch (reason) {
+    case 'max_tokens':
     case 'length':
     case 'MAX_TOKENS':
       return 'max_tokens'
+    case 'model_context_window_exceeded':
+      // Keep context exhaustion distinct from an output chunk boundary so
+      // the caller can free context instead of retrying the same full prompt.
+      return 'model_context_window_exceeded'
     case 'stop':
     case 'STOP':
     case 'end':
