@@ -11,11 +11,13 @@ verifies the fix.
 - Native install on macOS/Linux ARM64/x64: follow
   [Native installation](NATIVE_INSTALL.md), add `~/.local/bin` to PATH if
   requested, and inspect `command -v ur`.
-- Windows native installation is unavailable in 1.86.0. For optional Windows
-  source/npm development workflows, inspect `Get-Command ur` and follow the
-  runtime prerequisites in the [Development Guide](DEVELOPMENT.md).
-- npm compatibility install: check the npm global bin path, then reinstall if
-  needed. This path requires separate Node.js and Bun installations.
+- Homebrew install: inspect `brew list ur` and `command -v ur`; update with
+  `brew upgrade Maitham16/ur/ur`.
+- Windows native and public npm installation are unavailable in 1.86.1. For
+  optional Windows source development, inspect `Get-Command ur` and follow the
+  [Development Guide](DEVELOPMENT.md).
+- npm install: check the npm global bin path, then reinstall if needed. The
+  launcher requires Node.js `>=22.12`; it needs no separate Bun.
 
 ```sh
 npm install -g ur-agent
@@ -35,27 +37,29 @@ npm install -g ur-agent
 ur --version
 ```
 
-### Bun is missing or too old (npm/source distribution only)
+### An npm installation asks for Bun
 
-The macOS/Linux native release includes its runtime. If a native installation reports a
-missing `bun`, run `command -v ur` (PowerShell: `Get-Command ur`) to find an older
-npm installation or alias earlier on PATH. Prefer the native `~/.local/bin`
-launcher, or reinstall from [Native installation](NATIVE_INSTALL.md).
+The official npm package from 1.86.1 needs Node.js `>=22.12` and uses the pinned
+native application without a separate Bun. If it asks for Bun, inspect
+`command -v ur` for an older npm install, source checkout, or alias, then update
+with `npm install -g ur-agent@latest`. Homebrew uses
+`brew upgrade Maitham16/ur/ur`; standalone installs use `ur upgrade`.
 
-- Likely cause: UR is not Node-native. The npm, GitHub-package, and
-  source-checkout install paths execute the CLI through Bun (this repository pins
-  `bun@1.3.14`). The npm-installed `bin/ur.js` launcher starts under Node
-  only to detect Bun and re-exec into it; if Bun is missing or too old, the
-  launcher prints `UR-Nexus requires Bun ... at runtime` and exits instead of
-  falling back to Node.
-- Fix: install Bun, then rerun. Set `BUN_BIN` to an absolute Bun path if
-  `bun` is installed but not on `PATH`.
+### The first npm launch cannot download its native application
 
-```sh
-npm install -g bun   # or: curl -fsSL https://bun.sh/install | bash
-bun --version
-ur --version
-```
+The first `ur` launch needs access to the exact package version's GitHub release.
+Check the reported network, checksum, or resource-validation error and retry;
+UR does not substitute a different version or fall back to Bun. A valid cached
+installation under `~/.cache/ur/npm/<version>-<platform>` can launch offline.
+`XDG_CACHE_HOME` must be absolute when set. Provider requests may still need
+network access independently.
+
+### Bun is missing or too old (source development only)
+
+Source checkouts and GitHub-source packages execute through the pinned Bun
+(`1.3.14`). Install that development runtime, or set `BUN_BIN` to its absolute
+path when it is outside PATH. Public Homebrew, npm, and standalone installs do
+not require it.
 
 ### Invalid or corrupted settings
 

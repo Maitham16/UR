@@ -1,8 +1,8 @@
 name: Release
 
 # Turns a pushed tag into a production release: verify the tag and artifact,
-# publish that tarball to npm with OIDC, then publish the GitHub Release with notes
-# from CHANGELOG.md. Nothing here trusts the tag alone — its version must match
+# publish the verified native downloads, then publish the native npm launcher
+# with OIDC. Nothing here trusts the tag alone — its version must match
 # package.json, and the artifact that ships is the one that passed the gate.
 
 on:
@@ -160,7 +160,7 @@ jobs:
           node ./bin/ur.js --version
           node ./bin/ur.js --help > /dev/null
 
-      - name: Pack the tarball that will ship
+      - name: Pack the verified source bundle for native npm assembly
         run: |
           set -euo pipefail
           mkdir -p dist-release
@@ -171,15 +171,51 @@ jobs:
       - name: Upload release artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ur-agent-${{ steps.resolve.outputs.version }}
+          name: ur-agent-source-${{ steps.resolve.outputs.version }}
           path: dist-release/*.tgz
           if-no-files-found: error
           retention-days: 14
 
+  prepare-npm:
+    needs: [verify, native]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Assemble the dependency-free npm package from tested artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist-release/source dist-release/native dist-release/npm
+          gh run download "$GITHUB_RUN_ID" --name "ur-agent-source-$VERSION" --dir dist-release/source
+          for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+            gh run download "$GITHUB_RUN_ID" --name "native-$target" --dir dist-release/native
+          done
+          node scripts/native-manifest.mjs dist-release/native
+          node scripts/npm-native-package.mjs --source-tarball "dist-release/source/ur-agent-$VERSION.tgz" --manifest dist-release/native/manifest.json --out-dir dist-release/npm
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ur-agent-${{ needs.verify.outputs.version }}
+          path: dist-release/npm/*.tgz
+          if-no-files-found: error
+          retention-days: 14
+
   github-release:
-    # npm must succeed first. A registry authentication failure must never
-    # create another partial GitHub-only release.
-    needs: [verify, native, npm-publish]
+    # npm's first invocation downloads its pinned native archive. Make all
+    # verified public assets available before npm can expose that launcher.
+    needs: [verify, native, prepare-npm]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -256,7 +292,7 @@ jobs:
           fi
 
   npm-publish:
-    needs: [verify, native]
+    needs: [verify, prepare-npm, github-release]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

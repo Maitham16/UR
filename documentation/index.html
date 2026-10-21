@@ -43,10 +43,10 @@
     </aside>
 
     <main id="content" class="content">
-      <aside class="callout"><strong>Standalone installation:</strong> native UR for macOS/Linux ARM64 and x64 includes its runtime and needs no separate Node.js, npm, or Bun. Download the installer from the <a href="https://github.com/Maitham16/UR/releases/latest">latest GitHub release</a>. Keep the executable and resources together. Windows native installation is unavailable in 1.86.0; source/npm development workflows retain their separate runtime prerequisites. Native updates use <code>ur upgrade</code>.</aside>
+      <aside class="callout"><strong>Install on macOS/Linux ARM64 or x64:</strong> use <code>brew install Maitham16/ur/ur</code> or the <a href="https://github.com/Maitham16/UR/releases/latest">standalone installer</a> without Node.js or Bun. The official npm package requires Node.js 22.12+ only and verifies/caches the pinned native application on first launch. Windows native and public npm installation are unavailable in 1.86.1; Bun-based source development remains optional.</aside>
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.86.0</p>
+          <p class="eyebrow">Version 1.86.1</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -124,12 +124,20 @@
           <article class="step">
             <span>1</span>
             <h3>Install</h3>
+            <p>Homebrew:</p>
+            <pre><code>brew install Maitham16/ur/ur
+ur --version</code></pre>
+            <p>Or npm, with Node.js 22.12+ and no separate Bun:</p>
+            <pre><code>npm install -g ur-agent
+ur --version</code></pre>
+            <p>The npm package has no dependencies or install scripts. Its first launch needs GitHub access to download and verify the pinned native release; later cached launches work offline.</p>
+            <p>Or the standalone installer:</p>
             <pre><code>curl -fsSL https://github.com/Maitham16/UR/releases/latest/download/install.sh -o install-ur.sh
 sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ur --version</code></pre>
             <p>The PATH command applies to this terminal. Add it once to your zsh or bash startup file for future terminals; see the <a href="../docs/NATIVE_INSTALL.md#install">shell startup instructions</a>.</p>
-            <p>Windows native installation is unavailable in 1.86.0 and has been deferred. Windows developers can optionally use the <a href="../docs/DEVELOPMENT.md">Bun-based source or npm compatibility workflows</a>, which require separate runtimes.</p>
+            <p>Windows native and public npm installation are unavailable in 1.86.1. Windows developers can optionally use the <a href="../docs/DEVELOPMENT.md">Bun-based source workflow</a>.</p>
           </article>
           <article class="step">
             <span>2</span>
@@ -146,7 +154,7 @@ ur -p --model qwen3-coder:480b-cloud --output-format json "Review the current di
         </div>
         <div class="callout">
           <strong>Runtime requirement</strong>
-          <p>Native UR on macOS/Linux includes its runtime; no separate Node.js, npm, or Bun is required. npm/source installations require Node.js and Bun. Linux x64 needs an x86-64-v2 CPU, including SSE4.2; see the <a href="../docs/NATIVE_INSTALL.md#supported-platforms">qualified platforms</a>. On the first interactive run in a workspace, choose a provider and model; UR validates and saves the pair locally before starting the session. Fresh print-mode workspaces require <code>--model</code> or another explicit model source.</p>
+          <p>Homebrew and standalone UR on macOS/Linux include their runtime; no Node.js or separate Bun is required. The official npm launcher needs Node.js 22.12+ and caches the same native application without Bun. Source development uses the pinned Bun. Linux x64 needs an x86-64-v2 CPU, including SSE4.2; see the <a href="../docs/NATIVE_INSTALL.md#supported-platforms">qualified platforms</a>. On the first interactive run in a workspace, choose a provider and model; UR validates and saves the pair locally before starting the session. Fresh print-mode workspaces require <code>--model</code> or another explicit model source.</p>
         </div>
       </section>
 
@@ -686,13 +694,13 @@ ur ide diff show &lt;id&gt;</code></pre>
 hash -r
 command -v ur
 ur --version</code></pre>
-            <p>Native installations download and verify the new release. npm installations print the compatible <code>npm install -g ur-agent@latest</code> command; their separate Node.js/Bun requirements remain. On Windows, use <code>Get-Command ur</code> to inspect the active launcher.</p>
+            <p>Standalone installations download and verify the new release. Use <code>npm install -g ur-agent@latest</code> for npm or <code>brew upgrade Maitham16/ur/ur</code> for Homebrew. Package-manager installs reject <code>ur install</code> to avoid creating another installation. npm needs Node.js 22.12+ only; it never launches a separate Bun.</p>
           </article>
           <article>
             <h3>Source checkout update message</h3>
             <pre><code>ur upgrade
 # Development build detected. To update, pull latest source or install from npm.</code></pre>
-            <p>Source checkouts report development-build guidance. Native installations update from verified GitHub releases. npm-installed builds compare against the latest <code>ur-agent</code> version and print the exact install command when an update is available.</p>
+            <p>Source checkouts report development-build guidance. Standalone installations update from verified GitHub releases; npm and Homebrew installations retain their package-manager update commands.</p>
           </article>
           <article>
             <h3>Ollama model not found</h3>

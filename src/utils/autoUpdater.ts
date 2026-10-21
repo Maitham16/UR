@@ -26,6 +26,7 @@ import {
   writeFileLines,
 } from './shellConfig.js'
 import { jsonParse } from './slowOperations.js'
+import { getNpmNativeInstallation } from './npmNativeInstallation.js'
 
 const GCS_BUCKET_URL =
   'https://storage.googleapis.com/ur-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/ur-releases'
@@ -267,9 +268,14 @@ async function releaseLock(): Promise<void> {
   }
 }
 
+/** The embedded Bun runtime does not change which manager owns an npm install. */
+export function getGlobalPackageManager(): 'npm' | 'bun' {
+  return getNpmNativeInstallation() ? 'npm' : env.isRunningWithBun() ? 'bun' : 'npm'
+}
+
 async function getInstallationPrefix(): Promise<string | null> {
   // Run from home directory to avoid reading project-level .npmrc/.bunfig.toml
-  const isBun = env.isRunningWithBun()
+  const isBun = getGlobalPackageManager() === 'bun'
   let prefixResult = null
   if (isBun) {
     prefixResult = await execFileNoThrowWithCwd('bun', ['pm', 'bin', '-g'], {
@@ -470,9 +476,9 @@ export async function installGlobalPackage(
   }
 
   try {
-    await removeURAliasesFromShellConfigs()
+    if (!getNpmNativeInstallation()) await removeURAliasesFromShellConfigs()
     // Check if we're using npm from Windows path in WSL
-    if (!env.isRunningWithBun() && env.isNpmFromWindowsPath()) {
+    if (getGlobalPackageManager() === 'npm' && env.isNpmFromWindowsPath()) {
       logError(new Error('Windows NPM detected in WSL environment'))
       logEvent('tengu_auto_updater_windows_npm_in_wsl', {
         currentVersion:
@@ -505,7 +511,7 @@ To fix this issue:
 
     // Run from home directory to avoid reading project-level .npmrc/.bunfig.toml
     // which could be maliciously crafted to redirect to an attacker's registry
-    const packageManager = env.isRunningWithBun() ? 'bun' : 'npm'
+    const packageManager = getGlobalPackageManager()
     const installResult = await execFileNoThrowWithCwd(
       packageManager,
       ['install', '-g', packageSpec],

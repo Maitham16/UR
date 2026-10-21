@@ -144,4 +144,7 @@ arguments; `nativeResources.ts` anchors packaged libraries and assets to the
 physical executable directory; `nativeRelease.ts` validates GitHub manifests,
 archives, resource integrity, and atomic stable-launcher activation. Shell
 timeouts use a typed internal entrypoint. Repository search uses a separately
-packaged ripgrep executable. npm/source execution retains its Bun launcher.
+packaged ripgrep executable. The official npm package has no dependencies or
+lifecycle scripts: its Node.js bootstrap verifies and caches the exact native
+release. Homebrew installs the native payload under `libexec`; both package
+managers retain ownership of updates. Source development retains its Bun launcher.

@@ -10,7 +10,6 @@ import { getGlobalConfig, isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { getCurrentInstallationType } from '../utils/doctorDiagnostic.js';
 import { installOrUpdateURPackage, localInstallationExists } from '../utils/localInstaller.js';
-import { removeInstalledSymlink } from '../utils/nativeInstaller/index.js';
 import { gt, gte } from '../utils/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
 import { formatUpdateAvailableMessage, isUpdateAvailable } from '../utils/updateNotice.js';
@@ -84,12 +83,8 @@ export function AutoUpdater({
       const startTime = Date.now();
       onChangeIsUpdating(true);
 
-      // Remove native installer symlink since we're using JS-based updates
-      // But only if user hasn't migrated to native installation
+      // Updating the npm package preserves independent native/Brew launchers.
       const config = getGlobalConfig();
-      if (config.installMethod !== 'native') {
-        await removeInstalledSymlink();
-      }
 
       // Detect actual running installation type
       const installationType = await getCurrentInstallationType();
@@ -115,9 +110,8 @@ export function AutoUpdater({
         logForDebugging('AutoUpdater: Using global update method');
         updateMethod = 'global';
         installStatus = await installGlobalPackage();
-      } else if (installationType === 'native') {
-        // This shouldn't happen - native should use NativeAutoUpdater
-        logForDebugging('AutoUpdater: Unexpected native installation in non-native updater');
+      } else if (installationType === 'native' || installationType === 'package-manager') {
+        logForDebugging('AutoUpdater: Installation is managed by another updater');
         onChangeIsUpdating(false);
         return;
       } else {

@@ -11,20 +11,19 @@ You need:
   work because UR talks to the configured Ollama host.
 - A second Ollama server on the LAN if you want to test network discovery.
 - The [native UR application](NATIVE_INSTALL.md) on macOS or Linux ARM64/x64,
-  which includes its runtime;
-  or the npm/GitHub package (`npm install -g ur-agent` or
-  `bun add -g github:Maitham16/UR`); or a local checkout (`bun run dev`).
-  npm/source paths require separate Node.js and Bun installations; their
-  launcher detects and execs Bun automatically.
+  installed through Homebrew or the standalone installer without Node.js/Bun;
+  or the official npm package (`npm install -g ur-agent`), whose Node.js
+  `>=22.12` launcher verifies and caches the native application without Bun;
+  or a local source checkout (`bun run dev`) with the pinned development Bun.
 
-Windows native installation is unavailable in 1.86.0. Windows developers can
-optionally use the source/npm workflows with their separate Node.js/Bun runtimes.
+Windows native and public npm installation are unavailable in 1.86.1. Windows
+developers can optionally use the Bun-based source workflow.
 
 ## 0. Smoke
 
 ```sh
 ur --version
-# expected for this release: "1.86.0 (UR-Nexus)"
+# expected for this release: "1.86.1 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -684,5 +683,6 @@ with `--cwd` guidance and must not launch a fix agent.
 - Step 9 (direct commands): run `ur --help` and confirm `spec`, `arena`,
   `escalate`, `test-first`, `safety`, `context-pack`, `ci-loop`, and `artifacts` appear. If `unknown option` or
   `too many arguments` appears, run `ur upgrade` and verify the active launcher
-  with `command -v ur` (PowerShell: `Get-Command ur`). npm compatibility installs
-  print their `npm install -g ur-agent@latest` update command.
+  with `command -v ur`. npm installs print `npm install -g ur-agent@latest`;
+  Homebrew installs use `brew upgrade Maitham16/ur/ur`. Windows source developers
+  can inspect `Get-Command ur` in PowerShell.

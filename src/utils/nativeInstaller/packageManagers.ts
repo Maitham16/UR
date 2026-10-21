@@ -7,6 +7,7 @@ import memoize from 'lodash-es/memoize.js'
 import { logForDebugging } from '../debug.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { getPlatform } from '../platform.js'
+import { getHomebrewInstallation } from './homebrew.js'
 
 export type PackageManager =
   | 'homebrew'
@@ -92,13 +93,8 @@ export function detectAsdf(): boolean {
 
 /**
  * Detects if the currently running UR instance was installed via Homebrew
- * by checking if the executable path is within a Homebrew Caskroom directory.
- *
- * Note: We specifically check for Caskroom because npm can also be installed via
- * Homebrew, which would place npm global packages under the same Homebrew prefix
- * (e.g., /opt/homebrew/lib/node_modules). We need to distinguish between:
- * - Homebrew cask: /opt/homebrew/Caskroom/ur/...
- * - npm-global (via Homebrew's npm): /opt/homebrew/lib/node_modules/@urhq-ai/...
+ * by resolving UR's own executable in Cellar, opt, or Caskroom. A Node/Bun
+ * runtime or npm-global package under the same prefix is a separate channel.
  */
 export function detectHomebrew(): boolean {
   const platform = getPlatform()
@@ -108,13 +104,9 @@ export function detectHomebrew(): boolean {
     return false
   }
 
-  // Get the path of the currently running executable
-  const execPath = process.execPath || process.argv[0] || ''
-
-  // Check if the executable is within a Homebrew Caskroom directory
-  // This is specific to Homebrew cask installations
-  if (execPath.includes('/Caskroom/')) {
-    logForDebugging(`Detected Homebrew cask installation: ${execPath}`)
+  const installation = getHomebrewInstallation(process.execPath || process.argv[0] || '')
+  if (installation) {
+    logForDebugging(`Detected Homebrew ${installation.kind} installation: ${process.execPath}`)
     return true
   }
 

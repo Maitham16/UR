@@ -34,6 +34,8 @@ import { registerCleanup } from '../cleanupRegistry.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { fetchNativeVersion, getNativeInstallDirectories, installNativeRelease, validateNativeVersion } from '../nativeRelease.js'
 import { getManagedWindowsNativeExecutable } from '../urExecutable.js'
+import { getHomebrewInstallation, getHomebrewUpgradeCommand } from './homebrew.js'
+import { getNpmNativeInstallation } from '../npmNativeInstallation.js'
 import { logForDebugging } from '../debug.js'
 import { getCurrentInstallationType } from '../doctorDiagnostic.js'
 import { env } from '../env.js'
@@ -279,7 +281,7 @@ export async function checkInstall(
 
   // Skip checks for development builds - config.installMethod from a previous
   // native installation shouldn't trigger warnings when running dev builds
-  if (installationType === 'development') {
+  if (installationType === 'development' || installationType === 'package-manager' || getNpmNativeInstallation()) {
     return []
   }
 
@@ -450,6 +452,12 @@ async function installLatestImpl(
   channelOrVersion: string,
   forceReinstall: boolean = false,
 ): Promise<InstallLatestResult> {
+  if (getHomebrewInstallation()) {
+    throw new Error(`This UR installation is managed by Homebrew. Run: ${getHomebrewUpgradeCommand()}`)
+  }
+  if (getNpmNativeInstallation()) {
+    throw new Error('This UR installation is managed by npm. Run: npm install -g ur-agent@latest')
+  }
   let target = await fetchNativeVersion(channelOrVersion)
   if (!forceReinstall) {
     const maximum = await getMaxVersion()

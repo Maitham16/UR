@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { getNativeInstallDirectories } from './nativeRelease.js'
+import { getHomebrewStableExecutable } from './nativeInstaller/homebrew.js'
+import { getNpmNativeInstallation } from './npmNativeInstallation.js'
 
 export type UrExecutable = { file: string; baseArgs: string[] }
 
@@ -44,9 +46,17 @@ export function resolveUrExecutable(context: ExecutableContext = {}): UrExecutab
   let file = context.execPath ?? process.execPath
   const entrypoint = context.entrypoint ?? process.argv[1]
   const native = context.native ?? isInBundledMode()
+  if (native && context.preferStable) {
+    const npmInstallation = context.execPath === undefined
+      ? getNpmNativeInstallation()
+      : getNpmNativeInstallation({ execPath: file })
+    if (npmInstallation) return { file: npmInstallation.nodeExecutable, baseArgs: [npmInstallation.launcherPath] }
+  }
   if (native && context.preferStable && process.platform === 'win32') {
     file = getManagedWindowsNativeExecutable(file) ?? file
   } else if (native && context.preferStable) {
+    const brewExecutable = getHomebrewStableExecutable(file)
+    if (brewExecutable) return { file: brewExecutable, baseArgs: [] }
     try {
       const stable = join(getNativeInstallDirectories().binDir, 'ur')
       // Use only our own installation's symlink, never an unrelated UR on PATH.

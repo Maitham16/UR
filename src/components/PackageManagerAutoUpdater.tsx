@@ -3,7 +3,9 @@ import * as React from 'react';
 import { useState } from 'react';
 import { useInterval } from 'usehooks-ts';
 import { Text } from '../ink.js';
-import { type AutoUpdaterResult, getLatestVersionFromGcs, getMaxVersion, shouldSkipVersion } from '../utils/autoUpdater.js';
+import { type AutoUpdaterResult, getMaxVersion, shouldSkipVersion } from '../utils/autoUpdater.js';
+import { fetchNativeVersion } from '../utils/nativeRelease.js';
+import { getHomebrewUpgradeCommand } from '../utils/nativeInstaller/homebrew.js';
 import { isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { getPackageManager, type PackageManager } from '../utils/nativeInstaller/packageManagers.js';
@@ -33,7 +35,14 @@ export function PackageManagerAutoUpdater(t0) {
       }
       const [channel, pm] = await Promise.all([Promise.resolve(getInitialSettings()?.autoUpdatesChannel ?? "latest"), getPackageManager()]);
       setPackageManager(pm);
-      let latest = await getLatestVersionFromGcs(channel);
+      let latest: string;
+      try {
+        latest = await fetchNativeVersion(channel);
+      } catch (error) {
+        logForDebugging(`PackageManagerAutoUpdater: Unable to check public releases: ${error}`);
+        setUpdateAvailable(false);
+        return;
+      }
       const maxVersion = await getMaxVersion();
       if (maxVersion && latest && gt(latest, maxVersion)) {
         logForDebugging(`PackageManagerAutoUpdater: maxVersion ${maxVersion} is set, capping update from ${latest} to ${maxVersion}`);
@@ -73,7 +82,7 @@ export function PackageManagerAutoUpdater(t0) {
   if (!updateAvailable) {
     return null;
   }
-  const updateCommand = packageManager === "homebrew" ? "brew upgrade ur" : packageManager === "winget" ? "winget upgrade URHQ.URCode" : packageManager === "apk" ? "apk upgrade ur" : "your package manager update command";
+  const updateCommand = packageManager === "homebrew" ? getHomebrewUpgradeCommand() : packageManager === "winget" ? "winget upgrade URHQ.URCode" : packageManager === "apk" ? "apk upgrade ur" : "your package manager update command";
   let t4;
   if ($[3] !== verbose) {
     t4 = verbose && <Text dimColor={true} wrap="truncate">currentVersion: {MACRO.VERSION}</Text>;

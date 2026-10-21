@@ -17,10 +17,11 @@
 
 ## Install
 
-Windows native installation is unavailable in 1.86.0. Windows developers can
-optionally use this Bun-based source workflow, or the npm compatibility package
-with separate Node.js and Bun installations. Windows native build and test
-code remains experimental and is outside the public standalone release.
+Windows native and public npm installation are unavailable in 1.86.1. Windows
+developers can optionally use this Bun-based source workflow. Windows native
+build and test code remains experimental and is outside the public release.
+The official macOS/Linux npm package uses a Node launcher and cached native
+application without Bun; it is assembled separately from the source package.
 
 ```sh
 bun install
@@ -60,7 +61,7 @@ shell commands. Use `ur context-pack scan` when a change adds new manifests,
 command surfaces, or architecture rules that should be captured as project
 context.
 
-The npm and GitHub-source package paths use the bundled launcher in `dist/cli.js`, so `bun run bundle` must be run before packaging or pushing a release. `bun run release:check` verifies that `package.json`, `bunfig.toml`, the bundle, docs, and `node ./bin/ur.js --version` agree. The GitHub workflow keeps production bundle, release, package, and global-install checks behind the Bun test step; do not publish, tag, or push release artifacts until that workflow is green.
+The source and GitHub-source package paths use the bundled launcher in `dist/cli.js`, so `bun run bundle` must be run before packaging or pushing a release. `bun run release:check` verifies that `package.json`, `bunfig.toml`, the bundle, docs, and `node ./bin/ur.js --version` agree. The GitHub workflow keeps production bundle, release, package, and global-install checks behind the Bun test step; do not publish, tag, or push release artifacts until that workflow is green.
 
 For a patch release, keep the version synchronized in `package.json`,
 `bunfig.toml`, the VS Code extension manifest, the JetBrains Gradle build,
@@ -86,7 +87,7 @@ required before native packaging because the release includes its local VSIX.
 Experimental Windows native development builds need Visual Studio 2022 with
 the x64 C++ build tools; the build discovers them with `vswhere` and compiles
 the launcher with a static C runtime. No Windows native artifact is published
-for 1.86.0. Installed macOS/Linux users do not need a compiler.
+for 1.86.1. Installed macOS/Linux users do not need a compiler.
 The native archive contains the executable and its versioned `resources/` tree.
 The release workflow qualifies this exact archive without Node/Bun on PATH.
 See [Native installation and recovery](NATIVE_INSTALL.md) and [Release runbook](../RELEASE.md).
@@ -97,7 +98,7 @@ See [Native installation and recovery](NATIVE_INSTALL.md) and [Release runbook](
 bun run bundle
 ```
 
-The build output goes to `dist/cli.js`. The directory is ignored by default, but `dist/cli.js` is intentionally tracked because npm and GitHub-source package installs run the bundled CLI.
+The build output goes to `dist/cli.js`. The directory is ignored by default, but `dist/cli.js` is intentionally tracked because source and GitHub-source package installs run the bundled CLI. The official npm release is assembled by `scripts/npm-native-package.mjs` from the tested native manifest and archives; a source `npm pack` is a developer input, not the production npm artifact.
 
 ## Documentation Maintenance
 

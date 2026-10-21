@@ -40,8 +40,9 @@ dependency advisories, stale bundles, and version drift fail before packaging.
 The current `node-forge@1.4.0` RSA advisory has no upstream fixed npm release;
 UR verifies a narrowly scoped backport, exact source/patch hashes, seven RSA
 behavior checks, and its review deadline. The raw registry advisory remains
-visible, and npm does not apply Bun's patch to its dependency tree.
-The actual packed and native CLIs must pass the bundled verifier self-test.
+visible in the source dependency audit. Source installs need Bun's patch;
+the official npm package has no dependencies and launches the verified native
+application. Every shipped native CLI must pass the bundled verifier self-test.
 See the [reviewed backport record](patches/README.md); this exception does not
 permit unrelated advisories or audit network/format failures.
 The GitHub workflow must keep production
@@ -66,14 +67,16 @@ must execute the archived installation with no external Node, npm, Bun, source
 checkout, or node_modules available. The four-target macOS/Linux native workflow checks
 resource integrity, images, search, compiler libraries, protocol contracts, real
 streaming/task/write/read behavior, restart/resume, and timeout cleanup before
-publication. Windows native distribution is unavailable in 1.86.0. Native
+publication. Windows native distribution is unavailable in 1.86.1. Native
 installer tests cover checksum/path rejection, locking, and failed activation
 preserving the old CLI; retained Windows development tests are outside the
 public release qualification.
 
 ## Runtime Assumptions
 
-- Native UR embeds Bun. The compatibility npm/source distribution runs through an external Bun executable.
+- Native and Homebrew UR embed Bun. The official npm package uses Node.js
+  `>=22.12` to cache and launch the exact native release, with no dependencies,
+  lifecycle scripts, or separate Bun. Source development uses the pinned Bun.
 - The Ollama backend defaults to `http://localhost:11434/api` when selected;
   it may expose local models or Ollama Cloud-backed models. A new workspace
   requires an explicit provider/model choice.
@@ -84,9 +87,11 @@ public release qualification.
 - Selecting a subscription CLI provider (Codex CLI, Claude Code, Gemini CLI,
   Antigravity) dispatches turns through the vendor's official CLI. There is no
   silent cross-provider fallback.
-- The GitHub-source-package and npm compatibility install paths run
-  `dist/cli.js`, so the bundle must match the package version. GitHub native
-  releases execute the compiled application and its matching resources.
+- Source and GitHub-source package installs run `dist/cli.js`, so the bundle
+  must match the package version. The official npm artifact is assembled from
+  the tested native manifest; its first launch verifies and caches that pinned
+  payload. GitHub native and Homebrew installs run the same compiled application
+  and matching resources. Each package manager retains ownership of updates.
 
 ## Safety Boundaries
 

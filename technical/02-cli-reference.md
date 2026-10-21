@@ -167,8 +167,13 @@ One-shot headless: `ur -p "prompt"` — prints the response and exits.
 ## Native installation
 
 `ur install [latest|stable|version]` installs and activates a verified GitHub
-native release without npm/Bun. Native `ur upgrade` retrieves the same public
-release metadata directly; npm installs retain package-manager guidance.
+native release without npm/Bun for standalone installations. npm and Homebrew
+installations reject this command to avoid creating a shadow installation.
+Standalone `ur upgrade` retrieves public release metadata directly; npm uses
+`npm install -g ur-agent@latest`, and Homebrew uses `brew upgrade Maitham16/ur/ur`.
+The npm Node.js launcher caches the pinned native application without a separate
+Bun. Public native/npm releases support macOS/Linux ARM64 and x64; Windows
+remains deferred.
 `--internal-timeout`, `--internal-thinkback-player`, and `--ur-native-self-test`
 are typed internal/qualification entrypoints, not general JavaScript execution
 interfaces. See [native installation](../docs/NATIVE_INSTALL.md).

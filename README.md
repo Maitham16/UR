@@ -175,7 +175,17 @@ and Linux x64/ARM64 with glibc. Linux x64 requires an
 x86-64-v2 CPU (including SSE4.2); see the exact qualification environments in
 [Native installation](docs/NATIVE_INSTALL.md#supported-platforms).
 
-macOS and Linux:
+With Homebrew on macOS or Linux:
+
+```sh
+brew install Maitham16/ur/ur
+ur --version
+```
+
+Homebrew installs the standalone application without Node.js or Bun. Update it
+with `brew upgrade Maitham16/ur/ur`.
+
+For a standalone installation without Homebrew:
 
 ```sh
 curl -fsSL https://github.com/Maitham16/UR/releases/latest/download/install.sh -o install-ur.sh
@@ -183,9 +193,10 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Windows native installation is unavailable in 1.86.0 and has been deferred.
-Windows developers can optionally use the Bun-based source or npm compatibility
-workflows below; these require separate runtime installations.
+Windows native installation is unavailable in 1.86.1 and has been deferred.
+Windows developers can optionally use the Bun-based source workflow in the
+[Development Guide](docs/DEVELOPMENT.md); the public npm package also supports
+only macOS and Linux.
 
 The Unix `export` command makes UR available in the current terminal. Follow
 the [shell startup instructions](docs/NATIVE_INSTALL.md#install) to preserve it
@@ -197,8 +208,10 @@ ur --help
 ```
 
 Installers verify release checksums, the executable version, and packaged
-resources before activating the complete versioned installation. Native updates
-use `ur upgrade`; install a specific release with `ur install 1.86.0`.
+resources before activating the complete versioned installation. Standalone
+installer updates use `ur upgrade`; select a specific standalone release with
+`ur install 1.86.1`. Homebrew and npm installations retain their own update
+commands and reject `ur install` to avoid creating a second installation.
 See [Native installation and recovery](docs/NATIVE_INSTALL.md) for manual
 downloads, signing status, supported targets, rollback, and uninstall.
 
@@ -215,20 +228,25 @@ may require Node.js, Bun, Python, or another toolchain independently of UR.
 Windows development workflows have no supported native OS sandbox. Required
 sandbox mode fails closed when confinement is unavailable.
 
-### npm and source installs
+### npm installation
 
-The compatibility npm distribution remains available:
+If you already use npm on macOS or Linux, install UR with Node.js `>=22.12`:
 
 ```sh
 npm install -g ur-agent
 ur --version
 ```
 
-This distribution requires Node.js `>=22.12` for its launcher and Bun `>=1.3.0`
-(the repository pins `bun@1.3.14`) for the bundled CLI. It installs `sharp` as a
-native runtime dependency. Source checkouts also require the development tools
-listed in [Development Guide](docs/DEVELOPMENT.md). Use the native installer to
-run UR without separately installing Node.js or Bun.
+The published npm package has no dependencies or install scripts and needs no
+separate Bun. On the first `ur` run, its Node launcher downloads the exact native
+release pinned by the installed package, verifies it, and caches it under
+`~/.cache/ur/npm/<version>-<platform>` (`XDG_CACHE_HOME` is honored). The first run
+requires access to GitHub; later cached launches can run offline. Providers and
+optional tools retain their own network requirements. Update with
+`npm install -g ur-agent@latest`.
+
+Source development still uses the repository's pinned Bun and build tools; see
+the [Development Guide](docs/DEVELOPMENT.md).
 
 ### Start A Session
 
@@ -255,7 +273,7 @@ ur --continue
 ur --resume
 ```
 
-Update the native installation, or check for npm updates:
+Update a standalone installation, or get the update command for its package manager:
 
 ```sh
 ur upgrade
@@ -668,7 +686,7 @@ as first-class subcommands in the shipped CLI.
 | `ur agent-trends` | Show UR coverage for current agent technology trends. |
 | `ur agents` | List configured agents. |
 | `ur doctor` | Check the health of the UR installation and auto-updater. |
-| `ur update` | Upgrade a native installation, or check for npm updates (`ur upgrade` is an alias). |
+| `ur update` | Upgrade a standalone installation or show the npm/Homebrew update command (`ur upgrade` is an alias). |
 
 ### Status Bar
 
@@ -905,11 +923,10 @@ settings, generated indexes, memory, logs, and secrets out of Git.
 ## Architecture
 
 - Native releases execute the compiled application with its packaged runtime
-  and adjacent resources. `bin/ur.js` is the npm/source launcher, invoked via
-  Node's shebang. It always
-  executes the CLI through Bun — `bun dist/cli.js` when the bundle is present,
-  otherwise `bun run` against the TypeScript entrypoint — and exits with an
-  install error if Bun is not found. Node never runs the CLI itself.
+  and adjacent resources. Homebrew installs this payload under `libexec`.
+  The official npm package uses a Node launcher to verify and cache the pinned
+  native payload; it never launches a separate Bun. Source development through
+  `bin/ur.js` runs the bundled CLI or TypeScript entrypoint using the pinned Bun.
 - `src/entrypoints/cli.tsx` handles fast startup paths such as `--version`,
   A2A serving, background sessions, bridge mode, and daemon paths before loading
   the full CLI.
@@ -1041,8 +1058,9 @@ bun run release:tag                 # read-only committed/pushed preflight
 bun run release:tag -- --push       # immutable tag; CI publishes the artifact
 ```
 
-`dist/cli.js` is intentionally tracked because GitHub installs use the bundled
-CLI. Rebuild it after source, version, or macro changes.
+`dist/cli.js` is intentionally tracked for source/GitHub-package development
+workflows. Rebuild it after source, version, or macro changes. The official npm
+artifact is assembled separately from the tested native release manifest.
 
 The GitHub workflow runs production bundle, smoke, release, package, and global
 install checks only after the Bun test step succeeds. Do not publish or tag a
@@ -1054,10 +1072,10 @@ release until that GitHub run is green.
 - The package name remains `ur-agent` for compatibility with existing installs
   and legacy `ur-agent` configs. User-facing branding is `UR-Nexus`; the global
   command remains `ur`. A future package rename would use `ur-nexus`.
-- The published package ships the bundled CLI (`dist/cli.js`), launcher
-  (`bin/ur.js`), documentation (`docs/`, `documentation/`, `examples/`), and
-  first-party plugins (`plugins/`, `.ur-plugin` marketplace manifest is part of
-  the repository).
+- The published npm package ships a Node launcher, the exact native-release
+  manifest, documentation, and first-party plugin assets. It has no dependency
+  or lifecycle-script installation step; the native executable and resources
+  are verified and cached on first use.
 - Releases follow the [Release Runbook](RELEASE.md); every release is recorded
   in [CHANGELOG.md](CHANGELOG.md).
 

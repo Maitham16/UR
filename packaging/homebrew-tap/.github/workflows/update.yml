@@ -1,0 +1,146 @@
+name: Update verified native release
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable UR version; leave blank for the latest stable release
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-native-formula
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.candidate.outputs.changed }}
+      base: ${{ steps.candidate.outputs.base }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Verify published manifest and generate candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$RELEASE_VERSION" ]; then
+            node scripts/update-homebrew-tap.mjs --version "$RELEASE_VERSION"
+          else
+            node scripts/update-homebrew-tap.mjs
+          fi
+          ruby -c Formula/ur.rb
+      - name: Record candidate base and changes
+        id: candidate
+        run: |
+          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if git diff --quiet -- Formula/ur.rb release-manifest.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload unpublished candidate
+        if: steps.candidate.outputs.changed == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-formula-candidate
+          path: |
+            Formula/ur.rb
+            release-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+  formula:
+    needs: update
+    if: needs.update.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, platform: darwin-arm64 }
+          - { os: macos-15-intel, platform: darwin-x64 }
+          - { os: ubuntu-22.04, platform: linux-x64 }
+          - { os: ubuntu-24.04-arm, platform: linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ needs.update.outputs.base }}
+          persist-credentials: false
+      - uses: Homebrew/actions/setup-homebrew@4790763c0a3ba4036f72634dc079c4a7dfcd4878
+        with:
+          stable: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: native-formula-candidate
+          path: .
+      - name: Record candidate locally for Homebrew's tap clone
+        env:
+          BASE_SHA: ${{ needs.update.outputs.base }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+          git add Formula/ur.rb release-manifest.json
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Test unpublished native formula candidate'
+      - name: Install, reinstall and test the unpublished candidate
+        run: |
+          brew install --build-from-source Maitham16/ur/ur
+          brew test Maitham16/ur/ur
+          brew reinstall --build-from-source Maitham16/ur/ur
+          brew test Maitham16/ur/ur
+          if ur install latest > ownership.log 2>&1; then
+            cat ownership.log
+            echo 'Homebrew-managed UR accepted a shadow native installation' >&2
+            exit 1
+          fi
+          grep -Ei 'Homebrew|brew' ownership.log
+          brew uninstall ur
+
+  publish:
+    needs: [update, formula]
+    if: needs.update.outputs.changed == 'true' && needs.formula.result == 'success'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ needs.update.outputs.base }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: native-formula-candidate
+          path: .
+      - name: Publish only the tested candidate if its base is unchanged
+        env:
+          BASE_SHA: ${{ needs.update.outputs.base }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch origin "$DEFAULT_BRANCH"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$BASE_SHA" ]; then
+            echo 'Tap changed during qualification; retry against the new base' >&2
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Formula/ur.rb release-manifest.json
+          git commit -m 'Update verified native UR release'
+          git push origin "HEAD:$DEFAULT_BRANCH"

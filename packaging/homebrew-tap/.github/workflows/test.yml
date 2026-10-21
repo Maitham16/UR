@@ -1,0 +1,48 @@
+name: Test native UR formula
+
+on:
+  push:
+    paths: [Formula/ur.rb, release-manifest.json, "scripts/**", ".github/workflows/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  formula:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, platform: darwin-arm64 }
+          - { os: macos-15-intel, platform: darwin-x64 }
+          - { os: ubuntu-22.04, platform: linux-x64 }
+          - { os: ubuntu-24.04-arm, platform: linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: Homebrew/actions/setup-homebrew@4790763c0a3ba4036f72634dc079c4a7dfcd4878
+        with:
+          stable: true
+      - name: Install exact published native formula
+        run: |
+          brew install --build-from-source Maitham16/ur/ur
+          brew test Maitham16/ur/ur
+          brew reinstall --build-from-source Maitham16/ur/ur
+          brew test Maitham16/ur/ur
+          if ur install latest > ownership.log 2>&1; then
+            cat ownership.log
+            echo 'Homebrew-managed UR accepted a shadow native installation' >&2
+            exit 1
+          fi
+          grep -Ei 'Homebrew|brew' ownership.log
+          ur --version
+          brew uninstall ur

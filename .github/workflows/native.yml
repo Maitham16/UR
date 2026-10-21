@@ -42,7 +42,7 @@ jobs:
         id: dependencies
         run: bun ci
       - name: Test native installation and executable routing
-        run: bun test --timeout 120000 test/nativeRelease.test.ts test/nativeInstallationDiagnostics.test.ts test/urExecutable.test.ts
+        run: bun test --timeout 120000 test/nativeRelease.test.ts test/nativeInstallationDiagnostics.test.ts test/urExecutable.test.ts test/npmNativeInstallation.test.ts test/homebrewInstallation.test.ts
       - name: Build bundled VS Code integration
         id: ide
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
@@ -74,6 +74,9 @@ jobs:
       - name: Test shipped archive without JavaScript runtime on PATH
         if: ${{ !cancelled() && steps.archive.outcome == 'success' }}
         run: node scripts/native-smoke.mjs --target ${{ matrix.target }} --artifact-dir dist-release/native
+      - name: Test npm installation without Bun or lifecycle scripts
+        if: ${{ !cancelled() && steps.archive.outcome == 'success' }}
+        run: node scripts/npm-native-smoke.mjs --target ${{ matrix.target }} --artifact-dir dist-release/native
       - name: Preserve native failure diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -84,6 +87,7 @@ jobs:
             ${{ runner.temp }}/ur native release smoke */*.json
             ${{ runner.temp }}/ur native release smoke */*.jsonl
             ${{ runner.temp }}/ur bootstrap */*.json
+            ${{ runner.temp }}/ur npm native smoke */*.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Attest tested native archive

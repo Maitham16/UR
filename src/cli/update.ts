@@ -11,6 +11,7 @@ import { writeToStdout } from 'src/utils/process.js'
 import { gte } from 'src/utils/semver.js'
 import { formatUpdateAvailableMessage } from 'src/utils/updateNotice.js'
 import { fetchNativeVersion, installNativeRelease } from 'src/utils/nativeRelease.js'
+import { getHomebrewUpgradeCommand } from 'src/utils/nativeInstaller/homebrew.js'
 
 export const UR_AGENT_PACKAGE_NAME = 'ur-agent'
 
@@ -175,7 +176,9 @@ export async function update() {
     return
   }
   if (diagnostic.installationType === 'package-manager') {
-    writeToStdout(`Update UR-Nexus using your package manager (${diagnostic.packageManager ?? 'managed installation'}).\n`)
+    writeToStdout(diagnostic.packageManager === 'homebrew'
+      ? `Update UR-Nexus with Homebrew:\n  ${getHomebrewUpgradeCommand()}\n`
+      : `Update UR-Nexus using your package manager (${diagnostic.packageManager ?? 'managed installation'}).\n`)
     await gracefulShutdown(0)
     return
   }

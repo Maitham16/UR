@@ -44,6 +44,7 @@ import {
 import { jsonParse } from './slowOperations.js'
 import { which } from './which.js'
 import { getNativeInstallDirectories } from './nativeRelease.js'
+import { getNpmNativeInstallation } from './npmNativeInstallation.js'
 
 export type InstallationType =
   | 'npm-global'
@@ -86,6 +87,7 @@ function getNormalizedPaths(): [invokedPath: string, execPath: string] {
 }
 
 export async function getCurrentInstallationType(): Promise<InstallationType> {
+  if (getNpmNativeInstallation()) return 'npm-global'
   if (!isInBundledMode() && process.env.NODE_ENV === 'development') {
     return 'development'
   }
@@ -150,6 +152,8 @@ export async function getCurrentInstallationType(): Promise<InstallationType> {
 }
 
 async function getInstallationPath(): Promise<string> {
+  const npmInstallation = getNpmNativeInstallation()
+  if (npmInstallation) return npmInstallation.packageRoot
   if (!isInBundledMode() && process.env.NODE_ENV === 'development') {
     return getCwd()
   }
@@ -437,7 +441,9 @@ async function detectConfigurationIssues(
   if (type === 'npm-global' && (await localInstallationExists())) {
     warnings.push({
       issue: 'Local installation exists but not being used',
-      fix: 'Consider using native installation: ur install',
+      fix: getNpmNativeInstallation()
+        ? 'The active installation is managed by npm. Remove the unused local installation through its own installer if it is no longer needed.'
+        : 'Consider using native installation: ur install',
     })
   }
 
@@ -570,7 +576,7 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
     if (!hasUpdatePermissions && !getAutoUpdaterDisabledReason()) {
       warnings.push({
         issue: 'Insufficient permissions for auto-updates',
-        fix: 'Do one of: (1) Re-install node without sudo, or (2) Use `ur install` for native installation',
+        fix: 'Check write permissions for your npm global prefix (npm prefix -g), or reinstall Node.js using a user-owned prefix.',
       })
     }
   }

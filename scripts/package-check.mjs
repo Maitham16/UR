@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// This gate qualifies the development/source Bun bundle. Public npm releases
+// are assembled and installed separately by npm-native-package/npm-native-smoke.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

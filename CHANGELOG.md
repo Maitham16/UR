@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.86.1
+
+- Fixed npm installations requiring a separate Bun runtime. The published npm
+  launcher downloads the exact verified native release on first use and reuses
+  it offline afterward, including when npm install scripts are disabled.
+- Removed development runtime dependencies and lifecycle scripts from the
+  published npm package. Source development continues to use the pinned Bun.
+- Added Homebrew installation for macOS and Linux on ARM64 and x64, with
+  upgrades managed by Brew and release checks covering the real npm and Brew
+  installation paths. Windows native distribution remains deferred.
+
 ## 1.86.0
 
 - Added standalone UR installations for macOS and Linux on ARM64 and x64. Native

@@ -1,8 +1,10 @@
 # Native installation and recovery
 
-The 1.86.0 standalone release supports macOS and Linux on ARM64 and x64.
+The 1.86.1 standalone release supports macOS and Linux on ARM64 and x64.
 The application includes its Bun runtime and required resources.
-Users do not need Node.js, npm, Bun, a source checkout, or a compiler to run it.
+Homebrew and standalone-installer users need no Node.js, npm, separate Bun,
+source checkout, or compiler. The npm launcher requires Node.js `>=22.12` and
+uses the same standalone application without a separate Bun.
 Install the complete archive: the executable and its adjacent `resources/`
 directory belong to the same immutable release.
 
@@ -15,10 +17,10 @@ directory belong to the same immutable release.
 | Linux x64 with glibc | Ubuntu 22.04 runner |
 | Linux ARM64 with glibc | Ubuntu 24.04 ARM64 runner |
 
-Windows native installation is unavailable in 1.86.0 and has been deferred.
-Windows developers can optionally use the Bun-based source or npm compatibility
-workflows in the [Development Guide](DEVELOPMENT.md). Those workflows need
-separately installed runtimes and are outside this standalone release.
+Windows native installation is unavailable in 1.86.1 and has been deferred.
+Windows developers can optionally use the Bun-based source workflow in the
+[Development Guide](DEVELOPMENT.md). The public npm package supports the same
+four macOS/Linux targets and does not provide a Windows binary.
 
 These are the environments exercised by the release matrix, not a claim that
 every older OS version is supported. Linux x64 additionally requires an
@@ -34,6 +36,40 @@ requirements; UR does not install an application's Node, Python, Docker, Git,
 browser, provider CLI, or model server automatically.
 
 ## Install
+
+### Homebrew
+
+```sh
+brew install Maitham16/ur/ur
+ur --version
+ur
+```
+
+The personal tap installs the checksummed native application and resources
+without Node.js or Bun dependencies. Its updater checks stable releases hourly,
+verifies the release manifest's GitHub provenance, and tests formula updates on
+all four targets. Homebrew owns this installation and its upgrades.
+
+### npm
+
+With Node.js `>=22.12` already installed:
+
+```sh
+npm install -g ur-agent
+ur --version
+ur
+```
+
+The official npm package has no dependencies or lifecycle scripts. The first
+`ur` launch downloads the exact native version pinned by the package, validates
+its archive and resources, and caches it at
+`~/.cache/ur/npm/<version>-<platform>`. An absolute `XDG_CACHE_HOME` overrides the
+cache base. The first launch needs access to GitHub; later cached launches
+work offline. Provider requests and optional integrations have their own
+network requirements. No separate Bun is installed or invoked, and
+`npm install --ignore-scripts -g ur-agent` is supported.
+
+### Standalone installer
 
 Download the installer from the published GitHub release, inspect it if desired,
 then run it as your normal user. Administrator access is not required.
@@ -76,8 +112,8 @@ To pin the first installation, download the installer from a specific release
 and pass the version:
 
 ```sh
-curl -fsSL https://github.com/Maitham16/UR/releases/download/v1.86.0/install.sh -o install-ur.sh
-sh install-ur.sh 1.86.0
+curl -fsSL https://github.com/Maitham16/UR/releases/download/v1.86.1/install.sh -o install-ur.sh
+sh install-ur.sh 1.86.1
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
@@ -106,17 +142,28 @@ policy or a release carrying the required publisher signature.
 Users who already have GitHub CLI can independently verify provenance:
 
 ```sh
-gh attestation verify ur-1.86.0-darwin-arm64.tar.gz --repo Maitham16/UR
+gh attestation verify ur-1.86.1-darwin-arm64.tar.gz --repo Maitham16/UR
 ```
 
 ## Update and select a previous version
 
+Use the command for the installation you chose:
+
+| Installation | Update command |
+| --- | --- |
+| Homebrew | `brew upgrade Maitham16/ur/ur` |
+| npm | `npm install -g ur-agent@latest` |
+| Standalone installer | `ur upgrade` |
+
+Pin npm with `npm install -g ur-agent@1.86.1`. Homebrew and npm installations
+reject `ur install`; use their package manager to avoid creating a second
+installation. For a standalone installation, select a native release with:
+
 ```sh
-ur upgrade
-ur install 1.86.0
+ur install 1.86.1
 ```
 
-Native upgrades retrieve public GitHub release metadata directly and require no
+Standalone upgrades retrieve public GitHub release metadata directly and require no
 npm or Bun command. Installation verifies the entire staged release before
 replacing the stable launcher. Earlier immutable version directories are kept
 so active processes and scheduled runs can finish. An installation lock
@@ -147,7 +194,9 @@ binary rollback does not undo configuration migrations.
 
 ## Uninstall and recover
 
-Download the matching `uninstall.sh` release asset and run it with `sh`.
+For Homebrew, run `brew uninstall ur`. For npm, run
+`npm uninstall -g ur-agent`. For a standalone installation, download the
+matching `uninstall.sh` release asset and run it with `sh`.
 Uninstall removes the owned launcher files while preserving configuration, sessions,
 credentials, and immutable versions. The script prints any optional manual
 cleanup path. Other npm installations, aliases, project data, and dependencies

@@ -254,12 +254,15 @@ claim-to-source provenance; `validate` checks all claims still resolve.
 
 ## Release publication integrity
 
-The tag workflow verifies and packs once, then publishes that exact npm tarball
-after all native release targets pass their installed-archive qualification.
-npm publication uses GitHub OIDC trusted publishing with `id-token: write`,
-without a long-lived `NPM_TOKEN`. The GitHub Release depends on successful
-verification, the native matrix, and npm publication. Registry authentication
-failure therefore blocks that GitHub Release. The guarded local tag command
+The tag workflow verifies the source package and all four native release targets,
+including actual npm installation and native launch without a separate Bun.
+It then assembles the dependency-free npm bootstrap package from those verified
+inputs. The GitHub Release publishes the native download URLs before npm
+publication, so the npm bootstrap can retrieve its pinned payload immediately.
+npm publishes that exact assembled tarball using GitHub OIDC trusted publishing
+with `id-token: write`, without a long-lived `NPM_TOKEN`. An npm authentication
+failure can leave the verified GitHub Release available while npm publication
+remains incomplete. The guarded local tag command
 requires a clean, pushed release commit and never moves an existing tag.
 Publication passes the verified artifact as an explicit `./dist-release/...`
 path; without the `./`, npm's package-spec parser treats the slash-containing
@@ -273,9 +276,11 @@ verifying the registered backport, installed version, patch/source hashes,
 seven real RSA behavior checks, and the review deadline. The raw advisory stays
 visible. All other advisories and audit transport/format failures block release.
 
-The CLI bundles the patched RSA verifier, while npm does not apply Bun's patch
-to its installed dependency tree. Packed/npm and compiled/native acceptance
-therefore run `--ur-security-self-test` against the actual shipped application.
+The native application bundles the patched RSA verifier. The published npm
+bootstrap has no runtime dependency tree and launches that same verified native
+application. Installing the development source package with npm does not apply
+Bun's dependency patch. Source-package, installed-npm and compiled-native
+acceptance run `--ur-security-self-test` against the actual application.
 See [backport status and evidence](../patches/README.md), including the review
 expiry and upstream references.
 

@@ -21,10 +21,12 @@ Every other advisory or audit transport/format failure blocks the gate. The raw
 registry finding remains present; this is an explicit verified backport, not a
 clean raw audit. Remove this exception when an upstream fixed release is adopted.
 
-The published CLI statically bundles the patched verifier. npm does **not** apply
-Bun's patch to its installed dependency tree, which can still report
-the registry advisory. The package gate runs `--ur-security-self-test` against the
-actual packed CLI and native acceptance runs the same verifier checks inside
-the compiled artifact. These checks cover canonical signatures with and without
+The native application statically bundles the patched verifier. The official
+npm package has no runtime dependencies; it launches the same verified native
+application rather than installing a separate `node-forge` dependency tree.
+Installing the development source package with npm does **not** apply Bun's
+patch and can still report the registry advisory. The source-package gate and
+installed-npm/native acceptance run `--ur-security-self-test` against their
+actual application. These checks cover canonical signatures with and without
 NULL parameters, nested extra elements, nonempty NULL values, nonminimal DER
 lengths, non-NULL parameters and the published low exponent RSA forgery.

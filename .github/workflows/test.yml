@@ -116,7 +116,9 @@ jobs:
           set -xeuo pipefail
           bun run package:check
 
-      - name: Test Global Install (NPM)
+      # Source installation remains a developer path. The native matrix above
+      # tests the actual public npm package with Bun absent and scripts disabled.
+      - name: Test developer source global installation
         if: success()
         run: |
           set -xeuo pipefail

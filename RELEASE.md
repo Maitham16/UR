@@ -14,9 +14,13 @@ executable, runtime, and a versioned resource tree. `native.yml` tests the exact
 archived payload with Node, npm, and Bun absent from PATH, including real image,
 search, compiler-library, task/write/read, streaming, timeout, and resume checks.
 The release publishes no npm package or GitHub release until the native matrix
-and existing verification gate succeed for the same immutable tag.
+and existing verification gate succeed for the same immutable tag. Each native
+runner also tests an assembled npm package installed with `--ignore-scripts`,
+with no external Bun available. The public npm package has no dependencies or
+lifecycle scripts; its Node.js launcher verifies and caches the pinned native
+release on first use.
 
-Windows native artifacts and PowerShell installers are excluded from 1.86.0.
+Windows native artifacts and PowerShell installers are excluded from 1.86.1.
 Windows native development code remains in the repository and is outside the
 public standalone release. On a matching macOS/Linux development host, use
 the pinned Bun version.
@@ -63,6 +67,13 @@ npm pack --dry-run
 npm publish --dry-run
 ```
 
+A source `npm pack` is a developer bundle input, not the official production
+npm artifact. After all four native archives pass, assemble the public package
+with `scripts/npm-native-package.mjs` using the tested manifest and source
+bundle. This strips development/runtime dependencies and lifecycle scripts and
+embeds the exact native release identity. Verify that public artifact's
+first-use download, cached offline launch, and package-manager ownership.
+
 If publishing or attaching a source archive, verify the actual zip artifact
 before release:
 
@@ -80,7 +91,6 @@ Also verify:
 
 ```bash
 git remote -v
-npm whoami
 npm view ur-agent@$(node -p "require('./package.json').version") version
 ```
 
@@ -115,29 +125,24 @@ Version bump checklist (all versioned release surfaces must move together):
 7. Add a `CHANGELOG.md` entry, then run `bun run build` so `dist/cli.js`
    embeds the new version (`bun run release:check` verifies all of this).
 
-If `npm whoami` fails, run:
-
-```bash
-npm login
-```
-
 Do not publish if the package version already exists on npm.
 
 ## Publish
 
-GitHub Actions publishes the exact tarball that passes the release workflow.
-Do not run `npm publish` separately and do not create a tag before the release
-commit is on the remote branch.
+GitHub Actions verifies the source and all four native payloads, then assembles
+the production npm tarball from those tested artifacts. It publishes the
+GitHub native assets before npm so a first npm launch can retrieve its exact
+pinned native release. Do not run `npm publish` from the source checkout or
+create a tag before the complete release commit is on the remote branch.
 
 Configure npm trusted publishing for package `ur-agent` before tagging a version
 that is not already published. In npm package settings, select GitHub Actions
 with owner `Maitham16`, repository `UR`, workflow `release.yml`, no environment,
 and allow `npm publish`. The publish job uses GitHub OIDC (`id-token: write`), so
 it needs no long-lived `NPM_TOKEN` and cannot stall on interactive 2FA. The
-GitHub Release waits for npm publication, preventing a registry authentication
-failure from creating a new partial GitHub-only release. Treat a failed publish
-as a release blocker; fix trusted-publisher configuration and dispatch the same
-immutable tag rather than publishing manually.
+GitHub assets must already be public before npm publication; an npm failure
+remains a release blocker. Fix the trusted-publisher configuration and retry
+the same immutable tag instead of publishing the source package manually.
 The npm publish step uses `./dist-release/<tarball>.tgz`: the explicit relative
 path marker prevents npm from interpreting the artifact name as GitHub
 `owner/repository` shorthand.
@@ -149,8 +154,8 @@ configuration and retry that tag through the default branch workflow:
 gh workflow run release.yml -f tag=v$(node -p "require('./package.json').version")
 ```
 
-Do not move or recreate the tag. Once OIDC publication succeeds, the workflow
-updates or creates the matching GitHub Release from the verified tarball.
+Do not move or recreate the tag. Retrying preserves the matching verified
+GitHub assets and publishes the assembled npm tarball after OIDC succeeds.
 After a successful migration, remove the obsolete `NPM_TOKEN` repository secret
 and revoke that npm token so CI has no dormant long-lived publish credential.
 
@@ -174,8 +179,14 @@ The command refuses to tag a dirty tree, an uncommitted version, a commit that
 is not yet the remote branch tip, a mismatched changelog, or a local/remote tag
 that already exists. `--push` creates one annotated immutable tag pointing at
 the verified commit. That tag starts `.github/workflows/release.yml`, which
-rebuilds and verifies the package, publishes the GitHub Release, and publishes
-the same verified tarball to npm.
+verifies the source and native matrix, assembles the production npm package,
+publishes the GitHub native assets, then publishes that exact npm tarball.
+
+The `Maitham16/homebrew-ur` personal tap checks stable upstream releases hourly.
+Its committed updater verifies the manifest provenance against `release.yml`,
+the immutable tag, and source commit, and must pass all four platform formula
+checks before pushing an update. Users install with
+`brew install Maitham16/ur/ur` and update with `brew upgrade Maitham16/ur/ur`.
 
 If a tag was accidentally pushed from the wrong commit, keep it as failed
 release history and bump to a fresh patch version. Do not move a published tag.
