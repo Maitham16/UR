@@ -79,6 +79,8 @@ export function assembleNativeNpmPackage({ manifestPath, outDir, sourceTarball, 
     metadata.urDistribution = 'native'
     for (const key of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies', 'peerDependenciesMeta', 'scripts', 'overrides', 'patchedDependencies', 'packageManager', 'bundledDependencies', 'bundleDependencies']) delete metadata[key]
     metadata.engines = { node: metadata.engines?.node ?? '>=22.12' }
+    metadata.os = ['darwin', 'linux']
+    metadata.cpu = ['arm64', 'x64']
     writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`)
     writeFileSync(join(directory, 'bin', 'native-release.json'), `${JSON.stringify(manifest, null, 2)}\n`)
     const packed = pack(directory, packageOutput, env)

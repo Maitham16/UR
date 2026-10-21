@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const root = resolve(import.meta.dir, '..')
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version as string
@@ -60,14 +61,17 @@ test('actual npm background update never removes an independent native launcher'
   try {
     const fixture = join(work, 'probe.ts')
     const source = (file: string) => join(root, 'src', file)
+    // Resolve ESM package exports from this repository. Bare mock names from
+    // a temporary entrypoint can resolve to a different module identity.
+    const dependency = (name: string) => fileURLToPath(import.meta.resolve(name))
     writeFileSync(fixture, `
 import { mock } from 'bun:test';
 globalThis.MACRO = {VERSION:${JSON.stringify(version)}};
 const effects=[]; let installs=0, removals=0;
-mock.module('react',()=>({ useState:value=>[value,()=>{}], useEffect:fn=>effects.push(fn), useRef:value=>({current:value}), useCallback:fn=>fn }));
-mock.module('react/jsx-runtime',()=>({jsx:()=>null,jsxs:()=>null,Fragment:()=>null}));
-mock.module('react/jsx-dev-runtime',()=>({jsxDEV:()=>null,Fragment:()=>null}));
-mock.module('usehooks-ts',()=>({useInterval(){}}));
+mock.module(${JSON.stringify(dependency('react'))},()=>({ useState:value=>[value,()=>{}], useEffect:fn=>effects.push(fn), useRef:value=>({current:value}), useCallback:fn=>fn }));
+mock.module(${JSON.stringify(dependency('react/jsx-runtime'))},()=>({jsx:()=>null,jsxs:()=>null,Fragment:()=>null}));
+mock.module(${JSON.stringify(dependency('react/jsx-dev-runtime'))},()=>({jsxDEV:()=>null,Fragment:()=>null}));
+mock.module(${JSON.stringify(dependency('usehooks-ts'))},()=>({useInterval(){}}));
 mock.module(${JSON.stringify(source('services/analytics/index.ts'))},()=>({logEvent(){}}));
 mock.module(${JSON.stringify(source('hooks/useUpdateNotification.ts'))},()=>({useUpdateNotification:()=>null}));
 mock.module(${JSON.stringify(source('ink.ts'))},()=>({Box:()=>null,Text:()=>null}));
@@ -84,7 +88,12 @@ for(const effect of effects) effect();
 await new Promise(resolve=>setTimeout(resolve,30));
 console.log(JSON.stringify({installs,removals}));
 `)
-    const result = spawnSync(process.execPath, [fixture], { cwd: root, encoding: 'utf8', timeout: 30_000 })
+    const home = join(work, 'home')
+    mkdirSync(home)
+    const result = spawnSync(process.execPath, [fixture], { cwd: work, encoding: 'utf8', timeout: 30_000,
+      env: { PATH: process.env.PATH, BUN_BIN: process.execPath, HOME: home, NODE_ENV: 'production',
+        USER: 'ur-npm-background-test', UR_CONFIG_DIR: join(home, 'config'),
+        UR_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_TELEMETRY: '1', DO_NOT_TRACK: '1' } })
     expect(result.error).toBeUndefined()
     expect(result.status, result.stderr).toBe(0)
     expect(JSON.parse(result.stdout)).toEqual({ installs: 1, removals: 0 })

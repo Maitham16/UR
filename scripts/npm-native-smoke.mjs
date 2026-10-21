@@ -79,6 +79,8 @@ try {
   assert.equal(packageJson.urDistribution, 'native')
   assert.equal(packageJson.engines.bun, undefined)
   assert.equal(typeof packageJson.engines.node, 'string')
+  assert.deepEqual(packageJson.os, ['darwin', 'linux'])
+  assert.deepEqual(packageJson.cpu, ['arm64', 'x64'])
   for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies', 'scripts', 'packageManager']) assert.equal(packageJson[field], undefined, `Public npm metadata includes ${field}`)
   assert.deepEqual(readdirSync(join(prefix, 'lib/node_modules')).filter(name => !name.startsWith('.')), ['ur-agent'])
   assert(!existsSync(join(packageRoot, 'node_modules')), 'Public npm package installed a dependency tree')

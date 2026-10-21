@@ -62,6 +62,8 @@ test('public npm assembler packs a dependency-free native bootstrap without muta
     const metadata = JSON.parse(execFileSync('tar', ['-xOf', output.tarball, 'package/package.json'], { encoding: 'utf8' }))
     expect(metadata.urDistribution).toBe('native')
     expect(metadata.engines).toEqual({ node: '>=22.12' })
+    expect(metadata.os).toEqual(['darwin', 'linux'])
+    expect(metadata.cpu).toEqual(['arm64', 'x64'])
     for (const key of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies', 'scripts', 'overrides', 'patchedDependencies', 'packageManager']) expect(metadata[key], key).toBeUndefined()
     expect(metadata.bin).toEqual({ ur: 'bin/ur.js' })
     expect(JSON.parse(execFileSync('tar', ['-xOf', output.tarball, 'package/bin/native-release.json'], { encoding: 'utf8' }))).toEqual(item.manifest)
