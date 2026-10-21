@@ -48624,7 +48624,7 @@ function execFileNoThrowWithCwd(file, args, {
       }).finally(() => resolve10(result));
     };
     let spawnError;
-    const child = execa(file, args, {
+    const launch = () => execa(file, args, {
       maxBuffer,
       cancelSignal: abortSignal,
       timeout: finalTimeout,
@@ -48636,6 +48636,14 @@ function execFileNoThrowWithCwd(file, args, {
       input: finalInput,
       reject: false
     });
+    let child;
+    try {
+      child = launch();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      resolveWithAudit({ stdout: "", stderr: message, code: 1, error: message });
+      return;
+    }
     if (onSpawn)
       child.once("spawn", () => {
         try {
@@ -504681,7 +504689,7 @@ function createAcpStdioApp(deps) {
       }
     },
     authMethods: [],
-    agentInfo: { name: "UR-Nexus", version: "1.87.0" }
+    agentInfo: { name: "UR-Nexus", version: getBuildVersion() }
   })).onRequest("authenticate", () => ({})).onRequest("session/new", async (context6) => {
     const result = runtime2.newSession(context6.params.cwd, context6.params.mcpServers, context6.params.additionalDirectories);
     await runtime2.announce({
@@ -504778,7 +504786,7 @@ function createAcpStdioAgent(deps) {
               }
             },
             authMethods: [],
-            agentInfo: { name: "UR-Nexus", version: "1.87.0" }
+            agentInfo: { name: "UR-Nexus", version: getBuildVersion() }
           });
           return;
         case "authenticate":
@@ -581723,15 +581731,22 @@ COPY src/ ./src/
           testCommand: 'node "$UR_EVAL_VERIFY_DIR/check.mjs"',
           testFiles: {
             "check.mjs": `import assert from 'node:assert/strict';
-import {pathToFileURL} from 'node:url';
-import {resolve} from 'node:path';
-const load = name => import(pathToFileURL(resolve(name)).href);
-import {readFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 const tag='ur-eval-'+randomUUID(); let container;
-const docker=(args)=>execFileSync('docker',args,{encoding:'utf8',timeout:300000});
-try { docker(['build','--quiet','--tag',tag,'.']); container=docker(['run','--detach','--publish','127.0.0.1::3000',tag]).trim(); const port=docker(['port',container,'3000/tcp']).trim().split(':').at(-1); let response; for(let i=0;i<40;i++){try{response=await fetch('http://127.0.0.1:'+port,{signal:AbortSignal.timeout(1000)});break}catch{await new Promise(r=>setTimeout(r,100));}} assert.ok(response,'server never became ready'); assert.equal(await response.text(),'hello'); } finally {if(container)try{docker(['rm','-f',container])}catch{} try{docker(['image','rm','-f',tag])}catch{}}
+const docker=args=>execFileSync('docker',args,{encoding:'utf8',timeout:300000});
+// Probe the real HTTP server inside its container: Docker may run on a remote
+// daemon or VM, so a host-published localhost port is not the verifier's host.
+const probe=\`let response;for(let i=0;i<40;i++){try{response=await fetch('http://127.0.0.1:3000',{signal:AbortSignal.timeout(1000)});break}catch{await new Promise(r=>setTimeout(r,100));}}if(!response)throw Error('server never became ready');console.log(JSON.stringify({status:response.status,body:await response.text()}));\`;
+try {
+  docker(['build','--quiet','--tag',tag,'.']);
+  container=docker(['run','--detach',tag]).trim();
+  const result=JSON.parse(docker(['exec',container,'node','--input-type=module','--eval',probe]));
+  assert.equal(result.status,200);assert.equal(result.body,'hello');
+} finally {
+  if(container)try{docker(['rm','-f',container])}catch{}
+  try{docker(['image','rm','-f',tag])}catch{}
+}
 `
           }
         }
@@ -583535,7 +583550,8 @@ function defaultCommandRunner(file2, args, cwd2) {
     preserveOutputOnError: true,
     audit: false,
     env: env4,
-    extendEnv: false
+    extendEnv: false,
+    stdin: "ignore"
   });
 }
 async function git8(cwd2, args, runner2 = defaultCommandRunner) {

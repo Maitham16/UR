@@ -114,3 +114,14 @@ integrating changing external interfaces.
   replay/resume after container replacement. Both Linux CI jobs now run it.
   Final source archive, SDK/npm rebuild, documentation, lint, secret scanning
   and release checks pass. F14 GitHub/platform publication remains outstanding.
+- 2026-10-21: Pushed implementation and corrected Linux editor-host setup.
+  All four native jobs and SDK/editor distribution checks passed at `2e481a27`.
+  The full Linux suite exposed source-version and subprocess failures; targeted
+  corrections/regressions are recorded in F14. Fresh Linux execution also found
+  and corrected the Docker grader's local-daemon networking assumption. Publish
+  only after the corrected revision passes the entire GitHub workflow.
+
+- 2026-10-21: Corrected revision passed the complete fresh Linux run: 3,119
+  passed, 0 failed, 6 environment/platform skips, 14,538 assertions. Final native
+  Mac smoke, strict typecheck, lint, secret scan and source archive checks pass.
+  Ready for the final GitHub CI run before tagging.

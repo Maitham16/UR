@@ -138,7 +138,7 @@ export function execFileNoThrowWithCwd(
 
     // Use execa for cross-platform .bat/.cmd compatibility on Windows
     let spawnError: unknown
-    const child = execa(file, args, {
+    const launch = () => execa(file, args, {
       maxBuffer,
       cancelSignal: abortSignal,
       timeout: finalTimeout,
@@ -150,6 +150,17 @@ export function execFileNoThrowWithCwd(
       input: finalInput,
       reject: false, // Don't throw on non-zero exit codes
     })
+    let child: ReturnType<typeof launch>
+    try {
+      child = launch()
+    } catch (error) {
+      // Invalid spawn options and early runtime failures can throw before Execa
+      // returns its promise. Preserve the no-throw contract; never replay a
+      // command whose launch/effects might already have occurred.
+      const message = error instanceof Error ? error.message : String(error)
+      resolveWithAudit({ stdout: '', stderr: message, code: 1, error: message })
+      return
+    }
     if (onSpawn) child.once('spawn', () => {
       try { if (child.pid) onSpawn(child.pid) } catch (error) {
         spawnError = error

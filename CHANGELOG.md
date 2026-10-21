@@ -28,6 +28,10 @@
 - Added a first-task guide, shared readiness diagnostics and an opt-in sandbox
   preset. Fixed filesystem permission matching and report unknown cloud pricing
   as unknown in SDK results, goal accounting and evaluation reports.
+- Source ACP clients tolerate missing build metadata, unattended workspace
+  commands avoid unused input pipes, and early process-launch failures return
+  explicit errors without replay. Docker HTTP evaluation works with remote
+  daemons as well as local engines.
 - Kept one canonical command per capability and updated technical documentation,
   installation and release guidance. Native macOS/Linux, npm and Homebrew
   installations continue to run without a separate Bun installation. Windows

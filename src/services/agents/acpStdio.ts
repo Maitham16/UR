@@ -1,4 +1,5 @@
 import { resolveUrExecutable } from '../../utils/urExecutable.js'
+import { getBuildVersion } from '../../utils/buildVersion.js'
 /**
  * Native Agent Client Protocol (ACP) agent over newline-delimited stdio.
  *
@@ -1972,7 +1973,7 @@ export function createAcpStdioApp(deps: {
         },
       },
       authMethods: [],
-      agentInfo: { name: 'UR-Nexus', version: MACRO.VERSION },
+      agentInfo: { name: 'UR-Nexus', version: getBuildVersion() },
     }))
     .onRequest('authenticate', () => ({}))
     .onRequest('session/new', async (context) => {
@@ -2135,7 +2136,7 @@ export function createAcpStdioAgent(deps: {
               },
             },
             authMethods: [],
-            agentInfo: { name: 'UR-Nexus', version: MACRO.VERSION },
+            agentInfo: { name: 'UR-Nexus', version: getBuildVersion() },
           })
           return
         case 'authenticate':

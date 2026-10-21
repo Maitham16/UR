@@ -263,6 +263,9 @@ function defaultCommandRunner(
     audit: false,
     env,
     extendEnv: false,
+    // These unattended commands have no input. Avoid creating an unused stdin
+    // socket (and its asynchronous close lifecycle) for every Git inspection.
+    stdin: 'ignore',
   })
 }
 
