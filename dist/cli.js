@@ -93625,6 +93625,9 @@ var init_providerRegistry = __esm(() => {
 function getRuntimeProvider() {
   return getRuntimeProviderId();
 }
+function getRuntimeProviderFamily() {
+  return getProviderFamily(getRuntimeProviderId());
+}
 function getRuntimeModelReasoningCapabilities(model, provider = getRuntimeProviderId()) {
   return getProviderReasoningCapabilitiesForModel(model, provider);
 }
@@ -94470,7 +94473,7 @@ class AwsAuthStatusManager {
 var init_awsAuthStatusManager = () => {};
 
 // src/constants/betas.ts
-var UR_CODE_20250219_BETA_HEADER = "ur-20250219", INTERLEAVED_THINKING_BETA_HEADER = "interleaved-thinking-2025-05-14", CONTEXT_1M_BETA_HEADER = "context-1m-2025-08-07", CONTEXT_MANAGEMENT_BETA_HEADER = "context-management-2025-06-27", STRUCTURED_OUTPUTS_BETA_HEADER = "structured-outputs-2025-12-15", WEB_SEARCH_BETA_HEADER = "web-search-2025-03-05", TOOL_SEARCH_BETA_HEADER_1P = "advanced-tool-use-2025-11-20", TOOL_SEARCH_BETA_HEADER_3P = "tool-search-tool-2025-10-19", EFFORT_BETA_HEADER = "effort-2025-11-24", TASK_BUDGETS_BETA_HEADER = "task-budgets-2026-03-13", PROMPT_CACHING_SCOPE_BETA_HEADER = "prompt-caching-scope-2026-01-05", FAST_MODE_BETA_HEADER = "fast-mode-2026-02-01", REDACT_THINKING_BETA_HEADER = "redact-thinking-2026-02-12", TOKEN_EFFICIENT_TOOLS_BETA_HEADER = "token-efficient-tools-2026-03-28", SUMMARIZE_CONNECTOR_TEXT_BETA_HEADER = "", AFK_MODE_BETA_HEADER = "", CLI_INTERNAL_BETA_HEADER, ADVISOR_BETA_HEADER = "advisor-tool-2026-03-01", BEDROCK_EXTRA_PARAMS_HEADERS, VERTEX_COUNT_TOKENS_ALLOWED_BETAS;
+var INTERLEAVED_THINKING_BETA_HEADER = "interleaved-thinking-2025-05-14", CONTEXT_1M_BETA_HEADER = "context-1m-2025-08-07", CONTEXT_MANAGEMENT_BETA_HEADER = "context-management-2025-06-27", STRUCTURED_OUTPUTS_BETA_HEADER = "structured-outputs-2025-12-15", WEB_SEARCH_BETA_HEADER = "web-search-2025-03-05", TOOL_SEARCH_BETA_HEADER_1P = "advanced-tool-use-2025-11-20", TOOL_SEARCH_BETA_HEADER_3P = "tool-search-tool-2025-10-19", EFFORT_BETA_HEADER = "effort-2025-11-24", TASK_BUDGETS_BETA_HEADER = "task-budgets-2026-03-13", PROMPT_CACHING_SCOPE_BETA_HEADER = "prompt-caching-scope-2026-01-05", FAST_MODE_BETA_HEADER = "fast-mode-2026-02-01", REDACT_THINKING_BETA_HEADER = "redact-thinking-2026-02-12", TOKEN_EFFICIENT_TOOLS_BETA_HEADER = "token-efficient-tools-2026-03-28", SUMMARIZE_CONNECTOR_TEXT_BETA_HEADER = "", AFK_MODE_BETA_HEADER = "", CLI_INTERNAL_BETA_HEADER, ADVISOR_BETA_HEADER = "advisor-tool-2026-03-01", BEDROCK_EXTRA_PARAMS_HEADERS, VERTEX_COUNT_TOKENS_ALLOWED_BETAS;
 var init_betas = __esm(() => {
   CLI_INTERNAL_BETA_HEADER = process.env.USER_TYPE === "ant" ? "cli-internal-2026-02-09" : "";
   BEDROCK_EXTRA_PARAMS_HEADERS = new Set([
@@ -94479,7 +94482,6 @@ var init_betas = __esm(() => {
     TOOL_SEARCH_BETA_HEADER_3P
   ]);
   VERTEX_COUNT_TOKENS_ALLOWED_BETAS = new Set([
-    UR_CODE_20250219_BETA_HEADER,
     INTERLEAVED_THINKING_BETA_HEADER,
     CONTEXT_MANAGEMENT_BETA_HEADER
   ]);
@@ -124793,7 +124795,7 @@ function getAttributionHeader(fingerprint) {
   if (!isAttributionHeaderEnabled()) {
     return "";
   }
-  const version = `${"1.87.1"}.${fingerprint}`;
+  const version = `${"1.87.2"}.${fingerprint}`;
   const entrypoint = process.env.UR_CODE_ENTRYPOINT ?? "unknown";
   const cch = "";
   const workload = getWorkload();
@@ -133569,7 +133571,7 @@ var init_metadata = __esm(() => {
   COMPOUND_OPERATOR_REGEX = /\s*(?:&&|\|\||[;|])\s*/;
   WHITESPACE_REGEX = /\s+/;
   getVersionBase = memoize_default(() => {
-    const match = "1.87.1".match(/^\d+\.\d+\.\d+(?:-[a-z]+)?/);
+    const match = "1.87.2".match(/^\d+\.\d+\.\d+(?:-[a-z]+)?/);
     return match ? match[0] : undefined;
   });
   buildEnvContext = memoize_default(async () => {
@@ -133609,7 +133611,7 @@ var init_metadata = __esm(() => {
       isGithubAction: isEnvTruthy(process.env.GITHUB_ACTIONS),
       isURCodeAction: isEnvTruthy(process.env.UR_CODE_ACTION),
       isURAiAuth: isURAISubscriber(),
-      version: "1.87.1",
+      version: "1.87.2",
       versionBase: getVersionBase(),
       buildTime: "",
       deploymentEnvironment: env2.detectDeploymentEnvironment(),
@@ -135334,7 +135336,7 @@ var init_filesystem = __esm(() => {
   });
   getBundledSkillsRoot = memoize_default(function getBundledSkillsRoot() {
     const nonce = randomBytes8(16).toString("hex");
-    return join39(getURTempDir(), "bundled-skills", "1.87.1", nonce);
+    return join39(getURTempDir(), "bundled-skills", "1.87.2", nonce);
   });
   getResolvedWorkingDirPaths = memoize_default(getPathsForPermissionCheck);
 });
@@ -137031,7 +137033,7 @@ var init_apiLimits = __esm(() => {
 // src/utils/buildVersion.ts
 function getBuildVersion(fallback = "unknown") {
   try {
-    const version = "1.87.1";
+    const version = "1.87.2";
     return typeof version === "string" && version.trim() ? version : fallback;
   } catch {
     return fallback;
@@ -282084,7 +282086,7 @@ function getTelemetryAttributes() {
     attributes["session.id"] = sessionId;
   }
   if (shouldIncludeAttribute("OTEL_METRICS_INCLUDE_VERSION")) {
-    attributes["app.version"] = "1.87.1";
+    attributes["app.version"] = "1.87.2";
   }
   const oauthAccount = getOauthAccountInfo();
   if (oauthAccount) {
@@ -285096,7 +285098,7 @@ var require_src3 = __commonJS(function(exports) {
 function getInstruments() {
   if (instruments)
     return instruments;
-  const meter = import_api2.metrics.getMeter("ur-agent.gen_ai", "1.87.1");
+  const meter = import_api2.metrics.getMeter("ur-agent.gen_ai", "1.87.2");
   instruments = {
     operationDuration: meter.createHistogram("gen_ai.client.operation.duration", {
       description: "GenAI operation duration.",
@@ -285194,7 +285196,7 @@ function genAiAgentAttributes() {
     "gen_ai.operation.name": GEN_AI_OPERATION_INVOKE_AGENT,
     "gen_ai.provider.name": "ur",
     "gen_ai.agent.name": "UR-Nexus",
-    "gen_ai.agent.version": "1.87.1"
+    "gen_ai.agent.version": "1.87.2"
   };
 }
 function genAiWorkflowAttributes(workflowName, workflowRunId) {
@@ -285215,7 +285217,7 @@ function genAiWorkflowAttributes(workflowName, workflowRunId) {
 function startGenAiWorkflowSpan(workflowName, workflowRunId) {
   const attributes = genAiWorkflowAttributes(workflowName, workflowRunId);
   const name = typeof attributes["gen_ai.workflow.name"] === "string" ? `invoke_workflow ${attributes["gen_ai.workflow.name"]}` : GEN_AI_OPERATION_INVOKE_WORKFLOW;
-  return import_api2.trace.getTracer("ur-agent.gen_ai", "1.87.1").startSpan(name, { kind: import_api2.SpanKind.INTERNAL, attributes });
+  return import_api2.trace.getTracer("ur-agent.gen_ai", "1.87.2").startSpan(name, { kind: import_api2.SpanKind.INTERNAL, attributes });
 }
 function endGenAiWorkflowSpan(span, options = {}) {
   try {
@@ -285253,7 +285255,7 @@ function startGenAiMemorySpan(operation, options = {}) {
   if (options.recordCount !== undefined && Number.isInteger(options.recordCount) && options.recordCount >= 0) {
     attributes["gen_ai.memory.record.count"] = options.recordCount;
   }
-  return import_api2.trace.getTracer("ur-agent.gen_ai", "1.87.1").startSpan(operation, { kind: import_api2.SpanKind.INTERNAL, attributes });
+  return import_api2.trace.getTracer("ur-agent.gen_ai", "1.87.2").startSpan(operation, { kind: import_api2.SpanKind.INTERNAL, attributes });
 }
 function endGenAiMemorySpan(span, options = {}) {
   try {
@@ -299698,7 +299700,7 @@ async function createRuntime() {
   bootstrapTelemetry();
   const resource = defaultResource().merge(detectResources({ detectors: [envDetector] })).merge(resourceFromAttributes({
     [import_semantic_conventions6.ATTR_SERVICE_NAME]: "ur-agent",
-    [import_semantic_conventions6.ATTR_SERVICE_VERSION]: "1.87.1"
+    [import_semantic_conventions6.ATTR_SERVICE_VERSION]: "1.87.2"
   }));
   const tracerProvider = exporters.traces.length > 0 ? new BasicTracerProvider({
     resource,
@@ -299731,11 +299733,11 @@ async function createRuntime() {
   setMeterProvider(meterProvider);
   setLoggerProvider(loggerProvider);
   if (meterProvider) {
-    const meter = meterProvider.getMeter("ur-agent", "1.87.1");
+    const meter = meterProvider.getMeter("ur-agent", "1.87.2");
     setMeter(meter, (name, options) => meter.createCounter(name, options));
   }
   if (loggerProvider) {
-    setEventLogger(loggerProvider.getLogger("ur-agent.events", "1.87.1"));
+    setEventLogger(loggerProvider.getLogger("ur-agent.events", "1.87.2"));
   }
   if (!cleanupRegistered4) {
     cleanupRegistered4 = true;
@@ -300284,7 +300286,7 @@ function isAnyTracingEnabled() {
   return isTelemetryEnabled() || isEnhancedTelemetryEnabled() || isBetaTracingEnabled();
 }
 function getTracer() {
-  return import_api32.trace.getTracer("ur-agent.gen_ai", "1.87.1");
+  return import_api32.trace.getTracer("ur-agent.gen_ai", "1.87.2");
 }
 function createSpanAttributes(spanType, customAttributes = {}) {
   const baseAttributes = getTelemetryAttributes();
@@ -327510,7 +327512,7 @@ function getInstallationEnv() {
   return;
 }
 function getURCodeVersion() {
-  return "1.87.1";
+  return "1.87.2";
 }
 async function getInstalledVSCodeExtensionVersion(command) {
   const { stdout } = await execFileNoThrow(command, ["--list-extensions", "--show-versions"], {
@@ -344177,7 +344179,7 @@ var init_user = __esm(() => {
       deviceId,
       sessionId: getSessionId(),
       email: getEmail(),
-      appVersion: "1.87.1",
+      appVersion: "1.87.2",
       platform: getHostPlatformForAnalytics(),
       organizationUuid,
       accountUuid,
@@ -344937,7 +344939,7 @@ var init_growthbook_experiment_event = __esm(() => {
 
 // src/utils/userAgent.ts
 function getURCodeUserAgent() {
-  return `ur/${"1.87.1"}`;
+  return `ur/${"1.87.2"}`;
 }
 
 // src/services/analytics/firstPartyEventLoggingExporter.ts
@@ -345582,7 +345584,7 @@ function initialize1PEventLogging() {
   const platform = getPlatform();
   const attributes = {
     [import_semantic_conventions7.ATTR_SERVICE_NAME]: "ur",
-    [import_semantic_conventions7.ATTR_SERVICE_VERSION]: "1.87.1"
+    [import_semantic_conventions7.ATTR_SERVICE_VERSION]: "1.87.2"
   };
   if (platform === "wsl") {
     const wslVersion = getWslVersion();
@@ -345610,7 +345612,7 @@ function initialize1PEventLogging() {
       })
     ]
   });
-  firstPartyEventLogger = firstPartyEventLoggerProvider.getLogger("com.urhq.ur.events", "1.87.1");
+  firstPartyEventLogger = firstPartyEventLoggerProvider.getLogger("com.urhq.ur.events", "1.87.2");
 }
 async function reinitialize1PEventLoggingIfConfigChanged() {
   if (!is1PEventLoggingEnabled() || !firstPartyEventLoggerProvider) {
@@ -345734,7 +345736,7 @@ function computeFingerprint(messageText, version) {
 }
 function computeFingerprintFromMessages(messages) {
   const firstMessageText = extractFirstMessageText(messages);
-  return computeFingerprint(firstMessageText, "1.87.1");
+  return computeFingerprint(firstMessageText, "1.87.2");
 }
 var FINGERPRINT_SALT = "59cf53e54c78";
 var init_fingerprint = () => {};
@@ -345772,11 +345774,11 @@ async function sideQuery(opts) {
     source: "side_query"
   });
   const betas = [...getModelBetas(model)];
-  if (output_format && modelSupportsStructuredOutputs(model) && !betas.includes(STRUCTURED_OUTPUTS_BETA_HEADER)) {
+  if (isFirstPartyRuntime() && output_format && modelSupportsStructuredOutputs(model) && !betas.includes(STRUCTURED_OUTPUTS_BETA_HEADER)) {
     betas.push(STRUCTURED_OUTPUTS_BETA_HEADER);
   }
   const messageText = extractFirstUserMessageText(messages);
-  const fingerprint = computeFingerprint(messageText, "1.87.1");
+  const fingerprint = computeFingerprint(messageText, "1.87.2");
   const attributionHeader = getAttributionHeader(fingerprint);
   const systemBlocks = [
     attributionHeader ? { type: "text", text: attributionHeader } : null,
@@ -345843,6 +345845,7 @@ var init_sideQuery = __esm(() => {
   init_betas2();
   init_fingerprint();
   init_model();
+  init_providers();
 });
 
 // src/utils/urInChrome/mcpServer.ts
@@ -347115,7 +347118,7 @@ async function setupSdkMcpClients(sdkMcpConfigs, sendMcpMessage) {
     const client = new Client({
       name: "ur",
       title: "UR",
-      version: "1.87.1",
+      version: "1.87.2",
       description: "UR-Nexus autonomous engineering workflow engine",
       websiteUrl: PRODUCT_URL
     }, {
@@ -347472,7 +347475,7 @@ var init_client2 = __esm(() => {
       const client = new Client({
         name: "ur",
         title: "UR",
-        version: "1.87.1",
+        version: "1.87.2",
         description: "UR-Nexus autonomous engineering workflow engine",
         websiteUrl: PRODUCT_URL
       }, {
@@ -354058,7 +354061,11 @@ function detectGateway({
 }) {
   if (headers) {
     const headerNames = [];
-    headers.forEach((_, key) => headerNames.push(key));
+    if (typeof headers.forEach === "function") {
+      headers.forEach((_, key) => headerNames.push(key.toLowerCase()));
+    } else {
+      headerNames.push(...Object.keys(headers).map((key) => key.toLowerCase()));
+    }
     for (const [gw, { prefixes }] of Object.entries(GATEWAY_FINGERPRINTS)) {
       if (prefixes.some((p) => headerNames.some((h) => h.startsWith(p)))) {
         return gw;
@@ -362969,9 +362976,9 @@ async function assertMinVersion() {
   if (false) {}
   try {
     const versionConfig = await getDynamicConfig_BLOCKS_ON_INIT("tengu_version_config", { minVersion: "0.0.0" });
-    if (versionConfig.minVersion && lt("1.87.1", versionConfig.minVersion)) {
+    if (versionConfig.minVersion && lt("1.87.2", versionConfig.minVersion)) {
       console.error(`
-It looks like your version of UR (${"1.87.1"}) needs an update.
+It looks like your version of UR (${"1.87.2"}) needs an update.
 A newer version (${versionConfig.minVersion} or higher) is required to continue.
 
 To update, please run:
@@ -363190,7 +363197,7 @@ async function installGlobalPackage(specificVersion) {
     logError(new AutoUpdaterError("Another process is currently installing an update"));
     logEvent("tengu_auto_updater_lock_contention", {
       pid: process.pid,
-      currentVersion: "1.87.1"
+      currentVersion: "1.87.2"
     });
     return "in_progress";
   }
@@ -363200,7 +363207,7 @@ async function installGlobalPackage(specificVersion) {
     if (getGlobalPackageManager() === "npm" && env2.isNpmFromWindowsPath()) {
       logError(new Error("Windows NPM detected in WSL environment"));
       logEvent("tengu_auto_updater_windows_npm_in_wsl", {
-        currentVersion: "1.87.1"
+        currentVersion: "1.87.2"
       });
       console.error(`
 Error: Windows NPM detected in WSL
@@ -364325,8 +364332,8 @@ async function installLatestImpl(channelOrVersion, forceReinstall = false) {
     if (maximum && gt(target, validateNativeVersion(maximum)))
       target = maximum;
     if (shouldSkipVersion(target))
-      return { latestVersion: "1.87.1", wasUpdated: false };
-    if (target === "1.87.1") {
+      return { latestVersion: "1.87.2", wasUpdated: false };
+    if (target === "1.87.2") {
       try {
         const launcher = getBaseDirectories().executable;
         const active = getPlatform3().startsWith("win32") ? getManagedWindowsNativeExecutable(process.execPath) === launcher : await realpath6(launcher) === await realpath6(process.execPath);
@@ -467024,7 +467031,7 @@ function Feedback({
       platform: env2.platform,
       gitRepo: envInfo.isGit,
       terminal: env2.terminal,
-      version: "1.87.1",
+      version: "1.87.2",
       transcript: normalizeMessagesForAPI(messages),
       errors: sanitizedErrors,
       lastApiRequest: getLastAPIRequest(),
@@ -467214,7 +467221,7 @@ function Feedback({
                       ", ",
                       env2.terminal,
                       ", v",
-                      "1.87.1"
+                      "1.87.2"
                     ]
                   }, undefined, true, undefined, this)
                 ]
@@ -467320,7 +467327,7 @@ ${sanitizedDescription}
 ` + `**Environment Info**
 ` + `- Platform: ${env2.platform}
 ` + `- Terminal: ${env2.terminal}
-` + `- Version: ${"1.87.1"}
+` + `- Version: ${"1.87.2"}
 ` + `- Feedback ID: ${feedbackId}
 ` + `
 **Errors**
@@ -470422,7 +470429,7 @@ function buildPrimarySection() {
   }, undefined, false, undefined, this);
   return [{
     label: "Version",
-    value: "1.87.1"
+    value: "1.87.2"
   }, {
     label: "Session name",
     value: nameValue
@@ -473936,7 +473943,7 @@ function Config({
         }
       }, undefined, false, undefined, this)
     }, undefined, false, undefined, this) : showSubmenu === "ChannelDowngrade" ? /* @__PURE__ */ jsx_dev_runtime173.jsxDEV(ChannelDowngradeDialog, {
-      currentVersion: "1.87.1",
+      currentVersion: "1.87.2",
       onChoice: (choice) => {
         setShowSubmenu(null);
         setTabsHidden(false);
@@ -473948,7 +473955,7 @@ function Config({
           autoUpdatesChannel: "stable"
         };
         if (choice === "stay") {
-          newSettings.minimumVersion = "1.87.1";
+          newSettings.minimumVersion = "1.87.2";
         }
         updateSettingsForSource("userSettings", newSettings);
         setSettingsData((prev_27) => ({
@@ -482269,7 +482276,7 @@ function HelpV2(t0) {
   let t6;
   if ($[31] !== tabs) {
     t6 = /* @__PURE__ */ jsx_dev_runtime199.jsxDEV(Tabs, {
-      title: `UR v${"1.87.1"}`,
+      title: `UR v${"1.87.2"}`,
       color: "professionalBlue",
       defaultTab: "general",
       children: tabs
@@ -501007,7 +501014,7 @@ function formatA2AV1AgentCard(options = {}, pretty = true) {
 var urVersion, researchSnapshotDate = "2026-08-10", coverage, priorityRoadmap;
 var init_trends = __esm(() => {
   init_a2aCardSignature();
-  urVersion = typeof MACRO !== "undefined" ? "1.87.1" : "1.87.1";
+  urVersion = typeof MACRO !== "undefined" ? "1.87.2" : "1.87.2";
   coverage = [
     {
       id: "local-runtime",
@@ -502919,7 +502926,7 @@ function buildToolUseContext(tools, readFileStateCache, toolPermissionContext, a
 async function handleInitialize(options) {
   return {
     name: "UR",
-    version: "1.87.1",
+    version: "1.87.2",
     protocolVersion: "0.1.0",
     workspaceRoot: options.cwd,
     capabilities: {
@@ -520079,7 +520086,7 @@ function getAllReleaseNotes(changelogContent = getStoredChangelogFromMemory()) {
     return [];
   }
 }
-async function checkForReleaseNotes(lastSeenVersion, currentVersion = "1.87.1") {
+async function checkForReleaseNotes(lastSeenVersion, currentVersion = "1.87.2") {
   if (process.env.USER_TYPE === "ant") {
     const changelog = "";
     if (changelog) {
@@ -520106,7 +520113,7 @@ async function checkForReleaseNotes(lastSeenVersion, currentVersion = "1.87.1") 
     releaseNotes
   };
 }
-function checkForReleaseNotesSync(lastSeenVersion, currentVersion = "1.87.1") {
+function checkForReleaseNotesSync(lastSeenVersion, currentVersion = "1.87.2") {
   if (process.env.USER_TYPE === "ant") {
     const changelog = "";
     if (changelog) {
@@ -522970,7 +522977,7 @@ function getRecentActivitySync() {
   return cachedActivity;
 }
 function getLogoDisplayData() {
-  const version = process.env.DEMO_VERSION ?? "1.87.1";
+  const version = process.env.DEMO_VERSION ?? "1.87.2";
   const serverUrl = getDirectConnectServerUrl();
   const displayPath = process.env.DEMO_VERSION ? "/code/ur" : getDisplayPath(getCwd());
   const cwd = serverUrl ? `${displayPath} in ${serverUrl.replace(/^https?:\/\//, "")}` : displayPath;
@@ -523857,7 +523864,7 @@ function LogoV2() {
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = () => {
       const currentConfig = getGlobalConfig();
-      if (currentConfig.lastReleaseNotesSeen === "1.87.1") {
+      if (currentConfig.lastReleaseNotesSeen === "1.87.2") {
         return;
       }
       saveGlobalConfig(_temp325);
@@ -524545,12 +524552,12 @@ function LogoV2() {
   return t41;
 }
 function _temp325(current) {
-  if (current.lastReleaseNotesSeen === "1.87.1") {
+  if (current.lastReleaseNotesSeen === "1.87.2") {
     return current;
   }
   return {
     ...current,
-    lastReleaseNotesSeen: "1.87.1"
+    lastReleaseNotesSeen: "1.87.2"
   };
 }
 function _temp237(s_0) {
@@ -540481,7 +540488,7 @@ function compileAgenticCiWorkflow(specName = "default", options = {}) {
   if (spec.name !== specName) {
     throw new Error("Agentic CI workflow spec name does not match");
   }
-  const packageVersion = options.packageVersion ?? (typeof MACRO !== "undefined" ? "1.87.1" : "1.87.1");
+  const packageVersion = options.packageVersion ?? (typeof MACRO !== "undefined" ? "1.87.2" : "1.87.2");
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(packageVersion)) {
     throw new Error("invalid ur-agent package version");
   }
@@ -541477,7 +541484,7 @@ runner; \`ur trigger\` is the inbound parser that decides what to run.
       path: ".github/workflows/ur.yml",
       root: "project",
       content: compileAgenticCiWorkflow("default", {
-        packageVersion: typeof MACRO !== "undefined" ? "1.87.1" : "1.87.1"
+        packageVersion: typeof MACRO !== "undefined" ? "1.87.2" : "1.87.2"
       })
     },
     {
@@ -541540,7 +541547,7 @@ function value(tokens, flag) {
   return index >= 0 ? tokens[index + 1] : undefined;
 }
 function cliVersion() {
-  return typeof MACRO !== "undefined" ? "1.87.1" : "1.87.1";
+  return typeof MACRO !== "undefined" ? "1.87.2" : "1.87.2";
 }
 function workflowPath(cwd) {
   return join176(cwd, ".github", "workflows", "ur-agentic-ci.yml");
@@ -756009,7 +756016,7 @@ async function captureMemoryDiagnostics(trigger, dumpNumber = 0) {
     smapsRollup,
     platform: process.platform,
     nodeVersion: process.version,
-    ccVersion: "1.87.1"
+    ccVersion: "1.87.2"
   };
 }
 async function performHeapDump(trigger = "manual", dumpNumber = 0) {
@@ -756598,7 +756605,7 @@ var init_bridge_kick = __esm(() => {
 var call154 = async () => {
   return {
     type: "text",
-    value: "1.87.1"
+    value: "1.87.2"
   };
 }, version2, version_default;
 var init_version = __esm(() => {
@@ -774375,10 +774382,12 @@ function configureEffortParams(effortValue, outputConfig, extraBodyParams, betas
     return;
   }
   if (effortValue === undefined) {
-    betas.push(EFFORT_BETA_HEADER);
+    if (isFirstPartyRuntime())
+      betas.push(EFFORT_BETA_HEADER);
   } else if (typeof effortValue === "string") {
     outputConfig.effort = effortValue;
-    betas.push(EFFORT_BETA_HEADER);
+    if (isFirstPartyRuntime())
+      betas.push(EFFORT_BETA_HEADER);
   } else if (process.env.USER_TYPE === "ant") {
     const existingInternal = extraBodyParams.urhq_internal || {};
     extraBodyParams.urhq_internal = {
@@ -774996,7 +775005,7 @@ ${deferredToolList}
     configureTaskBudgetParams(options.taskBudget, outputConfig, betasParams);
     if (options.outputFormat && !("format" in outputConfig)) {
       outputConfig.format = options.outputFormat;
-      if (modelSupportsStructuredOutputs(options.model) && !betasParams.includes(STRUCTURED_OUTPUTS_BETA_HEADER)) {
+      if (isFirstPartyRuntime() && modelSupportsStructuredOutputs(options.model) && !betasParams.includes(STRUCTURED_OUTPUTS_BETA_HEADER)) {
         betasParams.push(STRUCTURED_OUTPUTS_BETA_HEADER);
       }
     }
@@ -775044,7 +775053,7 @@ ${deferredToolList}
       betasParams.push(cacheEditingBetaHeader);
       logForDebugging("Cache editing beta header enabled for cached microcompact");
     }
-    const temperature = !hasThinking ? options.temperatureOverride ?? 1 : undefined;
+    const temperature = !hasThinking ? options.temperatureOverride ?? (effortProvider === "anthropic-api" ? undefined : 1) : undefined;
     lastRequestBetas = betasParams;
     return {
       model: normalizeModelStringForAPI(options.model),
@@ -792919,8 +792928,12 @@ function buildAuthHeaders(family, apiKey, params, anthropic) {
         "anthropic-version": ANTHROPIC_VERSION,
         ...anthropicWorkspaceHeaders(anthropic?.workspaceId, {})
       };
-      if (Array.isArray(params.betas) && params.betas.length > 0) {
-        headers["anthropic-beta"] = params.betas.join(",");
+      const betas = new Set(Array.isArray(params.betas) ? params.betas : []);
+      if (params.thinking?.type === "enabled" && params.tools?.length > 0) {
+        betas.add(ANTHROPIC_INTERLEAVED_THINKING_BETA);
+      }
+      if (betas.size > 0) {
+        headers["anthropic-beta"] = [...betas].join(",");
       }
       return headers;
     }
@@ -793505,7 +793518,7 @@ function collectToolNamesById2(messages) {
 function estimateTokenCount2(params) {
   return estimateProviderInputTokens(params);
 }
-var ANTHROPIC_VERSION = "2023-06-01", ANTHROPIC_FAST_MODE_BETA = "fast-mode-2026-02-01", TOKEN_COUNT_TIMEOUT_MS3 = 1e4;
+var ANTHROPIC_VERSION = "2023-06-01", ANTHROPIC_FAST_MODE_BETA = "fast-mode-2026-02-01", ANTHROPIC_INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14", TOKEN_COUNT_TIMEOUT_MS3 = 1e4;
 var init_standardAPI = __esm(() => {
   init_debug();
   init_effort();
@@ -794185,17 +794198,17 @@ function getToolSearchBetaHeader() {
   return TOOL_SEARCH_BETA_HEADER_1P;
 }
 function shouldIncludeFirstPartyOnlyBetas() {
-  return (isFirstPartyRuntime() || getAPIProvider() === "foundry") && !isEnvTruthy(process.env.UR_CODE_DISABLE_EXPERIMENTAL_BETAS);
+  return isFirstPartyRuntime() && !isEnvTruthy(process.env.UR_CODE_DISABLE_EXPERIMENTAL_BETAS);
 }
 function shouldUseGlobalCacheScope() {
   return isFirstPartyRuntime() && !isEnvTruthy(process.env.UR_CODE_DISABLE_EXPERIMENTAL_BETAS);
 }
+function betaCacheKey(model) {
+  return JSON.stringify([getRuntimeProviderFamily(), model, process.env.URHQ_BETAS]);
+}
 function getMergedBetas(model, options) {
   const baseBetas = [...getModelBetas(model)];
-  if (options?.isAgenticQuery) {
-    if (!baseBetas.includes(UR_CODE_20250219_BETA_HEADER)) {
-      baseBetas.push(UR_CODE_20250219_BETA_HEADER);
-    }
+  if (options?.isAgenticQuery && isFirstPartyRuntime()) {
     if (process.env.USER_TYPE === "ant" && process.env.UR_CODE_ENTRYPOINT === "cli" && CLI_INTERNAL_BETA_HEADER && !baseBetas.includes(CLI_INTERNAL_BETA_HEADER)) {
       baseBetas.push(CLI_INTERNAL_BETA_HEADER);
     }
@@ -794227,15 +794240,14 @@ var init_betas2 = __esm(() => {
   init_settings2();
   ALLOWED_SDK_BETAS = [CONTEXT_1M_BETA_HEADER];
   getAllModelBetas = memoize_default((model) => {
-    if (getAPIProvider() === "ollama") {
-      return [];
+    if (!isFirstPartyRuntime()) {
+      return getRuntimeProviderFamily() === "anthropic" ? [...new Set((process.env.URHQ_BETAS ?? "").split(",").map((beta) => beta.trim()).filter(Boolean))] : [];
     }
     const betaHeaders = [];
     const ismodelH = getCanonicalName(model).includes("modelH");
     const provider = getAPIProvider();
     const includeFirstPartyOnlyBetas = shouldIncludeFirstPartyOnlyBetas();
     if (!ismodelH) {
-      betaHeaders.push(UR_CODE_20250219_BETA_HEADER);
       if (process.env.USER_TYPE === "ant" && process.env.UR_CODE_ENTRYPOINT === "cli") {
         if (CLI_INTERNAL_BETA_HEADER) {
           betaHeaders.push(CLI_INTERNAL_BETA_HEADER);
@@ -794283,14 +794295,14 @@ var init_betas2 = __esm(() => {
       betaHeaders.push(...process.env.URHQ_BETAS.split(",").map((_) => _.trim()).filter(Boolean));
     }
     return betaHeaders;
-  });
+  }, betaCacheKey);
   getModelBetas = memoize_default((model) => {
     const modelBetas = getAllModelBetas(model);
     if (isBedrockRuntime()) {
       return modelBetas.filter((b) => !BEDROCK_EXTRA_PARAMS_HEADERS.has(b));
     }
     return modelBetas;
-  });
+  }, betaCacheKey);
   getBedrockExtraBodyParamsBetas = memoize_default((model) => {
     const modelBetas = getAllModelBetas(model);
     return modelBetas.filter((b) => BEDROCK_EXTRA_PARAMS_HEADERS.has(b));
@@ -804776,7 +804788,7 @@ function getUserAgent() {
   const clientApp = process.env.UR_AGENT_SDK_CLIENT_APP ? `, client-app/${process.env.UR_AGENT_SDK_CLIENT_APP}` : "";
   const workload = getWorkload();
   const workloadSuffix = workload ? `, workload/${workload}` : "";
-  return `ur-cli/${"1.87.1"} (${process.env.USER_TYPE}, ${process.env.UR_CODE_ENTRYPOINT ?? "cli"}${agentSdkVersion}${clientApp}${workloadSuffix})`;
+  return `ur-cli/${"1.87.2"} (${process.env.USER_TYPE}, ${process.env.UR_CODE_ENTRYPOINT ?? "cli"}${agentSdkVersion}${clientApp}${workloadSuffix})`;
 }
 function getMCPUserAgent() {
   const parts = [];
@@ -804790,7 +804802,7 @@ function getMCPUserAgent() {
     parts.push(`client-app/${process.env.UR_AGENT_SDK_CLIENT_APP}`);
   }
   const suffix = parts.length > 0 ? ` (${parts.join(", ")})` : "";
-  return `ur/${"1.87.1"}${suffix}`;
+  return `ur/${"1.87.2"}${suffix}`;
 }
 function getWebFetchUserAgent() {
   return `UR-User (${getURCodeUserAgent()})`;
@@ -816340,7 +816352,7 @@ function buildSystemInitMessage(inputs) {
     slash_commands: inputs.commands.filter((c) => c.userInvocable !== false).map((c) => c.name),
     apiKeySource: getURHQApiKeyWithSource().source,
     betas: getSdkBetas(),
-    ur_version: "1.87.1",
+    ur_version: "1.87.2",
     output_style: outputStyle,
     agents: inputs.agents.map((agent) => agent.agentType),
     skills: inputs.skills.filter((s) => s.userInvocable !== false).map((skill) => skill.name),
@@ -819879,7 +819891,7 @@ var init_useVoiceEnabled = __esm(() => {
 function getSemverPart(version) {
   return `${import_semver13.major(version, { loose: true })}.${import_semver13.minor(version, { loose: true })}.${import_semver13.patch(version, { loose: true })}`;
 }
-function useUpdateNotification(updatedVersion, initialVersion = "1.87.1") {
+function useUpdateNotification(updatedVersion, initialVersion = "1.87.2") {
   const [lastNotifiedSemver, setLastNotifiedSemver] = import_react225.useState(() => getSemverPart(initialVersion));
   if (!updatedVersion) {
     return null;
@@ -819928,7 +819940,7 @@ function AutoUpdater({
       return;
     }
     if (false) {}
-    const currentVersion = "1.87.1";
+    const currentVersion = "1.87.2";
     const channel = getInitialSettings()?.autoUpdatesChannel ?? "latest";
     let latestVersion = await getLatestVersion(channel);
     const isDisabled = isAutoUpdaterDisabled();
@@ -820153,12 +820165,12 @@ function NativeAutoUpdater({
     logEvent("tengu_native_auto_updater_start", {});
     try {
       const maxVersion = await getMaxVersion();
-      if (maxVersion && gt("1.87.1", maxVersion)) {
+      if (maxVersion && gt("1.87.2", maxVersion)) {
         const msg = await getMaxVersionMessage();
         setMaxVersionIssue(msg ?? "affects your version");
       }
       const result = await installLatest(channel);
-      const currentVersion = "1.87.1";
+      const currentVersion = "1.87.2";
       const latencyMs = Date.now() - startTime;
       if (result.lockFailed) {
         logEvent("tengu_native_auto_updater_lock_contention", {
@@ -820302,17 +820314,17 @@ function PackageManagerAutoUpdater(t0) {
       const maxVersion = await getMaxVersion();
       if (maxVersion && latest && gt(latest, maxVersion)) {
         logForDebugging(`PackageManagerAutoUpdater: maxVersion ${maxVersion} is set, capping update from ${latest} to ${maxVersion}`);
-        if (gte("1.87.1", maxVersion)) {
-          logForDebugging(`PackageManagerAutoUpdater: current version ${"1.87.1"} is already at or above maxVersion ${maxVersion}, skipping update`);
+        if (gte("1.87.2", maxVersion)) {
+          logForDebugging(`PackageManagerAutoUpdater: current version ${"1.87.2"} is already at or above maxVersion ${maxVersion}, skipping update`);
           setUpdateAvailable(false);
           return;
         }
         latest = maxVersion;
       }
-      const hasUpdate = latest && !gte("1.87.1", latest) && !shouldSkipVersion(latest);
+      const hasUpdate = latest && !gte("1.87.2", latest) && !shouldSkipVersion(latest);
       setUpdateAvailable(!!hasUpdate);
       if (hasUpdate) {
-        logForDebugging(`PackageManagerAutoUpdater: Update available ${"1.87.1"} -> ${latest}`);
+        logForDebugging(`PackageManagerAutoUpdater: Update available ${"1.87.2"} -> ${latest}`);
       }
     };
     $[0] = t1;
@@ -820346,7 +820358,7 @@ function PackageManagerAutoUpdater(t0) {
       wrap: "truncate",
       children: [
         "currentVersion: ",
-        "1.87.1"
+        "1.87.2"
       ]
     }, undefined, true, undefined, this);
     $[3] = verbose;
@@ -831188,7 +831200,7 @@ function buildStatusLineCommandInput(permissionMode, exceeds200kTokens, settings
       project_dir: getOriginalCwd(),
       added_dirs: addedDirs
     },
-    version: "1.87.1",
+    version: "1.87.2",
     output_style: {
       name: outputStyleName
     },
@@ -831324,7 +831336,7 @@ function StatusLineInner({
   const attention = customStatusError ?? taskAttention;
   const terminalSize = React138.useContext(TerminalSizeContext);
   const defaultStatusLineText = buildDefaultStatusBar({
-    version: "1.87.1",
+    version: "1.87.2",
     providerLabel: nvidiaTaskModel ? "NVIDIA Special" : providerRuntime.providerLabel,
     authMode: nvidiaTaskModel ? "API key" : providerRuntime.authLabel,
     model: nvidiaTaskModel ?? (renderModelName(mainLoopModel) || providerRuntime.model || ""),
@@ -843774,7 +843786,7 @@ async function submitTranscriptShare(messages, trigger, appearanceId) {
     } catch {}
     const data = {
       trigger,
-      version: "1.87.1",
+      version: "1.87.2",
       platform: process.platform,
       transcript,
       subagentTranscripts: Object.keys(subagentTranscripts).length > 0 ? subagentTranscripts : undefined,
@@ -856215,7 +856227,7 @@ function WelcomeV2() {
             dimColor: true,
             children: [
               "v",
-              "1.87.1"
+              "1.87.2"
             ]
           }, undefined, true, undefined, this)
         ]
@@ -857480,7 +857492,7 @@ function completeOnboarding() {
   saveGlobalConfig((current) => ({
     ...current,
     hasCompletedOnboarding: true,
-    lastOnboardingVersion: "1.87.1"
+    lastOnboardingVersion: "1.87.2"
   }));
 }
 function showDialog(root, renderer) {
@@ -862447,7 +862459,7 @@ function appendToLog(path, message) {
     cwd: getFsImplementation().cwd(),
     userType: process.env.USER_TYPE,
     sessionId: getSessionId(),
-    version: "1.87.1"
+    version: "1.87.2"
   };
   getLogWriter(path).write(messageWithTimestamp);
 }
@@ -866598,8 +866610,8 @@ async function getEnvLessBridgeConfig() {
 }
 async function checkEnvLessBridgeMinVersion() {
   const cfg = await getEnvLessBridgeConfig();
-  if (cfg.min_version && lt("1.87.1", cfg.min_version)) {
-    return `Your version of UR (${"1.87.1"}) is too old for Remote Control.
+  if (cfg.min_version && lt("1.87.2", cfg.min_version)) {
+    return `Your version of UR (${"1.87.2"}) is too old for Remote Control.
 Version ${cfg.min_version} or higher is required. Run \`ur update\` to update.`;
   }
   return null;
@@ -867035,7 +867047,7 @@ async function initBridgeCore(params) {
   const rawApi = createBridgeApiClient({
     baseUrl,
     getAccessToken,
-    runnerVersion: "1.87.1",
+    runnerVersion: "1.87.2",
     onDebug: logForDebugging,
     onAuth401,
     getTrustedDeviceToken
@@ -880283,7 +880295,7 @@ function getAgUiCapabilities() {
       name: "UR-Nexus",
       type: "ur-nexus",
       description: "Provider-flexible, local-first autonomous engineering workflow agent.",
-      version: "1.87.1",
+      version: "1.87.2",
       provider: "UR",
       documentationUrl: "https://github.com/Maitham16/UR/blob/master/docs/AG_UI.md"
     },
@@ -881091,7 +881103,7 @@ function createMCPServer(cwd, debug, verbose) {
   };
   const server2 = new Server({
     name: "ur-nexus",
-    version: "1.87.1"
+    version: "1.87.2"
   }, {
     capabilities: {
       tools: {}
@@ -882288,7 +882300,7 @@ function thrownResponse(error) {
 }
 async function createUrMcp2026Runtime(options) {
   const server2 = createMCPServer(options.cwd, options.debug === true, options.verbose === true);
-  const client = new Client({ name: "ur-mcp-2026-adapter", version: "1.87.1" }, { capabilities: {} });
+  const client = new Client({ name: "ur-mcp-2026-adapter", version: "1.87.2" }, { capabilities: {} });
   const [clientTransport, serverTransport] = createLinkedTransportPair();
   try {
     await server2.connect(serverTransport);
@@ -882299,7 +882311,7 @@ async function createUrMcp2026Runtime(options) {
   }
   const runtime = new Mcp2026Runtime({
     cwd: options.cwd,
-    version: "1.87.1",
+    version: "1.87.2",
     backend: {
       listTools: async () => {
         const listed = await client.listTools();
@@ -885088,8 +885100,8 @@ async function update() {
   if (diagnostic.installationType === "native") {
     try {
       const latest = await fetchNativeVersion();
-      if (gte("1.87.1", latest))
-        writeToStdout(`UR-Nexus ${"1.87.1"} is up to date.
+      if (gte("1.87.2", latest))
+        writeToStdout(`UR-Nexus ${"1.87.2"} is up to date.
 `);
       else {
         const result = await installNativeRelease(latest);
@@ -885114,7 +885126,7 @@ Your current installation remains available.
     return;
   }
   const result = await checkUpgradeStatus({
-    currentVersion: "1.87.1",
+    currentVersion: "1.87.2",
     packageName: UR_AGENT_PACKAGE_NAME,
     installationType: diagnostic.installationType,
     latestVersion: () => getLatestNpmPackageVersion(UR_AGENT_PACKAGE_NAME)
@@ -886434,7 +886446,7 @@ ${customInstructions}` : customInstructions;
       }
     }
     logForDiagnosticsNoPII("info", "started", {
-      version: "1.87.1",
+      version: "1.87.2",
       is_native_binary: isInBundledMode()
     });
     registerCleanup(async () => {
@@ -887212,7 +887224,7 @@ Usage: ur --remote "your task description"`, () => gracefulShutdown(1));
         pendingHookMessages
       }, renderAndRun);
     }
-  }).version("1.87.1 (UR-Nexus)", "-v, --version", "Output the version number");
+  }).version("1.87.2 (UR-Nexus)", "-v, --version", "Output the version number");
   program.option("-w, --worktree [name]", "Create a new git worktree for this session (optionally specify a name)");
   program.option("--tmux", "Create a tmux session for the worktree (requires --worktree). Uses iTerm2 native panes when available; use --tmux=classic for traditional tmux.");
   if (canUserConfigureAdvisor()) {
@@ -888277,7 +888289,7 @@ async function main2() {
     }
   }
   if (args.length === 1 && (args[0] === "--version" || args[0] === "-v" || args[0] === "-V")) {
-    console.log("1.87.1 (UR-Nexus)");
+    console.log("1.87.2 (UR-Nexus)");
     return;
   }
   if (args[0] === "a2a" && args[1] === "serve" && !args.includes("--help") && !args.includes("-h")) {

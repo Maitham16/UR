@@ -492,11 +492,11 @@ function configureEffortParams(
   }
 
   if (effortValue === undefined) {
-    betas.push(EFFORT_BETA_HEADER)
+    if (isFirstPartyRuntime()) betas.push(EFFORT_BETA_HEADER)
   } else if (typeof effortValue === 'string') {
     // Send string effort level as is
     outputConfig.effort = effortValue
-    betas.push(EFFORT_BETA_HEADER)
+    if (isFirstPartyRuntime()) betas.push(EFFORT_BETA_HEADER)
   } else if (process.env.USER_TYPE === 'ant') {
     // Numeric effort override - ant-only (uses urhq_internal)
     const existingInternal =
@@ -1770,8 +1770,9 @@ async function* queryModel(
     // Requires structured-outputs beta header per SDK (see parse() in messages.mjs)
     if (options.outputFormat && !('format' in outputConfig)) {
       outputConfig.format = options.outputFormat as BetaJSONOutputFormat
-      // Add beta header if not already present and provider supports it
+      // The public API accepts output_config.format without a beta header.
       if (
+        isFirstPartyRuntime() &&
         modelSupportsStructuredOutputs(options.model) &&
         !betasParams.includes(STRUCTURED_OUTPUTS_BETA_HEADER)
       ) {
@@ -1895,10 +1896,10 @@ async function* queryModel(
       )
     }
 
-    // Only send temperature when thinking is disabled — the API requires
-    // temperature: 1 when thinking is enabled, which is already the default.
+    // Public Claude models can reject sampling parameters even when thinking
+    // is omitted. Use their defaults unless the caller explicitly overrides it.
     const temperature = !hasThinking
-      ? (options.temperatureOverride ?? 1)
+      ? (options.temperatureOverride ?? (effortProvider === 'anthropic-api' ? undefined : 1))
       : undefined
 
     lastRequestBetas = betasParams

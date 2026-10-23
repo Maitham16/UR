@@ -7,7 +7,6 @@ import {
 import { getIsNonInteractiveSession, getSdkBetas } from '../bootstrap/state.js'
 import {
   BEDROCK_EXTRA_PARAMS_HEADERS,
-  UR_CODE_20250219_BETA_HEADER,
   CLI_INTERNAL_BETA_HEADER,
   CONTEXT_1M_BETA_HEADER,
   CONTEXT_MANAGEMENT_BETA_HEADER,
@@ -27,7 +26,7 @@ import { has1mContext } from './context.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
-import { getAPIProvider, isBedrockRuntime, isFirstPartyRuntime, isVertexRuntime } from './model/providers.js'
+import { getAPIProvider, getRuntimeProviderFamily, isBedrockRuntime, isFirstPartyRuntime, isVertexRuntime } from './model/providers.js'
 import { getInitialSettings } from './settings/settings.js'
 
 /**
@@ -190,7 +189,7 @@ export function getToolSearchBetaHeader(): string {
  */
 export function shouldIncludeFirstPartyOnlyBetas(): boolean {
   return (
-    (isFirstPartyRuntime() || getAPIProvider() === 'foundry') &&
+    isFirstPartyRuntime() &&
     !isEnvTruthy(process.env.UR_CODE_DISABLE_EXPERIMENTAL_BETAS)
   )
 }
@@ -207,9 +206,19 @@ export function shouldUseGlobalCacheScope(): boolean {
   )
 }
 
+function betaCacheKey(model: string): string {
+  return JSON.stringify([getRuntimeProviderFamily(), model, process.env.URHQ_BETAS])
+}
+
 export const getAllModelBetas = memoize((model: string): string[] => {
-  if (getAPIProvider() === 'ollama') {
-    return []
+  if (!isFirstPartyRuntime()) {
+    // The legacy "foundry" deployment enum also represents every external
+    // provider. It must not opt those providers into hosted-service betas.
+    // Public feature headers are selected by the native transport from the
+    // actual request; preserve only deliberate Anthropic user opt-ins here.
+    return getRuntimeProviderFamily() === 'anthropic'
+      ? [...new Set((process.env.URHQ_BETAS ?? '').split(',').map(beta => beta.trim()).filter(Boolean))]
+      : []
   }
 
   const betaHeaders = []
@@ -218,7 +227,6 @@ export const getAllModelBetas = memoize((model: string): string[] => {
   const includeFirstPartyOnlyBetas = shouldIncludeFirstPartyOnlyBetas()
 
   if (!ismodelH) {
-    betaHeaders.push(UR_CODE_20250219_BETA_HEADER)
     if (
       process.env.USER_TYPE === 'ant' &&
       process.env.UR_CODE_ENTRYPOINT === 'cli'
@@ -345,7 +353,7 @@ export const getAllModelBetas = memoize((model: string): string[] => {
     )
   }
   return betaHeaders
-})
+}, betaCacheKey)
 
 export const getModelBetas = memoize((model: string): string[] => {
   const modelBetas = getAllModelBetas(model)
@@ -353,7 +361,7 @@ export const getModelBetas = memoize((model: string): string[] => {
     return modelBetas.filter(b => !BEDROCK_EXTRA_PARAMS_HEADERS.has(b))
   }
   return modelBetas
-})
+}, betaCacheKey)
 
 export const getBedrockExtraBodyParamsBetas = memoize(
   (model: string): string[] => {
@@ -368,10 +376,8 @@ export const getBedrockExtraBodyParamsBetas = memoize(
  * The betas are pre-filtered by filterAllowedSdkBetas which handles
  * subscriber checks and allowlist validation with warnings.
  *
- * @param options.isAgenticQuery - When true, ensures the beta headers needed
- *   for agentic queries are present. For non-modelH models these are already
- *   included by getAllModelBetas(); for modelH they're excluded since
- *   non-agentic calls (compaction, classifiers, token estimation) don't need them.
+ * @param options.isAgenticQuery - Enables internal hosted-service headers only
+ *   on the hosted runtime. Public provider requests need no agent identity beta.
  */
 export function getMergedBetas(
   model: string,
@@ -379,13 +385,7 @@ export function getMergedBetas(
 ): string[] {
   const baseBetas = [...getModelBetas(model)]
 
-  // Agentic queries always need ur and cli-internal beta headers.
-  // For non-modelH models these are already in baseBetas; for modelH they're
-  // excluded by getAllModelBetas() since non-agentic modelH calls don't need them.
-  if (options?.isAgenticQuery) {
-    if (!baseBetas.includes(UR_CODE_20250219_BETA_HEADER)) {
-      baseBetas.push(UR_CODE_20250219_BETA_HEADER)
-    }
+  if (options?.isAgenticQuery && isFirstPartyRuntime()) {
     if (
       process.env.USER_TYPE === 'ant' &&
       process.env.UR_CODE_ENTRYPOINT === 'cli' &&

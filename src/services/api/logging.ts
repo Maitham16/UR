@@ -113,9 +113,14 @@ function detectGateway({
   baseUrl?: string
 }): KnownGateway | undefined {
   if (headers) {
-    // Header names are already lowercase from the Headers API
     const headerNames: string[] = []
-    headers.forEach((_, key) => headerNames.push(key))
+    // Native HTTP adapters return Axios/plain header bags; SDK transports
+    // return Web Headers. Logging must accept both without breaking a reply.
+    if (typeof headers.forEach === 'function') {
+      headers.forEach((_, key) => headerNames.push(key.toLowerCase()))
+    } else {
+      headerNames.push(...Object.keys(headers).map(key => key.toLowerCase()))
+    }
     for (const [gw, { prefixes }] of Object.entries(GATEWAY_FINGERPRINTS)) {
       if (prefixes.some(p => headerNames.some(h => h.startsWith(p)))) {
         return gw as KnownGateway

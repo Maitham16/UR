@@ -61,6 +61,7 @@ import { toOpenAIInputTokenCountRequest } from './openaiResponses.js'
 
 const ANTHROPIC_VERSION = '2023-06-01'
 const ANTHROPIC_FAST_MODE_BETA = 'fast-mode-2026-02-01'
+const ANTHROPIC_INTERLEAVED_THINKING_BETA = 'interleaved-thinking-2025-05-14'
 const TOKEN_COUNT_TIMEOUT_MS = 10_000
 
 type URHQClient = {
@@ -377,8 +378,14 @@ function buildAuthHeaders(
         'anthropic-version': ANTHROPIC_VERSION,
         ...anthropicWorkspaceHeaders(anthropic?.workspaceId, {}),
       }
-      if (Array.isArray(params.betas) && params.betas.length > 0) {
-        headers['anthropic-beta'] = params.betas.join(',')
+      const betas = new Set<string>(Array.isArray(params.betas) ? params.betas : [])
+      // Manual thinking with tools on older Claude models still needs this
+      // documented feature beta. Adaptive thinking requires no such header.
+      if (params.thinking?.type === 'enabled' && params.tools?.length > 0) {
+        betas.add(ANTHROPIC_INTERLEAVED_THINKING_BETA)
+      }
+      if (betas.size > 0) {
+        headers['anthropic-beta'] = [...betas].join(',')
       }
       return headers
     }

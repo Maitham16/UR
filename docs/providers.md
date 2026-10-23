@@ -285,6 +285,13 @@ per-tool `eager_input_streaming` on streaming turns. This reduces repeated
 prefill work and avoids waiting for a complete large tool argument before its
 deltas arrive.
 
+Claude API requests use public feature headers rather than UR service identity
+headers. Ordinary and adaptive-thinking requests need no automatic beta header;
+manual thinking with tools and explicit fast mode retain their documented
+feature headers. UR also leaves sampling temperature unset by default, which
+supports current models such as Opus 5.5. Explicit `URHQ_BETAS` opt-ins remain
+available and must name features supported by your endpoint and account.
+
 Identity-linked Anthropic keys additionally need a workspace selection. UR
 accepts `provider.anthropic.workspaceId` through
 `ur config set anthropic.workspace_id wrkspc_...` or

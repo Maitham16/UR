@@ -223,6 +223,7 @@ try {
 
   if (!offlineOnly) {
     const requests = []
+    const anthropicRequests = []
     let createdTaskId
     const proof = join(workspace, 'release-proof.txt')
     const proofContent = 'native release write proof\n'
@@ -237,9 +238,39 @@ try {
       try {
         trace(requestTrace, { event: 'received', method: request.method, url: request.url })
         if (request.headers.authorization && request.headers.authorization !== 'Bearer ur-native-smoke-no-secret') throw new Error('Unexpected authorization was sent to the native smoke endpoint')
-        if (request.method === 'GET' && ['/v1/models', '/models'].includes(request.url)) {
+        if (request.method === 'GET' && ['/v1/models', '/models'].includes(request.url.split('?')[0])) {
           response.setHeader('content-type', 'application/json')
-          response.end(JSON.stringify({ object: 'list', data: [{ id: 'native-smoke', object: 'model', context_length: 32768, supported_parameters: ['tools', 'max_tokens', 'temperature'] }] }))
+          response.end(JSON.stringify({ object: 'list', data: [{ id: 'native-smoke', object: 'model', context_length: 32768, supported_parameters: ['tools', 'max_tokens', 'temperature'] }, { id: 'claude-opus-5-5', type: 'model', display_name: 'Claude Opus 5.5' }] }))
+          return
+        }
+        if (request.method === 'POST' && request.url === '/v1/messages') {
+          const chunks = []
+          for await (const chunk of request) chunks.push(chunk)
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+          anthropicRequests.push(body)
+          if (request.headers['anthropic-beta'] || body.temperature !== undefined || body.thinking?.type === 'enabled') {
+            response.writeHead(400, { 'content-type': 'application/json' })
+            response.end(JSON.stringify({ error: { type: 'invalid_request_error', message: 'Unsupported automatic beta or sampling/thinking parameter' } }))
+            return
+          }
+          const message = { id: 'msg_native_anthropic', type: 'message', role: 'assistant', model: body.model,
+            content: [{ type: 'text', text: 'Claude native request verified.' }], stop_reason: 'end_turn',
+            stop_sequence: null, usage: { input_tokens: 100, output_tokens: 8 } }
+          if (!body.stream) {
+            response.setHeader('content-type', 'application/json')
+            response.end(JSON.stringify(message))
+            return
+          }
+          response.writeHead(200, { 'content-type': 'text/event-stream' })
+          const events = [
+            { type: 'message_start', message: { ...message, content: [], stop_reason: null } },
+            { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+            { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: message.content[0].text } },
+            { type: 'content_block_stop', index: 0 },
+            { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 8 } },
+            { type: 'message_stop' },
+          ]
+          response.end(events.map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''))
           return
         }
         if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
@@ -338,6 +369,17 @@ try {
       const result = JSON.parse(output)
       if (result.is_error || !requests.at(-1).messages.some(message => JSON.stringify(message.content).includes('Write release-proof.txt'))) throw new Error('Resume did not restore the prior conversation')
       assertSessionVersion(sessionId)
+    })
+    await check('native Claude request omits unsupported automatic beta headers', async () => {
+      env.ANTHROPIC_API_KEY = 'ur-native-smoke-no-secret'
+      try {
+        const claudeSettings = JSON.stringify({ provider: { active: 'anthropic-api', model: 'claude-opus-5-5', baseUrls: { 'anthropic-api': baseURL } }, sandbox: { enabled: false } })
+        const output = requireSuccess(await run(['-p', '--model', 'claude-opus-5-5', '--settings', claudeSettings, '--max-turns', '1', '--output-format', 'json', 'Say hello briefly.']))
+        const result = JSON.parse(output)
+        if (result.is_error || !String(result.result).includes('Claude native request verified.') || anthropicRequests.length !== 1 || !anthropicRequests[0].stream) {
+          throw new Error(`Native Claude request failed: ${output}`)
+        }
+      } finally { delete env.ANTHROPIC_API_KEY }
     })
   }
   await check('native child processes preserve Bun configuration isolation', async () => {

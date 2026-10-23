@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.87.2
+
+- Fixed Claude API requests failing with HTTP 400 because UR automatically sent
+  the invalid `ur-20250219` beta header. External providers no longer inherit
+  hosted-service beta flags. Documented manual-thinking and fast-mode feature
+  headers remain available, and explicit Anthropic beta opt-ins are preserved.
+- Stopped adding a default temperature to Claude requests that omit thinking,
+  allowing current models such as Opus 5.5 to use their supported defaults.
+- Fixed response logging accepting only Web Headers: native HTTP response
+  headers now work too, so a successful model reply cannot fail in logging.
+- Added a strict local HTTP regression through the complete query pipeline,
+  covering multiple Claude models, streaming, token counts and feature betas.
+
 ## 1.87.1
 
 - Keep command arguments such as `<id>` and `<name>` visible in `/ur-doctor`.

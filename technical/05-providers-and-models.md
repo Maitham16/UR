@@ -221,6 +221,15 @@ ur --discover-ollama      # scan the LAN for Ollama servers (ollamaDiscovery.ts)
   include the workspace so two workspaces cannot share a discovered catalog.
   Missing-workspace 400 payloads remain intact and include an actionable
   `anthropic.workspace_id` fix.
+  Native requests do not inherit hosted UR service beta headers or a default
+  sampling temperature. The removed app-identity beta was invalid on the
+  public API. The adapter adds `interleaved-thinking-2025-05-14` for manual
+  thinking with tools; adaptive thinking needs no such header. Effort and
+  `output_config.format` do not require legacy beta headers. Deliberate
+  `URHQ_BETAS` values and allowed SDK opt-ins are preserved; beta caches are
+  scoped by provider family, model and explicit environment opt-ins. Native
+  Axios/plain response headers and Web Headers both work in gateway logging.
+  The full-query regression uses a strict local HTTP server, not live inference.
 - OpenAI Responses already provides native SSE/WebSocket continuation and
   Gemini 2.5+ receives Google's automatic implicit caching. Gemini Priority is
   an Interactions-API service tier, not a legal `generateContent` field;

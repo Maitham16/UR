@@ -17,6 +17,7 @@ import { getURHQClient } from '../services/api/client.js'
 import { getModelBetas, modelSupportsStructuredOutputs } from './betas.js'
 import { computeFingerprint } from './fingerprint.js'
 import { normalizeModelStringForAPI } from './model/model.js'
+import { isFirstPartyRuntime } from './model/providers.js'
 
 type MessageParam = URHQ.MessageParam
 type TextBlockParam = URHQ.TextBlockParam
@@ -129,6 +130,7 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
   const betas = [...getModelBetas(model)]
   // Add structured-outputs beta if using output_format and provider supports it
   if (
+    isFirstPartyRuntime() &&
     output_format &&
     modelSupportsStructuredOutputs(model) &&
     !betas.includes(STRUCTURED_OUTPUTS_BETA_HEADER)

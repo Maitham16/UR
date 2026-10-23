@@ -3,16 +3,16 @@
   "template": false,
   "agent": {
     "name": "ur-nexus",
-    "version": "1.87.1",
-    "commit": "327bfc9089f1e859acea9cb834e7f2ce50f17c86",
+    "version": "1.87.2",
+    "commit": "d08a305d3771eb1d059e2f02c1cb5709e3c28f2e",
     "source": {
       "dirty": true,
-      "sha256": "6b9aa37219c62c543f64d3f3046692aafe4e966de6d9d4dc9006688d78cfd89e",
+      "sha256": "3a6a7723832fc427a789c60d4a6140f8863e2639a5d21eb6d501d487d376b3dd",
       "files": 2572,
       "scope": "src,scripts,package.json,bun.lock,tsconfig.json at report generation"
     }
   },
-  "date": "2026-10-21T06:24:30.875Z",
+  "date": "2026-10-23T15:00:20.467Z",
   "benchmark": {
     "name": "local-smoke",
     "category": "internal-regression",
@@ -39,7 +39,7 @@
         "name": "simple file edit task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 64,
+        "wallTimeMs": 31,
         "failureCategory": null
       },
       {
@@ -47,7 +47,7 @@
         "name": "failing test repair task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 174,
+        "wallTimeMs": 218,
         "failureCategory": null
       },
       {
@@ -55,7 +55,7 @@
         "name": "provider routing task",
         "category": "provider-routing",
         "passed": true,
-        "wallTimeMs": 190,
+        "wallTimeMs": 356,
         "failureCategory": null
       },
       {
@@ -63,7 +63,7 @@
         "name": "sandbox denial task",
         "category": "sandbox-safety",
         "passed": true,
-        "wallTimeMs": 505,
+        "wallTimeMs": 741,
         "failureCategory": null
       },
       {
@@ -71,7 +71,7 @@
         "name": "tool-call parsing task",
         "category": "tool-use",
         "passed": true,
-        "wallTimeMs": 166,
+        "wallTimeMs": 322,
         "failureCategory": null
       },
       {
@@ -79,13 +79,13 @@
         "name": "multi-step coding task",
         "category": "terminal-coding",
         "passed": true,
-        "wallTimeMs": 7328,
+        "wallTimeMs": 8168,
         "failureCategory": null
       }
     ],
     "failedTasks": [],
     "failureCategories": {},
-    "wallTimeMs": 8429,
+    "wallTimeMs": 9837,
     "tokenUsage": null,
     "costUSD": null,
     "completionClaims": null,

@@ -35,6 +35,20 @@ not establish OS confinement. Review the [preset scope and exceptions](../techni
 
 ## Install and startup
 
+### Claude API rejects `anthropic-beta: ur-20250219`
+
+This is an old UR request-header defect. Update through the installation's
+package manager (`brew upgrade ur-nexus` or `npm install -g ur-agent@latest`),
+restart UR, select Claude API and your model with `/model`, then retry a small
+prompt. Standalone installations use `ur upgrade`. The fix removes automatic
+hosted-service headers for every external provider; no model switch is needed.
+
+UR sends feature-specific beta headers only where needed. If you explicitly
+set `URHQ_BETAS`, check those values against Anthropic's documented beta names
+and your account's access. Invalid explicit opt-ins still produce the provider's
+error. Readiness diagnostics check connectivity; a short prompt verifies
+generation. Add or replace your API key through `/connect` or the model picker.
+
 ### `ur: command not found`
 
 - Likely cause: UR is not installed, or its launcher directory is not on `PATH`.
@@ -44,7 +58,7 @@ not establish OS confinement. Review the [preset scope and exceptions](../techni
 - Homebrew install: inspect `brew list ur-nexus` and `command -v ur`; update with
   `brew upgrade ur-nexus`. For a first installation, follow the
   [tap and formula-trust setup](NATIVE_INSTALL.md#homebrew).
-- Windows native and public npm installation are unavailable in 1.87.1. For
+- Windows native and public npm installation are unavailable in 1.87.2. For
   optional Windows source development, inspect `Get-Command ur` and follow the
   [Development Guide](DEVELOPMENT.md).
 - npm install: check the npm global bin path, then reinstall if needed. The
