@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.87.4
+
+- Extended model-native thinking and performance controls across OpenAI, Gemini,
+  Ollama, NVIDIA and OpenRouter. Both model pickers preview effort, supported
+  on/off modes, token budgets (`B`) and serving/routing preferences (`S`) before
+  confirmation. `/thinking`, `/effort` and `/fast` use the same contracts.
+- Added current OpenAI/Gemini model contracts, native reasoning-off `none`,
+  exact custom effort names, Ollama `thinking.values`, and NVIDIA schema-derived
+  levels/defaults. Mandatory reasoning cannot be disabled; unknown controls
+  are omitted. Gemini 2.5 uses validated per-model native token budgets.
+- Added OpenAI Fast/Ultrafast/Flex and Gemini Priority/Flex where documented,
+  plus explicit OpenRouter endpoint preferences. Premium pricing is labelled;
+  Flex retains its lower-cost tier and receives a longer default timeout.
+  Native controls preserve the selected model and package-manager installation.
+- Automatically use Responses for all GPT-6 and supported Responses-only Pro
+  models. Corrected older GPT-5 models and snapshot aliases to expose their
+  documented reasoning-off modes and defaults. Fixed Gemini endpoint discovery
+  incorrectly disabling tool support and
+  stopped coupling OpenAI reasoning effort to answer verbosity. Cold compatible
+  server discovery now resolves native controls before shaping the first request.
+  Updated docs and added full-query, streaming, keyboard and Bun-free native
+  regressions.
+- Updated root Zod to the upstream-fixed release and backported early collection
+  size rejection for two legacy Zod consumers. Release auditing verifies both
+  backports by installed source hashes and behavior; their raw advisories remain
+  documented with a review deadline.
+
 ## 1.87.3
 
 - Read Claude's live effort and thinking-mode capabilities instead of treating

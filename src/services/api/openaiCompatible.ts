@@ -8,9 +8,11 @@ import { synthesizeKimiToolCalls } from '../../cli/transports/kimiToolCalls.js'
 import {
   type EffortLevel,
   getProviderEffortWireValue,
+  resolveProviderEffortLevel,
   toOpenRouterReasoningEffort,
 } from '../../utils/effort.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { isEnvTruthy } from '../../utils/envUtils.js'
 import {
   getProviderReasoningCapabilitiesForModel,
   resolveProviderId,
@@ -18,6 +20,7 @@ import {
 } from '../providers/providerRegistry.js'
 import {
   isNvidiaHostedApi,
+  getNvidiaHostedReasoningCapabilities,
   resolveNvidiaHostedModelEndpoint,
 } from '../providers/nvidiaHostedModels.js'
 import { normalizeOpenAIChatUsage } from './usageNormalization.js'
@@ -341,6 +344,10 @@ export function toOpenAICompatibleRequest(
                 provider,
               )
             : undefined
+          if (provider && !advertisedWireValue && getProviderReasoningCapabilitiesForModel(String(params.model ?? ''), provider)) {
+            const resolved = resolveProviderEffortLevel(String(params.model ?? ''), reasoningEffort, provider)
+            return resolved ? getProviderEffortWireValue(String(params.model ?? ''), resolved, provider) : undefined
+          }
           // Normal requests arrive here after the session resolver has
           // capability-gated the selected level. Translate any explicit
           // provider alias (for example vLLM minimal→none). Ultra is the one
@@ -356,21 +363,26 @@ export function toOpenAICompatibleRequest(
   const toolChoice = openRouterServerSearch
     ? undefined
     : mapOpenAIToolChoice(params.tool_choice)
+  const disableFast = isEnvTruthy(process.env.UR_CODE_DISABLE_FAST_MODE)
+  const routingSettings = disableFast && options.openrouter?.routing === 'latency' ? { ...options.openrouter, routing: 'auto' as const } : options.openrouter
+  const routingParams = disableFast && params.provider?.sort === 'latency' ? { ...params, provider: { ...params.provider, sort: undefined } } : params
   const openRouterProviderPreferences =
     providerName === 'openrouter'
-      ? openRouterRoutingPreferences(params, options.openrouter)
+      ? openRouterRoutingPreferences(routingParams, routingSettings)
       : undefined
   const openRouterSessionId =
     providerName === 'openrouter'
       ? resolveOpenRouterSessionId(params)
       : undefined
-  const openRouterServiceTier =
+  const requestedRouterTier =
     providerName === 'openrouter'
       ? params.service_tier ?? options.openrouter?.serviceTier
       : undefined
+  const openRouterServiceTier = providerName !== 'openrouter' ? undefined : disableFast && requestedRouterTier !== 'flex' ? 'default'
+    : requestedRouterTier === 'fast' ? 'priority' : requestedRouterTier
   const openRouterSpeed =
     providerName === 'openrouter'
-      ? params.speed ?? options.openrouter?.speed
+      ? disableFast ? undefined : params.speed ?? options.openrouter?.speed
       : undefined
   const nvidiaCodingAgentTemplate =
     providerName === 'nvidia-nim' &&
@@ -378,19 +390,20 @@ export function toOpenAICompatibleRequest(
     tools.length > 0
       ? { force_nonempty_content: true }
       : undefined
-  const nvidiaLightningThinking =
+  const nvidiaThinkingToggle =
     providerName === 'nvidia-nim' &&
-    /^nvidia\/nemotron-3\.5-lightning-30b-a3b(?:-|$)/iu.test(String(params.model ?? '')) &&
+    (getNvidiaHostedReasoningCapabilities(String(params.model ?? ''))?.thinkingValues?.includes(false) === true ||
+      /^nvidia\/nemotron-3\.5-lightning-30b-a3b(?:-|$)/iu.test(String(params.model ?? ''))) &&
     (params.thinking?.type === 'disabled' ||
       params.thinking?.type === 'enabled' ||
       params.thinking?.type === 'adaptive')
       ? { enable_thinking: params.thinking.type !== 'disabled' }
       : undefined
   const nvidiaChatTemplate =
-    nvidiaCodingAgentTemplate || nvidiaLightningThinking
+    nvidiaCodingAgentTemplate || nvidiaThinkingToggle
       ? {
           ...nvidiaCodingAgentTemplate,
-          ...nvidiaLightningThinking,
+          ...nvidiaThinkingToggle,
         }
       : undefined
   return {
@@ -520,6 +533,7 @@ function toOpenAIReasoningEffort(
 ): EffortLevel | undefined {
   const requested = params.output_config?.effort
   if (
+    requested === 'none' ||
     requested === 'minimal' ||
     requested === 'low' ||
     requested === 'medium' ||
@@ -527,18 +541,16 @@ function toOpenAIReasoningEffort(
     requested === 'xhigh' ||
     requested === 'max'
   ) {
+    if (requested === 'none') {
+      const provider = resolveProviderId(providerName)
+      return provider && getProviderEffortWireValue(String(params.model ?? ''), 'none', provider) === 'none' ? 'none' : undefined
+    }
     return requested
   }
-  if (requested === 'ultra') {
+  if (typeof requested === 'string') {
     const provider = resolveProviderId(providerName)
-    if (!provider) return undefined
-    return getProviderEffortWireValue(
-      String(params.model ?? ''),
-      'ultra',
-      provider,
-    )
-      ? 'ultra'
-      : undefined
+    return provider && getProviderEffortWireValue(String(params.model ?? ''), requested, provider)
+      ? requested : undefined
   }
   // There is no cross-server boolean reasoning control in the generic
   // OpenAI-compatible contract. OpenRouter publishes a model-scoped contract;
@@ -565,6 +577,11 @@ function toOpenRouterReasoning(
   params: any,
   wireEffort: string | undefined,
 ): Record<string, unknown> | undefined {
+  const capabilities = getProviderReasoningCapabilitiesForModel(String(params.model ?? ''), 'openrouter')
+  if (params.thinking?.type === 'disabled' && capabilities && capabilities.supportsThinking !== false &&
+    capabilities.mandatory !== true && capabilities.supportedEfforts !== null && !capabilities.supportedEfforts?.includes('none')) {
+    return { enabled: false }
+  }
   if (wireEffort) return { effort: wireEffort }
   if (
     params.thinking?.type !== 'enabled' &&
@@ -572,10 +589,6 @@ function toOpenRouterReasoning(
   ) {
     return undefined
   }
-  const capabilities = getProviderReasoningCapabilitiesForModel(
-    String(params.model ?? ''),
-    'openrouter',
-  )
   if (!capabilities || capabilities.supportsThinking === false) return undefined
   const advertisesReasoning =
     capabilities.supportsThinking === true ||

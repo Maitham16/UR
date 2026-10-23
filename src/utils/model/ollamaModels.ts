@@ -2,6 +2,8 @@ import type { ModelOption } from './modelOptions.js'
 import { getProviderApiKey } from '../../services/providers/providerCredentials.js'
 import { getOllamaAuthHeaders, getOllamaBaseUrl } from './ollamaConfig.js'
 import { categorizeOllamaModels } from './ollamaRouter.js'
+import { parseOllamaThinkingCapabilities } from '../../services/providers/ollamaCapabilities.js'
+import type { ModelReasoningCapabilities } from '../../services/providers/modelCatalog.js'
 
 const ollamaModelMetadataByEndpointAndName = new Map<
   string,
@@ -21,6 +23,7 @@ function setCachedOllamaModelNames(names: string[], baseUrl: string): void {
 
 type OllamaModelMetadata = {
   contextLength?: number
+  reasoning?: ModelReasoningCapabilities
 }
 
 type RefreshOptions = {
@@ -206,7 +209,8 @@ export function cacheOllamaModelMetadata(
   }
 
   const contextLength = parseOllamaContextLength(value)
-  if (contextLength === undefined) {
+  const reasoning = parseOllamaThinkingCapabilities(value)
+  if (contextLength === undefined && reasoning === undefined) {
     return
   }
 
@@ -215,9 +219,17 @@ export function cacheOllamaModelMetadata(
     const current = ollamaModelMetadataByEndpointAndName.get(key) ?? {}
     ollamaModelMetadataByEndpointAndName.set(key, {
       ...current,
-      contextLength,
+      ...(contextLength !== undefined ? { contextLength } : {}),
+      ...(reasoning !== undefined ? { reasoning } : {}),
     })
   }
+}
+
+export function getOllamaThinkingCapabilitiesForModel(
+  model: string,
+  baseUrl = getOllamaBaseUrl(),
+): ModelReasoningCapabilities | undefined {
+  return ollamaModelMetadataByEndpointAndName.get(ollamaModelMetadataKey(baseUrl, model))?.reasoning
 }
 
 // Cloud models have large server-side context; /api/show under-reports it — floor it.

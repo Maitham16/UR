@@ -43,10 +43,10 @@
     </aside>
 
     <main id="content" class="content">
-      <aside class="callout"><strong>Install on macOS/Linux ARM64 or x64:</strong> complete the <a href="#quickstart">one-time Homebrew setup</a>, then use <code>brew install Maitham16/ur/ur-nexus</code>, or use the <a href="https://github.com/Maitham16/UR/releases/latest">standalone installer</a> without Node.js or Bun. The launch command remains <code>ur</code>. The official npm package requires Node.js 22.12+ only and verifies/caches the pinned native application on first launch. Windows native and public npm installation are unavailable in 1.87.3; Bun-based source development remains optional.</aside>
+      <aside class="callout"><strong>Install on macOS/Linux ARM64 or x64:</strong> complete the <a href="#quickstart">one-time Homebrew setup</a>, then use <code>brew install Maitham16/ur/ur-nexus</code>, or use the <a href="https://github.com/Maitham16/UR/releases/latest">standalone installer</a> without Node.js or Bun. The launch command remains <code>ur</code>. The official npm package requires Node.js 22.12+ only and verifies/caches the pinned native application on first launch. Windows native and public npm installation are unavailable in 1.87.4; Bun-based source development remains optional.</aside>
       <header class="topbar">
         <div>
-          <p class="eyebrow">Version 1.87.3</p>
+          <p class="eyebrow">Version 1.87.4</p>
           <h1>UR-Nexus Documentation</h1>
           <p class="lead">A practical, tutorial-style reference for installing, configuring, automating, extending, and operating UR-Nexus.</p>
         </div>
@@ -140,7 +140,7 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ur --version</code></pre>
             <p>The PATH command applies to this terminal. Add it once to your zsh or bash startup file for future terminals; see the <a href="../docs/NATIVE_INSTALL.md#install">shell startup instructions</a>.</p>
-            <p>Windows native and public npm installation are unavailable in 1.87.3. Windows developers can optionally use the <a href="../docs/DEVELOPMENT.md">Bun-based source workflow</a>.</p>
+            <p>Windows native and public npm installation are unavailable in 1.87.4. Windows developers can optionally use the <a href="../docs/DEVELOPMENT.md">Bun-based source workflow</a>.</p>
           </article>
           <article class="step">
             <span>2</span>
@@ -205,7 +205,8 @@ ur config set anthropic.speed fast</code></pre>
 /thinking on
 ur --model kimi-k3:cloud --effort high
 /model  # Up/Down model · Left/Right effort or thinking on/off · Enter apply</code></pre>
-            <p>The normalized vocabulary is <code>minimal</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>, <code>max</code>, and <code>ultra</code>; <code>/effort auto</code> clears an explicit choice. UR lists only capability-backed selectors it can map to the focused model's provider-native levels. <code>max</code> resolves to the highest supported non-Ultra tier. Ultra appears only for native <code>ultra</code>, advertised <code>max</code>/<code>xhigh</code>, or an explicit provider alias; the picker shows translations such as <code>ultra→max</code> and sends that exact provider value. Models that top out at <code>high</code>, lack an advertised beyond-high value, or have unknown capabilities do not get Ultra. For models with thinking but no advertised graded ladder on runtimes with a native toggle, Left selects off, Right selects on, and <code>t</code> toggles; <code>/thinking on|off</code> is the direct control. A graded <code>/effort</code> request on such a model enables thinking while reporting that no graded value was sent. Focused vLLM models use non-generating <code>/server_info</code> discovery for the documented <code>minimal→none|low|medium|high</code> mapping; llama.cpp's bare support flag creates no invented ladder. Generic OpenAI-compatible runtimes receive no invented boolean field.</p>
+            <p>Model controls follow the selected provider: arrows choose advertised effort, <code>T</code> uses a real thinking switch, <code>B</code> previews native token budgets and <code>S</code> cycles serving/routing options. OpenAI offers documented Fast/Ultrafast/Flex tiers; Gemini offers Priority/Flex and native 2.5 token budgets; OpenRouter offers endpoint preferences. Ollama reads exact <code>thinking.values</code>, NVIDIA uses published model request schemas, and custom advertised effort names retain their native wire spelling. Enter applies; Esc cancels. See the <a href="../docs/providers.md#model-reasoning-and-performance-controls">provider control matrix</a> for availability and pricing.</p>
+            <p>The standard vocabulary includes <code>none</code>, <code>minimal</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>, <code>max</code>, and <code>ultra</code>; <code>/effort auto</code> clears an explicit choice. UR lists only capability-backed selectors it can map to the focused model's provider-native levels. <code>max</code> resolves to the highest supported non-Ultra tier. Ultra appears only for native <code>ultra</code>, advertised <code>max</code>/<code>xhigh</code>, or an explicit provider alias; the picker shows translations such as <code>ultra→max</code> and sends that exact provider value. Models that top out at <code>high</code>, lack an advertised beyond-high value, or have unknown capabilities do not get Ultra. For models with thinking but no advertised graded ladder on runtimes with a native toggle, Left selects off, Right selects on, and <code>t</code> toggles; <code>/thinking on|off</code> is the direct control. A graded <code>/effort</code> request on such a model enables thinking while reporting that no graded value was sent. Focused vLLM models use non-generating <code>/server_info</code> discovery for the documented <code>none|low|medium|high</code> mapping; llama.cpp's bare support flag creates no invented ladder. Generic OpenAI-compatible runtimes receive no invented boolean field.</p>
           </article>
           <article>
             <h3>OpenRouter responsive routing</h3>

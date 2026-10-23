@@ -43,6 +43,9 @@ export type ModelReasoningCapabilities = {
   supportsMaxTokens?: boolean
   /** Accepted native thinking.type values when published by the provider. */
   thinkingTypes?: string[]
+  /** Exact native Ollama think values returned by /api/show. */
+  thinkingValues?: Array<boolean | string>
+  thinkingBudget?: { min: number; max: number; dynamic?: boolean; canDisable?: boolean }
 }
 
 export type DiscoveredModel = {
@@ -97,7 +100,7 @@ export function parseModelReasoningCapabilities(
             new Set(
               rawSupportedEfforts
                 .filter((entry): entry is string => typeof entry === 'string')
-                .map(entry => entry.trim().toLowerCase())
+                .map(entry => entry.trim())
                 .filter(Boolean),
             ),
           )
@@ -107,7 +110,7 @@ export function parseModelReasoningCapabilities(
       ? value.default_effort
       : value.defaultEffort ??
         (rawSupportedEfforts !== undefined ? value.default : undefined),
-  )?.toLowerCase()
+  )
   const rawAliases = isRecord(value.effort_aliases)
     ? value.effort_aliases
     : isRecord(value.effortAliases)
@@ -117,7 +120,7 @@ export function parseModelReasoningCapabilities(
     ? Object.fromEntries(
         Object.entries(rawAliases).flatMap(([selector, wireValue]) => {
           const normalizedSelector = selector.trim().toLowerCase()
-          const normalizedWireValue = asString(wireValue)?.toLowerCase()
+          const normalizedWireValue = asString(wireValue)
           return normalizedSelector && normalizedWireValue
             ? [[normalizedSelector, normalizedWireValue]]
             : []
@@ -135,6 +138,16 @@ export function parseModelReasoningCapabilities(
   const thinkingTypes = Array.isArray(value.thinkingTypes)
     ? value.thinkingTypes.filter((entry): entry is string => typeof entry === 'string')
     : undefined
+  const thinkingValues = Array.isArray(value.thinkingValues)
+    ? value.thinkingValues.filter((entry): entry is boolean | string =>
+        typeof entry === 'boolean' || (typeof entry === 'string' && entry.length > 0))
+    : undefined
+  const budget = isRecord(value.thinkingBudget) ? value.thinkingBudget : undefined
+  const thinkingBudget = budget && Number.isSafeInteger(budget.min) && Number.isSafeInteger(budget.max) &&
+    Number(budget.min) >= 0 && Number(budget.max) >= Number(budget.min)
+      ? { min: Number(budget.min), max: Number(budget.max),
+          ...(typeof budget.dynamic === 'boolean' ? { dynamic: budget.dynamic } : {}),
+          ...(typeof budget.canDisable === 'boolean' ? { canDisable: budget.canDisable } : {}) } : undefined
   const supportsMaxTokens =
     typeof value.supports_max_tokens === 'boolean'
       ? value.supports_max_tokens
@@ -156,7 +169,9 @@ export function parseModelReasoningCapabilities(
     defaultEnabled === undefined &&
     mandatory === undefined &&
     supportsMaxTokens === undefined &&
-    thinkingTypes === undefined
+    thinkingTypes === undefined &&
+    thinkingValues === undefined &&
+    thinkingBudget === undefined
   ) {
     return undefined
   }
@@ -172,6 +187,8 @@ export function parseModelReasoningCapabilities(
     ...(mandatory !== undefined ? { mandatory } : {}),
     ...(supportsMaxTokens !== undefined ? { supportsMaxTokens } : {}),
     ...(thinkingTypes !== undefined ? { thinkingTypes } : {}),
+    ...(thinkingValues !== undefined ? { thinkingValues } : {}),
+    ...(thinkingBudget !== undefined ? { thinkingBudget } : {}),
   }
 }
 
@@ -279,14 +296,19 @@ export function toDiscoveredModel(entry: unknown, providerLabel: string): Discov
     asCount(raw.contextLength) ??
     asCount(raw.max_input_tokens) ??
     asCount(raw.inputTokenLimit)
-  const outputTokenLimit = asCount(raw.max_output_tokens) ?? asCount(raw.outputTokenLimit) ?? asCount(raw.max_tokens)
+  const topProvider = isRecord(raw.top_provider) ? raw.top_provider : undefined
+  const outputTokenLimit = asCount(raw.max_output_tokens) ?? asCount(raw.outputTokenLimit) ?? asCount(raw.max_tokens) ?? asCount(topProvider?.max_completion_tokens)
   const humanName = asString(raw.display_name) ?? asString(raw.displayName) ?? asString(raw.name)
   const supportedParameters = Array.isArray(raw.supported_parameters)
     ? raw.supported_parameters.filter((value): value is string => typeof value === 'string')
-    : Array.isArray(raw.supportedGenerationMethods)
-      ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string')
-      : undefined
-  const capabilities = isRecord(raw.capabilities) ? raw.capabilities : undefined
+    : undefined
+  // Google's endpoint methods are not request-parameter capabilities. A list
+  // containing generateContent must never be interpreted as "tools absent".
+  const generationMethods = Array.isArray(raw.supportedGenerationMethods)
+    ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string') : undefined
+  const rawCapabilities = isRecord(raw.capabilities) ? raw.capabilities : undefined
+  const capabilities: Record<string, unknown> | undefined = rawCapabilities || generationMethods ? { ...rawCapabilities,
+    ...(generationMethods ? { generationMethods } : {}) } : undefined
   const parsedReasoning =
     parseModelReasoningCapabilities(raw.reasoning) ??
     parseModelReasoningCapabilities(

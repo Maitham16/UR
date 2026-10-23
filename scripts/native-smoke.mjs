@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Qualify the installed artifact, not the checkout. The child PATH has no runtimes.
+import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -224,6 +225,8 @@ try {
   if (!offlineOnly) {
     const requests = []
     const anthropicRequests = []
+    let controlScenario
+    const controlRequests = []
     let createdTaskId
     const proof = join(workspace, 'release-proof.txt')
     const proofContent = 'native release write proof\n'
@@ -238,6 +241,59 @@ try {
       try {
         trace(requestTrace, { event: 'received', method: request.method, url: request.url })
         if (request.headers.authorization && request.headers.authorization !== 'Bearer ur-native-smoke-no-secret') throw new Error('Unexpected authorization was sent to the native smoke endpoint')
+        if (controlScenario) {
+          const scenario = controlScenario
+          if (request.method === 'GET') {
+            const row = { id: scenario.model, name: `models/${scenario.model}`, display_name: scenario.model,
+              supportedGenerationMethods: ['generateContent', 'streamGenerateContent'],
+              ...(scenario.reasoning ? { reasoning: scenario.reasoning } : {}) }
+            response.setHeader('content-type', 'application/json')
+            response.end(JSON.stringify({ data: [row], models: [row] }))
+            return
+          }
+          assert.equal(request.method, 'POST')
+          const chunks = []
+          for await (const chunk of request) chunks.push(chunk)
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+          controlRequests.push({ model: scenario.model, body })
+          assert.equal(request.headers['anthropic-beta'], undefined)
+          const text = 'Native provider controls verified.'
+          if (scenario.type === 'responses') {
+            assert.ok(request.url.endsWith('/responses'))
+            assert.equal(body.model, scenario.model)
+            assert.equal(body.reasoning.effort, scenario.effort)
+            assert.equal(body.service_tier, scenario.tier)
+            assert.equal(body.temperature, undefined)
+            assert.equal(body.reasoning_effort, undefined)
+            const completed = { id: 'resp_native_controls', object: 'response', status: 'completed', model: body.model,
+              output: [{ type: 'message', id: 'msg_native_controls', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text, annotations: [] }] }],
+              usage: { input_tokens: 100, output_tokens: 8 } }
+            assert.equal(body.stream, true)
+            response.writeHead(200, { 'content-type': 'text/event-stream' })
+            response.end([
+              { type: 'response.created', response: { ...completed, status: 'in_progress', output: [] } },
+              { type: 'response.output_text.delta', item_id: 'msg_native_controls', output_index: 0, content_index: 0, delta: text },
+              { type: 'response.completed', response: completed },
+            ].map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''))
+          } else if (scenario.type === 'gemini') {
+            assert.ok(request.url.includes(`/models/${scenario.model}:streamGenerateContent`))
+            assert.equal(body.service_tier, scenario.tier)
+            assert.deepEqual(body.generationConfig.thinkingConfig, scenario.budget === undefined ? { thinkingLevel: scenario.effort } : { thinkingBudget: scenario.budget })
+            assert.equal(body.reasoning_effort, undefined)
+            response.writeHead(200, { 'content-type': 'text/event-stream' })
+            response.end(`data: ${JSON.stringify({ candidates: [{ content: { role: 'model', parts: [{ text }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 8 } })}\n\n`)
+          } else {
+            assert.ok(request.url.endsWith('/chat/completions'))
+            assert.equal(body.model, scenario.model)
+            assert.equal(body.stream, true)
+            assert.equal(body.reasoning_effort, scenario.effort)
+            assert.equal(body.service_tier, undefined)
+            if (scenario.toggle !== undefined) assert.equal(body.chat_template_kwargs.enable_thinking, scenario.toggle)
+            response.writeHead(200, { 'content-type': 'text/event-stream' })
+            response.end(`data: ${JSON.stringify({ id: 'native-controls', model: body.model, choices: [{ index: 0, delta: { role: 'assistant', content: text }, finish_reason: 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 8 } })}\n\ndata: [DONE]\n\n`)
+          }
+          return
+        }
         if (request.method === 'GET' && ['/v1/models', '/models'].includes(request.url.split('?')[0])) {
           response.setHeader('content-type', 'application/json')
           response.end(JSON.stringify({ object: 'list', data: [{ id: 'native-smoke', object: 'model', context_length: 32768, supported_parameters: ['tools', 'max_tokens', 'temperature'] }, { id: 'claude-opus-5-5', type: 'model', display_name: 'Claude Opus 5.5' }] }))
@@ -386,6 +442,37 @@ try {
         if (fastResult.is_error || anthropicRequests.length !== 2 || anthropicRequests[1].speed !== 'fast') throw new Error(`Native Claude fast mode failed: ${fastOutput}`)
       } finally { delete env.ANTHROPIC_API_KEY }
     })
+    for (const scenario of [
+      { provider: 'openai-api', model: 'gpt-6.1-sol', type: 'responses', effort: 'xhigh', tier: 'ultrafast' },
+      { provider: 'openai-api', model: 'gpt-6-luna', type: 'responses', effort: 'low', tier: 'flex' },
+      { provider: 'openai-api', model: 'gpt-5.5-pro', type: 'responses', effort: 'xhigh', tier: 'flex' },
+      { provider: 'gemini-api', model: 'gemini-3.8-flash', type: 'gemini', effort: 'low', tier: 'priority' },
+      { provider: 'gemini-api', model: 'gemini-2.5-pro', type: 'gemini', budget: 8192 },
+      { provider: 'nvidia-nim', model: 'nvidia/nemotron-3-ultra-550b-a55b', type: 'chat', effort: 'medium' },
+      { provider: 'nvidia-nim', model: 'google/gemma-4-31b-it', type: 'chat', toggle: false },
+      { provider: 'vllm', model: 'custom-native-level', type: 'chat', effort: 'Deep', reasoning: { supportsThinking: true, supportedEfforts: ['Brief', 'Deep'], defaultEffort: 'Deep' } },
+    ]) {
+      await check(`native ${scenario.provider}/${scenario.model} model controls without Node or Bun`, async () => {
+        const before = controlRequests.length
+        controlScenario = scenario
+        env.OPENAI_API_KEY = env.GEMINI_API_KEY = env.NVIDIA_API_KEY = 'ur-native-smoke-no-secret'
+        try {
+          const provider = { active: scenario.provider, model: scenario.model, baseUrls: { [scenario.provider]: baseURL },
+            ...(scenario.provider === 'openai-api' ? { openai: { serviceTier: scenario.tier } } : {}),
+            ...(scenario.provider === 'gemini-api' ? { gemini: { serviceTier: scenario.tier } } : {}),
+            ...(scenario.budget !== undefined ? { thinkingBudgets: { [scenario.provider]: { [scenario.model]: scenario.budget } } } : {}) }
+          const settings = JSON.stringify({ provider, sandbox: { enabled: false }, alwaysThinkingEnabled: scenario.toggle })
+          const args = ['-p', '--model', scenario.model, '--settings', settings, '--max-turns', '1', '--output-format', 'json',
+            ...(scenario.effort ? ['--effort', scenario.effort] : []), 'Say hello briefly.']
+          const output = requireSuccess(await run(args))
+          const result = JSON.parse(output)
+          if (result.is_error || !String(result.result).includes('Native provider controls verified.') || controlRequests.length !== before + 1) throw new Error(`Native provider controls failed: ${output}`)
+        } finally {
+          controlScenario = undefined
+          delete env.OPENAI_API_KEY; delete env.GEMINI_API_KEY; delete env.NVIDIA_API_KEY
+        }
+      })
+    }
   }
   await check('native child processes preserve Bun configuration isolation', async () => {
     if (existsSync(preloadMarker)) throw new Error('A native child executed an untrusted Bun preload')

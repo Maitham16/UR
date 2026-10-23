@@ -107,14 +107,19 @@ function parseNonNegativeInteger(value: unknown): number | undefined {
   return Math.floor(parsed)
 }
 
-export function getProviderRequestTimeoutMs(override?: unknown): number {
+export function getProviderRequestTimeoutMs(override?: unknown, defaultTimeoutMs = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS): number {
   return (
     parsePositiveInteger(override) ??
     parsePositiveInteger(process.env.API_TIMEOUT_MS) ??
     parsePositiveInteger(process.env.UR_API_TIMEOUT_MS) ??
     parsePositiveInteger(getInitialSettings().provider?.timeoutMs) ??
-    DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS
+    defaultTimeoutMs
   )
+}
+
+/** Flex can legitimately queue for minutes; explicit user timeouts still win. */
+export function getProviderServingTimeoutMs(serviceTier: unknown, override?: number): number | undefined {
+  return serviceTier === 'flex' ? getProviderRequestTimeoutMs(override, 900_000) : override
 }
 
 /**

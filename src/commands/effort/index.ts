@@ -5,7 +5,7 @@ export default {
   type: 'local-jsx',
   name: 'effort',
   description: 'Set effort level for model usage',
-  argumentHint: '[minimal|low|medium|high|xhigh|max|ultra|auto]',
+  argumentHint: '[none|minimal|low|medium|high|xhigh|max|ultra|auto|native-level]',
   get immediate() {
     return shouldInferenceConfigCommandBeImmediate()
   },

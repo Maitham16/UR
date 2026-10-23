@@ -16,15 +16,34 @@ You need:
   `>=22.12` launcher verifies and caches the native application without Bun;
   or a local source checkout (`bun run dev`) with the pinned development Bun.
 
-Windows native and public npm installation are unavailable in 1.87.3. Windows
+Windows native and public npm installation are unavailable in 1.87.4. Windows
 developers can optionally use the Bun-based source workflow.
 
 ## 0. Smoke
 
 ```sh
 ur --version
-# expected for this release: "1.87.3 (UR-Nexus)"
+# expected for this release: "1.87.4 (UR-Nexus)"
 ```
+
+### Native model controls
+
+Run the credential-free query, streaming, metadata, settings and keyboard regressions:
+
+```sh
+bun test test/providerControlContracts.test.ts test/providerModelControls.test.tsx test/ollamaThinkingValues.test.ts test/anthropicModelControls.test.tsx test/anthropicRequestContract.test.ts
+```
+
+The strict HTTP fixtures reject incorrect provider parameters. They cover
+OpenAI Responses/tier/effort, Gemini named effort and 2.5 token budgets, NVIDIA
+schema-driven enums/template booleans, and OpenRouter routing/budgets. No paid
+live inference is claimed. The native smoke additionally exercises these
+controls from the installed executable with Node/Bun absent from PATH.
+
+In `/model`, verify that S/B/arrow previews write nothing until Enter and Esc
+cancels. Check mandatory/off-only models, custom advertised names, model-scoped
+budget removal and unsupported tier rejection. Confirm `/thinking` and `/effort`
+match the next request and the selected model stays unchanged after `/fast`.
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
 
@@ -94,8 +113,8 @@ llama.cpp, verify focus requests `/props?model=<focused-id>` and that both an
 unsupported template and a bare `supports_reasoning_effort: true` flag have no
 graded selector unless exact levels are also returned. For vLLM, verify one
 focus request to `/server_info?config_format=json`; a non-empty reasoning parser
-must expose `minimal→none`, `low`, `medium`, and `high`, serialize
-`minimal` as `reasoning_effort: "none"`, and omit Ultra. Open the OpenAI API or
+must expose `none`, `low`, `medium`, and `high`, serialize
+`none` as `reasoning_effort: "none"`, and omit Ultra. Open the OpenAI API or
 Claude API connection flow and verify the masked `API key` label and entry
 remain on one horizontal row.
 

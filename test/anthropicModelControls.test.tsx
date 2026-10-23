@@ -74,11 +74,11 @@ test('mandatory thinking never saves a false preference and Sonnet uses its acce
 
 test('confirmed speed is saved atomically with model and preserves workspace and endpoint', () => {
   workspace()
-  expect(setProviderModel('anthropic-api', 'claude-opus-5-5', { anthropicSpeed: 'fast' }).ok).toBe(true)
+  expect(setProviderModel('anthropic-api', 'claude-opus-5-5', { performanceMode: 'fast' }).ok).toBe(true)
   expect(getActiveProviderSettings()).toMatchObject({ active: 'anthropic-api', model: 'claude-opus-5-5',
     baseUrls: { 'anthropic-api': 'https://contract.invalid/v1' }, anthropic: { speed: 'fast', workspaceId: 'wrkspc_01Fixture' } })
   const before = JSON.stringify(getInitialSettings())
-  expect(setProviderModel('anthropic-api', 'claude-sonnet-5-5', { anthropicSpeed: 'fast' }).ok).toBe(false)
+  expect(setProviderModel('anthropic-api', 'claude-sonnet-5-5', { performanceMode: 'fast' }).ok).toBe(false)
   expect(JSON.stringify(getInitialSettings())).toBe(before)
 })
 
@@ -90,7 +90,7 @@ test('/fast uses native settings and never forces a different model', () => {
   expect(state.provider.anthropic?.speed).toBe('fast')
   expect(state.mainLoopModel).toBe('claude-opus-5-5')
   state.mainLoopModel = 'claude-sonnet-5-5'
-  expect(applyNativeFastMode(true, context as never)).toContain('not supported')
+  expect(applyNativeFastMode(true, context as never)).toContain('No native fast serving tier')
   expect(state.mainLoopModel).toBe('claude-sonnet-5-5')
   expect(applyNativeFastMode(false, context as never)).toContain('STANDARD')
 })

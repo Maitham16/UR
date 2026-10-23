@@ -43,7 +43,7 @@ restore their session model without showing the picker.
     },
     "commandPath": "…",            // external CLI path for cli-login providers
     "fallback": "…",
-    "openaiTransport": "responses", // chat-completions (default) | responses
+    "openaiTransport": "responses", // chat-completions | responses; required GPT-6 models auto-select Responses
     "responses": {
       "store": false,
       "compactThreshold": 20000,
@@ -55,13 +55,16 @@ restore their session model without showing the picker.
       "requireParameters": true,
       "preferredMinThroughput": 40,
       "preferredMaxLatency": 3,
-      "serviceTier": "priority",     // auto | default | flex | priority | fast
+      "serviceTier": "priority",     // auto | default | flex | priority; legacy fast normalizes to priority
       "speed": "fast"                // standard | fast
     },
     "anthropic": {
       "workspaceId": "wrkspc_...",   // identity-linked API keys only
       "speed": "standard"             // standard | fast
     },
+    "openai": { "serviceTier": "auto" }, // auto | default | fast | priority | ultrafast | flex
+    "gemini": { "serviceTier": "auto" }, // auto | standard | priority | flex
+    "thinkingBudgets": { "gemini-api": { "gemini-2.5-pro": 8192 } },
     "preferences": {},
     "availableModels": [], "modelOverrides": {}
   },
@@ -94,8 +97,10 @@ removes either threshold or boolean override. `serviceTier` and
 only when explicitly selected. `:nitro`, `:floor`, and `:exacto` virtual model
 IDs validate against and inherit capabilities from the discovered base model.
 
-`effortLevel` accepts `minimal`, `low`, `medium`, `high`, `xhigh`, and `ultra` for normal
-users (`max` is also persistable in internal builds). `--effort` and `/effort` additionally
+`effortLevel` accepts native advertised names, including `none`, `minimal`,
+`low`, `medium`, `high`, `xhigh`, and `ultra`; `max` remains session-only outside
+internal builds. Custom names are persisted but never sent to a model that does
+not advertise them. `--effort` and `/effort` additionally
 accept provider-neutral `max`; `/effort auto` clears the explicit choice. CLI flag values
 are session-only, and every selection is capability-gated. Ultra is shown only when the
 active model advertises `ultra`, `max`, `xhigh`, or an explicit alias, and UR sends the exact
@@ -111,9 +116,18 @@ sessions as well as the live session.
 Generic OpenAI-compatible runtimes do not receive an invented boolean field;
 they expose this control only if their real adapter defines one. Focused vLLM
 models are checked through `/server_info?config_format=json`; a configured
-reasoning parser exposes `minimal→none|low|medium|high`. llama.cpp's `/props`
+reasoning parser exposes `none|low|medium|high`. llama.cpp's `/props`
 support flag is recorded as thinking support but creates no graded selectors
 until exact accepted values are advertised.
+
+`openai.service_tier` and `gemini.service_tier` are safe CLI config keys.
+The shared `modelPerformance.ts` validates model support before picker writes;
+`S` changes only pending state until Enter. `/fast` preserves the selected model.
+`thinkingBudget.ts` validates `provider.thinkingBudgets[provider][model]` against
+native ranges/disable/dynamic flags. `B` previews native bounds; `/thinking budget`
+sets an exact value. A selected budget suppresses named effort, and selecting
+`/effort` clears that model's budget with rollback on persistence failure.
+See [provider controls](../docs/providers.md#model-reasoning-and-performance-controls).
 
 The two `redteamWarning*` fields only record that the user saw a particular
 warning revision. They do not activate redteam mode, approve a target, relax a

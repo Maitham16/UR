@@ -109,6 +109,8 @@ function providerConfigEntries(): CliConfigEntry[] {
       value: configured.anthropic?.speed ?? 'standard',
       category: 'provider',
     },
+    { key: 'openai.service_tier', value: configured.openai?.serviceTier ?? 'auto', category: 'provider' },
+    { key: 'gemini.service_tier', value: configured.gemini?.serviceTier ?? 'auto', category: 'provider' },
     {
       key: 'anthropic.workspace_id',
       value: configured.anthropic?.workspaceId ?? null,

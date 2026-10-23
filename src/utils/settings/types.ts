@@ -614,6 +614,12 @@ export const SettingsSchema = lazySchema(() =>
             })
             .optional()
             .describe('Anthropic API performance controls.'),
+          openai: z.object({ serviceTier: z.enum(['auto', 'default', 'fast', 'priority', 'ultrafast', 'flex']).optional() })
+            .optional().describe('OpenAI processing tier; premium and flex modes are opt-in.'),
+          gemini: z.object({ serviceTier: z.enum(['auto', 'standard', 'priority', 'flex']).optional() })
+            .optional().describe('Gemini processing tier; priority requires eligible account access.'),
+          thinkingBudgets: z.partialRecord(z.enum(PROVIDER_SETTING_IDS), z.record(z.string(), z.number().int().min(-1)))
+            .optional().describe('Native thinking token budgets saved independently by provider and model.'),
           preferences: z
             .record(z.string(), NonSecretPreferenceSchema)
             .optional()
@@ -952,11 +958,7 @@ export const SettingsSchema = lazySchema(() =>
             'enabled automatically for supported models.',
         ),
       effortLevel: z
-        .enum(
-          process.env.USER_TYPE === 'ant'
-            ? ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']
-            : ['minimal', 'low', 'medium', 'high', 'xhigh', 'ultra'],
-        )
+        .string().trim().min(1)
         .optional()
         .catch(undefined)
         .describe('Persisted effort level for supported models.'),

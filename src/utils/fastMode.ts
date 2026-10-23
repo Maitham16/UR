@@ -22,13 +22,14 @@ import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
 import {
   getDefaultMainLoopModelSetting,
+  getMainLoopModel,
   ismodelO1mMergeEnabled,
   type ModelSetting,
   parseUserSpecifiedModel,
 } from './model/model.js'
 import { isFirstPartyRuntime, getRuntimeProvider } from './model/providers.js'
 import { getActiveProviderSettings } from '../services/providers/providerRegistry.js'
-import { getAnthropicFastMode } from '../services/providers/anthropicCapabilities.js'
+import { getSavedModelPerformanceMode, isAcceleratedPerformanceMode, preferredFastPerformanceMode } from '../services/providers/modelPerformance.js'
 import { isEssentialTrafficOnly } from './privacyLevel.js'
 import {
   getInitialSettings,
@@ -75,9 +76,9 @@ export function getFastModeUnavailableReason(): string | null {
   if (!isFastModeEnabled()) {
     return 'Fast mode is not available'
   }
-  if (getRuntimeProvider() === 'anthropic-api') {
-    const model = getActiveProviderSettings(getInitialSettings()).model ?? ''
-    return getAnthropicFastMode(model) ? null : `Fast mode is not supported for ${model || 'the selected model'}.`
+  if (!isFirstPartyRuntime()) {
+    const model = getMainLoopModel()
+    return preferredFastPerformanceMode(getRuntimeProvider(), model) ? null : `Speed is managed by the provider/runtime for ${model || 'the selected model'}.`
   }
 
   const statigReason = getFeatureValue_CACHED_MAY_BE_STALE(
@@ -168,7 +169,7 @@ export function getInitialFastModeSetting(model: ModelSetting): boolean {
     return false
   }
   const settings = getInitialSettings()
-  if (getRuntimeProvider() === 'anthropic-api') return getActiveProviderSettings(settings).anthropic?.speed === 'fast'
+  if (!isFirstPartyRuntime()) return isAcceleratedPerformanceMode(getSavedModelPerformanceMode(getRuntimeProvider(), typeof model === 'string' ? parseUserSpecifiedModel(model) : '', getActiveProviderSettings(settings)))
   // If per-session opt-in is required, fast mode starts off each session
   if (settings.fastModePerSessionOptIn) {
     return false
@@ -182,7 +183,7 @@ export function isFastModeSupportedByModel(
   if (!isFastModeEnabled()) {
     return false
   }
-  if (getRuntimeProvider() === 'anthropic-api' && typeof modelSetting === 'string') return Boolean(getAnthropicFastMode(modelSetting))
+  if (!isFirstPartyRuntime() && typeof modelSetting === 'string') return Boolean(preferredFastPerformanceMode(getRuntimeProvider(), parseUserSpecifiedModel(modelSetting)))
   void modelSetting
   void getDefaultMainLoopModelSetting
   void parseUserSpecifiedModel

@@ -10,7 +10,9 @@ import {
   getDisplayedEffortLevel,
   modelSupportsEffort,
 } from '../utils/effort.js'
-import type { ProviderId } from '../services/providers/providerRegistry.js'
+import { getActiveProviderSettings, type ProviderId } from '../services/providers/providerRegistry.js'
+import { configuredThinkingBudget } from '../services/providers/thinkingBudget.js'
+import { getRuntimeProvider } from '../utils/model/providers.js'
 
 /**
  * Build the text for the effort-changed notification, e.g. "◐ medium · /effort".
@@ -21,13 +23,15 @@ export function getEffortNotificationText(
   model: string,
   provider?: ProviderId,
 ): string | undefined {
-  if (!modelSupportsEffort(model, provider)) return undefined
+  if (!modelSupportsEffort(model, provider) || configuredThinkingBudget(provider ?? getRuntimeProvider(), model, getActiveProviderSettings()) !== undefined) return undefined
   const level = getDisplayedEffortLevel(model, effortValue, provider)
   return `${effortLevelToSymbol(level)} ${level} · /effort`
 }
 
 export function effortLevelToSymbol(level: EffortLevel): string {
   switch (level) {
+    case 'none':
+      return '○'
     case 'minimal':
     case 'low':
       return EFFORT_LOW
@@ -40,8 +44,7 @@ export function effortLevelToSymbol(level: EffortLevel): string {
     case 'ultra':
       return EFFORT_MAX
     default:
-      // Defensive: level can originate from remote config. If an unknown
-      // value slips through, render the high symbol rather than undefined.
-      return EFFORT_HIGH
+      // Provider-defined names carry no inferred relative strength.
+      return '◇'
   }
 }

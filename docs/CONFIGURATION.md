@@ -217,6 +217,16 @@ Fable require thinking and display always ON; Sonnet 5.5 uses `between_tools`
 for reduced up-front thinking, while Haiku 5.5 supports explicit disabling.
 `/thinking status` reports the active model's contract.
 
+Model controls also cover OpenAI, Gemini, Ollama, NVIDIA and compatible server
+metadata. `S` previews supported serving/routing modes; `B` previews native
+budget values. Use `ur config set openai.service_tier fast` or
+`ur config set gemini.service_tier priority` for headless tier selection.
+`provider.thinkingBudgets` stores exact budgets by provider and model; manage
+them with `/thinking budget N|auto|default`. Native `none` is distinct from
+`minimal`; custom effort names are accepted only when advertised by the model.
+See [the provider control matrix](providers.md#model-reasoning-and-performance-controls)
+for supported modes, budget limits, eligibility and pricing.
+
 `provider.fallback` is diagnostic recovery metadata, not automatic routing.
 When the active provider fails, `ur provider doctor` shows the configured
 recovery command; changing providers remains an explicit user action.
@@ -264,7 +274,7 @@ model from `/api/show`, `/props`, and `/server_info?config_format=json`,
 respectively, so the arrow selector reflects live runtime evidence rather than
 a provider-wide guess. llama.cpp's current boolean support flag does not name
 accepted levels, while a configured vLLM reasoning parser exposes its
-documented `minimal→none|low|medium|high` mapping.
+documented `none|low|medium|high` mapping.
 
 The effort row contains only capability-backed selectors UR can map to native
 provider values. Ultra appears only when metadata advertises `ultra`, `max`,

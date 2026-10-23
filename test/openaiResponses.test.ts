@@ -194,7 +194,7 @@ describe('OpenAI Responses request and response mapping', () => {
     })
     expect(body.tool_choice).toEqual({ type: 'function', name: 'Edit' })
     expect(body.text.format).toMatchObject({ type: 'json_schema', name: 'answer', strict: true })
-    expect(body.text.verbosity).toBe('high')
+    expect(body.text.verbosity).toBeUndefined() // reasoning effort does not choose answer verbosity
     expect(body.context_management).toEqual([
       { type: 'compaction', compact_threshold: 20_000 },
     ])

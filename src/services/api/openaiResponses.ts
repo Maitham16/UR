@@ -16,6 +16,7 @@ import {
 import {
   fetchWithProviderReliability,
   getProviderRequestTimeoutMs,
+  getProviderServingTimeoutMs,
 } from './providerHttp.js'
 import {
   createOpenAIResponsesSSEMessageStream,
@@ -32,6 +33,8 @@ import {
   getProviderEffortWireValue,
   isEffortLevel,
 } from '../../utils/effort.js'
+import { resolveOpenAIServiceTier, type OpenAIServiceTier } from '../providers/openaiCapabilities.js'
+import { isEnvTruthy } from '../../utils/envUtils.js'
 
 export type OpenAIResponsesToolSearchMode = 'off' | 'hosted'
 
@@ -45,6 +48,7 @@ export type OpenAIResponsesClientOptions = {
   toolSearch?: OpenAIResponsesToolSearchMode
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   stateStore?: OpenAIResponsesStateStore
+  serviceTier?: OpenAIServiceTier
 }
 
 export type OpenAIResponsesPollOptions = {
@@ -142,9 +146,9 @@ function metadataForResponses(metadata: unknown): Record<string, string> | undef
 
 function structuredTextConfig(outputConfig: any): Record<string, unknown> | undefined {
   const format = outputConfig?.format
-  const effort = outputConfig?.effort
-  const verbosity = effort === 'low' || effort === 'medium' || effort === 'high'
-    ? effort
+  const requestedVerbosity = outputConfig?.verbosity
+  const verbosity = requestedVerbosity === 'low' || requestedVerbosity === 'medium' || requestedVerbosity === 'high'
+    ? requestedVerbosity
     : undefined
   if (format?.type === 'json_schema' && format.schema) {
     return {
@@ -162,14 +166,14 @@ function structuredTextConfig(outputConfig: any): Record<string, unknown> | unde
 
 function reasoningConfig(params: any): Record<string, unknown> | undefined {
   const requested = params.output_config?.effort
-  if (typeof requested === 'string' && isEffortLevel(requested)) {
+  if (typeof requested === 'string') {
     const wire = getProviderEffortWireValue(
       String(params.model ?? ''),
       requested,
       'openai-api',
     )
     if (wire) return { effort: wire }
-    if (requested !== 'ultra') return { effort: requested }
+    if (isEffortLevel(requested) && requested !== 'ultra' && requested !== 'none') return { effort: requested }
     return undefined
   }
   if (params.thinking?.type === 'adaptive') return { effort: 'medium' }
@@ -424,6 +428,7 @@ export function toOpenAIResponsesRequest(
     store?: boolean
     compactThreshold?: number
     toolSearch?: OpenAIResponsesToolSearchMode
+    serviceTier?: OpenAIServiceTier
   } = {},
 ): Record<string, unknown> {
   const tools = options.toolSearch === 'hosted'
@@ -437,6 +442,8 @@ export function toOpenAIResponsesRequest(
   const metadata = metadataForResponses(params.metadata)
   const text = structuredTextConfig(params.output_config)
   const reasoning = reasoningConfig(params)
+  const serviceTier = resolveOpenAIServiceTier(String(params.model ?? ''), params.service_tier ?? options.serviceTier,
+    isEnvTruthy(process.env.UR_CODE_DISABLE_FAST_MODE))
   return {
     model: params.model,
     input: toOpenAIResponsesInput(params.messages),
@@ -446,6 +453,7 @@ export function toOpenAIResponsesRequest(
     ...(params.top_p !== undefined ? { top_p: params.top_p } : {}),
     ...(metadata ? { metadata } : {}),
     ...(reasoning ? { reasoning } : {}),
+    ...(serviceTier ? { service_tier: serviceTier } : {}),
     ...(text ? { text } : {}),
     ...(tools.length > 0 ? { tools } : {}),
     ...(params.tool_choice !== undefined ? { tool_choice: responseToolChoice(params.tool_choice) } : {}),
@@ -581,6 +589,7 @@ export class OpenAIResponsesHTTPTransport {
   readonly #store: boolean
   readonly #compactThreshold?: number
   readonly #toolSearch: OpenAIResponsesToolSearchMode
+  readonly #serviceTier?: OpenAIServiceTier
 
   constructor(options: OpenAIResponsesClientOptions) {
     if (!options.apiKey) throw new Error('OpenAI Responses requires an API key')
@@ -593,6 +602,7 @@ export class OpenAIResponsesHTTPTransport {
     this.#store = options.store ?? false
     this.#compactThreshold = options.compactThreshold
     this.#toolSearch = options.toolSearch ?? 'off'
+    this.#serviceTier = options.serviceTier
   }
 
   toRequest(params: any): Record<string, unknown> {
@@ -600,6 +610,7 @@ export class OpenAIResponsesHTTPTransport {
       store: this.#store,
       compactThreshold: this.#compactThreshold,
       toolSearch: this.#toolSearch,
+      serviceTier: this.#serviceTier,
     })
   }
 
@@ -800,7 +811,7 @@ export class OpenAIResponsesHTTPTransport {
       {
         fetch: this.#fetch,
         maxRetries: this.#maxRetries,
-        timeoutMs: options.timeoutMs,
+        timeoutMs: getProviderServingTimeoutMs(body?.service_tier, options.timeoutMs),
         signal: options.signal,
         streaming:
           body?.stream === true ||

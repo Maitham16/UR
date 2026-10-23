@@ -68,9 +68,9 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/model-doctor [model]` (`/model-capabilities`) | local | Probe local Ollama models for agent capabilities (tool calls, context, speed) | `/model-doctor llama3.3` |
 | `/model-route <task>` (`/model-pick`) | local | Recommend best model for a task from cheap/strong/default pools | `/model-route "large refactor across 40 files"` |
 | `/local-first` (`/offline-readiness`, `/local`) | local | Report readiness for no-cloud/offline/lab environments | `/local-first --json` |
-| `/effort [minimal\|low\|medium\|high\|xhigh\|max\|ultra\|auto]` | jsx | Inspect or set the active model's capability-driven, provider-native effort level | `/effort ultra` |
-| `/thinking [on\|off\|toggle\|status]` | jsx | Control provider-native thinking where the active adapter has a real on/off mapping; generic compatible transports get no invented field | `/thinking on` |
-| `/fast [on\|off\|status]` | jsx | Choose the selected native model's supported speed tier; fast uses premium pricing | `/fast status` |
+| `/effort [none\|minimal\|low\|medium\|high\|xhigh\|max\|ultra\|auto]` | jsx | Inspect/set advertised native effort, including custom names; no invented levels | `/effort ultra` |
+| `/thinking [on\|off\|toggle\|status]` | jsx | Control native thinking; `/thinking budget N\|auto\|default` sets a supported per-model token budget | `/thinking on` |
+| `/fast [on\|off\|status]` | jsx | Choose a supported serving/routing mode without switching models; explicit `flex`, `ultrafast`, `priority`, `latency` and other advertised modes are accepted | `/fast status` |
 | `/advisor [<model>\|off]` | local | Configure a second "advisor" model that critiques the main model | `/advisor gpt-5.5` |
 | `/escalate plan\|run\|oracle\|policy "<task>"` | local | Run on a fast model, auto-escalate hard steps to an oracle model | `/escalate run "prove this lock-free queue is correct" --oracle gpt-5.5` |
 | `/route <task>` (`/intent`) | local | Classify a task → recommend subagent + collaboration pattern | `/route "find why login 500s"` |

@@ -9,15 +9,22 @@ import { logForDebugging } from '../../utils/debug.js'
 import {
   getProviderEffortWireValue,
   isEffortLevel,
+  resolveProviderEffortLevel,
 } from '../../utils/effort.js'
 import {
   getProviderFamily,
   resolveProviderId,
+  getProviderReasoningCapabilitiesForModel,
   type AnthropicSettings,
+  type OpenAISettings,
+  type GeminiSettings,
 } from '../providers/providerRegistry.js'
 import { anthropicWorkspaceHeaders } from '../providers/anthropicWorkspace.js'
 import { getAnthropicFastMode } from '../providers/anthropicCapabilities.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
+import { resolveOpenAIServiceTier } from '../providers/openaiCapabilities.js'
+import { supportsGeminiServiceTier } from '../providers/geminiCapabilities.js'
+import { validateThinkingBudget } from '../providers/thinkingBudget.js'
 import {
   assertNoImageBlocks,
   contentToText,
@@ -40,6 +47,7 @@ import {
   fetchWithProviderReliability,
   normalizeGeminiBaseUrl,
   normalizeProviderEndpoint,
+  getProviderServingTimeoutMs,
 } from './providerHttp.js'
 import {
   createAnthropicSSEMessageStream,
@@ -77,15 +85,17 @@ export async function createStandardAPIClient(options: {
   baseUrl?: string
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   anthropic?: AnthropicSettings
+  openai?: OpenAISettings
+  gemini?: GeminiSettings
 }): Promise<URHQClient> {
   const { providerId, apiKey, baseUrl, maxRetries } = options
   const family = getProviderFamily(providerId)
 
   async function doRequest(params: any, requestOptions?: any) {
-    const wireParams = withConfiguredAnthropicPerformance(
+    const wireParams = withConfiguredProviderPerformance(
       family,
       params,
-      options.anthropic,
+      options,
     )
     const endpoint = getAPIEndpoint(family, baseUrl, wireParams.model, false)
     const clientRequestId = wireParams?.headers?.['x-client-request-id']
@@ -102,7 +112,7 @@ export async function createStandardAPIClient(options: {
       },
       {
         maxRetries,
-        timeoutMs: requestOptions?.timeoutMs,
+        timeoutMs: getProviderServingTimeoutMs(wireParams.service_tier, requestOptions?.timeoutMs),
         signal: requestOptions?.signal,
       },
     )
@@ -113,10 +123,10 @@ export async function createStandardAPIClient(options: {
   }
 
   async function doStream(params: any, requestOptions?: any, controller?: AbortController) {
-    const wireParams = withConfiguredAnthropicPerformance(
+    const wireParams = withConfiguredProviderPerformance(
       family,
       params,
-      options.anthropic,
+      options,
     )
     const endpoint = getAPIEndpoint(family, baseUrl, wireParams.model, true)
     const streamController = controller ?? new AbortController()
@@ -136,7 +146,7 @@ export async function createStandardAPIClient(options: {
       },
       {
         maxRetries,
-        timeoutMs: requestOptions?.timeoutMs,
+        timeoutMs: getProviderServingTimeoutMs(wireParams.service_tier, requestOptions?.timeoutMs),
         signal,
         streaming: true,
       },
@@ -236,11 +246,24 @@ export async function createStandardAPIClient(options: {
   return { beta: { messages: messagesAPI } } as URHQClient
 }
 
-function withConfiguredAnthropicPerformance(
+function withConfiguredProviderPerformance(
   family: string,
   params: any,
-  settings: AnthropicSettings | undefined,
+  options: { anthropic?: AnthropicSettings; openai?: OpenAISettings; gemini?: GeminiSettings },
 ): any {
+  const disabled = isEnvTruthy(process.env.UR_CODE_DISABLE_FAST_MODE)
+  if (family === 'openai') {
+    const { service_tier: explicit, ...rest } = params
+    const tier = resolveOpenAIServiceTier(String(params.model ?? ''), explicit ?? options.openai?.serviceTier, disabled)
+    return { ...rest, ...(tier ? { service_tier: tier } : {}) }
+  }
+  if (family === 'google') {
+    const { service_tier: explicit, ...rest } = params
+    const requested = explicit ?? options.gemini?.serviceTier
+    const tier = disabled && requested === 'priority' ? 'standard' : requested
+    return { ...rest, ...(tier === 'standard' || ((tier === 'priority' || tier === 'flex') && supportsGeminiServiceTier(String(params.model ?? ''))) ? { service_tier: tier } : {}) }
+  }
+  const settings = options.anthropic
   if (family === 'anthropic' && isEnvTruthy(process.env.UR_CODE_DISABLE_FAST_MODE)) {
     const { speed: _speed, ...standard } = params
     return standard
@@ -405,7 +428,7 @@ function providerOutputConfig(
     return undefined
   }
   const requested = configured.effort
-  if (typeof requested !== 'string' || !isEffortLevel(requested)) {
+  if (typeof requested !== 'string') {
     return configured
   }
   const provider = resolveProviderId(providerId)
@@ -414,13 +437,19 @@ function providerOutputConfig(
     : undefined
   const { effort: _ignored, ...rest } = configured
   if (wire) return { ...rest, effort: wire }
-  return requested === 'ultra' ? rest : configured
+  return requested === 'ultra' || requested === 'none' || !isEffortLevel(requested) ? rest : configured
 }
 
 export function buildAPIRequest(family: string, params: any, providerId: string): any {
   switch (family) {
     case 'openai': {
-      return toOpenAICompatibleRequest(params, 'openai')
+      const request = toOpenAICompatibleRequest(params, 'openai')
+      if (params.service_tier) request.service_tier = params.service_tier
+      if (params.max_tokens !== undefined && getProviderReasoningCapabilitiesForModel(String(params.model ?? ''), 'openai-api')?.supportedEfforts?.length) {
+        request.max_completion_tokens = params.max_tokens
+        delete request.max_tokens
+      }
+      return request
     }
     case 'anthropic': {
       const tools = toAnthropicTools(params.tools, Boolean(params.stream))
@@ -447,6 +476,7 @@ export function buildAPIRequest(family: string, params: any, providerId: string)
       const tools = toGeminiTools(params.tools)
       const thinkingConfig = toGeminiThinkingConfig(params, providerId)
       return {
+        ...(params.service_tier ? { service_tier: params.service_tier } : {}),
         contents: toGeminiContents(params),
         ...(geminiSystemInstruction(params) && {
           systemInstruction: geminiSystemInstruction(params),
@@ -479,10 +509,27 @@ function toGeminiThinkingConfig(
 ): Record<string, unknown> | undefined {
   const requested = params.output_config?.effort
   const provider = resolveProviderId(providerId)
+  const capabilities = provider ? getProviderReasoningCapabilitiesForModel(String(params.model ?? ''), provider) : undefined
+  if (capabilities?.thinkingBudget) {
+    if (params.thinking?.type === 'disabled') {
+      return { thinkingBudget: capabilities.thinkingBudget.canDisable ? 0 : -1 }
+    }
+    if (params.thinking?.type === 'enabled') {
+      const budget = params.thinking.budget_tokens
+      const error = validateThinkingBudget(budget, capabilities)
+      if (error) throw new ProviderCapabilityError(error, { provider: 'Gemini', capability: 'thinking-budget' })
+      return { thinkingBudget: budget }
+    }
+    return params.thinking?.type === 'adaptive' ? { thinkingBudget: -1 } : undefined
+  }
+  const resolved = provider && typeof requested === 'string'
+    ? resolveProviderEffortLevel(String(params.model ?? ''), requested, provider) : undefined
   const wireEffort =
-    provider && typeof requested === 'string' && isEffortLevel(requested)
-      ? getProviderEffortWireValue(String(params.model ?? ''), requested, provider)
+    provider && resolved
+      ? getProviderEffortWireValue(String(params.model ?? ''), resolved, provider)
       : undefined
+  if (capabilities?.mandatory && !wireEffort && capabilities.defaultEffort) return { thinkingLevel: capabilities.defaultEffort }
+  if (capabilities?.supportedEfforts !== undefined && !wireEffort) return undefined
   const effort = wireEffort ?? (requested === 'ultra' ? undefined : requested)
   if (wireEffort) {
     return { thinkingLevel: wireEffort }

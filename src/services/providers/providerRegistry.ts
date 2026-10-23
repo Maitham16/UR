@@ -17,7 +17,13 @@ import {
   resolveAnthropicWorkspaceId,
   validateAnthropicWorkspaceId,
 } from './anthropicWorkspace.js'
-import { getAnthropicReasoningCapabilities, getAnthropicFastMode } from './anthropicCapabilities.js'
+import { getAnthropicReasoningCapabilities } from './anthropicCapabilities.js'
+import { parseOllamaThinkingCapabilities } from './ollamaCapabilities.js'
+import { getOpenAIReasoningCapabilities } from './openaiCapabilities.js'
+import { getGeminiReasoningCapabilities } from './geminiCapabilities.js'
+import { modelPerformanceSettingsPatch, type ModelPerformanceMode } from './modelPerformance.js'
+import type { OpenAIServiceTier } from './openaiCapabilities.js'
+import { thinkingBudgetSettingsPatch, type ThinkingBudgetSelection } from './thinkingBudget.js'
 import {
   describeCacheAge,
   MODEL_CACHE_TTL_MS,
@@ -29,6 +35,7 @@ import {
 } from './modelCatalog.js'
 import {
   getNvidiaHostedAgentModelContract,
+  getNvidiaHostedReasoningCapabilities,
   isNvidiaHostedApi,
   NVIDIA_HOSTED_API_BASE_URL,
   NVIDIA_HOSTED_TASK_MODEL_CONTRACTS,
@@ -134,6 +141,9 @@ export type AnthropicSettings = {
   workspaceId?: string
 }
 
+export type OpenAISettings = { serviceTier?: OpenAIServiceTier }
+export type GeminiSettings = { serviceTier?: 'auto' | 'standard' | 'priority' | 'flex' }
+
 export type ProviderSettings = {
   active?: ProviderId
   model?: string
@@ -149,6 +159,9 @@ export type ProviderSettings = {
   }
   openrouter?: OpenRouterSettings
   anthropic?: AnthropicSettings
+  openai?: OpenAISettings
+  gemini?: GeminiSettings
+  thinkingBudgets?: Partial<Record<ProviderId, Record<string, number>>>
 }
 
 export type ProviderDefinition = {
@@ -843,6 +856,9 @@ export function getActiveProviderSettings(settings: SettingsJson | null = getIni
     responses: configured.responses,
     openrouter: configured.openrouter,
     anthropic: configured.anthropic,
+    openai: configured.openai,
+    gemini: configured.gemini,
+    thinkingBudgets: configured.thinkingBudgets,
   }
 }
 
@@ -1101,6 +1117,8 @@ export function setSafeProviderConfig(
     | 'openrouter.speed'
     | 'anthropic.speed'
     | 'anthropic.workspace_id'
+    | 'openai.service_tier'
+    | 'gemini.service_tier'
     | 'model'
     | 'base_url',
   value: string,
@@ -1213,6 +1231,12 @@ export function setSafeProviderConfig(
         return { ok: false, message: 'responses.tool_search must be off or hosted.' }
       }
       settings = { provider: { responses: { toolSearch: trimmed } } } as SettingsJson
+    } else if (key === 'openai.service_tier') {
+      if (!['auto', 'default', 'fast', 'priority', 'ultrafast', 'flex'].includes(trimmed)) return { ok: false, message: 'openai.service_tier must be auto, default, fast, priority, ultrafast, or flex.' }
+      settings = { provider: { openai: { serviceTier: trimmed as OpenAIServiceTier } } } as SettingsJson
+    } else if (key === 'gemini.service_tier') {
+      if (!['auto', 'standard', 'priority', 'flex'].includes(trimmed)) return { ok: false, message: 'gemini.service_tier must be auto, standard, priority, or flex.' }
+      settings = { provider: { gemini: { serviceTier: trimmed as GeminiSettings['serviceTier'] } } } as SettingsJson
     } else if (key === 'openrouter.routing') {
       if (!['auto', 'throughput', 'latency', 'price'].includes(trimmed)) {
         return {
@@ -1266,7 +1290,7 @@ export function setSafeProviderConfig(
       settings = {
         provider: {
           openrouter: {
-            serviceTier: trimmed as NonNullable<OpenRouterSettings['serviceTier']>,
+            serviceTier: (trimmed === 'fast' ? 'priority' : trimmed) as NonNullable<OpenRouterSettings['serviceTier']>,
           },
         },
       } as SettingsJson
@@ -1530,6 +1554,7 @@ function filterNvidiaHostedModels(
         ...contract.capabilities,
         endpoint: contract.endpoint,
       },
+      reasoning: mergeReasoningCapabilities(getNvidiaHostedReasoningCapabilities(id), model.reasoning),
       description: `${contract.purpose} · exact ${contract.endpoint} · ${contract.available ? 'NVIDIA available' : 'NVIDIA currently unavailable'}`,
     }]
   }).sort((left, right) =>
@@ -2402,23 +2427,16 @@ const EFFORT_LOW_MEDIUM_HIGH_MAX: ModelReasoningCapabilities = {
 const EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX: ModelReasoningCapabilities = {
   supportedEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
 }
-const OPENAI_GPT_56_EFFORTS: ModelReasoningCapabilities = {
-  // OpenAI names the no-reasoning tier `none`; UR presents it as the existing
-  // `minimal` selector and preserves the provider-authored wire value.
-  supportedEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
-  effortAliases: { minimal: 'none' },
-}
 const GEMINI_MINIMAL_TO_HIGH: ModelReasoningCapabilities = {
   supportedEfforts: ['minimal', 'low', 'medium', 'high'],
 }
 const NVIDIA_NONE_LOW_HIGH: ModelReasoningCapabilities = {
   supportedEfforts: ['none', 'low', 'high'],
-  effortAliases: { minimal: 'none' },
   defaultEffort: 'high',
 }
 const NVIDIA_NONE_HIGH_MAX: ModelReasoningCapabilities = {
   supportedEfforts: ['none', 'high', 'max'],
-  effortAliases: { minimal: 'none', ultra: 'max' },
+  effortAliases: { ultra: 'max' },
   defaultEffort: 'high',
 }
 const NVIDIA_FULL_EFFORT_RANGE: ModelReasoningCapabilities = {
@@ -2463,12 +2481,16 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   ],
   // OpenAI API - direct API access with OPENAI_API_KEY
   'openai-api': [
-    { id: 'gpt-5.6-sol', displayName: 'GPT-5.6 Sol', description: 'Flagship model for complex professional work', isDefault: true, contextLength: 1_050_000, outputTokenLimit: 128_000, reasoning: { ...OPENAI_GPT_56_EFFORTS, defaultEffort: 'medium' } },
-    { id: 'gpt-5.6-terra', displayName: 'GPT-5.6 Terra', description: 'Balances intelligence and cost', contextLength: 1_050_000, outputTokenLimit: 128_000, reasoning: { ...OPENAI_GPT_56_EFFORTS, defaultEffort: 'medium' } },
-    { id: 'gpt-5.6-luna', displayName: 'GPT-5.6 Luna', description: 'Optimized for cost-sensitive, high-volume workloads', contextLength: 1_050_000, outputTokenLimit: 128_000, reasoning: { ...OPENAI_GPT_56_EFFORTS, defaultEffort: 'medium' } },
-    { id: 'gpt-5.5', displayName: 'GPT-5.5', description: 'Previous GPT-5 generation', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH, defaultEffort: 'medium' } },
-    { id: 'gpt-5.4', displayName: 'GPT-5.4', description: 'Advanced reasoning and coding', reasoning: EFFORT_LOW_MEDIUM_HIGH_XHIGH },
-    { id: 'gpt-5.4-mini', displayName: 'GPT-5.4 Mini', description: 'Fast, efficient variant', reasoning: EFFORT_LOW_MEDIUM_HIGH_XHIGH },
+    ...['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'].map(id => ({
+      id, displayName: id, description: 'Current OpenAI reasoning model', contextLength: 1_050_000,
+      outputTokenLimit: 128_000, reasoning: getOpenAIReasoningCapabilities(id),
+    })),
+    { id: 'gpt-5.6-sol', displayName: 'GPT-5.6 Sol', description: 'Flagship model for complex professional work', isDefault: true, contextLength: 1_050_000, outputTokenLimit: 128_000, reasoning: getOpenAIReasoningCapabilities('gpt-5.6-sol') },
+    { id: 'gpt-5.6-terra', displayName: 'GPT-5.6 Terra', description: 'Balances intelligence and cost', contextLength: 1_050_000, outputTokenLimit: 128_000, reasoning: getOpenAIReasoningCapabilities('gpt-5.6-terra') },
+    { id: 'gpt-5.6-luna', displayName: 'GPT-5.6 Luna', description: 'Optimized for cost-sensitive, high-volume workloads', contextLength: 1_050_000, outputTokenLimit: 128_000, reasoning: getOpenAIReasoningCapabilities('gpt-5.6-luna') },
+    { id: 'gpt-5.5', displayName: 'GPT-5.5', description: 'Previous GPT-5 generation', reasoning: getOpenAIReasoningCapabilities('gpt-5.5') },
+    { id: 'gpt-5.4', displayName: 'GPT-5.4', description: 'Advanced reasoning and coding', reasoning: getOpenAIReasoningCapabilities('gpt-5.4') },
+    { id: 'gpt-5.4-mini', displayName: 'GPT-5.4 Mini', description: 'Fast, efficient variant', reasoning: getOpenAIReasoningCapabilities('gpt-5.4-mini') },
     { id: 'gpt-4o', displayName: 'GPT-4o', description: 'Previous generation flagship' },
     { id: 'gpt-4o-mini', displayName: 'GPT-4o Mini', description: 'Fast GPT-4o variant' },
   ],
@@ -2491,13 +2513,17 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   ],
   // Google Gemini API - direct API access with GEMINI_API_KEY
   'gemini-api': [
-    { id: 'gemini-3.7-flash', displayName: 'Gemini 3.7 Flash', description: 'Latest agentic and multimodal Flash model', isDefault: true, reasoning: { ...EFFORT_LOW_MEDIUM_HIGH, defaultEffort: 'medium' } },
-    { id: 'gemini-3.6-flash', displayName: 'Gemini 3.6 Flash', description: 'Agentic and multimodal Flash model', reasoning: { ...GEMINI_MINIMAL_TO_HIGH, defaultEffort: 'medium' } },
-    { id: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Previous Flash generation for agentic tasks', reasoning: { ...GEMINI_MINIMAL_TO_HIGH, defaultEffort: 'medium' } },
-    { id: 'gemini-3.1-pro', displayName: 'Gemini 3.1 Pro', description: 'Advanced problem solving (preview)', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH, defaultEffort: 'high' } },
-    { id: 'gemini-3.1-flash-lite', displayName: 'Gemini 3.1 Flash Lite', description: 'Budget-friendly performance', reasoning: { ...GEMINI_MINIMAL_TO_HIGH, defaultEffort: 'minimal' } },
-    { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Complex reasoning and coding', reasoning: EFFORT_LOW_MEDIUM_HIGH },
-    { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', description: 'Low-latency tasks', reasoning: EFFORT_LOW_MEDIUM_HIGH },
+    ...['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'].map(id => ({
+      id, displayName: id, description: 'Current Gemini thinking model',
+      reasoning: getGeminiReasoningCapabilities(id),
+    })),
+    { id: 'gemini-3.7-flash', displayName: 'Gemini 3.7 Flash', description: 'Latest agentic and multimodal Flash model', isDefault: true, reasoning: getGeminiReasoningCapabilities('gemini-3.7-flash') },
+    { id: 'gemini-3.6-flash', displayName: 'Gemini 3.6 Flash', description: 'Agentic and multimodal Flash model', reasoning: getGeminiReasoningCapabilities('gemini-3.6-flash') },
+    { id: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', description: 'Previous Flash generation for agentic tasks', reasoning: getGeminiReasoningCapabilities('gemini-3.5-flash') },
+    { id: 'gemini-3.1-pro-preview', displayName: 'Gemini 3.1 Pro Preview', description: 'Advanced problem solving (preview)', reasoning: getGeminiReasoningCapabilities('gemini-3.1-pro-preview') },
+    { id: 'gemini-3.1-flash-lite', displayName: 'Gemini 3.1 Flash Lite', description: 'Budget-friendly performance', reasoning: getGeminiReasoningCapabilities('gemini-3.1-flash-lite') },
+    { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', description: 'Complex reasoning and coding', reasoning: getGeminiReasoningCapabilities('gemini-2.5-pro') },
+    { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', description: 'Low-latency tasks', reasoning: getGeminiReasoningCapabilities('gemini-2.5-flash') },
     { id: 'gemini-2.5-flash-lite', displayName: 'Gemini 2.5 Flash Lite', description: 'Fastest Gemini model', reasoning: EFFORT_LOW_MEDIUM_HIGH },
   ],
   // OpenRouter - multi-provider router (openai/*, anthropic/*, google/*, etc.)
@@ -2709,21 +2735,10 @@ function modelDefinitionsFromDiscovered(
     const curated = staticModels.find(
       entry => entry.id.toLowerCase() === model.id.toLowerCase(),
     )
-    const reasoning =
-      model.reasoning || curated?.reasoning
-        ? {
-            ...(provider === 'anthropic-api' ? getAnthropicReasoningCapabilities(model.id) : curated?.reasoning),
-            ...(model.reasoning ?? {}),
-            ...(curated?.reasoning?.effortAliases || model.reasoning?.effortAliases
-              ? {
-                  effortAliases: {
-                    ...(curated?.reasoning?.effortAliases ?? {}),
-                    ...(model.reasoning?.effortAliases ?? {}),
-                  },
-                }
-              : {}),
-          }
-        : undefined
+    const reasoning = mergeReasoningCapabilities(
+      provider ? documentedReasoningCapabilities(provider, model.id) : curated?.reasoning,
+      model.reasoning,
+    )
     return {
       id: model.id,
       displayName: model.displayName,
@@ -2794,6 +2809,26 @@ function providerCapabilityModelId(provider: ProviderId, model: string): string 
   return provider === 'openrouter'
     ? normalized.replace(/:(?:nitro|floor|exacto)$/u, '')
     : normalized
+}
+
+function documentedReasoningCapabilities(provider: ProviderId, model: string): ModelReasoningCapabilities | undefined {
+  const id = model.trim().toLowerCase()
+  const curated = PROVIDER_MODELS[provider]?.find(entry => entry.id.toLowerCase() === id)?.reasoning
+  const native = provider === 'anthropic-api' ? getAnthropicReasoningCapabilities(id)
+    : provider === 'openai-api' ? getOpenAIReasoningCapabilities(id)
+    : provider === 'gemini-api' ? getGeminiReasoningCapabilities(id)
+    : provider === 'nvidia-nim' ? getNvidiaHostedReasoningCapabilities(id) : undefined
+  return native ? { ...curated, ...native, effortAliases: native.effortAliases } : curated
+}
+
+function mergeReasoningCapabilities(documented: ModelReasoningCapabilities | undefined,
+  live: ModelReasoningCapabilities | undefined): ModelReasoningCapabilities | undefined {
+  if (!documented && !live) return undefined
+  const merged = { ...documented, ...live,
+    ...(documented?.effortAliases || live?.effortAliases ? { effortAliases: { ...documented?.effortAliases, ...live?.effortAliases } } : {}) }
+  if (live?.supportsThinking === false) return { ...merged, supportedEfforts: [], mandatory: false, defaultEnabled: false, defaultEffort: undefined }
+  if (live?.mandatory === undefined && (live?.supportedEfforts?.includes('none') || live?.thinkingValues?.includes(false))) merged.mandatory = false
+  return merged
 }
 
 /**
@@ -2884,8 +2919,11 @@ export function getProviderReasoningCapabilitiesForModel(
   // inheritance can silently attach one model's reasoning contract to a new
   // or vendor-prefixed model whose provider never advertised it.
   const match = known.find(entry => entry.id.toLowerCase() === wanted && entry.reasoning !== undefined)
-  const documented = providerId === 'anthropic-api' ? getAnthropicReasoningCapabilities(wanted) : undefined
-  return match?.reasoning ? { ...documented, ...match.reasoning } : documented
+  const documented = documentedReasoningCapabilities(providerId, wanted)
+  // A static row must not overwrite its updated native contract. Cached live
+  // fields remain authoritative, including explicit negative capability data.
+  const live = getCachedProviderModels(providerId, settings).find(entry => entry.id.toLowerCase() === wanted)?.reasoning
+  return mergeReasoningCapabilities(documented, live) ?? match?.reasoning
 }
 
 function providerPropsUrl(baseUrl: string, model: string): string {
@@ -2958,7 +2996,6 @@ function reasoningCapabilitiesFromVllmServerInfo(
   return {
     supportsThinking: true,
     supportedEfforts: ['none', 'low', 'medium', 'high'],
-    effortAliases: { minimal: 'none' },
   }
 }
 
@@ -2976,6 +3013,8 @@ function reasoningCapabilitiesFromOllamaShow(
     return undefined
   }
   const root = value as Record<string, unknown>
+  const nativeThinking = parseOllamaThinkingCapabilities(root)
+  if (nativeThinking) return nativeThinking
   const capabilities = Array.isArray(root.capabilities)
     ? root.capabilities
         .filter((entry): entry is string => typeof entry === 'string')
@@ -3022,6 +3061,8 @@ function reasoningCapabilitiesFromOllamaShow(
       supportsThinking: true,
       supportedEfforts: ['low', 'medium', 'high'],
       defaultEffort: 'medium',
+      mandatory: true,
+      thinkingValues: ['low', 'medium', 'high'],
     }
   }
   return { supportsThinking: true }
@@ -3181,8 +3222,16 @@ export async function ensureProviderReasoningCapabilitiesForModel(
         : reasoningCapabilitiesFromProps(body)
   if (reasoning) {
     rememberProviderModelReasoning(provider, model, reasoning, settings)
+    return reasoning
   }
-  return reasoning
+  // Some compatible servers publish the exact contract on /models instead of
+  // /props or /server_info. Load it before the first query resolves effort,
+  // rather than waiting until client dispatch has already shaped the request.
+  if (provider === 'vllm' || provider === 'llama.cpp') {
+    await ensureProviderModelsFresh(provider, options).catch(() => undefined)
+    return getProviderReasoningCapabilitiesForModel(model, provider, settings)
+  }
+  return undefined
 }
 
 export function cacheProviderModelsForProvider(
@@ -3201,6 +3250,15 @@ export function cacheProviderModelsForProvider(
   if (definitions.length > 0) {
     rememberModels(providerModelCacheKey(provider, settings), definitions)
   }
+}
+
+export function setProviderPerformance(provider: ProviderId, model: string, mode: ModelPerformanceMode,
+  source: EditableSettingSource = 'localSettings'): { ok: true; message: string } | { ok: false; message: string } {
+  try {
+    const patch = modelPerformanceSettingsPatch(provider, model, mode, getActiveProviderSettings())
+    const result = updateSettingsForSource(source, { provider: patch } as SettingsJson)
+    return result.error ? { ok: false, message: result.error.message } : { ok: true, message: `Saved ${mode} performance for ${model} on ${provider}.` }
+  } catch (error) { return { ok: false, message: error instanceof Error ? error.message : String(error) } }
 }
 
 function staticModelsForProvider(provider: ProviderId): ProviderModelDefinition[] {
@@ -3873,7 +3931,8 @@ export function setProviderModel(
     availableModels?: Array<string | ProviderModelDefinition>
     modelSource?: ProviderModelSource
     source?: EditableSettingSource
-    anthropicSpeed?: 'standard' | 'fast'
+    performanceMode?: ModelPerformanceMode
+    thinkingBudget?: ThinkingBudgetSelection
   } = {},
 ): { ok: true; message: string; provider: ProviderId; model: string; modelSource: ProviderModelSource } | { ok: false; message: string } {
   const provider = resolveProviderId(providerId)
@@ -3899,20 +3958,20 @@ export function setProviderModel(
       message: validation.error,
     }
   }
-  if (options.anthropicSpeed !== undefined && (provider !== 'anthropic-api' ||
-    (options.anthropicSpeed === 'fast' && !getAnthropicFastMode(modelId)))) {
-    return { ok: false, message: `Fast mode is not supported for ${modelId} on ${provider}.` }
-  }
   const source = options.source ?? 'localSettings'
   const currentSettings = getInitialSettings()
+  let performance: ProviderSettings = {}
+  try {
+    if (options.performanceMode !== undefined) performance = modelPerformanceSettingsPatch(provider, modelId, options.performanceMode, getActiveProviderSettings(currentSettings))
+    if (options.thinkingBudget !== undefined) performance = { ...performance,
+      ...thinkingBudgetSettingsPatch(provider, modelId, options.thinkingBudget, getActiveProviderSettings(currentSettings), getProviderReasoningCapabilitiesForModel(modelId, provider, currentSettings)) }
+  } catch (error) { return { ok: false, message: error instanceof Error ? error.message : String(error) } }
   const result = updateSettingsForSource(source, {
     provider: {
       active: provider,
       model: modelId,
       ...endpointSettingsForProviderSwitch(currentSettings, provider),
-      ...(options.anthropicSpeed !== undefined ? {
-        anthropic: { ...getActiveProviderSettings(currentSettings).anthropic, speed: options.anthropicSpeed },
-      } : {}),
+      ...performance,
     },
     model: modelId,
   } as SettingsJson)

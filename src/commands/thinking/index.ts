@@ -4,8 +4,8 @@ import { shouldInferenceConfigCommandBeImmediate } from '../../utils/immediateCo
 export default {
   type: 'local-jsx',
   name: 'thinking',
-  description: 'Inspect or toggle provider-native thinking',
-  argumentHint: '[on|off|toggle|status]',
+  description: 'Control native thinking or a supported model token budget',
+  argumentHint: '[on|off|toggle|status|budget N|budget auto|budget default]',
   get immediate() {
     return shouldInferenceConfigCommandBeImmediate()
   },

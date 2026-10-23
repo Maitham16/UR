@@ -54,7 +54,7 @@ import {
   ensureProviderModelsFresh,
   listModelsForProviderWithSource,
   validateProviderModelPair,
-  setSafeProviderConfig,
+  setProviderModel,
 } from '../services/providers/providerRegistry.js'
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js'
 import { Select } from './CustomSelect/index.js'
@@ -63,6 +63,11 @@ import { KeyboardShortcutHint } from './design-system/KeyboardShortcutHint.js'
 import { Pane } from './design-system/Pane.js'
 import { effortLevelToSymbol } from './EffortIndicator.js'
 import { ModelSpeedControl } from './ModelSpeedControl.js'
+import { getSavedModelPerformanceMode, isAcceleratedPerformanceMode, type ModelPerformanceMode } from '../services/providers/modelPerformance.js'
+import { getProviderReasoningCapabilitiesForModel } from '../services/providers/providerRegistry.js'
+import { configuredThinkingBudget, type ThinkingBudgetSelection } from '../services/providers/thinkingBudget.js'
+import { ModelThinkingBudgetControl } from './ModelThinkingBudgetControl.js'
+import { isFirstPartyRuntime } from '../utils/model/providers.js'
 import {
   buildProviderModelLabels,
   fullProviderModelDisplayName,
@@ -106,7 +111,8 @@ export function ModelPicker({
   const [focusedValue, setFocusedValue] = useState(initialValue)
   const isFastMode = useAppState(selectFastMode)
   const [hasToggledEffort, setHasToggledEffort] = useState(false)
-  const [pendingSpeeds, setPendingSpeeds] = useState<Record<string, 'standard' | 'fast'>>({})
+  const [pendingSpeeds, setPendingSpeeds] = useState<Record<string, ModelPerformanceMode>>({})
+  const [pendingBudgets, setPendingBudgets] = useState<Record<string, ThinkingBudgetSelection>>({})
   const effortValue = useAppState(selectEffortValue)
   const [effort, setEffort] = useState<EffortLevel | undefined>(
     effortValue !== undefined
@@ -330,8 +336,7 @@ export function ModelPicker({
   const handleCycleEffort = (direction: 'left' | 'right') => {
     if (!focusedSupportsEffort) {
       if (focusedSupportsThinking) {
-        setThinkingEnabled(resolveThinkingArrowValue(direction))
-        setHasToggledThinking(true)
+        updateFocusedThinking(resolveThinkingArrowValue(direction))
       }
       return
     }
@@ -349,14 +354,27 @@ export function ModelPicker({
       ),
     )
     setHasToggledEffort(true)
+    if (focusedBudgetValue !== undefined) setPendingBudgets(previous => ({ ...previous, [focusedValue]: 'default' }))
+  }
+
+  const focusedReasoning = focusedModel ? getProviderReasoningCapabilitiesForModel(focusedModel, currentProvider) : undefined
+  const focusedBudgetSelection = pendingBudgets[focusedValue]
+  const focusedBudgetValue = focusedBudgetSelection === 'default' ? undefined : focusedBudgetSelection ??
+    (focusedModel ? configuredThinkingBudget(currentProvider, focusedModel, getActiveProviderSettings()) : undefined)
+  const focusedThinkingEnabled = focusedBudgetValue === undefined ? thinkingEnabled : focusedBudgetValue !== 0
+  const updateFocusedThinking = (enabled: boolean) => {
+    setThinkingEnabled(enabled)
+    setHasToggledThinking(true)
+    if (focusedReasoning?.thinkingBudget?.canDisable) setPendingBudgets(previous => ({ ...previous,
+      [focusedValue]: enabled ? focusedBudgetValue && focusedBudgetValue > 0 ? focusedBudgetValue : -1 : 0 }))
+    else if (!enabled && focusedBudgetValue !== undefined) setPendingBudgets(previous => ({ ...previous, [focusedValue]: 'default' }))
   }
 
   const handleToggleThinking = () => {
     if (!focusedSupportsThinking) {
       return
     }
-    setThinkingEnabled(prev => !prev)
-    setHasToggledThinking(true)
+    updateFocusedThinking(!focusedThinkingEnabled)
   }
 
   useKeybindings(
@@ -388,11 +406,13 @@ export function ModelPicker({
     }
     if (!skipSettingsWrite) {
       const speed = pendingSpeeds[value]
-      if (currentProvider === 'anthropic-api' && speed !== undefined) {
-        const saved = setSafeProviderConfig('anthropic.speed', speed)
+      const budget = pendingBudgets[value]
+      if ((speed !== undefined || budget !== undefined) && selectedModel && value !== NO_PREFERENCE) {
+        const saved = setProviderModel(currentProvider, selectedModel, { performanceMode: speed, thinkingBudget: budget,
+          availableModels: modelOptions.map(option => option.value) })
         if (!saved.ok) { setPickerError(saved.message); return }
         const provider = getActiveProviderSettings(getInitialSettings())
-        setAppState(previous => ({ ...previous, provider: { ...previous.provider, anthropic: provider.anthropic }, fastMode: speed === 'fast' }))
+        setAppState(previous => ({ ...previous, provider: { ...previous.provider, ...provider }, fastMode: isAcceleratedPerformanceMode(getSavedModelPerformanceMode(currentProvider, selectedModel, provider)) }))
       }
       const effortLevel = resolvePickerEffortPersistence(
         hasToggledEffort ? selectedEffort : effort,
@@ -428,7 +448,7 @@ export function ModelPicker({
     onSelect(value, selectedEffort)
   }
 
-  const fastModeNotice = currentProvider !== 'anthropic-api' && isFastModeEnabled() ? (
+  const fastModeNotice = isFirstPartyRuntime() && isFastModeEnabled() ? (
     showFastModeNotice ? (
       <Box marginBottom={1}>
         <Text dimColor>
@@ -540,10 +560,10 @@ export function ModelPicker({
           )}
           {focusedSupportsThinking ? (
             <Text dimColor>
-              <Text color={thinkingEnabled ? 'ur' : 'subtle'}>
-                {thinkingEnabled ? '◆' : '◇'}
+              <Text color={focusedThinkingEnabled ? 'ur' : 'subtle'}>
+                {focusedThinkingEnabled ? '◆' : '◇'}
               </Text>{' '}
-              {focusedModel && getThinkingOffMode(focusedModel, currentProvider) === 'between_tools' ? 'Up-front thinking' : 'Thinking'} {thinkingEnabled ? 'on' : 'off'}{' '}
+              {focusedModel && getThinkingOffMode(focusedModel, currentProvider) === 'between_tools' ? 'Up-front thinking' : 'Thinking'} {focusedThinkingEnabled ? 'on' : 'off'}{' '}
               <Text color="subtle">
                 {focusedSupportsEffort
                   ? 't to toggle'
@@ -552,14 +572,16 @@ export function ModelPicker({
             </Text>
           ) : (
             <Text color="subtle">
-              {focusedThinkingMandatory ? '◆ Thinking always ON · adjust reasoning depth with effort' : '◇ Thinking not supported'}
+              {focusedThinkingMandatory ? '◆ Thinking always ON · adjust its supported reasoning control' : focusedSupportsEffort ? 'Thinking is controlled by the selected effort level' : '◇ No configurable thinking control advertised'}
               {focusedModelName ? ` for ${focusedModelName}` : ''}
             </Text>
           )}
           <ModelSpeedControl provider={currentProvider} model={focusedModel}
-            value={pendingSpeeds[focusedValue] ?? getActiveProviderSettings(getInitialSettings()).anthropic?.speed ?? 'standard'}
+            value={pendingSpeeds[focusedValue] ?? getSavedModelPerformanceMode(currentProvider, focusedModel ?? '', getActiveProviderSettings())}
             onChange={speed => setPendingSpeeds(previous => ({ ...previous, [focusedValue]: speed }))}
             isActive={!loadingModels} />
+          <ModelThinkingBudgetControl provider={currentProvider} capabilities={focusedReasoning} value={focusedBudgetValue}
+            onChange={budget => setPendingBudgets(previous => ({ ...previous, [focusedValue]: budget }))} isActive={!loadingModels} />
         </Box>
         {pickerError && (
           <Box marginBottom={1}>

@@ -6,6 +6,7 @@ import {
   NVIDIA_HOSTED_MODEL_CONTRACTS,
   type NvidiaHostedCatalogContract,
 } from './nvidiaHostedCatalog.generated.js'
+import type { ModelReasoningCapabilities } from './modelCatalog.js'
 
 /**
  * NVIDIA's public hosted catalog is generated from every current Free Endpoint
@@ -192,6 +193,33 @@ export function getNvidiaHostedAgentModelContract(
   modelId: string,
 ): NvidiaHostedAgentModelContract | undefined {
   return contractsByModel.get(modelId.trim().toLowerCase())
+}
+
+/** Use every model card's actual enum/default instead of a short curated list. */
+export function getNvidiaHostedReasoningCapabilities(modelId: string): ModelReasoningCapabilities | undefined {
+  const contract = getNvidiaHostedAgentModelContract(modelId)
+  const properties = contract?.requestSchema.properties as Record<string, unknown> | undefined
+  if (!properties) return undefined
+  const record = (value: unknown): Record<string, unknown> | undefined => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+  const effort = record(properties.reasoning_effort)
+  const enumValues = (schema: Record<string, unknown> | undefined): string[] => {
+    if (!schema) return []
+    const direct = Array.isArray(schema.enum) ? schema.enum.filter((value): value is string => typeof value === 'string') : []
+    const alternatives = [...(Array.isArray(schema.anyOf) ? schema.anyOf : []), ...(Array.isArray(schema.oneOf) ? schema.oneOf : [])]
+    return [...new Set([...direct, ...alternatives.flatMap(value => enumValues(record(value)))])]
+  }
+  const efforts = enumValues(effort)
+  const template = record(properties.chat_template_kwargs)
+  const templateProperties = record(template?.properties)
+  const toggle = record(templateProperties?.enable_thinking)
+  const hasToggle = toggle?.type === 'boolean'
+  if (!efforts.length && !hasToggle) return undefined
+  return { supportsThinking: true,
+    ...(efforts.length ? { supportedEfforts: efforts, mandatory: !efforts.includes('none') && !hasToggle } : {}),
+    ...(typeof effort?.default === 'string' && efforts.includes(effort.default) ? { defaultEffort: effort.default } : {}),
+    ...(hasToggle ? { thinkingValues: [false, true], mandatory: false,
+      ...(typeof toggle.default === 'boolean' ? { defaultEnabled: toggle.default } : {}) } : {}),
+  }
 }
 
 export function getNvidiaHostedTaskModelContract(

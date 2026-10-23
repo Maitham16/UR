@@ -12,9 +12,9 @@ the `ur-agent` npm launcher.
 ## Dependency security status
 
 UR's release gate audits the locked dependency graph and verifies the code in
-the packed and native CLIs. The current node-forge RSA fix is an explicitly
-reviewed backport; the upstream registry advisory remains present in the source
-dependency audit. The published npm launcher has no npm dependencies or install
+the packed and native CLIs. The node-forge RSA fix and legacy Zod collection-size fix are explicitly
+reviewed backports; their registry advisories remain present in the source
+dependency audit. UR's root Zod uses the upstream-fixed 4.6.7 release. The published npm launcher has no npm dependencies or install
 scripts; it verifies and runs the same patched native application. Installing
 the source checkout with npm does not apply Bun's dependency patches. See the
 [backport record](patches/README.md) for exact scope, behavior checks, upstream

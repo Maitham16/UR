@@ -1,0 +1,18 @@
+{
+  "package": "zod",
+  "version": "3.25.76",
+  "advisory": "GHSA-mrhx-c7xc-m3w5",
+  "advisoryUrl": "https://github.com/advisories/GHSA-mrhx-c7xc-m3w5",
+  "patch": "patches/zod@3.25.76.patch",
+  "patchSha256": "d9a7ceea566dcf28271a511e63279ec362704857c8996b5bb5b7dd0e11a5cfc5",
+  "reviewBy": "2026-11-20",
+  "consumers": [
+    "@ag-ui/core",
+    "@anthropic-ai/sandbox-runtime"
+  ],
+  "files": {
+    "src/v3/types.ts": "398fb7779d06d0e8212875a785fb00ec0ef51d63aeef96cbf19936ef74536efa",
+    "v3/types.js": "bfb71427d9dad8e74f5da7874bcef24f588b7332e1308a641be073b9a47e93d5",
+    "v3/types.cjs": "6e8a83064d0d26eea18903e1d07778e1e5d4db5907963a9c8a13a38e6c402fe7"
+  }
+}

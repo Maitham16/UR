@@ -166,6 +166,7 @@ describe('documentation coverage', () => {
 
     for (const doc of [providers, cli, slash, models, site]) {
       for (const level of [
+        'none',
         'minimal',
         'low',
         'medium',
@@ -183,7 +184,7 @@ describe('documentation coverage', () => {
     }
     expect(cli).toContain('`--effort <level>`')
     expect(slash).toContain(
-      '`/effort [minimal\\|low\\|medium\\|high\\|xhigh\\|max\\|ultra\\|auto]`',
+      '`/effort [none\\|minimal\\|low\\|medium\\|high\\|xhigh\\|max\\|ultra\\|auto]`',
     )
     expect(models).toContain('provider-scoped `provider.baseUrls`')
     expect(models).toContain('Unsloth is an inference provider only')

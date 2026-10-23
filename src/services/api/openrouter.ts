@@ -16,6 +16,7 @@ import {
 import {
   axiosPostWithProviderReliability,
   normalizeProviderEndpoint,
+  getProviderServingTimeoutMs,
 } from './providerHttp.js'
 import type { OpenRouterSettings } from '../providers/providerRegistry.js'
 
@@ -41,9 +42,10 @@ export async function createOpenRouterClient(
 
   async function doRequest(params: any, requestOptions?: any) {
     const clientRequestId = params?.headers?.['x-client-request-id']
+    const body = toOpenAICompatibleRequest(params, 'openrouter', { openrouter })
     const response = await axiosPostWithProviderReliability<any>(
       endpoint,
-      toOpenAICompatibleRequest(params, 'openrouter', { openrouter }),
+      body,
       {
         headers: {
           'Content-Type': 'application/json',
@@ -56,7 +58,7 @@ export async function createOpenRouterClient(
       },
       {
         maxRetries,
-        timeoutMs: requestOptions?.timeoutMs,
+        timeoutMs: getProviderServingTimeoutMs(body.service_tier, requestOptions?.timeoutMs),
         signal: requestOptions?.signal,
       },
     )
@@ -76,14 +78,11 @@ export async function createOpenRouterClient(
     const clientRequestId = params?.headers?.['x-client-request-id']
     const streamController = controller ?? new AbortController()
     const signal = mergeAbortSignals([requestOptions?.signal, streamController.signal])
+    const body = toOpenAICompatibleRequest({ ...params, stream: true }, 'openrouter', { openrouter })
 
     const response = await axiosPostWithProviderReliability<any>(
       endpoint,
-      toOpenAICompatibleRequest(
-        { ...params, stream: true },
-        'openrouter',
-        { openrouter },
-      ),
+      body,
       {
         headers: {
           'Content-Type': 'application/json',
@@ -97,7 +96,7 @@ export async function createOpenRouterClient(
       },
       {
         maxRetries,
-        timeoutMs: requestOptions?.timeoutMs,
+        timeoutMs: getProviderServingTimeoutMs(body.service_tier, requestOptions?.timeoutMs),
         signal,
         streaming: true,
       },

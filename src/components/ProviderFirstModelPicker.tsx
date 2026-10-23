@@ -81,7 +81,10 @@ import {
 import { resolveActiveProviderModel } from '../services/api/providerClient.js'
 import { effortLevelToSymbol } from './EffortIndicator.js'
 import { ModelSpeedControl } from './ModelSpeedControl.js'
-import { getAnthropicFastMode } from '../services/providers/anthropicCapabilities.js'
+import { getSavedModelPerformanceMode, isAcceleratedPerformanceMode, type ModelPerformanceMode } from '../services/providers/modelPerformance.js'
+import { getProviderReasoningCapabilitiesForModel } from '../services/providers/providerRegistry.js'
+import { configuredThinkingBudget, type ThinkingBudgetSelection } from '../services/providers/thinkingBudget.js'
+import { ModelThinkingBudgetControl } from './ModelThinkingBudgetControl.js'
 import {
   buildProviderModelLabels,
   fullProviderModelDisplayName,
@@ -192,7 +195,8 @@ export function ProviderFirstModelPicker({
     effortValue !== undefined ? convertEffortValueToLevel(effortValue) : undefined,
   )
   const [hasToggledEffort, setHasToggledEffort] = useState(false)
-  const [pendingSpeeds, setPendingSpeeds] = useState<Record<string, 'standard' | 'fast'>>({})
+  const [pendingSpeeds, setPendingSpeeds] = useState<Record<string, ModelPerformanceMode>>({})
+  const [pendingBudgets, setPendingBudgets] = useState<Record<string, ThinkingBudgetSelection>>({})
   const appThinkingEnabled = useAppState(selectThinkingEnabled)
   const [hasToggledThinking, setHasToggledThinking] = useState(false)
   const [thinkingEnabled, setThinkingEnabled] = useState(
@@ -542,8 +546,7 @@ export function ProviderFirstModelPicker({
   function handleCycleEffort(direction: 'left' | 'right') {
     if (!focusedSupportsEffort) {
       if (focusedSupportsThinking) {
-        setThinkingEnabled(resolveThinkingArrowValue(direction))
-        setHasToggledThinking(true)
+        updateFocusedThinking(resolveThinkingArrowValue(direction))
       }
       return
     }
@@ -559,6 +562,21 @@ export function ProviderFirstModelPicker({
       ),
     )
     setHasToggledEffort(true)
+    if (focusedBudgetValue !== undefined) setPendingBudgets(previous => ({ ...previous, [focusedBudgetKey]: 'default' }))
+  }
+
+  const focusedBudgetKey = `${focusedProviderId}:${focusedModelValue}`
+  const focusedReasoning = focusedProviderId && focusedResolvedModel ? getProviderReasoningCapabilitiesForModel(focusedResolvedModel, focusedProviderId) : undefined
+  const focusedBudgetSelection = pendingBudgets[focusedBudgetKey]
+  const focusedBudgetValue = focusedBudgetSelection === 'default' ? undefined : focusedBudgetSelection ??
+    (focusedProviderId && focusedResolvedModel ? configuredThinkingBudget(focusedProviderId, focusedResolvedModel, getActiveProviderSettings()) : undefined)
+  const focusedThinkingEnabled = focusedBudgetValue === undefined ? thinkingEnabled : focusedBudgetValue !== 0
+  function updateFocusedThinking(enabled: boolean) {
+    setThinkingEnabled(enabled)
+    setHasToggledThinking(true)
+    if (focusedReasoning?.thinkingBudget?.canDisable) {
+      setPendingBudgets(previous => ({ ...previous, [focusedBudgetKey]: enabled ? focusedBudgetValue && focusedBudgetValue > 0 ? focusedBudgetValue : -1 : 0 }))
+    } else if (!enabled && focusedBudgetValue !== undefined) setPendingBudgets(previous => ({ ...previous, [focusedBudgetKey]: 'default' }))
   }
 
   useInput(
@@ -578,8 +596,7 @@ export function ProviderFirstModelPicker({
   useInput(
     (input, _key, event) => {
       if (input.toLowerCase() !== 't' || !focusedSupportsThinking) return
-      setThinkingEnabled(previous => !previous)
-      setHasToggledThinking(true)
+      updateFocusedThinking(!focusedThinkingEnabled)
       event.stopImmediatePropagation()
     },
     {
@@ -767,8 +784,10 @@ export function ProviderFirstModelPicker({
       const saveResult = setProviderModel(selectedProvider.value, value, {
         availableModels: modelOptions.map(option => option.value),
         modelSource,
-        ...(selectedProviderId === 'anthropic-api' && pendingSpeeds[value] !== undefined
-          ? { anthropicSpeed: pendingSpeeds[value] } : {}),
+        ...(selectedProviderId && pendingSpeeds[`${selectedProviderId}:${value}`] !== undefined
+          ? { performanceMode: pendingSpeeds[`${selectedProviderId}:${value}`] } : {}),
+        ...(selectedProviderId && pendingBudgets[`${selectedProviderId}:${value}`] !== undefined
+          ? { thinkingBudget: pendingBudgets[`${selectedProviderId}:${value}`] } : {}),
       })
       if (!saveResult.ok) {
         setModelWarning(saveResult.message)
@@ -812,7 +831,7 @@ export function ProviderFirstModelPicker({
       },
       ...(hasToggledEffort ? { effortValue: selectedEffort } : {}),
       ...(hasToggledThinking ? { thinkingEnabled } : {}),
-      ...(selectedProviderId === 'anthropic-api' ? { fastMode: Boolean(getAnthropicFastMode(value) && savedProviderSettings?.anthropic?.speed === 'fast') } : {}),
+      ...(selectedProviderId ? { fastMode: isAcceleratedPerformanceMode(getSavedModelPerformanceMode(selectedProviderId, value, savedProviderSettings ?? getActiveProviderSettings())) } : {}),
     }))
 
     onSelect(value, selectedEffort, selectedProvider ? {
@@ -1369,10 +1388,10 @@ export function ProviderFirstModelPicker({
                 )}
                 {!focusedIsTaskModel && focusedSupportsThinking && (
                   <Text dimColor>
-                    <Text color={thinkingEnabled ? 'ur' : 'subtle'}>
-                      {thinkingEnabled ? '◆' : '◇'}
+                    <Text color={focusedThinkingEnabled ? 'ur' : 'subtle'}>
+                      {focusedThinkingEnabled ? '◆' : '◇'}
                     </Text>{' '}
-                    {focusedProviderId && getThinkingOffMode(focusedResolvedModel!, focusedProviderId) === 'between_tools' ? 'Up-front thinking' : 'Thinking'} {thinkingEnabled ? 'ON' : 'OFF'}{' '}
+                    {focusedProviderId && getThinkingOffMode(focusedResolvedModel!, focusedProviderId) === 'between_tools' ? 'Up-front thinking' : 'Thinking'} {focusedThinkingEnabled ? 'ON' : 'OFF'}{' '}
                     <Text dimColor color="subtle">
                       {focusedSupportsEffort
                         ? 't to toggle'
@@ -1381,14 +1400,17 @@ export function ProviderFirstModelPicker({
                   </Text>
                 )}
                 {!focusedIsTaskModel && focusedThinkingMandatory && (
-                  <Text dimColor>Thinking always ON · adjust reasoning depth with effort</Text>
+                  <Text dimColor>Thinking always ON · {focusedReasoning?.thinkingBudget ? 'adjust its token budget below' : 'adjust reasoning depth with effort'}</Text>
                 )}
                 {!focusedIsTaskModel && (
                   <ModelSpeedControl provider={focusedProviderId} model={focusedResolvedModel}
-                    value={pendingSpeeds[focusedModelValue!] ?? getActiveProviderSettings(getInitialSettings()).anthropic?.speed ?? 'standard'}
-                    onChange={speed => setPendingSpeeds(previous => ({ ...previous, [focusedModelValue!]: speed }))}
+                    value={pendingSpeeds[`${focusedProviderId}:${focusedModelValue}`] ?? getSavedModelPerformanceMode(focusedProviderId ?? '', focusedResolvedModel ?? '', getActiveProviderSettings())}
+                    onChange={speed => setPendingSpeeds(previous => ({ ...previous, [`${focusedProviderId}:${focusedModelValue}`]: speed }))}
                     isActive={step === 'model' && !loadingModels} />
                 )}
+                {!focusedIsTaskModel && <ModelThinkingBudgetControl provider={focusedProviderId ?? ''} capabilities={focusedReasoning}
+                  value={focusedBudgetValue} onChange={budget => setPendingBudgets(previous => ({ ...previous, [focusedBudgetKey]: budget }))}
+                  isActive={step === 'model' && !loadingModels} />}
                 {effortCapabilityWarning && (
                   <Text dimColor color="error">
                     {effortCapabilityWarning}

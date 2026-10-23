@@ -15,7 +15,7 @@ Use `brew upgrade ur-nexus` for Homebrew, `npm install -g ur-agent@latest`
 for npm, or `ur upgrade` for the standalone installer. Only standalone installs
 accept `ur install <version>`; package-manager installations reject it.
 
-Windows native and public npm installation are unavailable in 1.87.3.
+Windows native and public npm installation are unavailable in 1.87.4.
 Bun-based source development remains optional on Windows; see the
 [Development Guide](DEVELOPMENT.md).
 
@@ -250,12 +250,20 @@ Opus 5.5 supports fast mode without a beta header. Opus 5/4.8 retain their
 preview beta and account-access requirements. Other models stay on standard
 speed. Use `ur config set anthropic.speed standard` to turn the premium tier off.
 
+The same `/model` controls cover other providers: arrows choose advertised
+effort, `T` toggles native thinking where supported, `B` previews native token
+budgets and `S` cycles serving/routing modes. Use `/thinking budget N|auto|default`
+for an exact per-model budget and `/effort auto` to follow the model default.
+`/fast` also accepts a supported explicit mode such as `flex`, `ultrafast`,
+`priority`, or `latency`. See [provider controls](providers.md#model-reasoning-and-performance-controls)
+for each provider's availability and pricing.
+
 `provider.fallback` only controls the recovery suggestion printed by provider
 diagnostics. UR does not switch or retry across providers automatically; use
 `ur config set provider <id>` after reviewing the failure.
 
-The OpenAI API continues to use Chat Completions by default. Selecting
-`openai_transport responses` opts into Responses semantic streaming,
+The OpenAI API automatically uses Responses for the GPT-6 family and Responses-only Pro models. Other models retain Chat Completions unless
+`openai_transport responses` is selected. Responses provides semantic streaming,
 background/poll/cancel support, WebSocket continuation, server compaction, and
 deferred tool search. Remote storage is off by default. Local state contains
 only bounded identifiers/status/cursors unless a 32-byte

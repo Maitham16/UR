@@ -230,6 +230,8 @@ export const PROVIDER_CONFIG_KEYS = [
   'openrouter.speed',
   'anthropic.speed',
   'anthropic.workspace_id',
+  'openai.service_tier',
+  'gemini.service_tier',
   'model',
   'base_url',
 ] as const

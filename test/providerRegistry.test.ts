@@ -1368,7 +1368,7 @@ describe('provider-scoped model listing', () => {
         requireParameters: true,
         preferredMinThroughput: 40,
         preferredMaxLatency: 3.5,
-        serviceTier: 'fast',
+        serviceTier: 'priority',
         speed: 'fast',
       })
 
@@ -1378,7 +1378,7 @@ describe('provider-scoped model listing', () => {
       expect(setSafeProviderConfig('openrouter.preferred_max_latency', 'auto').ok).toBe(true)
       expect(getActiveProviderSettings().openrouter).toEqual({
         routing: 'throughput',
-        serviceTier: 'fast',
+        serviceTier: 'priority',
         speed: 'fast',
       })
     } finally {

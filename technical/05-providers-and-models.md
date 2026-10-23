@@ -358,7 +358,7 @@ level names does not create a graded selector.
   a finite ladder, so UR uses verified on/off control; GPT-OSS uses the
   documented `low|medium|high` ladder and therefore omits Ultra. vLLM is probed
   through non-generating `/server_info?config_format=json`; a configured
-  reasoning parser exposes `minimal→none|low|medium|high`. llama.cpp is probed
+  reasoning parser exposes `none|low|medium|high`. llama.cpp is probed
   lazily through model-scoped `/props`, whose current boolean support flag does
   not identify accepted level names. Other ladders or aliases require explicit
   model metadata.
@@ -376,6 +376,32 @@ UR enables boolean thinking and explains the exact on/off contract instead. For 
 maps to its documented [`reasoning.enabled`](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens);
 when the model instead advertises
 `supports_max_tokens`, UR preserves the configured budget as `reasoning.max_tokens`.
+
+## Native reasoning and serving contracts
+
+`openaiCapabilities.ts`, `geminiCapabilities.ts`, `anthropicCapabilities.ts`
+and Ollama's `thinking.values` provide exact model contracts. NVIDIA controls
+are extracted from `nvidiaHostedCatalog.generated.ts` request schemas by
+`getNvidiaHostedReasoningCapabilities`. Live capabilities override documented
+fallbacks; a thin name-only row does not erase them. Explicit negative
+capabilities remove unsupported controls. Native custom names retain exact
+wire spelling without an inferred strength ranking.
+
+`modelPerformance.ts` drives both pickers and `/fast`: OpenAI Fast/Ultrafast/Flex,
+Gemini Priority/Flex, Claude Fast and OpenRouter endpoint preferences. Request
+adapters serialize their distinct fields; serving preferences never switch
+models. `providerClient.ts` automatically selects Responses for the GPT-6 family
+and Responses-only Pro models to retain supported agent tool calls. Gemini endpoint
+methods are stored as generation methods, never interpreted as parameter lists
+that incorrectly disable tools.
+
+`thinkingBudget.ts` validates explicit per-provider/model budgets; Gemini 2.5
+serializes `thinkingBudget` and never `thinkingLevel`. OpenRouter supported
+budgets use `reasoning.max_tokens`; manual Claude budgets require an accepted
+`enabled` mode. `providerHttp.ts` gives Flex a 15-minute default while preserving
+explicit timeout overrides and never upgrading the requested billing tier.
+See [the control matrix](../docs/providers.md#model-reasoning-and-performance-controls)
+for native levels, limits and linked provider specifications.
 
 ## Response-boundary recovery
 
@@ -442,7 +468,7 @@ plus [NVIDIA NIM LLM APIs](https://docs.api.nvidia.com/nim/reference/llm-apis).
 
 | Feature | Command | Notes |
 |---|---|---|
-| Effort level | `/effort minimal·low·medium·high·xhigh·max·ultra·auto` | capability-gated; provider-native wire value; persistable choices use `effortLevel` |
+| Effort level | `/effort none·minimal·low·medium·high·xhigh·max·ultra·auto` | capability-gated; provider-native wire value; persistable choices use `effortLevel` |
 | Thinking | `/thinking on·off·toggle·status` | provider-native on/off control; persists through `alwaysThinkingEnabled` |
 | Fast mode | `/fast on·off·status`, or `s` in `/model` | native `provider.anthropic.speed`; supported models only, premium pricing |
 | Advisor model | `/advisor <model>` / `/advisor off` | secondary model that critiques answers (`advisorModel` setting) |

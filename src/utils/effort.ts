@@ -10,7 +10,8 @@ import {
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getAntModelOverrideConfig, resolveAntModel } from './model/antModels.js'
-import type { ProviderId } from '../services/providers/providerRegistry.js'
+import { getActiveProviderSettings, type ProviderId } from '../services/providers/providerRegistry.js'
+import { configuredThinkingBudget } from '../services/providers/thinkingBudget.js'
 import type { ModelReasoningCapabilities } from '../services/providers/modelCatalog.js'
 /**
  * Normalized graded-reasoning values understood by UR provider adapters.
@@ -21,7 +22,8 @@ import type { ModelReasoningCapabilities } from '../services/providers/modelCata
  * `ultra`, `max`, `xhigh`, or an explicit equivalent, and is translated back to
  * that exact provider wire value.
  */
-export type EffortLevel =
+export type KnownEffortLevel =
+  | 'none'
   | 'minimal'
   | 'low'
   | 'medium'
@@ -30,7 +32,11 @@ export type EffortLevel =
   | 'max'
   | 'ultra'
 
+/** Includes exact model-advertised names; unsupported names never reach the wire. */
+export type EffortLevel = KnownEffortLevel | (string & {})
+
 export const EFFORT_LEVELS = [
+  'none',
   'minimal',
   'low',
   'medium',
@@ -81,12 +87,11 @@ function getUltraEquivalentWireValue(
 export function normalizeEffortLevels(
   values: readonly string[],
 ): EffortLevel[] {
-  const advertised = new Set(
-    values
-      .map(value => value.trim().toLowerCase())
-      .filter(isEffortLevel),
-  )
-  return EFFORT_LEVELS.filter(level => advertised.has(level))
+  const advertised = [...new Set(values.map(value => value.trim().toLowerCase()).filter(Boolean))]
+  return [
+    ...EFFORT_LEVELS.filter(level => advertised.includes(level)),
+    ...advertised.filter(level => !isEffortLevel(level)),
+  ]
 }
 
 /**
@@ -111,11 +116,9 @@ export function getSupportedEffortLevelsForModel(
   const supportsExtendedEffort =
     get3PModelCapabilityOverride(model, 'max_effort') !== false
   const applyOverrides = (levels: readonly EffortLevel[]): EffortLevel[] =>
-    supportsExtendedEffort
-      ? [...levels]
-      : levels.filter(
-          level => level !== 'xhigh' && level !== 'max' && level !== 'ultra',
-        )
+    levels.filter(level =>
+      (supportsExtendedEffort || (level !== 'xhigh' && level !== 'max' && level !== 'ultra')) &&
+      (level !== 'none' || getRuntimeModelReasoningCapabilities(model, provider)?.mandatory !== true))
 
   const discovered = getRuntimeModelReasoningCapabilities(model, provider)
   if (discovered?.supportedEfforts === null) {
@@ -130,7 +133,7 @@ export function getSupportedEffortLevelsForModel(
     const advertisedAliases = Object.entries(discovered.effortAliases ?? {})
       .filter(
         ([selector, wireValue]) =>
-          isEffortLevel(selector) &&
+          selector.trim().length > 0 &&
           advertisedWireValues.has(wireValue.trim().toLowerCase()),
       )
       .map(([selector]) => selector as EffortLevel)
@@ -172,22 +175,17 @@ export function getSupportedEffortLevelLabelsForModel(
   provider: ProviderId = getRuntimeProvider(),
 ): string[] {
   const levels = getSupportedEffortLevelsForModel(model, provider)
-  if (!levels.includes('ultra')) return levels
-  const nativeUltra = getUltraEquivalentWireValue(
-    getRuntimeModelReasoningCapabilities(model, provider),
-  )
-  return levels.map(level =>
-    level === 'ultra' && nativeUltra && nativeUltra !== 'ultra'
-      ? `ultra→${nativeUltra}`
-      : level,
-  )
+  return levels.map(level => {
+    const wire = getProviderEffortWireValue(model, level, provider)
+    return wire && wire !== level ? `${level}→${wire}` : level
+  })
 }
 
 export function getHighestSupportedEffortLevel(
   model: string,
   provider: ProviderId = getRuntimeProvider(),
 ): EffortLevel | undefined {
-  return getSupportedEffortLevelsForModel(model, provider).at(-1)
+  return getSupportedEffortLevelsForModel(model, provider).filter(isEffortLevel).at(-1)
 }
 
 /** Resolve an explicit request to the closest value the model advertises. */
@@ -196,8 +194,10 @@ export function resolveProviderEffortLevel(
   requested: EffortLevel,
   provider: ProviderId = getRuntimeProvider(),
 ): EffortLevel | undefined {
+  requested = requested.trim().toLowerCase()
   const supported = getSupportedEffortLevelsForModel(model, provider)
   if (supported.length === 0) return undefined
+  if (requested === 'none') return supported.includes('none') ? 'none' : undefined
   // Ultra is a visible selector only for an explicitly advertised beyond-high
   // ceiling. Request serialization preserves the provider's native name.
   if (requested === 'ultra') {
@@ -205,15 +205,17 @@ export function resolveProviderEffortLevel(
   }
   if (requested === 'max') {
     if (supported.includes('max')) return 'max'
-    return supported.filter(level => level !== 'ultra').at(-1)
+    return supported.filter(level => isEffortLevel(level) && level !== 'ultra').at(-1)
   }
-  if (supported.includes(requested)) return requested
+  const normalized = requested.trim().toLowerCase()
+  if (supported.includes(normalized)) return normalized
+  if (!isEffortLevel(normalized)) return undefined
 
-  const requestedIndex = EFFORT_LEVELS.indexOf(requested)
+  const requestedIndex = EFFORT_LEVELS.indexOf(normalized)
   const notHigher = supported.filter(
-    level => EFFORT_LEVELS.indexOf(level) <= requestedIndex,
+    (level): level is KnownEffortLevel => isEffortLevel(level) && EFFORT_LEVELS.indexOf(level) <= requestedIndex,
   )
-  return notHigher.at(-1) ?? supported[0]
+  return notHigher.at(-1) ?? supported.find(isEffortLevel)
 }
 
 export function modelSupportsEffort(
@@ -233,7 +235,7 @@ export function modelSupportsMaxEffort(
   }
   // `max` is a provider-neutral request for the model's highest advertised
   // value, so every genuinely graded model can honor it without fabrication.
-  return modelSupportsEffort(model, provider)
+  return getHighestSupportedEffortLevel(model, provider) !== undefined
 }
 
 export type OpenRouterReasoningEffort =
@@ -256,26 +258,28 @@ export function getProviderEffortWireValue(
   requested: EffortLevel,
   provider: ProviderId = getRuntimeProvider(),
 ): string | undefined {
+  requested = requested.trim().toLowerCase()
   const capabilities = getRuntimeModelReasoningCapabilities(model, provider)
   const supported = getSupportedEffortLevelsForModel(model, provider)
   if (requested === 'ultra') {
     if (!supported.includes('ultra')) return undefined
-    return getUltraEquivalentWireValue(capabilities)
+    const equivalent = getUltraEquivalentWireValue(capabilities)
+    return capabilities?.supportedEfforts?.find(value => value.trim().toLowerCase() === equivalent) ?? equivalent
   }
   if (!supported.includes(requested)) {
     if (requested !== 'max') return undefined
     const resolved = resolveProviderEffortLevel(model, requested, provider)
-    return resolved
+    return resolved ? getProviderEffortWireValue(model, resolved, provider) : undefined
   }
   const alias = capabilities?.effortAliases?.[requested]
-  if (!alias) return requested
+  if (!alias) return capabilities?.supportedEfforts?.find(value => value.trim().toLowerCase() === requested) ?? requested
   const normalizedAlias = alias.trim().toLowerCase()
   const advertised = capabilities.supportedEfforts
   if (
     Array.isArray(advertised) &&
     advertised.some(value => value.trim().toLowerCase() === normalizedAlias)
   ) {
-    return normalizedAlias
+    return advertised.find(value => value.trim().toLowerCase() === normalizedAlias)
   }
   return undefined
 }
@@ -293,7 +297,7 @@ export function toOpenRouterReasoningEffort(
   return getProviderEffortWireValue(model, effort, 'openrouter')
 }
 
-export function isEffortLevel(value: string): value is EffortLevel {
+export function isEffortLevel(value: string): value is KnownEffortLevel {
   return (EFFORT_LEVELS as readonly string[]).includes(value)
 }
 
@@ -308,11 +312,11 @@ export function parseEffortValue(value: unknown): EffortValue | undefined {
   if (isEffortLevel(str)) {
     return str
   }
-  const numericValue = parseInt(str, 10)
-  if (!isNaN(numericValue) && isValidNumericEffort(numericValue)) {
+  const numericValue = Number(str)
+  if (str.trim() && isValidNumericEffort(numericValue)) {
     return numericValue
   }
-  return undefined
+  return typeof value === 'string' && str.trim() && !/[\x00-\x1f\x7f]/u.test(str) ? str.trim() : undefined
 }
 
 /**
@@ -325,19 +329,9 @@ export function parseEffortValue(value: unknown): EffortValue | undefined {
 export function toPersistableEffort(
   value: EffortValue | undefined,
 ): EffortLevel | undefined {
-  if (
-    value === 'minimal' ||
-    value === 'low' ||
-    value === 'medium' ||
-    value === 'high' ||
-    value === 'xhigh' ||
-    value === 'ultra'
-  ) {
-    return value
-  }
-  if (value === 'max' && process.env.USER_TYPE === 'ant') {
-    return value
-  }
+  if (typeof value === 'string' && value.trim() &&
+    (value !== 'max' || process.env.USER_TYPE === 'ant')) return value
+
   return undefined
 }
 
@@ -412,7 +406,7 @@ export function getDisplayedEffortLevel(
   provider: ProviderId = getRuntimeProvider(),
 ): EffortLevel {
   const resolved =
-    resolveAppliedEffort(model, appStateEffort, provider) ?? 'high'
+    resolveAppliedEffort(model, appStateEffort, provider) ?? getDefaultEffortForModel(model, provider) ?? 'high'
   return convertEffortValueToLevel(resolved)
 }
 
@@ -427,7 +421,7 @@ export function getEffortSuffix(
   effortValue: EffortValue | undefined,
   provider: ProviderId = getRuntimeProvider(),
 ): string {
-  if (effortValue === undefined) return ''
+  if (effortValue === undefined || configuredThinkingBudget(provider, model, getActiveProviderSettings()) !== undefined) return ''
   const resolved = resolveAppliedEffort(model, effortValue, provider)
   if (resolved === undefined) return ''
   return ` with ${convertEffortValueToLevel(resolved)} effort`
@@ -439,10 +433,7 @@ export function isValidNumericEffort(value: number): boolean {
 
 export function convertEffortValueToLevel(value: EffortValue): EffortLevel {
   if (typeof value === 'string') {
-    // Runtime guard: value may come from remote config (GrowthBook) where
-    // TypeScript types can't help us. Coerce unknown strings to 'high'
-    // rather than passing them through unchecked.
-    return isEffortLevel(value) ? value : 'high'
+    return value
   }
   if (process.env.USER_TYPE === 'ant' && typeof value === 'number') {
     if (value <= 50) return 'low'
@@ -461,6 +452,8 @@ export function convertEffortValueToLevel(value: EffortValue): EffortLevel {
  */
 export function getEffortLevelDescription(level: EffortLevel): string {
   switch (level) {
+    case 'none':
+      return 'Reasoning off, only where the provider advertises this value'
     case 'minimal':
       return 'Minimal reasoning for the lowest latency and cost'
     case 'low':
@@ -475,6 +468,8 @@ export function getEffortLevelDescription(level: EffortLevel): string {
       return 'Maximum capability with deepest reasoning'
     case 'ultra':
       return 'The provider-advertised beyond-high ceiling, using its exact native effort value'
+    default:
+      return `Provider-defined reasoning level: ${level}`
   }
 }
 
@@ -528,7 +523,7 @@ export function getDefaultEffortForModel(
     model,
     provider,
   )?.defaultEffort
-  if (providerDefault && isEffortLevel(providerDefault)) {
+  if (providerDefault) {
     return resolveProviderEffortLevel(model, providerDefault, provider)
   }
 

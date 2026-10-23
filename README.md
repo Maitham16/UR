@@ -198,7 +198,7 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Windows native installation is unavailable in 1.87.3 and has been deferred.
+Windows native installation is unavailable in 1.87.4 and has been deferred.
 Windows developers can optionally use the Bun-based source workflow in the
 [Development Guide](docs/DEVELOPMENT.md); the public npm package also supports
 only macOS and Linux.
@@ -215,7 +215,7 @@ ur --help
 Installers verify release checksums, the executable version, and packaged
 resources before activating the complete versioned installation. Standalone
 installer updates use `ur upgrade`; select a specific standalone release with
-`ur install 1.87.3`. Homebrew and npm installations retain their own update
+`ur install 1.87.4`. Homebrew and npm installations retain their own update
 commands and reject `ur install` to avoid creating a second installation.
 See [Native installation and recovery](docs/NATIVE_INSTALL.md) for manual
 downloads, signing status, supported targets, rollback, and uninstall.
@@ -378,8 +378,8 @@ provider's last URL automatically. Existing single-URL settings are migrated
 to the previously active provider on the first provider switch or scoped
 base-URL write.
 
-OpenAI API traffic uses Chat Completions by default. The Responses transport is
-an explicit, provider-scoped opt-in with privacy-conscious defaults:
+OpenAI API automatically uses Responses for the GPT-6 family and Responses-only Pro models so their reasoning/tool calls use the supported endpoint. Other
+models use Chat Completions unless Responses is explicitly selected:
 
 ```sh
 ur config set provider openai-api
@@ -435,22 +435,28 @@ continue to work without it. Use `auto` to clear the saved selection. If the
 key and workspace are being connected together, `ur connect anthropic-api
 --workspace-id wrkspc_...` accepts the same value.
 
-Anthropic's premium research-preview fast tier is opt-in and is sent only for
-Claude Opus 5 or Opus 4.8:
+Anthropic's premium fast tier is opt-in for supported Opus models. Opus 5.5
+uses its generally available contract; Opus 5/4.8 require preview access:
 
 ```sh
 ur config set anthropic.speed fast             # standard | fast
 ```
 
-In `/model`, use ←/→ to choose supported effort levels and `s` to preview
-Standard/Fast speed on supported Claude models, then Enter to confirm. Fast
-uses premium provider pricing. `/effort`, `/thinking status`, and
-`/fast on|off|status` expose the same native controls. Opus 5.5 thinking is
-always on; choose its depth through effort.
+In `/model`, use ←/→ for native effort, `T` for supported thinking on/off,
+`B` for native token budgets and `S` for serving/routing preferences. Enter
+applies the selection; Esc cancels it. These controls now cover OpenAI,
+Claude, Gemini, Ollama, NVIDIA and compatible server metadata. Reasoning-off
+`none` is shown only where accepted; mandatory reasoning stays on.
 
+Supported OpenAI models offer Fast/Flex and, where documented, Ultrafast.
+Gemini offers Priority/Flex on supported models; Gemini 2.5 uses native token
+budgets. OpenRouter offers latency/throughput/price routing preferences.
+Premium tiers show their pricing status; managed runtimes show no invented
+speed option. `/effort`, `/thinking [on|off|status|budget N|budget auto|budget default]`
+and `/fast [on|off|status]` expose the same controls without changing models.
+See [provider controls](docs/providers.md#model-reasoning-and-performance-controls)
+for exact contracts and configuration.
 
-The account must have Anthropic fast-mode access. Unsupported Claude models
-stay on standard speed instead of receiving a fabricated provider option.
 
 Provider config accepts canonical IDs and common aliases. Examples:
 `openai-api`, `anthropic-api`, `gemini-api`, `openrouter`, `nvidia-nim` (`NVIDIA Agentic`),
@@ -551,7 +557,7 @@ In the interactive app, `/model` is a two-step, provider-first picker:
    level names, that flag alone does not create a graded selector. vLLM is
    checked lazily through `/server_info?config_format=json`; a configured
    reasoning parser enables its documented `none|low|medium|high` Chat
-   Completions contract (`minimal→none`) without inventing Ultra. Ollama models
+   Completions contract (`none|low|medium|high`) without inventing Ultra. Ollama models
    are checked through `/api/show`; a generic `thinking` capability establishes
    thinking support but not a model-specific ladder, so UR uses Ollama's native
    on/off control unless the endpoint supplies exact levels.

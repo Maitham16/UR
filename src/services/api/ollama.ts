@@ -17,6 +17,7 @@ import { randomUUID } from 'crypto'
 import {
   cacheOllamaModelMetadata,
   getOllamaContextLengthForModel,
+  getOllamaThinkingCapabilitiesForModel,
 } from '../../utils/model/ollamaModels.js'
 import {
   getOllamaAuthHeaders,
@@ -48,7 +49,6 @@ import { logForDebugging } from '../../utils/debug.js'
 import {
   getProviderEffortWireValue,
   getSupportedEffortLevelsForModel,
-  isEffortLevel,
 } from '../../utils/effort.js'
 import {
   assertValidProviderToolUses,
@@ -552,7 +552,7 @@ export function toOllamaChatRequest(
     role: 'system',
     content: systemToText(params.system) + (toolsDropped ? TEXT_TOOL_CALL_HINT : ''),
   }
-  const think = getOllamaThink(params, capabilities)
+  const think = getOllamaThink(params, capabilities, baseUrl)
   const request: OllamaChatRequest = {
     model: params.model,
     messages: [
@@ -811,8 +811,29 @@ function getOllamaFormat(params: BetaMessageStreamParams): unknown {
 function getOllamaThink(
   params: BetaMessageStreamParams,
   capabilities: OllamaModelCapabilities | null,
+  baseUrl: string,
 ): OllamaChatRequest['think'] {
   const thinking = (params as { thinking?: { type?: string } }).thinking
+  const native = getOllamaThinkingCapabilitiesForModel(params.model, baseUrl)
+  if (native?.thinkingValues) {
+    if (!native.supportsThinking) return undefined
+    const values = native.thinkingValues
+    if (thinking?.type === 'disabled' && values.includes(false)) return false
+    const effort = (params as { output_config?: { effort?: unknown } }).output_config?.effort
+    const wireEffort = typeof effort === 'string'
+      ? getProviderEffortWireValue(params.model, effort, 'ollama') ?? effort : effort
+    const selected = typeof wireEffort === 'string'
+      ? values.find(value => typeof value === 'string' && value.toLowerCase() === wireEffort.toLowerCase())
+      : undefined
+    if (selected !== undefined) return selected
+    if (thinking && thinking.type !== 'disabled') {
+      if (values.includes(true)) return true
+      return native.defaultEffort ?? values.find(value => value === 'medium') ?? values.find(value => typeof value === 'string')
+    }
+    // A missing control follows Ollama's default; mandatory named modes never
+    // receive invented true/false values, even with a stale off preference.
+    return undefined
+  }
   const supportsThinking = modelCapabilityEnabled(capabilities, 'thinking')
   if (capabilities && !supportsThinking) {
     return undefined
@@ -829,13 +850,13 @@ function getOllamaThink(
   ).output_config?.effort
   const model = String((params as { model?: unknown }).model ?? '')
   const advertisedWireEffort =
-    typeof effort === 'string' && isEffortLevel(effort)
+    typeof effort === 'string'
       ? getProviderEffortWireValue(model, effort, 'ollama')
       : undefined
   if (advertisedWireEffort && supportsThinking) {
     return advertisedWireEffort
   }
-  const requestedEffort = typeof effort === 'string' && isEffortLevel(effort)
+  const requestedEffort = typeof effort === 'string'
   if (
     requestedEffort &&
     getSupportedEffortLevelsForModel(model, 'ollama').length > 0

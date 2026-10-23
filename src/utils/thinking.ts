@@ -14,6 +14,7 @@ import type {
   ModelReasoningCapabilities,
 } from '../services/providers/modelCatalog.js'
 import type { ProviderId } from '../services/providers/providerRegistry.js'
+import { getNvidiaHostedReasoningCapabilities } from '../services/providers/nvidiaHostedModels.js'
 
 export type ThinkingConfig =
   | { type: 'adaptive' }
@@ -39,7 +40,11 @@ export function providerSupportsThinkingToggle(
   provider: ProviderId,
   model?: string,
 ): boolean {
-  if (provider === 'ollama') return true
+  if (provider === 'ollama') {
+    const capabilities = getRuntimeModelReasoningCapabilities(model ?? '', provider)
+    if (capabilities?.mandatory) return false
+    return capabilities?.thinkingValues ? capabilities.thinkingValues.includes(false) : true
+  }
   if (provider === 'anthropic-api') {
     const capabilities = getRuntimeModelReasoningCapabilities(model ?? '', provider)
     if (capabilities?.mandatory) return false
@@ -48,11 +53,20 @@ export function providerSupportsThinkingToggle(
     }
     return model ? modelSupportsThinking(model, provider) : false
   }
+  if (provider === 'gemini-api') {
+    return getRuntimeModelReasoningCapabilities(model ?? '', provider)?.thinkingBudget?.canDisable === true
+  }
+  if (provider === 'openrouter') {
+    const capabilities = getRuntimeModelReasoningCapabilities(model ?? '', provider)
+    return capabilities !== undefined && capabilities.supportsThinking !== false && capabilities.mandatory !== true &&
+      capabilities.supportedEfforts !== null && !capabilities.supportedEfforts?.includes('none')
+  }
   // NVIDIA documents a model-native enable_thinking chat-template switch for
   // Nemotron 3.5 Lightning. This is deliberately model-scoped: Kimi K3, for
   // example, advertises mandatory reasoning and must not inherit an off toggle.
   return provider === 'nvidia-nim' &&
-    /^nvidia\/nemotron-3\.5-lightning-30b-a3b(?:-|$)/iu.test(model ?? '')
+    (getNvidiaHostedReasoningCapabilities(model ?? '')?.thinkingValues?.includes(false) === true ||
+      /^nvidia\/nemotron-3\.5-lightning-30b-a3b(?:-|$)/iu.test(model ?? ''))
 }
 
 export function isThinkingMandatory(model: string, provider: ProviderId = getRuntimeProvider()): boolean {
@@ -210,6 +224,7 @@ export function modelSupportsAdaptiveThinking(
   if (provider === 'ollama') {
     return false
   }
+  if (provider === 'gemini-api' && getRuntimeModelReasoningCapabilities(model, provider)?.thinkingBudget) return false
   // IMPORTANT: Do not change adaptive thinking support without notifying the
   // model launch DRI and research. This can greatly affect model quality and
   // bashing.

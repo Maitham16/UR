@@ -4,7 +4,9 @@ import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEve
 import { type AppState, useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, getSupportedEffortLevelLabelsForModel, getSupportedEffortLevelsForModel, isEffortLevel, modelSupportsEffort, resolveAppliedEffort, resolveProviderEffortLevel, toPersistableEffort } from '../../utils/effort.js';
-import { ensureProviderReasoningCapabilitiesForModel, type ProviderId } from '../../services/providers/providerRegistry.js';
+import { ensureProviderReasoningCapabilitiesForModel, getActiveProviderSettings, getProviderReasoningCapabilitiesForModel, type ProviderId, type ProviderSettings } from '../../services/providers/providerRegistry.js';
+import { configuredThinkingBudget, thinkingBudgetSettingsPatch } from '../../services/providers/thinkingBudget.js';
+import type { SettingsJson } from '../../utils/settings/types.js';
 import { getMainLoopModel } from '../../utils/model/model.js';
 import { getRuntimeProvider } from '../../utils/model/providers.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
@@ -18,15 +20,23 @@ type EffortCommandResult = {
   thinkingUpdate?: {
     value: boolean;
   };
+  providerUpdate?: ProviderSettings;
 };
 export function applyEffortCommandState(previous: AppState, result: EffortCommandResult): AppState {
   return {
     ...previous,
     ...(result.effortUpdate ? { effortValue: result.effortUpdate.value } : {}),
-    ...(result.thinkingUpdate ? { thinkingEnabled: result.thinkingUpdate.value } : {})
+    ...(result.thinkingUpdate ? { thinkingEnabled: result.thinkingUpdate.value } : {}),
+    ...(result.providerUpdate ? { provider: { ...previous.provider, ...result.providerUpdate } } : {})
   };
 }
 function setEffortValue(effortValue: EffortValue, model?: string, provider: ProviderId = getRuntimeProvider()): EffortCommandResult {
+  if (model && getProviderReasoningCapabilitiesForModel(model, provider)?.thinkingBudget && !modelSupportsEffort(model, provider)) {
+    return { message: `Not applied: ${model} on ${provider} uses a native token budget, not named effort levels. Use /thinking budget N|auto|default.` };
+  }
+  if (effortValue === 'none' && model && !getSupportedEffortLevelsForModel(model, provider).includes('none')) {
+    return { message: `Not applied: ${model} on ${provider} does not support reasoning off with effort none.` };
+  }
   if (model && !modelSupportsEffort(model, provider)) {
     if (modelSupportsThinking(model, provider) && providerSupportsThinkingToggle(provider, model)) {
       const result = updateSettingsForSource('userSettings', {
@@ -66,6 +76,9 @@ function setEffortValue(effortValue: EffortValue, model?: string, provider: Prov
     return {
       message: `Not applied: ${model} on ${provider} does not advertise a beyond-high reasoning-effort ceiling for Ultra.`
     };
+  }
+  if (model && typeof effortValue === 'string' && resolveProviderEffortLevel(model, effortValue, provider) === undefined) {
+    return { message: `Not applied: ${model} on ${provider} does not advertise a compatible level for ${effortValue}. Available levels: ${getSupportedEffortLevelLabelsForModel(model, provider).join(', ')}` };
   }
   const persistable = toPersistableEffort(effortValue);
   if (persistable !== undefined) {
@@ -125,6 +138,9 @@ function setEffortValue(effortValue: EffortValue, model?: string, provider: Prov
   };
 }
 export function showCurrentEffort(appStateEffort: EffortValue | undefined, model: string, provider: ProviderId = getRuntimeProvider(), thinkingEnabled?: boolean): EffortCommandResult {
+  const budget = configuredThinkingBudget(provider, model, getActiveProviderSettings());
+  const capabilities = getProviderReasoningCapabilitiesForModel(model, provider);
+  if (budget !== undefined || capabilities?.thinkingBudget) return { message: `Reasoning uses a native token budget for ${model} on ${provider}: ${budget === undefined ? 'default' : budget === -1 ? 'auto (dynamic)' : budget + ' tokens'}. No graded effort is sent while a token budget is active. Use /thinking budget N|auto|default.` };
   const envOverride = getEffortEnvOverride();
   const effectiveValue = envOverride === null ? undefined : envOverride ?? appStateEffort;
   if (effectiveValue === undefined) {
@@ -220,16 +236,29 @@ function unsetEffortLevel(): EffortCommandResult {
   };
 }
 export function executeEffort(args: string, model?: string, provider: ProviderId = getRuntimeProvider()): EffortCommandResult {
-  const normalized = args.toLowerCase();
-  if (normalized === 'auto' || normalized === 'unset') {
-    return unsetEffortLevel();
-  }
-  if (!isEffortLevel(normalized)) {
+  const normalized = args.trim().toLowerCase();
+  const automatic = normalized === 'auto' || normalized === 'unset';
+  if (!automatic && !isEffortLevel(normalized) && !(model && getSupportedEffortLevelsForModel(model, provider).includes(normalized))) {
     return {
-      message: `Invalid argument: ${args}. Valid options are: minimal, low, medium, high, xhigh, max, ultra, auto`
+      message: `Invalid argument: ${args}. Valid options are: none, minimal, low, medium, high, xhigh, max, ultra, auto, or a level advertised by the selected model`
     };
   }
-  return setEffortValue(normalized, model, provider);
+  const settings = getActiveProviderSettings();
+  const budget = model ? configuredThinkingBudget(provider, model, settings) : undefined;
+  const capabilities = model ? getProviderReasoningCapabilitiesForModel(model, provider) : undefined;
+  const clearBudget = budget !== undefined && model && (automatic || (modelSupportsEffort(model, provider) &&
+    (normalized !== 'none' || getSupportedEffortLevelsForModel(model, provider).includes('none')) &&
+    (normalized !== 'ultra' || getSupportedEffortLevelsForModel(model, provider).includes('ultra'))));
+  if (clearBudget) {
+    const cleared = updateSettingsForSource('localSettings', { provider: thinkingBudgetSettingsPatch(provider, model!, 'default', settings, capabilities) } as SettingsJson);
+    if (cleared.error) return { message: `Failed to clear the active token budget: ${cleared.error.message}` };
+  }
+  const result = automatic ? unsetEffortLevel() : setEffortValue(normalized as EffortValue, model, provider);
+  if (clearBudget && !result.effortUpdate) {
+    const restored = updateSettingsForSource('localSettings', { provider: { thinkingBudgets: settings.thinkingBudgets } } as SettingsJson);
+    if (restored.error) return { message: `${result.message} The previous budget could not be restored: ${restored.error.message}` };
+  }
+  return clearBudget && result.effortUpdate ? { ...result, providerUpdate: { thinkingBudgets: getActiveProviderSettings().thinkingBudgets } } : result;
 }
 function ShowCurrentEffort(t0) {
   const {
@@ -273,7 +302,7 @@ function ApplyEffortAndClose(t0) {
 export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, args?: string): Promise<React.ReactNode> {
   args = args?.trim() || '';
   if (COMMON_HELP_ARGS.includes(args)) {
-    onDone('Usage: /effort [minimal|low|medium|high|xhigh|max|ultra|auto]\n\nUR reads the selected model\'s exact provider-advertised levels. `max` means that model\'s established ceiling, so it resolves to max, xhigh, or high as appropriate. `ultra` is UR\'s visible beyond-high ceiling selector: it appears only when the model advertises ultra, max, xhigh, or an explicit equivalent, and UR sends that exact provider value. High-only and boolean-thinking models never receive Ultra. If the active model advertises boolean thinking without a graded ladder, a graded request enables thinking but is explicitly not sent as a level; use /thinking on|off for direct control.\n\nEffort levels:\n- minimal: Lowest latency and cost\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- xhigh: Extended reasoning above high\n- max: The selected model\'s established maximum level\n- ultra: Provider-advertised beyond-high ceiling (shown with its native mapping)\n- auto: Use the model/provider default');
+    onDone('Usage: /effort [none|minimal|low|medium|high|xhigh|max|ultra|auto|native-level]\n\nUR reads the selected model\'s exact provider-advertised levels. `max` means that model\'s established ceiling, so it resolves to max, xhigh, or high as appropriate. `ultra` is UR\'s visible beyond-high ceiling selector: it appears only when the model advertises ultra, max, xhigh, or an explicit equivalent, and UR sends that exact provider value. High-only and boolean-thinking models never receive Ultra. If the active model advertises boolean thinking without a graded ladder, a graded request enables thinking but is explicitly not sent as a level; use /thinking on|off for direct control.\n\nBudget-only models use /thinking budget N|auto|default. Native custom names are offered only when the model advertises them.\n\nEffort levels:\n- none: Reasoning off, only where advertised\n- minimal: Lowest latency and cost\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- xhigh: Extended reasoning above high\n- max: The selected model\'s established maximum level\n- ultra: Provider-advertised beyond-high ceiling (shown with its native mapping)\n- auto: Use the model/provider default');
     return;
   }
   const model = getMainLoopModel();

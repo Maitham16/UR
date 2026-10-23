@@ -1,0 +1,69 @@
+diff --git a/src/v3/types.ts b/src/v3/types.ts
+index b10e84f1beb1dacdae5e01c42a223974b9e20b73..16bb9afc9f76f9b7eb666b69d80771659f85955b 100644
+--- a/src/v3/types.ts
++++ b/src/v3/types.ts
+@@ -2295,6 +2295,9 @@ export class ZodArray<T extends ZodTypeAny, Cardinality extends ArrayCardinality
+       }
+     }
+ 
++    // Reject an oversized collection before walking or allocating element issues.
++    if ((def.maxLength !== null && ctx.data.length > def.maxLength.value) ||
++      (def.exactLength !== null && ctx.data.length > def.exactLength.value)) return INVALID;
+     if (ctx.common.async) {
+       return Promise.all(
+         ([...ctx.data] as any[]).map((item, i) => {
+@@ -3727,6 +3730,8 @@ export class ZodSet<Value extends ZodTypeAny = ZodTypeAny> extends ZodType<
+       }
+     }
+ 
++    // Reject an oversized collection before walking or allocating element issues.
++    if (def.maxSize !== null && ctx.data.size > def.maxSize.value) return INVALID;
+     const valueType = this._def.valueType;
+ 
+     function finalizeSet(elements: SyncParseReturnType<any>[]) {
+diff --git a/v3/types.cjs b/v3/types.cjs
+index 11ed4dfc4745f9af1f1501874576b78b77d294ef..e34673bb8ce036e948ee3c64fa3286fbf7b800f0 100644
+--- a/v3/types.cjs
++++ b/v3/types.cjs
+@@ -1819,6 +1819,9 @@ class ZodArray extends ZodType {
+                 status.dirty();
+             }
+         }
++        // Reject an oversized collection before walking or allocating element issues.
++        if ((def.maxLength !== null && ctx.data.length > def.maxLength.value) ||
++          (def.exactLength !== null && ctx.data.length > def.exactLength.value)) return parseUtil_js_1.INVALID;
+         if (ctx.common.async) {
+             return Promise.all([...ctx.data].map((item, i) => {
+                 return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+@@ -2846,6 +2849,8 @@ class ZodSet extends ZodType {
+                 status.dirty();
+             }
+         }
++        // Reject an oversized collection before walking or allocating element issues.
++        if (def.maxSize !== null && ctx.data.size > def.maxSize.value) return parseUtil_js_1.INVALID;
+         const valueType = this._def.valueType;
+         function finalizeSet(elements) {
+             const parsedSet = new Set();
+diff --git a/v3/types.js b/v3/types.js
+index 40b11c0f01b2af54e0ed48e198607bd8836d9a63..4772d53891b2631f26bdad83b1d1fdd06e1b383e 100644
+--- a/v3/types.js
++++ b/v3/types.js
+@@ -1798,6 +1798,9 @@ export class ZodArray extends ZodType {
+                 status.dirty();
+             }
+         }
++        // Reject an oversized collection before walking or allocating element issues.
++        if ((def.maxLength !== null && ctx.data.length > def.maxLength.value) ||
++          (def.exactLength !== null && ctx.data.length > def.exactLength.value)) return INVALID;
+         if (ctx.common.async) {
+             return Promise.all([...ctx.data].map((item, i) => {
+                 return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+@@ -2817,6 +2820,8 @@ export class ZodSet extends ZodType {
+                 status.dirty();
+             }
+         }
++        // Reject an oversized collection before walking or allocating element issues.
++        if (def.maxSize !== null && ctx.data.size > def.maxSize.value) return INVALID;
+         const valueType = this._def.valueType;
+         function finalizeSet(elements) {
+             const parsedSet = new Set();

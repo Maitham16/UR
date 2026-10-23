@@ -35,6 +35,18 @@ not establish OS confinement. Review the [preset scope and exceptions](../techni
 
 ## Install and startup
 
+### Thinking levels, budgets or speed options are missing
+
+Upgrade UR and refresh `/model` with Ctrl+R. The focused model determines its
+controls: arrows select native effort, `T` requires a real on/off mapping, `B`
+requires a native budget, and `S` requires documented serving/routing options.
+Gemini 2.5 uses `/thinking budget`, rather than named effort. Mandatory models
+cannot turn reasoning off. Local runtimes and NVIDIA do not acquire a paid
+speed tier from reasoning metadata. Ollama's current `/api/show` response can
+publish exact `thinking.values`; update the server if only a legacy capability
+flag is available. `/effort status`, `/thinking status` and `/fast status`
+report the active contract. See [provider controls](providers.md#model-reasoning-and-performance-controls).
+
 ### A supported Claude model reports no thinking or effort controls
 
 Update UR and restart it, then use Ctrl+R in `/model` to refresh the live
@@ -72,7 +84,7 @@ generation. Add or replace your API key through `/connect` or the model picker.
 - Homebrew install: inspect `brew list ur-nexus` and `command -v ur`; update with
   `brew upgrade ur-nexus`. For a first installation, follow the
   [tap and formula-trust setup](NATIVE_INSTALL.md#homebrew).
-- Windows native and public npm installation are unavailable in 1.87.3. For
+- Windows native and public npm installation are unavailable in 1.87.4. For
   optional Windows source development, inspect `Get-Command ur` and follow the
   [Development Guide](DEVELOPMENT.md).
 - npm install: check the npm global bin path, then reinstall if needed. The

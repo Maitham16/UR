@@ -7,63 +7,73 @@ import { useKeybindings } from '../../keybindings/useKeybinding.js'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import { useAppState, useSetAppState } from '../../state/AppState.js'
 import type { LocalJSXCommandOnDone } from '../../types/command.js'
-import { getAnthropicFastMode } from '../../services/providers/anthropicCapabilities.js'
-import { getActiveProviderSettings, setSafeProviderConfig } from '../../services/providers/providerRegistry.js'
+import { getActiveProviderSettings, setProviderPerformance } from '../../services/providers/providerRegistry.js'
+import { getModelPerformanceOptions, getSavedModelPerformanceMode, isAcceleratedPerformanceMode, performanceModeLabel, preferredFastPerformanceMode, type ModelPerformanceMode } from '../../services/providers/modelPerformance.js'
 import { getRuntimeProvider } from '../../utils/model/providers.js'
-import { getInitialSettings } from '../../utils/settings/settings.js'
 import { isFastModeEnabled } from '../../utils/fastMode.js'
 
-export function applyNativeFastMode(enabled: boolean, context: Pick<LocalJSXCommandContext, 'getAppState' | 'setAppState'>): string {
+type Context = Pick<LocalJSXCommandContext, 'getAppState' | 'setAppState'>
+function applyPerformanceMode(mode: ModelPerformanceMode, context: Context): string {
   const state = context.getAppState()
   const provider = state.provider?.active ?? getRuntimeProvider()
   const model = state.mainLoopModelForSession ?? state.mainLoopModel
-  if (!isFastModeEnabled()) return 'Fast mode is disabled by UR_CODE_DISABLE_FAST_MODE.'
-  if (provider !== 'anthropic-api') return `No native fast serving tier is configured for ${provider}.`
-  if (enabled && !getAnthropicFastMode(model)) return `Fast mode is not supported for ${model}. The selected model was kept.`
-  const saved = setSafeProviderConfig('anthropic.speed', enabled ? 'fast' : 'standard')
+  if (!isFastModeEnabled() && isAcceleratedPerformanceMode(mode)) return 'Fast mode is disabled by UR_CODE_DISABLE_FAST_MODE.'
+  const saved = setProviderPerformance(provider, model, mode)
   if (!saved.ok) return saved.message
-  const effective = getActiveProviderSettings(getInitialSettings())
-  context.setAppState(previous => ({ ...previous,
-    provider: { ...previous.provider, anthropic: effective.anthropic },
-    fastMode: effective.anthropic?.speed === 'fast',
-  }))
-  return `Speed: ${effective.anthropic?.speed === 'fast' ? 'FAST (premium provider pricing)' : 'STANDARD'} for ${model}.`
+  const effective = getActiveProviderSettings()
+  context.setAppState(previous => ({ ...previous, provider: { ...previous.provider, ...effective, active: provider, model }, fastMode: isFastModeEnabled() && isAcceleratedPerformanceMode(mode) }))
+  return `Speed: ${performanceModeLabel(mode)} for ${model} on ${provider}.`
 }
-
+export function applyNativeFastMode(enabled: boolean, context: Context): string {
+  const state = context.getAppState()
+  const provider = state.provider?.active ?? getRuntimeProvider()
+  const model = state.mainLoopModelForSession ?? state.mainLoopModel
+  const mode = enabled ? preferredFastPerformanceMode(provider, model) : 'standard'
+  if (!mode) return `No native fast serving tier or routing control is available for ${model} on ${provider}. The selected model was kept.`
+  return applyPerformanceMode(mode, context)
+}
 export function FastModePicker({ onDone }: { onDone: LocalJSXCommandOnDone; unavailableReason?: string | null }): React.ReactNode {
   const model = useMainLoopModel()
-  const provider = useAppState(state => state.provider?.active ?? getRuntimeProvider())
+  const state = useAppState(value => value)
+  const provider = state.provider?.active ?? getRuntimeProvider()
   const setAppState = useSetAppState()
-  const state = useAppState(state => state)
-  const [fast, setFast] = useState(() => getActiveProviderSettings(getInitialSettings()).anthropic?.speed === 'fast')
-  const supported = isFastModeEnabled() && provider === 'anthropic-api' && Boolean(getAnthropicFastMode(model))
-  const confirm = () => {
-    if (supported) onDone(applyNativeFastMode(fast, { getAppState: () => state, setAppState }))
+  const options = getModelPerformanceOptions(provider, model).filter(option => isFastModeEnabled() || !isAcceleratedPerformanceMode(option.value))
+  const [mode, setMode] = useState(() => {
+    const saved = getSavedModelPerformanceMode(provider, model, getActiveProviderSettings())
+    return !isFastModeEnabled() && isAcceleratedPerformanceMode(saved) ? 'standard' : saved
+  })
+  const cycle = (direction: number) => {
+    if (!options.length) return
+    setMode(previous => options[(options.findIndex(option => option.value === previous) + direction + options.length) % options.length]!.value)
   }
-  useKeybindings({ 'confirm:yes': confirm, 'confirm:nextField': () => setFast(value => !value),
-    'confirm:next': () => setFast(value => !value), 'confirm:previous': () => setFast(value => !value),
-    'confirm:toggle': () => setFast(value => !value) }, { context: 'Confirmation' })
+  const confirm = () => {
+    if (options.length) onDone(applyPerformanceMode(mode, { getAppState: () => state, setAppState }))
+    else onDone('Speed is managed by the provider/runtime.', { display: 'system' })
+  }
+  useKeybindings({ 'confirm:yes': confirm, 'confirm:nextField': () => cycle(1),
+    'confirm:next': () => cycle(1), 'confirm:previous': () => cycle(-1), 'confirm:toggle': () => cycle(1) }, { context: 'Confirmation' })
   return <Dialog title="Model speed" onCancel={() => onDone('Kept model speed.', { display: 'system' })}
-    subtitle={supported ? `${model} · Fast uses premium provider pricing and separate rate limits.` : undefined}>
-    <Text>{supported ? `Speed: ${fast ? 'FAST' : 'STANDARD'} · Tab to change · Enter to confirm` : `No native fast serving tier is available for ${model} on ${provider}.`}</Text>
+    subtitle={options.length ? `${model} · Premium modes cost more; routing preferences do not guarantee latency.` : undefined}>
+    <Text>{options.length ? `Speed: ${performanceModeLabel(mode)} · Tab to change · Enter to confirm` : `Speed is managed by ${provider} for this model. No unsupported tier will be sent.`}</Text>
   </Dialog>
 }
-
 export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXCommandContext, args = ''): Promise<React.ReactNode | null> {
   const action = args.trim().toLowerCase()
-  if (action === 'on' || action === 'off') {
-    onDone(applyNativeFastMode(action === 'on', context)); return null
-  }
+  if (action === 'on' || action === 'off') { onDone(applyNativeFastMode(action === 'on', context)); return null }
+  const state = context.getAppState()
+  const provider = state.provider?.active ?? getRuntimeProvider()
+  const model = state.mainLoopModelForSession ?? state.mainLoopModel
+  const options = getModelPerformanceOptions(provider, model)
   if (action === 'status') {
-    const state = context.getAppState()
-    const provider = state.provider?.active ?? getRuntimeProvider()
-    const model = state.mainLoopModelForSession ?? state.mainLoopModel
-    const supported = provider === 'anthropic-api' && Boolean(getAnthropicFastMode(model))
-    const speed = getActiveProviderSettings(getInitialSettings()).anthropic?.speed ?? 'standard'
-    if (!isFastModeEnabled()) { onDone('Speed: STANDARD. Fast mode is disabled by UR_CODE_DISABLE_FAST_MODE.'); return null }
-    onDone(supported ? `Speed: ${speed.toUpperCase()} for ${model}.${speed === 'fast' ? ' Premium provider pricing applies.' : ''}` : `No native fast serving tier is available for ${model} on ${provider}.`)
+    const settings = getActiveProviderSettings()
+    const saved = getSavedModelPerformanceMode(provider, model, settings)
+    const mode = !isFastModeEnabled() && isAcceleratedPerformanceMode(saved) ? 'standard' : saved
+    const upstream = provider === 'openrouter' && ((settings.openrouter?.serviceTier && settings.openrouter.serviceTier !== 'auto') || settings.openrouter?.speed === 'fast')
+      ? ` Configured upstream tier: ${settings.openrouter?.serviceTier ?? 'auto'}; upstream speed: ${settings.openrouter?.speed ?? 'standard'}.` : ''
+    onDone(options.length ? `Speed: ${performanceModeLabel(mode)} for ${model} on ${provider}.${upstream}${!isFastModeEnabled() ? ' Accelerated modes are disabled by UR_CODE_DISABLE_FAST_MODE.' : ''}` : `Speed is managed by ${provider}; no native serving-tier control is advertised for ${model}.`)
     return null
   }
-  if (action) { onDone('Usage: /fast [on|off|status]'); return null }
+  if (options.some(option => option.value === action)) { onDone(applyPerformanceMode(action as ModelPerformanceMode, context)); return null }
+  if (action) { onDone(`Usage: /fast [on|off|status${options.length ? '|' + options.map(option => option.value).join('|') : ''}]`); return null }
   return <FastModePicker onDone={onDone} />
 }

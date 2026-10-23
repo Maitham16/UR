@@ -183,7 +183,7 @@ describe('OpenRouter model-aware effort', () => {
   test('uses only an explicit provider-authored ultra alias on the wire', () => {
     expect(
       getSupportedEffortLevelsForModel('vendor/ultra-alias', 'openrouter'),
-    ).toEqual(['low', 'ultra'])
+    ).toEqual(['low', 'ultra', 'deep'])
     expect(resolveAppliedEffort('vendor/ultra-alias', 'ultra', 'openrouter')).toBe('ultra')
     expect(toOpenRouterReasoningEffort('vendor/ultra-alias', 'ultra')).toBe('deep')
     expect(

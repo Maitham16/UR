@@ -19,6 +19,7 @@ import { ensureProviderModelsFresh, getActiveProviderSettings, type ProviderId, 
 import { getInitialSettings, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { executePostModelSwitchHooks, executePreModelSwitchHooks, hasBlockingResult } from '../../utils/hooks.js';
 import { getNvidiaHostedTaskModelContract } from '../../services/providers/nvidiaHostedModels.js';
+import { getModelPerformanceOptions, getSavedModelPerformanceMode, performanceModeLabel } from '../../services/providers/modelPerformance.js';
 function ModelPickerWrapper(t0) {
   const $ = _c(20);
   const {
@@ -59,8 +60,10 @@ function ModelPickerWrapper(t0) {
         message = message + ` with ${chalk.bold(effort)} effort`;
       }
       let wasFastModeToggledOn = undefined;
-      if (metadata?.providerId === 'anthropic-api') {
-        message += `\nSpeed: ${(getActiveProviderSettings(getInitialSettings()).anthropic?.speed ?? 'standard').toUpperCase()}`;
+      if (metadata?.providerId) {
+        if (getModelPerformanceOptions(metadata.providerId, model).length) {
+          message += `\nSpeed: ${performanceModeLabel(getSavedModelPerformanceMode(metadata.providerId, model, getActiveProviderSettings()))}`;
+        }
       } else if (isFastModeEnabled()) {
         clearFastModeCooldown();
         if (!isFastModeSupportedByModel(model) && isFastMode) {

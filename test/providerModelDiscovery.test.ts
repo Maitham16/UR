@@ -58,12 +58,13 @@ describe('API provider live model discovery', () => {
     expect(result.models.map(m => m.id)).toEqual(['gpt-5.5', 'gpt-5.6-sol', 'o3-mini']) // sorted, live and authoritative
     expect(result.models.find(m => m.id === 'gpt-5.6-sol')?.reasoning).toEqual({
       supportedEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
-      effortAliases: { minimal: 'none' },
       defaultEffort: 'medium',
       mandatory: true,
+      supportsThinking: true,
     })
     expect(result.models.find(m => m.id === 'gpt-5.5')?.reasoning).toEqual({
-      supportedEfforts: ['low', 'medium', 'high', 'xhigh'],
+      supportedEfforts: ['none', 'low', 'medium', 'high', 'xhigh'],
+      supportsThinking: true, mandatory: false,
       defaultEffort: 'medium',
     })
   })
@@ -410,6 +411,8 @@ describe('OpenAI-compatible reasoning discovery', () => {
       })
 
     expect(await show('gpt-oss:20b', ['completion', 'thinking'])).toEqual({
+      mandatory: true,
+      thinkingValues: ['low', 'medium', 'high'],
       supportsThinking: true,
       supportedEfforts: ['low', 'medium', 'high'],
       defaultEffort: 'medium',
@@ -460,7 +463,7 @@ describe('OpenAI-compatible reasoning discovery', () => {
     }])
     expect(
       getSupportedEffortLevelsForModel('custom-reasoner:latest', 'ollama'),
-    ).toEqual(['low', 'high', 'ultra'])
+    ).toEqual(['low', 'high', 'ultra', 'deep'])
     expect(
       getProviderEffortWireValue(
         'custom-reasoner:latest',
@@ -610,7 +613,6 @@ describe('OpenAI-compatible reasoning discovery', () => {
     expect(reasoning).toEqual({
       supportsThinking: true,
       supportedEfforts: ['none', 'low', 'medium', 'high'],
-      effortAliases: { minimal: 'none' },
     })
     expect(seen).toHaveLength(1)
     const serverInfoUrl = new URL(seen[0]!.url)

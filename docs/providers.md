@@ -168,8 +168,8 @@ destinations; model discovery and inference use the selected provider's saved
 URL. Subscription CLI providers remain vendor-managed and do not accept a base
 URL.
 
-OpenAI API uses Chat Completions by default. `openai_transport responses` is an
-explicit opt-in to the native Responses adapter; it defaults to `store=false`
+OpenAI API automatically uses Responses for the GPT-6 family and Responses-only Pro models so reasoning and agent tool calls use their supported endpoint. Other
+models retain Chat Completions unless `openai_transport responses` is selected; it defaults to `store=false`
 and supports semantic streaming, background polling/cancellation, WebSocket
 continuation, server compaction, and deferred tool search. It does not change
 OpenAI-compatible, OpenRouter, local, or subscription-CLI providers.
@@ -186,9 +186,58 @@ in live app state while the same validated pair is persisted once to local
 settings. A stale settings snapshot cannot combine a newly selected model with
 the previous provider.
 
+### Model reasoning and performance controls
+
+In `/model`, use Left/Right for advertised effort, `T` for a real native
+on/off control, `B` for native token-budget choices, and `S` for serving or
+routing preferences. Enter applies the model and its pending controls; Esc
+cancels the preview. A missing control means that the selected adapter/model
+has no verified contract for it.
+
+| Provider | Reasoning | Performance (`S` or `/fast`) |
+| --- | --- | --- |
+| OpenAI API | Exact named levels and documented snapshot aliases, including older GPT-5 models; `none` only where accepted. GPT-6 Astra and GPT-6.1 Sol require reasoning. | Auto/Standard, Fast, Flex on documented models; Ultrafast on GPT-6 Astra and GPT-6.1 Sol. |
+| Claude API | Live effort and accepted thinking modes; mandatory models remain on. Manual budgets only where supported. | Standard/Fast on supported Opus models. |
+| Gemini API | Model-specific `thinkingLevel`; Gemini 2.5 uses `thinkingBudget` instead. Pro accepts 128–32768 or auto; Flash accepts 0–24576 or auto; Flash-Lite accepts 512–24576, 0, or auto. Pro cannot disable reasoning. | Auto/Standard/Priority/Flex on the documented model set. |
+| Ollama | `/api/show` native `thinking.values`, including booleans, graded levels and custom names; GPT-OSS retains its documented fallback. | Server-managed. |
+| NVIDIA Agentic | Exact enums/defaults from each model's published request schema; supported Gemma and Lightning models use the native template boolean. | Provider-managed. |
+| OpenRouter | Live model reasoning levels, defaults and supported token budgets. | Auto/Standard or endpoint preferences for latency, throughput and price; these are routing choices, not guaranteed speed. |
+| Local/OpenAI-compatible servers | Only model-advertised or supported non-generating probes; no universal invented boolean. | Server-managed unless an adapter has a verified control. |
+| External subscription CLIs | Vendor-managed; this change adds no generic effort or serving fields to CLI bridges. | Vendor-managed. |
+
+`/thinking on|off|status` maps off to native `none`, a boolean, or budget 0
+only when supported. `/effort auto` clears the explicit effort preference.
+`/thinking budget N|auto|default` sets an exact provider/model-scoped token
+budget; `default` removes it. An explicit budget takes precedence over effort;
+selecting `/effort` clears that model's budget. `B` previews only native
+bounds/default/auto/off choices rather than inventing Low/High token quotas.
+
+`/fast on|off|status` keeps the selected model. Explicit modes are also accepted,
+for example `/fast ultrafast`, `/fast flex`, `/fast priority`, or `/fast latency`
+where available. Fast, Ultrafast and Priority use premium provider pricing and
+account eligibility. Flex is slower and lower cost; UR allows a longer default
+request timeout and never retries it at a more expensive tier automatically.
+Explicit timeout overrides remain authoritative.
+
+Headless configuration uses `ur config set openai.service_tier auto|default|fast|priority|ultrafast|flex`
+or `ur config set gemini.service_tier auto|standard|priority|flex`. Configure
+OpenRouter endpoint preferences with `ur config set openrouter.routing auto|latency|throughput|price`.
+The older OpenRouter `service_tier fast` spelling is normalized to native
+`priority`. `UR_CODE_DISABLE_FAST_MODE=1` suppresses accelerated choices while
+preserving an explicitly selected lower-cost Flex tier.
+
+Contracts: [OpenAI reasoning](https://developers.openai.com/api/docs/guides/reasoning),
+[Fast](https://developers.openai.com/api/docs/guides/fast-mode),
+[Ultrafast](https://developers.openai.com/api/docs/guides/ultrafast-mode),
+[Gemini thinking](https://ai.google.dev/gemini-api/docs/generate-content/thinking),
+[Priority](https://ai.google.dev/gemini-api/docs/generate-content/priority-inference),
+[Flex](https://ai.google.dev/gemini-api/docs/generate-content/flex-inference),
+[Ollama thinking](https://docs.ollama.com/capabilities/thinking), and
+[OpenRouter reasoning](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
+
 ### Reasoning effort
 
-Use `/effort minimal|low|medium|high|xhigh|max|ultra|auto` inside UR. UR builds a
+Use `/effort none|minimal|low|medium|high|xhigh|max|ultra|auto` inside UR. UR builds a
 capability-backed selector set from the native graded levels advertised for the active
 provider/model pair. `max` is provider-neutral and means the selected model's
 highest supported non-Ultra tier: it displays and sends the matching native
@@ -211,15 +260,16 @@ when the provider/model advertises `ultra`, `max`, `xhigh`, or an explicit
 provider-authored equivalent. UR shows the native mapping (for example,
 `ultra→max`) and sends that exact wire value; it never enables Ultra for a model
 whose graded ladder tops out at `high`, lacks an advertised beyond-high value,
-or has unknown capability metadata. Arbitrary
-labels such as `deep` still require an explicit provider alias because UR
-cannot infer their rank.
+or has unknown capability metadata. Provider-defined names such as `deep` are selectable when explicitly advertised,
+and their exact spelling is preserved on the wire. UR does not infer their rank
+or treat them as Ultra without an explicit provider alias.
 
 Public NVIDIA Agentic discovery comes from current Build Free Endpoint cards
 that advertise agent/tool use. NVIDIA's account inventory can enrich but never
 filter or remove those models. UR applies only model-specific documented
-reasoning ladders: `none` appears as Minimal and a documented `max` can map to
-Ultra while preserving NVIDIA's wire value. Unknown models never inherit a
+reasoning ladders from each published request schema: `none` is a distinct
+reasoning-off value, and a documented `max` can map to Ultra while preserving
+NVIDIA's wire value. Unknown models never inherit a
 ladder. Focused media, analysis, embedding, safety, translation, and gRPC
 contracts are isolated in NVIDIA Special and cannot pass ongoing-agent model
 validation.
@@ -240,12 +290,14 @@ graded ladder; UR therefore exposes the verified native on/off control without
 claiming that the model cannot also support levels. GPT-OSS uses Ollama's documented
 `low|medium|high` ladder and does not expose Ultra. Other graded ladders and
 Ultra aliases are used only when the endpoint explicitly returns them in model
-reasoning metadata.
+reasoning metadata. Current `/api/show` responses publish exact native
+`thinking.values` and defaults. Named-only models receive named `think` values,
+never invented booleans; mixed models expose off only when `false` is accepted.
 
 For vLLM, UR lazily reads the non-generating
 `/server_info?config_format=json` endpoint for the focused model. A configured
 reasoning parser establishes vLLM's documented Chat Completions contract:
-`none|low|medium|high`, displayed as `minimal→none|low|medium|high` and sent
+`none|low|medium|high`, displayed as `none|low|medium|high` and sent
 through `reasoning_effort`. This discovery never launches a completion and
 does not add Ultra. A richer provider-authored model record can add exact
 levels or aliases. For llama.cpp, `/props` can establish that the active chat

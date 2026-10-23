@@ -93,6 +93,7 @@ import {
 import {
   ensureProviderReasoningCapabilitiesForModel,
   getProviderReasoningCapabilitiesForModel,
+  getActiveProviderSettings,
 } from '../providers/providerRegistry.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
@@ -197,6 +198,7 @@ import {
 import { UR_IN_CHROME_MCP_SERVER_NAME } from 'src/utils/urInChrome/common.js'
 import { CHROME_TOOL_SEARCH_INSTRUCTIONS } from 'src/utils/urInChrome/prompt.js'
 import { getMaxThinkingTokensForModel } from 'src/utils/context.js'
+import { configuredThinkingBudget, validateThinkingBudget } from '../providers/thinkingBudget.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js'
 import { type EffortValue, modelSupportsEffort } from 'src/utils/effort.js'
@@ -1791,9 +1793,16 @@ async function* queryModel(
         options.providerSettings?.active ?? getRuntimeProvider(),
       )
 
+    const nativeBudget = configuredThinkingBudget(effortProvider, options.model, options.providerSettings ?? getActiveProviderSettings())
+    const reasoningCapabilities = getProviderReasoningCapabilitiesForModel(options.model, effortProvider)
+    if (nativeBudget !== undefined) {
+      const error = validateThinkingBudget(nativeBudget, reasoningCapabilities, effortProvider)
+      if (error) throw new Error(`${error} Use /thinking budget default to clear the saved budget.`)
+      delete outputConfig.effort
+    }
     const hasThinking =
       isThinkingMandatory(options.model, effortProvider) ||
-      (thinkingConfig.type !== 'disabled' &&
+      ((nativeBudget !== undefined ? nativeBudget !== 0 : thinkingConfig.type !== 'disabled') &&
       !isEnvTruthy(process.env.UR_CODE_DISABLE_THINKING))
     let thinking: BetaMessageStreamParams['thinking'] | undefined = undefined
 
@@ -1801,7 +1810,12 @@ async function* queryModel(
     // without notifying the model launch DRI and research. This is a sensitive
     // setting that can greatly affect model quality and bashing.
     if (hasThinking && modelSupportsThinking(options.model, effortProvider)) {
-      if (
+      if (nativeBudget !== undefined || reasoningCapabilities?.thinkingBudget) {
+        const explicit = thinkingConfig.type === 'enabled' ? thinkingConfig.budgetTokens : undefined
+        const budget = explicit ?? nativeBudget
+        thinking = budget !== undefined ? { type: 'enabled', budget_tokens: budget }
+          : { type: 'adaptive' } as unknown as BetaMessageStreamParams['thinking']
+      } else if (
         !isEnvTruthy(process.env.UR_CODE_DISABLE_ADAPTIVE_THINKING) &&
         modelSupportsAdaptiveThinking(options.model, effortProvider)
       ) {
@@ -1896,10 +1910,10 @@ async function* queryModel(
       )
     }
 
-    // Public Claude models can reject sampling parameters even when thinking
+    // Public API models can reject sampling parameters even when thinking
     // is omitted. Use their defaults unless the caller explicitly overrides it.
     const temperature = !hasThinking
-      ? (options.temperatureOverride ?? (effortProvider === 'anthropic-api' ? undefined : 1))
+      ? (options.temperatureOverride ?? (effortProvider === 'anthropic-api' || effortProvider === 'openai-api' ? undefined : 1))
       : undefined
 
     lastRequestBetas = betasParams

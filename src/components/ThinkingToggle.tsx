@@ -12,7 +12,12 @@ import { Pane } from './design-system/Pane.js';
 import { Dialog } from './design-system/Dialog.js';
 import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
 import { getRuntimeProvider } from '../utils/model/providers.js';
-import { isThinkingMandatory } from '../utils/thinking.js';
+import { isThinkingMandatory, modelSupportsThinking, providerSupportsThinkingToggle } from '../utils/thinking.js';
+import { getDisplayedEffortLevel, getProviderEffortWireValue, getSupportedEffortLevelsForModel } from '../utils/effort.js';
+import { executeThinking } from '../commands/thinking/thinking.js';
+import { useAppState, useSetAppState } from '../state/AppState.js';
+import { getProviderReasoningCapabilitiesForModel, getActiveProviderSettings } from '../services/providers/providerRegistry.js';
+import { configuredThinkingBudget } from '../services/providers/thinkingBudget.js';
 export type Props = {
   currentValue: boolean;
   onSelect: (enabled: boolean) => void;
@@ -21,9 +26,35 @@ export type Props = {
 };
 export function ThinkingToggle(props: Props): React.ReactNode {
   const model = useMainLoopModel();
-  if (isThinkingMandatory(model, getRuntimeProvider())) {
+  const provider = getRuntimeProvider();
+  const effort = useAppState(state => state.effortValue);
+  const setAppState = useSetAppState();
+  const [error, setError] = React.useState<string>();
+  const capabilities = getProviderReasoningCapabilitiesForModel(model, provider);
+  const hasEffortOff = getSupportedEffortLevelsForModel(model, provider).includes('none');
+  const budget = configuredThinkingBudget(provider, model, getActiveProviderSettings());
+  if (error) return <Dialog title="Thinking setting was not applied" onCancel={() => props.onCancel?.()}><Text>{error}</Text></Dialog>;
+  if (isThinkingMandatory(model, provider)) {
     return <Dialog title="Thinking always ON" onCancel={() => props.onCancel?.()}>
-      <Text>{model} requires thinking. Use /effort to choose its reasoning depth.</Text>
+      <Text>{model} requires thinking. {capabilities?.thinkingBudget ? 'Use /thinking budget N|auto|default to choose its token budget.' : 'Use /effort to choose its reasoning depth.'}</Text>
+    </Dialog>;
+  }
+  if (hasEffortOff || capabilities?.thinkingBudget) {
+    const current = budget !== undefined ? budget !== 0 : hasEffortOff ? getProviderEffortWireValue(model, getDisplayedEffortLevel(model, effort, provider), provider) !== 'none'
+      : budget === undefined ? props.currentValue : budget !== 0;
+    return <ThinkingToggleOptions {...props} currentValue={current} onSelect={enabled => {
+      const result = executeThinking(enabled ? 'on' : 'off', current, model, provider, effort);
+      if (!result.thinkingUpdate && !result.effortUpdate && !result.providerUpdate) { setError(result.message); return; }
+      setAppState(previous => ({ ...previous,
+        ...(result.effortUpdate ? { effortValue: result.effortUpdate.value } : {}),
+        ...(result.providerUpdate ? { provider: { ...previous.provider, ...result.providerUpdate } } : {}),
+      }));
+      props.onSelect(enabled);
+    }} />;
+  }
+  if (!modelSupportsThinking(model, provider) || !providerSupportsThinkingToggle(provider, model)) {
+    return <Dialog title="Thinking is managed by the model/provider" onCancel={() => props.onCancel?.()}>
+      <Text>{model} does not advertise a native on/off control. {getSupportedEffortLevelsForModel(model, provider).length ? 'Use /effort to select its advertised reasoning level.' : 'Refresh /model to discover available controls.'}</Text>
     </Dialog>;
   }
   return <ThinkingToggleOptions {...props} />;

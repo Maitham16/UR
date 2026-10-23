@@ -4,10 +4,10 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
-import type { ProviderId } from '../../services/providers/providerRegistry.js'
+import { getActiveProviderSettings, getProviderReasoningCapabilitiesForModel, type ProviderId, type ProviderSettings } from '../../services/providers/providerRegistry.js'
 import { useAppState, useSetAppState } from '../../state/AppState.js'
 import type { LocalJSXCommandOnDone } from '../../types/command.js'
-import { modelSupportsEffort } from '../../utils/effort.js'
+import { modelSupportsEffort, getDefaultEffortForModel, getDisplayedEffortLevel, getProviderEffortWireValue, getSupportedEffortLevelsForModel, type EffortValue } from '../../utils/effort.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { getRuntimeProvider } from '../../utils/model/providers.js'
 import { updateSettingsForSource } from '../../utils/settings/settings.js'
@@ -17,10 +17,32 @@ import {
   isThinkingMandatory,
   getThinkingOffMode,
 } from '../../utils/thinking.js'
+import { configuredThinkingBudget, thinkingBudgetSettingsPatch, type ThinkingBudgetSelection } from '../../services/providers/thinkingBudget.js'
+import { executeEffort } from '../effort/effort.js'
+import type { SettingsJson } from '../../utils/settings/types.js'
 
 export type ThinkingCommandResult = {
   message: string
   thinkingUpdate?: { value: boolean }
+  effortUpdate?: { value: EffortValue | undefined }
+  providerUpdate?: ProviderSettings
+}
+
+export function executeThinkingBudget(args: string, model: string, provider: ProviderId): ThinkingCommandResult {
+  const capabilities = getProviderReasoningCapabilitiesForModel(model, provider)
+  const settings = getActiveProviderSettings()
+  const current = configuredThinkingBudget(provider, model, settings)
+  const raw = args.trim().toLowerCase()
+  if (!raw || raw === 'status') return { message: `Thinking budget: ${current === undefined ? 'DEFAULT' : current === -1 ? 'AUTO (dynamic)' : current === 0 ? 'OFF' : current + ' tokens'} for ${model} on ${provider}. Use /thinking budget N|auto|default.` }
+  const value: ThinkingBudgetSelection = raw === 'default' || (raw === 'auto' && !capabilities?.thinkingBudget?.dynamic) ? 'default' : raw === 'auto' ? -1 : Number(raw)
+  try {
+    const patch = thinkingBudgetSettingsPatch(provider, model, value, settings, capabilities)
+    const result = updateSettingsForSource('localSettings', { provider: patch } as SettingsJson)
+    if (result.error) return { message: `Failed to set thinking budget: ${result.error.message}` }
+    return { message: `Thinking budget: ${value === 'default' ? 'DEFAULT' : value === -1 ? 'AUTO (dynamic)' : value === 0 ? 'OFF' : value + ' tokens'} for ${model} on ${provider}.${capabilities?.supportedEfforts?.length ? ' The explicit token budget takes precedence over graded effort; use /thinking budget default to return to effort levels.' : ''}`,
+      providerUpdate: { thinkingBudgets: getActiveProviderSettings().thinkingBudgets },
+      ...(value !== 'default' ? { thinkingUpdate: { value: value !== 0 } } : {}) }
+  } catch (error) { return { message: `Not applied: ${error instanceof Error ? error.message : String(error)}` } }
 }
 
 function capabilityMessage(
@@ -59,10 +81,39 @@ export function executeThinking(
   currentEnabled: boolean,
   model: string,
   provider: ProviderId = getRuntimeProvider(),
+  currentEffort?: EffortValue,
 ): ThinkingCommandResult {
   const normalized = args.trim().toLowerCase()
+  if (normalized === 'budget' || normalized.startsWith('budget ')) return executeThinkingBudget(normalized.slice(6), model, provider)
+  const capabilities = getProviderReasoningCapabilitiesForModel(model, provider)
+  const nativeBudget = configuredThinkingBudget(provider, model, getActiveProviderSettings())
   if (isThinkingMandatory(model, provider) && ['', 'status', 'current', 'on', 'off', 'toggle', 'enable', 'enabled', 'true', 'disable', 'disabled', 'false'].includes(normalized)) {
-    return { message: `Thinking: always ON for ${model} on ${provider}. This model cannot disable thinking. Use /effort to choose its reasoning depth.` }
+    return { message: `Thinking: always ON for ${model} on ${provider}. This model cannot disable thinking. ${capabilities?.thinkingBudget ? 'Use /thinking budget N|auto|default to choose its token budget.' : 'Use /effort to choose its reasoning depth.'}` }
+  }
+  if ((capabilities?.thinkingBudget || nativeBudget !== undefined) && ['', 'status', 'current'].includes(normalized)) {
+    const enabled = nativeBudget === undefined ? currentEnabled : nativeBudget !== 0
+    const budgetStatus = executeThinkingBudget('status', model, provider).message
+    return { message: `Thinking: ${enabled && !isEnvTruthy(process.env.UR_CODE_DISABLE_THINKING) ? 'ON' : 'OFF'}. ${budgetStatus}` }
+  }
+  const effortLevels = getSupportedEffortLevelsForModel(model, provider)
+  if (effortLevels.includes('none')) {
+    const displayed = getDisplayedEffortLevel(model, currentEffort, provider)
+    const enabled = getProviderEffortWireValue(model, displayed, provider) !== 'none'
+    if (['', 'status', 'current'].includes(normalized)) return { message: `Thinking: ${enabled ? 'ON' : 'OFF'} via effort ${displayed} for ${model} on ${provider}. Use /thinking on|off or /effort ${effortLevels.join('|')}.` }
+    if (['on', 'off', 'toggle', 'enable', 'enabled', 'true', 'disable', 'disabled', 'false'].includes(normalized)) {
+      const wantsOn = normalized === 'toggle' ? !enabled : ['on', 'enable', 'enabled', 'true'].includes(normalized)
+      const defaultEffort = getDefaultEffortForModel(model, provider)
+      const level = wantsOn ? typeof defaultEffort === 'string' && defaultEffort !== 'none' && getProviderEffortWireValue(model, defaultEffort, provider) !== 'none'
+        ? defaultEffort : effortLevels.find(value => getProviderEffortWireValue(model, value, provider) !== 'none') : 'none'
+      if (!level) return { message: 'This model does not advertise an enabled reasoning level.' }
+      const applied = executeEffort(level, model, provider)
+      return { ...applied, message: applied.effortUpdate ? `Thinking ${wantsOn ? 'ON' : 'OFF'} via native effort ${level}. ${applied.message}` : applied.message }
+    }
+  }
+  if (capabilities?.thinkingBudget?.canDisable && ['on', 'off', 'toggle', 'enable', 'enabled', 'true', 'disable', 'disabled', 'false'].includes(normalized)) {
+    const enabled = nativeBudget === undefined ? currentEnabled : nativeBudget !== 0
+    const wantsOn = normalized === 'toggle' ? !enabled : ['on', 'enable', 'enabled', 'true'].includes(normalized)
+    return executeThinkingBudget(wantsOn ? nativeBudget && nativeBudget > 0 ? String(nativeBudget) : 'auto' : '0', model, provider)
   }
   if (!normalized || normalized === 'status' || normalized === 'current') {
     const disabledByEnvironment = isEnvTruthy(
@@ -93,8 +144,11 @@ export function executeThinking(
     }
   }
 
+  const clearedBudget = !enabled && nativeBudget !== undefined ? executeThinkingBudget('default', model, provider) : undefined
+  if (clearedBudget && !clearedBudget.providerUpdate) return clearedBudget
   const error = persistThinking(enabled)
   if (error) {
+    if (clearedBudget && nativeBudget !== undefined) executeThinkingBudget(String(nativeBudget), model, provider)
     return { message: `Failed to set thinking: ${error.message}` }
   }
   logEvent('tengu_thinking_toggled_hotkey', {
@@ -112,6 +166,7 @@ export function executeThinking(
       ? `Thinking preference saved as ON, but UR_CODE_DISABLE_THINKING disables it for this session. ${capabilityMessage(false, model, provider)}`
       : `${appliesToActiveModel ? 'Thinking' : 'Thinking preference'} ${enabled ? 'ON' : 'OFF'} for this session; user preference saved. ${capabilityMessage(enabled, model, provider)}`,
     thinkingUpdate: { value: enabled },
+    ...(clearedBudget?.providerUpdate ? { providerUpdate: clearedBudget.providerUpdate } : {}),
   }
 }
 
@@ -123,6 +178,7 @@ function ApplyThinkingAndClose({
   onDone: LocalJSXCommandOnDone
 }): React.ReactNode {
   const currentEnabled = useAppState(state => state.thinkingEnabled !== false)
+  const currentEffort = useAppState(state => state.effortValue)
   const model = useMainLoopModel()
   const provider = getRuntimeProvider()
   const setAppState = useSetAppState()
@@ -131,15 +187,17 @@ function ApplyThinkingAndClose({
   React.useEffect(() => {
     if (applied.current) return
     applied.current = true
-    const result = executeThinking(args, currentEnabled, model, provider)
-    if (result.thinkingUpdate) {
+    const result = executeThinking(args, currentEnabled, model, provider, currentEffort)
+    if (result.thinkingUpdate || result.effortUpdate || result.providerUpdate) {
       setAppState(previous => ({
         ...previous,
-        thinkingEnabled: result.thinkingUpdate!.value,
+        ...(result.thinkingUpdate ? { thinkingEnabled: result.thinkingUpdate.value } : {}),
+        ...(result.effortUpdate ? { effortValue: result.effortUpdate.value } : {}),
+        ...(result.providerUpdate ? { provider: { ...previous.provider, ...result.providerUpdate } } : {}),
       }))
     }
     onDone(result.message)
-  }, [args, currentEnabled, model, onDone, provider, setAppState])
+  }, [args, currentEffort, currentEnabled, model, onDone, provider, setAppState])
   return null
 }
 
@@ -151,7 +209,7 @@ export async function call(
   const normalized = args.trim().toLowerCase()
   if (normalized === 'help' || normalized === '-h' || normalized === '--help') {
     onDone(
-      'Usage: /thinking [on|off|toggle|status]\n\nControls provider-native thinking independently from graded effort when the active adapter has a real on/off mapping. Generic OpenAI-compatible runtimes never receive an invented boolean field. Use /effort for models that advertise a graded ladder.',
+      'Usage: /thinking [on|off|toggle|status|budget N|budget auto|budget default]\n\nUses the active model’s native thinking mode, advertised effort none, or token budget. Mandatory thinking stays enabled. Budgets are saved independently per provider/model; auto requests dynamic thinking where supported and default clears the override. Generic compatible runtimes never receive an invented boolean field. /effort selects advertised named levels.',
     )
     return null
   }

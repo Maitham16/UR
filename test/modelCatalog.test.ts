@@ -133,8 +133,8 @@ describe('model entry construction', () => {
     expect(model?.reasoning).toEqual({
       mandatory: true,
       defaultEnabled: true,
-      supportedEfforts: ['xhigh', 'high', 'medium', 'low', 'minimal'],
-      defaultEffort: 'xhigh',
+      supportedEfforts: ['XHIGH', 'high', 'medium', 'low', 'minimal'],
+      defaultEffort: 'XHIGH',
     })
   })
 
@@ -152,7 +152,7 @@ describe('model entry construction', () => {
       }),
     ).toEqual({
       supportedEfforts: ['deep'],
-      effortAliases: { ultra: 'deep' },
+      effortAliases: { ultra: 'DEEP' },
     })
   })
 
@@ -165,8 +165,8 @@ describe('model entry construction', () => {
         supportsMaxTokens: false,
       }),
     ).toEqual({
-      supportedEfforts: ['max', 'high', 'low'],
-      defaultEffort: 'max',
+      supportedEfforts: ['MAX', 'high', 'low'],
+      defaultEffort: 'MAX',
       defaultEnabled: true,
       supportsMaxTokens: false,
     })

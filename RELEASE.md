@@ -36,7 +36,7 @@ these checks as well as native/npm qualification. Marketplace and PyPI
 publication are separate publisher-account operations and are not implied by
 these downloadable assets.
 
-Windows native artifacts and PowerShell installers are excluded from 1.87.3.
+Windows native artifacts and PowerShell installers are excluded from 1.87.4.
 Windows native development code remains in the repository and is outside the
 public standalone release. On a matching macOS/Linux development host, use
 the pinned Bun version.

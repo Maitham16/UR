@@ -26,6 +26,7 @@ import { getInitialSettings } from '../../utils/settings/settings.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
 import { getProviderApiKey } from '../providers/providerCredentials.js'
 import { resolveAnthropicWorkspaceId } from '../providers/anthropicWorkspace.js'
+import { requiresOpenAIResponses } from '../providers/openaiCapabilities.js'
 import { isNetworkRestricted, offlineBlockReason } from '../../utils/offlineMode.js'
 import {
   getOllamaBaseUrl,
@@ -509,8 +510,8 @@ async function createAPIClient(
 
   if (
     providerId === 'openai-api' &&
-    providerSettings.active === providerId &&
-    providerSettings.openaiTransport === 'responses'
+    (requiresOpenAIResponses(options.model ?? providerSettings.model ?? '') ||
+      (providerSettings.active === providerId && providerSettings.openaiTransport === 'responses'))
   ) {
     const {
       createOpenAIResponsesClient,
@@ -526,6 +527,7 @@ async function createAPIClient(
       store: providerSettings.responses?.store ?? false,
       compactThreshold: providerSettings.responses?.compactThreshold,
       toolSearch: providerSettings.responses?.toolSearch ?? 'off',
+      serviceTier: providerSettings.openai?.serviceTier,
       fetch: options.fetchOverride,
       stateStore: new OpenAIResponsesStateStore(),
     }) as ProviderMessageClient
@@ -549,6 +551,8 @@ async function createAPIClient(
     model: options.model,
     fetch: options.fetchOverride,
     anthropic,
+    openai: providerSettings.openai,
+    gemini: providerSettings.gemini,
   }) as ProviderMessageClient
 }
 

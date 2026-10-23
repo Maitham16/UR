@@ -17,7 +17,7 @@ describe('provider effort capability audit', () => {
 
   test('OpenAI direct models expose their exact documented ladders', () => {
     expect(getSupportedEffortLevelsForModel('gpt-5.6-sol', 'openai-api')).toEqual([
-      'minimal',
+      'none',
       'low',
       'medium',
       'high',
@@ -29,9 +29,9 @@ describe('provider effort capability audit', () => {
     expect(
       getProviderReasoningCapabilitiesForModel('gpt-5.6-sol', 'openai-api')
         ?.effortAliases,
-    ).toEqual({ minimal: 'none' })
+    ).toBeUndefined()
     expect(
-      getProviderEffortWireValue('gpt-5.6-sol', 'minimal', 'openai-api'),
+      getProviderEffortWireValue('gpt-5.6-sol', 'none', 'openai-api'),
     ).toBe('none')
     expect(resolveProviderEffortLevel('gpt-5.6-sol', 'ultra', 'openai-api')).toBe('ultra')
     expect(
@@ -40,7 +40,7 @@ describe('provider effort capability audit', () => {
     expect(
       getSupportedEffortLevelLabelsForModel('gpt-5.6-sol', 'openai-api'),
     ).toEqual([
-      'minimal',
+      'none',
       'low',
       'medium',
       'high',
@@ -83,12 +83,12 @@ describe('provider effort capability audit', () => {
     ).toEqual(['low', 'medium', 'high'])
     expect(
       getSupportedEffortLevelsForModel('gemini-3.6-flash', 'gemini-api'),
-    ).toEqual(['minimal', 'low', 'medium', 'high'])
+    ).toEqual([ 'minimal', 'low', 'medium', 'high'])
     expect(
       getSupportedEffortLevelsForModel('gemini-3.5-flash', 'gemini-api'),
-    ).toEqual(['minimal', 'low', 'medium', 'high'])
+    ).toEqual([ 'minimal', 'low', 'medium', 'high'])
     expect(
-      getSupportedEffortLevelsForModel('gemini-3.1-pro', 'gemini-api'),
+      getSupportedEffortLevelsForModel('gemini-3.1-pro-preview', 'gemini-api'),
     ).toEqual(['low', 'medium', 'high'])
     expect(
       getProviderReasoningCapabilitiesForModel(
@@ -112,7 +112,7 @@ describe('provider effort capability audit', () => {
 
     expect(
       getSupportedEffortLevelsForModel('Qwen/Qwen3.5-35B-A3B', 'vllm'),
-    ).toEqual(['minimal', 'low', 'medium', 'high'])
+    ).toEqual(['none', 'minimal', 'low', 'medium', 'high'])
     expect(
       getProviderEffortWireValue('Qwen/Qwen3.5-35B-A3B', 'minimal', 'vllm'),
     ).toBe('none')
