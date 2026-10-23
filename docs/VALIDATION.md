@@ -16,14 +16,14 @@ You need:
   `>=22.12` launcher verifies and caches the native application without Bun;
   or a local source checkout (`bun run dev`) with the pinned development Bun.
 
-Windows native and public npm installation are unavailable in 1.87.2. Windows
+Windows native and public npm installation are unavailable in 1.87.3. Windows
 developers can optionally use the Bun-based source workflow.
 
 ## 0. Smoke
 
 ```sh
 ur --version
-# expected for this release: "1.87.2 (UR-Nexus)"
+# expected for this release: "1.87.3 (UR-Nexus)"
 ```
 
 ### 0.0 Redteam mode and Reverse Skills (1.81.0)
@@ -135,10 +135,17 @@ streaming beta header is required. Then run:
 ur config set anthropic.speed fast
 ```
 
-Opus 5/4.8 must receive `speed="fast"` and
+Opus 5.5 must receive `speed="fast"` without a fast-mode beta. Opus 5/4.8 must receive `speed="fast"` and
 `anthropic-beta: fast-mode-2026-02-01`; Sonnet, Fable, Haiku, and unsupported
 Opus versions must receive neither. A non-stream response must retain
 `usage.speed`.
+
+`bun test test/anthropicModelControls.test.tsx test/anthropicRequestContract.test.ts`
+checks real capability shapes, exact effort values, mandatory thinking,
+Sonnet's `between_tools` mode, keyboard preview without premature persistence,
+and native fast-mode headers. In `/model`, verify five native Opus 5.5 effort
+levels (plus the labelled Ultra alias), always-on thinking, and Standard/Fast.
+Cancel must leave settings unchanged; confirm must preserve workspace/endpoint.
 
 With an identity-linked test key, first omit the workspace. Discovery and
 doctor must preserve Anthropic's `anthropic-workspace-id is required` detail

@@ -1,22 +1,18 @@
 import type { Command } from '../../commands.js'
-import {
-  FAST_MODE_MODEL_DISPLAY,
-  isFastModeEnabled,
-} from '../../utils/fastMode.js'
+import { isFastModeEnabled } from '../../utils/fastMode.js'
 import { shouldInferenceConfigCommandBeImmediate } from '../../utils/immediateCommand.js'
 
 const fast = {
   type: 'local-jsx',
   name: 'fast',
   get description() {
-    return `Toggle fast mode (${FAST_MODE_MODEL_DISPLAY} only)`
+    return 'Choose standard or fast speed for supported native models'
   },
-  availability: ['ur-ai', 'console'],
   isEnabled: () => isFastModeEnabled(),
   get isHidden() {
     return !isFastModeEnabled()
   },
-  argumentHint: '[on|off]',
+  argumentHint: '[on|off|status]',
   get immediate() {
     return shouldInferenceConfigCommandBeImmediate()
   },

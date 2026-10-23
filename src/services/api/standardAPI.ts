@@ -16,6 +16,8 @@ import {
   type AnthropicSettings,
 } from '../providers/providerRegistry.js'
 import { anthropicWorkspaceHeaders } from '../providers/anthropicWorkspace.js'
+import { getAnthropicFastMode } from '../providers/anthropicCapabilities.js'
+import { isEnvTruthy } from '../../utils/envUtils.js'
 import {
   assertNoImageBlocks,
   contentToText,
@@ -60,7 +62,6 @@ import { normalizeGeminiUsage } from './usageNormalization.js'
 import { toOpenAIInputTokenCountRequest } from './openaiResponses.js'
 
 const ANTHROPIC_VERSION = '2023-06-01'
-const ANTHROPIC_FAST_MODE_BETA = 'fast-mode-2026-02-01'
 const ANTHROPIC_INTERLEAVED_THINKING_BETA = 'interleaved-thinking-2025-05-14'
 const TOKEN_COUNT_TIMEOUT_MS = 10_000
 
@@ -235,29 +236,28 @@ export async function createStandardAPIClient(options: {
   return { beta: { messages: messagesAPI } } as URHQClient
 }
 
-function isAnthropicFastModeModel(model: unknown): boolean {
-  return /^claude-opus-(?:5(?:-|$)|4[-.]8(?:-|$))/iu.test(String(model ?? ''))
-}
-
 function withConfiguredAnthropicPerformance(
   family: string,
   params: any,
   settings: AnthropicSettings | undefined,
 ): any {
+  if (family === 'anthropic' && isEnvTruthy(process.env.UR_CODE_DISABLE_FAST_MODE)) {
+    const { speed: _speed, ...standard } = params
+    return standard
+  }
   if (
     family !== 'anthropic' ||
     settings?.speed !== 'fast' ||
-    !isAnthropicFastModeModel(params?.model)
+    !getAnthropicFastMode(String(params?.model ?? ''))
   ) {
     return params
   }
   const betas = Array.isArray(params.betas) ? params.betas : []
+  const requiredBeta = getAnthropicFastMode(String(params?.model ?? ''))?.beta
   return {
     ...params,
     speed: 'fast',
-    betas: betas.includes(ANTHROPIC_FAST_MODE_BETA)
-      ? betas
-      : [...betas, ANTHROPIC_FAST_MODE_BETA],
+    betas: !requiredBeta || betas.includes(requiredBeta) ? betas : [...betas, requiredBeta],
   }
 }
 

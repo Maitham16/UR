@@ -23,7 +23,7 @@ const server = createServer(async (req, res) => {
   for await (const chunk of req) chunks.push(chunk)
   if (req.method === 'GET') {
     res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ data: ['claude-opus-5-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'claude-opus-4-5'].map(id => ({ id, type: 'model', display_name: id })) }))
+    res.end(JSON.stringify({ data: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'claude-opus-4-5'].map(id => ({ id, type: 'model', display_name: id })) }))
     return
   }
   const body = JSON.parse(Buffer.concat(chunks).toString())
@@ -74,11 +74,17 @@ try {
     querySource: 'repl_main_thread', agents: [], hasAppendSystemPrompt: false, mcpTools: [],
     maxOutputTokensOverride: 128, enablePromptCaching: false, effortValue: 'high' }
   assert.equal(shouldIncludeFirstPartyOnlyBetas(), false)
-  for (const model of ['claude-opus-5-5', 'claude-sonnet-5', 'claude-haiku-4-5']) {
+  for (const model of ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-sonnet-5', 'claude-haiku-4-5']) {
     assert.deepEqual(getMergedBetas(model, { isAgenticQuery: true }), [])
     const answer = await queryWithModel({ systemPrompt: asSystemPrompt(['Be brief.']), userPrompt: 'hi',
       signal: AbortSignal.timeout(15000), options: { ...options, model } })
     assert.ok(answer.message.content.some(block => block.type === 'text' && block.text.includes('Hello')), JSON.stringify(answer.message.content))
+    if (model === 'claude-opus-5-5') {
+      assert.deepEqual(requests.at(-1).body.thinking, { type: 'adaptive' })
+      assert.equal(requests.at(-1).body.output_config.effort, 'high')
+    }
+    if (model === 'claude-sonnet-5-5') assert.deepEqual(requests.at(-1).body.thinking, { type: 'between_tools' })
+    if (model === 'claude-haiku-5-5') assert.deepEqual(requests.at(-1).body.thinking, { type: 'disabled' })
   }
   const stream = queryModelWithStreaming({ messages: [createUserMessage({ content: 'hi' })],
     systemPrompt: asSystemPrompt(['Be brief.']), thinkingConfig: { type: 'disabled' }, tools: [],
@@ -107,8 +113,16 @@ try {
   await client.beta.messages.create({ ...params, tools, thinking: { type: 'adaptive' } })
   assert.deepEqual(requests.at(-1).betas, [])
   const fast = await createStandardAPIClient({ providerId: 'anthropic-api', baseUrl, apiKey: 'fixture-key', maxRetries: 0, anthropic: { speed: 'fast' } })
+  delete process.env.UR_CODE_DISABLE_FAST_MODE
   await fast.beta.messages.create(params)
+  assert.equal(requests.at(-1).body.speed, 'fast')
+  assert.deepEqual(requests.at(-1).betas, [])
+  await fast.beta.messages.create({ ...params, model: 'claude-opus-5' })
   assert.deepEqual(requests.at(-1).betas, ['fast-mode-2026-02-01'])
+  process.env.UR_CODE_DISABLE_FAST_MODE = '1'
+  await fast.beta.messages.create({ ...params, speed: 'fast' })
+  assert.equal(requests.at(-1).body.speed, undefined)
+  assert.deepEqual(requests.at(-1).betas, [])
   writeFileSync(process.env.UR_CONTRACT_REPORT!, JSON.stringify({ normalRequests, totalRequests: requests.length, passed: true }))
 } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)) }
 `

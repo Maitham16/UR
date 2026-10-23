@@ -41,6 +41,8 @@ export type ModelReasoningCapabilities = {
   defaultEnabled?: boolean
   mandatory?: boolean
   supportsMaxTokens?: boolean
+  /** Accepted native thinking.type values when published by the provider. */
+  thinkingTypes?: string[]
 }
 
 export type DiscoveredModel = {
@@ -130,6 +132,9 @@ export function parseModelReasoningCapabilities(
       : undefined
   const mandatory =
     typeof value.mandatory === 'boolean' ? value.mandatory : undefined
+  const thinkingTypes = Array.isArray(value.thinkingTypes)
+    ? value.thinkingTypes.filter((entry): entry is string => typeof entry === 'string')
+    : undefined
   const supportsMaxTokens =
     typeof value.supports_max_tokens === 'boolean'
       ? value.supports_max_tokens
@@ -150,7 +155,8 @@ export function parseModelReasoningCapabilities(
     defaultEffort === undefined &&
     defaultEnabled === undefined &&
     mandatory === undefined &&
-    supportsMaxTokens === undefined
+    supportsMaxTokens === undefined &&
+    thinkingTypes === undefined
   ) {
     return undefined
   }
@@ -165,7 +171,28 @@ export function parseModelReasoningCapabilities(
     ...(defaultEnabled !== undefined ? { defaultEnabled } : {}),
     ...(mandatory !== undefined ? { mandatory } : {}),
     ...(supportsMaxTokens !== undefined ? { supportsMaxTokens } : {}),
+    ...(thinkingTypes !== undefined ? { thinkingTypes } : {}),
   }
+}
+
+/** Claude Models API publishes individual effort levels and thinking modes. */
+export function parseNativeModelCapabilities(value: unknown): ModelReasoningCapabilities | undefined {
+  if (!isRecord(value)) return undefined
+  const effort = isRecord(value.effort) ? value.effort : undefined
+  const thinking = isRecord(value.thinking) ? value.thinking : undefined
+  const types = thinking && isRecord(thinking.types) ? thinking.types : undefined
+  const levels = effort
+    ? Object.entries(effort).filter(([key, entry]) => key !== 'supported' && isRecord(entry) && entry.supported === true).map(([key]) => key)
+    : undefined
+  const supportedEfforts = effort?.supported === false ? [] : levels?.length ? levels : undefined
+  const thinkingTypes = thinking?.supported === false ? [] : types ? Object.entries(types)
+    .filter(([, entry]) => isRecord(entry) && entry.supported === true).map(([key]) => key) : undefined
+  return parseModelReasoningCapabilities({
+    ...(typeof thinking?.supported === 'boolean' ? { supportsThinking: thinking.supported } : {}),
+    ...(supportedEfforts !== undefined ? { supportedEfforts } : {}),
+    ...(thinkingTypes !== undefined ? { thinkingTypes } : {}),
+    ...(thinkingTypes !== undefined ? { mandatory: thinkingTypes.length > 0 && !thinkingTypes.includes('disabled') && !thinkingTypes.includes('between_tools') } : {}),
+  })
 }
 
 function asEpochSeconds(value: unknown): number | undefined {
@@ -252,7 +279,7 @@ export function toDiscoveredModel(entry: unknown, providerLabel: string): Discov
     asCount(raw.contextLength) ??
     asCount(raw.max_input_tokens) ??
     asCount(raw.inputTokenLimit)
-  const outputTokenLimit = asCount(raw.max_output_tokens) ?? asCount(raw.outputTokenLimit)
+  const outputTokenLimit = asCount(raw.max_output_tokens) ?? asCount(raw.outputTokenLimit) ?? asCount(raw.max_tokens)
   const humanName = asString(raw.display_name) ?? asString(raw.displayName) ?? asString(raw.name)
   const supportedParameters = Array.isArray(raw.supported_parameters)
     ? raw.supported_parameters.filter((value): value is string => typeof value === 'string')
@@ -267,6 +294,7 @@ export function toDiscoveredModel(entry: unknown, providerLabel: string): Discov
         ? capabilities.reasoning
         : undefined,
     ) ??
+    parseNativeModelCapabilities(capabilities) ??
     parseModelReasoningCapabilities(raw)
   const advertisesReasoning = supportedParameters?.some(parameter =>
     /^(?:reasoning|reasoning_effort|thinking)$/iu.test(parameter.trim()),

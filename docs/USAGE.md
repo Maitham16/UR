@@ -15,7 +15,7 @@ Use `brew upgrade ur-nexus` for Homebrew, `npm install -g ur-agent@latest`
 for npm, or `ur upgrade` for the standalone installer. Only standalone installs
 accept `ur install <version>`; package-manager installations reject it.
 
-Windows native and public npm installation are unavailable in 1.87.2.
+Windows native and public npm installation are unavailable in 1.87.3.
 Bun-based source development remains optional on Windows; see the
 [Development Guide](DEVELOPMENT.md).
 
@@ -239,16 +239,16 @@ ur config set anthropic.workspace_id wrkspc_...
 The selection is shared by discovery, doctor, inference, streaming, and token
 counting. Workspace-scoped keys require no extra value; use
 `ur config set anthropic.workspace_id auto` to clear it.
-Accounts admitted to Anthropic's premium fast-mode research preview can opt in
-for its supported Opus models:
+Choose Standard/Fast with `s` in `/model` and confirm with Enter, or use
+`/fast on|off|status`. Fast uses premium provider pricing. Configuration:
 
 ```sh
 ur config set anthropic.speed fast
 ```
 
-UR sends that tier only to Claude Opus 5 and Opus 4.8; all other Claude models
-remain on standard speed. Use `ur config set anthropic.speed standard` to turn
-the premium tier off.
+Opus 5.5 supports fast mode without a beta header. Opus 5/4.8 retain their
+preview beta and account-access requirements. Other models stay on standard
+speed. Use `ur config set anthropic.speed standard` to turn the premium tier off.
 
 `provider.fallback` only controls the recovery suggestion printed by provider
 diagnostics. UR does not switch or retry across providers automatically; use

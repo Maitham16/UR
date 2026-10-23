@@ -70,7 +70,7 @@ Command types: **prompt** = expands to model input · **local** = runs locally, 
 | `/local-first` (`/offline-readiness`, `/local`) | local | Report readiness for no-cloud/offline/lab environments | `/local-first --json` |
 | `/effort [minimal\|low\|medium\|high\|xhigh\|max\|ultra\|auto]` | jsx | Inspect or set the active model's capability-driven, provider-native effort level | `/effort ultra` |
 | `/thinking [on\|off\|toggle\|status]` | jsx | Control provider-native thinking where the active adapter has a real on/off mapping; generic compatible transports get no invented field | `/thinking on` |
-| `/fast [on\|off]` | jsx | Toggle fast mode | `/fast on` |
+| `/fast [on\|off\|status]` | jsx | Choose the selected native model's supported speed tier; fast uses premium pricing | `/fast status` |
 | `/advisor [<model>\|off]` | local | Configure a second "advisor" model that critiques the main model | `/advisor gpt-5.5` |
 | `/escalate plan\|run\|oracle\|policy "<task>"` | local | Run on a fast model, auto-escalate hard steps to an oracle model | `/escalate run "prove this lock-free queue is correct" --oracle gpt-5.5` |
 | `/route <task>` (`/intent`) | local | Classify a task → recommend subagent + collaboration pattern | `/route "find why login 500s"` |

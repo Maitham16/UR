@@ -45,6 +45,8 @@ import {
   providerSupportsThinkingToggle,
   resolveThinkingArrowValue,
   shouldEnableThinkingByDefault,
+  isThinkingMandatory,
+  getThinkingOffMode,
 } from '../utils/thinking.js'
 import {
   getActiveProviderSettings,
@@ -52,6 +54,7 @@ import {
   ensureProviderModelsFresh,
   listModelsForProviderWithSource,
   validateProviderModelPair,
+  setSafeProviderConfig,
 } from '../services/providers/providerRegistry.js'
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js'
 import { Select } from './CustomSelect/index.js'
@@ -59,6 +62,7 @@ import { Byline } from './design-system/Byline.js'
 import { KeyboardShortcutHint } from './design-system/KeyboardShortcutHint.js'
 import { Pane } from './design-system/Pane.js'
 import { effortLevelToSymbol } from './EffortIndicator.js'
+import { ModelSpeedControl } from './ModelSpeedControl.js'
 import {
   buildProviderModelLabels,
   fullProviderModelDisplayName,
@@ -102,6 +106,7 @@ export function ModelPicker({
   const [focusedValue, setFocusedValue] = useState(initialValue)
   const isFastMode = useAppState(selectFastMode)
   const [hasToggledEffort, setHasToggledEffort] = useState(false)
+  const [pendingSpeeds, setPendingSpeeds] = useState<Record<string, 'standard' | 'fast'>>({})
   const effortValue = useAppState(selectEffortValue)
   const [effort, setEffort] = useState<EffortLevel | undefined>(
     effortValue !== undefined
@@ -302,6 +307,7 @@ export function ModelPicker({
     ? focusedAdvertisesThinking &&
       providerSupportsThinkingToggle(currentProvider, focusedModel)
     : false
+  const focusedThinkingMandatory = focusedModel ? isThinkingMandatory(focusedModel, currentProvider) : false
   const focusedDefaultEffort = getDefaultEffortLevelForOption(
     focusedValue,
     currentProvider,
@@ -381,6 +387,13 @@ export function ModelPicker({
       }
     }
     if (!skipSettingsWrite) {
+      const speed = pendingSpeeds[value]
+      if (currentProvider === 'anthropic-api' && speed !== undefined) {
+        const saved = setSafeProviderConfig('anthropic.speed', speed)
+        if (!saved.ok) { setPickerError(saved.message); return }
+        const provider = getActiveProviderSettings(getInitialSettings())
+        setAppState(previous => ({ ...previous, provider: { ...previous.provider, anthropic: provider.anthropic }, fastMode: speed === 'fast' }))
+      }
       const effortLevel = resolvePickerEffortPersistence(
         hasToggledEffort ? selectedEffort : effort,
         getDefaultEffortLevelForOption(value, currentProvider),
@@ -415,7 +428,7 @@ export function ModelPicker({
     onSelect(value, selectedEffort)
   }
 
-  const fastModeNotice = isFastModeEnabled() ? (
+  const fastModeNotice = currentProvider !== 'anthropic-api' && isFastModeEnabled() ? (
     showFastModeNotice ? (
       <Box marginBottom={1}>
         <Text dimColor>
@@ -530,7 +543,7 @@ export function ModelPicker({
               <Text color={thinkingEnabled ? 'ur' : 'subtle'}>
                 {thinkingEnabled ? '◆' : '◇'}
               </Text>{' '}
-              Thinking {thinkingEnabled ? 'on' : 'off'}{' '}
+              {focusedModel && getThinkingOffMode(focusedModel, currentProvider) === 'between_tools' ? 'Up-front thinking' : 'Thinking'} {thinkingEnabled ? 'on' : 'off'}{' '}
               <Text color="subtle">
                 {focusedSupportsEffort
                   ? 't to toggle'
@@ -539,10 +552,14 @@ export function ModelPicker({
             </Text>
           ) : (
             <Text color="subtle">
-              ◇ Thinking not supported
+              {focusedThinkingMandatory ? '◆ Thinking always ON · adjust reasoning depth with effort' : '◇ Thinking not supported'}
               {focusedModelName ? ` for ${focusedModelName}` : ''}
             </Text>
           )}
+          <ModelSpeedControl provider={currentProvider} model={focusedModel}
+            value={pendingSpeeds[focusedValue] ?? getActiveProviderSettings(getInitialSettings()).anthropic?.speed ?? 'standard'}
+            onChange={speed => setPendingSpeeds(previous => ({ ...previous, [focusedValue]: speed }))}
+            isActive={!loadingModels} />
         </Box>
         {pickerError && (
           <Box marginBottom={1}>

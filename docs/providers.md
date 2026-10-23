@@ -287,10 +287,17 @@ deltas arrive.
 
 Claude API requests use public feature headers rather than UR service identity
 headers. Ordinary and adaptive-thinking requests need no automatic beta header;
-manual thinking with tools and explicit fast mode retain their documented
-feature headers. UR also leaves sampling temperature unset by default, which
+manual thinking with tools retains its documented feature header. Fast-mode
+headers follow each supported model's contract. UR leaves sampling temperature unset by default, which
 supports current models such as Opus 5.5. Explicit `URHQ_BETAS` opt-ins remain
 available and must name features supported by your endpoint and account.
+
+Claude's live Models API supplies effort levels and thinking modes. Opus 5.5
+offers `low`, `medium`, `high`, `xhigh` and `max` effort, with thinking always
+on. Choose depth through `/effort` or the arrow keys in `/model`; the labelled
+Ultra selector is an alias for the model's advertised ceiling. Sonnet 5.5 can
+skip up-front thinking with `between_tools`; Haiku 5.5 supports disabling it.
+`/thinking status` describes the selected model's actual control.
 
 Identity-linked Anthropic keys additionally need a workspace selection. UR
 accepts `provider.anthropic.workspaceId` through
@@ -307,10 +314,11 @@ Anthropic's premium fast tier remains explicit:
 ur config set anthropic.speed fast
 ```
 
-UR sends `speed: "fast"` with the `fast-mode-2026-02-01` beta only for Claude
-Opus 5 and Opus 4.8, and retains `usage.speed` so accounting can distinguish the
-tier actually served. Enabled account access is still required. Unsupported
-models stay on standard speed. See Anthropic's
+UR sends `speed: "fast"` to Opus 5.5 without a beta header. Opus 5/4.8 still
+require `fast-mode-2026-02-01` and preview account access. `usage.speed` retains
+the tier actually served. Unsupported models stay on standard speed. Press `s`
+in `/model` to preview a speed and Enter to apply, or use `/fast on|off|status`.
+Fast uses premium pricing and provider rate limits. See Anthropic's
 [authentication](https://platform.claude.com/docs/en/manage-claude/authentication),
 [workspace management](https://platform.claude.com/docs/en/manage-claude/workspaces),
 [prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching),

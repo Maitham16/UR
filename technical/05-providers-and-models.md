@@ -329,6 +329,23 @@ level names does not create a graded selector.
   Enter applies the model and selected control
   atomically. `/effort status`, the
   picker confirmation, status UI, SDK state, and outbound request share the same resolver.
+- Claude live discovery reads `capabilities.effort.<level>.supported` and
+  `capabilities.thinking.types.<mode>.supported`, plus `max_input_tokens` and
+  `max_tokens`. Exact documented model definitions fill omitted fields; explicit
+  live values remain authoritative. A thin cached name cannot mask those
+  definitions. Unknown model names never inherit a neighbouring model's contract.
+- Opus 5.5 and Fable 5/5.1 require thinking: `/thinking` and both pickers show
+  always ON and do not save a false off preference. Sonnet 5.5 maps the reduced
+  setting to `between_tools`; Haiku 5.5 uses explicit `disabled`. Accepted native
+  modes determine adaptive/manual request shaping independently of effort.
+- Supported Claude models show Standard/Fast in both model pickers. `s` previews
+  the choice; confirmation persists the provider/model/speed together in the
+  provider-first picker. Cancel writes nothing. `/fast on|off|status` uses
+  `provider.anthropic.speed` and keeps the selected model. Opus 5.5 needs no
+  fast-mode beta; Opus 5/4.8 retain their preview beta. Native speed choices do
+  not use hosted UR org-status endpoints or legacy model-switching behavior.
+  `UR_CODE_DISABLE_FAST_MODE=1` suppresses the native speed field. Premium
+  provider pricing, eligibility and rate limits still apply.
 - In the model step, `E` edits the provider-scoped endpoint and `K` securely
   adds or replaces the selected HTTP provider's key. The generic
   `openai-compatible` key remains optional: storage and request forwarding work
@@ -427,7 +444,7 @@ plus [NVIDIA NIM LLM APIs](https://docs.api.nvidia.com/nim/reference/llm-apis).
 |---|---|---|
 | Effort level | `/effort minimal·low·medium·high·xhigh·max·ultra·auto` | capability-gated; provider-native wire value; persistable choices use `effortLevel` |
 | Thinking | `/thinking on·off·toggle·status` | provider-native on/off control; persists through `alwaysThinkingEnabled` |
-| Fast mode | `/fast on` | `fastMode` / `fastModePerSessionOptIn` settings |
+| Fast mode | `/fast on·off·status`, or `s` in `/model` | native `provider.anthropic.speed`; supported models only, premium pricing |
 | Advisor model | `/advisor <model>` / `/advisor off` | secondary model that critiques answers (`advisorModel` setting) |
 | Always thinking | `alwaysThinkingEnabled` setting | durable backing setting for `/thinking` |
 | Thinking summaries | `showThinkingSummaries` setting | UI display of thinking |

@@ -39,12 +39,29 @@ export function providerSupportsThinkingToggle(
   provider: ProviderId,
   model?: string,
 ): boolean {
-  if (provider === 'ollama' || provider === 'anthropic-api') return true
+  if (provider === 'ollama') return true
+  if (provider === 'anthropic-api') {
+    const capabilities = getRuntimeModelReasoningCapabilities(model ?? '', provider)
+    if (capabilities?.mandatory) return false
+    if (capabilities?.thinkingTypes) {
+      return capabilities.thinkingTypes.includes('disabled') || capabilities.thinkingTypes.includes('between_tools')
+    }
+    return model ? modelSupportsThinking(model, provider) : false
+  }
   // NVIDIA documents a model-native enable_thinking chat-template switch for
   // Nemotron 3.5 Lightning. This is deliberately model-scoped: Kimi K3, for
   // example, advertises mandatory reasoning and must not inherit an off toggle.
   return provider === 'nvidia-nim' &&
     /^nvidia\/nemotron-3\.5-lightning-30b-a3b(?:-|$)/iu.test(model ?? '')
+}
+
+export function isThinkingMandatory(model: string, provider: ProviderId = getRuntimeProvider()): boolean {
+  return getRuntimeModelReasoningCapabilities(model, provider)?.mandatory === true
+}
+
+export function getThinkingOffMode(model: string, provider: ProviderId = getRuntimeProvider()): 'disabled' | 'between_tools' {
+  const types = getRuntimeModelReasoningCapabilities(model, provider)?.thinkingTypes
+  return types?.includes('between_tools') && !types.includes('disabled') ? 'between_tools' : 'disabled'
 }
 
 /**
@@ -198,6 +215,7 @@ export function modelSupportsAdaptiveThinking(
   // bashing.
   const capabilities = getRuntimeModelReasoningCapabilities(model, provider)
   if (reasoningMetadataSupportsThinking(capabilities) !== true) return false
+  if (capabilities?.thinkingTypes) return capabilities.thinkingTypes.includes('adaptive')
   // Claude 4.5 supports only the older budgeted mode. Current Claude 4.6+
   // models and native graded-reasoning APIs use adaptive/provider-native
   // control. An explicit adaptive_thinking override remains authoritative.

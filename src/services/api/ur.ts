@@ -215,6 +215,8 @@ import {
   modelSupportsAdaptiveThinking,
   modelSupportsThinking,
   providerSupportsThinkingToggle,
+  isThinkingMandatory,
+  getThinkingOffMode,
   type ThinkingConfig,
 } from 'src/utils/thinking.js'
 import {
@@ -1790,8 +1792,9 @@ async function* queryModel(
       )
 
     const hasThinking =
-      thinkingConfig.type !== 'disabled' &&
-      !isEnvTruthy(process.env.UR_CODE_DISABLE_THINKING)
+      isThinkingMandatory(options.model, effortProvider) ||
+      (thinkingConfig.type !== 'disabled' &&
+      !isEnvTruthy(process.env.UR_CODE_DISABLE_THINKING))
     let thinking: BetaMessageStreamParams['thinking'] | undefined = undefined
 
     // IMPORTANT: Do not change the adaptive-vs-budget thinking selection below
@@ -1825,15 +1828,12 @@ async function* queryModel(
       }
     } else if (
       !hasThinking &&
-      effortProvider !== 'anthropic-api' &&
       providerSupportsThinkingToggle(effortProvider, options.model)
     ) {
-      // Ollama and the documented NVIDIA Lightning chat template need an
-      // explicit false value to override a model whose server default is ON.
-      // Anthropic disables thinking by omission, so it intentionally does not
-      // enter this provider-specific internal representation.
+      // Use the provider's accepted off mode. Newer Claude models can default
+      // to adaptive thinking, so omission does not reliably disable it.
       thinking = {
-        type: 'disabled',
+        type: effortProvider === 'anthropic-api' ? getThinkingOffMode(options.model, effortProvider) : 'disabled',
       } as unknown as BetaMessageStreamParams['thinking']
     }
 
@@ -1852,7 +1852,7 @@ async function* queryModel(
     // fast-mode request without changing the cache key.
     let speed: any
     const isFastModeForRetry =
-      isFastModeEnabled() &&
+      isFirstPartyRuntime() && isFastModeEnabled() &&
       isFastModeAvailable() &&
       !isFastModeCooldown() &&
       isFastModeSupportedByModel(options.model) &&
@@ -1860,7 +1860,7 @@ async function* queryModel(
     if (isFastModeForRetry) {
       speed = 'fast'
     }
-    if (fastModeHeaderLatched && !betasParams.includes(FAST_MODE_BETA_HEADER)) {
+    if (isFirstPartyRuntime() && fastModeHeaderLatched && !betasParams.includes(FAST_MODE_BETA_HEADER)) {
       betasParams.push(FAST_MODE_BETA_HEADER)
     }
 

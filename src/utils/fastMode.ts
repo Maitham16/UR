@@ -26,7 +26,9 @@ import {
   type ModelSetting,
   parseUserSpecifiedModel,
 } from './model/model.js'
-import { isFirstPartyRuntime } from './model/providers.js'
+import { isFirstPartyRuntime, getRuntimeProvider } from './model/providers.js'
+import { getActiveProviderSettings } from '../services/providers/providerRegistry.js'
+import { getAnthropicFastMode } from '../services/providers/anthropicCapabilities.js'
 import { isEssentialTrafficOnly } from './privacyLevel.js'
 import {
   getInitialSettings,
@@ -72,6 +74,10 @@ function getDisabledReasonMessage(
 export function getFastModeUnavailableReason(): string | null {
   if (!isFastModeEnabled()) {
     return 'Fast mode is not available'
+  }
+  if (getRuntimeProvider() === 'anthropic-api') {
+    const model = getActiveProviderSettings(getInitialSettings()).model ?? ''
+    return getAnthropicFastMode(model) ? null : `Fast mode is not supported for ${model || 'the selected model'}.`
   }
 
   const statigReason = getFeatureValue_CACHED_MAY_BE_STALE(
@@ -162,6 +168,7 @@ export function getInitialFastModeSetting(model: ModelSetting): boolean {
     return false
   }
   const settings = getInitialSettings()
+  if (getRuntimeProvider() === 'anthropic-api') return getActiveProviderSettings(settings).anthropic?.speed === 'fast'
   // If per-session opt-in is required, fast mode starts off each session
   if (settings.fastModePerSessionOptIn) {
     return false
@@ -175,6 +182,7 @@ export function isFastModeSupportedByModel(
   if (!isFastModeEnabled()) {
     return false
   }
+  if (getRuntimeProvider() === 'anthropic-api' && typeof modelSetting === 'string') return Boolean(getAnthropicFastMode(modelSetting))
   void modelSetting
   void getDefaultMainLoopModelSetting
   void parseUserSpecifiedModel

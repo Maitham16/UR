@@ -9,13 +9,26 @@ import { Select } from './CustomSelect/index.js';
 import { Byline } from './design-system/Byline.js';
 import { KeyboardShortcutHint } from './design-system/KeyboardShortcutHint.js';
 import { Pane } from './design-system/Pane.js';
+import { Dialog } from './design-system/Dialog.js';
+import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
+import { getRuntimeProvider } from '../utils/model/providers.js';
+import { isThinkingMandatory } from '../utils/thinking.js';
 export type Props = {
   currentValue: boolean;
   onSelect: (enabled: boolean) => void;
   onCancel?: () => void;
   isMidConversation?: boolean;
 };
-export function ThinkingToggle(t0) {
+export function ThinkingToggle(props: Props): React.ReactNode {
+  const model = useMainLoopModel();
+  if (isThinkingMandatory(model, getRuntimeProvider())) {
+    return <Dialog title="Thinking always ON" onCancel={() => props.onCancel?.()}>
+      <Text>{model} requires thinking. Use /effort to choose its reasoning depth.</Text>
+    </Dialog>;
+  }
+  return <ThinkingToggleOptions {...props} />;
+}
+function ThinkingToggleOptions(t0) {
   const $ = _c(27);
   const {
     currentValue,
@@ -34,7 +47,7 @@ export function ThinkingToggle(t0) {
     }, {
       value: "false",
       label: "Disabled",
-      description: "UR will respond without extended thinking"
+      description: "Use this model's supported off or reduced-thinking mode"
     }];
     $[0] = t1;
   } else {

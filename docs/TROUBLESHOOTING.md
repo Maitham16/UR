@@ -35,6 +35,20 @@ not establish OS confinement. Review the [preset scope and exceptions](../techni
 
 ## Install and startup
 
+### A supported Claude model reports no thinking or effort controls
+
+Update UR and restart it, then use Ctrl+R in `/model` to refresh the live
+catalogue. Claude publishes effort levels and thinking modes as nested
+capability fields; older UR builds did not read those fields. `/effort status`
+and `/thinking status` now report the selected model's actual contract.
+
+Opus 5.5 has five native effort levels and always-on thinking. An off switch
+cannot disable that model's thinking; use effort to control depth. Sonnet 5.5
+uses a between-tools mode when up-front thinking is reduced. Haiku 5.5 allows
+explicit disabling. Supported speed tiers appear in `/model` (`s`, then Enter)
+and `/fast on|off|status`. Fast uses premium provider pricing; models without
+a documented fast tier stay on Standard.
+
 ### Claude API rejects `anthropic-beta: ur-20250219`
 
 This is an old UR request-header defect. Update through the installation's
@@ -58,7 +72,7 @@ generation. Add or replace your API key through `/connect` or the model picker.
 - Homebrew install: inspect `brew list ur-nexus` and `command -v ur`; update with
   `brew upgrade ur-nexus`. For a first installation, follow the
   [tap and formula-trust setup](NATIVE_INSTALL.md#homebrew).
-- Windows native and public npm installation are unavailable in 1.87.2. For
+- Windows native and public npm installation are unavailable in 1.87.3. For
   optional Windows source development, inspect `Get-Command ur` and follow the
   [Development Guide](DEVELOPMENT.md).
 - npm install: check the npm global bin path, then reinstall if needed. The

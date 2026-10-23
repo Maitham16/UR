@@ -59,7 +59,9 @@ function ModelPickerWrapper(t0) {
         message = message + ` with ${chalk.bold(effort)} effort`;
       }
       let wasFastModeToggledOn = undefined;
-      if (isFastModeEnabled()) {
+      if (metadata?.providerId === 'anthropic-api') {
+        message += `\nSpeed: ${(getActiveProviderSettings(getInitialSettings()).anthropic?.speed ?? 'standard').toUpperCase()}`;
+      } else if (isFastModeEnabled()) {
         clearFastModeCooldown();
         if (!isFastModeSupportedByModel(model) && isFastMode) {
           setAppState(_temp4);

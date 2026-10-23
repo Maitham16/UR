@@ -14,6 +14,8 @@ import { updateSettingsForSource } from '../../utils/settings/settings.js'
 import {
   modelSupportsThinking,
   providerSupportsThinkingToggle,
+  isThinkingMandatory,
+  getThinkingOffMode,
 } from '../../utils/thinking.js'
 
 export type ThinkingCommandResult = {
@@ -31,6 +33,9 @@ function capabilityMessage(
   }
   if (!providerSupportsThinkingToggle(provider, model)) {
     return `${model} advertises thinking, but the ${provider} runtime has no provider-native on/off mapping. ${modelSupportsEffort(model, provider) ? 'Use /effort for its advertised graded control.' : 'UR will not invent a boolean wire field.'}`
+  }
+  if (!enabled && getThinkingOffMode(model, provider) === 'between_tools') {
+    return `${model} skips up-front thinking and can still think between tool calls. Use /effort to choose its reasoning depth.`
   }
   if (!modelSupportsEffort(model, provider)) {
     return `${model} on ${provider} advertises thinking but no model-specific graded ladder. UR uses the provider-native on/off control and sends no graded effort.`
@@ -56,6 +61,9 @@ export function executeThinking(
   provider: ProviderId = getRuntimeProvider(),
 ): ThinkingCommandResult {
   const normalized = args.trim().toLowerCase()
+  if (isThinkingMandatory(model, provider) && ['', 'status', 'current', 'on', 'off', 'toggle', 'enable', 'enabled', 'true', 'disable', 'disabled', 'false'].includes(normalized)) {
+    return { message: `Thinking: always ON for ${model} on ${provider}. This model cannot disable thinking. Use /effort to choose its reasoning depth.` }
+  }
   if (!normalized || normalized === 'status' || normalized === 'current') {
     const disabledByEnvironment = isEnvTruthy(
       process.env.UR_CODE_DISABLE_THINKING,

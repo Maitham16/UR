@@ -17,6 +17,7 @@ import {
   resolveAnthropicWorkspaceId,
   validateAnthropicWorkspaceId,
 } from './anthropicWorkspace.js'
+import { getAnthropicReasoningCapabilities, getAnthropicFastMode } from './anthropicCapabilities.js'
 import {
   describeCacheAge,
   MODEL_CACHE_TTL_MS,
@@ -2473,6 +2474,10 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   ],
   // Anthropic API - direct API access with ANTHROPIC_API_KEY
   'anthropic-api': [
+    ...['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'].map(id => ({
+      id, displayName: id, description: 'Current Claude model', contextLength: 1_000_000,
+      outputTokenLimit: 128_000, reasoning: getAnthropicReasoningCapabilities(id),
+    })),
     { id: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: 'Balanced performance and speed', isDefault: true, reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
     { id: 'claude-opus-5', displayName: 'Claude Opus 5', description: 'Frontier intelligence for coding and agentic work', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
     { id: 'claude-fable-5', displayName: 'Claude Fable 5', description: 'Most capable Claude model for long-horizon work', reasoning: { ...EFFORT_LOW_MEDIUM_HIGH_XHIGH_MAX, defaultEffort: 'high' } },
@@ -2707,7 +2712,7 @@ function modelDefinitionsFromDiscovered(
     const reasoning =
       model.reasoning || curated?.reasoning
         ? {
-            ...(curated?.reasoning ?? {}),
+            ...(provider === 'anthropic-api' ? getAnthropicReasoningCapabilities(model.id) : curated?.reasoning),
             ...(model.reasoning ?? {}),
             ...(curated?.reasoning?.effortAliases || model.reasoning?.effortAliases
               ? {
@@ -2878,8 +2883,9 @@ export function getProviderReasoningCapabilitiesForModel(
   // Capability request shaping must use an exact model identity. Substring
   // inheritance can silently attach one model's reasoning contract to a new
   // or vendor-prefixed model whose provider never advertised it.
-  const match = known.find(entry => entry.id.toLowerCase() === wanted)
-  return match?.reasoning
+  const match = known.find(entry => entry.id.toLowerCase() === wanted && entry.reasoning !== undefined)
+  const documented = providerId === 'anthropic-api' ? getAnthropicReasoningCapabilities(wanted) : undefined
+  return match?.reasoning ? { ...documented, ...match.reasoning } : documented
 }
 
 function providerPropsUrl(baseUrl: string, model: string): string {
@@ -3867,6 +3873,7 @@ export function setProviderModel(
     availableModels?: Array<string | ProviderModelDefinition>
     modelSource?: ProviderModelSource
     source?: EditableSettingSource
+    anthropicSpeed?: 'standard' | 'fast'
   } = {},
 ): { ok: true; message: string; provider: ProviderId; model: string; modelSource: ProviderModelSource } | { ok: false; message: string } {
   const provider = resolveProviderId(providerId)
@@ -3892,6 +3899,10 @@ export function setProviderModel(
       message: validation.error,
     }
   }
+  if (options.anthropicSpeed !== undefined && (provider !== 'anthropic-api' ||
+    (options.anthropicSpeed === 'fast' && !getAnthropicFastMode(modelId)))) {
+    return { ok: false, message: `Fast mode is not supported for ${modelId} on ${provider}.` }
+  }
   const source = options.source ?? 'localSettings'
   const currentSettings = getInitialSettings()
   const result = updateSettingsForSource(source, {
@@ -3899,6 +3910,9 @@ export function setProviderModel(
       active: provider,
       model: modelId,
       ...endpointSettingsForProviderSwitch(currentSettings, provider),
+      ...(options.anthropicSpeed !== undefined ? {
+        anthropic: { ...getActiveProviderSettings(currentSettings).anthropic, speed: options.anthropicSpeed },
+      } : {}),
     },
     model: modelId,
   } as SettingsJson)

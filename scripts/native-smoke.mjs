@@ -248,7 +248,7 @@ try {
           for await (const chunk of request) chunks.push(chunk)
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
           anthropicRequests.push(body)
-          if (request.headers['anthropic-beta'] || body.temperature !== undefined || body.thinking?.type === 'enabled') {
+          if (request.headers['anthropic-beta'] || body.temperature !== undefined || body.thinking?.type !== 'adaptive' || body.output_config?.effort !== 'xhigh') {
             response.writeHead(400, { 'content-type': 'application/json' })
             response.end(JSON.stringify({ error: { type: 'invalid_request_error', message: 'Unsupported automatic beta or sampling/thinking parameter' } }))
             return
@@ -373,12 +373,17 @@ try {
     await check('native Claude request omits unsupported automatic beta headers', async () => {
       env.ANTHROPIC_API_KEY = 'ur-native-smoke-no-secret'
       try {
-        const claudeSettings = JSON.stringify({ provider: { active: 'anthropic-api', model: 'claude-opus-5-5', baseUrls: { 'anthropic-api': baseURL } }, sandbox: { enabled: false } })
+        const claudeProvider = { active: 'anthropic-api', model: 'claude-opus-5-5', baseUrls: { 'anthropic-api': baseURL } }
+        const claudeSettings = JSON.stringify({ provider: claudeProvider, effortLevel: 'xhigh', alwaysThinkingEnabled: false, sandbox: { enabled: false } })
         const output = requireSuccess(await run(['-p', '--model', 'claude-opus-5-5', '--settings', claudeSettings, '--max-turns', '1', '--output-format', 'json', 'Say hello briefly.']))
         const result = JSON.parse(output)
         if (result.is_error || !String(result.result).includes('Claude native request verified.') || anthropicRequests.length !== 1 || !anthropicRequests[0].stream) {
           throw new Error(`Native Claude request failed: ${output}`)
         }
+        const fastSettings = JSON.stringify({ provider: { ...claudeProvider, anthropic: { speed: 'fast' } }, effortLevel: 'xhigh', sandbox: { enabled: false } })
+        const fastOutput = requireSuccess(await run(['-p', '--model', 'claude-opus-5-5', '--settings', fastSettings, '--max-turns', '1', '--output-format', 'json', 'Say hello at fast speed.']))
+        const fastResult = JSON.parse(fastOutput)
+        if (fastResult.is_error || anthropicRequests.length !== 2 || anthropicRequests[1].speed !== 'fast') throw new Error(`Native Claude fast mode failed: ${fastOutput}`)
       } finally { delete env.ANTHROPIC_API_KEY }
     })
   }

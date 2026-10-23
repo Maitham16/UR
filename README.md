@@ -198,7 +198,7 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Windows native installation is unavailable in 1.87.2 and has been deferred.
+Windows native installation is unavailable in 1.87.3 and has been deferred.
 Windows developers can optionally use the Bun-based source workflow in the
 [Development Guide](docs/DEVELOPMENT.md); the public npm package also supports
 only macOS and Linux.
@@ -215,7 +215,7 @@ ur --help
 Installers verify release checksums, the executable version, and packaged
 resources before activating the complete versioned installation. Standalone
 installer updates use `ur upgrade`; select a specific standalone release with
-`ur install 1.87.2`. Homebrew and npm installations retain their own update
+`ur install 1.87.3`. Homebrew and npm installations retain their own update
 commands and reject `ur install` to avoid creating a second installation.
 See [Native installation and recovery](docs/NATIVE_INSTALL.md) for manual
 downloads, signing status, supported targets, rollback, and uninstall.
@@ -441,6 +441,13 @@ Claude Opus 5 or Opus 4.8:
 ```sh
 ur config set anthropic.speed fast             # standard | fast
 ```
+
+In `/model`, use ←/→ to choose supported effort levels and `s` to preview
+Standard/Fast speed on supported Claude models, then Enter to confirm. Fast
+uses premium provider pricing. `/effort`, `/thinking status`, and
+`/fast on|off|status` expose the same native controls. Opus 5.5 thinking is
+always on; choose its depth through effort.
+
 
 The account must have Anthropic fast-mode access. Unsupported Claude models
 stay on standard speed instead of receiving a fabricated provider option.

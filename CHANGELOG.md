@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.87.3
+
+- Read Claude's live effort and thinking-mode capabilities instead of treating
+  current models as unsupported. Thin cached entries retain exact documented
+  fallbacks; explicit live capability values remain authoritative.
+- Added current Opus, Sonnet, Haiku and Fable capability definitions. Opus 5.5
+  and Fable's mandatory thinking is labelled always on; Sonnet 5.5's reduced
+  mode uses `between_tools`, and Haiku 5.5 supports explicit disabling.
+- Added Standard/Fast selection to both model pickers (`s`), applied only when
+  confirmed. `/fast` now controls the selected native model without changing
+  models or contacting a hosted UR service. Premium pricing is shown explicitly.
+- Opus 5.5 fast mode uses its generally available contract without a beta
+  header; Opus 5/4.8 retain their required preview beta. The existing fast-mode
+  disable flag is honored by native requests. Updated documentation and added
+  metadata, keyboard, persistence and full native request regressions.
+
 ## 1.87.2
 
 - Fixed Claude API requests failing with HTTP 400 because UR automatically sent

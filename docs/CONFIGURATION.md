@@ -196,18 +196,26 @@ Workspace-scoped keys need no extra setting. Clear the saved value with
 `ur config set anthropic.workspace_id auto`. When adding a key and workspace
 together, use `ur connect anthropic-api --workspace-id wrkspc_...`.
 
-Anthropic fast mode is a separate, premium research-preview tier. It is off by
-default and can be requested explicitly:
+Anthropic fast mode is a separate premium tier. It is off by default. In
+`/model`, press `s` on a supported model to preview Standard/Fast and Enter to
+confirm. The existing `/fast [on|off|status]` command controls the selected
+model without switching it. You can also configure it explicitly:
 
 ```sh
 ur config set anthropic.speed fast             # standard | fast
 ```
 
-UR adds `speed: "fast"` and Anthropic's required
-`fast-mode-2026-02-01` beta only for Claude Opus 5 and Opus 4.8. The account
-must be enabled by Anthropic. Other Claude models remain on standard speed;
-UR does not send a field the selected model does not support. Return to normal
-billing with `ur config set anthropic.speed standard`.
+UR sends `speed: "fast"` for Opus 5.5 without a beta header. Opus 5 and Opus
+4.8 still require `fast-mode-2026-02-01` and preview account access. Other
+Claude models remain on standard speed. Provider eligibility and rate limits
+apply. Use `/fast off` or `ur config set anthropic.speed standard` to return to
+standard speed. `UR_CODE_DISABLE_FAST_MODE=1` suppresses native fast requests.
+
+Claude model controls come from live capability metadata with documented
+fallbacks for known model IDs. Use `/effort` for reasoning depth. Opus 5.5 and
+Fable require thinking and display always ON; Sonnet 5.5 uses `between_tools`
+for reduced up-front thinking, while Haiku 5.5 supports explicit disabling.
+`/thinking status` reports the active model's contract.
 
 `provider.fallback` is diagnostic recovery metadata, not automatic routing.
 When the active provider fails, `ur provider doctor` shows the configured
