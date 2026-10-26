@@ -51,7 +51,7 @@ jobs:
       prerelease: ${{ steps.resolve.outputs.prerelease }}
     steps:
       - name: Checkout tag
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
           fetch-depth: 0
@@ -63,7 +63,7 @@ jobs:
           bun-version: 1.4.3
 
       - name: Setup Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6.4.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -182,7 +182,7 @@ jobs:
           ls -l dist-release
 
       - name: Upload release artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ur-agent-source-${{ steps.resolve.outputs.version }}
           path: dist-release/*.tgz
@@ -197,11 +197,11 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.verify.outputs.tag }}
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 24
           package-manager-cache: false
@@ -218,7 +218,7 @@ jobs:
           done
           node scripts/native-manifest.mjs dist-release/native
           node scripts/npm-native-package.mjs --source-tarball "dist-release/source/ur-agent-$VERSION.tgz" --manifest dist-release/native/manifest.json --out-dir dist-release/npm
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ur-agent-${{ needs.verify.outputs.version }}
           path: dist-release/npm/*.tgz
@@ -238,7 +238,7 @@ jobs:
       attestations: write
     steps:
       - name: Checkout tag
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.verify.outputs.tag }}
           persist-credentials: false
@@ -325,14 +325,14 @@ jobs:
       id-token: write
     steps:
       - name: Checkout tag
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.verify.outputs.tag }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6.4.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
