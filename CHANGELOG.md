@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.87.5
+
+- Fixed GPT-6.1 Terra requests failing with HTTP 400 because UR sent the
+  deprecated `max_tokens` field. Direct OpenAI Chat Completions now use
+  `max_completion_tokens` independently of cached reasoning metadata, including
+  newly discovered models. Compatible servers retain their own token contract.
+- Added GPT-6.1 Terra's documented reasoning levels, default, context/output
+  limits and Fast/Flex controls. Agent requests automatically use Responses,
+  as required for this model's tool calling, with `max_output_tokens`.
+- Added credential-free regressions for Terra tool calls and continuation,
+  full-query streaming, thinking off/on and serving tiers. Updated provider,
+  validation and installation documentation for this release.
+
 ## 1.87.4
 
 - Extended model-native thinking and performance controls across OpenAI, Gemini,

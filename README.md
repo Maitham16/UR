@@ -198,7 +198,7 @@ sh install-ur.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Windows native installation is unavailable in 1.87.4 and has been deferred.
+Windows native installation is unavailable in 1.87.5 and has been deferred.
 Windows developers can optionally use the Bun-based source workflow in the
 [Development Guide](docs/DEVELOPMENT.md); the public npm package also supports
 only macOS and Linux.
@@ -215,7 +215,7 @@ ur --help
 Installers verify release checksums, the executable version, and packaged
 resources before activating the complete versioned installation. Standalone
 installer updates use `ur upgrade`; select a specific standalone release with
-`ur install 1.87.4`. Homebrew and npm installations retain their own update
+`ur install 1.87.5`. Homebrew and npm installations retain their own update
 commands and reject `ur install` to avoid creating a second installation.
 See [Native installation and recovery](docs/NATIVE_INSTALL.md) for manual
 downloads, signing status, supported targets, rollback, and uninstall.

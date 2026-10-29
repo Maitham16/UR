@@ -38,10 +38,14 @@ function workspace() {
 
 test('current models and thin cached names retain exact native controls', () => {
   workspace()
-  cacheProviderModelsForProvider('openai-api', ['gpt-6.1-sol'])
+  cacheProviderModelsForProvider('openai-api', ['gpt-6.1-sol', 'gpt-6.1-terra'])
   cacheProviderModelsForProvider('gemini-api', ['gemini-3.8-flash'])
   expect(getSupportedEffortLevelsForModel('gpt-6.1-sol', 'openai-api')).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
   expect(isThinkingMandatory('gpt-6.1-sol', 'openai-api')).toBe(true)
+  expect(getSupportedEffortLevelsForModel('gpt-6.1-terra', 'openai-api')).toEqual(['none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+  expect(isThinkingMandatory('gpt-6.1-terra', 'openai-api')).toBe(false)
+  expect(getProviderReasoningCapabilitiesForModel('gpt-6.1-terra', 'openai-api')?.defaultEffort).toBe('medium')
+  expect(getModelPerformanceOptions('openai-api', 'gpt-6.1-terra').map(option => option.value)).toEqual(['auto', 'standard', 'fast', 'flex'])
   expect(getSupportedEffortLevelsForModel('gpt-5.5', 'openai-api')).toEqual(['none', 'low', 'medium', 'high', 'xhigh', 'ultra'])
   expect(getProviderReasoningCapabilitiesForModel('gpt-5.4-2026-03-05', 'openai-api')?.defaultEffort).toBe('none')
   expect(getModelPerformanceOptions('openai-api', 'gpt-5.5-pro').map(option => option.value)).toEqual(['auto', 'standard', 'flex'])

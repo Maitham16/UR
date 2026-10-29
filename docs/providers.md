@@ -168,7 +168,9 @@ destinations; model discovery and inference use the selected provider's saved
 URL. Subscription CLI providers remain vendor-managed and do not accept a base
 URL.
 
-OpenAI API automatically uses Responses for the GPT-6 family and Responses-only Pro models so reasoning and agent tool calls use their supported endpoint. Other
+OpenAI API automatically uses Responses for the supported GPT-6 family,
+including GPT-6.1 Terra, and Responses-only Pro models so reasoning and agent
+tool calls use their supported endpoint. Other
 models retain Chat Completions unless `openai_transport responses` is selected; it defaults to `store=false`
 and supports semantic streaming, background polling/cancellation, WebSocket
 continuation, server compaction, and deferred tool search. It does not change
@@ -389,6 +391,21 @@ flow and is never written to settings. On the model screen, `K` adds or
 replaces the selected HTTP provider's key and `E` edits its endpoint. Generic
 OpenAI-compatible endpoints may remain anonymous.
 
+### OpenAI output limits and GPT-6.1 Terra
+
+GPT-6.1 Terra uses Responses automatically for agent tool calls. Its reasoning
+levels are `none`, `low`, `medium` (default), `high`, `xhigh` and `max`;
+`/thinking off` selects `none`. Fast and Flex are available in the performance
+selector. Its context window is 1,050,000 tokens with up to 128,000 output tokens.
+See the [official Terra model card](https://developers.openai.com/api/docs/models/gpt-6.1-terra).
+
+Direct OpenAI Chat Completions requests use `max_completion_tokens`; Responses
+requests use `max_output_tokens`. This token-field selection does not depend on
+whether a discovered model advertises reasoning controls. It prevents new
+models from failing with `Unsupported parameter: 'max_tokens'`. Local and other
+compatible servers retain their provider-specific token fields. See the
+[Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
+
 ### Token counting
 
 UR uses each provider's non-generating count endpoint when one covers the full
@@ -426,7 +443,7 @@ error, not a successful `Did 0 searches` result.
 When you select a UR-native provider and model, every agent request is routed
 through that provider's backend:
 
-- **API providers** make direct calls in each provider's native wire format: Anthropic uses `x-api-key` + `anthropic-version` against `/v1/messages`; OpenAI uses `Authorization: Bearer` against `/v1/chat/completions` by default or `/v1/responses` when explicitly selected; Gemini uses `x-goog-api-key` against `…:generateContent`; OpenRouter and NVIDIA Agentic use documented chat endpoints; NVIDIA Special uses per-card HTTP, NVCF, or gRPC inference.
+- **API providers** make direct calls in each provider's native wire format: Anthropic uses `x-api-key` + `anthropic-version` against `/v1/messages`; OpenAI uses `Authorization: Bearer` against `/v1/chat/completions` by default or `/v1/responses` when required by the model or explicitly selected; Gemini uses `x-goog-api-key` against `…:generateContent`; OpenRouter and NVIDIA Agentic use documented chat endpoints; NVIDIA Special uses per-card HTTP, NVCF, or gRPC inference.
 - **Local/server providers** connect to the configured local or OpenAI-compatible endpoint (`/v1/chat/completions` for LM Studio, llama.cpp and vLLM; the native tags/chat API for Ollama)
 - **Subscription CLI providers** (Codex CLI, Claude Code, Gemini CLI,
   Antigravity) dispatch the turn through the vendor's official CLI using your

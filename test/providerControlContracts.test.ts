@@ -32,7 +32,8 @@ const server = createServer(async (req, res) => {
       assert.ok(req.url.endsWith('/responses')); assert.equal(body.model, expected.model)
       assert.equal(body.service_tier, expected.tier); assert.equal(body.reasoning.effort, expected.effort)
       assert.equal(body.reasoning_effort, undefined); assert.equal(body.thinking, undefined)
-      assert.equal(body.max_tokens, undefined); assert.equal(body.text?.verbosity, undefined)
+      assert.equal(body.max_tokens, undefined); assert.equal(body.max_completion_tokens, undefined)
+      assert.equal(body.max_output_tokens, 128); assert.equal(body.text?.verbosity, undefined)
     } else if (expected.type === 'gemini') {
       assert.ok(req.url.includes('/models/' + expected.model + ':'))
       assert.equal(body.service_tier, expected.tier)
@@ -96,6 +97,8 @@ try {
   const scenarios = [
     { provider: 'openai-api', model: 'gpt-6.1-sol', type: 'responses', tier: 'ultrafast', effort: 'xhigh' },
     { provider: 'openai-api', model: 'gpt-6-astra', type: 'responses', tier: 'fast', effort: 'max' },
+    { provider: 'openai-api', model: 'gpt-6.1-terra', type: 'responses', tier: 'fast', effort: 'none' },
+    { provider: 'openai-api', model: 'gpt-6.1-terra', type: 'responses', tier: 'flex', effort: 'high' },
     { provider: 'openai-api', model: 'gpt-5.6-sol', type: 'chat', tier: 'fast', effort: 'none' },
     { provider: 'openai-api', model: 'gpt-6-luna', type: 'responses', tier: 'flex', effort: 'low' },
     { provider: 'openai-api', model: 'gpt-5.5', type: 'chat', tier: 'fast', effort: 'none' },
@@ -126,7 +129,7 @@ try {
       agents: [], hasAppendSystemPrompt: false, mcpTools: [], maxOutputTokensOverride: 128, enablePromptCaching: false, effortValue: scenario.effort }
     const answer = await queryWithModel({ systemPrompt: asSystemPrompt(['Be brief.']), userPrompt: 'hi', signal: AbortSignal.timeout(15000), options })
     assert.ok(answer.message.content.some(block => block.type === 'text' && block.text.includes(text)), JSON.stringify(answer.message.content))
-    if (['gpt-6.1-sol', 'gemini-3.8-flash'].includes(scenario.model)) {
+    if (['gpt-6.1-sol', 'gpt-6.1-terra', 'gemini-3.8-flash'].includes(scenario.model)) {
       let found = false
       for await (const event of queryModelWithStreaming({ messages: [createUserMessage({ content: 'hi' })], systemPrompt: asSystemPrompt(['Be brief.']),
         thinkingConfig: { type: 'disabled' }, tools: [], signal: AbortSignal.timeout(15000), options: { ...options, getToolPermissionContext: async () => getEmptyToolPermissionContext() } })) {
@@ -151,6 +154,6 @@ test('provider controls use valid native requests through the full query and str
         GEMINI_API_KEY: 'fixture-key', NVIDIA_API_KEY: 'fixture-key', OPENROUTER_API_KEY: 'fixture-key',
         UR_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', UR_CODE_DISABLE_AUTO_MEMORY: '1', DISABLE_TELEMETRY: '1', DO_NOT_TRACK: '1', CI: '1', NODE_ENV: 'production' } })
     expect(result.error, result.stderr).toBeUndefined(); expect(result.status, result.stderr || result.stdout).toBe(0)
-    expect(JSON.parse(readFileSync(report, 'utf8'))).toMatchObject({ passed: true, scenarios: 17, requests: 19 })
+    expect(JSON.parse(readFileSync(report, 'utf8'))).toMatchObject({ passed: true, scenarios: 19, requests: 23 })
   } finally { rmSync(work, { recursive: true, force: true }) }
 }, 120_000)

@@ -12,7 +12,7 @@ const contracts: Record<string, ModelReasoningCapabilities> = {
   'gpt-5': { supportsThinking: true, supportedEfforts: ['minimal', 'low', 'medium', 'high'], defaultEffort: 'medium', mandatory: true },
   ...Object.fromEntries(['gpt-5.5-pro', 'gpt-5.4-pro', 'gpt-5.2-pro'].map(id =>
     [id, { supportsThinking: true, supportedEfforts: ['medium', 'high', 'xhigh'], defaultEffort: id === 'gpt-5.5-pro' ? 'high' : 'medium', mandatory: true }])),
-  ...Object.fromEntries(['gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'].map(id =>
+  ...Object.fromEntries(['gpt-6.1-terra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'].map(id =>
     [id, { supportsThinking: true, supportedEfforts: ['none', ...five], defaultEffort: 'medium', mandatory: false }])),
 }
 export function getOpenAIReasoningCapabilities(model: string): ModelReasoningCapabilities | undefined {
@@ -33,13 +33,13 @@ function canonicalModel(model: string): string {
 }
 /** These models need Responses for an agent's reasoning and function calls. */
 export function requiresOpenAIResponses(model: string): boolean {
-  return ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.5-pro', 'gpt-5.4-pro', 'gpt-5.2-pro'].includes(canonicalModel(model))
+  return ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.5-pro', 'gpt-5.4-pro', 'gpt-5.2-pro'].includes(canonicalModel(model))
 }
 
 export type OpenAIServiceTier = 'auto' | 'default' | 'fast' | 'priority' | 'ultrafast' | 'flex'
 // Exact published pricing rows; never infer availability from a name prefix.
 // https://developers.openai.com/api/docs/pricing
-const current = ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']
+const current = ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']
 const fast = new Set([...current, 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.2', 'gpt-5.1', 'gpt-5', 'gpt-5-mini',
   'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-2024-05-13', 'gpt-4o-mini', 'o3', 'o4-mini'])
 const flex = new Set([...current, 'gpt-5.5', 'gpt-5.5-pro', 'gpt-5.4', 'gpt-5.4-pro', 'gpt-5.4-mini', 'gpt-5.4-nano',

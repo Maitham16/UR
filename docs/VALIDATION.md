@@ -16,14 +16,14 @@ You need:
   `>=22.12` launcher verifies and caches the native application without Bun;
   or a local source checkout (`bun run dev`) with the pinned development Bun.
 
-Windows native and public npm installation are unavailable in 1.87.4. Windows
+Windows native and public npm installation are unavailable in 1.87.5. Windows
 developers can optionally use the Bun-based source workflow.
 
 ## 0. Smoke
 
 ```sh
 ur --version
-# expected for this release: "1.87.4 (UR-Nexus)"
+# expected for this release: "1.87.5 (UR-Nexus)"
 ```
 
 ### Native model controls
@@ -31,13 +31,15 @@ ur --version
 Run the credential-free query, streaming, metadata, settings and keyboard regressions:
 
 ```sh
-bun test test/providerControlContracts.test.ts test/providerModelControls.test.tsx test/ollamaThinkingValues.test.ts test/anthropicModelControls.test.tsx test/anthropicRequestContract.test.ts
+bun test test/openaiTokenLimits.test.ts test/providerControlContracts.test.ts test/providerModelControls.test.tsx test/ollamaThinkingValues.test.ts test/anthropicModelControls.test.tsx test/anthropicRequestContract.test.ts
 ```
 
 The strict HTTP fixtures reject incorrect provider parameters. They cover
-OpenAI Responses/tier/effort, Gemini named effort and 2.5 token budgets, NVIDIA
+OpenAI Responses/tier/effort (including Terra with thinking off/on), Gemini named effort and 2.5 token budgets, NVIDIA
 schema-driven enums/template booleans, and OpenRouter routing/budgets. No paid
-live inference is claimed. The native smoke additionally exercises these
+live inference is claimed. Terra also has a fake-credential transport regression
+covering tool calls and their continuation; new or metadata-disabled OpenAI
+models are checked for the correct Chat Completions token field. The native smoke additionally exercises these
 controls from the installed executable with Node/Bun absent from PATH.
 
 In `/model`, verify that S/B/arrow previews write nothing until Enter and Esc

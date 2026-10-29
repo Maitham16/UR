@@ -445,7 +445,9 @@ export function buildAPIRequest(family: string, params: any, providerId: string)
     case 'openai': {
       const request = toOpenAICompatibleRequest(params, 'openai')
       if (params.service_tier) request.service_tier = params.service_tier
-      if (params.max_tokens !== undefined && getProviderReasoningCapabilitiesForModel(String(params.model ?? ''), 'openai-api')?.supportedEfforts?.length) {
+      // OpenAI's token-limit contract is independent of reasoning metadata.
+      // Newly discovered models must not fall back to deprecated max_tokens.
+      if (params.max_tokens !== undefined) {
         request.max_completion_tokens = params.max_tokens
         delete request.max_tokens
       }

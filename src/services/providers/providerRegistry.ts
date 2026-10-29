@@ -2481,7 +2481,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelDefinition[]> = {
   ],
   // OpenAI API - direct API access with OPENAI_API_KEY
   'openai-api': [
-    ...['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'].map(id => ({
+    ...['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-6-luna'].map(id => ({
       id, displayName: id, description: 'Current OpenAI reasoning model', contextLength: 1_050_000,
       outputTokenLimit: 128_000, reasoning: getOpenAIReasoningCapabilities(id),
     })),

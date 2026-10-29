@@ -265,6 +265,9 @@ try {
             assert.equal(body.service_tier, scenario.tier)
             assert.equal(body.temperature, undefined)
             assert.equal(body.reasoning_effort, undefined)
+            assert.equal(body.max_tokens, undefined)
+            assert.equal(body.max_completion_tokens, undefined)
+            assert.ok(Number.isFinite(body.max_output_tokens) && body.max_output_tokens > 0)
             const completed = { id: 'resp_native_controls', object: 'response', status: 'completed', model: body.model,
               output: [{ type: 'message', id: 'msg_native_controls', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text, annotations: [] }] }],
               usage: { input_tokens: 100, output_tokens: 8 } }
@@ -444,6 +447,8 @@ try {
     })
     for (const scenario of [
       { provider: 'openai-api', model: 'gpt-6.1-sol', type: 'responses', effort: 'xhigh', tier: 'ultrafast' },
+      { provider: 'openai-api', model: 'gpt-6.1-terra', type: 'responses', effort: 'none', tier: 'fast' },
+      { provider: 'openai-api', model: 'gpt-6.1-terra', type: 'responses', effort: 'high', tier: 'flex' },
       { provider: 'openai-api', model: 'gpt-6-luna', type: 'responses', effort: 'low', tier: 'flex' },
       { provider: 'openai-api', model: 'gpt-5.5-pro', type: 'responses', effort: 'xhigh', tier: 'flex' },
       { provider: 'gemini-api', model: 'gemini-3.8-flash', type: 'gemini', effort: 'low', tier: 'priority' },
